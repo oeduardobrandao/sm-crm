@@ -1,0 +1,303 @@
+// =============================================
+// CRM Fluxo - Data Store (Supabase Persistence)
+// =============================================
+import { supabase, getCurrentUser, getCurrentProfile } from './lib/supabase';
+
+// ---- Types ----
+export interface Cliente {
+  id?: number;
+  user_id?: string;
+  nome: string;
+  sigla: string;
+  cor: string;
+  plano: string;
+  email: string;
+  telefone: string;
+  status: 'ativo' | 'pausado' | 'encerrado';
+  valor_mensal: number;
+  conta_id?: string;
+}
+
+export interface Transacao {
+  id?: number;
+  user_id?: string;
+  data: string;
+  descricao: string;
+  detalhe: string;
+  categoria: string;
+  tipo: 'entrada' | 'saida';
+  valor: number;
+  cliente_id?: number | null;
+  conta_id?: string;
+}
+
+export interface Contrato {
+  id?: number;
+  user_id?: string;
+  cliente_id?: number | null;
+  cliente_nome: string;
+  titulo: string;
+  data_inicio: string;
+  data_fim: string;
+  status: 'vigente' | 'a_assinar' | 'encerrado';
+  valor_total: number;
+  conta_id?: string;
+}
+
+export interface Membro {
+  id?: number;
+  user_id?: string;
+  nome: string;
+  cargo: string;
+  tipo: 'clt' | 'freelancer_mensal' | 'freelancer_demanda';
+  custo_mensal: number | null;
+  avatar_url: string;
+  conta_id?: string;
+}
+
+export interface IntegracaoStatus {
+  id?: number;
+  user_id?: string;
+  integracao_id: string;
+  status: 'conectado' | 'desconectado' | 'em_breve';
+  conta_id?: string;
+}
+
+// ---- Helpers ----
+export function formatBRL(val: number): string {
+  return val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+export function formatDate(d: string): string {
+  return new Date(d + 'T00:00:00').toLocaleDateString('pt-BR');
+}
+
+export function getInitials(name: string): string {
+  return name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
+}
+
+async function getUserId(): Promise<string> {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Não autenticado');
+  return user.id;
+}
+
+async function getContaId(): Promise<string> {
+  const profile = await getCurrentProfile();
+  if (!profile || !profile.conta_id) throw new Error('Conta não encontrada ou usuário não autenticado');
+  return profile.conta_id;
+}
+
+// =============================================
+// CLIENTES CRUD
+// =============================================
+export async function getClientes(): Promise<Cliente[]> {
+  const { data, error } = await supabase
+    .from('clientes')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function addCliente(c: Omit<Cliente, 'id' | 'user_id' | 'conta_id'>): Promise<Cliente> {
+  const user_id = await getUserId();
+  const conta_id = await getContaId();
+  const { data, error } = await supabase
+    .from('clientes')
+    .insert({ ...c, user_id, conta_id })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateCliente(id: number, c: Partial<Omit<Cliente, 'id' | 'user_id' | 'conta_id'>>): Promise<Cliente> {
+  const { data, error } = await supabase
+    .from('clientes')
+    .update(c)
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function removeCliente(id: number): Promise<void> {
+  const { error } = await supabase.from('clientes').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// =============================================
+// TRANSAÇÕES CRUD
+// =============================================
+export async function getTransacoes(): Promise<Transacao[]> {
+  const { data, error } = await supabase
+    .from('transacoes')
+    .select('*')
+    .order('data', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function addTransacao(t: Omit<Transacao, 'id' | 'user_id' | 'conta_id'>): Promise<Transacao> {
+  const user_id = await getUserId();
+  const conta_id = await getContaId();
+  const { data, error } = await supabase
+    .from('transacoes')
+    .insert({ ...t, user_id, conta_id })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateTransacao(id: number, t: Partial<Omit<Transacao, 'id' | 'user_id' | 'conta_id'>>): Promise<Transacao> {
+  const { data, error } = await supabase
+    .from('transacoes')
+    .update(t)
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function removeTransacao(id: number): Promise<void> {
+  const { error } = await supabase.from('transacoes').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// =============================================
+// CONTRATOS CRUD
+// =============================================
+export async function getContratos(): Promise<Contrato[]> {
+  const { data, error } = await supabase
+    .from('contratos')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function addContrato(c: Omit<Contrato, 'id' | 'user_id' | 'conta_id'>): Promise<Contrato> {
+  const user_id = await getUserId();
+  const conta_id = await getContaId();
+  const { data, error } = await supabase
+    .from('contratos')
+    .insert({ ...c, user_id, conta_id })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateContrato(id: number, c: Partial<Omit<Contrato, 'id' | 'user_id' | 'conta_id'>>): Promise<Contrato> {
+  const { data, error } = await supabase
+    .from('contratos')
+    .update(c)
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function removeContrato(id: number): Promise<void> {
+  const { error } = await supabase.from('contratos').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// =============================================
+// MEMBROS CRUD
+// =============================================
+export async function getMembros(): Promise<Membro[]> {
+  const { data, error } = await supabase
+    .from('membros')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function addMembro(m: Omit<Membro, 'id' | 'user_id' | 'conta_id'>): Promise<Membro> {
+  const user_id = await getUserId();
+  const conta_id = await getContaId();
+  const { data, error } = await supabase
+    .from('membros')
+    .insert({ ...m, user_id, conta_id })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateMembro(id: number, m: Partial<Omit<Membro, 'id' | 'user_id' | 'conta_id'>>): Promise<Membro> {
+  const { data, error } = await supabase
+    .from('membros')
+    .update(m)
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function removeMembro(id: number): Promise<void> {
+  const { error } = await supabase.from('membros').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// =============================================
+// INTEGRAÇÕES STATUS
+// =============================================
+const DEFAULT_INTEGRATIONS = [
+  { integracao_id: 'meta_ads', label: 'Meta Ads', icon: 'fa-brands fa-meta', desc: 'Facebook & Instagram Ads' },
+  { integracao_id: 'asaas', label: 'Asaas', icon: 'fa-solid fa-file-invoice-dollar', desc: 'Cobranças e Boletos' },
+  { integracao_id: 'whatsapp', label: 'WhatsApp Business', icon: 'fa-brands fa-whatsapp', desc: 'Mensagens e Notificações' },
+  { integracao_id: 'google_analytics', label: 'Google Analytics', icon: 'fa-brands fa-google', desc: 'Métricas e Relatórios' },
+  { integracao_id: 'canva', label: 'Canva', icon: 'fa-solid fa-palette', desc: 'Design e Criativos' },
+  { integracao_id: 'notion', label: 'Notion', icon: 'fa-solid fa-book', desc: 'Documentos e Planejamento' },
+];
+
+export function getIntegrationsMeta() {
+  return DEFAULT_INTEGRATIONS;
+}
+
+export async function getIntegracoesStatus(): Promise<IntegracaoStatus[]> {
+  const { data, error } = await supabase
+    .from('integracoes_status')
+    .select('*');
+  if (error) throw error;
+  return data || [];
+}
+
+export async function toggleIntegracao(integracao_id: string, newStatus: 'conectado' | 'desconectado'): Promise<void> {
+  const user_id = await getUserId();
+  const conta_id = await getContaId();
+  const { error } = await supabase
+    .from('integracoes_status')
+    .upsert({ user_id, conta_id, integracao_id, status: newStatus }, { onConflict: 'user_id,integracao_id' });
+  if (error) throw error;
+}
+
+// =============================================
+// COMPUTED HELPERS (for Dashboard)
+// =============================================
+export async function getDashboardStats() {
+  const [clientes, transacoes] = await Promise.all([getClientes(), getTransacoes()]);
+
+  const clientesAtivos = clientes.filter(c => c.status === 'ativo');
+  const receitaMensal = clientesAtivos.reduce((sum, c) => sum + Number(c.valor_mensal), 0);
+  const despesas = transacoes.filter(t => t.tipo === 'saida');
+  const despesaTotal = despesas.reduce((sum, t) => sum + Number(t.valor), 0);
+
+  return {
+    clientes,
+    clientesAtivos,
+    receitaMensal,
+    despesaTotal,
+    saldo: receitaMensal - despesaTotal,
+    transacoes,
+  };
+}

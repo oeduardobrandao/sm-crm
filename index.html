@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CRM Fluxo - Gestão Inteligente para Social Media</title>
+    <meta name="description" content="CRM completo para Social Media Managers brasileiros. Gerencie clientes, finanças, contratos e equipe." />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="/style.css">
+  </head>
+  <body>
+    <div class="app-container">
+      <!-- Sidebar -->
+      <nav class="sidebar">
+        <div class="logo-container">
+          <div class="logo-main" style="font-size: 2rem; color: var(--primary-color)"><i class="fa-solid fa-shapes"></i></div>
+          <div class="logo-sub">Gestão Inteligente</div>
+        </div>
+        
+        <ul class="nav-links">
+          <li class="nav-item">
+            <a href="#/dashboard" class="nav-link active" data-route="/dashboard">
+              <i class="fa-solid fa-chart-pie"></i> Dashboard
+            </a>
+          </li>
+          <li class="nav-item">
+            <a href="#/clientes" class="nav-link" data-route="/clientes">
+              <i class="fa-solid fa-users"></i> Clientes
+            </a>
+          </li>
+          <li class="nav-item">
+            <a href="#/financeiro" class="nav-link" data-route="/financeiro">
+              <i class="fa-solid fa-wallet"></i> Financeiro
+            </a>
+          </li>
+          <li class="nav-item">
+            <a href="#/contratos" class="nav-link" data-route="/contratos">
+              <i class="fa-solid fa-file-signature"></i> Contratos
+            </a>
+          </li>
+          <li class="nav-item">
+            <a href="#/equipe" class="nav-link" data-route="/equipe">
+              <i class="fa-solid fa-user-gear"></i> Equipe
+            </a>
+          </li>
+          <li class="nav-item">
+            <a href="#/integracoes" class="nav-link" data-route="/integracoes">
+              <i class="fa-solid fa-layer-group"></i> Integrações
+            </a>
+          </li>
+          <li class="nav-item">
+            <a href="#/configuracao" class="nav-link" data-route="/configuracao">
+              <i class="fa-solid fa-gear"></i> Configurações
+            </a>
+          </li>
+        </ul>
+
+        <div class="sidebar-bottom">
+          <div class="sidebar-user" id="user-menu-btn" style="cursor: pointer; position: relative;">
+            <div class="avatar" style="width:32px; height:32px; font-size:0.75rem">U</div>
+            <span class="user-name" style="font-size:0.85rem; font-weight:500">Usuário</span>
+            <i class="fa-solid fa-chevron-up" style="margin-left:auto; font-size:0.7rem; color:var(--text-muted)"></i>
+            
+            <div id="user-dropdown" class="user-dropdown hidden">
+              <div class="user-dropdown-header">Opções da Conta</div>
+              <button id="btn-logout-flutuante" class="user-dropdown-item text-danger">
+                <i class="fa-solid fa-arrow-right-from-bracket"></i> Sair
+              </button>
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      <!-- Main Content -->
+      <main class="main-content" id="app">
+        <div style="display:flex; align-items:center; justify-content:center; height:60vh">
+          <div style="text-align:center">
+            <i class="fa-solid fa-spinner fa-spin" style="font-size:2rem; color:var(--primary-color); margin-bottom:1rem"></i>
+            <p style="color:var(--text-muted)">Carregando...</p>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <!-- Mobile Bottom Navigation (hidden on desktop via CSS) -->
+    <nav class="mobile-nav" id="mobile-nav">
+      <a href="#/dashboard" class="mobile-nav-item active" data-route="/dashboard">
+        <i class="fa-solid fa-chart-pie"></i>
+        <span>Dashboard</span>
+      </a>
+      <a href="#/clientes" class="mobile-nav-item" data-route="/clientes">
+        <i class="fa-solid fa-users"></i>
+        <span>Clientes</span>
+      </a>
+      <a href="#/financeiro" class="mobile-nav-item" data-route="/financeiro">
+        <i class="fa-solid fa-wallet"></i>
+        <span>Financeiro</span>
+      </a>
+      <a href="#/contratos" class="mobile-nav-item" data-route="/contratos">
+        <i class="fa-solid fa-file-signature"></i>
+        <span>Contratos</span>
+      </a>
+      <button class="mobile-nav-item" id="mobile-more-btn">
+        <i class="fa-solid fa-ellipsis"></i>
+        <span>Mais</span>
+      </button>
+    </nav>
+
+    <!-- Mobile "More" Overlay -->
+    <div class="mobile-more-overlay" id="mobile-more-overlay">
+      <div class="mobile-more-sheet">
+        <div class="mobile-more-handle"></div>
+
+        <div class="mobile-more-profile" id="mobile-profile">
+          <div class="avatar" id="mobile-avatar">U</div>
+          <div class="mobile-more-profile-info">
+            <div class="mobile-more-profile-name" id="mobile-user-name">Usuário</div>
+            <div class="mobile-more-profile-plan">Plano Profissional</div>
+          </div>
+        </div>
+
+        <div class="mobile-more-title">Navegação</div>
+        <div class="mobile-more-grid">
+          <a href="#/equipe" class="mobile-more-item" data-route="/equipe">
+            <i class="fa-solid fa-user-gear"></i>
+            Equipe
+          </a>
+          <a href="#/integracoes" class="mobile-more-item" data-route="/integracoes">
+            <i class="fa-solid fa-layer-group"></i>
+            Integrações
+          </a>
+          <a href="#/configuracao" class="mobile-more-item" data-route="/configuracao">
+            <i class="fa-solid fa-gear"></i>
+            Configurações
+          </a>
+        </div>
+
+        <div class="mobile-more-divider"></div>
+        
+        <div class="mobile-more-grid" style="grid-template-columns: 1fr;">
+          <button class="mobile-more-item danger" id="mobile-logout-btn">
+            <i class="fa-solid fa-arrow-right-from-bracket"></i>
+            Sair da Conta
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
