@@ -15,7 +15,9 @@ export interface Cliente {
   telefone: string;
   status: 'ativo' | 'pausado' | 'encerrado';
   valor_mensal: number;
+  notion_page_url?: string;
   conta_id?: string;
+  data_pagamento?: number;
 }
 
 export interface Transacao {
@@ -29,6 +31,8 @@ export interface Transacao {
   valor: number;
   cliente_id?: number | null;
   conta_id?: string;
+  status?: 'pago' | 'agendado';
+  referencia_agendamento?: string | null;
 }
 
 export interface Contrato {
@@ -53,6 +57,7 @@ export interface Membro {
   custo_mensal: number | null;
   avatar_url: string;
   conta_id?: string;
+  data_pagamento?: number;
 }
 
 export interface IntegracaoStatus {
@@ -137,15 +142,24 @@ export async function getTransacoes(): Promise<Transacao[]> {
     .select('*')
     .order('data', { ascending: false });
   if (error) throw error;
-  return data || [];
+  
+  // Retrocompatibilidade: Se status for undefined/null no banco, vira 'pago' localmente para não quebrar fluxos antigos.
+  return (data || []).map(t => ({...t, status: t.status || 'pago'}));
 }
 
 export async function addTransacao(t: Omit<Transacao, 'id' | 'user_id' | 'conta_id'>): Promise<Transacao> {
   const user_id = await getUserId();
   const conta_id = await getContaId();
+  const payload = { 
+    ...t, 
+    user_id, 
+    conta_id,
+    status: t.status || 'pago',
+    referencia_agendamento: t.referencia_agendamento || null
+  };
   const { data, error } = await supabase
     .from('transacoes')
-    .insert({ ...t, user_id, conta_id })
+    .insert(payload)
     .select()
     .single();
   if (error) throw error;

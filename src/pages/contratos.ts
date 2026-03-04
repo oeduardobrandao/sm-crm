@@ -3,6 +3,7 @@
 // =============================================
 import { getContratos, addContrato, updateContrato, removeContrato, getClientes, formatBRL, formatDate, type Contrato } from '../store';
 import { showToast, openModal, closeModal, navigate } from '../router';
+import { openCSVSelector } from '../lib/csv';
 
 export async function renderContratos(container: HTMLElement): Promise<void> {
   container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:40vh"><i class="fa-solid fa-spinner fa-spin" style="font-size:1.5rem;color:var(--primary-color)"></i></div>`;
@@ -25,7 +26,15 @@ function renderContent(container: HTMLElement, contratos: Contrato[], clientes: 
         <h1>Gestão de Contratos</h1>
         <p>${contratos.length} contratos registrados</p>
       </div>
-      <button class="btn-primary" id="btn-add-contrato"><i class="fa-solid fa-plus"></i> Novo Contrato</button>
+      <div class="header-actions">
+        <div style="display:flex; align-items:center; gap:0.5rem">
+          <button class="btn-secondary" id="btn-import-csv"><i class="ph ph-file-csv"></i> Importar CSV</button>
+          <span id="btn-info-csv" data-tooltip="Formato CSV: Clique para ver as colunas" data-tooltip-dir="bottom" style="display:flex; align-items:center; cursor:pointer;">
+            <i class="ph ph-info" style="color:var(--primary-color); font-size:1.2rem; transition: color 0.2s;" onmouseover="this.style.color='var(--primary-hover)'" onmouseout="this.style.color='var(--primary-color)'"></i>
+          </span>
+        </div>
+        <button class="btn-primary" id="btn-add-contrato"><i class="ph ph-plus"></i> Novo Contrato</button>
+      </div>
     </header>
 
     <div class="filter-bar animate-up">
@@ -125,6 +134,58 @@ function renderContent(container: HTMLElement, contratos: Contrato[], clientes: 
   };
 
   container.querySelector('#btn-add-contrato')?.addEventListener('click', () => openContratoModal());
+
+  // --- Info CSV ---
+  container.querySelector('#btn-info-csv')?.addEventListener('click', () => {
+    openModal('Formato Esperado do CSV', `
+      <div style="color:var(--text-muted); line-height:1.6; font-size:0.95rem;">
+        <p>A primeira linha do arquivo (cabeçalho) deve conter <strong>exatamente</strong> as colunas abaixo:</p>
+        <ul style="margin: 1rem 1.5rem; background: var(--surface-hover); padding: 1rem 2rem; border-radius: 8px;">
+          <li><code style="color:var(--primary-color);">titulo</code>: Nome do Contrato/Projeto (Obrigatório)</li>
+          <li><code style="color:var(--primary-color);">cliente_id</code>: O ID Numérico do cliente</li>
+          <li><code style="color:var(--primary-color);">data_inicio</code>: Data (ex: 2024-01-01)</li>
+          <li><code style="color:var(--primary-color);">data_fim</code>: Data (ex: 2024-12-31)</li>
+          <li><code style="color:var(--primary-color);">valor_total</code>: Numeral (ex: 12000.00)</li>
+          <li><code style="color:var(--primary-color);">status</code>: <span style="font-size:0.8rem">vigente | a_assinar | encerrado</span></li>
+        </ul>
+        <p style="font-size:0.8rem; margin-top:0.5rem;"><i class="ph ph-warning-circle"></i> O separador do CSV deve ser a vírgula (<code>,</code>).</p>
+      </div>
+    `, undefined, { hideSubmit: true });
+  });
+
+  // --- Import CSV ---
+  container.querySelector('#btn-import-csv')?.addEventListener('click', () => {
+    openCSVSelector(async (rows) => {
+      showToast(`Processando ${rows.length} contratos...`, 'info');
+      let successCount = 0;
+      
+      for (const row of rows) {
+        if (!row.titulo) continue;
+        try {
+          const clienteId = row.cliente_id ? Number(row.cliente_id) : null;
+          const cliente = clientes.find(c => c.id === clienteId);
+          
+          await addContrato({
+            titulo: row.titulo,
+            cliente_id: clienteId,
+            cliente_nome: cliente?.nome || row.cliente_nome || '',
+            data_inicio: row.data_inicio || new Date().toISOString().split('T')[0],
+            data_fim: row.data_fim || new Date().toISOString().split('T')[0],
+            valor_total: parseFloat(row.valor_total) || 0,
+            status: (row.status?.toLowerCase() as any) || 'vigente',
+          });
+          successCount++;
+        } catch (e) {
+          console.warn('Erro ao importar linha:', row, e);
+        }
+      }
+      
+      showToast(`${successCount} contratos importados com sucesso!`, 'success');
+      navigate('/contratos'); // Refresh list
+    }, (err) => {
+      showToast('Erro no CSV: ' + err.message, 'error');
+    });
+  });
 
   // Edit events
   container.querySelectorAll('.btn-edit').forEach(btn => {

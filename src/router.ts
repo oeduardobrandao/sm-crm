@@ -124,7 +124,7 @@ export function showToast(message: string, type: 'success' | 'error' | 'info' = 
   }, 3000);
 }
 
-export function openModal(title: string, bodyHTML: string, onSubmit?: (form: HTMLFormElement) => void): void {
+export function openModal(title: string, bodyHTML: string, onSubmit?: (form: HTMLFormElement) => void, options?: { hideSubmit?: boolean }): void {
   closeModal();
 
   const overlay = document.createElement('div');
@@ -139,8 +139,8 @@ export function openModal(title: string, bodyHTML: string, onSubmit?: (form: HTM
       <form id="modal-form" class="modal-body">
         ${bodyHTML}
         <div class="modal-actions">
-          <button type="button" class="btn-secondary" id="modal-cancel-btn">Cancelar</button>
-          <button type="submit" class="btn-primary">Salvar</button>
+          <button type="button" class="btn-secondary" id="modal-cancel-btn">${options?.hideSubmit ? 'Entendi' : 'Cancelar'}</button>
+          ${!options?.hideSubmit ? '<button type="submit" class="btn-primary">Salvar</button>' : ''}
         </div>
       </form>
     </div>

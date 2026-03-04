@@ -3,6 +3,7 @@
 // =============================================
 import { getMembros, addMembro, updateMembro, removeMembro, formatBRL, getInitials, type Membro } from '../store';
 import { showToast, openModal, closeModal, navigate } from '../router';
+import { openCSVSelector } from '../lib/csv';
 
 export async function renderEquipe(container: HTMLElement): Promise<void> {
   container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:40vh"><i class="fa-solid fa-spinner fa-spin" style="font-size:1.5rem;color:var(--primary-color)"></i></div>`;
@@ -27,7 +28,15 @@ function renderContent(container: HTMLElement, membros: Membro[]): void {
         <h1>Gestão da Equipe</h1>
         <p>${membros.length} membros • Custo total: ${formatBRL(custoTotal)}/mês</p>
       </div>
-      <button class="btn-primary" id="btn-add-membro"><i class="fa-solid fa-plus"></i> Adicionar Membro</button>
+      <div class="header-actions">
+        <div style="display:flex; align-items:center; gap:0.5rem">
+          <button class="btn-secondary" id="btn-import-csv"><i class="ph ph-file-csv"></i> Importar CSV</button>
+          <span id="btn-info-csv" data-tooltip="Formato CSV: Clique para ver as colunas" data-tooltip-dir="bottom" style="display:flex; align-items:center; cursor:pointer;">
+            <i class="ph ph-info" style="color:var(--primary-color); font-size:1.2rem; transition: color 0.2s;" onmouseover="this.style.color='var(--primary-hover)'" onmouseout="this.style.color='var(--primary-color)'"></i>
+          </span>
+        </div>
+        <button class="btn-primary" id="btn-add-membro"><i class="ph ph-plus"></i> Adicionar Membro</button>
+      </div>
     </header>
 
     <div class="team-grid animate-up">
@@ -72,6 +81,10 @@ function renderContent(container: HTMLElement, membros: Membro[]): void {
         <div class="form-group"><label>Custo Mensal</label>
         <input name="custo_mensal" type="number" step="0.01" class="form-input" value="${membro?.custo_mensal || ''}"></div>
       </div>
+      <div class="form-row">
+        <div class="form-group"><label>Dia de Pagamento (Data Base)</label>
+        <input name="data_pagamento" type="number" min="1" max="31" class="form-input" placeholder="Ex: 5" value="${membro?.data_pagamento || ''}"></div>
+      </div>
     `, async (form) => {
       const d = new FormData(form);
       try {
@@ -81,6 +94,7 @@ function renderContent(container: HTMLElement, membros: Membro[]): void {
           tipo: d.get('tipo') as 'clt' | 'freelancer_mensal' | 'freelancer_demanda',
           custo_mensal: parseFloat(d.get('custo_mensal') as string) || null,
           avatar_url: membro?.avatar_url || '',
+          data_pagamento: parseInt(d.get('data_pagamento') as string) || undefined,
         };
 
         if (isEditing && membro?.id) {
@@ -101,6 +115,53 @@ function renderContent(container: HTMLElement, membros: Membro[]): void {
   };
 
   container.querySelector('#btn-add-membro')?.addEventListener('click', () => openMembroModal());
+
+  // --- Info CSV ---
+  container.querySelector('#btn-info-csv')?.addEventListener('click', () => {
+    openModal('Formato Esperado do CSV', `
+      <div style="color:var(--text-muted); line-height:1.6; font-size:0.95rem;">
+        <p>A primeira linha do arquivo (cabeçalho) deve conter <strong>exatamente</strong> as colunas abaixo:</p>
+        <ul style="margin: 1rem 1.5rem; background: var(--surface-hover); padding: 1rem 2rem; border-radius: 8px;">
+          <li><code style="color:var(--primary-color);">nome</code>: Nome do membro (Obrigatório)</li>
+          <li><code style="color:var(--primary-color);">cargo</code>: Cargo do membro</li>
+          <li><code style="color:var(--primary-color);">tipo</code>: <span style="font-size:0.8rem">clt | freelancer_mensal | freelancer_demanda</span></li>
+          <li><code style="color:var(--primary-color);">custo_mensal</code>: Numeral (ex: 2000.00)</li>
+          <li><code style="color:var(--primary-color);">data_pagamento</code>: Dia do Mês (Numeral 1 a 31)</li>
+        </ul>
+        <p style="font-size:0.8rem; margin-top:0.5rem;"><i class="ph ph-warning-circle"></i> O separador do CSV deve ser a vírgula (<code>,</code>).</p>
+      </div>
+    `, undefined, { hideSubmit: true });
+  });
+
+  // --- Import CSV ---
+  container.querySelector('#btn-import-csv')?.addEventListener('click', () => {
+    openCSVSelector(async (rows) => {
+      showToast(`Processando ${rows.length} membros...`, 'info');
+      let successCount = 0;
+      
+      for (const row of rows) {
+        if (!row.nome) continue;
+        try {
+          await addMembro({
+            nome: row.nome,
+            cargo: row.cargo || '',
+            tipo: (row.tipo?.toLowerCase() as any) || 'freelancer_demanda',
+            custo_mensal: parseFloat(row.custo_mensal) || null,
+            avatar_url: row.avatar_url || '',
+            data_pagamento: parseInt(row.data_pagamento) || undefined
+          });
+          successCount++;
+        } catch (e) {
+          console.warn('Erro ao importar linha:', row, e);
+        }
+      }
+      
+      showToast(`${successCount} membros importados com sucesso!`, 'success');
+      navigate('/equipe'); // Refresh list
+    }, (err) => {
+      showToast('Erro no CSV: ' + err.message, 'error');
+    });
+  });
 
   // Edit events
   container.querySelectorAll('.btn-edit').forEach(btn => {

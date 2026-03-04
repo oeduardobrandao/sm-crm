@@ -1,16 +1,50 @@
 // =============================================
 // Página: Financeiro
 // =============================================
-import { getClientes, getTransacoes, addTransacao, updateTransacao, removeTransacao, formatBRL, formatDate, type Transacao } from '../store';
+import { getClientes, getTransacoes, getMembros, addTransacao, updateTransacao, removeTransacao, formatBRL, formatDate, type Transacao } from '../store';
 import { showToast, openModal, closeModal, navigate } from '../router';
 
 export async function renderFinanceiro(container: HTMLElement): Promise<void> {
   container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:40vh"><i class="fa-solid fa-spinner fa-spin" style="font-size:1.5rem;color:var(--primary-color)"></i></div>`;
 
   try {
-    const [clientes, transacoes] = await Promise.all([getClientes(), getTransacoes()]);
+    const [clientes, membros, transacoesFisicas] = await Promise.all([getClientes(), getMembros(), getTransacoes()]);
+    
+    // Projeção On-The-Fly: Agendamentos Virtuais do mês atual
+    let transacoes = [...transacoesFisicas];
+    const dataAtual = new Date();
+    const mesBase = String(dataAtual.getMonth() + 1).padStart(2, '0');
+    const anoBase = dataAtual.getFullYear();
+
+    const addAgendamento = (idRef: string, dia: number, valor: number, desc: string, tipo: 'entrada' | 'saida') => {
+      if (!transacoesFisicas.some(t => t.referencia_agendamento === idRef)) {
+        transacoes.push({
+          id: Date.now() + Math.random(), // Id provisório virtual
+          tipo,
+          valor,
+          descricao: desc,
+          detalhe: 'Agendamento automático',
+          categoria: 'Agendamento',
+          data: `${anoBase}-${mesBase}-${String(dia).padStart(2, '0')}`,
+          status: 'agendado',
+          referencia_agendamento: idRef
+        });
+      }
+    };
+
+    clientes.filter(c => c.status === 'ativo' && c.data_pagamento).forEach(c => {
+      addAgendamento(`cliente_${c.id}_${anoBase}_${mesBase}`, c.data_pagamento!, Number(c.valor_mensal), c.nome, 'entrada');
+    });
+
+    membros.filter(m => m.data_pagamento).forEach(m => {
+      addAgendamento(`membro_${m.id}_${anoBase}_${mesBase}`, m.data_pagamento!, Number(m.custo_mensal), m.nome, 'saida');
+    });
+
+    // Ordenar de novo após empurrar virtuais
+    transacoes.sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime());
+
     const clientesAtivos = clientes.filter(c => c.status === 'ativo');
-    const aReceber = clientesAtivos.reduce((s, c) => s + Number(c.valor_mensal), 0);
+    const aReceber = transacoes.filter(t => t.tipo === 'entrada').reduce((s, t) => s + Number(t.valor), 0);
     const saidas = transacoes.filter(t => t.tipo === 'saida');
     const aPagar = saidas.reduce((s, t) => s + Number(t.valor), 0);
 
@@ -66,7 +100,7 @@ function renderContent(
     <div class="card animate-up">
       <h3 style="margin-bottom:1rem">Movimentações (${filtered.length})</h3>
       <table class="data-table">
-        <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Valor</th><th></th></tr></thead>
+        <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Valor</th><th>Status</th><th></th></tr></thead>
         <tbody>
           ${filtered.length === 0 ? '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:2rem">Nenhuma movimentação.</td></tr>' :
             filtered.map(t => `
@@ -77,9 +111,15 @@ function renderContent(
                 <td style="font-weight:600;color:${t.tipo === 'entrada' ? 'var(--success)' : 'var(--danger)'}">
                   ${t.tipo === 'entrada' ? '+' : '-'} ${formatBRL(Number(t.valor))}
                 </td>
-                <td style="text-align: right;">
-                  <button class="btn-icon btn-edit" data-id="${t.id}"><i class="fa-solid fa-pen"></i></button>
-                  <button class="btn-icon btn-remove" style="color:var(--danger)" data-id="${t.id}"><i class="fa-solid fa-trash"></i></button>
+                <td>
+                  <span class="badge ${t.status === 'agendado' ? 'badge-warning' : 'badge-success'}">
+                    ${t.status === 'agendado' ? 'Agendado' : 'Pago'}
+                  </span>
+                </td>
+                <td style="text-align: right; display:flex; gap: 0.5rem; justify-content: flex-end;">
+                  ${t.status === 'agendado' ? `<button class="btn-icon btn-confirm" data-idref="${t.referencia_agendamento}" title="Confirmar Pagamento"><i class="ph ph-check-circle" style="color:var(--success); font-size:1.2rem"></i></button>` : ''}
+                  ${t.status === 'pago' ? `<button class="btn-icon btn-edit" data-id="${t.id}"><i class="ph ph-pencil-simple"></i></button>
+                  <button class="btn-icon btn-remove" style="color:var(--danger)" data-id="${t.id}"><i class="ph ph-trash"></i></button>` : ''}
                 </td>
               </tr>
            `).join('')}
@@ -144,6 +184,36 @@ function renderContent(
   container.querySelector('#btn-add-entrada')?.addEventListener('click', () => openTransacaoModal('entrada'));
   container.querySelector('#btn-add-saida')?.addEventListener('click', () => openTransacaoModal('saida'));
   
+  // --- Confirmar Agendamento ---
+  container.querySelectorAll('.btn-confirm').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const idRef = (btn as HTMLElement).dataset.idref;
+      const transacaoVirtual = transacoes.find(t => t.referencia_agendamento === idRef);
+      if (!transacaoVirtual) return;
+
+      if (confirm(`Confirmar recebimento/pagamento de ${transacaoVirtual.descricao} (${formatBRL(Number(transacaoVirtual.valor))})?`)) {
+        try {
+          // Remove ID virtual and set status
+          const payload = {
+            descricao: transacaoVirtual.descricao,
+            detalhe: transacaoVirtual.detalhe,
+            categoria: transacaoVirtual.categoria,
+            data: transacaoVirtual.data,
+            valor: transacaoVirtual.valor,
+            tipo: transacaoVirtual.tipo,
+            status: 'pago' as const,
+            referencia_agendamento: transacaoVirtual.referencia_agendamento
+          };
+          await addTransacao(payload);
+          showToast('Pagamento confirmado com sucesso!', 'success');
+          navigate('/financeiro');
+        } catch (err: unknown) {
+          showToast('Erro ao confirmar: ' + (err instanceof Error ? err.message : 'Desconhecido'), 'error');
+        }
+      }
+    });
+  });
+
   // --- Edit ---
   container.querySelectorAll('.btn-edit').forEach(btn => {
     btn.addEventListener('click', () => {

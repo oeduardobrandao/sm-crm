@@ -15,8 +15,8 @@ export function renderLogin(container: HTMLElement): void {
     <div class="auth-wrapper">
       <div class="auth-card animate-up">
         <div class="auth-header">
-          <div class="auth-logo">CRM Fluxo</div>
-          <div class="auth-logo-sub">GESTÃO INTELIGENTE</div>
+          <div class="auth-logo"><i class="ph ph-infinity" style="margin-right:0.5rem"></i>Mesaas</div>
+          <div class="auth-logo-sub" style="margin-top:5px;letter-spacing:1px">PLATAFORMA INTELIGENTE</div>
         </div>
 
         <div class="auth-tabs">

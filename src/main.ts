@@ -10,6 +10,7 @@ import { renderEquipe } from './pages/equipe';
 import { renderIntegracoes } from './pages/integracoes';
 import { renderLogin } from './pages/login';
 import { renderConfiguracao } from './pages/configuracao';
+import { renderCalendario } from './pages/calendario';
 import { signOut } from './lib/supabase';
 
 // Register public routes
@@ -23,6 +24,7 @@ registerRoute('/contratos', renderContratos);
 registerRoute('/equipe', renderEquipe);
 registerRoute('/integracoes', renderIntegracoes);
 registerRoute('/configuracao', renderConfiguracao);
+registerRoute('/calendario', renderCalendario);
 
 // Sidebar click -> navigate
 document.querySelectorAll('.nav-link').forEach(link => {
@@ -75,6 +77,49 @@ if (btnLogoutFlutuante) {
       window.location.reload();
     }
   });
+}
+
+// ===== Dark Mode Toggle =====
+const themeToggleBtn = document.getElementById('theme-toggle');
+const mobileThemeToggleBtn = document.getElementById('mobile-theme-toggle');
+
+const updateThemeIcons = (isDark: boolean) => {
+  const moonIcon = '<i class="ph ph-moon"></i>';
+  const sunIcon = '<i class="ph ph-sun" style="color: #eab308"></i>';
+  
+  if (themeToggleBtn) {
+    themeToggleBtn.innerHTML = isDark ? sunIcon : moonIcon;
+  }
+  
+  if (mobileThemeToggleBtn) {
+    mobileThemeToggleBtn.innerHTML = isDark 
+      ? sunIcon + '\nTema Claro' 
+      : moonIcon + '\nTema Escuro';
+  }
+};
+
+// Set initial icon
+updateThemeIcons(document.documentElement.getAttribute('data-theme') === 'dark');
+
+const handleThemeToggle = () => {
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  if (isDark) {
+    document.documentElement.removeAttribute('data-theme');
+    localStorage.setItem('theme', 'light');
+    updateThemeIcons(false);
+  } else {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    localStorage.setItem('theme', 'dark');
+    updateThemeIcons(true);
+  }
+};
+
+if (themeToggleBtn) {
+  themeToggleBtn.addEventListener('click', handleThemeToggle);
+}
+
+if (mobileThemeToggleBtn) {
+  mobileThemeToggleBtn.addEventListener('click', handleThemeToggle);
 }
 
 // NOTE: Sidebar profile is hydrated by router.ts handleRoute() on each navigation.
