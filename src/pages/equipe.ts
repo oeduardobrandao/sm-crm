@@ -54,8 +54,8 @@ function renderContent(container: HTMLElement, membros: Membro[]): void {
               <span class="badge badge-${tipoBadge(m.tipo)}">${tipoLabel(m.tipo)}</span>
               <strong>${m.custo_mensal ? formatBRL(Number(m.custo_mensal)) + '/mês' : 'Sob demanda'}</strong>
             </div>
-            <button class="btn-icon btn-edit" data-id="${m.id}" style="position:absolute;top:0.75rem;right:2.5rem"><i class="fa-solid fa-pen"></i></button>
-            <button class="btn-icon btn-remove" data-id="${m.id}" style="position:absolute;top:0.75rem;right:0.75rem;color:var(--danger);"><i class="fa-solid fa-trash"></i></button>
+            <button class="btn-icon btn-edit" data-id="${m.id}" style="position:absolute;top:0.75rem;right:2.5rem;color:var(--text-main);"><i class="ph ph-pencil-simple"></i></button>
+            <button class="btn-icon btn-remove" data-id="${m.id}" style="position:absolute;top:0.75rem;right:0.75rem;color:var(--danger);"><i class="ph ph-trash"></i></button>
           </div>
         `).join('')}
     </div>

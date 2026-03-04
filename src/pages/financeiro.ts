@@ -105,18 +105,18 @@ function renderContent(
           ${filtered.length === 0 ? '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:2rem">Nenhuma movimentação.</td></tr>' :
             filtered.map(t => `
               <tr>
-                <td>${formatDate(t.data)}</td>
-                <td><strong>${t.descricao}</strong><br><span style="font-size:0.75rem;color:var(--text-muted)">${t.detalhe || ''}</span></td>
-                <td>${t.categoria}</td>
-                <td style="font-weight:600;color:${t.tipo === 'entrada' ? 'var(--success)' : 'var(--danger)'}">
+                <td data-label="Data">${formatDate(t.data)}</td>
+                <td data-label="Descrição"><strong>${t.descricao}</strong><br><span style="font-size:0.75rem;color:var(--text-muted)">${t.detalhe || ''}</span></td>
+                <td data-label="Categoria">${t.categoria}</td>
+                <td data-label="Valor" style="font-weight:600;color:${t.tipo === 'entrada' ? 'var(--success)' : 'var(--danger)'}">
                   ${t.tipo === 'entrada' ? '+' : '-'} ${formatBRL(Number(t.valor))}
                 </td>
-                <td>
+                <td data-label="Status">
                   <span class="badge ${t.status === 'agendado' ? 'badge-warning' : 'badge-success'}">
                     ${t.status === 'agendado' ? 'Agendado' : 'Pago'}
                   </span>
                 </td>
-                <td style="text-align: right; display:flex; gap: 0.5rem; justify-content: flex-end;">
+                <td data-label="Ações" style="text-align: right; display:flex; gap: 0.5rem; justify-content: flex-end;">
                   ${t.status === 'agendado' ? `<button class="btn-icon btn-confirm" data-idref="${t.referencia_agendamento}" title="Confirmar Pagamento"><i class="ph ph-check-circle" style="color:var(--success); font-size:1.2rem"></i></button>` : ''}
                   ${t.status === 'pago' ? `<button class="btn-icon btn-edit" data-id="${t.id}"><i class="ph ph-pencil-simple"></i></button>
                   <button class="btn-icon btn-remove" style="color:var(--danger)" data-id="${t.id}"><i class="ph ph-trash"></i></button>` : ''}

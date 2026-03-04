@@ -60,6 +60,18 @@ export async function renderConfiguracao(container: HTMLElement): Promise<void> 
               <input type="email" value="${user.email}" class="form-input" disabled style="opacity:0.6">
             </div>
           </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label><i class="ph ph-whatsapp" style="color:var(--success)"></i> Número do WhatsApp</label>
+              <input type="text" name="whatsapp" value="${profile.whatsapp || ''}" class="form-input" placeholder="Ex: 5511999990000 (Apenas Nros)">
+            </div>
+            <div class="form-group" style="display:flex; align-items:flex-end;">
+               <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer;" class="form-input" style="border:none; background:transparent; padding:0; height: auto;">
+                 <input type="checkbox" name="whatsapp_opt_in" value="true" ${profile.whatsapp_opt_in ? 'checked' : ''} style="width:20px; height:20px; accent-color:var(--primary-color)">
+                 <span style="font-size:0.85rem; color:var(--text-main)">Receber resumo do dia às 08:00 AM</span>
+               </label>
+            </div>
+          </div>
           <div style="display:flex; justify-content:flex-end; gap:0.75rem; margin-top:0.5rem">
             <button type="submit" class="btn-primary" id="btn-save-profile">
               <i class="fa-solid fa-check"></i> Salvar Alterações
@@ -130,6 +142,8 @@ export async function renderConfiguracao(container: HTMLElement): Promise<void> 
       nome: data.get('nome') as string,
       empresa: data.get('empresa') as string,
       telefone: data.get('telefone') as string,
+      whatsapp: data.get('whatsapp') as string,
+      whatsapp_opt_in: !!data.get('whatsapp_opt_in'),
       updated_at: new Date().toISOString(),
     }).eq('id', user.id);
 

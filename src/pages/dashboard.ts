@@ -25,9 +25,9 @@ export async function renderDashboard(container: HTMLElement): Promise<void> {
           <span class="kpi-sub" style="color:var(--success)">↑ ${clientesAtivos.length} clientes ativos</span>
         </div>
         <div class="kpi-card card-blue">
-          <span class="kpi-label" style="color: rgba(255,255,255,0.7)">DESPESAS MENSAIS</span>
-          <span class="kpi-value" style="color: #ffffff">${formatBRL(despesaTotal)}</span>
-          <span class="kpi-sub" style="color:rgba(255,255,255,0.8)">↓ ${transacoes.filter(t => t.tipo === 'saida').length} saídas registradas</span>
+          <span class="kpi-label" style="color: rgba(0,0,0,0.6)">DESPESAS MENSAIS</span>
+          <span class="kpi-value" style="color: var(--dark)">${formatBRL(despesaTotal)}</span>
+          <span class="kpi-sub" style="color:rgba(0,0,0,0.7)">↓ ${transacoes.filter(t => t.tipo === 'saida').length} saídas registradas</span>
         </div>
         <div class="kpi-card card-yellow">
           <span class="kpi-label" style="color: var(--dark)">SALDO TOTAL</span>

@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Calendário Médico — Brasil & Mundial</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c0f;
+    --surface: #12151a;
+    --border: #1e2430;
+    --text: #e8eaf0;
+    --muted: #5a6070;
+    --accent: #c8f542;
+    --accent2: #42c8f5;
+    --accent3: #f5a342;
+    --red: #f55a42;
+    --pink: #f542c8;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 300;
+    min-height: 100vh;
+  }
+
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 2.5rem 3rem;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 2rem;
+    flex-wrap: wrap;
+  }
+
+  .header-title h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(2rem, 4vw, 3.2rem);
+    font-weight: 900;
+    line-height: 1;
+    letter-spacing: -0.02em;
+  }
+
+  .header-title h1 span {
+    color: var(--accent);
+  }
+
+  .header-title p {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--muted);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-top: 0.5rem;
+  }
+
+  .legend {
+    display: flex;
+    gap: 1.2rem;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .legend-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .controls {
+    padding: 1.5rem 3rem;
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .filter-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 0.4rem 0.9rem;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .filter-btn:hover, .filter-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--bg);
+  }
+
+  .search-input {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 0.82rem;
+    padding: 0.4rem 1rem;
+    border-radius: 2px;
+    outline: none;
+    width: 240px;
+    transition: border-color 0.2s;
+    margin-left: auto;
+  }
+
+  .search-input::placeholder { color: var(--muted); }
+  .search-input:focus { border-color: var(--accent); }
+
+  main {
+    padding: 2rem 3rem 4rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 1.5rem;
+  }
+
+  .month-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+
+  .month-card:hover {
+    border-color: #2e3540;
+  }
+
+  .month-header {
+    padding: 1.2rem 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .month-name {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.4rem;
+    font-weight: 700;
+  }
+
+  .month-num {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+  }
+
+  .month-badge {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.6rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0.25rem 0.6rem;
+    border-radius: 2px;
+    background: #1a2a10;
+    color: var(--accent);
+    border: 1px solid #2a4018;
+    white-space: nowrap;
+  }
+
+  .month-events {
+    padding: 0.5rem 0;
+  }
+
+  .event-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.8rem;
+    padding: 0.6rem 1.5rem;
+    transition: background 0.15s;
+    cursor: default;
+  }
+
+  .event-item:hover {
+    background: rgba(255,255,255,0.02);
+  }
+
+  .event-date {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.68rem;
+    color: var(--muted);
+    min-width: 52px;
+    line-height: 1.6;
+    flex-shrink: 0;
+    padding-top: 1px;
+  }
+
+  .event-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-top: 5px;
+  }
+
+  .event-name {
+    font-size: 0.82rem;
+    line-height: 1.5;
+    color: #c0c8d8;
+  }
+
+  .type-br   { background: var(--accent); }
+  .type-world { background: var(--accent2); }
+  .type-prof  { background: var(--accent3); }
+  .type-week  { background: var(--pink); }
+  .type-month { background: var(--red); }
+
+  .no-results {
+    grid-column: 1/-1;
+    text-align: center;
+    padding: 4rem;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+  }
+
+  .count-bar {
+    padding: 0.6rem 3rem;
+    border-bottom: 1px solid var(--border);
+    font-family: 'DM Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+  }
+
+  .count-bar span { color: var(--accent); }
+
+  @media (max-width: 700px) {
+    header, main, .controls, .count-bar { padding-left: 1.2rem; padding-right: 1.2rem; }
+    .search-input { width: 100%; margin-left: 0; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-title">
+    <h1>Calendário <span>Médico</span></h1>
+    <p>Brasil &amp; Mundial — Datas de Saúde &amp; Conscientização</p>
+  </div>
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:var(--accent)"></div>Brasil</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--accent2)"></div>Mundial / OMS / OPAS</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--accent3)"></div>Profissões</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--pink)"></div>Semanas</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div>Meses temáticos</div>
+  </div>
+</header>
+
+<div class="controls" id="controls">
+  <button class="filter-btn active" data-filter="all">Todos</button>
+  <button class="filter-btn" data-filter="br">🇧🇷 Brasil</button>
+  <button class="filter-btn" data-filter="world">🌍 Mundial</button>
+  <button class="filter-btn" data-filter="cancer">Câncer</button>
+  <button class="filter-btn" data-filter="saude-mental">Saúde Mental</button>
+  <button class="filter-btn" data-filter="cardio">Cardio/Vascular</button>
+  <button class="filter-btn" data-filter="infeccao">Infecções</button>
+  <button class="filter-btn" data-filter="prof">Profissões</button>
+  <input class="search-input" id="search" type="text" placeholder="Buscar data ou condição…">
+</div>
+
+<div class="count-bar" id="countBar"></div>
+
+<main id="main"></main>
+
+<script>
+const data = [
+  {
+    month: "Janeiro", num: "01", badge: "Roxo · Hanseníase",
+    events: [
+      { date: "02/01", name: "Dia do Sanitarista", type: "prof", tags: ["br","prof"] },
+      { date: "04/01", name: "Dia do Hemofílico", type: "br", tags: ["br"] },
+      { date: "19/01", name: "Dia Mundial do Terapeuta Ocupacional", type: "world", tags: ["world","prof"] },
+      { date: "20/01", name: "Dia do Farmacêutico", type: "prof", tags: ["br","prof"] },
+      { date: "20/01", name: "Dia Nacional da Parteira Tradicional", type: "br", tags: ["br","prof"] },
+      { date: "29/01", name: "Dia Nacional da Visibilidade Trans", type: "br", tags: ["br"] },
+      { date: "30/01", name: "Dia Mundial das Doenças Tropicais Negligenciadas", type: "world", tags: ["world","infeccao"] },
+      { date: "Último dom.", name: "Dia Nacional de Combate e Prevenção da Hanseníase", type: "br", tags: ["br","infeccao"] },
+    ]
+  },
+  {
+    month: "Fevereiro", num: "02", badge: "Laranja · Leucemia",
+    events: [
+      { date: "01–08/02", name: "Semana Nacional de Prevenção da Gravidez na Adolescência", type: "week", tags: ["br","week"] },
+      { date: "04/02", name: "Dia Mundial do Câncer (OMS)", type: "world", tags: ["world","cancer"] },
+      { date: "05/02", name: "Dia Nacional da Mamografia", type: "br", tags: ["br","cancer"] },
+      { date: "10/02", name: "Dia Internacional da Epilepsia", type: "world", tags: ["world","saude-mental"] },
+      { date: "13/02", name: "Dia Internacional do Preservativo", type: "world", tags: ["world","infeccao"] },
+      { date: "14/02", name: "Dia Mundial dos Enfermos", type: "world", tags: ["world"] },
+      { date: "15/02", name: "Dia Internacional de Luta contra o Câncer Infantil", type: "world", tags: ["world","cancer"] },
+      { date: "18/02", name: "Dia Nacional da Criança Traqueostomizada", type: "br", tags: ["br"] },
+      { date: "20/02", name: "Dia Nacional de Combate às Drogas e Alcoolismo", type: "br", tags: ["br","saude-mental"] },
+      { date: "28/02", name: "Dia Mundial das Doenças Raras", type: "world", tags: ["world"] },
+      { date: "28/02", name: "Dia e Semana Nacional sobre Doenças Raras", type: "br", tags: ["br"] },
+    ]
+  },
+  {
+    month: "Março", num: "03", badge: "",
+    events: [
+      { date: "01/03", name: "Dia Mundial de Zero Discriminação", type: "world", tags: ["world"] },
+      { date: "03/03", name: "Dia Mundial da Audição (OMS)", type: "world", tags: ["world"] },
+      { date: "03/03", name: "Dia Mundial dos Defeitos Congênitos", type: "world", tags: ["world"] },
+      { date: "04/03", name: "Dia Mundial da Obesidade", type: "world", tags: ["world"] },
+      { date: "04/03", name: "Dia Internacional de Conscientização sobre HPV", type: "world", tags: ["world","cancer","infeccao"] },
+      { date: "08/03", name: "Dia Internacional da Mulher", type: "world", tags: ["world"] },
+      { date: "10/03", name: "Dia Nacional de Combate ao Sedentarismo", type: "br", tags: ["br"] },
+      { date: "10–16/03", name: "Semana Mundial do Glaucoma", type: "week", tags: ["world","week"] },
+      { date: "2ª qui.", name: "Dia Mundial do Rim (OMS)", type: "world", tags: ["world"] },
+      { date: "15/03", name: "Dia Mundial de Conscientização sobre Covid Longa", type: "world", tags: ["world","infeccao"] },
+      { date: "18/03", name: "Dia Mundial do Sono", type: "world", tags: ["world"] },
+      { date: "20/03", name: "Dia Mundial da Saúde Bucal", type: "world", tags: ["world"] },
+      { date: "21/03", name: "Dia Mundial e Nacional da Síndrome de Down", type: "world", tags: ["world","br"] },
+      { date: "22/03", name: "Dia Mundial da Água (OMS)", type: "world", tags: ["world"] },
+      { date: "24/03", name: "Dia Mundial de Combate à Tuberculose (OMS)", type: "world", tags: ["world","infeccao"] },
+      { date: "24–31/03", name: "Semana Nacional de Luta Contra a Tuberculose", type: "week", tags: ["br","week","infeccao"] },
+      { date: "26/03", name: "Dia Mundial do Câncer de Colo de Útero", type: "world", tags: ["world","cancer"] },
+      { date: "27/03", name: "Dia Nacional de Combate ao Câncer Colorretal", type: "br", tags: ["br","cancer"] },
+      { date: "30/03", name: "Dia Mundial do Transtorno Bipolar", type: "world", tags: ["world","saude-mental"] },
+      { date: "31/03", name: "Dia da Saúde e da Nutrição", type: "br", tags: ["br"] },
+    ]
+  },
+  {
+    month: "Abril", num: "04", badge: "Verde · Saúde no Trabalho",
+    events: [
+      { date: "Abril", name: "Abril Verde — Saúde e Segurança no Trabalho", type: "month", tags: ["br","month"] },
+      { date: "02/04", name: "Dia Mundial de Conscientização sobre o Autismo", type: "world", tags: ["world","br","saude-mental"] },
+      { date: "02–07/04", name: "Semana da Saúde no Brasil", type: "week", tags: ["br","week"] },
+      { date: "04/04", name: "Dia Nacional do Portador da Doença de Parkinson", type: "br", tags: ["br"] },
+      { date: "06/04", name: "Dia Mundial da Atividade Física", type: "world", tags: ["world"] },
+      { date: "07/04", name: "Dia Mundial da Saúde (OMS)", type: "world", tags: ["world"] },
+      { date: "11/04", name: "Dia do Infectologista", type: "prof", tags: ["prof"] },
+      { date: "11/04", name: "Dia Mundial de Conscientização da Doença de Parkinson", type: "world", tags: ["world"] },
+      { date: "12/04", name: "Dia do Obstetra", type: "prof", tags: ["prof"] },
+      { date: "14/04", name: "Dia Mundial da Doença de Chagas (OMS)", type: "world", tags: ["world","infeccao"] },
+      { date: "17/04", name: "Dia Mundial da Hemofilia", type: "world", tags: ["world"] },
+      { date: "24/04", name: "Dia Mundial de Combate à Meningite", type: "world", tags: ["world","infeccao"] },
+      { date: "23–30/04", name: "Semana de Vacinação nas Américas (OPAS)", type: "week", tags: ["world","week","infeccao"] },
+      { date: "24–30/04", name: "Semana Mundial da Imunização (OMS)", type: "week", tags: ["world","week","infeccao"] },
+      { date: "25/04", name: "Dia Mundial da Malária (OMS)", type: "world", tags: ["world","infeccao"] },
+      { date: "26/04", name: "Dia Nacional de Prevenção e Combate à Hipertensão Arterial", type: "br", tags: ["br","cardio"] },
+      { date: "28/04", name: "Dia Mundial da Segurança e Saúde no Trabalho (OIT)", type: "world", tags: ["world"] },
+      { date: "28/04", name: "Dia Nacional — Vítimas de Acidentes e Doenças do Trabalho", type: "br", tags: ["br"] },
+    ]
+  },
+  {
+    month: "Maio", num: "05", badge: "Amarelo · Trânsito",
+    events: [
+      { date: "1ª ter.", name: "Dia Mundial de Combate à Asma", type: "world", tags: ["world"] },
+      { date: "05/05", name: "Dia Mundial de Higienização das Mãos (OMS)", type: "world", tags: ["world","infeccao"] },
+      { date: "05/05", name: "Dia Internacional da Parteira", type: "world", tags: ["world","prof"] },
+      { date: "05/05", name: "Dia Nacional do Uso Racional de Medicamentos", type: "br", tags: ["br"] },
+      { date: "07/05", name: "Dia Internacional da Luta contra a Endometriose", type: "world", tags: ["world"] },
+      { date: "08/05", name: "Dia da Talassemia", type: "world", tags: ["world"] },
+      { date: "08/05", name: "Dia Mundial do Câncer de Ovário", type: "world", tags: ["world","cancer"] },
+      { date: "10/05", name: "Dia Mundial do Lúpus", type: "world", tags: ["world"] },
+      { date: "12/05", name: "Dia da Enfermagem", type: "world", tags: ["world","prof"] },
+      { date: "12/05", name: "Dia da Conscientização da Fibromialgia", type: "world", tags: ["world"] },
+      { date: "14/05", name: "Dia Nacional — Doenças Cardiovasculares na Mulher", type: "br", tags: ["br","cardio"] },
+      { date: "15/05", name: "Dia de Combate à Infecção Hospitalar", type: "world", tags: ["world","infeccao"] },
+      { date: "16/05", name: "Dia Mundial de Conscientização sobre Doença Celíaca", type: "world", tags: ["world"] },
+      { date: "17/05", name: "Dia Mundial da Hipertensão Arterial", type: "world", tags: ["world","cardio"] },
+      { date: "18/05", name: "Dia Nacional da Luta Antimanicomial", type: "br", tags: ["br","saude-mental"] },
+      { date: "19/05", name: "Dia Mundial da Doença Inflamatória Intestinal", type: "world", tags: ["world"] },
+      { date: "19/05", name: "Dia Nacional de Doação de Leite Humano", type: "br", tags: ["br"] },
+      { date: "19/05", name: "Dia Nacional de Combate à Cefaleia", type: "br", tags: ["br"] },
+      { date: "22/05", name: "Dia Mundial da Pré-eclâmpsia", type: "world", tags: ["world","cardio"] },
+      { date: "25/05", name: "Dia Mundial da Tireoide", type: "world", tags: ["world"] },
+      { date: "28/05", name: "Dia Internacional de Ação pela Saúde da Mulher", type: "world", tags: ["world"] },
+      { date: "29/05", name: "Dia Mundial da Saúde Digestiva (OMGE)", type: "world", tags: ["world"] },
+      { date: "Últ. qua.", name: "Dia Mundial da Esclerose Múltipla", type: "world", tags: ["world"] },
+      { date: "31/05", name: "Dia Mundial Sem Tabaco (OMS)", type: "world", tags: ["world","cancer"] },
+    ]
+  },
+  {
+    month: "Junho", num: "06", badge: "Laranja · Queimaduras",
+    events: [
+      { date: "Junho", name: "Junho Laranja — Prevenção a Queimaduras", type: "month", tags: ["br","month"] },
+      { date: "Junho", name: "Junho Vermelho — Doação de Sangue", type: "month", tags: ["br","month"] },
+      { date: "02/06", name: "Dia Mundial de Conscientização dos Transtornos Alimentares", type: "world", tags: ["world","saude-mental"] },
+      { date: "05/06", name: "Dia Mundial do Meio Ambiente (ONU)", type: "world", tags: ["world"] },
+      { date: "06/06", name: "Dia Nacional de Luta Contra Queimaduras", type: "br", tags: ["br"] },
+      { date: "06/06", name: "Dia Nacional do Teste do Pezinho", type: "br", tags: ["br"] },
+      { date: "07/06", name: "Dia Mundial da Segurança Alimentar (OMS)", type: "world", tags: ["world"] },
+      { date: "09/06", name: "Dia Nacional da Imunização", type: "br", tags: ["br","infeccao"] },
+      { date: "11/06", name: "Dia Mundial do Câncer de Próstata", type: "world", tags: ["world","cancer"] },
+      { date: "14/06", name: "Dia Mundial do Doador de Sangue (OMS)", type: "world", tags: ["world"] },
+      { date: "15/06", name: "Dia Mundial de Conscientização sobre o Abuso Contra a Pessoa Idosa", type: "world", tags: ["world"] },
+      { date: "19/06", name: "Dia Mundial de Conscientização sobre a Doença Falciforme (ONU)", type: "world", tags: ["world"] },
+      { date: "21/06", name: "Dia Nacional de Combate à Asma", type: "br", tags: ["br"] },
+      { date: "21/06", name: "Dia Nacional de Luta Contra a ELA", type: "br", tags: ["br"] },
+      { date: "25/06", name: "Dia Mundial do Vitiligo", type: "world", tags: ["world"] },
+      { date: "26/06", name: "Dia Nacional do Diabetes", type: "br", tags: ["br"] },
+      { date: "26/06", name: "Dia Internacional — Abuso e Tráfico Ilícito de Drogas (ONU)", type: "world", tags: ["world","saude-mental"] },
+    ]
+  },
+  {
+    month: "Julho", num: "07", badge: "Amarelo · Hepatites Virais",
+    events: [
+      { date: "Julho", name: "Julho Amarelo — Hepatites Virais", type: "month", tags: ["br","month","infeccao"] },
+      { date: "01/07", name: "Dia da Vacina BCG", type: "br", tags: ["br","infeccao"] },
+      { date: "02/07", name: "Dia do Hospital", type: "br", tags: ["br"] },
+      { date: "06/07", name: "Dia Mundial das Zoonoses", type: "world", tags: ["world","infeccao"] },
+      { date: "09/07", name: "Dia Nacional de Alerta Contra a Insuficiência Cardíaca", type: "br", tags: ["br","cardio"] },
+      { date: "10/07", name: "Dia da Saúde Ocular", type: "br", tags: ["br"] },
+      { date: "22/07", name: "Dia Mundial do Cérebro (FMN)", type: "world", tags: ["world"] },
+      { date: "25/07", name: "Dia Mundial de Prevenção do Afogamento (OMS)", type: "world", tags: ["world"] },
+      { date: "27/07", name: "Dia Mundial do Câncer de Cabeça e Pescoço", type: "world", tags: ["world","cancer"] },
+      { date: "28/07", name: "Dia Mundial da Hepatite (OMS)", type: "world", tags: ["world","infeccao"] },
+    ]
+  },
+  {
+    month: "Agosto", num: "08", badge: "Dourado · Amamentação",
+    events: [
+      { date: "Agosto", name: "Agosto Dourado — Amamentação", type: "month", tags: ["br","month"] },
+      { date: "01–07/08", name: "Semana Mundial da Amamentação (OMS)", type: "week", tags: ["world","week"] },
+      { date: "01/08", name: "Dia Mundial de Combate ao Câncer de Pulmão", type: "world", tags: ["world","cancer"] },
+      { date: "01/08", name: "Dia Nacional dos Portadores de Vitiligo", type: "br", tags: ["br"] },
+      { date: "08/08", name: "Dia Nacional da Pessoa com Atrofia Muscular Espinhal (AME)", type: "br", tags: ["br"] },
+      { date: "Sem. 10/08", name: "Semana Nacional de Controle e Combate à Leishmaniose", type: "week", tags: ["br","week","infeccao"] },
+      { date: "12/08", name: "Dia Internacional da Juventude (ONU)", type: "world", tags: ["world"] },
+      { date: "26/08", name: "Dia Nacional de Combate ao Colesterol", type: "br", tags: ["br","cardio"] },
+      { date: "Últ. 5ª", name: "Dia Nacional da Diálise", type: "br", tags: ["br"] },
+    ]
+  },
+  {
+    month: "Setembro", num: "09", badge: "Amarelo-Verde · Suicídio",
+    events: [
+      { date: "Setembro", name: "Setembro Amarelo — Prevenção ao Suicídio", type: "month", tags: ["br","month","saude-mental"] },
+      { date: "Setembro", name: "Setembro Verde — Doação de Órgãos", type: "month", tags: ["br","month"] },
+      { date: "01/09", name: "Dia Mundial da Saúde do Coração", type: "world", tags: ["world","cardio"] },
+      { date: "02/09", name: "Dia Nacional de Prevenção à Gravidez na Adolescência", type: "br", tags: ["br"] },
+      { date: "05/09", name: "Dia Nacional da Doação de Sangue e Órgãos", type: "br", tags: ["br"] },
+      { date: "10/09", name: "Dia Mundial de Prevenção ao Suicídio (OMS)", type: "world", tags: ["world","saude-mental"] },
+      { date: "15/09", name: "Dia Internacional da Democracia (ONU)", type: "world", tags: ["world"] },
+      { date: "17/09", name: "Dia Mundial da Segurança do Paciente (OMS)", type: "world", tags: ["world"] },
+      { date: "21/09", name: "Dia Mundial da Doença de Alzheimer (ADI)", type: "world", tags: ["world","saude-mental"] },
+      { date: "28/09", name: "Dia Internacional do Acesso Seguro ao Aborto", type: "world", tags: ["world"] },
+      { date: "29/09", name: "Dia Mundial do Coração (OMS)", type: "world", tags: ["world","cardio"] },
+    ]
+  },
+  {
+    month: "Outubro", num: "10", badge: "Rosa · Câncer de Mama",
+    events: [
+      { date: "Outubro", name: "Outubro Rosa — Câncer de Mama", type: "month", tags: ["br","month","cancer"] },
+      { date: "Outubro", name: "Outubro Azul — Saúde do Homem / Câncer de Próstata", type: "month", tags: ["br","month","cancer"] },
+      { date: "04/10", name: "Dia da Medicina do Trabalho / Médico do Trabalho", type: "prof", tags: ["prof"] },
+      { date: "05/10", name: "Dia Mundial de Saúde Mental (OMS)", type: "world", tags: ["world","saude-mental"] },
+      { date: "10/10", name: "Dia Mundial da Saúde Mental (WFMH)", type: "world", tags: ["world","saude-mental"] },
+      { date: "10/10", name: "Dia Nacional dos Direitos Fundamentais da Pessoa com Transtornos Mentais", type: "br", tags: ["br","saude-mental"] },
+      { date: "11/10", name: "Dia Nacional de Prevenção da Obesidade", type: "br", tags: ["br"] },
+      { date: "13/10", name: "Dia do Terapeuta Ocupacional e Fisioterapeuta", type: "prof", tags: ["prof"] },
+      { date: "15/10", name: "Dia Mundial da Visão (OMS)", type: "world", tags: ["world"] },
+      { date: "16/10", name: "Dia Mundial da Alimentação (FAO)", type: "world", tags: ["world"] },
+      { date: "20/10", name: "Dia do Médico", type: "prof", tags: ["br","prof"] },
+      { date: "20/10", name: "Dia Nacional do Câncer de Mama", type: "br", tags: ["br","cancer"] },
+      { date: "22/10", name: "Dia Internacional de Atenção à Gagueira", type: "world", tags: ["world"] },
+      { date: "23/10", name: "Dia Nacional de Combate à Dengue", type: "br", tags: ["br","infeccao"] },
+      { date: "26/10", name: "Dia Nacional de Combate ao Câncer de Cabeça e Pescoço", type: "br", tags: ["br","cancer"] },
+      { date: "29/10", name: "Dia Mundial do AVC (OMS)", type: "world", tags: ["world","cardio"] },
+    ]
+  },
+  {
+    month: "Novembro", num: "11", badge: "Azul · Saúde do Homem",
+    events: [
+      { date: "Novembro", name: "Novembro Azul — Saúde do Homem / Câncer de Próstata", type: "month", tags: ["br","month","cancer"] },
+      { date: "03/11", name: "Dia Mundial e Nacional da Saúde Única (Lei nº 14.792/2024)", type: "br", tags: ["br","world"] },
+      { date: "12/11", name: "Dia Mundial do Combate ao Diabetes (FID)", type: "world", tags: ["world"] },
+      { date: "14/11", name: "Dia Mundial do Diabetes (OMS/FID)", type: "world", tags: ["world"] },
+      { date: "17/11", name: "Dia Mundial da Prematuridade (OMS)", type: "world", tags: ["world"] },
+      { date: "20/11", name: "Dia Nacional da Consciência Negra", type: "br", tags: ["br"] },
+      { date: "21/11", name: "Dia do Odontologista", type: "prof", tags: ["prof"] },
+      { date: "Penúlt. sáb.", name: "Dia Nacional de Combate à Dengue", type: "br", tags: ["br","infeccao"] },
+      { date: "23/11", name: "Dia Nacional de Combate ao Câncer Infanto-Juvenil", type: "br", tags: ["br","cancer"] },
+      { date: "25/11", name: "Dia Internacional pela Eliminação da Violência contra a Mulher", type: "world", tags: ["world"] },
+    ]
+  },
+  {
+    month: "Dezembro", num: "12", badge: "Vermelho · HIV/AIDS / Laranja · Câncer de Pele",
+    events: [
+      { date: "Dezembro", name: "Dezembro Vermelho — Prevenção ao HIV/AIDS", type: "month", tags: ["br","month","infeccao"] },
+      { date: "Dezembro", name: "Dezembro Laranja — Câncer de Pele", type: "month", tags: ["br","month","cancer"] },
+      { date: "01/12", name: "Dia Mundial de Luta Contra a AIDS (OMS)", type: "world", tags: ["world","infeccao"] },
+      { date: "03/12", name: "Dia Internacional da Pessoa com Deficiência (ONU)", type: "world", tags: ["world"] },
+      { date: "06/12", name: "Dia Nacional de Mobilização dos Homens pelo Fim da Violência contra Mulheres", type: "br", tags: ["br"] },
+      { date: "09/12", name: "Dia da Nutrição e da Alimentação", type: "br", tags: ["br"] },
+      { date: "10/12", name: "Dia dos Direitos Humanos (ONU)", type: "world", tags: ["world"] },
+      { date: "17/12", name: "Dia Nacional dos Hansenianos", type: "br", tags: ["br","infeccao"] },
+      { date: "27/12", name: "Dia do Médico Sanitarista", type: "prof", tags: ["prof"] },
+    ]
+  },
+];
+
+const dotClass = { br: "type-br", world: "type-world", prof: "type-prof", week: "type-week", month: "type-month" };
+let activeFilter = "all";
+let searchTerm = "";
+
+function render() {
+  const main = document.getElementById("main");
+  main.innerHTML = "";
+  let totalVisible = 0;
+
+  data.forEach(month => {
+    const filtered = month.events.filter(e => {
+      const matchFilter = activeFilter === "all" || e.tags.includes(activeFilter);
+      const matchSearch = !searchTerm || e.name.toLowerCase().includes(searchTerm.toLowerCase()) || e.date.toLowerCase().includes(searchTerm.toLowerCase());
+      return matchFilter && matchSearch;
+    });
+
+    if (filtered.length === 0) return;
+    totalVisible += filtered.length;
+
+    const card = document.createElement("div");
+    card.className = "month-card";
+
+    card.innerHTML = `
+      <div class="month-header">
+        <div>
+          <div class="month-name">${month.month}</div>
+          <div class="month-num">${month.num}</div>
+        </div>
+        ${month.badge ? `<div class="month-badge">${month.badge}</div>` : ""}
+      </div>
+      <div class="month-events">
+        ${filtered.map(e => `
+          <div class="event-item">
+            <div class="event-date">${e.date}</div>
+            <div class="event-dot ${dotClass[e.type] || 'type-world'}"></div>
+            <div class="event-name">${e.name}</div>
+          </div>
+        `).join("")}
+      </div>
+    `;
+    main.appendChild(card);
+  });
+
+  if (totalVisible === 0) {
+    main.innerHTML = `<div class="no-results">Nenhuma data encontrada para "${searchTerm}"</div>`;
+  }
+
+  document.getElementById("countBar").innerHTML = `<span>${totalVisible}</span> datas exibidas`;
+}
+
+document.getElementById("controls").addEventListener("click", e => {
+  if (e.target.classList.contains("filter-btn")) {
+    document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+    e.target.classList.add("active");
+    activeFilter = e.target.dataset.filter;
+    render();
+  }
+});
+
+document.getElementById("search").addEventListener("input", e => {
+  searchTerm = e.target.value;
+  render();
+});
+
+render();
+</script>
+</body>
+</html>

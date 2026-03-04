@@ -58,16 +58,16 @@ function renderContent(container: HTMLElement, clientes: Cliente[], filter = 'to
           ${filtered.length === 0 ? '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:2rem">Nenhum cliente encontrado.</td></tr>' :
             filtered.map(c => `
               <tr>
-                <td><div style="display:flex;align-items:center;gap:0.75rem">
+                <td data-label="Cliente / Empresa"><div style="display:flex;align-items:center;gap:0.75rem">
                   <div class="avatar" style="background:${c.cor}">${getInitials(c.nome)}</div>
                   <strong>${c.nome}</strong>
                   ${c.notion_page_url ? `<a href="${c.notion_page_url}" target="_blank" title="Abrir no Notion" style="color:var(--text-muted);font-size:0.9rem;transition:0.2s" onmouseover="this.style.color='var(--text-color)'" onmouseout="this.style.color='var(--text-muted)'"><i class="ph ph-notion-logo"></i></a>` : ''}
                 </div></td>
-                <td>${c.plano}</td>
-                <td>${c.email}<br><span style="font-size:0.75rem;color:var(--text-muted)">${c.telefone}</span></td>
-                <td>${formatBRL(Number(c.valor_mensal))}</td>
-                <td><span class="badge badge-${c.status === 'ativo' ? 'success' : c.status === 'pausado' ? 'warning' : 'neutral'}">${c.status}</span></td>
-                <td style="text-align: right;">
+                <td data-label="Plano">${c.plano}</td>
+                <td data-label="Contato">${c.email}<br><span style="font-size:0.75rem;color:var(--text-muted)">${c.telefone}</span></td>
+                <td data-label="Valor Mensal">${formatBRL(Number(c.valor_mensal))}</td>
+                <td data-label="Status"><span class="badge badge-${c.status === 'ativo' ? 'success' : c.status === 'pausado' ? 'warning' : 'neutral'}">${c.status}</span></td>
+                <td data-label="Ações" style="text-align: right;">
                   <button class="btn-icon btn-edit" data-id="${c.id}"><i class="ph ph-pencil-simple"></i></button>
                   <button class="btn-icon btn-remove" style="color:var(--danger)" data-id="${c.id}"><i class="ph ph-trash"></i></button>
                 </td>
