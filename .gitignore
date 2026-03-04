@@ -30,4 +30,4 @@ vite.config.ts.timestamp-*
 # Misc
 stitch_assets/
 download_assets.*
-main.ts
+/main.ts
