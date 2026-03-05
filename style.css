@@ -1745,3 +1745,53 @@ body.role-agent input[name="valor_total"] {
   white-space: nowrap;
 }
 
+/* ===== Status Dropdown Menu ===== */
+@keyframes inFadeUp {
+  from { opacity: 0; transform: translateY(10px) }
+  to { opacity: 1; transform: translateY(0) }
+}
+
+.status-dropdown-menu {
+  position: fixed;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+  padding: 0.5rem;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 140px;
+  animation: inFadeUp 0.15s ease-out forwards;
+}
+
+[data-theme="dark"] .status-dropdown-menu {
+  box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+}
+
+.status-dropdown-item {
+  background: transparent;
+  border: none;
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-radius: calc(var(--radius) - 2px);
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-color);
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.status-dropdown-item:hover {
+  background: var(--surface-hover);
+}
+
+.status-dropdown-item.active {
+  background: rgba(var(--primary-rgb, 139, 205, 16), 0.1);
+  color: var(--primary-color);
+}
+

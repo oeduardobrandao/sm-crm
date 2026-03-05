@@ -184,7 +184,7 @@ function renderContent(container: HTMLElement, allLeads: Lead[], state?: State):
                     <td data-label="Especialidade" style="font-size:0.88rem">${l.especialidade || '—'}</td>
                     <td data-label="Faturamento" style="font-size:0.82rem;white-space:nowrap">${l.faturamento ? `<span class="lead-fat-badge">${l.faturamento}</span>` : '—'}</td>
                     <td data-label="Status">
-                      <button class="badge ${STATUS_BADGE[l.status] || 'badge-neutral'} status-cycle-btn" data-id="${l.id}" data-status="${l.status}" title="Clique para avançar status">${STATUS_LABELS[l.status] || l.status}</button>
+                      <button class="badge ${STATUS_BADGE[l.status] || 'badge-neutral'} status-dropdown-btn" data-id="${l.id}" data-status="${l.status}" title="Alterar status">${STATUS_LABELS[l.status] || l.status} <i class="ph ph-caret-down" style="margin-left:4px"></i></button>
                     </td>
                     <td data-label="Data" style="white-space:nowrap;font-size:0.85rem">${formatDate(l.created_at)}</td>
                     <td style="text-align:right;white-space:nowrap">
@@ -264,19 +264,53 @@ function renderContent(container: HTMLElement, allLeads: Lead[], state?: State):
     });
   });
 
-  // Status cycle (click badge to advance)
-  container.querySelectorAll('.status-cycle-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
+  // Status Dropdown Menu
+  container.querySelectorAll('.status-dropdown-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
       const id = Number((btn as HTMLElement).dataset.id);
       const cur = (btn as HTMLElement).dataset.status as Lead['status'];
-      const next = STATUS_CYCLE[(STATUS_CYCLE.indexOf(cur) + 1) % STATUS_CYCLE.length];
-      try {
-        await updateLead(id, { status: next });
-        showToast(`Status → ${STATUS_LABELS[next]}`, 'success');
-        renderContent(container, allLeads.map(l => l.id === id ? { ...l, status: next } : l), s);
-      } catch (err) {
-        showToast('Erro: ' + (err instanceof Error ? err.message : 'Erro'), 'error');
-      }
+      
+      // Remove any existing dropdowns
+      document.querySelectorAll('.status-dropdown-menu').forEach(el => el.remove());
+      
+      const menu = document.createElement('div');
+      menu.className = 'status-dropdown-menu';
+      
+      STATUS_CYCLE.forEach(next => {
+        const item = document.createElement('button');
+        item.className = `status-dropdown-item ${next === cur ? 'active' : ''}`;
+        item.innerHTML = `<span>${STATUS_LABELS[next]}</span> ${next === cur ? '<i class="ph ph-check"></i>' : ''}`;
+        item.addEventListener('click', async () => {
+          if (next === cur) return;
+          menu.remove();
+          try {
+            await updateLead(id, { status: next });
+            showToast(`Status → ${STATUS_LABELS[next]}`, 'success');
+            renderContent(container, allLeads.map(l => l.id === id ? { ...l, status: next } : l), s);
+          } catch (err) {
+            showToast('Erro: ' + (err instanceof Error ? err.message : 'Erro'), 'error');
+          }
+        });
+        menu.appendChild(item);
+      });
+
+      // Position it right below the button
+      const rect = btn.getBoundingClientRect();
+      menu.style.top = `${rect.bottom + 4}px`;
+      menu.style.left = `${rect.left}px`;
+      document.body.appendChild(menu);
+
+      // Close if clicking outside
+      const closeMenu = (e: MouseEvent) => {
+        if (!menu.contains(e.target as Node)) {
+          menu.remove();
+          document.removeEventListener('click', closeMenu);
+        }
+      };
+      
+      // setTimeout to avoid immediate trigger the document click
+      setTimeout(() => document.addEventListener('click', closeMenu), 0);
     });
   });
 
