@@ -107,6 +107,12 @@ function renderContent(container: HTMLElement, allLeads: Lead[], state?: State):
 
   const filters = ['todos', 'novo', 'contatado', 'qualificado', 'perdido', 'convertido'];
 
+  // --- Save Search Focus State ---
+  const activeSearchInput = container.querySelector('#leads-search') as HTMLInputElement | null;
+  const isSearchFocused = document.activeElement === activeSearchInput;
+  const cursorStart = activeSearchInput?.selectionStart ?? 0;
+  const cursorEnd = activeSearchInput?.selectionEnd ?? 0;
+
   container.innerHTML = `
     <header class="header animate-up">
       <div class="header-title">
@@ -219,6 +225,15 @@ function renderContent(container: HTMLElement, allLeads: Lead[], state?: State):
       </button>
     </div>` : ''}
   `;
+
+  // --- Restore Search Focus State ---
+  if (isSearchFocused) {
+    const newSearchInput = container.querySelector('#leads-search') as HTMLInputElement | null;
+    if (newSearchInput) {
+      newSearchInput.focus();
+      try { newSearchInput.setSelectionRange(cursorStart, cursorEnd); } catch (e) {}
+    }
+  }
 
   // ---- Event listeners ----
 
