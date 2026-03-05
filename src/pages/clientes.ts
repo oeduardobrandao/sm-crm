@@ -164,59 +164,119 @@ function renderContent(container: HTMLElement, clientes: Cliente[], filter = 'to
     openClienteModal();
   });
 
-  // --- Info CSV ---
+  // --- CSV Info modal ---
   container.querySelector('#btn-info-csv')?.addEventListener('click', () => {
-    openModal('Formato Esperado do CSV', `
-      <div style="color:var(--text-muted); line-height:1.6; font-size:0.95rem;">
-        <p>A primeira linha do arquivo (cabeçalho) deve conter <strong>exatamente</strong> as colunas abaixo:</p>
-        <ul style="margin: 1rem 1.5rem; background: var(--surface-hover); padding: 1rem 2rem; border-radius: 8px;">
-          <li><code style="color:var(--primary-color);">nome</code>: Nome da empresa (Obrigatório)</li>
-          <li><code style="color:var(--primary-color);">email</code>: E-mail de contato</li>
-          <li><code style="color:var(--primary-color);">telefone</code>: Número de telefone</li>
-          <li><code style="color:var(--primary-color);">plano</code>: Texto ou Nome do Plano</li>
-          <li><code style="color:var(--primary-color);">valor_mensal</code>: Numeral (ex: 1500.00)</li>
-          <li><code style="color:var(--primary-color);">status</code>: <span style="font-size:0.8rem">ativo | pausado | encerrado</span></li>
-          <li><code style="color:var(--primary-color);">notion_page_url</code>: Link (Opcional)</li>
-          <li><code style="color:var(--primary-color);">data_pagamento</code>: Dia do Mês (Numeral 1 a 31)</li>
-        </ul>
-        <p style="font-size:0.8rem; margin-top:0.5rem;"><i class="ph ph-warning-circle"></i> O separador do CSV deve ser a vírgula (<code>,</code>).</p>
+    openModal('Formato do CSV', `
+      <p style="color:var(--text-muted);font-size:0.9rem;margin-bottom:1rem">
+        O arquivo CSV deve ter a primeira linha com os <strong>nomes das colunas</strong> (cabeçalhos).
+        Colunas reconhecidas:
+      </p>
+      <div class="csv-format-table">
+        <table class="data-table" style="font-size:0.82rem">
+          <thead><tr><th>Coluna</th><th>Obrigatório</th><th>Exemplo</th></tr></thead>
+          <tbody>
+            <tr><td><code>nome</code></td><td style="color:var(--danger)">Sim</td><td>Empresa ABC</td></tr>
+            <tr><td><code>email</code></td><td>Não</td><td>contato@empresa.com</td></tr>
+            <tr><td><code>telefone</code></td><td>Não</td><td>+55 11 98765-4321</td></tr>
+            <tr><td><code>plano</code></td><td>Não</td><td>Plano Diamante</td></tr>
+            <tr><td><code>valor_mensal</code></td><td>Não</td><td>1500.00</td></tr>
+            <tr><td><code>status</code></td><td>Não</td><td>ativo | pausado | encerrado</td></tr>
+            <tr><td><code>notion_page_url</code></td><td>Não</td><td>https://notion.so/...</td></tr>
+            <tr><td><code>data_pagamento</code></td><td>Não</td><td>5</td></tr>
+          </tbody>
+        </table>
       </div>
-    `, undefined, { hideSubmit: true });
+      <p style="color:var(--text-muted);font-size:0.8rem;margin-top:1rem">
+        <i class="ph ph-info"></i> Deduplicação automática por <strong>e-mail</strong>, depois <strong>telefone</strong>, depois <strong>nome</strong>.
+        Linhas duplicadas são ignoradas, não sobrescritas.
+      </p>
+    `, () => closeModal(), { submitText: 'Fechar', cancelText: '' });
   });
 
-  // --- Import CSV ---
+  // --- CSV Import with deduplication ---
   container.querySelector('#btn-import-csv')?.addEventListener('click', () => {
     openCSVSelector(async (rows) => {
-      showToast(`Processando ${rows.length} clientes...`, 'info');
-      let successCount = 0;
-      
+      const total = rows.length;
+      let imported = 0;
+      let skipped = 0;
+      let failed = 0;
+      const failedNames: string[] = [];
       const colors = ['#e74c3c', '#8e44ad', '#27ae60', '#2980b9', '#d35400', '#16a085'];
-      
+
+      const existingEmails = new Set(clientes.filter(c => c.email).map(c => c.email.toLowerCase()));
+      const existingPhones = new Set(clientes.filter(c => c.telefone).map(c => c.telefone.replace(/\\D/g, '')).filter(Boolean));
+      const existingNames = new Set(clientes.map(c => c.nome.toLowerCase()));
+
       for (const row of rows) {
-        if (!row.nome) continue;
+        const nome = (row.nome || '').trim();
+        if (!nome) { failed++; continue; }
+
+        const email = (row.email || '').trim();
+        const telefone = (row.telefone || '').trim();
+        const phoneNorm = telefone.replace(/\\D/g, '');
+
+        const isDuplicate = 
+          (email && existingEmails.has(email.toLowerCase())) ||
+          (phoneNorm && existingPhones.has(phoneNorm)) ||
+          (existingNames.has(nome.toLowerCase()));
+
+        if (isDuplicate) {
+          skipped++;
+          continue;
+        }
+
         try {
           await addCliente({
-            nome: row.nome,
-            email: row.email || '',
-            telefone: row.telefone || '',
+            nome: nome,
+            email: email,
+            telefone: telefone,
             plano: row.plano || '',
             valor_mensal: parseFloat(row.valor_mensal) || 0,
             status: (row.status?.toLowerCase() as any) || 'ativo',
-            sigla: getInitials(row.nome),
+            sigla: getInitials(nome),
             cor: colors[Math.floor(Math.random() * colors.length)],
             notion_page_url: row.notion_page_url || '',
             data_pagamento: parseInt(row.data_pagamento) || undefined
           });
-          successCount++;
+
+          if (email) existingEmails.add(email.toLowerCase());
+          if (phoneNorm) existingPhones.add(phoneNorm);
+          existingNames.add(nome.toLowerCase());
+          imported++;
         } catch (e) {
-          console.warn('Erro ao importar linha:', row, e);
+          failed++;
+          failedNames.push(nome);
         }
       }
-      
-      showToast(`${successCount} clientes importados com sucesso!`, 'success');
-      navigate('/clientes'); // Refresh list
+
+      openModal('Importação Concluída', `
+        <div class="csv-import-result">
+          <div class="csv-result-stat csv-result-ok">
+            <i class="ph ph-check-circle"></i>
+            <strong>${imported}</strong>
+            <span>importados</span>
+          </div>
+          <div class="csv-result-stat csv-result-skip">
+            <i class="ph ph-copy"></i>
+            <strong>${skipped}</strong>
+            <span>duplicatas ignoradas</span>
+          </div>
+          <div class="csv-result-stat csv-result-fail">
+            <i class="ph ph-x-circle"></i>
+            <strong>${failed}</strong>
+            <span>com erro / sem nome</span>
+          </div>
+        </div>
+        <p style="color:var(--text-muted);font-size:0.82rem;margin-top:1rem;text-align:center">
+          ${total} linha${total !== 1 ? 's' : ''} processada${total !== 1 ? 's' : ''} no total.
+        </p>
+        ${failedNames.length ? `<p style="color:var(--danger);font-size:0.78rem;margin-top:0.5rem">Falhas: ${failedNames.slice(0, 5).join(', ')}${failedNames.length > 5 ? ` e mais ${failedNames.length - 5}` : ''}</p>` : ''}
+      `, () => {
+        closeModal();
+        navigate('/clientes'); // Refresh list
+      }, { submitText: 'Fechar', cancelText: '' });
     }, (err) => {
-      showToast('Erro no CSV: ' + err.message, 'error');
+      showToast('Erro ao ler CSV: ' + err.message, 'error');
     });
   });
 

@@ -13,6 +13,7 @@ import { renderConfiguracao } from './pages/configuracao';
 import { renderCalendario } from './pages/calendario';
 import { renderClienteDetalhe } from './pages/cliente-detalhe';
 import { renderMembroDetalhe } from './pages/membro-detalhe';
+import { renderLeads } from './pages/leads';
 import { signOut } from './lib/supabase';
 
 // Register public routes
@@ -29,6 +30,7 @@ registerRoute('/configuracao', renderConfiguracao);
 registerRoute('/calendario', renderCalendario);
 registerRoute('/cliente', renderClienteDetalhe);
 registerRoute('/membro', renderMembroDetalhe);
+registerRoute('/leads', renderLeads);
 
 // Sidebar click -> navigate
 document.querySelectorAll('.nav-link').forEach(link => {

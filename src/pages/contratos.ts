@@ -135,38 +135,60 @@ function renderContent(container: HTMLElement, contratos: Contrato[], clientes: 
 
   container.querySelector('#btn-add-contrato')?.addEventListener('click', () => openContratoModal());
 
-  // --- Info CSV ---
+  // --- CSV Info modal ---
   container.querySelector('#btn-info-csv')?.addEventListener('click', () => {
-    openModal('Formato Esperado do CSV', `
-      <div style="color:var(--text-muted); line-height:1.6; font-size:0.95rem;">
-        <p>A primeira linha do arquivo (cabeçalho) deve conter <strong>exatamente</strong> as colunas abaixo:</p>
-        <ul style="margin: 1rem 1.5rem; background: var(--surface-hover); padding: 1rem 2rem; border-radius: 8px;">
-          <li><code style="color:var(--primary-color);">titulo</code>: Nome do Contrato/Projeto (Obrigatório)</li>
-          <li><code style="color:var(--primary-color);">cliente_id</code>: O ID Numérico do cliente</li>
-          <li><code style="color:var(--primary-color);">data_inicio</code>: Data (ex: 2024-01-01)</li>
-          <li><code style="color:var(--primary-color);">data_fim</code>: Data (ex: 2024-12-31)</li>
-          <li><code style="color:var(--primary-color);">valor_total</code>: Numeral (ex: 12000.00)</li>
-          <li><code style="color:var(--primary-color);">status</code>: <span style="font-size:0.8rem">vigente | a_assinar | encerrado</span></li>
-        </ul>
-        <p style="font-size:0.8rem; margin-top:0.5rem;"><i class="ph ph-warning-circle"></i> O separador do CSV deve ser a vírgula (<code>,</code>).</p>
+    openModal('Formato do CSV', `
+      <p style="color:var(--text-muted);font-size:0.9rem;margin-bottom:1rem">
+        O arquivo CSV deve ter a primeira linha com os <strong>nomes das colunas</strong> (cabeçalhos).
+        Colunas reconhecidas:
+      </p>
+      <div class="csv-format-table">
+        <table class="data-table" style="font-size:0.82rem">
+          <thead><tr><th>Coluna</th><th>Obrigatório</th><th>Exemplo</th></tr></thead>
+          <tbody>
+            <tr><td><code>titulo</code></td><td style="color:var(--danger)">Sim</td><td>Projeto X</td></tr>
+            <tr><td><code>cliente_id</code></td><td>Não</td><td>123</td></tr>
+            <tr><td><code>data_inicio</code></td><td>Não</td><td>2024-01-01</td></tr>
+            <tr><td><code>data_fim</code></td><td>Não</td><td>2024-12-31</td></tr>
+            <tr><td><code>valor_total</code></td><td>Não</td><td>12000.00</td></tr>
+            <tr><td><code>status</code></td><td>Não</td><td>vigente | a_assinar | encerrado</td></tr>
+          </tbody>
+        </table>
       </div>
-    `, undefined, { hideSubmit: true });
+      <p style="color:var(--text-muted);font-size:0.8rem;margin-top:1rem">
+        <i class="ph ph-info"></i> Deduplicação automática por <strong>título e cliente_id</strong>.
+        Linhas duplicadas são ignoradas, não sobrescritas.
+      </p>
+    `, () => closeModal(), { submitText: 'Fechar', cancelText: '' });
   });
 
-  // --- Import CSV ---
+  // --- CSV Import with deduplication ---
   container.querySelector('#btn-import-csv')?.addEventListener('click', () => {
     openCSVSelector(async (rows) => {
-      showToast(`Processando ${rows.length} contratos...`, 'info');
-      let successCount = 0;
-      
+      const total = rows.length;
+      let imported = 0;
+      let skipped = 0;
+      let failed = 0;
+      const failedNames: string[] = [];
+      const existingContracts = new Set(contratos.map(c => `${c.titulo.toLowerCase()}_${c.cliente_id}`));
+
       for (const row of rows) {
-        if (!row.titulo) continue;
+        const titulo = (row.titulo || '').trim();
+        if (!titulo) { failed++; continue; }
+
+        const clienteId = row.cliente_id ? Number(row.cliente_id) : null;
+        const dedupKey = `${titulo.toLowerCase()}_${clienteId}`;
+
+        if (existingContracts.has(dedupKey)) {
+          skipped++;
+          continue;
+        }
+
         try {
-          const clienteId = row.cliente_id ? Number(row.cliente_id) : null;
           const cliente = clientes.find(c => c.id === clienteId);
           
           await addContrato({
-            titulo: row.titulo,
+            titulo: titulo,
             cliente_id: clienteId,
             cliente_nome: cliente?.nome || row.cliente_nome || '',
             data_inicio: row.data_inicio || new Date().toISOString().split('T')[0],
@@ -174,16 +196,43 @@ function renderContent(container: HTMLElement, contratos: Contrato[], clientes: 
             valor_total: parseFloat(row.valor_total) || 0,
             status: (row.status?.toLowerCase() as any) || 'vigente',
           });
-          successCount++;
+          
+          existingContracts.add(dedupKey);
+          imported++;
         } catch (e) {
-          console.warn('Erro ao importar linha:', row, e);
+          failed++;
+          failedNames.push(titulo);
         }
       }
-      
-      showToast(`${successCount} contratos importados com sucesso!`, 'success');
-      navigate('/contratos'); // Refresh list
+
+      openModal('Importação Concluída', `
+        <div class="csv-import-result">
+          <div class="csv-result-stat csv-result-ok">
+            <i class="ph ph-check-circle"></i>
+            <strong>${imported}</strong>
+            <span>importados</span>
+          </div>
+          <div class="csv-result-stat csv-result-skip">
+            <i class="ph ph-copy"></i>
+            <strong>${skipped}</strong>
+            <span>duplicatas ignoradas</span>
+          </div>
+          <div class="csv-result-stat csv-result-fail">
+            <i class="ph ph-x-circle"></i>
+            <strong>${failed}</strong>
+            <span>com erro / sem título</span>
+          </div>
+        </div>
+        <p style="color:var(--text-muted);font-size:0.82rem;margin-top:1rem;text-align:center">
+          ${total} linha${total !== 1 ? 's' : ''} processada${total !== 1 ? 's' : ''} no total.
+        </p>
+        ${failedNames.length ? `<p style="color:var(--danger);font-size:0.78rem;margin-top:0.5rem">Falhas: ${failedNames.slice(0, 5).join(', ')}${failedNames.length > 5 ? ` e mais ${failedNames.length - 5}` : ''}</p>` : ''}
+      `, () => {
+        closeModal();
+        navigate('/contratos'); // Refresh list
+      }, { submitText: 'Fechar', cancelText: '' });
     }, (err) => {
-      showToast('Erro no CSV: ' + err.message, 'error');
+      showToast('Erro ao ler CSV: ' + err.message, 'error');
     });
   });
 

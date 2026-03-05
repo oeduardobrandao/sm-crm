@@ -116,50 +116,96 @@ function renderContent(container: HTMLElement, membros: Membro[]): void {
 
   container.querySelector('#btn-add-membro')?.addEventListener('click', () => openMembroModal());
 
-  // --- Info CSV ---
+  // --- CSV Info modal ---
   container.querySelector('#btn-info-csv')?.addEventListener('click', () => {
-    openModal('Formato Esperado do CSV', `
-      <div style="color:var(--text-muted); line-height:1.6; font-size:0.95rem;">
-        <p>A primeira linha do arquivo (cabeçalho) deve conter <strong>exatamente</strong> as colunas abaixo:</p>
-        <ul style="margin: 1rem 1.5rem; background: var(--surface-hover); padding: 1rem 2rem; border-radius: 8px;">
-          <li><code style="color:var(--primary-color);">nome</code>: Nome do membro (Obrigatório)</li>
-          <li><code style="color:var(--primary-color);">cargo</code>: Cargo do membro</li>
-          <li><code style="color:var(--primary-color);">tipo</code>: <span style="font-size:0.8rem">clt | freelancer_mensal | freelancer_demanda</span></li>
-          <li><code style="color:var(--primary-color);">custo_mensal</code>: Numeral (ex: 2000.00)</li>
-          <li><code style="color:var(--primary-color);">data_pagamento</code>: Dia do Mês (Numeral 1 a 31)</li>
-        </ul>
-        <p style="font-size:0.8rem; margin-top:0.5rem;"><i class="ph ph-warning-circle"></i> O separador do CSV deve ser a vírgula (<code>,</code>).</p>
+    openModal('Formato do CSV', `
+      <p style="color:var(--text-muted);font-size:0.9rem;margin-bottom:1rem">
+        O arquivo CSV deve ter a primeira linha com os <strong>nomes das colunas</strong> (cabeçalhos).
+        Colunas reconhecidas:
+      </p>
+      <div class="csv-format-table">
+        <table class="data-table" style="font-size:0.82rem">
+          <thead><tr><th>Coluna</th><th>Obrigatório</th><th>Exemplo</th></tr></thead>
+          <tbody>
+            <tr><td><code>nome</code></td><td style="color:var(--danger)">Sim</td><td>João Silva</td></tr>
+            <tr><td><code>cargo</code></td><td>Não</td><td>Desenvolvedor</td></tr>
+            <tr><td><code>tipo</code></td><td>Não</td><td>clt | freelancer_mensal | freelancer_demanda</td></tr>
+            <tr><td><code>custo_mensal</code></td><td>Não</td><td>2000.00</td></tr>
+            <tr><td><code>data_pagamento</code></td><td>Não</td><td>5</td></tr>
+          </tbody>
+        </table>
       </div>
-    `, undefined, { hideSubmit: true });
+      <p style="color:var(--text-muted);font-size:0.8rem;margin-top:1rem">
+        <i class="ph ph-info"></i> Deduplicação automática por <strong>nome</strong>.
+        Linhas duplicadas são ignoradas, não sobrescritas.
+      </p>
+    `, () => closeModal(), { submitText: 'Fechar', cancelText: '' });
   });
 
-  // --- Import CSV ---
+  // --- CSV Import with deduplication ---
   container.querySelector('#btn-import-csv')?.addEventListener('click', () => {
     openCSVSelector(async (rows) => {
-      showToast(`Processando ${rows.length} membros...`, 'info');
-      let successCount = 0;
-      
+      const total = rows.length;
+      let imported = 0;
+      let skipped = 0;
+      let failed = 0;
+      const failedNames: string[] = [];
+      const existingNames = new Set(membros.map(m => m.nome.toLowerCase()));
+
       for (const row of rows) {
-        if (!row.nome) continue;
+        const nome = (row.nome || '').trim();
+        if (!nome) { failed++; continue; }
+
+        if (existingNames.has(nome.toLowerCase())) {
+          skipped++;
+          continue;
+        }
+
         try {
           await addMembro({
-            nome: row.nome,
+            nome: nome,
             cargo: row.cargo || '',
             tipo: (row.tipo?.toLowerCase() as any) || 'freelancer_demanda',
             custo_mensal: parseFloat(row.custo_mensal) || null,
             avatar_url: row.avatar_url || '',
             data_pagamento: parseInt(row.data_pagamento) || undefined
           });
-          successCount++;
+          existingNames.add(nome.toLowerCase());
+          imported++;
         } catch (e) {
-          console.warn('Erro ao importar linha:', row, e);
+          failed++;
+          failedNames.push(nome);
         }
       }
-      
-      showToast(`${successCount} membros importados com sucesso!`, 'success');
-      navigate('/equipe'); // Refresh list
+
+      openModal('Importação Concluída', `
+        <div class="csv-import-result">
+          <div class="csv-result-stat csv-result-ok">
+            <i class="ph ph-check-circle"></i>
+            <strong>${imported}</strong>
+            <span>importados</span>
+          </div>
+          <div class="csv-result-stat csv-result-skip">
+            <i class="ph ph-copy"></i>
+            <strong>${skipped}</strong>
+            <span>duplicatas ignoradas</span>
+          </div>
+          <div class="csv-result-stat csv-result-fail">
+            <i class="ph ph-x-circle"></i>
+            <strong>${failed}</strong>
+            <span>com erro / sem nome</span>
+          </div>
+        </div>
+        <p style="color:var(--text-muted);font-size:0.82rem;margin-top:1rem;text-align:center">
+          ${total} linha${total !== 1 ? 's' : ''} processada${total !== 1 ? 's' : ''} no total.
+        </p>
+        ${failedNames.length ? `<p style="color:var(--danger);font-size:0.78rem;margin-top:0.5rem">Falhas: ${failedNames.slice(0, 5).join(', ')}${failedNames.length > 5 ? ` e mais ${failedNames.length - 5}` : ''}</p>` : ''}
+      `, () => {
+        closeModal();
+        navigate('/equipe'); // Refresh list
+      }, { submitText: 'Fechar', cancelText: '' });
     }, (err) => {
-      showToast('Erro no CSV: ' + err.message, 'error');
+      showToast('Erro ao ler CSV: ' + err.message, 'error');
     });
   });
 
