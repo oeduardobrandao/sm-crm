@@ -224,4 +224,4 @@ initRouter('app');
 // Initial sync
 syncActiveNav();
 
-console.log('CRM Fluxo v3: Auth + Router inicializado.');
+// Application initialized

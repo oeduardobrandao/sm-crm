@@ -32,7 +32,7 @@ function renderContent(container: HTMLElement, membros: Membro[]): void {
         <div style="display:flex; align-items:center; gap:0.5rem">
           <button class="btn-secondary" id="btn-import-csv"><i class="ph ph-file-csv"></i> Importar CSV</button>
           <span id="btn-info-csv" data-tooltip="Formato CSV: Clique para ver as colunas" data-tooltip-dir="bottom" style="display:flex; align-items:center; cursor:pointer;">
-            <i class="ph ph-info" style="color:var(--primary-color); font-size:1.2rem; transition: color 0.2s;" onmouseover="this.style.color='var(--primary-hover)'" onmouseout="this.style.color='var(--primary-color)'"></i>
+            <i class="ph ph-info icon-primary-hover" style="font-size:1.2rem;"></i>
           </span>
         </div>
         <button class="btn-primary" id="btn-add-membro"><i class="ph ph-plus"></i> Adicionar Membro</button>

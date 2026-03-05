@@ -2,7 +2,7 @@
 // Página: Detalhe do Cliente
 // =============================================
 import { getClientes, getTransacoes, getContratos, formatBRL, formatDate, getInitials, updateCliente, type Cliente } from '../store';
-import { showToast, navigate, openModal, closeModal } from '../router';
+import { showToast, navigate, openModal, closeModal, sanitizeUrl } from '../router';
 
 export async function renderClienteDetalhe(container: HTMLElement, param?: string): Promise<void> {
   container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:40vh"><i class="fa-solid fa-spinner fa-spin" style="font-size:1.5rem;color:var(--primary-color)"></i></div>`;
@@ -100,7 +100,7 @@ export async function renderClienteDetalhe(container: HTMLElement, param?: strin
           </div>
           <div class="client-info-item">
             <span class="client-info-label"><i class="ph ph-notebook"></i> Notion</span>
-            <span class="client-info-value">${cliente.notion_page_url ? `<a href="${cliente.notion_page_url}" target="_blank" style="color:var(--primary-color)">Abrir página <i class="ph ph-arrow-square-out"></i></a>` : '—'}</span>
+            <span class="client-info-value">${(() => { const notionUrl = sanitizeUrl(cliente.notion_page_url || ''); return notionUrl ? `<a href="${notionUrl}" target="_blank" rel="noopener noreferrer" style="color:var(--primary-color)">Abrir página <i class="ph ph-arrow-square-out"></i></a>` : '—'; })()}</span>
           </div>
         </div>
       </div>

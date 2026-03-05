@@ -939,6 +939,24 @@ body {
   color: var(--primary-color);
 }
 
+/* ===== Utility hover classes (replaces inline event handlers) ===== */
+.icon-primary-hover {
+  color: var(--primary-color);
+  transition: color var(--transition);
+}
+.icon-primary-hover:hover {
+  color: var(--primary-hover);
+}
+
+.notion-icon-link {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  transition: color var(--transition);
+}
+.notion-icon-link:hover {
+  color: var(--text-color);
+}
+
 .auth-submit {
   width: 100%;
   padding: 0.75rem;

@@ -2,7 +2,7 @@
 // Página: Clientes
 // =============================================
 import { getClientes, addCliente, updateCliente, removeCliente, formatBRL, getInitials, type Cliente } from '../store';
-import { showToast, openModal, closeModal, navigate, openConfirm } from '../router';
+import { showToast, openModal, closeModal, navigate, openConfirm, sanitizeUrl } from '../router';
 import { openCSVSelector } from '../lib/csv';
 
 export async function renderClientes(container: HTMLElement): Promise<void> {
@@ -31,7 +31,7 @@ function renderContent(container: HTMLElement, clientes: Cliente[], filter = 'to
         <div style="display:flex; align-items:center; gap:0.5rem">
           <button class="btn-secondary" id="btn-import-csv"><i class="ph ph-file-csv"></i> Importar CSV</button>
           <span id="btn-info-csv" data-tooltip="Formato CSV: Clique para ver as colunas" data-tooltip-dir="bottom" style="display:flex; align-items:center; cursor:pointer;">
-            <i class="ph ph-info" style="color:var(--primary-color); font-size:1.2rem; transition: color 0.2s;" onmouseover="this.style.color='var(--primary-hover)'" onmouseout="this.style.color='var(--primary-color)'"></i>
+            <i class="ph ph-info icon-primary-hover" style="font-size:1.2rem;"></i>
           </span>
         </div>
         <button class="btn-primary" id="btn-add-cliente"><i class="ph ph-plus"></i> Novo Cliente</button>
@@ -61,7 +61,7 @@ function renderContent(container: HTMLElement, clientes: Cliente[], filter = 'to
                 <td data-label="Cliente / Empresa"><div style="display:flex;align-items:center;gap:0.75rem">
                   <div class="avatar" style="background:${c.cor}">${getInitials(c.nome)}</div>
                   <a href="#/cliente/${c.id}" class="client-link"><strong>${c.nome}</strong></a>
-                  ${c.notion_page_url ? `<a href="${c.notion_page_url}" target="_blank" title="Abrir no Notion" style="color:var(--text-muted);font-size:0.9rem;transition:0.2s" onmouseover="this.style.color='var(--text-color)'" onmouseout="this.style.color='var(--text-muted)'"><i class="ph ph-notion-logo"></i></a>` : ''}
+                   ${(() => { const notionUrl = sanitizeUrl(c.notion_page_url || ''); return notionUrl ? `<a href="${notionUrl}" target="_blank" rel="noopener noreferrer" title="Abrir no Notion" class="notion-icon-link"><i class="ph ph-notion-logo"></i></a>` : ''; })()}
                 </div></td>
                 <td data-label="Plano">${c.plano}</td>
                 <td data-label="Contato">${c.email}<br><span style="font-size:0.75rem;color:var(--text-muted)">${c.telefone}</span></td>

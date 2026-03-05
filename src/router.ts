@@ -3,6 +3,24 @@
 // =============================================
 import { getCurrentUser, getCurrentProfile, updateSidebarUI } from './lib/supabase';
 
+// ===== Security Utilities =====
+export function escapeHTML(str: string): string {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+/** Only allow http/https URLs. Returns empty string for anything else (e.g. javascript:). */
+export function sanitizeUrl(url: string): string {
+  if (!url) return '';
+  const trimmed = url.trim();
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return '';
+}
+
 export type RouteHandler = (container: HTMLElement, param?: string) => void | Promise<void>;
 
 interface Route {
@@ -84,8 +102,7 @@ async function handleRoute(): Promise<void> {
           document.body.classList.remove('role-agent');
         }
       } catch { /* non-blocking */ }
-    } catch (e) {
-      console.error('Erro na verificação de auth:', e);
+    } catch {
       window.location.hash = '#/login';
       return;
     }
@@ -113,7 +130,7 @@ async function handleRoute(): Promise<void> {
         <header class="header">
           <div class="header-title">
             <h1>Página não encontrada</h1>
-            <p>A rota "${path}" não existe.</p>
+            <p>A rota &ldquo;${escapeHTML(path)}&rdquo; não existe.</p>
           </div>
         </header>
       `;
