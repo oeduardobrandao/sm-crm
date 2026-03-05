@@ -68,8 +68,20 @@ export interface IntegracaoStatus {
   conta_id?: string;
 }
 
+export let currentUserRole: 'owner' | 'admin' | 'agent' = 'owner';
+
+export async function initStoreRole() {
+  try {
+    const profile = await getCurrentProfile();
+    if (profile) {
+      currentUserRole = profile.role || 'owner';
+    }
+  } catch(e) {}
+}
+
 // ---- Helpers ----
 export function formatBRL(val: number): string {
+  if (currentUserRole === 'agent') return 'R$ •••••';
   return val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
@@ -96,6 +108,17 @@ async function getContaId(): Promise<string> {
 // =============================================
 // CLIENTES CRUD
 // =============================================
+export async function getWorkspaceUsers(): Promise<any[]> {
+  const conta_id = await getContaId();
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, nome, role, avatar_url, created_at')
+    .eq('conta_id', conta_id)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
 export async function getClientes(): Promise<Cliente[]> {
   const { data, error } = await supabase
     .from('clientes')

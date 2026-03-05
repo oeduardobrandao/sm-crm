@@ -2,7 +2,9 @@
 // Página: Configuração do Usuário
 // =============================================
 import { supabase, getCurrentUser, getCurrentProfile, signOut } from '../lib/supabase';
-import { showToast, navigate } from '../router';
+import { showToast, navigate, openModal, closeModal } from '../router';
+import { getWorkspaceUsers } from '../store';
+import { getInitials } from '../store';
 
 export async function renderConfiguracao(container: HTMLElement): Promise<void> {
   const user = await getCurrentUser();
@@ -11,6 +13,38 @@ export async function renderConfiguracao(container: HTMLElement): Promise<void> 
   if (!user || !profile) {
     navigate('/login');
     return;
+  }
+
+  let workspaceHtml = '';
+  if (profile.role === 'owner' || profile.role === 'admin') {
+     try {
+       const wUsers = await getWorkspaceUsers();
+       const roleLabel = (r: string) => r === 'owner' ? 'Proprietário' : r === 'admin' ? 'Administrador' : 'Agente';
+       
+       workspaceHtml = `
+       <div class="card" style="margin-top: 1.5rem">
+         <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:1.5rem">
+           <h3><i class="ph ph-users" style="margin-right:0.5rem; color:var(--primary-color)"></i> Membros do Workspace</h3>
+           <button class="btn-primary" id="btn-invite-user" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;"><i class="ph ph-user-plus"></i> Convidar</button>
+         </div>
+         <div class="client-list">
+           ${wUsers.map(u => `
+             <div class="client-row" style="background:var(--surface-main); padding: 1rem; border-radius: 12px; margin-bottom: 0.5rem; border:1px solid var(--border-color)">
+               <div style="display:flex;align-items:center;gap:0.75rem">
+                 <div class="avatar" style="background:var(--primary-color)">${getInitials(u.nome || 'U')}</div>
+                 <div>
+                   <strong>${u.nome || 'Usuário Convidado'}</strong> <br/>
+                 </div>
+               </div>
+               <div>
+                 <span class="badge ${u.role === 'owner' ? 'badge-neutral' : u.role === 'admin' ? 'badge-success' : 'badge-warning'}">${roleLabel(u.role)}</span>
+               </div>
+             </div>
+           `).join('')}
+         </div>
+       </div>
+       `;
+     } catch(e) { console.error("Erro ao carregar workspace", e); }
   }
 
   container.innerHTML = `
@@ -102,6 +136,8 @@ export async function renderConfiguracao(container: HTMLElement): Promise<void> 
         </form>
       </div>
 
+      ${workspaceHtml}
+
       <!-- Account Info -->
       <div class="card">
         <h3 style="margin-bottom:1.5rem"><i class="fa-solid fa-circle-info" style="margin-right:0.5rem; color:var(--primary-color)"></i> Informações da Conta</h3>
@@ -185,5 +221,60 @@ export async function renderConfiguracao(container: HTMLElement): Promise<void> 
     await signOut();
     showToast('Você saiu da conta.', 'info');
     navigate('/login');
+  });
+
+  // --- Invite User ---
+  container.querySelector('#btn-invite-user')?.addEventListener('click', () => {
+    openModal('Convidar Usuário', `
+      <div class="form-row">
+        <div class="form-group">
+          <label>E-mail do Convidado</label>
+          <input type="email" name="email" class="form-input" required placeholder="email@exemplo.com">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Permissão</label>
+          <select name="role" class="form-input" required>
+            <option value="admin">Administrador (Pode ver tudo e convidar)</option>
+            <option value="agent">Agente (Não vê valores financeiros)</option>
+            ${profile.role === 'owner' ? '<option value="owner">Proprietário</option>' : ''}
+          </select>
+        </div>
+      </div>
+    `, async (form) => {
+      const data = new FormData(form);
+      const email = data.get('email') as string;
+      const role = data.get('role') as string;
+      const btn = form.querySelector('button[type="submit"]') as HTMLButtonElement;
+      
+      try {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Convidando...';
+        
+        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/invite-user`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
+          },
+          body: JSON.stringify({ email, role })
+        });
+        
+        const result = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(result.error || 'Erro desconhecido');
+        }
+        
+        showToast(result.message, 'success');
+        closeModal();
+        navigate('/configuracao'); // reload to show new user
+      } catch (err: unknown) {
+        showToast('Erro ao convidar: ' + (err instanceof Error ? err.message : 'Desconhecido'), 'error');
+        btn.disabled = false;
+        btn.innerHTML = 'Salvar';
+      }
+    });
   });
 }

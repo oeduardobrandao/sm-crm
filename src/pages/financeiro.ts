@@ -2,7 +2,7 @@
 // Página: Financeiro
 // =============================================
 import { getClientes, getTransacoes, getMembros, addTransacao, updateTransacao, removeTransacao, formatBRL, formatDate, type Transacao } from '../store';
-import { showToast, openModal, closeModal, navigate } from '../router';
+import { showToast, openModal, closeModal, navigate, openConfirm } from '../router';
 
 export async function renderFinanceiro(container: HTMLElement): Promise<void> {
   container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:40vh"><i class="fa-solid fa-spinner fa-spin" style="font-size:1.5rem;color:var(--primary-color)"></i></div>`;
@@ -191,7 +191,7 @@ function renderContent(
       const transacaoVirtual = transacoes.find(t => t.referencia_agendamento === idRef);
       if (!transacaoVirtual) return;
 
-      if (confirm(`Confirmar recebimento/pagamento de ${transacaoVirtual.descricao} (${formatBRL(Number(transacaoVirtual.valor))})?`)) {
+      openConfirm('Confirmar Transação', `Confirmar recebimento/pagamento de ${transacaoVirtual.descricao} (${formatBRL(Number(transacaoVirtual.valor))})?`, async () => {
         try {
           // Remove ID virtual and set status
           const payload = {
@@ -210,7 +210,7 @@ function renderContent(
         } catch (err: unknown) {
           showToast('Erro ao confirmar: ' + (err instanceof Error ? err.message : 'Desconhecido'), 'error');
         }
-      }
+      });
     });
   });
 
@@ -227,16 +227,16 @@ function renderContent(
   container.querySelectorAll('.btn-remove').forEach(btn => {
     btn.addEventListener('click', async () => {
       const id = Number((btn as HTMLElement).dataset.id);
-      if (confirm('Remover esta movimentação? Esta ação não pode ser desfeita.')) {
+      openConfirm('Remover Movimentação', 'Remover esta movimentação? Esta ação não pode ser desfeita.', async () => {
         try {
           await removeTransacao(id);
           showToast('Movimentação removida.');
           navigate('/financeiro');
         } catch (err: unknown) {
-          const message = err instanceof Error ? err.message : 'Erro';
-          showToast('Erro: ' + message, 'error');
+          const message = err instanceof Error ? err.message : 'Erro ao remover';
+          showToast(message, 'error');
         }
-      }
+      }, true);
     });
   });
 }

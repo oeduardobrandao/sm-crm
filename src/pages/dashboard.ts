@@ -45,7 +45,7 @@ export async function renderDashboard(container: HTMLElement): Promise<void> {
                 <div style="display:flex;align-items:center;gap:0.75rem">
                   <div class="avatar" style="background:${c.cor}">${getInitials(c.nome)}</div>
                   <div>
-                    <strong>${c.nome}</strong>
+                    <a href="#/cliente/${c.id}" class="client-link"><strong>${c.nome}</strong></a>
                     <div style="font-size:0.75rem;color:var(--text-muted)">${c.plano}</div>
                   </div>
                 </div>

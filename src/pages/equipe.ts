@@ -2,7 +2,7 @@
 // Página: Equipe
 // =============================================
 import { getMembros, addMembro, updateMembro, removeMembro, formatBRL, getInitials, type Membro } from '../store';
-import { showToast, openModal, closeModal, navigate } from '../router';
+import { showToast, openModal, closeModal, navigate, openConfirm } from '../router';
 import { openCSVSelector } from '../lib/csv';
 
 export async function renderEquipe(container: HTMLElement): Promise<void> {
@@ -46,7 +46,7 @@ function renderContent(container: HTMLElement, membros: Membro[]): void {
             <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem">
               <div class="avatar" style="width:48px;height:48px;font-size:1.1rem">${getInitials(m.nome)}</div>
               <div>
-                <h4 style="margin:0">${m.nome}</h4>
+                <a href="#/membro/${m.id}" class="client-link"><h4 style="margin:0">${m.nome}</h4></a>
                 <span style="font-size:0.8rem;color:var(--text-muted)">${m.cargo}</span>
               </div>
             </div>
@@ -175,7 +175,7 @@ function renderContent(container: HTMLElement, membros: Membro[]): void {
   // Remove events
   container.querySelectorAll('.btn-remove').forEach(btn => {
     btn.addEventListener('click', async () => {
-      if (confirm('Remover este membro? Esta ação não pode ser desfeita.')) {
+      openConfirm('Remover Membro', 'Remover este membro? Esta ação não pode ser desfeita.', async () => {
         try {
           await removeMembro(Number((btn as HTMLElement).dataset.id));
           showToast('Membro removido.');
@@ -184,7 +184,7 @@ function renderContent(container: HTMLElement, membros: Membro[]): void {
           const message = err instanceof Error ? err.message : 'Erro';
           showToast('Erro: ' + message, 'error');
         }
-      }
+      }, true);
     });
   });
 }

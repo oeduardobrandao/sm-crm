@@ -3,7 +3,7 @@
 // =============================================
 import { getCurrentUser, getCurrentProfile, updateSidebarUI } from './lib/supabase';
 
-export type RouteHandler = (container: HTMLElement) => void | Promise<void>;
+export type RouteHandler = (container: HTMLElement, param?: string) => void | Promise<void>;
 
 interface Route {
   path: string;
@@ -44,8 +44,20 @@ async function handleRoute(): Promise<void> {
   const hash = window.location.hash || '#/dashboard';
   const path = hash.replace('#', '');
 
-  // Find route
-  const route = routes.find(r => r.path === path);
+  // Find route — exact match first, then parameterized prefix match
+  let route = routes.find(r => r.path === path);
+  let routeParam: string | undefined;
+
+  if (!route) {
+    // Try prefix match for parameterized routes like /cliente/123
+    for (const r of routes) {
+      if (path.startsWith(r.path + '/')) {
+        route = r;
+        routeParam = path.slice(r.path.length + 1);
+        break;
+      }
+    }
+  }
 
   // Auth guard: check if user is logged in for protected routes
   if (!route?.public) {
@@ -63,6 +75,14 @@ async function handleRoute(): Promise<void> {
       try {
         const profile = await getCurrentProfile();
         updateSidebarUI(profile);
+        
+        const { initStoreRole, currentUserRole } = await import('./store');
+        await initStoreRole();
+        if (currentUserRole === 'agent') {
+          document.body.classList.add('role-agent');
+        } else {
+          document.body.classList.remove('role-agent');
+        }
       } catch { /* non-blocking */ }
     } catch (e) {
       console.error('Erro na verificação de auth:', e);
@@ -87,7 +107,7 @@ async function handleRoute(): Promise<void> {
     if (!appContainer) return;
 
     if (route) {
-      await route.handler(appContainer);
+      await route.handler(appContainer, routeParam);
     } else {
       appContainer.innerHTML = `
         <header class="header">
@@ -124,23 +144,35 @@ export function showToast(message: string, type: 'success' | 'error' | 'info' = 
   }, 3000);
 }
 
-export function openModal(title: string, bodyHTML: string, onSubmit?: (form: HTMLFormElement) => void, options?: { hideSubmit?: boolean }): void {
+export interface ModalOptions {
+  hideSubmit?: boolean;
+  submitText?: string;
+  cancelText?: string;
+  danger?: boolean;
+}
+
+export function openModal(title: string, bodyHTML: string, onSubmit?: (form: HTMLFormElement) => void, options?: ModalOptions): void {
   closeModal();
 
   const overlay = document.createElement('div');
   overlay.id = 'modal-overlay';
   overlay.className = 'modal-overlay';
+  
+  const submitBtnClass = options?.danger ? 'btn-danger' : 'btn-primary';
+  const submitText = options?.submitText || 'Salvar';
+  const cancelText = options?.cancelText || (options?.hideSubmit ? 'Entendi' : 'Cancelar');
+
   overlay.innerHTML = `
     <div class="modal-card">
       <div class="modal-header">
         <h3>${title}</h3>
-        <button class="modal-close" id="modal-close-btn"><i class="fa-solid fa-xmark"></i></button>
+        <button type="button" class="modal-close" id="modal-close-btn"><i class="fa-solid fa-xmark"></i></button>
       </div>
       <form id="modal-form" class="modal-body">
         ${bodyHTML}
         <div class="modal-actions">
-          <button type="button" class="btn-secondary" id="modal-cancel-btn">${options?.hideSubmit ? 'Entendi' : 'Cancelar'}</button>
-          ${!options?.hideSubmit ? '<button type="submit" class="btn-primary">Salvar</button>' : ''}
+          <button type="button" class="btn-secondary" id="modal-cancel-btn">${cancelText}</button>
+          ${!options?.hideSubmit ? ('<button type="submit" class="' + submitBtnClass + '">' + submitText + '</button>') : ''}
         </div>
       </form>
     </div>
@@ -162,6 +194,17 @@ export function openModal(title: string, bodyHTML: string, onSubmit?: (form: HTM
       onSubmit(form);
     });
   }
+}
+
+export function openConfirm(title: string, message: string, onConfirm: () => void, isDanger = false): void {
+  openModal(title, `<div style="font-size: 1rem; color: var(--text-main); line-height: 1.5; margin-bottom: 0.5rem;">${message}</div>`, () => {
+    onConfirm();
+    closeModal();
+  }, {
+    submitText: 'Confirmar',
+    cancelText: 'Cancelar',
+    danger: isDanger
+  });
 }
 
 export function closeModal(): void {

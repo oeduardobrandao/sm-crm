@@ -1,5 +1,5 @@
-import { getClientes, getMembros, Cliente, Membro } from '../store';
-import { showToast } from '../router';
+import { getClientes, getMembros, Cliente, Membro, formatBRL } from '../store';
+import { showToast, openConfirm } from '../router';
 
 export async function renderCalendario(container: HTMLElement): Promise<void> {
   // Styles
@@ -467,7 +467,7 @@ export async function renderCalendario(container: HTMLElement): Promise<void> {
               </div>
             </div>
             <div class="item-meta">
-              <i class="ph ph-money"></i> Previsto: R$ ${c.valor_mensal.toLocaleString('pt-BR', {minimumFractionDigits: 2})}
+              <i class="ph ph-money"></i> Previsto: ${formatBRL(c.valor_mensal)}
             </div>
           </div>
         `;
@@ -481,7 +481,7 @@ export async function renderCalendario(container: HTMLElement): Promise<void> {
             <div class="item-top">
               <div>
                 <div class="item-badge expense" style="${paid ? 'background: var(--text-muted)' : ''}"></div>
-                <div class="item-title" style="margin-top:0.8rem; ${paid ? 'text-decoration: line-through; color:var(--text-muted)' : ''}">${m.nome}</div>
+                <div class="item-title" style="margin-top:0.8rem; ${paid ? 'text-decoration: line-through; color:var(--text-muted)' : ''}"><a href="#/membro/${m.id}" class="client-link">${m.nome}</a></div>
                 <div class="item-subtitle">Equipe - ${m.cargo} (${m.tipo.replace('_', ' ')})</div>
               </div>
               <div>
@@ -495,7 +495,7 @@ export async function renderCalendario(container: HTMLElement): Promise<void> {
               </div>
             </div>
             <div class="item-meta">
-              <i class="ph ph-money"></i> Previsto: R$ ${(m.custo_mensal || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2})}
+              <i class="ph ph-money"></i> Previsto: ${formatBRL(m.custo_mensal || 0)}
             </div>
           </div>
         `;
@@ -566,7 +566,7 @@ export async function renderCalendario(container: HTMLElement): Promise<void> {
         const cat = elBtn.dataset.cat!;
         const tipo = elBtn.dataset.tipo as 'entrada' | 'saida';
 
-        if(confirm(`Confirmar o recebimento/pagamento agendado de ${desc} (R$ ${val.toLocaleString('pt-BR')})?`)) {
+        openConfirm('Confirmar Agendamento', `Confirmar o recebimento/pagamento agendado de ${desc} (${formatBRL(val)})?`, async () => {
           try {
             const { addTransacao } = await import('../store');
             await addTransacao({
@@ -584,7 +584,7 @@ export async function renderCalendario(container: HTMLElement): Promise<void> {
           } catch (err: unknown) {
              showToast('Erro: ' + (err instanceof Error ? err.message : 'Desconhecido'), 'error');
           }
-        }
+        });
       });
     });
   };

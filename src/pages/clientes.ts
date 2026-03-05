@@ -2,7 +2,7 @@
 // Página: Clientes
 // =============================================
 import { getClientes, addCliente, updateCliente, removeCliente, formatBRL, getInitials, type Cliente } from '../store';
-import { showToast, openModal, closeModal, navigate } from '../router';
+import { showToast, openModal, closeModal, navigate, openConfirm } from '../router';
 import { openCSVSelector } from '../lib/csv';
 
 export async function renderClientes(container: HTMLElement): Promise<void> {
@@ -60,7 +60,7 @@ function renderContent(container: HTMLElement, clientes: Cliente[], filter = 'to
               <tr>
                 <td data-label="Cliente / Empresa"><div style="display:flex;align-items:center;gap:0.75rem">
                   <div class="avatar" style="background:${c.cor}">${getInitials(c.nome)}</div>
-                  <strong>${c.nome}</strong>
+                  <a href="#/cliente/${c.id}" class="client-link"><strong>${c.nome}</strong></a>
                   ${c.notion_page_url ? `<a href="${c.notion_page_url}" target="_blank" title="Abrir no Notion" style="color:var(--text-muted);font-size:0.9rem;transition:0.2s" onmouseover="this.style.color='var(--text-color)'" onmouseout="this.style.color='var(--text-muted)'"><i class="ph ph-notion-logo"></i></a>` : ''}
                 </div></td>
                 <td data-label="Plano">${c.plano}</td>
@@ -232,17 +232,16 @@ function renderContent(container: HTMLElement, clientes: Cliente[], filter = 'to
   // --- Remove ---
   container.querySelectorAll('.btn-remove').forEach(btn => {
     btn.addEventListener('click', async () => {
-      const id = Number((btn as HTMLElement).dataset.id);
-      if (confirm('Remover este cliente? Esta ação não pode ser desfeita.')) {
+      openConfirm('Remover Cliente', 'Remover este cliente? Esta ação não pode ser desfeita.', async () => {
         try {
-          await removeCliente(id);
+          await removeCliente(Number((btn as HTMLElement).dataset.id));
           showToast('Cliente removido.');
           navigate('/clientes');
         } catch (err: unknown) {
           const message = err instanceof Error ? err.message : 'Erro';
           showToast('Erro: ' + message, 'error');
         }
-      }
+      }, true);
     });
   });
 }

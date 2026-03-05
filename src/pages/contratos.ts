@@ -2,7 +2,7 @@
 // Página: Contratos
 // =============================================
 import { getContratos, addContrato, updateContrato, removeContrato, getClientes, formatBRL, formatDate, type Contrato } from '../store';
-import { showToast, openModal, closeModal, navigate } from '../router';
+import { showToast, openModal, closeModal, navigate, openConfirm } from '../router';
 import { openCSVSelector } from '../lib/csv';
 
 export async function renderContratos(container: HTMLElement): Promise<void> {
@@ -51,7 +51,7 @@ function renderContent(container: HTMLElement, contratos: Contrato[], clientes: 
             filtered.map(c => `
               <tr>
                 <td><strong>${c.titulo}</strong></td>
-                <td>${c.cliente_nome}</td>
+                <td data-label="Cliente">${c.cliente_id ? `<a href="#/cliente/${c.cliente_id}" class="client-link">${c.cliente_nome}</a>` : c.cliente_nome}</td>
                 <td>${formatDate(c.data_inicio)} → ${formatDate(c.data_fim)}</td>
                 <td>${formatBRL(Number(c.valor_total))}</td>
                 <td><span class="badge badge-${c.status === 'vigente' ? 'success' : c.status === 'a_assinar' ? 'warning' : 'neutral'}">${c.status === 'a_assinar' ? 'A Assinar' : c.status}</span></td>
@@ -199,7 +199,7 @@ function renderContent(container: HTMLElement, contratos: Contrato[], clientes: 
   // Remove events
   container.querySelectorAll('.btn-remove').forEach(btn => {
     btn.addEventListener('click', async () => {
-      if (confirm('Remover este contrato? Esta ação não pode ser desfeita.')) {
+      openConfirm('Remover Contrato', 'Remover este contrato? Esta ação não pode ser desfeita.', async () => {
         try {
           await removeContrato(Number((btn as HTMLElement).dataset.id));
           showToast('Contrato removido.');
@@ -208,7 +208,7 @@ function renderContent(container: HTMLElement, contratos: Contrato[], clientes: 
           const message = err instanceof Error ? err.message : 'Erro';
           showToast('Erro: ' + message, 'error');
         }
-      }
+      }, true);
     });
   });
 }
