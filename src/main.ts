@@ -14,10 +14,12 @@ import { renderCalendario } from './pages/calendario';
 import { renderClienteDetalhe } from './pages/cliente-detalhe';
 import { renderMembroDetalhe } from './pages/membro-detalhe';
 import { renderLeads } from './pages/leads';
+import { renderPoliticaPrivacidade } from './pages/politica-privacidade';
 import { signOut } from './lib/supabase';
 
 // Register public routes
 registerRoute('/login', renderLogin, true);
+registerRoute('/politica-de-privacidade', renderPoliticaPrivacidade, true);
 
 // Register protected routes
 registerRoute('/dashboard', renderDashboard);
