@@ -3,12 +3,13 @@
 // =============================================
 import { getInstagramPosts } from '../../services/instagram';
 import { formatDate } from '../../store';
+import { escapeHTML, sanitizeUrl } from '../../router';
 
 export async function renderInstagramPostsTable(container: HTMLElement, clientId: number) {
   let currentPage = 1;
 
   container.innerHTML = `
-    <div class="card animate-up">
+    <div class="card animate-up" style="margin-bottom: 1.5rem;">
        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
            <h3><i class="ph ph-images" style="color: var(--primary-color); margin-right: 0.5rem;"></i> Últimas Publicações</h3>
            <div class="pagination-controls" style="display: flex; gap: 0.5rem; align-items: center;">
@@ -64,21 +65,23 @@ export async function renderInstagramPostsTable(container: HTMLElement, clientId
       `;
 
       for (const p of posts) {
-          const captionStr = p.caption ? (p.caption.length > 50 ? p.caption.substring(0, 50) + '...' : p.caption) : '—';
-          
+          const rawCaption = p.caption ? (p.caption.length > 50 ? p.caption.substring(0, 50) + '...' : p.caption) : '—';
+          const captionStr = escapeHTML(rawCaption);
+          const safePermalink = sanitizeUrl(p.permalink || '');
+
           html += `
             <tr>
               <td data-label="Data">
                   <strong>${formatDate(p.posted_at.split('T')[0])}</strong><br>
-                  <span style="font-size:0.7rem;color:var(--text-muted);">${p.media_type}</span>
+                  <span style="font-size:0.7rem;color:var(--text-muted);">${escapeHTML(p.media_type)}</span>
               </td>
               <td data-label="Legenda" style="max-width: 200px; white-space: normal; line-height: 1.4;">
                  ${captionStr}
               </td>
               <td data-label="Engajamento">
                  <div style="display:flex;gap:0.75rem;color:var(--text-main);">
-                    <span data-tooltip="Curtidas"><i class="ph ph-heart" style="color:#e25563"></i> ${p.likes}</span>
-                    <span data-tooltip="Comentários"><i class="ph ph-chat-circle"></i> ${p.comments}</span>
+                    <span data-tooltip="Curtidas"><i class="ph ph-heart" style="color:#e25563"></i> ${Number(p.likes) || 0}</span>
+                    <span data-tooltip="Comentários"><i class="ph ph-chat-circle"></i> ${Number(p.comments) || 0}</span>
                  </div>
               </td>
               <td data-label="Desempenho">
@@ -88,7 +91,7 @@ export async function renderInstagramPostsTable(container: HTMLElement, clientId
                  </div>
               </td>
               <td data-label="Link">
-                 <a href="${p.permalink}" target="_blank" class="btn-icon" style="text-decoration:none;display:inline-block;"><i class="ph ph-arrow-square-out"></i></a>
+                 ${safePermalink ? `<a href="${safePermalink}" target="_blank" class="btn-icon" style="text-decoration:none;display:inline-block;"><i class="ph ph-arrow-square-out"></i></a>` : '—'}
               </td>
             </tr>
           `;
@@ -103,7 +106,7 @@ export async function renderInstagramPostsTable(container: HTMLElement, clientId
       btnNext.disabled = page >= totalPages;
 
     } catch (err: any) {
-        contentArea.innerHTML = `<p style="color:var(--danger);font-size:0.9rem;padding:1rem;">Erro ao carregar posts: ${err.message}</p>`;
+        contentArea.innerHTML = `<p style="color:var(--danger);font-size:0.9rem;padding:1rem;">Erro ao carregar posts: ${escapeHTML(err.message || 'Erro desconhecido')}</p>`;
     }
   }
 

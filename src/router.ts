@@ -48,6 +48,7 @@ export function navigate(path: string): void {
 export async function initRouter(containerId: string): Promise<void> {
   appContainer = document.getElementById(containerId);
   window.addEventListener('hashchange', () => handleRoute());
+  window.addEventListener('pageshow', (e) => { if (e.persisted) handleRoute(); });
 
   if (!window.location.hash) {
     window.location.hash = '#/dashboard';
@@ -60,7 +61,7 @@ async function handleRoute(): Promise<void> {
   if (!appContainer) return;
 
   const hash = window.location.hash || '#/dashboard';
-  const path = hash.replace('#', '');
+  const path = hash.replace('#', '').split('?')[0];
 
   // Find route — exact match first, then parameterized prefix match
   let route = routes.find(r => r.path === path);
@@ -151,7 +152,10 @@ export function showToast(message: string, type: 'success' | 'error' | 'info' = 
   toast.id = 'toast-notification';
   toast.className = `toast toast-${type}`;
   const icon = type === 'success' ? 'fa-check-circle' : type === 'error' ? 'fa-times-circle' : 'fa-info-circle';
-  toast.innerHTML = `<i class="fa-solid ${icon}"></i> ${message}`;
+  const iconEl = document.createElement('i');
+  iconEl.className = `fa-solid ${icon}`;
+  toast.appendChild(iconEl);
+  toast.appendChild(document.createTextNode(' ' + message));
   document.body.appendChild(toast);
 
   requestAnimationFrame(() => toast.classList.add('toast-visible'));

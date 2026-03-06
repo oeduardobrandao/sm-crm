@@ -6,7 +6,7 @@ import { showToast } from '../../router';
 
 export function renderInstagramPostCreator(container: HTMLElement, clientId: number, onPublished: () => void) {
   container.innerHTML = `
-    <div class="card animate-up" style="margin-bottom: 2rem; border-left: 4px solid var(--primary-color);">
+    <div class="card animate-up" style="margin-bottom: 1.5rem; border-left: 4px solid var(--primary-color);">
        <h3 style="margin-bottom: 1rem;"><i class="ph ph-paper-plane-tilt" style="color: var(--primary-color); margin-right: 0.5rem;"></i> Nova Publicação</h3>
        <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem;">
           Crie uma nova publicação para o Instagram deste cliente diretamente pelo CRM.
@@ -47,6 +47,10 @@ export function renderInstagramPostCreator(container: HTMLElement, clientId: num
 
           if (!caption) {
               showToast('A legenda é obrigatória.', 'error');
+              return;
+          }
+          if (caption.length > 2200) {
+              showToast('Legenda muito longa (máximo 2200 caracteres).', 'error');
               return;
           }
 

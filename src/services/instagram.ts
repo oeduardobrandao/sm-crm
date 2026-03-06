@@ -8,6 +8,7 @@ const EDGE_FUNCTION_URL = import.meta.env.VITE_SUPABASE_URL + '/functions/v1/ins
 async function getAuthHeaders() {
   const { data: { session } } = await supabase.auth.getSession();
   return {
+    'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY as string,
     'Authorization': `Bearer ${session?.access_token}`,
     'Content-Type': 'application/json'
   };
@@ -28,9 +29,9 @@ export async function getInstagramAuthUrl(clientId: number): Promise<string> {
 
 export async function disconnectInstagram(clientId: number): Promise<void> {
   const headers = await getAuthHeaders();
-  const res = await fetch(`${EDGE_FUNCTION_URL}/disconnect/${clientId}`, { 
-      method: 'DELETE',
-      headers 
+  const res = await fetch(`${EDGE_FUNCTION_URL}/disconnect/${clientId}`, {
+      method: 'POST',
+      headers
   });
   
   if (!res.ok) {

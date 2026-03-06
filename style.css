@@ -816,6 +816,25 @@ body {
 .toast-error { background: #b91c1c; color: white; }
 .toast-info { background: #1e40af; color: white; }
 
+/* ===== Skeleton Loading ===== */
+@keyframes shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--border-color) 25%, transparent 50%, var(--border-color) 75%);
+  background-size: 800px 100%;
+  animation: shimmer 1.5s infinite ease-in-out;
+  border-radius: 6px;
+}
+
+.skeleton-text { height: 14px; margin-bottom: 8px; }
+.skeleton-text-sm { height: 10px; margin-bottom: 6px; }
+.skeleton-heading { height: 22px; width: 40%; margin-bottom: 12px; }
+.skeleton-circle { border-radius: 50%; }
+.skeleton-card { min-height: 80px; }
+
 /* ===== Animations ===== */
 @keyframes fadeInUp {
   from { opacity: 0; transform: translateY(15px); }

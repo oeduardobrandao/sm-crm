@@ -1,9 +1,8 @@
-import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const TOKEN_ENCRYPTION_KEY = Deno.env.get("TOKEN_ENCRYPTION_KEY")! || "default_encryption_key_32_chars_!!";
+const TOKEN_ENCRYPTION_KEY = Deno.env.get("TOKEN_ENCRYPTION_KEY") ?? (() => { throw new Error("TOKEN_ENCRYPTION_KEY environment variable is required"); })();
 
 // --- Token Encryption Utility (Duplicated for standalone function) ---
 async function encryptToken(token: string): Promise<string> {
@@ -55,7 +54,7 @@ async function decryptToken(encryptedBase64: string): Promise<string> {
 }
 
 // --- Cron Handler ---
-serve(async (_req) => {
+Deno.serve(async (_req) => {
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -81,12 +80,12 @@ serve(async (_req) => {
         const currentToken = await decryptToken(account.encrypted_access_token);
         
         // Refresh token via Meta API
-        const refreshUrl = \`https://graph.instagram.com/refresh_access_token\u003Fgrant_type=ig_refresh_token&access_token=\${currentToken}\`;
+        const refreshUrl = `https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=${currentToken}`;
         const res = await fetch(refreshUrl);
         const data = await res.json();
 
         if (data.error) {
-            console.error(\`Error refreshing token for account \${account.id}:\`, data.error);
+            console.error(`Error refreshing token for account ${account.id}:`, data.error);
             failedCount++;
             continue;
         }
@@ -108,7 +107,7 @@ serve(async (_req) => {
         if (updateError) throw updateError;
         refreshedCount++;
       } catch (err) {
-         console.error(\`Failed to process account \${account.id}\`, err);
+         console.error(`Failed to process account ${account.id}`, err);
          failedCount++;
       }
     }

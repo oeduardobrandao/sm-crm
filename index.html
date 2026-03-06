@@ -12,7 +12,7 @@
           return; // Força light mode (default) na página de Login, não aplica o atributo data-theme
         }
         const theme = localStorage.getItem('theme');
-        if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        if (theme === 'dark') {
           document.documentElement.setAttribute('data-theme', 'dark');
         }
       })();

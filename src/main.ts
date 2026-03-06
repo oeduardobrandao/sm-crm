@@ -75,12 +75,12 @@ if (btnLogoutFlutuante) {
     } catch (err) {
       console.error('Erro ao sair:', err);
     } finally {
+      const keysToRemove: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key && key.startsWith('sb-')) {
-          localStorage.removeItem(key);
-        }
+        if (key && key.startsWith('sb-')) keysToRemove.push(key);
       }
+      keysToRemove.forEach(key => localStorage.removeItem(key));
       window.location.hash = '#/login';
       window.location.reload();
     }
@@ -172,12 +172,12 @@ if (mobileLogoutBtn) {
     } catch (err) {
       console.error('Erro ao sair:', err);
     } finally {
+      const keysToRemove: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key && key.startsWith('sb-')) {
-          localStorage.removeItem(key);
-        }
+        if (key && key.startsWith('sb-')) keysToRemove.push(key);
       }
+      keysToRemove.forEach(key => localStorage.removeItem(key));
       window.location.hash = '#/login';
       window.location.reload();
     }

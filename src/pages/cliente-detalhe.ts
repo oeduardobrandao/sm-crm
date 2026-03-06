@@ -2,8 +2,8 @@
 // Página: Detalhe do Cliente
 // =============================================
 import { getClientes, getTransacoes, getContratos, formatBRL, formatDate, getInitials, updateCliente, type Cliente } from '../store';
-import { showToast, navigate, openModal, closeModal, sanitizeUrl } from '../router';
-import { getInstagramSummary, getInstagramPosts } from '../services/instagram';
+import { showToast, navigate, openModal, closeModal, sanitizeUrl, escapeHTML } from '../router';
+import { getInstagramSummary, getInstagramPosts, syncInstagramData } from '../services/instagram';
 import { renderInstagramConnectButton } from '../components/instagram/InstagramConnectButton';
 import { renderInstagramOverviewCard } from '../components/instagram/InstagramOverviewCard';
 import { renderInstagramFollowerChart } from '../components/instagram/InstagramFollowerChart';
@@ -11,17 +11,54 @@ import { renderInstagramPostsTable } from '../components/instagram/InstagramPost
 import { renderInstagramPostCreator } from '../components/instagram/InstagramPostCreator';
 
 export async function renderClienteDetalhe(container: HTMLElement, param?: string): Promise<void> {
-  container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:40vh"><i class="fa-solid fa-spinner fa-spin" style="font-size:1.5rem;color:var(--primary-color)"></i></div>`;
+  container.innerHTML = `
+    <header class="header animate-up">
+      <div class="header-title" style="display:flex;align-items:center;gap:1.25rem">
+        <div class="skeleton skeleton-circle" style="width:56px;height:56px;flex-shrink:0"></div>
+        <div style="flex:1">
+          <div class="skeleton skeleton-heading" style="width:180px"></div>
+          <div class="skeleton skeleton-text-sm" style="width:120px"></div>
+        </div>
+      </div>
+    </header>
+    <div class="card animate-up" style="margin-bottom:1.5rem">
+      <div style="display:flex;align-items:center;gap:1.5rem;margin-bottom:1.5rem">
+        <div class="skeleton skeleton-circle" style="width:80px;height:80px;flex-shrink:0"></div>
+        <div style="flex:1"><div class="skeleton skeleton-heading" style="width:160px"></div><div class="skeleton skeleton-text-sm" style="width:200px"></div></div>
+      </div>
+      <div class="kpi-grid">
+        <div class="kpi-card"><div class="skeleton skeleton-text-sm" style="width:60%"></div><div class="skeleton skeleton-heading" style="width:50%"></div></div>
+        <div class="kpi-card"><div class="skeleton skeleton-text-sm" style="width:60%"></div><div class="skeleton skeleton-heading" style="width:50%"></div></div>
+        <div class="kpi-card"><div class="skeleton skeleton-text-sm" style="width:60%"></div><div class="skeleton skeleton-heading" style="width:50%"></div></div>
+      </div>
+    </div>
+    <div class="kpi-grid animate-up" style="margin-bottom:2rem">
+      <div class="kpi-card"><div class="skeleton skeleton-text-sm" style="width:70%"></div><div class="skeleton skeleton-heading" style="width:40%"></div></div>
+      <div class="kpi-card"><div class="skeleton skeleton-text-sm" style="width:70%"></div><div class="skeleton skeleton-heading" style="width:40%"></div></div>
+      <div class="kpi-card"><div class="skeleton skeleton-text-sm" style="width:70%"></div><div class="skeleton skeleton-heading" style="width:40%"></div></div>
+    </div>
+    <div class="card animate-up" style="margin-bottom:2rem">
+      <div class="skeleton skeleton-heading" style="width:140px;margin-bottom:1.25rem"></div>
+      <div class="skeleton skeleton-text" style="width:90%"></div>
+      <div class="skeleton skeleton-text" style="width:75%"></div>
+      <div class="skeleton skeleton-text" style="width:60%"></div>
+    </div>
+  `;
 
   if (!param) {
     navigate('/clientes');
     return;
   }
 
-  const clienteId = Number(param);
+  const clienteId = parseInt(param, 10);
+  if (isNaN(clienteId) || clienteId <= 0) {
+    navigate('/clientes');
+    return;
+  }
 
-  // Check URL params for IG Auth redirects
-  const urlParams = new URL(window.location.href).searchParams;
+  // Check URL params for IG Auth redirects (params are inside the hash fragment)
+  const hashQuery = window.location.hash.split('?')[1];
+  const urlParams = new URLSearchParams(hashQuery || '');
   if (urlParams.get('ig_error') === 'no_business_account') {
      setTimeout(() => showToast('A conta do Facebook não possui um Instagram Business/Creator associado. Converta a conta primeiro.', 'error'), 500);
      window.history.replaceState({}, document.title, window.location.pathname + window.location.hash.split('?')[0]);
@@ -166,6 +203,36 @@ export async function renderClienteDetalhe(container: HTMLElement, param?: strin
     const igContainer = container.querySelector('#ig-container') as HTMLElement;
     if (igContainer) {
       if (igSummary) {
+         // Auto-sync on first connection (no data yet)
+         if (!igSummary.account.last_synced_at) {
+           igContainer.innerHTML = `
+             <div class="card animate-up" style="margin-bottom:1.5rem;">
+               <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1.5rem;color:var(--text-muted);font-size:0.9rem;">
+                 <i class="ph ph-spinner ph-spin" style="font-size:1.1rem;color:#E1306C"></i>
+                 Sincronizando dados do Instagram pela primeira vez...
+               </div>
+               <div style="display:flex;align-items:center;gap:1.5rem;margin-bottom:1.5rem">
+                 <div class="skeleton skeleton-circle" style="width:80px;height:80px;flex-shrink:0"></div>
+                 <div style="flex:1"><div class="skeleton skeleton-heading" style="width:160px"></div><div class="skeleton skeleton-text-sm" style="width:200px"></div></div>
+               </div>
+               <div class="kpi-grid" style="margin-bottom:1.5rem">
+                 <div class="kpi-card"><div class="skeleton skeleton-text-sm" style="width:60%"></div><div class="skeleton skeleton-heading" style="width:50%"></div></div>
+                 <div class="kpi-card"><div class="skeleton skeleton-text-sm" style="width:60%"></div><div class="skeleton skeleton-heading" style="width:50%"></div></div>
+                 <div class="kpi-card"><div class="skeleton skeleton-text-sm" style="width:60%"></div><div class="skeleton skeleton-heading" style="width:50%"></div></div>
+               </div>
+               <div class="kpi-grid">
+                 <div class="kpi-card"><div class="skeleton skeleton-text-sm" style="width:70%"></div><div class="skeleton skeleton-heading" style="width:45%"></div></div>
+                 <div class="kpi-card"><div class="skeleton skeleton-text-sm" style="width:70%"></div><div class="skeleton skeleton-heading" style="width:45%"></div></div>
+                 <div class="kpi-card"><div class="skeleton skeleton-text-sm" style="width:70%"></div><div class="skeleton skeleton-heading" style="width:45%"></div></div>
+               </div>
+             </div>`;
+           try {
+             await syncInstagramData(clienteId);
+           } catch (_) { /* will show stale data */ }
+           renderClienteDetalhe(container, param);
+           return;
+         }
+
          // Render Connected UI
          const summaryWrapper = document.createElement('div');
          renderInstagramOverviewCard(summaryWrapper, clienteId, igSummary.account, () => {
@@ -204,25 +271,25 @@ export async function renderClienteDetalhe(container: HTMLElement, param?: strin
       openModal('Editar Cliente', `
         <div class="form-row">
           <div class="form-group"><label>Nome da Empresa</label>
-          <input name="nome" class="form-input" required value="${cliente.nome}"></div>
+          <input name="nome" class="form-input" required value="${escapeHTML(cliente.nome)}"></div>
         </div>
         <div class="form-row">
           <div class="form-group"><label>E-mail</label>
-          <input name="email" type="email" class="form-input" value="${cliente.email || ''}"></div>
+          <input name="email" type="email" class="form-input" value="${escapeHTML(cliente.email || '')}"></div>
           <div class="form-group"><label>Telefone</label>
-          <input name="telefone" class="form-input" value="${cliente.telefone || ''}"></div>
+          <input name="telefone" class="form-input" value="${escapeHTML(cliente.telefone || '')}"></div>
         </div>
         <div class="form-row">
           <div class="form-group"><label>Plano / Serviço</label>
-          <input name="plano" class="form-input" value="${cliente.plano || ''}"></div>
+          <input name="plano" class="form-input" value="${escapeHTML(cliente.plano || '')}"></div>
           <div class="form-group"><label>Valor Mensal</label>
-          <input name="valor_mensal" type="number" step="0.01" class="form-input" value="${cliente.valor_mensal || ''}"></div>
+          <input name="valor_mensal" type="number" step="0.01" class="form-input" value="${escapeHTML(String(cliente.valor_mensal || ''))}"></div>
         </div>
         <div class="form-row">
           <div class="form-group"><label>URL da Página Notion (Opcional)</label>
-          <input name="notion_page_url" type="url" class="form-input" placeholder="https://notion.so/..." value="${cliente.notion_page_url || ''}"></div>
+          <input name="notion_page_url" type="url" class="form-input" placeholder="https://notion.so/..." value="${escapeHTML(cliente.notion_page_url || '')}"></div>
           <div class="form-group"><label>Dia de Pagamento (Data Base)</label>
-          <input name="data_pagamento" type="number" min="1" max="31" class="form-input" placeholder="Ex: 5" value="${cliente.data_pagamento || ''}"></div>
+          <input name="data_pagamento" type="number" min="1" max="31" class="form-input" placeholder="Ex: 5" value="${escapeHTML(String(cliente.data_pagamento || ''))}"></div>
         </div>
         <div class="form-row">
           <div class="form-group"><label>Status</label>
@@ -261,6 +328,6 @@ export async function renderClienteDetalhe(container: HTMLElement, param?: strin
 
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Erro desconhecido';
-    container.innerHTML = `<div class="card"><p style="color:var(--danger)">Erro: ${message}</p></div>`;
+    container.innerHTML = `<div class="card"><p style="color:var(--danger)">Erro: ${escapeHTML(message)}</p></div>`;
   }
 }

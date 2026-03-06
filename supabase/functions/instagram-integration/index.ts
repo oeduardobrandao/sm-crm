@@ -1,12 +1,12 @@
-import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const META_APP_ID = Deno.env.get("META_APP_ID")!;
 const META_APP_SECRET = Deno.env.get("META_APP_SECRET")!;
 const META_REDIRECT_URI = Deno.env.get("META_REDIRECT_URI")!;
-const TOKEN_ENCRYPTION_KEY = Deno.env.get("TOKEN_ENCRYPTION_KEY")! || "default_encryption_key_32_chars_!!";
+const OAUTH_REDIRECT_BASE = Deno.env.get("OAUTH_REDIRECT_BASE") || "http://localhost:3000";
+const TOKEN_ENCRYPTION_KEY = Deno.env.get("TOKEN_ENCRYPTION_KEY") ?? (() => { throw new Error("TOKEN_ENCRYPTION_KEY environment variable is required"); })();
 
 // --- Token Encryption Utility ---
 async function encryptToken(token: string): Promise<string> {
@@ -59,7 +59,7 @@ async function decryptToken(encryptedBase64: string): Promise<string> {
 }
 
 // --- Main Handler ---
-serve(async (req) => {
+Deno.serve(async (req) => {
   const url = new URL(req.url);
   const path = url.pathname.replace('/instagram-integration', '');
 
@@ -72,6 +72,7 @@ serve(async (req) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
   };
 
   if (req.method === 'OPTIONS') {
@@ -84,13 +85,16 @@ serve(async (req) => {
     let user;
     if (path !== '/callback') {
        const token = authHeader?.replace(/^Bearer\s+/i, '');
+
        if (!token || token === 'undefined' || token === 'null') {
            throw new Error("Unauthorized: No valid token provided in Authorization header");
        }
-       const userRes = await supabaseClient.auth.getUser(token);
+
+       const userRes = await supabaseClient.auth.getUser();
        user = userRes.data?.user;
+
        if (userRes.error || !user) {
-           throw new Error(`Unauthorized (Token verification failed): ${userRes.error?.message || 'No user found'}`);
+           throw new Error("Unauthorized: Token verification failed");
        }
     }
 
@@ -102,7 +106,7 @@ serve(async (req) => {
         // Pass clientId in state
         const state = btoa(JSON.stringify({ clientId }));
         
-        const oauthUrl = \`https://www.facebook.com/v19.0/dialog/oauth\u003Fclient_id=\${META_APP_ID}&redirect_uri=\${META_REDIRECT_URI}&scope=instagram_basic,instagram_manage_insights,instagram_content_publish,instagram_manage_comments,pages_read_engagement&response_type=code&state=\${state}\`;
+        const oauthUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${META_APP_ID}&redirect_uri=${META_REDIRECT_URI}&scope=instagram_basic,instagram_manage_insights,instagram_content_publish,instagram_manage_comments,pages_show_list,pages_read_engagement&response_type=code&state=${state}`;
 
         return new Response(JSON.stringify({ url: oauthUrl }), { 
             headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -118,9 +122,10 @@ serve(async (req) => {
 
         const decodedState = JSON.parse(atob(state || ''));
         const clientId = decodedState.clientId;
+        if (!clientId || !/^\d+$/.test(String(clientId))) throw new Error("Invalid client ID in state parameter");
 
         // Exchange code for short-lived token
-        const exchangeUrl = \`https://graph.facebook.com/v19.0/oauth/access_token\u003Fclient_id=\${META_APP_ID}&redirect_uri=\${META_REDIRECT_URI}&client_secret=\${META_APP_SECRET}&code=\${code}\`;
+        const exchangeUrl = `https://graph.facebook.com/v19.0/oauth/access_token?client_id=${META_APP_ID}&redirect_uri=${META_REDIRECT_URI}&client_secret=${META_APP_SECRET}&code=${code}`;
         
         const slTokenRes = await fetch(exchangeUrl);
         const slTokenData = await slTokenRes.json();
@@ -128,7 +133,7 @@ serve(async (req) => {
         if (slTokenData.error) throw new Error(slTokenData.error.message);
 
         // Exchange for long-lived token
-        const llExchangeUrl = \`https://graph.facebook.com/v19.0/oauth/access_token\u003Fgrant_type=fb_exchange_token&client_id=\${META_APP_ID}&client_secret=\${META_APP_SECRET}&fb_exchange_token=\${slTokenData.access_token}\`;
+        const llExchangeUrl = `https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${META_APP_ID}&client_secret=${META_APP_SECRET}&fb_exchange_token=${slTokenData.access_token}`;
         
         const llTokenRes = await fetch(llExchangeUrl);
         const llTokenData = await llTokenRes.json();
@@ -145,23 +150,59 @@ serve(async (req) => {
         const serviceClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
         // Fetch User ID to get business account id
-        const meRes = await fetch(\`https://graph.facebook.com/v19.0/me?access_token=\${longLivedToken}\`);
+        const meRes = await fetch(`https://graph.facebook.com/v19.0/me?access_token=${longLivedToken}`);
         const meData = await meRes.json();
 
-        // Actually look for business accounts linked to these pages
-        const pagesRes = await fetch(\`https://graph.facebook.com/v19.0/me/accounts?fields=instagram_business_account&access_token=\${longLivedToken}\`);
+        // Look for business accounts linked to these pages
+        const pagesRes = await fetch(`https://graph.facebook.com/v19.0/me/accounts?fields=id,name,access_token,instagram_business_account&access_token=${longLivedToken}`);
         const pagesData = await pagesRes.json();
-        
+
+        console.log('Facebook Pages response:', JSON.stringify(pagesData));
+
+        let igBusinessId: string | null = null;
+
         const igAccount = pagesData.data?.find((p: any) => p.instagram_business_account);
-        if (!igAccount) {
-            // No IG Business account connected
-             return Response.redirect('http://localhost:3000/#/cliente/' + clientId + '?ig_error=no_business_account', 302);
+        if (igAccount) {
+            igBusinessId = igAccount.instagram_business_account.id;
         }
 
-        const igBusinessId = igAccount.instagram_business_account.id;
+        // Fallback: me/accounts can return empty in dev mode even with valid permissions.
+        // Use debug_token to extract IDs from granular_scopes instead.
+        if (!igBusinessId) {
+            console.log('me/accounts empty or no IG business account. Trying debug_token fallback...');
+            const debugTokenRes = await fetch(`https://graph.facebook.com/v19.0/debug_token?input_token=${longLivedToken}&access_token=${META_APP_ID}|${META_APP_SECRET}`);
+            const debugTokenData = await debugTokenRes.json();
+            const scopes = debugTokenData.data?.granular_scopes || [];
+
+            // Extract Instagram account ID from instagram_basic scope
+            const igScope = scopes.find((s: any) => s.scope === 'instagram_basic');
+            const igId = igScope?.target_ids?.[0];
+
+            // Extract Page ID from pages_show_list scope
+            const pageScope = scopes.find((s: any) => s.scope === 'pages_show_list');
+            const pageId = pageScope?.target_ids?.[0];
+
+            console.log(`debug_token fallback: igId=${igId}, pageId=${pageId}`);
+
+            if (igId) {
+                // Verify the Instagram account exists by querying it
+                const verifyRes = await fetch(`https://graph.facebook.com/v19.0/${igId}?fields=id,username&access_token=${longLivedToken}`);
+                const verifyData = await verifyRes.json();
+                if (verifyData.id) {
+                    igBusinessId = igId;
+                    console.log(`Found IG business account via debug_token: ${igId} (${verifyData.username})`);
+                } else {
+                    console.log('Could not verify IG account:', JSON.stringify(verifyData));
+                }
+            }
+
+            if (!igBusinessId) {
+                return Response.redirect(`${OAUTH_REDIRECT_BASE}/#/cliente/${clientId}?ig_error=no_business_account`, 302);
+            }
+        }
 
         // Get basic profile data to store right away
-        const igProfileRes = await fetch(\`https://graph.facebook.com/v19.0/\${igBusinessId}?fields=username,profile_picture_url,followers_count,follows_count,media_count&access_token=\${longLivedToken}\`);
+        const igProfileRes = await fetch(`https://graph.facebook.com/v19.0/${igBusinessId}?fields=username,profile_picture_url,followers_count,follows_count,media_count&access_token=${longLivedToken}`);
         const igProfile = await igProfileRes.json();
 
         // Encrypt Long Lived Token
@@ -184,7 +225,7 @@ serve(async (req) => {
 
         if (dbError) throw new Error(dbError.message);
 
-        return Response.redirect('http://localhost:3000/#/cliente/' + clientId, 302);
+        return Response.redirect(`${OAUTH_REDIRECT_BASE}/#/cliente/${clientId}`, 302);
     }
 
     // 3. POST /sync/:clientId
@@ -206,7 +247,7 @@ serve(async (req) => {
         try {
             // 3.1 Fetch Account Insights (28 day window)
             const sinceDate = Math.floor(Date.now() / 1000 - (28 * 24 * 60 * 60));
-            const insightsRes = await fetch(\`https://graph.facebook.com/v19.0/\${account.instagram_user_id}/insights?metric=reach,impressions,profile_views&period=day&since=\${sinceDate}&access_token=\${accessToken}\`);
+            const insightsRes = await fetch(`https://graph.facebook.com/v19.0/${account.instagram_user_id}/insights?metric=reach,impressions,profile_views&period=day&since=${sinceDate}&access_token=${accessToken}`);
             const insightsData = await insightsRes.json();
 
             // Check if token expired
@@ -226,7 +267,7 @@ serve(async (req) => {
             }
 
             // Update basic profile numbers again just to be fresh
-             const igProfileRes = await fetch(\`https://graph.facebook.com/v19.0/\${account.instagram_user_id}?fields=followers_count,follows_count,media_count&access_token=\${accessToken}\`);
+             const igProfileRes = await fetch(`https://graph.facebook.com/v19.0/${account.instagram_user_id}?fields=followers_count,follows_count,media_count&access_token=${accessToken}`);
              const igProfile = await igProfileRes.json();
 
             await serviceClient.from('instagram_accounts').update({
@@ -250,7 +291,7 @@ serve(async (req) => {
 
 
             // 3.2 Fetch Posts
-            const mediaRes = await fetch(\`https://graph.facebook.com/v19.0/\${account.instagram_user_id}/media?fields=id,caption,media_type,permalink,timestamp,comments_count,like_count&limit=50&access_token=\${accessToken}\`);
+            const mediaRes = await fetch(`https://graph.facebook.com/v19.0/${account.instagram_user_id}/media?fields=id,caption,media_type,permalink,timestamp,comments_count,like_count&limit=50&access_token=${accessToken}`);
             const mediaData = await mediaRes.json();
 
             if (mediaData.data) {
@@ -263,7 +304,7 @@ serve(async (req) => {
                         // Image posts don't have shares, video does.
                         if (post.media_type === 'VIDEO') metrics += ',shares';
 
-                        const postInsightsRes = await fetch(\`https://graph.facebook.com/v19.0/\${post.id}/insights?metric=\${metrics}&access_token=\${accessToken}\`);
+                        const postInsightsRes = await fetch(`https://graph.facebook.com/v19.0/${post.id}/insights?metric=${metrics}&access_token=${accessToken}`);
                         const postInsightsData = await postInsightsRes.json();
 
                         if (postInsightsData.data) {
@@ -307,11 +348,17 @@ serve(async (req) => {
     }
 
      // 4. DELETE /disconnect/:clientId
-    if (req.method === 'DELETE' && path.startsWith('/disconnect/')) {
+    if ((req.method === 'POST' || req.method === 'DELETE') && path.startsWith('/disconnect/')) {
          const clientId = path.split('/')[2];
          const serviceClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
-         await serviceClient.from('instagram_accounts').delete().eq('client_id', clientId);
+         // Get account id first to clean up child tables
+         const { data: account } = await serviceClient.from('instagram_accounts').select('id').eq('client_id', clientId).single();
+         if (account) {
+           await serviceClient.from('instagram_posts').delete().eq('instagram_account_id', account.id);
+           await serviceClient.from('instagram_follower_history').delete().eq('instagram_account_id', account.id);
+           await serviceClient.from('instagram_accounts').delete().eq('id', account.id);
+         }
          return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
     
@@ -333,7 +380,7 @@ serve(async (req) => {
     if (req.method === 'GET' && path.startsWith('/posts/')) {
          const clientId = path.split('/')[2];
          const pageStr = url.searchParams.get('page') || '1';
-         const page = parseInt(pageStr);
+         const page = Math.max(1, parseInt(pageStr) || 1);
          const limit = 10;
          const offset = (page - 1) * limit;
 
@@ -362,6 +409,12 @@ serve(async (req) => {
          const imageUrl = reqBody.media_url;
 
          if (!imageUrl) throw new Error("A URL da imagem é obrigatória");
+         try {
+             const parsedImageUrl = new URL(imageUrl);
+             if (parsedImageUrl.protocol !== 'https:') throw new Error("A URL da imagem deve usar HTTPS");
+         } catch (urlErr: any) {
+             throw new Error(urlErr.message.startsWith("A URL") ? urlErr.message : "URL da imagem inválida");
+         }
 
          const serviceClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
@@ -417,12 +470,18 @@ serve(async (req) => {
     return new Response('Not Found', { status: 404, headers: corsHeaders });
 
   } catch (err: any) {
-    if (err.message === "Unauthorized") {
-       return new Response(JSON.stringify({ error: true, message: 'Unauthorized' }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
-    if (err.message && err.message.includes('expired')) {
-       return new Response(JSON.stringify({ error: true, code: "TOKEN_EXPIRED", message: err.message }), { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
-    return new Response(JSON.stringify({ error: err.message }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    const isAuthError = err.message && err.message.includes("Unauthorized");
+    const isTokenExpired = err.message && err.message.includes("expired");
+    
+    const statusCode = (isAuthError || isTokenExpired) ? 401 : 400;
+    
+    return new Response(JSON.stringify({ 
+      error: true, 
+      message: err.message,
+      code: isTokenExpired ? "TOKEN_EXPIRED" : undefined
+    }), { 
+        status: statusCode, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    });
   }
 });

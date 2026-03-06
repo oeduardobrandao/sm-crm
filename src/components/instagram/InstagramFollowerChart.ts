@@ -8,7 +8,7 @@ declare const Chart: any; // Assuming Chart.js is loaded via CDN in index.html
 export function renderInstagramFollowerChart(container: HTMLElement, history: any[]) {
   if (!history || history.length === 0) {
     container.innerHTML = `
-       <div class="card animate-up" style="height: 300px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); text-align: center;">
+       <div class="card animate-up" style="height: 300px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); text-align: center; margin-bottom: 1.5rem;">
           <p>Dados de seguidores insuficientes para exibir o gráfico.</p>
        </div>
     `;
@@ -16,7 +16,7 @@ export function renderInstagramFollowerChart(container: HTMLElement, history: an
   }
 
   container.innerHTML = `
-    <div class="card animate-up" style="margin-bottom: 2rem;">
+    <div class="card animate-up" style="margin-bottom: 1.5rem;">
        <h3 style="margin-bottom: 1rem;"><i class="ph ph-trend-up" style="color: var(--primary-color); margin-right: 0.5rem;"></i> Crescimento de Seguidores (Últimos 30 Dias)</h3>
        <div style="position: relative; height: 300px; width: 100%;">
           <canvas id="ig-follower-chart"></canvas>
