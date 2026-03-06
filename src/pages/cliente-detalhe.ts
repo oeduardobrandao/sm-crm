@@ -8,6 +8,7 @@ import { renderInstagramConnectButton } from '../components/instagram/InstagramC
 import { renderInstagramOverviewCard } from '../components/instagram/InstagramOverviewCard';
 import { renderInstagramFollowerChart } from '../components/instagram/InstagramFollowerChart';
 import { renderInstagramPostsTable } from '../components/instagram/InstagramPostsTable';
+import { renderInstagramPostCreator } from '../components/instagram/InstagramPostCreator';
 
 export async function renderClienteDetalhe(container: HTMLElement, param?: string): Promise<void> {
   container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:40vh"><i class="fa-solid fa-spinner fa-spin" style="font-size:1.5rem;color:var(--primary-color)"></i></div>`;
@@ -176,6 +177,13 @@ export async function renderClienteDetalhe(container: HTMLElement, param?: strin
          const chartWrapper = document.createElement('div');
          renderInstagramFollowerChart(chartWrapper, igSummary.history);
          igContainer.appendChild(chartWrapper);
+
+         const creatorWrapper = document.createElement('div');
+         renderInstagramPostCreator(creatorWrapper, clienteId, () => {
+             // onPublished -> reload page
+             renderClienteDetalhe(container, param);
+         });
+         igContainer.appendChild(creatorWrapper);
          
          const postsWrapper = document.createElement('div');
          renderInstagramPostsTable(postsWrapper, clienteId);

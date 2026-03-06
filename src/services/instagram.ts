@@ -2,7 +2,6 @@
 // CRM Fluxo - Instagram Integration Service
 // =============================================
 import { supabase } from '../lib/supabase';
-import { showToast } from '../router';
 
 const EDGE_FUNCTION_URL = import.meta.env.VITE_SUPABASE_URL + '/functions/v1/instagram-integration';
 
@@ -79,5 +78,21 @@ export async function getInstagramPosts(clientId: number, page: number = 1): Pro
        throw new Error(data.message || 'Error fetching posts');
     }
     
+    return res.json();
+}
+
+export async function publishInstagramPost(clientId: number, caption: string, imageUrl: string): Promise<any> {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${EDGE_FUNCTION_URL}/publish/${clientId}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ caption, media_url: imageUrl })
+    });
+
+    if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || 'Error publishing post');
+    }
+
     return res.json();
 }

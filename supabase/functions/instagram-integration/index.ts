@@ -83,9 +83,15 @@ serve(async (req) => {
     // We only enforce auth for the endpoints that modify internal data (which is everything except callback)
     let user;
     if (path !== '/callback') {
-       const userRes = await supabaseClient.auth.getUser();
-       user = userRes.data.user;
-       if (!user) throw new Error("Unauthorized");
+       const token = authHeader?.replace(/^Bearer\s+/i, '');
+       if (!token || token === 'undefined' || token === 'null') {
+           throw new Error("Unauthorized: No valid token provided in Authorization header");
+       }
+       const userRes = await supabaseClient.auth.getUser(token);
+       user = userRes.data?.user;
+       if (userRes.error || !user) {
+           throw new Error(`Unauthorized (Token verification failed): ${userRes.error?.message || 'No user found'}`);
+       }
     }
 
     // 1. GET /auth/:clientId
@@ -346,6 +352,66 @@ serve(async (req) => {
 
          if (error) throw error;
          return new Response(JSON.stringify({ posts: data, total: count }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // 7. POST /publish/:clientId
+    if (req.method === 'POST' && path.startsWith('/publish/')) {
+         const clientId = path.split('/')[2];
+         const reqBody = await req.json();
+         const caption = reqBody.caption || '';
+         const imageUrl = reqBody.media_url;
+
+         if (!imageUrl) throw new Error("A URL da imagem é obrigatória");
+
+         const serviceClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+
+         const { data: accounts, error: accountError } = await serviceClient
+             .from('instagram_accounts')
+             .select('*')
+             .eq('client_id', clientId);
+         
+         if (accountError || !accounts || accounts.length === 0) throw new Error("Account not found");
+         const account = accounts[0];
+
+         // Decrypt Token
+         const accessToken = await decryptToken(account.encrypted_access_token);
+
+         try {
+             // Step 1: Create Container
+             const containerRes = await fetch(`https://graph.facebook.com/v19.0/${account.instagram_user_id}/media`, {
+                 method: 'POST',
+                 headers: { 'Content-Type': 'application/json' },
+                 body: JSON.stringify({
+                     image_url: imageUrl,
+                     caption: caption,
+                     access_token: accessToken
+                 })
+             });
+             
+             const containerData = await containerRes.json();
+             if (containerData.error) throw new Error(containerData.error.message);
+             if (!containerData.id) throw new Error("Failed to create media container");
+
+             const creationId = containerData.id;
+
+             // Step 2: Publish Container
+             const publishRes = await fetch(`https://graph.facebook.com/v19.0/${account.instagram_user_id}/media_publish`, {
+                 method: 'POST',
+                 headers: { 'Content-Type': 'application/json' },
+                 body: JSON.stringify({
+                     creation_id: creationId,
+                     access_token: accessToken
+                 })
+             });
+
+             const publishData = await publishRes.json();
+             if (publishData.error) throw new Error(publishData.error.message);
+
+             return new Response(JSON.stringify({ success: true, id: publishData.id }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+         } catch (error: any) {
+             console.error('Publish Error', error);
+             throw new Error('Falha ao publicar no Instagram: ' + error.message);
+         }
     }
 
     return new Response('Not Found', { status: 404, headers: corsHeaders });
