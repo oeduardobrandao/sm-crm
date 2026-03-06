@@ -3,6 +3,11 @@
 // =============================================
 import { getClientes, getTransacoes, getContratos, formatBRL, formatDate, getInitials, updateCliente, type Cliente } from '../store';
 import { showToast, navigate, openModal, closeModal, sanitizeUrl } from '../router';
+import { getInstagramSummary, getInstagramPosts } from '../services/instagram';
+import { renderInstagramConnectButton } from '../components/instagram/InstagramConnectButton';
+import { renderInstagramOverviewCard } from '../components/instagram/InstagramOverviewCard';
+import { renderInstagramFollowerChart } from '../components/instagram/InstagramFollowerChart';
+import { renderInstagramPostsTable } from '../components/instagram/InstagramPostsTable';
 
 export async function renderClienteDetalhe(container: HTMLElement, param?: string): Promise<void> {
   container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:40vh"><i class="fa-solid fa-spinner fa-spin" style="font-size:1.5rem;color:var(--primary-color)"></i></div>`;
@@ -14,14 +19,22 @@ export async function renderClienteDetalhe(container: HTMLElement, param?: strin
 
   const clienteId = Number(param);
 
+  // Check URL params for IG Auth redirects
+  const urlParams = new URL(window.location.href).searchParams;
+  if (urlParams.get('ig_error') === 'no_business_account') {
+     setTimeout(() => showToast('A conta do Facebook não possui um Instagram Business/Creator associado. Converta a conta primeiro.', 'error'), 500);
+     window.history.replaceState({}, document.title, window.location.pathname + window.location.hash.split('?')[0]);
+  }
+
   try {
-    const [clientes, transacoes, contratos] = await Promise.all([
+    const [clientes, transacoes, contratos, igSummary] = await Promise.all([
       getClientes(),
       getTransacoes(),
-      getContratos()
+      getContratos(),
+      getInstagramSummary(clienteId).catch(() => null)
     ]);
 
-    const cliente = clientes.find(c => c.id === clienteId);
+    const cliente = clientes.find((c: Cliente) => c.id === clienteId);
     if (!cliente) {
       container.innerHTML = `
         <header class="header animate-up">
@@ -62,6 +75,10 @@ export async function renderClienteDetalhe(container: HTMLElement, param?: strin
           <button class="btn-primary" id="btn-edit-cliente"><i class="ph ph-pencil-simple"></i> Editar</button>
         </div>
       </header>
+
+      <!-- Instagram Integration Region -->
+      <div id="ig-container" class="animate-up" style="margin-bottom: 2rem;"></div>
+
 
       <!-- KPI Cards -->
       <div class="kpi-grid animate-up" style="margin-bottom:2rem">
@@ -143,6 +160,31 @@ export async function renderClienteDetalhe(container: HTMLElement, param?: strin
         </table>`}
       </div>
     `;
+
+    // Instagram Integration Render
+    const igContainer = container.querySelector('#ig-container') as HTMLElement;
+    if (igContainer) {
+      if (igSummary) {
+         // Render Connected UI
+         const summaryWrapper = document.createElement('div');
+         renderInstagramOverviewCard(summaryWrapper, clienteId, igSummary.account, () => {
+             // onRefresh -> reload page
+             renderClienteDetalhe(container, param);
+         });
+         igContainer.appendChild(summaryWrapper);
+         
+         const chartWrapper = document.createElement('div');
+         renderInstagramFollowerChart(chartWrapper, igSummary.history);
+         igContainer.appendChild(chartWrapper);
+         
+         const postsWrapper = document.createElement('div');
+         renderInstagramPostsTable(postsWrapper, clienteId);
+         igContainer.appendChild(postsWrapper);
+      } else {
+         // Render Unconnected UI
+         renderInstagramConnectButton(igContainer, clienteId);
+      }
+    }
 
     // Back button
     container.querySelector('#btn-back')?.addEventListener('click', () => {
