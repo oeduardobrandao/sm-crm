@@ -18,6 +18,7 @@ export interface Cliente {
   notion_page_url?: string;
   conta_id?: string;
   data_pagamento?: number;
+  especialidade?: string;
 }
 
 export interface Transacao {

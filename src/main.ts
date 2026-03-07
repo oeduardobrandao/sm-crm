@@ -15,6 +15,8 @@ import { renderClienteDetalhe } from './pages/cliente-detalhe';
 import { renderMembroDetalhe } from './pages/membro-detalhe';
 import { renderLeads } from './pages/leads';
 import { renderPoliticaPrivacidade } from './pages/politica-privacidade';
+import { renderAnalytics } from './pages/analytics';
+import { renderAnalyticsConta } from './pages/analytics-conta';
 import { signOut } from './lib/supabase';
 
 // Register public routes
@@ -33,6 +35,8 @@ registerRoute('/calendario', renderCalendario);
 registerRoute('/cliente', renderClienteDetalhe);
 registerRoute('/membro', renderMembroDetalhe);
 registerRoute('/leads', renderLeads);
+registerRoute('/analytics', renderAnalytics);
+registerRoute('/analytics-conta', renderAnalyticsConta);
 
 // Sidebar click -> navigate
 document.querySelectorAll('.nav-link').forEach(link => {
@@ -204,7 +208,7 @@ function syncActiveNav() {
   });
 
   // If the active route is one of the "more" items, highlight "Mais" button
-  const moreRoutes = ['/equipe', '/integracoes', '/configuracao'];
+  const moreRoutes = ['/equipe', '/integracoes', '/analytics', '/configuracao'];
   const moreBtn = document.getElementById('mobile-more-btn');
   if (moreBtn) {
     moreBtn.classList.toggle('active', moreRoutes.includes(hash));

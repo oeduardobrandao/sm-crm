@@ -255,6 +255,12 @@ export async function renderClienteDetalhe(container: HTMLElement, param?: strin
          const postsWrapper = document.createElement('div');
          renderInstagramPostsTable(postsWrapper, clienteId);
          igContainer.appendChild(postsWrapper);
+
+         // Analytics link
+         const analyticsLink = document.createElement('div');
+         analyticsLink.style.cssText = 'text-align:center;margin-top:1rem;margin-bottom:0.5rem';
+         analyticsLink.innerHTML = `<a href="#/analytics-conta/${clienteId}" class="btn-primary" style="display:inline-flex;align-items:center;gap:0.5rem"><i class="ph ph-chart-line-up"></i> Ver Analytics Completo</a>`;
+         igContainer.appendChild(analyticsLink);
       } else {
          // Render Unconnected UI
          renderInstagramConnectButton(igContainer, clienteId);
@@ -299,6 +305,8 @@ export async function renderClienteDetalhe(container: HTMLElement, param?: strin
               <option value="encerrado" ${cliente.status === 'encerrado' ? 'selected' : ''}>Encerrado</option>
             </select>
           </div>
+          <div class="form-group"><label>Especialidade</label>
+          <input name="especialidade" class="form-input" placeholder="Ex: Dermatologia, Cardiologia" value="${escapeHTML(cliente.especialidade || '')}"></div>
         </div>
       `, async (form) => {
         const d = new FormData(form);
@@ -315,6 +323,7 @@ export async function renderClienteDetalhe(container: HTMLElement, param?: strin
             notion_page_url: d.get('notion_page_url') as string || '',
             data_pagamento: parseInt(d.get('data_pagamento') as string) || undefined,
             status: d.get('status') as 'ativo' | 'pausado' | 'encerrado',
+            especialidade: d.get('especialidade') as string || '',
           });
           showToast(`Cliente '${nome}' atualizado!`);
           closeModal();

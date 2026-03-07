@@ -1814,3 +1814,111 @@ body.role-agent input[name="valor_total"] {
   color: var(--primary-color);
 }
 
+/* =============================================
+   Analytics Module Styles
+   ============================================= */
+
+.analytics-delta-up { color: var(--success); }
+.analytics-delta-down { color: var(--danger); }
+.analytics-delta-stable { color: var(--text-muted); }
+
+.analytics-callout {
+  border-left: 4px solid var(--warning);
+  padding: 1rem 1.25rem;
+  background: rgba(245, 163, 66, 0.04);
+  border-radius: 0 8px 8px 0;
+}
+
+[data-theme="dark"] .analytics-callout {
+  background: rgba(245, 163, 66, 0.06);
+}
+
+.tag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.tag-pill .tag-remove {
+  cursor: pointer;
+  opacity: 0.5;
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.tag-pill .tag-remove:hover {
+  opacity: 1;
+}
+
+.sortable-header {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.sortable-header:hover {
+  color: var(--primary-color);
+}
+
+.sortable-header .sort-icon {
+  margin-left: 4px;
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
+
+.analytics-heatmap {
+  border-collapse: separate;
+  border-spacing: 3px;
+}
+
+.analytics-heatmap td {
+  width: 32px;
+  height: 28px;
+  text-align: center;
+  font-size: 0.6rem;
+  border-radius: 4px;
+  cursor: default;
+  color: var(--text-muted);
+  transition: transform 0.15s;
+}
+
+.analytics-heatmap td:hover {
+  transform: scale(1.2);
+  z-index: 1;
+}
+
+.silent-account-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.75rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color, rgba(0,0,0,0.08));
+  border-radius: 999px;
+  font-size: 0.8rem;
+  color: var(--text-main);
+  text-decoration: none;
+  transition: box-shadow 0.2s;
+}
+
+.silent-account-chip:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.tag-assign-menu .tag-assign-option:hover {
+  background: var(--hover-bg, rgba(0,0,0,0.04));
+}
+
+[data-theme="dark"] .tag-assign-menu .tag-assign-option:hover {
+  background: rgba(255,255,255,0.06);
+}
+
+.post-detail-row td {
+  background: var(--card-bg) !important;
+}
+
