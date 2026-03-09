@@ -161,8 +161,34 @@ Deno.serve(async (req) => {
         // Encrypt Long Lived Token
         const encryptedToken = await encryptToken(longLivedToken);
 
-        // Upsert into DB
-        const { error: dbError } = await serviceClient
+        // Fetch 28-day account insights
+        let reach_28d = 0, impressions_28d = 0, profile_views_28d = 0;
+        try {
+            const sinceDate = Math.floor(Date.now() / 1000 - (28 * 24 * 60 * 60));
+            // Daily metric: reach
+            const insightsRes = await fetch(`https://graph.instagram.com/v21.0/${igBusinessId}/insights?metric=reach&period=day&since=${sinceDate}&access_token=${longLivedToken}`);
+            const insightsData = await insightsRes.json();
+            if (insightsData.data) {
+                for (const insight of insightsData.data) {
+                    if (insight.name === 'reach') reach_28d = insight.values.reduce((sum: number, v: any) => sum + v.value, 0);
+                }
+            }
+            // Total value metrics: views, profile_views
+            try {
+                const totalRes = await fetch(`https://graph.instagram.com/v21.0/${igBusinessId}/insights?metric=views,profile_views&metric_type=total_value&period=day&since=${sinceDate}&access_token=${longLivedToken}`);
+                const totalData = await totalRes.json();
+                if (totalData.data) {
+                    for (const insight of totalData.data) {
+                        const val = insight.total_value?.value || 0;
+                        if (insight.name === 'views') impressions_28d = val;
+                        if (insight.name === 'profile_views') profile_views_28d = val;
+                    }
+                }
+            } catch (_) { /* ignore */ }
+        } catch (_) { /* ignore insights fetch errors */ }
+
+        // Upsert into DB (with insights + last_synced_at)
+        const { data: upsertedAccount, error: dbError } = await serviceClient
             .from('instagram_accounts')
             .upsert({
                 client_id: clientId,
@@ -173,10 +199,65 @@ Deno.serve(async (req) => {
                 following_count: igProfile.follows_count,
                 media_count: igProfile.media_count,
                 encrypted_access_token: encryptedToken,
-                token_expires_at: expiresAt
-            }, { onConflict: 'client_id' }); // Assuming one per client
+                token_expires_at: expiresAt,
+                reach_28d,
+                impressions_28d,
+                profile_views_28d,
+                last_synced_at: new Date().toISOString()
+            }, { onConflict: 'client_id' })
+            .select('id')
+            .single();
 
         if (dbError) throw new Error(dbError.message);
+
+        // Save follower history snapshot + fetch posts
+        try {
+            const accountId = upsertedAccount!.id;
+            const today = new Date().toISOString().split('T')[0];
+
+            await serviceClient.from('instagram_follower_history').upsert({
+                instagram_account_id: accountId,
+                date: today,
+                follower_count: igProfile.followers_count || 0
+            }, { onConflict: 'instagram_account_id,date' });
+
+            // Fetch posts
+            const mediaRes = await fetch(`https://graph.instagram.com/v21.0/${igBusinessId}/media?fields=id,caption,media_type,permalink,timestamp,comments_count,like_count&limit=50&access_token=${longLivedToken}`);
+            const mediaData = await mediaRes.json();
+
+            if (mediaData.data) {
+                for (const post of mediaData.data) {
+                    let reach = 0, impressions = 0, saved = 0, shares = 0;
+                    try {
+                        let metrics = 'reach,views,saved';
+                        if (post.media_type === 'VIDEO') metrics += ',shares';
+                        const postInsightsRes = await fetch(`https://graph.instagram.com/v21.0/${post.id}/insights?metric=${metrics}&access_token=${longLivedToken}`);
+                        const postInsightsData = await postInsightsRes.json();
+                        if (postInsightsData.data) {
+                            for (const insight of postInsightsData.data) {
+                                if (insight.name === 'reach') reach = insight.values[0].value;
+                                if (insight.name === 'views') impressions = insight.values[0].value;
+                                if (insight.name === 'saved') saved = insight.values[0].value;
+                                if (insight.name === 'shares') shares = insight.values[0].value;
+                            }
+                        }
+                    } catch (_) { /* ignore per-post insight errors */ }
+
+                    await serviceClient.from('instagram_posts').upsert({
+                        instagram_account_id: accountId,
+                        instagram_post_id: post.id,
+                        caption: post.caption || '',
+                        media_type: post.media_type,
+                        permalink: post.permalink,
+                        posted_at: post.timestamp,
+                        likes: post.like_count || 0,
+                        comments: post.comments_count || 0,
+                        reach, impressions, saved, shares,
+                        synced_at: new Date().toISOString()
+                    }, { onConflict: 'instagram_post_id' });
+                }
+            }
+        } catch (_) { /* ignore posts/history fetch errors */ }
 
         return Response.redirect(`${OAUTH_REDIRECT_BASE}/#/cliente/${clientId}`, 302);
     }
@@ -200,7 +281,8 @@ Deno.serve(async (req) => {
         try {
             // 3.1 Fetch Account Insights (28 day window)
             const sinceDate = Math.floor(Date.now() / 1000 - (28 * 24 * 60 * 60));
-            const insightsRes = await fetch(`https://graph.instagram.com/v21.0/${account.instagram_user_id}/insights?metric=reach,impressions,profile_views&period=day&since=${sinceDate}&access_token=${accessToken}`);
+            // Fetch daily metrics (reach)
+            const insightsRes = await fetch(`https://graph.instagram.com/v21.0/${account.instagram_user_id}/insights?metric=reach&period=day&since=${sinceDate}&access_token=${accessToken}`);
             const insightsData = await insightsRes.json();
 
             // Check if token expired
@@ -208,16 +290,26 @@ Deno.serve(async (req) => {
                return new Response(JSON.stringify({ error: true, code: "TOKEN_EXPIRED", message: "Instagram token expired" }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 });
             }
 
-            // Calculate 28d totals
             let totalReach = 0; let totalImpressions = 0; let totalViews = 0;
             if (insightsData.data) {
                 for (const insight of insightsData.data) {
                     const value = insight.values.reduce((sum: number, v: any) => sum + v.value, 0);
                     if (insight.name === 'reach') totalReach = value;
-                    if (insight.name === 'impressions') totalImpressions = value;
-                    if (insight.name === 'profile_views') totalViews = value;
                 }
             }
+
+            // Fetch total_value metrics (views, profile_views) — these require metric_type=total_value
+            try {
+                const totalRes = await fetch(`https://graph.instagram.com/v21.0/${account.instagram_user_id}/insights?metric=views,profile_views&metric_type=total_value&period=day&since=${sinceDate}&access_token=${accessToken}`);
+                const totalData = await totalRes.json();
+                if (totalData.data) {
+                    for (const insight of totalData.data) {
+                        const val = insight.total_value?.value || 0;
+                        if (insight.name === 'views') totalImpressions = val;
+                        if (insight.name === 'profile_views') totalViews = val;
+                    }
+                }
+            } catch (_) { /* ignore */ }
 
             // Update basic profile numbers again just to be fresh
              const igProfileRes = await fetch(`https://graph.instagram.com/v21.0/${account.instagram_user_id}?fields=followers_count,follows_count,media_count&access_token=${accessToken}`);
@@ -246,31 +338,23 @@ Deno.serve(async (req) => {
             // 3.2 Fetch Posts
             const mediaRes = await fetch(`https://graph.instagram.com/v21.0/${account.instagram_user_id}/media?fields=id,caption,media_type,permalink,timestamp,comments_count,like_count&limit=50&access_token=${accessToken}`);
             const mediaData = await mediaRes.json();
-
             if (mediaData.data) {
                 for (const post of mediaData.data) {
-                    
-                     // Fetch post specific insights
                      let reach = 0, impressions = 0, saved = 0, shares = 0;
                      try {
-                        let metrics = 'reach,impressions,saved';
-                        // Image posts don't have shares, video does.
+                        let metrics = 'reach,views,saved';
                         if (post.media_type === 'VIDEO') metrics += ',shares';
-
                         const postInsightsRes = await fetch(`https://graph.instagram.com/v21.0/${post.id}/insights?metric=${metrics}&access_token=${accessToken}`);
                         const postInsightsData = await postInsightsRes.json();
-
                         if (postInsightsData.data) {
                             for (const insight of postInsightsData.data) {
                                 if (insight.name === 'reach') reach = insight.values[0].value;
-                                if (insight.name === 'impressions') impressions = insight.values[0].value;
+                                if (insight.name === 'views') impressions = insight.values[0].value;
                                 if (insight.name === 'saved') saved = insight.values[0].value;
                                 if (insight.name === 'shares') shares = insight.values[0].value;
                             }
                         }
-                     } catch (e) {
-                        // ignore post insight errors to allow partial sync success
-                     }
+                     } catch (_) { /* ignore per-post insight errors */ }
 
                      await serviceClient.from('instagram_posts').upsert({
                          instagram_account_id: account.id,
@@ -281,20 +365,15 @@ Deno.serve(async (req) => {
                          posted_at: post.timestamp,
                          likes: post.like_count || 0,
                          comments: post.comments_count || 0,
-                         reach: reach,
-                         impressions: impressions,
-                         saved: saved,
-                         shares: shares,
+                         reach, impressions, saved, shares,
                          synced_at: new Date().toISOString()
-                     }, { onConflict: 'instagram_post_id' }); // Assuming unique post id
+                     }, { onConflict: 'instagram_post_id' });
                 }
             }
             
             return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
             
         } catch (error: any) {
-            console.error('Sync Error', error);
-            // Re-throw handled expired tokens
             if (error.code === 'TOKEN_EXPIRED') throw error;
             throw new Error('Sync Failed');
         }
