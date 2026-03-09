@@ -106,7 +106,7 @@ Deno.serve(async (req) => {
         // Pass clientId in state
         const state = btoa(JSON.stringify({ clientId }));
         
-        const oauthUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${META_APP_ID}&redirect_uri=${META_REDIRECT_URI}&scope=instagram_basic,instagram_manage_insights,instagram_content_publish,instagram_manage_comments,pages_show_list,pages_read_engagement&response_type=code&state=${state}`;
+        const oauthUrl = `https://www.instagram.com/oauth/authorize?client_id=${META_APP_ID}&redirect_uri=${META_REDIRECT_URI}&response_type=code&scope=instagram_business_basic,instagram_business_manage_insights&state=${state}`;
 
         return new Response(JSON.stringify({ url: oauthUrl }), { 
             headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -124,85 +124,38 @@ Deno.serve(async (req) => {
         const clientId = decodedState.clientId;
         if (!clientId || !/^\d+$/.test(String(clientId))) throw new Error("Invalid client ID in state parameter");
 
-        // Exchange code for short-lived token
-        const exchangeUrl = `https://graph.facebook.com/v19.0/oauth/access_token?client_id=${META_APP_ID}&redirect_uri=${META_REDIRECT_URI}&client_secret=${META_APP_SECRET}&code=${code}`;
-        
-        const slTokenRes = await fetch(exchangeUrl);
-        const slTokenData = await slTokenRes.json();
-        
-        if (slTokenData.error) throw new Error(slTokenData.error.message);
+        // Exchange code for short-lived token (Instagram Business Login)
+        const exchangeRes = await fetch('https://api.instagram.com/oauth/access_token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+                client_id: META_APP_ID,
+                client_secret: META_APP_SECRET,
+                grant_type: 'authorization_code',
+                redirect_uri: META_REDIRECT_URI,
+                code: code
+            })
+        });
+        const slTokenData = await exchangeRes.json();
+        if (slTokenData.error) throw new Error(slTokenData.error_description || slTokenData.error);
+
+        const shortLivedToken = slTokenData.access_token;
+        const igBusinessId = String(slTokenData.user_id); // Instagram Business account ID returned directly
 
         // Exchange for long-lived token
-        const llExchangeUrl = `https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${META_APP_ID}&client_secret=${META_APP_SECRET}&fb_exchange_token=${slTokenData.access_token}`;
-        
+        const llExchangeUrl = `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${META_APP_SECRET}&access_token=${shortLivedToken}`;
         const llTokenRes = await fetch(llExchangeUrl);
         const llTokenData = await llTokenRes.json();
-
-        if (llTokenData.error) throw new Error(llTokenData.error.message);
+        if (llTokenData.error) throw new Error(llTokenData.error.message || 'Failed to get long-lived token');
 
         const longLivedToken = llTokenData.access_token;
-        const expiresInSeconds = llTokenData.expires_in || (60 * 60 * 24 * 60); // Default to 60 days
+        const expiresInSeconds = llTokenData.expires_in || (60 * 60 * 24 * 60);
         const expiresAt = new Date(Date.now() + expiresInSeconds * 1000).toISOString();
 
-        // Need the user ID. We skipped verification before, so we must rely on anonymous service role operation here.
-        // It's safer to have the callback redirect to the frontend with the code, and have the frontend POST the code.
-        // Or, we use Service Role to store it securely, assuming state cannot be forged.
         const serviceClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
-        // Fetch User ID to get business account id
-        const meRes = await fetch(`https://graph.facebook.com/v19.0/me?access_token=${longLivedToken}`);
-        const meData = await meRes.json();
-
-        // Look for business accounts linked to these pages
-        const pagesRes = await fetch(`https://graph.facebook.com/v19.0/me/accounts?fields=id,name,access_token,instagram_business_account&access_token=${longLivedToken}`);
-        const pagesData = await pagesRes.json();
-
-        console.log('Facebook Pages response:', JSON.stringify(pagesData));
-
-        let igBusinessId: string | null = null;
-
-        const igAccount = pagesData.data?.find((p: any) => p.instagram_business_account);
-        if (igAccount) {
-            igBusinessId = igAccount.instagram_business_account.id;
-        }
-
-        // Fallback: me/accounts can return empty in dev mode even with valid permissions.
-        // Use debug_token to extract IDs from granular_scopes instead.
-        if (!igBusinessId) {
-            console.log('me/accounts empty or no IG business account. Trying debug_token fallback...');
-            const debugTokenRes = await fetch(`https://graph.facebook.com/v19.0/debug_token?input_token=${longLivedToken}&access_token=${META_APP_ID}|${META_APP_SECRET}`);
-            const debugTokenData = await debugTokenRes.json();
-            const scopes = debugTokenData.data?.granular_scopes || [];
-
-            // Extract Instagram account ID from instagram_basic scope
-            const igScope = scopes.find((s: any) => s.scope === 'instagram_basic');
-            const igId = igScope?.target_ids?.[0];
-
-            // Extract Page ID from pages_show_list scope
-            const pageScope = scopes.find((s: any) => s.scope === 'pages_show_list');
-            const pageId = pageScope?.target_ids?.[0];
-
-            console.log(`debug_token fallback: igId=${igId}, pageId=${pageId}`);
-
-            if (igId) {
-                // Verify the Instagram account exists by querying it
-                const verifyRes = await fetch(`https://graph.facebook.com/v19.0/${igId}?fields=id,username&access_token=${longLivedToken}`);
-                const verifyData = await verifyRes.json();
-                if (verifyData.id) {
-                    igBusinessId = igId;
-                    console.log(`Found IG business account via debug_token: ${igId} (${verifyData.username})`);
-                } else {
-                    console.log('Could not verify IG account:', JSON.stringify(verifyData));
-                }
-            }
-
-            if (!igBusinessId) {
-                return Response.redirect(`${OAUTH_REDIRECT_BASE}/#/cliente/${clientId}?ig_error=no_business_account`, 302);
-            }
-        }
-
-        // Get basic profile data to store right away
-        const igProfileRes = await fetch(`https://graph.facebook.com/v19.0/${igBusinessId}?fields=username,profile_picture_url,followers_count,follows_count,media_count&access_token=${longLivedToken}`);
+        // Get basic profile data
+        const igProfileRes = await fetch(`https://graph.instagram.com/me?fields=username,profile_picture_url,followers_count,follows_count,media_count&access_token=${longLivedToken}`);
         const igProfile = await igProfileRes.json();
 
         // Encrypt Long Lived Token
@@ -247,7 +200,7 @@ Deno.serve(async (req) => {
         try {
             // 3.1 Fetch Account Insights (28 day window)
             const sinceDate = Math.floor(Date.now() / 1000 - (28 * 24 * 60 * 60));
-            const insightsRes = await fetch(`https://graph.facebook.com/v19.0/${account.instagram_user_id}/insights?metric=reach,impressions,profile_views&period=day&since=${sinceDate}&access_token=${accessToken}`);
+            const insightsRes = await fetch(`https://graph.instagram.com/v21.0/${account.instagram_user_id}/insights?metric=reach,impressions,profile_views&period=day&since=${sinceDate}&access_token=${accessToken}`);
             const insightsData = await insightsRes.json();
 
             // Check if token expired
@@ -267,7 +220,7 @@ Deno.serve(async (req) => {
             }
 
             // Update basic profile numbers again just to be fresh
-             const igProfileRes = await fetch(`https://graph.facebook.com/v19.0/${account.instagram_user_id}?fields=followers_count,follows_count,media_count&access_token=${accessToken}`);
+             const igProfileRes = await fetch(`https://graph.instagram.com/v21.0/${account.instagram_user_id}?fields=followers_count,follows_count,media_count&access_token=${accessToken}`);
              const igProfile = await igProfileRes.json();
 
             await serviceClient.from('instagram_accounts').update({
@@ -291,7 +244,7 @@ Deno.serve(async (req) => {
 
 
             // 3.2 Fetch Posts
-            const mediaRes = await fetch(`https://graph.facebook.com/v19.0/${account.instagram_user_id}/media?fields=id,caption,media_type,permalink,timestamp,comments_count,like_count&limit=50&access_token=${accessToken}`);
+            const mediaRes = await fetch(`https://graph.instagram.com/v21.0/${account.instagram_user_id}/media?fields=id,caption,media_type,permalink,timestamp,comments_count,like_count&limit=50&access_token=${accessToken}`);
             const mediaData = await mediaRes.json();
 
             if (mediaData.data) {
@@ -304,7 +257,7 @@ Deno.serve(async (req) => {
                         // Image posts don't have shares, video does.
                         if (post.media_type === 'VIDEO') metrics += ',shares';
 
-                        const postInsightsRes = await fetch(`https://graph.facebook.com/v19.0/${post.id}/insights?metric=${metrics}&access_token=${accessToken}`);
+                        const postInsightsRes = await fetch(`https://graph.instagram.com/v21.0/${post.id}/insights?metric=${metrics}&access_token=${accessToken}`);
                         const postInsightsData = await postInsightsRes.json();
 
                         if (postInsightsData.data) {
@@ -401,71 +354,6 @@ Deno.serve(async (req) => {
          return new Response(JSON.stringify({ posts: data, total: count }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // 7. POST /publish/:clientId
-    if (req.method === 'POST' && path.startsWith('/publish/')) {
-         const clientId = path.split('/')[2];
-         const reqBody = await req.json();
-         const caption = reqBody.caption || '';
-         const imageUrl = reqBody.media_url;
-
-         if (!imageUrl) throw new Error("A URL da imagem é obrigatória");
-         try {
-             const parsedImageUrl = new URL(imageUrl);
-             if (parsedImageUrl.protocol !== 'https:') throw new Error("A URL da imagem deve usar HTTPS");
-         } catch (urlErr: any) {
-             throw new Error(urlErr.message.startsWith("A URL") ? urlErr.message : "URL da imagem inválida");
-         }
-
-         const serviceClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
-
-         const { data: accounts, error: accountError } = await serviceClient
-             .from('instagram_accounts')
-             .select('*')
-             .eq('client_id', clientId);
-         
-         if (accountError || !accounts || accounts.length === 0) throw new Error("Account not found");
-         const account = accounts[0];
-
-         // Decrypt Token
-         const accessToken = await decryptToken(account.encrypted_access_token);
-
-         try {
-             // Step 1: Create Container
-             const containerRes = await fetch(`https://graph.facebook.com/v19.0/${account.instagram_user_id}/media`, {
-                 method: 'POST',
-                 headers: { 'Content-Type': 'application/json' },
-                 body: JSON.stringify({
-                     image_url: imageUrl,
-                     caption: caption,
-                     access_token: accessToken
-                 })
-             });
-             
-             const containerData = await containerRes.json();
-             if (containerData.error) throw new Error(containerData.error.message);
-             if (!containerData.id) throw new Error("Failed to create media container");
-
-             const creationId = containerData.id;
-
-             // Step 2: Publish Container
-             const publishRes = await fetch(`https://graph.facebook.com/v19.0/${account.instagram_user_id}/media_publish`, {
-                 method: 'POST',
-                 headers: { 'Content-Type': 'application/json' },
-                 body: JSON.stringify({
-                     creation_id: creationId,
-                     access_token: accessToken
-                 })
-             });
-
-             const publishData = await publishRes.json();
-             if (publishData.error) throw new Error(publishData.error.message);
-
-             return new Response(JSON.stringify({ success: true, id: publishData.id }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-         } catch (error: any) {
-             console.error('Publish Error', error);
-             throw new Error('Falha ao publicar no Instagram: ' + error.message);
-         }
-    }
 
     return new Response('Not Found', { status: 404, headers: corsHeaders });
 

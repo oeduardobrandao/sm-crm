@@ -82,18 +82,3 @@ export async function getInstagramPosts(clientId: number, page: number = 1): Pro
     return res.json();
 }
 
-export async function publishInstagramPost(clientId: number, caption: string, imageUrl: string): Promise<any> {
-    const headers = await getAuthHeaders();
-    const res = await fetch(`${EDGE_FUNCTION_URL}/publish/${clientId}`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ caption, media_url: imageUrl })
-    });
-
-    if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.message || 'Error publishing post');
-    }
-
-    return res.json();
-}

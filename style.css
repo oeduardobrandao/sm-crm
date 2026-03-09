@@ -493,7 +493,9 @@ body {
 }
 
 /* ===== Tables ===== */
-.table-container { margin-top: 2rem; }
+.table-container { margin-top: 2rem; overflow-x: auto; }
+
+.card:has(.data-table) { overflow-x: auto; }
 
 .data-table {
   width: 100%;
@@ -1613,6 +1615,45 @@ body {
   }
 }
 
+/* Medium desktop — 13" laptops, smaller screens */
+@media (min-width: 1101px) and (max-width: 1440px) {
+  .main-content {
+    padding: 2rem 2rem;
+  }
+
+  .header {
+    margin-bottom: 1.75rem;
+  }
+
+  .header-title h1 {
+    font-size: clamp(1.6rem, 3vw, 2.4rem);
+  }
+
+  .data-table th {
+    padding: 0.75rem 0.6rem;
+    font-size: 0.65rem;
+  }
+
+  .data-table td {
+    padding: 0.85rem 0.6rem;
+    font-size: 0.82rem;
+  }
+
+  .search-bar {
+    width: 240px;
+  }
+
+  .header-actions {
+    gap: 0.75rem;
+  }
+
+  .header-actions .btn-primary,
+  .header-actions .btn-secondary {
+    font-size: 0.8rem;
+    padding: 0.55rem 0.9rem;
+  }
+}
+
 /* Small desktop — compress sidebar to 64px rail */
 @media (min-width: 769px) and (max-width: 1100px) {
   :root {
@@ -1649,7 +1690,41 @@ body {
 
   .main-content {
     margin-left: calc(var(--sidebar-width) + 1rem);
-    padding: 1.75rem 1.5rem;
+    padding: 1.75rem 1.25rem;
+  }
+
+  .header {
+    margin-bottom: 1.25rem;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
+  .header-title h1 {
+    font-size: 1.5rem;
+  }
+
+  .data-table th {
+    padding: 0.6rem 0.5rem;
+    font-size: 0.6rem;
+  }
+
+  .data-table td {
+    padding: 0.75rem 0.5rem;
+    font-size: 0.78rem;
+  }
+
+  .header-actions {
+    gap: 0.5rem;
+  }
+
+  .header-actions .btn-primary,
+  .header-actions .btn-secondary {
+    font-size: 0.75rem;
+    padding: 0.45rem 0.75rem;
+  }
+
+  .search-bar {
+    width: 200px;
   }
 }
 
@@ -1669,10 +1744,6 @@ body {
 
   .integrations-grid {
     grid-template-columns: 1fr;
-  }
-
-  .header-title h1 {
-    font-size: 1.6rem;
   }
 }
 

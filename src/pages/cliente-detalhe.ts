@@ -8,7 +8,6 @@ import { renderInstagramConnectButton } from '../components/instagram/InstagramC
 import { renderInstagramOverviewCard } from '../components/instagram/InstagramOverviewCard';
 import { renderInstagramFollowerChart } from '../components/instagram/InstagramFollowerChart';
 import { renderInstagramPostsTable } from '../components/instagram/InstagramPostsTable';
-import { renderInstagramPostCreator } from '../components/instagram/InstagramPostCreator';
 
 export async function renderClienteDetalhe(container: HTMLElement, param?: string): Promise<void> {
   container.innerHTML = `
@@ -228,8 +227,16 @@ export async function renderClienteDetalhe(container: HTMLElement, param?: strin
              </div>`;
            try {
              await syncInstagramData(clienteId);
-           } catch (_) { /* will show stale data */ }
-           renderClienteDetalhe(container, param);
+             renderClienteDetalhe(container, param);
+           } catch (syncErr: any) {
+             igContainer.innerHTML = `
+               <div class="card animate-up" style="margin-bottom:1.5rem;">
+                 <div style="display:flex;align-items:center;gap:0.75rem;color:var(--text-muted);font-size:0.9rem;">
+                   <i class="ph ph-warning" style="font-size:1.1rem;color:#E1306C"></i>
+                   Erro ao sincronizar dados do Instagram. <a href="#" onclick="location.reload();return false;">Tentar novamente</a>
+                 </div>
+               </div>`;
+           }
            return;
          }
 
@@ -245,13 +252,7 @@ export async function renderClienteDetalhe(container: HTMLElement, param?: strin
          renderInstagramFollowerChart(chartWrapper, igSummary.history);
          igContainer.appendChild(chartWrapper);
 
-         const creatorWrapper = document.createElement('div');
-         renderInstagramPostCreator(creatorWrapper, clienteId, () => {
-             // onPublished -> reload page
-             renderClienteDetalhe(container, param);
-         });
-         igContainer.appendChild(creatorWrapper);
-         
+
          const postsWrapper = document.createElement('div');
          renderInstagramPostsTable(postsWrapper, clienteId);
          igContainer.appendChild(postsWrapper);
