@@ -58,14 +58,13 @@ Deno.serve(async (_req) => {
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Find tokens expiring within the next 10 days
-    // 10 days = 10 * 24 * 60 * 60 * 1000 ms
-    const tenDaysFromNow = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString();
+    // Find tokens expiring within the next 30 days (generous window to avoid expiry)
+    const thirtyDaysFromNow = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
     const { data: accounts, error } = await supabase
       .from('instagram_accounts')
       .select('id, encrypted_access_token')
-      .lte('token_expires_at', tenDaysFromNow);
+      .lte('token_expires_at', thirtyDaysFromNow);
 
     if (error) throw error;
     if (!accounts || accounts.length === 0) {
@@ -79,7 +78,7 @@ Deno.serve(async (_req) => {
       try {
         const currentToken = await decryptToken(account.encrypted_access_token);
         
-        // Refresh token via Meta API
+        // Refresh token via Instagram API (new Instagram Login flow)
         const refreshUrl = `https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=${currentToken}`;
         const res = await fetch(refreshUrl);
         const data = await res.json();

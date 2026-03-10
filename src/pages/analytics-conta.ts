@@ -335,7 +335,7 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
     </div>
 
     <!-- Audience Demographics + Best Time -->
-    <div class="widgets-grid animate-up">
+    <div class="widgets-grid animate-up" style="grid-template-columns:1fr 1fr">
       <div class="card">
         <h3>Demografia da Audiência</h3>
         ${!demographicsData

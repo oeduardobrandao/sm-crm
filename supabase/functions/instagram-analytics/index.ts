@@ -33,7 +33,7 @@ async function getCachedOrFetch<T>(
     .eq('cache_key', cacheKey)
     .single();
 
-  if (cached) {
+  if (cached && cached.data) {
     const age = Date.now() - new Date(cached.fetched_at).getTime();
     if (age < maxAgeHours * 60 * 60 * 1000) {
       return { data: cached.data as T, fromCache: true, fetchedAt: cached.fetched_at };
@@ -43,12 +43,14 @@ async function getCachedOrFetch<T>(
   const freshData = await fetchFn();
   const now = new Date().toISOString();
 
-  await serviceClient.from('instagram_analytics_cache').upsert({
-    instagram_account_id: accountId,
-    cache_key: cacheKey,
-    data: freshData,
-    fetched_at: now,
-  }, { onConflict: 'instagram_account_id,cache_key' });
+  if (freshData) {
+    await serviceClient.from('instagram_analytics_cache').upsert({
+      instagram_account_id: accountId,
+      cache_key: cacheKey,
+      data: freshData,
+      fetched_at: now,
+    }, { onConflict: 'instagram_account_id,cache_key' });
+  }
 
   return { data: freshData, fromCache: false, fetchedAt: now };
 }
@@ -261,9 +263,11 @@ Deno.serve(async (req) => {
       const { account, accessToken } = await getAccountWithToken(serviceClient, clientId);
 
       const result = await getCachedOrFetch(serviceClient, account.id, 'demographics', async () => {
+        console.log('[demographics] fetching for account', account.instagram_user_id);
         // Age+Gender breakdown
         const ageGenderUrl = `https://graph.facebook.com/${GRAPH_API_VERSION}/${account.instagram_user_id}/insights?metric=follower_demographics&period=lifetime&metric_type=total_value&breakdown=age,gender&access_token=${accessToken}`;
         const ageGenderData = await graphFetch(ageGenderUrl);
+        console.log('[demographics] ageGender results:', JSON.stringify(ageGenderData).slice(0, 200));
 
         // City breakdown
         const cityUrl = `https://graph.facebook.com/${GRAPH_API_VERSION}/${account.instagram_user_id}/insights?metric=follower_demographics&period=lifetime&metric_type=total_value&breakdown=city&access_token=${accessToken}`;
@@ -337,24 +341,45 @@ Deno.serve(async (req) => {
       const { account, accessToken } = await getAccountWithToken(serviceClient, clientId);
 
       const result = await getCachedOrFetch(serviceClient, account.id, 'online_followers', async () => {
-        const igUrl = `https://graph.facebook.com/${GRAPH_API_VERSION}/${account.instagram_user_id}/insights?metric=online_followers&period=day&access_token=${accessToken}`;
+        console.log('[online_followers] fetching for account', account.instagram_user_id);
+        const now = Math.floor(Date.now() / 1000);
+        const since = now - 30 * 86400;
+        const igUrl = `https://graph.facebook.com/${GRAPH_API_VERSION}/${account.instagram_user_id}/insights?metric=online_followers&period=lifetime&metric_type=total_value&since=${since}&until=${now}&access_token=${accessToken}`;
         const data = await graphFetch(igUrl);
+        console.log('[online_followers] response:', JSON.stringify(data).slice(0, 300));
 
         // Build 7x24 heatmap from the last 30 days of hourly data
         const heatmap: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0));
         const counts: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0));
 
+        // v22.0 supports both formats: try values array first, then total_value
         const values = data.data?.[0]?.values || [];
-        for (const entry of values) {
-          const date = new Date(entry.end_time);
-          const dayOfWeek = (date.getDay() + 6) % 7; // Monday=0
-          const hourData = entry.value || {};
-          for (const [hour, count] of Object.entries(hourData)) {
-            const h = parseInt(hour);
-            if (h >= 0 && h < 24) {
-              heatmap[dayOfWeek][h] += count as number;
-              counts[dayOfWeek][h] += 1;
+        if (values.length > 0) {
+          for (const entry of values) {
+            const date = new Date(entry.end_time);
+            const dayOfWeek = (date.getDay() + 6) % 7; // Monday=0
+            const hourData = entry.value || {};
+            for (const [hour, count] of Object.entries(hourData)) {
+              const h = parseInt(hour);
+              if (h >= 0 && h < 24) {
+                heatmap[dayOfWeek][h] += count as number;
+                counts[dayOfWeek][h] += 1;
+              }
             }
+          }
+        } else {
+          // total_value format: breakdowns with end_time dimension
+          const results = data.data?.[0]?.total_value?.breakdowns?.[0]?.results || [];
+          for (const entry of results) {
+            const dims = entry.dimension_values || [];
+            const endTime = dims[0]; // ISO timestamp
+            if (!endTime) continue;
+            const date = new Date(endTime);
+            const dayOfWeek = (date.getDay() + 6) % 7; // Monday=0
+            const hourData = entry.value || 0;
+            const hour = date.getHours();
+            heatmap[dayOfWeek][hour] += typeof hourData === 'number' ? hourData : 0;
+            counts[dayOfWeek][hour] += 1;
           }
         }
 
@@ -1009,6 +1034,7 @@ IMPORTANTE: Seja CONCISO (2-3 frases por campo). Não use aspas dentro dos texto
     return new Response('Not Found', { status: 404, headers: corsHeaders });
 
   } catch (err: any) {
+    console.error('[instagram-analytics] ERROR on path:', new URL(req.url).pathname, '—', err.message || err, err.stack || '');
     const isAuthError = err.message?.includes("Unauthorized");
     const isTokenExpired = err.code === 'TOKEN_EXPIRED' || err.message?.includes("expired");
     const statusCode = (isAuthError || isTokenExpired) ? 401 : 400;
