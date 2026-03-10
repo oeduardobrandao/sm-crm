@@ -493,6 +493,91 @@ body {
   color: var(--dark) !important;
 }
 
+/* ===== Dashboard Hub ===== */
+.dashboard-hub {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.dashboard-hub-card {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.dashboard-hub-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 32px rgba(0,0,0,0.12);
+}
+[data-theme="dark"] .dashboard-hub-card:hover {
+  box-shadow: 0 12px 32px rgba(0,0,0,0.4);
+}
+
+.dashboard-hub-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+.dashboard-hub-card-header h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-heading);
+  font-size: 1.15rem;
+  margin: 0;
+}
+.dashboard-hub-card-header .ph-arrow-right {
+  color: var(--text-muted);
+  font-size: 1rem;
+  transition: transform 0.2s ease, color 0.2s ease;
+}
+.dashboard-hub-card:hover .ph-arrow-right {
+  transform: translateX(3px);
+  color: var(--primary-color);
+}
+
+.dashboard-mini-kpis {
+  display: flex;
+  gap: 1.25rem;
+  margin-bottom: 1rem;
+}
+.dashboard-mini-kpi {
+  text-align: center;
+  flex: 1;
+}
+.dashboard-mini-kpi .value {
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: var(--text-main);
+}
+.dashboard-mini-kpi .label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  letter-spacing: 0.5px;
+}
+
+.dashboard-hub-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.dashboard-hub-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border-color);
+  gap: 0.75rem;
+}
+.dashboard-hub-row:last-child {
+  border-bottom: none;
+}
+
 /* ===== Tables ===== */
 .table-container { margin-top: 2rem; overflow-x: auto; }
 
@@ -1477,6 +1562,12 @@ body {
 
   /* Integrations grid on mobile */
   .integrations-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  /* Dashboard hub on mobile */
+  .dashboard-hub {
     grid-template-columns: 1fr;
     gap: 1rem;
   }
