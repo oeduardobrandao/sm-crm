@@ -768,25 +768,26 @@ Deno.serve(async (req) => {
       if (reportError) throw reportError;
 
       // Trigger report generation via the dedicated function
-      // For now, call it inline (can be moved to background later)
-      try {
-        const reportGenUrl = `${SUPABASE_URL}/functions/v1/instagram-report-generator/generate/${clientId}?month=${month}`;
-        const genRes = await fetch(reportGenUrl, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-            'apikey': SUPABASE_ANON_KEY,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ reportId: report.id }),
-        });
-        const genData = await genRes.json();
+      const reportGenUrl = `${SUPABASE_URL}/functions/v1/instagram-report-generator/generate/${clientId}?month=${month}`;
+      const genRes = await fetch(reportGenUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+          'apikey': SUPABASE_ANON_KEY,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ reportId: report.id }),
+      });
+      const genData = await genRes.json();
 
-        if (genData.report_url) {
-          return json({ reportId: report.id, status: 'ready', report_url: genData.report_url });
-        }
-      } catch (e) {
-        console.error('Report generation trigger failed:', e);
+      if (!genRes.ok || genData.error) {
+        // Mark as failed so it doesn't stay stuck
+        await serviceClient.from('analytics_reports').update({ status: 'failed' }).eq('id', report.id);
+        throw new Error(genData.message || 'Falha ao gerar relatório PDF');
+      }
+
+      if (genData.report_url) {
+        return json({ reportId: report.id, status: 'ready', report_url: genData.report_url });
       }
 
       return json({ reportId: report.id, status: 'generating' });

@@ -432,8 +432,9 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Gerando...';
     try {
       const result = await generateReport(clientId);
-      if (result.status === 'ready') {
+      if (result.status === 'ready' && result.report_url) {
         showToast('Relatório gerado com sucesso!', 'success');
+        window.open(result.report_url, '_blank', 'noopener');
       } else {
         showToast('Relatório em geração. Atualize em alguns minutos.', 'info');
       }

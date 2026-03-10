@@ -7,7 +7,7 @@ ALTER TABLE clientes ADD COLUMN IF NOT EXISTS especialidade text DEFAULT '';
 -- 2. Analytics cache (6-hour TTL for API responses)
 CREATE TABLE IF NOT EXISTS instagram_analytics_cache (
   id bigserial PRIMARY KEY,
-  instagram_account_id bigint REFERENCES instagram_accounts(id) ON DELETE CASCADE,
+  instagram_account_id uuid REFERENCES instagram_accounts(id) ON DELETE CASCADE,
   cache_key text NOT NULL,
   data jsonb NOT NULL DEFAULT '{}',
   fetched_at timestamptz NOT NULL DEFAULT now(),
@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS instagram_post_tags (
 
 CREATE TABLE IF NOT EXISTS instagram_post_tag_assignments (
   id bigserial PRIMARY KEY,
-  post_id bigint REFERENCES instagram_posts(id) ON DELETE CASCADE,
+  post_id uuid REFERENCES instagram_posts(id) ON DELETE CASCADE,
   tag_id bigint REFERENCES instagram_post_tags(id) ON DELETE CASCADE,
   UNIQUE(post_id, tag_id)
 );
@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS analytics_reports (
   id bigserial PRIMARY KEY,
   conta_id uuid NOT NULL,
   client_id bigint REFERENCES clientes(id) ON DELETE CASCADE,
-  instagram_account_id bigint REFERENCES instagram_accounts(id) ON DELETE CASCADE,
+  instagram_account_id uuid REFERENCES instagram_accounts(id) ON DELETE CASCADE,
   report_month text NOT NULL,
   report_url text,
   storage_path text,

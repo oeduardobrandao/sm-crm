@@ -603,13 +603,22 @@ export async function removeTagFromPost(postId: number, tagId: number): Promise<
 // ---- Reports ----
 
 export async function generateReport(clientId: number, month?: string): Promise<{ reportId: number; status: string; report_url?: string }> {
-  // Try edge function, fall back gracefully
-  const result = await fetchEdge<{ reportId: number; status: string; report_url?: string }>(`${EDGE_URL}/generate-report/${clientId}`, {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${EDGE_URL}/generate-report/${clientId}`, {
     method: 'POST',
+    headers,
     body: JSON.stringify({ month }),
   });
-  if (result) return result;
-  throw new Error('Função de geração de relatórios não disponível. Deploy a edge function instagram-analytics.');
+
+  const data = await res.json().catch(() => null);
+
+  if (!res.ok) {
+    throw new Error(data?.message || `Erro ao gerar relatório (${res.status})`);
+  }
+  if (!data) {
+    throw new Error('Resposta inválida do servidor');
+  }
+  return data;
 }
 
 export async function getClientReports(clientId: number): Promise<AnalyticsReport[]> {
