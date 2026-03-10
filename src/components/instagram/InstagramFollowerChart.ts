@@ -80,7 +80,7 @@ export function renderInstagramFollowerChart(container: HTMLElement, history: an
         },
         y: {
           grid: { color: gridColor, borderDash: [5, 5] },
-          ticks: { color: textColor, font: { family: "'DM Mono', monospace", size: 10 } },
+          ticks: { color: textColor, font: { family: "'DM Mono', monospace", size: 10 }, precision: 0 },
           beginAtZero: false // Let it zoom on the deltas
         }
       }

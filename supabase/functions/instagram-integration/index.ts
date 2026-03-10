@@ -279,11 +279,18 @@ Deno.serve(async (req) => {
         const accessToken = await decryptToken(account.encrypted_access_token);
 
         try {
-            // 3.1 Fetch Account Insights (28 day window)
+            // 3.1 Fetch Account Insights (28 day window) — all 3 calls in parallel
             const sinceDate = Math.floor(Date.now() / 1000 - (28 * 24 * 60 * 60));
-            // Fetch daily metrics (reach)
-            const insightsRes = await fetch(`https://graph.instagram.com/v21.0/${account.instagram_user_id}/insights?metric=reach&period=day&since=${sinceDate}&access_token=${accessToken}`);
-            const insightsData = await insightsRes.json();
+            const [insightsRes, totalRes, igProfileRes, mediaRes] = await Promise.all([
+                fetch(`https://graph.instagram.com/v21.0/${account.instagram_user_id}/insights?metric=reach&period=day&since=${sinceDate}&access_token=${accessToken}`),
+                fetch(`https://graph.instagram.com/v21.0/${account.instagram_user_id}/insights?metric=views,profile_views&metric_type=total_value&period=day&since=${sinceDate}&access_token=${accessToken}`),
+                fetch(`https://graph.instagram.com/v21.0/${account.instagram_user_id}?fields=followers_count,follows_count,media_count&access_token=${accessToken}`),
+                fetch(`https://graph.instagram.com/v21.0/${account.instagram_user_id}/media?fields=id,caption,media_type,permalink,timestamp,comments_count,like_count&limit=50&access_token=${accessToken}`)
+            ]);
+
+            const [insightsData, totalData, igProfile, mediaData] = await Promise.all([
+                insightsRes.json(), totalRes.json(), igProfileRes.json(), mediaRes.json()
+            ]);
 
             // Check if token expired
             if (insightsData.error?.code === 190) {
@@ -298,77 +305,72 @@ Deno.serve(async (req) => {
                 }
             }
 
-            // Fetch total_value metrics (views, profile_views) — these require metric_type=total_value
-            try {
-                const totalRes = await fetch(`https://graph.instagram.com/v21.0/${account.instagram_user_id}/insights?metric=views,profile_views&metric_type=total_value&period=day&since=${sinceDate}&access_token=${accessToken}`);
-                const totalData = await totalRes.json();
-                if (totalData.data) {
-                    for (const insight of totalData.data) {
-                        const val = insight.total_value?.value || 0;
-                        if (insight.name === 'views') totalImpressions = val;
-                        if (insight.name === 'profile_views') totalViews = val;
-                    }
+            if (totalData.data) {
+                for (const insight of totalData.data) {
+                    const val = insight.total_value?.value || 0;
+                    if (insight.name === 'views') totalImpressions = val;
+                    if (insight.name === 'profile_views') totalViews = val;
                 }
-            } catch (_) { /* ignore */ }
+            }
 
-            // Update basic profile numbers again just to be fresh
-             const igProfileRes = await fetch(`https://graph.instagram.com/v21.0/${account.instagram_user_id}?fields=followers_count,follows_count,media_count&access_token=${accessToken}`);
-             const igProfile = await igProfileRes.json();
-
-            await serviceClient.from('instagram_accounts').update({
-                follower_count: igProfile.followers_count || account.follower_count,
-                following_count: igProfile.follows_count || account.following_count,
-                media_count: igProfile.media_count || account.media_count,
-                reach_28d: totalReach,
-                impressions_28d: totalImpressions,
-                profile_views_28d: totalViews,
-                last_synced_at: new Date().toISOString()
-            }).eq('id', account.id);
-
-            // Fetch Follower History (Save daily snapshot)
-            // Just saving todays snapshot
             const today = new Date().toISOString().split('T')[0];
-            await serviceClient.from('instagram_follower_history').upsert({
-                instagram_account_id: account.id,
-                date: today,
-                follower_count: igProfile.followers_count || account.follower_count
-            }, { onConflict: 'instagram_account_id,date' });
+            // Update account stats and follower history in parallel
+            await Promise.all([
+                serviceClient.from('instagram_accounts').update({
+                    follower_count: igProfile.followers_count || account.follower_count,
+                    following_count: igProfile.follows_count || account.following_count,
+                    media_count: igProfile.media_count || account.media_count,
+                    reach_28d: totalReach,
+                    impressions_28d: totalImpressions,
+                    profile_views_28d: totalViews,
+                    last_synced_at: new Date().toISOString()
+                }).eq('id', account.id),
+                serviceClient.from('instagram_follower_history').upsert({
+                    instagram_account_id: account.id,
+                    date: today,
+                    follower_count: igProfile.followers_count || account.follower_count
+                }, { onConflict: 'instagram_account_id,date' })
+            ]);
 
-
-            // 3.2 Fetch Posts
-            const mediaRes = await fetch(`https://graph.instagram.com/v21.0/${account.instagram_user_id}/media?fields=id,caption,media_type,permalink,timestamp,comments_count,like_count&limit=50&access_token=${accessToken}`);
-            const mediaData = await mediaRes.json();
+            // 3.2 Fetch Post Insights — batched parallel (10 at a time)
             if (mediaData.data) {
-                for (const post of mediaData.data) {
-                     let reach = 0, impressions = 0, saved = 0, shares = 0;
-                     try {
-                        let metrics = 'reach,views,saved';
-                        if (post.media_type === 'VIDEO') metrics += ',shares';
-                        const postInsightsRes = await fetch(`https://graph.instagram.com/v21.0/${post.id}/insights?metric=${metrics}&access_token=${accessToken}`);
-                        const postInsightsData = await postInsightsRes.json();
-                        if (postInsightsData.data) {
-                            for (const insight of postInsightsData.data) {
-                                if (insight.name === 'reach') reach = insight.values[0].value;
-                                if (insight.name === 'views') impressions = insight.values[0].value;
-                                if (insight.name === 'saved') saved = insight.values[0].value;
-                                if (insight.name === 'shares') shares = insight.values[0].value;
+                const allPostData: any[] = [];
+                const BATCH_SIZE = 10;
+                for (let i = 0; i < mediaData.data.length; i += BATCH_SIZE) {
+                    const batch = mediaData.data.slice(i, i + BATCH_SIZE);
+                    const batchResults = await Promise.all(batch.map(async (post: any) => {
+                        let reach = 0, impressions = 0, saved = 0, shares = 0;
+                        try {
+                            let metrics = 'reach,views,saved';
+                            if (post.media_type === 'VIDEO') metrics += ',shares';
+                            const postInsightsRes = await fetch(`https://graph.instagram.com/v21.0/${post.id}/insights?metric=${metrics}&access_token=${accessToken}`);
+                            const postInsightsData = await postInsightsRes.json();
+                            if (postInsightsData.data) {
+                                for (const insight of postInsightsData.data) {
+                                    if (insight.name === 'reach') reach = insight.values[0].value;
+                                    if (insight.name === 'views') impressions = insight.values[0].value;
+                                    if (insight.name === 'saved') saved = insight.values[0].value;
+                                    if (insight.name === 'shares') shares = insight.values[0].value;
+                                }
                             }
-                        }
-                     } catch (_) { /* ignore per-post insight errors */ }
-
-                     await serviceClient.from('instagram_posts').upsert({
-                         instagram_account_id: account.id,
-                         instagram_post_id: post.id,
-                         caption: post.caption || '',
-                         media_type: post.media_type,
-                         permalink: post.permalink,
-                         posted_at: post.timestamp,
-                         likes: post.like_count || 0,
-                         comments: post.comments_count || 0,
-                         reach, impressions, saved, shares,
-                         synced_at: new Date().toISOString()
-                     }, { onConflict: 'instagram_post_id' });
+                        } catch (_) { /* ignore per-post insight errors */ }
+                        return {
+                            instagram_account_id: account.id,
+                            instagram_post_id: post.id,
+                            caption: post.caption || '',
+                            media_type: post.media_type,
+                            permalink: post.permalink,
+                            posted_at: post.timestamp,
+                            likes: post.like_count || 0,
+                            comments: post.comments_count || 0,
+                            reach, impressions, saved, shares,
+                            synced_at: new Date().toISOString()
+                        };
+                    }));
+                    allPostData.push(...batchResults);
                 }
+                // Single bulk upsert instead of 50 individual ones
+                await serviceClient.from('instagram_posts').upsert(allPostData, { onConflict: 'instagram_post_id' });
             }
             
             return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });

@@ -324,27 +324,26 @@ export async function getAnalyticsOverview(clientId: number, days = 30): Promise
   const periodStart = new Date(now - days * 86400000).toISOString();
   const prevStart = new Date(now - days * 2 * 86400000).toISOString();
 
-  // Posts for current and previous periods
-  const { data: currentPosts } = await supabase
-    .from('instagram_posts')
-    .select('likes, comments, saved, shares, reach')
-    .eq('instagram_account_id', account.id)
-    .gte('posted_at', periodStart);
-
-  const { data: previousPosts } = await supabase
-    .from('instagram_posts')
-    .select('likes, comments, saved, shares, reach')
-    .eq('instagram_account_id', account.id)
-    .gte('posted_at', prevStart)
-    .lt('posted_at', periodStart);
-
-  // Follower history
-  const { data: followerHistory } = await supabase
-    .from('instagram_follower_history')
-    .select('date, follower_count')
-    .eq('instagram_account_id', account.id)
-    .gte('date', new Date(now - days * 2 * 86400000).toISOString().split('T')[0])
-    .order('date', { ascending: true });
+  // Posts for current and previous periods + follower history — all in parallel
+  const [{ data: currentPosts }, { data: previousPosts }, { data: followerHistory }] = await Promise.all([
+    supabase
+      .from('instagram_posts')
+      .select('likes, comments, saved, shares, reach')
+      .eq('instagram_account_id', account.id)
+      .gte('posted_at', periodStart),
+    supabase
+      .from('instagram_posts')
+      .select('likes, comments, saved, shares, reach')
+      .eq('instagram_account_id', account.id)
+      .gte('posted_at', prevStart)
+      .lt('posted_at', periodStart),
+    supabase
+      .from('instagram_follower_history')
+      .select('date, follower_count')
+      .eq('instagram_account_id', account.id)
+      .gte('date', new Date(now - days * 2 * 86400000).toISOString().split('T')[0])
+      .order('date', { ascending: true }),
+  ]);
 
   const history = followerHistory || [];
   const periodStartDate = new Date(now - days * 86400000).toISOString().split('T')[0];
@@ -459,19 +458,20 @@ export async function getFollowerHistory(clientId: number, days = 90): Promise<F
   const account = await getAccountByClientId(clientId);
   const sinceDate = new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
 
-  const { data: history } = await supabase
-    .from('instagram_follower_history')
-    .select('date, follower_count')
-    .eq('instagram_account_id', account.id)
-    .gte('date', sinceDate)
-    .order('date', { ascending: true });
-
-  const { data: postDates } = await supabase
-    .from('instagram_posts')
-    .select('posted_at, media_type')
-    .eq('instagram_account_id', account.id)
-    .gte('posted_at', new Date(Date.now() - days * 86400000).toISOString())
-    .order('posted_at', { ascending: true });
+  const [{ data: history }, { data: postDates }] = await Promise.all([
+    supabase
+      .from('instagram_follower_history')
+      .select('date, follower_count')
+      .eq('instagram_account_id', account.id)
+      .gte('date', sinceDate)
+      .order('date', { ascending: true }),
+    supabase
+      .from('instagram_posts')
+      .select('posted_at, media_type')
+      .eq('instagram_account_id', account.id)
+      .gte('posted_at', new Date(Date.now() - days * 86400000).toISOString())
+      .order('posted_at', { ascending: true }),
+  ]);
 
   return {
     history: history || [],

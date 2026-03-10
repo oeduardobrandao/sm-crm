@@ -50,7 +50,18 @@ export async function renderAnalyticsConta(container: HTMLElement, param?: strin
     return;
   }
 
-  container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:40vh"><i class="fa-solid fa-spinner fa-spin" style="font-size:1.5rem;color:var(--primary-color)"></i></div>`;
+  container.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:1.5rem">
+      <header class="header animate-up">
+        <div class="header-title"><div class="skeleton" style="width:200px;height:28px;border-radius:6px"></div></div>
+        <div class="header-actions"><div class="skeleton" style="width:80px;height:36px;border-radius:6px"></div></div>
+      </header>
+      <div class="kpi-grid animate-up" style="grid-template-columns:repeat(auto-fit, minmax(160px, 1fr))">
+        ${Array(6).fill('<div class="kpi-card"><div class="skeleton" style="width:60%;height:14px;border-radius:4px;margin-bottom:8px"></div><div class="skeleton" style="width:40%;height:24px;border-radius:4px"></div></div>').join('')}
+      </div>
+      <div class="card animate-up"><div class="skeleton" style="width:100%;height:280px;border-radius:8px"></div></div>
+      <div class="card animate-up"><div class="skeleton" style="width:100%;height:200px;border-radius:8px"></div></div>
+    </div>`;
 
   try {
     const clientes = await getClientes();
@@ -97,28 +108,19 @@ export async function renderAnalyticsConta(container: HTMLElement, param?: strin
 }
 
 async function renderContent(container: HTMLElement, clientId: number, cliente: any, account: any, state: State) {
-  // Fetch all data in parallel
-  const [overviewRes, postsRes, historyRes, tagsData, reportsData] = await Promise.all([
+  // Fetch all data in parallel (single batch)
+  const [overviewRes, postsRes, historyRes, tagsData, reportsData, demoRes, onlineRes] = await Promise.all([
     getAnalyticsOverview(clientId, state.days),
     getPostsAnalytics(clientId, state.days, state.sort.col, state.sort.dir),
     getFollowerHistory(clientId, state.days),
     getTags(),
     getClientReports(clientId),
+    getAudienceDemographics(clientId).catch(() => null),
+    getOnlineFollowers(clientId).catch(() => null),
   ]);
 
-  // Demographics and online followers - fetch separately (may fail for small accounts)
-  let demographicsData: AudienceDemographics | null = null;
-  let onlineData: OnlineFollowers | null = null;
-  try {
-    const [demoRes, onlineRes] = await Promise.all([
-      getAudienceDemographics(clientId),
-      getOnlineFollowers(clientId),
-    ]);
-    demographicsData = demoRes?.data || null;
-    onlineData = onlineRes?.data || null;
-  } catch (_e) {
-    // Demographics may not be available (edge function not deployed or small accounts)
-  }
+  const demographicsData: AudienceDemographics | null = demoRes?.data || null;
+  const onlineData: OnlineFollowers | null = onlineRes?.data || null;
 
   const overview = overviewRes.data;
   const posts = postsRes.posts;
@@ -643,7 +645,7 @@ function renderFollowerChart(history: any[], postDates: any[]) {
       },
       scales: {
         x: { grid: { color: gridColor }, ticks: { color: textColor, maxTicksLimit: 10 } },
-        y: { grid: { color: gridColor }, ticks: { color: textColor } },
+        y: { grid: { color: gridColor }, ticks: { color: textColor, precision: 0 } },
       },
     },
   });
