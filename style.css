@@ -96,9 +96,10 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 2rem 0.5rem;
+  padding: clamp(1rem, 2.5vh, 2rem) 0.5rem;
   position: fixed;
   height: 100dvh;
+  max-height: 100dvh;
   top: 0;
   left: 0;
   border-radius: 0;
@@ -144,7 +145,7 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.75rem;
+  gap: clamp(0.25rem, 1.2vh, 0.75rem);
 }
 
 .nav-item {
@@ -157,8 +158,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 54px;
-  height: 54px;
+  width: clamp(40px, 5vh, 54px);
+  height: clamp(40px, 5vh, 54px);
   color: #94a3b8;
   text-decoration: none;
   border-radius: 18px;
@@ -170,7 +171,7 @@ body {
 
 .nav-link i {
   margin: 0;
-  font-size: 1.4rem;
+  font-size: clamp(1.1rem, 2vh, 1.4rem);
 }
 
 .nav-link:hover {
@@ -299,12 +300,12 @@ body {
 
 /* ===== Main Content ===== */
 .main-content {
-  margin-left: calc(var(--sidebar-width) + 2rem);
+  margin-left: calc(var(--sidebar-width) + clamp(0.75rem, 2vw, 2rem));
   flex-grow: 1;
   height: 100dvh;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 2.5rem 3rem;
+  padding: clamp(1.25rem, 3vw, 2.5rem) clamp(1rem, 3vw, 3rem);
   transition: opacity 0.18s ease, transform 0.18s ease, margin-left 0.25s ease;
 }
 
@@ -385,7 +386,7 @@ body {
 /* ===== Cards & Grid ===== */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 1.5rem;
   margin-bottom: 2rem;
 }
@@ -399,7 +400,7 @@ body {
 
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 1.5rem;
   margin-bottom: 2.5rem;
 }
@@ -1075,8 +1076,8 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.75rem;
-  padding-top: 1.5rem;
+  gap: clamp(0.25rem, 1vh, 0.75rem);
+  padding-top: clamp(0.5rem, 1.5vh, 1.5rem);
   border-top: 1px solid rgba(255,255,255,0.05);
   width: 100%;
 }
@@ -1086,8 +1087,8 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 54px;
-  height: 54px;
+  width: clamp(40px, 5vh, 54px);
+  height: clamp(40px, 5vh, 54px);
   border-radius: 18px;
   transition: background var(--transition);
   padding: 0;
@@ -1160,7 +1161,7 @@ body {
 }
 
 /* ===== Responsive (Mobile & Tablet) ===== */
-@media (max-width: 768px) {
+@media (max-width: 900px) {
   .app-container {
     flex-direction: column;
   }
@@ -1618,7 +1619,15 @@ body {
 /* Medium desktop — 13" laptops, smaller screens */
 @media (min-width: 1101px) and (max-width: 1440px) {
   .main-content {
-    padding: 2rem 2rem;
+    padding: clamp(1.5rem, 2.5vw, 2.5rem) clamp(1.25rem, 2.5vw, 2.5rem);
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  }
+
+  .kpi-grid {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   }
 
   .header {
@@ -1655,7 +1664,7 @@ body {
 }
 
 /* Small desktop — compress sidebar to 64px rail */
-@media (min-width: 769px) and (max-width: 1100px) {
+@media (min-width: 901px) and (max-width: 1100px) {
   :root {
     --sidebar-width: 64px;
   }
@@ -1689,8 +1698,8 @@ body {
   }
 
   .main-content {
-    margin-left: calc(var(--sidebar-width) + 1rem);
-    padding: 1.75rem 1.25rem;
+    margin-left: calc(var(--sidebar-width) + 0.75rem);
+    padding: 1.5rem 1.25rem;
   }
 
   .header {
@@ -1728,21 +1737,20 @@ body {
   }
 }
 
-/* Tablet adjustments */
-@media (min-width: 769px) and (max-width: 1024px) {
-  .kpi-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .stats-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
+/* Tablet/small-desktop grid adjustments */
+@media (min-width: 901px) and (max-width: 1100px) {
   .widgets-grid {
     grid-template-columns: 1fr;
   }
 
   .integrations-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Medium desktop: stack widgets-grid on narrower 13" screens */
+@media (min-width: 1101px) and (max-width: 1280px) {
+  .widgets-grid {
     grid-template-columns: 1fr;
   }
 }
