@@ -40,7 +40,7 @@ Deno.serve(async (req) => {
         .select('*')
         .eq('id', clientId)
         .single();
-      if (!cliente) throw new Error("Cliente nao encontrado");
+      if (!cliente) throw new Error("Cliente não encontrado");
 
       // Get Instagram account
       const { data: account } = await serviceClient
@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
         .select('*')
         .eq('client_id', clientId)
         .single();
-      if (!account) throw new Error("Conta Instagram nao encontrada");
+      if (!account) throw new Error("Conta Instagram não encontrada");
 
       // Get posts for the month
       const [year, monthNum] = month.split('-').map(Number);
@@ -101,13 +101,13 @@ Deno.serve(async (req) => {
       doc.setFillColor(18, 21, 26); // --dark
       doc.rect(0, 0, pageWidth, 297, 'F');
 
-      doc.setTextColor(200, 245, 66); // --primary
+      doc.setTextColor(234, 179, 8); // --primary
       doc.setFontSize(32);
       doc.text('Mesaas', pageWidth / 2, 80, { align: 'center' });
 
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(18);
-      doc.text('Relatorio de Performance', pageWidth / 2, 110, { align: 'center' });
+      doc.text('Relatório de Performance', pageWidth / 2, 110, { align: 'center' });
       doc.text('Instagram', pageWidth / 2, 122, { align: 'center' });
 
       doc.setFontSize(14);
@@ -128,7 +128,7 @@ Deno.serve(async (req) => {
 
       // Title
       doc.setFontSize(16);
-      doc.setTextColor(200, 245, 66);
+      doc.setTextColor(234, 179, 8);
       doc.text('Resumo Executivo', margin, y);
       y += 10;
 
@@ -156,12 +156,12 @@ Deno.serve(async (req) => {
 
       // Bullet points
       const bullets = [
-        `O perfil @${account.username} publicou ${totalPosts} conteudo${totalPosts !== 1 ? 's' : ''} em ${MONTHS_PT[monthNum - 1]}.`,
+        `O perfil @${account.username} publicou ${totalPosts} conteúdo${totalPosts !== 1 ? 's' : ''} em ${MONTHS_PT[monthNum - 1]}.`,
         followerGain >= 0
           ? `O perfil ganhou ${followerGain.toLocaleString('pt-BR')} seguidores (${followerGainPct > 0 ? '+' : ''}${followerGainPct.toFixed(1)}% de crescimento).`
           : `O perfil perdeu ${Math.abs(followerGain).toLocaleString('pt-BR')} seguidores (${followerGainPct.toFixed(1)}%).`,
-        `O alcance total no periodo foi de ${totalReach.toLocaleString('pt-BR')} pessoas.`,
-        `A taxa media de engajamento foi de ${avgEngagement.toFixed(2)}%, com ${totalSaved} salvamentos no total.`,
+        `O alcance total no período foi de ${totalReach.toLocaleString('pt-BR')} pessoas.`,
+        `A taxa média de engajamento foi de ${avgEngagement.toFixed(2)}%, com ${totalSaved} salvamentos no total.`,
       ];
 
       for (const b of bullets) {
@@ -173,7 +173,7 @@ Deno.serve(async (req) => {
 
       // KPI Grid
       doc.setFontSize(16);
-      doc.setTextColor(200, 245, 66);
+      doc.setTextColor(234, 179, 8);
       doc.text('Metricas do Mes', margin, y);
       y += 10;
 
@@ -209,7 +209,7 @@ Deno.serve(async (req) => {
       // === TOP 3 POSTS ===
       checkPageBreak(80);
       doc.setFontSize(16);
-      doc.setTextColor(200, 245, 66);
+      doc.setTextColor(234, 179, 8);
       doc.text('Top 3 Publicacoes', margin, y);
       y += 10;
 
@@ -245,10 +245,10 @@ Deno.serve(async (req) => {
 
         // Why it performed well
         let reason = '';
-        if (p.saved > totalSaved / (totalPosts || 1) * 2) reason = 'Alto numero de salvamentos indica conteudo util.';
-        else if (eng > avgEngagement * 1.5) reason = 'Engajamento acima da media do perfil.';
-        else if (p.reach > totalReach / (totalPosts || 1) * 1.5) reason = 'Alcance significativamente acima da media.';
-        else reason = 'Bom desempenho geral nas metricas.';
+        if (p.saved > totalSaved / (totalPosts || 1) * 2) reason = 'Alto número de salvamentos indica conteúdo útil.';
+        else if (eng > avgEngagement * 1.5) reason = 'Engajamento acima da média do perfil.';
+        else if (p.reach > totalReach / (totalPosts || 1) * 1.5) reason = 'Alcance significativamente acima da média.';
+        else reason = 'Bom desempenho geral nas métricas.';
 
         doc.setTextColor(62, 207, 142);
         doc.text(`→ ${reason}`, margin + 4, y + 23);
@@ -260,8 +260,8 @@ Deno.serve(async (req) => {
       checkPageBreak(50);
       y += 5;
       doc.setFontSize(16);
-      doc.setTextColor(200, 245, 66);
-      doc.text('Desempenho por Tipo de Conteudo', margin, y);
+      doc.setTextColor(234, 179, 8);
+      doc.text('Desempenho por Tipo de Conteúdo', margin, y);
       y += 10;
 
       const typeMap: Record<string, { count: number; totalEng: number; totalReach: number }> = {};
@@ -301,7 +301,7 @@ Deno.serve(async (req) => {
         checkPageBreak(60);
         y += 10;
         doc.setFontSize(16);
-        doc.setTextColor(200, 245, 66);
+        doc.setTextColor(234, 179, 8);
         doc.text('Audiencia', margin, y);
         y += 10;
 
@@ -327,7 +327,7 @@ Deno.serve(async (req) => {
       checkPageBreak(50);
       y += 10;
       doc.setFontSize(16);
-      doc.setTextColor(200, 245, 66);
+      doc.setTextColor(234, 179, 8);
       doc.text('Recomendacoes para o Proximo Mes', margin, y);
       y += 10;
 
@@ -345,7 +345,7 @@ Deno.serve(async (req) => {
       y = 280;
       doc.setFontSize(7);
       doc.setTextColor(150, 150, 150);
-      doc.text(`Relatorio gerado por Mesaas em ${new Date().toLocaleDateString('pt-BR')}`, pageWidth / 2, y, { align: 'center' });
+      doc.text(`Relatório gerado por Mesaas em ${new Date().toLocaleDateString('pt-BR')}`, pageWidth / 2, y, { align: 'center' });
 
       // --- Save PDF ---
       const pdfBytes = doc.output('arraybuffer');
@@ -396,7 +396,7 @@ Deno.serve(async (req) => {
 
   } catch (err: any) {
     console.error('Report generation error:', err);
-    return json({ error: true, message: err.message || 'Erro ao gerar relatorio' }, 500);
+    return json({ error: true, message: err.message || 'Erro ao gerar relatório' }, 500);
   }
 });
 
@@ -423,36 +423,36 @@ function generateRecommendations(
   })).sort((a, b) => b.avgEng - a.avgEng);
 
   if (types.length >= 2 && types[0].avgEng > types[1].avgEng * 1.3) {
-    recs.push(`${types[0].type}s tiveram o melhor engajamento (${types[0].avgEng.toFixed(1)}%). Considere publicar mais conteudo nesse formato.`);
+    recs.push(`${types[0].type}s tiveram o melhor engajamento (${types[0].avgEng.toFixed(1)}%). Considere publicar mais conteúdo nesse formato.`);
   }
 
   // Saves rate
   if (savesRate < 1) {
-    recs.push('A taxa de salvamentos esta abaixo de 1%. Invista em conteudo educativo e informativo que os seguidores queiram guardar para consulta futura.');
+    recs.push('A taxa de salvamentos está abaixo de 1%. Invista em conteúdo educativo e informativo que os seguidores queiram guardar para consulta futura.');
   } else if (savesRate >= 3) {
-    recs.push(`Excelente taxa de salvamentos (${savesRate.toFixed(1)}%)! Continue produzindo conteudo educativo e util.`);
+    recs.push(`Excelente taxa de salvamentos (${savesRate.toFixed(1)}%)! Continue produzindo conteúdo educativo e útil.`);
   }
 
   // Posting frequency
   if (posts.length < 8) {
-    recs.push(`Apenas ${posts.length} publicacoes no mes. Busque manter uma frequencia de pelo menos 3 posts por semana para manter o algoritmo engajado.`);
+    recs.push(`Apenas ${posts.length} publicações no mês. Busque manter uma frequência de pelo menos 3 posts por semana para manter o algoritmo engajado.`);
   }
 
   // Engagement
   if (avgEngagement < 2) {
-    recs.push('O engajamento esta abaixo de 2%. Experimente CTAs (chamadas para acao) mais diretas nas legendas e use formatos interativos como enquetes nos Stories.');
+    recs.push('O engajamento está abaixo de 2%. Experimente CTAs (chamadas para ação) mais diretas nas legendas e use formatos interativos como enquetes nos Stories.');
   }
 
   // Follower growth
   if (followerGain <= 0) {
-    recs.push('O perfil nao cresceu em seguidores este mes. Considere estrategias de colaboracao com outros perfis da area e conteudo viral (Reels curtos e informativos).');
+    recs.push('O perfil não cresceu em seguidores este mês. Considere estratégias de colaboração com outros perfis da área e conteúdo viral (Reels curtos e informativos).');
   }
 
   // Default if no recs
   if (recs.length === 0) {
-    recs.push('Continue mantendo a consistencia de publicacoes e o nivel de engajamento atual.');
-    recs.push('Teste novos formatos de conteudo para identificar oportunidades de crescimento.');
-    recs.push('Monitore as metricas semanalmente para ajustes rapidos na estrategia.');
+    recs.push('Continue mantendo a consistência de publicações e o nível de engajamento atual.');
+    recs.push('Teste novos formatos de conteúdo para identificar oportunidades de crescimento.');
+    recs.push('Monitore as métricas semanalmente para ajustes rápidos na estratégia.');
   }
 
   return recs.slice(0, 3);

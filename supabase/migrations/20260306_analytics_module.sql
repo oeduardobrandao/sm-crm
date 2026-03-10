@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS instagram_post_tags (
   id bigserial PRIMARY KEY,
   conta_id uuid NOT NULL,
   tag_name text NOT NULL,
-  color text NOT NULL DEFAULT '#c8f542',
+  color text NOT NULL DEFAULT '#eab308',
   UNIQUE(conta_id, tag_name)
 );
 

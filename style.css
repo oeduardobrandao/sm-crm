@@ -10,8 +10,8 @@
   --surface-darker: #f1f5f9;
 
   /* Brand Colors */
-  --primary-color: #c8f542; /* Lime Accent */
-  --primary-hover: #a5d32b;
+  --primary-color: #eab308; /* Yellow Accent */
+  --primary-hover: #ca8a04;
   --success: #3ecf8e;
   --warning: #f5a342;
   --danger: #f55a42;
@@ -21,8 +21,8 @@
 
   /* Texto e Bordas */
   --text-main: #12151a;
-  --text-muted: #4a5468;
-  --text-light: #64748b;
+  --text-muted: #374151;
+  --text-light: #4b5563;
   --border-color: rgba(30, 36, 48, 0.15);
 
   /* Dimensões e Globais */
@@ -46,7 +46,7 @@
   --surface-darker: #050608;
 
   --text-main: #e8eaf0;
-  --text-muted: #5a6070;
+  --text-muted: #9ca3af;
   --text-light: #94a3b8;
   --border-color: #1e2430;
   --shadow: 0 10px 40px -10px rgba(0,0,0,0.2);
@@ -184,7 +184,7 @@ body {
   color: #12151a;
   border: none;
   border-radius: 18px;
-  box-shadow: 0 10px 20px rgba(200, 245, 66, 0.2);
+  box-shadow: 0 10px 20px rgba(234, 179, 8, 0.2);
 }
 
 /* ===== Premium Tooltips ===== */
@@ -874,7 +874,7 @@ body {
   background-color: #eaf0dc; /* forçado ao light mode */
   background: 
     url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.08'/%3E%3C/svg%3E"), 
-    linear-gradient(135deg, #eaf0dc 0%, #c8f542 100%);
+    linear-gradient(135deg, #eaf0dc 0%, #eab308 100%);
   color: #1e293b;
   overflow-y: auto;
 }
@@ -883,7 +883,7 @@ body {
   background-color: #eaf0dc;
   background: 
     url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.08'/%3E%3C/svg%3E"), 
-    linear-gradient(135deg, #eaf0dc 0%, #c8f542 100%);
+    linear-gradient(135deg, #eaf0dc 0%, #eab308 100%);
   color: #1e293b;
 }
 
@@ -1329,7 +1329,7 @@ body {
   }
 
   .mobile-more-item.active {
-    background: rgba(200, 245, 66, 0.08);
+    background: rgba(234, 179, 8, 0.08);
     color: var(--primary-color);
   }
 
@@ -1779,7 +1779,7 @@ body {
 .calendar-tab.active {
   color: var(--primary-color);
   font-weight: 600;
-  background: rgba(200, 245, 66, 0.05);
+  background: rgba(234, 179, 8, 0.05);
 }
 
 .calendar-tab.active::after {

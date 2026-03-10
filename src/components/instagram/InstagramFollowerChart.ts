@@ -30,7 +30,7 @@ export function renderInstagramFollowerChart(container: HTMLElement, history: an
   const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
   const textColor = isDark ? '#94a3b8' : '#4a5468';
   const gridColor = isDark ? '#1e2430' : 'rgba(30,36,48,0.05)';
-  const primaryColor = document.documentElement.style.getPropertyValue('--primary-color') || '#c8f542';
+  const primaryColor = document.documentElement.style.getPropertyValue('--primary-color') || '#eab308';
 
   const labels = history.map(h => formatDate(h.date).substring(0,5)); // Ex: 10/05
   const data = history.map(h => h.follower_count);

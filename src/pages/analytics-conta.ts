@@ -16,12 +16,14 @@ import {
   removeTagFromPost,
   generateReport,
   getClientReports,
+  getAccountAIAnalysis,
   type KpiDelta,
   type PostAnalytics,
   type PostTag,
   type AudienceDemographics,
   type OnlineFollowers,
   type AnalyticsReport,
+  type AccountAIAnalysis,
 } from '../services/analytics';
 import { getInstagramSummary } from '../services/instagram';
 
@@ -44,7 +46,7 @@ export async function renderAnalyticsConta(container: HTMLElement, param?: strin
   destroyCharts();
   const clientId = parseInt(param || '', 10);
   if (isNaN(clientId) || clientId <= 0) {
-    container.innerHTML = `<div class="card"><p style="color:var(--danger)">ID de cliente invalido.</p></div>`;
+    container.innerHTML = `<div class="card"><p style="color:var(--danger)">ID de cliente inválido.</p></div>`;
     return;
   }
 
@@ -54,7 +56,7 @@ export async function renderAnalyticsConta(container: HTMLElement, param?: strin
     const clientes = await getClientes();
     const cliente = clientes.find(c => c.id === clientId);
     if (!cliente) {
-      container.innerHTML = `<div class="card"><p style="color:var(--danger)">Cliente nao encontrado.</p></div>`;
+      container.innerHTML = `<div class="card"><p style="color:var(--danger)">Cliente não encontrado.</p></div>`;
       return;
     }
 
@@ -68,7 +70,7 @@ export async function renderAnalyticsConta(container: HTMLElement, param?: strin
         </header>
         <div class="card animate-up" style="text-align:center;padding:3rem">
           <i class="ph ph-instagram-logo" style="font-size:3rem;color:var(--text-muted);margin-bottom:1rem"></i>
-          <h3>Instagram nao conectado</h3>
+          <h3>Instagram não conectado</h3>
           <p style="color:var(--text-muted);margin-top:0.5rem">Conecte a conta Instagram deste cliente para acessar os analytics.</p>
           <a href="#/cliente/${clientId}" class="btn-primary" style="margin-top:1rem;display:inline-block">Ir para o perfil do cliente</a>
         </div>`;
@@ -160,6 +162,7 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
     : '';
 
   container.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:1.5rem">
     <header class="header animate-up">
       <div class="header-title">
         <div style="display:flex;align-items:center;gap:0.75rem">
@@ -174,7 +177,7 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
       </div>
       <div class="header-actions">
         <button class="btn-secondary" id="btn-back"><i class="ph ph-arrow-left"></i> Voltar</button>
-        <button class="btn-primary" id="btn-gen-report"><i class="ph ph-file-pdf"></i> Gerar Relatorio</button>
+        <button class="btn-primary" id="btn-gen-report"><i class="ph ph-file-pdf"></i> Gerar Relatório</button>
       </div>
     </header>
 
@@ -197,13 +200,13 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
 
     <!-- Saves Rate Highlight -->
     ${topSaved.length > 0 ? `
-    <div class="analytics-callout animate-up" style="border-left-color:var(--primary-color);background:rgba(200,245,66,0.03)">
+    <div class="analytics-callout animate-up" style="border-left-color:var(--primary-color);background:rgba(234,179,8,0.03)">
       <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem">
         <i class="ph ph-bookmark-simple" style="color:var(--primary-color);font-size:1.2rem"></i>
         <strong>Taxa de Salvamentos</strong>
       </div>
       <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:0.75rem">
-        Salvamentos indicam que alguem guardou o conteudo para uma decisao de saude. E a metrica mais subestimada para conteudo medico.
+        Salvamentos indicam que alguem guardou o conteúdo para uma decisão de saúde. É a métrica mais subestimada para conteúdo médico.
       </p>
       <div style="display:flex;flex-wrap:wrap;gap:0.5rem">
         ${topSaved.map(p => `
@@ -220,15 +223,15 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
     <div class="card animate-up">
       <h3>Crescimento de Seguidores</h3>
       ${history.length < 2
-        ? '<p style="color:var(--text-muted);margin-top:1rem">Dados insuficientes. O historico e construido diariamente.</p>'
+        ? '<p style="color:var(--text-muted);margin-top:1rem">Dados insuficientes. O histórico é construído diariamente.</p>'
         : `<div style="position:relative;height:280px;margin-top:1rem"><canvas id="follower-chart"></canvas></div>`}
     </div>
 
     <!-- Content Performance Table -->
     <div class="card animate-up">
-      <h3>Performance de Conteudo</h3>
+      <h3>Performance de Conteúdo</h3>
       ${posts.length === 0
-        ? '<p style="color:var(--text-muted);margin-top:1rem">Nenhuma publicacao neste periodo.</p>'
+        ? '<p style="color:var(--text-muted);margin-top:1rem">Nenhuma publicação neste período.</p>'
         : `
       <div style="overflow-x:auto;margin-top:1rem">
         <table class="data-table" id="posts-table">
@@ -278,6 +281,19 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
       </div>`}
     </div>
 
+    <!-- AI Analysis Section -->
+    <div class="card animate-up" id="ai-analysis-section">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+        <h3><i class="ph ph-sparkle" style="color:var(--primary-color)"></i> Análise Inteligente</h3>
+        <button class="btn-secondary" id="btn-ai-analyze" style="font-size:0.8rem">
+          <i class="ph ph-lightning"></i> Gerar Análise IA
+        </button>
+      </div>
+      <div id="ai-analysis-content">
+        <p style="color:var(--text-muted);font-size:0.9rem">Clique em "Gerar Análise IA" para obter insights personalizados sobre esta conta.</p>
+      </div>
+    </div>
+
     <!-- Content Type Breakdown + Topic Performance -->
     <div class="widgets-grid animate-up">
       <div class="card">
@@ -288,7 +304,7 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
       </div>
 
       <div class="card">
-        <h3>Desempenho por Topico</h3>
+        <h3>Desempenho por Tópico</h3>
         <div style="margin-top:0.75rem;display:flex;flex-wrap:wrap;gap:0.5rem;margin-bottom:1rem" id="tags-list">
           ${tagsData.map(t => `
             <span class="tag-pill" style="background:${escapeHTML(t.color)}20;color:${escapeHTML(t.color)};border:1px solid ${escapeHTML(t.color)}40">
@@ -319,12 +335,12 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
     <!-- Audience Demographics + Best Time -->
     <div class="widgets-grid animate-up">
       <div class="card">
-        <h3>Demografia da Audiencia</h3>
+        <h3>Demografia da Audiência</h3>
         ${!demographicsData
-          ? '<p style="color:var(--text-muted);margin-top:1rem">Dados demograficos indisponiveis. A conta pode nao ter seguidores suficientes ou a permissao instagram_manage_insights pode estar ausente.</p>'
+          ? '<p style="color:var(--text-muted);margin-top:1rem">Dados demográficos indisponíveis. A conta pode não ter seguidores suficientes ou a permissão instagram_manage_insights pode estar ausente.</p>'
           : `
           <div style="margin-top:1rem">
-            <h4 style="font-size:0.85rem;margin-bottom:0.5rem">Genero</h4>
+            <h4 style="font-size:0.85rem;margin-bottom:0.5rem">Gênero</h4>
             <div style="display:flex;gap:1rem;margin-bottom:1rem">
               <div style="flex:1;background:rgba(66,133,244,0.1);border-radius:8px;padding:0.5rem;text-align:center">
                 <div style="font-size:1.2rem;font-weight:700;color:#4285f4">${demographicsData.gender_split.male}%</div>
@@ -336,7 +352,7 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
               </div>
             </div>
 
-            <h4 style="font-size:0.85rem;margin-bottom:0.5rem">Faixa Etaria</h4>
+            <h4 style="font-size:0.85rem;margin-bottom:0.5rem">Faixa Etária</h4>
             <div style="position:relative;height:200px;margin-bottom:1rem"><canvas id="age-chart"></canvas></div>
 
             <h4 style="font-size:0.85rem;margin-bottom:0.5rem">Principais Cidades</h4>
@@ -348,7 +364,7 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
             `).join('')}
 
             ${demographicsData.countries.length > 0 ? `
-            <h4 style="font-size:0.85rem;margin:0.75rem 0 0.5rem">Principais Paises</h4>
+            <h4 style="font-size:0.85rem;margin:0.75rem 0 0.5rem">Principais Países</h4>
             ${demographicsData.countries.slice(0, 3).map((c, i) => `
               <div style="display:flex;align-items:center;justify-content:space-between;padding:0.3rem 0;font-size:0.85rem">
                 <span>${i + 1}. ${escapeHTML(c.code)}</span>
@@ -361,14 +377,14 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
       </div>
 
       <div class="card">
-        <h3>Melhor Horario para Postar</h3>
+        <h3>Melhor Horário para Postar</h3>
         ${!onlineData || onlineData.heatmap.every(row => row.every(v => v === 0))
-          ? '<p style="color:var(--text-muted);margin-top:1rem">Dados insuficientes. Disponivel para contas com 100+ seguidores.</p>'
+          ? '<p style="color:var(--text-muted);margin-top:1rem">Dados insuficientes. Disponível para contas com 100+ seguidores.</p>'
           : `
           <div style="margin-top:1rem;overflow-x:auto">
             ${renderHeatmap(onlineData)}
             <div style="margin-top:1rem">
-              <h4 style="font-size:0.85rem;margin-bottom:0.5rem">Top 3 Horarios Recomendados</h4>
+              <h4 style="font-size:0.85rem;margin-bottom:0.5rem">Top 3 Horários Recomendados</h4>
               ${onlineData.topSlots.map((s, i) => `
                 <div style="display:flex;align-items:center;gap:0.5rem;padding:0.3rem 0;font-size:0.85rem">
                   <span class="badge badge-success">${i + 1}</span>
@@ -384,7 +400,7 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
     <!-- Reports Section -->
     ${reportsData.length > 0 ? `
     <div class="card animate-up">
-      <h3>Relatorios Gerados</h3>
+      <h3>Relatórios Gerados</h3>
       <div style="margin-top:1rem">
         ${reportsData.map(r => `
           <div style="display:flex;align-items:center;justify-content:space-between;padding:0.5rem 0;border-bottom:1px solid var(--border-color,rgba(0,0,0,0.06))">
@@ -399,6 +415,7 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
         `).join('')}
       </div>
     </div>` : ''}
+    </div>
   `;
 
   // --- Bind Events ---
@@ -414,15 +431,75 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
     try {
       const result = await generateReport(clientId);
       if (result.status === 'ready') {
-        showToast('Relatorio gerado com sucesso!', 'success');
+        showToast('Relatório gerado com sucesso!', 'success');
       } else {
-        showToast('Relatorio em geracao. Atualize em alguns minutos.', 'info');
+        showToast('Relatório em geração. Atualize em alguns minutos.', 'info');
       }
       await renderContent(container, clientId, cliente, account, state);
     } catch (e: any) {
-      showToast(e.message || 'Erro ao gerar relatorio', 'error');
+      showToast(e.message || 'Erro ao gerar relatório', 'error');
       btn.disabled = false;
-      btn.innerHTML = '<i class="ph ph-file-pdf"></i> Gerar Relatorio';
+      btn.innerHTML = '<i class="ph ph-file-pdf"></i> Gerar Relatório';
+    }
+  });
+
+  // AI Analysis button
+  document.getElementById('btn-ai-analyze')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btn-ai-analyze') as HTMLButtonElement;
+    const contentDiv = document.getElementById('ai-analysis-content')!;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Analisando...';
+    contentDiv.innerHTML = '<p style="color:var(--text-muted)"><i class="fa-solid fa-spinner fa-spin"></i> Gerando análise com IA... Isso pode levar alguns segundos.</p>';
+
+    try {
+      const result = await getAccountAIAnalysis(clientId, state.days);
+      if (result.analysis.error) {
+        contentDiv.innerHTML = `<p style="color:var(--danger)">Não foi possível gerar a análise. ${result.analysis.raw ? escapeHTML(String(result.analysis.raw).slice(0, 200)) : 'Tente novamente.'}</p>`;
+        return;
+      }
+      const a = result.analysis;
+      const scoreColor = a.healthScore >= 70 ? 'var(--success)' : a.healthScore >= 40 ? 'var(--warning)' : 'var(--danger)';
+
+      contentDiv.innerHTML = `
+        <div style="display:flex;align-items:center;gap:1.25rem;padding-bottom:1rem;border-bottom:1px solid var(--border-color)">
+          <div style="font-size:2.8rem;font-weight:800;color:${scoreColor};line-height:1">${a.healthScore}</div>
+          <div style="flex:1">
+            <div style="font-size:0.75rem;text-transform:uppercase;font-weight:700;color:var(--text-muted);letter-spacing:0.5px;margin-bottom:0.2rem">Health Score</div>
+            <p style="font-size:0.85rem;color:var(--text-main);line-height:1.4">${escapeHTML(a.healthExplanation)}</p>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.25rem;padding:1.25rem 0;border-bottom:1px solid var(--border-color)">
+          <div>
+            <h4 style="font-size:0.8rem;margin-bottom:0.4rem;color:var(--text-muted)"><i class="ph ph-chart-bar" style="color:var(--primary-color)"></i> Performance de Conteúdo</h4>
+            <p style="font-size:0.85rem;color:var(--text-main);line-height:1.5">${escapeHTML(a.contentInsights)}</p>
+          </div>
+          <div>
+            <h4 style="font-size:0.8rem;margin-bottom:0.4rem;color:var(--text-muted)"><i class="ph ph-text-aa" style="color:var(--primary-color)"></i> Análise de Legendas</h4>
+            <p style="font-size:0.85rem;color:var(--text-main);line-height:1.5">${escapeHTML(a.captionAnalysis)}</p>
+          </div>
+          <div>
+            <h4 style="font-size:0.8rem;margin-bottom:0.4rem;color:var(--text-muted)"><i class="ph ph-trend-up" style="color:var(--primary-color)"></i> Projeção de Crescimento</h4>
+            <p style="font-size:0.85rem;color:var(--text-main);line-height:1.5">${escapeHTML(a.growthForecast)}</p>
+          </div>
+        </div>
+        <div style="padding-top:1.25rem">
+          <h4 style="font-size:0.8rem;margin-bottom:0.6rem;color:var(--text-muted)"><i class="ph ph-target" style="color:var(--primary-color)"></i> Recomendações</h4>
+          <div style="display:flex;flex-direction:column;gap:0.5rem">
+            ${a.topRecommendations.map((r, i) => `
+              <div style="display:flex;align-items:baseline;gap:0.6rem;font-size:0.85rem">
+                <span class="badge badge-success" style="font-size:0.7rem;min-width:20px;text-align:center">${i + 1}</span>
+                <span style="line-height:1.4">${escapeHTML(r)}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+        <p style="font-size:0.65rem;color:var(--text-muted);margin-top:1rem;text-align:right">Gerado em ${new Date(result.generatedAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</p>
+      `;
+    } catch (e: any) {
+      contentDiv.innerHTML = `<p style="color:var(--danger)">Erro: ${escapeHTML(e.message || 'Falha na análise')}</p>`;
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="ph ph-lightning"></i> Gerar Análise IA';
     }
   });
 
@@ -492,7 +569,7 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
   document.getElementById('btn-add-tag')?.addEventListener('click', async () => {
     const name = prompt('Nome da nova tag (ex: Educativo, Procedimento, Bastidores):');
     if (!name || !name.trim()) return;
-    const colors = ['#3ecf8e', '#f5a342', '#42c8f5', '#f542c8', '#c8f542', '#f55a42', '#8b5cf6'];
+    const colors = ['#3ecf8e', '#f5a342', '#42c8f5', '#f542c8', '#eab308', '#f55a42', '#8b5cf6'];
     const color = colors[Math.floor(Math.random() * colors.length)];
     try {
       await createTag(name.trim(), color);
@@ -536,13 +613,13 @@ function renderFollowerChart(history: any[], postDates: any[]) {
         {
           label: 'Seguidores',
           data: history.map(h => h.follower_count),
-          borderColor: '#c8f542',
-          backgroundColor: 'rgba(200,245,66,0.1)',
+          borderColor: '#eab308',
+          backgroundColor: 'rgba(234,179,8,0.1)',
           fill: true,
           tension: 0.3,
           pointRadius: history.map(h => postDateSet.has(h.date) ? 6 : 2),
-          pointBackgroundColor: history.map(h => postDateSet.has(h.date) ? '#f5a342' : '#c8f542'),
-          pointBorderColor: history.map(h => postDateSet.has(h.date) ? '#f5a342' : '#c8f542'),
+          pointBackgroundColor: history.map(h => postDateSet.has(h.date) ? '#f5a342' : '#eab308'),
+          pointBorderColor: history.map(h => postDateSet.has(h.date) ? '#f5a342' : '#eab308'),
         },
       ],
     },
@@ -580,14 +657,14 @@ function renderTypeChart(typeBreakdown: { type: string; count: number; avgEngage
   const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
   const textColor = isDark ? '#e0e0e0' : '#333';
   const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
-  const colors = ['#c8f542', '#42c8f5', '#f5a342', '#f542c8', '#3ecf8e'];
+  const colors = ['#eab308', '#42c8f5', '#f5a342', '#f542c8', '#3ecf8e'];
 
   const chart = new Chart(canvas, {
     type: 'bar',
     data: {
       labels: typeBreakdown.map(t => `${t.type} (${t.count})`),
       datasets: [{
-        label: 'Engajamento Medio',
+        label: 'Engajamento Médio',
         data: typeBreakdown.map(t => t.avgEngagement),
         backgroundColor: typeBreakdown.map((_, i) => colors[i % colors.length] + '99'),
         borderRadius: 4,
@@ -717,7 +794,7 @@ function renderHeatmap(data: OnlineFollowers): string {
               const intensity = max > 0 ? val / max : 0;
               const isTop = data.topSlots.some(s => s.day === d && s.hour === h);
               const bg = intensity > 0
-                ? `rgba(200,245,66,${0.1 + intensity * 0.8})`
+                ? `rgba(234,179,8,${0.1 + intensity * 0.8})`
                 : 'rgba(0,0,0,0.02)';
               return `<td style="background:${bg};${isTop ? 'outline:2px solid var(--primary-color);outline-offset:-1px;' : ''}" title="${day} ${h}h: ${val.toLocaleString('pt-BR')}">${val > 0 ? Math.round(val / 1000) + 'k' : ''}</td>`;
             }).join('')}
@@ -746,19 +823,19 @@ function renderDemographicCallout(data: AudienceDemographics, especialidade?: st
     const parentSpecialties = ['pediatr', 'neonat'];
     const isParentSpec = parentSpecialties.some(s => spec.includes(s));
     if (isParentSpec && dominant.age_range === '25-34') {
-      messages.push(`<span style="color:var(--success)"><i class="ph ph-check-circle"></i> Audiencia alinhada: a faixa ${dominant.age_range} sao tipicamente pais jovens, ideal para ${escapeHTML(especialidade)}.</span>`);
+      messages.push(`<span style="color:var(--success)"><i class="ph ph-check-circle"></i> Audiência alinhada: a faixa ${dominant.age_range} são tipicamente pais jovens, ideal para ${escapeHTML(especialidade)}.</span>`);
     }
   }
 
   if (foreignPct > 50) {
-    messages.push(`<span style="color:var(--warning)"><i class="ph ph-warning"></i> ${Math.round(foreignPct)}% da audiencia esta fora do Brasil. Considere revisar a estrategia de conteudo para atrair publico local.</span>`);
+    messages.push(`<span style="color:var(--warning)"><i class="ph ph-warning"></i> ${Math.round(foreignPct)}% da audiência está fora do Brasil. Considere revisar a estratégia de conteúdo para atrair público local.</span>`);
   }
 
   if (messages.length === 0) return '';
 
   return `
     <div class="analytics-callout" style="margin-top:1rem">
-      <strong style="font-size:0.8rem">Analise de Audiencia</strong>
+      <strong style="font-size:0.8rem">Análise de Audiência</strong>
       ${messages.map(m => `<p style="font-size:0.8rem;margin-top:0.25rem">${m}</p>`).join('')}
     </div>`;
 }

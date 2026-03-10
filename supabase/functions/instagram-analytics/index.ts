@@ -4,6 +4,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const TOKEN_ENCRYPTION_KEY = Deno.env.get("TOKEN_ENCRYPTION_KEY") ?? (() => { throw new Error("TOKEN_ENCRYPTION_KEY environment variable is required"); })();
 const GRAPH_API_VERSION = "v22.0";
+const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") || '';
 
 // --- Token Decryption ---
 async function decryptToken(encryptedBase64: string): Promise<string> {
@@ -336,7 +337,7 @@ Deno.serve(async (req) => {
       const { account, accessToken } = await getAccountWithToken(serviceClient, clientId);
 
       const result = await getCachedOrFetch(serviceClient, account.id, 'online_followers', async () => {
-        const igUrl = `https://graph.facebook.com/${GRAPH_API_VERSION}/${account.instagram_user_id}/insights?metric=online_followers&period=lifetime&access_token=${accessToken}`;
+        const igUrl = `https://graph.facebook.com/${GRAPH_API_VERSION}/${account.instagram_user_id}/insights?metric=online_followers&period=day&access_token=${accessToken}`;
         const data = await graphFetch(igUrl);
 
         // Build 7x24 heatmap from the last 30 days of hourly data
@@ -651,7 +652,7 @@ Deno.serve(async (req) => {
 
       const { data: tag, error } = await serviceClient
         .from('instagram_post_tags')
-        .insert({ conta_id: contaId, tag_name: tag_name.trim(), color: color || '#c8f542' })
+        .insert({ conta_id: contaId, tag_name: tag_name.trim(), color: color || '#eab308' })
         .select()
         .single();
 
@@ -789,6 +790,219 @@ Deno.serve(async (req) => {
       }
 
       return json({ reportId: report.id, status: 'generating' });
+    }
+
+    // ==========================================
+    // POST /ai-analysis/:clientId
+    // ==========================================
+    if (req.method === 'POST' && path.match(/^\/ai-analysis\/\d+$/)) {
+      const clientId = path.split('/')[2];
+      const body = await req.json().catch(() => ({}));
+
+      // Verify account belongs to user's conta
+      const account = await getAccount(serviceClient, clientId);
+      const { data: client } = await serviceClient
+        .from('clientes')
+        .select('nome, especialidade')
+        .eq('id', clientId)
+        .eq('conta_id', contaId)
+        .single();
+      if (!client) throw new Error("Client not found");
+
+      // Gather data for AI
+      const days = body.days || 30;
+      const sinceDate = new Date(Date.now() - days * 86400000).toISOString();
+
+      const [{ data: posts }, { data: history }] = await Promise.all([
+        serviceClient.from('instagram_posts')
+          .select('media_type, caption, likes, comments, saved, shares, reach, impressions, posted_at')
+          .eq('instagram_account_id', account.id)
+          .gte('posted_at', sinceDate)
+          .order('posted_at', { ascending: false })
+          .limit(50),
+        serviceClient.from('instagram_follower_history')
+          .select('date, follower_count')
+          .eq('instagram_account_id', account.id)
+          .order('date', { ascending: false })
+          .limit(60),
+      ]);
+
+      const postsSummary = (posts || []).map(p => ({
+        type: p.media_type,
+        caption: (p.caption || '').slice(0, 120),
+        likes: p.likes, comments: p.comments, saved: p.saved, shares: p.shares,
+        reach: p.reach, date: p.posted_at?.split('T')[0],
+        engRate: p.reach > 0 ? (((p.likes||0)+(p.comments||0)+(p.saved||0)+(p.shares||0)) / p.reach * 100).toFixed(2) + '%' : '0%',
+      }));
+
+      const followerTrend = (history || []).slice(0, 30).reverse();
+
+      const prompt = `Você é um social media manager jovem e antenado, que manja muito de Instagram. Voce fala de um jeito natural e acessível — como um profissional que conversa de igual pra igual com o cliente, sem ser robótico nem formal demais. Use português brasileiro contemporâneo, pode usar expressões como "ta bombando", "vale apostar", "o pulo do gato", mas sem exagerar no coloquial. Seja direto e prático, como se tivesse mandando um resumo no WhatsApp pro cliente.
+
+Analise os dados da conta @${account.username} (${client.nome}, área: ${client.especialidade || 'não especificada'}).
+
+DADOS DOS ÚLTIMOS ${days} DIAS:
+- Seguidores: ${account.follower_count}
+- Posts no período: ${postsSummary.length}
+- Histórico de seguidores: ${JSON.stringify(followerTrend.map(h => ({ d: h.date, f: h.follower_count })))}
+- Posts recentes: ${JSON.stringify(postsSummary)}
+
+IMPORTANTE: Seja CONCISO (1-2 frases por campo). Não use aspas dentro dos textos. Responda neste JSON:
+{
+  "contentInsights": "o que tá funcionando e o que não tá por tipo de conteúdo, com números reais dos dados",
+  "captionAnalysis": "o que as melhores legendas tem em comum e o que pode melhorar",
+  "growthForecast": "projecao realista de crescimento baseada na tendencia",
+  "healthScore": 75,
+  "healthExplanation": "resumo direto do porque desse score",
+  "topRecommendations": ["acao pratica 1", "acao pratica 2", "acao pratica 3"]
+}`;
+
+      const aiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.3, maxOutputTokens: 4096, responseMimeType: 'application/json' },
+        }),
+      });
+
+      const aiData = await aiRes.json();
+
+      if (!aiRes.ok) {
+        const errMsg = aiData.error?.message || JSON.stringify(aiData).slice(0, 300);
+        return json({ analysis: { error: true, raw: `Gemini API error: ${errMsg}` }, generatedAt: new Date().toISOString() });
+      }
+
+      const content = aiData.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+      // Parse JSON from response
+      let analysis;
+      try {
+        if (typeof content === 'object' && content !== null) {
+          analysis = content;
+        } else {
+          const jsonStr = content.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
+          analysis = JSON.parse(jsonStr);
+        }
+      } catch (_e) {
+        // If parse fails but content looks like JSON, try extracting the object
+        try {
+          const match = content.match(/\{[\s\S]*\}/);
+          if (match) analysis = JSON.parse(match[0]);
+          else analysis = { error: true, raw: content || 'Empty AI response' };
+        } catch (_e2) {
+          analysis = { error: true, raw: content || 'Empty AI response' };
+        }
+      }
+
+      return json({ analysis, generatedAt: new Date().toISOString() });
+    }
+
+    // ==========================================
+    // POST /ai-analysis-portfolio
+    // ==========================================
+    if (req.method === 'POST' && path === '/ai-analysis-portfolio') {
+      // Get all accounts for this conta
+      const { data: clients } = await serviceClient
+        .from('clientes')
+        .select('id, nome, especialidade')
+        .eq('conta_id', contaId);
+
+      if (!clients || clients.length === 0) {
+        return json({ analysis: { error: true, raw: 'Nenhum cliente encontrado' } });
+      }
+
+      const clientIds = clients.map(c => c.id);
+      const { data: accounts } = await serviceClient
+        .from('instagram_accounts')
+        .select('id, client_id, username, follower_count, profile_views_28d, reach_28d')
+        .in('client_id', clientIds);
+
+      if (!accounts || accounts.length === 0) {
+        return json({ analysis: { error: true, raw: 'Nenhuma conta Instagram conectada' } });
+      }
+
+      // Get recent posts for all accounts
+      const accountIds = accounts.map(a => a.id);
+      const sinceDate = new Date(Date.now() - 30 * 86400000).toISOString();
+
+      const [{ data: allPosts }, { data: allHistory }] = await Promise.all([
+        serviceClient.from('instagram_posts')
+          .select('instagram_account_id, media_type, likes, comments, saved, shares, reach, posted_at')
+          .in('instagram_account_id', accountIds)
+          .gte('posted_at', sinceDate),
+        serviceClient.from('instagram_follower_history')
+          .select('instagram_account_id, date, follower_count')
+          .in('instagram_account_id', accountIds)
+          .order('date', { ascending: false })
+          .limit(accounts.length * 30),
+      ]);
+
+      // Build per-account summaries
+      const accountSummaries = accounts.map(acc => {
+        const client = clients.find(c => c.id === acc.client_id);
+        const posts = (allPosts || []).filter(p => p.instagram_account_id === acc.id);
+        const hist = (allHistory || []).filter(h => h.instagram_account_id === acc.id);
+        const totalEng = posts.reduce((s, p) => {
+          const interactions = (p.likes||0)+(p.comments||0)+(p.saved||0)+(p.shares||0);
+          return s + (p.reach > 0 ? interactions / p.reach * 100 : 0);
+        }, 0);
+        const avgEng = posts.length > 0 ? (totalEng / posts.length).toFixed(2) : '0';
+        const lastPost = posts.length > 0 ? posts.sort((a,b) => b.posted_at.localeCompare(a.posted_at))[0].posted_at.split('T')[0] : null;
+        const followerDelta = hist.length >= 2 ? hist[0].follower_count - hist[hist.length - 1].follower_count : 0;
+
+        return {
+          name: client?.nome, specialty: client?.especialidade, username: acc.username,
+          followers: acc.follower_count, reach28d: acc.reach_28d || 0,
+          posts30d: posts.length, avgEngagement: avgEng + '%',
+          lastPost, followerDelta,
+        };
+      });
+
+      const prompt = `Você é um social media manager jovem e antenado que gerencia multiplas contas Instagram. Voce fala de um jeito natural e acessível — como um profissional que conversa de igual pra igual, sem ser robótico nem formal demais. Use português brasileiro contemporâneo, pode usar expressões naturais mas sem exagerar no coloquial. Seja direto e prático.
+
+PORTFOLIO (${accounts.length} contas):
+${JSON.stringify(accountSummaries, null, 1)}
+
+IMPORTANTE: Seja CONCISO (2-3 frases por campo). Não use aspas dentro dos textos. Responda neste JSON:
+{
+  "portfolioSummary": "visão geral do portfólio, quem ta bem e quem precisa de atenção",
+  "crossAccountInsights": "o que da pra aprender de uma conta e aplicar em outra",
+  "priorityActions": ["acao prioritaria 1", "acao prioritaria 2", "acao prioritaria 3"],
+  "monthlyDigest": "resumo comparativo do mes"
+}`;
+
+      const aiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.3, maxOutputTokens: 4096, responseMimeType: 'application/json' },
+        }),
+      });
+
+      const aiData = await aiRes.json();
+      const content = aiData.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+      let analysis;
+      try {
+        if (typeof content === 'object' && content !== null) {
+          analysis = content;
+        } else {
+          const jsonStr = content.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
+          analysis = JSON.parse(jsonStr);
+        }
+      } catch (_e) {
+        try {
+          const match = content.match(/\{[\s\S]*\}/);
+          if (match) analysis = JSON.parse(match[0]);
+          else analysis = { error: true, raw: content };
+        } catch (_e2) {
+          analysis = { error: true, raw: content };
+        }
+      }
+
+      return json({ analysis, generatedAt: new Date().toISOString() });
     }
 
     return new Response('Not Found', { status: 404, headers: corsHeaders });

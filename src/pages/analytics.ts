@@ -2,7 +2,7 @@
 // Pagina: Analytics - Portfolio Dashboard
 // =============================================
 import { escapeHTML } from '../router';
-import { getPortfolioSummary, type PortfolioAccount } from '../services/analytics';
+import { getPortfolioSummary, getPortfolioAIAnalysis, type PortfolioAccount } from '../services/analytics';
 
 declare const Chart: any;
 
@@ -46,7 +46,7 @@ export async function renderAnalytics(container: HTMLElement): Promise<void> {
       <header class="header animate-up">
         <div class="header-title">
           <h1>Analytics Instagram</h1>
-          <p>Visao geral de todas as contas conectadas.</p>
+          <p>Visão geral de todas as contas conectadas.</p>
         </div>
       </header>
 
@@ -80,7 +80,7 @@ export async function renderAnalytics(container: HTMLElement): Promise<void> {
         <div class="kpi-card">
           <span class="kpi-label">SEGUIDORES TOTAIS</span>
           <span class="kpi-value">${totalFollowers.toLocaleString('pt-BR')}</span>
-          <span class="kpi-sub" style="color:var(--text-muted)">${summary.declining} em declinio</span>
+          <span class="kpi-sub" style="color:var(--text-muted)">${summary.declining} em declínio</span>
         </div>
         <div class="kpi-card">
           <span class="kpi-label">ALCANCE TOTAL (28D)</span>
@@ -88,9 +88,9 @@ export async function renderAnalytics(container: HTMLElement): Promise<void> {
           <span class="kpi-sub" style="color:var(--text-muted)">Soma de todas as contas</span>
         </div>
         <div class="kpi-card card-blue">
-          <span class="kpi-label" style="color:rgba(0,0,0,0.6)">ENGAJAMENTO MEDIO</span>
+          <span class="kpi-label" style="color:rgba(0,0,0,0.6)">ENGAJAMENTO MÉDIO</span>
           <span class="kpi-value" style="color:var(--dark)">${avgEngagement.toFixed(2)}%</span>
-          <span class="kpi-sub" style="color:rgba(0,0,0,0.7)">Media de todas as contas</span>
+          <span class="kpi-sub" style="color:rgba(0,0,0,0.7)">Média de todas as contas</span>
         </div>
       </div>
 
@@ -113,7 +113,7 @@ export async function renderAnalytics(container: HTMLElement): Promise<void> {
       <div class="card animate-up" style="margin-top:1.5rem">
         <h3 style="margin-bottom:1rem">Todas as Contas</h3>
         ${accounts.length === 0
-          ? '<p style="color:var(--text-muted)">Nenhuma conta Instagram conectada. Conecte contas na pagina de cada cliente.</p>'
+          ? '<p style="color:var(--text-muted)">Nenhuma conta Instagram conectada. Conecte contas na página de cada cliente.</p>'
           : `
         <div style="overflow-x:auto">
           <table class="data-table">
@@ -124,7 +124,7 @@ export async function renderAnalytics(container: HTMLElement): Promise<void> {
                 <th>Engajamento</th>
                 <th>Alcance (28d)</th>
                 <th>Posts (30d)</th>
-                <th>Ultimo Post</th>
+                <th>Último Post</th>
                 <th></th>
               </tr>
             </thead>
@@ -160,9 +160,9 @@ export async function renderAnalytics(container: HTMLElement): Promise<void> {
                     </td>
                     <td data-label="Alcance">${a.reach_28d.toLocaleString('pt-BR')}</td>
                     <td data-label="Posts">${a.posts_last_30d}</td>
-                    <td data-label="Ultimo Post">
+                    <td data-label="Último Post">
                       ${daysSincePost !== null
-                        ? `<span style="color:${isSilent ? 'var(--danger)' : 'var(--text-main)'}">${daysSincePost}d atras</span>`
+                        ? `<span style="color:${isSilent ? 'var(--danger)' : 'var(--text-main)'}">${daysSincePost}d atrás</span>`
                         : '<span style="color:var(--danger)">Sem posts</span>'}
                     </td>
                     <td>
@@ -198,12 +198,26 @@ export async function renderAnalytics(container: HTMLElement): Promise<void> {
                 </div>
                 <div style="text-align:right">
                   <span class="badge ${s.avgEngagement >= 3 ? 'badge-success' : s.avgEngagement >= 1 ? 'badge-warning' : 'badge-neutral'}">${s.avgEngagement.toFixed(2)}%</span>
-                  <div style="font-size:0.7rem;color:var(--text-muted)">${s.avgFollowers.toLocaleString('pt-BR')} seg. medio</div>
+                  <div style="font-size:0.7rem;color:var(--text-muted)">${s.avgFollowers.toLocaleString('pt-BR')} seg. médio</div>
                 </div>
               </div>
             `).join('')}
           </div>
         </div>` : ''}
+      </div>` : ''}
+
+      <!-- AI Portfolio Analysis -->
+      ${accounts.length >= 1 ? `
+      <div class="card animate-up" style="margin-top:1.5rem" id="ai-portfolio-section">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+          <h3><i class="ph ph-sparkle" style="color:var(--primary-color)"></i> Análise Inteligente do Portfólio</h3>
+          <button class="btn-secondary" id="btn-ai-portfolio" style="font-size:0.8rem">
+            <i class="ph ph-lightning"></i> Gerar Análise IA
+          </button>
+        </div>
+        <div id="ai-portfolio-content">
+          <p style="color:var(--text-muted);font-size:0.9rem">Clique para obter uma análise estratégica do portfólio com IA.</p>
+        </div>
       </div>` : ''}
     `;
 
@@ -211,6 +225,57 @@ export async function renderAnalytics(container: HTMLElement): Promise<void> {
     if (accounts.length >= 2) {
       renderBenchmarkChart(accounts);
     }
+
+    // AI Portfolio button
+    document.getElementById('btn-ai-portfolio')?.addEventListener('click', async () => {
+      const btn = document.getElementById('btn-ai-portfolio') as HTMLButtonElement;
+      const contentDiv = document.getElementById('ai-portfolio-content')!;
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Analisando...';
+      contentDiv.innerHTML = '<p style="color:var(--text-muted)"><i class="fa-solid fa-spinner fa-spin"></i> Analisando portfólio com IA...</p>';
+
+      try {
+        const result = await getPortfolioAIAnalysis();
+        if (!result || result.analysis.error) {
+          contentDiv.innerHTML = `<p style="color:var(--danger)">Não foi possível gerar a análise. Tente novamente.</p>`;
+          return;
+        }
+        const a = result.analysis;
+        contentDiv.innerHTML = `
+          <div style="display:flex;flex-direction:column;gap:1rem">
+            <div>
+              <h4 style="font-size:0.85rem;margin-bottom:0.3rem"><i class="ph ph-pulse" style="color:var(--primary-color)"></i> Resumo do Portfólio</h4>
+              <p style="font-size:0.85rem;color:var(--text-main);line-height:1.5">${escapeHTML(a.portfolioSummary)}</p>
+            </div>
+            <div>
+              <h4 style="font-size:0.85rem;margin-bottom:0.3rem"><i class="ph ph-arrows-left-right" style="color:var(--primary-color)"></i> Insights Cruzados</h4>
+              <p style="font-size:0.85rem;color:var(--text-main);line-height:1.5">${escapeHTML(a.crossAccountInsights)}</p>
+            </div>
+            <div>
+              <h4 style="font-size:0.85rem;margin-bottom:0.3rem"><i class="ph ph-calendar-check" style="color:var(--primary-color)"></i> Resumo Mensal</h4>
+              <p style="font-size:0.85rem;color:var(--text-main);line-height:1.5">${escapeHTML(a.monthlyDigest)}</p>
+            </div>
+            <div style="padding-top:0.75rem;border-top:1px solid var(--border-color)">
+              <h4 style="font-size:0.85rem;margin-bottom:0.5rem"><i class="ph ph-target" style="color:var(--primary-color)"></i> Ações Prioritárias</h4>
+              <div style="display:flex;flex-direction:column;gap:0.4rem">
+                ${a.priorityActions.map((r: string, i: number) => `
+                  <div style="display:flex;align-items:baseline;gap:0.5rem;font-size:0.85rem">
+                    <span class="badge badge-success" style="font-size:0.7rem;min-width:20px;text-align:center">${i + 1}</span>
+                    <span>${escapeHTML(r)}</span>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          </div>
+          <p style="font-size:0.65rem;color:var(--text-muted);margin-top:0.75rem;text-align:right">Gerado em ${new Date(result.generatedAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</p>
+        `;
+      } catch (_e) {
+        contentDiv.innerHTML = `<p style="color:var(--danger)">Erro ao gerar análise. Tente novamente.</p>`;
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="ph ph-lightning"></i> Gerar Análise IA';
+      }
+    });
 
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Erro desconhecido';
@@ -254,12 +319,12 @@ function renderBenchmarkChart(accounts: PortfolioAccount[]) {
               type: 'line',
               xMin: avg,
               xMax: avg,
-              borderColor: isDark ? '#c8f542' : '#666',
+              borderColor: isDark ? '#eab308' : '#666',
               borderWidth: 2,
               borderDash: [6, 3],
               label: {
                 display: true,
-                content: `Media: ${avg.toFixed(2)}%`,
+                content: `Média: ${avg.toFixed(2)}%`,
                 position: 'start',
                 backgroundColor: isDark ? '#333' : '#fff',
                 color: textColor,

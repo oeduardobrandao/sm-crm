@@ -122,7 +122,7 @@ export async function renderPoliticaPrivacidade(container: HTMLElement): Promise
 
         <div class="privacy-section">
           <h2>4. Segurança</h2>
-          <p>Implementamos medidas técnicas e organizacionais rígidas (como criptografia de senhas e comunicação via HTTPS) para preteger seus dados contra acesso, alteração, divulgação ou destruição não autorizados. No entanto, nenhum método de transmissão pela internet é 100% seguro.</p>
+          <p>Implementamos medidas técnicas e organizacionais rígidas (como criptografia de senhas e comunicação via HTTPS) para proteger seus dados contra acesso, alteração, divulgação ou destruição não autorizados. No entanto, nenhum método de transmissão pela internet é 100% seguro.</p>
         </div>
 
         <div class="privacy-section">

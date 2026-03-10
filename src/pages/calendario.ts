@@ -26,9 +26,9 @@ export async function renderCalendario(container: HTMLElement): Promise<void> {
       .calendar-day { background: var(--surface-main); border: 1px solid var(--border-color); border-radius: 8px; min-height: 120px; padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; transition: var(--transition); cursor: pointer; position: relative; overflow: hidden; }
       .calendar-day:hover { border-color: var(--primary-color); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
       .calendar-day.empty { background: transparent; border: none; cursor: default; box-shadow: none; pointer-events: none; }
-      .calendar-day.today { border: 1px solid var(--primary-color); background: rgba(200, 245, 66, 0.05); }
+      .calendar-day.today { border: 1px solid var(--primary-color); background: rgba(234, 179, 8, 0.05); }
       .calendar-day.selected { border: 2px dashed var(--primary-color); }
-      .calendar-day.has-events::before { content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: radial-gradient(circle at top right, rgba(200,245,66,0.15) 0%, transparent 70%); pointer-events: none; }
+      .calendar-day.has-events::before { content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: radial-gradient(circle at top right, rgba(234,179,8,0.15) 0%, transparent 70%); pointer-events: none; }
       
       .day-number { font-family: var(--font-mono); font-size: 1.1rem; font-weight: 500; color: var(--text-main); }
       
@@ -72,7 +72,7 @@ export async function renderCalendario(container: HTMLElement): Promise<void> {
       .month-header { padding: 1.2rem 1.5rem; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border-color); }
       .month-name { font-family: var(--font-heading); font-size: 1.4rem; font-weight: 700; color: var(--text-main); }
       .month-num { font-family: var(--font-mono); font-size: 0.65rem; color: var(--text-muted); letter-spacing: 0.1em; }
-      .month-badge { font-family: var(--font-mono); font-size: 0.6rem; letter-spacing: 0.08em; text-transform: uppercase; padding: 0.25rem 0.6rem; border-radius: 2px; background: rgba(200, 245, 66, 0.1); color: var(--primary-color); border: 1px solid rgba(200, 245, 66, 0.2); white-space: nowrap; }
+      .month-badge { font-family: var(--font-mono); font-size: 0.6rem; letter-spacing: 0.08em; text-transform: uppercase; padding: 0.25rem 0.6rem; border-radius: 2px; background: rgba(234, 179, 8, 0.1); color: var(--primary-color); border: 1px solid rgba(234, 179, 8, 0.2); white-space: nowrap; }
       .month-events { padding: 0.5rem 0; }
       .event-item { display: flex; align-items: flex-start; gap: 0.8rem; padding: 0.6rem 1.5rem; transition: background 0.15s; cursor: default; }
       .event-item:hover { background: var(--surface-hover); }

@@ -21,10 +21,17 @@ async function getAuthHeaders() {
 async function fetchEdge<T>(url: string, options?: RequestInit): Promise<T | null> {
   try {
     const headers = await getAuthHeaders();
+    console.log('[fetchEdge] auth:', headers.Authorization?.slice(0, 20) + '...', 'method:', options?.method || 'GET');
     const res = await fetch(url, { ...options, headers });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.error(`[fetchEdge] ${res.status} ${res.statusText} — ${url}`);
+      const text = await res.text().catch(() => '');
+      console.error(`[fetchEdge] body:`, text);
+      return null;
+    }
     return res.json();
   } catch (_e) {
+    console.error(`[fetchEdge] exception:`, _e);
     return null;
   }
 }
@@ -33,7 +40,7 @@ async function fetchEdge<T>(url: string, options?: RequestInit): Promise<T | nul
 
 async function getContaId(): Promise<string> {
   const profile = await getCurrentProfile();
-  if (!profile?.conta_id) throw new Error('Conta nao encontrada');
+  if (!profile?.conta_id) throw new Error('Conta não encontrada');
   return profile.conta_id;
 }
 
@@ -43,7 +50,7 @@ async function getAccountByClientId(clientId: number) {
     .select('*')
     .eq('client_id', clientId)
     .single();
-  if (error || !data) throw new Error('Conta Instagram nao encontrada');
+  if (error || !data) throw new Error('Conta Instagram não encontrada');
   return data;
 }
 
@@ -484,6 +491,55 @@ export async function getOnlineFollowers(clientId: number): Promise<{ data: Onli
   return fetchEdge(`${EDGE_URL}/online-followers/${clientId}`);
 }
 
+// ---- AI Analysis ----
+
+export interface AccountAIAnalysis {
+  contentInsights: string;
+  captionAnalysis: string;
+  growthForecast: string;
+  healthScore: number;
+  healthExplanation: string;
+  topRecommendations: string[];
+  error?: boolean;
+  raw?: string;
+}
+
+export interface PortfolioAIAnalysis {
+  portfolioSummary: string;
+  crossAccountInsights: string;
+  priorityActions: string[];
+  monthlyDigest: string;
+  error?: boolean;
+  raw?: string;
+}
+
+export async function getAccountAIAnalysis(clientId: number, days = 30): Promise<{ analysis: AccountAIAnalysis; generatedAt: string }> {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${EDGE_URL}/ai-analysis/${clientId}`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ days }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: res.statusText }));
+    throw new Error(err.message || `Error ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function getPortfolioAIAnalysis(): Promise<{ analysis: PortfolioAIAnalysis; generatedAt: string }> {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${EDGE_URL}/ai-analysis-portfolio`, {
+    method: 'POST',
+    headers,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ message: res.statusText }));
+    throw new Error(err.message || `Error ${res.status}`);
+  }
+  return res.json();
+}
+
 // ---- Tags (Direct Supabase CRUD) ----
 
 export async function getTags(): Promise<PostTag[]> {
@@ -502,7 +558,7 @@ export async function getTags(): Promise<PostTag[]> {
   }
 }
 
-export async function createTag(tag_name: string, color = '#c8f542'): Promise<PostTag> {
+export async function createTag(tag_name: string, color = '#eab308'): Promise<PostTag> {
   const contaId = await getContaId();
   const { data, error } = await supabase
     .from('instagram_post_tags')
@@ -511,8 +567,8 @@ export async function createTag(tag_name: string, color = '#c8f542'): Promise<Po
     .single();
 
   if (error) {
-    if (error.code === '23505') throw new Error('Tag ja existe');
-    if (error.code === '42P01') throw new Error('Tabela de tags nao encontrada. Execute a migracao do banco de dados.');
+    if (error.code === '23505') throw new Error('Tag já existe');
+    if (error.code === '42P01') throw new Error('Tabela de tags não encontrada. Execute a migração do banco de dados.');
     throw error;
   }
   return data;
@@ -553,7 +609,7 @@ export async function generateReport(clientId: number, month?: string): Promise<
     body: JSON.stringify({ month }),
   });
   if (result) return result;
-  throw new Error('Funcao de geracao de relatorios nao disponivel. Deploy a edge function instagram-analytics.');
+  throw new Error('Função de geração de relatórios não disponível. Deploy a edge function instagram-analytics.');
 }
 
 export async function getClientReports(clientId: number): Promise<AnalyticsReport[]> {
