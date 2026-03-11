@@ -61,7 +61,7 @@ async function decryptToken(encryptedBase64: string): Promise<string> {
 // --- Main Handler ---
 Deno.serve(async (req) => {
   const url = new URL(req.url);
-  const path = url.pathname.replace('/instagram-integration', '');
+  const path = url.pathname.replace('/instagram-integration', '').replace(/\/$/, '');
 
   // Setup Supabase Client
   const authHeader = req.headers.get('Authorization');
@@ -436,7 +436,7 @@ Deno.serve(async (req) => {
     }
 
 
-    return new Response('Not Found', { status: 404, headers: corsHeaders });
+    return new Response(JSON.stringify({ error: true, message: `Not Found - method: ${req.method}, path: "${path}"` }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (err: any) {
     const isAuthError = err.message && err.message.includes("Unauthorized");
