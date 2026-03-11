@@ -165,9 +165,16 @@ Deno.serve(async (req) => {
         }
         console.log('[IG-CALLBACK] Got short-lived token, user_id:', igBusinessId);
 
-        // Exchange for long-lived token
-        const llExchangeUrl = `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${META_APP_SECRET}&access_token=${shortLivedToken}`;
-        const llTokenRes = await fetch(llExchangeUrl);
+        // Exchange for long-lived token (POST required since April 2025)
+        const llTokenRes = await fetch('https://graph.instagram.com/access_token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+                grant_type: 'ig_exchange_token',
+                client_secret: META_APP_SECRET,
+                access_token: shortLivedToken
+            })
+        });
         const llTokenData = await llTokenRes.json();
         console.log('[IG-CALLBACK] Long-lived token response status:', llTokenRes.status);
         console.log('[IG-CALLBACK] Long-lived token response keys:', Object.keys(llTokenData));
