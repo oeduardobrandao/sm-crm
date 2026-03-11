@@ -2,14 +2,29 @@
 // Página: Clientes
 // =============================================
 import { getClientes, addCliente, updateCliente, removeCliente, formatBRL, getInitials, type Cliente } from '../store';
-import { showToast, openModal, closeModal, navigate, openConfirm, sanitizeUrl } from '../router';
+import { showToast, openModal, closeModal, navigate, openConfirm, sanitizeUrl, escapeHTML } from '../router';
 import { openCSVSelector } from '../lib/csv';
+import { supabase } from '../lib/supabase';
+
+// Map client_id -> profile_picture_url from instagram_accounts
+let igAvatars: Map<number, string> = new Map();
+
+async function loadIgAvatars(clientIds: number[]): Promise<void> {
+  if (clientIds.length === 0) return;
+  const { data } = await supabase
+    .from('instagram_accounts')
+    .select('client_id, profile_picture_url')
+    .in('client_id', clientIds)
+    .not('profile_picture_url', 'is', null);
+  igAvatars = new Map((data || []).map((r: any) => [r.client_id, r.profile_picture_url]));
+}
 
 export async function renderClientes(container: HTMLElement): Promise<void> {
   container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:40vh"><i class="fa-solid fa-spinner fa-spin" style="font-size:1.5rem;color:var(--primary-color)"></i></div>`;
 
   try {
     const clientes = await getClientes();
+    await loadIgAvatars(clientes.filter(c => c.id).map(c => c.id!));
     renderContent(container, clientes);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Erro desconhecido';
@@ -59,15 +74,18 @@ function renderContent(container: HTMLElement, clientes: Cliente[], filter = 'to
             filtered.map(c => `
               <tr>
                 <td data-label="Cliente / Empresa"><div style="display:flex;align-items:center;gap:0.75rem">
-                  <div class="avatar" style="background:${c.cor}">${getInitials(c.nome)}</div>
+                  ${igAvatars.has(c.id!) ? `<img src="${escapeHTML(igAvatars.get(c.id!)!)}" alt="" class="avatar" style="width:36px;height:36px;border-radius:50%;object-fit:cover">` : `<div class="avatar" style="background:${c.cor}">${getInitials(c.nome)}</div>`}
                   <a href="#/cliente/${c.id}" class="client-link"><strong>${c.nome}</strong></a>
                    ${(() => { const notionUrl = sanitizeUrl(c.notion_page_url || ''); return notionUrl ? `<a href="${notionUrl}" target="_blank" rel="noopener noreferrer" title="Abrir no Notion" class="notion-icon-link"><i class="ph ph-notion-logo"></i></a>` : ''; })()}
                 </div></td>
                 <td data-label="Plano">${c.plano}</td>
-                <td data-label="Contato">${c.email}<br><span style="font-size:0.75rem;color:var(--text-muted)">${c.telefone}</span></td>
+                <td data-label="Contato" class="td-contato">
+                  ${c.email ? `<span class="contato-item">${c.email}</span>` : ''}
+                  ${c.telefone ? `<span class="contato-item contato-phone">${c.telefone}</span>` : ''}
+                </td>
                 <td data-label="Valor Mensal">${formatBRL(Number(c.valor_mensal))}</td>
                 <td data-label="Status"><span class="badge badge-${c.status === 'ativo' ? 'success' : c.status === 'pausado' ? 'warning' : 'neutral'}">${c.status}</span></td>
-                <td data-label="Ações" style="text-align: right;">
+                <td data-label="Ações" class="td-acoes">
                   <button class="btn-icon btn-edit" data-id="${c.id}"><i class="ph ph-pencil-simple"></i></button>
                   <button class="btn-icon btn-remove" style="color:var(--danger)" data-id="${c.id}"><i class="ph ph-trash"></i></button>
                 </td>

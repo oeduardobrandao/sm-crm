@@ -12,7 +12,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/svg+xml" href="/mesaas-icon-bl.svg" />
     <link rel="manifest" href="/manifest.json" />
     <script>
       (function() {
@@ -38,8 +38,7 @@
       <!-- Sidebar -->
       <nav class="sidebar">
         <div class="logo-container">
-          <div class="logo-main" style="font-size: 2rem; color: var(--primary-color)"><i class="ph ph-infinity"></i></div>
-          <div class="logo-sub" style="font-size: 1.1rem; font-weight: 700; color: var(--text-main); margin-top: 5px;">Mesaas</div>
+          <img src="/mesaas-icon-192.png" alt="Mesaas" style="height: 36px; width: auto;" />
         </div>
         
         <ul class="nav-links">
@@ -97,7 +96,7 @@
 
         <div class="sidebar-bottom">
           <button id="theme-toggle" class="btn-icon" title="Alternar Tema" style="margin-bottom:0.5rem;font-size:1.1rem;color:var(--primary-color); position: relative;" data-tooltip="Modo Escuro">
-            <i class="ph ph-moon"></i>
+            <i class="ph ph-moon"></i> <span class="sidebar-label">Tema</span>
           </button>
           <div class="sidebar-user" id="user-menu-btn" style="cursor: pointer; position: relative; display: flex; align-items: center; justify-content: center; width: 100%;">
             <div class="avatar" style="width:32px; height:32px; font-size:0.75rem">U</div>
@@ -198,11 +197,11 @@
         <div class="mobile-more-divider"></div>
 
         <div class="mobile-more-grid" style="margin-bottom: 0;">
-          <button class="mobile-more-item" id="mobile-theme-toggle">
+          <button class="mobile-more-item mobile-more-action" id="mobile-theme-toggle">
             <i class="ph ph-moon"></i>
             Tema
           </button>
-          <a href="#/politica-de-privacidade" class="mobile-more-item" data-route="/politica-de-privacidade">
+          <a href="#/politica-de-privacidade" class="mobile-more-item mobile-more-action" data-route="/politica-de-privacidade">
             <i class="ph ph-shield-check"></i>
             Privacidade
           </a>

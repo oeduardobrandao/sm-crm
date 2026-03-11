@@ -83,7 +83,7 @@ Deno.serve(async (req) => {
     // ---- VERIFY AUTHENTICATION ----
     // We only enforce auth for the endpoints that modify internal data (which is everything except callback)
     let user;
-    if (path !== '/callback') {
+    if (path !== '/callback' && !(path === '' && url.searchParams.has('code'))) {
        const token = authHeader?.replace(/^Bearer\s+/i, '');
 
        if (!token || token === 'undefined' || token === 'null') {
@@ -113,8 +113,8 @@ Deno.serve(async (req) => {
         });
     }
 
-    // 2. GET /callback
-    if (req.method === 'GET' && path === '/callback') {
+    // 2. GET /callback (also handle callback at root when META_REDIRECT_URI doesn't include /callback)
+    if (req.method === 'GET' && (path === '/callback' || (path === '' && url.searchParams.has('code')))) {
         const code = url.searchParams.get('code');
         const state = url.searchParams.get('state');
 

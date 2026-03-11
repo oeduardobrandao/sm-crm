@@ -43,7 +43,7 @@ function renderContent(container: HTMLElement, membros: Membro[]): void {
       ${membros.length === 0 ? '<div class="card" style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:3rem">Nenhum membro cadastrado.</div>' :
         membros.map(m => `
           <div class="card team-card">
-            <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem">
+            <div style="display:flex;align-items:center;gap:0.75rem">
               <div class="avatar" style="width:48px;height:48px;font-size:1.1rem">${getInitials(m.nome)}</div>
               <div>
                 <a href="#/membro/${m.id}" class="client-link"><h4 style="margin:0">${m.nome}</h4></a>

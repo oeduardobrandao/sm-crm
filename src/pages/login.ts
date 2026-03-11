@@ -18,7 +18,10 @@ export function renderLogin(container: HTMLElement): void {
     <div class="auth-wrapper">
       <div class="auth-card animate-up">
         <div class="auth-header">
-          <div class="auth-logo"><i class="ph ph-infinity" style="margin-right:0.5rem"></i>Mesaas</div>
+          <div class="auth-logo">
+            <img src="/mesaas-logo-horiz-dark-bg.svg" alt="Mesaas" style="height: 48px; width: auto;" class="logo-light" />
+            <img src="/mesaas-logo-horiz-light-bg.svg" alt="Mesaas" style="height: 48px; width: auto; display: none;" class="logo-dark" />
+          </div>
           <div class="auth-logo-sub" style="margin-top:5px;letter-spacing:1px">PLATAFORMA INTELIGENTE</div>
         </div>
 

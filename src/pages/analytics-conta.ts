@@ -8,7 +8,7 @@ import {
   getPostsAnalytics,
   getFollowerHistory,
   getAudienceDemographics,
-  getOnlineFollowers,
+  getBestPostingTimes,
   getTags,
   createTag,
   deleteTag,
@@ -21,7 +21,7 @@ import {
   type PostAnalytics,
   type PostTag,
   type AudienceDemographics,
-  type OnlineFollowers,
+  type BestPostingTimes,
   type AnalyticsReport,
   type AccountAIAnalysis,
 } from '../services/analytics';
@@ -53,14 +53,69 @@ export async function renderAnalyticsConta(container: HTMLElement, param?: strin
   container.innerHTML = `
     <div style="display:flex;flex-direction:column;gap:1.5rem">
       <header class="header animate-up">
-        <div class="header-title"><div class="skeleton" style="width:200px;height:28px;border-radius:6px"></div></div>
-        <div class="header-actions"><div class="skeleton" style="width:80px;height:36px;border-radius:6px"></div></div>
+        <div class="header-title">
+          <div style="display:flex;align-items:center;gap:0.75rem">
+            <div class="skeleton" style="width:48px;height:48px;border-radius:50%"></div>
+            <div>
+              <div class="skeleton" style="width:180px;height:22px;border-radius:4px;margin-bottom:6px"></div>
+              <div class="skeleton" style="width:120px;height:14px;border-radius:4px"></div>
+            </div>
+          </div>
+        </div>
+        <div class="header-actions" style="display:flex;gap:0.5rem">
+          <div class="skeleton" style="width:90px;height:36px;border-radius:6px"></div>
+          <div class="skeleton" style="width:140px;height:36px;border-radius:6px"></div>
+        </div>
       </header>
-      <div class="kpi-grid animate-up" style="grid-template-columns:repeat(auto-fit, minmax(160px, 1fr))">
-        ${Array(6).fill('<div class="kpi-card"><div class="skeleton" style="width:60%;height:14px;border-radius:4px;margin-bottom:8px"></div><div class="skeleton" style="width:40%;height:24px;border-radius:4px"></div></div>').join('')}
+
+      <!-- Filter bar skeleton -->
+      <div class="filter-bar animate-up">
+        ${Array(4).fill('<div class="skeleton" style="width:60px;height:32px;border-radius:6px"></div>').join('')}
       </div>
-      <div class="card animate-up"><div class="skeleton" style="width:100%;height:280px;border-radius:8px"></div></div>
-      <div class="card animate-up"><div class="skeleton" style="width:100%;height:200px;border-radius:8px"></div></div>
+
+      <!-- KPI skeletons -->
+      <div class="kpi-grid animate-up" style="grid-template-columns:repeat(auto-fit, minmax(160px, 1fr))">
+        ${Array(6).fill(`<div class="kpi-card">
+          <div class="skeleton" style="width:60%;height:12px;border-radius:4px;margin-bottom:10px"></div>
+          <div class="skeleton" style="width:45%;height:28px;border-radius:4px;margin-bottom:8px"></div>
+          <div class="skeleton" style="width:35%;height:10px;border-radius:4px"></div>
+        </div>`).join('')}
+      </div>
+
+      <!-- Chart skeletons -->
+      <div class="card animate-up">
+        <div class="skeleton" style="width:160px;height:18px;border-radius:4px;margin-bottom:1rem"></div>
+        <div class="skeleton" style="width:100%;height:280px;border-radius:8px"></div>
+      </div>
+
+      <!-- Two-column grid skeleton (Demographics + Best Times) -->
+      <div class="widgets-grid animate-up" style="grid-template-columns:1fr 1fr">
+        <div class="card">
+          <div class="skeleton" style="width:180px;height:18px;border-radius:4px;margin-bottom:1rem"></div>
+          <div style="display:flex;gap:1rem;margin-bottom:1rem">
+            <div class="skeleton" style="flex:1;height:60px;border-radius:8px"></div>
+            <div class="skeleton" style="flex:1;height:60px;border-radius:8px"></div>
+          </div>
+          <div class="skeleton" style="width:100%;height:200px;border-radius:8px"></div>
+        </div>
+        <div class="card">
+          <div class="skeleton" style="width:200px;height:18px;border-radius:4px;margin-bottom:1rem"></div>
+          <div class="skeleton" style="width:100%;height:200px;border-radius:8px"></div>
+        </div>
+      </div>
+
+      <!-- Posts table skeleton -->
+      <div class="card animate-up">
+        <div class="skeleton" style="width:140px;height:18px;border-radius:4px;margin-bottom:1rem"></div>
+        ${Array(5).fill(`<div style="display:flex;gap:1rem;align-items:center;padding:0.75rem 0;border-bottom:1px solid rgba(255,255,255,0.05)">
+          <div class="skeleton" style="width:50px;height:50px;border-radius:6px;flex-shrink:0"></div>
+          <div style="flex:1">
+            <div class="skeleton" style="width:70%;height:12px;border-radius:4px;margin-bottom:6px"></div>
+            <div class="skeleton" style="width:40%;height:10px;border-radius:4px"></div>
+          </div>
+          <div class="skeleton" style="width:60px;height:12px;border-radius:4px"></div>
+        </div>`).join('')}
+      </div>
     </div>`;
 
   try {
@@ -116,11 +171,11 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
     getTags(),
     getClientReports(clientId),
     getAudienceDemographics(clientId).catch(() => null),
-    getOnlineFollowers(clientId).catch(() => null),
+    getBestPostingTimes(clientId).catch(() => null),
   ]);
 
   const demographicsData: AudienceDemographics | null = demoRes?.data || null;
-  const onlineData: OnlineFollowers | null = onlineRes?.data || null;
+  const bestTimesData: BestPostingTimes | null = onlineRes?.data || null;
 
   const overview = overviewRes.data;
   const posts = postsRes.posts;
@@ -380,21 +435,23 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
 
       <div class="card">
         <h3>Melhor Horário para Postar</h3>
-        ${!onlineData || onlineData.heatmap.every(row => row.every(v => v === 0))
-          ? '<p style="color:var(--text-muted);margin-top:1rem">Dados insuficientes. Disponível para contas com 100+ seguidores.</p>'
+        ${!bestTimesData || bestTimesData.totalPosts < 5
+          ? '<p style="color:var(--text-muted);margin-top:1rem">Dados insuficientes. São necessários pelo menos 5 posts nos últimos 90 dias para análise.</p>'
           : `
-          <div style="margin-top:1rem;overflow-x:auto">
-            ${renderHeatmap(onlineData)}
+          <p style="color:var(--text-muted);font-size:0.75rem;margin-top:0.25rem">Baseado no engajamento de ${bestTimesData.totalPosts} posts dos últimos 90 dias</p>
+          <div style="margin-top:0.75rem;overflow-x:auto">
+            ${renderBestTimesHeatmap(bestTimesData)}
+            ${bestTimesData.topSlots.length > 0 ? `
             <div style="margin-top:1rem">
               <h4 style="font-size:0.85rem;margin-bottom:0.5rem">Top 3 Horários Recomendados</h4>
-              ${onlineData.topSlots.map((s, i) => `
+              ${bestTimesData.topSlots.map((s, i) => `
                 <div style="display:flex;align-items:center;gap:0.5rem;padding:0.3rem 0;font-size:0.85rem">
                   <span class="badge badge-success">${i + 1}</span>
-                  <span>${onlineData!.labels_days[s.day]} as ${onlineData!.labels_hours[s.hour]}</span>
-                  <span style="color:var(--text-muted)">${s.value.toLocaleString('pt-BR')} seguidores online</span>
+                  <span>${bestTimesData!.labels_days[s.day]} às ${bestTimesData!.labels_hours[s.hour]}</span>
+                  <span style="color:var(--text-muted)">${s.value.toFixed(1)}% eng. (${s.postCount} post${s.postCount > 1 ? 's' : ''})</span>
                 </div>
               `).join('')}
-            </div>
+            </div>` : ''}
           </div>`}
       </div>
     </div>
@@ -423,7 +480,7 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
   // --- Bind Events ---
 
   // Back button
-  document.getElementById('btn-back')?.addEventListener('click', () => navigate('/analytics'));
+  document.getElementById('btn-back')?.addEventListener('click', () => navigate(`/cliente/${clientId}`));
 
   // Generate report
   document.getElementById('btn-gen-report')?.addEventListener('click', async () => {
@@ -775,9 +832,8 @@ function formatReportMonth(month: string): string {
   return `${months[parseInt(m) - 1]} ${y}`;
 }
 
-function renderHeatmap(data: OnlineFollowers): string {
-  const max = Math.max(...data.heatmap.flat(), 1);
-  // Show only key hours to keep it readable
+function renderBestTimesHeatmap(data: BestPostingTimes): string {
+  const max = Math.max(...data.heatmap.flat(), 0.1);
   const hours = [0, 3, 6, 9, 12, 15, 18, 21];
 
   return `
@@ -794,12 +850,13 @@ function renderHeatmap(data: OnlineFollowers): string {
             <td style="font-size:0.7rem;color:var(--text-muted);font-weight:500;text-align:right;padding-right:4px">${day}</td>
             ${hours.map(h => {
               const val = data.heatmap[d][h];
+              const postCount = data.counts[d][h];
               const intensity = max > 0 ? val / max : 0;
               const isTop = data.topSlots.some(s => s.day === d && s.hour === h);
               const bg = intensity > 0
-                ? `rgba(234,179,8,${0.1 + intensity * 0.8})`
+                ? `rgba(76,175,80,${0.1 + intensity * 0.8})`
                 : 'rgba(0,0,0,0.02)';
-              return `<td style="background:${bg};${isTop ? 'outline:2px solid var(--primary-color);outline-offset:-1px;' : ''}" title="${day} ${h}h: ${val.toLocaleString('pt-BR')}">${val > 0 ? Math.round(val / 1000) + 'k' : ''}</td>`;
+              return `<td style="background:${bg};${isTop ? 'outline:2px solid var(--primary-color);outline-offset:-1px;' : ''}" title="${day} ${h}h: ${val.toFixed(1)}% eng. (${postCount} post${postCount !== 1 ? 's' : ''})">${val > 0 ? val.toFixed(1) + '%' : ''}</td>`;
             }).join('')}
           </tr>
         `).join('')}

@@ -57,9 +57,13 @@ export async function renderDashboard(container: HTMLElement): Promise<void> {
 
     container.innerHTML = `
       <header class="header animate-up">
-        <div class="header-title">
-          <h1>Painel de Controle</h1>
-          <p>Visão geral do seu negócio.</p>
+        <div class="header-title" style="display:flex;align-items:center;gap:0.75rem">
+          <img src="/mesaas-logo-horiz-dark-bg.svg" alt="Mesaas" class="dashboard-logo logo-light" />
+          <img src="/mesaas-logo-horiz-light-bg.svg" alt="Mesaas" class="dashboard-logo logo-dark" />
+          <div>
+            <h1>Painel de Controle</h1>
+            <p>Visão geral do seu negócio.</p>
+          </div>
         </div>
       </header>
 

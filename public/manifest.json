@@ -6,5 +6,8 @@
   "background_color": "#12151a",
   "theme_color": "#12151a",
   "orientation": "any",
-  "icons": []
+  "icons": [
+    { "src": "/mesaas-icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/mesaas-icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
 }

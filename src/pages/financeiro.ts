@@ -1,7 +1,7 @@
 // =============================================
 // Página: Financeiro
 // =============================================
-import { getClientes, getTransacoes, getMembros, addTransacao, updateTransacao, removeTransacao, formatBRL, formatDate, type Transacao } from '../store';
+import { getClientes, getTransacoes, getMembros, projetarAgendamentos, addTransacao, updateTransacao, removeTransacao, formatBRL, formatDate, type Transacao } from '../store';
 import { showToast, openModal, closeModal, navigate, openConfirm } from '../router';
 
 export async function renderFinanceiro(container: HTMLElement): Promise<void> {
@@ -9,39 +9,10 @@ export async function renderFinanceiro(container: HTMLElement): Promise<void> {
 
   try {
     const [clientes, membros, transacoesFisicas] = await Promise.all([getClientes(), getMembros(), getTransacoes()]);
-    
+
     // Projeção On-The-Fly: Agendamentos Virtuais do mês atual
-    let transacoes = [...transacoesFisicas];
-    const dataAtual = new Date();
-    const mesBase = String(dataAtual.getMonth() + 1).padStart(2, '0');
-    const anoBase = dataAtual.getFullYear();
-
-    const addAgendamento = (idRef: string, dia: number, valor: number, desc: string, tipo: 'entrada' | 'saida') => {
-      if (!transacoesFisicas.some(t => t.referencia_agendamento === idRef)) {
-        transacoes.push({
-          id: Date.now() + Math.random(), // Id provisório virtual
-          tipo,
-          valor,
-          descricao: desc,
-          detalhe: 'Agendamento automático',
-          categoria: 'Agendamento',
-          data: `${anoBase}-${mesBase}-${String(dia).padStart(2, '0')}`,
-          status: 'agendado',
-          referencia_agendamento: idRef
-        });
-      }
-    };
-
-    clientes.filter(c => c.status === 'ativo' && c.data_pagamento).forEach(c => {
-      addAgendamento(`cliente_${c.id}_${anoBase}_${mesBase}`, c.data_pagamento!, Number(c.valor_mensal), c.nome, 'entrada');
-    });
-
-    membros.filter(m => m.data_pagamento).forEach(m => {
-      addAgendamento(`membro_${m.id}_${anoBase}_${mesBase}`, m.data_pagamento!, Number(m.custo_mensal), m.nome, 'saida');
-    });
-
-    // Ordenar de novo após empurrar virtuais
-    transacoes.sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime());
+    const transacoes = projetarAgendamentos(transacoesFisicas, clientes, membros)
+      .sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime());
 
     const clientesAtivos = clientes.filter(c => c.status === 'ativo');
     const aReceber = transacoes.filter(t => t.tipo === 'entrada').reduce((s, t) => s + Number(t.valor), 0);

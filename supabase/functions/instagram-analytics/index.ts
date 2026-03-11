@@ -105,7 +105,7 @@ async function getAccount(serviceClient: any, clientId: string) {
 // --- Fetch daily insights for a period ---
 async function fetchDailyInsights(igUserId: string, accessToken: string, since: number, until: number) {
   const metrics = 'reach,impressions,profile_views';
-  const url = `https://graph.facebook.com/${GRAPH_API_VERSION}/${igUserId}/insights?metric=${metrics}&period=day&since=${since}&until=${until}&access_token=${accessToken}`;
+  const url = `https://graph.instagram.com/${GRAPH_API_VERSION}/${igUserId}/insights?metric=${metrics}&period=day&since=${since}&until=${until}&access_token=${accessToken}`;
   const data = await graphFetch(url);
 
   const result: Record<string, number> = { reach: 0, impressions: 0, profile_views: 0 };
@@ -264,21 +264,29 @@ Deno.serve(async (req) => {
 
       const result = await getCachedOrFetch(serviceClient, account.id, 'demographics', async () => {
         console.log('[demographics] fetching for account', account.instagram_user_id);
-        // Age+Gender breakdown
-        const ageGenderUrl = `https://graph.facebook.com/${GRAPH_API_VERSION}/${account.instagram_user_id}/insights?metric=follower_demographics&period=lifetime&metric_type=total_value&breakdown=age,gender&access_token=${accessToken}`;
-        const ageGenderData = await graphFetch(ageGenderUrl);
-        console.log('[demographics] ageGender results:', JSON.stringify(ageGenderData).slice(0, 200));
+        const baseUrl = `https://graph.instagram.com/${GRAPH_API_VERSION}/${account.instagram_user_id}/insights?metric=follower_demographics&period=lifetime&metric_type=total_value`;
 
-        // City breakdown
-        const cityUrl = `https://graph.facebook.com/${GRAPH_API_VERSION}/${account.instagram_user_id}/insights?metric=follower_demographics&period=lifetime&metric_type=total_value&breakdown=city&access_token=${accessToken}`;
-        const cityData = await graphFetch(cityUrl);
+        // Fetch all 3 breakdowns in parallel, tolerating individual failures
+        const [ageGenderResult, cityResult, countryResult] = await Promise.allSettled([
+          graphFetch(`${baseUrl}&breakdown=age,gender&access_token=${accessToken}`),
+          graphFetch(`${baseUrl}&breakdown=city&access_token=${accessToken}`),
+          graphFetch(`${baseUrl}&breakdown=country&access_token=${accessToken}`),
+        ]);
 
-        // Country breakdown
-        const countryUrl = `https://graph.facebook.com/${GRAPH_API_VERSION}/${account.instagram_user_id}/insights?metric=follower_demographics&period=lifetime&metric_type=total_value&breakdown=country&access_token=${accessToken}`;
-        const countryData = await graphFetch(countryUrl);
+        const ageGenderData = ageGenderResult.status === 'fulfilled' ? ageGenderResult.value : null;
+        const cityData = cityResult.status === 'fulfilled' ? cityResult.value : null;
+        const countryData = countryResult.status === 'fulfilled' ? countryResult.value : null;
+
+        if (ageGenderResult.status === 'rejected') console.error('[demographics] age/gender failed:', ageGenderResult.reason);
+        if (cityResult.status === 'rejected') console.error('[demographics] city failed:', cityResult.reason);
+        if (countryResult.status === 'rejected') console.error('[demographics] country failed:', countryResult.reason);
+
+        console.log('[demographics] ageGender results:', JSON.stringify(ageGenderData).slice(0, 300));
+        console.log('[demographics] city results:', JSON.stringify(cityData).slice(0, 300));
+        console.log('[demographics] country results:', JSON.stringify(countryData).slice(0, 300));
 
         // Parse age+gender into structured data
-        const ageGenderRaw = ageGenderData.data?.[0]?.total_value?.breakdowns?.[0]?.results || [];
+        const ageGenderRaw = ageGenderData?.data?.[0]?.total_value?.breakdowns?.[0]?.results || [];
         const ageGenderMap: Record<string, { male: number; female: number; unknown: number }> = {};
 
         for (const item of ageGenderRaw) {
@@ -301,14 +309,14 @@ Deno.serve(async (req) => {
         }));
 
         // Parse cities
-        const citiesRaw = cityData.data?.[0]?.total_value?.breakdowns?.[0]?.results || [];
+        const citiesRaw = cityData?.data?.[0]?.total_value?.breakdowns?.[0]?.results || [];
         const cities = citiesRaw
           .map((c: any) => ({ name: c.dimension_values?.[0] || '', count: c.value || 0 }))
           .sort((a: any, b: any) => b.count - a.count)
           .slice(0, 10);
 
         // Parse countries
-        const countriesRaw = countryData.data?.[0]?.total_value?.breakdowns?.[0]?.results || [];
+        const countriesRaw = countryData?.data?.[0]?.total_value?.breakdowns?.[0]?.results || [];
         const countries = countriesRaw
           .map((c: any) => ({ code: c.dimension_values?.[0] || '', count: c.value || 0 }))
           .sort((a: any, b: any) => b.count - a.count)
@@ -318,6 +326,11 @@ Deno.serve(async (req) => {
         const totalMale = age_gender.reduce((s, a) => s + a.male, 0);
         const totalFemale = age_gender.reduce((s, a) => s + a.female, 0);
         const totalGender = totalMale + totalFemale;
+
+        // If all 3 calls failed, there's no usable data
+        if (!ageGenderData && !cityData && !countryData) {
+          throw new Error('All demographic API calls failed');
+        }
 
         return {
           age_gender,
@@ -334,67 +347,54 @@ Deno.serve(async (req) => {
     }
 
     // ==========================================
-    // GET /online-followers/:clientId
+    // GET /best-times/:clientId
+    // Analyzes actual post performance to find best posting times
     // ==========================================
-    if (req.method === 'GET' && path.match(/^\/online-followers\/\d+$/)) {
+    if (req.method === 'GET' && path.match(/^\/best-times\/\d+$/)) {
       const clientId = path.split('/')[2];
-      const { account, accessToken } = await getAccountWithToken(serviceClient, clientId);
+      const account = await getAccount(serviceClient, clientId);
 
-      const result = await getCachedOrFetch(serviceClient, account.id, 'online_followers', async () => {
-        console.log('[online_followers] fetching for account', account.instagram_user_id);
-        const now = Math.floor(Date.now() / 1000);
-        const since = now - 30 * 86400;
-        const igUrl = `https://graph.facebook.com/${GRAPH_API_VERSION}/${account.instagram_user_id}/insights?metric=online_followers&period=lifetime&metric_type=total_value&since=${since}&until=${now}&access_token=${accessToken}`;
-        const data = await graphFetch(igUrl);
-        console.log('[online_followers] response:', JSON.stringify(data).slice(0, 300));
+      const result = await getCachedOrFetch(serviceClient, account.id, 'best_times', async () => {
+        console.log('[best-times] analyzing posts for account', account.id);
 
-        // Build 7x24 heatmap from the last 30 days of hourly data
+        // Fetch last 90 days of posts
+        const sinceDate = new Date(Date.now() - 90 * 86400 * 1000).toISOString();
+        const { data: posts } = await serviceClient
+          .from('instagram_posts')
+          .select('posted_at, likes, comments, saved, shares, reach')
+          .eq('instagram_account_id', account.id)
+          .gte('posted_at', sinceDate);
+
+        console.log('[best-times] found', posts?.length || 0, 'posts');
+
+        // Build 7x24 heatmap of average engagement rate per slot
         const heatmap: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0));
         const counts: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0));
 
-        // v22.0 supports both formats: try values array first, then total_value
-        const values = data.data?.[0]?.values || [];
-        if (values.length > 0) {
-          for (const entry of values) {
-            const date = new Date(entry.end_time);
-            const dayOfWeek = (date.getDay() + 6) % 7; // Monday=0
-            const hourData = entry.value || {};
-            for (const [hour, count] of Object.entries(hourData)) {
-              const h = parseInt(hour);
-              if (h >= 0 && h < 24) {
-                heatmap[dayOfWeek][h] += count as number;
-                counts[dayOfWeek][h] += 1;
-              }
-            }
-          }
-        } else {
-          // total_value format: breakdowns with end_time dimension
-          const results = data.data?.[0]?.total_value?.breakdowns?.[0]?.results || [];
-          for (const entry of results) {
-            const dims = entry.dimension_values || [];
-            const endTime = dims[0]; // ISO timestamp
-            if (!endTime) continue;
-            const date = new Date(endTime);
-            const dayOfWeek = (date.getDay() + 6) % 7; // Monday=0
-            const hourData = entry.value || 0;
-            const hour = date.getHours();
-            heatmap[dayOfWeek][hour] += typeof hourData === 'number' ? hourData : 0;
-            counts[dayOfWeek][hour] += 1;
-          }
+        for (const p of (posts || [])) {
+          const date = new Date(p.posted_at);
+          const dayOfWeek = (date.getDay() + 6) % 7; // Monday=0
+          const hour = date.getHours();
+          const interactions = (p.likes || 0) + (p.comments || 0) + (p.saved || 0) + (p.shares || 0);
+          const engRate = p.reach > 0 ? (interactions / p.reach) * 100 : 0;
+          heatmap[dayOfWeek][hour] += engRate;
+          counts[dayOfWeek][hour] += 1;
         }
 
         // Average out
         for (let d = 0; d < 7; d++) {
           for (let h = 0; h < 24; h++) {
-            heatmap[d][h] = counts[d][h] > 0 ? Math.round(heatmap[d][h] / counts[d][h]) : 0;
+            heatmap[d][h] = counts[d][h] > 0 ? Math.round((heatmap[d][h] / counts[d][h]) * 100) / 100 : 0;
           }
         }
 
-        // Find top 3 slots
-        const slots: { day: number; hour: number; value: number }[] = [];
+        // Find top 3 slots (only slots with posts)
+        const slots: { day: number; hour: number; value: number; postCount: number }[] = [];
         for (let d = 0; d < 7; d++) {
           for (let h = 0; h < 24; h++) {
-            slots.push({ day: d, hour: h, value: heatmap[d][h] });
+            if (counts[d][h] > 0) {
+              slots.push({ day: d, hour: h, value: heatmap[d][h], postCount: counts[d][h] });
+            }
           }
         }
         slots.sort((a, b) => b.value - a.value);
@@ -402,11 +402,13 @@ Deno.serve(async (req) => {
 
         return {
           heatmap,
+          counts,
           topSlots,
+          totalPosts: (posts || []).length,
           labels_days: ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab', 'Dom'],
           labels_hours: Array.from({ length: 24 }, (_, i) => `${i}h`),
         };
-      }, 12); // Cache for 12 hours
+      }, 12);
 
       return json(result);
     }

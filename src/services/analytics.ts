@@ -114,9 +114,11 @@ export interface AudienceDemographics {
   gender_split: { male: number; female: number };
 }
 
-export interface OnlineFollowers {
+export interface BestPostingTimes {
   heatmap: number[][];
-  topSlots: { day: number; hour: number; value: number }[];
+  counts: number[][];
+  topSlots: { day: number; hour: number; value: number; postCount: number }[];
+  totalPosts: number;
   labels_days: string[];
   labels_hours: string[];
 }
@@ -487,8 +489,8 @@ export async function getAudienceDemographics(clientId: number): Promise<{ data:
   return fetchEdge(`${EDGE_URL}/demographics/${clientId}`);
 }
 
-export async function getOnlineFollowers(clientId: number): Promise<{ data: OnlineFollowers; fromCache: boolean; fetchedAt: string } | null> {
-  return fetchEdge(`${EDGE_URL}/online-followers/${clientId}`);
+export async function getBestPostingTimes(clientId: number): Promise<{ data: BestPostingTimes; fromCache: boolean; fetchedAt: string } | null> {
+  return fetchEdge(`${EDGE_URL}/best-times/${clientId}`);
 }
 
 // ---- AI Analysis ----

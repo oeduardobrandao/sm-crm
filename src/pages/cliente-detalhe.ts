@@ -270,7 +270,7 @@ export async function renderClienteDetalhe(container: HTMLElement, param?: strin
 
     // Back button
     container.querySelector('#btn-back')?.addEventListener('click', () => {
-      window.history.back();
+      navigate('/clientes');
     });
 
     // Edit button
