@@ -115,7 +115,7 @@ Deno.serve(async (req) => {
 
     // 2. GET /callback (also handle callback at root when META_REDIRECT_URI doesn't include /callback)
     if (req.method === 'GET' && (path === '/callback' || (path === '' && url.searchParams.has('code')))) {
-        const code = url.searchParams.get('code');
+        const code = url.searchParams.get('code')?.replace(/#_$/, '');
         const state = url.searchParams.get('state');
 
         if (!code) throw new Error("Missing auth code");
