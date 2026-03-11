@@ -62,6 +62,11 @@ async function decryptToken(encryptedBase64: string): Promise<string> {
 Deno.serve(async (req) => {
   const url = new URL(req.url);
   const path = url.pathname.replace('/instagram-integration', '').replace(/\/$/, '');
+  // Derive the function's own base URL to use as redirect_uri (avoids META_REDIRECT_URI mismatch)
+  // Force HTTPS: edge functions run behind a reverse proxy that terminates SSL,
+  // so url.origin reports http:// but the public URL is always https://
+  const origin = url.origin.replace(/^http:\/\//, 'https://');
+  const functionBaseUrl = `${origin}/functions/v1/instagram-integration`;
 
   // Setup Supabase Client
   const authHeader = req.headers.get('Authorization');
@@ -106,7 +111,7 @@ Deno.serve(async (req) => {
         // Pass clientId in state
         const state = btoa(JSON.stringify({ clientId }));
         
-        const oauthUrl = `https://www.instagram.com/oauth/authorize?client_id=${META_APP_ID}&redirect_uri=${META_REDIRECT_URI}&response_type=code&scope=instagram_business_basic,instagram_business_manage_insights&state=${state}`;
+        const oauthUrl = `https://www.instagram.com/oauth/authorize?client_id=${META_APP_ID}&redirect_uri=${encodeURIComponent(functionBaseUrl)}&response_type=code&scope=instagram_business_basic,instagram_business_manage_insights&state=${state}`;
 
         return new Response(JSON.stringify({ url: oauthUrl }), { 
             headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -125,6 +130,8 @@ Deno.serve(async (req) => {
         if (!clientId || !/^\d+$/.test(String(clientId))) throw new Error("Invalid client ID in state parameter");
 
         // Exchange code for short-lived token (Instagram Business Login)
+        console.log('[IG-CALLBACK] Exchanging code for short-lived token...');
+        console.log('[IG-CALLBACK] redirect_uri used:', functionBaseUrl);
         const exchangeRes = await fetch('https://api.instagram.com/oauth/access_token', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -132,21 +139,45 @@ Deno.serve(async (req) => {
                 client_id: META_APP_ID,
                 client_secret: META_APP_SECRET,
                 grant_type: 'authorization_code',
-                redirect_uri: META_REDIRECT_URI,
+                redirect_uri: functionBaseUrl,
                 code: code
             })
         });
         const slTokenData = await exchangeRes.json();
-        if (slTokenData.error) throw new Error(slTokenData.error_description || slTokenData.error);
+        console.log('[IG-CALLBACK] Short-lived token response status:', exchangeRes.status);
+        console.log('[IG-CALLBACK] Short-lived token response keys:', Object.keys(slTokenData));
+
+        // Handle both error formats: {error: "string"} and {error: {message: "...", type: "...", code: N}}
+        if (slTokenData.error) {
+            const errMsg = typeof slTokenData.error === 'object'
+                ? (slTokenData.error.message || JSON.stringify(slTokenData.error))
+                : (slTokenData.error_description || slTokenData.error);
+            console.error('[IG-CALLBACK] Short-lived token error:', errMsg);
+            throw new Error(errMsg);
+        }
 
         const shortLivedToken = slTokenData.access_token;
         const igBusinessId = String(slTokenData.user_id); // Instagram Business account ID returned directly
+
+        if (!shortLivedToken) {
+            console.error('[IG-CALLBACK] No access_token in response:', JSON.stringify(slTokenData));
+            throw new Error('Instagram did not return an access token');
+        }
+        console.log('[IG-CALLBACK] Got short-lived token, user_id:', igBusinessId);
 
         // Exchange for long-lived token
         const llExchangeUrl = `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${META_APP_SECRET}&access_token=${shortLivedToken}`;
         const llTokenRes = await fetch(llExchangeUrl);
         const llTokenData = await llTokenRes.json();
-        if (llTokenData.error) throw new Error(llTokenData.error.message || 'Failed to get long-lived token');
+        console.log('[IG-CALLBACK] Long-lived token response status:', llTokenRes.status);
+        console.log('[IG-CALLBACK] Long-lived token response keys:', Object.keys(llTokenData));
+        if (llTokenData.error) {
+            const errMsg = typeof llTokenData.error === 'object'
+                ? (llTokenData.error.message || JSON.stringify(llTokenData.error))
+                : llTokenData.error;
+            console.error('[IG-CALLBACK] Long-lived token error:', errMsg);
+            throw new Error(errMsg);
+        }
 
         const longLivedToken = llTokenData.access_token;
         const expiresInSeconds = llTokenData.expires_in || (60 * 60 * 24 * 60);
