@@ -917,6 +917,45 @@ body {
   color: #12151a;
 }
 
+input.filter-btn {
+  font-family: inherit;
+  text-transform: none;
+  letter-spacing: normal;
+  cursor: text;
+  background: transparent;
+  color: var(--text-main);
+  outline: none;
+  width: 100%;
+}
+input.filter-btn::placeholder {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.65rem;
+}
+input.filter-btn:focus, select.filter-btn:focus {
+  border-color: var(--primary-color);
+}
+
+select.filter-btn {
+  -webkit-appearance: none;
+  appearance: none;
+  outline: none;
+  background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%239ca3af%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E');
+  background-repeat: no-repeat;
+  background-position: right 0.7rem center;
+  background-size: 0.65em auto;
+  padding-right: 2rem;
+}
+select.filter-btn option {
+  background: var(--bg-card);
+  color: var(--text-main);
+  font-family: inherit;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
 /* ===== Payments/List ===== */
 .payments-list, .client-list {
   display: flex;
@@ -2513,4 +2552,339 @@ body.role-agent input[name="valor_total"] {
 .post-detail-row td {
   background: var(--card-bg) !important;
 }
+
+/* ===== Board (Entregas) ===== */
+.board-container {
+  display: flex;
+  gap: 1rem;
+  overflow-x: auto;
+  padding-bottom: 1rem;
+  min-height: 300px;
+}
+
+.board-column {
+  min-width: 280px;
+  max-width: 320px;
+  flex: 1 0 280px;
+  display: flex;
+  flex-direction: column;
+}
+
+.board-column-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background: var(--surface-hover);
+  border-radius: var(--radius) var(--radius) 0 0;
+  border: 1px solid var(--border-color);
+  border-bottom: 2px solid var(--primary-color);
+}
+
+.board-column-title {
+  font-weight: 600;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-main);
+}
+
+.board-column-count {
+  background: var(--border-color);
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 2rem;
+}
+
+.board-column-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem 0.5rem;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border-color);
+  border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+  min-height: 100px;
+}
+
+.board-empty {
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  padding: 2rem 1rem;
+  opacity: 0.5;
+}
+
+.board-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  cursor: default;
+  position: relative;
+}
+
+.board-card:hover {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 1px rgba(62, 207, 142, 0.15);
+}
+
+.board-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.board-card-client {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.board-card-title {
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: var(--text-main);
+  line-height: 1.3;
+}
+
+.board-card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.board-card-deadline {
+  font-size: 0.75rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 2rem;
+}
+
+.board-card-prazo-type {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.deadline-ok .board-card-deadline,
+.board-card-deadline.deadline-ok {
+  background: rgba(62, 207, 142, 0.1);
+  color: var(--primary-color);
+}
+
+.deadline-caution .board-card-deadline,
+.board-card-deadline.deadline-caution {
+  background: rgba(234, 179, 8, 0.1);
+  color: #eab308;
+}
+
+.deadline-warning .board-card-deadline,
+.board-card-deadline.deadline-warning {
+  background: rgba(245, 163, 66, 0.15);
+  color: var(--warning);
+}
+
+.deadline-overdue .board-card-deadline,
+.board-card-deadline.deadline-overdue {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--danger);
+}
+
+.deadline-overdue.board-card {
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.deadline-warning.board-card {
+  border-color: rgba(245, 163, 66, 0.4);
+}
+
+.board-card-assignee {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.board-card-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.board-progress-bar {
+  flex: 1;
+  height: 4px;
+  background: var(--surface-hover);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.board-progress-fill {
+  height: 100%;
+  background: var(--primary-color);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.board-progress-label {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.board-card-actions {
+  display: flex;
+  gap: 0.35rem;
+  margin-top: 0.15rem;
+}
+
+.board-card-actions button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: var(--radius);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex: 1;
+}
+
+.board-card-actions button:hover {
+  background: var(--surface-hover);
+  color: var(--text-main);
+}
+
+.btn-revert-etapa {
+  border-color: var(--warning) !important;
+  color: var(--warning) !important;
+}
+
+.btn-revert-etapa:hover {
+  background: var(--warning) !important;
+  color: #000 !important;
+}
+
+.btn-edit-workflow {
+  border-color: var(--text-muted) !important;
+  color: var(--text-muted) !important;
+}
+
+.btn-edit-workflow:hover {
+  border-color: var(--text-main) !important;
+  background: var(--surface-hover) !important;
+  color: var(--text-main) !important;
+}
+
+.btn-complete-etapa {
+  border-color: var(--primary-color) !important;
+  color: var(--primary-color) !important;
+}
+
+.btn-complete-etapa:hover {
+  background: var(--primary-color) !important;
+  color: #000 !important;
+}
+
+/* Workflow progress bar (client detail) */
+.wf-progress-section {
+  margin-bottom: 2rem;
+}
+
+.wf-flow-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.wf-flow-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.wf-flow-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.wf-steps-row {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.wf-step-pill {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-hover);
+  transition: background 0.3s;
+}
+
+.wf-step-pill.done {
+  background: var(--primary-color);
+}
+
+.wf-step-pill.active {
+  background: var(--warning);
+  animation: pulse-step 1.5s infinite;
+}
+
+@keyframes pulse-step {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.wf-step-info {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+/* Etapa rows in modals */
+.wf-etapa-row, .tpl-etapa-row {
+  border-left: 3px solid var(--primary-color);
+  padding-left: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+@media (max-width: 768px) {
+  .board-container {
+    flex-direction: column;
+  }
+  .board-column {
+    min-width: 100%;
+    max-width: 100%;
+  }
+}
+
 

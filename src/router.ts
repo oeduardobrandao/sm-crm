@@ -229,9 +229,9 @@ export function openConfirm(title: string, message: string, onConfirm: () => voi
 }
 
 export function closeModal(): void {
-  const overlay = document.getElementById('modal-overlay');
-  if (overlay) {
+  const overlays = document.querySelectorAll('.modal-overlay');
+  overlays.forEach(overlay => {
     overlay.classList.remove('modal-visible');
     setTimeout(() => overlay.remove(), 200);
-  }
+  });
 }

@@ -1,8 +1,8 @@
 // =============================================
 // Página: Detalhe do Cliente
 // =============================================
-import { getClientes, getTransacoes, getContratos, formatBRL, formatDate, getInitials, updateCliente, type Cliente } from '../store';
-import { showToast, navigate, openModal, closeModal, sanitizeUrl, escapeHTML } from '../router';
+import { getClientes, getTransacoes, getContratos, formatBRL, formatDate, getInitials, updateCliente, getWorkflowsByCliente, getWorkflowEtapas, getDeadlineInfo, getMembros, completeEtapa, duplicateWorkflow, type Cliente, type Workflow, type WorkflowEtapa, type Membro } from '../store';
+import { showToast, navigate, openModal, closeModal, sanitizeUrl, escapeHTML, openConfirm } from '../router';
 import { getInstagramSummary, getInstagramPosts, syncInstagramData } from '../services/instagram';
 import { renderInstagramConnectButton } from '../components/instagram/InstagramConnectButton';
 import { renderInstagramOverviewCard } from '../components/instagram/InstagramOverviewCard';
@@ -64,11 +64,13 @@ export async function renderClienteDetalhe(container: HTMLElement, param?: strin
   }
 
   try {
-    const [clientes, transacoes, contratos, igSummary] = await Promise.all([
+    const [clientes, transacoes, contratos, igSummary, clienteWorkflows, membros] = await Promise.all([
       getClientes(),
       getTransacoes(),
       getContratos(),
-      getInstagramSummary(clienteId).catch(() => null)
+      getInstagramSummary(clienteId).catch(() => null),
+      getWorkflowsByCliente(clienteId),
+      getMembros(),
     ]);
 
     const cliente = clientes.find((c: Cliente) => c.id === clienteId);
@@ -115,6 +117,9 @@ export async function renderClienteDetalhe(container: HTMLElement, param?: strin
 
       <!-- Instagram Integration Region -->
       <div id="ig-container" class="animate-up" style="margin-bottom: 2rem;"></div>
+
+      <!-- Fluxos de Entrega -->
+      <div id="wf-section" class="wf-progress-section animate-up"></div>
 
 
       <!-- KPI Cards -->
@@ -266,6 +271,85 @@ export async function renderClienteDetalhe(container: HTMLElement, param?: strin
          // Render Unconnected UI
          renderInstagramConnectButton(igContainer, clienteId);
       }
+    }
+
+    // ---- Workflow Section ----
+    const wfSection = container.querySelector('#wf-section') as HTMLElement;
+    if (wfSection && clienteWorkflows.length > 0) {
+      const activeWfs = clienteWorkflows.filter(w => w.status === 'ativo');
+      const doneWfs = clienteWorkflows.filter(w => w.status === 'concluido');
+
+      // Fetch etapas for active workflows
+      const wfEtapasMap = new Map<number, WorkflowEtapa[]>();
+      await Promise.all(activeWfs.map(async w => {
+        const etapas = await getWorkflowEtapas(w.id!);
+        wfEtapasMap.set(w.id!, etapas);
+      }));
+
+      let html = `<div class="card"><h3 style="margin-bottom:1.25rem"><i class="ph ph-kanban" style="margin-right:0.5rem;color:var(--primary-color)"></i> Fluxos de Entrega (${activeWfs.length} ativo${activeWfs.length !== 1 ? 's' : ''}${doneWfs.length ? `, ${doneWfs.length} concluído${doneWfs.length !== 1 ? 's' : ''}` : ''})</h3>`;
+
+      if (activeWfs.length === 0) {
+        html += `<p style="color:var(--text-muted);font-size:0.9rem">Nenhum fluxo ativo para este cliente.</p>`;
+      } else {
+        for (const wf of activeWfs) {
+          const etapas = wfEtapasMap.get(wf.id!) || [];
+          const activeEtapa = etapas.find(e => e.status === 'ativo');
+          const dl = activeEtapa ? getDeadlineInfo(activeEtapa) : null;
+          const resp = activeEtapa?.responsavel_id ? membros.find(m => m.id === activeEtapa.responsavel_id) : null;
+          const dlClass = dl?.estourado ? 'color:var(--danger)' : dl?.urgente ? 'color:var(--warning)' : 'color:var(--primary-color)';
+          const dlText = dl ? (dl.estourado ? `${Math.abs(dl.diasRestantes)}d atrasado` : dl.diasRestantes === 0 ? 'Vence hoje' : `${dl.diasRestantes}d restantes`) : '';
+
+          html += `
+          <div class="wf-flow-card">
+            <div class="wf-flow-header">
+              <span class="wf-flow-title">${wf.titulo} ${wf.recorrente ? '<i class="ph ph-arrows-clockwise" style="font-size:0.75rem;color:var(--text-muted)" title="Recorrente"></i>' : ''}</span>
+              ${activeEtapa ? `<button class="filter-btn wf-complete-btn" data-wid="${wf.id}" data-eid="${activeEtapa.id}" style="width:auto"><i class="ph ph-check-circle"></i> Concluir</button>` : ''}
+            </div>
+            <div class="wf-steps-row">
+              ${etapas.map(e => `<div class="wf-step-pill ${e.status === 'concluido' ? 'done' : e.status === 'ativo' ? 'active' : ''}" title="${e.nome}"></div>`).join('')}
+            </div>
+            <div class="wf-step-info">
+              ${activeEtapa ? `<span><strong>${activeEtapa.nome}</strong></span>` : '<span>Concluído</span>'}
+              ${dlText ? `<span style="${dlClass};font-weight:600"><i class="ph ph-clock"></i> ${dlText}</span>` : ''}
+              ${resp ? `<span><i class="ph ph-user"></i> ${resp.nome}</span>` : ''}
+            </div>
+          </div>`;
+        }
+      }
+
+      html += `<div style="margin-top:0.75rem"><a href="#/entregas" style="font-size:0.85rem;color:var(--primary-color)"><i class="ph ph-arrow-right"></i> Ver todos os fluxos</a></div></div>`;
+      wfSection.innerHTML = html;
+
+      // Complete etapa buttons
+      wfSection.querySelectorAll('.wf-complete-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const wid = Number((btn as HTMLElement).dataset.wid);
+          const eid = Number((btn as HTMLElement).dataset.eid);
+          try {
+            const result = await completeEtapa(wid, eid);
+            if (result.workflow.status === 'concluido') {
+              showToast('Fluxo concluído! 🎉');
+              const wf = clienteWorkflows.find(w => w.id === wid);
+              if (wf?.recorrente) {
+                openConfirm('Fluxo Recorrente', 'Criar um novo ciclo com as mesmas etapas?', async () => {
+                  try {
+                    await duplicateWorkflow(wid);
+                    showToast('Novo ciclo criado!');
+                    navigate('/cliente/' + clienteId);
+                  } catch { showToast('Erro ao duplicar.', 'error'); }
+                });
+              } else {
+                navigate('/cliente/' + clienteId);
+              }
+            } else {
+              showToast('Etapa concluída!');
+              navigate('/cliente/' + clienteId);
+            }
+          } catch (err) {
+            showToast('Erro: ' + (err instanceof Error ? err.message : 'Erro'), 'error');
+          }
+        });
+      });
     }
 
     // Back button

@@ -646,6 +646,28 @@ export async function completeEtapa(workflowId: number, etapaId: number): Promis
   return { workflow, etapas: updatedEtapas };
 }
 
+/** Revert a workflow to its previous step (move card one column back). */
+export async function revertEtapa(workflowId: number): Promise<{ workflow: Workflow; etapas: WorkflowEtapa[] }> {
+  const etapas = await getWorkflowEtapas(workflowId);
+  const activeIdx = etapas.findIndex(e => e.status === 'ativo');
+  if (activeIdx <= 0) throw new Error('Não é possível voltar — já está na primeira etapa.');
+
+  const now = new Date().toISOString();
+  const currentEtapa = etapas[activeIdx];
+  const prevEtapa = etapas[activeIdx - 1];
+
+  // Deactivate current step → pendente
+  await updateWorkflowEtapa(currentEtapa.id!, { status: 'pendente', iniciado_em: null });
+
+  // Re-activate previous step
+  await updateWorkflowEtapa(prevEtapa.id!, { status: 'ativo', concluido_em: null, iniciado_em: now });
+
+  // Update workflow pointer
+  const workflow = await updateWorkflow(workflowId, { etapa_atual: activeIdx - 1 });
+  const updatedEtapas = await getWorkflowEtapas(workflowId);
+  return { workflow, etapas: updatedEtapas };
+}
+
 /** Clone a workflow for recurrence (creates a fresh copy with all steps reset). */
 export async function duplicateWorkflow(workflowId: number): Promise<Workflow> {
   const [workflow, etapas] = await Promise.all([

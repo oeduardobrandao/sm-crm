@@ -97,7 +97,7 @@ function renderContent(container: HTMLElement, clientes: Cliente[], filter = 'to
   `;
 
   // --- Filters ---
-  container.querySelectorAll('.filter-btn').forEach(btn => {
+  container.querySelectorAll('button.filter-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       renderContent(container, clientes, (btn as HTMLElement).dataset.filter || 'todos');
     });

@@ -8,6 +8,7 @@ export const navGroups: NavGroup[] = [
       { id: 'leads', route: '/leads', label: 'Leads', icon: 'ph-funnel' },
       { id: 'clientes', route: '/clientes', label: 'Clientes', icon: 'ph-users' } ] },
   { id: 'gestao', label: 'Gestão', icon: 'ph-folder', items: [
+      { id: 'entregas', route: '/entregas', label: 'Entregas', icon: 'ph-kanban' },
       { id: 'financeiro', route: '/financeiro', label: 'Financeiro', icon: 'ph-wallet' },
       { id: 'contratos', route: '/contratos', label: 'Contratos', icon: 'ph-file-text' },
       { id: 'equipe', route: '/equipe', label: 'Equipe', icon: 'ph-user-circle-gear' } ] },

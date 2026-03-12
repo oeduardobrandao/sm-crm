@@ -660,7 +660,7 @@ export async function renderCalendario(container: HTMLElement): Promise<void> {
     `;
 
     // Attach Events inside Medico
-    el.querySelectorAll('.filter-btn').forEach(btn => {
+    el.querySelectorAll('button.filter-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         activeFilter = (e.target as HTMLElement).dataset.filter!;
         renderMedico(el); // Re-render so this portion updates

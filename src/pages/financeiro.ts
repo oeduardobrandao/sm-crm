@@ -112,7 +112,7 @@ function renderContent(
   `;
 
   // Filters
-  container.querySelectorAll('.filter-btn').forEach(btn => {
+  container.querySelectorAll('button.filter-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       renderContent(container, transacoes, (btn as HTMLElement).dataset.filter || 'todas', aReceber, aPagar, nClientes, nSaidas, recebido);
     });

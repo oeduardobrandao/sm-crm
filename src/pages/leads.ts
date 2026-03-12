@@ -139,7 +139,7 @@ function renderContent(container: HTMLElement, allLeads: Lead[], state?: State):
 
     <!-- Search + Filters -->
     <div class="leads-toolbar animate-up">
-      <input class="form-input leads-search" id="leads-search" placeholder="🔍 Buscar por nome, e-mail, instagram..." value="${s.search}" style="max-width:340px">
+      <input class="filter-btn leads-search" id="leads-search" placeholder="🔍 Buscar por nome, e-mail, instagram..." value="${s.search}" style="max-width:340px">
       <div class="filter-bar" style="margin:0">
         ${filters.map(f =>
           `<button class="filter-btn ${f === s.filter ? 'active' : ''}" data-filter="${f}">${f === 'todos' ? 'Todos' : STATUS_LABELS[f]}</button>`
@@ -248,7 +248,7 @@ function renderContent(container: HTMLElement, allLeads: Lead[], state?: State):
   });
 
   // Filter buttons
-  container.querySelectorAll('.filter-btn').forEach(btn => {
+  container.querySelectorAll('button.filter-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       renderContent(container, allLeads, { ...s, filter: (btn as HTMLElement).dataset.filter || 'todos', page: 1 });
     });
