@@ -26,7 +26,7 @@
   --border-color: rgba(30, 36, 48, 0.15);
 
   /* Dimensões e Globais */
-  --sidebar-width: 90px;
+  --sidebar-width: 68px;
   --font-main: 'DM Sans', sans-serif;
   --font-heading: 'Playfair Display', serif;
   --font-mono: 'DM Mono', monospace;
@@ -89,14 +89,14 @@ body {
 /* ===== Sidebar ===== */
 .sidebar {
   width: var(--sidebar-width);
-  background: rgba(36, 42, 53, 0.7); /* translucency for light mode */
+  background: rgba(18, 21, 26, 0.95); /* Deep dark background for light mode contrast */
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: clamp(1rem, 2.5vh, 2rem) 0.5rem;
+  padding: clamp(1rem, 2.5vh, 2rem) 0;
   position: fixed;
   height: 100dvh;
   max-height: 100dvh;
@@ -106,7 +106,7 @@ body {
   z-index: 100;
   box-shadow: var(--shadow);
   transition: width 0.25s ease, padding 0.25s ease;
-  overflow: hidden;
+  overflow: visible;
 }
 
 @supports not (height: 100dvh) {
@@ -117,21 +117,42 @@ body {
 @media (min-width: 901px) {
   .sidebar:hover {
     width: 220px;
+    padding: clamp(1rem, 2.5vh, 2rem) 0;
   }
 
   .sidebar:hover .nav-link {
     font-size: 0.85rem;
     justify-content: flex-start;
-    padding: 0 clamp(10px, 1.5vh, 16px);
+    padding: 0 16px 0 28px;
     gap: 12px;
+    border-radius: 0;
+  }
+
+  .sidebar:hover .nav-link:hover {
+    transform: none;
+    border-radius: 0;
+  }
+
+  .sidebar:hover .nav-link.active {
+    border-radius: 0;
   }
 
   .sidebar:hover .sidebar-bottom .btn-icon {
     font-size: 0.85rem;
     width: 100%;
     justify-content: flex-start;
-    padding: 0 clamp(10px, 1.5vh, 16px);
-    gap: 10px;
+    padding: 0 16px 0 28px;
+    gap: 12px;
+    border-radius: 0;
+    display: flex;
+    align-items: center;
+  }
+  
+  .sidebar:hover .sidebar-user {
+    justify-content: flex-start !important;
+    padding: 0 16px 0 28px !important;
+    border-radius: 0;
+    gap: 12px;
   }
 
   /* Hide tooltips when sidebar is expanded */
@@ -190,8 +211,8 @@ body {
   height: clamp(40px, 5vh, 54px);
   color: #94a3b8;
   text-decoration: none;
-  border-radius: 18px;
-  transition: all var(--transition);
+  border-radius: 0;
+  transition: background var(--transition), color var(--transition);
   font-weight: 500;
   font-size: 0;
   position: relative;
@@ -209,14 +230,13 @@ body {
 .nav-link:hover {
   background: rgba(255, 255, 255, 0.1);
   color: #ffffff;
-  transform: scale(1.05);
 }
 
 .nav-link.active {
   background: var(--primary-color);
   color: #12151a;
   border: none;
-  border-radius: 18px;
+  border-radius: 0;
   box-shadow: 0 10px 20px rgba(234, 179, 8, 0.2);
 }
 
@@ -1245,15 +1265,32 @@ body {
 
 .sidebar-label {
   font-size: 0;
-  transition: font-size 0.25s ease;
+  transition: font-size 0.25s ease, color 0.25s ease;
   white-space: nowrap;
   overflow: hidden;
+  color: #94a3b8;
 }
 
 @media (min-width: 901px) {
   .sidebar:hover .sidebar-label {
     font-size: 0.85rem;
   }
+}
+
+.sidebar-bottom .btn-icon {
+  width: 100%;
+  height: clamp(40px, 5vh, 54px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0;
+  padding: 0;
+  color: var(--primary-color);
+  transition: background var(--transition);
+}
+.sidebar-bottom .btn-icon:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--primary-color) !important;
 }
 
 .sidebar-user {
@@ -1263,11 +1300,18 @@ body {
   justify-content: center;
   min-width: clamp(40px, 5vh, 54px);
   height: clamp(40px, 5vh, 54px);
-  border-radius: 18px;
-  transition: background var(--transition);
+  border-radius: 0;
+  transition: background var(--transition), color var(--transition);
   padding: 0;
+  color: #94a3b8;
 }
-.sidebar-user:hover { background: rgba(255,255,255,0.1); }
+.sidebar-user:hover {
+  background: rgba(255,255,255,0.1);
+  color: #ffffff;
+}
+.sidebar-user:hover .sidebar-label {
+  color: #ffffff;
+}
 .sidebar-user .user-name { display: none; }
 .sidebar-user i.fa-chevron-up { display: none; }
 

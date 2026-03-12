@@ -247,10 +247,10 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
 
     <!-- KPI Cards -->
     <div class="kpi-grid animate-up" style="grid-template-columns:repeat(auto-fit, minmax(160px, 1fr))">
-      ${renderKpiCard('SEGUIDORES', formatDelta(overview.followers), overview.followers)}
+      ${renderKpiCard('SEGUIDORES', overview.followerCount.toLocaleString('pt-BR'), overview.followers)}
       ${renderKpiCard('ENGAJAMENTO', overview.engagement.current.toFixed(2) + '%', overview.engagement)}
       ${renderKpiCard('ALCANCE', overview.reach.current.toLocaleString('pt-BR'), overview.reach)}
-      ${renderKpiCard('VISITAS AO PERFIL', overview.profileViews.current.toLocaleString('pt-BR'), overview.profileViews)}
+      ${renderKpiCard('CONTAS ENGAJADAS', overview.profileViews.current.toLocaleString('pt-BR'), overview.profileViews)}
       ${renderKpiCard('TAXA DE SALVAMENTOS', overview.savesRate.current.toFixed(2) + '%', overview.savesRate)}
       ${renderKpiCard('POSTS PUBLICADOS', String(overview.postsPublished.current), overview.postsPublished)}
     </div>

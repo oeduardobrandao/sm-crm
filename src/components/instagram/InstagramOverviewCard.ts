@@ -50,7 +50,7 @@ export function renderInstagramOverviewCard(container: HTMLElement, clientId: nu
             <span class="kpi-value">${account.impressions_28d?.toLocaleString('pt-BR') || 0}</span>
          </div>
          <div class="kpi-card">
-            <span class="kpi-label"><i class="ph ph-user-focus"></i> Visitas ao Perfil</span>
+            <span class="kpi-label"><i class="ph ph-user-focus"></i> Contas Engajadas</span>
             <span class="kpi-value">${account.profile_views_28d?.toLocaleString('pt-BR') || 0}</span>
          </div>
       </div>

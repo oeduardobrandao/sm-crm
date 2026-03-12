@@ -103,16 +103,23 @@ async function getAccount(serviceClient: any, clientId: string) {
 }
 
 // --- Fetch daily insights for a period ---
-async function fetchDailyInsights(igUserId: string, accessToken: string, since: number, until: number) {
-  const metrics = 'reach,impressions,profile_views';
-  const url = `https://graph.instagram.com/${GRAPH_API_VERSION}/${igUserId}/insights?metric=${metrics}&period=day&since=${since}&until=${until}&access_token=${accessToken}`;
-  const data = await graphFetch(url);
+async function fetchDailyInsights(_igUserId: string, accessToken: string, since: number, until: number) {
+  // Use /me and updated metrics (views replaces impressions, accounts_engaged replaces profile_views)
+  const [reachRes, viewsRes, engagedRes] = await Promise.allSettled([
+    graphFetch(`https://graph.instagram.com/${GRAPH_API_VERSION}/me/insights?metric=reach&metric_type=total_value&period=day&since=${since}&until=${until}&access_token=${accessToken}`),
+    graphFetch(`https://graph.instagram.com/${GRAPH_API_VERSION}/me/insights?metric=views&metric_type=total_value&period=day&since=${since}&until=${until}&access_token=${accessToken}`),
+    graphFetch(`https://graph.instagram.com/${GRAPH_API_VERSION}/me/insights?metric=accounts_engaged&metric_type=total_value&period=day&since=${since}&until=${until}&access_token=${accessToken}`),
+  ]);
 
   const result: Record<string, number> = { reach: 0, impressions: 0, profile_views: 0 };
-  if (data.data) {
-    for (const insight of data.data) {
-      result[insight.name] = insight.values.reduce((sum: number, v: any) => sum + (v.value || 0), 0);
-    }
+  if (reachRes.status === 'fulfilled' && reachRes.value?.data) {
+    for (const insight of reachRes.value.data) if (insight.name === 'reach') result.reach = insight.total_value?.value || 0;
+  }
+  if (viewsRes.status === 'fulfilled' && viewsRes.value?.data) {
+    for (const insight of viewsRes.value.data) if (insight.name === 'views') result.impressions = insight.total_value?.value || 0;
+  }
+  if (engagedRes.status === 'fulfilled' && engagedRes.value?.data) {
+    for (const insight of engagedRes.value.data) if (insight.name === 'accounts_engaged') result.profile_views = insight.total_value?.value || 0;
   }
   return result;
 }
@@ -264,7 +271,7 @@ Deno.serve(async (req) => {
 
       const result = await getCachedOrFetch(serviceClient, account.id, 'demographics', async () => {
         console.log('[demographics] fetching for account', account.instagram_user_id);
-        const baseUrl = `https://graph.instagram.com/${GRAPH_API_VERSION}/${account.instagram_user_id}/insights?metric=follower_demographics&period=lifetime&metric_type=total_value`;
+        const baseUrl = `https://graph.instagram.com/${GRAPH_API_VERSION}/me/insights?metric=follower_demographics&period=lifetime&metric_type=total_value`;
 
         // Fetch all 3 breakdowns in parallel, tolerating individual failures
         const [ageGenderResult, cityResult, countryResult] = await Promise.allSettled([

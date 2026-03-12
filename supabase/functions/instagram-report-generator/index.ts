@@ -181,7 +181,7 @@ Deno.serve(async (req) => {
         { label: 'Seguidores', value: `${followerGain >= 0 ? '+' : ''}${followerGain.toLocaleString('pt-BR')}` },
         { label: 'Engajamento', value: `${avgEngagement.toFixed(2)}%` },
         { label: 'Alcance Total', value: totalReach.toLocaleString('pt-BR') },
-        { label: 'Visitas ao Perfil', value: (account.profile_views_28d || 0).toLocaleString('pt-BR') },
+        { label: 'Contas Engajadas', value: (account.profile_views_28d || 0).toLocaleString('pt-BR') },
         { label: 'Taxa de Salvamentos', value: `${savesRate.toFixed(2)}%` },
         { label: 'Posts Publicados', value: String(totalPosts) },
       ];

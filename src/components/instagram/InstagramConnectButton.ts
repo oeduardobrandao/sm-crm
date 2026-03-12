@@ -13,7 +13,7 @@ export function renderInstagramConnectButton(container: HTMLElement, clientId: n
         Conecte a conta Business do Instagram deste cliente para visualizar métricas, crescimento de seguidores e performance de posts diretamente no CRM.
       </p>
       <button id="btn-ig-connect" class="btn-primary" style="background: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%); color: white; border: none;">
-        <i class="fa-brands fa-instagram"></i> Conectar com o Facebook
+        <i class="fa-brands fa-instagram"></i> Conectar com o Instagram
       </button>
     </div>
   `;
