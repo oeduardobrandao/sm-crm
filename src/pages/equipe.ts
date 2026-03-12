@@ -10,17 +10,36 @@ export async function renderEquipe(container: HTMLElement): Promise<void> {
 
   try {
     const membros = await getMembros();
-    renderContent(container, membros);
+    renderContent(container, membros, 'todos', 'nome');
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Erro';
     container.innerHTML = `<div class="card"><p style="color:var(--danger)">Erro: ${message}</p></div>`;
   }
 }
 
-function renderContent(container: HTMLElement, membros: Membro[]): void {
+function renderContent(container: HTMLElement, membros: Membro[], filter: string = 'todos', sort: string = 'nome'): void {
   const custoTotal = membros.reduce((s, m) => s + Number(m.custo_mensal || 0), 0);
   const tipoLabel = (t: string) => t === 'clt' ? 'CLT' : t === 'freelancer_mensal' ? 'Freelancer (Mensal)' : 'Freelancer (Demanda)';
   const tipoBadge = (t: string) => t === 'clt' ? 'success' : t === 'freelancer_mensal' ? 'warning' : 'neutral';
+
+  const avatarColors = ['#eab308', '#3ecf8e', '#f5a342', '#f542c8', '#42c8f5', '#8b5cf6', '#ef4444', '#14b8a6'];
+  const getAvatarColor = (name: string) => {
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    return avatarColors[Math.abs(hash) % avatarColors.length];
+  };
+
+  let filtered = membros;
+  if (filter !== 'todos') {
+    filtered = membros.filter(m => m.tipo === filter);
+  }
+
+  filtered.sort((a, b) => {
+    if (sort === 'nome') return a.nome.localeCompare(b.nome);
+    if (sort === 'custo_maior') return (Number(b.custo_mensal) || 0) - (Number(a.custo_mensal) || 0);
+    if (sort === 'custo_menor') return (Number(a.custo_mensal) || 0) - (Number(b.custo_mensal) || 0);
+    return 0;
+  });
 
   container.innerHTML = `
     <header class="header animate-up">
@@ -39,12 +58,26 @@ function renderContent(container: HTMLElement, membros: Membro[]): void {
       </div>
     </header>
 
+    <div class="leads-toolbar animate-up">
+      <div class="filter-bar" style="margin:0">
+        <button class="filter-btn ${filter === 'todos' ? 'active' : ''}" data-filter="todos">Todos</button>
+        <button class="filter-btn ${filter === 'clt' ? 'active' : ''}" data-filter="clt">CLT</button>
+        <button class="filter-btn ${filter === 'freelancer_mensal' ? 'active' : ''}" data-filter="freelancer_mensal">Freelancer (Mensal)</button>
+        <button class="filter-btn ${filter === 'freelancer_demanda' ? 'active' : ''}" data-filter="freelancer_demanda">Freelancer (Demanda)</button>
+      </div>
+      <select id="sort-select" class="form-input leads-search" style="max-width:240px; cursor:pointer;-webkit-appearance:none;appearance:none;background-image:url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%239ca3af%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E');background-repeat:no-repeat;background-position:right%201rem%20center;background-size:0.65em%20auto;">
+        <option value="nome" ${sort === 'nome' ? 'selected' : ''}>Ordenar por Nome</option>
+        <option value="custo_maior" ${sort === 'custo_maior' ? 'selected' : ''}>Maior Custo</option>
+        <option value="custo_menor" ${sort === 'custo_menor' ? 'selected' : ''}>Menor Custo</option>
+      </select>
+    </div>
+
     <div class="team-grid animate-up">
-      ${membros.length === 0 ? '<div class="card" style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:3rem">Nenhum membro cadastrado.</div>' :
-        membros.map(m => `
+      ${filtered.length === 0 ? '<div class="card" style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:3rem">Nenhum membro encontrado.</div>' :
+        filtered.map(m => `
           <div class="card team-card">
             <div style="display:flex;align-items:center;gap:0.75rem">
-              <div class="avatar" style="width:48px;height:48px;font-size:1.1rem">${getInitials(m.nome)}</div>
+              <div class="avatar" style="width:48px;height:48px;font-size:1.1rem;background:${getAvatarColor(m.nome)};color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.2)">${getInitials(m.nome)}</div>
               <div>
                 <a href="#/membro/${m.id}" class="client-link"><h4 style="margin:0">${m.nome}</h4></a>
                 <span style="font-size:0.8rem;color:var(--text-muted)">${m.cargo}</span>
@@ -60,6 +93,18 @@ function renderContent(container: HTMLElement, membros: Membro[]): void {
         `).join('')}
     </div>
   `;
+
+  // Filters
+  container.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      renderContent(container, membros, (btn as HTMLElement).dataset.filter || 'todos', sort);
+    });
+  });
+
+  // Sort
+  container.querySelector('#sort-select')?.addEventListener('change', (e) => {
+    renderContent(container, membros, filter, (e.target as HTMLSelectElement).value);
+  });
 
   const openMembroModal = (membro?: Membro) => {
     const isEditing = !!membro;

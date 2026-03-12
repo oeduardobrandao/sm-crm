@@ -18,6 +18,7 @@ import { renderPoliticaPrivacidade } from './pages/politica-privacidade';
 import { renderAnalytics } from './pages/analytics';
 import { renderAnalyticsConta } from './pages/analytics-conta';
 import { signOut } from './lib/supabase';
+import { initSidebar } from './sidebar';
 
 // Register public routes
 registerRoute('/login', renderLogin, true);
@@ -37,17 +38,6 @@ registerRoute('/membro', renderMembroDetalhe);
 registerRoute('/leads', renderLeads);
 registerRoute('/analytics', renderAnalytics);
 registerRoute('/analytics-conta', renderAnalyticsConta);
-
-// Sidebar click -> navigate
-document.querySelectorAll('.nav-link').forEach(link => {
-  link.addEventListener('click', (e) => {
-    e.preventDefault();
-    const route = link.getAttribute('data-route');
-    if (route) {
-      window.location.hash = route;
-    }
-  });
-});
 
 // Setup User Dropdown Logic
 const userMenuBtn = document.getElementById('user-menu-btn');
@@ -188,14 +178,9 @@ if (mobileLogoutBtn) {
   });
 }
 
-// Sync active state for both mobile nav & desktop sidebar on route change
+// Sync active state for mobile nav on route change
 function syncActiveNav() {
   const hash = window.location.hash.replace('#', '') || '/dashboard';
-
-  // Desktop sidebar
-  document.querySelectorAll('.sidebar .nav-link').forEach(link => {
-    link.classList.toggle('active', link.getAttribute('data-route') === hash);
-  });
 
   // Mobile bottom nav
   document.querySelectorAll('.mobile-nav-item[data-route]').forEach(item => {
@@ -229,7 +214,10 @@ window.addEventListener('hashchange', syncActiveNav);
 // Initialize router
 initRouter('app');
 
-// Initial sync
+// Initialize desktop sidebar
+initSidebar();
+
+// Initial sync for mobile
 syncActiveNav();
 
 // Application initialized

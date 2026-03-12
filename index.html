@@ -36,81 +36,48 @@
   <body>
     <div class="app-container">
       <!-- Sidebar -->
-      <nav class="sidebar">
-        <div class="logo-container">
-          <img src="/mesaas-icon-192.png" alt="Mesaas" style="height: 36px; width: auto;" />
-        </div>
-        
-        <ul class="nav-links">
-          <li class="nav-item">
-            <a href="#/dashboard" class="nav-link active" data-route="/dashboard" data-tooltip="Dashboard">
-              <i class="ph ph-chart-pie-slice"></i> Dashboard
+      <nav class="sidebar" id="sidebar">
+        <div class="sidebar-rail">
+          <div class="logo-container" style="height: 64px; display: flex; align-items: center; justify-content: center; width: 100%; margin-bottom: 1.5rem;">
+            <a href="#/dashboard" style="display: flex; align-items: center; justify-content: center; text-decoration: none;">
+              <img src="/mesaas-icon-192.png" alt="Mesaas" class="rail-logo" style="height: 38px; width: auto;" />
             </a>
-          </li>
-          <li class="nav-item">
-            <a href="#/calendario" class="nav-link" data-route="/calendario" data-tooltip="Calendário Mensal">
-              <i class="ph ph-calendar-blank"></i> Calendário
-            </a>
-          </li>
-          <li class="nav-item">
-            <a href="#/leads" class="nav-link" data-route="/leads" data-tooltip="Leads">
-              <i class="ph ph-funnel"></i> Leads
-            </a>
-          </li>
-          <li class="nav-item">
-            <a href="#/clientes" class="nav-link" data-route="/clientes" data-tooltip="Clientes">
-              <i class="ph ph-users"></i> Clientes
-            </a>
-          </li>
-          <li class="nav-item">
-            <a href="#/financeiro" class="nav-link" data-route="/financeiro" data-tooltip="Financeiro">
-              <i class="ph ph-wallet"></i> Financeiro
-            </a>
-          </li>
-          <li class="nav-item">
-            <a href="#/contratos" class="nav-link" data-route="/contratos" data-tooltip="Contratos">
-              <i class="ph ph-file-text"></i> Contratos
-            </a>
-          </li>
-          <li class="nav-item">
-            <a href="#/equipe" class="nav-link" data-route="/equipe" data-tooltip="Equipe">
-              <i class="ph ph-user-circle-gear"></i> Equipe
-            </a>
-          </li>
-          <li class="nav-item">
-            <a href="#/integracoes" class="nav-link" data-route="/integracoes" data-tooltip="Integrações">
-              <i class="ph ph-plugs-connected"></i> Integrações
-            </a>
-          </li>
-          <li class="nav-item">
-            <a href="#/analytics" class="nav-link" data-route="/analytics" data-tooltip="Analytics">
-              <i class="ph ph-chart-line-up"></i> Analytics
-            </a>
-          </li>
-          <li class="nav-item">
-            <a href="#/configuracao" class="nav-link" data-route="/configuracao" data-tooltip="Configurações">
-              <i class="ph ph-gear"></i> Configurações
-            </a>
-          </li>
-        </ul>
+          </div>
+          
+          <ul class="rail-nav" id="rail-nav-main">
+            <!-- Rendered by JS -->
+          </ul>
 
-        <div class="sidebar-bottom" style="width: 100%;">
-          <button id="theme-toggle" class="btn-icon" title="Alternar Tema" style="margin-bottom:0.5rem;font-size:1.1rem;color:var(--primary-color); position: relative;" data-tooltip="Modo Escuro">
-            <i class="ph ph-moon"></i> <span class="sidebar-label">Tema</span>
-          </button>
-          <div class="sidebar-user" id="user-menu-btn" style="cursor: pointer; position: relative; width: 100%;">
-            <div class="avatar" style="width:32px; height:32px; font-size:0.75rem">U</div>
-            <span class="sidebar-label">Sua Conta</span>
-            
-            <div id="user-dropdown" class="user-dropdown hidden">
-              <div class="user-dropdown-header">Opções da Conta</div>
-              <a href="#/politica-de-privacidade" class="user-dropdown-item" style="color: var(--text-main); text-decoration: none;">
-                <i class="ph ph-shield-check"></i> Privacidade
-              </a>
-              <button id="btn-logout-flutuante" class="user-dropdown-item text-danger">
-                <i class="ph ph-sign-out"></i> Sair
-              </button>
+          <div class="rail-bottom">
+            <ul class="rail-nav" id="rail-nav-bottom">
+              <!-- Config and Privacy rendered by JS -->
+            </ul>
+
+            <button id="theme-toggle" class="rail-icon-btn" title="Alternar Tema" data-tooltip="Modo Escuro" data-tooltip-dir="right" style="margin-bottom: 0.5rem">
+              <i class="ph ph-moon"></i>
+            </button>
+            <div class="sidebar-user" id="user-menu-btn" tabindex="0" data-tooltip="Sua Conta" data-tooltip-dir="right">
+              <div class="avatar" style="width: 38px; height: 38px; border-radius: 10px; font-size: 0.85rem">U</div>
+              
+              <div id="user-dropdown" class="user-dropdown hidden">
+                <div class="user-dropdown-header">Opções da Conta</div>
+                <button id="btn-logout-flutuante" class="user-dropdown-item text-danger" style="width: 100%; border: none; background: transparent; text-align: left; font-family: inherit; font-size: inherit; cursor: pointer;">
+                  <i class="ph ph-sign-out"></i> Sair
+                </button>
+              </div>
             </div>
+          </div>
+        </div>
+
+        <div class="sidebar-flyout" id="sidebar-flyout" aria-hidden="true">
+          <div class="flyout-header">
+            <h2 id="flyout-title">Menu</h2>
+          </div>
+          <div class="flyout-content">
+            <div class="flyout-section-label">Seção</div>
+            <ul class="flyout-menu" id="flyout-menu">
+              <!-- Rendered by JS -->
+            </ul>
           </div>
         </div>
       </nav>

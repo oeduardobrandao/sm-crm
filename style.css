@@ -89,81 +89,65 @@ body {
 /* ===== Sidebar ===== */
 .sidebar {
   width: var(--sidebar-width);
-  background: rgba(18, 21, 26, 0.95); /* Deep dark background for light mode contrast */
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-right: 1px solid var(--border-color);
+  height: 100dvh;
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 100;
+  display: flex;
+}
+
+.sidebar-rail {
+  width: var(--sidebar-width);
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: clamp(1rem, 2.5vh, 2rem) 0;
+  background: rgba(18, 21, 26, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-right: 1px solid var(--border-color);
+  padding: clamp(1rem, 2.5vh, 1.5rem) 0;
+  position: relative;
+  z-index: 101;
+  box-shadow: 2px 0 10px rgba(0,0,0,0.05);
+}
+
+[data-theme="dark"] .sidebar-rail {
+  background: rgba(30, 41, 59, 0.65);
+}
+
+.sidebar-flyout {
   position: fixed;
-  height: 100dvh;
-  max-height: 100dvh;
+  left: var(--sidebar-width);
   top: 0;
-  left: 0;
-  border-radius: 0;
+  width: 240px;
+  height: 100dvh;
+  background: var(--surface-main);
+  border-right: 1px solid var(--border-color);
   z-index: 100;
-  box-shadow: var(--shadow);
-  transition: width 0.25s ease, padding 0.25s ease;
-  overflow: visible;
+  transform: translateX(-100%);
+  opacity: 0;
+  visibility: hidden;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease, visibility 0.2s;
+  box-shadow: 10px 0 30px rgba(0,0,0,0.05);
+  display: flex;
+  flex-direction: column;
+}
+
+[data-theme="dark"] .sidebar-flyout {
+  background: var(--card-bg);
+  box-shadow: 10px 0 30px rgba(0,0,0,0.3);
+}
+
+.sidebar-flyout.open {
+  transform: translateX(0);
+  opacity: 1;
+  visibility: visible;
 }
 
 @supports not (height: 100dvh) {
-  .sidebar { height: 100vh; }
-}
-
-/* Expand sidebar on hover (desktop only) */
-@media (min-width: 901px) {
-  .sidebar:hover {
-    width: 220px;
-    padding: clamp(1rem, 2.5vh, 2rem) 0;
-  }
-
-  .sidebar:hover .nav-link {
-    font-size: 0.85rem;
-    justify-content: flex-start;
-    padding: 0 16px 0 28px;
-    gap: 12px;
-    border-radius: 0;
-  }
-
-  .sidebar:hover .nav-link:hover {
-    transform: none;
-    border-radius: 0;
-  }
-
-  .sidebar:hover .nav-link.active {
-    border-radius: 0;
-  }
-
-  .sidebar:hover .sidebar-bottom .btn-icon {
-    font-size: 0.85rem;
-    width: 100%;
-    justify-content: flex-start;
-    padding: 0 16px 0 28px;
-    gap: 12px;
-    border-radius: 0;
-    display: flex;
-    align-items: center;
-  }
-  
-  .sidebar:hover .sidebar-user {
-    justify-content: flex-start !important;
-    padding: 0 16px 0 28px !important;
-    border-radius: 0;
-    gap: 12px;
-  }
-
-  /* Hide tooltips when sidebar is expanded */
-  .sidebar:hover [data-tooltip]::before,
-  .sidebar:hover [data-tooltip]::after {
-    display: none !important;
-  }
-}
-
-[data-theme="dark"] .sidebar {
-  background: rgba(30, 41, 59, 0.65); /* var(--sidebar-bg) translúcido no escuro */
+  .sidebar, .sidebar-rail, .sidebar-flyout { height: 100vh; }
 }
 
 .logo-container {
@@ -189,55 +173,145 @@ body {
   display: none;
 }
 
-.nav-links {
+.rail-nav {
   list-style: none;
   width: 100%;
+  padding: 0;
+  margin: 0;
   display: flex;
   flex-direction: column;
-  align-items: stretch;
-  gap: clamp(0.25rem, 1.2vh, 0.75rem);
+  align-items: center;
+  gap: 0.5rem;
 }
 
-.nav-item {
+.rail-item {
   width: 100%;
   display: flex;
+  justify-content: center;
 }
 
-.nav-link {
+.rail-icon-btn {
+  background: transparent;
+  border: none;
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 100%;
-  height: clamp(40px, 5vh, 54px);
+  border-radius: 10px;
   color: #94a3b8;
-  text-decoration: none;
-  border-radius: 0;
-  transition: background var(--transition), color var(--transition);
-  font-weight: 500;
-  font-size: 0;
-  position: relative;
-  padding: 0;
-  gap: 0;
-  white-space: nowrap;
-  overflow: hidden;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+  font-size: 1.4rem;
 }
 
-.nav-link i {
-  margin: 0;
-  font-size: clamp(1.1rem, 2vh, 1.4rem);
-}
-
-.nav-link:hover {
+.rail-icon-btn:hover {
   background: rgba(255, 255, 255, 0.1);
   color: #ffffff;
 }
 
-.nav-link.active {
-  background: var(--primary-color);
-  color: #12151a;
-  border: none;
-  border-radius: 0;
-  box-shadow: 0 10px 20px rgba(234, 179, 8, 0.2);
+.rail-icon-btn.active {
+  background: rgba(234, 179, 8, 0.15);
+  color: var(--primary-color);
+  box-shadow: inset 3px 0 0 var(--primary-color);
+}
+
+[data-theme="dark"] .rail-icon-btn.active {
+  background: rgba(234, 179, 8, 0.1);
+}
+
+.rail-bottom {
+  margin-top: auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+.sidebar-user .avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  font-size: 0.85rem;
+}
+
+/* Flyout Styles */
+.flyout-header {
+  height: 64px;
+  display: flex;
+  align-items: center;
+  padding: 0 1.25rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.flyout-header h2 {
+  font-size: 0.85rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-main);
+  margin: 0;
+}
+
+.flyout-content {
+  padding: 1.5rem 1rem;
+  overflow-y: auto;
+}
+
+.flyout-section-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: 1rem;
+  padding-left: 0.75rem;
+}
+
+.flyout-menu {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.flyout-link {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  color: var(--text-light);
+  text-decoration: none;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: background 0.15s, color 0.15s;
+}
+
+.flyout-link i {
+  font-size: 1.2rem;
+  color: var(--text-muted);
+}
+
+.flyout-link:hover {
+  background: var(--surface-hover);
+  color: var(--text-main);
+}
+.flyout-link:hover i {
+  color: var(--text-main);
+}
+
+.flyout-link.active {
+  background: var(--surface-darker);
+  color: var(--text-main);
+  font-weight: 600;
+}
+.flyout-link.active i {
+  color: var(--primary-color);
 }
 
 /* ===== Premium Tooltips ===== */

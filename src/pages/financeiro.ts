@@ -15,11 +15,13 @@ export async function renderFinanceiro(container: HTMLElement): Promise<void> {
       .sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime());
 
     const clientesAtivos = clientes.filter(c => c.status === 'ativo');
-    const aReceber = transacoes.filter(t => t.tipo === 'entrada').reduce((s, t) => s + Number(t.valor), 0);
+    const totalEntradas = transacoes.filter(t => t.tipo === 'entrada').reduce((s, t) => s + Number(t.valor), 0);
+    const recebido = transacoes.filter(t => t.tipo === 'entrada' && t.status === 'pago').reduce((s, t) => s + Number(t.valor), 0);
+    const aReceber = totalEntradas - recebido;
     const saidas = transacoes.filter(t => t.tipo === 'saida');
     const aPagar = saidas.reduce((s, t) => s + Number(t.valor), 0);
 
-    renderContent(container, transacoes, 'todas', aReceber, aPagar, clientesAtivos.length, saidas.length);
+    renderContent(container, transacoes, 'todas', aReceber, aPagar, clientesAtivos.length, saidas.length, recebido);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Erro';
     container.innerHTML = `<div class="card"><p style="color:var(--danger)">Erro: ${message}</p></div>`;
@@ -28,7 +30,7 @@ export async function renderFinanceiro(container: HTMLElement): Promise<void> {
 
 function renderContent(
   container: HTMLElement, transacoes: Transacao[], filter: string,
-  aReceber: number, aPagar: number, nClientes: number, nSaidas: number
+  aReceber: number, aPagar: number, nClientes: number, nSaidas: number, recebido: number
 ): void {
   const filtered = filter === 'todas' ? transacoes : transacoes.filter(t => t.tipo === (filter === 'entradas' ? 'entrada' : 'saida'));
 
@@ -44,21 +46,31 @@ function renderContent(
       </div>
     </header>
 
-    <div class="kpi-grid animate-up">
+    <div class="kpi-grid animate-up" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+      <div class="kpi-card">
+        <span class="kpi-label">RECEBIDO</span>
+        <span class="kpi-value">${formatBRL(recebido)}</span>
+        <span class="kpi-sub" style="color:var(--success)"><i class="ph ph-check-circle"></i> Já recebidos</span>
+      </div>
       <div class="kpi-card">
         <span class="kpi-label">A RECEBER (MÊS)</span>
         <span class="kpi-value">${formatBRL(aReceber)}</span>
-        <span class="kpi-sub" style="color:var(--success)">↑ ${nClientes} clientes ativos</span>
+        <span class="kpi-sub" style="color:var(--text-muted)">↑ ${nClientes} clientes ativos</span>
       </div>
       <div class="kpi-card">
         <span class="kpi-label">A PAGAR (MÊS)</span>
         <span class="kpi-value">${formatBRL(aPagar)}</span>
         <span class="kpi-sub" style="color:var(--danger)">↓ ${nSaidas} saídas</span>
       </div>
+      <div class="kpi-card" style="border: 2px solid var(--primary-color);">
+        <span class="kpi-label" style="color:var(--text-main)">SALDO ATUAL</span>
+        <span class="kpi-value">${formatBRL(recebido - aPagar)}</span>
+        <span class="kpi-sub" style="color:var(--primary-color)">Em caixa hoje</span>
+      </div>
       <div class="kpi-card">
-        <span class="kpi-label">SALDO</span>
-        <span class="kpi-value">${formatBRL(aReceber - aPagar)}</span>
-        <span class="kpi-sub" style="color:var(--primary-color)">■ Contratos + transações</span>
+        <span class="kpi-label">SALDO PROJETADO</span>
+        <span class="kpi-value">${formatBRL((aReceber + recebido) - aPagar)}</span>
+        <span class="kpi-sub" style="color:var(--text-muted)">Ao fim do mês</span>
       </div>
     </div>
 
@@ -102,7 +114,7 @@ function renderContent(
   // Filters
   container.querySelectorAll('.filter-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      renderContent(container, transacoes, (btn as HTMLElement).dataset.filter || 'todas', aReceber, aPagar, nClientes, nSaidas);
+      renderContent(container, transacoes, (btn as HTMLElement).dataset.filter || 'todas', aReceber, aPagar, nClientes, nSaidas, recebido);
     });
   });
 
