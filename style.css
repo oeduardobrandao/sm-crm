@@ -2574,6 +2574,23 @@ body.role-agent input[name="valor_total"] {
 }
 
 /* ===== Board (Entregas) ===== */
+.board-rows-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.board-row-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  padding: 0.25rem 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: -0.5rem;
+}
+
 .board-container {
   display: flex;
   gap: 1rem;

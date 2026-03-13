@@ -66,18 +66,7 @@ function renderBoard(container: HTMLElement, data: BoardData, state: BoardState)
   const { workflows, etapasMap, clientes, membros, templates } = data;
   const activeWorkflows = workflows.filter(w => w.status === 'ativo');
 
-  // Collect all unique step names across active workflows in order
-  const allStepNames: string[] = [];
-  const seenSteps = new Set<string>();
-  for (const w of activeWorkflows) {
-    const etapas = etapasMap.get(w.id!) || [];
-    for (const e of etapas) {
-      if (!seenSteps.has(e.nome)) { seenSteps.add(e.nome); allStepNames.push(e.nome); }
-    }
-  }
-
   // Build cards: one per active etapa
-
   let cards: BoardCard[] = [];
   for (const w of activeWorkflows) {
     const etapas = etapasMap.get(w.id!) || [];
@@ -106,14 +95,45 @@ function renderBoard(container: HTMLElement, data: BoardData, state: BoardState)
   else if (state.filterStatus === 'urgente') cards = cards.filter(c => c.deadline.urgente);
   else if (state.filterStatus === 'em_dia') cards = cards.filter(c => !c.deadline.estourado && !c.deadline.urgente);
 
-  // Group cards by step name for columns
-  const columns: Map<string, BoardCard[]> = new Map();
-  for (const name of allStepNames) columns.set(name, []);
-  for (const card of cards) {
-    const col = columns.get(card.etapa.nome);
-    if (col) col.push(card);
-    else columns.set(card.etapa.nome, [card]);
+  // Group workflows by their step sequence (each unique sequence gets its own row)
+  interface BoardRow {
+    key: string;
+    label: string;
+    stepNames: string[];
+    columns: Map<string, BoardCard[]>;
   }
+
+  const rowMap = new Map<string, BoardRow>();
+  for (const w of activeWorkflows) {
+    const etapas = etapasMap.get(w.id!) || [];
+    const stepNames = etapas.sort((a, b) => a.ordem - b.ordem).map(e => e.nome);
+    const key = stepNames.join(' → ');
+    if (!rowMap.has(key)) {
+      const tpl = w.template_id ? templates.find(t => t.id === w.template_id) : null;
+      const label = tpl ? tpl.nome : key;
+      const columns = new Map<string, BoardCard[]>();
+      for (const name of stepNames) columns.set(name, []);
+      rowMap.set(key, { key, label, stepNames, columns });
+    }
+  }
+
+  // Place cards into their row's columns
+  for (const card of cards) {
+    const etapas = etapasMap.get(card.workflow.id!) || [];
+    const stepNames = etapas.sort((a, b) => a.ordem - b.ordem).map(e => e.nome);
+    const key = stepNames.join(' → ');
+    const row = rowMap.get(key);
+    if (row) {
+      const col = row.columns.get(card.etapa.nome);
+      if (col) col.push(card);
+    }
+  }
+
+  const boardRows = [...rowMap.values()].filter(r => {
+    // Only show rows that have cards after filtering
+    for (const col of Array.from(r.columns.values())) if (col.length > 0) return true;
+    return false;
+  });
 
   // Count alerts
   const overdue = cards.filter(c => c.deadline.estourado).length;
@@ -154,21 +174,24 @@ function renderBoard(container: HTMLElement, data: BoardData, state: BoardState)
       </div>
     </div>
 
-    <div class="board-container animate-up">
-      ${allStepNames.length === 0 ? `
+    <div class="board-rows-wrapper animate-up">
+      ${boardRows.length === 0 ? `
         <div class="card" style="text-align:center;padding:3rem;color:var(--text-muted);width:100%">
           <i class="ph ph-kanban" style="font-size:2.5rem;margin-bottom:1rem;display:block;opacity:0.3"></i>
           <p>Nenhum fluxo ativo. Crie um novo fluxo para começar!</p>
         </div>
-      ` : [...columns.entries()].map(([stepName, stepCards]) => `
-        <div class="board-column">
-          <div class="board-column-header">
-            <span class="board-column-title">${stepName}</span>
-            <span class="board-column-count">${stepCards.length}</span>
-          </div>
-          <div class="board-column-body">
-            ${stepCards.length === 0 ? '<div class="board-empty">Nenhuma entrega</div>' :
-              stepCards.map(card => {
+      ` : boardRows.map(row => `
+        ${boardRows.length > 1 ? `<div class="board-row-label">${row.label}</div>` : ''}
+        <div class="board-container">
+          ${[...row.columns.entries()].map(([stepName, stepCards]) => `
+            <div class="board-column">
+              <div class="board-column-header">
+                <span class="board-column-title">${stepName}</span>
+                <span class="board-column-count">${stepCards.length}</span>
+              </div>
+              <div class="board-column-body">
+                ${stepCards.length === 0 ? '<div class="board-empty">Nenhuma entrega</div>' :
+                  stepCards.map(card => {
                 const dl = card.deadline;
                 const deadlineClass = dl.estourado ? 'deadline-overdue' : dl.urgente ? 'deadline-warning' : dl.diasRestantes <= 3 ? 'deadline-caution' : 'deadline-ok';
                 const deadlineText = dl.estourado ? `${Math.abs(dl.diasRestantes)}d atrasado` : dl.diasRestantes === 0 ? 'Vence hoje' : `${dl.diasRestantes}d restante${dl.diasRestantes > 1 ? 's' : ''}`;
@@ -202,7 +225,9 @@ function renderBoard(container: HTMLElement, data: BoardData, state: BoardState)
                   </div>
                 </div>`;
               }).join('')}
-          </div>
+              </div>
+            </div>
+          `).join('')}
         </div>
       `).join('')}
     </div>
