@@ -77,8 +77,9 @@ serve(async (req) => {
         let existingUser = null;
         let page = 1;
         while (!existingUser) {
-          const { data: { users }, error: listErr } = await adminClient.auth.admin.listUsers({ page, perPage: 100 });
-          if (listErr) throw listErr;
+          const result = await adminClient.auth.admin.listUsers({ page, perPage: 100 });
+          if (result.error) throw result.error;
+          const users = result.data?.users;
           if (!users || users.length === 0) break;
           existingUser = users.find(
             (u: any) => u.email?.toLowerCase() === email.toLowerCase()
@@ -88,24 +89,36 @@ serve(async (req) => {
 
         if (!existingUser) throw new Error('Usuário não encontrado.');
 
-        // Check if they already belong to a workspace
+        // Check if profile row exists
         const { data: existingProfile } = await adminClient
           .from('profiles')
           .select('conta_id')
           .eq('id', existingUser.id)
-          .single();
+          .maybeSingle();
 
         if (existingProfile?.conta_id) {
           throw new Error('Este usuário já pertence a um workspace.');
         }
 
-        // Re-associate the existing user with this workspace
-        const { error: updateErr } = await adminClient
-          .from('profiles')
-          .update({ conta_id: profile.conta_id, role })
-          .eq('id', existingUser.id);
-
-        if (updateErr) throw updateErr;
+        if (existingProfile) {
+          // Profile exists but no workspace — re-associate
+          const { error: updateErr } = await adminClient
+            .from('profiles')
+            .update({ conta_id: profile.conta_id, role })
+            .eq('id', existingUser.id);
+          if (updateErr) throw updateErr;
+        } else {
+          // Profile was deleted — recreate it
+          const { error: insertErr } = await adminClient
+            .from('profiles')
+            .insert({
+              id: existingUser.id,
+              conta_id: profile.conta_id,
+              role,
+              nome: existingUser.user_metadata?.nome || email.split('@')[0],
+            });
+          if (insertErr) throw insertErr;
+        }
 
         return new Response(JSON.stringify({ success: true, message: `${email} foi readicionado ao workspace como ${role}.` }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -122,8 +135,9 @@ serve(async (req) => {
       status: 200,
     });
   } catch (err: any) {
-    console.error("Catch erro:", err);
-    return new Response(JSON.stringify({ error: err.message || 'Server Error' }), {
+    console.error("Catch erro:", JSON.stringify(err), err?.message, err);
+    const message = err?.message || err?.msg || (typeof err === 'string' ? err : 'Erro interno do servidor');
+    return new Response(JSON.stringify({ error: message }), {
       status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }

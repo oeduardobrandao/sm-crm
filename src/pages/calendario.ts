@@ -1,4 +1,4 @@
-import { getClientes, getMembros, Cliente, Membro, formatBRL } from '../store';
+import { getClientes, getMembros, Cliente, Membro, formatBRL, currentUserRole } from '../store';
 import { showToast, openConfirm } from '../router';
 
 export async function renderCalendario(container: HTMLElement): Promise<void> {
@@ -363,8 +363,8 @@ export async function renderCalendario(container: HTMLElement): Promise<void> {
       </header>
 
       <div class="calendar-tabs animate-up" style="animation-delay: 0.1s;">
-        <button class="calendar-tab ${activeTab === 'financeiro' ? 'active' : ''}" data-tab="financeiro">Calendário Financeiro</button>
-        <button class="calendar-tab ${activeTab === 'medico' ? 'active' : ''}" data-tab="medico">Calendário Médico</button>
+        <button class="calendar-tab ${activeTab === 'financeiro' ? 'active' : ''}" data-tab="financeiro">Calendário</button>
+        <button class="calendar-tab ${activeTab === 'medico' ? 'active' : ''}" data-tab="medico">Datas Médicas</button>
       </div>
 
       <div id="calendar-content" class="animate-up" style="animation-delay: 0.15s;"></div>
@@ -388,18 +388,19 @@ export async function renderCalendario(container: HTMLElement): Promise<void> {
 
   // --- Render Financeiro ---
   const renderFinanceiro = (el: HTMLElement) => {
+    const isAgent = currentUserRole === 'agent';
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
     const firstDay = new Date(year, month, 1).getDay();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-    
+
     const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
     const weekDays = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
 
     const selectedDay = selectedDate.getDate();
     const isSameMonth = selectedDate.getMonth() === month && selectedDate.getFullYear() === year;
-    const selectedIncomes = isSameMonth ? clientes.filter(c => c.data_pagamento === selectedDay && c.status === 'ativo') : [];
-    const selectedExpenses = isSameMonth ? membros.filter(m => m.data_pagamento === selectedDay) : [];
+    const selectedIncomes = isAgent ? [] : (isSameMonth ? clientes.filter(c => c.data_pagamento === selectedDay && c.status === 'ativo') : []);
+    const selectedExpenses = isAgent ? [] : (isSameMonth ? membros.filter(m => m.data_pagamento === selectedDay) : []);
 
     let gridHTML = '';
     
@@ -414,8 +415,8 @@ export async function renderCalendario(container: HTMLElement): Promise<void> {
       const isToday = today.getDate() === i && today.getMonth() === month && today.getFullYear() === year;
       const isSelected = selectedDay === i && isSameMonth;
       
-      const dayIncomes = clientes.filter(c => c.data_pagamento === i && c.status === 'ativo');
-      const dayExpenses = membros.filter(m => m.data_pagamento === i);
+      const dayIncomes = isAgent ? [] : clientes.filter(c => c.data_pagamento === i && c.status === 'ativo');
+      const dayExpenses = isAgent ? [] : membros.filter(m => m.data_pagamento === i);
       const hasEvents = dayIncomes.length > 0 || dayExpenses.length > 0;
       const dayOfWeek = new Date(year, month, i).getDay();
       const weekdayName = weekDays[dayOfWeek].slice(0,3);
@@ -503,7 +504,7 @@ export async function renderCalendario(container: HTMLElement): Promise<void> {
     }
 
     el.innerHTML = `
-      <div class="calendar-layout">
+      <div class="calendar-layout" style="${isAgent ? 'grid-template-columns: 1fr;' : ''}">
         <div class="calendar-main">
           <div class="calendar-header">
             <div class="calendar-title-group">
@@ -523,7 +524,7 @@ export async function renderCalendario(container: HTMLElement): Promise<void> {
           </div>
         </div>
 
-        <div class="scheduled-panel">
+        ${isAgent ? '' : `<div class="scheduled-panel">
           <div class="scheduled-header">
             <h3>Agendado</h3>
             <p>${selectedDate.getDate()} de ${monthNames[selectedDate.getMonth()]}, ${selectedDate.getFullYear()}</p>
@@ -531,7 +532,7 @@ export async function renderCalendario(container: HTMLElement): Promise<void> {
           <div class="scheduled-list custom-scrollbar">
             ${panelItemsHTML}
           </div>
-        </div>
+        </div>`}
       </div>
     `;
 
