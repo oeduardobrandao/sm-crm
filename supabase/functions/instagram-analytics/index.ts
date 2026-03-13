@@ -882,13 +882,13 @@ DADOS DOS ÚLTIMOS ${days} DIAS:
 - Histórico de seguidores: ${JSON.stringify(followerTrend.map(h => ({ d: h.date, f: h.follower_count })))}
 - Posts recentes: ${JSON.stringify(postsSummary)}
 
-IMPORTANTE: Seja CONCISO (1-2 frases por campo). Não use aspas dentro dos textos. Responda neste JSON:
+IMPORTANTE: Seja CONCISO (1-2 frases por campo). Não use aspas dentro dos textos. Para o "healthScore", calcule uma nota inteira de 0 a 100 avaliando a saúde geral da conta (engajamento, crescimento, estabilidade). Responda APENAS com um JSON válido seguindo esta estrutura (substitua o 0 pela sua nota calculada e os textos pelos seus insights reais):
 {
   "contentInsights": "o que tá funcionando e o que não tá por tipo de conteúdo, com números reais dos dados",
   "captionAnalysis": "o que as melhores legendas tem em comum e o que pode melhorar",
   "growthForecast": "projecao realista de crescimento baseada na tendencia",
-  "healthScore": 75,
-  "healthExplanation": "resumo direto do porque desse score",
+  "healthScore": 0,
+  "healthExplanation": "resumo direto do porque da nota do healthScore",
   "topRecommendations": ["acao pratica 1", "acao pratica 2", "acao pratica 3"]
 }`;
 
