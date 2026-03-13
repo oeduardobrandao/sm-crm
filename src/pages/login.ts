@@ -90,6 +90,14 @@ export function renderLogin(container: HTMLElement): void {
     </div>
   `;
 
+  // --- Prefill email from configure-password flow ---
+  const prefillEmail = sessionStorage.getItem('prefill_email');
+  if (prefillEmail) {
+    sessionStorage.removeItem('prefill_email');
+    const emailInput = container.querySelector('#login-form input[name="email"]') as HTMLInputElement;
+    if (emailInput) emailInput.value = prefillEmail;
+  }
+
   // --- Tab switching ---
   const tabs = container.querySelectorAll('.auth-tab');
   const loginForm = container.querySelector('#login-form') as HTMLFormElement;

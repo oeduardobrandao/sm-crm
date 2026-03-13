@@ -66,8 +66,10 @@ serve(async (req) => {
     }
 
     // Try to invite the new user
+    const redirectBase = Deno.env.get('OAUTH_REDIRECT_BASE') || 'http://localhost:3000';
     const { data, error } = await adminClient.auth.admin.inviteUserByEmail(email, {
-       data: { conta_id: profile.conta_id, role, nome: email.split('@')[0] }
+       data: { conta_id: profile.conta_id, role, nome: email.split('@')[0] },
+       redirectTo: redirectBase + '/#/configurar-senha',
     });
 
     if (error) {

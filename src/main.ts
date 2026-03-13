@@ -9,6 +9,7 @@ import { renderContratos } from './pages/contratos';
 import { renderEquipe } from './pages/equipe';
 import { renderIntegracoes } from './pages/integracoes';
 import { renderLogin } from './pages/login';
+import { renderConfigurarSenha } from './pages/configurar-senha';
 import { renderConfiguracao } from './pages/configuracao';
 import { renderCalendario } from './pages/calendario';
 import { renderClienteDetalhe } from './pages/cliente-detalhe';
@@ -23,6 +24,7 @@ import { initSidebar } from './sidebar';
 
 // Register public routes
 registerRoute('/login', renderLogin, true);
+registerRoute('/configurar-senha', renderConfigurarSenha, true);
 registerRoute('/politica-de-privacidade', renderPoliticaPrivacidade, true);
 
 // Register protected routes
@@ -204,7 +206,7 @@ function syncActiveNav() {
   // Hide mobile nav & more overlay on login page
   const mobileNav = document.getElementById('mobile-nav');
   if (mobileNav) {
-    mobileNav.style.display = hash === '/login' ? 'none' : '';
+    mobileNav.style.display = (hash === '/login' || hash === '/configurar-senha') ? 'none' : '';
   }
   if (mobileMoreOverlay && hash === '/login') {
     mobileMoreOverlay.classList.remove('visible');
@@ -212,6 +214,21 @@ function syncActiveNav() {
 }
 
 window.addEventListener('hashchange', syncActiveNav);
+
+// Detect Supabase auth tokens in hash (invite / recovery) and redirect to configure password page
+(() => {
+  const h = window.location.hash;
+  if (h && (h.includes('type=invite') || h.includes('type=recovery'))) {
+    import('./lib/supabase').then(({ supabase }) => {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+        if (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') {
+          subscription.unsubscribe();
+          window.location.hash = '#/configurar-senha';
+        }
+      });
+    });
+  }
+})();
 
 // Initialize router
 initRouter('app');
