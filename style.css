@@ -600,7 +600,8 @@ body {
 }
 
 .team-card {
-  padding: 1rem 1.25rem;
+  padding: 1.25rem 1.75rem;
+  border-radius: 16px;
 }
 
 .team-card > div:first-child {
@@ -1029,6 +1030,7 @@ select.filter-btn option {
   max-width: 560px;
   max-height: 90vh;
   overflow-y: auto;
+  overflow-x: hidden;
   box-shadow: 0 30px 60px rgba(0, 0, 0, 0.25);
   transform: translateY(20px);
   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -1103,15 +1105,51 @@ select.filter-btn option {
 }
 
 .form-input {
-  padding: 0.6rem 0.8rem;
+  padding: 0.4rem 0.9rem;
   border: 1px solid var(--border-color);
-  background: var(--surface-light);
-  color: var(--text-main);
-  border-radius: 10px;
-  font-size: 0.88rem;
-  font-family: inherit;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 2px;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
   outline: none;
-  transition: border-color var(--transition);
+  cursor: pointer;
+  transition: all 0.2s;
+  width: 100%;
+}
+
+input.form-input {
+  font-family: inherit;
+  text-transform: none;
+  letter-spacing: normal;
+  cursor: text;
+  color: var(--text-main);
+}
+
+input.form-input::placeholder {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.65rem;
+}
+
+select.form-input {
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%239ca3af%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E');
+  background-repeat: no-repeat;
+  background-position: right 0.7rem center;
+  background-size: 0.65em auto;
+  padding-right: 2rem;
+}
+
+select.form-input option {
+  background: var(--bg-card);
+  color: var(--text-main);
+  font-family: inherit;
 }
 
 .form-input:focus { border-color: var(--primary-color); }
@@ -2924,6 +2962,19 @@ body.role-agent input[name="valor_total"] {
   border-left: 3px solid var(--primary-color);
   padding-left: 0.5rem;
   margin-bottom: 0.5rem;
+}
+
+.etapa-row-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  overflow: hidden;
+}
+
+.etapa-row-grid > :first-child {
+  grid-column: 1 / -1;
 }
 
 @media (max-width: 768px) {

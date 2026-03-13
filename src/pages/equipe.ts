@@ -86,10 +86,14 @@ function renderContent(container: HTMLElement, membros: Membro[], filter: string
             </div>
             <div style="display:flex;justify-content:space-between;align-items:center">
               <span class="badge badge-${tipoBadge(m.tipo)}">${tipoLabel(m.tipo)}</span>
-              ${isAgent ? '' : `<strong>${m.custo_mensal ? formatBRL(Number(m.custo_mensal)) + '/mês' : 'Sob demanda'}</strong>`}
+              ${isAgent ? '' : `<div style="display:flex;align-items:baseline;gap:0.15rem">${
+                m.custo_mensal 
+                  ? `<span style="font-size:0.75rem;color:var(--text-muted);font-weight:600">R$</span><span style="font-size:1.1rem;font-weight:700">${Number(m.custo_mensal).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span><span style="font-size:0.75rem;color:var(--text-muted)">/mês</span>`
+                  : `<span style="font-size:0.85rem;font-weight:600;color:var(--text-muted)">Sob demanda</span>`
+              }</div>`}
             </div>
-            ${isAgent ? '' : `<button class="btn-icon btn-edit" data-id="${m.id}" style="position:absolute;top:0.75rem;right:2.5rem;color:var(--text-main);"><i class="ph ph-pencil-simple"></i></button>
-            <button class="btn-icon btn-remove" data-id="${m.id}" style="position:absolute;top:0.75rem;right:0.75rem;color:var(--danger);"><i class="ph ph-trash"></i></button>`}
+            ${isAgent ? '' : `<button class="btn-icon btn-edit" data-id="${m.id}" style="position:absolute;top:1rem;right:2.5rem;color:var(--text-muted);"><i class="ph ph-pencil-simple"></i></button>
+            <button class="btn-icon btn-remove" data-id="${m.id}" style="position:absolute;top:1rem;right:1rem;color:var(--danger);"><i class="ph ph-trash"></i></button>`}
           </div>
         `).join('')}
     </div>

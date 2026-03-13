@@ -18,7 +18,8 @@ const allNavGroups: NavGroup[] = [
   { id: 'plataforma', label: 'Plataforma', icon: 'ph-plugs-connected', items: [
       { id: 'integracoes', route: '/integracoes', label: 'Integrações', icon: 'ph-plugs-connected' } ] },
   { id: 'analytics-group', label: 'Analytics', icon: 'ph-chart-line-up', items: [
-      { id: 'analytics', route: '/analytics', label: 'Analytics', icon: 'ph-chart-line-up' } ] },
+      { id: 'analytics', route: '/analytics', label: 'Instagram', icon: 'ph-instagram-logo' },
+      { id: 'analytics-fluxos', route: '/analytics-fluxos', label: 'Fluxos', icon: 'ph-flow-arrow' } ] },
   { id: 'config', label: 'Configurações', icon: 'ph-gear', isBottom: true, items: [
       { id: 'configuracao', route: '/configuracao', label: 'Configurações', icon: 'ph-gear' },
       { id: 'politica-de-privacidade', route: '/politica-de-privacidade', label: 'Privacidade', icon: 'ph-shield-check' } ] }

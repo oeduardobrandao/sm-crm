@@ -19,6 +19,7 @@ import { renderPoliticaPrivacidade } from './pages/politica-privacidade';
 import { renderAnalytics } from './pages/analytics';
 import { renderAnalyticsConta } from './pages/analytics-conta';
 import { renderEntregas } from './pages/entregas';
+import { renderAnalyticsFluxos } from './pages/analytics-fluxos';
 import { signOut } from './lib/supabase';
 import { initSidebar } from './sidebar';
 
@@ -42,6 +43,7 @@ registerRoute('/leads', renderLeads);
 registerRoute('/analytics', renderAnalytics);
 registerRoute('/analytics-conta', renderAnalyticsConta);
 registerRoute('/entregas', renderEntregas);
+registerRoute('/analytics-fluxos', renderAnalyticsFluxos);
 
 // Setup User Dropdown Logic
 const userMenuBtn = document.getElementById('user-menu-btn');

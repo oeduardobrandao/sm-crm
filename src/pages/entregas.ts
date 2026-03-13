@@ -9,7 +9,7 @@ import {
   getDeadlineInfo, getInitials,
   type Workflow, type WorkflowEtapa, type WorkflowTemplate, type Cliente, type Membro
 } from '../store';
-import { showToast, openModal, closeModal, navigate, openConfirm } from '../router';
+import { showToast, openModal, closeModal, navigate, openConfirm, escapeHTML } from '../router';
 
 // ---- Types ----
 interface BoardData {
@@ -454,7 +454,7 @@ function openNewWorkflowModal(data: BoardData): void {
       </div>
       <div class="form-group"><label>Template</label>
         <select name="template_id" class="form-input" id="wf-template-select">
-          <option value="">Personalizado (sem template)</option>
+          <option value="">Personalizado</option>
           ${templates.map(t => `<option value="${t.id}">${t.nome} (${t.etapas.length} etapas)</option>`).join('')}
         </select>
       </div>
@@ -525,16 +525,16 @@ function openNewWorkflowModal(data: BoardData): void {
     const row = document.createElement('div');
     row.className = 'wf-etapa-row';
     row.innerHTML = `
-      <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem;align-items:center;flex-wrap:wrap">
-        <input name="etapa_nome" class="form-input" placeholder="Nome da etapa" value="${nome}" style="flex:2;min-width:140px" required>
-        <input name="etapa_prazo" type="number" min="1" class="form-input" value="${prazo}" style="width:70px" title="Prazo em dias">
-        <select name="etapa_tipo_prazo" class="form-input" style="width:120px">
+      <div class="etapa-row-grid">
+        <input name="etapa_nome" class="form-input" placeholder="Nome da etapa" value="${escapeHTML(nome)}" required>
+        <input name="etapa_prazo" type="number" min="1" class="form-input" value="${prazo}" title="Prazo em dias">
+        <select name="etapa_tipo_prazo" class="form-input">
           <option value="corridos" ${tipoPrazo === 'corridos' ? 'selected' : ''}>Corridos</option>
           <option value="uteis" ${tipoPrazo === 'uteis' ? 'selected' : ''}>Úteis</option>
         </select>
-        <select name="etapa_responsavel" class="form-input" style="flex:1;min-width:130px">
+        <select name="etapa_responsavel" class="form-input">
           <option value="">Sem responsável</option>
-          ${membros.map(m => `<option value="${m.id}" ${responsavelId === m.id ? 'selected' : ''}>${m.nome}</option>`).join('')}
+          ${membros.map(m => `<option value="${m.id}" ${responsavelId === m.id ? 'selected' : ''}>${escapeHTML(m.nome)}</option>`).join('')}
         </select>
         <button type="button" class="btn-icon btn-remove-etapa" style="color:var(--danger)"><i class="ph ph-trash"></i></button>
       </div>
@@ -568,11 +568,11 @@ function openTemplatesModal(data: BoardData): void {
     body += `<p style="color:var(--text-muted)">Nenhum template salvo. Crie um abaixo.</p>`;
   } else {
     body += templates.map(t => `
-      <div class="card" style="margin-bottom:0.75rem;padding:1rem;position:relative">
+      <div class="card" style="margin-bottom:0.75rem;padding:1.25rem 1.75rem;border-radius:16px;position:relative">
         <strong>${t.nome}</strong>
         <p style="font-size:0.82rem;color:var(--text-muted);margin-top:0.25rem">${t.etapas.length} etapa${t.etapas.length !== 1 ? 's' : ''}: ${t.etapas.map(e => e.nome).join(' → ')}</p>
-        <button type="button" class="btn-icon btn-edit-tpl" data-id="${t.id}" style="position:absolute;top:0.75rem;right:2.5rem;color:var(--text-muted)" title="Editar"><i class="ph ph-pencil-simple"></i></button>
-        <button type="button" class="btn-icon btn-del-tpl" data-id="${t.id}" style="position:absolute;top:0.75rem;right:0.75rem;color:var(--danger)" title="Excluir"><i class="ph ph-trash"></i></button>
+        <button type="button" class="btn-icon btn-edit-tpl" data-id="${t.id}" style="position:absolute;top:1rem;right:2.5rem;color:var(--text-muted)" title="Editar"><i class="ph ph-pencil-simple"></i></button>
+        <button type="button" class="btn-icon btn-del-tpl" data-id="${t.id}" style="position:absolute;top:1rem;right:1rem;color:var(--danger)" title="Excluir"><i class="ph ph-trash"></i></button>
       </div>
     `).join('');
   }
@@ -644,16 +644,16 @@ function openTemplatesModal(data: BoardData): void {
     const row = document.createElement('div');
     row.className = 'tpl-etapa-row';
     row.innerHTML = `
-      <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem;align-items:center;flex-wrap:wrap">
-        <input name="tpl_e_nome" class="form-input" placeholder="Nome" style="flex:2;min-width:120px">
-        <input name="tpl_e_prazo" type="number" min="1" value="3" class="form-input" style="width:70px" title="Prazo (dias)">
-        <select name="tpl_e_tipo" class="form-input" style="width:110px">
+      <div class="etapa-row-grid">
+        <input name="tpl_e_nome" class="form-input" placeholder="Nome da etapa">
+        <input name="tpl_e_prazo" type="number" min="1" value="3" class="form-input" title="Prazo (dias)">
+        <select name="tpl_e_tipo" class="form-input">
           <option value="corridos">Corridos</option>
           <option value="uteis">Úteis</option>
         </select>
-        <select name="tpl_e_resp" class="form-input" style="flex:1;min-width:120px">
+        <select name="tpl_e_resp" class="form-input">
           <option value="">Sem responsável</option>
-          ${membros.map(m => `<option value="${m.id}">${m.nome}</option>`).join('')}
+          ${membros.map(m => `<option value="${m.id}">${escapeHTML(m.nome)}</option>`).join('')}
         </select>
         <button type="button" class="btn-icon" onclick="this.closest('.tpl-etapa-row').remove()" style="color:var(--danger)"><i class="ph ph-trash"></i></button>
       </div>
@@ -718,16 +718,16 @@ function openEditTemplateModal(template: WorkflowTemplate, data: BoardData): voi
     const row = document.createElement('div');
     row.className = 'edit-tpl-etapa-row tpl-etapa-row';
     row.innerHTML = `
-      <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem;align-items:center;flex-wrap:wrap">
-        <input name="edit_tpl_e_nome" class="form-input" placeholder="Nome" style="flex:2;min-width:120px" value="${nome}">
-        <input name="edit_tpl_e_prazo" type="number" min="1" value="${prazo}" class="form-input" style="width:70px" title="Prazo (dias)">
-        <select name="edit_tpl_e_tipo" class="form-input" style="width:110px">
+      <div class="etapa-row-grid">
+        <input name="edit_tpl_e_nome" class="form-input" placeholder="Nome da etapa" value="${escapeHTML(nome)}">
+        <input name="edit_tpl_e_prazo" type="number" min="1" value="${prazo}" class="form-input" title="Prazo (dias)">
+        <select name="edit_tpl_e_tipo" class="form-input">
           <option value="corridos" ${tipo === 'corridos' ? 'selected' : ''}>Corridos</option>
           <option value="uteis" ${tipo === 'uteis' ? 'selected' : ''}>Úteis</option>
         </select>
-        <select name="edit_tpl_e_resp" class="form-input" style="flex:1;min-width:120px">
+        <select name="edit_tpl_e_resp" class="form-input">
           <option value="">Sem responsável</option>
-          ${membros.map(m => `<option value="${m.id}" ${respId === m.id ? 'selected' : ''}>${m.nome}</option>`).join('')}
+          ${membros.map(m => `<option value="${m.id}" ${respId === m.id ? 'selected' : ''}>${escapeHTML(m.nome)}</option>`).join('')}
         </select>
         <button type="button" class="btn-icon" onclick="this.closest('.edit-tpl-etapa-row').remove()" style="color:var(--danger)"><i class="ph ph-trash"></i></button>
       </div>
