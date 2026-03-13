@@ -99,6 +99,12 @@ async function handleRoute(): Promise<void> {
         await initStoreRole();
         if (currentUserRole === 'agent') {
           document.body.classList.add('role-agent');
+          // Block restricted routes for agents
+          const blocked = ['/financeiro', '/contratos', '/leads', '/clientes'];
+          if (blocked.some(b => path === b || path.startsWith(b + '/'))) {
+            window.location.hash = '#/dashboard';
+            return;
+          }
         } else {
           document.body.classList.remove('role-agent');
         }

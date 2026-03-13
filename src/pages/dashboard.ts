@@ -2,8 +2,8 @@
 // Página: Dashboard (Hub)
 // =============================================
 import { getDashboardStats, getLeads, getContratos, getMembros, getClientes,
-         formatBRL, formatDate, getInitials } from '../store';
-import type { Lead, Contrato, Membro, Cliente } from '../store';
+         formatBRL, formatDate, getInitials, getWorkflows, currentUserRole } from '../store';
+import type { Lead, Contrato, Membro, Cliente, Workflow } from '../store';
 import { getPortfolioSummary } from '../services/analytics';
 import type { PortfolioSummary } from '../services/analytics';
 import { escapeHTML } from '../router';
@@ -31,7 +31,7 @@ export async function renderDashboard(container: HTMLElement): Promise<void> {
 
   try {
     // Parallel data fetching — each section renders independently
-    const [statsR, leadsR, contratosR, membrosR, clientesR, portfolioR] =
+    const [statsR, leadsR, contratosR, membrosR, clientesR, portfolioR, workflowsR] =
       await Promise.allSettled([
         getDashboardStats(),
         getLeads(),
@@ -39,6 +39,7 @@ export async function renderDashboard(container: HTMLElement): Promise<void> {
         getMembros(),
         getClientes(),
         getPortfolioSummary(),
+        getWorkflows(),
       ]);
 
     const stats = settled(statsR, { clientes: [] as Cliente[], clientesAtivos: [] as Cliente[], receitaMensal: 0, despesaTotal: 0, saldo: 0, transacoes: [] as any[] });
@@ -47,14 +48,19 @@ export async function renderDashboard(container: HTMLElement): Promise<void> {
     const membros = settled(membrosR, [] as Membro[]);
     const clientes = settled(clientesR, [] as Cliente[]);
     const portfolio = settled(portfolioR, null as PortfolioSummary | null);
+    const workflows = settled(workflowsR, [] as Workflow[]);
 
     const { clientesAtivos, receitaMensal, despesaTotal, saldo, transacoes } = stats;
+    const isAgent = currentUserRole === 'agent';
 
     // Computed values
     const contratosVigentes = contratos.filter(c => c.status === 'vigente');
     const contratosAssinar = contratos.filter(c => c.status === 'a_assinar');
     const valorContratos = contratosVigentes.reduce((s, c) => s + Number(c.valor_total), 0);
+    const workflowsAtivos = workflows.filter(w => w.status === 'ativo');
 
+    // Note: all interpolated values come from Supabase DB data and are escaped via escapeHTML where needed.
+    // No raw user input is interpolated into innerHTML here — formatBRL returns safe numeric strings.
     container.innerHTML = `
       <header class="header animate-up">
         <div class="header-title" style="display:flex;align-items:center;gap:0.75rem">
@@ -69,6 +75,7 @@ export async function renderDashboard(container: HTMLElement): Promise<void> {
 
       <!-- KPI Row -->
       <div class="kpi-grid animate-up">
+        ${isAgent ? '' : `
         <div class="kpi-card card-dark">
           <span class="kpi-label" style="color:rgba(255,255,255,0.7)">RECEITAS MENSAIS</span>
           <span class="kpi-value" style="color:#fff">${formatBRL(receitaMensal)}</span>
@@ -84,24 +91,28 @@ export async function renderDashboard(container: HTMLElement): Promise<void> {
           <span class="kpi-value" ${saldo < 0 ? 'style="color:var(--danger)"' : ''}>${formatBRL(saldo)}</span>
           <span class="kpi-sub">${saldo >= 0 ? '✓ Positivo' : '✗ Negativo'}</span>
         </div>
+        `}
         <div class="kpi-card">
           <span class="kpi-label">CLIENTES ATIVOS</span>
           <span class="kpi-value">${clientesAtivos.length} <span style="font-size:0.9rem;font-weight:400;color:var(--text-muted)">/ ${clientes.length}</span></span>
           <span class="kpi-sub" style="color:var(--text-muted)">${clientes.filter(c => c.status === 'pausado').length} pausados</span>
         </div>
+        ${isAgent ? '' : `
         <div class="kpi-card">
           <span class="kpi-label">CONTRATOS VIGENTES</span>
           <span class="kpi-value">${contratosVigentes.length}</span>
           <span class="kpi-sub" style="color:var(--success)">${formatBRL(valorContratos)} em valor</span>
         </div>
+        `}
       </div>
 
       <!-- Hub Grid -->
       <div class="dashboard-hub animate-up">
         ${renderLeadsCard(leads)}
-        ${renderFinanceiroCard(transacoes, clientesAtivos, membros)}
+        ${isAgent ? '' : renderFinanceiroCard(transacoes, clientesAtivos, membros)}
         ${renderAnalyticsCard(portfolio)}
-        ${renderContratosCard(contratos, contratosVigentes, contratosAssinar)}
+        ${isAgent ? '' : renderContratosCard(contratos, contratosVigentes, contratosAssinar)}
+        ${renderEntregasCard(workflowsAtivos, clientes)}
         ${renderEquipeCard(membros)}
         ${renderCalendarioCard(clientesAtivos, membros)}
       </div>
@@ -284,12 +295,13 @@ function renderEquipeCard(membros: Membro[]): string {
   const clt = membros.filter(m => m.tipo === 'clt').length;
   const freeMensal = membros.filter(m => m.tipo === 'freelancer_mensal').length;
   const freeDemanda = membros.filter(m => m.tipo === 'freelancer_demanda').length;
+  const isAgent = currentUserRole === 'agent';
 
   return `<a href="#/equipe" class="card dashboard-hub-card">
     ${cardHeader('user-circle-gear', 'Equipe')}
     <div class="dashboard-mini-kpis">
       ${miniKpi(String(membros.length), 'Membros')}
-      ${miniKpi(formatBRL(custoTotal), 'Custo mensal')}
+      ${isAgent ? '' : miniKpi(formatBRL(custoTotal), 'Custo mensal')}
     </div>
     <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
       ${clt > 0 ? `<span class="badge" style="background:var(--teal);color:#fff;font-size:0.65rem">${clt} CLT</span>` : ''}
@@ -300,6 +312,7 @@ function renderEquipeCard(membros: Membro[]): string {
 }
 
 function renderCalendarioCard(clientesAtivos: Cliente[], membros: Membro[]): string {
+  const isAgent = currentUserRole === 'agent';
   const now = new Date();
   const today = now.getDate();
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
@@ -331,12 +344,39 @@ function renderCalendarioCard(clientesAtivos: Cliente[], membros: Membro[]): str
               <span style="font-size:0.7rem;color:var(--text-muted);font-family:var(--font-mono);min-width:28px">dia ${e.day}</span>
               <strong>${escapeHTML(e.name)}</strong>
             </div>
-            <span style="font-weight:600;color:${e.tipo === 'entrada' ? 'var(--success)' : 'var(--danger)'}">
+            ${isAgent ? '' : `<span style="font-weight:600;color:${e.tipo === 'entrada' ? 'var(--success)' : 'var(--danger)'}">
               ${e.tipo === 'entrada' ? '+' : '-'} ${formatBRL(e.amount)}
-            </span>
+            </span>`}
           </div>
         `).join('')}
       </div>`;
 
   return `<a href="#/calendario" class="card dashboard-hub-card">${cardHeader('calendar-blank', 'Calendário')}${content}</a>`;
+}
+
+function renderEntregasCard(workflows: Workflow[], clientes: Cliente[]): string {
+  if (workflows.length === 0) return '';
+
+  const recents = [...workflows].slice(0, 3);
+
+  const content = `
+    <div class="dashboard-mini-kpis">
+      ${miniKpi(String(workflows.length), 'Fluxos Ativos')}
+    </div>
+    <div class="dashboard-hub-list">
+      ${recents.map(w => {
+        const cliente = clientes.find(c => c.id === w.cliente_id);
+        const nomeCliente = cliente ? cliente.nome : 'Sem cliente';
+        return `<div class="dashboard-hub-row">
+          <div>
+            <strong>${escapeHTML(w.titulo)}</strong>
+            <span style="font-size:0.7rem;color:var(--text-muted);margin-left:0.35rem">${escapeHTML(nomeCliente)}</span>
+          </div>
+          <span class="badge" style="background:var(--primary-color);color:var(--dark);font-size:0.65rem">Etapa ${w.etapa_atual + 1}</span>
+        </div>`;
+      }).join('')}
+    </div>
+  `;
+
+  return `<a href="#/entregas" class="card dashboard-hub-card">${cardHeader('kanban', 'Entregas')}${content}</a>`;
 }

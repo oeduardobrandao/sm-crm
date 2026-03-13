@@ -120,6 +120,28 @@ export async function getWorkspaceUsers(): Promise<any[]> {
   return data || [];
 }
 
+async function callManageWorkspaceUser(action: string, targetUserId: string, extra?: Record<string, unknown>): Promise<void> {
+  const session = (await supabase.auth.getSession()).data.session;
+  const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-workspace-user`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session?.access_token}`,
+    },
+    body: JSON.stringify({ action, targetUserId, ...extra }),
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || result.message || `Erro HTTP ${response.status}`);
+}
+
+export async function updateWorkspaceUserRole(userId: string, role: string): Promise<void> {
+  await callManageWorkspaceUser('update-role', userId, { role });
+}
+
+export async function removeWorkspaceUser(userId: string): Promise<void> {
+  await callManageWorkspaceUser('remove', userId);
+}
+
 export async function getClientes(): Promise<Cliente[]> {
   const { data, error } = await supabase
     .from('clientes')

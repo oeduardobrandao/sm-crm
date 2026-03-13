@@ -1,7 +1,7 @@
 // =============================================
 // Página: Equipe
 // =============================================
-import { getMembros, addMembro, updateMembro, removeMembro, formatBRL, getInitials, type Membro } from '../store';
+import { getMembros, addMembro, updateMembro, removeMembro, formatBRL, getInitials, currentUserRole, type Membro } from '../store';
 import { showToast, openModal, closeModal, navigate, openConfirm } from '../router';
 import { openCSVSelector } from '../lib/csv';
 
@@ -18,6 +18,7 @@ export async function renderEquipe(container: HTMLElement): Promise<void> {
 }
 
 function renderContent(container: HTMLElement, membros: Membro[], filter: string = 'todos', sort: string = 'nome'): void {
+  const isAgent = currentUserRole === 'agent';
   const custoTotal = membros.reduce((s, m) => s + Number(m.custo_mensal || 0), 0);
   const tipoLabel = (t: string) => t === 'clt' ? 'CLT' : t === 'freelancer_mensal' ? 'Freelancer (Mensal)' : 'Freelancer (Demanda)';
   const tipoBadge = (t: string) => t === 'clt' ? 'success' : t === 'freelancer_mensal' ? 'warning' : 'neutral';
@@ -45,9 +46,9 @@ function renderContent(container: HTMLElement, membros: Membro[], filter: string
     <header class="header animate-up">
       <div class="header-title">
         <h1>Gestão da Equipe</h1>
-        <p>${membros.length} membros • Custo total: ${formatBRL(custoTotal)}/mês</p>
+        <p>${membros.length} membros${isAgent ? '' : ` • Custo total: ${formatBRL(custoTotal)}/mês`}</p>
       </div>
-      <div class="header-actions">
+      ${isAgent ? '' : `<div class="header-actions">
         <div style="display:flex; align-items:center; gap:0.5rem">
           <button class="btn-secondary" id="btn-import-csv"><i class="ph ph-file-csv"></i> Importar CSV</button>
           <span id="btn-info-csv" data-tooltip="Formato CSV: Clique para ver as colunas" data-tooltip-dir="bottom" style="display:flex; align-items:center; cursor:pointer;">
@@ -55,7 +56,7 @@ function renderContent(container: HTMLElement, membros: Membro[], filter: string
           </span>
         </div>
         <button class="btn-primary" id="btn-add-membro"><i class="ph ph-plus"></i> Adicionar Membro</button>
-      </div>
+      </div>`}
     </header>
 
     <div class="leads-toolbar animate-up">
@@ -67,8 +68,8 @@ function renderContent(container: HTMLElement, membros: Membro[], filter: string
       </div>
       <select id="sort-select" class="filter-btn" style="max-width:240px; cursor:pointer;">
         <option value="nome" ${sort === 'nome' ? 'selected' : ''}>Ordenar por Nome</option>
-        <option value="custo_maior" ${sort === 'custo_maior' ? 'selected' : ''}>Maior Custo</option>
-        <option value="custo_menor" ${sort === 'custo_menor' ? 'selected' : ''}>Menor Custo</option>
+        ${isAgent ? '' : `<option value="custo_maior" ${sort === 'custo_maior' ? 'selected' : ''}>Maior Custo</option>
+        <option value="custo_menor" ${sort === 'custo_menor' ? 'selected' : ''}>Menor Custo</option>`}
       </select>
     </div>
 
@@ -85,10 +86,10 @@ function renderContent(container: HTMLElement, membros: Membro[], filter: string
             </div>
             <div style="display:flex;justify-content:space-between;align-items:center">
               <span class="badge badge-${tipoBadge(m.tipo)}">${tipoLabel(m.tipo)}</span>
-              <strong>${m.custo_mensal ? formatBRL(Number(m.custo_mensal)) + '/mês' : 'Sob demanda'}</strong>
+              ${isAgent ? '' : `<strong>${m.custo_mensal ? formatBRL(Number(m.custo_mensal)) + '/mês' : 'Sob demanda'}</strong>`}
             </div>
-            <button class="btn-icon btn-edit" data-id="${m.id}" style="position:absolute;top:0.75rem;right:2.5rem;color:var(--text-main);"><i class="ph ph-pencil-simple"></i></button>
-            <button class="btn-icon btn-remove" data-id="${m.id}" style="position:absolute;top:0.75rem;right:0.75rem;color:var(--danger);"><i class="ph ph-trash"></i></button>
+            ${isAgent ? '' : `<button class="btn-icon btn-edit" data-id="${m.id}" style="position:absolute;top:0.75rem;right:2.5rem;color:var(--text-main);"><i class="ph ph-pencil-simple"></i></button>
+            <button class="btn-icon btn-remove" data-id="${m.id}" style="position:absolute;top:0.75rem;right:0.75rem;color:var(--danger);"><i class="ph ph-trash"></i></button>`}
           </div>
         `).join('')}
     </div>

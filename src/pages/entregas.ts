@@ -331,9 +331,9 @@ function openEditWorkflowModal(card: BoardCard, data: BoardData): void {
         </select>
       </div>
     </div>
-    <div class="form-group" style="display:flex;align-items:center;gap:0.5rem">
-      <input type="checkbox" name="recorrente" id="edit-recorrente" ${w.recorrente ? 'checked' : ''} style="width:auto">
-      <label for="edit-recorrente" style="margin:0;cursor:pointer">Fluxo recorrente</label>
+    <div class="form-group" style="display:flex;flex-direction:row;align-items:center;gap:0.5rem">
+      <input type="checkbox" name="recorrente" id="edit-recorrente" ${w.recorrente ? 'checked' : ''} style="width:auto;margin:0">
+      <label for="edit-recorrente" style="margin:0;cursor:pointer;flex:1">Fluxo recorrente</label>
     </div>
     <hr style="border:none;border-top:1px solid var(--border);margin:1rem 0">
     <h4 style="margin-bottom:0.75rem">Etapa Atual: ${e.nome}</h4>
@@ -379,7 +379,7 @@ function openEditWorkflowModal(card: BoardCard, data: BoardData): void {
     } catch (err) {
       showToast('Erro: ' + (err instanceof Error ? err.message : 'Erro'), 'error');
     }
-  }, { submitText: 'Salvar Alterações' });
+  }, { submitText: 'Salvar' });
 
   // Add the "Delete Workflow" button dynamically
   setTimeout(() => {
@@ -389,7 +389,7 @@ function openEditWorkflowModal(card: BoardCard, data: BoardData): void {
       delBtn.type = 'button';
       delBtn.className = 'btn-danger';
       delBtn.style.marginRight = 'auto'; // Push others to the right
-      delBtn.innerHTML = '<i class="ph ph-trash"></i> Excluir Fluxo';
+      delBtn.innerHTML = '<i class="ph ph-trash"></i> Excluir';
       
       delBtn.addEventListener('click', () => {
         openConfirm('Excluir Fluxo', `Tem certeza que deseja excluir o fluxo <strong>"${w.titulo}"</strong>? Esta ação não pode ser desfeita.`, async () => {
@@ -434,9 +434,9 @@ function openNewWorkflowModal(data: BoardData): void {
         </select>
       </div>
     </div>
-    <div class="form-group" style="display:flex;align-items:center;gap:0.5rem">
-      <input type="checkbox" name="recorrente" id="wf-recorrente" style="width:auto">
-      <label for="wf-recorrente" style="margin:0;cursor:pointer">Fluxo recorrente (ao concluir, oferecer criar novo ciclo)</label>
+    <div class="form-group" style="display:flex;flex-direction:row;align-items:center;gap:0.5rem;margin-top:0.5rem;">
+      <input type="checkbox" name="recorrente" id="wf-recorrente" style="width:auto;margin:0">
+      <label for="wf-recorrente" style="margin:0;cursor:pointer;flex:1">Fluxo recorrente (ao concluir, oferecer criar novo ciclo)</label>
     </div>
     <hr style="border:none;border-top:1px solid var(--border);margin:1rem 0">
     <h4 style="margin-bottom:0.75rem">Etapas</h4>
@@ -679,7 +679,7 @@ function openEditTemplateModal(template: WorkflowTemplate, data: BoardData): voi
     } catch (err) {
       showToast('Erro: ' + (err instanceof Error ? err.message : 'Erro'), 'error');
     }
-  }, { submitText: 'Salvar Alterações' });
+  }, { submitText: 'Salvar' });
 
   function addEditTplEtapaRow(formCtx: HTMLElement, etapa?: { nome: string; prazo_dias: number; tipo_prazo: string; responsavel_id?: number | null }) {
     const tplList = formCtx.querySelector('#edit-tpl-etapas-list');

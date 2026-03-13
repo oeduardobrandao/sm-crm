@@ -2,8 +2,8 @@
 // Página: Configuração do Usuário
 // =============================================
 import { supabase, getCurrentUser, getCurrentProfile, signOut } from '../lib/supabase';
-import { showToast, navigate, openModal, closeModal } from '../router';
-import { getWorkspaceUsers } from '../store';
+import { showToast, navigate, openModal, closeModal, openConfirm } from '../router';
+import { getWorkspaceUsers, updateWorkspaceUserRole, removeWorkspaceUser } from '../store';
 import { getInitials } from '../store';
 
 export async function renderConfiguracao(container: HTMLElement): Promise<void> {
@@ -16,11 +16,12 @@ export async function renderConfiguracao(container: HTMLElement): Promise<void> 
   }
 
   let workspaceHtml = '';
+  let wUsers: any[] = [];
   if (profile.role === 'owner' || profile.role === 'admin') {
      try {
-       const wUsers = await getWorkspaceUsers();
+       wUsers = await getWorkspaceUsers();
        const roleLabel = (r: string) => r === 'owner' ? 'Proprietário' : r === 'admin' ? 'Administrador' : 'Agente';
-       
+
        workspaceHtml = `
        <div class="card" style="margin-top: 1.5rem">
          <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:1.5rem">
@@ -29,15 +30,19 @@ export async function renderConfiguracao(container: HTMLElement): Promise<void> 
          </div>
          <div class="client-list">
            ${wUsers.map(u => `
-             <div class="client-row" style="background:var(--surface-main); padding: 1rem; border-radius: 12px; margin-bottom: 0.5rem; border:1px solid var(--border-color)">
+             <div class="client-row" style="background:var(--surface-main); padding: 1rem; border-radius: 12px; margin-bottom: 0.5rem; border:1px solid var(--border-color); position:relative">
                <div style="display:flex;align-items:center;gap:0.75rem">
                  <div class="avatar" style="background:var(--primary-color)">${getInitials(u.nome || 'U')}</div>
                  <div>
                    <strong>${u.nome || 'Usuário Convidado'}</strong> <br/>
                  </div>
                </div>
-               <div>
+               <div style="display:flex;align-items:center;gap:0.5rem">
                  <span class="badge ${u.role === 'owner' ? 'badge-neutral' : u.role === 'admin' ? 'badge-success' : 'badge-warning'}">${roleLabel(u.role)}</span>
+                 ${u.id !== user.id && u.role !== 'owner' ? `
+                   <button class="btn-icon btn-edit-role" data-id="${u.id}" data-role="${u.role}" title="Alterar permissão" style="color:var(--text-main)"><i class="ph ph-pencil-simple"></i></button>
+                   <button class="btn-icon btn-remove-user" data-id="${u.id}" data-nome="${u.nome || 'Usuário'}" title="Remover do workspace" style="color:var(--danger)"><i class="ph ph-trash"></i></button>
+                 ` : ''}
                </div>
              </div>
            `).join('')}
@@ -221,6 +226,52 @@ export async function renderConfiguracao(container: HTMLElement): Promise<void> 
     await signOut();
     showToast('Você saiu da conta.', 'info');
     navigate('/login');
+  });
+
+  // --- Edit Workspace User Role ---
+  container.querySelectorAll('.btn-edit-role').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const userId = (btn as HTMLElement).dataset.id!;
+      const currentRole = (btn as HTMLElement).dataset.role!;
+      openModal('Alterar Permissão', `
+        <div class="form-group">
+          <label>Permissão</label>
+          <select name="role" class="form-input">
+            <option value="admin" ${currentRole === 'admin' ? 'selected' : ''}>Administrador (Pode ver tudo e convidar)</option>
+            <option value="agent" ${currentRole === 'agent' ? 'selected' : ''}>Agente (Não vê valores financeiros)</option>
+            ${profile.role === 'owner' ? `<option value="owner" ${currentRole === 'owner' ? 'selected' : ''}>Proprietário</option>` : ''}
+          </select>
+        </div>
+      `, async (form) => {
+        const data = new FormData(form);
+        const role = data.get('role') as string;
+        try {
+          await updateWorkspaceUserRole(userId, role);
+          showToast('Permissão atualizada!');
+          closeModal();
+          navigate('/configuracao');
+        } catch (err: unknown) {
+          showToast('Erro: ' + (err instanceof Error ? err.message : 'Desconhecido'), 'error');
+        }
+      });
+    });
+  });
+
+  // --- Remove Workspace User ---
+  container.querySelectorAll('.btn-remove-user').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const userId = (btn as HTMLElement).dataset.id!;
+      const nome = (btn as HTMLElement).dataset.nome!;
+      openConfirm('Remover Membro', `Remover "${nome}" do workspace? O usuário perderá o acesso.`, async () => {
+        try {
+          await removeWorkspaceUser(userId);
+          showToast(`${nome} removido do workspace.`);
+          navigate('/configuracao');
+        } catch (err: unknown) {
+          showToast('Erro: ' + (err instanceof Error ? err.message : 'Desconhecido'), 'error');
+        }
+      }, true);
+    });
   });
 
   // --- Invite User ---

@@ -1,6 +1,9 @@
+import { currentUserRole } from './store';
+
 interface NavItem { id: string; route: string; label: string; icon: string; }
 interface NavGroup { id: string; label: string; icon: string; items: NavItem[]; isBottom?: boolean; }
-export const navGroups: NavGroup[] = [
+
+const allNavGroups: NavGroup[] = [
   { id: 'visao-geral', label: 'Visão Geral', icon: 'ph-squares-four', items: [
       { id: 'dashboard', route: '/dashboard', label: 'Dashboard', icon: 'ph-chart-pie-slice' },
       { id: 'calendario', route: '/calendario', label: 'Calendário', icon: 'ph-calendar-blank' } ] },
@@ -20,6 +23,22 @@ export const navGroups: NavGroup[] = [
       { id: 'configuracao', route: '/configuracao', label: 'Configurações', icon: 'ph-gear' },
       { id: 'politica-de-privacidade', route: '/politica-de-privacidade', label: 'Privacidade', icon: 'ph-shield-check' } ] }
 ];
+
+function getNavGroups(): NavGroup[] {
+  if (currentUserRole !== 'agent') return allNavGroups;
+  // Agents: hide CRM group entirely, hide financeiro/contratos from gestão
+  return allNavGroups
+    .filter(g => g.id !== 'crm')
+    .map(g => {
+      if (g.id === 'gestao') {
+        return { ...g, items: g.items.filter(i => i.id !== 'financeiro' && i.id !== 'contratos') };
+      }
+      return g;
+    });
+}
+
+export { type NavGroup, type NavItem };
+export const navGroups = allNavGroups; // kept for external references
 let activeGroupId: string | null = null;
 let activeRoute: string | null = null;
 let isFlyoutOpen = false;
@@ -29,7 +48,7 @@ export function initSidebar() {
   const railBottom = document.getElementById('rail-nav-bottom');
   if (!railMain || !railBottom) return;
 
-  navGroups.forEach(group => {
+  getNavGroups().forEach(group => {
     const li = document.createElement('li');
     li.className = 'rail-item';
     const btn = document.createElement('button');
@@ -77,7 +96,7 @@ function toggleFlyout(groupId: string) {
 }
 
 function openFlyout(groupId: string) {
-  const group = navGroups.find(g => g.id === groupId);
+  const group = getNavGroups().find(g => g.id === groupId);
   if (!group) return;
 
   activeGroupId = groupId;
@@ -131,7 +150,7 @@ export function syncActiveStateFromHash() {
   activeRoute = hash;
 
   let foundGroupId: string | null = null;
-  navGroups.forEach(group => {
+  getNavGroups().forEach(group => {
     group.items.forEach(item => { if (item.route === hash) foundGroupId = group.id; });
   });
 
@@ -143,7 +162,7 @@ export function syncActiveStateFromHash() {
 
 function updateRailActiveStyles() {
   let currentRouteGroup: string | null = null;
-  for (const group of navGroups) {
+  for (const group of getNavGroups()) {
     for (const item of group.items) {
       if (item.route === (activeRoute || '/dashboard')) currentRouteGroup = group.id;
     }
