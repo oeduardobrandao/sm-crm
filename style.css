@@ -2733,8 +2733,8 @@ body.role-agent input[name="valor_total"] {
 
 .deadline-warning .board-card-deadline,
 .board-card-deadline.deadline-warning {
-  background: rgba(245, 163, 66, 0.15);
-  color: var(--warning);
+  background: rgba(234, 88, 12, 0.15);
+  color: #ea580c;
 }
 
 .deadline-overdue .board-card-deadline,
@@ -2743,12 +2743,24 @@ body.role-agent input[name="valor_total"] {
   color: var(--danger);
 }
 
-.deadline-overdue.board-card {
-  border-color: rgba(239, 68, 68, 0.4);
+.deadline-ok.board-card {
+  border-color: rgba(62, 207, 142, 0.35);
+  background: rgba(62, 207, 142, 0.05);
+}
+
+.deadline-caution.board-card {
+  border-color: rgba(234, 179, 8, 0.35);
+  background: rgba(234, 179, 8, 0.06);
 }
 
 .deadline-warning.board-card {
-  border-color: rgba(245, 163, 66, 0.4);
+  border-color: rgba(234, 88, 12, 0.4);
+  background: rgba(234, 88, 12, 0.07);
+}
+
+.deadline-overdue.board-card {
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.07);
 }
 
 .board-card-assignee {

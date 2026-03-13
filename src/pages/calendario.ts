@@ -1,4 +1,4 @@
-import { getClientes, getMembros, Cliente, Membro, formatBRL, currentUserRole } from '../store';
+import { getClientes, getMembros, Cliente, Membro, formatBRL, currentUserRole, getWorkflows, getWorkflowEtapas, type Workflow, type WorkflowEtapa } from '../store';
 import { showToast, openConfirm } from '../router';
 
 export async function renderCalendario(container: HTMLElement): Promise<void> {
@@ -36,6 +36,8 @@ export async function renderCalendario(container: HTMLElement): Promise<void> {
       .event-pill { font-family: var(--font-mono); font-size: 0.65rem; padding: 0.3rem 0.5rem; border-radius: 4px; display: flex; align-items: center; gap: 0.3rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
       .event-pill.income { background: rgba(62, 207, 142, 0.1); color: var(--success); border-left: 2px solid var(--success); }
       .event-pill.expense { background: rgba(245, 163, 66, 0.1); color: var(--warning); border-left: 2px solid var(--warning); }
+      .event-pill.deadline { background: rgba(139, 92, 246, 0.1); color: #8b5cf6; border-left: 2px solid #8b5cf6; }
+      .event-pill.deadline.overdue { background: rgba(239, 68, 68, 0.1); color: var(--danger); border-left: 2px solid var(--danger); }
       
       .scheduled-panel { background: var(--card-bg); border-radius: var(--radius); padding: 2rem; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 1.5rem; }
 
@@ -106,6 +108,18 @@ export async function renderCalendario(container: HTMLElement): Promise<void> {
   let clientes: Cliente[] = [];
   let membros: Membro[] = [];
   let transacoes: import('../store').Transacao[] = [];
+
+  // Entregas deadlines
+  interface DeadlineEvent {
+    workflowTitle: string;
+    etapaNome: string;
+    clienteNome: string;
+    clienteCor: string;
+    deadlineDate: Date;
+    diasRestantes: number;
+    estourado: boolean;
+  }
+  let deadlineEvents: DeadlineEvent[] = [];
 
   // Medico State
   let activeFilter = 'all';
@@ -342,10 +356,47 @@ export async function renderCalendario(container: HTMLElement): Promise<void> {
   // --- Initial Data Load ---
   const loadData = async () => {
     try {
-      const [cRes, mRes, tRes] = await Promise.all([getClientes(), getMembros(), import('../store').then(m => m.getTransacoes())]);
+      const [cRes, mRes, tRes, wfRes] = await Promise.all([getClientes(), getMembros(), import('../store').then(m => m.getTransacoes()), getWorkflows()]);
       clientes = cRes;
       membros = mRes;
       transacoes = tRes;
+
+      // Build deadline events from active workflows
+      const activeWfs = wfRes.filter(w => w.status === 'ativo');
+      const etapasResults = await Promise.all(activeWfs.map(w => getWorkflowEtapas(w.id!)));
+      deadlineEvents = [];
+      activeWfs.forEach((w, idx) => {
+        const etapas = etapasResults[idx];
+        const activeEtapa = etapas.find(e => e.status === 'ativo');
+        if (!activeEtapa || !activeEtapa.iniciado_em) return;
+        const cliente = clientes.find(c => c.id === w.cliente_id);
+        const inicio = new Date(activeEtapa.iniciado_em);
+        // Calculate deadline date by adding prazo_dias from inicio
+        const deadlineDate = new Date(inicio);
+        if (activeEtapa.tipo_prazo === 'uteis') {
+          let added = 0;
+          while (added < activeEtapa.prazo_dias) {
+            deadlineDate.setDate(deadlineDate.getDate() + 1);
+            const dow = deadlineDate.getDay();
+            if (dow !== 0 && dow !== 6) added++;
+          }
+        } else {
+          deadlineDate.setDate(deadlineDate.getDate() + activeEtapa.prazo_dias);
+        }
+        const now = new Date();
+        const diffMs = deadlineDate.getTime() - now.getTime();
+        const diasRestantes = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+        deadlineEvents.push({
+          workflowTitle: w.titulo,
+          etapaNome: activeEtapa.nome,
+          clienteNome: cliente?.nome || '—',
+          clienteCor: cliente?.cor || '#888',
+          deadlineDate,
+          diasRestantes,
+          estourado: diasRestantes < 0,
+        });
+      });
+
       render();
     } catch (e: unknown) {
       showToast('Erro ao carregar dados do calendário.', 'error');
@@ -358,7 +409,7 @@ export async function renderCalendario(container: HTMLElement): Promise<void> {
       <header class="header animate-up">
         <div class="header-title">
           <h1>${activeTab === 'financeiro' ? 'Agenda & Pagamentos' : 'Calendário <span>Médico</span>'}</h1>
-          <p>${activeTab === 'financeiro' ? 'Visão geral de recebimentos e despesas agendadas.' : 'Brasil & Mundial — Datas de Saúde & Conscientização'}</p>
+          <p>${activeTab === 'financeiro' ? 'Visão geral mensal.' : 'Brasil & Mundial — Datas de Saúde & Conscientização'}</p>
         </div>
       </header>
 
@@ -401,6 +452,7 @@ export async function renderCalendario(container: HTMLElement): Promise<void> {
     const isSameMonth = selectedDate.getMonth() === month && selectedDate.getFullYear() === year;
     const selectedIncomes = isAgent ? [] : (isSameMonth ? clientes.filter(c => c.data_pagamento === selectedDay && c.status === 'ativo') : []);
     const selectedExpenses = isAgent ? [] : (isSameMonth ? membros.filter(m => m.data_pagamento === selectedDay) : []);
+    const selectedDeadlines = isSameMonth ? deadlineEvents.filter(d => d.deadlineDate.getDate() === selectedDay && d.deadlineDate.getMonth() === month && d.deadlineDate.getFullYear() === year) : [];
 
     let gridHTML = '';
     
@@ -417,7 +469,8 @@ export async function renderCalendario(container: HTMLElement): Promise<void> {
       
       const dayIncomes = isAgent ? [] : clientes.filter(c => c.data_pagamento === i && c.status === 'ativo');
       const dayExpenses = isAgent ? [] : membros.filter(m => m.data_pagamento === i);
-      const hasEvents = dayIncomes.length > 0 || dayExpenses.length > 0;
+      const dayDeadlines = deadlineEvents.filter(d => d.deadlineDate.getDate() === i && d.deadlineDate.getMonth() === month && d.deadlineDate.getFullYear() === year);
+      const hasEvents = dayIncomes.length > 0 || dayExpenses.length > 0 || dayDeadlines.length > 0;
       const dayOfWeek = new Date(year, month, i).getDay();
       const weekdayName = weekDays[dayOfWeek].slice(0,3);
       
@@ -427,6 +480,10 @@ export async function renderCalendario(container: HTMLElement): Promise<void> {
       }
       if (dayExpenses.length > 0) {
         eventsHTML += `<div class="event-pill expense"><i class="ph ph-trend-down"></i> ${dayExpenses.length} Desp.</div>`;
+      }
+      if (dayDeadlines.length > 0) {
+        const hasOverdue = dayDeadlines.some(d => d.estourado);
+        eventsHTML += `<div class="event-pill deadline${hasOverdue ? ' overdue' : ''}"><i class="ph ph-flag-banner"></i> ${dayDeadlines.length} Entrega${dayDeadlines.length > 1 ? 's' : ''}</div>`;
       }
 
       gridHTML += `
@@ -442,7 +499,7 @@ export async function renderCalendario(container: HTMLElement): Promise<void> {
     let panelItemsHTML = '';
     const isPaid = (refId: string) => transacoes.some(t => t.referencia_agendamento === refId);
 
-    if (selectedIncomes.length === 0 && selectedExpenses.length === 0) {
+    if (selectedIncomes.length === 0 && selectedExpenses.length === 0 && selectedDeadlines.length === 0) {
        panelItemsHTML = `<div style="text-align:center; padding: 2rem 0; color: var(--text-muted);"><i class="ph ph-calendar-x" style="font-size: 2.5rem; margin-bottom: 0.5rem; opacity: 0.5;"></i><p>Nenhuma movimentação neste dia.</p></div>`;
     } else {
       selectedIncomes.forEach(c => {
@@ -501,10 +558,31 @@ export async function renderCalendario(container: HTMLElement): Promise<void> {
           </div>
         `;
       });
+      selectedDeadlines.forEach(d => {
+        const statusLabel = d.estourado ? `${Math.abs(d.diasRestantes)}d atrasado` : d.diasRestantes === 0 ? 'Vence hoje' : `${d.diasRestantes}d restante${d.diasRestantes > 1 ? 's' : ''}`;
+        const statusColor = d.estourado ? 'var(--danger)' : d.diasRestantes <= 1 ? '#ea580c' : d.diasRestantes <= 3 ? '#eab308' : 'var(--success)';
+        panelItemsHTML += `
+          <div class="scheduled-item">
+            <div class="item-top">
+              <div>
+                <div class="item-badge" style="background:${d.clienteCor}"></div>
+                <div class="item-title" style="margin-top:0.8rem">${d.workflowTitle}</div>
+                <div class="item-subtitle">${d.clienteNome} · Etapa: ${d.etapaNome}</div>
+              </div>
+              <div>
+                <span class="badge" style="font-size:0.7rem"><i class="ph ph-flag-banner" style="margin-right:4px"></i>${statusLabel}</span>
+              </div>
+            </div>
+            <div class="item-meta">
+              <i class="ph ph-kanban"></i> Prazo da etapa
+            </div>
+          </div>
+        `;
+      });
     }
 
     el.innerHTML = `
-      <div class="calendar-layout" style="${isAgent ? 'grid-template-columns: 1fr;' : ''}">
+      <div class="calendar-layout">
         <div class="calendar-main">
           <div class="calendar-header">
             <div class="calendar-title-group">
@@ -524,7 +602,7 @@ export async function renderCalendario(container: HTMLElement): Promise<void> {
           </div>
         </div>
 
-        ${isAgent ? '' : `<div class="scheduled-panel">
+        <div class="scheduled-panel">
           <div class="scheduled-header">
             <h3>Agendado</h3>
             <p>${selectedDate.getDate()} de ${monthNames[selectedDate.getMonth()]}, ${selectedDate.getFullYear()}</p>
@@ -532,7 +610,7 @@ export async function renderCalendario(container: HTMLElement): Promise<void> {
           <div class="scheduled-list custom-scrollbar">
             ${panelItemsHTML}
           </div>
-        </div>`}
+        </div>
       </div>
     `;
 
