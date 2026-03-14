@@ -1,7 +1,7 @@
 // =============================================
 // CRM Fluxo - Bootstrap (com Auth)
 // =============================================
-import { registerRoute, initRouter } from './router';
+import { registerRoute, initRouter, showToast } from './router';
 import { renderDashboard } from './pages/dashboard';
 import { renderClientes } from './pages/clientes';
 import { renderFinanceiro } from './pages/financeiro';
@@ -218,22 +218,47 @@ function syncActiveNav() {
 window.addEventListener('hashchange', syncActiveNav);
 
 // Detect Supabase auth tokens in hash (invite / recovery) and redirect to configure password page
-(() => {
-  const h = window.location.hash;
-  if (h && (h.includes('type=invite') || h.includes('type=recovery'))) {
-    import('./lib/supabase').then(({ supabase }) => {
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-        if (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') {
-          subscription.unsubscribe();
-          window.location.hash = '#/configurar-senha';
-        }
-      });
-    });
-  }
-})();
+// Also handle error redirects from Supabase (expired/invalid links)
+// IMPORTANT: This must run BEFORE initRouter to prevent "page not found" flash
+const authHash = window.location.hash;
+const isAuthError = authHash.includes('error=') && (authHash.includes('error_code=') || authHash.includes('error_description='));
+const isAuthCallback = authHash.includes('type=invite') || authHash.includes('type=recovery') || authHash.includes('access_token=');
 
-// Initialize router
-initRouter('app');
+if (isAuthError) {
+  const params = new URLSearchParams(authHash.replace('#', ''));
+  const errorDesc = params.get('error_description') || '';
+  const isExpired = params.get('error_code') === 'otp_expired';
+
+  window.location.hash = '#/login';
+  initRouter('app');
+
+  setTimeout(() => {
+    if (isExpired) {
+      showToast('O link do convite expirou. Solicite um novo convite ao administrador.', 'error');
+    } else {
+      showToast(errorDesc.replace(/\+/g, ' ') || 'Erro na autenticação. Tente novamente.', 'error');
+    }
+  }, 300);
+} else if (isAuthCallback) {
+  // Supabase client will parse the hash tokens automatically.
+  // Set hash to a blank route while we wait, so the router doesn't try to match the token hash.
+  window.location.hash = '#/configurar-senha';
+
+  import('./lib/supabase').then(({ supabase }) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') {
+        subscription.unsubscribe();
+        // Hash is already set; just ensure router renders the page
+        window.dispatchEvent(new HashChangeEvent('hashchange'));
+      }
+    });
+  });
+
+  initRouter('app');
+} else {
+  // Normal boot — no auth hash
+  initRouter('app');
+}
 
 // Initialize desktop sidebar
 initSidebar();
