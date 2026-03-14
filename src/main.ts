@@ -231,6 +231,8 @@ if (isAuthError) {
 
   window.location.hash = '#/login';
   initRouter('app');
+  initSidebar();
+  syncActiveNav();
 
   setTimeout(() => {
     if (isExpired) {
@@ -240,30 +242,31 @@ if (isAuthError) {
     }
   }, 300);
 } else if (isAuthCallback) {
-  // Supabase client will parse the hash tokens automatically.
-  // Set hash to a blank route while we wait, so the router doesn't try to match the token hash.
-  window.location.hash = '#/configurar-senha';
+  // Supabase needs to read the access_token from the hash to establish a session.
+  // We must NOT overwrite the hash until Supabase has parsed it.
+  // Hide the app content while we wait to avoid "page not found" flash.
+  const appEl = document.getElementById('app');
+  if (appEl) appEl.style.display = 'none';
 
   import('./lib/supabase').then(({ supabase }) => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') {
         subscription.unsubscribe();
-        // Hash is already set; just ensure router renders the page
-        window.dispatchEvent(new HashChangeEvent('hashchange'));
+        // Session is established — now safe to redirect and show the page
+        window.location.hash = '#/configurar-senha';
+        if (appEl) appEl.style.display = '';
+        initRouter('app');
+        initSidebar();
+        syncActiveNav();
       }
     });
   });
 
-  initRouter('app');
 } else {
   // Normal boot — no auth hash
   initRouter('app');
+  initSidebar();
+  syncActiveNav();
 }
-
-// Initialize desktop sidebar
-initSidebar();
-
-// Initial sync for mobile
-syncActiveNav();
 
 // Application initialized
