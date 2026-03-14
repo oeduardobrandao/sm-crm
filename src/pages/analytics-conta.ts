@@ -305,9 +305,14 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
             </tr>
           </thead>
           <tbody>
-            ${posts.map(p => `
-              <tr class="post-row" data-post-id="${p.id}" style="cursor:pointer">
-                <td data-label="Data">${new Date(p.posted_at).toLocaleDateString('pt-BR')}</td>
+            ${posts.map((p, idx) => `
+              <tr class="post-row${idx >= 5 ? ' perf-row-hidden' : ''}" data-post-id="${p.id}" style="cursor:pointer;${idx >= 5 ? 'display:none;' : ''}">
+                <td data-label="Data">
+                  <div style="display:flex;align-items:center;gap:0.75rem;">
+                    ${p.thumbnail_url ? `<img loading="lazy" src="${sanitizeUrl(p.thumbnail_url)}" alt="" style="width:40px;height:40px;border-radius:6px;object-fit:cover;flex-shrink:0;background:var(--bg-secondary);" onerror="this.style.display='none'">` : `<div style="width:40px;height:40px;border-radius:6px;background:var(--bg-secondary);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><i class="ph ph-image" style="color:var(--text-muted);font-size:1rem;"></i></div>`}
+                    <span>${new Date(p.posted_at).toLocaleDateString('pt-BR')}</span>
+                  </div>
+                </td>
                 <td data-label="Tipo"><span class="badge badge-info">${formatMediaType(p.media_type)}</span></td>
                 <td data-label="Alcance">${p.reach.toLocaleString('pt-BR')}</td>
                 <td data-label="Eng."><span class="badge ${p.engagement_rate >= 5 ? 'badge-success' : p.engagement_rate >= 2 ? 'badge-warning' : 'badge-neutral'}">${p.engagement_rate.toFixed(1)}%</span></td>
@@ -335,6 +340,9 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
             `).join('')}
           </tbody>
         </table>
+        ${posts.length > 5 ? `<button id="btn-perf-expand" style="display:flex;align-items:center;justify-content:center;gap:0.4rem;margin:0.75rem auto 0;padding:0.4rem 1rem;font-size:0.8rem;color:var(--primary-color);background:none;border:1px solid var(--border-color);border-radius:6px;cursor:pointer;transition:background 0.15s;">
+          <i class="ph ph-caret-down"></i> Ver mais publicações
+        </button>` : ''}
       </div>`}
     </div>
 
@@ -587,6 +595,26 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
       await renderContent(container, clientId, cliente, account, state);
     });
   });
+
+  // Expand/collapse performance table
+  const perfExpandBtn = container.querySelector('#btn-perf-expand') as HTMLButtonElement | null;
+  if (perfExpandBtn) {
+    perfExpandBtn.addEventListener('click', () => {
+      const hidden = container.querySelectorAll('.perf-row-hidden');
+      const isExpanded = perfExpandBtn.dataset.expanded === '1';
+      hidden.forEach(r => (r as HTMLElement).style.display = isExpanded ? 'none' : '');
+      perfExpandBtn.dataset.expanded = isExpanded ? '0' : '1';
+      const icon = perfExpandBtn.querySelector('i')!;
+      const textNode = perfExpandBtn.childNodes[perfExpandBtn.childNodes.length - 1];
+      if (isExpanded) {
+        icon.className = 'ph ph-caret-down';
+        textNode.textContent = ' Ver mais publicações';
+      } else {
+        icon.className = 'ph ph-caret-up';
+        textNode.textContent = ' Ver menos';
+      }
+    });
+  }
 
   // Expandable post rows
   container.querySelectorAll('.post-row').forEach(row => {

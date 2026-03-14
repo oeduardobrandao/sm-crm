@@ -12,7 +12,7 @@ export async function renderInstagramPostsTable(container: HTMLElement, clientId
     <div class="card animate-up" style="margin-bottom: 1.5rem;">
        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
            <h3><i class="ph ph-images" style="color: var(--primary-color); margin-right: 0.5rem;"></i> Últimas Publicações</h3>
-           <div class="pagination-controls" style="display: flex; gap: 0.5rem; align-items: center;">
+           <div id="ig-pagination" class="pagination-controls" style="display: none; gap: 0.5rem; align-items: center;">
               <button id="btn-ig-prev" class="btn-icon" disabled><i class="ph ph-caret-left"></i></button>
               <span id="ig-page-indicator" style="font-size: 0.8rem; color: var(--text-muted); font-family: var(--font-mono);">Pg 1</span>
               <button id="btn-ig-next" class="btn-icon"><i class="ph ph-caret-right"></i></button>
@@ -64,16 +64,24 @@ export async function renderInstagramPostsTable(container: HTMLElement, clientId
           <tbody>
       `;
 
+      const COLLAPSED_LIMIT = 5;
+      let rowIndex = 0;
       for (const p of posts) {
           const rawCaption = p.caption ? (p.caption.length > 50 ? p.caption.substring(0, 50) + '...' : p.caption) : '—';
           const captionStr = escapeHTML(rawCaption);
           const safePermalink = sanitizeUrl(p.permalink || '');
+          const safeThumbnail = p.thumbnail_url ? sanitizeUrl(p.thumbnail_url) : '';
 
           html += `
-            <tr>
-              <td data-label="Data">
-                  <strong>${formatDate(p.posted_at.split('T')[0])}</strong><br>
-                  <span style="font-size:0.7rem;color:var(--text-muted);">${escapeHTML(p.media_type)}</span>
+            <tr${rowIndex >= COLLAPSED_LIMIT ? ' class="ig-row-hidden" style="display:none;"' : ''}>
+              <td data-label="Data" style="width: 140px;">
+                  <div style="display:flex;align-items:center;gap:0.75rem;">
+                    ${safeThumbnail ? `<img loading="lazy" src="${safeThumbnail}" alt="" style="width:44px;height:44px;border-radius:6px;object-fit:cover;flex-shrink:0;background:var(--bg-secondary);" onerror="this.style.display='none'">` : `<div style="width:44px;height:44px;border-radius:6px;background:var(--bg-secondary);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><i class="ph ph-image" style="color:var(--text-muted);font-size:1.1rem;"></i></div>`}
+                    <div>
+                      <strong>${formatDate(p.posted_at.split('T')[0])}</strong><br>
+                      <span style="font-size:0.7rem;color:var(--text-muted);">${escapeHTML(p.media_type)}</span>
+                    </div>
+                  </div>
               </td>
               <td data-label="Legenda" style="max-width: 200px; white-space: normal; line-height: 1.4;">
                  ${captionStr}
@@ -95,10 +103,39 @@ export async function renderInstagramPostsTable(container: HTMLElement, clientId
               </td>
             </tr>
           `;
+          rowIndex++;
       }
 
       html += '</tbody></table>';
+
+      if (posts.length > COLLAPSED_LIMIT) {
+        html += `<button id="btn-ig-expand" style="display:flex;align-items:center;justify-content:center;gap:0.4rem;margin:0.75rem auto 0;padding:0.4rem 1rem;font-size:0.8rem;color:var(--primary-color);background:none;border:1px solid var(--border-color);border-radius:6px;cursor:pointer;transition:background 0.15s;">
+          <i class="ph ph-caret-down"></i> Ver mais publicações
+        </button>`;
+      }
+
       contentArea.innerHTML = html;
+
+      const expandBtn = contentArea.querySelector('#btn-ig-expand') as HTMLButtonElement | null;
+      if (expandBtn) {
+        expandBtn.addEventListener('click', () => {
+          const hidden = contentArea.querySelectorAll('.ig-row-hidden');
+          const isExpanded = expandBtn.dataset.expanded === '1';
+          const pagination = container.querySelector('#ig-pagination') as HTMLElement;
+          hidden.forEach(r => (r as HTMLElement).style.display = isExpanded ? 'none' : '');
+          expandBtn.dataset.expanded = isExpanded ? '0' : '1';
+          pagination.style.display = isExpanded ? 'none' : 'flex';
+          const icon = expandBtn.querySelector('i')!;
+          const textNode = expandBtn.childNodes[expandBtn.childNodes.length - 1];
+          if (isExpanded) {
+            icon.className = 'ph ph-caret-down';
+            textNode.textContent = ' Ver mais publicações';
+          } else {
+            icon.className = 'ph ph-caret-up';
+            textNode.textContent = ' Ver menos';
+          }
+        });
+      }
 
       // Update Pagination UI
       lblPage.textContent = `Pg ${page} de ${totalPages}`;

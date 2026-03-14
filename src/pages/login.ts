@@ -65,7 +65,7 @@ export function renderLogin(container: HTMLElement): void {
         <form id="register-form" class="auth-form" style="display:none">
           <div class="form-group">
             <label>Nome Completo</label>
-            <input type="text" name="nome" required placeholder="Marina Silva" class="form-input">
+            <input type="text" name="nome" required placeholder="Ana Dos Santos" class="form-input">
           </div>
           <div class="form-group">
             <label>Nome da Empresa</label>

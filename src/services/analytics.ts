@@ -102,6 +102,7 @@ export interface PostAnalytics {
   impressions: number;
   saved: number;
   shares: number;
+  thumbnail_url: string | null;
   engagement_rate: number;
   saves_rate: number;
   tags: PostTag[];

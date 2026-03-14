@@ -86,8 +86,9 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === "update-role") {
-      if (!role) {
-        return new Response(JSON.stringify({ error: "role is required" }), { status: 400, headers });
+      const ALLOWED_ROLES = ["owner", "admin", "agent"];
+      if (!role || !ALLOWED_ROLES.includes(role)) {
+        return new Response(JSON.stringify({ error: "role must be one of: owner, admin, agent" }), { status: 400, headers });
       }
       // Only owner can assign owner role
       if (role === "owner" && callerProfile.role !== "owner") {

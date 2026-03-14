@@ -436,7 +436,7 @@ Deno.serve(async (req) => {
                 fetch(`https://graph.instagram.com/v21.0/me/insights?metric=views&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
                 fetch(`https://graph.instagram.com/v21.0/me/insights?metric=accounts_engaged&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
                 fetch(`https://graph.instagram.com/v21.0/me?fields=followers_count,follows_count,media_count&access_token=${accessToken}`),
-                fetch(`https://graph.instagram.com/v21.0/me/media?fields=id,caption,media_type,permalink,timestamp,comments_count,like_count&limit=50&access_token=${accessToken}`)
+                fetch(`https://graph.instagram.com/v21.0/me/media?fields=id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,comments_count,like_count&limit=50&access_token=${accessToken}`)
             ]);
 
             const [reachData, viewsData, profileTapsData, igProfile, mediaData] = await Promise.all([
@@ -511,11 +511,23 @@ Deno.serve(async (req) => {
                                 }
                             }
                         } catch (_) { /* ignore per-post insight errors */ }
+
+                        // Get thumbnail: VIDEO has thumbnail_url, IMAGE has media_url, CAROUSEL needs first child
+                        let thumbUrl = post.thumbnail_url || post.media_url || null;
+                        if (!thumbUrl && post.media_type === 'CAROUSEL_ALBUM') {
+                            try {
+                                const childRes = await fetch(`https://graph.instagram.com/v21.0/${post.id}/children?fields=media_url,media_type&limit=1&access_token=${accessToken}`);
+                                const childData = await childRes.json();
+                                if (childData.data?.[0]?.media_url) thumbUrl = childData.data[0].media_url;
+                            } catch (_) { /* ignore */ }
+                        }
+
                         return {
                             instagram_account_id: account.id,
                             instagram_post_id: post.id,
                             caption: post.caption || '',
                             media_type: post.media_type,
+                            thumbnail_url: thumbUrl,
                             permalink: post.permalink,
                             posted_at: post.timestamp,
                             likes: post.like_count || 0,
