@@ -95,11 +95,39 @@ Deno.serve(async (_req) => {
         
         const newEncryptedToken = await encryptToken(newLongLivedToken);
 
+        // Refresh and cache profile picture while we have a fresh token
+        let storedAvatarUrl: string | undefined;
+        try {
+          const profileRes = await fetch(`https://graph.instagram.com/me?fields=profile_picture_url&access_token=${newLongLivedToken}`);
+          const profileData = await profileRes.json();
+          if (profileData.profile_picture_url) {
+            const imgRes = await fetch(profileData.profile_picture_url);
+            if (imgRes.ok) {
+              const imgBytes = await imgRes.arrayBuffer();
+              const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
+              const storagePath = `instagram/${account.id}.jpg`;
+              const BUCKET = 'avatars';
+              let { error: uploadError } = await supabase.storage
+                .from(BUCKET).upload(storagePath, imgBytes, { contentType, upsert: true });
+              if (uploadError?.message?.includes('Bucket not found')) {
+                await supabase.storage.createBucket(BUCKET, { public: true });
+                ({ error: uploadError } = await supabase.storage
+                  .from(BUCKET).upload(storagePath, imgBytes, { contentType, upsert: true }));
+              }
+              if (!uploadError) {
+                const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(storagePath);
+                storedAvatarUrl = pub.publicUrl;
+              }
+            }
+          }
+        } catch (e) { /* non-fatal */ }
+
         const { error: updateError } = await supabase
           .from('instagram_accounts')
           .update({
             encrypted_access_token: newEncryptedToken,
-            token_expires_at: newExpiresAt
+            token_expires_at: newExpiresAt,
+            ...(storedAvatarUrl ? { profile_picture_url: storedAvatarUrl } : {})
           })
           .eq('id', account.id);
 

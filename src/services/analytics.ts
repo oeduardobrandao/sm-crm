@@ -610,7 +610,7 @@ export async function generateReport(clientId: number, month?: string): Promise<
   const res = await fetch(`${EDGE_URL}/generate-report/${clientId}`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ month }),
+    body: JSON.stringify({ month, force: true }),
   });
 
   const data = await res.json().catch(() => null);

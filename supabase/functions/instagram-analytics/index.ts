@@ -770,10 +770,11 @@ Deno.serve(async (req) => {
       const now = new Date();
       const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       const month = body.month || `${prevMonth.getFullYear()}-${String(prevMonth.getMonth() + 1).padStart(2, '0')}`;
+      const force = body.force === true;
 
       const account = await getAccount(serviceClient, clientId);
 
-      // Check if already exists
+      // Check if already exists (skip cache when force=true)
       const { data: existing } = await serviceClient
         .from('analytics_reports')
         .select('id, status, report_url')
@@ -781,7 +782,7 @@ Deno.serve(async (req) => {
         .eq('report_month', month)
         .single();
 
-      if (existing?.status === 'ready') {
+      if (!force && existing?.status === 'ready') {
         return json({ reportId: existing.id, status: 'ready', report_url: existing.report_url });
       }
 

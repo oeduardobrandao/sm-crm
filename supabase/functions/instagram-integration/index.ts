@@ -435,7 +435,7 @@ Deno.serve(async (req) => {
                 fetch(`https://graph.instagram.com/v21.0/me/insights?metric=reach&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
                 fetch(`https://graph.instagram.com/v21.0/me/insights?metric=views&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
                 fetch(`https://graph.instagram.com/v21.0/me/insights?metric=accounts_engaged&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
-                fetch(`https://graph.instagram.com/v21.0/me?fields=followers_count,follows_count,media_count&access_token=${accessToken}`),
+                fetch(`https://graph.instagram.com/v21.0/me?fields=followers_count,follows_count,media_count,profile_picture_url&access_token=${accessToken}`),
                 fetch(`https://graph.instagram.com/v21.0/me/media?fields=id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,comments_count,like_count&limit=50&access_token=${accessToken}`)
             ]);
 
@@ -470,6 +470,31 @@ Deno.serve(async (req) => {
                 }
             }
 
+            // Cache profile picture in Supabase Storage to avoid CDN hotlink issues
+            let storedAvatarUrl: string | undefined;
+            if (igProfile.profile_picture_url) {
+                try {
+                    const imgRes = await fetch(igProfile.profile_picture_url);
+                    if (imgRes.ok) {
+                        const imgBytes = await imgRes.arrayBuffer();
+                        const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
+                        const storagePath = `instagram/${account.id}.jpg`;
+                        const BUCKET = 'avatars';
+                        let { error: uploadError } = await serviceClient.storage
+                            .from(BUCKET).upload(storagePath, imgBytes, { contentType, upsert: true });
+                        if (uploadError?.message?.includes('Bucket not found')) {
+                            await serviceClient.storage.createBucket(BUCKET, { public: true });
+                            ({ error: uploadError } = await serviceClient.storage
+                                .from(BUCKET).upload(storagePath, imgBytes, { contentType, upsert: true }));
+                        }
+                        if (!uploadError) {
+                            const { data: pub } = serviceClient.storage.from(BUCKET).getPublicUrl(storagePath);
+                            storedAvatarUrl = pub.publicUrl;
+                        }
+                    }
+                } catch (e) { console.log('[IG-SYNC] Avatar cache failed (non-fatal):', e); }
+            }
+
             const today = new Date().toISOString().split('T')[0];
             // Update account stats and follower history in parallel
             await Promise.all([
@@ -477,6 +502,7 @@ Deno.serve(async (req) => {
                     follower_count: igProfile.followers_count || account.follower_count,
                     following_count: igProfile.follows_count || account.following_count,
                     media_count: igProfile.media_count || account.media_count,
+                    ...(storedAvatarUrl ? { profile_picture_url: storedAvatarUrl } : igProfile.profile_picture_url ? { profile_picture_url: igProfile.profile_picture_url } : {}),
                     reach_28d: totalReach,
                     impressions_28d: totalImpressions,
                     profile_views_28d: totalViews,

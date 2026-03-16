@@ -74,7 +74,7 @@ function renderContent(container: HTMLElement, clientes: Cliente[], filter = 'to
             filtered.map(c => `
               <tr>
                 <td data-label="Cliente / Empresa"><div style="display:flex;align-items:center;gap:0.75rem">
-                  ${igAvatars.has(c.id!) ? `<img src="${escapeHTML(igAvatars.get(c.id!)!)}" alt="" class="avatar" style="width:36px;height:36px;border-radius:50%;object-fit:cover">` : `<div class="avatar" style="background:${c.cor}">${getInitials(c.nome)}</div>`}
+                  ${igAvatars.has(c.id!) ? `<img src="${escapeHTML(igAvatars.get(c.id!)!)}" alt="" class="avatar ig-avatar" data-bg="${c.cor}" data-initials="${escapeHTML(getInitials(c.nome))}" style="width:36px;height:36px;border-radius:50%;object-fit:cover">` : `<div class="avatar" style="background:${c.cor}">${getInitials(c.nome)}</div>`}
                   <a href="#/cliente/${c.id}" class="client-link"><strong>${c.nome}</strong></a>
                    ${(() => { const notionUrl = sanitizeUrl(c.notion_page_url || ''); return notionUrl ? `<a href="${notionUrl}" target="_blank" rel="noopener noreferrer" title="Abrir no Notion" class="notion-icon-link"><i class="ph ph-notion-logo"></i></a>` : ''; })()}
                 </div></td>
@@ -95,6 +95,17 @@ function renderContent(container: HTMLElement, clientes: Cliente[], filter = 'to
       </table>
     </div>
   `;
+
+  // --- Instagram avatar fallback ---
+  container.querySelectorAll<HTMLImageElement>('img.ig-avatar').forEach(img => {
+    img.addEventListener('error', () => {
+      const fallback = document.createElement('div');
+      fallback.className = 'avatar';
+      fallback.style.background = img.dataset.bg || '';
+      fallback.textContent = img.dataset.initials || '';
+      img.replaceWith(fallback);
+    });
+  });
 
   // --- Filters ---
   container.querySelectorAll('button.filter-btn').forEach(btn => {
