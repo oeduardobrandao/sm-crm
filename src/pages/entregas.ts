@@ -200,6 +200,9 @@ function renderBoard(container: HTMLElement, data: BoardData, state: BoardState)
                 const deadlineClass = dl.estourado ? 'deadline-overdue' : dl.urgente ? 'deadline-warning' : dl.diasRestantes <= 3 ? 'deadline-caution' : 'deadline-ok';
                 const deadlineText = dl.estourado ? `${Math.abs(dl.diasRestantes)}d atrasado` : dl.diasRestantes === 0 ? 'Vence hoje' : `${dl.diasRestantes}d restante${dl.diasRestantes > 1 ? 's' : ''}`;
                 const progressPct = card.totalEtapas > 0 ? Math.round((card.etapaIdx / card.totalEtapas) * 100) : 0;
+                const iniciadoEm = card.etapa.iniciado_em
+                  ? new Date(card.etapa.iniciado_em).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
+                  : null;
                 return `
                 <div class="board-card ${deadlineClass}" data-wid="${card.workflow.id}" data-eid="${card.etapa.id}">
                   <div class="board-card-top">
@@ -211,11 +214,14 @@ function renderBoard(container: HTMLElement, data: BoardData, state: BoardState)
                     <span class="board-card-deadline ${deadlineClass}"><i class="ph ph-clock"></i> ${deadlineText}</span>
                     <span class="board-card-prazo-type">${card.etapa.tipo_prazo === 'uteis' ? 'dias úteis' : 'dias corridos'}</span>
                   </div>
-                  ${card.membro ? `
-                  <div class="board-card-assignee">
+                  <div class="board-card-assignee board-card-assignee--clickable" data-eid="${card.etapa.id}" title="Clique para alterar responsável">
+                    ${card.membro ? `
                     <div class="avatar" style="width:22px;height:22px;font-size:0.6rem;background:${getAvatarColor(card.membro.nome)};color:#fff">${getInitials(card.membro.nome)}</div>
-                    <span>${card.membro.nome}</span>
-                  </div>` : ''}
+                    <span>${card.membro.nome}</span>` : `
+                    <i class="ph ph-user-plus" style="font-size:0.85rem"></i>
+                    <span style="font-style:italic">Sem responsável</span>`}
+                    <i class="ph ph-pencil-simple" style="font-size:0.7rem;margin-left:auto;opacity:0.4"></i>
+                  </div>
                   ${card.workflow.link_notion || card.workflow.link_drive ? `
                   <div class="board-card-links">
                     ${card.workflow.link_notion ? `<a href="${sanitizeUrl(card.workflow.link_notion)}" target="_blank" rel="noopener noreferrer" class="board-card-link" title="Notion"><i class="ph ph-notepad"></i> Notion</a>` : ''}
@@ -225,6 +231,7 @@ function renderBoard(container: HTMLElement, data: BoardData, state: BoardState)
                     <div class="board-progress-bar"><div class="board-progress-fill" style="width:${progressPct}%"></div></div>
                     <span class="board-progress-label">${card.etapaIdx + 1}/${card.totalEtapas}</span>
                   </div>
+                  ${iniciadoEm ? `<div class="board-card-created"><i class="ph ph-calendar-blank"></i> iniciada em ${iniciadoEm}</div>` : ''}
                   <div class="board-card-actions">
                     ${card.etapaIdx > 0 ? `<button class="btn-revert-etapa" data-wid="${card.workflow.id}" title="Voltar etapa"><i class="ph ph-arrow-left"></i> Voltar</button>` : ''}
                     <button class="btn-edit-workflow" data-wid="${card.workflow.id}" data-eid="${card.etapa.id}" title="Editar fluxo"><i class="ph ph-pencil-simple"></i> Editar</button>
@@ -332,6 +339,68 @@ function renderBoard(container: HTMLElement, data: BoardData, state: BoardState)
   // Templates
   container.querySelector('#btn-templates')?.addEventListener('click', () => {
     openTemplatesModal(data);
+  });
+
+  // Inline assignee picker
+  container.querySelectorAll('.board-card-assignee--clickable').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      document.querySelectorAll('.assignee-dropdown').forEach(d => d.remove());
+
+      const eid = Number((el as HTMLElement).dataset.eid);
+      const card = cards.find(c => c.etapa.id === eid);
+      if (!card) return;
+
+      const dropdown = document.createElement('div');
+      dropdown.className = 'assignee-dropdown';
+
+      const options: Array<{ id: number | null; nome: string }> = [{ id: null, nome: 'Sem responsável' }, ...membros.map(m => ({ id: m.id ?? null, nome: m.nome }))];
+      options.forEach(m => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'assignee-dropdown-item' + (card.etapa.responsavel_id === m.id ? ' active' : '');
+
+        if (m.id) {
+          const avatar = document.createElement('div');
+          avatar.className = 'avatar';
+          avatar.style.cssText = `width:20px;height:20px;font-size:0.55rem;background:${getAvatarColor(m.nome)};color:#fff;flex-shrink:0`;
+          avatar.textContent = getInitials(m.nome);
+          item.appendChild(avatar);
+        } else {
+          const icon = document.createElement('i');
+          icon.className = 'ph ph-user-slash';
+          icon.style.cssText = 'font-size:0.9rem;flex-shrink:0';
+          item.appendChild(icon);
+        }
+
+        const label = document.createElement('span');
+        label.textContent = m.nome;
+        item.appendChild(label);
+
+        item.addEventListener('click', async (ev) => {
+          ev.stopPropagation();
+          dropdown.remove();
+          try {
+            await updateWorkflowEtapa(eid, { responsavel_id: m.id ?? null });
+            renderBoard(container, data, state);
+          } catch { showToast('Erro ao atualizar responsável.', 'error'); }
+        });
+        dropdown.appendChild(item);
+      });
+
+      const rect = (el as HTMLElement).getBoundingClientRect();
+      dropdown.style.top = `${rect.bottom + window.scrollY + 4}px`;
+      dropdown.style.left = `${rect.left + window.scrollX}px`;
+      document.body.appendChild(dropdown);
+
+      const dismiss = (ev: MouseEvent) => {
+        if (!dropdown.contains(ev.target as Node)) {
+          dropdown.remove();
+          document.removeEventListener('click', dismiss);
+        }
+      };
+      setTimeout(() => document.addEventListener('click', dismiss), 0);
+    });
   });
 }
 

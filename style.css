@@ -2808,6 +2808,65 @@ body.role-agent input[name="valor_total"] {
   gap: 0.4rem;
   font-size: 0.78rem;
   color: var(--text-muted);
+  background: var(--surface-light);
+}
+
+.board-card-assignee--clickable {
+  cursor: pointer;
+  border-radius: var(--radius);
+  padding: 0.2rem 0.35rem;
+  margin: 0 -0.35rem;
+  transition: background 0.15s;
+}
+
+.board-card-assignee--clickable:hover {
+  background: var(--surface-hover);
+  color: var(--text-main);
+}
+
+.assignee-dropdown {
+  position: absolute;
+  z-index: 9999;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  min-width: 180px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.assignee-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--surface-light);
+  border: none;
+  color: var(--text-main);
+  font-size: 0.78rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+  width: 100%;
+}
+
+.assignee-dropdown-item:hover {
+  background: var(--surface-hover);
+}
+
+.assignee-dropdown-item.active {
+  color: var(--primary-color);
+  font-weight: 600;
+}
+
+.board-card-created {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
 }
 
 .board-card-links {
