@@ -767,18 +767,24 @@ export async function duplicateWorkflow(workflowId: number): Promise<Workflow> {
     recorrente: workflow.recorrente,
   });
 
-  for (let i = 0; i < etapas.length; i++) {
-    await addWorkflowEtapa({
-      workflow_id: newWorkflow.id!,
-      ordem: i,
-      nome: etapas[i].nome,
-      prazo_dias: etapas[i].prazo_dias,
-      tipo_prazo: etapas[i].tipo_prazo,
-      responsavel_id: etapas[i].responsavel_id || null,
-      status: i === 0 ? 'ativo' : 'pendente',
-      iniciado_em: i === 0 ? now : null,
-      concluido_em: null,
-    });
+  try {
+    for (let i = 0; i < etapas.length; i++) {
+      await addWorkflowEtapa({
+        workflow_id: newWorkflow.id!,
+        ordem: i,
+        nome: etapas[i].nome,
+        prazo_dias: etapas[i].prazo_dias,
+        tipo_prazo: etapas[i].tipo_prazo,
+        responsavel_id: etapas[i].responsavel_id || null,
+        status: i === 0 ? 'ativo' : 'pendente',
+        iniciado_em: i === 0 ? now : null,
+        concluido_em: null,
+      });
+    }
+  } catch (err) {
+    // Clean up orphaned workflow if etapa inserts failed
+    try { await removeWorkflow(newWorkflow.id!); } catch { /* best effort */ }
+    throw err;
   }
 
   return newWorkflow;

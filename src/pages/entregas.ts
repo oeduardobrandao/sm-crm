@@ -70,7 +70,11 @@ function renderBoard(container: HTMLElement, data: BoardData, state: BoardState)
   let cards: BoardCard[] = [];
   for (const w of activeWorkflows) {
     const etapas = etapasMap.get(w.id!) || [];
-    const activeEtapa = etapas.find(e => e.status === 'ativo');
+    let activeEtapa = etapas.find(e => e.status === 'ativo');
+    if (!activeEtapa && etapas.length > 0) {
+      // Fallback: use etapa_atual index if no etapa is marked 'ativo'
+      activeEtapa = etapas[w.etapa_atual] || etapas[0];
+    }
     if (!activeEtapa) continue;
 
     const cliente = clientes.find(c => c.id === w.cliente_id);
@@ -147,7 +151,7 @@ function renderBoard(container: HTMLElement, data: BoardData, state: BoardState)
     <header class="header animate-up">
       <div class="header-title">
         <h1><i class="ph ph-kanban" style="margin-right:0.5rem"></i>Entregas</h1>
-        <p>${activeWorkflows.length} fluxos ativos${overdue ? ` • <span style="color:var(--danger);font-weight:600">${overdue} atrasado${overdue > 1 ? 's' : ''}</span>` : ''}${urgent ? ` • <span style="color:var(--warning);font-weight:600">${urgent} urgente${urgent > 1 ? 's' : ''}</span>` : ''}</p>
+        <p>fluxos ativos: ${activeWorkflows.length} ${overdue ? ` • <span style="color:var(--danger);font-weight:600">${overdue} atrasado${overdue > 1 ? 's' : ''}</span>` : ''}${urgent ? ` • <span style="color:var(--warning);font-weight:600">${urgent} urgente${urgent > 1 ? 's' : ''}</span>` : ''}</p>
       </div>
       <div class="header-actions">
         <button class="btn-secondary" id="btn-templates"><i class="ph ph-blueprint"></i> Templates</button>
@@ -476,8 +480,9 @@ function openNewWorkflowModal(data: BoardData): void {
     const etapaEls = form.querySelectorAll('.wf-etapa-row');
     if (etapaEls.length === 0) { showToast('Adicione pelo menos uma etapa.', 'error'); return; }
 
+    let workflow: Awaited<ReturnType<typeof addWorkflow>> | null = null;
     try {
-      const workflow = await addWorkflow({
+      workflow = await addWorkflow({
         cliente_id,
         titulo,
         template_id: fd.get('template_id') ? Number(fd.get('template_id')) : null,
@@ -512,6 +517,10 @@ function openNewWorkflowModal(data: BoardData): void {
       closeModal();
       navigate('/entregas');
     } catch (err) {
+      // Clean up orphaned workflow if etapa inserts failed
+      if (workflow?.id) {
+        try { await removeWorkflow(workflow.id); } catch { /* best effort */ }
+      }
       showToast('Erro: ' + (err instanceof Error ? err.message : 'Erro'), 'error');
     }
   }, { submitText: 'Criar Fluxo' });
