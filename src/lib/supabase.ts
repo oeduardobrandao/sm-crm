@@ -15,6 +15,10 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // ---- Auth State ----
 let cachedProfile: any = null;
 
+export function clearProfileCache() {
+  cachedProfile = null;
+}
+
 /**
  * Returns the current authenticated user.
  * Uses getSession() directly — zero dependency on event callbacks.
@@ -76,6 +80,74 @@ export function updateSidebarUI(profile: any) {
   const mobileName = document.getElementById('mobile-user-name');
   if (mobileAvatar) mobileAvatar.textContent = initials;
   if (mobileName) mobileName.textContent = profile.nome;
+
+  // Populate workspace switcher (async, fire-and-forget)
+  populateWorkspaceSwitcher(profile.active_workspace_id || profile.conta_id);
+}
+
+async function populateWorkspaceSwitcher(activeWorkspaceId: string | null) {
+  const switcherEl = document.getElementById('workspace-switcher');
+  const listEl = document.getElementById('workspace-list');
+  if (!switcherEl || !listEl) return;
+
+  try {
+    const user = await getCurrentUser();
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from('workspace_members')
+      .select('workspace_id, role, workspaces!inner(id, name)')
+      .eq('user_id', user.id);
+
+    if (error || !data || data.length <= 1) {
+      // Single workspace or error — hide switcher
+      switcherEl.style.display = 'none';
+      return;
+    }
+
+    switcherEl.style.display = '';
+    listEl.textContent = ''; // Clear safely
+
+    data.forEach((m: any) => {
+      const btn = document.createElement('button');
+      btn.className = 'user-dropdown-item';
+      btn.style.cssText = 'width: 100%; border: none; background: transparent; text-align: left; font-family: inherit; font-size: inherit; cursor: pointer; display: flex; align-items: center; gap: 0.5rem;';
+      const isActive = m.workspaces.id === activeWorkspaceId;
+      if (isActive) {
+        btn.style.fontWeight = '600';
+        btn.style.color = 'var(--primary-color)';
+      }
+
+      const icon = document.createElement('i');
+      icon.className = isActive ? 'ph ph-check-circle' : 'ph ph-circle';
+      btn.appendChild(icon);
+
+      const span = document.createElement('span');
+      span.textContent = m.workspaces.name || 'Workspace';
+      btn.appendChild(span);
+
+      if (!isActive) {
+        btn.addEventListener('click', async () => {
+          try {
+            const { error: switchErr } = await supabase
+              .from('profiles')
+              .update({ active_workspace_id: m.workspaces.id, conta_id: m.workspaces.id })
+              .eq('id', user.id);
+            if (switchErr) throw switchErr;
+            cachedProfile = null;
+            window.location.reload();
+          } catch (e) {
+            console.error('Workspace switch error:', e);
+          }
+        });
+      }
+
+      listEl.appendChild(btn);
+    });
+  } catch (e) {
+    console.error('populateWorkspaceSwitcher error:', e);
+    switcherEl.style.display = 'none';
+  }
 }
 
 export async function signIn(email: string, password: string) {

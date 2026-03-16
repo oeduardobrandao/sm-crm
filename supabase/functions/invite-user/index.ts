@@ -65,6 +65,26 @@ serve(async (req) => {
       throw new Error('Administradores não podem convidar novos donos.');
     }
 
+    // Check for existing pending invite (not expired)
+    const { data: existingInvite } = await adminClient
+      .from('invites')
+      .select('id, expires_at')
+      .eq('email', email.toLowerCase())
+      .eq('conta_id', profile.conta_id)
+      .eq('status', 'pending')
+      .maybeSingle();
+
+    if (existingInvite && new Date(existingInvite.expires_at) > new Date()) {
+      return new Response(JSON.stringify({ error: 'Já existe um convite pendente para este e-mail.' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // If there was an expired pending invite, mark it as expired
+    if (existingInvite) {
+      await adminClient.from('invites').update({ status: 'expired' }).eq('id', existingInvite.id);
+    }
+
     // Try to invite the new user
     const redirectBase = Deno.env.get('OAUTH_REDIRECT_BASE') || 'http://localhost:3000';
     const { data, error } = await adminClient.auth.admin.inviteUserByEmail(email, {
@@ -91,26 +111,36 @@ serve(async (req) => {
 
         if (!existingUser) throw new Error('Usuário não encontrado.');
 
-        // Check if profile row exists
+        // Check if user is already a member of this workspace
+        const { data: existingMembership } = await adminClient
+          .from('workspace_members')
+          .select('id')
+          .eq('user_id', existingUser.id)
+          .eq('workspace_id', profile.conta_id)
+          .maybeSingle();
+
+        if (existingMembership) {
+          throw new Error('Este usuário já pertence a este workspace.');
+        }
+
+        // Add user to workspace via workspace_members
+        const { error: memberErr } = await adminClient
+          .from('workspace_members')
+          .insert({
+            user_id: existingUser.id,
+            workspace_id: profile.conta_id,
+            role,
+          });
+        if (memberErr) throw memberErr;
+
+        // Ensure profile exists
         const { data: existingProfile } = await adminClient
           .from('profiles')
-          .select('conta_id')
+          .select('id')
           .eq('id', existingUser.id)
           .maybeSingle();
 
-        if (existingProfile?.conta_id) {
-          throw new Error('Este usuário já pertence a um workspace.');
-        }
-
-        if (existingProfile) {
-          // Profile exists but no workspace — re-associate
-          const { error: updateErr } = await adminClient
-            .from('profiles')
-            .update({ conta_id: profile.conta_id, role })
-            .eq('id', existingUser.id);
-          if (updateErr) throw updateErr;
-        } else {
-          // Profile was deleted — recreate it
+        if (!existingProfile) {
           const { error: insertErr } = await adminClient
             .from('profiles')
             .insert({
@@ -118,9 +148,20 @@ serve(async (req) => {
               conta_id: profile.conta_id,
               role,
               nome: existingUser.user_metadata?.nome || email.split('@')[0],
+              active_workspace_id: profile.conta_id,
             });
           if (insertErr) throw insertErr;
         }
+
+        // Track re-association as immediately accepted invite
+        await adminClient.from('invites').insert({
+          conta_id: profile.conta_id,
+          email: email.toLowerCase(),
+          role,
+          invited_by: user.id,
+          status: 'accepted',
+          accepted_at: new Date().toISOString(),
+        });
 
         return new Response(JSON.stringify({ success: true, message: `${email} foi readicionado ao workspace como ${role}.` }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -131,6 +172,15 @@ serve(async (req) => {
       console.error("Invite error:", error);
       throw error;
     }
+
+    // Track invite in invites table
+    await adminClient.from('invites').insert({
+      conta_id: profile.conta_id,
+      email: email.toLowerCase(),
+      role,
+      invited_by: user.id,
+      status: 'pending',
+    });
 
     return new Response(JSON.stringify({ success: true, message: `Convite enviado para ${email} como ${role}.` }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

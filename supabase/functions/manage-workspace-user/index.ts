@@ -54,29 +54,76 @@ Deno.serve(async (req: Request) => {
     }
 
     const body = await req.json();
-    const { action, targetUserId, role } = body;
+    const { action, targetUserId, role, inviteId } = body;
+
+    // --- Accept Invite (called by the invited user themselves) ---
+    if (action === "accept-invite") {
+      const { email } = body;
+      if (!email) {
+        return new Response(JSON.stringify({ error: "email is required" }), { status: 400, headers });
+      }
+      // Mark all pending invites for this email as accepted
+      const { error: acceptError } = await serviceClient
+        .from("invites")
+        .update({ status: "accepted", accepted_at: new Date().toISOString() })
+        .eq("email", email.toLowerCase())
+        .eq("status", "pending");
+
+      if (acceptError) throw acceptError;
+
+      return new Response(JSON.stringify({ message: "Convite aceito." }), { status: 200, headers });
+    }
+
+    // --- Cancel Invite (does not require targetUserId) ---
+    if (action === "cancel-invite") {
+      if (!inviteId) {
+        return new Response(JSON.stringify({ error: "inviteId is required" }), { status: 400, headers });
+      }
+      // Verify invite belongs to caller's workspace
+      const { data: invite, error: inviteError } = await serviceClient
+        .from("invites")
+        .select("id, conta_id, status")
+        .eq("id", inviteId)
+        .single();
+
+      if (inviteError || !invite) {
+        return new Response(JSON.stringify({ error: "Convite não encontrado." }), { status: 404, headers });
+      }
+      if (invite.conta_id !== callerProfile.conta_id) {
+        return new Response(JSON.stringify({ error: "Convite não pertence a este workspace." }), { status: 403, headers });
+      }
+      if (invite.status !== "pending") {
+        return new Response(JSON.stringify({ error: "Convite não está pendente." }), { status: 400, headers });
+      }
+
+      const { error: cancelError } = await serviceClient
+        .from("invites")
+        .update({ status: "expired" })
+        .eq("id", inviteId);
+
+      if (cancelError) throw cancelError;
+
+      return new Response(JSON.stringify({ message: "Convite cancelado." }), { status: 200, headers });
+    }
 
     if (!targetUserId) {
       return new Response(JSON.stringify({ error: "targetUserId is required" }), { status: 400, headers });
     }
 
-    // Verify target user belongs to the same workspace
-    const { data: targetProfile, error: targetError } = await serviceClient
-      .from("profiles")
-      .select("role, conta_id")
-      .eq("id", targetUserId)
+    // Verify target user belongs to the same workspace (via workspace_members)
+    const { data: targetMembership, error: targetError } = await serviceClient
+      .from("workspace_members")
+      .select("role, workspace_id")
+      .eq("user_id", targetUserId)
+      .eq("workspace_id", callerProfile.conta_id)
       .single();
 
-    if (targetError || !targetProfile) {
-      return new Response(JSON.stringify({ error: "Target user not found" }), { status: 404, headers });
-    }
-
-    if (targetProfile.conta_id !== callerProfile.conta_id) {
-      return new Response(JSON.stringify({ error: "Target user not in same workspace" }), { status: 403, headers });
+    if (targetError || !targetMembership) {
+      return new Response(JSON.stringify({ error: "Target user not found in this workspace" }), { status: 404, headers });
     }
 
     // Cannot modify an owner (unless caller is also owner)
-    if (targetProfile.role === "owner" && callerProfile.role !== "owner") {
+    if (targetMembership.role === "owner" && callerProfile.role !== "owner") {
       return new Response(JSON.stringify({ error: "Cannot modify workspace owner" }), { status: 403, headers });
     }
 
@@ -96,26 +143,45 @@ Deno.serve(async (req: Request) => {
       }
 
       const { error: updateError } = await serviceClient
-        .from("profiles")
+        .from("workspace_members")
         .update({ role })
-        .eq("id", targetUserId);
+        .eq("user_id", targetUserId)
+        .eq("workspace_id", callerProfile.conta_id);
 
       if (updateError) throw updateError;
 
       return new Response(JSON.stringify({ message: "Permissão atualizada com sucesso." }), { status: 200, headers });
 
     } else if (action === "remove") {
+      // Remove from workspace_members
       const { error: removeError } = await serviceClient
-        .from("profiles")
-        .update({ conta_id: null })
-        .eq("id", targetUserId);
+        .from("workspace_members")
+        .delete()
+        .eq("user_id", targetUserId)
+        .eq("workspace_id", callerProfile.conta_id);
 
       if (removeError) throw removeError;
+
+      // If user's active_workspace_id was this workspace, switch to another or null
+      const { data: otherMembership } = await serviceClient
+        .from("workspace_members")
+        .select("workspace_id")
+        .eq("user_id", targetUserId)
+        .limit(1)
+        .maybeSingle();
+
+      await serviceClient
+        .from("profiles")
+        .update({
+          active_workspace_id: otherMembership?.workspace_id || null,
+          conta_id: otherMembership?.workspace_id || null,
+        })
+        .eq("id", targetUserId);
 
       return new Response(JSON.stringify({ message: "Usuário removido do workspace." }), { status: 200, headers });
 
     } else {
-      return new Response(JSON.stringify({ error: "Invalid action. Use 'update-role' or 'remove'." }), { status: 400, headers });
+      return new Response(JSON.stringify({ error: "Invalid action. Use 'update-role', 'remove', 'cancel-invite', or 'accept-invite'." }), { status: 400, headers });
     }
 
   } catch (err: unknown) {

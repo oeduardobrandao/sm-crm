@@ -3,6 +3,7 @@
 // =============================================
 import { supabase } from '../lib/supabase';
 import { navigate, showToast, escapeHTML } from '../router';
+import { passwordToggleHTML, passwordStrengthHTML, attachPasswordToggle, attachPasswordStrength, validatePassword } from '../utils/password-toggle';
 
 export async function renderConfigurarSenha(container: HTMLElement): Promise<void> {
   // Hide sidebar (same pattern as login page)
@@ -72,11 +73,12 @@ export async function renderConfigurarSenha(container: HTMLElement): Promise<voi
       .invite-body input[type="password"] { width: 100%; height: 44px; border: 1px solid #d3d1c7; border-radius: 8px; padding: 0 40px 0 12px; font-size: 15px; color: #2c2c2a; background: #fff; outline: none; transition: border-color 0.15s; box-sizing: border-box; font-family: inherit; }
       .invite-body input[type="email"] { background: #f8f7f3; color: #888780; cursor: not-allowed; }
       .invite-body input:focus { border-color: #1a3d2b; }
-      .invite-eye-toggle { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: #888780; padding: 0; display: flex; align-items: center; }
-      .invite-password-hint { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
-      .invite-hint-pill { font-size: 11px; padding: 3px 8px; border-radius: 20px; background: #f1efe8; color: #888780; display: flex; align-items: center; gap: 4px; transition: background 0.15s, color 0.15s; }
-      .invite-hint-pill.met { background: #eaf3de; color: #3b6d11; }
-      .invite-hint-pill svg { width: 10px; height: 10px; }
+      .password-input-wrap { position: relative; }
+      .password-eye-toggle { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: #888780; padding: 0; display: flex; align-items: center; }
+      .password-strength-hints { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+      .password-hint-pill { font-size: 11px; padding: 3px 8px; border-radius: 20px; background: #f1efe8; color: #888780; display: flex; align-items: center; gap: 4px; transition: background 0.15s, color 0.15s; }
+      .password-hint-pill.met { background: #eaf3de; color: #3b6d11; }
+      .password-hint-pill svg { width: 10px; height: 10px; }
       .invite-divider { border: none; border-top: 1px solid #f1efe8; margin: 1.25rem 0; }
       .invite-btn-primary { width: 100%; height: 46px; background: #1a3d2b; color: #fff; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; letter-spacing: 0.1px; transition: background 0.15s, transform 0.1s; font-family: inherit; }
       .invite-btn-primary:hover { background: #163325; }
@@ -132,27 +134,11 @@ export async function renderConfigurarSenha(container: HTMLElement): Promise<voi
 
             <div class="invite-input-wrap">
               <label for="invite-password">${isInvite ? 'Crie sua senha' : 'Nova senha'}</label>
-              <input type="password" id="invite-password" placeholder="Mínimo 8 caracteres" />
-              <button class="invite-eye-toggle" type="button" aria-label="Mostrar senha" id="invite-eye-btn">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                  <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
-                </svg>
-              </button>
-              <div class="invite-password-hint">
-                <span class="invite-hint-pill" id="hint-len">
-                  <svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
-                  8+ caracteres
-                </span>
-                <span class="invite-hint-pill" id="hint-upper">
-                  <svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
-                  Maiúscula
-                </span>
-                <span class="invite-hint-pill" id="hint-num">
-                  <svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
-                  Número
-                </span>
+              <div class="password-input-wrap">
+                <input type="password" id="invite-password" placeholder="Mínimo 8 caracteres" />
+                ${passwordToggleHTML('invite-eye-btn')}
               </div>
+              ${passwordStrengthHTML('invite')}
             </div>
 
             <div style="margin-top: 1.5rem;">
@@ -197,38 +183,21 @@ export async function renderConfigurarSenha(container: HTMLElement): Promise<voi
   // --- Event Listeners ---
 
   const passwordInput = container.querySelector('#invite-password') as HTMLInputElement;
-  const eyeBtn = container.querySelector('#invite-eye-btn') as HTMLButtonElement;
   const submitBtn = container.querySelector('#invite-submit-btn') as HTMLButtonElement;
   const nameInput = container.querySelector('#invite-name') as HTMLInputElement | null;
 
-  // Password visibility toggle
-  eyeBtn?.addEventListener('click', () => {
-    passwordInput.type = passwordInput.type === 'password' ? 'text' : 'password';
-  });
-
-  // Password strength hints
-  passwordInput?.addEventListener('input', () => {
-    const val = passwordInput.value;
-    container.querySelector('#hint-len')?.classList.toggle('met', val.length >= 8);
-    container.querySelector('#hint-upper')?.classList.toggle('met', /[A-Z]/.test(val));
-    container.querySelector('#hint-num')?.classList.toggle('met', /[0-9]/.test(val));
-  });
+  // Password visibility toggle & strength hints (shared helpers)
+  attachPasswordToggle(container, 'invite-password', 'invite-eye-btn');
+  attachPasswordStrength(container, 'invite-password', 'invite');
 
   // Submit
   submitBtn?.addEventListener('click', async () => {
     const password = passwordInput.value;
     const name = nameInput?.value?.trim() || '';
 
-    if (password.length < 8) {
-      showToast('A senha deve ter no mínimo 8 caracteres.', 'error');
-      return;
-    }
-    if (!/[A-Z]/.test(password)) {
-      showToast('A senha deve conter pelo menos uma letra maiúscula.', 'error');
-      return;
-    }
-    if (!/[0-9]/.test(password)) {
-      showToast('A senha deve conter pelo menos um número.', 'error');
+    const passError = validatePassword(password);
+    if (passError) {
+      showToast(passError, 'error');
       return;
     }
 
@@ -260,6 +229,18 @@ export async function renderConfigurarSenha(container: HTMLElement): Promise<voi
           .from('profiles')
           .update({ nome: name })
           .eq('id', session.user.id);
+      }
+
+      // Mark invite as accepted (via edge function since RLS blocks direct client updates)
+      if (isInvite && email) {
+        try {
+          const token = (await supabase.auth.getSession()).data.session?.access_token;
+          await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-workspace-user`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ action: 'accept-invite', email: email.toLowerCase() })
+          });
+        } catch (_) { /* non-critical — invite will expire naturally */ }
       }
 
       // Show success state

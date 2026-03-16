@@ -5,6 +5,7 @@ import { supabase, getCurrentUser, getCurrentProfile, signOut } from '../lib/sup
 import { showToast, navigate, openModal, closeModal, openConfirm } from '../router';
 import { getWorkspaceUsers, updateWorkspaceUserRole, removeWorkspaceUser } from '../store';
 import { getInitials } from '../store';
+import { passwordToggleHTML, passwordStrengthHTML, passwordToggleCSS, attachPasswordToggle, attachPasswordStrength, validatePassword } from '../utils/password-toggle';
 
 export async function renderConfiguracao(container: HTMLElement): Promise<void> {
   const user = await getCurrentUser();
@@ -17,10 +18,50 @@ export async function renderConfiguracao(container: HTMLElement): Promise<void> 
 
   let workspaceHtml = '';
   let wUsers: any[] = [];
+  let pendingInvites: any[] = [];
   if (profile.role === 'owner' || profile.role === 'admin') {
      try {
        wUsers = await getWorkspaceUsers();
        const roleLabel = (r: string) => r === 'owner' ? 'Proprietário' : r === 'admin' ? 'Administrador' : 'Agente';
+
+       // Fetch pending/expired invites for this workspace
+       const { data: invites } = await supabase
+         .from('invites')
+         .select('id, email, role, status, created_at, expires_at')
+         .eq('conta_id', profile.conta_id)
+         .in('status', ['pending', 'expired'])
+         .order('created_at', { ascending: false });
+       pendingInvites = invites || [];
+
+       // Note: escapeHTML is used for user-provided data (email) interpolated in innerHTML
+       const { escapeHTML } = await import('../router');
+
+       const inviteRows = pendingInvites.map(inv => {
+         const isExpired = inv.status === 'expired' || new Date(inv.expires_at) < new Date();
+         const statusLabel = isExpired ? 'Expirado' : 'Pendente';
+         const statusBadge = isExpired ? 'badge-danger' : 'badge-info';
+         const opacity = isExpired ? 'opacity: 0.6;' : '';
+         const safeEmail = escapeHTML(inv.email);
+         const expiresDate = new Date(inv.expires_at).toLocaleDateString('pt-BR');
+         return `
+           <div class="client-row" style="background:var(--surface-main); padding: 1rem; border-radius: 12px; margin-bottom: 0.5rem; border:1px dashed var(--border-color); position:relative; ${opacity}">
+             <div style="display:flex;align-items:center;gap:0.75rem">
+               <div class="avatar" style="background:var(--text-muted); font-size: 0.7rem"><i class="ph ph-envelope-simple"></i></div>
+               <div>
+                 <strong>${safeEmail}</strong><br/>
+                 <span style="font-size:0.75rem; color:var(--text-muted)">${roleLabel(inv.role)} · Expira ${expiresDate}</span>
+               </div>
+             </div>
+             <div style="display:flex;align-items:center;gap:0.5rem">
+               <span class="badge ${statusBadge}">${statusLabel}</span>
+               ${isExpired ? `
+                 <button class="btn-icon btn-resend-invite" data-email="${safeEmail}" data-role="${inv.role}" title="Reenviar convite" style="color:var(--primary-color)"><i class="ph ph-arrow-clockwise"></i></button>
+               ` : `
+                 <button class="btn-icon btn-cancel-invite" data-id="${inv.id}" title="Cancelar convite" style="color:var(--danger)"><i class="ph ph-x"></i></button>
+               `}
+             </div>
+           </div>`;
+       }).join('');
 
        workspaceHtml = `
        <div class="card" style="margin-top: 1.5rem">
@@ -46,6 +87,7 @@ export async function renderConfiguracao(container: HTMLElement): Promise<void> 
                </div>
              </div>
            `).join('')}
+           ${inviteRows}
          </div>
        </div>
        `;
@@ -120,17 +162,25 @@ export async function renderConfiguracao(container: HTMLElement): Promise<void> 
       </div>
 
       <!-- Security -->
+      <style>${passwordToggleCSS}</style>
       <div class="card">
         <h3 style="margin-bottom:1.5rem"><i class="fa-solid fa-shield-halved" style="margin-right:0.5rem; color:var(--primary-color)"></i> Segurança</h3>
         <form id="password-form" class="modal-body">
           <div class="form-row">
             <div class="form-group">
               <label>Nova Senha</label>
-              <input type="password" name="newPassword" class="form-input" placeholder="Mínimo 6 caracteres" minlength="6">
+              <div class="password-input-wrap">
+                <input type="password" name="newPassword" id="cfg-new-password" class="form-input" placeholder="Mínimo 8 caracteres" minlength="8">
+                ${passwordToggleHTML('cfg-new-eye-btn')}
+              </div>
+              ${passwordStrengthHTML('cfg-new')}
             </div>
             <div class="form-group">
               <label>Confirmar Nova Senha</label>
-              <input type="password" name="confirmPassword" class="form-input" placeholder="Repita a senha">
+              <div class="password-input-wrap">
+                <input type="password" name="confirmPassword" id="cfg-confirm-password" class="form-input" placeholder="Repita a senha">
+                ${passwordToggleHTML('cfg-confirm-eye-btn')}
+              </div>
             </div>
           </div>
           <div style="display:flex; justify-content:flex-end; gap:0.75rem; margin-top:0.5rem">
@@ -173,6 +223,11 @@ export async function renderConfiguracao(container: HTMLElement): Promise<void> 
     </div>
   `;
 
+  // --- Password toggles & strength ---
+  attachPasswordToggle(container, 'cfg-new-password', 'cfg-new-eye-btn');
+  attachPasswordToggle(container, 'cfg-confirm-password', 'cfg-confirm-eye-btn');
+  attachPasswordStrength(container, 'cfg-new-password', 'cfg-new');
+
   // --- Save Profile ---
   container.querySelector('#profile-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -210,6 +265,8 @@ export async function renderConfiguracao(container: HTMLElement): Promise<void> 
     const confirmPass = data.get('confirmPassword') as string;
 
     if (!newPass) { showToast('Digite a nova senha.', 'error'); return; }
+    const passError = validatePassword(newPass);
+    if (passError) { showToast(passError, 'error'); return; }
     if (newPass !== confirmPass) { showToast('As senhas não conferem.', 'error'); return; }
 
     const { error } = await supabase.auth.updateUser({ password: newPass });
@@ -325,6 +382,57 @@ export async function renderConfiguracao(container: HTMLElement): Promise<void> 
         showToast('Erro ao convidar: ' + (err instanceof Error ? err.message : 'Desconhecido'), 'error');
         btn.disabled = false;
         btn.innerHTML = 'Salvar';
+      }
+    });
+  });
+
+  // --- Cancel Invite ---
+  container.querySelectorAll('.btn-cancel-invite').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const inviteId = (btn as HTMLElement).dataset.id!;
+      openConfirm('Cancelar Convite', 'Deseja cancelar este convite? O link de convite deixará de funcionar.', async () => {
+        try {
+          const session = (await supabase.auth.getSession()).data.session;
+          const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-workspace-user`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session?.access_token}`
+            },
+            body: JSON.stringify({ action: 'cancel-invite', inviteId })
+          });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || 'Erro desconhecido');
+          showToast('Convite cancelado.', 'success');
+          navigate('/configuracao');
+        } catch (err: unknown) {
+          showToast('Erro: ' + (err instanceof Error ? err.message : 'Desconhecido'), 'error');
+        }
+      }, true);
+    });
+  });
+
+  // --- Resend Invite ---
+  container.querySelectorAll('.btn-resend-invite').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const email = (btn as HTMLElement).dataset.email!;
+      const role = (btn as HTMLElement).dataset.role!;
+      try {
+        const session = (await supabase.auth.getSession()).data.session;
+        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/invite-user`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token}`
+          },
+          body: JSON.stringify({ email, role })
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Erro desconhecido');
+        showToast(result.message, 'success');
+        navigate('/configuracao');
+      } catch (err: unknown) {
+        showToast('Erro ao reenviar: ' + (err instanceof Error ? err.message : 'Desconhecido'), 'error');
       }
     });
   });

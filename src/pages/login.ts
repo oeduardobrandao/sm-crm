@@ -3,6 +3,7 @@
 // =============================================
 import { signIn, signUp, resetPassword } from '../lib/supabase';
 import { navigate, showToast } from '../router';
+import { passwordToggleHTML, passwordStrengthHTML, passwordToggleCSS, attachPasswordToggle, attachPasswordStrength, validatePassword } from '../utils/password-toggle';
 
 export function renderLogin(container: HTMLElement): void {
   // Hide sidebar when on login page
@@ -14,7 +15,10 @@ export function renderLogin(container: HTMLElement): void {
     main.style.padding = '0';
   }
 
+  // Note: innerHTML below uses only static templates and passwordToggleHTML/passwordStrengthHTML
+  // which return hardcoded SVG — no user data is interpolated, safe from XSS.
   container.innerHTML = `
+    <style>${passwordToggleCSS}</style>
     <div class="auth-wrapper">
       <div class="auth-card animate-up">
         <div class="auth-header">
@@ -38,7 +42,10 @@ export function renderLogin(container: HTMLElement): void {
           </div>
           <div class="form-group">
             <label>Senha</label>
-            <input type="password" name="password" required placeholder="••••••••" class="form-input" autocomplete="current-password" minlength="6">
+            <div class="password-input-wrap">
+              <input type="password" name="password" id="login-password" required placeholder="••••••••" class="form-input" autocomplete="current-password" minlength="8">
+              ${passwordToggleHTML('login-eye-btn')}
+            </div>
           </div>
           <button type="submit" class="btn-primary auth-submit" id="login-btn">
             <span class="btn-text">Entrar</span>
@@ -77,7 +84,11 @@ export function renderLogin(container: HTMLElement): void {
           </div>
           <div class="form-group">
             <label>Senha</label>
-            <input type="password" name="password" required placeholder="Mínimo 6 caracteres" class="form-input" autocomplete="new-password" minlength="6">
+            <div class="password-input-wrap">
+              <input type="password" name="password" id="register-password" required placeholder="Mínimo 8 caracteres" class="form-input" autocomplete="new-password" minlength="8">
+              ${passwordToggleHTML('register-eye-btn')}
+            </div>
+            ${passwordStrengthHTML('register')}
           </div>
           <button type="submit" class="btn-primary auth-submit" id="register-btn">
             <span class="btn-text">Criar Conta</span>
@@ -89,6 +100,11 @@ export function renderLogin(container: HTMLElement): void {
       </div>
     </div>
   `;
+
+  // --- Password toggles & strength ---
+  attachPasswordToggle(container, 'login-password', 'login-eye-btn');
+  attachPasswordToggle(container, 'register-password', 'register-eye-btn');
+  attachPasswordStrength(container, 'register-password', 'register');
 
   // --- Prefill email from configure-password flow ---
   const prefillEmail = sessionStorage.getItem('prefill_email');
@@ -167,6 +183,13 @@ export function renderLogin(container: HTMLElement): void {
     const password = data.get('password') as string;
     const nome = data.get('nome') as string;
     const empresa = data.get('empresa') as string;
+
+    const passError = validatePassword(password);
+    if (passError) {
+      showToast(passError, 'error');
+      setLoading(btn, false);
+      return;
+    }
 
     const { error } = await signUp(email, password, { nome, empresa });
     

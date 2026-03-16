@@ -1,7 +1,7 @@
 // =============================================
 // CRM Fluxo - Data Store (Supabase Persistence)
 // =============================================
-import { supabase, getCurrentUser, getCurrentProfile } from './lib/supabase';
+import { supabase, getCurrentUser, getCurrentProfile, clearProfileCache } from './lib/supabase';
 
 // ---- Types ----
 export interface Cliente {
@@ -112,12 +112,47 @@ async function getContaId(): Promise<string> {
 export async function getWorkspaceUsers(): Promise<any[]> {
   const conta_id = await getContaId();
   const { data, error } = await supabase
-    .from('profiles')
-    .select('id, nome, role, avatar_url, created_at')
-    .eq('conta_id', conta_id)
-    .order('created_at', { ascending: true });
+    .from('workspace_members')
+    .select('user_id, role, joined_at, profiles!inner(id, nome, avatar_url, created_at)')
+    .eq('workspace_id', conta_id)
+    .order('joined_at', { ascending: true });
   if (error) throw error;
-  return data || [];
+  // Flatten the join result to match the expected shape
+  return (data || []).map((m: any) => ({
+    id: m.profiles.id,
+    nome: m.profiles.nome,
+    role: m.role,
+    avatar_url: m.profiles.avatar_url,
+    created_at: m.profiles.created_at,
+  }));
+}
+
+export async function getMyWorkspaces(): Promise<any[]> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+  const { data, error } = await supabase
+    .from('workspace_members')
+    .select('workspace_id, role, workspaces!inner(id, name, logo_url)')
+    .eq('user_id', user.id);
+  if (error) throw error;
+  return (data || []).map((m: any) => ({
+    id: m.workspaces.id,
+    name: m.workspaces.name,
+    logo_url: m.workspaces.logo_url,
+    role: m.role,
+  }));
+}
+
+export async function switchWorkspace(workspaceId: string): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Não autenticado');
+  const { error } = await supabase
+    .from('profiles')
+    .update({ active_workspace_id: workspaceId, conta_id: workspaceId })
+    .eq('id', user.id);
+  if (error) throw error;
+  // Clear cached profile so next call fetches fresh data
+  clearProfileCache();
 }
 
 async function callManageWorkspaceUser(action: string, targetUserId: string, extra?: Record<string, unknown>): Promise<void> {

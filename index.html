@@ -58,9 +58,13 @@
             </button>
             <div class="sidebar-user" id="user-menu-btn" tabindex="0" data-tooltip="Sua Conta" data-tooltip-dir="right">
               <div class="avatar" style="width: 38px; height: 38px; border-radius: 10px; font-size: 0.85rem">U</div>
-              
+
               <div id="user-dropdown" class="user-dropdown hidden">
                 <div class="user-dropdown-header">Opções da Conta</div>
+                <div id="workspace-switcher" style="display:none; padding: 0.25rem 0; border-bottom: 1px solid var(--border-color); margin-bottom: 0.25rem;">
+                  <div style="padding: 0.25rem 0.75rem; font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Workspace</div>
+                  <div id="workspace-list"></div>
+                </div>
                 <button id="btn-logout-flutuante" class="user-dropdown-item text-danger" style="width: 100%; border: none; background: transparent; text-align: left; font-family: inherit; font-size: inherit; cursor: pointer;">
                   <i class="ph ph-sign-out"></i> Sair
                 </button>
