@@ -903,7 +903,7 @@ body {
   border: 1px solid var(--border-color);
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 0.65rem;
+  font-size: 0.75rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   padding: 0.4rem 0.9rem;
@@ -933,7 +933,7 @@ input.filter-btn::placeholder {
   font-family: var(--font-mono);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  font-size: 0.65rem;
+  font-size: 0.75rem;
 }
 input.filter-btn:focus, select.filter-btn:focus {
   border-color: var(--primary-color);
@@ -1111,7 +1111,7 @@ select.filter-btn option {
   color: var(--text-muted);
   border-radius: 2px;
   font-family: var(--font-mono);
-  font-size: 0.65rem;
+  font-size: 0.75rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   outline: none;
@@ -1133,7 +1133,7 @@ input.form-input::placeholder {
   font-family: var(--font-mono);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  font-size: 0.65rem;
+  font-size: 0.75rem;
 }
 
 select.form-input {
@@ -2679,10 +2679,11 @@ body.role-agent input[name="valor_total"] {
   flex-direction: column;
   gap: 0.5rem;
   padding: 0.75rem 0.5rem;
-  background: rgba(255,255,255,0.02);
+  background: var(--surface-hover);
   border: 1px solid var(--border-color);
   border-top: none;
   border-radius: 0 0 var(--radius) var(--radius);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.032);
   min-height: 100px;
 }
 
@@ -2695,7 +2696,7 @@ body.role-agent input[name="valor_total"] {
 }
 
 .board-card {
-  background: var(--card-bg);
+  background: var(--card-bg)  ;
   border: 1px solid var(--border-color);
   border-radius: var(--radius);
   padding: 0.85rem;
@@ -2807,6 +2808,29 @@ body.role-agent input[name="valor_total"] {
   gap: 0.4rem;
   font-size: 0.78rem;
   color: var(--text-muted);
+}
+
+.board-card-links {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.board-card-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--primary-color);
+  text-decoration: none;
+  padding: 0.2rem 0.5rem;
+  border-radius: 2rem;
+  background: rgba(62, 207, 142, 0.08);
+  transition: background 0.2s;
+}
+
+.board-card-link:hover {
+  background: rgba(62, 207, 142, 0.18);
 }
 
 .board-card-progress {
@@ -2979,11 +3003,17 @@ body.role-agent input[name="valor_total"] {
 
 @media (max-width: 768px) {
   .board-container {
-    flex-direction: column;
+    flex-direction: row;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 0.5rem;
   }
   .board-column {
-    min-width: 100%;
-    max-width: 100%;
+    min-width: 75vw;
+    max-width: 80vw;
+    flex: 0 0 75vw;
+    scroll-snap-align: start;
   }
 }
 

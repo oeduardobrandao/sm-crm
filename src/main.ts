@@ -199,7 +199,7 @@ function syncActiveNav() {
   });
 
   // If the active route is one of the "more" items, highlight "Mais" button
-  const moreRoutes = ['/equipe', '/integracoes', '/analytics', '/configuracao'];
+  const moreRoutes = ['/equipe', '/integracoes', '/analytics', '/contratos', '/configuracao'];
   const moreBtn = document.getElementById('mobile-more-btn');
   if (moreBtn) {
     moreBtn.classList.toggle('active', moreRoutes.includes(hash));

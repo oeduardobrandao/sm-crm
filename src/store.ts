@@ -563,6 +563,8 @@ export interface Workflow {
   status: 'ativo' | 'concluido' | 'arquivado';
   etapa_atual: number;
   recorrente: boolean;
+  link_notion?: string | null;
+  link_drive?: string | null;
   created_at?: string;
 }
 

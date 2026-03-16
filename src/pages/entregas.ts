@@ -9,7 +9,7 @@ import {
   getDeadlineInfo, getInitials,
   type Workflow, type WorkflowEtapa, type WorkflowTemplate, type Cliente, type Membro
 } from '../store';
-import { showToast, openModal, closeModal, navigate, openConfirm, escapeHTML } from '../router';
+import { showToast, openModal, closeModal, navigate, openConfirm, escapeHTML, sanitizeUrl } from '../router';
 
 // ---- Types ----
 interface BoardData {
@@ -216,6 +216,11 @@ function renderBoard(container: HTMLElement, data: BoardData, state: BoardState)
                     <div class="avatar" style="width:22px;height:22px;font-size:0.6rem;background:${getAvatarColor(card.membro.nome)};color:#fff">${getInitials(card.membro.nome)}</div>
                     <span>${card.membro.nome}</span>
                   </div>` : ''}
+                  ${card.workflow.link_notion || card.workflow.link_drive ? `
+                  <div class="board-card-links">
+                    ${card.workflow.link_notion ? `<a href="${sanitizeUrl(card.workflow.link_notion)}" target="_blank" rel="noopener noreferrer" class="board-card-link" title="Notion"><i class="ph ph-notepad"></i> Notion</a>` : ''}
+                    ${card.workflow.link_drive ? `<a href="${sanitizeUrl(card.workflow.link_drive)}" target="_blank" rel="noopener noreferrer" class="board-card-link" title="Drive"><i class="ph ph-google-drive-logo"></i> Drive</a>` : ''}
+                  </div>` : ''}
                   <div class="board-card-progress">
                     <div class="board-progress-bar"><div class="board-progress-fill" style="width:${progressPct}%"></div></div>
                     <span class="board-progress-label">${card.etapaIdx + 1}/${card.totalEtapas}</span>
@@ -360,6 +365,14 @@ function openEditWorkflowModal(card: BoardCard, data: BoardData): void {
         </select>
       </div>
     </div>
+    <div class="form-row">
+      <div class="form-group"><label><i class="ph ph-notepad"></i> Link do Notion</label>
+        <input name="link_notion" class="form-input" type="url" placeholder="https://notion.so/..." value="${w.link_notion || ''}">
+      </div>
+      <div class="form-group"><label><i class="ph ph-google-drive-logo"></i> Link do Drive</label>
+        <input name="link_drive" class="form-input" type="url" placeholder="https://drive.google.com/..." value="${w.link_drive || ''}">
+      </div>
+    </div>
     <div class="form-group" style="display:flex;flex-direction:row;align-items:center;gap:0.5rem">
       <input type="checkbox" name="recorrente" id="edit-recorrente" ${w.recorrente ? 'checked' : ''} style="width:auto;margin:0">
       <label for="edit-recorrente" style="margin:0;cursor:pointer;flex:1">Fluxo recorrente</label>
@@ -396,6 +409,8 @@ function openEditWorkflowModal(card: BoardCard, data: BoardData): void {
         titulo,
         cliente_id,
         recorrente: !!fd.get('recorrente'),
+        link_notion: (fd.get('link_notion') as string || '').trim() || null,
+        link_drive: (fd.get('link_drive') as string || '').trim() || null,
       });
       await updateWorkflowEtapa(e.id!, {
         responsavel_id: fd.get('responsavel_id') ? Number(fd.get('responsavel_id')) : null,
@@ -463,6 +478,14 @@ function openNewWorkflowModal(data: BoardData): void {
         </select>
       </div>
     </div>
+    <div class="form-row">
+      <div class="form-group"><label><i class="ph ph-notepad"></i> Link do Notion</label>
+        <input name="link_notion" class="form-input" type="url" placeholder="https://notion.so/...">
+      </div>
+      <div class="form-group"><label><i class="ph ph-google-drive-logo"></i> Link do Drive</label>
+        <input name="link_drive" class="form-input" type="url" placeholder="https://drive.google.com/...">
+      </div>
+    </div>
     <div class="form-group" style="display:flex;flex-direction:row;align-items:center;gap:0.5rem;margin-top:0.5rem;">
       <input type="checkbox" name="recorrente" id="wf-recorrente" style="width:auto;margin:0">
       <label for="wf-recorrente" style="margin:0;cursor:pointer;flex:1">Fluxo recorrente (ao concluir, oferecer criar novo ciclo)</label>
@@ -489,6 +512,8 @@ function openNewWorkflowModal(data: BoardData): void {
         status: 'ativo',
         etapa_atual: 0,
         recorrente: !!fd.get('recorrente'),
+        link_notion: (fd.get('link_notion') as string || '').trim() || null,
+        link_drive: (fd.get('link_drive') as string || '').trim() || null,
       });
 
       const now = new Date().toISOString();
