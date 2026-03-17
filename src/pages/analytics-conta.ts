@@ -1,7 +1,7 @@
 // =============================================
 // Pagina: Analytics - Conta Individual
 // =============================================
-import { escapeHTML, sanitizeUrl, showToast, navigate } from '../router';
+import { escapeHTML, sanitizeUrl, showToast, navigate, openModal } from '../router';
 import { getClientes } from '../store';
 import {
   getAnalyticsOverview,
@@ -16,6 +16,7 @@ import {
   removeTagFromPost,
   getClientReports,
   getAccountAIAnalysis,
+  upsertManualFollowerCount,
   type KpiDelta,
   type PostAnalytics,
   type PostTag,
@@ -30,6 +31,7 @@ declare const Chart: any;
 
 interface State {
   days: number;
+  overviewDays: number;
   sort: { col: string; dir: 'asc' | 'desc' };
   expandedPostId: number | null;
 }
@@ -142,7 +144,7 @@ export async function renderAnalyticsConta(container: HTMLElement, param?: strin
       return;
     }
 
-    const state: State = { days: 30, sort: { col: 'posted_at', dir: 'desc' }, expandedPostId: null };
+    const state: State = { days: 30, overviewDays: 30, sort: { col: 'posted_at', dir: 'desc' }, expandedPostId: null };
     await renderContent(container, clientId, cliente, igSummary.account, state);
 
   } catch (err: unknown) {
@@ -164,7 +166,7 @@ export async function renderAnalyticsConta(container: HTMLElement, param?: strin
 async function renderContent(container: HTMLElement, clientId: number, cliente: any, account: any, state: State) {
   // Fetch all data in parallel (single batch)
   const [overviewRes, postsRes, historyRes, tagsData, reportsData, demoRes, onlineRes] = await Promise.all([
-    getAnalyticsOverview(clientId, state.days),
+    getAnalyticsOverview(clientId, state.overviewDays),
     getPostsAnalytics(clientId, state.days, state.sort.col, state.sort.dir),
     getFollowerHistory(clientId, state.days),
     getTags(),
@@ -239,20 +241,24 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
 
     <!-- Time Range Selector -->
     <div class="filter-bar animate-up">
-      <button class="filter-btn ${state.days === 7 ? 'active' : ''}" data-days="7">7 dias</button>
-      <button class="filter-btn ${state.days === 30 ? 'active' : ''}" data-days="30">30 dias</button>
-      <button class="filter-btn ${state.days === 90 ? 'active' : ''}" data-days="90">90 dias</button>
+      <button class="filter-btn ${state.overviewDays === 7 ? 'active' : ''}" data-days="7">7 dias</button>
+      <button class="filter-btn ${state.overviewDays === 30 ? 'active' : ''}" data-days="30">30 dias</button>
+      <button class="filter-btn ${state.overviewDays === 90 ? 'active' : ''}" data-days="90">90 dias</button>
+      <span style="color:var(--text-muted);align-self:center;font-size:0.75rem">ou</span>
+      <input type="number" id="custom-days-input" class="filter-btn" min="1" max="730" placeholder="Dias..."
+             value="${![7, 30, 90].includes(state.overviewDays) ? state.overviewDays : ''}"
+             style="width:80px">
     </div>
 
     <!-- KPI Cards -->
     <div class="kpi-grid animate-up" style="grid-template-columns:repeat(auto-fit, minmax(160px, 1fr))">
-      ${renderKpiCard('SEGUIDORES', overview.followerCount.toLocaleString('pt-BR'), overview.followers)}
-      ${renderKpiCard('ENGAJAMENTO', overview.engagement.current.toFixed(2) + '%', overview.engagement)}
-      ${renderKpiCard('ALCANCE', overview.reach.current.toLocaleString('pt-BR'), overview.reach)}
-      ${renderKpiCard('CONTAS ENGAJADAS', overview.profileViews.current.toLocaleString('pt-BR'), overview.profileViews)}
-      ${renderKpiCard('CLIQUES NO LINK', overview.websiteClicks.current.toLocaleString('pt-BR'), overview.websiteClicks)}
-      ${renderKpiCard('TAXA DE SALVAMENTOS', overview.savesRate.current.toFixed(2) + '%', overview.savesRate)}
-      ${renderKpiCard('POSTS PUBLICADOS', String(overview.postsPublished.current), overview.postsPublished)}
+      ${renderKpiCard('SEGUIDORES', overview.followerCount.toLocaleString('pt-BR'), overview.followers, `${state.overviewDays}d`)}
+      ${renderKpiCard('ENGAJAMENTO', overview.engagement.current.toFixed(2) + '%', overview.engagement, `${state.overviewDays}d`)}
+      ${renderKpiCard('ALCANCE', overview.reach.current.toLocaleString('pt-BR'), overview.reach, `${state.overviewDays}d`)}
+      ${renderKpiCard('CONTAS ENGAJADAS', overview.profileViews.current.toLocaleString('pt-BR'), overview.profileViews, '28d fixo')}
+      ${renderKpiCard('CLIQUES NO LINK', overview.websiteClicks.current.toLocaleString('pt-BR'), overview.websiteClicks, '28d fixo')}
+      ${renderKpiCard('TAXA DE SALVAMENTOS', overview.savesRate.current.toFixed(2) + '%', overview.savesRate, `${state.overviewDays}d`)}
+      ${renderKpiCard('POSTS PUBLICADOS', String(overview.postsPublished.current), overview.postsPublished, `${state.overviewDays}d`)}
     </div>
 
     <!-- Saves Rate Highlight -->
@@ -278,7 +284,12 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
 
     <!-- Follower Growth Chart -->
     <div class="card animate-up">
-      <h3>Crescimento de Seguidores</h3>
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <h3>Crescimento de Seguidores</h3>
+        <button class="btn-secondary" id="btn-manual-follower" style="font-size:0.75rem;padding:4px 10px">
+          <i class="ph ph-pencil-simple"></i> Inserir manualmente
+        </button>
+      </div>
       ${history.length < 2
         ? '<p style="color:var(--text-muted);margin-top:1rem">Dados insuficientes. O histórico é construído diariamente.</p>'
         : `<div style="position:relative;height:280px;margin-top:1rem"><canvas id="follower-chart"></canvas></div>`}
@@ -497,6 +508,7 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
       username: account.username,
       profilePicUrl: account.profile_picture_url,
       days: state.days,
+      overviewDays: state.overviewDays,
       overview,
       posts,
       typeBreakdown,
@@ -569,14 +581,69 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
     }
   });
 
-  // Time range filter
+  // Time range filter — presets update both days and overviewDays
   container.querySelectorAll('.filter-btn[data-days]').forEach(btn => {
     btn.addEventListener('click', async () => {
       const newDays = parseInt((btn as HTMLElement).dataset.days || '30');
       state.days = newDays;
+      state.overviewDays = newDays;
       destroyCharts();
       await renderContent(container, clientId, cliente, account, state);
     });
+  });
+
+  // Custom days input — updates only overviewDays (KPI cards)
+  const customDaysInput = container.querySelector('#custom-days-input') as HTMLInputElement | null;
+  if (customDaysInput) {
+    customDaysInput.addEventListener('keydown', async (e) => {
+      if (e.key === 'Enter') {
+        const val = parseInt(customDaysInput.value, 10);
+        if (isNaN(val) || val < 1 || val > 730) {
+          showToast('Insira um valor entre 1 e 730 dias', 'error');
+          return;
+        }
+        state.overviewDays = val;
+        destroyCharts();
+        await renderContent(container, clientId, cliente, account, state);
+      }
+    });
+  }
+
+  // Manual follower entry
+  document.getElementById('btn-manual-follower')?.addEventListener('click', () => {
+    const today = new Date().toISOString().split('T')[0];
+    openModal('Inserir Seguidores Manualmente', `
+      <div style="display:flex;flex-direction:column;gap:1rem">
+        <p style="font-size:0.85rem;color:var(--text-muted)">
+          Insira a contagem de seguidores para uma data específica. Dados manuais não serão sobrescritos pela sincronização automática.
+        </p>
+        <label style="font-size:0.85rem">
+          Data
+          <input type="date" name="date" value="${today}" max="${today}"
+                 style="width:100%;padding:0.5rem;border:1px solid var(--border-color);border-radius:6px;margin-top:0.25rem;background:var(--card-bg);color:var(--text-main)">
+        </label>
+        <label style="font-size:0.85rem">
+          Número de seguidores
+          <input type="number" name="follower_count" min="0" placeholder="Ex: 15432"
+                 style="width:100%;padding:0.5rem;border:1px solid var(--border-color);border-radius:6px;margin-top:0.25rem;background:var(--card-bg);color:var(--text-main)">
+        </label>
+      </div>
+    `, async (form) => {
+      const date = (form.querySelector('[name="date"]') as HTMLInputElement).value;
+      const count = parseInt((form.querySelector('[name="follower_count"]') as HTMLInputElement).value, 10);
+      if (!date || isNaN(count) || count < 0) {
+        showToast('Preencha todos os campos corretamente', 'error');
+        return;
+      }
+      try {
+        await upsertManualFollowerCount(clientId, date, count);
+        showToast('Seguidores registrados com sucesso', 'success');
+        destroyCharts();
+        await renderContent(container, clientId, cliente, account, state);
+      } catch (err: any) {
+        showToast(err.message || 'Erro ao salvar', 'error');
+      }
+    }, { submitText: 'Salvar' });
   });
 
   // Sort headers
@@ -703,9 +770,10 @@ function renderFollowerChart(history: any[], postDates: any[]) {
           backgroundColor: 'rgba(234,179,8,0.1)',
           fill: true,
           tension: 0.3,
-          pointRadius: history.map(h => postDateSet.has(h.date) ? 6 : 2),
-          pointBackgroundColor: history.map(h => postDateSet.has(h.date) ? '#f5a342' : '#eab308'),
-          pointBorderColor: history.map(h => postDateSet.has(h.date) ? '#f5a342' : '#eab308'),
+          pointRadius: history.map(h => h.source === 'manual' ? 5 : postDateSet.has(h.date) ? 6 : 2),
+          pointStyle: history.map(h => h.source === 'manual' ? 'rectRot' : 'circle'),
+          pointBackgroundColor: history.map(h => h.source === 'manual' ? '#8b5cf6' : postDateSet.has(h.date) ? '#f5a342' : '#eab308'),
+          pointBorderColor: history.map(h => h.source === 'manual' ? '#8b5cf6' : postDateSet.has(h.date) ? '#f5a342' : '#eab308'),
         },
       ],
     },
@@ -717,12 +785,14 @@ function renderFollowerChart(history: any[], postDates: any[]) {
         tooltip: {
           callbacks: {
             afterLabel: (ctx: any) => {
-              const date = history[ctx.dataIndex]?.date;
-              if (date && postDateSet.has(date)) {
-                const count = postDates.filter(p => p.date === date).length;
-                return `${count} post(s) publicado(s)`;
+              const entry = history[ctx.dataIndex];
+              const lines: string[] = [];
+              if (entry?.source === 'manual') lines.push('Inserido manualmente');
+              if (entry?.date && postDateSet.has(entry.date)) {
+                const count = postDates.filter(p => p.date === entry.date).length;
+                lines.push(`${count} post(s) publicado(s)`);
               }
-              return '';
+              return lines.join('\n');
             },
           },
         },
@@ -818,15 +888,19 @@ function renderAgeChart(demographics: AudienceDemographics) {
 
 // --- Helpers ---
 
-function renderKpiCard(label: string, value: string, delta: KpiDelta): string {
+function renderKpiCard(label: string, value: string, delta: KpiDelta, period?: string): string {
   const dirIcon = delta.direction === 'up' ? '↑' : delta.direction === 'down' ? '↓' : '→';
   const dirClass = delta.direction === 'up' ? 'analytics-delta-up' : delta.direction === 'down' ? 'analytics-delta-down' : 'analytics-delta-stable';
   const pct = Math.abs(delta.deltaPercent).toFixed(1);
+  const periodBadge = period
+    ? `<span style="display:inline-block;align-self:flex-start;margin-top:4px;font-size:0.72rem;padding:2px 7px;border-radius:4px;background:var(--border-color,rgba(0,0,0,0.08));color:var(--text-muted)">${period}</span>`
+    : '';
   return `
     <div class="kpi-card">
       <span class="kpi-label">${label}</span>
       <span class="kpi-value" style="font-size:1.3rem">${value}</span>
       <span class="kpi-sub ${dirClass}">${dirIcon} ${pct}% vs periodo anterior</span>
+      ${periodBadge}
     </div>`;
 }
 
@@ -897,6 +971,7 @@ interface HtmlReportData {
   username: string;
   profilePicUrl?: string;
   days: number;
+  overviewDays: number;
   overview: any;
   posts: PostAnalytics[];
   typeBreakdown: { type: string; count: number; avgEngagement: number }[];
@@ -909,7 +984,7 @@ interface HtmlReportData {
 
 function generateHtmlReport(data: HtmlReportData): void {
   const {
-    clientName, username, days, overview, posts, typeBreakdown,
+    clientName, username, overviewDays, overview, posts, typeBreakdown,
     topicStats, demographicsData, bestTimesData, topSaved, especialidade,
   } = data;
 
@@ -1314,7 +1389,7 @@ function generateHtmlReport(data: HtmlReportData): void {
     <div class="cover-logo">${mesaasLogoSvg}</div>
     <h1>${truncText(clientName, 40)}</h1>
     <div class="cover-username">@${truncText(username, 30)}</div>
-    <div class="cover-meta">Relatório de Performance · Últimos ${days} dias · Gerado em ${dateStr}</div>
+    <div class="cover-meta">Relatório de Performance · Últimos ${overviewDays} dias · Gerado em ${dateStr}</div>
   </div>
 
   <!-- Accent strip -->
@@ -1328,36 +1403,43 @@ function generateHtmlReport(data: HtmlReportData): void {
         <div class="kpi-label">Seguidores</div>
         <div class="kpi-value">${fmtNum(overview.followerCount)}</div>
         <div class="kpi-delta" style="color:${deltaColor(overview.followers)}">${deltaArrow(overview.followers)} ${Math.abs(overview.followers.deltaPercent).toFixed(1)}%</div>
+        <div style="font-size:9px;color:#aaa;margin-top:2px">${overviewDays}d</div>
       </div>
       <div class="kpi-box">
         <div class="kpi-label">Engajamento</div>
         <div class="kpi-value">${fmtPct(overview.engagement.current)}</div>
         <div class="kpi-delta" style="color:${deltaColor(overview.engagement)}">${deltaArrow(overview.engagement)} ${Math.abs(overview.engagement.deltaPercent).toFixed(1)}%</div>
+        <div style="font-size:9px;color:#aaa;margin-top:2px">${overviewDays}d</div>
       </div>
       <div class="kpi-box">
         <div class="kpi-label">Alcance</div>
         <div class="kpi-value">${fmtNum(overview.reach.current)}</div>
         <div class="kpi-delta" style="color:${deltaColor(overview.reach)}">${deltaArrow(overview.reach)} ${Math.abs(overview.reach.deltaPercent).toFixed(1)}%</div>
+        <div style="font-size:9px;color:#aaa;margin-top:2px">${overviewDays}d</div>
       </div>
       <div class="kpi-box">
         <div class="kpi-label">Contas Engajadas</div>
         <div class="kpi-value">${fmtNum(overview.profileViews.current)}</div>
         <div class="kpi-delta" style="color:${deltaColor(overview.profileViews)}">${deltaArrow(overview.profileViews)} ${Math.abs(overview.profileViews.deltaPercent).toFixed(1)}%</div>
+        <div style="font-size:9px;color:#aaa;margin-top:2px">28d fixo</div>
       </div>
       <div class="kpi-box">
         <div class="kpi-label">Cliques no Link</div>
         <div class="kpi-value">${fmtNum(overview.websiteClicks.current)}</div>
         <div class="kpi-delta" style="color:${deltaColor(overview.websiteClicks)}">${deltaArrow(overview.websiteClicks)} ${Math.abs(overview.websiteClicks.deltaPercent).toFixed(1)}%</div>
+        <div style="font-size:9px;color:#aaa;margin-top:2px">28d fixo</div>
       </div>
       <div class="kpi-box">
         <div class="kpi-label">Taxa de Salvamentos</div>
         <div class="kpi-value">${fmtPct(overview.savesRate.current)}</div>
         <div class="kpi-delta" style="color:${deltaColor(overview.savesRate)}">${deltaArrow(overview.savesRate)} ${Math.abs(overview.savesRate.deltaPercent).toFixed(1)}%</div>
+        <div style="font-size:9px;color:#aaa;margin-top:2px">${overviewDays}d</div>
       </div>
       <div class="kpi-box">
         <div class="kpi-label">Posts Publicados</div>
         <div class="kpi-value">${overview.postsPublished.current}</div>
         <div class="kpi-delta" style="color:${deltaColor(overview.postsPublished)}">${deltaArrow(overview.postsPublished)} ${Math.abs(overview.postsPublished.deltaPercent).toFixed(1)}%</div>
+        <div style="font-size:9px;color:#aaa;margin-top:2px">${overviewDays}d</div>
       </div>
     </div>
 

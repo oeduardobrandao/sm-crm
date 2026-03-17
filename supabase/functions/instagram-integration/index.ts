@@ -361,11 +361,22 @@ Deno.serve(async (req) => {
             const accountId = upsertedAccount!.id;
             const today = new Date().toISOString().split('T')[0];
 
-            await serviceClient.from('instagram_follower_history').upsert({
-                instagram_account_id: accountId,
-                date: today,
-                follower_count: igProfile.followers_count || 0
-            }, { onConflict: 'instagram_account_id,date' });
+            // Only upsert if no manual entry exists for this date
+            const { data: existingEntry } = await serviceClient
+                .from('instagram_follower_history')
+                .select('source')
+                .eq('instagram_account_id', accountId)
+                .eq('date', today)
+                .maybeSingle();
+
+            if (!existingEntry || existingEntry.source !== 'manual') {
+                await serviceClient.from('instagram_follower_history').upsert({
+                    instagram_account_id: accountId,
+                    date: today,
+                    follower_count: igProfile.followers_count || 0,
+                    source: 'api',
+                }, { onConflict: 'instagram_account_id,date' });
+            }
             console.log('[IG-CALLBACK] Follower history saved.');
 
             // Fetch posts
@@ -511,6 +522,17 @@ Deno.serve(async (req) => {
             }
 
             const today = new Date().toISOString().split('T')[0];
+
+            // Check if manual follower entry exists for today before syncing
+            const { data: existingSyncEntry } = await serviceClient
+                .from('instagram_follower_history')
+                .select('source')
+                .eq('instagram_account_id', account.id)
+                .eq('date', today)
+                .maybeSingle();
+
+            const shouldUpsertHistory = !existingSyncEntry || existingSyncEntry.source !== 'manual';
+
             // Update account stats and follower history in parallel
             await Promise.all([
                 serviceClient.from('instagram_accounts').update({
@@ -524,11 +546,14 @@ Deno.serve(async (req) => {
                     website_clicks_28d: totalWebsiteClicks,
                     last_synced_at: new Date().toISOString()
                 }).eq('id', account.id),
-                serviceClient.from('instagram_follower_history').upsert({
-                    instagram_account_id: account.id,
-                    date: today,
-                    follower_count: igProfile.followers_count || account.follower_count
-                }, { onConflict: 'instagram_account_id,date' })
+                ...(shouldUpsertHistory ? [
+                    serviceClient.from('instagram_follower_history').upsert({
+                        instagram_account_id: account.id,
+                        date: today,
+                        follower_count: igProfile.followers_count || account.follower_count,
+                        source: 'api',
+                    }, { onConflict: 'instagram_account_id,date' })
+                ] : []),
             ]);
 
             // 3.2 Fetch Post Insights — batched parallel (10 at a time)

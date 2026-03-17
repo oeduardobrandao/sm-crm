@@ -166,7 +166,7 @@ export interface PostTag {
 }
 
 export interface FollowerHistory {
-  history: { date: string; follower_count: number }[];
+  history: { date: string; follower_count: number; source: string }[];
   postDates: { date: string; media_type: string }[];
 }
 
@@ -466,7 +466,7 @@ export async function getFollowerHistory(clientId: number, days = 90): Promise<F
   const [{ data: history }, { data: postDates }] = await Promise.all([
     supabase
       .from('instagram_follower_history')
-      .select('date, follower_count')
+      .select('date, follower_count, source')
       .eq('instagram_account_id', account.id)
       .gte('date', sinceDate)
       .order('date', { ascending: true }),
@@ -624,6 +624,19 @@ export async function generateReport(clientId: number, month?: string): Promise<
     throw new Error('Resposta inválida do servidor');
   }
   return data;
+}
+
+export async function upsertManualFollowerCount(clientId: number, date: string, followerCount: number): Promise<void> {
+  const account = await getAccountByClientId(clientId);
+  const { error } = await supabase
+    .from('instagram_follower_history')
+    .upsert({
+      instagram_account_id: account.id,
+      date,
+      follower_count: followerCount,
+      source: 'manual',
+    }, { onConflict: 'instagram_account_id,date' });
+  if (error) throw new Error(error.message);
 }
 
 export async function getClientReports(clientId: number): Promise<AnalyticsReport[]> {
