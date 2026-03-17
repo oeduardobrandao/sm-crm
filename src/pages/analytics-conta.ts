@@ -466,7 +466,7 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
 
     <!-- Reports Section -->
     ${reportsData.length > 0 ? `
-    <div class="card animate-up">
+    <div class="card animate-up" id="reports-section">
       <h3>Relatórios Gerados</h3>
       <div style="margin-top:1rem">
         ${reportsData.map(r => `
@@ -504,6 +504,11 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
         showToast('Relatório em geração. Atualize em alguns minutos.', 'info');
       }
       await renderContent(container, clientId, cliente, account, state);
+      setTimeout(() => {
+        const el = document.getElementById('reports-section');
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        else window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+      }, 100);
     } catch (e: any) {
       showToast(e.message || 'Erro ao gerar relatório', 'error');
       btn.disabled = false;

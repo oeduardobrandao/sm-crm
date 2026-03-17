@@ -86,20 +86,20 @@ Deno.serve(async (req) => {
 
       const demographics = demoCache?.data || null;
 
-      // --- Generate PDF ---
-      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-      const pageWidth = doc.internal.pageSize.getWidth();   // 210
-      const pageHeight = doc.internal.pageSize.getHeight(); // 297
+      // --- Generate PDF (single continuous page) ---
+      const pageWidth = 210; // A4 width in mm
+      const tallHeight = 5000; // tall enough for any content
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [pageWidth, tallHeight] });
       const margin = 18;
-      const contentWidth = pageWidth - margin * 2;          // 174
+      const contentWidth = pageWidth - margin * 2; // 174
       let y = 0;
-      let pageNum = 1;
 
       // Design system colors (RGB tuples)
-      const C = {
+      const C: Record<string, number[]> = {
         dark:     [18,  21,  26 ],
         darkCard: [28,  33,  40 ],
         primary:  [234, 179, 8  ],
+        accent:   [255, 158, 33 ], // #FF9E21 — Mesaas brand orange
         success:  [62,  207, 142],
         white:    [255, 255, 255],
         gray50:   [248, 249, 250],
@@ -109,67 +109,36 @@ Deno.serve(async (req) => {
         gray500:  [108, 117, 125],
         gray700:  [73,  80,  87 ],
         gray900:  [33,  37,  41 ],
-        accentA:  [42,  130, 245],  // blue accent for variety
+        accentA:  [42,  130, 245],
       };
 
       const setFill = (c: number[]) => doc.setFillColor(c[0], c[1], c[2]);
       const setDraw = (c: number[]) => doc.setDrawColor(c[0], c[1], c[2]);
       const setTxt  = (c: number[]) => doc.setTextColor(c[0], c[1], c[2]);
 
-      // Draw page header strip (called at top of every content page)
-      const drawContentHeader = () => {
-        // Golden top strip (Thicker for better aesthetic)
-        setFill(C.primary);
-        doc.rect(0, 0, pageWidth, 4, 'F');
-        // Elegant Report Label top-left
-        doc.setFontSize(7);
-        doc.setFont('helvetica', 'bold');
-        setTxt(C.gray500);
-        doc.text('RELATÓRIO DE INSTAGRAM', margin, 12);
-        
-        // Mesaas label top-right
-        doc.setFontSize(7);
-        setTxt(C.gray400);
-        doc.text('MESAAS', pageWidth - margin, 12, { align: 'right' });
-        doc.setFont('helvetica', 'normal');
-        
-        // Subtle divider
-        setFill(C.gray200);
-        doc.rect(margin, 16, contentWidth, 0.3, 'F');
-
-        // Page number bottom right
-        doc.setFontSize(8);
-        doc.setFont('helvetica', 'bold');
-        setTxt(C.gray400);
-        doc.text(`${pageNum}`, pageWidth - margin, pageHeight - 8, { align: 'right' });
-        
-        // Bottom thin line
-        setFill(C.gray200);
-        doc.rect(margin, pageHeight - 14, contentWidth, 0.3, 'F');
-      };
-
-      const addPage = () => {
-        doc.addPage();
-        pageNum++;
-        y = margin + 12; // Start lower down to clear header
-        drawContentHeader();
-      };
-
-      const checkPageBreak = (needed: number) => {
-        if (y + needed > pageHeight - 18) addPage();
+      // Truncate text to fit within maxWidth, adding ellipsis if needed
+      const truncText = (text: string, maxWidth: number): string => {
+        const lines = doc.splitTextToSize(text, maxWidth) as string[];
+        if (lines.length <= 1) return text;
+        // Trim first line and add ellipsis
+        let truncated = lines[0];
+        while (doc.getTextWidth(truncated + '...') > maxWidth && truncated.length > 1) {
+          truncated = truncated.slice(0, -1);
+        }
+        return truncated + '...';
       };
 
       // Section heading helper
       const sectionHeading = (title: string, subtitle?: string) => {
         doc.setFontSize(16);
         doc.setFont('helvetica', 'bold');
-        setTxt([18, 21, 26]); // Dark text for headings
+        setTxt(C.dark);
         doc.text(title, margin, y);
-        
-        // Beautiful side accent instead of underline
+
+        // Side accent bar
         setFill(C.primary);
         doc.rect(margin - 4, y - 5, 2, 6, 'F');
-        
+
         y += 6;
         if (subtitle) {
           doc.setFontSize(10);
@@ -178,80 +147,63 @@ Deno.serve(async (req) => {
           doc.text(subtitle, margin, y);
           y += 6;
         }
-        
+
         doc.setFont('helvetica', 'normal');
-        y += 8;
-      };
-
-      // Wrap text helper – returns lines array and renders them, advances y
-      const wrappedText = (text: string, x: number, maxWidth: number, lineHeight: number, color: number[]) => {
-        setTxt(color);
-        const lines = doc.splitTextToSize(text, maxWidth) as string[];
-        doc.text(lines, x, y);
-        y += lines.length * lineHeight;
-        return lines.length;
+        y += 6;
       };
 
       // ===========================
-      // PAGE 1: Cover
+      // COVER SECTION
       // ===========================
+      const coverHeight = 270;
+
       // Deep dark background
-      setFill([13, 17, 23]); // even darker base
-      doc.rect(0, 0, pageWidth, pageHeight, 'F');
+      setFill([13, 17, 23]);
+      doc.rect(0, 0, pageWidth, coverHeight, 'F');
 
-      // Decorative shapes in the background
-      // Subtle circular glow effect (using concentric overlapping shapes)
+      // Decorative concentric circles
       setDraw([28, 33, 40]);
       doc.setLineWidth(0.5);
-      for(let i=0; i<10; i++) {
-        doc.circle(0, 0, 50 + i*20, 'S');
+      for (let i = 0; i < 10; i++) {
+        doc.circle(0, 0, 50 + i * 20, 'S');
       }
-      
-      for(let i=0; i<8; i++) {
-        doc.circle(pageWidth, pageHeight, 40 + i*25, 'S');
+      for (let i = 0; i < 8; i++) {
+        doc.circle(pageWidth, coverHeight, 40 + i * 25, 'S');
       }
 
       // Top primary border
       setFill(C.primary);
       doc.rect(0, 0, pageWidth, 6, 'F');
 
-      // Left glowing accent bar
+      // Left accent bar
       setFill(C.primary);
       doc.rect(0, 60, 4, 80, 'F');
 
       // Right golden box
       setFill(C.primary);
       doc.rect(pageWidth - 15, 60, 15, 15, 'F');
-      
+
       // Bottom left geometric squares
       setFill([28, 33, 40]);
-      doc.rect(margin, pageHeight - 40, 20, 20, 'F');
+      doc.rect(margin, coverHeight - 40, 20, 20, 'F');
       setFill(C.primary);
-      doc.rect(margin + 22, pageHeight - 34, 8, 8, 'F');
+      doc.rect(margin + 22, coverHeight - 34, 8, 8, 'F');
 
-      // ---- Mesaas Logo (stylized text) ----
+      // ---- Mesaas Logo (actual desk/bureau icon) ----
       const logoX = margin;
-      const logoY = 65;
-      
-      // M geometric mark
-      doc.setLineWidth(3);
-      setDraw(C.primary);
-      doc.line(logoX, logoY + 12, logoX + 6, logoY);
-      doc.line(logoX + 6, logoY, logoX + 12, logoY + 8);
-      doc.line(logoX + 12, logoY + 8, logoX + 18, logoY);
-      doc.line(logoX + 18, logoY, logoX + 24, logoY + 12);
-      doc.setLineWidth(0.5);
+      const logoY = 55;
+      drawMesaasLogo(doc, logoX, logoY, 28, setFill, setDraw, C.accent);
 
       // Brand name
-      doc.setFontSize(40);
+      doc.setFontSize(32);
       doc.setFont('helvetica', 'bold');
       setTxt(C.white);
-      doc.text('Mesaas', logoX + 34, logoY + 12);
+      doc.text('Mesaas', logoX + 36, logoY + 18);
 
       // Report Title
       doc.setFontSize(14);
       doc.setFont('helvetica', 'normal');
-      setTxt(C.primary); // Gold
+      setTxt(C.primary);
       doc.text('SOCIAL MEDIA PERFORMANCE', margin, 120);
 
       doc.setFontSize(48);
@@ -268,8 +220,10 @@ Deno.serve(async (req) => {
       doc.rect(margin, 168, 80, 1, 'F');
 
       // Client info block
+      const clientCardW = pageWidth - margin * 2;
+      const clientCardHalfW = clientCardW / 2 - 20;
       setFill(C.darkCard);
-      doc.roundedRect(margin, 180, pageWidth - margin*2, 45, 4, 4, 'F');
+      doc.roundedRect(margin, 180, clientCardW, 45, 4, 4, 'F');
       setFill(C.primary);
       doc.rect(margin, 180, 4, 45, 'F');
 
@@ -277,28 +231,42 @@ Deno.serve(async (req) => {
       doc.setFont('helvetica', 'normal');
       setTxt(C.gray400);
       doc.text('CLIENTE', margin + 15, 195);
-      doc.text('PERÍODO', pageWidth/2 + 10, 195);
+      doc.text('PERÍODO', pageWidth / 2 + 10, 195);
 
       doc.setFontSize(18);
       doc.setFont('helvetica', 'bold');
       setTxt(C.white);
-      doc.text(cliente.nome, margin + 15, 205);
-      doc.text(`${MONTHS_PT[monthNum - 1]} ${year}`, pageWidth/2 + 10, 205);
+      doc.text(truncText(cliente.nome, clientCardHalfW), margin + 15, 205);
+      doc.text(`${MONTHS_PT[monthNum - 1]} ${year}`, pageWidth / 2 + 10, 205);
 
       doc.setFontSize(12);
       doc.setFont('helvetica', 'normal');
       setTxt(C.primary);
-      doc.text(`@${account.username}`, margin + 15, 215);
+      doc.text(truncText(`@${account.username}`, clientCardHalfW), margin + 15, 215);
 
-      // Bottom footer
+      // Bottom footer on cover
       doc.setFontSize(8);
       setTxt(C.gray500);
-      doc.text('Gerado automaticamente por Mesaas • mesaas.com.br', pageWidth / 2, pageHeight - 15, { align: 'center' });
+      doc.text('Gerado automaticamente por Mesaas • mesaas.com.br', pageWidth / 2, coverHeight - 15, { align: 'center' });
 
       // ===========================
-      // PAGE 2: Executive Summary + KPIs
+      // CONTENT AREA (starts after cover)
       // ===========================
-      addPage();
+      y = coverHeight + 8;
+
+      // Content header strip
+      setFill(C.primary);
+      doc.rect(0, coverHeight, pageWidth, 3, 'F');
+      doc.setFontSize(7);
+      doc.setFont('helvetica', 'bold');
+      setTxt(C.gray500);
+      doc.text('RELATÓRIO DE INSTAGRAM', margin, coverHeight + 10);
+      setTxt(C.gray400);
+      doc.text('MESAAS', pageWidth - margin, coverHeight + 10, { align: 'right' });
+      setFill(C.gray200);
+      doc.rect(margin, coverHeight + 13, contentWidth, 0.3, 'F');
+
+      y = coverHeight + 20;
 
       // ---- Calculate stats ----
       const totalPosts = allPosts.length;
@@ -330,19 +298,26 @@ Deno.serve(async (req) => {
         `Taxa média de engajamento de ${avgEngagement.toFixed(2)}%, com ${totalSaved} salvamentos.`,
       ];
 
-      setFill(C.gray50);
-      doc.roundedRect(margin, y - 2, contentWidth, bullets.length * 8 + 10, 4, 4, 'F');
-      setFill(C.primary);
-      doc.rect(margin, y - 2, 4, bullets.length * 8 + 10, 'F');
-
+      // Calculate actual height needed for bullets box
       doc.setFontSize(10);
       doc.setFont('helvetica', 'normal');
+      let bulletsHeight = 0;
+      for (const b of bullets) {
+        const lines = doc.splitTextToSize(b, contentWidth - 18) as string[];
+        bulletsHeight += lines.length * 6 + 2;
+      }
+      bulletsHeight += 6;
+
+      setFill(C.gray50);
+      doc.roundedRect(margin, y - 2, contentWidth, bulletsHeight, 4, 4, 'F');
+      setFill(C.primary);
+      doc.rect(margin, y - 2, 4, bulletsHeight, 'F');
+
       for (const b of bullets) {
         setTxt(C.gray700);
-        // Small checkmark or dot
         setFill(C.primary);
         doc.circle(margin + 10, y + 2, 1.2, 'F');
-        
+
         const lines = doc.splitTextToSize(b, contentWidth - 18) as string[];
         doc.text(lines, margin + 14, y + 3);
         y += lines.length * 6 + 2;
@@ -350,14 +325,13 @@ Deno.serve(async (req) => {
       y += 12;
 
       // ---- KPI Cards ----
-      checkPageBreak(80);
       sectionHeading('Métricas do Mês', 'Principais indicadores do Instagram');
 
       const kpis = [
         { label: 'Seguidores Ganh.', value: `${followerGain >= 0 ? '+' : ''}${followerGain.toLocaleString('pt-BR')}`, color: followerGain >= 0 ? C.success : [245, 90, 66] },
         { label: 'Taxa de Engaj.',       value: `${avgEngagement.toFixed(2)}%`,                                            color: C.primary },
         { label: 'Alcance Total',        value: totalReach.toLocaleString('pt-BR'),                                        color: C.dark },
-        { label: 'Contas Engajadas',     value: (account.profile_views_28d || 0).toLocaleString('pt-BR'),                  color: [59, 130, 246] }, // blue
+        { label: 'Contas Engajadas',     value: (account.profile_views_28d || 0).toLocaleString('pt-BR'),                  color: [59, 130, 246] },
         { label: 'Taxa de Salvos',       value: `${savesRate.toFixed(2)}%`,                                                color: C.primary },
         { label: 'Publicações',          value: String(totalPosts),                                                        color: C.gray500 },
       ];
@@ -370,13 +344,11 @@ Deno.serve(async (req) => {
         const x = margin + col * (colWidth + 5);
         const cardY = y + row * (cardH + 5);
 
-        // Elegant card background
         setFill(C.white);
         setDraw(C.gray200);
         doc.setLineWidth(0.3);
         doc.roundedRect(x, cardY, colWidth, cardH, 4, 4, 'FD');
 
-        // Color tag dot
         setFill(kpis[i].color);
         doc.circle(x + 5, cardY + 7, 1.5, 'F');
 
@@ -388,14 +360,14 @@ Deno.serve(async (req) => {
         doc.setFontSize(16);
         doc.setFont('helvetica', 'bold');
         setTxt(C.dark);
-        doc.text(kpis[i].value, x + 5, cardY + 20);
+        // Truncate KPI value to fit card
+        doc.text(truncText(kpis[i].value, colWidth - 10), x + 5, cardY + 20);
       }
       y += (Math.ceil(kpis.length / 3)) * (cardH + 5) + 8;
 
       // ===========================
       // TOP 3 POSTS
       // ===========================
-      checkPageBreak(30);
       sectionHeading('Top 3 Publicações', 'Os conteúdos que geraram mais engajamento');
 
       const top3 = [...allPosts]
@@ -412,7 +384,6 @@ Deno.serve(async (req) => {
         const date = new Date(p.posted_at).toLocaleDateString('pt-BR');
         const type = p.media_type === 'VIDEO' ? 'Reel' : p.media_type === 'CAROUSEL_ALBUM' ? 'Carrossel' : 'Imagem';
         const caption = (p.caption || 'Sem legenda').replace(/\n/g, ' ');
-        // We'll leave room for an image placeholder
         const captionLines = doc.splitTextToSize(caption, contentWidth - 36) as string[];
         const captionClipped = captionLines.slice(0, 2);
 
@@ -423,7 +394,6 @@ Deno.serve(async (req) => {
         else reason = 'Bom desempenho geral';
 
         const cardHeight = 32;
-        checkPageBreak(cardHeight + 6);
 
         // Card background
         setFill(C.white);
@@ -432,7 +402,7 @@ Deno.serve(async (req) => {
         doc.roundedRect(margin, y, contentWidth, cardHeight, 4, 4, 'FD');
 
         // Number Badge
-        const accentColors = [C.primary, [99, 102, 241], [16, 185, 129]]; // Gold, Indigo, Emerald
+        const accentColors = [C.primary, [99, 102, 241], [16, 185, 129]];
         setFill(accentColors[i]);
         doc.path([
           {op: 'm', c: [margin, y + 4]},
@@ -442,7 +412,7 @@ Deno.serve(async (req) => {
           {op: 'h'}
         ]);
         doc.fill();
-        
+
         doc.setFontSize(8);
         doc.setFont('helvetica', 'bold');
         setTxt(C.dark);
@@ -459,7 +429,7 @@ Deno.serve(async (req) => {
         doc.setFontSize(10);
         doc.setFont('helvetica', 'bold');
         setTxt(C.dark);
-        doc.text(`${date}`, margin + 35, y + 11);
+        doc.text(date, margin + 35, y + 11);
 
         doc.setFontSize(8);
         doc.setFont('helvetica', 'normal');
@@ -479,20 +449,20 @@ Deno.serve(async (req) => {
         for (const m of metrics) {
           setFill(C.gray50);
           doc.roundedRect(pillX, pillY - 4, 30, 7, 3, 3, 'F');
-          
+
           doc.setFont('helvetica', 'normal');
           setTxt(C.gray500);
           doc.text(m.l, pillX + 3, pillY + 1);
-          
+
           doc.setFont('helvetica', 'bold');
           setTxt(C.dark);
-          doc.text(m.v, pillX + 16, pillY + 1); // rough position
-          
+          doc.text(truncText(String(m.v), 12), pillX + 16, pillY + 1);
+
           pillX += 34;
         }
 
         // Reason badge (right side)
-        setFill([236, 253, 245]); // Light emerald
+        setFill([236, 253, 245]);
         doc.roundedRect(margin + contentWidth - 30, y + 6, 25, 6, 2, 2, 'F');
         doc.setFontSize(6);
         doc.setFont('helvetica', 'bold');
@@ -505,7 +475,6 @@ Deno.serve(async (req) => {
       // ===========================
       // CONTENT TYPE PERFORMANCE
       // ===========================
-      checkPageBreak(50);
       y += 4;
       sectionHeading('Desempenho por Tipo de Conteúdo', 'Comparativo entre Reels, Carrosséis e Imagens');
 
@@ -531,7 +500,7 @@ Deno.serve(async (req) => {
       // Table header
       setFill(C.gray50);
       doc.roundedRect(margin, y, contentWidth, 9, 4, 4, 'F');
-      doc.rect(margin, y + 4, contentWidth, 5, 'F'); // square bottom corners of header
+      doc.rect(margin, y + 4, contentWidth, 5, 'F');
 
       doc.setFontSize(7.5);
       doc.setFont('helvetica', 'bold');
@@ -559,10 +528,10 @@ Deno.serve(async (req) => {
 
         doc.setFontSize(9);
         setTxt(C.dark);
-        doc.text(type,                              cols[0], y + 5);
-        doc.text(String(data.count),               cols[1], y + 5);
-        doc.text(`${avgEng.toFixed(2)}%`,           cols[2], y + 5);
-        doc.text(avgReach.toLocaleString('pt-BR'), cols[3], y + 5);
+        doc.text(type,                                                cols[0], y + 5);
+        doc.text(String(data.count),                                  cols[1], y + 5);
+        doc.text(`${avgEng.toFixed(2)}%`,                             cols[2], y + 5);
+        doc.text(truncText(avgReach.toLocaleString('pt-BR'), 35),     cols[3], y + 5);
         y += 9;
         rowIdx++;
       }
@@ -572,7 +541,6 @@ Deno.serve(async (req) => {
       // DEMOGRAPHICS
       // ===========================
       if (demographics) {
-        checkPageBreak(60);
         sectionHeading('Audiência', 'Distribuição demográfica e geografia');
 
         if (demographics.gender_split) {
@@ -581,12 +549,11 @@ Deno.serve(async (req) => {
           const barW   = contentWidth;
           const barH   = 8;
 
-          // Gender bar
           setFill(C.primary);
           doc.roundedRect(margin, y, barW * (female / 100), barH, 2, 2, 'F');
           doc.rect(margin + barW * (female / 100) - 3, y, 3, barH, 'F');
 
-          setFill([99, 102, 241]); // Indigo
+          setFill([99, 102, 241]);
           doc.roundedRect(margin + barW * (female / 100), y, barW * (male / 100), barH, 2, 2, 'F');
           doc.rect(margin + barW * (female / 100), y, 3, barH, 'F');
 
@@ -602,7 +569,6 @@ Deno.serve(async (req) => {
         }
 
         if (demographics.cities?.length > 0) {
-          checkPageBreak(10 + demographics.cities.slice(0, 5).length * 7);
           doc.setFontSize(9);
           doc.setFont('helvetica', 'bold');
           setTxt(C.gray700);
@@ -622,7 +588,7 @@ Deno.serve(async (req) => {
             doc.setFontSize(8);
             doc.setFont('helvetica', 'normal');
             setTxt(C.gray900);
-            doc.text(`${c.name}`, margin + contentWidth - 50, y + 4);
+            doc.text(truncText(c.name, 42), margin + contentWidth - 50, y + 4);
             setTxt(C.gray500);
             doc.text(`${c.count.toLocaleString('pt-BR')}`, margin + contentWidth - 5, y + 4, { align: 'right' });
             y += 9;
@@ -634,16 +600,14 @@ Deno.serve(async (req) => {
       // ===========================
       // RECOMMENDATIONS
       // ===========================
-      checkPageBreak(65);
       sectionHeading('Recomendações para o Próximo Mês', 'Próximos passos estratégicos');
 
       const recommendations = generateRecommendations(allPosts, typeMap, avgEngagement, savesRate, followerGain);
-      const recColors = [C.primary, [16, 185, 129], [99, 102, 241]]; // Gold, Emerald, Indigo
+      const recColors = [C.primary, [16, 185, 129], [99, 102, 241]];
 
       for (let i = 0; i < recommendations.length; i++) {
         const recLines = doc.splitTextToSize(recommendations[i], contentWidth - 20) as string[];
         const recCardH = Math.max(20, recLines.length * 5.5 + 12);
-        checkPageBreak(recCardH + 5);
 
         setFill(C.white);
         setDraw(C.gray200);
@@ -680,9 +644,8 @@ Deno.serve(async (req) => {
       }
 
       // ===========================
-      // Last-page footer note
+      // Final footer
       // ===========================
-      checkPageBreak(16);
       y += 6;
       setFill(C.gray50);
       doc.roundedRect(margin, y, contentWidth, 12, 2, 2, 'F');
@@ -693,6 +656,13 @@ Deno.serve(async (req) => {
         `Relatório de ${MONTHS_PT[monthNum - 1]} ${year} gerado por Mesaas em ${new Date().toLocaleDateString('pt-BR')}`,
         pageWidth / 2, y + 7.5, { align: 'center' }
       );
+      y += 18;
+
+      // Trim the page to actual content height
+      const finalHeight = y + 10;
+      const pages = doc.internal.pages;
+      // jsPDF stores page dimensions in internal.pageSize
+      (doc.internal.pageSize as any).setHeight(finalHeight);
 
       // --- Save PDF ---
       const pdfBytes = doc.output('arraybuffer');
@@ -742,6 +712,83 @@ Deno.serve(async (req) => {
     return json({ error: true, message: err.message || 'Erro ao gerar relatório' }, 500);
   }
 });
+
+/**
+ * Draws the Mesaas desk/bureau logo icon using jsPDF primitives.
+ * Translated from public/mesaas-icon.svg (viewBox 0 0 512 512).
+ */
+function drawMesaasLogo(
+  doc: jsPDF,
+  ox: number, oy: number, sizeMM: number,
+  setFill: (c: number[]) => void,
+  setDraw: (c: number[]) => void,
+  color: number[]
+) {
+  const s = sizeMM / 512;
+
+  setFill(color);
+  setDraw(color);
+
+  // Shape 1: Left drawer (rounded rect)
+  doc.roundedRect(ox + 171.253 * s, oy + 268.169 * s, 73.69 * s, 30.27 * s, 6.58 * s, 6.58 * s, 'F');
+
+  // Shape 2: Right drawer (rounded rect)
+  doc.roundedRect(ox + 264.681 * s, oy + 268.169 * s, 73.69 * s, 30.27 * s, 6.58 * s, 6.58 * s, 'F');
+
+  // Shape 3: Desk body (U-shape stroke)
+  // SVG: M133.092 323.437 V243.44 H375.453 V323.437 (stroke, no fill)
+  const strokeW = 26.0731 * s;
+  doc.setLineWidth(strokeW);
+  doc.setLineCap('square');
+  doc.setLineJoin('miter');
+
+  const ux1 = ox + 133.092 * s;
+  const ux2 = ox + 375.453 * s;
+  const uyTop = oy + 243.44 * s;
+  const uyBot = oy + 323.437 * s;
+
+  doc.line(ux1, uyBot, ux1, uyTop);
+  doc.line(ux1, uyTop, ux2, uyTop);
+  doc.line(ux2, uyTop, ux2, uyBot);
+
+  doc.setLineWidth(0.5);
+  doc.setLineCap('butt');
+
+  // Shape 4: Left chimney (trapezoid with rounded top)
+  // Approximated as a filled polygon (simplified from bezier paths)
+  const lc = {
+    topLeft: { x: 180.831, y: 218.166 },
+    topRight: { x: 235.598, y: 218.166 },
+    bottomRight: { x: 153.052, y: 218.166 }, // approximate curve end
+    // The chimney is essentially a trapezoid narrower at top
+    innerTopLeft: { x: 123.405, y: 218.166 },
+    bottomLeft: { x: 122.333, y: 193.241 },
+  };
+  // Simplified: draw as a filled rect with rounded top representing the chimney shape
+  // Left chimney: roughly x=120..153, y=181..218, wider at bottom
+  doc.path([
+    { op: 'm', c: [ox + 129.042 * s, oy + 181.321 * s] },   // bottom-left of chimney base
+    { op: 'l', c: [ox + 144.503 * s, oy + 181.321 * s] },   // bottom-right of chimney base
+    { op: 'l', c: [ox + 153.052 * s, oy + 211.531 * s] },   // top-right (wider)
+    { op: 'l', c: [ox + 235.598 * s, oy + 218.166 * s] },   // top outer right
+    { op: 'l', c: [ox + 180.831 * s, oy + 218.166 * s] },   // top outer left
+    { op: 'l', c: [ox + 120.621 * s, oy + 211.339 * s] },   // top-left (wider)
+    { op: 'h' }
+  ]);
+  doc.fill();
+
+  // Right chimney: same shape shifted right
+  doc.path([
+    { op: 'm', c: [ox + 285.758 * s, oy + 181.321 * s] },
+    { op: 'l', c: [ox + 317.293 * s, oy + 181.321 * s] },
+    { op: 'l', c: [ox + 334.731 * s, oy + 211.531 * s] },
+    { op: 'l', c: [ox + 329.026 * s, oy + 218.166 * s] },
+    { op: 'l', c: [ox + 274.259 * s, oy + 218.166 * s] },
+    { op: 'l', c: [ox + 268.581 * s, oy + 211.339 * s] },
+    { op: 'h' }
+  ]);
+  doc.fill();
+}
 
 function getPreviousMonth(): string {
   const now = new Date();
