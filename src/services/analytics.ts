@@ -80,6 +80,7 @@ export interface AnalyticsOverview {
     reach: KpiDelta;
     impressions: KpiDelta;
     profileViews: KpiDelta;
+    websiteClicks: KpiDelta;
     engagement: KpiDelta;
     savesRate: KpiDelta;
     postsPublished: KpiDelta;
@@ -389,6 +390,7 @@ export async function getAnalyticsOverview(clientId: number, days = 30): Promise
         pp.reduce((s: number, p: any) => s + (p.impressions || 0), 0)
       ),
       profileViews: makeDelta(account.profile_views_28d || 0, 0), // No previous period data stored
+      websiteClicks: makeDelta(account.website_clicks_28d || 0, 0),
       engagement: makeDelta(calcEngagement(cp), calcEngagement(pp)),
       savesRate: makeDelta(calcSavesRate(cp), calcSavesRate(pp)),
       postsPublished: makeDelta(cp.length, pp.length),

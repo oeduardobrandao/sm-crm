@@ -332,6 +332,7 @@ Deno.serve(async (req) => {
         { label: 'Taxa de Engaj.',       value: `${avgEngagement.toFixed(2)}%`,                                            color: C.primary },
         { label: 'Alcance Total',        value: totalReach.toLocaleString('pt-BR'),                                        color: C.dark },
         { label: 'Contas Engajadas',     value: (account.profile_views_28d || 0).toLocaleString('pt-BR'),                  color: [59, 130, 246] },
+        { label: 'Cliques no Link',      value: (account.website_clicks_28d || 0).toLocaleString('pt-BR'),                 color: [168, 85, 247] },
         { label: 'Taxa de Salvos',       value: `${savesRate.toFixed(2)}%`,                                                color: C.primary },
         { label: 'Publicações',          value: String(totalPosts),                                                        color: C.gray500 },
       ];

@@ -291,21 +291,23 @@ Deno.serve(async (req) => {
         const encryptedToken = await encryptToken(longLivedToken);
 
         // Fetch 28-day account insights
-        let reach_28d = 0, impressions_28d = 0, profile_views_28d = 0;
+        let reach_28d = 0, impressions_28d = 0, profile_views_28d = 0, website_clicks_28d = 0;
         try {
             console.log('[IG-CALLBACK] Fetching 28-day insights...');
             const nowTimestamp = Math.floor(Date.now() / 1000);
             const sinceDate = nowTimestamp - (28 * 24 * 60 * 60);
-            // Fetch reach, views, and profile_links_taps via total_value (profile_views doesn't exist in Instagram Login API)
-            const [reachRes, viewsRes, profileTapsRes] = await Promise.all([
+            // Fetch reach, views, accounts_engaged and website_clicks via total_value
+            const [reachRes, viewsRes, profileTapsRes, websiteClicksRes] = await Promise.all([
                 fetch(`https://graph.instagram.com/v21.0/me/insights?metric=reach&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${longLivedToken}`),
                 fetch(`https://graph.instagram.com/v21.0/me/insights?metric=views&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${longLivedToken}`),
-                fetch(`https://graph.instagram.com/v21.0/me/insights?metric=accounts_engaged&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${longLivedToken}`)
+                fetch(`https://graph.instagram.com/v21.0/me/insights?metric=accounts_engaged&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${longLivedToken}`),
+                fetch(`https://graph.instagram.com/v21.0/me/insights?metric=website_clicks&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${longLivedToken}`)
             ]);
-            const [reachData, viewsData, profileTapsData] = await Promise.all([reachRes.json(), viewsRes.json(), profileTapsRes.json()]);
+            const [reachData, viewsData, profileTapsData, websiteClicksData] = await Promise.all([reachRes.json(), viewsRes.json(), profileTapsRes.json(), websiteClicksRes.json()]);
             console.log('[IG-CALLBACK] Insights reach FULL:', JSON.stringify(reachData).substring(0, 500));
             console.log('[IG-CALLBACK] Insights views FULL:', JSON.stringify(viewsData).substring(0, 500));
             console.log('[IG-CALLBACK] Insights profile_links_taps FULL:', JSON.stringify(profileTapsData).substring(0, 500));
+            console.log('[IG-CALLBACK] Insights website_clicks FULL:', JSON.stringify(websiteClicksData).substring(0, 500));
             if (reachData.data) {
                 for (const insight of reachData.data) {
                     if (insight.name === 'reach') reach_28d = insight.total_value?.value || 0;
@@ -321,7 +323,12 @@ Deno.serve(async (req) => {
                     if (insight.name === 'accounts_engaged') profile_views_28d = insight.total_value?.value || 0;
                 }
             }
-            console.log('[IG-CALLBACK] Insights result: reach=', reach_28d, 'impressions(views)=', impressions_28d, 'profile_links_taps=', profile_views_28d);
+            if (websiteClicksData.data) {
+                for (const insight of websiteClicksData.data) {
+                    if (insight.name === 'website_clicks') website_clicks_28d = insight.total_value?.value || 0;
+                }
+            }
+            console.log('[IG-CALLBACK] Insights result: reach=', reach_28d, 'impressions(views)=', impressions_28d, 'accounts_engaged=', profile_views_28d, 'website_clicks=', website_clicks_28d);
         } catch (e: any) { console.log('[IG-CALLBACK] Insights fetch error:', e.message); }
 
         // Upsert into DB (with insights + last_synced_at)
@@ -340,6 +347,7 @@ Deno.serve(async (req) => {
                 reach_28d,
                 impressions_28d,
                 profile_views_28d,
+                website_clicks_28d,
                 last_synced_at: new Date().toISOString()
             }, { onConflict: 'client_id' })
             .select('id')
@@ -428,31 +436,33 @@ Deno.serve(async (req) => {
         const accessToken = await decryptToken(account.encrypted_access_token);
 
         try {
-            // 3.1 Fetch Account Insights (28 day window) — all 3 calls in parallel
+            // 3.1 Fetch Account Insights (28 day window) — all calls in parallel
             const nowTimestamp = Math.floor(Date.now() / 1000);
             const sinceDate = nowTimestamp - (28 * 24 * 60 * 60);
-            const [reachRes, viewsRes, profileTapsRes, igProfileRes, mediaRes] = await Promise.all([
+            const [reachRes, viewsRes, profileTapsRes, websiteClicksRes, igProfileRes, mediaRes] = await Promise.all([
                 fetch(`https://graph.instagram.com/v21.0/me/insights?metric=reach&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
                 fetch(`https://graph.instagram.com/v21.0/me/insights?metric=views&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
                 fetch(`https://graph.instagram.com/v21.0/me/insights?metric=accounts_engaged&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
+                fetch(`https://graph.instagram.com/v21.0/me/insights?metric=website_clicks&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
                 fetch(`https://graph.instagram.com/v21.0/me?fields=followers_count,follows_count,media_count,profile_picture_url&access_token=${accessToken}`),
                 fetch(`https://graph.instagram.com/v21.0/me/media?fields=id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,comments_count,like_count&limit=50&access_token=${accessToken}`)
             ]);
 
-            const [reachData, viewsData, profileTapsData, igProfile, mediaData] = await Promise.all([
-                reachRes.json(), viewsRes.json(), profileTapsRes.json(), igProfileRes.json(), mediaRes.json()
+            const [reachData, viewsData, profileTapsData, websiteClicksData, igProfile, mediaData] = await Promise.all([
+                reachRes.json(), viewsRes.json(), profileTapsRes.json(), websiteClicksRes.json(), igProfileRes.json(), mediaRes.json()
             ]);
 
             console.log('[IG-SYNC] Insights reach FULL:', JSON.stringify(reachData).substring(0, 500));
             console.log('[IG-SYNC] Insights views FULL:', JSON.stringify(viewsData).substring(0, 500));
             console.log('[IG-SYNC] Insights profile_links_taps FULL:', JSON.stringify(profileTapsData).substring(0, 500));
+            console.log('[IG-SYNC] Insights website_clicks FULL:', JSON.stringify(websiteClicksData).substring(0, 500));
 
             // Check if token expired
             if (reachData.error?.code === 190) {
                return new Response(JSON.stringify({ error: true, code: "TOKEN_EXPIRED", message: "Instagram token expired" }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 });
             }
 
-            let totalReach = 0; let totalImpressions = 0; let totalViews = 0;
+            let totalReach = 0; let totalImpressions = 0; let totalViews = 0; let totalWebsiteClicks = 0;
             if (reachData.data) {
                 for (const insight of reachData.data) {
                     if (insight.name === 'reach') totalReach = insight.total_value?.value || 0;
@@ -467,6 +477,11 @@ Deno.serve(async (req) => {
             if (profileTapsData.data) {
                 for (const insight of profileTapsData.data) {
                     if (insight.name === 'accounts_engaged') totalViews = insight.total_value?.value || 0;
+                }
+            }
+            if (websiteClicksData.data) {
+                for (const insight of websiteClicksData.data) {
+                    if (insight.name === 'website_clicks') totalWebsiteClicks = insight.total_value?.value || 0;
                 }
             }
 
@@ -506,6 +521,7 @@ Deno.serve(async (req) => {
                     reach_28d: totalReach,
                     impressions_28d: totalImpressions,
                     profile_views_28d: totalViews,
+                    website_clicks_28d: totalWebsiteClicks,
                     last_synced_at: new Date().toISOString()
                 }).eq('id', account.id),
                 serviceClient.from('instagram_follower_history').upsert({

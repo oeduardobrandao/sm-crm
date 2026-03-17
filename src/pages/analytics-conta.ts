@@ -14,7 +14,6 @@ import {
   deleteTag,
   assignTagToPost,
   removeTagFromPost,
-  generateReport,
   getClientReports,
   getAccountAIAnalysis,
   type KpiDelta,
@@ -75,7 +74,7 @@ export async function renderAnalyticsConta(container: HTMLElement, param?: strin
 
       <!-- KPI skeletons -->
       <div class="kpi-grid animate-up" style="grid-template-columns:repeat(auto-fit, minmax(160px, 1fr))">
-        ${Array(6).fill(`<div class="kpi-card">
+        ${Array(7).fill(`<div class="kpi-card">
           <div class="skeleton" style="width:60%;height:12px;border-radius:4px;margin-bottom:10px"></div>
           <div class="skeleton" style="width:45%;height:28px;border-radius:4px;margin-bottom:8px"></div>
           <div class="skeleton" style="width:35%;height:10px;border-radius:4px"></div>
@@ -234,7 +233,7 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
       </div>
       <div class="header-actions">
         <button class="btn-secondary" id="btn-back"><i class="ph ph-arrow-left"></i> Voltar</button>
-        <button class="btn-primary" id="btn-gen-report"><i class="ph ph-file-pdf"></i> Gerar Relatório</button>
+        <button class="btn-primary" id="btn-gen-report"><i class="ph ph-file-html"></i> Gerar Relatório</button>
       </div>
     </header>
 
@@ -251,6 +250,7 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
       ${renderKpiCard('ENGAJAMENTO', overview.engagement.current.toFixed(2) + '%', overview.engagement)}
       ${renderKpiCard('ALCANCE', overview.reach.current.toLocaleString('pt-BR'), overview.reach)}
       ${renderKpiCard('CONTAS ENGAJADAS', overview.profileViews.current.toLocaleString('pt-BR'), overview.profileViews)}
+      ${renderKpiCard('CLIQUES NO LINK', overview.websiteClicks.current.toLocaleString('pt-BR'), overview.websiteClicks)}
       ${renderKpiCard('TAXA DE SALVAMENTOS', overview.savesRate.current.toFixed(2) + '%', overview.savesRate)}
       ${renderKpiCard('POSTS PUBLICADOS', String(overview.postsPublished.current), overview.postsPublished)}
     </div>
@@ -490,30 +490,23 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
   // Back button
   document.getElementById('btn-back')?.addEventListener('click', () => navigate(`/cliente/${clientId}`));
 
-  // Generate report
-  document.getElementById('btn-gen-report')?.addEventListener('click', async () => {
-    const btn = document.getElementById('btn-gen-report') as HTMLButtonElement;
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Gerando...';
-    try {
-      const result = await generateReport(clientId);
-      if (result.status === 'ready' && result.report_url) {
-        showToast('Relatório gerado com sucesso!', 'success');
-        window.open(result.report_url, '_blank', 'noopener');
-      } else {
-        showToast('Relatório em geração. Atualize em alguns minutos.', 'info');
-      }
-      await renderContent(container, clientId, cliente, account, state);
-      setTimeout(() => {
-        const el = document.getElementById('reports-section');
-        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        else window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-      }, 100);
-    } catch (e: any) {
-      showToast(e.message || 'Erro ao gerar relatório', 'error');
-      btn.disabled = false;
-      btn.innerHTML = '<i class="ph ph-file-pdf"></i> Gerar Relatório';
-    }
+  // Generate HTML report
+  document.getElementById('btn-gen-report')?.addEventListener('click', () => {
+    generateHtmlReport({
+      clientName: cliente.nome,
+      username: account.username,
+      profilePicUrl: account.profile_picture_url,
+      days: state.days,
+      overview,
+      posts,
+      typeBreakdown,
+      topicStats,
+      demographicsData,
+      bestTimesData,
+      topSaved,
+      especialidade: cliente.especialidade,
+    });
+    showToast('Relatório aberto em nova aba. Use "Salvar como PDF" para baixar.', 'success');
   });
 
   // AI Analysis button
@@ -895,6 +888,505 @@ function renderBestTimesHeatmap(data: BestPostingTimes): string {
         `).join('')}
       </tbody>
     </table>`;
+}
+
+// --- HTML Report Generator ---
+
+interface HtmlReportData {
+  clientName: string;
+  username: string;
+  profilePicUrl?: string;
+  days: number;
+  overview: any;
+  posts: PostAnalytics[];
+  typeBreakdown: { type: string; count: number; avgEngagement: number }[];
+  topicStats: { tag_name: string; color: string; avgEngagement: number; count: number }[];
+  demographicsData: AudienceDemographics | null;
+  bestTimesData: BestPostingTimes | null;
+  topSaved: PostAnalytics[];
+  especialidade?: string;
+}
+
+function generateHtmlReport(data: HtmlReportData): void {
+  const {
+    clientName, username, days, overview, posts, typeBreakdown,
+    topicStats, demographicsData, bestTimesData, topSaved, especialidade,
+  } = data;
+
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+
+  // Mesaas logo SVG (desk/bureau icon from brand assets)
+  const mesaasLogoSvg = `<svg width="200" height="67" viewBox="0 0 600 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="118.708" y="106.579" width="36.1281" height="14.8383" rx="3.22572" fill="#FF9E21"/>
+    <rect x="164.514" y="106.579" width="36.1281" height="14.8383" rx="3.22572" fill="#FF9E21"/>
+    <path d="M100 133.675V94.4551H218.823V133.675" stroke="#FF9E21" stroke-width="12.7829"/>
+    <path d="M150.255 82.064H123.405C121.632 82.064 120.294 80.4592 120.621 78.7171C121.099 76.1686 121.732 72.8525 122.333 69.8442C123.266 65.1688 127.195 64 129.042 64H144.503C148.587 64 150.921 67.4534 151.504 69.8442C151.847 71.247 152.524 75.4027 153.052 78.8113C153.318 80.5245 151.989 82.064 150.255 82.064Z" fill="#FF9E21"/>
+    <path d="M196.06 82.064H169.209C167.437 82.064 166.098 80.4592 166.425 78.7171C166.904 76.1686 167.537 72.8525 168.137 69.8442C169.071 65.1688 172.999 64 174.847 64H190.308C194.392 64 196.726 67.4534 197.309 69.8442C197.652 71.247 198.329 75.4027 198.857 78.8113C199.123 80.5245 197.794 82.064 196.06 82.064Z" fill="#FF9E21"/>
+    <path d="M247.092 133.394V132.399L249.082 131.703C251.337 130.973 252.465 129.083 252.465 126.032V75.0891C252.465 73.7625 252.299 72.7012 251.967 71.9052C251.702 71.1092 250.939 70.4459 249.679 69.9153L247.092 68.7213V67.7263H266.295L284.702 115.883L302.014 67.7263H314.224V68.7213L312.632 69.3183C311.371 69.7826 310.509 70.4459 310.045 71.3082C309.58 72.1042 309.348 73.1655 309.348 74.4921V126.529C309.348 127.856 309.514 128.884 309.846 129.613C310.177 130.343 310.973 130.973 312.234 131.504L314.224 132.399V133.394H296.84V132.399L298.93 131.504C300.19 130.973 300.986 130.343 301.318 129.613C301.649 128.884 301.815 127.856 301.815 126.529V104.142L302.014 75.6861L281.219 133.394H276.244L254.554 76.3826L254.853 101.157V126.231C254.853 127.69 255.052 128.884 255.45 129.812C255.914 130.675 256.776 131.305 258.036 131.703L260.225 132.399V133.394H247.092Z" fill="#0A0B0E"/>
+    <path d="M297.413 132.399V133.394H347.062L347.659 118.072H346.664L342.585 127.425C342.12 128.685 341.523 129.68 340.794 130.409C340.064 131.073 339.036 131.404 337.709 131.404H317.611V100.461H328.257C329.584 100.461 330.579 100.826 331.242 101.555C331.905 102.219 332.536 103.147 333.133 104.341L335.122 108.52H336.117V90.6106H335.122L333.133 94.5905C332.602 95.7845 331.972 96.7463 331.242 97.4759C330.579 98.1392 329.584 98.4709 328.257 98.4709H317.611V69.7163H335.52C336.847 69.7163 337.842 70.0811 338.505 70.8107C339.169 71.5404 339.799 72.5022 340.396 73.6961L344.674 83.0489H345.669L345.072 67.7263H302.686V126.529C302.686 127.856 302.454 128.917 301.99 129.713C301.592 130.443 300.829 131.04 299.702 131.504L297.413 132.399Z" fill="#0A0B0E"/>
+    <path d="M372.2 135.185C368.552 135.185 364.838 134.721 361.057 133.792C357.276 132.93 354.125 131.769 351.604 130.31L352.102 116.778H353.097L356.181 123.246C357.11 125.103 358.105 126.761 359.166 128.22C360.228 129.613 361.687 130.708 363.544 131.504C364.871 132.167 366.131 132.631 367.325 132.897C368.585 133.096 369.978 133.195 371.504 133.195C375.55 133.195 378.734 132.101 381.056 129.912C383.444 127.723 384.637 124.904 384.637 121.455C384.637 118.204 383.842 115.684 382.25 113.893C380.658 112.036 378.104 110.245 374.588 108.52L370.509 106.729C364.804 104.208 360.327 101.323 357.077 98.0728C353.893 94.7563 352.301 90.3784 352.301 84.9392C352.301 81.0257 353.296 77.6428 355.286 74.7905C357.342 71.9383 360.161 69.7494 363.743 68.2237C367.391 66.6981 371.637 65.9353 376.479 65.9353C379.994 65.9353 383.311 66.3996 386.428 67.3283C389.612 68.2569 392.365 69.5172 394.687 71.1091L394.09 83.0488H393.095L389.015 75.5865C387.888 73.2649 386.76 71.6398 385.632 70.7112C384.505 69.7162 383.211 69.0197 381.752 68.6217C380.89 68.3564 380.094 68.1906 379.364 68.1242C378.635 67.9916 377.706 67.9252 376.578 67.9252C373.195 67.9252 370.343 68.9202 368.021 70.9102C365.7 72.8338 364.539 75.4539 364.539 78.7704C364.539 82.1533 365.435 84.8729 367.226 86.9292C369.016 88.9191 371.637 90.7101 375.086 92.302L379.663 94.292C386.03 97.0779 390.607 100.063 393.393 103.247C396.179 106.364 397.572 110.41 397.572 115.385C397.572 121.222 395.35 125.998 390.906 129.713C386.528 133.361 380.293 135.185 372.2 135.185Z" fill="#0A0B0E"/>
+    <path d="M427.448 86.9431L419.951 108.452L410.377 78.9695L399.632 109.913H419.442L418.748 111.903H398.935L394.159 125.932C393.695 127.392 393.528 128.553 393.661 129.415C393.86 130.277 394.657 130.973 396.05 131.504L398.238 132.399V133.394H384.508V132.399L386.995 131.504C388.322 130.973 389.35 130.343 390.08 129.613C390.81 128.817 391.406 127.723 391.87 126.33L412.367 67.5271H420.824L427.448 86.9431ZM420.784 111.903L416.009 125.932C415.545 127.392 415.378 128.553 415.511 129.415C415.71 130.277 416.507 130.973 417.899 131.504L420.088 132.399V133.394H406.357V132.399L408.845 131.504C410.171 130.973 411.2 130.343 411.93 129.613C412.659 128.817 413.255 127.723 413.72 126.33L418.748 111.903H420.784ZM435.965 111.903L441.022 126.728C441.553 128.187 442.15 129.315 442.813 130.111C443.396 130.752 444.261 131.316 445.407 131.803C445.327 131.837 445.245 131.87 445.161 131.902L443.669 132.399V133.394H421.819V132.399L423.312 131.902C424.704 131.371 425.534 130.641 425.799 129.713C426.13 128.718 426.097 127.557 425.699 126.23L421.023 111.903H435.965ZM462.872 126.728C463.403 128.187 464 129.315 464.663 130.111C465.326 130.841 466.354 131.471 467.747 132.002L468.941 132.399V133.394H447.092V132.399L445.897 132.002C445.729 131.937 445.565 131.871 445.407 131.803C446.652 131.282 447.399 130.585 447.648 129.713C447.98 128.718 447.947 127.557 447.549 126.23L442.873 111.903H435.965L435.285 109.913H442.275L432.227 78.9695L428.443 89.8611L427.448 86.9431L434.217 67.5271H442.674L462.872 126.728ZM420.426 109.913H419.442L419.951 108.452L420.426 109.913ZM435.285 109.913H421.481L428.443 89.8611L435.285 109.913Z" fill="#FF9E21"/>
+    <path d="M474.779 135.185C471.131 135.185 467.417 134.721 463.636 133.792C459.855 132.93 456.704 131.769 454.184 130.31L454.681 116.778H455.676L458.76 123.246C459.689 125.103 460.684 126.761 461.745 128.22C462.807 129.613 464.266 130.708 466.123 131.504C467.45 132.167 468.71 132.631 469.904 132.897C471.164 133.096 472.557 133.195 474.083 133.195C478.129 133.195 481.313 132.101 483.635 129.912C486.023 127.723 487.217 124.904 487.217 121.455C487.217 118.204 486.421 115.684 484.829 113.893C483.237 112.036 480.683 110.245 477.167 108.52L473.088 106.729C467.384 104.208 462.906 101.323 459.656 98.0728C456.472 94.7563 454.88 90.3784 454.88 84.9392C454.88 81.0257 455.875 77.6428 457.865 74.7905C459.921 71.9383 462.74 69.7494 466.322 68.2237C469.97 66.6981 474.216 65.9353 479.058 65.9353C482.573 65.9353 485.89 66.3996 489.008 67.3283C492.191 68.2569 494.944 69.5172 497.266 71.1091L496.669 83.0488H495.674L491.594 75.5865C490.467 73.2649 489.339 71.6398 488.212 70.7112C487.084 69.7162 485.79 69.0197 484.331 68.6217C483.469 68.3564 482.673 68.1906 481.943 68.1242C481.214 67.9916 480.285 67.9252 479.157 67.9252C475.774 67.9252 472.922 68.9202 470.601 70.9102C468.279 72.8338 467.118 75.4539 467.118 78.7704C467.118 82.1533 468.014 84.8729 469.805 86.9292C471.596 88.9191 474.216 90.7101 477.665 92.302L482.242 94.292C488.61 97.0779 493.186 100.063 495.972 103.247C498.758 106.364 500.151 110.41 500.151 115.385C500.151 121.222 497.929 125.998 493.485 129.713C489.107 133.361 482.872 135.185 474.779 135.185Z" fill="#0A0B0E"/>
+  </svg>`;
+
+  const truncText = (text: string, maxLen: number) =>
+    text.length > maxLen ? text.slice(0, maxLen) + '...' : text;
+
+  const fmtNum = (n: number) => n.toLocaleString('pt-BR');
+  const fmtPct = (n: number) => n.toFixed(2) + '%';
+
+  const deltaArrow = (d: KpiDelta) =>
+    d.direction === 'up' ? '&#9650;' : d.direction === 'down' ? '&#9660;' : '&#9654;';
+  const deltaColor = (d: KpiDelta) =>
+    d.direction === 'up' ? '#22c55e' : d.direction === 'down' ? '#ef4444' : '#888';
+
+  // Build demographics section
+  let demographicsHtml = '';
+  if (demographicsData) {
+    const citiesHtml = demographicsData.cities.slice(0, 5).map((c, i) =>
+      `<tr><td style="padding:4px 8px">${i + 1}. ${truncText(c.name, 30)}</td><td style="padding:4px 8px;text-align:right">${fmtNum(c.count)}</td></tr>`
+    ).join('');
+
+    const countriesHtml = demographicsData.countries.slice(0, 3).map((c, i) =>
+      `<tr><td style="padding:4px 8px">${i + 1}. ${c.code}</td><td style="padding:4px 8px;text-align:right">${fmtNum(c.count)}</td></tr>`
+    ).join('');
+
+    const ageHtml = demographicsData.age_gender.map(a => `
+      <tr>
+        <td style="padding:4px 8px;font-size:12px">${a.age_range}</td>
+        <td style="padding:4px 8px;text-align:right;color:#4285f4">${a.male}%</td>
+        <td style="padding:4px 8px;text-align:right;color:#ea4395">${a.female}%</td>
+      </tr>
+    `).join('');
+
+    demographicsHtml = `
+      <div class="report-section">
+        <h2>Demografia da Audiência</h2>
+        <div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:16px">
+          <div style="flex:1;min-width:120px;background:#f0f7ff;border-radius:8px;padding:16px;text-align:center">
+            <div style="font-size:24px;font-weight:700;color:#4285f4">${demographicsData.gender_split.male}%</div>
+            <div style="font-size:12px;color:#666">Masculino</div>
+          </div>
+          <div style="flex:1;min-width:120px;background:#fdf0f5;border-radius:8px;padding:16px;text-align:center">
+            <div style="font-size:24px;font-weight:700;color:#ea4395">${demographicsData.gender_split.female}%</div>
+            <div style="font-size:12px;color:#666">Feminino</div>
+          </div>
+        </div>
+
+        <h3 style="font-size:13px;margin:16px 0 8px;color:#555">Faixa Etária</h3>
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="border-bottom:1px solid #e5e5e5">
+            <th style="padding:4px 8px;text-align:left">Faixa</th>
+            <th style="padding:4px 8px;text-align:right;color:#4285f4">Masc.</th>
+            <th style="padding:4px 8px;text-align:right;color:#ea4395">Fem.</th>
+          </tr></thead>
+          <tbody>${ageHtml}</tbody>
+        </table>
+
+        <div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:16px">
+          <div style="flex:1;min-width:200px">
+            <h3 style="font-size:13px;margin-bottom:8px;color:#555">Principais Cidades</h3>
+            <table style="width:100%;border-collapse:collapse;font-size:13px"><tbody>${citiesHtml}</tbody></table>
+          </div>
+          ${demographicsData.countries.length > 0 ? `
+          <div style="flex:1;min-width:200px">
+            <h3 style="font-size:13px;margin-bottom:8px;color:#555">Principais Países</h3>
+            <table style="width:100%;border-collapse:collapse;font-size:13px"><tbody>${countriesHtml}</tbody></table>
+          </div>` : ''}
+        </div>
+      </div>`;
+  }
+
+  // Build best times heatmap
+  let bestTimesHtml = '';
+  if (bestTimesData && bestTimesData.totalPosts >= 5) {
+    const hours = [0, 3, 6, 9, 12, 15, 18, 21];
+    const max = Math.max(...bestTimesData.heatmap.flat(), 0.1);
+
+    const heatmapRows = bestTimesData.labels_days.map((day, d) => {
+      const cells = hours.map(h => {
+        const val = bestTimesData.heatmap[d][h];
+        const intensity = max > 0 ? val / max : 0;
+        const isTop = bestTimesData.topSlots.some(s => s.day === d && s.hour === h);
+        const bg = intensity > 0
+          ? `rgba(76,175,80,${(0.15 + intensity * 0.7).toFixed(2)})`
+          : '#f9f9f9';
+        return `<td style="padding:4px 6px;text-align:center;font-size:11px;background:${bg};${isTop ? 'outline:2px solid #FF9E21;outline-offset:-1px;font-weight:700;' : ''}">${val > 0 ? val.toFixed(1) + '%' : ''}</td>`;
+      }).join('');
+      return `<tr><td style="padding:4px 8px;font-size:12px;font-weight:500;text-align:right;white-space:nowrap">${day}</td>${cells}</tr>`;
+    }).join('');
+
+    const topSlotsHtml = bestTimesData.topSlots.length > 0
+      ? `<div style="margin-top:12px">${bestTimesData.topSlots.map((s, i) =>
+          `<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px">
+            <span style="background:#FF9E21;color:#fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${i + 1}</span>
+            <span>${bestTimesData!.labels_days[s.day]} às ${bestTimesData!.labels_hours[s.hour]}</span>
+            <span style="color:#888">${s.value.toFixed(1)}% eng. (${s.postCount} post${s.postCount > 1 ? 's' : ''})</span>
+          </div>`
+        ).join('')}</div>`
+      : '';
+
+    bestTimesHtml = `
+      <div class="report-section">
+        <h2>Melhor Horário para Postar</h2>
+        <p style="font-size:12px;color:#888;margin-bottom:12px">Baseado no engajamento de ${bestTimesData.totalPosts} posts dos últimos 90 dias</p>
+        <table style="width:100%;border-collapse:separate;border-spacing:3px">
+          <thead><tr>
+            <th></th>
+            ${hours.map(h => `<th style="font-size:11px;color:#888;font-weight:400">${h}h</th>`).join('')}
+          </tr></thead>
+          <tbody>${heatmapRows}</tbody>
+        </table>
+        ${topSlotsHtml}
+      </div>`;
+  }
+
+  // Content type breakdown
+  let typeBreakdownHtml = '';
+  if (typeBreakdown.length > 0) {
+    const colors = ['#FF9E21', '#42c8f5', '#f5a342', '#f542c8', '#3ecf8e'];
+    typeBreakdownHtml = `
+      <div class="report-section">
+        <h2>Desempenho por Tipo de Conteúdo</h2>
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="border-bottom:2px solid #e5e5e5">
+            <th style="padding:8px;text-align:left">Tipo</th>
+            <th style="padding:8px;text-align:center">Quantidade</th>
+            <th style="padding:8px;text-align:right">Engajamento Médio</th>
+          </tr></thead>
+          <tbody>
+            ${typeBreakdown.map((t, i) => `
+              <tr style="border-bottom:1px solid #f0f0f0">
+                <td style="padding:8px"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${colors[i % colors.length]};margin-right:8px;vertical-align:middle"></span>${t.type}</td>
+                <td style="padding:8px;text-align:center">${t.count}</td>
+                <td style="padding:8px;text-align:right;font-weight:600">${t.avgEngagement.toFixed(2)}%</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  // Topic performance
+  let topicHtml = '';
+  if (topicStats.length > 0) {
+    topicHtml = `
+      <div class="report-section">
+        <h2>Desempenho por Tópico</h2>
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="border-bottom:2px solid #e5e5e5">
+            <th style="padding:8px;text-align:left">Tópico</th>
+            <th style="padding:8px;text-align:center">Posts</th>
+            <th style="padding:8px;text-align:right">Engajamento Médio</th>
+          </tr></thead>
+          <tbody>
+            ${topicStats.map(t => `
+              <tr style="border-bottom:1px solid #f0f0f0">
+                <td style="padding:8px"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${t.color};margin-right:8px;vertical-align:middle"></span>${t.tag_name}</td>
+                <td style="padding:8px;text-align:center">${t.count}</td>
+                <td style="padding:8px;text-align:right;font-weight:600">${t.avgEngagement.toFixed(2)}%</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  // Top saved posts
+  let topSavedHtml = '';
+  if (topSaved.length > 0) {
+    topSavedHtml = `
+      <div class="report-section">
+        <h2>Posts Mais Salvos</h2>
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="border-bottom:2px solid #e5e5e5">
+            <th style="padding:8px;text-align:left">Post</th>
+            <th style="padding:8px;text-align:center">Salvamentos</th>
+            <th style="padding:8px;text-align:right">Taxa</th>
+          </tr></thead>
+          <tbody>
+            ${topSaved.map(p => `
+              <tr style="border-bottom:1px solid #f0f0f0">
+                <td style="padding:8px;max-width:350px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${truncText(p.caption || 'Sem legenda', 70)}</td>
+                <td style="padding:8px;text-align:center;font-weight:600">${p.saved}</td>
+                <td style="padding:8px;text-align:right">${p.saves_rate.toFixed(1)}%</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  // Posts performance table (top 15)
+  const displayPosts = posts.slice(0, 15);
+  const postsHtml = displayPosts.length > 0 ? `
+    <div class="report-section">
+      <h2>Performance de Conteúdo</h2>
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="border-bottom:2px solid #e5e5e5">
+          <th style="padding:8px;text-align:left">Data</th>
+          <th style="padding:8px;text-align:left">Tipo</th>
+          <th style="padding:8px;text-align:right">Alcance</th>
+          <th style="padding:8px;text-align:right">Engaj.</th>
+          <th style="padding:8px;text-align:right">Salvos</th>
+          <th style="padding:8px;text-align:right">Coment.</th>
+          <th style="padding:8px;text-align:right">Compart.</th>
+        </tr></thead>
+        <tbody>
+          ${displayPosts.map(p => `
+            <tr style="border-bottom:1px solid #f0f0f0">
+              <td style="padding:6px 8px">${new Date(p.posted_at).toLocaleDateString('pt-BR')}</td>
+              <td style="padding:6px 8px">${formatMediaType(p.media_type)}</td>
+              <td style="padding:6px 8px;text-align:right">${fmtNum(p.reach)}</td>
+              <td style="padding:6px 8px;text-align:right;font-weight:600;color:${p.engagement_rate >= 5 ? '#22c55e' : p.engagement_rate >= 2 ? '#eab308' : '#888'}">${p.engagement_rate.toFixed(1)}%</td>
+              <td style="padding:6px 8px;text-align:right">${p.saved}</td>
+              <td style="padding:6px 8px;text-align:right">${p.comments}</td>
+              <td style="padding:6px 8px;text-align:right">${p.shares}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+      ${posts.length > 15 ? `<p style="font-size:11px;color:#888;margin-top:8px;text-align:right">Exibindo 15 de ${posts.length} publicações</p>` : ''}
+    </div>` : '';
+
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Relatório - ${clientName} (@${username})</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: #1a1a1a;
+      background: #fff;
+      line-height: 1.5;
+    }
+
+    /* Cover */
+    .cover {
+      background: linear-gradient(135deg, #0A0B0E 0%, #1a1b20 100%);
+      color: #fff;
+      padding: 60px 48px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-height: 260px;
+    }
+    .cover-logo { margin-bottom: 32px; }
+    .cover h1 {
+      font-size: 32px;
+      font-weight: 800;
+      margin-bottom: 4px;
+      letter-spacing: -0.5px;
+    }
+    .cover .cover-username {
+      font-size: 16px;
+      color: #FF9E21;
+      font-weight: 500;
+      margin-bottom: 16px;
+    }
+    .cover .cover-meta {
+      font-size: 13px;
+      color: rgba(255,255,255,0.5);
+    }
+
+    /* Content header strip */
+    .content-header-strip {
+      background: #FF9E21;
+      height: 5px;
+    }
+
+    /* Main content */
+    .content {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 32px 48px;
+    }
+
+    /* KPIs */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+    .kpi-box {
+      border: 1px solid #e5e5e5;
+      border-radius: 10px;
+      padding: 16px;
+      text-align: center;
+    }
+    .kpi-box .kpi-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #888;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .kpi-box .kpi-value {
+      font-size: 22px;
+      font-weight: 800;
+      color: #1a1a1a;
+    }
+    .kpi-box .kpi-delta {
+      font-size: 12px;
+      margin-top: 4px;
+    }
+
+    /* Sections */
+    .report-section {
+      margin-bottom: 32px;
+      page-break-inside: avoid;
+    }
+    .report-section h2 {
+      font-size: 16px;
+      font-weight: 700;
+      color: #1a1a1a;
+      padding-bottom: 8px;
+      border-bottom: 2px solid #FF9E21;
+      margin-bottom: 16px;
+    }
+    .report-section h3 {
+      font-size: 13px;
+      color: #555;
+    }
+
+    /* Footer */
+    .report-footer {
+      text-align: center;
+      padding: 24px 48px;
+      border-top: 1px solid #e5e5e5;
+      font-size: 11px;
+      color: #aaa;
+    }
+
+    /* Print toolbar */
+    .print-toolbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: #0A0B0E;
+      color: #fff;
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      z-index: 1000;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+    }
+    .print-toolbar button {
+      background: #FF9E21;
+      color: #fff;
+      border: none;
+      padding: 8px 24px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .print-toolbar button:hover { background: #e8900a; }
+
+    @media print {
+      .print-toolbar { display: none !important; }
+      body { padding-top: 0 !important; }
+      .cover { page-break-after: avoid; }
+      .report-section { page-break-inside: avoid; }
+    }
+
+    @media screen {
+      body { padding-top: 56px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="print-toolbar">
+    <span style="font-size:13px">Relatório de <strong>${truncText(clientName, 30)}</strong></span>
+    <button onclick="window.print()">Salvar como PDF</button>
+  </div>
+
+  <!-- Cover -->
+  <div class="cover">
+    <div class="cover-logo">${mesaasLogoSvg}</div>
+    <h1>${truncText(clientName, 40)}</h1>
+    <div class="cover-username">@${truncText(username, 30)}</div>
+    <div class="cover-meta">Relatório de Performance · Últimos ${days} dias · Gerado em ${dateStr}</div>
+  </div>
+
+  <!-- Accent strip -->
+  <div class="content-header-strip"></div>
+
+  <!-- Content -->
+  <div class="content">
+    <!-- KPI Cards -->
+    <div class="kpi-grid">
+      <div class="kpi-box">
+        <div class="kpi-label">Seguidores</div>
+        <div class="kpi-value">${fmtNum(overview.followerCount)}</div>
+        <div class="kpi-delta" style="color:${deltaColor(overview.followers)}">${deltaArrow(overview.followers)} ${Math.abs(overview.followers.deltaPercent).toFixed(1)}%</div>
+      </div>
+      <div class="kpi-box">
+        <div class="kpi-label">Engajamento</div>
+        <div class="kpi-value">${fmtPct(overview.engagement.current)}</div>
+        <div class="kpi-delta" style="color:${deltaColor(overview.engagement)}">${deltaArrow(overview.engagement)} ${Math.abs(overview.engagement.deltaPercent).toFixed(1)}%</div>
+      </div>
+      <div class="kpi-box">
+        <div class="kpi-label">Alcance</div>
+        <div class="kpi-value">${fmtNum(overview.reach.current)}</div>
+        <div class="kpi-delta" style="color:${deltaColor(overview.reach)}">${deltaArrow(overview.reach)} ${Math.abs(overview.reach.deltaPercent).toFixed(1)}%</div>
+      </div>
+      <div class="kpi-box">
+        <div class="kpi-label">Contas Engajadas</div>
+        <div class="kpi-value">${fmtNum(overview.profileViews.current)}</div>
+        <div class="kpi-delta" style="color:${deltaColor(overview.profileViews)}">${deltaArrow(overview.profileViews)} ${Math.abs(overview.profileViews.deltaPercent).toFixed(1)}%</div>
+      </div>
+      <div class="kpi-box">
+        <div class="kpi-label">Cliques no Link</div>
+        <div class="kpi-value">${fmtNum(overview.websiteClicks.current)}</div>
+        <div class="kpi-delta" style="color:${deltaColor(overview.websiteClicks)}">${deltaArrow(overview.websiteClicks)} ${Math.abs(overview.websiteClicks.deltaPercent).toFixed(1)}%</div>
+      </div>
+      <div class="kpi-box">
+        <div class="kpi-label">Taxa de Salvamentos</div>
+        <div class="kpi-value">${fmtPct(overview.savesRate.current)}</div>
+        <div class="kpi-delta" style="color:${deltaColor(overview.savesRate)}">${deltaArrow(overview.savesRate)} ${Math.abs(overview.savesRate.deltaPercent).toFixed(1)}%</div>
+      </div>
+      <div class="kpi-box">
+        <div class="kpi-label">Posts Publicados</div>
+        <div class="kpi-value">${overview.postsPublished.current}</div>
+        <div class="kpi-delta" style="color:${deltaColor(overview.postsPublished)}">${deltaArrow(overview.postsPublished)} ${Math.abs(overview.postsPublished.deltaPercent).toFixed(1)}%</div>
+      </div>
+    </div>
+
+    ${topSavedHtml}
+    ${postsHtml}
+    ${typeBreakdownHtml}
+    ${topicHtml}
+    ${demographicsHtml}
+    ${bestTimesHtml}
+  </div>
+
+  <div class="report-footer">
+    Mesaas · Plataforma Inteligente · ${dateStr}
+  </div>
+</body>
+</html>`;
+
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, '_blank');
+  if (!win) {
+    // Fallback: download as file
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `relatorio-${username}-${now.toISOString().slice(0, 10)}.html`;
+    a.click();
+  }
+  // Clean up object URL after a delay
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
 
 function renderDemographicCallout(data: AudienceDemographics, especialidade?: string): string {

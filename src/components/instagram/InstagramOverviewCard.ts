@@ -53,6 +53,10 @@ export function renderInstagramOverviewCard(container: HTMLElement, clientId: nu
             <span class="kpi-label"><i class="ph ph-user-focus"></i> Contas Engajadas</span>
             <span class="kpi-value">${account.profile_views_28d?.toLocaleString('pt-BR') || 0}</span>
          </div>
+         <div class="kpi-card">
+            <span class="kpi-label"><i class="ph ph-link"></i> Cliques no Link</span>
+            <span class="kpi-value">${account.website_clicks_28d?.toLocaleString('pt-BR') || 0}</span>
+         </div>
       </div>
     </div>
   `;
