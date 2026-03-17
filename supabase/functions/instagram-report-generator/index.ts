@@ -42,6 +42,32 @@ Deno.serve(async (req) => {
         .single();
       if (!cliente) throw new Error("Cliente não encontrado");
 
+      // Get workspace branding
+      const { data: workspace } = await serviceClient
+        .from('workspaces')
+        .select('name, logo_url')
+        .eq('id', cliente.conta_id)
+        .single();
+      const workspaceName = workspace?.name || 'Mesaas';
+      let workspaceLogoBase64: string | null = null;
+      let workspaceLogoFormat: 'PNG' | 'JPEG' = 'PNG';
+      if (workspace?.logo_url) {
+        try {
+          const logoRes = await fetch(workspace.logo_url);
+          if (logoRes.ok) {
+            const logoBytes = new Uint8Array(await logoRes.arrayBuffer());
+            if (logoBytes.length < 500_000) { // Skip if too large for PDF embedding
+              const ct = logoRes.headers.get('content-type') || 'image/png';
+              workspaceLogoFormat = (ct.includes('jpeg') || ct.includes('jpg')) ? 'JPEG' : 'PNG';
+              const binary = Array.from(logoBytes).map(b => String.fromCharCode(b)).join('');
+              workspaceLogoBase64 = `data:${ct};base64,` + btoa(binary);
+            }
+          }
+        } catch (e) {
+          console.warn('Failed to fetch workspace logo:', e);
+        }
+      }
+
       // Get Instagram account
       const { data: account } = await serviceClient
         .from('instagram_accounts')
@@ -189,16 +215,21 @@ Deno.serve(async (req) => {
       setFill(C.primary);
       doc.rect(margin + 22, coverHeight - 34, 8, 8, 'F');
 
-      // ---- Mesaas Logo (actual desk/bureau icon) ----
+      // ---- Workspace branding on cover ----
       const logoX = margin;
       const logoY = 55;
-      drawMesaasLogo(doc, logoX, logoY, 28, setFill, setDraw, C.accent);
-
-      // Brand name
-      doc.setFontSize(32);
-      doc.setFont('helvetica', 'bold');
-      setTxt(C.white);
-      doc.text('Mesaas', logoX + 36, logoY + 18);
+      if (workspaceLogoBase64) {
+        doc.addImage(workspaceLogoBase64, workspaceLogoFormat, logoX, logoY, 40, 20);
+        doc.setFontSize(24);
+        doc.setFont('helvetica', 'bold');
+        setTxt(C.white);
+        doc.text(workspaceName, logoX + 46, logoY + 14);
+      } else {
+        doc.setFontSize(32);
+        doc.setFont('helvetica', 'bold');
+        setTxt(C.white);
+        doc.text(workspaceName, logoX, logoY + 18);
+      }
 
       // Report Title
       doc.setFontSize(14);
@@ -247,7 +278,7 @@ Deno.serve(async (req) => {
       // Bottom footer on cover
       doc.setFontSize(8);
       setTxt(C.gray500);
-      doc.text('Gerado automaticamente por Mesaas • mesaas.com.br', pageWidth / 2, coverHeight - 15, { align: 'center' });
+      doc.text('Gerado por Mesaas', pageWidth / 2, coverHeight - 15, { align: 'center' });
 
       // ===========================
       // CONTENT AREA (starts after cover)
@@ -262,7 +293,7 @@ Deno.serve(async (req) => {
       setTxt(C.gray500);
       doc.text('RELATÓRIO DE INSTAGRAM', margin, coverHeight + 10);
       setTxt(C.gray400);
-      doc.text('MESAAS', pageWidth - margin, coverHeight + 10, { align: 'right' });
+      doc.text(workspaceName.toUpperCase(), pageWidth - margin, coverHeight + 10, { align: 'right' });
       setFill(C.gray200);
       doc.rect(margin, coverHeight + 13, contentWidth, 0.3, 'F');
 
@@ -654,7 +685,7 @@ Deno.serve(async (req) => {
       doc.setFont('helvetica', 'normal');
       setTxt(C.gray400);
       doc.text(
-        `Relatório de ${MONTHS_PT[monthNum - 1]} ${year} gerado por Mesaas em ${new Date().toLocaleDateString('pt-BR')}`,
+        `Relatório de ${MONTHS_PT[monthNum - 1]} ${year} · ${workspaceName} · Gerado por Mesaas`,
         pageWidth / 2, y + 7.5, { align: 'center' }
       );
       y += 18;

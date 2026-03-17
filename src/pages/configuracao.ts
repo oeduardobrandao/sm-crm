@@ -3,7 +3,7 @@
 // =============================================
 import { supabase, getCurrentUser, getCurrentProfile, signOut } from '../lib/supabase';
 import { showToast, navigate, openModal, closeModal, openConfirm } from '../router';
-import { getWorkspaceUsers, updateWorkspaceUserRole, removeWorkspaceUser } from '../store';
+import { getWorkspaceUsers, updateWorkspaceUserRole, removeWorkspaceUser, getCurrentWorkspace, updateWorkspace } from '../store';
 import { getInitials } from '../store';
 import { passwordToggleHTML, passwordStrengthHTML, passwordToggleCSS, attachPasswordToggle, attachPasswordStrength, validatePassword } from '../utils/password-toggle';
 
@@ -16,10 +16,45 @@ export async function renderConfiguracao(container: HTMLElement): Promise<void> 
     return;
   }
 
+  let brandingHtml = '';
+  let currentWorkspace: { id: string; name: string; logo_url: string | null } | null = null;
   let workspaceHtml = '';
   let wUsers: any[] = [];
   let pendingInvites: any[] = [];
   if (profile.role === 'owner' || profile.role === 'admin') {
+     currentWorkspace = await getCurrentWorkspace();
+     const wsName = currentWorkspace?.name || '';
+     const wsLogo = currentWorkspace?.logo_url || '';
+     const wsInitials = getInitials(wsName || 'W');
+     const { escapeHTML: esc } = await import('../router');
+     brandingHtml = `
+     <div class="card" style="margin-top: 1.5rem">
+       <h3 style="margin-bottom:0.25rem"><i class="ph ph-paint-brush" style="margin-right:0.5rem; color:var(--primary-color)"></i> Marca do Workspace</h3>
+       <p style="color:var(--text-muted); font-size:0.85rem; margin-bottom:1.5rem">O logo e nome aparecerão nos relatórios gerados.</p>
+       <div style="display:flex; align-items:center; gap:1.5rem; margin-bottom:1.5rem">
+         <div id="logo-preview" style="width:80px;height:80px;border-radius:12px;background:var(--surface-main);border:2px dashed var(--border-color);display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer;flex-shrink:0" title="Clique para alterar">
+           ${wsLogo
+             ? `<img src="${esc(wsLogo)}" style="width:100%;height:100%;object-fit:contain" alt="Logo">`
+             : `<span style="font-size:1.5rem;font-weight:700;color:var(--text-muted)">${esc(wsInitials)}</span>`}
+         </div>
+         <div>
+           <input type="file" id="logo-file-input" accept="image/png,image/jpeg,image/webp" style="display:none">
+           <button class="btn-secondary" id="btn-upload-logo" style="padding:0.4rem 0.8rem;font-size:0.8rem"><i class="ph ph-upload-simple"></i> Enviar Logo</button>
+           ${wsLogo ? `<button class="btn-icon" id="btn-remove-logo" title="Remover logo" style="color:var(--danger);margin-left:0.5rem"><i class="ph ph-trash"></i></button>` : ''}
+           <p style="font-size:0.75rem;color:var(--text-muted);margin-top:0.5rem">PNG, JPG ou WebP. Máximo 2 MB.</p>
+         </div>
+       </div>
+       <form id="workspace-branding-form" class="modal-body">
+         <div class="form-group">
+           <label>Nome do Workspace</label>
+           <input type="text" name="workspace_name" value="${esc(wsName)}" class="form-input" required>
+         </div>
+         <div style="display:flex;justify-content:flex-end;margin-top:0.5rem">
+           <button type="submit" class="btn-primary" id="btn-save-branding"><i class="fa-solid fa-check"></i> Salvar</button>
+         </div>
+       </form>
+     </div>`;
+
      try {
        wUsers = await getWorkspaceUsers();
        const roleLabel = (r: string) => r === 'owner' ? 'Proprietário' : r === 'admin' ? 'Administrador' : 'Agente';
@@ -191,6 +226,7 @@ export async function renderConfiguracao(container: HTMLElement): Promise<void> 
         </form>
       </div>
 
+      ${brandingHtml}
       ${workspaceHtml}
 
       <!-- Account Info -->
@@ -275,6 +311,110 @@ export async function renderConfiguracao(container: HTMLElement): Promise<void> 
     } else {
       showToast('Senha alterada com sucesso!');
       form.reset();
+    }
+  });
+
+  // --- Workspace Branding ---
+  let pendingLogoBlob: Blob | null = null;
+
+  function resizeImage(file: File, maxSize: number): Promise<Blob> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(maxSize / img.width, maxSize / img.height, 1);
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext('2d')!;
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(
+          blob => blob ? resolve(blob) : reject(new Error('Falha ao processar imagem')),
+          'image/png', 0.85
+        );
+        URL.revokeObjectURL(img.src);
+      };
+      img.onerror = () => { URL.revokeObjectURL(img.src); reject(new Error('Falha ao carregar imagem')); };
+      img.src = URL.createObjectURL(file);
+    });
+  }
+
+  const logoFileInput = container.querySelector('#logo-file-input') as HTMLInputElement | null;
+  const logoPreview = container.querySelector('#logo-preview') as HTMLElement | null;
+
+  container.querySelector('#btn-upload-logo')?.addEventListener('click', () => logoFileInput?.click());
+  logoPreview?.addEventListener('click', () => logoFileInput?.click());
+
+  logoFileInput?.addEventListener('change', async () => {
+    const file = logoFileInput.files?.[0];
+    if (!file) return;
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      showToast('Formato inválido. Use PNG, JPG ou WebP.', 'error');
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      showToast('Imagem muito grande. Máximo 2 MB.', 'error');
+      return;
+    }
+    try {
+      pendingLogoBlob = await resizeImage(file, 512);
+      if (logoPreview) {
+        logoPreview.textContent = '';
+        const previewImg = document.createElement('img');
+        previewImg.src = URL.createObjectURL(pendingLogoBlob);
+        previewImg.alt = 'Preview';
+        previewImg.style.cssText = 'width:100%;height:100%;object-fit:contain';
+        logoPreview.appendChild(previewImg);
+      }
+    } catch {
+      showToast('Erro ao processar imagem.', 'error');
+    }
+  });
+
+  container.querySelector('#btn-remove-logo')?.addEventListener('click', async () => {
+    if (!currentWorkspace) return;
+    try {
+      await updateWorkspace(currentWorkspace.id, { logo_url: null });
+      showToast('Logo removido.');
+      navigate('/configuracao');
+    } catch (err: unknown) {
+      showToast('Erro: ' + (err instanceof Error ? err.message : 'Desconhecido'), 'error');
+    }
+  });
+
+  container.querySelector('#workspace-branding-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!currentWorkspace) return;
+    const form = e.target as HTMLFormElement;
+    const newName = (new FormData(form).get('workspace_name') as string).trim();
+    if (!newName) { showToast('Nome do workspace é obrigatório.', 'error'); return; }
+
+    const btn = form.querySelector('#btn-save-branding') as HTMLButtonElement;
+    btn.disabled = true;
+    btn.textContent = 'Salvando...';
+
+    try {
+      let logoUrl: string | null | undefined;
+
+      if (pendingLogoBlob) {
+        const storagePath = `workspaces/${currentWorkspace.id}/logo.png`;
+        const { error: upErr } = await supabase.storage
+          .from('avatars')
+          .upload(storagePath, pendingLogoBlob, { contentType: 'image/png', upsert: true });
+        if (upErr) throw upErr;
+        const { data: pub } = supabase.storage.from('avatars').getPublicUrl(storagePath);
+        logoUrl = pub.publicUrl + '?t=' + Date.now();
+      }
+
+      const updates: { name?: string; logo_url?: string | null } = { name: newName };
+      if (logoUrl !== undefined) updates.logo_url = logoUrl;
+      await updateWorkspace(currentWorkspace.id, updates);
+
+      showToast('Marca do workspace atualizada!');
+      navigate('/configuracao');
+    } catch (err: unknown) {
+      showToast('Erro ao salvar: ' + (err instanceof Error ? err.message : 'Desconhecido'), 'error');
+      btn.disabled = false;
+      btn.textContent = 'Salvar';
     }
   });
 

@@ -143,6 +143,26 @@ export async function getMyWorkspaces(): Promise<any[]> {
   }));
 }
 
+export async function getCurrentWorkspace(): Promise<{ id: string; name: string; logo_url: string | null } | null> {
+  const profile = await getCurrentProfile();
+  if (!profile?.conta_id) return null;
+  const { data, error } = await supabase
+    .from('workspaces')
+    .select('id, name, logo_url')
+    .eq('id', profile.conta_id)
+    .single();
+  if (error) return null;
+  return data;
+}
+
+export async function updateWorkspace(workspaceId: string, updates: { name?: string; logo_url?: string | null }): Promise<void> {
+  const { error } = await supabase
+    .from('workspaces')
+    .update(updates)
+    .eq('id', workspaceId);
+  if (error) throw error;
+}
+
 export async function switchWorkspace(workspaceId: string): Promise<void> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Não autenticado');
