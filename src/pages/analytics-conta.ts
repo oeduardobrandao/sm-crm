@@ -551,6 +551,7 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
       especialidade: cliente.especialidade,
       workspaceName: workspace?.name || undefined,
       workspaceLogoUrl: workspace?.logo_url || undefined,
+      periodLabel: state.periodLabel,
     });
     showToast('Relatório aberto em nova aba. Use "Salvar como PDF" para baixar.', 'success');
   });
@@ -1044,13 +1045,14 @@ interface HtmlReportData {
   especialidade?: string;
   workspaceName?: string;
   workspaceLogoUrl?: string;
+  periodLabel?: string;
 }
 
 function generateHtmlReport(data: HtmlReportData): void {
   const {
     clientName, username, overviewDays, overview, posts, typeBreakdown,
     topicStats, demographicsData, bestTimesData, topSaved, especialidade,
-    workspaceName, workspaceLogoUrl,
+    workspaceName, workspaceLogoUrl, periodLabel,
   } = data;
 
   const now = new Date();
@@ -1471,7 +1473,7 @@ function generateHtmlReport(data: HtmlReportData): void {
     <div class="cover-logo">${coverBrandingHtml}</div>
     <h1>${truncText(clientName, 40)}</h1>
     <div class="cover-username">@${truncText(username, 30)}</div>
-    <div class="cover-meta">Relatório de Performance · Últimos ${overviewDays} dias · Gerado em ${dateStr}</div>
+    <div class="cover-meta">Relatório de Performance · ${periodLabel ? periodLabel.charAt(0).toUpperCase() + periodLabel.slice(1) : `Últimos ${overviewDays} dias`} · Gerado em ${dateStr}</div>
   </div>
 
   <!-- Accent strip -->
@@ -1486,21 +1488,21 @@ function generateHtmlReport(data: HtmlReportData): void {
         <div class="kpi-value">${fmtNum(overview.followerCount)}</div>
         <div class="kpi-delta" style="color:${deltaColor(overview.followers)}">${deltaArrow(overview.followers)} ${Math.abs(overview.followers.deltaPercent).toFixed(1)}%</div>
         <div style="font-size:10px;color:#999;margin-top:2px">Anterior: ${fmtNum(overview.followerCount - overview.followers.current)}</div>
-        <div style="font-size:9px;color:#aaa;margin-top:2px">${overviewDays}d</div>
+        <div style="font-size:9px;color:#aaa;margin-top:2px">${periodLabel || `${overviewDays}d`}</div>
       </div>
       <div class="kpi-box">
         <div class="kpi-label">Engajamento</div>
         <div class="kpi-value">${fmtPct(overview.engagement.current)}</div>
         <div class="kpi-delta" style="color:${deltaColor(overview.engagement)}">${deltaArrow(overview.engagement)} ${Math.abs(overview.engagement.deltaPercent).toFixed(1)}%</div>
         <div style="font-size:10px;color:#999;margin-top:2px">Anterior: ${fmtPct(overview.engagement.previous)}</div>
-        <div style="font-size:9px;color:#aaa;margin-top:2px">${overviewDays}d</div>
+        <div style="font-size:9px;color:#aaa;margin-top:2px">${periodLabel || `${overviewDays}d`}</div>
       </div>
       <div class="kpi-box">
         <div class="kpi-label">Alcance</div>
         <div class="kpi-value">${fmtNum(overview.reach.current)}</div>
         <div class="kpi-delta" style="color:${deltaColor(overview.reach)}">${deltaArrow(overview.reach)} ${Math.abs(overview.reach.deltaPercent).toFixed(1)}%</div>
         <div style="font-size:10px;color:#999;margin-top:2px">Anterior: ${fmtNum(overview.reach.previous)}</div>
-        <div style="font-size:9px;color:#aaa;margin-top:2px">${overviewDays}d</div>
+        <div style="font-size:9px;color:#aaa;margin-top:2px">${periodLabel || `${overviewDays}d`}</div>
       </div>
       <div class="kpi-box">
         <div class="kpi-label">Contas Engajadas</div>
@@ -1519,15 +1521,18 @@ function generateHtmlReport(data: HtmlReportData): void {
         <div class="kpi-value">${fmtPct(overview.savesRate.current)}</div>
         <div class="kpi-delta" style="color:${deltaColor(overview.savesRate)}">${deltaArrow(overview.savesRate)} ${Math.abs(overview.savesRate.deltaPercent).toFixed(1)}%</div>
         <div style="font-size:10px;color:#999;margin-top:2px">Anterior: ${fmtPct(overview.savesRate.previous)}</div>
-        <div style="font-size:9px;color:#aaa;margin-top:2px">${overviewDays}d</div>
+        <div style="font-size:9px;color:#aaa;margin-top:2px">${periodLabel || `${overviewDays}d`}</div>
       </div>
       <div class="kpi-box">
         <div class="kpi-label">Posts Publicados</div>
         <div class="kpi-value">${overview.postsPublished.current}</div>
         <div class="kpi-delta" style="color:${deltaColor(overview.postsPublished)}">${deltaArrow(overview.postsPublished)} ${Math.abs(overview.postsPublished.deltaPercent).toFixed(1)}%</div>
         <div style="font-size:10px;color:#999;margin-top:2px">Anterior: ${overview.postsPublished.previous}</div>
-        <div style="font-size:9px;color:#aaa;margin-top:2px">${overviewDays}d</div>
+        <div style="font-size:9px;color:#aaa;margin-top:2px">${periodLabel || `${overviewDays}d`}</div>
       </div>
+    </div>
+    <div style="font-size:10px;color:#999;margin-top:6px;margin-bottom:24px;padding:6px 10px;background:#f9f9f9;border-radius:6px;border-left:3px solid #e0e0e0">
+      <strong>Nota:</strong> As métricas de <em>Contas Engajadas</em> e <em>Cliques no Link</em> são fornecidas pela API do Instagram com janela fixa de 28 dias e não acompanham o período selecionado.
     </div>
 
     ${topSavedHtml}
