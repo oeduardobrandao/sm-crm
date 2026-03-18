@@ -17,6 +17,7 @@ export async function renderConfiguracao(container: HTMLElement): Promise<void> 
   }
 
   let brandingHtml = '';
+  let instagramSyncHtml = '';
   let currentWorkspace: { id: string; name: string; logo_url: string | null } | null = null;
   let workspaceHtml = '';
   let wUsers: any[] = [];
@@ -54,6 +55,28 @@ export async function renderConfiguracao(container: HTMLElement): Promise<void> 
          </div>
        </form>
      </div>`;
+
+     // Check for connected Instagram accounts to show auto-sync toggle
+     try {
+       const { data: igAccounts } = await supabase
+         .from('instagram_accounts')
+         .select('id, auto_sync_enabled, client_id, clientes!inner(conta_id)')
+         .eq('clientes.conta_id', profile.conta_id);
+
+       if (igAccounts && igAccounts.length > 0) {
+         const allEnabled = igAccounts.every((a: any) => a.auto_sync_enabled);
+         instagramSyncHtml = `
+         <div class="card" style="margin-top: 1.5rem">
+           <h3 style="margin-bottom:0.25rem"><i class="ph ph-instagram-logo" style="margin-right:0.5rem; color:var(--primary-color)"></i> Instagram</h3>
+           <p style="color:var(--text-muted); font-size:0.85rem; margin-bottom:1rem">Configurações de sincronização automática.</p>
+           <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer;">
+             <input type="checkbox" id="ig-auto-sync-toggle" ${allEnabled ? 'checked' : ''} style="width:20px; height:20px; accent-color:var(--primary-color)">
+             <span style="font-size:0.85rem; color:var(--text-main)">Sincronização automática diária</span>
+           </label>
+           <p style="color:var(--text-muted); font-size:0.75rem; margin-top:0.5rem">Quando ativo, os dados do Instagram (métricas, posts, seguidores) são atualizados automaticamente todos os dias.</p>
+         </div>`;
+       }
+     } catch (e) { console.error("Erro ao verificar contas Instagram", e); }
 
      try {
        wUsers = await getWorkspaceUsers();
@@ -227,6 +250,7 @@ export async function renderConfiguracao(container: HTMLElement): Promise<void> 
       </div>
 
       ${brandingHtml}
+      ${instagramSyncHtml}
       ${workspaceHtml}
 
       <!-- Account Info -->
@@ -415,6 +439,31 @@ export async function renderConfiguracao(container: HTMLElement): Promise<void> 
       showToast('Erro ao salvar: ' + (err instanceof Error ? err.message : 'Desconhecido'), 'error');
       btn.disabled = false;
       btn.textContent = 'Salvar';
+    }
+  });
+
+  // --- Instagram Auto-Sync Toggle ---
+  container.querySelector('#ig-auto-sync-toggle')?.addEventListener('change', async (e) => {
+    const enabled = (e.target as HTMLInputElement).checked;
+    try {
+      // Get all instagram account IDs for this workspace
+      const { data: igAccounts } = await supabase
+        .from('instagram_accounts')
+        .select('id, clientes!inner(conta_id)')
+        .eq('clientes.conta_id', profile.conta_id);
+
+      if (igAccounts && igAccounts.length > 0) {
+        const ids = igAccounts.map((a: any) => a.id);
+        const { error } = await supabase
+          .from('instagram_accounts')
+          .update({ auto_sync_enabled: enabled })
+          .in('id', ids);
+        if (error) throw error;
+        showToast(enabled ? 'Sincronização automática ativada!' : 'Sincronização automática desativada.');
+      }
+    } catch (err: unknown) {
+      showToast('Erro ao salvar: ' + (err instanceof Error ? err.message : 'Desconhecido'), 'error');
+      (e.target as HTMLInputElement).checked = !enabled; // revert
     }
   });
 
