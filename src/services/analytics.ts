@@ -321,20 +321,39 @@ export async function getPortfolioSummary(): Promise<PortfolioSummary> {
   };
 }
 
-export async function getAnalyticsOverview(clientId: number, days = 30): Promise<AnalyticsOverview> {
+export async function getAnalyticsOverview(clientId: number, days = 30, dateRange?: { start: string; end: string }): Promise<AnalyticsOverview> {
   const account = await getAccountByClientId(clientId);
 
-  const now = Date.now();
-  const periodStart = new Date(now - days * 86400000).toISOString();
-  const prevStart = new Date(now - days * 2 * 86400000).toISOString();
+  let periodStart: string;
+  let periodEnd: string | undefined;
+  let prevStart: string;
+
+  if (dateRange) {
+    // Fixed date range mode (e.g. "último mês")
+    periodStart = new Date(dateRange.start).toISOString();
+    periodEnd = new Date(dateRange.end + 'T23:59:59.999Z').toISOString();
+    const rangeMs = new Date(dateRange.end).getTime() - new Date(dateRange.start).getTime();
+    prevStart = new Date(new Date(dateRange.start).getTime() - rangeMs).toISOString();
+  } else {
+    const now = Date.now();
+    periodStart = new Date(now - days * 86400000).toISOString();
+    prevStart = new Date(now - days * 2 * 86400000).toISOString();
+  }
 
   // Posts for current and previous periods + follower history — all in parallel
+  const currentPostsQuery = supabase
+    .from('instagram_posts')
+    .select('likes, comments, saved, shares, reach')
+    .eq('instagram_account_id', account.id)
+    .gte('posted_at', periodStart);
+  if (periodEnd) currentPostsQuery.lte('posted_at', periodEnd);
+
+  const followerHistoryStart = dateRange
+    ? new Date(new Date(dateRange.start).getTime() - (new Date(dateRange.end).getTime() - new Date(dateRange.start).getTime())).toISOString().split('T')[0]
+    : new Date(Date.now() - days * 2 * 86400000).toISOString().split('T')[0];
+
   const [{ data: currentPosts }, { data: previousPosts }, { data: followerHistory }] = await Promise.all([
-    supabase
-      .from('instagram_posts')
-      .select('likes, comments, saved, shares, reach')
-      .eq('instagram_account_id', account.id)
-      .gte('posted_at', periodStart),
+    currentPostsQuery,
     supabase
       .from('instagram_posts')
       .select('likes, comments, saved, shares, reach')
@@ -345,12 +364,12 @@ export async function getAnalyticsOverview(clientId: number, days = 30): Promise
       .from('instagram_follower_history')
       .select('date, follower_count')
       .eq('instagram_account_id', account.id)
-      .gte('date', new Date(now - days * 2 * 86400000).toISOString().split('T')[0])
+      .gte('date', followerHistoryStart)
       .order('date', { ascending: true }),
   ]);
 
   const history = followerHistory || [];
-  const periodStartDate = new Date(now - days * 86400000).toISOString().split('T')[0];
+  const periodStartDate = dateRange ? dateRange.start : new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
   const currentFollowers = history.filter(h => h.date >= periodStartDate);
   const previousFollowers = history.filter(h => h.date < periodStartDate);
 
@@ -401,16 +420,18 @@ export async function getAnalyticsOverview(clientId: number, days = 30): Promise
   };
 }
 
-export async function getPostsAnalytics(clientId: number, days = 30, sort = 'posted_at', dir = 'desc'): Promise<{ posts: PostAnalytics[]; total: number }> {
+export async function getPostsAnalytics(clientId: number, days = 30, sort = 'posted_at', dir = 'desc', dateRange?: { start: string; end: string }): Promise<{ posts: PostAnalytics[]; total: number }> {
   const account = await getAccountByClientId(clientId);
-  const sinceDate = new Date(Date.now() - days * 86400000).toISOString();
 
-  const { data: posts, error } = await supabase
+  const query = supabase
     .from('instagram_posts')
     .select('*')
     .eq('instagram_account_id', account.id)
-    .gte('posted_at', sinceDate)
+    .gte('posted_at', dateRange ? new Date(dateRange.start).toISOString() : new Date(Date.now() - days * 86400000).toISOString())
     .order('posted_at', { ascending: false });
+  if (dateRange) query.lte('posted_at', new Date(dateRange.end + 'T23:59:59.999Z').toISOString());
+
+  const { data: posts, error } = await query;
 
   if (error) throw error;
   const allPosts = posts || [];
@@ -459,24 +480,27 @@ export async function getPostsAnalytics(clientId: number, days = 30, sort = 'pos
   return { posts: enriched, total: enriched.length };
 }
 
-export async function getFollowerHistory(clientId: number, days = 90): Promise<FollowerHistory> {
+export async function getFollowerHistory(clientId: number, days = 90, dateRange?: { start: string; end: string }): Promise<FollowerHistory> {
   const account = await getAccountByClientId(clientId);
-  const sinceDate = new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
+  const sinceDate = dateRange ? dateRange.start : new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
 
-  const [{ data: history }, { data: postDates }] = await Promise.all([
-    supabase
-      .from('instagram_follower_history')
-      .select('date, follower_count, source')
-      .eq('instagram_account_id', account.id)
-      .gte('date', sinceDate)
-      .order('date', { ascending: true }),
-    supabase
-      .from('instagram_posts')
-      .select('posted_at, media_type')
-      .eq('instagram_account_id', account.id)
-      .gte('posted_at', new Date(Date.now() - days * 86400000).toISOString())
-      .order('posted_at', { ascending: true }),
-  ]);
+  const historyQuery = supabase
+    .from('instagram_follower_history')
+    .select('date, follower_count, source')
+    .eq('instagram_account_id', account.id)
+    .gte('date', sinceDate)
+    .order('date', { ascending: true });
+  if (dateRange) historyQuery.lte('date', dateRange.end);
+
+  const postsQuery = supabase
+    .from('instagram_posts')
+    .select('posted_at, media_type')
+    .eq('instagram_account_id', account.id)
+    .gte('posted_at', dateRange ? new Date(dateRange.start).toISOString() : new Date(Date.now() - days * 86400000).toISOString())
+    .order('posted_at', { ascending: true });
+  if (dateRange) postsQuery.lte('posted_at', new Date(dateRange.end + 'T23:59:59.999Z').toISOString());
+
+  const [{ data: history }, { data: postDates }] = await Promise.all([historyQuery, postsQuery]);
 
   return {
     history: history || [],

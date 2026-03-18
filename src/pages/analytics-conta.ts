@@ -25,7 +25,7 @@ import {
   type AnalyticsReport,
   type AccountAIAnalysis,
 } from '../services/analytics';
-import { getInstagramSummary } from '../services/instagram';
+import { getInstagramSummary, syncInstagramData } from '../services/instagram';
 
 declare const Chart: any;
 
@@ -34,6 +34,10 @@ interface State {
   overviewDays: number;
   sort: { col: string; dir: 'asc' | 'desc' };
   expandedPostId: number | null;
+  /** When set, analytics use a fixed date window instead of "N days back from today" */
+  periodStart?: string; // ISO date (YYYY-MM-DD)
+  periodEnd?: string;   // ISO date (YYYY-MM-DD)
+  periodLabel?: string; // e.g. "Fev/2026"
 }
 
 let chartInstances: any[] = [];
@@ -165,10 +169,11 @@ export async function renderAnalyticsConta(container: HTMLElement, param?: strin
 
 async function renderContent(container: HTMLElement, clientId: number, cliente: any, account: any, state: State) {
   // Fetch all data in parallel (single batch)
+  const dateRange = state.periodStart && state.periodEnd ? { start: state.periodStart, end: state.periodEnd } : undefined;
   const [overviewRes, postsRes, historyRes, tagsData, reportsData, demoRes, onlineRes] = await Promise.all([
-    getAnalyticsOverview(clientId, state.overviewDays),
-    getPostsAnalytics(clientId, state.days, state.sort.col, state.sort.dir),
-    getFollowerHistory(clientId, state.days),
+    getAnalyticsOverview(clientId, state.overviewDays, dateRange),
+    getPostsAnalytics(clientId, state.days, state.sort.col, state.sort.dir, dateRange),
+    getFollowerHistory(clientId, state.days, dateRange),
     getTags(),
     getClientReports(clientId),
     getAudienceDemographics(clientId).catch(() => null),
@@ -235,6 +240,7 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
       </div>
       <div class="header-actions">
         <button class="btn-secondary" id="btn-back"><i class="ph ph-arrow-left"></i> Voltar</button>
+        <button class="btn-icon" id="btn-ig-sync" data-tooltip="Sincronizar Dados" data-tooltip-dir="bottom" style="color:var(--text-muted)"><i class="ph ph-arrows-clockwise"></i></button>
         <button class="btn-primary" id="btn-gen-report"><i class="ph ph-file-html"></i> Gerar Relatório</button>
       </div>
     </header>
@@ -243,22 +249,24 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
     <div class="filter-bar animate-up">
       <button class="filter-btn ${state.overviewDays === 7 ? 'active' : ''}" data-days="7">7 dias</button>
       <button class="filter-btn ${state.overviewDays === 30 ? 'active' : ''}" data-days="30">30 dias</button>
+      <button class="filter-btn ${state.periodStart ? 'active' : ''}" id="btn-last-month">Último mês</button>
       <button class="filter-btn ${state.overviewDays === 90 ? 'active' : ''}" data-days="90">90 dias</button>
       <span style="color:var(--text-muted);align-self:center;font-size:0.75rem">ou</span>
       <input type="number" id="custom-days-input" class="filter-btn" min="1" max="730" placeholder="Dias..."
-             value="${![7, 30, 90].includes(state.overviewDays) ? state.overviewDays : ''}"
+             value="${!state.periodStart && ![7, 30, 90].includes(state.overviewDays) ? state.overviewDays : ''}"
              style="width:80px">
     </div>
 
     <!-- KPI Cards -->
     <div class="kpi-grid animate-up" style="grid-template-columns:repeat(auto-fit, minmax(160px, 1fr))">
-      ${renderKpiCard('SEGUIDORES', overview.followerCount.toLocaleString('pt-BR'), overview.followers, `${state.overviewDays}d`)}
-      ${renderKpiCard('ENGAJAMENTO', overview.engagement.current.toFixed(2) + '%', overview.engagement, `${state.overviewDays}d`)}
-      ${renderKpiCard('ALCANCE', overview.reach.current.toLocaleString('pt-BR'), overview.reach, `${state.overviewDays}d`)}
+      ${(() => { const periodTag = state.periodLabel || `${state.overviewDays}d`; return `
+      ${renderKpiCard('SEGUIDORES', overview.followerCount.toLocaleString('pt-BR'), overview.followers, periodTag, (overview.followerCount - overview.followers.current).toLocaleString('pt-BR'))}
+      ${renderKpiCard('ENGAJAMENTO', overview.engagement.current.toFixed(2) + '%', overview.engagement, periodTag, overview.engagement.previous.toFixed(2) + '%')}
+      ${renderKpiCard('ALCANCE', overview.reach.current.toLocaleString('pt-BR'), overview.reach, periodTag, overview.reach.previous.toLocaleString('pt-BR'))}
       ${renderKpiCard('CONTAS ENGAJADAS', overview.profileViews.current.toLocaleString('pt-BR'), overview.profileViews, '28d fixo')}
       ${renderKpiCard('CLIQUES NO LINK', overview.websiteClicks.current.toLocaleString('pt-BR'), overview.websiteClicks, '28d fixo')}
-      ${renderKpiCard('TAXA DE SALVAMENTOS', overview.savesRate.current.toFixed(2) + '%', overview.savesRate, `${state.overviewDays}d`)}
-      ${renderKpiCard('POSTS PUBLICADOS', String(overview.postsPublished.current), overview.postsPublished, `${state.overviewDays}d`)}
+      ${renderKpiCard('TAXA DE SALVAMENTOS', overview.savesRate.current.toFixed(2) + '%', overview.savesRate, periodTag, overview.savesRate.previous.toFixed(2) + '%')}
+      ${renderKpiCard('POSTS PUBLICADOS', String(overview.postsPublished.current), overview.postsPublished, periodTag, String(overview.postsPublished.previous))}`; })()}
     </div>
 
     <!-- Saves Rate Highlight -->
@@ -501,6 +509,29 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
   // Back button
   document.getElementById('btn-back')?.addEventListener('click', () => navigate(`/cliente/${clientId}`));
 
+  // Sync button
+  const btnSync = document.getElementById('btn-ig-sync') as HTMLButtonElement | null;
+  if (btnSync) {
+    btnSync.addEventListener('click', async () => {
+      try {
+        btnSync.querySelector('i')!.className = 'ph ph-spinner ph-spin';
+        btnSync.disabled = true;
+        await syncInstagramData(clientId);
+        showToast('Dados sincronizados com sucesso!');
+        destroyCharts();
+        await renderAnalyticsConta(container, String(clientId));
+      } catch (err: any) {
+        btnSync.querySelector('i')!.className = 'ph ph-arrows-clockwise';
+        btnSync.disabled = false;
+        if (err.message === 'TOKEN_EXPIRED') {
+          showToast('Token expirado. Por favor, reconecte a conta.', 'error');
+        } else {
+          showToast('Erro na sincronização: ' + escapeHTML(err.message || 'Falha desconhecida'), 'error');
+        }
+      }
+    });
+  }
+
   // Generate HTML report
   document.getElementById('btn-gen-report')?.addEventListener('click', async () => {
     const workspace = await getCurrentWorkspace();
@@ -590,9 +621,30 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
       const newDays = parseInt((btn as HTMLElement).dataset.days || '30');
       state.days = newDays;
       state.overviewDays = newDays;
+      state.periodStart = undefined;
+      state.periodEnd = undefined;
+      state.periodLabel = undefined;
       destroyCharts();
       await renderContent(container, clientId, cliente, account, state);
     });
+  });
+
+  // "Last month" button — exact previous calendar month range
+  container.querySelector('#btn-last-month')?.addEventListener('click', async () => {
+    const now = new Date();
+    const firstOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0); // day 0 of current month = last day of prev month
+    const daysInLastMonth = lastOfLastMonth.getDate();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+    state.days = daysInLastMonth;
+    state.overviewDays = daysInLastMonth;
+    state.periodStart = fmt(firstOfLastMonth);
+    state.periodEnd = fmt(lastOfLastMonth);
+    state.periodLabel = firstOfLastMonth.toLocaleString('pt-BR', { month: 'short', year: 'numeric' });
+    destroyCharts();
+    await renderContent(container, clientId, cliente, account, state);
   });
 
   // Custom days input — updates only overviewDays (KPI cards)
@@ -606,6 +658,9 @@ async function renderContent(container: HTMLElement, clientId: number, cliente: 
           return;
         }
         state.overviewDays = val;
+        state.periodStart = undefined;
+        state.periodEnd = undefined;
+        state.periodLabel = undefined;
         destroyCharts();
         await renderContent(container, clientId, cliente, account, state);
       }
@@ -891,18 +946,22 @@ function renderAgeChart(demographics: AudienceDemographics) {
 
 // --- Helpers ---
 
-function renderKpiCard(label: string, value: string, delta: KpiDelta, period?: string): string {
+function renderKpiCard(label: string, value: string, delta: KpiDelta, period?: string, prevFormatted?: string): string {
   const dirIcon = delta.direction === 'up' ? '↑' : delta.direction === 'down' ? '↓' : '→';
   const dirClass = delta.direction === 'up' ? 'analytics-delta-up' : delta.direction === 'down' ? 'analytics-delta-down' : 'analytics-delta-stable';
   const pct = Math.abs(delta.deltaPercent).toFixed(1);
   const periodBadge = period
     ? `<span style="display:inline-block;align-self:flex-start;margin-top:4px;font-size:0.72rem;padding:2px 7px;border-radius:4px;background:var(--border-color,rgba(0,0,0,0.08));color:var(--text-muted)">${period}</span>`
     : '';
+  const prevLine = prevFormatted != null
+    ? `<span style="font-size:0.72rem;color:var(--text-muted);margin-top:2px">Anterior: ${prevFormatted}</span>`
+    : '';
   return `
     <div class="kpi-card">
       <span class="kpi-label">${label}</span>
       <span class="kpi-value" style="font-size:1.3rem">${value}</span>
       <span class="kpi-sub ${dirClass}">${dirIcon} ${pct}% vs periodo anterior</span>
+      ${prevLine}
       ${periodBadge}
     </div>`;
 }
@@ -1191,6 +1250,7 @@ function generateHtmlReport(data: HtmlReportData): void {
         <h2>Posts Mais Salvos</h2>
         <table style="width:100%;border-collapse:collapse;font-size:13px">
           <thead><tr style="border-bottom:2px solid #e5e5e5">
+            <th style="padding:8px;text-align:left;width:48px"></th>
             <th style="padding:8px;text-align:left">Post</th>
             <th style="padding:8px;text-align:center">Salvamentos</th>
             <th style="padding:8px;text-align:right">Taxa</th>
@@ -1198,7 +1258,10 @@ function generateHtmlReport(data: HtmlReportData): void {
           <tbody>
             ${topSaved.map(p => `
               <tr style="border-bottom:1px solid #f0f0f0">
-                <td style="padding:8px;max-width:350px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${truncText(p.caption || 'Sem legenda', 70)}</td>
+                <td style="padding:6px 8px">${p.thumbnail_url
+                  ? `<img src="${escapeHTML(p.thumbnail_url)}" style="width:40px;height:40px;object-fit:cover;border-radius:4px" alt="">`
+                  : `<div style="width:40px;height:40px;border-radius:4px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-size:14px;color:#aaa">&#9654;</div>`}</td>
+                <td style="padding:8px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${truncText(p.caption || 'Sem legenda', 60)}</td>
                 <td style="padding:8px;text-align:center;font-weight:600">${p.saved}</td>
                 <td style="padding:8px;text-align:right">${p.saves_rate.toFixed(1)}%</td>
               </tr>
@@ -1215,6 +1278,7 @@ function generateHtmlReport(data: HtmlReportData): void {
       <h2>Performance de Conteúdo</h2>
       <table style="width:100%;border-collapse:collapse;font-size:12px">
         <thead><tr style="border-bottom:2px solid #e5e5e5">
+          <th style="padding:8px;text-align:left;width:48px"></th>
           <th style="padding:8px;text-align:left">Data</th>
           <th style="padding:8px;text-align:left">Tipo</th>
           <th style="padding:8px;text-align:right">Alcance</th>
@@ -1226,6 +1290,9 @@ function generateHtmlReport(data: HtmlReportData): void {
         <tbody>
           ${displayPosts.map(p => `
             <tr style="border-bottom:1px solid #f0f0f0">
+              <td style="padding:6px 8px">${p.thumbnail_url
+                ? `<img src="${escapeHTML(p.thumbnail_url)}" style="width:40px;height:40px;object-fit:cover;border-radius:4px" alt="">`
+                : `<div style="width:40px;height:40px;border-radius:4px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-size:14px;color:#aaa">&#9654;</div>`}</td>
               <td style="padding:6px 8px">${new Date(p.posted_at).toLocaleDateString('pt-BR')}</td>
               <td style="padding:6px 8px">${formatMediaType(p.media_type)}</td>
               <td style="padding:6px 8px;text-align:right">${fmtNum(p.reach)}</td>
@@ -1418,18 +1485,21 @@ function generateHtmlReport(data: HtmlReportData): void {
         <div class="kpi-label">Seguidores</div>
         <div class="kpi-value">${fmtNum(overview.followerCount)}</div>
         <div class="kpi-delta" style="color:${deltaColor(overview.followers)}">${deltaArrow(overview.followers)} ${Math.abs(overview.followers.deltaPercent).toFixed(1)}%</div>
+        <div style="font-size:10px;color:#999;margin-top:2px">Anterior: ${fmtNum(overview.followerCount - overview.followers.current)}</div>
         <div style="font-size:9px;color:#aaa;margin-top:2px">${overviewDays}d</div>
       </div>
       <div class="kpi-box">
         <div class="kpi-label">Engajamento</div>
         <div class="kpi-value">${fmtPct(overview.engagement.current)}</div>
         <div class="kpi-delta" style="color:${deltaColor(overview.engagement)}">${deltaArrow(overview.engagement)} ${Math.abs(overview.engagement.deltaPercent).toFixed(1)}%</div>
+        <div style="font-size:10px;color:#999;margin-top:2px">Anterior: ${fmtPct(overview.engagement.previous)}</div>
         <div style="font-size:9px;color:#aaa;margin-top:2px">${overviewDays}d</div>
       </div>
       <div class="kpi-box">
         <div class="kpi-label">Alcance</div>
         <div class="kpi-value">${fmtNum(overview.reach.current)}</div>
         <div class="kpi-delta" style="color:${deltaColor(overview.reach)}">${deltaArrow(overview.reach)} ${Math.abs(overview.reach.deltaPercent).toFixed(1)}%</div>
+        <div style="font-size:10px;color:#999;margin-top:2px">Anterior: ${fmtNum(overview.reach.previous)}</div>
         <div style="font-size:9px;color:#aaa;margin-top:2px">${overviewDays}d</div>
       </div>
       <div class="kpi-box">
@@ -1448,12 +1518,14 @@ function generateHtmlReport(data: HtmlReportData): void {
         <div class="kpi-label">Taxa de Salvamentos</div>
         <div class="kpi-value">${fmtPct(overview.savesRate.current)}</div>
         <div class="kpi-delta" style="color:${deltaColor(overview.savesRate)}">${deltaArrow(overview.savesRate)} ${Math.abs(overview.savesRate.deltaPercent).toFixed(1)}%</div>
+        <div style="font-size:10px;color:#999;margin-top:2px">Anterior: ${fmtPct(overview.savesRate.previous)}</div>
         <div style="font-size:9px;color:#aaa;margin-top:2px">${overviewDays}d</div>
       </div>
       <div class="kpi-box">
         <div class="kpi-label">Posts Publicados</div>
         <div class="kpi-value">${overview.postsPublished.current}</div>
         <div class="kpi-delta" style="color:${deltaColor(overview.postsPublished)}">${deltaArrow(overview.postsPublished)} ${Math.abs(overview.postsPublished.deltaPercent).toFixed(1)}%</div>
+        <div style="font-size:10px;color:#999;margin-top:2px">Anterior: ${overview.postsPublished.previous}</div>
         <div style="font-size:9px;color:#aaa;margin-top:2px">${overviewDays}d</div>
       </div>
     </div>
