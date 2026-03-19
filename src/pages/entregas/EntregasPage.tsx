@@ -15,8 +15,8 @@ import {
   addWorkflow, addWorkflowEtapa, addWorkflowTemplate, removeWorkflowTemplate,
   completeEtapa, revertEtapa, duplicateWorkflow, removeWorkflow,
   updateWorkflow, updateWorkflowEtapa, updateWorkflowTemplate,
-  getDeadlineInfo, getInitials, createPortalToken,
-  type Workflow, type WorkflowEtapa, type WorkflowTemplate, type Cliente, type Membro,
+  getDeadlineInfo, getInitials, createPortalToken, getPortalApprovals,
+  type Workflow, type WorkflowEtapa, type WorkflowTemplate, type Cliente, type Membro, type PortalApproval,
 } from '../../store';
 import { sanitizeUrl } from '../../utils/security';
 
@@ -50,10 +50,11 @@ interface EtapaFormData {
   prazo: number;
   tipoPrazo: 'corridos' | 'uteis';
   responsavelId: number | null;
+  tipo: 'padrao' | 'aprovacao_cliente';
 }
 
 function defaultEtapa(): EtapaFormData {
-  return { nome: '', prazo: 3, tipoPrazo: 'corridos', responsavelId: null };
+  return { nome: '', prazo: 3, tipoPrazo: 'corridos', responsavelId: null, tipo: 'padrao' };
 }
 
 // ---- EtapaRow component ----
@@ -63,6 +64,7 @@ function EtapaRow({
   prazo,
   tipoPrazo,
   responsavelId,
+  tipo,
   membros,
   onChange,
   onRemove,
@@ -72,12 +74,13 @@ function EtapaRow({
   prazo: number;
   tipoPrazo: string;
   responsavelId: number | null;
+  tipo: 'padrao' | 'aprovacao_cliente';
   membros: Membro[];
   onChange: (field: string, val: unknown) => void;
   onRemove: () => void;
 }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 110px 150px auto', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 110px 150px auto auto', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
       <Input
         placeholder="Nome da etapa"
         value={nome}
@@ -103,6 +106,15 @@ function EtapaRow({
           {membros.map(m => <SelectItem key={m.id} value={String(m.id)}>{m.nome}</SelectItem>)}
         </SelectContent>
       </Select>
+      <Button
+        size="sm"
+        variant={tipo === 'aprovacao_cliente' ? 'default' : 'outline'}
+        title={tipo === 'aprovacao_cliente' ? 'Etapa de aprovação do cliente' : 'Marcar como aprovação do cliente'}
+        onClick={() => onChange('tipo', tipo === 'aprovacao_cliente' ? 'padrao' : 'aprovacao_cliente')}
+        style={{ fontSize: '0.7rem', padding: '0.25rem 0.5rem', whiteSpace: 'nowrap' }}
+      >
+        {tipo === 'aprovacao_cliente' ? '✓ Aprovação' : 'Aprovação'}
+      </Button>
       <Button size="icon" variant="ghost" className="text-destructive" onClick={onRemove}>
         <Trash2 className="h-4 w-4" />
       </Button>
@@ -145,6 +157,7 @@ function NewWorkflowModal({
       prazo: e.prazo_dias,
       tipoPrazo: e.tipo_prazo,
       responsavelId: e.responsavel_id || null,
+      tipo: (e as any).tipo || 'padrao',
     })));
   };
 
@@ -174,6 +187,7 @@ function NewWorkflowModal({
           nome: e.nome,
           prazo_dias: e.prazo,
           tipo_prazo: e.tipoPrazo,
+          tipo: e.tipo,
           responsavel_id: e.responsavelId,
           status: i === 0 ? 'ativo' : 'pendente',
           iniciado_em: i === 0 ? now : null,
@@ -240,6 +254,7 @@ function NewWorkflowModal({
                 prazo={e.prazo}
                 tipoPrazo={e.tipoPrazo}
                 responsavelId={e.responsavelId}
+                tipo={e.tipo}
                 membros={membros}
                 onChange={(field, val) => {
                   const next = [...etapas];
@@ -463,6 +478,7 @@ function TemplatesModal({
       prazo: e.prazo_dias,
       tipoPrazo: e.tipo_prazo,
       responsavelId: e.responsavel_id || null,
+      tipo: (e as any).tipo || 'padrao',
     })));
   };
 
@@ -512,6 +528,7 @@ function TemplatesModal({
                 prazo={e.prazo}
                 tipoPrazo={e.tipoPrazo}
                 responsavelId={e.responsavelId}
+                tipo={e.tipo}
                 membros={membros}
                 onChange={(field, val) => {
                   const next = [...etapas];
@@ -577,10 +594,34 @@ export default function EntregasPage() {
 
   const etapasMap: Map<number, WorkflowEtapa[]> = etapasQueries.data || new Map();
 
+  // Collect approval-type active etapa IDs to fetch their comments
+  const approvalEtapaIds: number[] = [];
+  for (const [, etapas] of etapasMap) {
+    for (const e of etapas) {
+      if (e.tipo === 'aprovacao_cliente' && e.status === 'ativo' && e.id) {
+        approvalEtapaIds.push(e.id);
+      }
+    }
+  }
+
+  const { data: portalApprovals = [] } = useQuery({
+    queryKey: ['portal-approvals', approvalEtapaIds.join(',')],
+    queryFn: () => getPortalApprovals(approvalEtapaIds),
+    enabled: approvalEtapaIds.length > 0,
+  });
+
+  const approvalsMap = new Map<number, PortalApproval[]>();
+  for (const a of portalApprovals) {
+    const list = approvalsMap.get(a.workflow_etapa_id) || [];
+    list.push(a);
+    approvalsMap.set(a.workflow_etapa_id, list);
+  }
+
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ['workflows'] });
     qc.invalidateQueries({ queryKey: ['workflow-templates'] });
     qc.invalidateQueries({ queryKey: ['all-active-etapas'] });
+    qc.invalidateQueries({ queryKey: ['portal-approvals'] });
   };
 
   // Build board cards
@@ -874,6 +915,36 @@ export default function EntregasPage() {
                               {iniciadoEm && (
                                 <div className="board-card-created">iniciada em {iniciadoEm}</div>
                               )}
+
+                              {card.etapa.tipo === 'aprovacao_cliente' && (() => {
+                                const approvals = approvalsMap.get(card.etapa.id!) || [];
+                                const corrections = approvals.filter(a => a.action === 'correcao');
+                                return (
+                                  <div className="board-card-approval">
+                                    <div className="board-card-approval-badge">
+                                      ⏳ Aguardando aprovação do cliente
+                                    </div>
+                                    {corrections.length > 0 && (
+                                      <div className="board-card-approval-thread">
+                                        <div className="board-card-approval-thread-title">
+                                          Correções solicitadas ({corrections.length})
+                                        </div>
+                                        {corrections.slice(0, 3).map(c => (
+                                          <div key={c.id} className="board-card-approval-comment">
+                                            <p>{c.comentario}</p>
+                                            <span className="board-card-approval-date">
+                                              {new Date(c.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                            </span>
+                                          </div>
+                                        ))}
+                                        {corrections.length > 3 && (
+                                          <span className="board-card-approval-more">+{corrections.length - 3} mais</span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })()}
 
                               <div className="board-card-actions">
                                 {card.etapaIdx > 0 && (

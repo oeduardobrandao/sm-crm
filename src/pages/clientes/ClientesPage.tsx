@@ -189,7 +189,7 @@ export default function ClientesPage() {
                       {initials}
                     </div>
                   )}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                       <button className="client-link" onClick={() => navigate(`/clientes/${c.id}`)} style={{ fontWeight: 600, textAlign: 'left', lineHeight: 1.2 }}>
                         {c.nome}
@@ -213,10 +213,8 @@ export default function ClientesPage() {
                       {c.telefone && <span>{c.telefone}</span>}
                     </div>
                   </div>
-                </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid var(--border-color)', paddingTop: '0.5rem', marginTop: 'auto' }}>
-                  <div className="flex gap-1" style={{ marginLeft: '-0.25rem' }}>
+                  <div className="flex gap-1" style={{ marginLeft: 'auto', alignSelf: 'flex-start' }}>
                     <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openEdit(c)}>
                       <Edit2 className="h-3.5 w-3.5" />
                     </Button>
@@ -226,6 +224,9 @@ export default function ClientesPage() {
                       </Button>
                     )}
                   </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', borderTop: '1px solid var(--border-color)', paddingTop: '0.5rem', marginTop: 'auto' }}>
                   <div style={{ fontSize: '0.85rem', fontWeight: 500 }}>
                     {c.valor_mensal ? formatBRL(c.valor_mensal) + '/mês' : '—'}
                   </div>

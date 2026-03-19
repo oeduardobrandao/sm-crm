@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Check, Circle, ExternalLink, FolderOpen, FileText } from 'lucide-react';
+import { Check, Circle, ExternalLink, FolderOpen, FileText, ThumbsUp, MessageSquare, Send } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 
@@ -11,9 +11,18 @@ interface PortalEtapa {
   id: number;
   ordem: number;
   nome: string;
+  tipo?: 'padrao' | 'aprovacao_cliente';
   status: 'pendente' | 'ativo' | 'concluido';
   iniciado_em: string | null;
   concluido_em: string | null;
+}
+
+interface PortalApproval {
+  id: number;
+  workflow_etapa_id: number;
+  action: 'aprovado' | 'correcao';
+  comentario: string | null;
+  created_at: string;
 }
 
 interface PortalData {
@@ -26,6 +35,7 @@ interface PortalData {
     created_at: string;
   };
   etapas: PortalEtapa[];
+  approvals: PortalApproval[];
   cliente_nome: string;
   workspace: {
     name: string;
@@ -50,6 +60,11 @@ export default function PortalPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Approval state
+  const [comentario, setComentario] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [approvalResult, setApprovalResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
   useEffect(() => {
     document.documentElement.style.overflow = 'auto';
     document.body.style.overflow = 'auto';
@@ -59,25 +74,74 @@ export default function PortalPage() {
     };
   }, []);
 
-  useEffect(() => {
+  const fetchData = async () => {
     if (!token) { setError('Link inválido.'); setLoading(false); return; }
-    const fetchData = async () => {
-      try {
-        const res = await fetch(
-          `${SUPABASE_URL}/functions/v1/portal-data?token=${encodeURIComponent(token)}`,
-          { headers: { apikey: SUPABASE_ANON_KEY } },
-        );
-        const json = await res.json();
-        if (!res.ok) throw new Error(json.error || 'Erro ao carregar dados.');
-        setData(json);
-      } catch (err: any) {
-        setError(err.message || 'Erro ao carregar dados.');
-      } finally {
-        setLoading(false);
+    try {
+      const res = await fetch(
+        `${SUPABASE_URL}/functions/v1/portal-data?token=${encodeURIComponent(token)}`,
+        { headers: { apikey: SUPABASE_ANON_KEY } },
+      );
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Erro ao carregar dados.');
+      setData(json);
+    } catch (err: any) {
+      setError(err.message || 'Erro ao carregar dados.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchData(); }, [token]);
+
+  const handleApprovalAction = async (action: 'aprovado' | 'correcao') => {
+    if (!token || !data) return;
+
+    const approvalEtapa = data.etapas.find(
+      e => e.tipo === 'aprovacao_cliente' && e.status === 'ativo'
+    );
+    if (!approvalEtapa) return;
+
+    if (action === 'correcao' && !comentario.trim()) return;
+
+    setSubmitting(true);
+    setApprovalResult(null);
+
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/portal-approve`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          token,
+          etapa_id: approvalEtapa.id,
+          action,
+          comentario: comentario.trim() || null,
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Erro ao enviar.');
+
+      if (action === 'aprovado') {
+        setApprovalResult({ type: 'success', message: 'Aprovado com sucesso!' });
+        // Update etapas in-place from response
+        if (json.etapas) {
+          setData(prev => prev ? { ...prev, etapas: json.etapas } : prev);
+        } else {
+          await fetchData();
+        }
+      } else {
+        setApprovalResult({ type: 'success', message: 'Correções enviadas com sucesso!' });
+        setComentario('');
       }
-    };
-    fetchData();
-  }, [token]);
+    } catch (err: any) {
+      setApprovalResult({ type: 'error', message: err.message || 'Erro ao enviar.' });
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -102,6 +166,10 @@ export default function PortalPage() {
   const { workflow, etapas, cliente_nome, workspace } = data;
   const completedCount = etapas.filter(e => e.status === 'concluido').length;
   const progressPct = etapas.length > 0 ? Math.round((completedCount / etapas.length) * 100) : 0;
+
+  const approvalEtapa = etapas.find(
+    e => e.tipo === 'aprovacao_cliente' && e.status === 'ativo'
+  );
 
   return (
     <div className="portal-page">
@@ -159,6 +227,10 @@ export default function PortalPage() {
               const isActive = etapa.status === 'ativo';
               const isPending = etapa.status === 'pendente';
 
+              const etapaApprovals = data.approvals
+                ? data.approvals.filter(a => a.workflow_etapa_id === etapa.id && a.comentario)
+                : [];
+
               return (
                 <div
                   key={etapa.id}
@@ -184,12 +256,76 @@ export default function PortalPage() {
                         </span>
                       )}
                     </div>
+                    {etapaApprovals.length > 0 && (
+                      <div className="portal-timeline-comments" style={{ marginTop: '0.75rem', paddingLeft: '0.75rem', borderLeft: '2px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        {etapaApprovals.map(a => (
+                          <div key={a.id} style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', padding: '0.75rem', borderRadius: '8px' }}>
+                            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: a.action === 'correcao' ? '#ef4444' : 'var(--primary-color)', marginBottom: '0.25rem' }}>
+                              {a.action === 'correcao' ? 'Correção solicitada' : 'Observação'} &bull; {new Date(a.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                            </div>
+                            <p style={{ fontSize: '0.9rem', color: 'var(--text-color)', margin: 0, whiteSpace: 'pre-wrap' }}>{a.comentario}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
             })}
           </div>
         </section>
+
+        {/* Client Approval Section */}
+        {approvalEtapa && (
+          <section className="portal-section portal-approval card">
+            <h2 className="portal-section-title">
+              <ThumbsUp className="h-5 w-5" /> Sua Aprovação
+            </h2>
+            <p className="portal-section-subtitle">
+              Esta etapa aguarda sua aprovação. Revise o trabalho e aprove ou envie correções.
+            </p>
+
+            {approvalResult && (
+              <div className={`portal-approval-result ${approvalResult.type}`}>
+                {approvalResult.message}
+              </div>
+            )}
+
+            <div className="portal-approval-comment">
+              <label htmlFor="portal-comment">
+                <MessageSquare className="h-4 w-4" />
+                Comentários ou correções (opcional para aprovação)
+              </label>
+              <textarea
+                id="portal-comment"
+                value={comentario}
+                onChange={e => setComentario(e.target.value)}
+                placeholder="Descreva aqui as correções necessárias ou deixe um comentário..."
+                rows={4}
+                disabled={submitting}
+              />
+            </div>
+
+            <div className="portal-approval-actions">
+              <button
+                className="portal-approval-btn portal-approval-btn--approve"
+                onClick={() => handleApprovalAction('aprovado')}
+                disabled={submitting}
+              >
+                {submitting ? <Spinner size="sm" /> : <ThumbsUp className="h-4 w-4" />}
+                Aprovar
+              </button>
+              <button
+                className="portal-approval-btn portal-approval-btn--correction"
+                onClick={() => handleApprovalAction('correcao')}
+                disabled={submitting || !comentario.trim()}
+              >
+                {submitting ? <Spinner size="sm" /> : <Send className="h-4 w-4" />}
+                Enviar Correções
+              </button>
+            </div>
+          </section>
+        )}
 
         {/* Links */}
         {(workflow.link_drive || workflow.link_notion) && (

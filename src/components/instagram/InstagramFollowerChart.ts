@@ -2,8 +2,9 @@
 // Mesaas - Instagram Follower Chart Component
 // =============================================
 import { formatDate } from '../../store';
+import { Chart, registerables } from 'chart.js';
 
-declare const Chart: any; // Assuming Chart.js is loaded via CDN in index.html
+Chart.register(...registerables);
 
 export function renderInstagramFollowerChart(container: HTMLElement, history: any[]) {
   if (!history || history.length === 0) {

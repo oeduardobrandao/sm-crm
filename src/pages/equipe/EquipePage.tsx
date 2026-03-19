@@ -210,7 +210,7 @@ export default function EquipePage() {
                   <div className="avatar" style={{ background: color, color: '#fff', fontWeight: 700, width: 44, height: 44, fontSize: '1rem', flexShrink: 0 }}>
                     {getInitials(m.nome)}
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', flex: 1, minWidth: 0 }}>
                     <button className="client-link" onClick={() => navigate(`/equipe/${m.id}`)} style={{ fontWeight: 600, textAlign: 'left', lineHeight: 1.2 }}>
                       {m.nome}
                     </button>
@@ -219,10 +219,8 @@ export default function EquipePage() {
                       <Badge variant="secondary" style={{ fontSize: '0.65rem', padding: '0 0.4rem', pointerEvents: 'none' }}>{TIPO_LABEL[m.tipo]}</Badge>
                     </div>
                   </div>
-                </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid var(--border-color)', paddingTop: '0.5rem', marginTop: 'auto' }}>
-                  <div className="flex gap-1" style={{ marginLeft: '-0.25rem' }}>
+                  <div className="flex gap-1" style={{ marginLeft: 'auto', alignSelf: 'flex-start' }}>
                     {!isAgent && (
                       <>
                         <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openEdit(m)}>
@@ -236,12 +234,15 @@ export default function EquipePage() {
                       </>
                     )}
                   </div>
-                  {!isAgent && (
+                </div>
+
+                {!isAgent && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', borderTop: '1px solid var(--border-color)', paddingTop: '0.5rem', marginTop: 'auto' }}>
                     <div style={{ fontSize: '0.85rem', fontWeight: 500 }}>
                       {m.custo_mensal ? formatBRL(m.custo_mensal) + '/mês' : '—'}
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             );
           })}

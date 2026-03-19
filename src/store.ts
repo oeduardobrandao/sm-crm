@@ -646,6 +646,7 @@ export interface WorkflowEtapa {
   prazo_dias: number;
   tipo_prazo: 'uteis' | 'corridos';
   responsavel_id?: number | null;
+  tipo?: 'padrao' | 'aprovacao_cliente';
   status: 'pendente' | 'ativo' | 'concluido';
   iniciado_em?: string | null;
   concluido_em?: string | null;
@@ -841,6 +842,25 @@ export async function getPortalToken(workflowId: number): Promise<string | null>
     .eq('workflow_id', workflowId)
     .maybeSingle();
   return data?.token || null;
+}
+
+export interface PortalApproval {
+  id: number;
+  workflow_etapa_id: number;
+  action: 'aprovado' | 'correcao';
+  comentario: string | null;
+  created_at: string;
+}
+
+export async function getPortalApprovals(etapaIds: number[]): Promise<PortalApproval[]> {
+  if (etapaIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from('portal_approvals')
+    .select('id, workflow_etapa_id, action, comentario, created_at')
+    .in('workflow_etapa_id', etapaIds)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data || [];
 }
 
 /** Calculate deadline info for an active step. */

@@ -3354,6 +3354,62 @@ body.role-agent input[name="valor_total"] {
   white-space: nowrap;
 }
 
+.board-card-approval {
+  margin-top: 0.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.board-card-approval-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--warning, #eab308);
+  background: color-mix(in srgb, var(--warning, #eab308) 12%, transparent);
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  text-align: center;
+}
+
+.board-card-approval-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.board-card-approval-thread-title {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--danger, #ef4444);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.board-card-approval-comment {
+  background: var(--bg-color);
+  border-left: 2px solid var(--danger, #ef4444);
+  padding: 0.3rem 0.5rem;
+  border-radius: 0 4px 4px 0;
+}
+
+.board-card-approval-comment p {
+  font-size: 0.72rem;
+  color: var(--text-color);
+  margin: 0;
+  line-height: 1.35;
+}
+
+.board-card-approval-date {
+  font-size: 0.6rem;
+  color: var(--text-muted);
+}
+
+.board-card-approval-more {
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 .board-card-actions {
   display: flex;
   flex-wrap: wrap;
@@ -3806,6 +3862,7 @@ body.role-agent input[name="valor_total"] {
   padding-bottom: 1rem;
   flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: flex-start;
   padding-top: 3px;
 }
@@ -3880,6 +3937,117 @@ body.role-agent input[name="valor_total"] {
   opacity: 0.5;
 }
 
+/* Portal Approval Section */
+.portal-approval {
+  border: 1px solid var(--primary-color);
+  background: var(--card-bg);
+}
+
+.portal-approval .portal-section-title {
+  color: var(--primary-color);
+}
+
+.portal-approval-result {
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  margin-bottom: 1rem;
+}
+
+.portal-approval-result.success {
+  background: rgba(34, 197, 94, 0.1);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.2);
+}
+
+.portal-approval-result.error {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.portal-approval-comment {
+  margin-bottom: 1rem;
+}
+
+.portal-approval-comment label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+}
+
+.portal-approval-comment textarea {
+  width: 100%;
+  padding: 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary, rgba(0,0,0,0.15));
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 80px;
+  transition: border-color 0.2s;
+}
+
+.portal-approval-comment textarea:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+
+.portal-approval-comment textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.portal-approval-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.portal-approval-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 1.25rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: opacity 0.2s, transform 0.1s;
+}
+
+.portal-approval-btn:hover:not(:disabled) {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.portal-approval-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.portal-approval-btn--approve {
+  background: #22c55e;
+  color: #fff;
+}
+
+.portal-approval-btn--correction {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+}
+
+.portal-approval-btn--correction:hover:not(:disabled) {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
 /* Mobile tweaks */
 @media (max-width: 600px) {
   .portal-main {
@@ -3895,6 +4063,9 @@ body.role-agent input[name="valor_total"] {
     padding: 1.25rem !important;
   }
   .portal-links {
+    flex-direction: column;
+  }
+  .portal-approval-actions {
     flex-direction: column;
   }
 }

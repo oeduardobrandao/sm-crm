@@ -130,7 +130,7 @@ export default function ClienteDetalhePage() {
     }
     if (igSummary.account?.last_synced_at) {
       if (igOverviewRef.current) renderInstagramOverviewCard(igOverviewRef.current, clienteId, igSummary.account, () => refetchIg());
-      if (igChartRef.current) renderInstagramFollowerChart(igChartRef.current, igSummary.follower_history ?? []);
+      if (igChartRef.current) renderInstagramFollowerChart(igChartRef.current, igSummary.history ?? []);
       if (igPostsRef.current) renderInstagramPostsTable(igPostsRef.current, clienteId);
     }
   }, [igSummary, clienteId, refetchIg]);
@@ -284,8 +284,10 @@ export default function ClienteDetalhePage() {
             <div ref={igOverviewRef} />
             <div ref={igChartRef} />
             <div ref={igPostsRef} />
-            <div style={{ textAlign: 'right', marginTop: 8 }}>
-              <Link to={`/analytics/${clienteId}`}>Ver Analytics Completo →</Link>
+            <div style={{ display: 'flex', justifyContent: 'center', marginTop: '1.5rem', marginBottom: '1rem' }}>
+              <Button onClick={() => navigate(`/analytics/${clienteId}`)}>
+                Ver Analytics Completo →
+              </Button>
             </div>
           </>
         )}
