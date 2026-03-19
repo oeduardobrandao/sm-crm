@@ -205,38 +205,43 @@ export default function EquipePage() {
           {filtered.map(m => {
             const color = getAvatarColor(m.nome);
             return (
-              <div key={m.id} className="team-card card animate-up">
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-                  <div className="avatar" style={{ background: color, color: '#fff', fontWeight: 700 }}>
+              <div key={m.id} className="team-card card animate-up" style={{ padding: '1rem', paddingBottom: '0.75rem' }}>
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginBottom: '0.75rem' }}>
+                  <div className="avatar" style={{ background: color, color: '#fff', fontWeight: 700, width: 44, height: 44, fontSize: '1rem', flexShrink: 0 }}>
                     {getInitials(m.nome)}
                   </div>
-                  <div>
-                    <button className="client-link" onClick={() => navigate(`/equipe/${m.id}`)} style={{ fontWeight: 600 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                    <button className="client-link" onClick={() => navigate(`/equipe/${m.id}`)} style={{ fontWeight: 600, textAlign: 'left', lineHeight: 1.2 }}>
                       {m.nome}
                     </button>
-                    <div style={{ fontSize: 12, color: '#888' }}>{m.cargo}</div>
+                    <div style={{ fontSize: '0.75rem', color: '#888' }}>{m.cargo}</div>
+                    <div style={{ marginTop: 2 }}>
+                      <Badge variant="secondary" style={{ fontSize: '0.65rem', padding: '0 0.4rem', pointerEvents: 'none' }}>{TIPO_LABEL[m.tipo]}</Badge>
+                    </div>
                   </div>
                 </div>
-                <div style={{ marginBottom: 6 }}>
-                  <Badge variant="secondary">{TIPO_LABEL[m.tipo]}</Badge>
-                </div>
-                {!isAgent && (
-                  <div style={{ fontSize: 14, marginBottom: 8 }}>
-                    {m.custo_mensal ? formatBRL(m.custo_mensal) + '/mês' : '—'}
-                  </div>
-                )}
-                {!isAgent && (
-                  <div className="flex gap-1">
-                    <Button size="icon" variant="ghost" onClick={() => openEdit(m)}>
-                      <Edit2 className="h-4 w-4" />
-                    </Button>
-                    {m.id && (
-                      <Button size="icon" variant="ghost" className="text-destructive" onClick={() => setDeleteId(m.id!)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid var(--border-color)', paddingTop: '0.5rem', marginTop: 'auto' }}>
+                  <div className="flex gap-1" style={{ marginLeft: '-0.25rem' }}>
+                    {!isAgent && (
+                      <>
+                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openEdit(m)}>
+                          <Edit2 className="h-3.5 w-3.5" />
+                        </Button>
+                        {m.id && (
+                          <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={() => setDeleteId(m.id!)}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </>
                     )}
                   </div>
-                )}
+                  {!isAgent && (
+                    <div style={{ fontSize: '0.85rem', fontWeight: 500 }}>
+                      {m.custo_mensal ? formatBRL(m.custo_mensal) + '/mês' : '—'}
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })}
