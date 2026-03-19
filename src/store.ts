@@ -812,6 +812,37 @@ export async function duplicateWorkflow(workflowId: number): Promise<Workflow> {
   return newWorkflow;
 }
 
+// =============================================
+// PORTAL TOKENS (Client-facing sharing)
+// =============================================
+export async function createPortalToken(workflowId: number): Promise<string> {
+  const conta_id = await getContaId();
+  // Check if token already exists
+  const { data: existing } = await supabase
+    .from('portal_tokens')
+    .select('token')
+    .eq('workflow_id', workflowId)
+    .maybeSingle();
+  if (existing) return existing.token;
+  // Create new token
+  const { data, error } = await supabase
+    .from('portal_tokens')
+    .insert({ workflow_id: workflowId, conta_id })
+    .select('token')
+    .single();
+  if (error) throw error;
+  return data.token;
+}
+
+export async function getPortalToken(workflowId: number): Promise<string | null> {
+  const { data } = await supabase
+    .from('portal_tokens')
+    .select('token')
+    .eq('workflow_id', workflowId)
+    .maybeSingle();
+  return data?.token || null;
+}
+
 /** Calculate deadline info for an active step. */
 export function getDeadlineInfo(etapa: WorkflowEtapa): { diasRestantes: number; estourado: boolean; urgente: boolean } {
   if (etapa.status !== 'ativo' || !etapa.iniciado_em) {

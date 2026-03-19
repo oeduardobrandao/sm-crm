@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Plus, LayoutGrid, Trash2, Edit2, Info } from 'lucide-react';
+import { Plus, LayoutGrid, Trash2, Edit2, Info, Share2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,7 +15,7 @@ import {
   addWorkflow, addWorkflowEtapa, addWorkflowTemplate, removeWorkflowTemplate,
   completeEtapa, revertEtapa, duplicateWorkflow, removeWorkflow,
   updateWorkflow, updateWorkflowEtapa, updateWorkflowTemplate,
-  getDeadlineInfo, getInitials,
+  getDeadlineInfo, getInitials, createPortalToken,
   type Workflow, type WorkflowEtapa, type WorkflowTemplate, type Cliente, type Membro,
 } from '../../store';
 import { sanitizeUrl } from '../../utils/security';
@@ -891,6 +891,22 @@ export default function EntregasPage() {
                                   title="Editar fluxo"
                                 >
                                   ✏ Editar
+                                </button>
+                                <button
+                                  className="btn-edit-workflow"
+                                  onClick={async () => {
+                                    try {
+                                      const portalToken = await createPortalToken(card.workflow.id!);
+                                      const url = `${window.location.origin}/#/portal/${portalToken}`;
+                                      await navigator.clipboard.writeText(url);
+                                      toast.success('Link do portal copiado!');
+                                    } catch {
+                                      toast.error('Erro ao gerar link do portal.');
+                                    }
+                                  }}
+                                  title="Compartilhar portal do cliente"
+                                >
+                                  ⇗ Compartilhar
                                 </button>
                                 <button
                                   className="btn-complete-etapa"
