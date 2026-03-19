@@ -1,3 +1,8 @@
+
+html, body, #root, .app-container {
+  max-width: 100vw !important;
+  overflow-x: hidden !important;
+}
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -3490,6 +3495,48 @@ body.role-agent input[name="valor_total"] {
 }
 
 @media (max-width: 768px) {
+
+  /* Convert tables to cards on mobile */
+  .card .overflow-auto > table {
+    display: block;
+    width: 100%;
+  }
+  .card .overflow-auto > table > thead {
+    display: none;
+  }
+  .card .overflow-auto > table > tbody {
+    display: block;
+    width: 100%;
+  }
+  .card .overflow-auto > table tr {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    padding: 0.75rem;
+    background: var(--surface-main);
+  }
+  .card .overflow-auto > table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--surface-hover);
+    text-align: right;
+  }
+  .card .overflow-auto > table td:last-child {
+    border-bottom: none;
+  }
+  .card .overflow-auto > table td > div:first-child {
+    text-align: left;
+  }
+  
+  .card {
+     padding: 1rem !important; /* reduce padding on mobile */
+  }
+
   .main-content {
     margin-left: 0;
     width: 100vw;
