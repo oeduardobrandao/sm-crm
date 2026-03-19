@@ -1,5 +1,5 @@
 // =============================================
-// CRM Fluxo - Instagram Connect Button Component
+// Mesaas - Instagram Connect Button Component
 // =============================================
 import { getInstagramAuthUrl } from '../../services/instagram';
 import { showToast } from '../../router';

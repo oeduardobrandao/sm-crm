@@ -1,5 +1,5 @@
 // =============================================
-// CRM Fluxo - Instagram Overview Card Component
+// Mesaas - Instagram Overview Card Component
 // =============================================
 import { syncInstagramData, disconnectInstagram } from '../../services/instagram';
 import { showToast, openModal, closeModal } from '../../router';

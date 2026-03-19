@@ -1,5 +1,5 @@
 // =============================================
-// CRM Fluxo - Instagram Follower Chart Component
+// Mesaas - Instagram Follower Chart Component
 // =============================================
 import { formatDate } from '../../store';
 

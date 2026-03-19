@@ -5,23 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
     <title>Mesaas - Gestão Inteligente</title>
     <meta name="description" content="Mesaas - Plataforma completa para gerenciamento corporativo." />
-    <!-- Mobile browser UI: theme color matches sidebar for Chrome/Safari address bar -->
     <meta name="theme-color" content="#12151a" media="(prefers-color-scheme: dark)" />
     <meta name="theme-color" content="#12151a" />
-    <!-- Fullscreen web app mode (hides browser chrome when added to home screen) -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="mobile-web-app-capable" content="yes" />
     <link rel="icon" type="image/svg+xml" href="/mesaas-icon-bl.svg" />
     <link rel="manifest" href="/manifest.json" />
+    <!-- Apply dark theme before React hydrates to avoid flash -->
     <script>
       (function() {
         const hash = window.location.hash;
-        if (hash === '#/' || hash === '#/login') {
-          return; // Força light mode (default) na página de Login, não aplica o atributo data-theme
-        }
-        const theme = localStorage.getItem('theme');
-        if (theme === 'dark') {
+        if (hash === '#/' || hash === '#/login') return;
+        if (localStorage.getItem('theme') === 'dark') {
           document.documentElement.setAttribute('data-theme', 'dark');
         }
       })();
@@ -30,166 +26,10 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="/style.css">
   </head>
   <body>
-    <div class="app-container">
-      <!-- Sidebar -->
-      <nav class="sidebar" id="sidebar">
-        <div class="sidebar-rail">
-          <div class="logo-container" style="height: 64px; display: flex; align-items: center; justify-content: center; width: 100%; margin-bottom: 1.5rem;">
-            <a href="#/dashboard" style="display: flex; align-items: center; justify-content: center; text-decoration: none;">
-              <img src="/mesaas-icon-192.png" alt="Mesaas" class="rail-logo" style="height: 38px; width: auto;" />
-            </a>
-          </div>
-          
-          <ul class="rail-nav" id="rail-nav-main">
-            <!-- Rendered by JS -->
-          </ul>
-
-          <div class="rail-bottom">
-            <ul class="rail-nav" id="rail-nav-bottom">
-              <!-- Config and Privacy rendered by JS -->
-            </ul>
-
-            <button id="theme-toggle" class="rail-icon-btn" title="Alternar Tema" data-tooltip="Modo Escuro" data-tooltip-dir="right" style="margin-bottom: 0.5rem">
-              <i class="ph ph-moon"></i>
-            </button>
-            <div class="sidebar-user" id="user-menu-btn" tabindex="0" data-tooltip="Sua Conta" data-tooltip-dir="right">
-              <div class="avatar" style="width: 38px; height: 38px; border-radius: 10px; font-size: 0.85rem">U</div>
-
-              <div id="user-dropdown" class="user-dropdown hidden">
-                <div class="user-dropdown-header">Opções da Conta</div>
-                <div id="workspace-switcher" style="display:none; padding: 0.25rem 0; border-bottom: 1px solid var(--border-color); margin-bottom: 0.25rem;">
-                  <div style="padding: 0.25rem 0.75rem; font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Workspace</div>
-                  <div id="workspace-list"></div>
-                </div>
-                <button id="btn-logout-flutuante" class="user-dropdown-item text-danger" style="width: 100%; border: none; background: transparent; text-align: left; font-family: inherit; font-size: inherit; cursor: pointer;">
-                  <i class="ph ph-sign-out"></i> Sair
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="sidebar-flyout" id="sidebar-flyout" aria-hidden="true">
-          <div class="flyout-header">
-            <h2 id="flyout-title">Menu</h2>
-          </div>
-          <div class="flyout-content">
-            <div class="flyout-section-label">Seção</div>
-            <ul class="flyout-menu" id="flyout-menu">
-              <!-- Rendered by JS -->
-            </ul>
-          </div>
-        </div>
-      </nav>
-
-      <!-- Main Content -->
-      <main class="main-content" id="app">
-        <div style="display:flex; align-items:center; justify-content:center; height:60vh">
-          <div style="text-align:center">
-            <i class="ph ph-spinner ph-spin" style="font-size:2rem; color:var(--primary-color); margin-bottom:1rem"></i>
-            <p style="color:var(--text-muted)">Carregando...</p>
-          </div>
-        </div>
-      </main>
-    </div>
-
-    <!-- Mobile Bottom Navigation (hidden on desktop via CSS) -->
-    <nav class="mobile-nav" id="mobile-nav">
-      <a href="#/dashboard" class="mobile-nav-item active" data-route="/dashboard">
-        <i class="ph ph-chart-pie-slice"></i>
-        <span>Dashboard</span>
-      </a>
-      <a href="#/clientes" class="mobile-nav-item" data-route="/clientes">
-        <i class="ph ph-users"></i>
-        <span>Clientes</span>
-      </a>
-      <a href="#/analytics" class="mobile-nav-item" data-route="/analytics">
-        <i class="ph ph-chart-line-up"></i>
-        <span>Analytics</span>
-      </a>
-      <a href="#/entregas" class="mobile-nav-item" data-route="/entregas">
-        <i class="ph ph-kanban"></i>
-        <span>Entregas</span>
-      </a>
-      <button class="mobile-nav-item" id="mobile-more-btn">
-        <i class="ph ph-dots-three"></i>
-        <span>Mais</span>
-      </button>
-    </nav>
-
-    <!-- Mobile "More" Overlay -->
-    <div class="mobile-more-overlay" id="mobile-more-overlay">
-      <div class="mobile-more-sheet">
-        <div class="mobile-more-handle"></div>
-
-        <div class="mobile-more-profile" id="mobile-profile">
-          <div class="avatar" id="mobile-avatar">U</div>
-          <div class="mobile-more-profile-info">
-            <div class="mobile-more-profile-name" id="mobile-user-name">Usuário</div>
-            <div class="mobile-more-profile-plan">Plano Profissional</div>
-          </div>
-        </div>
-
-        <div class="mobile-more-title">Navegação</div>
-        <div class="mobile-more-grid">
-          <a href="#/leads" class="mobile-more-item" data-route="/leads">
-            <i class="ph ph-funnel"></i>
-            Leads
-          </a>
-          <a href="#/contratos" class="mobile-more-item" data-route="/contratos">
-            <i class="ph ph-file-text"></i>
-            Contratos
-          </a>
-          <a href="#/calendario" class="mobile-more-item" data-route="/calendario">
-            <i class="ph ph-calendar-blank"></i>
-            Calendário
-          </a>
-          <a href="#/equipe" class="mobile-more-item" data-route="/equipe">
-            <i class="ph ph-user-circle-gear"></i>
-            Equipe
-          </a>
-          <a href="#/integracoes" class="mobile-more-item" data-route="/integracoes">
-            <i class="ph ph-plugs-connected"></i>
-            Integrações
-          </a>
-          <a href="#/financeiro" class="mobile-more-item" data-route="/financeiro">
-            <i class="ph ph-wallet"></i>
-            Financeiro
-          </a>
-          <a href="#/configuracao" class="mobile-more-item" data-route="/configuracao">
-            <i class="ph ph-gear"></i>
-            Configurações
-          </a>
-        </div>
-
-        <div class="mobile-more-divider"></div>
-
-        <div class="mobile-more-grid" style="margin-bottom: 0;">
-          <button class="mobile-more-item mobile-more-action" id="mobile-theme-toggle">
-            <i class="ph ph-moon"></i>
-            Tema
-          </button>
-          <a href="#/politica-de-privacidade" class="mobile-more-item mobile-more-action" data-route="/politica-de-privacidade">
-            <i class="ph ph-shield-check"></i>
-            Privacidade
-          </a>
-        </div>
-
-        <div class="mobile-more-divider"></div>
-        
-        <div class="mobile-more-grid" style="grid-template-columns: 1fr;">
-          <button class="mobile-more-item danger" id="mobile-logout-btn">
-            <i class="ph ph-sign-out"></i>
-            Sair da Conta
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <script type="module" src="/src/main.ts"></script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

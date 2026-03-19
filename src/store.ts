@@ -1,5 +1,5 @@
 // =============================================
-// CRM Fluxo - Data Store (Supabase Persistence)
+// Mesaas - Data Store (Supabase Persistence)
 // =============================================
 import { supabase, getCurrentUser, getCurrentProfile, clearProfileCache } from './lib/supabase';
 

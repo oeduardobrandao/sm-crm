@@ -1,5 +1,5 @@
 // =============================================
-// CRM Fluxo - Instagram Posts Table Component
+// Mesaas - Instagram Posts Table Component
 // =============================================
 import { getInstagramPosts } from '../../services/instagram';
 import { formatDate } from '../../store';

@@ -1,5 +1,5 @@
 // =============================================
-// CRM Fluxo - Instagram Integration Service
+// Mesaas - Instagram Integration Service
 // =============================================
 import { supabase } from '../lib/supabase';
 

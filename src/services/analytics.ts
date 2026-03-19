@@ -1,5 +1,5 @@
 // =============================================
-// CRM Fluxo - Analytics Service
+// Mesaas - Analytics Service
 // Direct Supabase queries for DB-resident data.
 // Edge function calls only for Instagram API data.
 // =============================================

@@ -1,5 +1,5 @@
 // =============================================
-// CRM Fluxo - Supabase Client
+// Mesaas - Supabase Client
 // =============================================
 import { createClient } from '@supabase/supabase-js';
 

@@ -1,4 +1,4 @@
-# CRM Fluxo 🚀
+# Mesaas 🚀
 
 **Gestão Inteligente para Social Media Managers**
 
