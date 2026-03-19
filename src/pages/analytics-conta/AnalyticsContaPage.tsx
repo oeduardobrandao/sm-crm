@@ -675,17 +675,17 @@ function AnalyticsContent({
                             <span>{new Date(p.posted_at).toLocaleDateString('pt-BR')}</span>
                           </div>
                         </td>
-                        <td><span className="badge badge-info">{formatMediaType(p.media_type)}</span></td>
-                        <td>{p.reach.toLocaleString('pt-BR')}</td>
-                        <td>
+                        <td data-label="Tipo"><span className="badge badge-info">{formatMediaType(p.media_type)}</span></td>
+                        <td data-label="Alcance">{p.reach.toLocaleString('pt-BR')}</td>
+                        <td data-label="Eng.">
                           <span className={`badge ${p.engagement_rate >= 5 ? 'badge-success' : p.engagement_rate >= 2 ? 'badge-warning' : 'badge-neutral'}`}>
                             {p.engagement_rate.toFixed(1)}%
                           </span>
                         </td>
-                        <td>{p.saved}</td>
-                        <td>{p.comments}</td>
-                        <td>{p.shares}</td>
-                        <td onClick={e => e.stopPropagation()}>
+                        <td data-label="Salvos">{p.saved}</td>
+                        <td data-label="Coment.">{p.comments}</td>
+                        <td data-label="Compart.">{p.shares}</td>
+                        <td data-label="Tags" onClick={e => e.stopPropagation()}>
                           {p.tags.map(t => (
                             <span key={t.id} className="tag-pill" style={{ background: t.color + '20', color: t.color, border: `1px solid ${t.color}40`, marginRight: 2 }}>
                               {t.tag_name}

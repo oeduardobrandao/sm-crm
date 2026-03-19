@@ -3526,6 +3526,16 @@ body.role-agent input[name="valor_total"] {
     border-bottom: 1px solid var(--surface-hover);
     text-align: right;
   }
+  
+  .card .overflow-auto > table td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin-right: auto;
+  }
+
   .card .overflow-auto > table td:last-child {
     border-bottom: none;
   }
