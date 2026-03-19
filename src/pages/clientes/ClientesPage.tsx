@@ -175,75 +175,64 @@ export default function ClientesPage() {
       {isLoading ? (
         <div className="flex justify-center p-8"><Spinner size="lg" /></div>
       ) : (
-        <div className="card">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Cliente / Empresa</TableHead>
-                <TableHead>Plano</TableHead>
-                <TableHead>Contato</TableHead>
-                <TableHead>Valor Mensal</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map(c => {
-                const avatarUrl = c.id ? avatarMap[c.id] : undefined;
-                const initials = getInitials(c.nome);
-                return (
-                  <TableRow key={c.id ?? c.nome}>
-                    <TableCell data-label="Cliente / Empresa">
-                      <div className="flex items-center gap-2">
-                        {avatarUrl ? (
-                          <img src={avatarUrl} alt={initials} className="avatar" style={{ objectFit: 'cover' }} />
-                        ) : (
-                          <div className="avatar" style={{ background: c.cor, color: '#fff', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            {initials}
-                          </div>
-                        )}
-                        <div>
-                          <button className="client-link" onClick={() => navigate(`/clientes/${c.id}`)}>
-                            {c.nome}
-                          </button>
-                          {c.notion_page_url && sanitizeUrl(c.notion_page_url) && (
-                            <a href={sanitizeUrl(c.notion_page_url)} target="_blank" rel="noopener noreferrer" style={{ marginLeft: 6, display: 'inline-flex', alignItems: 'center' }} title="Abrir no Notion">
-                              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style={{ verticalAlign: 'middle' }}>
-                                <path d="M4.459 4.208c.745-.303 1.25-.333 2.162-.333h13.26c.925 0 1.542.13 2.122.333l-2.003-2.189H4.153L2.164 4.208zm11.233 1.89-6.903.015L3.305 24h10.96l5.77-5.908-.008-5.32c-.006-2.133-1.077-4.137-3.08-5.419-1.258-.806-2.92-1.229-4.707-1.397L15.692 6.1zm-3.02 5.068-1.503 1.564v9.066H9.155v-8.87l-.022-1.63L12.67 11.168zm2.75-.15.42 2.973L13.88 15.645l.951-1.31-2.163.023.23-1.428-1.748-1.71h4.272z" />
-                              </svg>
-                            </a>
-                          )}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell data-label="Plano">{c.plano}</TableCell>
-                    <TableCell data-label="Contato">
-                      <div>{c.email}</div>
-                      <div style={{ fontSize: 12, color: '#888' }}>{c.telefone}</div>
-                    </TableCell>
-                    <TableCell data-label="Valor Mensal">{formatBRL(c.valor_mensal ?? 0)}</TableCell>
-                    <TableCell data-label="Status">
-                      <Badge variant={c.status === 'ativo' ? 'default' : c.status === 'pausado' ? 'secondary' : 'outline'}>
+        <div className="team-grid">
+          {filtered.map(c => {
+            const avatarUrl = c.id ? avatarMap[c.id] : undefined;
+            const initials = getInitials(c.nome);
+            return (
+              <div key={c.id ?? c.nome} className="team-card card animate-up" style={{ padding: '1rem', paddingBottom: '0.75rem' }}>
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginBottom: '0.75rem' }}>
+                  {avatarUrl ? (
+                    <img src={avatarUrl} alt={initials} className="avatar" style={{ width: 44, height: 44, objectFit: 'cover', flexShrink: 0 }} />
+                  ) : (
+                    <div className="avatar" style={{ background: c.cor, color: '#fff', fontWeight: 700, width: 44, height: 44, fontSize: '1rem', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {initials}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <button className="client-link" onClick={() => navigate(`/clientes/${c.id}`)} style={{ fontWeight: 600, textAlign: 'left', lineHeight: 1.2 }}>
+                        {c.nome}
+                      </button>
+                      <Badge variant={c.status === 'ativo' ? 'default' : c.status === 'pausado' ? 'secondary' : 'outline'} style={{ fontSize: '0.65rem', padding: '0 0.4rem', pointerEvents: 'none' }}>
                         {STATUS_LABEL[c.status]}
                       </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button size="icon" variant="ghost" onClick={() => openEdit(c)}>
-                          <Edit2 className="h-4 w-4" />
-                        </Button>
-                        {c.id && (
-                          <Button size="icon" variant="ghost" className="text-destructive" onClick={() => setDeleteId(c.id!)}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+                      {c.notion_page_url && sanitizeUrl(c.notion_page_url) && (
+                        <a href={sanitizeUrl(c.notion_page_url)} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--text-muted)' }} title="Abrir no Notion">
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                            <path d="M4.459 4.208c.745-.303 1.25-.333 2.162-.333h13.26c.925 0 1.542.13 2.122.333l-2.003-2.189H4.153L2.164 4.208zm11.233 1.89-6.903.015L3.305 24h10.96l5.77-5.908-.008-5.32c-.006-2.133-1.077-4.137-3.08-5.419-1.258-.806-2.92-1.229-4.707-1.397L15.692 6.1zm-3.02 5.068-1.503 1.564v9.066H9.155v-8.87l-.022-1.63L12.67 11.168zm2.75-.15.42 2.973L13.88 15.645l.951-1.31-2.163.023.23-1.428-1.748-1.71h4.272z" />
+                          </svg>
+                        </a>
+                      )}
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: '#888', display: 'flex', gap: '0.35rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                      {c.plano && <span>{c.plano}</span>}
+                      {c.plano && c.email && <span>&bull;</span>}
+                      {c.email && <span>{c.email}</span>}
+                      {c.email && c.telefone && <span>&bull;</span>}
+                      {c.telefone && <span>{c.telefone}</span>}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid var(--border-color)', paddingTop: '0.5rem', marginTop: 'auto' }}>
+                  <div className="flex gap-1" style={{ marginLeft: '-0.25rem' }}>
+                    <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openEdit(c)}>
+                      <Edit2 className="h-3.5 w-3.5" />
+                    </Button>
+                    {c.id && (
+                      <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={() => setDeleteId(c.id!)}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 500 }}>
+                    {c.valor_mensal ? formatBRL(c.valor_mensal) + '/mês' : '—'}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
