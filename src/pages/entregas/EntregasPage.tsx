@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Plus, LayoutGrid, Trash2, Edit2, Info, Share2 } from 'lucide-react';
+import { Plus, LayoutGrid, Trash2, Edit2, Info, Share2, ArrowLeft, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -814,7 +814,7 @@ export default function EntregasPage() {
         ) : (
           boardRows.map(row => (
             <div key={row.key}>
-              {boardRows.length > 1 && <div className="board-row-label">{row.label}</div>}
+              {boardRows.length > 1 && <div className="board-row-label" style={{ marginBottom: '1rem' }}>{row.label}</div>}
               <div className="board-container">
                 {[...row.columns.entries()].map(([stepName, stepCards]) => (
                   <div key={stepName} className="board-column">
@@ -952,16 +952,18 @@ export default function EntregasPage() {
                                     className="btn-revert-etapa"
                                     onClick={() => setRevertWfId(card.workflow.id!)}
                                     title="Voltar etapa"
+                                    style={{ padding: '0.4rem', flexShrink: 0 }}
                                   >
-                                    ← Voltar
+                                    <ArrowLeft className="h-4 w-4" />
                                   </button>
                                 )}
                                 <button
                                   className="btn-edit-workflow"
                                   onClick={() => setEditCard(card)}
                                   title="Editar fluxo"
+                                  style={{ padding: '0.4rem', flexShrink: 0 }}
                                 >
-                                  ✏ Editar
+                                  <Edit2 className="h-4 w-4" />
                                 </button>
                                 <button
                                   className="btn-edit-workflow"
@@ -976,15 +978,17 @@ export default function EntregasPage() {
                                     }
                                   }}
                                   title="Compartilhar portal do cliente"
+                                  style={{ padding: '0.4rem', flexShrink: 0 }}
                                 >
-                                  ⇗ Compartilhar
+                                  <Share2 className="h-4 w-4" />
                                 </button>
                                 <button
                                   className="btn-complete-etapa"
                                   onClick={() => handleCompleteEtapa(card.workflow.id!, card.etapa.id!)}
                                   title="Concluir etapa"
+                                  style={{ padding: '0.4rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
                                 >
-                                  ✓ Concluir
+                                  <Check className="h-4 w-4" /> Concluir
                                 </button>
                               </div>
                             </div>
