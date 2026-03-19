@@ -49,7 +49,7 @@ export default function MobileNav() {
       </nav>
 
       {moreOpen && (
-        <div className="mobile-more-overlay" id="mobile-more-overlay" onClick={(e) => { if (e.target === e.currentTarget) setMoreOpen(false); }}>
+        <div className="mobile-more-overlay visible" id="mobile-more-overlay" onClick={(e) => { if (e.target === e.currentTarget) setMoreOpen(false); }}>
           <div className="mobile-more-sheet">
             <div className="mobile-more-handle" />
 
