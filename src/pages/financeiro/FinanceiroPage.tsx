@@ -222,24 +222,24 @@ export default function FinanceiroPage() {
             <TableBody>
               {filtered.map((t, i) => (
                 <TableRow key={t.id ?? `proj-${i}`}>
-                  <TableCell>{formatDate(t.data)}</TableCell>
-                  <TableCell>
+                  <TableCell data-label="Data">{formatDate(t.data)}</TableCell>
+                  <TableCell data-label="Descrição">
                     <div>{t.descricao}</div>
                     {t.detalhe && <div style={{ fontSize: 12, color: '#888' }}>{t.detalhe}</div>}
                   </TableCell>
-                  <TableCell>{t.categoria}</TableCell>
-                  <TableCell>
+                  <TableCell data-label="Categoria">{t.categoria}</TableCell>
+                  <TableCell data-label="Valor">
                     <span style={{ color: t.tipo === 'entrada' ? '#3ecf8e' : '#ef4444', fontWeight: 600 }}>
                       {t.tipo === 'entrada' ? '+' : '-'}{formatBRL(t.valor)}
                     </span>
                   </TableCell>
-                  <TableCell>
+                  <TableCell data-label="Status">
                     <Badge variant={t.status === 'pago' ? 'default' : 'secondary'}>
                       {t.status === 'pago' ? 'Pago' : 'Agendado'}
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <div className="flex gap-1">
+                    <div className="flex gap-1" style={{ justifyContent: 'flex-end' }}>
                       {t.status === 'agendado' ? (
                         <Button size="sm" onClick={() => setConfirmT(t)}>
                           <Check className="h-3 w-3" /> Confirmar

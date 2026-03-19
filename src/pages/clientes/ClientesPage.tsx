@@ -193,7 +193,7 @@ export default function ClientesPage() {
                 const initials = getInitials(c.nome);
                 return (
                   <TableRow key={c.id ?? c.nome}>
-                    <TableCell>
+                    <TableCell data-label="Cliente / Empresa">
                       <div className="flex items-center gap-2">
                         {avatarUrl ? (
                           <img src={avatarUrl} alt={initials} className="avatar" style={{ objectFit: 'cover' }} />
@@ -216,13 +216,13 @@ export default function ClientesPage() {
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell>{c.plano}</TableCell>
-                    <TableCell>
+                    <TableCell data-label="Plano">{c.plano}</TableCell>
+                    <TableCell data-label="Contato">
                       <div>{c.email}</div>
                       <div style={{ fontSize: 12, color: '#888' }}>{c.telefone}</div>
                     </TableCell>
-                    <TableCell>{formatBRL(c.valor_mensal ?? 0)}</TableCell>
-                    <TableCell>
+                    <TableCell data-label="Valor Mensal">{formatBRL(c.valor_mensal ?? 0)}</TableCell>
+                    <TableCell data-label="Status">
                       <Badge variant={c.status === 'ativo' ? 'default' : c.status === 'pausado' ? 'secondary' : 'outline'}>
                         {STATUS_LABEL[c.status]}
                       </Badge>

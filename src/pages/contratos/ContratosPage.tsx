@@ -180,8 +180,8 @@ export default function ContratosPage() {
             <TableBody>
               {filtered.map(c => (
                 <TableRow key={c.id ?? c.titulo}>
-                  <TableCell>{c.titulo}</TableCell>
-                  <TableCell>
+                  <TableCell data-label="Contrato">{c.titulo}</TableCell>
+                  <TableCell data-label="Cliente">
                     {c.cliente_id ? (
                       <button className="client-link" onClick={() => navigate(`/clientes/${c.cliente_id}`)}>
                         {c.cliente_nome}
@@ -190,15 +190,15 @@ export default function ContratosPage() {
                       <span>{c.cliente_nome}</span>
                     )}
                   </TableCell>
-                  <TableCell>{formatDate(c.data_inicio)} → {formatDate(c.data_fim)}</TableCell>
-                  <TableCell>{formatBRL(c.valor_total)}</TableCell>
-                  <TableCell>
+                  <TableCell data-label="Período">{formatDate(c.data_inicio)} → {formatDate(c.data_fim)}</TableCell>
+                  <TableCell data-label="Valor">{formatBRL(c.valor_total)}</TableCell>
+                  <TableCell data-label="Status">
                     <Badge variant={c.status === 'vigente' ? 'default' : c.status === 'a_assinar' ? 'secondary' : 'outline'}>
                       {STATUS_LABEL[c.status]}
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <div className="flex gap-1">
+                    <div className="flex gap-1" style={{ justifyContent: 'flex-end' }}>
                       <Button size="icon" variant="ghost" onClick={() => openEdit(c)}>
                         <Edit2 className="h-4 w-4" />
                       </Button>

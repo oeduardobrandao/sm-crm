@@ -151,11 +151,11 @@ export default function MembroDetalhePage() {
               <TableBody>
                 {membroTx.map((t, i) => (
                   <TableRow key={t.id ?? `tx-${i}`}>
-                    <TableCell>{formatDate(t.data)}</TableCell>
-                    <TableCell>{t.descricao}</TableCell>
-                    <TableCell>{t.categoria}</TableCell>
-                    <TableCell>{formatBRL(t.valor)}</TableCell>
-                    <TableCell>{t.status}</TableCell>
+                    <TableCell data-label="Data">{formatDate(t.data)}</TableCell>
+                    <TableCell data-label="Descrição">{t.descricao}</TableCell>
+                    <TableCell data-label="Categoria">{t.categoria}</TableCell>
+                    <TableCell data-label="Valor">{formatBRL(t.valor)}</TableCell>
+                    <TableCell data-label="Status">{t.status}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

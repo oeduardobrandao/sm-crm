@@ -225,14 +225,14 @@ export default function LeadsPage() {
             <TableBody>
               {filtered.map(l => (
                 <TableRow key={l.id ?? l.nome}>
-                  <TableCell>
+                  <TableCell data-label="Nome">
                     <div>{l.nome}</div>
                     {l.instagram && <div style={{ fontSize: 12, color: '#888' }}>{l.instagram}</div>}
                   </TableCell>
-                  <TableCell>{l.email}</TableCell>
-                  <TableCell>{l.canal}</TableCell>
-                  <TableCell>{l.especialidade}</TableCell>
-                  <TableCell>
+                  <TableCell data-label="E-mail">{l.email}</TableCell>
+                  <TableCell data-label="Canal">{l.canal}</TableCell>
+                  <TableCell data-label="Especialidade">{l.especialidade}</TableCell>
+                  <TableCell data-label="Status">
                     <Select value={l.status} onValueChange={val => l.id && handleStatusChange(l.id, val as Lead['status'])}>
                       <SelectTrigger style={{ width: 140 }}>
                         <SelectValue />
@@ -244,9 +244,9 @@ export default function LeadsPage() {
                       </SelectContent>
                     </Select>
                   </TableCell>
-                  <TableCell>{l.created_at ? new Date(l.created_at).toLocaleDateString('pt-BR') : '—'}</TableCell>
+                  <TableCell data-label="Criado">{l.created_at ? new Date(l.created_at).toLocaleDateString('pt-BR') : '—'}</TableCell>
                   <TableCell>
-                    <div className="flex gap-1">
+                    <div className="flex gap-1" style={{ justifyContent: 'flex-end' }}>
                       <Button size="icon" variant="ghost" onClick={() => openEdit(l)}>
                         <Edit2 className="h-4 w-4" />
                       </Button>

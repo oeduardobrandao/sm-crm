@@ -342,10 +342,10 @@ export default function ClienteDetalhePage() {
               <TableRow><TableCell colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Nenhum contrato</TableCell></TableRow>
             ) : contratosCliente.map(r => (
               <TableRow key={r.id ?? Math.random()}>
-                <TableCell>{r.titulo}</TableCell>
-                <TableCell>{formatDate(r.data_inicio)} – {formatDate(r.data_fim)}</TableCell>
-                <TableCell>{formatBRL(Number(r.valor_total))}</TableCell>
-                <TableCell><StatusBadge status={r.status} /></TableCell>
+                <TableCell data-label="Título">{r.titulo}</TableCell>
+                <TableCell data-label="Período">{formatDate(r.data_inicio)} – {formatDate(r.data_fim)}</TableCell>
+                <TableCell data-label="Valor">{formatBRL(Number(r.valor_total))}</TableCell>
+                <TableCell data-label="Status"><StatusBadge status={r.status} /></TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -369,14 +369,14 @@ export default function ClienteDetalhePage() {
               <TableRow><TableCell colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Nenhuma transação</TableCell></TableRow>
             ) : transacoesCliente.map(r => (
               <TableRow key={r.id ?? Math.random()}>
-                <TableCell>{r.descricao}</TableCell>
-                <TableCell>{formatDate(r.data)}</TableCell>
-                <TableCell>
+                <TableCell data-label="Descrição">{r.descricao}</TableCell>
+                <TableCell data-label="Data">{formatDate(r.data)}</TableCell>
+                <TableCell data-label="Valor">
                   <span style={{ color: r.tipo === 'entrada' ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>
                     {r.tipo === 'entrada' ? '+' : '-'}{formatBRL(Number(r.valor))}
                   </span>
                 </TableCell>
-                <TableCell><StatusBadge status={r.status ?? 'pago'} /></TableCell>
+                <TableCell data-label="Status"><StatusBadge status={r.status ?? 'pago'} /></TableCell>
               </TableRow>
             ))}
           </TableBody>
