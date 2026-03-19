@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "antd-components": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-antd-components"
+      ]
+    }
+  }
+}
