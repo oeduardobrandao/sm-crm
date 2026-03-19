@@ -20,9 +20,10 @@ interface PortalEtapa {
 interface PortalApproval {
   id: number;
   workflow_etapa_id: number;
-  action: 'aprovado' | 'correcao';
+  action: 'aprovado' | 'correcao' | 'mensagem';
   comentario: string | null;
   created_at: string;
+  is_workspace_user?: boolean;
 }
 
 interface PortalData {
@@ -257,15 +258,25 @@ export default function PortalPage() {
                       )}
                     </div>
                     {etapaApprovals.length > 0 && (
-                      <div className="portal-timeline-comments" style={{ marginTop: '0.75rem', paddingLeft: '0.75rem', borderLeft: '2px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                        {etapaApprovals.map(a => (
-                          <div key={a.id} style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color)', padding: '0.75rem', borderRadius: '8px' }}>
-                            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: a.action === 'correcao' ? '#ef4444' : 'var(--primary-color)', marginBottom: '0.25rem' }}>
-                              {a.action === 'correcao' ? 'Correção solicitada' : 'Observação'} &bull; {new Date(a.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      <div className="portal-timeline-comments" style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        {etapaApprovals.slice().reverse().map(a => {
+                          const isTeam = a.is_workspace_user;
+                          return (
+                            <div key={a.id} style={{
+                              background: isTeam ? 'var(--primary-color)' : 'var(--card-bg)',
+                              border: `1px solid ${isTeam ? 'var(--primary-color)' : 'var(--border-color)'}`,
+                              padding: '0.75rem',
+                              borderRadius: '8px',
+                              marginLeft: isTeam ? '2rem' : '0',
+                              marginRight: isTeam ? '0' : '2rem',
+                            }}>
+                              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: isTeam ? '#111' : (a.action === 'correcao' ? '#ef4444' : 'var(--primary-color)'), marginBottom: '0.25rem', opacity: isTeam ? 0.9 : 1 }}>
+                                {isTeam ? 'Resposta da Equipe' : (a.action === 'correcao' ? 'Correção solicitada' : 'Observação')} &bull; {new Date(a.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                              </div>
+                              <p style={{ fontSize: '0.9rem', color: isTeam ? '#111' : 'var(--text-color)', margin: 0, whiteSpace: 'pre-wrap' }}>{a.comentario}</p>
                             </div>
-                            <p style={{ fontSize: '0.9rem', color: 'var(--text-color)', margin: 0, whiteSpace: 'pre-wrap' }}>{a.comentario}</p>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>

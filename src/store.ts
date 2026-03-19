@@ -847,20 +847,35 @@ export async function getPortalToken(workflowId: number): Promise<string | null>
 export interface PortalApproval {
   id: number;
   workflow_etapa_id: number;
-  action: 'aprovado' | 'correcao';
+  action: 'aprovado' | 'correcao' | 'mensagem';
   comentario: string | null;
   created_at: string;
+  is_workspace_user?: boolean;
 }
 
 export async function getPortalApprovals(etapaIds: number[]): Promise<PortalApproval[]> {
   if (etapaIds.length === 0) return [];
   const { data, error } = await supabase
     .from('portal_approvals')
-    .select('id, workflow_etapa_id, action, comentario, created_at')
+    .select('id, workflow_etapa_id, action, comentario, created_at, is_workspace_user')
     .in('workflow_etapa_id', etapaIds)
     .order('created_at', { ascending: false });
   if (error) throw error;
   return data || [];
+}
+
+export async function replyToPortalApproval(workflowId: number, etapaId: number, comentario: string): Promise<void> {
+  const token = await getPortalToken(workflowId);
+  if (!token) throw new Error("Workflow must be shared before replying.");
+
+  const { error } = await supabase.from('portal_approvals').insert({
+    workflow_etapa_id: etapaId,
+    token,
+    action: 'mensagem',
+    comentario,
+    is_workspace_user: true
+  });
+  if (error) throw error;
 }
 
 /** Calculate deadline info for an active step. */

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Plus, LayoutGrid, Trash2, Edit2, Info, Share2, ArrowLeft, Check } from 'lucide-react';
+import { Plus, LayoutGrid, Trash2, Edit2, Info, Share2, ArrowLeft, Check, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,7 +15,7 @@ import {
   addWorkflow, addWorkflowEtapa, addWorkflowTemplate, removeWorkflowTemplate,
   completeEtapa, revertEtapa, duplicateWorkflow, removeWorkflow,
   updateWorkflow, updateWorkflowEtapa, updateWorkflowTemplate,
-  getDeadlineInfo, getInitials, createPortalToken, getPortalApprovals,
+  getDeadlineInfo, getInitials, createPortalToken, getPortalApprovals, replyToPortalApproval,
   type Workflow, type WorkflowEtapa, type WorkflowTemplate, type Cliente, type Membro, type PortalApproval,
 } from '../../store';
 import { sanitizeUrl } from '../../utils/security';
@@ -571,6 +571,24 @@ export default function EntregasPage() {
   const [assignDropdown, setAssignDropdown] = useState<{ etapaId: number } | null>(null);
   const [recurringWfId, setRecurringWfId] = useState<number | null>(null);
   const [revertWfId, setRevertWfId] = useState<number | null>(null);
+  const [replyTexts, setReplyTexts] = useState<Record<number, string>>({});
+  const [submittingReply, setSubmittingReply] = useState<number | null>(null);
+
+  const handleReply = async (workflowId: number, etapaId: number) => {
+    const text = replyTexts[etapaId];
+    if (!text || !text.trim()) return;
+    setSubmittingReply(etapaId);
+    try {
+      await replyToPortalApproval(workflowId, etapaId, text);
+      setReplyTexts(prev => ({ ...prev, [etapaId]: '' }));
+      qc.invalidateQueries({ queryKey: ['portal-approvals'] });
+      toast.success('Resposta enviada com sucesso!');
+    } catch (err: any) {
+      toast.error('Erro ao enviar: ' + err.message);
+    } finally {
+      setSubmittingReply(null);
+    }
+  };
 
   const { data: workflows = [], isLoading: loadingWf } = useQuery({ queryKey: ['workflows'], queryFn: getWorkflows });
   const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: getClientes });
@@ -916,30 +934,53 @@ export default function EntregasPage() {
                                 <div className="board-card-created">iniciada em {iniciadoEm}</div>
                               )}
 
-                              {card.etapa.tipo === 'aprovacao_cliente' && (() => {
-                                const approvals = approvalsMap.get(card.etapa.id!) || [];
-                                const corrections = approvals.filter(a => a.action === 'correcao');
-                                return (
-                                  <div className="board-card-approval">
-                                    <div className="board-card-approval-badge">
-                                      ⏳ Aguardando aprovação do cliente
-                                    </div>
-                                    {corrections.length > 0 && (
+                                {card.etapa.tipo === 'aprovacao_cliente' && (() => {
+                                  const approvals = approvalsMap.get(card.etapa.id!) || [];
+                                  const comments = approvals.filter(a => a.comentario); // Show all comments in thread
+                                  const hasPendingClientCorrection = approvals.some(a => a.action === 'correcao');
+                                  return (
+                                    <div className="board-card-approval">
+                                      <div className="board-card-approval-badge">
+                                        ⏳ Aguardando aprovação do cliente
+                                      </div>
+                                      {comments.length > 0 && (
                                       <div className="board-card-approval-thread">
                                         <div className="board-card-approval-thread-title">
-                                          Correções solicitadas ({corrections.length})
+                                          Mensagens ({comments.length})
                                         </div>
-                                        {corrections.slice(0, 3).map(c => (
-                                          <div key={c.id} className="board-card-approval-comment">
+                                        {comments.slice(0, 5).map(c => (
+                                          <div key={c.id} className="board-card-approval-comment" style={c.is_workspace_user ? { borderLeft: '2px solid var(--primary-color)' } : {}}>
                                             <p>{c.comentario}</p>
                                             <span className="board-card-approval-date">
-                                              {new Date(c.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                              {c.is_workspace_user ? 'Sua equipe' : 'Cliente'} &bull; {new Date(c.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                                             </span>
                                           </div>
                                         ))}
-                                        {corrections.length > 3 && (
-                                          <span className="board-card-approval-more">+{corrections.length - 3} mais</span>
+                                        {comments.length > 5 && (
+                                          <span className="board-card-approval-more">+{comments.length - 5} mais</span>
                                         )}
+                                        
+                                        {/* Reply Box */}
+                                        <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.5rem' }}>
+                                          <Input 
+                                            placeholder="Responder cliente..." 
+                                            value={replyTexts[card.etapa.id!] || ''}
+                                            onChange={e => setReplyTexts(p => ({ ...p, [card.etapa.id!]: e.target.value }))}
+                                            style={{ fontSize: '0.75rem', height: '28px', backgroundColor: 'var(--card-bg)' }}
+                                            onKeyDown={e => {
+                                              if (e.key === 'Enter') handleReply(card.workflow.id!, card.etapa.id!);
+                                            }}
+                                          />
+                                          <Button 
+                                            size="sm" 
+                                            variant="secondary" 
+                                            onClick={() => handleReply(card.workflow.id!, card.etapa.id!)}
+                                            style={{ height: '28px', padding: '0 0.5rem' }}
+                                            disabled={submittingReply === card.etapa.id!}
+                                          >
+                                            {submittingReply === card.etapa.id! ? <Spinner className="h-3 w-3" /> : <Send className="h-3 w-3" />}
+                                          </Button>
+                                        </div>
                                       </div>
                                     )}
                                   </div>
