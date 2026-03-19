@@ -311,7 +311,7 @@ export default function AnalyticsPage() {
                     const deltaIcon = a.follower_delta > 0 ? '↑' : a.follower_delta < 0 ? '↓' : '→';
                     return (
                       <TableRow key={a.client_id}>
-                        <TableCell>
+                        <TableCell data-label="Cliente">
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                             {a.profile_picture_url
                               ? <img src={a.profile_picture_url} alt="" style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover' }} />
@@ -323,20 +323,20 @@ export default function AnalyticsPage() {
                             </div>
                           </div>
                         </TableCell>
-                        <TableCell>
+                        <TableCell data-label="Seguidores">
                           {formatNumber(a.follower_count)}
                           <span style={{ color: deltaColor, fontSize: '0.75rem', marginLeft: 4 }}>
                             {deltaIcon}{formatNumber(Math.abs(a.follower_delta))}
                           </span>
                         </TableCell>
-                        <TableCell>
+                        <TableCell data-label="Engajamento">
                           <Badge variant={a.engagement_rate_avg >= 3 ? 'default' : a.engagement_rate_avg >= 1 ? 'secondary' : 'outline'}>
                             {a.engagement_rate_avg.toFixed(2)}%
                           </Badge>
                         </TableCell>
-                        <TableCell>{formatNumber(a.reach_28d)}</TableCell>
-                        <TableCell>{a.posts_last_30d}</TableCell>
-                        <TableCell>
+                        <TableCell data-label="Alcance (28d)">{formatNumber(a.reach_28d)}</TableCell>
+                        <TableCell data-label="Posts (30d)">{a.posts_last_30d}</TableCell>
+                        <TableCell data-label="Último Post">
                           {daysSince !== null
                             ? <span style={{ color: isSilent ? 'var(--danger)' : 'var(--text-main)' }}>{daysSince}d atrás</span>
                             : <span style={{ color: 'var(--danger)' }}>Sem posts</span>
