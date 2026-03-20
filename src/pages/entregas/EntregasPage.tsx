@@ -80,25 +80,28 @@ function EtapaRow({
   onRemove: () => void;
 }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 110px 150px auto auto', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.75rem', padding: '0.75rem', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
       <Input
         placeholder="Nome da etapa"
         value={nome}
         onChange={e => onChange('nome', e.target.value)}
       />
-      <Input
-        type="number"
-        min={1}
-        value={prazo}
-        onChange={e => onChange('prazo', Number(e.target.value))}
-      />
-      <Select value={tipoPrazo} onValueChange={val => onChange('tipoPrazo', val)}>
-        <SelectTrigger><SelectValue /></SelectTrigger>
-        <SelectContent>
-          <SelectItem value="corridos">Corridos</SelectItem>
-          <SelectItem value="uteis">Úteis</SelectItem>
-        </SelectContent>
-      </Select>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+        <Input
+          type="number"
+          min={1}
+          value={prazo}
+          onChange={e => onChange('prazo', Number(e.target.value))}
+          placeholder="Prazo"
+        />
+        <Select value={tipoPrazo} onValueChange={val => onChange('tipoPrazo', val)}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="corridos">Corridos</SelectItem>
+            <SelectItem value="uteis">Úteis</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
       <Select value={responsavelId != null ? String(responsavelId) : '__none__'} onValueChange={val => onChange('responsavelId', val === '__none__' ? null : Number(val))}>
         <SelectTrigger><SelectValue placeholder="Sem responsável" /></SelectTrigger>
         <SelectContent>
@@ -106,18 +109,20 @@ function EtapaRow({
           {membros.map(m => <SelectItem key={m.id} value={String(m.id)}>{m.nome}</SelectItem>)}
         </SelectContent>
       </Select>
-      <Button
-        size="sm"
-        variant={tipo === 'aprovacao_cliente' ? 'default' : 'outline'}
-        title={tipo === 'aprovacao_cliente' ? 'Etapa de aprovação do cliente' : 'Marcar como aprovação do cliente'}
-        onClick={() => onChange('tipo', tipo === 'aprovacao_cliente' ? 'padrao' : 'aprovacao_cliente')}
-        style={{ fontSize: '0.7rem', padding: '0.25rem 0.5rem', whiteSpace: 'nowrap' }}
-      >
-        {tipo === 'aprovacao_cliente' ? '✓ Aprovação' : 'Aprovação'}
-      </Button>
-      <Button size="icon" variant="ghost" className="text-destructive" onClick={onRemove}>
-        <Trash2 className="h-4 w-4" />
-      </Button>
+      <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <Button
+          size="sm"
+          variant={tipo === 'aprovacao_cliente' ? 'default' : 'outline'}
+          title={tipo === 'aprovacao_cliente' ? 'Etapa de aprovação do cliente' : 'Marcar como aprovação do cliente'}
+          onClick={() => onChange('tipo', tipo === 'aprovacao_cliente' ? 'padrao' : 'aprovacao_cliente')}
+          style={{ fontSize: '0.7rem', padding: '0.25rem 0.5rem', whiteSpace: 'nowrap', flex: 1 }}
+        >
+          {tipo === 'aprovacao_cliente' ? '✓ Aprovação' : 'Aprovação'}
+        </Button>
+        <Button size="icon" variant="ghost" className="text-destructive" onClick={onRemove}>
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </div>
     </div>
   );
 }
@@ -211,35 +216,31 @@ function NewWorkflowModal({
 
   return (
     <Dialog open={open} onOpenChange={open => { if (!open) { setEtapas([defaultEtapa()]); onClose(); } }}>
-      <DialogContent style={{ maxWidth: 700, maxHeight: '90vh', overflowY: 'auto' }}>
+      <DialogContent style={{ maxWidth: 700, maxHeight: '90vh', overflowY: 'auto', width: 'calc(100vw - 2rem)' }}>
         <DialogHeader><DialogTitle>Novo Fluxo de Entrega</DialogTitle></DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1"><Label>Título *</Label><Input placeholder="Ex: Posts Instagram — Março 2026" value={fTitulo} onChange={e => setFTitulo(e.target.value)} /></div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <div className="space-y-1">
-              <Label>Cliente *</Label>
-              <Select value={fClienteId} onValueChange={setFClienteId}>
-                <SelectTrigger><SelectValue placeholder="Selecionar cliente..." /></SelectTrigger>
-                <SelectContent>
-                  {activeClientes.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.nome}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>Template</Label>
-              <Select value={fTemplateId || '__none__'} onValueChange={val => handleTemplateChange(val === '__none__' ? '' : val)}>
-                <SelectTrigger><SelectValue placeholder="Personalizado" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">Personalizado</SelectItem>
-                  {templates.map(t => <SelectItem key={t.id} value={String(t.id)}>{t.nome} ({t.etapas.length} etapas)</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="space-y-1">
+            <Label>Cliente *</Label>
+            <Select value={fClienteId} onValueChange={setFClienteId}>
+              <SelectTrigger><SelectValue placeholder="Selecionar cliente..." /></SelectTrigger>
+              <SelectContent>
+                {activeClientes.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.nome}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <div className="space-y-1"><Label>Link do Notion</Label><Input type="url" placeholder="https://notion.so/..." value={fNotion} onChange={e => setFNotion(e.target.value)} /></div>
-            <div className="space-y-1"><Label>Link do Drive</Label><Input type="url" placeholder="https://drive.google.com/..." value={fDrive} onChange={e => setFDrive(e.target.value)} /></div>
+          <div className="space-y-1">
+            <Label>Template</Label>
+            <Select value={fTemplateId || '__none__'} onValueChange={val => handleTemplateChange(val === '__none__' ? '' : val)}>
+              <SelectTrigger><SelectValue placeholder="Personalizado" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">Personalizado</SelectItem>
+                {templates.map(t => <SelectItem key={t.id} value={String(t.id)}>{t.nome} ({t.etapas.length} etapas)</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
+          <div className="space-y-1"><Label>Link do Notion</Label><Input type="url" placeholder="https://notion.so/..." value={fNotion} onChange={e => setFNotion(e.target.value)} /></div>
+          <div className="space-y-1"><Label>Link do Drive</Label><Input type="url" placeholder="https://drive.google.com/..." value={fDrive} onChange={e => setFDrive(e.target.value)} /></div>
           <div className="flex items-center gap-2">
             <Checkbox id="recorrente-new" checked={fRecorrente} onCheckedChange={v => setFRecorrente(!!v)} />
             <Label htmlFor="recorrente-new">Fluxo recorrente (ao concluir, oferecer criar novo ciclo)</Label>
@@ -495,7 +496,7 @@ function TemplatesModal({
   return (
     <>
       <Dialog open={open} onOpenChange={open => { if (!open) { setFNome(''); setEtapas([defaultEtapa()]); setEditingTemplate(null); onClose(); } }}>
-        <DialogContent style={{ maxWidth: 700, maxHeight: '90vh', overflowY: 'auto' }}>
+        <DialogContent style={{ maxWidth: 700, maxHeight: '90vh', overflowY: 'auto', width: 'calc(100vw - 2rem)' }}>
           <DialogHeader><DialogTitle>Gerenciar Templates</DialogTitle></DialogHeader>
           <div style={{ marginBottom: '1rem' }}>
             {templates.length === 0
