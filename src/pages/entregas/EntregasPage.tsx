@@ -1013,23 +1013,19 @@ export default function EntregasPage() {
                                     try {
                                       const portalToken = await createPortalToken(card.workflow.id!);
                                       const url = `${window.location.origin}/#/portal/${portalToken}`;
-                                      try {
+                                      if (navigator.share) {
+                                        await navigator.share({
+                                          title: card.workflow.titulo,
+                                          text: `Acompanhe a entrega: ${card.workflow.titulo}`,
+                                          url,
+                                        });
+                                      } else {
                                         await navigator.clipboard.writeText(url);
-                                      } catch {
-                                        // Fallback for mobile browsers where clipboard API is restricted
-                                        const ta = document.createElement('textarea');
-                                        ta.value = url;
-                                        ta.style.position = 'fixed';
-                                        ta.style.opacity = '0';
-                                        document.body.appendChild(ta);
-                                        ta.focus();
-                                        ta.select();
-                                        document.execCommand('copy');
-                                        document.body.removeChild(ta);
+                                        toast.success('Link do portal copiado!');
                                       }
-                                      toast.success('Link do portal copiado!');
-                                    } catch {
-                                      toast.error('Erro ao gerar link do portal.');
+                                    } catch (err: any) {
+                                      if (err?.name === 'AbortError') return;
+                                      toast.error('Erro ao compartilhar link do portal.');
                                     }
                                   }}
                                   title="Compartilhar portal do cliente"
