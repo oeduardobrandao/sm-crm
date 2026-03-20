@@ -618,7 +618,7 @@ body {
 
 .app-logo-bar {
   padding-top: 1.25rem;
-  margin-bottom: -0.5rem;
+  margin-bottom: 0.75rem;
 }
 
 .app-logo {
@@ -1832,7 +1832,7 @@ select.form-input option {
   }
 
   .header-title h1 {
-    font-size: 1.3rem;
+    font-size: 2.5rem;
   }
 
   .header-title p {
