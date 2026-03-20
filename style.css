@@ -616,15 +616,22 @@ body {
   margin-bottom: 3rem;
 }
 
-.dashboard-logo {
-  height: 28px;
-  width: auto;
-  object-fit: contain;
-  opacity: 0.85;
-  display: none;
+.app-logo-bar {
+  padding-top: 1.25rem;
+  margin-bottom: -0.5rem;
 }
 
-.dashboard-logo.logo-dark { display: none; }
+.app-logo {
+  height: 18px;
+  width: auto;
+  object-fit: contain;
+  opacity: 0.8;
+}
+
+.app-logo.logo-light { display: inline; }
+.app-logo.logo-dark { display: none; }
+[data-theme="dark"] .app-logo.logo-light { display: none; }
+[data-theme="dark"] .app-logo.logo-dark { display: inline; }
 
 .kpi-grid {
   display: grid;
@@ -1885,10 +1892,6 @@ select.form-input option {
     white-space: nowrap;
   }
 
-  .dashboard-logo.logo-light { display: inline; }
-  .dashboard-logo.logo-dark { display: none; }
-  [data-theme="dark"] .dashboard-logo.logo-light { display: none; }
-  [data-theme="dark"] .dashboard-logo.logo-dark { display: inline; }
 
   /* Tables to Cards on Mobile */
   .card.animate-up {

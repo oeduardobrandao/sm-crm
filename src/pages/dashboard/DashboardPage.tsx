@@ -101,14 +101,10 @@ export default function DashboardPage() {
   const clienteMap = Object.fromEntries(clientes.map(c => [c.id!, c]));
 
   return (
-    <div style={{ padding: '1.5rem' }}>
+    <div>
       <div className="header">
         <div className="header-title">
           <h1>Dashboard</h1>
-        </div>
-        <div className="header-actions">
-          <img src="/logo-black.svg" className="dashboard-logo logo-light" alt="Logo" style={{ height: 20 }} />
-          <img src="/logo-white.svg" className="dashboard-logo logo-dark" alt="Logo" style={{ height: 20 }} />
         </div>
       </div>
 
