@@ -366,7 +366,7 @@ export default function ConfiguracaoPage() {
 
       {/* Password */}
       <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-        <h3 style={{ marginBottom: '1rem' }}>Alterar Senha</h3>
+        <h3 className="config-title">Alterar Senha</h3>
         <div className="space-y-3">
           <div className="space-y-1"><Label>Nova Senha</Label><PasswordInput value={senha} onChange={e => setSenha(e.target.value)} /></div>
           <div className="space-y-1"><Label>Confirmar Nova Senha</Label><PasswordInput value={confirmar} onChange={e => setConfirmar(e.target.value)} /></div>
@@ -377,7 +377,7 @@ export default function ConfiguracaoPage() {
       {/* Workspace Branding */}
       {isOwnerOrAdmin && workspace && (
         <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-          <h3 style={{ marginBottom: '1rem' }}>Workspace</h3>
+          <h3 className="config-title">Workspace</h3>
           <div style={{ marginBottom: '1rem' }}>
             <Label style={{ display: 'block', marginBottom: 8 }}>Logo</Label>
             {wsLogoUrl && (
@@ -417,7 +417,7 @@ export default function ConfiguracaoPage() {
       {/* Instagram Auto-Sync */}
       {isOwnerOrAdmin && (igAccounts ?? []).length > 0 && (
         <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-          <h3 style={{ marginBottom: '1rem' }}>Auto-Sync Instagram</h3>
+          <h3 className="config-title">Auto-Sync Instagram</h3>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             <Switch checked={autoSyncEnabled} onCheckedChange={handleAutoSyncToggle} />
             <span>{autoSyncEnabled ? 'Sincronização automática ativada' : 'Sincronização automática desativada'}</span>
@@ -432,7 +432,7 @@ export default function ConfiguracaoPage() {
       {isOwnerOrAdmin && (
         <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <h3 style={{ margin: 0 }}>Membros do Workspace</h3>
+            <h3 className="config-title">Membros do Workspace</h3>
             <Button onClick={() => setInviteOpen(true)}><Plus className="h-4 w-4" /> Convidar</Button>
           </div>
 
@@ -486,7 +486,7 @@ export default function ConfiguracaoPage() {
 
       {/* Account Info */}
       <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-        <h3 style={{ marginBottom: '1rem' }}>Conta</h3>
+        <h3 className="config-title">Conta</h3>
         <div className="client-info-grid">
           <div className="client-info-item">
             <span className="client-info-label">ID do Usuário</span>
@@ -509,7 +509,7 @@ export default function ConfiguracaoPage() {
 
       {/* Logout */}
       <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-        <h3 style={{ marginBottom: '1rem' }}>Sessão</h3>
+        <h3 className="config-title">Sessão</h3>
         <Button variant="ghost" className="text-destructive" onClick={signOut}><LogOut className="h-4 w-4" /> Sair da Conta</Button>
       </div>
 

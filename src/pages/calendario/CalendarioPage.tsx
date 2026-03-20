@@ -499,8 +499,8 @@ function MedicoCalendar() {
 
   const filterOptions = [
     { key: 'all', label: 'Todos' },
-    { key: 'br', label: 'Brasil' },
-    { key: 'world', label: 'Mundial' },
+    { key: 'br', label: '🇧🇷 Brasil' },
+    { key: 'world', label: '🌍 Mundial' },
     { key: 'prof', label: 'Profissional' },
     { key: 'cancer', label: 'Câncer' },
     { key: 'cardio', label: 'Cardiologia' },
@@ -535,6 +535,7 @@ function MedicoCalendar() {
                 height: 32,
                 fontSize: '0.8rem',
                 cursor: 'pointer',
+                alignItems: 'center',
               }}
               onClick={() => setActiveFilter(f.key)}
             >

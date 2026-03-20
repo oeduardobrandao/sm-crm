@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
     // 1. Validate token
     const { data: tokenRow, error: tokenErr } = await db
       .from("portal_tokens")
-      .select("workflow_id, conta_id")
+      .select("workflow_id")
       .eq("token", token)
       .maybeSingle();
 
@@ -46,10 +46,10 @@ Deno.serve(async (req) => {
       return json({ error: "Link inválido ou expirado." }, 404);
     }
 
-    // 2. Fetch workflow
+    // 2. Fetch workflow (include conta_id for workspace lookup)
     const { data: workflow, error: wfErr } = await db
       .from("workflows")
-      .select("titulo, status, etapa_atual, link_notion, link_drive, created_at, cliente_id")
+      .select("titulo, status, etapa_atual, link_notion, link_drive, created_at, cliente_id, conta_id")
       .eq("id", tokenRow.workflow_id)
       .single();
 
@@ -72,14 +72,14 @@ Deno.serve(async (req) => {
       .single();
 
     // 5. Fetch workspace info
-    const { data: conta } = await db
-      .from("contas")
-      .select("nome, logo_url")
-      .eq("id", tokenRow.conta_id)
+    const { data: ws } = await db
+      .from("workspaces")
+      .select("name, logo_url")
+      .eq("id", workflow.conta_id)
       .maybeSingle();
 
-    // Strip cliente_id from workflow response (no sensitive data)
-    const { cliente_id: _, ...workflowSafe } = workflow;
+    // Strip internal IDs from workflow response (no sensitive data)
+    const { cliente_id: _, conta_id: _cid, ...workflowSafe } = workflow;
 
     // 6. Fetch portal approvals 
     const { data: approvals } = await db
@@ -94,8 +94,8 @@ Deno.serve(async (req) => {
       approvals: approvals || [],
       cliente_nome: cliente?.nome || "Cliente",
       workspace: {
-        name: conta?.nome || "Workspace",
-        logo_url: conta?.logo_url || null,
+        name: ws?.name || "Workspace",
+        logo_url: ws?.logo_url || null,
       },
     });
   } catch (err) {

@@ -179,14 +179,20 @@ export default function PortalPage() {
         <div className="portal-header-inner">
           <div className="portal-header-logo">
             {workspace.logo_url ? (
-              <img src={workspace.logo_url} alt={workspace.name} />
-            ) : (
-              <span className="portal-header-name">{workspace.name}</span>
-            )}
+              <img
+                src={workspace.logo_url}
+                alt={workspace.name}
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = 'none';
+                  (e.target as HTMLImageElement).parentElement!.querySelector('.portal-header-name')!.removeAttribute('hidden');
+                }}
+              />
+            ) : null}
+            <span className="portal-header-name" hidden={!!workspace.logo_url}>{workspace.name}</span>
           </div>
           <div className="portal-header-badge">
-            <span>Área do Cliente</span>
-            <small>Acesso via Link Seguro</small>
+            <span>Área Segura</span>
+            <small>Portal do Cliente</small>
           </div>
         </div>
       </header>
@@ -380,7 +386,7 @@ export default function PortalPage() {
       {/* Footer */}
       <footer className="portal-footer">
         <span>fornecido por</span>
-        <img src="/logo-white.svg" alt="Mesaas" className="portal-footer-logo" />
+        <img src="/logo-gray.svg" alt="Mesaas" className="portal-footer-logo" />
       </footer>
     </div>
   );

@@ -92,9 +92,9 @@ html, body, #root, .app-container {
 
   /* Dimensões e Globais */
   --sidebar-width: 68px;
-  --font-main: 'DM Sans', sans-serif;
-  --font-heading: 'Playfair Display', serif;
-  --font-mono: 'DM Mono', monospace;
+  --font-main: 'SF Pro Text', sans-serif;
+  --font-heading: 'SF Pro Display', serif;
+  --font-mono: 'SF Pro Mono', monospace;
   --shadow: 0 10px 40px -10px rgba(0,0,0,0.08);
   --radius: 28px;
   --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -538,7 +538,7 @@ body {
   margin-bottom: 2.5rem;
 }
 
-.header-title h1 {
+.header-title h1, h2 {
   font-family: var(--font-heading);
   font-size: clamp(2rem, 4vw, 3.2rem);
   font-weight: 900;
@@ -792,9 +792,10 @@ body {
 .dashboard-hub-card-header h3 {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0rem;
   font-family: var(--font-heading);
-  font-size: 1.15rem;
+  font-size: 1.2rem;
+  font-weight: 600;
   margin: 0;
 }
 .dashboard-hub-card-header .ph-arrow-right {
@@ -1375,6 +1376,16 @@ select.form-input option {
   font-size: 0.85rem;
   font-weight: 500;
 }
+
+.config-title {
+  font-family: var(--font-heading);
+  font-size: clamp(1rem, 4vw, 1.6rem);
+  font-weight: 800;
+  color: var(--text-main);
+  letter-spacing: -0.02em;
+  margin-bottom: 1rem;
+}
+
 
 .btn-danger-outline {
   background: transparent;

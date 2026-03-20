@@ -22,7 +22,7 @@ import { useAuth } from '../../context/AuthContext';
 type FilterTipo = 'todos' | 'clt' | 'freelancer_mensal' | 'freelancer_demanda';
 type SortKey = 'nome' | 'custo_maior' | 'custo_menor';
 
-const AVATAR_COLORS = ['#eab308','#3ecf8e','#f5a342','#f542c8','#42c8f5','#8b5cf6','#ef4444','#14b8a6'];
+const AVATAR_COLORS = ['#eab308', '#3ecf8e', '#f5a342', '#f542c8', '#42c8f5', '#8b5cf6', '#ef4444', '#14b8a6'];
 const TIPO_LABEL: Record<string, string> = {
   clt: 'CLT', freelancer_mensal: 'Freelancer Mensal', freelancer_demanda: 'Freelancer Demanda',
 };
@@ -122,7 +122,7 @@ export default function EquipePage() {
         for (const row of rows) {
           if (!row.nome || !row.cargo) continue;
           try {
-            const tipo = (['clt','freelancer_mensal','freelancer_demanda'].includes(row.tipo) ? row.tipo : 'clt') as Membro['tipo'];
+            const tipo = (['clt', 'freelancer_mensal', 'freelancer_demanda'].includes(row.tipo) ? row.tipo : 'clt') as Membro['tipo'];
             await addMembro({
               nome: row.nome,
               cargo: row.cargo,
@@ -178,7 +178,7 @@ export default function EquipePage() {
         )}
       </div>
 
-      <div style={{ display: 'flex', gap: 12, marginBottom: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 12, marginBottom: '0.5rem', alignItems: 'start', flexWrap: 'wrap' }}>
         <div className="filter-bar">
           {(['todos', 'clt', 'freelancer_mensal', 'freelancer_demanda'] as FilterTipo[]).map(f => (
             <button key={f} className={`filter-btn${filter === f ? ' active' : ''}`} onClick={() => setFilter(f)}>
