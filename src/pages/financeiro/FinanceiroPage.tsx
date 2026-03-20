@@ -104,10 +104,11 @@ export default function FinanceiroPage() {
   const handleConfirmPago = async () => {
     if (!confirmT) return;
     try {
-      if (confirmT.id) {
+      if (confirmT.id && !confirmT.referencia_agendamento) {
         await updateTransacao(confirmT.id, { status: 'pago' });
       } else {
-        await addTransacao({ ...confirmT, status: 'pago' });
+        const { id, user_id, conta_id, ...rest } = confirmT;
+        await addTransacao({ ...rest, status: 'pago' });
       }
       toast.success('Pagamento confirmado');
       qc.invalidateQueries({ queryKey: ['transacoes'] });

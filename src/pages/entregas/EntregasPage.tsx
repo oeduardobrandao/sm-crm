@@ -1012,7 +1012,20 @@ export default function EntregasPage() {
                                     try {
                                       const portalToken = await createPortalToken(card.workflow.id!);
                                       const url = `${window.location.origin}/#/portal/${portalToken}`;
-                                      await navigator.clipboard.writeText(url);
+                                      try {
+                                        await navigator.clipboard.writeText(url);
+                                      } catch {
+                                        // Fallback for mobile browsers where clipboard API is restricted
+                                        const ta = document.createElement('textarea');
+                                        ta.value = url;
+                                        ta.style.position = 'fixed';
+                                        ta.style.opacity = '0';
+                                        document.body.appendChild(ta);
+                                        ta.focus();
+                                        ta.select();
+                                        document.execCommand('copy');
+                                        document.body.removeChild(ta);
+                                      }
                                       toast.success('Link do portal copiado!');
                                     } catch {
                                       toast.error('Erro ao gerar link do portal.');
