@@ -340,7 +340,7 @@ export default function DashboardPage() {
         </Link>
 
         {/* Calendário */}
-        <Link to="/financeiro" style={{ textDecoration: 'none', color: 'inherit' }}>
+        {role !== 'agent' && <Link to="/financeiro" style={{ textDecoration: 'none', color: 'inherit' }}>
           <div className="card dashboard-hub-card animate-up">
             <div className="dashboard-hub-card-header">
               <h3><i className="ph ph-calendar" style={{ marginRight: 8 }} />Calendário</h3>
@@ -363,7 +363,7 @@ export default function DashboardPage() {
               )}
             </div>
           </div>
-        </Link>
+        </Link>}
 
       </div>
     </div>

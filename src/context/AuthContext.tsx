@@ -60,7 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [user?.id]);
 
-  const role: 'owner' | 'admin' | 'agent' = (profile?.role as 'owner' | 'admin' | 'agent') ?? 'owner';
+  const role: 'owner' | 'admin' | 'agent' = (profile?.role as 'owner' | 'admin' | 'agent') ?? 'agent';
 
   const signOut = async () => {
     await supabaseSignOut();

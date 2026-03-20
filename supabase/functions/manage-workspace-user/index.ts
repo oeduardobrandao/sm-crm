@@ -150,6 +150,15 @@ Deno.serve(async (req: Request) => {
 
       if (updateError) throw updateError;
 
+      // Sync role to profiles so the app picks it up immediately
+      const { error: profileUpdateError } = await serviceClient
+        .from("profiles")
+        .update({ role })
+        .eq("id", targetUserId)
+        .eq("conta_id", callerProfile.conta_id);
+
+      if (profileUpdateError) throw profileUpdateError;
+
       return new Response(JSON.stringify({ message: "Permissão atualizada com sucesso." }), { status: 200, headers });
 
     } else if (action === "remove") {

@@ -15,6 +15,7 @@ import {
   updateMembro,
   type Membro,
 } from '../../store';
+import { useAuth } from '../../context/AuthContext';
 
 const AVATAR_COLORS = ['#eab308','#3ecf8e','#f5a342','#f542c8','#42c8f5','#8b5cf6','#ef4444','#14b8a6'];
 function getAvatarColor(name: string): string {
@@ -27,6 +28,8 @@ const TIPO_LABEL: Record<string, string> = {
 };
 
 export default function MembroDetalhePage() {
+  const { role } = useAuth();
+  const isAgent = role === 'agent';
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -92,9 +95,11 @@ export default function MembroDetalhePage() {
     <div style={{ padding: '1.5rem' }}>
       <div className="header">
         <Button variant="outline" onClick={() => navigate('/equipe')}><ArrowLeft className="h-4 w-4" /> Voltar</Button>
-        <div className="header-actions">
-          <Button variant="outline" onClick={openEdit}><Edit2 className="h-4 w-4" /> Editar</Button>
-        </div>
+        {!isAgent && (
+          <div className="header-actions">
+            <Button variant="outline" onClick={openEdit}><Edit2 className="h-4 w-4" /> Editar</Button>
+          </div>
+        )}
       </div>
 
       {(loadingMembros || loadingTx) && (
@@ -113,54 +118,60 @@ export default function MembroDetalhePage() {
             </div>
           </div>
 
-          <div className="kpi-grid" style={{ marginBottom: '1.5rem' }}>
-            {[
-              { label: 'Custo Mensal', value: formatBRL(membro.custo_mensal ?? 0) },
-              { label: 'Total Pago', value: formatBRL(totalPago) },
-              { label: 'Pendente', value: formatBRL(pendente) },
-            ].map(k => (
-              <div key={k.label} className="kpi-card">
-                <div className="kpi-label">{k.label}</div>
-                <div className="kpi-value">{k.value}</div>
-              </div>
-            ))}
-          </div>
+          {!isAgent && (
+            <div className="kpi-grid" style={{ marginBottom: '1.5rem' }}>
+              {[
+                { label: 'Custo Mensal', value: formatBRL(membro.custo_mensal ?? 0) },
+                { label: 'Total Pago', value: formatBRL(totalPago) },
+                { label: 'Pendente', value: formatBRL(pendente) },
+              ].map(k => (
+                <div key={k.label} className="kpi-card">
+                  <div className="kpi-label">{k.label}</div>
+                  <div className="kpi-value">{k.value}</div>
+                </div>
+              ))}
+            </div>
+          )}
 
           <div className="card" style={{ marginBottom: '1.5rem' }}>
             <h3 style={{ marginBottom: 12 }}>Informações</h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <div><strong>Cargo:</strong> {membro.cargo}</div>
               <div><strong>Tipo:</strong> {TIPO_LABEL[membro.tipo]}</div>
-              <div><strong>Dia de Pagamento:</strong> {membro.data_pagamento ?? '—'}</div>
-              <div><strong>Custo Mensal:</strong> {formatBRL(membro.custo_mensal ?? 0)}</div>
+              {!isAgent && <div><strong>Dia de Pagamento:</strong> {membro.data_pagamento ?? '—'}</div>}
+              {!isAgent && <div><strong>Custo Mensal:</strong> {formatBRL(membro.custo_mensal ?? 0)}</div>}
             </div>
           </div>
 
-          <h3 style={{ marginBottom: 12 }}>Transações</h3>
-          <div className="card">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Data</TableHead>
-                  <TableHead>Descrição</TableHead>
-                  <TableHead>Categoria</TableHead>
-                  <TableHead>Valor</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {membroTx.map((t, i) => (
-                  <TableRow key={t.id ?? `tx-${i}`}>
-                    <TableCell data-label="Data">{formatDate(t.data)}</TableCell>
-                    <TableCell data-label="Descrição">{t.descricao}</TableCell>
-                    <TableCell data-label="Categoria">{t.categoria}</TableCell>
-                    <TableCell data-label="Valor">{formatBRL(t.valor)}</TableCell>
-                    <TableCell data-label="Status">{t.status}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+          {!isAgent && (
+            <>
+              <h3 style={{ marginBottom: 12 }}>Transações</h3>
+              <div className="card">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Data</TableHead>
+                      <TableHead>Descrição</TableHead>
+                      <TableHead>Categoria</TableHead>
+                      <TableHead>Valor</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {membroTx.map((t, i) => (
+                      <TableRow key={t.id ?? `tx-${i}`}>
+                        <TableCell data-label="Data">{formatDate(t.data)}</TableCell>
+                        <TableCell data-label="Descrição">{t.descricao}</TableCell>
+                        <TableCell data-label="Categoria">{t.categoria}</TableCell>
+                        <TableCell data-label="Valor">{formatBRL(t.valor)}</TableCell>
+                        <TableCell data-label="Status">{t.status}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
+          )}
         </>
       )}
 
