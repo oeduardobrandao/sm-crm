@@ -131,7 +131,7 @@ export default function Sidebar() {
       <div className="sidebar-wrapper">
         <div className="logo-container" style={{ height: 64, display: 'flex', alignItems: 'center', justifyContent: 'flex-start', paddingLeft: '1.25rem', width: '100%', marginBottom: '1.5rem', marginTop: '1rem' }}>
           <a href="#" onClick={(e) => { e.preventDefault(); navigate('/dashboard'); }} style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}>
-            <img src="/logo-gray.svg" alt="Mesaas" className="rail-logo" style={{ height: 20, width: 'auto' }} />
+            <img src={isDark ? "/logo-white.svg" : "/logo-black.svg"} alt="Mesaas" className="rail-logo" style={{ height: 16, width: 'auto' }} />
           </a>
         </div>
 
