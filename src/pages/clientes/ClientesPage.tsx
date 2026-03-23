@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Plus, Edit2, Trash2, Upload, Info, HelpCircle } from 'lucide-react';
+import { Plus, Edit2, Trash2, Upload, Info, HelpCircle, Search, ArrowUpDown } from 'lucide-react';
 import { openCSVSelector } from '../../lib/csv';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,10 +12,9 @@ import { Spinner } from '@/components/ui/spinner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   getClientes, addCliente, updateCliente, removeCliente,
-  formatBRL, getInitials,
+  getInitials,
   type Cliente,
 } from '../../store';
 import { sanitizeUrl } from '../../utils/security';
@@ -37,6 +36,9 @@ export default function ClientesPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [filter, setFilter] = useState<FilterStatus>('todos');
+  const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState<'nome' | 'valor_mensal' | 'data_pagamento'>('nome');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Cliente | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
@@ -58,7 +60,16 @@ export default function ClientesPage() {
     enabled: clientes.length > 0,
   });
 
-  const filtered = clientes.filter(c => filter === 'todos' || c.status === filter);
+  const filtered = clientes
+    .filter(c => filter === 'todos' || c.status === filter)
+    .filter(c => !search || c.nome.toLowerCase().includes(search.toLowerCase()) || c.email?.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => {
+      let cmp = 0;
+      if (sortBy === 'nome') cmp = a.nome.localeCompare(b.nome);
+      else if (sortBy === 'valor_mensal') cmp = (a.valor_mensal || 0) - (b.valor_mensal || 0);
+      else if (sortBy === 'data_pagamento') cmp = (a.data_pagamento || 0) - (b.data_pagamento || 0);
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
 
   const openAdd = () => {
     setEditing(null);
@@ -172,6 +183,27 @@ export default function ClientesPage() {
         ))}
       </div>
 
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: '320px' }}>
+          <Search className="h-4 w-4" style={{ position: 'absolute', left: '0.625rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+          <Input placeholder="Buscar por nome ou e-mail..." value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: '2rem' }} />
+        </div>
+        <Select value={sortBy} onValueChange={v => setSortBy(v as typeof sortBy)}>
+          <SelectTrigger style={{ width: '180px' }}>
+            <ArrowUpDown className="h-3.5 w-3.5" style={{ marginRight: '0.375rem', flexShrink: 0 }} />
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="nome">Nome</SelectItem>
+            <SelectItem value="valor_mensal">Valor Mensal</SelectItem>
+            <SelectItem value="data_pagamento">Dia Pagamento</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}>
+          <ArrowUpDown className="h-4 w-4" style={{ transform: sortDir === 'desc' ? 'scaleY(-1)' : undefined }} />
+        </Button>
+      </div>
+
       {isLoading ? (
         <div className="flex justify-center p-8"><Spinner size="lg" /></div>
       ) : (
@@ -223,12 +255,6 @@ export default function ClientesPage() {
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     )}
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', borderTop: '1px solid var(--border-color)', paddingTop: '0.5rem', marginTop: 'auto' }}>
-                  <div style={{ fontSize: '0.85rem', fontWeight: 500 }}>
-                    {c.valor_mensal ? formatBRL(c.valor_mensal) + '/mês' : '—'}
                   </div>
                 </div>
               </div>
