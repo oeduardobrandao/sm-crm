@@ -17,10 +17,6 @@ export default function AppLayout() {
     <div className="app-container">
       <Sidebar />
       <main className="main-content" id="app">
-        <div className="app-logo-bar">
-          <img src="/logo-black.svg" className="app-logo logo-light" alt="Logo" />
-          <img src="/logo-white.svg" className="app-logo logo-dark" alt="Logo" />
-        </div>
         <Outlet />
       </main>
       <MobileNav />

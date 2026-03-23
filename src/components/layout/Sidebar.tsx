@@ -60,7 +60,7 @@ export default function Sidebar() {
   const { user, profile, role, signOut } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [openGroupId, setOpenGroupId] = useState<string | null>(null);
+  const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
   const [isDark, setIsDark] = useState(document.documentElement.getAttribute('data-theme') === 'dark');
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [workspaces, setWorkspaces] = useState<any[]>([]);
@@ -70,6 +70,13 @@ export default function Sidebar() {
   // Determine active group from current route
   const activeRoute = location.pathname;
   const activeGroupId = navGroups.find(g => g.items.some(i => activeRoute.startsWith(i.route)))?.id ?? null;
+
+  // Auto-expand active group
+  useEffect(() => {
+    if (activeGroupId && !expandedGroups.includes(activeGroupId)) {
+      setExpandedGroups(prev => [...prev, activeGroupId]);
+    }
+  }, [activeGroupId]);
 
   // Load workspaces for switcher
   useEffect(() => {
@@ -92,12 +99,13 @@ export default function Sidebar() {
   };
 
   const handleGroupClick = (groupId: string) => {
-    setOpenGroupId(prev => prev === groupId ? null : groupId);
+    setExpandedGroups(prev => 
+      prev.includes(groupId) ? prev.filter(id => id !== groupId) : [...prev, groupId]
+    );
   };
 
   const handleNavClick = (route: string) => {
     navigate(route);
-    setOpenGroupId(null);
   };
 
   const handleWorkspaceSwitch = async (workspaceId: string) => {
@@ -113,81 +121,147 @@ export default function Sidebar() {
     ? profile.nome.split(' ').map((w: string) => w?.[0] || '').join('').substring(0, 2).toUpperCase()
     : 'U';
 
+  const userName = profile?.nome || 'Minha Conta';
+
   const mainGroups = navGroups.filter(g => !g.isBottom);
   const bottomGroups = navGroups.filter(g => g.isBottom);
 
   return (
     <nav className="sidebar" id="sidebar">
-      <div className="sidebar-rail">
-        <div className="logo-container" style={{ height: 64, display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', marginBottom: '1.5rem' }}>
-          <a href="#" onClick={(e) => { e.preventDefault(); navigate('/dashboard'); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>
-            <img src="/icon.svg" alt="Mesaas" className="rail-logo" style={{ height: 20, width: 'auto' }} />
+      <div className="sidebar-wrapper">
+        <div className="logo-container" style={{ height: 64, display: 'flex', alignItems: 'center', justifyContent: 'flex-start', paddingLeft: '1.25rem', width: '100%', marginBottom: '1.5rem', marginTop: '1rem' }}>
+          <a href="#" onClick={(e) => { e.preventDefault(); navigate('/dashboard'); }} style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}>
+            <img src="/logo-gray.svg" alt="Mesaas" className="rail-logo" style={{ height: 20, width: 'auto' }} />
           </a>
         </div>
 
-        <ul className="rail-nav" id="rail-nav-main">
-          {mainGroups.map(group => (
-            <li key={group.id} className="rail-item">
-              <button
-                className={`rail-icon-btn${openGroupId === group.id || (!openGroupId && activeGroupId === group.id) ? ' active' : ''}`}
-                data-group-id={group.id}
-                data-tooltip={group.label}
-                data-tooltip-dir="right"
-                aria-expanded={openGroupId === group.id}
-                onClick={() => handleGroupClick(group.id)}
-              >
-                <i className={`ph ${group.icon}`} />
-              </button>
-            </li>
-          ))}
-        </ul>
+        <div className="sidebar-scrollable">
+          <ul className="sidebar-nav" id="sidebar-nav-main">
+            {mainGroups.map(group => {
+              const isActiveGroup = activeGroupId === group.id;
+              const isExpanded = expandedGroups.includes(group.id);
+              const GroupIcon = isActiveGroup ? `ph-fill ${group.icon}` : `ph ${group.icon}`;
+              
+              return (
+                <li key={group.id} className="sidebar-item">
+                  <button
+                    className={`sidebar-nav-btn ${isActiveGroup ? 'active' : ''}`}
+                    aria-expanded={isExpanded}
+                    onClick={() => handleGroupClick(group.id)}
+                  >
+                    <div className="sidebar-nav-btn-content">
+                      <i className={GroupIcon} />
+                      <span>{group.label}</span>
+                    </div>
+                    {group.items.length > 0 && (
+                      <i className={`ph ${isExpanded ? 'ph-caret-up' : 'ph-caret-down'} chevron-icon`} />
+                    )}
+                  </button>
 
-        <div className="rail-bottom">
-          <ul className="rail-nav" id="rail-nav-bottom">
-            {bottomGroups.map(group => (
-              <li key={group.id} className="rail-item">
-                <button
-                  className={`rail-icon-btn${openGroupId === group.id || (!openGroupId && activeGroupId === group.id) ? ' active' : ''}`}
-                  data-group-id={group.id}
-                  data-tooltip={group.label}
-                  data-tooltip-dir="right"
-                  aria-expanded={openGroupId === group.id}
-                  onClick={() => handleGroupClick(group.id)}
-                >
-                  <i className={`ph ${group.icon}`} />
-                </button>
-              </li>
-            ))}
+                  {isExpanded && group.items.length > 0 && (
+                    <ul className="sidebar-sub-nav">
+                      {group.items.map(item => {
+                        const isActiveItem = activeRoute.startsWith(item.route);
+                        const ItemIcon = isActiveItem ? `ph-fill ${item.icon}` : `ph ${item.icon}`;
+                        return (
+                          <li key={item.id} className="sidebar-sub-item">
+                            <a
+                              className={`sidebar-sub-link ${isActiveItem ? 'active' : ''}`}
+                              href={`#${item.route}`}
+                              onClick={(e) => { e.preventDefault(); handleNavClick(item.route); }}
+                            >
+                              <i className={ItemIcon} />
+                              <span>{item.label}</span>
+                            </a>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+
+        <div className="sidebar-bottom">
+          <ul className="sidebar-nav" id="sidebar-nav-bottom">
+            {bottomGroups.map(group => {
+              const isActiveGroup = activeGroupId === group.id;
+              const isExpanded = expandedGroups.includes(group.id);
+              const GroupIcon = isActiveGroup ? `ph-fill ${group.icon}` : `ph ${group.icon}`;
+              
+              return (
+                <li key={group.id} className="sidebar-item">
+                  <button
+                    className={`sidebar-nav-btn ${isActiveGroup ? 'active' : ''}`}
+                    aria-expanded={isExpanded}
+                    onClick={() => handleGroupClick(group.id)}
+                  >
+                    <div className="sidebar-nav-btn-content">
+                      <i className={GroupIcon} />
+                      <span>{group.label}</span>
+                    </div>
+                    {group.items.length > 0 && (
+                      <i className={`ph ${isExpanded ? 'ph-caret-up' : 'ph-caret-down'} chevron-icon`} />
+                    )}
+                  </button>
+
+                  {isExpanded && group.items.length > 0 && (
+                    <ul className="sidebar-sub-nav">
+                      {group.items.map(item => {
+                        const isActiveItem = activeRoute.startsWith(item.route);
+                        const ItemIcon = isActiveItem ? `ph-fill ${item.icon}` : `ph ${item.icon}`;
+                        return (
+                          <li key={item.id} className="sidebar-sub-item">
+                            <a
+                              className={`sidebar-sub-link ${isActiveItem ? 'active' : ''}`}
+                              href={`#${item.route}`}
+                              onClick={(e) => { e.preventDefault(); handleNavClick(item.route); }}
+                            >
+                              <i className={ItemIcon} />
+                              <span>{item.label}</span>
+                            </a>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
           </ul>
 
           <button
             id="theme-toggle"
-            className="rail-icon-btn"
+            className="sidebar-action-btn"
             title="Alternar Tema"
-            data-tooltip={isDark ? 'Modo Claro' : 'Modo Escuro'}
-            data-tooltip-dir="right"
-            style={{ marginBottom: '0.5rem' }}
             onClick={toggleTheme}
           >
-            <i className={`ph ${isDark ? 'ph-sun' : 'ph-moon'}`} />
+            <div className="sidebar-action-btn-content">
+              <i className={`ph ${isDark ? 'ph-sun' : 'ph-moon'}`} />
+              <span>{isDark ? 'Modo Claro' : 'Modo Escuro'}</span>
+            </div>
           </button>
 
           <div
-            className="sidebar-user"
-            id="user-menu-btn"
+            className="sidebar-user-menu"
+            id="user-menu-wrap"
             tabIndex={0}
-            data-tooltip="Sua Conta"
-            data-tooltip-dir="right"
             onClick={() => setUserMenuOpen(v => !v)}
             onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setUserMenuOpen(false); }}
           >
-            <div className="avatar" style={{ width: 38, height: 38, borderRadius: 10, fontSize: '0.85rem' }}>
-              {initials}
+            <div className="sidebar-user-trigger">
+              <div className="avatar" style={{ width: 32, height: 32, borderRadius: 8, fontSize: '0.8rem' }}>
+                {initials}
+              </div>
+              <span className="user-name-text">{userName}</span>
+              <i className={`ph ${userMenuOpen ? 'ph-caret-up' : 'ph-caret-down'}`} style={{ marginLeft: 'auto', color: 'var(--text-muted)' }} />
             </div>
 
             {userMenuOpen && (
-              <div className="user-dropdown">
-                <div className="user-dropdown-header">Opções da Conta</div>
+              <div className="user-menu-popover">
+                <div className="user-dropdown-header" style={{ padding: '0.75rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Opções da Conta</div>
 
                 {workspaces.length > 1 && (
                   <div style={{ padding: '0.25rem 0', borderBottom: '1px solid var(--border-color)', marginBottom: '0.25rem' }}>
@@ -200,7 +274,7 @@ export default function Sidebar() {
                         <button
                           key={m.workspaces.id}
                           className="user-dropdown-item"
-                          style={{ width: '100%', border: 'none', background: 'transparent', textAlign: 'left', fontFamily: 'inherit', fontSize: 'inherit', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: isActive ? 600 : undefined, color: isActive ? 'var(--primary-color)' : undefined }}
+                          style={{ width: '100%', border: 'none', background: 'transparent', textAlign: 'left', fontFamily: 'inherit', fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: isActive ? 600 : 400, color: isActive ? 'var(--primary-color)' : 'var(--text-main)', padding: '0.5rem 0.75rem' }}
                           onClick={() => !isActive && handleWorkspaceSwitch(m.workspaces.id)}
                         >
                           <i className={`ph ${isActive ? 'ph-check-circle' : 'ph-circle'}`} />
@@ -213,8 +287,8 @@ export default function Sidebar() {
 
                 <button
                   id="btn-logout-flutuante"
-                  className="user-dropdown-item text-danger"
-                  style={{ width: '100%', border: 'none', background: 'transparent', textAlign: 'left', fontFamily: 'inherit', fontSize: 'inherit', cursor: 'pointer' }}
+                  className="user-dropdown-item"
+                  style={{ width: '100%', border: 'none', background: 'transparent', textAlign: 'left', fontFamily: 'inherit', fontSize: '0.85rem', cursor: 'pointer', color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem' }}
                   onClick={signOut}
                 >
                   <i className="ph ph-sign-out" /> Sair
@@ -224,38 +298,7 @@ export default function Sidebar() {
           </div>
         </div>
       </div>
-
-      {/* Flyout panel */}
-      <div className={`sidebar-flyout${openGroupId ? ' open' : ''}`} id="sidebar-flyout" aria-hidden={!openGroupId}>
-        {openGroupId && (() => {
-          const group = navGroups.find(g => g.id === openGroupId);
-          if (!group) return null;
-          return (
-            <>
-              <div className="flyout-header">
-                <h2 id="flyout-title">{group.label}</h2>
-              </div>
-              <div className="flyout-content">
-                <ul className="flyout-menu" id="flyout-menu">
-                  {group.items.map(item => (
-                    <li key={item.id}>
-                      <a
-                        className={`flyout-link${activeRoute.startsWith(item.route) ? ' active' : ''}`}
-                        href={`#${item.route}`}
-                        data-route={item.route}
-                        aria-current={activeRoute.startsWith(item.route) ? 'page' : undefined}
-                        onClick={(e) => { e.preventDefault(); handleNavClick(item.route); }}
-                      >
-                        <i className={`ph ${item.icon}`} /> <span>{item.label}</span>
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </>
-          );
-        })()}
-      </div>
     </nav>
   );
 }
+
