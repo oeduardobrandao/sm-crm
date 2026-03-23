@@ -879,31 +879,38 @@ export async function replyToPortalApproval(workflowId: number, etapaId: number,
 }
 
 /** Calculate deadline info for an active step. */
-export function getDeadlineInfo(etapa: WorkflowEtapa): { diasRestantes: number; estourado: boolean; urgente: boolean } {
+export function getDeadlineInfo(etapa: WorkflowEtapa): { diasRestantes: number; horasRestantes: number; estourado: boolean; urgente: boolean } {
   if (etapa.status !== 'ativo' || !etapa.iniciado_em) {
-    return { diasRestantes: etapa.prazo_dias, estourado: false, urgente: false };
+    return { diasRestantes: etapa.prazo_dias, horasRestantes: 0, estourado: false, urgente: false };
   }
 
   const inicio = new Date(etapa.iniciado_em);
   const now = new Date();
 
-  let diasPassados: number;
+  let msRestantes: number;
   if (etapa.tipo_prazo === 'uteis') {
-    diasPassados = 0;
+    let diasPassados = 0;
     const cursor = new Date(inicio);
     while (cursor < now) {
       cursor.setDate(cursor.getDate() + 1);
       const dow = cursor.getDay();
       if (dow !== 0 && dow !== 6) diasPassados++;
     }
+    const prazoMs = etapa.prazo_dias * 24 * 60 * 60 * 1000;
+    msRestantes = prazoMs - diasPassados * 24 * 60 * 60 * 1000;
   } else {
-    diasPassados = Math.floor((now.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24));
+    const prazoMs = etapa.prazo_dias * 24 * 60 * 60 * 1000;
+    msRestantes = prazoMs - (now.getTime() - inicio.getTime());
   }
 
-  const diasRestantes = etapa.prazo_dias - diasPassados;
+  const totalHorasRestantes = Math.floor(msRestantes / (1000 * 60 * 60));
+  const diasRestantes = Math.floor(totalHorasRestantes / 24);
+  const horasRestantes = totalHorasRestantes % 24;
+
   return {
     diasRestantes,
-    estourado: diasRestantes < 0,
-    urgente: diasRestantes >= 0 && diasRestantes <= 1,
+    horasRestantes,
+    estourado: msRestantes < 0,
+    urgente: msRestantes >= 0 && msRestantes <= 24 * 60 * 60 * 1000,
   };
 }

@@ -234,22 +234,6 @@ export default function ClienteDetalhePage() {
         </div>
       </div>
 
-      {/* KPI Cards */}
-      <div className="kpi-grid" style={{ marginBottom: '1.5rem' }}>
-        <div className="kpi-card animate-up">
-          <span className="kpi-label">VALOR MENSAL</span>
-          <span className="kpi-value">{formatBRL(Number(cliente.valor_mensal))}</span>
-        </div>
-        <div className="kpi-card animate-up">
-          <span className="kpi-label">TOTAL RECEBIDO</span>
-          <span className="kpi-value">{formatBRL(receitaTotal)}</span>
-        </div>
-        <div className="kpi-card animate-up">
-          <span className="kpi-label">PENDENTE</span>
-          <span className="kpi-value" style={{ color: 'var(--warning)' }}>{formatBRL(pendente)}</span>
-        </div>
-      </div>
-
       {/* Info Card */}
       <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
         <h3 style={{ marginBottom: '1rem' }}>Informações</h3>
@@ -326,6 +310,22 @@ export default function ClienteDetalhePage() {
           })}
         </div>
       )}
+
+      {/* KPI Cards */}
+      <div className="kpi-grid" style={{ marginBottom: '1.5rem' }}>
+        <div className="kpi-card animate-up">
+          <span className="kpi-label">VALOR MENSAL</span>
+          <span className="kpi-value">{formatBRL(Number(cliente.valor_mensal))}</span>
+        </div>
+        <div className="kpi-card animate-up">
+          <span className="kpi-label">TOTAL RECEBIDO</span>
+          <span className="kpi-value">{formatBRL(receitaTotal)}</span>
+        </div>
+        <div className="kpi-card animate-up">
+          <span className="kpi-label">PENDENTE</span>
+          <span className="kpi-value" style={{ color: 'var(--warning)' }}>{formatBRL(pendente)}</span>
+        </div>
+      </div>
 
       {/* Contratos Table */}
       <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>

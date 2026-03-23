@@ -847,7 +847,15 @@ export default function EntregasPage() {
                         : stepCards.map(card => {
                           const dl = card.deadline;
                           const deadlineClass = dl.estourado ? 'deadline-overdue' : dl.urgente ? 'deadline-warning' : dl.diasRestantes <= 3 ? 'deadline-caution' : 'deadline-ok';
-                          const deadlineText = dl.estourado ? `${Math.abs(dl.diasRestantes)}d atrasado` : dl.diasRestantes === 0 ? 'Vence hoje' : `${dl.diasRestantes}d restante${dl.diasRestantes > 1 ? 's' : ''}`;
+                          const deadlineText = dl.estourado
+                            ? `${Math.abs(dl.diasRestantes)}d atrasado`
+                            : dl.diasRestantes === 0 && dl.horasRestantes === 0
+                              ? 'Vence agora'
+                              : dl.diasRestantes === 0
+                                ? `${dl.horasRestantes}h restantes`
+                                : dl.horasRestantes > 0
+                                  ? `${dl.diasRestantes}d ${dl.horasRestantes}h restantes`
+                                  : `${dl.diasRestantes}d restantes`;
                           const progressPct = card.totalEtapas > 0 ? Math.round((card.etapaIdx / card.totalEtapas) * 100) : 0;
                           const iniciadoEm = card.etapa.iniciado_em
                             ? new Date(card.etapa.iniciado_em).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })

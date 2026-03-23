@@ -10,7 +10,6 @@ import {
   getWorkflows,
   formatBRL,
   formatDate,
-  getInitials,
   type Lead,
   type Contrato,
   type Membro,
@@ -108,37 +107,6 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* KPI Grid — hidden for agents */}
-      {role !== 'agent' && stats && (
-        <div className="kpi-grid" style={{ marginBottom: '1.5rem' }}>
-          <div className="kpi-card animate-up">
-            <span className="kpi-label">RECEITA MENSAL</span>
-            <span className="kpi-value">{formatBRL(stats.receitaMensal)}</span>
-            <span className="kpi-sub">{stats.clientesAtivos.length} clientes ativos</span>
-          </div>
-          <div className="kpi-card animate-up">
-            <span className="kpi-label">DESPESAS</span>
-            <span className="kpi-value">{formatBRL(stats.despesaTotal)}</span>
-            <span className="kpi-sub">este mês</span>
-          </div>
-          <div className="kpi-card animate-up">
-            <span className="kpi-label">SALDO</span>
-            <span className="kpi-value" style={{ color: stats.saldo >= 0 ? 'var(--success)' : 'var(--danger)' }}>{formatBRL(stats.saldo)}</span>
-            <span className="kpi-sub">projetado</span>
-          </div>
-          <div className="kpi-card animate-up">
-            <span className="kpi-label">CLIENTES ATIVOS</span>
-            <span className="kpi-value">{stats.clientesAtivos.length}</span>
-            <span className="kpi-sub">de {stats.clientes.length} total</span>
-          </div>
-          <div className="kpi-card animate-up">
-            <span className="kpi-label">CONTRATOS VIGENTES</span>
-            <span className="kpi-value">{contratosVigentes.length}</span>
-            <span className="kpi-sub">{contratosAAssinar.length} a assinar</span>
-          </div>
-        </div>
-      )}
-
       {isLoading && (
         <div style={{ textAlign: 'center', padding: '3rem' }}>
           <Spinner size="lg" />
@@ -183,39 +151,6 @@ export default function DashboardPage() {
           </div>
         </Link>
 
-        {/* Financeiro — hidden for agents */}
-        {role !== 'agent' && (
-          <Link to="/financeiro" style={{ textDecoration: 'none', color: 'inherit' }}>
-            <div className="card dashboard-hub-card animate-up">
-              <div className="dashboard-hub-card-header">
-                <h3><i className="ph ph-currency-dollar" style={{ marginRight: 8 }} />Financeiro</h3>
-                <i className="ph ph-arrow-right" />
-              </div>
-              <div className="dashboard-mini-kpis">
-                <div className="dashboard-mini-kpi">
-                  <span className="kpi-label">A RECEBER</span>
-                  <span className="kpi-value" style={{ fontSize: '1rem', color: 'var(--success)' }}>{formatBRL(aReceber)}</span>
-                </div>
-                <div className="dashboard-mini-kpi">
-                  <span className="kpi-label">A PAGAR</span>
-                  <span className="kpi-value" style={{ fontSize: '1rem', color: 'var(--danger)' }}>{formatBRL(aPagar)}</span>
-                </div>
-              </div>
-              <div className="dashboard-hub-list">
-                {last4Transacoes.map(t => (
-                  <div key={t.id} className="dashboard-hub-row">
-                    <span style={{ fontSize: '0.85rem' }}>{t.descricao}</span>
-                    <span style={{ color: t.tipo === 'entrada' ? 'var(--success)' : 'var(--danger)', fontSize: '0.85rem', fontWeight: 600 }}>
-                      {t.tipo === 'entrada' ? '+' : '-'}{formatBRL(t.valor)}
-                    </span>
-                  </div>
-                ))}
-                {last4Transacoes.length === 0 && <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Nenhuma transação este mês.</p>}
-              </div>
-            </div>
-          </Link>
-        )}
-
         {/* Analytics */}
         <Link to="/analytics" style={{ textDecoration: 'none', color: 'inherit' }}>
           <div className="card dashboard-hub-card animate-up">
@@ -224,20 +159,57 @@ export default function DashboardPage() {
               <i className="ph ph-arrow-right" />
             </div>
             {portfolioAccounts.length > 0 ? (
-              <div className="dashboard-mini-kpis">
-                <div className="dashboard-mini-kpi">
-                  <span className="kpi-label">CONTAS</span>
-                  <span className="kpi-value" style={{ fontSize: '1.25rem' }}>{portfolioAccounts.length}</span>
+              <>
+                <div className="dashboard-mini-kpis">
+                  <div className="dashboard-mini-kpi">
+                    <span className="kpi-label">CONTAS</span>
+                    <span className="kpi-value" style={{ fontSize: '1.25rem' }}>{portfolioAccounts.length}</span>
+                  </div>
+                  <div className="dashboard-mini-kpi">
+                    <span className="kpi-label">SEGUIDORES</span>
+                    <span className="kpi-value" style={{ fontSize: '1rem' }}>{totalFollowers.toLocaleString('pt-BR')}</span>
+                  </div>
+                  <div className="dashboard-mini-kpi">
+                    <span className="kpi-label">ENG. MÉDIO</span>
+                    <span className="kpi-value" style={{ fontSize: '1rem' }}>{avgEngagement.toFixed(2)}%</span>
+                  </div>
                 </div>
-                <div className="dashboard-mini-kpi">
-                  <span className="kpi-label">SEGUIDORES</span>
-                  <span className="kpi-value" style={{ fontSize: '1rem' }}>{totalFollowers.toLocaleString('pt-BR')}</span>
-                </div>
-                <div className="dashboard-mini-kpi">
-                  <span className="kpi-label">ENG. MÉDIO</span>
-                  <span className="kpi-value" style={{ fontSize: '1rem' }}>{avgEngagement.toFixed(2)}%</span>
-                </div>
-              </div>
+                {portfolio?.summary && (
+                  <div className="dashboard-hub-list" style={{ marginTop: 8 }}>
+                    <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                      {portfolio.summary.growing > 0 && (
+                        <span className="badge badge-success"><i className="ph ph-trend-up" style={{ marginRight: 3 }} />{portfolio.summary.growing} crescendo</span>
+                      )}
+                      {portfolio.summary.stagnant > 0 && (
+                        <span className="badge badge-neutral">{portfolio.summary.stagnant} estável</span>
+                      )}
+                      {portfolio.summary.declining > 0 && (
+                        <span className="badge badge-danger"><i className="ph ph-trend-down" style={{ marginRight: 3 }} />{portfolio.summary.declining} caindo</span>
+                      )}
+                    </div>
+                    {portfolio.summary.bestByEngagement && (
+                      <div className="dashboard-hub-row">
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                          <i className="ph ph-star" style={{ marginRight: 4 }} />Melhor eng.
+                        </span>
+                        <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>
+                          {portfolio.summary.bestByEngagement.client_name} · {portfolio.summary.bestByEngagement.engagement_rate_avg.toFixed(1)}%
+                        </span>
+                      </div>
+                    )}
+                    {portfolio.summary.mostImproved && portfolio.summary.mostImproved.follower_delta > 0 && (
+                      <div className="dashboard-hub-row">
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                          <i className="ph ph-users-three" style={{ marginRight: 4 }} />Mais cresceu
+                        </span>
+                        <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--success)' }}>
+                          {portfolio.summary.mostImproved.client_name} +{portfolio.summary.mostImproved.follower_delta.toLocaleString('pt-BR')}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
             ) : (
               <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '1rem' }}>
                 <i className="fa-brands fa-instagram" style={{ fontSize: '2rem', display: 'block', marginBottom: 8 }} />
@@ -335,33 +307,100 @@ export default function DashboardPage() {
           </div>
         </Link>
 
-        {/* Calendário */}
-        {role !== 'agent' && <Link to="/financeiro" style={{ textDecoration: 'none', color: 'inherit' }}>
-          <div className="card dashboard-hub-card animate-up">
-            <div className="dashboard-hub-card-header">
-              <h3><i className="ph ph-calendar" style={{ marginRight: 8 }} />Calendário</h3>
-              <i className="ph ph-arrow-right" />
-            </div>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 8 }}>
-              Pagamentos em {mesAtual}/{anoAtual}
-            </p>
-            <div className="dashboard-hub-list">
-              {upcomingEvents.map((ev, i) => (
-                <div key={i} className="dashboard-hub-row">
-                  <span style={{ fontSize: '0.85rem' }}>{ev.label}</span>
-                  <span style={{ fontSize: '0.8rem', color: ev.tipo === 'entrada' ? 'var(--success)' : 'var(--danger)' }}>
-                    Dia {ev.dia}
-                  </span>
-                </div>
-              ))}
-              {upcomingEvents.length === 0 && (
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Nenhum pagamento próximo.</p>
-              )}
-            </div>
-          </div>
-        </Link>}
-
       </div>
+
+      {/* Financial Hub Cards — hidden for agents */}
+      {role !== 'agent' && (
+        <div className="dashboard-hub" style={{ marginTop: '1.5rem' }}>
+          {/* Financeiro */}
+          <Link to="/financeiro" style={{ textDecoration: 'none', color: 'inherit' }}>
+            <div className="card dashboard-hub-card animate-up">
+              <div className="dashboard-hub-card-header">
+                <h3><i className="ph ph-currency-dollar" style={{ marginRight: 8 }} />Financeiro</h3>
+                <i className="ph ph-arrow-right" />
+              </div>
+              <div className="dashboard-mini-kpis">
+                <div className="dashboard-mini-kpi">
+                  <span className="kpi-label">A RECEBER</span>
+                  <span className="kpi-value" style={{ fontSize: '1rem', color: 'var(--success)' }}>{formatBRL(aReceber)}</span>
+                </div>
+                <div className="dashboard-mini-kpi">
+                  <span className="kpi-label">A PAGAR</span>
+                  <span className="kpi-value" style={{ fontSize: '1rem', color: 'var(--danger)' }}>{formatBRL(aPagar)}</span>
+                </div>
+              </div>
+              <div className="dashboard-hub-list">
+                {last4Transacoes.map(t => (
+                  <div key={t.id} className="dashboard-hub-row">
+                    <span style={{ fontSize: '0.85rem' }}>{t.descricao}</span>
+                    <span style={{ color: t.tipo === 'entrada' ? 'var(--success)' : 'var(--danger)', fontSize: '0.85rem', fontWeight: 600 }}>
+                      {t.tipo === 'entrada' ? '+' : '-'}{formatBRL(t.valor)}
+                    </span>
+                  </div>
+                ))}
+                {last4Transacoes.length === 0 && <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Nenhuma transação este mês.</p>}
+              </div>
+            </div>
+          </Link>
+
+          {/* Calendário */}
+          <Link to="/financeiro" style={{ textDecoration: 'none', color: 'inherit' }}>
+            <div className="card dashboard-hub-card animate-up">
+              <div className="dashboard-hub-card-header">
+                <h3><i className="ph ph-calendar" style={{ marginRight: 8 }} />Calendário</h3>
+                <i className="ph ph-arrow-right" />
+              </div>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 8 }}>
+                Pagamentos em {mesAtual}/{anoAtual}
+              </p>
+              <div className="dashboard-hub-list">
+                {upcomingEvents.map((ev, i) => (
+                  <div key={i} className="dashboard-hub-row">
+                    <span style={{ fontSize: '0.85rem' }}>{ev.label}</span>
+                    <span style={{ fontSize: '0.8rem', color: ev.tipo === 'entrada' ? 'var(--success)' : 'var(--danger)' }}>
+                      Dia {ev.dia}
+                    </span>
+                  </div>
+                ))}
+                {upcomingEvents.length === 0 && (
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Nenhum pagamento próximo.</p>
+                )}
+              </div>
+            </div>
+          </Link>
+        </div>
+      )}
+
+      {/* KPI Grid — hidden for agents */}
+      {role !== 'agent' && stats && (
+        <div className="kpi-grid" style={{ marginTop: '1.5rem' }}>
+          <div className="kpi-card animate-up">
+            <span className="kpi-label">RECEITA MENSAL</span>
+            <span className="kpi-value">{formatBRL(stats.receitaMensal)}</span>
+            <span className="kpi-sub">{stats.clientesAtivos.length} clientes ativos</span>
+          </div>
+          <div className="kpi-card animate-up">
+            <span className="kpi-label">DESPESAS</span>
+            <span className="kpi-value">{formatBRL(stats.despesaTotal)}</span>
+            <span className="kpi-sub">este mês</span>
+          </div>
+          <div className="kpi-card animate-up">
+            <span className="kpi-label">SALDO</span>
+            <span className="kpi-value" style={{ color: stats.saldo >= 0 ? 'var(--success)' : 'var(--danger)' }}>{formatBRL(stats.saldo)}</span>
+            <span className="kpi-sub">projetado</span>
+          </div>
+          <div className="kpi-card animate-up">
+            <span className="kpi-label">CLIENTES ATIVOS</span>
+            <span className="kpi-value">{stats.clientesAtivos.length}</span>
+            <span className="kpi-sub">de {stats.clientes.length} total</span>
+          </div>
+          <div className="kpi-card animate-up">
+            <span className="kpi-label">CONTRATOS VIGENTES</span>
+            <span className="kpi-value">{contratosVigentes.length}</span>
+            <span className="kpi-sub">{contratosAAssinar.length} a assinar</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
