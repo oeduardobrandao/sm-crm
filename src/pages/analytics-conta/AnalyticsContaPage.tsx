@@ -79,22 +79,40 @@ function FollowerChart({ history, postDates }: { history: any[]; postDates: any[
         datasets: [{
           label: 'Seguidores',
           data: history.map(h => h.follower_count),
-          borderColor: '#eab308',
-          backgroundColor: 'rgba(234,179,8,0.1)',
+          borderColor: '#E1306C',
+          backgroundColor: 'rgba(225, 48, 108, 0.1)',
+          borderWidth: 2,
           fill: true,
-          tension: 0.3,
-          pointRadius: history.map(h => h.source === 'manual' ? 5 : postDateSet.has(h.date) ? 6 : 2),
-          pointStyle: history.map(h => h.source === 'manual' ? 'rectRot' : 'circle'),
-          pointBackgroundColor: history.map(h => h.source === 'manual' ? '#8b5cf6' : postDateSet.has(h.date) ? '#f5a342' : '#eab308'),
-          pointBorderColor: history.map(h => h.source === 'manual' ? '#8b5cf6' : postDateSet.has(h.date) ? '#f5a342' : '#eab308'),
+          tension: 0.4,
+          pointRadius: 3,
+          pointStyle: 'circle',
+          pointBackgroundColor: '#E1306C',
+          pointBorderColor: '#fff',
+          pointHoverBackgroundColor: '#fff',
+          pointHoverBorderColor: '#E1306C',
         }],
       },
       options: {
         responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: isDark ? '#1a1e26' : '#fff',
+            titleColor: isDark ? '#fff' : '#12151a',
+            bodyColor: isDark ? '#94a3b8' : '#4a5468',
+            borderColor: isDark ? '#1e2430' : 'rgba(0,0,0,0.1)',
+            borderWidth: 1,
+            padding: 10,
+            displayColors: false,
+            callbacks: {
+              label: (ctx: any) => ` ${ctx.parsed.y.toLocaleString('pt-BR')} Seguidores`,
+            },
+          },
+        },
         scales: {
-          x: { grid: { color: gridColor }, ticks: { color: textColor, maxTicksLimit: 10 } },
-          y: { grid: { color: gridColor }, ticks: { color: textColor } },
+          x: { grid: { display: false }, ticks: { color: textColor, font: { size: 10 }, maxTicksLimit: 10 } },
+          // @ts-ignore
+          y: { grid: { color: gridColor, borderDash: [5, 5] }, ticks: { color: textColor, font: { size: 10 }, precision: 0 }, beginAtZero: false },
         },
       },
     });
@@ -238,7 +256,7 @@ function AISection({ clientId, days }: { clientId: number; days: number }) {
 
   return (
     <div className="card animate-up">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+      <div className="dashboard-hub-card-header" style={{ marginBottom: '1rem' }}>
         <h3>Análise Inteligente</h3>
         <Button size="sm" variant="outline" disabled={loading} onClick={handleGenerate}>{loading ? <Spinner size="sm" /> : <Zap className="h-3 w-3" />} Gerar Análise IA</Button>
       </div>
@@ -620,7 +638,7 @@ function AnalyticsContent({
 
       {/* Follower Growth Chart */}
       <div className="card animate-up">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div className="dashboard-hub-card-header">
           <h3>Crescimento de Seguidores</h3>
           <Button size="sm" variant="outline" onClick={() => setManualFollowerOpen(true)}>✏ Inserir manualmente</Button>
         </div>
@@ -629,7 +647,7 @@ function AnalyticsContent({
 
       {/* Content Performance Table */}
       <div className="card animate-up">
-        <h3>Performance de Conteúdo</h3>
+        <div className="dashboard-hub-card-header"><h3>Performance de Conteúdo</h3></div>
         {posts.length === 0
           ? <p style={{ color: 'var(--text-muted)', marginTop: '1rem' }}>Nenhuma publicação neste período.</p>
           : (
@@ -641,7 +659,9 @@ function AnalyticsContent({
                       { col: 'posted_at', label: 'Data' },
                       { col: null, label: 'Tipo' },
                       { col: 'reach', label: 'Alcance' },
+                      { col: 'impressions', label: 'Impressões' },
                       { col: 'engagement_rate', label: 'Eng.' },
+                      { col: 'likes', label: 'Curtidas' },
                       { col: 'saved', label: 'Salvos' },
                       { col: 'comments', label: 'Coment.' },
                       { col: 'shares', label: 'Compart.' },
@@ -677,11 +697,13 @@ function AnalyticsContent({
                         </td>
                         <td data-label="Tipo"><span className="badge badge-info">{formatMediaType(p.media_type)}</span></td>
                         <td data-label="Alcance">{p.reach.toLocaleString('pt-BR')}</td>
+                        <td data-label="Impressões">{(p.impressions || 0).toLocaleString('pt-BR')}</td>
                         <td data-label="Eng.">
                           <span className={`badge ${p.engagement_rate >= 5 ? 'badge-success' : p.engagement_rate >= 2 ? 'badge-warning' : 'badge-neutral'}`}>
                             {p.engagement_rate.toFixed(1)}%
                           </span>
                         </td>
+                        <td data-label="Curtidas">{(p.likes || 0).toLocaleString('pt-BR')}</td>
                         <td data-label="Salvos">{p.saved}</td>
                         <td data-label="Coment.">{p.comments}</td>
                         <td data-label="Compart.">{p.shares}</td>
@@ -743,11 +765,11 @@ function AnalyticsContent({
       {/* Type + Topic */}
       <div className="widgets-grid animate-up">
         <div className="card">
-          <h3>Desempenho por Tipo</h3>
+          <div className="dashboard-hub-card-header"><h3>Desempenho por Tipo</h3></div>
           <TypeChart typeBreakdown={typeBreakdown} />
         </div>
         <div className="card">
-          <h3>Desempenho por Tópico</h3>
+          <div className="dashboard-hub-card-header"><h3>Desempenho por Tópico</h3></div>
           <div style={{ marginTop: '0.75rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem' }}>
             {tagsData.map(t => <TagPill key={t.id} tag={t} onRemove={() => handleRemoveTag(t.id)} />)}
             <Button size="sm" variant="outline" onClick={handleAddTag} style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem' }}><Plus className="h-3 w-3" /> Nova Tag</Button>
@@ -774,7 +796,7 @@ function AnalyticsContent({
       {/* Demographics + Best Times */}
       <div className="widgets-grid animate-up" style={{ gridTemplateColumns: '1fr 1fr' }}>
         <div className="card">
-          <h3>Demografia da Audiência</h3>
+          <div className="dashboard-hub-card-header"><h3>Demografia da Audiência</h3></div>
           {!demographicsData
             ? <p style={{ color: 'var(--text-muted)', marginTop: '1rem' }}>Dados demográficos indisponíveis. A conta pode não ter seguidores suficientes ou a permissão instagram_manage_insights pode estar ausente.</p>
             : (
@@ -803,7 +825,7 @@ function AnalyticsContent({
             )}
         </div>
         <div className="card">
-          <h3>Melhor Horário para Postar</h3>
+          <div className="dashboard-hub-card-header"><h3>Melhor Horário para Postar</h3></div>
           {!bestTimesData || bestTimesData.totalPosts < 5
             ? <p style={{ color: 'var(--text-muted)', marginTop: '1rem' }}>Dados insuficientes. São necessários pelo menos 5 posts nos últimos 90 dias para análise.</p>
             : (
@@ -834,7 +856,7 @@ function AnalyticsContent({
       {/* Reports */}
       {reportsData.length > 0 && (
         <div className="card animate-up">
-          <h3>Relatórios Gerados</h3>
+          <div className="dashboard-hub-card-header"><h3>Relatórios Gerados</h3></div>
           <div style={{ marginTop: '1rem' }}>
             {reportsData.map(r => (
               <div key={r.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid var(--border-color,rgba(0,0,0,0.06))' }}>
