@@ -101,8 +101,8 @@ function AIPortfolioSection({ accounts }: { accounts: PortfolioAccount[] }) {
   if (accounts.length < 1) return null;
 
   return (
-    <div className="card animate-up" style={{ marginTop: '1.5rem' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+    <div className="card animate-up">
+      <div className="dashboard-hub-card-header" style={{ marginBottom: '1rem' }}>
         <h3>Análise Inteligente do Portfólio</h3>
         <Button onClick={handleGenerate} disabled={loading} size="sm">
           {loading ? <Spinner size="sm" /> : <Zap className="h-4 w-4" />}
@@ -207,7 +207,7 @@ export default function AnalyticsPage() {
 
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
       <header className="header animate-up">
         <div className="header-title">
           <h1>Analytics Instagram</h1>
@@ -216,7 +216,7 @@ export default function AnalyticsPage() {
       </header>
 
       {silentAccounts.length > 0 && (
-        <div className="analytics-callout animate-up" style={{ marginBottom: '1.5rem' }}>
+        <div className="analytics-callout animate-up">
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
             <strong style={{ color: 'var(--warning)' }}>Contas Silenciosas</strong>
           </div>
@@ -264,27 +264,55 @@ export default function AnalyticsPage() {
         </div>
       </div>
 
-      {(summary.bestByEngagement || summary.mostImproved) && (
-        <div className="kpi-grid animate-up" style={{ gridTemplateColumns: 'repeat(2, 1fr)', marginTop: 0 }}>
-          {summary.bestByEngagement && (
-            <div className="kpi-card" style={{ borderLeft: '3px solid var(--success)' }}>
-              <span className="kpi-label">MELHOR ENGAJAMENTO</span>
-              <span className="kpi-value" style={{ fontSize: '1.1rem' }}>{summary.bestByEngagement.client_name}</span>
-              <span className="kpi-sub" style={{ color: 'var(--success)' }}>{summary.bestByEngagement.engagement_rate_avg.toFixed(2)}% taxa de engajamento</span>
-            </div>
-          )}
-          {summary.mostImproved && (
-            <div className="kpi-card" style={{ borderLeft: '3px solid var(--primary-color)' }}>
-              <span className="kpi-label">MAIOR CRESCIMENTO</span>
-              <span className="kpi-value" style={{ fontSize: '1.1rem' }}>{summary.mostImproved.client_name}</span>
-              <span className="kpi-sub" style={{ color: 'var(--primary-color)' }}>+{formatNumber(summary.mostImproved.follower_delta)} seguidores</span>
-            </div>
-          )}
-        </div>
-      )}
+      {accounts.length > 0 && (() => {
+        const bestByReach = [...accounts].sort((a, b) => b.reach_28d - a.reach_28d)[0];
+        const mostPosts = [...accounts].sort((a, b) => b.posts_last_30d - a.posts_last_30d)[0];
+        const mostFollowers = [...accounts].sort((a, b) => b.follower_count - a.follower_count)[0];
+        return (
+          <div className="kpi-grid animate-up" style={{ marginTop: 0 }}>
+            {summary.bestByEngagement && (
+              <div className="kpi-card" style={{ borderLeft: '3px solid var(--success)' }}>
+                <span className="kpi-label">MELHOR ENGAJAMENTO</span>
+                <span className="kpi-value" style={{ fontSize: '1.1rem' }}>{summary.bestByEngagement.client_name}</span>
+                <span className="kpi-sub" style={{ color: 'var(--success)' }}>{summary.bestByEngagement.engagement_rate_avg.toFixed(2)}%</span>
+              </div>
+            )}
+            {summary.mostImproved && summary.mostImproved.follower_delta > 0 && (
+              <div className="kpi-card" style={{ borderLeft: '3px solid var(--primary-color)' }}>
+                <span className="kpi-label">MAIOR CRESCIMENTO</span>
+                <span className="kpi-value" style={{ fontSize: '1.1rem' }}>{summary.mostImproved.client_name}</span>
+                <span className="kpi-sub" style={{ color: 'var(--primary-color)' }}>+{formatNumber(summary.mostImproved.follower_delta)} seguidores</span>
+              </div>
+            )}
+            {bestByReach && bestByReach.reach_28d > 0 && (
+              <div className="kpi-card" style={{ borderLeft: '3px solid var(--info, #3b82f6)' }}>
+                <span className="kpi-label">MAIOR ALCANCE</span>
+                <span className="kpi-value" style={{ fontSize: '1.1rem' }}>{bestByReach.client_name}</span>
+                <span className="kpi-sub" style={{ color: 'var(--info, #3b82f6)' }}>{formatNumber(bestByReach.reach_28d)} alcance 28d</span>
+              </div>
+            )}
+            {mostFollowers && (
+              <div className="kpi-card" style={{ borderLeft: '3px solid var(--warning, #f59e0b)' }}>
+                <span className="kpi-label">MAIS SEGUIDORES</span>
+                <span className="kpi-value" style={{ fontSize: '1.1rem' }}>{mostFollowers.client_name}</span>
+                <span className="kpi-sub" style={{ color: 'var(--warning, #f59e0b)' }}>{formatNumber(mostFollowers.follower_count)} seguidores</span>
+              </div>
+            )}
+            {mostPosts && mostPosts.posts_last_30d > 0 && (
+              <div className="kpi-card" style={{ borderLeft: '3px solid var(--text-muted)' }}>
+                <span className="kpi-label">MAIS ATIVO</span>
+                <span className="kpi-value" style={{ fontSize: '1.1rem' }}>{mostPosts.client_name}</span>
+                <span className="kpi-sub" style={{ color: 'var(--text-muted)' }}>{mostPosts.posts_last_30d} posts em 30d</span>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
-      <div className="card animate-up" style={{ marginTop: '1.5rem' }}>
-        <h3 style={{ marginBottom: '1rem' }}>Todas as Contas</h3>
+      <div className="card animate-up">
+        <div className="dashboard-hub-card-header" style={{ marginBottom: '1rem' }}>
+          <h3>Todas as Contas</h3>
+        </div>
         {accounts.length === 0
           ? <p style={{ color: 'var(--text-muted)' }}>Nenhuma conta Instagram conectada. Conecte contas na página de cada cliente.</p>
           : (
@@ -325,9 +353,11 @@ export default function AnalyticsPage() {
                         </TableCell>
                         <TableCell data-label="Seguidores">
                           {formatNumber(a.follower_count)}
-                          <span style={{ color: deltaColor, fontSize: '0.75rem', marginLeft: 4 }}>
-                            {deltaIcon}{formatNumber(Math.abs(a.follower_delta))}
-                          </span>
+                          {a.follower_delta !== 0 && (
+                            <span style={{ color: deltaColor, fontSize: '0.75rem', marginLeft: 4 }}>
+                              {deltaIcon}{formatNumber(Math.abs(a.follower_delta))}
+                            </span>
+                          )}
                         </TableCell>
                         <TableCell data-label="Engajamento">
                           <Badge variant={a.engagement_rate_avg >= 3 ? 'default' : a.engagement_rate_avg >= 1 ? 'secondary' : 'outline'}>
@@ -357,9 +387,11 @@ export default function AnalyticsPage() {
       </div>
 
       {accounts.length >= 2 && (
-        <div className="widgets-grid animate-up" style={{ marginTop: '1.5rem' }}>
+        <div className="widgets-grid animate-up">
           <div className="card">
-            <h3>Benchmarking de Engajamento</h3>
+            <div className="dashboard-hub-card-header">
+              <h3>Benchmarking de Engajamento</h3>
+            </div>
             <div style={{ marginTop: '1rem' }}>
               <BenchmarkChart accounts={accounts} />
             </div>
@@ -367,7 +399,9 @@ export default function AnalyticsPage() {
 
           {specialtyStats.length >= 2 && (
             <div className="card">
-              <h3>Por Especialidade</h3>
+              <div className="dashboard-hub-card-header">
+                <h3>Por Especialidade</h3>
+              </div>
               <div style={{ marginTop: '1rem' }}>
                 {specialtyStats.map(s => (
                   <div key={s.specialty} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid var(--border-color,rgba(0,0,0,0.06))' }}>

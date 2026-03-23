@@ -34,8 +34,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // Get initial session
-    supabase.auth.getSession().then(({ data }) => {
-      setUser(data.session?.user ?? null);
+    supabase.auth.getSession().then(async ({ data }) => {
+      const sessionUser = data.session?.user ?? null;
+      setUser(sessionUser);
+      if (sessionUser) {
+        // Fetch profile before clearing loading so role is available
+        const p = await getCurrentProfile(true);
+        setProfile(p);
+      }
       setLoading(false);
     });
 
