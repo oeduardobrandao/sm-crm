@@ -139,6 +139,7 @@ export interface PortfolioAccount {
   reach_28d: number;
   impressions_28d: number;
   profile_views_28d: number;
+  website_clicks_28d: number;
   media_count: number;
   last_synced_at: string;
   last_post_at: string | null;
@@ -296,6 +297,7 @@ export async function getPortfolioSummary(): Promise<PortfolioSummary> {
       reach_28d: a.reach_28d || 0,
       impressions_28d: a.impressions_28d || 0,
       profile_views_28d: a.profile_views_28d || 0,
+      website_clicks_28d: a.website_clicks_28d || 0,
       media_count: a.media_count || 0,
       last_synced_at: a.last_synced_at || '',
       last_post_at: latestPostMap[a.id] || null,

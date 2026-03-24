@@ -236,13 +236,6 @@ export default function EquipePage() {
                   </div>
                 </div>
 
-                {!isAgent && (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', borderTop: '1px solid var(--border-color)', paddingTop: '0.5rem', marginTop: 'auto' }}>
-                    <div style={{ fontSize: '0.85rem', fontWeight: 500 }}>
-                      {m.custo_mensal ? formatBRL(m.custo_mensal) + '/mês' : '—'}
-                    </div>
-                  </div>
-                )}
               </div>
             );
           })}

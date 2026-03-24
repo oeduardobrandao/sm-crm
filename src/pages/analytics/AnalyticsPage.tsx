@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Zap, RefreshCw } from 'lucide-react';
+import { Zap, RefreshCw, ArrowUpDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
@@ -197,9 +197,13 @@ function AIPortfolioSection({ accounts }: { accounts: PortfolioAccount[] }) {
   );
 }
 
+type SortCol = 'client_name' | 'follower_count' | 'engagement_rate_avg' | 'reach_28d' | 'alcance_seg' | 'posts_last_30d' | 'website_clicks_28d' | 'last_post_at';
+
 export default function AnalyticsPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<{ success: number; failed: number } | null>(null);
+  const [sortColumn, setSortColumn] = useState<SortCol>('engagement_rate_avg');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['portfolio-summary'],
@@ -269,6 +273,41 @@ export default function AnalyticsPage() {
     }))
     .sort((a, b) => b.avgEngagement - a.avgEngagement);
 
+  const handleSort = (col: SortCol) => {
+    if (sortColumn === col) setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    else { setSortColumn(col); setSortDirection('desc'); }
+  };
+
+  const renderSortableHead = (col: SortCol, label: string) => (
+    <TableHead onClick={() => handleSort(col)} style={{ cursor: 'pointer', whiteSpace: 'nowrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+        {label}
+        <ArrowUpDown className="h-3 w-3" style={{ opacity: sortColumn === col ? 1 : 0.3, transform: sortColumn === col && sortDirection === 'desc' ? 'scaleY(-1)' : 'none' }} />
+      </div>
+    </TableHead>
+  );
+
+  const sortedAccounts = [...accounts].sort((a, b) => {
+    let valA: any = a[sortColumn as keyof typeof a];
+    let valB: any = b[sortColumn as keyof typeof b];
+
+    if (sortColumn === 'alcance_seg') {
+      valA = a.follower_count ? a.reach_28d / a.follower_count : 0;
+      valB = b.follower_count ? b.reach_28d / b.follower_count : 0;
+    } else if (sortColumn === 'last_post_at') {
+      valA = a.last_post_at ? new Date(a.last_post_at).getTime() : 0;
+      valB = b.last_post_at ? new Date(b.last_post_at).getTime() : 0;
+    }
+
+    if (typeof valA === 'string' && typeof valB === 'string') {
+      const cmp = valA.localeCompare(valB);
+      return sortDirection === 'asc' ? cmp : -cmp;
+    }
+    
+    valA = valA || 0;
+    valB = valB || 0;
+    return sortDirection === 'asc' ? (valA > valB ? 1 : -1) : (valA < valB ? 1 : -1);
+  });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -396,17 +435,19 @@ export default function AnalyticsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Cliente</TableHead>
-                    <TableHead>Seguidores</TableHead>
-                    <TableHead>Engajamento</TableHead>
-                    <TableHead>Alcance (28d)</TableHead>
-                    <TableHead>Posts (30d)</TableHead>
-                    <TableHead>Último Post</TableHead>
+                    {renderSortableHead('client_name', 'Cliente')}
+                    {renderSortableHead('follower_count', 'Seguidores')}
+                    {renderSortableHead('engagement_rate_avg', 'Engajamento')}
+                    {renderSortableHead('reach_28d', 'Alcance (28d)')}
+                    {renderSortableHead('alcance_seg', 'Alcance / Seg.')}
+                    {renderSortableHead('posts_last_30d', 'Posts (30d)')}
+                    {renderSortableHead('website_clicks_28d', 'Cliques no link')}
+                    {renderSortableHead('last_post_at', 'Último Post')}
                     <TableHead></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {[...accounts].sort((a, b) => b.engagement_rate_avg - a.engagement_rate_avg).map(a => {
+                  {sortedAccounts.map(a => {
                     const daysSince = a.last_post_at
                       ? Math.floor((Date.now() - new Date(a.last_post_at).getTime()) / 86400000)
                       : null;
@@ -441,7 +482,13 @@ export default function AnalyticsPage() {
                           </Badge>
                         </TableCell>
                         <TableCell data-label="Alcance (28d)">{formatNumber(a.reach_28d)}</TableCell>
+                        <TableCell data-label="Alcance / Seg.">
+                          {a.follower_count > 0 
+                            ? ((a.reach_28d / a.follower_count) * 100).toFixed(1) + '%' 
+                            : '0.0%'}
+                        </TableCell>
                         <TableCell data-label="Posts (30d)">{a.posts_last_30d}</TableCell>
+                        <TableCell data-label="Cliques no link (28d)">{formatNumber(a.website_clicks_28d ?? 0)}</TableCell>
                         <TableCell data-label="Último Post">
                           {daysSince !== null
                             ? <span style={{ color: isSilent ? 'var(--danger)' : 'var(--text-main)' }}>{daysSince}d atrás</span>
