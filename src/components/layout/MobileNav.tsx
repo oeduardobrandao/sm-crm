@@ -32,19 +32,29 @@ export default function MobileNav() {
     <>
       <nav className="mobile-nav" id="mobile-nav">
         <a href="#" onClick={(e) => { e.preventDefault(); go('/dashboard'); }} className={`mobile-nav-item${path === '/dashboard' ? ' active' : ''}`}>
-          <i className="ph ph-chart-pie-slice" /><span>Dashboard</span>
+          <div className="icon-wrapper">
+            <i className={path === '/dashboard' ? "ph-fill ph-chart-pie-slice" : "ph ph-chart-pie-slice"} />
+          </div>
         </a>
         <a href="#" onClick={(e) => { e.preventDefault(); go('/clientes'); }} className={`mobile-nav-item${path.startsWith('/clientes') ? ' active' : ''}`}>
-          <i className="ph ph-users" /><span>Clientes</span>
+          <div className="icon-wrapper">
+            <i className={path.startsWith('/clientes') ? "ph-fill ph-users" : "ph ph-users"} />
+          </div>
         </a>
         <a href="#" onClick={(e) => { e.preventDefault(); go('/analytics'); }} className={`mobile-nav-item${path.startsWith('/analytics') ? ' active' : ''}`}>
-          <i className="ph ph-chart-line-up" /><span>Analytics</span>
+          <div className="icon-wrapper">
+            <i className={path.startsWith('/analytics') ? "ph-fill ph-chart-line-up" : "ph ph-chart-line-up"} />
+          </div>
         </a>
         <a href="#" onClick={(e) => { e.preventDefault(); go('/entregas'); }} className={`mobile-nav-item${path.startsWith('/entregas') ? ' active' : ''}`}>
-          <i className="ph ph-kanban" /><span>Entregas</span>
+          <div className="icon-wrapper">
+            <i className={path.startsWith('/entregas') ? "ph-fill ph-kanban" : "ph ph-kanban"} />
+          </div>
         </a>
-        <button className="mobile-nav-item" id="mobile-more-btn" onClick={() => setMoreOpen(true)}>
-          <i className="ph ph-dots-three" /><span>Mais</span>
+        <button className={`mobile-nav-item${moreOpen ? ' active' : ''}`} id="mobile-more-btn" onClick={() => setMoreOpen(true)}>
+          <div className="icon-wrapper">
+            <i className={moreOpen ? "ph-fill ph-dots-three" : "ph ph-dots-three"} />
+          </div>
         </button>
       </nav>
 

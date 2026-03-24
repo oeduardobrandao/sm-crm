@@ -317,7 +317,7 @@ function AnalyticsCharts({ metrics }: { metrics: Metrics }) {
 
   return (
     <>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }} className="animate-up">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }} className="animate-up">
         <div className="card">
           <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1rem' }}>Tempo médio por etapa</h3>
           <canvas ref={stepRef} />
@@ -388,14 +388,14 @@ export default function AnalyticsFluxosPage() {
 
       <div className="filter-bar animate-up">
         <Select
-          value={filters.clienteId !== null ? String(filters.clienteId) : ''}
-          onValueChange={val => setFilters(f => ({ ...f, clienteId: val ? Number(val) : null }))}
+          value={filters.clienteId !== null ? String(filters.clienteId) : 'all'}
+          onValueChange={val => setFilters(f => ({ ...f, clienteId: val === 'all' ? null : Number(val) }))}
         >
-          <SelectTrigger style={{ minWidth: 180 }}>
+          <SelectTrigger style={{ width: 'auto', minWidth: 200 }}>
             <SelectValue placeholder="Todos os clientes" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Todos os clientes</SelectItem>
+            <SelectItem value="all">Todos os clientes</SelectItem>
             {clientes.map(c => (
               <SelectItem key={c.id} value={String(c.id)}>{c.nome}</SelectItem>
             ))}
@@ -403,29 +403,31 @@ export default function AnalyticsFluxosPage() {
         </Select>
 
         <Select
-          value={filters.templateId !== null ? String(filters.templateId) : ''}
-          onValueChange={val => setFilters(f => ({ ...f, templateId: val ? Number(val) : null }))}
+          value={filters.templateId !== null ? String(filters.templateId) : 'all'}
+          onValueChange={val => setFilters(f => ({ ...f, templateId: val === 'all' ? null : Number(val) }))}
         >
-          <SelectTrigger style={{ minWidth: 180 }}>
+          <SelectTrigger style={{ width: 'auto', minWidth: 200 }}>
             <SelectValue placeholder="Todos os templates" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Todos os templates</SelectItem>
+            <SelectItem value="all">Todos os templates</SelectItem>
             {templates.map(t => (
               <SelectItem key={t.id} value={String(t.id)}>{t.nome}</SelectItem>
             ))}
           </SelectContent>
         </Select>
 
-        {DAY_OPTIONS.map(opt => (
-          <button
-            key={opt.label}
-            className={`filter-btn${(opt.value === 0 ? filters.days === null : filters.days === opt.value) ? ' active' : ''}`}
-            onClick={() => setFilters(f => ({ ...f, days: opt.value === 0 ? null : opt.value }))}
-          >
-            {opt.label}
-          </button>
-        ))}
+        <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+          {DAY_OPTIONS.map(opt => (
+            <button
+              key={opt.label}
+              className={`filter-btn${(opt.value === 0 ? filters.days === null : filters.days === opt.value) ? ' active' : ''}`}
+              onClick={() => setFilters(f => ({ ...f, days: opt.value === 0 ? null : opt.value }))}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {!hasData ? (
@@ -459,7 +461,7 @@ export default function AnalyticsFluxosPage() {
 
           <AnalyticsCharts metrics={metrics} />
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }} className="animate-up">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }} className="animate-up">
             <div className="card">
               <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1rem' }}>Desempenho da equipe</h3>
               {metrics.memberPerformance.length === 0
@@ -481,14 +483,14 @@ export default function AnalyticsFluxosPage() {
                           const badgeVariant = mp.onTimeRate >= 80 ? 'default' : mp.onTimeRate >= 50 ? 'secondary' : 'destructive';
                           return (
                             <tr key={mp.membro.id}>
-                              <td>
+                              <td data-label="Membro">
                                 {mp.membro.avatar_url && <img src={mp.membro.avatar_url} style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover', marginRight: '0.5rem', verticalAlign: 'middle' }} alt="" />}
                                 {mp.membro.nome}
                               </td>
-                              <td>{mp.completed}</td>
-                              <td>{formatDuration(mp.avgDays)}</td>
-                              <td><Badge variant={badgeVariant}>{mp.onTimeRate}%</Badge></td>
-                              <td>{mp.overdueCount > 0 ? <Badge variant="destructive">{mp.overdueCount}</Badge> : '0'}</td>
+                              <td data-label="Concluídas">{mp.completed}</td>
+                              <td data-label="Tempo médio">{formatDuration(mp.avgDays)}</td>
+                              <td data-label="Pontualidade"><Badge variant={badgeVariant}>{mp.onTimeRate}%</Badge></td>
+                              <td data-label="Atrasos">{mp.overdueCount > 0 ? <Badge variant="destructive">{mp.overdueCount}</Badge> : '0'}</td>
                             </tr>
                           );
                         })}
@@ -518,10 +520,10 @@ export default function AnalyticsFluxosPage() {
                           const badgeVariant2 = b.overdueRate <= 20 ? 'default' : b.overdueRate <= 50 ? 'secondary' : 'destructive';
                           return (
                             <tr key={i}>
-                              <td>{b.nome}</td>
-                              <td>{formatDuration(b.avgDays)}</td>
-                              <td><Badge variant={badgeVariant2}>{b.overdueRate}%</Badge></td>
-                              <td>{b.count}</td>
+                              <td data-label="Etapa">{b.nome}</td>
+                              <td data-label="Tempo médio">{formatDuration(b.avgDays)}</td>
+                              <td data-label="Taxa de atraso"><Badge variant={badgeVariant2}>{b.overdueRate}%</Badge></td>
+                              <td data-label="Amostras">{b.count}</td>
                             </tr>
                           );
                         })}

@@ -20,7 +20,7 @@ import {
 const STATUS_LABELS: Record<string, string> = {
   novo: 'Novo', contatado: 'Contatado', qualificado: 'Qualificado', perdido: 'Perdido', convertido: 'Convertido',
 };
-const CANAL_OPTIONS = ['Instagram','Facebook','Google Ads','Indicação','Site','WhatsApp','Typeform','Outro'];
+const CANAL_OPTIONS = ['Instagram', 'Facebook', 'Google Ads', 'Indicação', 'Site', 'WhatsApp', 'Typeform', 'Outro'];
 const FATURAMENTO_OPTIONS = [
   'Até R$ 5.000/mês', 'De R$ 5.000 a R$ 10.000/mês', 'De R$ 10.000 a R$ 20.000/mês',
   'De R$ 20.000 a R$ 50.000/mês', 'Acima de R$ 50.000/mês',
@@ -160,7 +160,7 @@ export default function LeadsPage() {
               notas: row.notas || '',
               objetivo: row.objetivo || '',
               origem: 'manual',
-              status: (['novo','contatado','qualificado','perdido','convertido'].includes(row.status) ? row.status : 'novo') as Lead['status'],
+              status: (['novo', 'contatado', 'qualificado', 'perdido', 'convertido'].includes(row.status) ? row.status : 'novo') as Lead['status'],
             });
             count++;
           } catch { /* skip row */ }
@@ -213,13 +213,13 @@ export default function LeadsPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead style={{ cursor: 'pointer' }} onClick={() => handleSort('nome')}>Nome{sortIcon('nome')}</TableHead>
-                <TableHead style={{ cursor: 'pointer' }} onClick={() => handleSort('email')}>E-mail{sortIcon('email')}</TableHead>
-                <TableHead style={{ cursor: 'pointer' }} onClick={() => handleSort('canal')}>Canal{sortIcon('canal')}</TableHead>
-                <TableHead style={{ cursor: 'pointer' }} onClick={() => handleSort('especialidade')}>Especialidade{sortIcon('especialidade')}</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead style={{ cursor: 'pointer' }} onClick={() => handleSort('created_at')}>Criado{sortIcon('created_at')}</TableHead>
-                <TableHead>Ações</TableHead>
+                <TableHead style={{ cursor: 'pointer', fontWeight: '800' }} onClick={() => handleSort('nome')}>Nome{sortIcon('nome')}</TableHead>
+                <TableHead style={{ cursor: 'pointer', fontWeight: '800' }} onClick={() => handleSort('email')}>E-mail{sortIcon('email')}</TableHead>
+                <TableHead style={{ cursor: 'pointer', fontWeight: '800' }} onClick={() => handleSort('canal')}>Canal{sortIcon('canal')}</TableHead>
+                <TableHead style={{ cursor: 'pointer', fontWeight: '800' }} onClick={() => handleSort('especialidade')}>Especialidade{sortIcon('especialidade')}</TableHead>
+                <TableHead style={{ cursor: 'pointer', fontWeight: '800' }}>Status</TableHead>
+                <TableHead style={{ cursor: 'pointer', fontWeight: '800' }} onClick={() => handleSort('created_at')}>Criado{sortIcon('created_at')}</TableHead>
+                <TableHead style={{ fontWeight: '800' }}>Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
