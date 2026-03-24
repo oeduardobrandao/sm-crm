@@ -585,6 +585,7 @@ export interface Workflow {
   recorrente: boolean;
   link_notion?: string | null;
   link_drive?: string | null;
+  position?: number;
   created_at?: string;
 }
 
@@ -628,6 +629,16 @@ export async function updateWorkflow(id: number, w: Partial<Omit<Workflow, 'id' 
     .single();
   if (error) throw error;
   return data;
+}
+
+export async function updateWorkflowPositions(updates: { id: number; position: number }[]): Promise<void> {
+  await Promise.all(
+    updates.map(({ id, position }) =>
+      supabase.from('workflows').update({ position }).eq('id', id).then(({ error }) => {
+        if (error) throw error;
+      })
+    )
+  );
 }
 
 export async function removeWorkflow(id: number): Promise<void> {
