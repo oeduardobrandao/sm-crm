@@ -4,6 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, DELETE, OPTIONS',
 };
 
 serve(async (req) => {
@@ -48,6 +49,32 @@ serve(async (req) => {
     if (profileError || !profile) {
        console.error("Profile erro:", profileError);
        throw new Error('Perfil não encontrado');
+    }
+
+    // DELETE: Cancel an invite
+    if (req.method === 'DELETE') {
+      if (profile.role === 'agent') throw new Error('Agentes não têm permissão para cancelar convites.');
+
+      const url = new URL(req.url);
+      const inviteId = url.searchParams.get('id');
+      if (!inviteId) throw new Error('ID do convite não informado.');
+
+      const { data: invite, error: findErr } = await adminClient
+        .from('invites')
+        .select('id, conta_id')
+        .eq('id', inviteId)
+        .eq('conta_id', profile.conta_id)
+        .maybeSingle();
+
+      if (findErr) throw findErr;
+      if (!invite) throw new Error('Convite não encontrado.');
+
+      const { error: delErr } = await adminClient.from('invites').delete().eq('id', inviteId);
+      if (delErr) throw delErr;
+
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     const body = await req.json().catch(() => ({}));

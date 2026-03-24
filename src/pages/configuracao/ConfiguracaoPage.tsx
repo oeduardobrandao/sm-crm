@@ -273,7 +273,7 @@ export default function ConfiguracaoPage() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState('agent');
   const [inviteLoading, setInviteLoading] = useState(false);
-  const [cancelInviteId, setCancelInviteId] = useState<number | null>(null);
+  const [cancelInviteId, setCancelInviteId] = useState<string | null>(null);
 
   const handleInvite = async () => {
     if (!inviteEmail) { toast.error('Email é obrigatório.'); return; }
@@ -301,9 +301,14 @@ export default function ConfiguracaoPage() {
   const handleCancelInvite = async () => {
     if (cancelInviteId == null) return;
     try {
-      const { error } = await supabase.from('invites').delete().eq('id', cancelInviteId);
-      if (error) throw error;
-      refetchInvites();
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/invite-user?id=${cancelInviteId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${session?.access_token}` },
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || `Erro ${res.status}`);
+      await refetchInvites();
       toast.success('Convite cancelado.');
     } catch (err: unknown) {
       toast.error('Erro: ' + (err as Error).message);
@@ -475,7 +480,7 @@ export default function ConfiguracaoPage() {
                     {inv.status === 'expired' && (
                       <Button size="sm" variant="outline" onClick={() => handleResendInvite(inv)}>Reenviar</Button>
                     )}
-                    <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setCancelInviteId(Number(inv.id))}>Cancelar</Button>
+                    <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setCancelInviteId(inv.id)}>Cancelar</Button>
                   </div>
                 </div>
               ))}
