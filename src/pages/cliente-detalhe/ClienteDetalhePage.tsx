@@ -33,6 +33,7 @@ import {
 } from '../../store';
 import { getInstagramSummary, syncInstagramData } from '../../services/instagram';
 import { sanitizeUrl } from '../../utils/security';
+import { useAuth } from '../../context/AuthContext';
 import { renderInstagramOverviewCard } from '../../components/instagram/InstagramOverviewCard';
 import { renderInstagramFollowerChart } from '../../components/instagram/InstagramFollowerChart';
 import { renderInstagramPostsTable } from '../../components/instagram/InstagramPostsTable';
@@ -52,6 +53,8 @@ export default function ClienteDetalhePage() {
   const { id: idParam } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { role } = useAuth();
+  const isAgent = role === 'agent';
   const [editOpen, setEditOpen] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
   const [recurringWfId, setRecurringWfId] = useState<number | null>(null);
@@ -311,79 +314,83 @@ export default function ClienteDetalhePage() {
         </div>
       )}
 
-      {/* KPI Cards */}
-      <div className="kpi-grid" style={{ marginBottom: '1.5rem' }}>
-        <div className="kpi-card animate-up">
-          <span className="kpi-label">VALOR MENSAL</span>
-          <span className="kpi-value">{formatBRL(Number(cliente.valor_mensal))}</span>
-        </div>
-        <div className="kpi-card animate-up">
-          <span className="kpi-label">TOTAL RECEBIDO</span>
-          <span className="kpi-value">{formatBRL(receitaTotal)}</span>
-        </div>
-        <div className="kpi-card animate-up">
-          <span className="kpi-label">PENDENTE</span>
-          <span className="kpi-value" style={{ color: 'var(--warning)' }}>{formatBRL(pendente)}</span>
-        </div>
-      </div>
+      {!isAgent && (
+        <>
+          {/* KPI Cards */}
+          <div className="kpi-grid" style={{ marginBottom: '1.5rem' }}>
+            <div className="kpi-card animate-up">
+              <span className="kpi-label">VALOR MENSAL</span>
+              <span className="kpi-value">{formatBRL(Number(cliente.valor_mensal))}</span>
+            </div>
+            <div className="kpi-card animate-up">
+              <span className="kpi-label">TOTAL RECEBIDO</span>
+              <span className="kpi-value">{formatBRL(receitaTotal)}</span>
+            </div>
+            <div className="kpi-card animate-up">
+              <span className="kpi-label">PENDENTE</span>
+              <span className="kpi-value" style={{ color: 'var(--warning)' }}>{formatBRL(pendente)}</span>
+            </div>
+          </div>
 
-      {/* Contratos Table */}
-      <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-        <h3 style={{ marginBottom: '1rem' }}>Contratos</h3>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Título</TableHead>
-              <TableHead>Período</TableHead>
-              <TableHead>Valor</TableHead>
-              <TableHead>Status</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {contratosCliente.length === 0 ? (
-              <TableRow><TableCell colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Nenhum contrato</TableCell></TableRow>
-            ) : contratosCliente.map(r => (
-              <TableRow key={r.id ?? Math.random()}>
-                <TableCell data-label="Título">{r.titulo}</TableCell>
-                <TableCell data-label="Período">{formatDate(r.data_inicio)} – {formatDate(r.data_fim)}</TableCell>
-                <TableCell data-label="Valor">{formatBRL(Number(r.valor_total))}</TableCell>
-                <TableCell data-label="Status"><StatusBadge status={r.status} /></TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+          {/* Contratos Table */}
+          <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
+            <h3 style={{ marginBottom: '1rem' }}>Contratos</h3>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Título</TableHead>
+                  <TableHead>Período</TableHead>
+                  <TableHead>Valor</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {contratosCliente.length === 0 ? (
+                  <TableRow><TableCell colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Nenhum contrato</TableCell></TableRow>
+                ) : contratosCliente.map(r => (
+                  <TableRow key={r.id ?? Math.random()}>
+                    <TableCell data-label="Título">{r.titulo}</TableCell>
+                    <TableCell data-label="Período">{formatDate(r.data_inicio)} – {formatDate(r.data_fim)}</TableCell>
+                    <TableCell data-label="Valor">{formatBRL(Number(r.valor_total))}</TableCell>
+                    <TableCell data-label="Status"><StatusBadge status={r.status} /></TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
 
-      {/* Transações Table */}
-      <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-        <h3 style={{ marginBottom: '1rem' }}>Transações</h3>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Descrição</TableHead>
-              <TableHead>Data</TableHead>
-              <TableHead>Valor</TableHead>
-              <TableHead>Status</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {transacoesCliente.length === 0 ? (
-              <TableRow><TableCell colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Nenhuma transação</TableCell></TableRow>
-            ) : transacoesCliente.map(r => (
-              <TableRow key={r.id ?? Math.random()}>
-                <TableCell data-label="Descrição">{r.descricao}</TableCell>
-                <TableCell data-label="Data">{formatDate(r.data)}</TableCell>
-                <TableCell data-label="Valor">
-                  <span style={{ color: r.tipo === 'entrada' ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>
-                    {r.tipo === 'entrada' ? '+' : '-'}{formatBRL(Number(r.valor))}
-                  </span>
-                </TableCell>
-                <TableCell data-label="Status"><StatusBadge status={r.status ?? 'pago'} /></TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+          {/* Transações Table */}
+          <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
+            <h3 style={{ marginBottom: '1rem' }}>Transações</h3>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Descrição</TableHead>
+                  <TableHead>Data</TableHead>
+                  <TableHead>Valor</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {transacoesCliente.length === 0 ? (
+                  <TableRow><TableCell colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Nenhuma transação</TableCell></TableRow>
+                ) : transacoesCliente.map(r => (
+                  <TableRow key={r.id ?? Math.random()}>
+                    <TableCell data-label="Descrição">{r.descricao}</TableCell>
+                    <TableCell data-label="Data">{formatDate(r.data)}</TableCell>
+                    <TableCell data-label="Valor">
+                      <span style={{ color: r.tipo === 'entrada' ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>
+                        {r.tipo === 'entrada' ? '+' : '-'}{formatBRL(Number(r.valor))}
+                      </span>
+                    </TableCell>
+                    <TableCell data-label="Status"><StatusBadge status={r.status ?? 'pago'} /></TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </>
+      )}
 
       {/* Edit Modal */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>

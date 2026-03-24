@@ -49,11 +49,12 @@ const ALL_NAV_GROUPS: NavGroup[] = [
 function getNavGroups(role: string): NavGroup[] {
   if (role !== 'agent') return ALL_NAV_GROUPS;
   return ALL_NAV_GROUPS
-    .filter(g => g.id !== 'crm')
-    .map(g => g.id === 'gestao'
-      ? { ...g, items: g.items.filter(i => i.id !== 'financeiro' && i.id !== 'contratos') }
-      : g
-    );
+    .map(g => {
+      if (g.id === 'crm') return { ...g, items: g.items.filter(i => i.id !== 'leads') };
+      if (g.id === 'gestao') return { ...g, items: g.items.filter(i => i.id !== 'financeiro' && i.id !== 'contratos') };
+      return g;
+    })
+    .filter(g => g.items.length > 0);
 }
 
 export default function Sidebar() {
