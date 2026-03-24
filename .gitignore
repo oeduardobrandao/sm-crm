@@ -28,6 +28,9 @@ npm-debug.log*
 # Vite
 vite.config.ts.timestamp-*
 
+# Superpowers brainstorm artifacts
+.superpowers/
+
 # Misc
 stitch_assets/
 download_assets.*
