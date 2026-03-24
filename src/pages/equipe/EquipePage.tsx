@@ -205,9 +205,9 @@ export default function EquipePage() {
           {filtered.map(m => {
             const color = getAvatarColor(m.nome);
             return (
-              <div key={m.id} className="team-card card animate-up" style={{ padding: '1rem', paddingBottom: '0.75rem' }}>
-                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginBottom: '0.75rem' }}>
-                  <div className="avatar" style={{ background: color, color: '#fff', fontWeight: 700, width: 44, height: 44, fontSize: '1rem', flexShrink: 0 }}>
+              <div key={m.id} className="team-card card animate-up" style={{ padding: '1.25rem 1rem' }}>
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                  <div className="avatar" style={{ background: color, color: '#fff', fontWeight: 700, width: 44, height: 44, fontSize: '1rem', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     {getInitials(m.nome)}
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', flex: 1, minWidth: 0 }}>
@@ -220,7 +220,7 @@ export default function EquipePage() {
                     </div>
                   </div>
 
-                  <div className="flex gap-1" style={{ marginLeft: 'auto', alignSelf: 'flex-start' }}>
+                  <div className="flex gap-1" style={{ marginLeft: 'auto' }}>
                     {!isAgent && (
                       <>
                         <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openEdit(m)}>

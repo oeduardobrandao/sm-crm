@@ -212,8 +212,8 @@ export default function ClientesPage() {
             const avatarUrl = c.id ? avatarMap[c.id] : undefined;
             const initials = getInitials(c.nome);
             return (
-              <div key={c.id ?? c.nome} className="team-card card animate-up" style={{ padding: '1rem', paddingBottom: '0.75rem' }}>
-                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginBottom: '0.75rem' }}>
+              <div key={c.id ?? c.nome} className="team-card card animate-up" style={{ padding: '1.25rem 1rem' }}>
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                   {avatarUrl ? (
                     <img src={avatarUrl} alt={initials} className="avatar" style={{ width: 44, height: 44, objectFit: 'cover', flexShrink: 0 }} />
                   ) : (
@@ -246,13 +246,13 @@ export default function ClientesPage() {
                     </div>
                   </div>
 
-                  <div className="flex gap-1" style={{ marginLeft: 'auto', alignSelf: 'flex-start' }}>
+                  <div className="flex gap-1" style={{ marginLeft: 'auto' }}>
                     <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openEdit(c)}>
-                      <Edit2 className="h-3.5 w-3.5" />
+                      <Edit2 className="h-4 w-4 text-muted-foreground" />
                     </Button>
                     {c.id && (
-                      <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={() => setDeleteId(c.id!)}>
-                        <Trash2 className="h-3.5 w-3.5" />
+                      <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setDeleteId(c.id!)}>
+                        <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     )}
                   </div>

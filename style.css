@@ -717,10 +717,6 @@ body {
   border-radius: 16px;
 }
 
-.team-card > div:first-child {
-  margin-bottom: 0.5rem !important;
-}
-
 .card-blue {
   background: var(--primary-color);
   color: #12151a;

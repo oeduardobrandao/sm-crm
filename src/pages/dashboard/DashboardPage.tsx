@@ -116,41 +116,6 @@ export default function DashboardPage() {
       {/* Dashboard Hub */}
       <div className="dashboard-hub">
 
-        {/* Leads */}
-        <Link to="/leads" style={{ textDecoration: 'none', color: 'inherit' }}>
-          <div className="card dashboard-hub-card animate-up">
-            <div className="dashboard-hub-card-header">
-              <h3><i className="ph ph-funnel" style={{ marginRight: 8 }} />Leads</h3>
-              <i className="ph ph-arrow-right" />
-            </div>
-            <div className="dashboard-mini-kpis">
-              <div className="dashboard-mini-kpi">
-                <span className="kpi-label">NOVO</span>
-                <span className="kpi-value" style={{ fontSize: '1.25rem' }}>{leadCounts.novo}</span>
-              </div>
-              <div className="dashboard-mini-kpi">
-                <span className="kpi-label">CONTATADO</span>
-                <span className="kpi-value" style={{ fontSize: '1.25rem' }}>{leadCounts.contatado}</span>
-              </div>
-              <div className="dashboard-mini-kpi">
-                <span className="kpi-label">QUALIFICADO</span>
-                <span className="kpi-value" style={{ fontSize: '1.25rem' }}>{leadCounts.qualificado}</span>
-              </div>
-            </div>
-            <div className="dashboard-hub-list">
-              {last3Leads.map(lead => (
-                <div key={lead.id} className="dashboard-hub-row">
-                  <span>{lead.nome}</span>
-                  <span className={`badge ${lead.status === 'novo' ? 'badge-info' : lead.status === 'qualificado' ? 'badge-success' : 'badge-neutral'}`}>
-                    {lead.status}
-                  </span>
-                </div>
-              ))}
-              {last3Leads.length === 0 && <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Nenhum lead ainda.</p>}
-            </div>
-          </div>
-        </Link>
-
         {/* Analytics */}
         <Link to="/analytics" style={{ textDecoration: 'none', color: 'inherit' }}>
           <div className="card dashboard-hub-card animate-up">
@@ -219,6 +184,69 @@ export default function DashboardPage() {
           </div>
         </Link>
 
+        {/* Entregas (Workflows) */}
+        <Link to="/entregas" style={{ textDecoration: 'none', color: 'inherit' }}>
+          <div className="card dashboard-hub-card animate-up">
+            <div className="dashboard-hub-card-header">
+              <h3><i className="ph ph-kanban" style={{ marginRight: 8 }} />Entregas</h3>
+              <i className="ph ph-arrow-right" />
+            </div>
+            <div className="dashboard-mini-kpis">
+              <div className="dashboard-mini-kpi">
+                <span className="kpi-label">ATIVOS</span>
+                <span className="kpi-value" style={{ fontSize: '1.25rem' }}>{activeWorkflows.length}</span>
+              </div>
+            </div>
+            <div className="dashboard-hub-list">
+              {first3Workflows.map((wf: Workflow) => {
+                const cliente = wf.cliente_id ? clienteMap[wf.cliente_id] : null;
+                return (
+                  <div key={wf.id} className="dashboard-hub-row">
+                    <span style={{ fontSize: '0.85rem' }}>{wf.titulo}</span>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{cliente?.nome ?? '—'}</span>
+                  </div>
+                );
+              })}
+              {first3Workflows.length === 0 && <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Nenhum workflow ativo.</p>}
+            </div>
+          </div>
+        </Link>
+
+        {/* Leads */}
+        <Link to="/leads" style={{ textDecoration: 'none', color: 'inherit' }}>
+          <div className="card dashboard-hub-card animate-up">
+            <div className="dashboard-hub-card-header">
+              <h3><i className="ph ph-funnel" style={{ marginRight: 8 }} />Leads</h3>
+              <i className="ph ph-arrow-right" />
+            </div>
+            <div className="dashboard-mini-kpis">
+              <div className="dashboard-mini-kpi">
+                <span className="kpi-label">NOVO</span>
+                <span className="kpi-value" style={{ fontSize: '1.25rem' }}>{leadCounts.novo}</span>
+              </div>
+              <div className="dashboard-mini-kpi">
+                <span className="kpi-label">CONTATADO</span>
+                <span className="kpi-value" style={{ fontSize: '1.25rem' }}>{leadCounts.contatado}</span>
+              </div>
+              <div className="dashboard-mini-kpi">
+                <span className="kpi-label">QUALIFICADO</span>
+                <span className="kpi-value" style={{ fontSize: '1.25rem' }}>{leadCounts.qualificado}</span>
+              </div>
+            </div>
+            <div className="dashboard-hub-list">
+              {last3Leads.map(lead => (
+                <div key={lead.id} className="dashboard-hub-row">
+                  <span>{lead.nome}</span>
+                  <span className={`badge ${lead.status === 'novo' ? 'badge-info' : lead.status === 'qualificado' ? 'badge-success' : 'badge-neutral'}`}>
+                    {lead.status}
+                  </span>
+                </div>
+              ))}
+              {last3Leads.length === 0 && <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Nenhum lead ainda.</p>}
+            </div>
+          </div>
+        </Link>
+
         {/* Contratos — hidden for agents */}
         {role !== 'agent' && (
           <Link to="/contratos" style={{ textDecoration: 'none', color: 'inherit' }}>
@@ -251,34 +279,6 @@ export default function DashboardPage() {
             </div>
           </Link>
         )}
-
-        {/* Entregas (Workflows) */}
-        <Link to="/entregas" style={{ textDecoration: 'none', color: 'inherit' }}>
-          <div className="card dashboard-hub-card animate-up">
-            <div className="dashboard-hub-card-header">
-              <h3><i className="ph ph-kanban" style={{ marginRight: 8 }} />Entregas</h3>
-              <i className="ph ph-arrow-right" />
-            </div>
-            <div className="dashboard-mini-kpis">
-              <div className="dashboard-mini-kpi">
-                <span className="kpi-label">ATIVOS</span>
-                <span className="kpi-value" style={{ fontSize: '1.25rem' }}>{activeWorkflows.length}</span>
-              </div>
-            </div>
-            <div className="dashboard-hub-list">
-              {first3Workflows.map((wf: Workflow) => {
-                const cliente = wf.cliente_id ? clienteMap[wf.cliente_id] : null;
-                return (
-                  <div key={wf.id} className="dashboard-hub-row">
-                    <span style={{ fontSize: '0.85rem' }}>{wf.titulo}</span>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{cliente?.nome ?? '—'}</span>
-                  </div>
-                );
-              })}
-              {first3Workflows.length === 0 && <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Nenhum workflow ativo.</p>}
-            </div>
-          </div>
-        </Link>
 
         {/* Equipe */}
         <Link to="/equipe" style={{ textDecoration: 'none', color: 'inherit' }}>
