@@ -81,31 +81,33 @@ export default function EntregasPage() {
           </p>
         </div>
         <div className="header-actions">
-          {/* View switcher */}
-          <div style={{ display: 'flex', gap: '0.25rem', background: 'var(--surface-2)', padding: '0.25rem', borderRadius: '8px' }}>
-            {VIEW_TABS.map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveView(tab.id)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '0.4rem',
-                  padding: '0.4rem 0.9rem',
-                  borderRadius: '6px',
-                  border: 'none',
-                  background: activeView === tab.id ? 'var(--accent)' : 'transparent',
-                  color: activeView === tab.id ? '#fff' : 'var(--text-secondary)',
-                  fontSize: '0.8rem', fontWeight: activeView === tab.id ? 600 : 400,
-                  cursor: 'pointer',
-                }}
-              >
-                {tab.icon} {tab.label}
-              </button>
-            ))}
-          </div>
+
           <Button variant="outline" onClick={() => setTemplatesOpen(true)}><LayoutGrid className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Templates</Button>
           <Button onClick={() => setNewWorkflowOpen(true)}><Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Novo Fluxo</Button>
         </div>
       </header>
+
+      <div style={{ display: 'flex', gap: '0.25rem', background: 'var(--surface-2)', padding: '0.25rem', borderRadius: '8px', overflowX: 'auto', width: 'fit-content', maxWidth: '100%' }} className="animate-up no-scrollbar">
+        {VIEW_TABS.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveView(tab.id)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '0.4rem',
+              padding: '0.4rem 0.9rem',
+              borderRadius: '6px',
+              border: 'none',
+              background: activeView === tab.id ? '#000' : 'transparent',
+              color: activeView === tab.id ? '#fff' : 'var(--text-secondary)',
+              fontSize: '0.8rem', fontWeight: activeView === tab.id ? 600 : 400,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {tab.icon} {tab.label}
+          </button>
+        ))}
+      </div>
 
       <EntregasFilters filters={filters} onChange={setFilters} clientes={clientes} membros={membros} />
 
@@ -115,6 +117,8 @@ export default function EntregasPage() {
           onCardClick={setEditCard}
           onRefresh={refresh}
           onRecurring={setRecurringWfId}
+          membros={membros}
+          templates={templates}
         />
       )}
       {activeView === 'chart' && <ChartView cards={filteredCards} />}

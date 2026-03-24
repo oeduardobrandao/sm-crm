@@ -9,6 +9,7 @@ import { GripVertical } from 'lucide-react';
 import { toast } from 'sonner';
 import { completeEtapa, revertEtapa, updateWorkflowPositions } from '../../../store';
 import type { BoardCard } from '../hooks/useEntregasData';
+import type { Membro, WorkflowTemplate } from '../../../store';
 import { WorkflowCard } from '../components/WorkflowCard';
 import { RevertConfirmDialog } from '../components/WorkflowModals';
 
@@ -17,6 +18,8 @@ interface KanbanViewProps {
   onCardClick: (card: BoardCard) => void;
   onRefresh: () => void;
   onRecurring: (workflowId: number) => void;
+  membros: Membro[];
+  templates: WorkflowTemplate[];
 }
 
 interface BoardRow {
@@ -26,7 +29,7 @@ interface BoardRow {
   columns: Map<string, BoardCard[]>;
 }
 
-function buildBoardRows(cards: BoardCard[]): BoardRow[] {
+function buildBoardRows(cards: BoardCard[], templates: WorkflowTemplate[]): BoardRow[] {
   const rowMap = new Map<string, BoardRow>();
   for (const card of cards) {
     const sorted = [...card.allEtapas].sort((a, b) => a.ordem - b.ordem);
@@ -35,7 +38,11 @@ function buildBoardRows(cards: BoardCard[]): BoardRow[] {
     if (!rowMap.has(key)) {
       const columns = new Map<string, BoardCard[]>();
       for (const name of stepNames) columns.set(name, []);
-      rowMap.set(key, { key, label: key, stepNames, columns });
+      
+      const t = templates.find(t => t.id === card.workflow.template_id);
+      const label = t ? t.nome.toUpperCase() : key.toUpperCase();
+
+      rowMap.set(key, { key, label, stepNames, columns });
     }
     const row = rowMap.get(key)!;
     const col = row.columns.get(card.etapa.nome);
@@ -61,7 +68,7 @@ function DroppableColumnBody({ id, children }: { id: string; children: React.Rea
 }
 
 // Draggable card wrapper
-function SortableCard({ card, onCardClick }: { card: BoardCard; onCardClick: (c: BoardCard) => void }) {
+function SortableCard({ card, onCardClick, membros, onRefresh, onRevertClick, onForwardClick }: { card: BoardCard; onCardClick: (c: BoardCard) => void; membros: Membro[]; onRefresh: () => void; onRevertClick: () => void; onForwardClick: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: String(card.workflow.id),
   });
@@ -77,6 +84,10 @@ function SortableCard({ card, onCardClick }: { card: BoardCard; onCardClick: (c:
         card={card}
         onClick={() => onCardClick(card)}
         dragHandle={<GripVertical className="h-4 w-4" {...listeners} />}
+        membros={membros}
+        onRefresh={onRefresh}
+        onRevertClick={onRevertClick}
+        onForwardClick={onForwardClick}
       />
     </div>
   );
@@ -85,7 +96,7 @@ function SortableCard({ card, onCardClick }: { card: BoardCard; onCardClick: (c:
 // Column droppable ID prefix — distinguishes column IDs from card IDs in handleDragEnd
 const COL_PREFIX = 'col:';
 
-export function KanbanView({ cards, onCardClick, onRefresh, onRecurring }: KanbanViewProps) {
+export function KanbanView({ cards, onCardClick, onRefresh, onRecurring, membros, templates }: KanbanViewProps) {
   const [localCards, setLocalCards] = useState<BoardCard[]>(cards);
   const [activeCard, setActiveCard] = useState<BoardCard | null>(null);
   const [revertTarget, setRevertTarget] = useState<{ workflowId: number; title: string } | null>(null);
@@ -95,7 +106,7 @@ export function KanbanView({ cards, onCardClick, onRefresh, onRecurring }: Kanba
     setLocalCards(cards);
   }
 
-  const boardRows = buildBoardRows(localCards);
+  const boardRows = buildBoardRows(localCards, templates);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -125,7 +136,7 @@ export function KanbanView({ cards, onCardClick, onRefresh, onRecurring }: Kanba
     const draggedCard = findCard(activeId);
     if (!draggedCard) return;
 
-    const rows = buildBoardRows(localCards);
+    const rows = buildBoardRows(localCards, templates);
     const activeLocation = findCardColumn(activeId, rows);
     if (!activeLocation) return;
 
@@ -216,7 +227,7 @@ export function KanbanView({ cards, onCardClick, onRefresh, onRecurring }: Kanba
         });
       }
     }
-  }, [localCards, onRefresh, onRecurring]);
+  }, [localCards, onRefresh, onRecurring, templates]);
 
   const handleRevertConfirm = async () => {
     if (!revertTarget) return;
@@ -264,6 +275,22 @@ export function KanbanView({ cards, onCardClick, onRefresh, onRecurring }: Kanba
                               key={card.workflow.id}
                               card={card}
                               onCardClick={onCardClick}
+                              membros={membros}
+                              onRefresh={onRefresh}
+                              onRevertClick={() => setRevertTarget({ workflowId: card.workflow.id!, title: card.workflow.titulo })}
+                              onForwardClick={async () => {
+                                try {
+                                  const result = await completeEtapa(card.workflow.id!, card.etapa.id!);
+                                  if (result.workflow.status === 'concluido' && card.workflow.recorrente) {
+                                    onRecurring(card.workflow.id!);
+                                  } else {
+                                    toast.success('Etapa concluída!');
+                                  }
+                                  onRefresh();
+                                } catch (err: unknown) {
+                                  toast.error((err as Error).message || 'Erro ao avançar etapa');
+                                }
+                              }}
                             />
                           ))
                         }

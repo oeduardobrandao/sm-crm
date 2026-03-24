@@ -93,7 +93,7 @@ html, body, #root, .app-container {
   /* Dimensões e Globais */
   --sidebar-width: 260px;
   --font-main: 'SF Pro Text', sans-serif;
-  --font-heading: 'SF Pro Display', serif;
+  --font-heading: 'SF Pro Display', sans-serif;
   --font-mono: 'SF Pro Mono', monospace;
   --shadow: 0 10px 40px -10px rgba(0,0,0,0.08);
   --radius: 28px;
@@ -107,7 +107,7 @@ html, body, #root, .app-container {
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--border-color);
+  background: none;
   border-radius: 10px;
 }
 
@@ -4146,5 +4146,13 @@ body.role-agent input[name="valor_total"] {
   .portal-approval-actions {
     flex-direction: column;
   }
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none !important;
+}
+.no-scrollbar {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
 }
 

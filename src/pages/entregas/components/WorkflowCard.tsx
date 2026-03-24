@@ -1,4 +1,9 @@
+import { useState } from 'react';
+import { toast } from 'sonner';
+import { ArrowLeft, Edit2, Share2, Check } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import type { BoardCard } from '../hooks/useEntregasData';
+import { updateWorkflowEtapa, createPortalToken, type Membro } from '../../../store';
 
 const avatarColors = ['#eab308', '#3ecf8e', '#f5a342', '#f542c8', '#42c8f5', '#8b5cf6', '#ef4444', '#14b8a6'];
 function getAvatarColor(name: string): string {
@@ -17,9 +22,15 @@ interface WorkflowCardProps {
   isDragOverlay?: boolean;
   /** Optional drag handle element rendered at the top-right */
   dragHandle?: React.ReactNode;
+  
+  membros?: Membro[];
+  onRefresh?: () => void;
+  onRevertClick?: () => void;
+  onForwardClick?: () => void;
 }
 
-export function WorkflowCard({ card, onClick, isDragOverlay, dragHandle }: WorkflowCardProps) {
+export function WorkflowCard({ card, onClick, isDragOverlay, dragHandle, membros, onRefresh, onRevertClick, onForwardClick }: WorkflowCardProps) {
+  const [assignDropdownOpen, setAssignDropdownOpen] = useState(false);
   const dl = card.deadline;
   const deadlineClass = dl.estourado
     ? 'deadline-overdue'
@@ -42,46 +53,155 @@ export function WorkflowCard({ card, onClick, isDragOverlay, dragHandle }: Workf
     ? new Date(card.etapa.iniciado_em).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
     : null;
 
+  const handleShare = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const portalToken = await createPortalToken(card.workflow.id!);
+      const url = `${window.location.origin}/#/portal/${portalToken}`;
+      if (navigator.share) {
+        await navigator.share({ title: card.workflow.titulo, text: `Acompanhe a entrega: ${card.workflow.titulo}`, url });
+      } else {
+        await navigator.clipboard.writeText(url);
+        toast.success('Link do portal copiado!');
+      }
+    } catch (err: any) {
+      if (err?.name === 'AbortError') return;
+      toast.error('Erro ao compartilhar link do portal.');
+    }
+  };
+
+  const sanitizeUrl = (url: string) => url.startsWith('http') ? url : `https://${url}`;
+
   return (
     <div
       className={`board-card ${deadlineClass}`}
-      style={{ opacity: isDragOverlay ? 0.8 : 1, cursor: onClick ? 'pointer' : 'default', position: 'relative' }}
-      onClick={onClick}
+      style={{ opacity: isDragOverlay ? 0.8 : 1, position: 'relative', zIndex: assignDropdownOpen ? 50 : 1 }}
+      onClick={assignDropdownOpen ? () => setAssignDropdownOpen(false) : onClick}
     >
-      {dragHandle && (
-        <div style={{ position: 'absolute', top: '0.5rem', right: '0.5rem', cursor: 'grab', color: 'var(--text-muted)' }}>
-          {dragHandle}
-        </div>
-      )}
-      <div className="board-card-top">
+      <div className="board-card-top" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <span className="board-card-client" style={{ borderLeft: `3px solid ${card.cliente?.cor || '#888'}`, paddingLeft: '0.5rem' }}>
           {card.cliente?.nome || '—'}
         </span>
-        {card.workflow.recorrente && <span title="Recorrente" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>↻</span>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          {card.workflow.recorrente && <span title="Recorrente" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>↻</span>}
+          {dragHandle && (
+            <div style={{ cursor: 'grab', color: 'var(--text-muted)' }}>
+              {dragHandle}
+            </div>
+          )}
+        </div>
       </div>
       <div className="board-card-title">{card.workflow.titulo}</div>
       <div className="board-card-meta">
         <span className={`board-card-deadline ${deadlineClass}`}>{deadlineText}</span>
         <span className="board-card-prazo-type">{card.etapa.tipo_prazo === 'uteis' ? 'dias úteis' : 'dias corridos'}</span>
       </div>
-      {card.membro ? (
-        <div
-          className="board-card-assignee"
-          style={{ width: 28, height: 28, borderRadius: '50%', background: getAvatarColor(card.membro.nome), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 700, color: '#fff', flexShrink: 0 }}
-        >
-          {getInitials(card.membro.nome)}
-        </div>
-      ) : (
-        <div className="board-card-assignee" style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--surface-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', color: 'var(--text-muted)' }}>
-          ?
+
+      <DropdownMenu open={assignDropdownOpen} onOpenChange={(open) => {
+        if (membros) setAssignDropdownOpen(open);
+      }}>
+        <DropdownMenuTrigger asChild>
+          <div
+            className={`board-card-assignee ${membros ? 'board-card-assignee--clickable' : ''}`}
+            style={{ cursor: membros ? 'pointer' : 'default', position: 'relative' }}
+            onClick={(e) => {
+              if (!membros) return;
+              e.stopPropagation();
+            }}
+          >
+            {card.membro ? (
+              <>
+                <div style={{ width: 22, height: 22, borderRadius: '50%', background: getAvatarColor(card.membro.nome), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+                  {getInitials(card.membro.nome)}
+                </div>
+                <span>{card.membro.nome}</span>
+              </>
+            ) : (
+              <>
+                <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--surface-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', color: 'var(--text-muted)' }}>
+                  ?
+                </div>
+                <span>Sem responsável</span>
+              </>
+            )}
+          </div>
+        </DropdownMenuTrigger>
+
+        {membros && (
+          <DropdownMenuContent align="start" style={{ zIndex: 99999, minWidth: '160px' }}>
+            {membros.map(m => (
+              <DropdownMenuItem
+                key={m.id}
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  setAssignDropdownOpen(false);
+                  try {
+                    await updateWorkflowEtapa(card.etapa.id!, { responsavel_id: m.id });
+                    toast.success('Responsável atualizado!');
+                    onRefresh?.();
+                  } catch { toast.error('Erro ao atualizar'); }
+                }}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.75rem' }}
+              >
+                <div style={{ width: 16, height: 16, borderRadius: '50%', background: getAvatarColor(m.nome), color: '#fff', fontSize: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {getInitials(m.nome)}
+                </div>
+                {m.nome}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        )}
+      </DropdownMenu>
+
+      {(card.workflow.link_notion || card.workflow.link_drive) && (
+        <div className="board-card-links">
+          {card.workflow.link_notion && (
+            <a href={sanitizeUrl(card.workflow.link_notion)} target="_blank" rel="noopener noreferrer" className="board-card-link" onClick={e => e.stopPropagation()}>
+              Notion
+            </a>
+          )}
+          {card.workflow.link_drive && (
+            <a href={sanitizeUrl(card.workflow.link_drive)} target="_blank" rel="noopener noreferrer" className="board-card-link" onClick={e => e.stopPropagation()}>
+              Drive
+            </a>
+          )}
         </div>
       )}
-      <div className="board-card-footer">
-        <div className="board-card-progress-bar">
-          <div className="board-card-progress-fill" style={{ width: `${progressPct}%` }} />
+
+      {card.etapa.tipo === 'aprovacao_cliente' && (
+        <div className="board-card-approval">
+          <div className="board-card-approval-badge">
+            ⏳ Aguardando cliente
+          </div>
         </div>
-        <span className="board-card-steps">{card.etapaIdx + 1}/{card.totalEtapas}</span>
-        {iniciadoEm && <span className="board-card-started">Início: {iniciadoEm}</span>}
+      )}
+
+      <div className="board-card-progress">
+        <div className="board-progress-bar">
+          <div className="board-progress-fill" style={{ width: `${progressPct}%` }} />
+        </div>
+        <span className="board-progress-label">{card.etapaIdx + 1}/{card.totalEtapas}</span>
+      </div>
+
+      {iniciadoEm && <div className="board-card-created">iniciada em {iniciadoEm}</div>}
+
+      <div className="board-card-actions">
+        {card.etapaIdx > 0 && onRevertClick && (
+          <button className="btn-revert-etapa" title="Voltar etapa" style={{ padding: '0.4rem', flexShrink: 0 }} onClick={e => { e.stopPropagation(); onRevertClick(); }}>
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+        )}
+        <button className="btn-edit-workflow" title="Editar fluxo" style={{ padding: '0.4rem', flexShrink: 0 }} onClick={e => { e.stopPropagation(); onClick?.(); }}>
+          <Edit2 className="h-4 w-4" />
+        </button>
+        <button className="btn-edit-workflow" title="Compartilhar portal do cliente" style={{ padding: '0.4rem', flexShrink: 0 }} onClick={handleShare}>
+          <Share2 className="h-4 w-4" />
+        </button>
+        {card.etapaIdx < card.totalEtapas - 1 && onForwardClick && (
+          <button className="btn-edit-workflow btn-forward-etapa" title="Concluir etapa e avançar" style={{ padding: '0.4rem', flexShrink: 0, color: 'var(--success)' }} onClick={e => { e.stopPropagation(); onForwardClick(); }}>
+            <Check className="h-4 w-4" />
+          </button>
+        )}
       </div>
     </div>
   );
