@@ -794,7 +794,7 @@ function AnalyticsContent({
       </div>
 
       {/* Demographics + Best Times */}
-      <div className="widgets-grid animate-up" style={{ gridTemplateColumns: '1fr 1fr' }}>
+      <div className="widgets-grid animate-up" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>
         <div className="card">
           <div className="dashboard-hub-card-header"><h3>Demografia da Audiência</h3></div>
           {!demographicsData

@@ -1,13 +1,14 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Zap } from 'lucide-react';
+import { Zap, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Chart, registerables } from 'chart.js';
 import { getPortfolioSummary, getPortfolioAIAnalysis, type PortfolioAccount } from '../../services/analytics';
+import { syncInstagramData } from '../../services/instagram';
 
 Chart.register(...registerables);
 
@@ -153,10 +154,29 @@ function AIPortfolioSection({ accounts }: { accounts: PortfolioAccount[] }) {
 }
 
 export default function AnalyticsPage() {
-  const { data, isLoading, error } = useQuery({
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ success: number; failed: number } | null>(null);
+
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['portfolio-summary'],
     queryFn: getPortfolioSummary,
   });
+
+  const handleSyncAll = async () => {
+    if (!data?.accounts.length) return;
+    setSyncing(true);
+    setSyncResult(null);
+    let success = 0;
+    let failed = 0;
+    await Promise.allSettled(
+      data.accounts.map(a =>
+        syncInstagramData(a.client_id).then(() => success++).catch(() => failed++)
+      )
+    );
+    setSyncing(false);
+    setSyncResult({ success, failed });
+    refetch();
+  };
 
   if (isLoading) {
     return (
@@ -212,6 +232,18 @@ export default function AnalyticsPage() {
         <div className="header-title">
           <h1>Analytics Instagram</h1>
           <p>Visão geral de todas as contas conectadas.</p>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          {syncResult && (
+            <span style={{ fontSize: '0.8rem', color: syncResult.failed > 0 ? 'var(--warning)' : 'var(--success)' }}>
+              {syncResult.success} sincronizada{syncResult.success !== 1 ? 's' : ''}
+              {syncResult.failed > 0 && `, ${syncResult.failed} falhou`}
+            </span>
+          )}
+          <Button onClick={handleSyncAll} disabled={syncing || !data?.accounts.length} size="sm" variant="outline">
+            <RefreshCw className={`h-4 w-4${syncing ? ' animate-spin' : ''}`} />
+            {syncing ? 'Sincronizando...' : 'Sincronizar Tudo'}
+          </Button>
         </div>
       </header>
 
