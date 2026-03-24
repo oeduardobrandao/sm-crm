@@ -252,7 +252,9 @@ function AISection({ clientId, days }: { clientId: number; days: number }) {
     }
   };
 
-  const scoreColor = analysis ? (analysis.healthScore >= 70 ? 'var(--success)' : analysis.healthScore >= 40 ? 'var(--warning)' : 'var(--danger)') : '';
+  const score = analysis?.healthScore?.score ?? 0;
+  const scoreColor = analysis ? (score >= 70 ? 'var(--success)' : score >= 40 ? 'var(--warning)' : 'var(--danger)') : '';
+  const priorityColor = (p: string) => p === 'alta' ? 'var(--danger)' : p === 'media' ? 'var(--warning)' : 'var(--success)';
 
   return (
     <div className="card animate-up">
@@ -266,38 +268,85 @@ function AISection({ clientId, days }: { clientId: number; days: number }) {
       {error && <p style={{ color: 'var(--danger)' }}>{error}</p>}
       {analysis && (
         <div>
+          {/* Health Score */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', paddingBottom: '1rem', borderBottom: '1px solid var(--border-color)' }}>
-            <div style={{ fontSize: '2.8rem', fontWeight: 800, color: scoreColor, lineHeight: 1 }}>{analysis.healthScore}</div>
+            <div style={{ fontSize: '2.8rem', fontWeight: 800, color: scoreColor, lineHeight: 1 }}>{score}</div>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.2rem' }}>Health Score</div>
-              <p style={{ fontSize: '0.85rem', lineHeight: 1.4 }}>{analysis.healthExplanation}</p>
+              <p style={{ fontSize: '0.85rem', lineHeight: 1.4 }}>{analysis.healthScore?.summary}</p>
             </div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: '1.25rem', padding: '1.25rem 0', borderBottom: '1px solid var(--border-color)' }}>
-            <div>
-              <h4 style={{ fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}>Performance de Conteúdo</h4>
-              <p style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>{analysis.contentInsights}</p>
-            </div>
-            <div>
-              <h4 style={{ fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}>Análise de Legendas</h4>
-              <p style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>{analysis.captionAnalysis}</p>
-            </div>
-            <div>
-              <h4 style={{ fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}>Projeção de Crescimento</h4>
-              <p style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>{analysis.growthForecast}</p>
-            </div>
-          </div>
-          <div style={{ paddingTop: '1.25rem' }}>
-            <h4 style={{ fontSize: '0.8rem', marginBottom: '0.6rem', color: 'var(--text-muted)' }}>Recomendações</h4>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {analysis.topRecommendations.map((r: string, i: number) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem', fontSize: '0.85rem' }}>
-                  <span className="badge badge-success" style={{ fontSize: '0.7rem', minWidth: 20, textAlign: 'center' }}>{i + 1}</span>
-                  <span style={{ lineHeight: 1.4 }}>{r}</span>
+
+          {/* Health Score Breakdown */}
+          {analysis.healthScore?.breakdown && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: '0.75rem', padding: '1rem 0', borderBottom: '1px solid var(--border-color)' }}>
+              {Object.entries(analysis.healthScore.breakdown).map(([key, val]: [string, any]) => (
+                <div key={key} style={{ fontSize: '0.8rem' }}>
+                  <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>{key.replace(/([A-Z])/g, ' $1')}: </span>
+                  <span>{typeof val === 'string' ? val : val === null ? 'N/A' : val}</span>
                 </div>
               ))}
             </div>
+          )}
+
+          {/* Performance Map */}
+          {analysis.performanceMap && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: '1.25rem', padding: '1.25rem 0', borderBottom: '1px solid var(--border-color)' }}>
+              <div>
+                <h4 style={{ fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}>Melhor Post</h4>
+                <p style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>{analysis.performanceMap.topPerformer}</p>
+              </div>
+              <div>
+                <h4 style={{ fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}>Pior Post</h4>
+                <p style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>{analysis.performanceMap.worstPerformer}</p>
+              </div>
+              <div>
+                <h4 style={{ fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}>Mix de Conteúdo</h4>
+                <p style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>{analysis.performanceMap.contentMix}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Caption Diagnostic + Growth */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: '1.25rem', padding: '1.25rem 0', borderBottom: '1px solid var(--border-color)' }}>
+            {analysis.captionDiagnostic && (
+              <div>
+                <h4 style={{ fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}>Diagnóstico de Legendas</h4>
+                <p style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>{analysis.captionDiagnostic}</p>
+              </div>
+            )}
+            {analysis.growthAnalysis && (
+              <>
+                <div>
+                  <h4 style={{ fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}>Trajetória de Crescimento</h4>
+                  <p style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>{analysis.growthAnalysis.trajectory}</p>
+                </div>
+                <div>
+                  <h4 style={{ fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}>Projeção</h4>
+                  <p style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>{analysis.growthAnalysis.projection}</p>
+                </div>
+              </>
+            )}
           </div>
+
+          {/* Action Plan */}
+          {analysis.actionPlan && analysis.actionPlan.length > 0 && (
+            <div style={{ paddingTop: '1.25rem' }}>
+              <h4 style={{ fontSize: '0.8rem', marginBottom: '0.6rem', color: 'var(--text-muted)' }}>Plano de Ação</h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {analysis.actionPlan.map((a: any, i: number) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem', fontSize: '0.85rem' }}>
+                    <span className="badge" style={{ fontSize: '0.65rem', minWidth: 44, textAlign: 'center', background: priorityColor(a.prioridade) + '20', color: priorityColor(a.prioridade), border: `1px solid ${priorityColor(a.prioridade)}40` }}>{a.prioridade}</span>
+                    <div style={{ lineHeight: 1.4 }}>
+                      <div style={{ fontWeight: 600 }}>{a.acao}</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>{a.porque}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '1rem', textAlign: 'right' }}>
             Gerado em {new Date(analysis.generatedAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
           </p>
@@ -560,7 +609,7 @@ function AnalyticsContent({
           </div>
         </div>
         <div className="header-actions">
-          <Button variant="outline" onClick={() => navigate(`/cliente/${clientId}`)}><ArrowLeft className="h-4 w-4" /> Voltar</Button>
+          <Button variant="outline" onClick={() => navigate(-1)}><ArrowLeft className="h-4 w-4" /> Voltar</Button>
           <Button variant="outline" size="icon" disabled={syncing} onClick={handleSync} title="Sincronizar Dados">{syncing ? <Spinner size="sm" /> : <RefreshCw className="h-4 w-4" />}</Button>
           <Button onClick={handleGenerateReport}><FileText className="h-4 w-4" /> Gerar Relatório</Button>
         </div>
@@ -1239,7 +1288,7 @@ export default function AnalyticsContaPage() {
         <header className="header animate-up">
           <div className="header-title"><h1>Analytics</h1></div>
           <div className="header-actions">
-            <Button variant="outline" onClick={() => navigate('/analytics')}><ArrowLeft className="h-4 w-4" /> Voltar</Button>
+            <Button variant="outline" onClick={() => navigate(-1)}><ArrowLeft className="h-4 w-4" /> Voltar</Button>
           </div>
         </header>
         <div className="card animate-up" style={{ textAlign: 'center', padding: '3rem' }}>

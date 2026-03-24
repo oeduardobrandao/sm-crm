@@ -873,32 +873,93 @@ Deno.serve(async (req) => {
 
       const followerTrend = (history || []).slice(0, 30).reverse();
 
-      const prompt = `Você é um social media manager jovem e antenado, que manja muito de Instagram. Voce fala de um jeito natural e acessível — como um profissional que conversa de igual pra igual com o cliente, sem ser robótico nem formal demais. Use português brasileiro contemporâneo, pode usar expressões como "ta bombando", "vale apostar", "o pulo do gato", mas sem exagerar no coloquial. Seja direto e prático, como se tivesse mandando um resumo no WhatsApp pro cliente.
+      // --- Preparação dos dados antes de montar o prompt ---
+      const hasFollowerHistory = followerTrend && followerTrend.length >= 2;
 
-Analise os dados da conta @${account.username} (${client.nome}, área: ${client.especialidade || 'não especificada'}).
+      const followerHistoryBlock = hasFollowerHistory
+        ? `Histórico de seguidores (do mais antigo ao mais recente):
+${JSON.stringify(followerTrend.map(h => ({ data: h.date, seguidores: h.follower_count })))}`
+        : `Histórico de seguidores: INDISPONÍVEL. Apenas o valor atual é conhecido: ${account.follower_count} seguidores.`;
+
+      // --- System Prompt ---
+      const systemPrompt = `Você é um estrategista sênior de conteúdo para Instagram especializado em profissionais de saúde no Brasil. Seu trabalho é transformar dados em decisões — não em relatórios genéricos.
+
+REGRAS DE ANÁLISE:
+1. Nunca diga "poste mais Reels" ou "seja consistente" — isso é óbvio. Toda recomendação deve ser uma AÇÃO ESPECÍFICA com formato, tema e timing.
+2. Quando identificar um post de alto desempenho, explique o MECANISMO por trás (ex: "o hook nos 3 primeiros segundos gerou retenção" ou "o CTA no meio da legenda converteu porque..."), não apenas "esse post foi bem".
+3. Compare métricas entre si, não isoladamente. Taxa de engajamento SÓ faz sentido relativa ao número de seguidores e ao tipo de conteúdo.
+4. Para a área de saúde, considere: restrições do CFM/CRO sobre publicidade, sazonalidade (Janeiro Branco, Outubro Rosa, etc.), e que o objetivo final quase sempre é agendamento de consulta, não viralizar.
+
+BENCHMARKS DE REFERÊNCIA (contas de saúde 5k-50k seguidores):
+- Taxa de engajamento saudável: 3-6%
+- Proporção ideal Reels/Carrossel/Imagem: 40/40/20
+- Crescimento orgânico bom: 2-5% ao mês
+- Alcance médio por post: 20-40% da base de seguidores
+Ajuste esses benchmarks proporcionalmente se a conta estiver fora dessa faixa de seguidores.
+
+DADOS INCOMPLETOS:
+Nem sempre haverá histórico de seguidores. Quando o histórico estiver marcado como INDISPONÍVEL:
+- Em growthAnalysis.trajectory: informe que não há dados suficientes para calcular taxa de crescimento. Avalie sinais indiretos (volume de curtidas recentes vs mais antigas, alcance relativo ao tamanho da base).
+- Em growthAnalysis.projection: substitua a projeção numérica por uma estimativa qualitativa baseada nos sinais de engajamento disponíveis, deixando explícito que é uma leitura indireta.
+- Em healthScore.breakdown.crescimento: atribua null em vez de uma nota inventada, e na justificativa escreva "sem dados de histórico para avaliar".
+- NUNCA invente números de crescimento. É melhor dizer que o dado não existe do que fabricar uma tendência.`;
+
+      // --- User Prompt ---
+      const userPrompt = `Analise a conta @${account.username} do(a) ${client.nome} (${client.especialidade || 'especialidade não informada'}).
 
 DADOS DOS ÚLTIMOS ${days} DIAS:
-- Seguidores: ${account.follower_count}
-- Posts no período: ${postsSummary.length}
-- Histórico de seguidores: ${JSON.stringify(followerTrend.map(h => ({ d: h.date, f: h.follower_count })))}
-- Posts recentes: ${JSON.stringify(postsSummary)}
 
-IMPORTANTE: Seja CONCISO (1-2 frases por campo). Não use aspas dentro dos textos. Para o "healthScore", calcule uma nota inteira de 0 a 100 avaliando a saúde geral da conta (engajamento, crescimento, estabilidade). Responda APENAS com um JSON válido seguindo esta estrutura (substitua o 0 pela sua nota calculada e os textos pelos seus insights reais):
+Seguidores atuais: ${account.follower_count}
+Total de posts no período: ${postsSummary.length}
+
+${followerHistoryBlock}
+
+Posts do período (ordenados por engajamento):
+${JSON.stringify(postsSummary)}
+
+---
+
+Responda APENAS com um JSON válido, sem markdown, sem comentários, sem texto fora do JSON. Não use aspas simples nem aspas duplas dentro dos valores de texto — use apenas apóstrofos se necessário.
+
 {
-  "contentInsights": "o que tá funcionando e o que não tá por tipo de conteúdo, com números reais dos dados",
-  "captionAnalysis": "o que as melhores legendas tem em comum e o que pode melhorar",
-  "growthForecast": "projecao realista de crescimento baseada na tendencia",
-  "healthScore": 0,
-  "healthExplanation": "resumo direto do porque da nota do healthScore",
-  "topRecommendations": ["acao pratica 1", "acao pratica 2", "acao pratica 3"]
-}`;
+  "performanceMap": {
+    "topPerformer": "descreva o melhor post do período, o MECANISMO que explica o resultado (hook, formato, tema, horário) e como replicar esse padrão em 2 variações concretas",
+    "worstPerformer": "descreva o pior post, diagnostique o problema principal (formato errado pro tema? legenda fraca? horário ruim?) e como o mesmo assunto poderia ter performado melhor com uma abordagem diferente",
+    "contentMix": "avalie a proporção atual de formatos vs o benchmark e diga especificamente o que está sobrando e o que está faltando"
+  },
+  "captionDiagnostic": "analise as 3 melhores legendas e extraia o padrão estrutural (ex: hook de pergunta + storytelling + CTA indireto). Dê um template de legenda baseado nesse padrão que o social media possa usar amanhã",
+  "growthAnalysis": {
+    "trajectory": "calcule a taxa de crescimento real do período e compare com o benchmark. Classifique: acelerando, estável, desacelerando ou em queda. Se o histórico estiver INDISPONÍVEL, use sinais indiretos de engajamento e deixe explícito que é leitura indireta",
+    "projection": "se mantiver esse ritmo, quantos seguidores em 30 e 90 dias. Se o ritmo for ruim, qual taxa precisaria atingir e o que muda pra chegar lá. Se o histórico estiver INDISPONÍVEL, dê uma estimativa qualitativa baseada nos sinais disponíveis"
+  },
+  "healthScore": {
+    "score": 0,
+    "breakdown": {
+      "engajamento": "nota 0-100 com justificativa de 1 frase comparando com benchmark",
+      "crescimento": "nota 0-100 com justificativa de 1 frase OU null se histórico indisponível",
+      "consistencia": "nota 0-100 baseada em frequência e regularidade de posts",
+      "mixDeConteudo": "nota 0-100 baseada na diversidade de formatos"
+    },
+    "summary": "1 frase direta sobre a saúde geral da conta"
+  },
+  "actionPlan": [
+    {
+      "acao": "descrição específica da ação (ex: Criar um Reels de 15s com antes/depois de procedimento X usando áudio trending Y)",
+      "porque": "qual métrica essa ação ataca e qual resultado esperado",
+      "prioridade": "alta/media/baixa"
+    }
+  ]
+}
+
+O campo actionPlan deve ter entre 3 e 5 ações. Pelo menos 1 deve ser uma ação que o cliente provavelmente NUNCA tentou (ex: collab com outro profissional, série semanal temática, usar comentários como conteúdo, post respondendo dúvida real de paciente).`;
 
       const aiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.3, maxOutputTokens: 4096, responseMimeType: 'application/json' },
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+          generationConfig: { temperature: 0.3, maxOutputTokens: 8192, responseMimeType: 'application/json' },
         }),
       });
 
@@ -995,25 +1056,66 @@ IMPORTANTE: Seja CONCISO (1-2 frases por campo). Não use aspas dentro dos texto
         };
       });
 
-      const prompt = `Você é um social media manager jovem e antenado que gerencia multiplas contas Instagram. Voce fala de um jeito natural e acessível — como um profissional que conversa de igual pra igual, sem ser robótico nem formal demais. Use português brasileiro contemporâneo, pode usar expressões naturais mas sem exagerar no coloquial. Seja direto e prático.
+      const portfolioSystemPrompt = `Você é um estrategista sênior de conteúdo para Instagram especializado em profissionais de saúde no Brasil. Você gerencia múltiplas contas e seu trabalho é fazer análise comparativa do portfólio — identificando padrões cruzados, oportunidades de aprendizado entre contas, e priorizando onde investir esforço.
 
-PORTFOLIO (${accounts.length} contas):
+REGRAS DE ANÁLISE:
+1. Nunca dê conselhos genéricos como "poste mais" ou "seja consistente". Toda recomendação deve ser uma AÇÃO ESPECÍFICA vinculada a uma conta e uma métrica.
+2. Compare contas entre si: quem está crescendo mais rápido, quem tem melhor engajamento relativo ao tamanho, quem está estagnado.
+3. Identifique padrões transferíveis: se uma conta tem engajamento alto com um formato, explique como outra conta do portfólio poderia adaptar isso.
+4. Para a área de saúde, considere: restrições do CFM/CRO, sazonalidade, e que o objetivo final é agendamento de consulta.
+
+BENCHMARKS DE REFERÊNCIA (contas de saúde 5k-50k seguidores):
+- Taxa de engajamento saudável: 3-6%
+- Crescimento orgânico bom: 2-5% ao mês
+- Alcance médio por post: 20-40% da base de seguidores
+Ajuste proporcionalmente para contas fora dessa faixa.
+
+DADOS INCOMPLETOS:
+- Se followerDelta for 0, pode significar dados insuficientes — não assuma estagnação sem outros sinais.
+- NUNCA invente números. Se um dado não existe, diga explicitamente.`;
+
+      const portfolioUserPrompt = `Analise o portfólio de ${accounts.length} contas Instagram:
+
 ${JSON.stringify(accountSummaries, null, 1)}
 
-IMPORTANTE: Seja CONCISO (2-3 frases por campo). Não use aspas dentro dos textos. Responda neste JSON:
+---
+
+Responda APENAS com um JSON válido, sem markdown, sem comentários. Não use aspas simples nem aspas duplas dentro dos valores de texto.
+
 {
-  "portfolioSummary": "visão geral do portfólio, quem ta bem e quem precisa de atenção",
-  "crossAccountInsights": "o que da pra aprender de uma conta e aplicar em outra",
-  "priorityActions": ["acao prioritaria 1", "acao prioritaria 2", "acao prioritaria 3"],
-  "monthlyDigest": "resumo comparativo do mes"
-}`;
+  "portfolioHealth": {
+    "score": 0,
+    "summary": "1 frase sobre a saúde geral do portfólio"
+  },
+  "accountRanking": [
+    {
+      "username": "@conta",
+      "status": "destaque/estável/atenção/crítico",
+      "keyMetric": "a métrica mais relevante pra essa conta agora e por quê"
+    }
+  ],
+  "crossAccountInsights": "padrões que funcionam em uma conta e podem ser replicados em outras — cite contas e formatos específicos",
+  "resourceAllocation": "onde concentrar esforço esse mês: quais contas precisam de mais atenção e quais estão no piloto automático",
+  "priorityActions": [
+    {
+      "conta": "@username",
+      "acao": "ação específica com formato, tema e timing",
+      "impacto": "qual métrica melhora e resultado esperado",
+      "prioridade": "alta/media/baixa"
+    }
+  ],
+  "monthlyDigest": "resumo comparativo do mês em 2-3 frases diretas"
+}
+
+O campo priorityActions deve ter entre 3 e 5 ações distribuídas entre as contas. O accountRanking deve listar todas as contas.`;
 
       const aiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.3, maxOutputTokens: 4096, responseMimeType: 'application/json' },
+          systemInstruction: { parts: [{ text: portfolioSystemPrompt }] },
+          contents: [{ role: 'user', parts: [{ text: portfolioUserPrompt }] }],
+          generationConfig: { temperature: 0.3, maxOutputTokens: 8192, responseMimeType: 'application/json' },
         }),
       });
 

@@ -121,29 +121,73 @@ function AIPortfolioSection({ accounts }: { accounts: PortfolioAccount[] }) {
 
       {analysis && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <div>
-            <h4 style={{ fontSize: '0.85rem', marginBottom: '0.3rem' }}>Resumo do Portfólio</h4>
-            <p style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>{analysis.portfolioSummary}</p>
-          </div>
+          {/* Portfolio Health */}
+          {analysis.portfolioHealth && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', paddingBottom: '0.75rem', borderBottom: '1px solid var(--border-color)' }}>
+              <div style={{ fontSize: '2.4rem', fontWeight: 800, color: analysis.portfolioHealth.score >= 70 ? 'var(--success)' : analysis.portfolioHealth.score >= 40 ? 'var(--warning)' : 'var(--danger)', lineHeight: 1 }}>{analysis.portfolioHealth.score}</div>
+              <div>
+                <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-muted)' }}>Saúde do Portfólio</div>
+                <p style={{ fontSize: '0.85rem', lineHeight: 1.4 }}>{analysis.portfolioHealth.summary}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Account Ranking */}
+          {analysis.accountRanking && analysis.accountRanking.length > 0 && (
+            <div>
+              <h4 style={{ fontSize: '0.85rem', marginBottom: '0.4rem' }}>Ranking de Contas</h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                {analysis.accountRanking.map((acc: any, i: number) => {
+                  const statusColor = acc.status === 'destaque' ? 'var(--success)' : acc.status === 'estável' ? 'var(--info)' : acc.status === 'atenção' ? 'var(--warning)' : 'var(--danger)';
+                  return (
+                    <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', fontSize: '0.85rem' }}>
+                      <span className="badge" style={{ fontSize: '0.65rem', minWidth: 52, textAlign: 'center', background: statusColor + '20', color: statusColor, border: `1px solid ${statusColor}40` }}>{acc.status}</span>
+                      <span style={{ fontWeight: 600 }}>{acc.username}</span>
+                      <span style={{ color: 'var(--text-muted)' }}>— {acc.keyMetric}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div>
             <h4 style={{ fontSize: '0.85rem', marginBottom: '0.3rem' }}>Insights Cruzados</h4>
             <p style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>{analysis.crossAccountInsights}</p>
           </div>
+          {analysis.resourceAllocation && (
+            <div>
+              <h4 style={{ fontSize: '0.85rem', marginBottom: '0.3rem' }}>Alocação de Esforço</h4>
+              <p style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>{analysis.resourceAllocation}</p>
+            </div>
+          )}
           <div>
             <h4 style={{ fontSize: '0.85rem', marginBottom: '0.3rem' }}>Resumo Mensal</h4>
             <p style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>{analysis.monthlyDigest}</p>
           </div>
-          <div style={{ paddingTop: '0.75rem', borderTop: '1px solid var(--border-color)' }}>
-            <h4 style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>Ações Prioritárias</h4>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-              {analysis.priorityActions.map((r: string, i: number) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', fontSize: '0.85rem' }}>
-                  <span className="badge badge-success" style={{ fontSize: '0.7rem', minWidth: 20, textAlign: 'center' }}>{i + 1}</span>
-                  <span>{r}</span>
-                </div>
-              ))}
+
+          {/* Priority Actions */}
+          {analysis.priorityActions && analysis.priorityActions.length > 0 && (
+            <div style={{ paddingTop: '0.75rem', borderTop: '1px solid var(--border-color)' }}>
+              <h4 style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>Ações Prioritárias</h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                {analysis.priorityActions.map((a: any, i: number) => {
+                  const pColor = a.prioridade === 'alta' ? 'var(--danger)' : a.prioridade === 'media' ? 'var(--warning)' : 'var(--success)';
+                  return (
+                    <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', fontSize: '0.85rem' }}>
+                      <span className="badge" style={{ fontSize: '0.65rem', minWidth: 44, textAlign: 'center', background: pColor + '20', color: pColor, border: `1px solid ${pColor}40` }}>{a.prioridade}</span>
+                      <div style={{ lineHeight: 1.4 }}>
+                        <span style={{ fontWeight: 600 }}>{a.conta}: </span>
+                        <span>{a.acao}</span>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>{a.impacto}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
+
           <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textAlign: 'right' }}>
             Gerado em {new Date(analysis.generatedAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
           </p>
