@@ -8,7 +8,7 @@ export function renderInstagramConnectButton(container: HTMLElement, clientId: n
   container.innerHTML = `
     <div class="card animate-up" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 3rem; text-align: center; border: 1px dashed var(--border-color); background: var(--surface-hover);">
       <div style="font-size: 3rem; color: var(--text-muted); margin-bottom: 1rem;"><i class="fa-brands fa-instagram"></i></div>
-      <h3 style="margin-bottom: 0.5rem;">Conectar Instagram</h3>
+      <h3 class="text-xl font-bold tracking-tight mb-2 text-foreground">Conectar Instagram</h3>
       <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem; max-width: 400px;">
         Conecte a conta Business do Instagram deste cliente para visualizar métricas, crescimento de seguidores e performance de posts diretamente no CRM.
       </p>

@@ -11,7 +11,7 @@ export async function renderInstagramPostsTable(container: HTMLElement, clientId
   container.innerHTML = `
     <div class="card animate-up" style="margin-bottom: 1.5rem;">
        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
-           <h3><i class="ph ph-images" style="color: var(--primary-color); margin-right: 0.5rem;"></i> Últimas Publicações</h3>
+           <h3 class="text-xl font-bold tracking-tight mb-4 text-foreground"><i class="ph ph-images" style="color: var(--primary-color); margin-right: 0.5rem;"></i> Últimas Publicações</h3>
            <div id="ig-pagination" class="pagination-controls" style="display: none; gap: 0.5rem; align-items: center;">
               <button id="btn-ig-prev" class="btn-icon" disabled><i class="ph ph-caret-left"></i></button>
               <span id="ig-page-indicator" style="font-size: 0.8rem; color: var(--text-muted); font-family: var(--font-mono);">Pg 1</span>

@@ -18,7 +18,7 @@ export function renderInstagramFollowerChart(container: HTMLElement, history: an
 
   container.innerHTML = `
     <div class="card animate-up" style="margin-bottom: 1.5rem;">
-       <h3 style="margin-bottom: 1rem;"><i class="ph ph-trend-up" style="color: var(--primary-color); margin-right: 0.5rem;"></i> Crescimento de Seguidores (Últimos 30 Dias)</h3>
+       <h3 class="text-xl font-bold tracking-tight mb-4 text-foreground"><i class="ph ph-trend-up" style="color: var(--primary-color); margin-right: 0.5rem;"></i> Crescimento de Seguidores (Últimos 30 Dias)</h3>
        <div style="position: relative; height: 300px; width: 100%;">
           <canvas id="ig-follower-chart"></canvas>
        </div>

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ArrowLeft, Edit2 } from 'lucide-react';
+import { ArrowLeft, Edit2, MapPin, Plus, Pencil, Trash2, Building2, Home } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -25,7 +25,12 @@ import {
   getMembros,
   completeEtapa,
   duplicateWorkflow,
+  getClienteEnderecos,
+  addClienteEndereco,
+  updateClienteEndereco,
+  removeClienteEndereco,
   type Cliente,
+  type ClienteEndereco,
   type Workflow,
   type WorkflowEtapa,
   type Contrato,
@@ -58,6 +63,20 @@ export default function ClienteDetalhePage() {
   const [editOpen, setEditOpen] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
   const [recurringWfId, setRecurringWfId] = useState<number | null>(null);
+
+  // Address modal state
+  const [addrModalOpen, setAddrModalOpen] = useState(false);
+  const [addrLoading, setAddrLoading] = useState(false);
+  const [addrEditing, setAddrEditing] = useState<ClienteEndereco | null>(null);
+  const [addrDeleteId, setAddrDeleteId] = useState<number | null>(null);
+  const [adrTipo, setAdrTipo] = useState<'residencial' | 'comercial'>('comercial');
+  const [adrLogradouro, setAdrLogradouro] = useState('');
+  const [adrNumero, setAdrNumero] = useState('');
+  const [adrComplemento, setAdrComplemento] = useState('');
+  const [adrBairro, setAdrBairro] = useState('');
+  const [adrCidade, setAdrCidade] = useState('');
+  const [adrEstado, setAdrEstado] = useState('');
+  const [adrCep, setAdrCep] = useState('');
 
   // Form state
   const [fNome, setFNome] = useState('');
@@ -93,6 +112,11 @@ export default function ClienteDetalhePage() {
   const { data: clienteWorkflowsRaw, isLoading: loadingWf } = useQuery({
     queryKey: ['workflowsByCliente', clienteId],
     queryFn: () => getWorkflowsByCliente(clienteId),
+    enabled: !isNaN(clienteId),
+  });
+  const { data: enderecos, isLoading: loadingEnderecos } = useQuery({
+    queryKey: ['clienteEnderecos', clienteId],
+    queryFn: () => getClienteEnderecos(clienteId),
     enabled: !isNaN(clienteId),
   });
   useQuery({ queryKey: ['membros'], queryFn: getMembros });
@@ -192,6 +216,65 @@ export default function ClienteDetalhePage() {
     }
   };
 
+  // Address handlers
+  const resetAddrForm = () => {
+    setAdrTipo('comercial'); setAdrLogradouro(''); setAdrNumero('');
+    setAdrComplemento(''); setAdrBairro(''); setAdrCidade('');
+    setAdrEstado(''); setAdrCep(''); setAddrEditing(null);
+  };
+
+  const handleOpenAddrModal = (addr?: ClienteEndereco) => {
+    if (addr) {
+      setAddrEditing(addr);
+      setAdrTipo(addr.tipo); setAdrLogradouro(addr.logradouro); setAdrNumero(addr.numero);
+      setAdrComplemento(addr.complemento || ''); setAdrBairro(addr.bairro);
+      setAdrCidade(addr.cidade); setAdrEstado(addr.estado); setAdrCep(addr.cep);
+    } else {
+      resetAddrForm();
+    }
+    setAddrModalOpen(true);
+  };
+
+  const handleAddrSubmit = async () => {
+    if (!adrLogradouro || !adrNumero || !adrBairro || !adrCidade || !adrEstado || !adrCep) {
+      toast.error('Preencha todos os campos obrigatórios.'); return;
+    }
+    setAddrLoading(true);
+    try {
+      const payload = {
+        cliente_id: clienteId, tipo: adrTipo, logradouro: adrLogradouro,
+        numero: adrNumero, complemento: adrComplemento, bairro: adrBairro,
+        cidade: adrCidade, estado: adrEstado, cep: adrCep,
+      };
+      if (addrEditing?.id) {
+        await updateClienteEndereco(addrEditing.id, payload);
+        toast.success('Endereço atualizado!');
+      } else {
+        await addClienteEndereco(payload);
+        toast.success('Endereço adicionado!');
+      }
+      queryClient.invalidateQueries({ queryKey: ['clienteEnderecos', clienteId] });
+      setAddrModalOpen(false);
+      resetAddrForm();
+    } catch (err: unknown) {
+      toast.error('Erro ao salvar endereço: ' + (err as Error).message);
+    } finally {
+      setAddrLoading(false);
+    }
+  };
+
+  const handleAddrDelete = async () => {
+    if (!addrDeleteId) return;
+    try {
+      await removeClienteEndereco(addrDeleteId);
+      queryClient.invalidateQueries({ queryKey: ['clienteEnderecos', clienteId] });
+      toast.success('Endereço removido!');
+    } catch (err: unknown) {
+      toast.error('Erro ao remover: ' + (err as Error).message);
+    }
+    setAddrDeleteId(null);
+  };
+
   const contratosCliente: Contrato[] = (contratos ?? []).filter(c => c.cliente_id === clienteId);
   const transacoesCliente: Transacao[] = (transacoes ?? []).filter(t => t.cliente_id === clienteId);
 
@@ -239,7 +322,7 @@ export default function ClienteDetalhePage() {
 
       {/* Info Card */}
       <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-        <h3 style={{ marginBottom: '1rem' }}>Informações</h3>
+        <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">Informações</h3>
         <div className="client-info-grid">
           <div className="client-info-item"><span className="client-info-label">Email</span><span className="client-info-value">{cliente.email || '—'}</span></div>
           <div className="client-info-item"><span className="client-info-label">Telefone</span><span className="client-info-value">{cliente.telefone || '—'}</span></div>
@@ -256,9 +339,82 @@ export default function ClienteDetalhePage() {
         </div>
       </div>
 
+      {/* Addresses Section */}
+      <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <h3 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2 mb-0">
+            <MapPin className="h-5 w-5" style={{ color: 'var(--primary-color)' }} />
+            Endereços
+          </h3>
+          <Button size="sm" onClick={() => handleOpenAddrModal()}>
+            <Plus className="h-4 w-4" style={{ marginRight: 4 }} /> Adicionar
+          </Button>
+        </div>
+
+        {loadingEnderecos && (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '1.5rem' }}>
+            <Spinner size="sm" />
+          </div>
+        )}
+
+        {!loadingEnderecos && (!enderecos || enderecos.length === 0) && (
+          <div style={{
+            textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-muted)',
+            border: '1px dashed var(--border-color)', borderRadius: '12px',
+          }}>
+            <MapPin className="h-8 w-8" style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
+            <p style={{ fontSize: '0.9rem' }}>Nenhum endereço cadastrado</p>
+            <p style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>Clique em "Adicionar" para cadastrar um endereço.</p>
+          </div>
+        )}
+
+        {!loadingEnderecos && enderecos && enderecos.length > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '0.75rem' }}>
+            {enderecos.map(addr => (
+              <div key={addr.id} style={{
+                position: 'relative', padding: '1rem 1.25rem', borderRadius: '12px',
+                border: '1px solid var(--border-color)', background: 'var(--surface-main)',
+                transition: 'box-shadow 0.2s ease, transform 0.2s ease',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLDivElement).style.boxShadow = '0 6px 16px rgba(0,0,0,0.08)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = ''; (e.currentTarget as HTMLDivElement).style.boxShadow = ''; }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
+                  <span className={`badge ${addr.tipo === 'residencial' ? 'badge-info' : 'badge-warning'}`}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem' }}>
+                    {addr.tipo === 'residencial'
+                      ? <><Home className="h-3 w-3" /> Residencial</>
+                      : <><Building2 className="h-3 w-3" /> Comercial</>}
+                  </span>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    <Button variant="ghost" size="icon" style={{ width: 28, height: 28 }}
+                      onClick={() => handleOpenAddrModal(addr)}>
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="icon" style={{ width: 28, height: 28, color: 'var(--danger)' }}
+                      onClick={() => setAddrDeleteId(addr.id!)}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+                <p style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.15rem' }}>
+                  {addr.logradouro}, {addr.numero}{addr.complemento ? ` — ${addr.complemento}` : ''}
+                </p>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  {addr.bairro} · {addr.cidade}/{addr.estado}
+                </p>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  CEP: {addr.cep}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Instagram Section */}
       <div id="ig-container" style={{ marginBottom: '1.5rem' }}>
-        <h3 style={{ marginBottom: '1rem' }}>Instagram</h3>
+        <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">Instagram</h3>
         {loadingIg && <div className="flex justify-center p-4"><Spinner size="lg" /></div>}
         {!loadingIg && igSummary && !igSummary.account?.last_synced_at && (
           <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
@@ -284,7 +440,7 @@ export default function ClienteDetalhePage() {
       {/* Workflows Section */}
       {workflowsWithEtapas.length > 0 && (
         <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-          <h3 style={{ marginBottom: '1rem' }}>Entregas Ativas</h3>
+          <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">Entregas Ativas</h3>
           {workflowsWithEtapas.map(({ workflow, etapas }) => {
             const activeEtapa = etapas.find(e => e.status === 'ativo');
             const deadline = activeEtapa ? getDeadlineInfo(activeEtapa) : null;
@@ -334,7 +490,7 @@ export default function ClienteDetalhePage() {
 
           {/* Contratos Table */}
           <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-            <h3 style={{ marginBottom: '1rem' }}>Contratos</h3>
+            <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">Contratos</h3>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -361,7 +517,7 @@ export default function ClienteDetalhePage() {
 
           {/* Transações Table */}
           <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-            <h3 style={{ marginBottom: '1rem' }}>Transações</h3>
+            <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">Transações</h3>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -423,6 +579,56 @@ export default function ClienteDetalhePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Address Add/Edit Modal */}
+      <Dialog open={addrModalOpen} onOpenChange={open => { if (!open) { setAddrModalOpen(false); resetAddrForm(); } }}>
+        <DialogContent style={{ maxWidth: 540 }}>
+          <DialogHeader>
+            <DialogTitle>{addrEditing ? 'Editar Endereço' : 'Novo Endereço'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label>Tipo *</Label>
+              <Select value={adrTipo} onValueChange={v => setAdrTipo(v as 'residencial' | 'comercial')}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="comercial">Comercial</SelectItem>
+                  <SelectItem value="residencial">Residencial</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1"><Label>Logradouro *</Label><Input placeholder="Ex: Rua das Flores" value={adrLogradouro} onChange={e => setAdrLogradouro(e.target.value)} /></div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '0.75rem' }}>
+              <div className="space-y-1"><Label>Número *</Label><Input placeholder="123" value={adrNumero} onChange={e => setAdrNumero(e.target.value)} /></div>
+              <div className="space-y-1"><Label>Complemento</Label><Input placeholder="Sala 1, Bloco B..." value={adrComplemento} onChange={e => setAdrComplemento(e.target.value)} /></div>
+            </div>
+            <div className="space-y-1"><Label>Bairro *</Label><Input placeholder="Centro" value={adrBairro} onChange={e => setAdrBairro(e.target.value)} /></div>
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '0.75rem' }}>
+              <div className="space-y-1"><Label>Cidade *</Label><Input placeholder="São Paulo" value={adrCidade} onChange={e => setAdrCidade(e.target.value)} /></div>
+              <div className="space-y-1"><Label>Estado *</Label><Input placeholder="SP" maxLength={2} value={adrEstado} onChange={e => setAdrEstado(e.target.value.toUpperCase())} /></div>
+            </div>
+            <div className="space-y-1"><Label>CEP *</Label><Input placeholder="00000-000" value={adrCep} onChange={e => setAdrCep(e.target.value)} /></div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setAddrModalOpen(false); resetAddrForm(); }}>Cancelar</Button>
+            <Button onClick={handleAddrSubmit} disabled={addrLoading}>{addrLoading && <Spinner size="sm" />} {addrEditing ? 'Salvar' : 'Adicionar'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Address Delete Confirm */}
+      <AlertDialog open={addrDeleteId !== null} onOpenChange={open => { if (!open) setAddrDeleteId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover Endereço</AlertDialogTitle>
+            <AlertDialogDescription>Tem certeza que deseja remover este endereço? Esta ação não pode ser desfeita.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleAddrDelete}>Remover</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Recurring workflow confirm */}
       <AlertDialog open={recurringWfId !== null} onOpenChange={open => { if (!open) { setRecurringWfId(null); queryClient.invalidateQueries({ queryKey: ['workflowsByCliente', clienteId] }); } }}>

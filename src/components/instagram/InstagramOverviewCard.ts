@@ -16,7 +16,7 @@ export function renderInstagramOverviewCard(container: HTMLElement, clientId: nu
       <div style="display: flex; align-items: center; gap: 1.5rem; margin-bottom: 1.5rem;">
          <img src="${account.profile_picture_url || 'https://ui-avatars.com/api/?name=IG&background=random'}" alt="IG Profile" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 3px solid #E1306C;" />
          <div>
-            <h3 style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
+            <h3 class="text-xl font-bold tracking-tight text-foreground flex items-center gap-2 mb-1">
                 ${account.username || 'Conta Instagram'}
                 <i class="fa-brands fa-instagram" style="color: #E1306C; font-size: 1.2rem;"></i>
             </h3>

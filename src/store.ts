@@ -235,6 +235,62 @@ export async function removeCliente(id: number): Promise<void> {
 }
 
 // =============================================
+// CLIENTE ENDEREÇOS CRUD
+// =============================================
+export interface ClienteEndereco {
+  id?: number;
+  cliente_id: number;
+  conta_id?: string;
+  tipo: 'residencial' | 'comercial';
+  logradouro: string;
+  numero: string;
+  complemento?: string;
+  bairro: string;
+  cidade: string;
+  estado: string;
+  cep: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export async function getClienteEnderecos(clienteId: number): Promise<ClienteEndereco[]> {
+  const { data, error } = await supabase
+    .from('cliente_enderecos')
+    .select('*')
+    .eq('cliente_id', clienteId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function addClienteEndereco(e: Omit<ClienteEndereco, 'id' | 'conta_id' | 'created_at' | 'updated_at'>): Promise<ClienteEndereco> {
+  const conta_id = await getContaId();
+  const { data, error } = await supabase
+    .from('cliente_enderecos')
+    .insert({ ...e, conta_id })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateClienteEndereco(id: number, e: Partial<Omit<ClienteEndereco, 'id' | 'conta_id' | 'created_at' | 'updated_at'>>): Promise<ClienteEndereco> {
+  const { data, error } = await supabase
+    .from('cliente_enderecos')
+    .update({ ...e, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function removeClienteEndereco(id: number): Promise<void> {
+  const { error } = await supabase.from('cliente_enderecos').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// =============================================
 // TRANSAÇÕES CRUD
 // =============================================
 export async function getTransacoes(): Promise<Transacao[]> {
