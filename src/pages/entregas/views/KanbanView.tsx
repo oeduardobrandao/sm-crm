@@ -101,8 +101,10 @@ export function KanbanView({ cards, onCardClick, onRefresh, onRecurring, membros
   const [activeCard, setActiveCard] = useState<BoardCard | null>(null);
   const [revertTarget, setRevertTarget] = useState<{ workflowId: number; title: string } | null>(null);
 
-  // Sync local state when prop cards change (after refresh)
-  if (JSON.stringify(cards.map(c => c.workflow.id)) !== JSON.stringify(localCards.map(c => c.workflow.id))) {
+  // Sync local state when prop cards change (after refresh — detects both workflow list and etapa changes)
+  const cardsFingerprint = cards.map(c => `${c.workflow.id}:${c.etapa.id}`).join(',');
+  const localFingerprint = localCards.map(c => `${c.workflow.id}:${c.etapa.id}`).join(',');
+  if (cardsFingerprint !== localFingerprint) {
     setLocalCards(cards);
   }
 
