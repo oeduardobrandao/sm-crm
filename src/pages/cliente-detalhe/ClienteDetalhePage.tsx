@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ArrowLeft, Edit2, MapPin, Plus, Pencil, Trash2, Building2, Home } from 'lucide-react';
+import { ArrowLeft, Edit2, MapPin, Plus, Pencil, Trash2, Building2, Home, Loader2, Cake, CalendarDays } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -29,8 +29,13 @@ import {
   addClienteEndereco,
   updateClienteEndereco,
   removeClienteEndereco,
+  getClienteDatas,
+  addClienteData,
+  updateClienteData,
+  removeClienteData,
   type Cliente,
   type ClienteEndereco,
+  type ClienteData,
   type Workflow,
   type WorkflowEtapa,
   type Contrato,
@@ -77,6 +82,15 @@ export default function ClienteDetalhePage() {
   const [adrCidade, setAdrCidade] = useState('');
   const [adrEstado, setAdrEstado] = useState('');
   const [adrCep, setAdrCep] = useState('');
+  const [cepLoading, setCepLoading] = useState(false);
+
+  // Important dates modal state
+  const [dateModalOpen, setDateModalOpen] = useState(false);
+  const [dateLoading, setDateLoading] = useState(false);
+  const [dateEditing, setDateEditing] = useState<ClienteData | null>(null);
+  const [dateDeleteId, setDateDeleteId] = useState<number | null>(null);
+  const [dateTitulo, setDateTitulo] = useState('');
+  const [dateData, setDateData] = useState('');
 
   // Form state
   const [fNome, setFNome] = useState('');
@@ -88,6 +102,8 @@ export default function ClienteDetalhePage() {
   const [fDiaPag, setFDiaPag] = useState('');
   const [fStatus, setFStatus] = useState<Cliente['status']>('ativo');
   const [fEspecialidade, setFEspecialidade] = useState('');
+  const [fAniMes, setFAniMes] = useState(''); // '01'–'12'
+  const [fAniDia, setFAniDia] = useState(''); // '01'–'31'
 
   const clienteId = parseInt(idParam ?? '', 10);
   useEffect(() => {
@@ -117,6 +133,11 @@ export default function ClienteDetalhePage() {
   const { data: enderecos, isLoading: loadingEnderecos } = useQuery({
     queryKey: ['clienteEnderecos', clienteId],
     queryFn: () => getClienteEnderecos(clienteId),
+    enabled: !isNaN(clienteId),
+  });
+  const { data: datasImportantes, isLoading: loadingDatas } = useQuery({
+    queryKey: ['clienteDatas', clienteId],
+    queryFn: () => getClienteDatas(clienteId),
     enabled: !isNaN(clienteId),
   });
   useQuery({ queryKey: ['membros'], queryFn: getMembros });
@@ -192,6 +213,8 @@ export default function ClienteDetalhePage() {
     setFPlano(cliente.plano || ''); setFValor(cliente.valor_mensal ? String(cliente.valor_mensal) : '');
     setFNotion(cliente.notion_page_url || ''); setFDiaPag(cliente.data_pagamento ? String(cliente.data_pagamento) : '');
     setFStatus(cliente.status); setFEspecialidade(cliente.especialidade || '');
+    const [aniMes = '', aniDia = ''] = (cliente.data_aniversario || '').split('-');
+    setFAniMes(aniMes); setFAniDia(aniDia);
     setEditOpen(true);
   };
 
@@ -205,6 +228,7 @@ export default function ClienteDetalhePage() {
         notion_page_url: fNotion,
         data_pagamento: fDiaPag ? Number(fDiaPag) : undefined,
         status: fStatus, especialidade: fEspecialidade,
+        data_aniversario: fAniMes && fAniDia ? `${fAniMes}-${fAniDia}` : null,
       });
       queryClient.invalidateQueries({ queryKey: ['clientes'] });
       setEditOpen(false);
@@ -233,6 +257,29 @@ export default function ClienteDetalhePage() {
       resetAddrForm();
     }
     setAddrModalOpen(true);
+  };
+
+  const handleCepChange = async (rawCep: string) => {
+    setAdrCep(rawCep);
+    const digits = rawCep.replace(/\D/g, '');
+    if (digits.length !== 8) return;
+    setCepLoading(true);
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${digits}/json/`);
+      const data = await res.json();
+      if (data.erro) {
+        toast.error('CEP não encontrado.');
+      } else {
+        if (data.logradouro) setAdrLogradouro(data.logradouro);
+        if (data.bairro) setAdrBairro(data.bairro);
+        if (data.localidade) setAdrCidade(data.localidade);
+        if (data.uf) setAdrEstado(data.uf);
+      }
+    } catch {
+      // silent — user can fill manually
+    } finally {
+      setCepLoading(false);
+    }
   };
 
   const handleAddrSubmit = async () => {
@@ -273,6 +320,56 @@ export default function ClienteDetalhePage() {
       toast.error('Erro ao remover: ' + (err as Error).message);
     }
     setAddrDeleteId(null);
+  };
+
+  // Important dates handlers
+  const resetDateForm = () => {
+    setDateTitulo(''); setDateData(''); setDateEditing(null);
+  };
+
+  const handleOpenDateModal = (d?: ClienteData) => {
+    if (d) {
+      setDateEditing(d);
+      setDateTitulo(d.titulo); setDateData(d.data);
+    } else {
+      resetDateForm();
+    }
+    setDateModalOpen(true);
+  };
+
+  const handleDateSubmit = async () => {
+    if (!dateTitulo || !dateData) {
+      toast.error('Preencha título e data.'); return;
+    }
+    setDateLoading(true);
+    try {
+      if (dateEditing?.id) {
+        await updateClienteData(dateEditing.id, { titulo: dateTitulo, data: dateData });
+        toast.success('Data atualizada!');
+      } else {
+        await addClienteData({ cliente_id: clienteId, titulo: dateTitulo, data: dateData });
+        toast.success('Data adicionada!');
+      }
+      queryClient.invalidateQueries({ queryKey: ['clienteDatas', clienteId] });
+      setDateModalOpen(false);
+      resetDateForm();
+    } catch (err: unknown) {
+      toast.error('Erro: ' + (err as Error).message);
+    } finally {
+      setDateLoading(false);
+    }
+  };
+
+  const handleDateDelete = async () => {
+    if (!dateDeleteId) return;
+    try {
+      await removeClienteData(dateDeleteId);
+      queryClient.invalidateQueries({ queryKey: ['clienteDatas', clienteId] });
+      toast.success('Data removida!');
+    } catch (err: unknown) {
+      toast.error('Erro: ' + (err as Error).message);
+    }
+    setDateDeleteId(null);
   };
 
   const contratosCliente: Contrato[] = (contratos ?? []).filter(c => c.cliente_id === clienteId);
@@ -328,6 +425,18 @@ export default function ClienteDetalhePage() {
           <div className="client-info-item"><span className="client-info-label">Telefone</span><span className="client-info-value">{cliente.telefone || '—'}</span></div>
           <div className="client-info-item"><span className="client-info-label">Dia de Pagamento</span><span className="client-info-value">{cliente.data_pagamento ? `Dia ${cliente.data_pagamento}` : '—'}</span></div>
           <div className="client-info-item"><span className="client-info-label">Especialidade</span><span className="client-info-value">{cliente.especialidade || '—'}</span></div>
+          <div className="client-info-item">
+            <span className="client-info-label">Aniversário</span>
+            <span className="client-info-value" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              {cliente.data_aniversario
+                ? (() => {
+                    const [mm, dd] = cliente.data_aniversario.split('-');
+                    const meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+                    return <><Cake className="h-4 w-4" style={{ color: 'var(--pink, #f542c8)' }} />{`${parseInt(dd)} de ${meses[parseInt(mm) - 1]}`}</>;
+                  })()
+                : '—'}
+            </span>
+          </div>
           {cliente.notion_page_url && (
             <div className="client-info-item">
               <span className="client-info-label">Notion</span>
@@ -337,6 +446,67 @@ export default function ClienteDetalhePage() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Important Dates Section */}
+      <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <h3 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2 mb-0">
+            <CalendarDays className="h-5 w-5" style={{ color: 'var(--primary-color)' }} />
+            Datas Importantes
+          </h3>
+          <Button size="sm" onClick={() => handleOpenDateModal()}>
+            <Plus className="h-4 w-4" style={{ marginRight: 4 }} /> Adicionar
+          </Button>
+        </div>
+
+        {loadingDatas && (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '1.5rem' }}>
+            <Spinner size="sm" />
+          </div>
+        )}
+
+        {!loadingDatas && (!datasImportantes || datasImportantes.length === 0) && (
+          <div style={{
+            textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-muted)',
+            border: '1px dashed var(--border-color)', borderRadius: '12px',
+          }}>
+            <CalendarDays className="h-8 w-8" style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
+            <p style={{ fontSize: '0.9rem' }}>Nenhuma data importante cadastrada</p>
+            <p style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>Clique em "Adicionar" para registrar datas relevantes.</p>
+          </div>
+        )}
+
+        {!loadingDatas && datasImportantes && datasImportantes.length > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '0.75rem' }}>
+            {datasImportantes.map(d => (
+              <div key={d.id} style={{
+                padding: '0.75rem 1rem', borderRadius: '12px',
+                border: '1px solid var(--border-color)', background: 'var(--surface-main)',
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                transition: 'box-shadow 0.2s ease, transform 0.2s ease',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLDivElement).style.boxShadow = '0 6px 16px rgba(0,0,0,0.08)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = ''; (e.currentTarget as HTMLDivElement).style.boxShadow = ''; }}
+              >
+                <div>
+                  <p style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.1rem' }}>{d.titulo}</p>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{formatDate(d.data)}</p>
+                </div>
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  <Button variant="ghost" size="icon" style={{ width: 28, height: 28 }}
+                    onClick={() => handleOpenDateModal(d)}>
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button variant="ghost" size="icon" style={{ width: 28, height: 28, color: 'var(--danger)' }}
+                    onClick={() => setDateDeleteId(d.id!)}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Addresses Section */}
@@ -572,6 +742,26 @@ export default function ClienteDetalhePage() {
               </Select>
             </div>
             <div className="space-y-1"><Label>Especialidade</Label><Input value={fEspecialidade} onChange={e => setFEspecialidade(e.target.value)} /></div>
+            <div className="space-y-1">
+              <Label>Aniversário (Dia e Mês)</Label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                <Select value={fAniMes} onValueChange={setFAniMes}>
+                  <SelectTrigger><SelectValue placeholder="Mês" /></SelectTrigger>
+                  <SelectContent>
+                    {[['01','Janeiro'],['02','Fevereiro'],['03','Março'],['04','Abril'],['05','Maio'],['06','Junho'],
+                      ['07','Julho'],['08','Agosto'],['09','Setembro'],['10','Outubro'],['11','Novembro'],['12','Dezembro']]
+                      .map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Select value={fAniDia} onValueChange={setFAniDia}>
+                  <SelectTrigger><SelectValue placeholder="Dia" /></SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, '0'))
+                      .map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditOpen(false)}>Cancelar</Button>
@@ -597,6 +787,18 @@ export default function ClienteDetalhePage() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-1">
+              <Label>CEP *</Label>
+              <div style={{ position: 'relative' }}>
+                <Input placeholder="00000-000" value={adrCep} onChange={e => handleCepChange(e.target.value)} />
+                {cepLoading && (
+                  <div style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)' }}>
+                    <Loader2 className="h-4 w-4 animate-spin" style={{ color: 'var(--primary-color)' }} />
+                  </div>
+                )}
+              </div>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Digite o CEP para preencher automaticamente</p>
+            </div>
             <div className="space-y-1"><Label>Logradouro *</Label><Input placeholder="Ex: Rua das Flores" value={adrLogradouro} onChange={e => setAdrLogradouro(e.target.value)} /></div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '0.75rem' }}>
               <div className="space-y-1"><Label>Número *</Label><Input placeholder="123" value={adrNumero} onChange={e => setAdrNumero(e.target.value)} /></div>
@@ -607,7 +809,6 @@ export default function ClienteDetalhePage() {
               <div className="space-y-1"><Label>Cidade *</Label><Input placeholder="São Paulo" value={adrCidade} onChange={e => setAdrCidade(e.target.value)} /></div>
               <div className="space-y-1"><Label>Estado *</Label><Input placeholder="SP" maxLength={2} value={adrEstado} onChange={e => setAdrEstado(e.target.value.toUpperCase())} /></div>
             </div>
-            <div className="space-y-1"><Label>CEP *</Label><Input placeholder="00000-000" value={adrCep} onChange={e => setAdrCep(e.target.value)} /></div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setAddrModalOpen(false); resetAddrForm(); }}>Cancelar</Button>
@@ -626,6 +827,37 @@ export default function ClienteDetalhePage() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={handleAddrDelete}>Remover</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Date Add/Edit Modal */}
+      <Dialog open={dateModalOpen} onOpenChange={open => { if (!open) { setDateModalOpen(false); resetDateForm(); } }}>
+        <DialogContent style={{ maxWidth: 440 }}>
+          <DialogHeader>
+            <DialogTitle>{dateEditing ? 'Editar Data' : 'Nova Data Importante'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1"><Label>Título *</Label><Input placeholder="Ex: Dia de inauguração" value={dateTitulo} onChange={e => setDateTitulo(e.target.value)} /></div>
+            <div className="space-y-1"><Label>Data *</Label><Input type="date" value={dateData} onChange={e => setDateData(e.target.value)} /></div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setDateModalOpen(false); resetDateForm(); }}>Cancelar</Button>
+            <Button onClick={handleDateSubmit} disabled={dateLoading}>{dateLoading && <Spinner size="sm" />} {dateEditing ? 'Salvar' : 'Adicionar'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Date Delete Confirm */}
+      <AlertDialog open={dateDeleteId !== null} onOpenChange={open => { if (!open) setDateDeleteId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover Data</AlertDialogTitle>
+            <AlertDialogDescription>Tem certeza que deseja remover esta data? Esta ação não pode ser desfeita.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDateDelete}>Remover</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

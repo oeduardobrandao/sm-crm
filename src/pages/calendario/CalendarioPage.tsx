@@ -4,8 +4,8 @@ import { toast } from 'sonner';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import {
   getClientes, getMembros, getTransacoes, getWorkflows, getWorkflowEtapas,
-  addTransacao, formatBRL,
-  type Cliente, type Membro, type Transacao,
+  addTransacao, formatBRL, formatDate, getAllClienteDatas,
+  type Cliente, type Membro, type Transacao, type ClienteData,
 } from '../../store';
 import { useAuth } from '../../context/AuthContext';
 
@@ -261,12 +261,14 @@ function FinanceiroCalendar({
   membros,
   transacoes,
   deadlineEvents,
+  datasImportantes,
   role,
 }: {
   clientes: Cliente[];
   membros: Membro[];
   transacoes: Transacao[];
   deadlineEvents: DeadlineEvent[];
+  datasImportantes: ClienteData[];
   role: string;
 }) {
   const qc = useQueryClient();
@@ -295,6 +297,19 @@ function FinanceiroCalendar({
     d.deadlineDate.getMonth() === month &&
     d.deadlineDate.getFullYear() === year
   );
+
+  // Birthday events for this month (recurring annually by month+day — stored as MM-DD)
+  const birthdayClients = clientes.filter(c => {
+    if (!c.data_aniversario) return false;
+    const [bdMm, bdDd] = c.data_aniversario.split('-').map(Number);
+    return (bdMm - 1) === month && bdDd === selectedDay;
+  });
+
+  // Important dates for this month/day
+  const selectedDatas = datasImportantes.filter(d => {
+    const dt = new Date(d.data + 'T00:00:00');
+    return dt.getMonth() === month && dt.getDate() === selectedDay && dt.getFullYear() === year;
+  });
 
   const handleConfirm = (refId: string, desc: string, val: number, cat: string, tipo: 'entrada' | 'saida') => {
     setConfirmPayload({ refId, desc, val, cat, tipo });
@@ -353,7 +368,16 @@ function FinanceiroCalendar({
                 de.deadlineDate.getMonth() === month &&
                 de.deadlineDate.getFullYear() === year
               );
-              const hasEvents = dayIncomes.length > 0 || dayExpenses.length > 0 || dayDeadlines.length > 0;
+              const dayBirthdays = clientes.filter(c => {
+                if (!c.data_aniversario) return false;
+                const [bdMm, bdDd] = c.data_aniversario.split('-').map(Number);
+                return (bdMm - 1) === month && bdDd === d;
+              });
+              const dayDatas = datasImportantes.filter(di => {
+                const dt = new Date(di.data + 'T00:00:00');
+                return dt.getMonth() === month && dt.getDate() === d && dt.getFullYear() === year;
+              });
+              const hasEvents = dayIncomes.length > 0 || dayExpenses.length > 0 || dayDeadlines.length > 0 || dayBirthdays.length > 0 || dayDatas.length > 0;
               return (
                 <div
                   key={d}
@@ -369,6 +393,16 @@ function FinanceiroCalendar({
                         ⚑ {dayDeadlines.length} Entrega{dayDeadlines.length > 1 ? 's' : ''}
                       </div>
                     )}
+                    {dayBirthdays.length > 0 && (
+                      <div className="event-pill" style={{ background: 'rgba(236, 72, 153, 0.12)', color: '#ec4899', fontWeight: 600 }}>
+                        🎂 {dayBirthdays.length} Aniv.
+                      </div>
+                    )}
+                    {dayDatas.length > 0 && (
+                      <div className="event-pill" style={{ background: 'rgba(99, 102, 241, 0.12)', color: '#6366f1', fontWeight: 600 }}>
+                        📅 {dayDatas.length} Data{dayDatas.length > 1 ? 's' : ''}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -382,7 +416,7 @@ function FinanceiroCalendar({
             <p>{selectedDay} de {monthNames[month]}, {year}</p>
           </div>
           <div className="scheduled-list">
-            {selectedIncomes.length === 0 && selectedExpenses.length === 0 && selectedDeadlines.length === 0 ? (
+            {selectedIncomes.length === 0 && selectedExpenses.length === 0 && selectedDeadlines.length === 0 && birthdayClients.length === 0 && selectedDatas.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '2rem 0', color: 'var(--text-muted)' }}>
                 <p>Nenhuma movimentação neste dia.</p>
               </div>
@@ -464,6 +498,44 @@ function FinanceiroCalendar({
                       <div className="item-divider" />
                       <div className="item-meta">
                         <i className="ph ph-flag" /> Prazo da etapa
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {birthdayClients.map(c => (
+                  <div key={`bday-${c.id}`} className="scheduled-item">
+                    <div className="item-top">
+                      <div className="item-badge" style={{ background: '#ec4899' }} />
+                      <span className="badge" style={{ fontSize: '0.65rem', background: 'rgba(236, 72, 153, 0.12)', color: '#ec4899' }}>🎂 ANIVERSÁRIO</span>
+                    </div>
+                    <div className="item-title">{c.nome}</div>
+                    <div className="item-subtitle">{(() => {
+                      if (!c.data_aniversario) return '';
+                      const [mm, dd] = c.data_aniversario.split('-');
+                      const meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+                      return `${parseInt(dd)} de ${meses[parseInt(mm) - 1]}`;
+                    })()}</div>
+                    <div className="item-divider" />
+                    <div className="item-meta">
+                      <i className="ph ph-cake" /> Aniversário do cliente
+                    </div>
+                  </div>
+                ))}
+
+                {selectedDatas.map(d => {
+                  const clienteNome = clientes.find(c => c.id === d.cliente_id)?.nome || '—';
+                  return (
+                    <div key={`data-${d.id}`} className="scheduled-item">
+                      <div className="item-top">
+                        <div className="item-badge" style={{ background: '#6366f1' }} />
+                        <span className="badge" style={{ fontSize: '0.65rem', background: 'rgba(99, 102, 241, 0.12)', color: '#6366f1' }}>📅 DATA IMPORTANTE</span>
+                      </div>
+                      <div className="item-title">{d.titulo}</div>
+                      <div className="item-subtitle">{clienteNome}</div>
+                      <div className="item-divider" />
+                      <div className="item-meta">
+                        <i className="ph ph-calendar" /> {formatDate(d.data)}
                       </div>
                     </div>
                   );
@@ -623,6 +695,7 @@ export default function CalendarioPage() {
   const { data: membros = [] } = useQuery({ queryKey: ['membros'], queryFn: getMembros });
   const { data: transacoes = [] } = useQuery({ queryKey: ['transacoes'], queryFn: getTransacoes });
   const { data: workflows = [] } = useQuery({ queryKey: ['workflows'], queryFn: getWorkflows });
+  const { data: datasImportantes = [] } = useQuery({ queryKey: ['allClienteDatas'], queryFn: getAllClienteDatas });
 
   // Build deadline events from active workflows
   const { data: deadlineEvents = [] } = useQuery({
@@ -699,6 +772,7 @@ export default function CalendarioPage() {
             membros={membros}
             transacoes={transacoes}
             deadlineEvents={deadlineEvents}
+            datasImportantes={datasImportantes}
             role={role || 'owner'}
           />
         ) : (

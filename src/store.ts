@@ -19,6 +19,7 @@ export interface Cliente {
   conta_id?: string;
   data_pagamento?: number;
   especialidade?: string;
+  data_aniversario?: string | null;
 }
 
 export interface Transacao {
@@ -287,6 +288,64 @@ export async function updateClienteEndereco(id: number, e: Partial<Omit<ClienteE
 
 export async function removeClienteEndereco(id: number): Promise<void> {
   const { error } = await supabase.from('cliente_enderecos').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// =============================================
+// CLIENTE DATAS IMPORTANTES CRUD
+// =============================================
+export interface ClienteData {
+  id?: number;
+  cliente_id: number;
+  conta_id?: string;
+  titulo: string;
+  data: string;
+  created_at?: string;
+}
+
+export async function getClienteDatas(clienteId: number): Promise<ClienteData[]> {
+  const { data, error } = await supabase
+    .from('cliente_datas')
+    .select('*')
+    .eq('cliente_id', clienteId)
+    .order('data', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function getAllClienteDatas(): Promise<ClienteData[]> {
+  const { data, error } = await supabase
+    .from('cliente_datas')
+    .select('*')
+    .order('data', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function addClienteData(d: Omit<ClienteData, 'id' | 'conta_id' | 'created_at'>): Promise<ClienteData> {
+  const conta_id = await getContaId();
+  const { data, error } = await supabase
+    .from('cliente_datas')
+    .insert({ ...d, conta_id })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateClienteData(id: number, d: Partial<Omit<ClienteData, 'id' | 'conta_id' | 'created_at'>>): Promise<ClienteData> {
+  const { data, error } = await supabase
+    .from('cliente_datas')
+    .update(d)
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function removeClienteData(id: number): Promise<void> {
+  const { error } = await supabase.from('cliente_datas').delete().eq('id', id);
   if (error) throw error;
 }
 
