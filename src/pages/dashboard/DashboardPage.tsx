@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { useQueries } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import { Spinner } from '@/components/ui/spinner';
 import {
   getDashboardStats,
@@ -8,6 +8,8 @@ import {
   getMembros,
   getClientes,
   getWorkflows,
+  getWorkflowEtapas,
+  getAllClienteDatas,
   formatBRL,
   formatDate,
   type Lead,
@@ -15,6 +17,7 @@ import {
   type Membro,
   type Cliente,
   type Workflow,
+  type ClienteData,
 } from '../../store';
 import { getPortfolioSummary, type PortfolioSummary } from '../../services/analytics';
 import { useAuth } from '../../context/AuthContext';
@@ -99,6 +102,75 @@ export default function DashboardPage() {
 
   const clienteMap = Object.fromEntries(clientes.map(c => [c.id!, c]));
 
+  // ---- "What's happening today" card data ----
+  const isAgent = role === 'agent';
+  const todayDay = now.getDate();
+  const todayMonth = now.getMonth();
+  const todayYear = now.getFullYear();
+
+  const { data: datasImportantes = [] } = useQuery({ queryKey: ['allClienteDatas'], queryFn: getAllClienteDatas, retry: 1 });
+  const { data: deadlineEvents = [] } = useQuery({
+    queryKey: ['calendar-deadlines', workflows.map(w => w.id).join(',')],
+    queryFn: async () => {
+      const activeWfs = workflows.filter(w => w.status === 'ativo');
+      const etapasResults = await Promise.all(activeWfs.map(w => getWorkflowEtapas(w.id!)));
+      const events: { workflowTitle: string; etapaNome: string; clienteNome: string; clienteCor: string; deadlineDate: Date; diasRestantes: number; estourado: boolean }[] = [];
+      activeWfs.forEach((w, idx) => {
+        const etapas = etapasResults[idx];
+        const activeEtapa = etapas.find(e => e.status === 'ativo');
+        if (!activeEtapa || !activeEtapa.iniciado_em) return;
+        const cliente = clientes.find(c => c.id === w.cliente_id);
+        const inicio = new Date(activeEtapa.iniciado_em);
+        const deadlineDate = new Date(inicio);
+        if (activeEtapa.tipo_prazo === 'uteis') {
+          let added = 0;
+          while (added < activeEtapa.prazo_dias) {
+            deadlineDate.setDate(deadlineDate.getDate() + 1);
+            const dow = deadlineDate.getDay();
+            if (dow !== 0 && dow !== 6) added++;
+          }
+        } else {
+          deadlineDate.setDate(deadlineDate.getDate() + activeEtapa.prazo_dias);
+        }
+        const diffMs = deadlineDate.getTime() - now.getTime();
+        const diasRestantes = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+        events.push({
+          workflowTitle: w.titulo,
+          etapaNome: activeEtapa.nome,
+          clienteNome: cliente?.nome || '—',
+          clienteCor: cliente?.cor || '#888',
+          deadlineDate,
+          diasRestantes,
+          estourado: diasRestantes < 0,
+        });
+      });
+      return events;
+    },
+    enabled: workflows.length > 0,
+  });
+
+  // Today's events
+  const todayIncomes = isAgent ? [] : clientes.filter(c => c.data_pagamento === todayDay && c.status === 'ativo');
+  const todayExpenses = isAgent ? [] : membros.filter(m => m.data_pagamento === todayDay);
+  const todayDeadlines = deadlineEvents.filter(d =>
+    d.deadlineDate.getDate() === todayDay &&
+    d.deadlineDate.getMonth() === todayMonth &&
+    d.deadlineDate.getFullYear() === todayYear
+  );
+  const todayBirthdays = clientes.filter(c => {
+    if (!c.data_aniversario) return false;
+    const [bdMm, bdDd] = c.data_aniversario.split('-').map(Number);
+    return (bdMm - 1) === todayMonth && bdDd === todayDay;
+  });
+  const todayDatas = datasImportantes.filter(d => {
+    const dt = new Date(d.data + 'T00:00:00');
+    return dt.getMonth() === todayMonth && dt.getDate() === todayDay && dt.getFullYear() === todayYear;
+  });
+  const todayEventCount = todayIncomes.length + todayExpenses.length + todayDeadlines.length + todayBirthdays.length + todayDatas.length;
+
+  const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+  const weekDayNames = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
+
   return (
     <div>
       <div className="header">
@@ -115,6 +187,67 @@ export default function DashboardPage() {
 
       {/* Dashboard Hub */}
       <div className="dashboard-hub">
+
+        {/* What's happening today */}
+        <Link to="/calendario" style={{ textDecoration: 'none', color: 'inherit' }}>
+          <div className="card dashboard-hub-card animate-up">
+            <div className="dashboard-hub-card-header">
+              <h3><i className="ph ph-calendar-check" style={{ marginRight: 8 }} />Hoje</h3>
+              <i className="ph ph-arrow-right" />
+            </div>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 8 }}>
+              {weekDayNames[now.getDay()]}, {todayDay} de {monthNames[todayMonth]}
+            </p>
+            {todayEventCount === 0 ? (
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '0.5rem 0' }}>
+                Nenhum evento hoje.
+              </p>
+            ) : (
+              <div className="dashboard-hub-list" style={{ maxHeight: 180, overflowY: 'auto' }}>
+                {todayIncomes.map(c => (
+                  <div key={`inc-${c.id}`} className="dashboard-hub-row">
+                    <span style={{ fontSize: '0.85rem' }}>
+                      <i className="ph ph-arrow-up-right" style={{ color: 'var(--success)', marginRight: 4 }} />{c.nome}
+                    </span>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--success)', fontWeight: 600 }}>Recebimento</span>
+                  </div>
+                ))}
+                {todayExpenses.map(m => (
+                  <div key={`exp-${m.id}`} className="dashboard-hub-row">
+                    <span style={{ fontSize: '0.85rem' }}>
+                      <i className="ph ph-arrow-down-left" style={{ color: 'var(--danger)', marginRight: 4 }} />{m.nome}
+                    </span>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--danger)', fontWeight: 600 }}>Despesa</span>
+                  </div>
+                ))}
+                {todayDeadlines.map((d, i) => (
+                  <div key={`dl-${i}`} className="dashboard-hub-row">
+                    <span style={{ fontSize: '0.85rem' }}>
+                      <i className="ph ph-flag" style={{ color: d.estourado ? 'var(--danger)' : 'var(--warning)', marginRight: 4 }} />{d.etapaNome}
+                    </span>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{d.clienteNome}</span>
+                  </div>
+                ))}
+                {todayBirthdays.map(c => (
+                  <div key={`bd-${c.id}`} className="dashboard-hub-row">
+                    <span style={{ fontSize: '0.85rem' }}>
+                      <i className="ph ph-cake" style={{ color: 'var(--pink, #ec4899)', marginRight: 4 }} />{c.nome}
+                    </span>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Aniversário</span>
+                  </div>
+                ))}
+                {todayDatas.map(d => (
+                  <div key={`data-${d.id}`} className="dashboard-hub-row">
+                    <span style={{ fontSize: '0.85rem' }}>
+                      <i className="ph ph-star" style={{ color: 'var(--info, #6366f1)', marginRight: 4 }} />{d.titulo}
+                    </span>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{clientes.find(c => c.id === d.cliente_id)?.nome ?? ''}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </Link>
 
         {/* Analytics */}
         <Link to="/analytics" style={{ textDecoration: 'none', color: 'inherit' }}>
