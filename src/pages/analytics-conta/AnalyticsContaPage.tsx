@@ -24,6 +24,21 @@ import { sanitizeUrl } from '../../utils/security';
 Chart.register(...registerables);
 
 // ---- Helpers ----
+function BulletText({ text }: { text: unknown }) {
+  if (!text || typeof text !== 'string') {
+    return <p style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>{String(text ?? '')}</p>;
+  }
+  const lines = text.split(/\n|[,.]?\s*•\s*/).map(l => l.trim()).filter(Boolean);
+  if (lines.length <= 1) {
+    return <p style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>{text}</p>;
+  }
+  return (
+    <ul style={{ fontSize: '0.85rem', lineHeight: 1.6, margin: 0, paddingLeft: '1.2rem', listStyle: 'disc' }}>
+      {lines.map((line, i) => <li key={i} style={{ marginBottom: '0.25rem' }}>{line}</li>)}
+    </ul>
+  );
+}
+
 function formatMediaType(type: string): string {
   switch (type) {
     case 'VIDEO': return 'Reel';
@@ -273,7 +288,7 @@ function AISection({ clientId, days }: { clientId: number; days: number }) {
             <div style={{ fontSize: '2.8rem', fontWeight: 800, color: scoreColor, lineHeight: 1 }}>{score}</div>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.2rem' }}>Health Score</div>
-              <p style={{ fontSize: '0.85rem', lineHeight: 1.4 }}>{analysis.healthScore?.summary}</p>
+              <p style={{ fontSize: '0.85rem', lineHeight: 1.4 }}>{String(analysis.healthScore?.summary ?? '')}</p>
             </div>
           </div>
 
@@ -283,7 +298,7 @@ function AISection({ clientId, days }: { clientId: number; days: number }) {
               {Object.entries(analysis.healthScore.breakdown).map(([key, val]: [string, any]) => (
                 <div key={key} style={{ fontSize: '0.8rem' }}>
                   <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>{key.replace(/([A-Z])/g, ' $1')}: </span>
-                  <span>{typeof val === 'string' ? val : val === null ? 'N/A' : val}</span>
+                  <span>{typeof val === 'string' ? val : val === null ? 'N/A' : String(val)}</span>
                 </div>
               ))}
             </div>
@@ -294,15 +309,15 @@ function AISection({ clientId, days }: { clientId: number; days: number }) {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: '1.25rem', padding: '1.25rem 0', borderBottom: '1px solid var(--border-color)' }}>
               <div>
                 <h4 style={{ fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}>Melhor Post</h4>
-                <p style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>{analysis.performanceMap.topPerformer}</p>
+                <BulletText text={analysis.performanceMap.topPerformer} />
               </div>
               <div>
                 <h4 style={{ fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}>Pior Post</h4>
-                <p style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>{analysis.performanceMap.worstPerformer}</p>
+                <BulletText text={analysis.performanceMap.worstPerformer} />
               </div>
               <div>
                 <h4 style={{ fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}>Mix de Conteúdo</h4>
-                <p style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>{analysis.performanceMap.contentMix}</p>
+                <BulletText text={analysis.performanceMap.contentMix} />
               </div>
             </div>
           )}
@@ -312,18 +327,18 @@ function AISection({ clientId, days }: { clientId: number; days: number }) {
             {analysis.captionDiagnostic && (
               <div>
                 <h4 style={{ fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}>Diagnóstico de Legendas</h4>
-                <p style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>{analysis.captionDiagnostic}</p>
+                <BulletText text={analysis.captionDiagnostic} />
               </div>
             )}
             {analysis.growthAnalysis && (
               <>
                 <div>
                   <h4 style={{ fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}>Trajetória de Crescimento</h4>
-                  <p style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>{analysis.growthAnalysis.trajectory}</p>
+                  <BulletText text={analysis.growthAnalysis.trajectory} />
                 </div>
                 <div>
                   <h4 style={{ fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}>Projeção</h4>
-                  <p style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>{analysis.growthAnalysis.projection}</p>
+                  <BulletText text={analysis.growthAnalysis.projection} />
                 </div>
               </>
             )}

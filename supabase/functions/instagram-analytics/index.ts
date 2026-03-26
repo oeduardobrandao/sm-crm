@@ -890,6 +890,18 @@ REGRAS DE ANÁLISE:
 3. Compare métricas entre si, não isoladamente. Taxa de engajamento SÓ faz sentido relativa ao número de seguidores e ao tipo de conteúdo.
 4. Para a área de saúde, considere: restrições do CFM/CRO sobre publicidade, sazonalidade (Janeiro Branco, Outubro Rosa, etc.), e que o objetivo final quase sempre é agendamento de consulta, não viralizar.
 
+FORMATO DE ESCRITA:
+- SEMPRE use bullet points curtos e diretos em vez de parágrafos longos.
+- Cada bullet deve ter no máximo 1-2 frases.
+- CRÍTICO: Cada bullet point DEVE começar em uma NOVA LINHA com "• ". NUNCA junte múltiplos bullets na mesma linha separados por vírgula ou ponto.
+- Priorize dados e ações concretas, elimine preâmbulos e explicações redundantes.
+- Exemplo BOM:
+"• Reels de 15s com hook de pergunta: 17% eng vs 4% média → replicar formato
+• Carrosséis educativos têm 2x mais saves que imagens estáticas
+• Melhor horário: terça e quinta entre 18h-20h"
+- Exemplo RUIM: "• Reels de 15s com hook de pergunta: 17% eng vs 4% média → replicar formato,• Carrosséis educativos têm 2x mais saves,• Melhor horário: terça e quinta"
+- NUNCA use ",•" ou ".," para separar bullets. Sempre use quebra de linha ("\n") antes de cada "•".
+
 BENCHMARKS DE REFERÊNCIA (contas de saúde 5k-50k seguidores):
 - Taxa de engajamento saudável: 3-6%
 - Proporção ideal Reels/Carrossel/Imagem: 40/40/20
@@ -923,14 +935,14 @@ Responda APENAS com um JSON válido, sem markdown, sem comentários, sem texto f
 
 {
   "performanceMap": {
-    "topPerformer": "descreva o melhor post do período, o MECANISMO que explica o resultado (hook, formato, tema, horário) e como replicar esse padrão em 2 variações concretas",
-    "worstPerformer": "descreva o pior post, diagnostique o problema principal (formato errado pro tema? legenda fraca? horário ruim?) e como o mesmo assunto poderia ter performado melhor com uma abordagem diferente",
-    "contentMix": "avalie a proporção atual de formatos vs o benchmark e diga especificamente o que está sobrando e o que está faltando"
+    "topPerformer": "em 3-4 bullets curtos: qual post, métricas-chave, o MECANISMO (hook, formato, tema, horário), e 2 variações concretas para replicar",
+    "worstPerformer": "em 3-4 bullets curtos: qual post, o problema principal (formato errado? legenda fraca? horário?), e como o mesmo tema performaria melhor com outra abordagem",
+    "contentMix": "em 2-3 bullets: proporção atual vs benchmark, o que está sobrando e o que está faltando"
   },
-  "captionDiagnostic": "analise as 3 melhores legendas e extraia o padrão estrutural (ex: hook de pergunta + storytelling + CTA indireto). Dê um template de legenda baseado nesse padrão que o social media possa usar amanhã",
+  "captionDiagnostic": "em 3-4 bullets: padrão estrutural das 3 melhores legendas (ex: hook + storytelling + CTA) e um template prático de legenda no final",
   "growthAnalysis": {
-    "trajectory": "calcule a taxa de crescimento real do período e compare com o benchmark. Classifique: acelerando, estável, desacelerando ou em queda. Se o histórico estiver INDISPONÍVEL, use sinais indiretos de engajamento e deixe explícito que é leitura indireta",
-    "projection": "se mantiver esse ritmo, quantos seguidores em 30 e 90 dias. Se o ritmo for ruim, qual taxa precisaria atingir e o que muda pra chegar lá. Se o histórico estiver INDISPONÍVEL, dê uma estimativa qualitativa baseada nos sinais disponíveis"
+    "trajectory": "em 2-3 bullets: taxa de crescimento real vs benchmark, classificação (acelerando/estável/desacelerando/queda). Se histórico INDISPONÍVEL, usar sinais indiretos e deixar explícito",
+    "projection": "em 2-3 bullets: projeção 30d e 90d, e se o ritmo for ruim, qual taxa precisa atingir. Se histórico INDISPONÍVEL, estimativa qualitativa"
   },
   "healthScore": {
     "score": 0,
@@ -1064,6 +1076,11 @@ REGRAS DE ANÁLISE:
 3. Identifique padrões transferíveis: se uma conta tem engajamento alto com um formato, explique como outra conta do portfólio poderia adaptar isso.
 4. Para a área de saúde, considere: restrições do CFM/CRO, sazonalidade, e que o objetivo final é agendamento de consulta.
 
+FORMATO DE ESCRITA:
+- SEMPRE use bullet points curtos e diretos em vez de parágrafos longos.
+- Cada bullet deve ter no máximo 1-2 frases.
+- Priorize dados e ações concretas, elimine preâmbulos e explicações redundantes.
+
 BENCHMARKS DE REFERÊNCIA (contas de saúde 5k-50k seguidores):
 - Taxa de engajamento saudável: 3-6%
 - Crescimento orgânico bom: 2-5% ao mês
@@ -1094,8 +1111,8 @@ Responda APENAS com um JSON válido, sem markdown, sem comentários. Não use as
       "keyMetric": "a métrica mais relevante pra essa conta agora e por quê"
     }
   ],
-  "crossAccountInsights": "padrões que funcionam em uma conta e podem ser replicados em outras — cite contas e formatos específicos",
-  "resourceAllocation": "onde concentrar esforço esse mês: quais contas precisam de mais atenção e quais estão no piloto automático",
+  "crossAccountInsights": "em 3-4 bullets: padrões que funcionam em uma conta e podem ser replicados em outras — cite contas e formatos específicos",
+  "resourceAllocation": "em 2-3 bullets: onde concentrar esforço esse mês, quais contas precisam de atenção e quais estão no piloto automático",
   "priorityActions": [
     {
       "conta": "@username",
@@ -1104,7 +1121,7 @@ Responda APENAS com um JSON válido, sem markdown, sem comentários. Não use as
       "prioridade": "alta/media/baixa"
     }
   ],
-  "monthlyDigest": "resumo comparativo do mês em 2-3 frases diretas"
+  "monthlyDigest": "em 3-4 bullets: resumo comparativo do mês com dados concretos"
 }
 
 O campo priorityActions deve ter entre 3 e 5 ações distribuídas entre as contas. O accountRanking deve listar todas as contas.`;

@@ -12,6 +12,21 @@ import { syncInstagramData } from '../../services/instagram';
 
 Chart.register(...registerables);
 
+function BulletText({ text }: { text: unknown }) {
+  if (!text || typeof text !== 'string') {
+    return <p style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>{String(text ?? '')}</p>;
+  }
+  const lines = text.split(/\n|[,.]?\s*•\s*/).map(l => l.trim()).filter(Boolean);
+  if (lines.length <= 1) {
+    return <p style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>{text}</p>;
+  }
+  return (
+    <ul style={{ fontSize: '0.85rem', lineHeight: 1.6, margin: 0, paddingLeft: '1.2rem', listStyle: 'disc' }}>
+      {lines.map((line, i) => <li key={i} style={{ marginBottom: '0.25rem' }}>{line}</li>)}
+    </ul>
+  );
+}
+
 function formatNumber(n: number) {
   return n.toLocaleString('pt-BR');
 }
@@ -153,17 +168,17 @@ function AIPortfolioSection({ accounts }: { accounts: PortfolioAccount[] }) {
 
           <div>
             <h4 style={{ fontSize: '0.85rem', marginBottom: '0.3rem' }}>Insights Cruzados</h4>
-            <p style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>{analysis.crossAccountInsights}</p>
+            <BulletText text={analysis.crossAccountInsights} />
           </div>
           {analysis.resourceAllocation && (
             <div>
               <h4 style={{ fontSize: '0.85rem', marginBottom: '0.3rem' }}>Alocação de Esforço</h4>
-              <p style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>{analysis.resourceAllocation}</p>
+              <BulletText text={analysis.resourceAllocation} />
             </div>
           )}
           <div>
             <h4 style={{ fontSize: '0.85rem', marginBottom: '0.3rem' }}>Resumo Mensal</h4>
-            <p style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>{analysis.monthlyDigest}</p>
+            <BulletText text={analysis.monthlyDigest} />
           </div>
 
           {/* Priority Actions */}
