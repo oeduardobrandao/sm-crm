@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { sanitizeUrl } from '../../../router';
 import {
   upsertPostPropertyValue, createWorkflowSelectOption, getWorkflowSelectOptions,
   type TemplatePropertyDefinition, type SelectOption, type Membro,
@@ -295,8 +296,9 @@ export function PropertyValue({ definition, value: initialValue, postId, workflo
       );
     }
     if (definition.type === 'url') {
+      const safeUrl = sanitizeUrl(localValue as string);
       return (
-        <a href={localValue as string} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.82rem', color: 'var(--primary)' }}>
+        <a href={safeUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.82rem', color: 'var(--primary)' }}>
           {(localValue as string).replace(/^https?:\/\//, '')}
         </a>
       );
