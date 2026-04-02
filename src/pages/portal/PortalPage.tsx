@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { Check, Circle, ExternalLink, FolderOpen, FileText, ThumbsUp, MessageSquare, Send } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
+import { PortalPropertyTable } from './PortalPropertyTable';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
@@ -57,6 +58,24 @@ interface PortalData {
   approvals: PortalApproval[];
   posts: PortalPost[];
   postApprovals: PostApproval[];
+  propertyDefinitions?: Array<{
+    id: number;
+    name: string;
+    type: string;
+    config: Record<string, unknown>;
+    display_order: number;
+  }>;
+  propertyValues?: Array<{
+    property_definition_id: number;
+    post_id: number;
+    value: unknown;
+  }>;
+  selectOptions?: Array<{
+    option_id: string;
+    property_definition_id: number;
+    label: string;
+    color: string;
+  }>;
   cliente_nome: string;
   workspace: {
     name: string;
@@ -431,6 +450,15 @@ export default function PortalPage() {
                         {isApproved ? '✅ Aprovado' : isCorrection ? '✏️ Correção' : '⏳ Aguardando'}
                       </span>
                     </div>
+
+                    {/* Custom properties (portal-visible only) */}
+                    {(data.propertyDefinitions ?? []).length > 0 && (
+                      <PortalPropertyTable
+                        definitions={data.propertyDefinitions ?? []}
+                        values={(data.propertyValues ?? []).filter((v: any) => v.post_id === post.id)}
+                        selectOptions={data.selectOptions ?? []}
+                      />
+                    )}
 
                     {post.conteudo_plain && (
                       <p className="portal-post-content">{post.conteudo_plain}</p>
