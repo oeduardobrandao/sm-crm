@@ -134,7 +134,7 @@ export function PropertyDefinitionPanel({ templateId, definition, onSave, onClos
       position: 'fixed', inset: 0, zIndex: 60, display: 'flex', alignItems: 'stretch', justifyContent: 'flex-end',
     }}>
       {/* Overlay */}
-      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.3)' }} onClick={onClose} />
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.3)' }} onClick={() => { if (window.confirm('Você tem alterações não salvas. Deseja fechar mesmo assim?')) onClose(); }} />
 
       {/* Panel */}
       <div style={{

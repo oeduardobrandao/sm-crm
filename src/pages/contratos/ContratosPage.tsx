@@ -217,7 +217,7 @@ export default function ContratosPage() {
       )}
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent>
+        <DialogContent onConfirmClose={() => setModalOpen(false)}>
           <DialogHeader>
             <DialogTitle>{editing ? 'Editar Contrato' : 'Novo Contrato'}</DialogTitle>
           </DialogHeader>

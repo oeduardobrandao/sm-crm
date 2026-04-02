@@ -176,7 +176,7 @@ export default function MembroDetalhePage() {
       )}
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent>
+        <DialogContent onConfirmClose={() => setModalOpen(false)}>
           <DialogHeader><DialogTitle>Editar Membro</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="space-y-1"><Label>Nome *</Label><Input value={fNome} onChange={e => setFNome(e.target.value)} /></div>

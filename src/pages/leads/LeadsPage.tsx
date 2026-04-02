@@ -265,7 +265,7 @@ export default function LeadsPage() {
       )}
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-h-[90vh] overflow-y-auto" onConfirmClose={() => setModalOpen(false)}>
           <DialogHeader>
             <DialogTitle>{editing ? 'Editar Lead' : 'Novo Lead'}</DialogTitle>
           </DialogHeader>

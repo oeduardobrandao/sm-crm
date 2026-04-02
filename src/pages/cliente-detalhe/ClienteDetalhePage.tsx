@@ -720,7 +720,7 @@ export default function ClienteDetalhePage() {
 
       {/* Edit Modal */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent style={{ maxWidth: 600 }}>
+        <DialogContent style={{ maxWidth: 600 }} onConfirmClose={() => setEditOpen(false)}>
           <DialogHeader><DialogTitle>Editar Cliente</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1"><Label>Nome *</Label><Input value={fNome} onChange={e => setFNome(e.target.value)} /></div>
@@ -772,7 +772,7 @@ export default function ClienteDetalhePage() {
 
       {/* Address Add/Edit Modal */}
       <Dialog open={addrModalOpen} onOpenChange={open => { if (!open) { setAddrModalOpen(false); resetAddrForm(); } }}>
-        <DialogContent style={{ maxWidth: 540 }}>
+        <DialogContent style={{ maxWidth: 540 }} onConfirmClose={() => { setAddrModalOpen(false); resetAddrForm(); }}>
           <DialogHeader>
             <DialogTitle>{addrEditing ? 'Editar Endereço' : 'Novo Endereço'}</DialogTitle>
           </DialogHeader>
@@ -833,7 +833,7 @@ export default function ClienteDetalhePage() {
 
       {/* Date Add/Edit Modal */}
       <Dialog open={dateModalOpen} onOpenChange={open => { if (!open) { setDateModalOpen(false); resetDateForm(); } }}>
-        <DialogContent style={{ maxWidth: 440 }}>
+        <DialogContent style={{ maxWidth: 440 }} onConfirmClose={() => { setDateModalOpen(false); resetDateForm(); }}>
           <DialogHeader>
             <DialogTitle>{dateEditing ? 'Editar Data' : 'Nova Data Importante'}</DialogTitle>
           </DialogHeader>

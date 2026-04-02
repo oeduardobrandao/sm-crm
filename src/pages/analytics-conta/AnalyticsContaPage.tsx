@@ -942,7 +942,7 @@ function AnalyticsContent({
 
       {/* Manual follower modal */}
       <Dialog open={manualFollowerOpen} onOpenChange={open => { if (!open) { setManualFollowerOpen(false); setManualCount(''); } }}>
-        <DialogContent>
+        <DialogContent onConfirmClose={() => { setManualFollowerOpen(false); setManualCount(''); }}>
           <DialogHeader><DialogTitle>Inserir Seguidores Manualmente</DialogTitle></DialogHeader>
           <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
             Insira a contagem de seguidores para uma data específica. Dados manuais não serão sobrescritos pela sincronização automática.

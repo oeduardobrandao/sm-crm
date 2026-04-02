@@ -520,7 +520,7 @@ export default function ConfiguracaoPage() {
 
       {/* Edit Role Modal */}
       <Dialog open={editRoleOpen} onOpenChange={setEditRoleOpen}>
-        <DialogContent>
+        <DialogContent onConfirmClose={() => setEditRoleOpen(false)}>
           <DialogHeader><DialogTitle>Editar função — {editRoleUser?.nome}</DialogTitle></DialogHeader>
           <div className="space-y-1">
             <Label>Função</Label>
@@ -541,7 +541,7 @@ export default function ConfiguracaoPage() {
 
       {/* Invite Modal */}
       <Dialog open={inviteOpen} onOpenChange={open => { if (!open) { setInviteEmail(''); setInviteRole('agent'); } setInviteOpen(open); }}>
-        <DialogContent>
+        <DialogContent onConfirmClose={() => { setInviteEmail(''); setInviteRole('agent'); setInviteOpen(false); }}>
           <DialogHeader><DialogTitle>Convidar Membro</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1"><Label>Email *</Label><Input type="email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} /></div>

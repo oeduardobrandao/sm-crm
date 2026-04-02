@@ -268,7 +268,7 @@ export default function FinanceiroPage() {
 
       {/* Modal de edição/criação */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent>
+        <DialogContent onConfirmClose={() => setModalOpen(false)}>
           <DialogHeader>
             <DialogTitle>{editing ? 'Editar Transação' : modalTipo === 'entrada' ? 'Registrar Entrada' : 'Registrar Saída'}</DialogTitle>
           </DialogHeader>

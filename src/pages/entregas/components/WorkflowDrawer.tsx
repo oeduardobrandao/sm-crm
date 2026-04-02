@@ -245,7 +245,7 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
   return (
     <>
       {/* Overlay */}
-      <div className="drawer-overlay" onClick={onClose} />
+      <div className="drawer-overlay" onClick={() => { if (window.confirm('Você tem alterações não salvas. Deseja fechar mesmo assim?')) onClose(); }} />
 
       {/* Panel */}
       <div className="drawer-panel">

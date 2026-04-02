@@ -264,7 +264,7 @@ export default function ClientesPage() {
       )}
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent>
+        <DialogContent onConfirmClose={() => setModalOpen(false)}>
           <DialogHeader>
             <DialogTitle>{editing ? 'Editar Cliente' : 'Novo Cliente'}</DialogTitle>
           </DialogHeader>

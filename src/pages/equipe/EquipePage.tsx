@@ -243,7 +243,7 @@ export default function EquipePage() {
       )}
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent>
+        <DialogContent onConfirmClose={() => setModalOpen(false)}>
           <DialogHeader>
             <DialogTitle>{editing ? 'Editar Membro' : 'Adicionar Membro'}</DialogTitle>
           </DialogHeader>
