@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Plus, Trash2, Edit2, FileText } from 'lucide-react';
+import { Plus, Trash2, Edit2, FileText, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,8 +15,11 @@ import {
   addWorkflow, addWorkflowEtapa, addWorkflowTemplate, removeWorkflowTemplate,
   removeWorkflow,
   updateWorkflow, updateWorkflowEtapa, updateWorkflowTemplate,
+  getPropertyDefinitions, deletePropertyDefinition,
   type Workflow, type WorkflowEtapa, type WorkflowTemplate, type Cliente, type Membro,
+  type TemplatePropertyDefinition,
 } from '../../../store';
+import { PropertyDefinitionPanel } from './PropertyDefinitionPanel';
 
 // ---- Types ----
 interface BoardCard {
@@ -434,6 +438,29 @@ export function TemplatesModal({
   const [deleteTemplateId, setDeleteTemplateId] = useState<number | null>(null);
   const [fNome, setFNome] = useState('');
 
+  const qc = useQueryClient();
+  const [activeTab, setActiveTab] = useState<'templates' | 'properties'>('templates');
+  const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
+  const [showDefPanel, setShowDefPanel] = useState(false);
+  const [editingDef, setEditingDef] = useState<TemplatePropertyDefinition | undefined>(undefined);
+  const [deletingDefId, setDeletingDefId] = useState<number | null>(null);
+
+  const { data: propertyDefinitions = [] } = useQuery({
+    queryKey: ['property-definitions', selectedTemplateId],
+    queryFn: () => getPropertyDefinitions(selectedTemplateId!),
+    enabled: !!selectedTemplateId,
+  });
+
+  const handleDeleteDefinition = async () => {
+    if (!deletingDefId) return;
+    try {
+      await deletePropertyDefinition(deletingDefId);
+      toast.success('Propriedade excluída.');
+      qc.invalidateQueries({ queryKey: ['property-definitions', selectedTemplateId] });
+    } catch { toast.error('Erro ao excluir propriedade.'); }
+    setDeletingDefId(null);
+  };
+
   const handleSave = async () => {
     const nome = fNome.trim();
     if (!nome) { toast.error('Nome do template é obrigatório.'); return; }
@@ -492,51 +519,176 @@ export function TemplatesModal({
       <Dialog open={open} onOpenChange={open => { if (!open) { setFNome(''); setEtapas([defaultEtapa()]); setEditingTemplate(null); onClose(); } }}>
         <DialogContent style={{ maxWidth: 700, maxHeight: '90vh', overflowY: 'auto', width: 'calc(100vw - 2rem)' }}>
           <DialogHeader><DialogTitle>Gerenciar Templates</DialogTitle></DialogHeader>
-          <div style={{ marginBottom: '1rem' }}>
-            {templates.length === 0
-              ? <p style={{ color: 'var(--text-muted)' }}>Nenhum template salvo.</p>
-              : templates.map(t => (
-                <div key={t.id} className="card" style={{ marginBottom: '0.75rem', padding: '1rem 1.25rem', position: 'relative' }}>
-                  <strong>{t.nome}</strong>
-                  <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-                    {t.etapas.length} etapa{t.etapas.length !== 1 ? 's' : ''}: {t.etapas.map(e => e.nome).join(' → ')}
-                  </p>
-                  <div style={{ position: 'absolute', top: '1rem', right: '1rem', display: 'flex', gap: '0.5rem' }}>
-                    <Button size="icon" variant="ghost" onClick={() => handleEdit(t)}><Edit2 className="h-4 w-4" /></Button>
-                    <Button size="icon" variant="ghost" className="text-destructive" onClick={() => setDeleteTemplateId(t.id!)}><Trash2 className="h-4 w-4" /></Button>
-                  </div>
+          {/* Tab navigation */}
+          <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border-color)', marginBottom: '1rem' }}>
+            <button
+              onClick={() => setActiveTab('templates')}
+              style={{
+                padding: '8px 16px', border: 'none', background: 'none', cursor: 'pointer', fontSize: '0.9rem',
+                borderBottom: activeTab === 'templates' ? '2px solid var(--primary, #1d4ed8)' : '2px solid transparent',
+                color: activeTab === 'templates' ? 'var(--primary, #1d4ed8)' : 'inherit',
+                fontWeight: activeTab === 'templates' ? 600 : 400, marginBottom: -1,
+              }}
+            >
+              Templates
+            </button>
+            <button
+              onClick={() => setActiveTab('properties')}
+              style={{
+                padding: '8px 16px', border: 'none', background: 'none', cursor: 'pointer', fontSize: '0.9rem',
+                borderBottom: activeTab === 'properties' ? '2px solid var(--primary, #1d4ed8)' : '2px solid transparent',
+                color: activeTab === 'properties' ? 'var(--primary, #1d4ed8)' : 'inherit',
+                fontWeight: activeTab === 'properties' ? 600 : 400, marginBottom: -1,
+              }}
+            >
+              <Settings className="h-3.5 w-3.5" style={{ display: 'inline', marginRight: 4 }} />
+              Propriedades
+            </button>
+          </div>
+          {activeTab === 'templates' && (
+            <>
+              <div style={{ marginBottom: '1rem' }}>
+                {templates.length === 0
+                  ? <p style={{ color: 'var(--text-muted)' }}>Nenhum template salvo.</p>
+                  : templates.map(t => (
+                    <div key={t.id} className="card" style={{ marginBottom: '0.75rem', padding: '1rem 1.25rem', position: 'relative' }}>
+                      <strong>{t.nome}</strong>
+                      <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                        {t.etapas.length} etapa{t.etapas.length !== 1 ? 's' : ''}: {t.etapas.map(e => e.nome).join(' → ')}
+                      </p>
+                      <div style={{ position: 'absolute', top: '1rem', right: '1rem', display: 'flex', gap: '0.5rem' }}>
+                        <Button size="icon" variant="ghost" onClick={() => handleEdit(t)}><Edit2 className="h-4 w-4" /></Button>
+                        <Button size="icon" variant="ghost" className="text-destructive" onClick={() => setDeleteTemplateId(t.id!)}><Trash2 className="h-4 w-4" /></Button>
+                      </div>
+                    </div>
+                  ))
+                }
+              </div>
+              <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
+                <h4 style={{ marginBottom: '0.75rem' }}>{editingTemplate ? `Editar: ${editingTemplate.nome}` : 'Novo Template'}</h4>
+                <div className="space-y-1" style={{ marginBottom: '0.75rem' }}>
+                  <Label>Nome *</Label>
+                  <Input placeholder="Ex: Fluxo Padrão de Post" value={fNome} onChange={e => setFNome(e.target.value)} />
                 </div>
-              ))
-            }
-          </div>
-          <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
-            <h4 style={{ marginBottom: '0.75rem' }}>{editingTemplate ? `Editar: ${editingTemplate.nome}` : 'Novo Template'}</h4>
-            <div className="space-y-1" style={{ marginBottom: '0.75rem' }}>
-              <Label>Nome *</Label>
-              <Input placeholder="Ex: Fluxo Padrão de Post" value={fNome} onChange={e => setFNome(e.target.value)} />
+                {etapas.map((e, i) => (
+                  <EtapaRow
+                    key={i}
+                    index={i}
+                    nome={e.nome}
+                    prazo={e.prazo}
+                    tipoPrazo={e.tipoPrazo}
+                    responsavelId={e.responsavelId}
+                    tipo={e.tipo}
+                    membros={membros}
+                    onChange={(field, val) => {
+                      const next = [...etapas];
+                      (next[i] as unknown as Record<string, unknown>)[field] = val;
+                      setEtapas(next);
+                    }}
+                    onRemove={() => setEtapas(etapas.filter((_, idx) => idx !== i))}
+                  />
+                ))}
+                <Button size="sm" variant="outline" onClick={() => setEtapas([...etapas, defaultEtapa()])}>
+                  <Plus className="h-3 w-3" /> Adicionar Etapa
+                </Button>
+              </div>
+            </>
+          )}
+          {activeTab === 'properties' && (
+            <div>
+              {/* Template selector for properties tab */}
+              <div style={{ marginBottom: '1rem' }}>
+                <Label style={{ fontSize: '0.8rem' }}>Selecionar template</Label>
+                <select
+                  className="drawer-select"
+                  style={{ marginTop: 4, width: '100%' }}
+                  value={selectedTemplateId ?? ''}
+                  onChange={e => setSelectedTemplateId(e.target.value ? Number(e.target.value) : null)}
+                >
+                  <option value="">Escolha um template…</option>
+                  {templates.map(t => (
+                    <option key={t.id} value={t.id}>{t.nome}</option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedTemplateId && (
+                <>
+                  {propertyDefinitions.length === 0 ? (
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '0.75rem' }}>
+                      Nenhuma propriedade definida neste template.
+                    </p>
+                  ) : (
+                    <div style={{ marginBottom: '0.75rem' }}>
+                      {propertyDefinitions.map(def => (
+                        <div
+                          key={def.id}
+                          style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            padding: '7px 10px', background: 'var(--card-bg-secondary, #f8fafc)',
+                            border: '1px solid var(--border-color)', borderRadius: 6, marginBottom: 4,
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem' }}>
+                            <span style={{
+                              background: 'var(--primary-light, #eff6ff)', color: 'var(--primary, #1d4ed8)',
+                              padding: '1px 6px', borderRadius: 4, fontSize: '0.72rem', fontWeight: 600,
+                            }}>
+                              {def.type}
+                            </span>
+                            <span style={{ fontWeight: 500 }}>{def.name}</span>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            {def.portal_visible && (
+                              <span style={{
+                                background: '#dcfce7', color: '#15803d',
+                                padding: '1px 8px', borderRadius: 10, fontSize: '0.72rem',
+                              }}>
+                                Portal
+                              </span>
+                            )}
+                            <Button
+                              size="icon" variant="ghost"
+                              onClick={() => { setEditingDef(def); setShowDefPanel(true); }}
+                            >
+                              <Edit2 className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              size="icon" variant="ghost" className="text-destructive"
+                              onClick={() => setDeletingDefId(def.id!)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <Button
+                    variant="outline" size="sm"
+                    style={{ borderStyle: 'dashed' }}
+                    onClick={() => { setEditingDef(undefined); setShowDefPanel(true); }}
+                  >
+                    + Adicionar propriedade
+                  </Button>
+                </>
+              )}
+
+              {showDefPanel && selectedTemplateId && (
+                <PropertyDefinitionPanel
+                  templateId={selectedTemplateId}
+                  definition={editingDef}
+                  onSave={() => {
+                    setShowDefPanel(false);
+                    setEditingDef(undefined);
+                    qc.invalidateQueries({ queryKey: ['property-definitions', selectedTemplateId] });
+                  }}
+                  onClose={() => { setShowDefPanel(false); setEditingDef(undefined); }}
+                />
+              )}
             </div>
-            {etapas.map((e, i) => (
-              <EtapaRow
-                key={i}
-                index={i}
-                nome={e.nome}
-                prazo={e.prazo}
-                tipoPrazo={e.tipoPrazo}
-                responsavelId={e.responsavelId}
-                tipo={e.tipo}
-                membros={membros}
-                onChange={(field, val) => {
-                  const next = [...etapas];
-                  (next[i] as unknown as Record<string, unknown>)[field] = val;
-                  setEtapas(next);
-                }}
-                onRemove={() => setEtapas(etapas.filter((_, idx) => idx !== i))}
-              />
-            ))}
-            <Button size="sm" variant="outline" onClick={() => setEtapas([...etapas, defaultEtapa()])}>
-              <Plus className="h-3 w-3" /> Adicionar Etapa
-            </Button>
-          </div>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => { setFNome(''); setEtapas([defaultEtapa()]); setEditingTemplate(null); onClose(); }}>Fechar</Button>
             <Button onClick={handleSave} disabled={saving}>{saving && <Spinner size="sm" />} {editingTemplate ? 'Salvar' : 'Salvar Template'}</Button>
@@ -549,6 +701,22 @@ export function TemplatesModal({
           <AlertDialogFooter>
             <AlertDialogCancel>Não</AlertDialogCancel>
             <AlertDialogAction onClick={handleDeleteConfirm}>Sim</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={deletingDefId !== null} onOpenChange={open => { if (!open) setDeletingDefId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir propriedade?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Isso removerá os valores preenchidos em todos os posts deste template. Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteDefinition} className="bg-destructive text-destructive-foreground">
+              Excluir
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
