@@ -1038,6 +1038,61 @@ export interface PostApproval {
   created_at: string;
 }
 
+// =============================================
+// CUSTOM PROPERTIES
+// =============================================
+
+export type PropertyType =
+  | 'text' | 'number' | 'select' | 'multiselect' | 'status'
+  | 'date' | 'person' | 'checkbox' | 'url' | 'email' | 'phone' | 'created_time';
+
+export interface SelectOption {
+  id: string;      // stable uuid string
+  label: string;
+  color: string;   // hex color e.g. '#E1306C'
+}
+
+export interface TemplatePropertyDefinition {
+  id?: number;
+  template_id: number;
+  conta_id?: string;
+  name: string;
+  type: PropertyType;
+  config: Record<string, unknown>; // shape varies by type — see spec
+  portal_visible: boolean;
+  display_order: number;
+  created_at?: string;
+}
+
+export interface PostPropertyValue {
+  id?: number;
+  post_id: number;
+  property_definition_id: number;
+  value: unknown;
+  definition: TemplatePropertyDefinition;
+}
+
+export interface WorkflowSelectOption {
+  id?: number;
+  workflow_id: number;
+  property_definition_id: number;
+  conta_id?: string;
+  option_id: string;   // uuid string
+  label: string;
+  color: string;
+  created_at?: string;
+}
+
+export async function getPropertyDefinitions(templateId: number): Promise<TemplatePropertyDefinition[]> {
+  const { data, error } = await supabase
+    .from('template_property_definitions')
+    .select('*')
+    .eq('template_id', templateId)
+    .order('display_order', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
 export async function getWorkflowPosts(workflowId: number): Promise<WorkflowPost[]> {
   const { data, error } = await supabase
     .from('workflow_posts')
@@ -1046,6 +1101,36 @@ export async function getWorkflowPosts(workflowId: number): Promise<WorkflowPost
     .order('ordem', { ascending: true });
   if (error) throw error;
   return data || [];
+}
+
+export async function getWorkflowPostsWithProperties(workflowId: number): Promise<(WorkflowPost & { property_values: PostPropertyValue[] })[]> {
+  const { data, error } = await supabase
+    .from('workflow_posts')
+    .select(`
+      *,
+      post_property_values (
+        id,
+        property_definition_id,
+        value,
+        template_property_definitions (
+          id, template_id, conta_id, name, type, config, portal_visible, display_order, created_at
+        )
+      )
+    `)
+    .eq('workflow_id', workflowId)
+    .order('ordem', { ascending: true });
+  if (error) throw error;
+  return (data || []).map((post: any) => ({
+    ...post,
+    property_values: (post.post_property_values || []).map((pv: any) => ({
+      id: pv.id,
+      post_id: post.id,
+      property_definition_id: pv.property_definition_id,
+      value: pv.value,
+      definition: pv.template_property_definitions,
+    })),
+    post_property_values: undefined,
+  }));
 }
 
 export async function addWorkflowPost(
