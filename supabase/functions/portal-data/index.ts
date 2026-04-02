@@ -49,7 +49,7 @@ Deno.serve(async (req) => {
     // 2. Fetch workflow (include conta_id for workspace lookup)
     const { data: workflow, error: wfErr } = await db
       .from("workflows")
-      .select("titulo, status, etapa_atual, link_notion, link_drive, created_at, cliente_id, conta_id")
+      .select("titulo, status, etapa_atual, link_notion, link_drive, created_at, cliente_id, conta_id, template_id")
       .eq("id", tokenRow.workflow_id)
       .single();
 
@@ -79,7 +79,7 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     // Strip internal IDs from workflow response (no sensitive data)
-    const { cliente_id: _, conta_id: _cid, ...workflowSafe } = workflow;
+    const { cliente_id: _, conta_id: _cid, template_id: _tid, ...workflowSafe } = workflow;
 
     // 6. Fetch portal approvals
     const { data: approvals } = await db
@@ -108,12 +108,49 @@ Deno.serve(async (req) => {
       postApprovals = pa || [];
     }
 
+    // 9. Fetch portal-visible property definitions + values
+    let propertyDefinitions: unknown[] = [];
+    let propertyValues: unknown[] = [];
+    let selectOptions: unknown[] = [];
+
+    const templateId = (workflow as any).template_id;
+    if (templateId && visiblePostIds.length > 0) {
+      const { data: defs } = await db
+        .from("template_property_definitions")
+        .select("id, name, type, config, display_order")
+        .eq("template_id", templateId)
+        .eq("portal_visible", true)
+        .order("display_order", { ascending: true });
+      propertyDefinitions = defs || [];
+
+      if (propertyDefinitions.length > 0) {
+        const defIds = (propertyDefinitions as any[]).map((d: any) => d.id);
+
+        const { data: vals } = await db
+          .from("post_property_values")
+          .select("post_id, property_definition_id, value")
+          .in("post_id", visiblePostIds)
+          .in("property_definition_id", defIds);
+        propertyValues = vals || [];
+
+        const { data: opts } = await db
+          .from("workflow_select_options")
+          .select("option_id, property_definition_id, label, color")
+          .eq("workflow_id", tokenRow.workflow_id)
+          .in("property_definition_id", defIds);
+        selectOptions = opts || [];
+      }
+    }
+
     return json({
       workflow: workflowSafe,
       etapas: etapas || [],
       approvals: approvals || [],
       posts: posts || [],
       postApprovals,
+      propertyDefinitions,
+      propertyValues,
+      selectOptions,
       cliente_nome: cliente?.nome || "Cliente",
       workspace: {
         name: ws?.name || "Workspace",
