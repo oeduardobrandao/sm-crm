@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Plus, LayoutGrid, Info, BarChart2, Calendar, List, Columns } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -35,7 +36,25 @@ export default function EntregasPage() {
   const [drawerCard, setDrawerCard] = useState<BoardCard | null>(null);
   const [recurringWfId, setRecurringWfId] = useState<number | null>(null);
 
+  const [searchParams, setSearchParams] = useSearchParams();
   const { clientes, membros, templates, cards, activeWorkflows, isLoading, refresh } = useEntregasData();
+
+  // Auto-open drawer when navigated with ?drawer=<workflowId>
+  const pendingDrawerId = useRef<number | null>(null);
+  const drawerParam = searchParams.get('drawer');
+  if (drawerParam && pendingDrawerId.current === null) {
+    const parsed = parseInt(drawerParam, 10);
+    if (!isNaN(parsed)) pendingDrawerId.current = parsed;
+    setSearchParams({}, { replace: true });
+  }
+  useEffect(() => {
+    if (pendingDrawerId.current === null || cards.length === 0) return;
+    const match = cards.find(c => c.workflow.id === pendingDrawerId.current);
+    if (match) {
+      pendingDrawerId.current = null;
+      setDrawerCard(match);
+    }
+  }, [cards]);
 
   // Apply filters
   let filteredCards = cards;

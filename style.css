@@ -3598,8 +3598,15 @@ body.role-agent input[name="valor_total"] {
   margin-bottom: 0.5rem;
 }
 
-.wf-step-pill {
+.wf-step-col {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.wf-step-pill {
   height: 6px;
   border-radius: 3px;
   background: var(--surface-hover);
@@ -3613,6 +3620,19 @@ body.role-agent input[name="valor_total"] {
 .wf-step-pill.active {
   background: var(--warning);
   animation: pulse-step 1.5s infinite;
+}
+
+.wf-step-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wf-step-label.active {
+  color: var(--warning);
+  font-weight: 600;
 }
 
 @keyframes pulse-step {

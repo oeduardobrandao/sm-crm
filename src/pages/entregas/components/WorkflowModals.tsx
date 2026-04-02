@@ -15,6 +15,7 @@ import {
   addWorkflow, addWorkflowEtapa, addWorkflowTemplate, removeWorkflowTemplate,
   removeWorkflow,
   updateWorkflow, updateWorkflowEtapa, updateWorkflowTemplate,
+  propagateTemplateToWorkflows,
   getPropertyDefinitions, deletePropertyDefinition,
   type Workflow, type WorkflowEtapa, type WorkflowTemplate, type Cliente, type Membro,
   type TemplatePropertyDefinition,
@@ -149,7 +150,7 @@ export function NewWorkflowModal({
       prazo: e.prazo_dias,
       tipoPrazo: e.tipo_prazo,
       responsavelId: e.responsavel_id || null,
-      tipo: (e as any).tipo || 'padrao',
+      tipo: e.tipo || 'padrao',
     })));
   };
 
@@ -473,9 +474,11 @@ export function TemplatesModal({
         prazo_dias: e.prazo,
         tipo_prazo: e.tipoPrazo,
         responsavel_id: e.responsavelId,
+        tipo: e.tipo,
       }));
       if (editingTemplate?.id) {
         await updateWorkflowTemplate(editingTemplate.id, { nome, etapas: etapaData });
+        await propagateTemplateToWorkflows(editingTemplate.id, etapaData);
         toast.success('Template atualizado!');
       } else {
         await addWorkflowTemplate({ nome, etapas: etapaData });
@@ -500,7 +503,7 @@ export function TemplatesModal({
       prazo: e.prazo_dias,
       tipoPrazo: e.tipo_prazo,
       responsavelId: e.responsavel_id || null,
-      tipo: (e as any).tipo || 'padrao',
+      tipo: e.tipo || 'padrao',
     })));
   };
 

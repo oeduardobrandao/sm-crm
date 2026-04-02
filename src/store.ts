@@ -637,6 +637,7 @@ export interface WorkflowTemplateEtapa {
   prazo_dias: number;
   tipo_prazo: 'uteis' | 'corridos';
   responsavel_id?: number | null;
+  tipo?: 'padrao' | 'aprovacao_cliente';
 }
 
 export interface WorkflowTemplate {
@@ -683,6 +684,48 @@ export async function updateWorkflowTemplate(id: number, t: Partial<Omit<Workflo
 export async function removeWorkflowTemplate(id: number): Promise<void> {
   const { error } = await supabase.from('workflow_templates').delete().eq('id', id);
   if (error) throw error;
+}
+
+/**
+ * Propagate template step changes (nome, prazo_dias, tipo_prazo, responsavel_id, tipo)
+ * to all `pendente` workflow_etapas belonging to active workflows that use this template.
+ * Steps that are already `ativo` or `concluido` are left untouched.
+ */
+export async function propagateTemplateToWorkflows(templateId: number, etapas: WorkflowTemplateEtapa[]): Promise<void> {
+  // Find all active workflows using this template
+  const { data: workflows, error: wfErr } = await supabase
+    .from('workflows')
+    .select('id')
+    .eq('template_id', templateId)
+    .eq('status', 'ativo');
+  if (wfErr) throw wfErr;
+  if (!workflows || workflows.length === 0) return;
+
+  for (const wf of workflows) {
+    const { data: wfEtapas, error: etErr } = await supabase
+      .from('workflow_etapas')
+      .select('*')
+      .eq('workflow_id', wf.id)
+      .order('ordem', { ascending: true });
+    if (etErr) throw etErr;
+    if (!wfEtapas) continue;
+
+    for (const wfEtapa of wfEtapas) {
+      if (wfEtapa.status !== 'pendente') continue;
+      const tplEtapa = etapas[wfEtapa.ordem];
+      if (!tplEtapa) continue;
+      await supabase
+        .from('workflow_etapas')
+        .update({
+          nome: tplEtapa.nome,
+          prazo_dias: tplEtapa.prazo_dias,
+          tipo_prazo: tplEtapa.tipo_prazo,
+          responsavel_id: tplEtapa.responsavel_id ?? null,
+          tipo: tplEtapa.tipo ?? 'padrao',
+        })
+        .eq('id', wfEtapa.id);
+    }
+  }
 }
 
 // =============================================
@@ -925,6 +968,7 @@ export async function duplicateWorkflow(workflowId: number): Promise<Workflow> {
         prazo_dias: etapas[i].prazo_dias,
         tipo_prazo: etapas[i].tipo_prazo,
         responsavel_id: etapas[i].responsavel_id || null,
+        tipo: etapas[i].tipo,
         status: i === 0 ? 'ativo' : 'pendente',
         iniciado_em: i === 0 ? now : null,
         concluido_em: null,

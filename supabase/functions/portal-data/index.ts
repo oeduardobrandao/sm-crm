@@ -88,12 +88,11 @@ Deno.serve(async (req) => {
       .eq("token", token)
       .order("created_at", { ascending: false });
 
-    // 7. Fetch posts visible to client (enviado/aprovado/correcao only)
+    // 7. Fetch all posts for this workflow
     const { data: posts } = await db
       .from("workflow_posts")
       .select("id, titulo, tipo, status, ordem, conteudo_plain")
       .eq("workflow_id", tokenRow.workflow_id)
-      .in("status", ["enviado_cliente", "aprovado_cliente", "correcao_cliente"])
       .order("ordem", { ascending: true });
 
     // 8. Fetch post approvals for visible posts

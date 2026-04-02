@@ -40,6 +40,8 @@ import {
   type WorkflowEtapa,
   type Contrato,
   type Transacao,
+  getWorkflowPostsWithProperties,
+  type WorkflowPost,
 } from '../../store';
 import { getInstagramSummary, syncInstagramData } from '../../services/instagram';
 import { sanitizeUrl } from '../../utils/security';
@@ -153,6 +155,57 @@ export default function ClienteDetalhePage() {
     Promise.all(activeWfs.map(async w => ({ workflow: w, etapas: await getWorkflowEtapas(w.id!) })))
       .then(setWorkflowsWithEtapas)
       .catch(() => setWorkflowsWithEtapas([]));
+  }, [clienteWorkflowsRaw]);
+
+  // Post calendar: fetch posts with "Data de postagem" for all active workflows
+  interface PostCalendarEvent {
+    postId: number;
+    postTitle: string;
+    workflowId: number;
+    workflowTitle: string;
+    date: Date;
+    tipo: WorkflowPost['tipo'];
+  }
+  const [postCalendarEvents, setPostCalendarEvents] = useState<PostCalendarEvent[]>([]);
+  const [calendarMonth, setCalendarMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
+  const [selectedPostDay, setSelectedPostDay] = useState<number | null>(new Date().getDate());
+
+  useEffect(() => {
+    const activeWfs = (clienteWorkflowsRaw ?? []).filter(w => w.status === 'ativo');
+    if (activeWfs.length === 0) { setPostCalendarEvents([]); return; }
+    let cancelled = false;
+    Promise.all(activeWfs.map(async wf => {
+      const posts = await getWorkflowPostsWithProperties(wf.id!);
+      return posts.map(p => ({ ...p, _wfId: wf.id!, _wfTitle: wf.titulo }));
+    }))
+      .then(results => {
+        if (cancelled) return;
+        const events: PostCalendarEvent[] = [];
+        for (const posts of results) {
+          for (const post of posts) {
+            const dateProp = post.property_values.find(
+              pv => pv.definition?.name?.toLowerCase() === 'data de postagem' && pv.definition?.type === 'date'
+            );
+            if (dateProp?.value) {
+              const dateStr = typeof dateProp.value === 'string' ? dateProp.value : String(dateProp.value);
+              const parsed = new Date(dateStr);
+              if (!isNaN(parsed.getTime())) {
+                events.push({
+                  postId: post.id!,
+                  postTitle: post.titulo || 'Sem título',
+                  workflowId: post._wfId,
+                  workflowTitle: post._wfTitle,
+                  date: parsed,
+                  tipo: post.tipo,
+                });
+              }
+            }
+          }
+        }
+        setPostCalendarEvents(events);
+      })
+      .catch(() => { if (!cancelled) setPostCalendarEvents([]); });
+    return () => { cancelled = true; };
   }, [clienteWorkflowsRaw]);
 
   const igSyncAttempted = useRef(false);
@@ -448,6 +501,173 @@ export default function ClienteDetalhePage() {
         </div>
       </div>
 
+      {/* Entregas Ativas + Post Calendar */}
+      {workflowsWithEtapas.length > 0 && (
+        <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
+          <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">Entregas Ativas</h3>
+          {workflowsWithEtapas.map(({ workflow, etapas }) => {
+            const activeEtapa = etapas.find(e => e.status === 'ativo');
+            const deadline = activeEtapa ? getDeadlineInfo(activeEtapa) : null;
+            return (
+              <div key={workflow.id} className="card wf-flow-card" style={{ marginBottom: '1rem' }}>
+                <div className="wf-flow-header">
+                  <span className="wf-flow-title">{workflow.titulo}</span>
+                  {activeEtapa && (
+                    <Button size="sm" onClick={() => handleCompleteEtapa(workflow, activeEtapa)}>Concluir</Button>
+                  )}
+                </div>
+                <div className="wf-steps-row">
+                  {etapas.map(e => (
+                    <div key={e.id} className="wf-step-col">
+                      <div className={`wf-step-pill ${e.status === 'concluido' ? 'done' : e.status === 'ativo' ? 'active' : ''}`} />
+                      <span className={`wf-step-label ${e.status === 'ativo' ? 'active' : ''}`}>{e.nome}</span>
+                    </div>
+                  ))}
+                </div>
+                {activeEtapa && deadline && (
+                  <div className="wf-step-info" style={{ marginTop: 8, fontSize: '0.8rem', color: deadline.estourado ? 'var(--danger)' : deadline.urgente ? 'var(--warning)' : 'var(--text-muted)' }}>
+                    {deadline.estourado ? `Estourado por ${Math.abs(deadline.diasRestantes)} dia(s)` : `${deadline.diasRestantes} dia(s) restante(s)`} — {activeEtapa.nome}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Post Calendar */}
+          {postCalendarEvents.length > 0 && (() => {
+            const calYear = calendarMonth.getFullYear();
+            const calMonth = calendarMonth.getMonth();
+            const firstDay = new Date(calYear, calMonth, 1).getDay();
+            const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+            const today = new Date();
+            const isSameCalMonth = calMonth === today.getMonth() && calYear === today.getFullYear();
+            const monthNamesLocal = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+            const weekDaysLocal = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
+            const tipoColors: Record<string, string> = {
+              feed: '#3b82f6',
+              reels: '#8b5cf6',
+              stories: '#f59e0b',
+              carrossel: '#10b981',
+            };
+            const tipoLabels: Record<string, string> = {
+              feed: 'Feed',
+              reels: 'Reels',
+              stories: 'Stories',
+              carrossel: 'Carrossel',
+            };
+
+            const selectedEvents = selectedPostDay
+              ? postCalendarEvents.filter(e => e.date.getFullYear() === calYear && e.date.getMonth() === calMonth && e.date.getDate() === selectedPostDay)
+              : [];
+
+            return (
+              <div style={{ marginTop: '1rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
+                <div className="calendar-layout">
+                  <div className="calendar-main">
+                    <div className="calendar-header">
+                      <div className="calendar-title-group">
+                        <h2 style={{ fontSize: '1.2rem' }}>Postagens</h2>
+                        <span>{monthNamesLocal[calMonth]} {calYear}</span>
+                      </div>
+                      <div className="calendar-nav">
+                        <button onClick={() => { setCalendarMonth(new Date(calYear, calMonth - 1, 1)); setSelectedPostDay(null); }}>‹</button>
+                        <button onClick={() => { setCalendarMonth(new Date(calYear, calMonth + 1, 1)); setSelectedPostDay(null); }}>›</button>
+                      </div>
+                    </div>
+                    <div className="calendar-weekdays">
+                      {weekDaysLocal.map(wd => <div key={wd}>{wd}</div>)}
+                    </div>
+                    <div className="calendar-grid">
+                      {Array.from({ length: firstDay }, (_, i) => (
+                        <div key={`e${i}`} className="calendar-day empty" />
+                      ))}
+                      {Array.from({ length: daysInMonth }, (_, i) => {
+                        const d = i + 1;
+                        const dayEvents = postCalendarEvents.filter(e => e.date.getFullYear() === calYear && e.date.getMonth() === calMonth && e.date.getDate() === d);
+                        const hasEvents = dayEvents.length > 0;
+                        const isDayToday = d === today.getDate() && isSameCalMonth;
+                        // Group by tipo
+                        const byTipo: Record<string, number> = {};
+                        for (const ev of dayEvents) {
+                          byTipo[ev.tipo] = (byTipo[ev.tipo] || 0) + 1;
+                        }
+                        return (
+                          <div
+                            key={d}
+                            className={`calendar-day ${isDayToday ? 'today' : ''} ${selectedPostDay === d ? 'selected' : ''} ${hasEvents ? 'has-events' : ''}`}
+                            onClick={() => setSelectedPostDay(d)}
+                          >
+                            <span className="day-number">{d}</span>
+                            <div className="day-events">
+                              {Object.entries(byTipo).map(([tipo, count]) => (
+                                <div
+                                  key={tipo}
+                                  className="event-pill"
+                                  style={{ background: `${tipoColors[tipo]}18`, color: tipoColors[tipo], fontWeight: 600 }}
+                                >
+                                  {count} {tipoLabels[tipo] || tipo}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="scheduled-panel">
+                    <div className="scheduled-header">
+                      <h3>Postagens</h3>
+                      <p>{selectedPostDay ? `${selectedPostDay} de ${monthNamesLocal[calMonth]}, ${calYear}` : `${monthNamesLocal[calMonth]} ${calYear}`}</p>
+                    </div>
+                    <div className="scheduled-list">
+                      {selectedEvents.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '2rem 0', color: 'var(--text-muted)' }}>
+                          <p>{selectedPostDay ? 'Nenhuma postagem neste dia.' : 'Selecione um dia.'}</p>
+                        </div>
+                      ) : (
+                        selectedEvents.map((ev, i) => (
+                          <div
+                            key={i}
+                            className="scheduled-item"
+                            style={{ cursor: 'pointer' }}
+                            onClick={() => navigate(`/entregas?drawer=${ev.workflowId}`)}
+                          >
+                            <div className="item-top">
+                              <div className="item-badge" style={{ background: tipoColors[ev.tipo] || '#6b7280' }} />
+                              <span className="badge" style={{ fontSize: '0.65rem', background: `${tipoColors[ev.tipo]}18`, color: tipoColors[ev.tipo] }}>
+                                {(tipoLabels[ev.tipo] || ev.tipo).toUpperCase()}
+                              </span>
+                            </div>
+                            <div className="item-title">{ev.postTitle}</div>
+                            <div className="item-subtitle">{ev.workflowTitle}</div>
+                            <div className="item-divider" />
+                            <div className="item-meta">
+                              {ev.date.toLocaleDateString('pt-BR')}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Legend */}
+                <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '1rem' }}>
+                  {Object.entries(tipoColors).map(([tipo, color]) => (
+                    <span key={tipo} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <span style={{ width: 10, height: 10, borderRadius: '50%', background: color, display: 'inline-block' }} />
+                      {tipoLabels[tipo] || tipo}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
       {/* Important Dates Section */}
       <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
@@ -606,39 +826,6 @@ export default function ClienteDetalhePage() {
         )}
         {!loadingIg && !igSummary && <div ref={igConnectRef} />}
       </div>
-
-      {/* Workflows Section */}
-      {workflowsWithEtapas.length > 0 && (
-        <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-          <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">Entregas Ativas</h3>
-          {workflowsWithEtapas.map(({ workflow, etapas }) => {
-            const activeEtapa = etapas.find(e => e.status === 'ativo');
-            const deadline = activeEtapa ? getDeadlineInfo(activeEtapa) : null;
-            return (
-              <div key={workflow.id} className="card wf-flow-card" style={{ marginBottom: '1rem' }}>
-                <div className="wf-flow-header">
-                  <span className="wf-flow-title">{workflow.titulo}</span>
-                  {activeEtapa && (
-                    <Button size="sm" onClick={() => handleCompleteEtapa(workflow, activeEtapa)}>Concluir</Button>
-                  )}
-                </div>
-                <div className="wf-steps-row">
-                  {etapas.map(e => (
-                    <span key={e.id} className={`wf-step-pill ${e.status === 'concluido' ? 'badge-success' : e.status === 'ativo' ? 'badge-info' : 'badge-neutral'}`}>
-                      {e.nome}
-                    </span>
-                  ))}
-                </div>
-                {activeEtapa && deadline && (
-                  <div className="wf-step-info" style={{ marginTop: 8, fontSize: '0.8rem', color: deadline.estourado ? 'var(--danger)' : deadline.urgente ? 'var(--warning)' : 'var(--text-muted)' }}>
-                    {deadline.estourado ? `Estourado por ${Math.abs(deadline.diasRestantes)} dia(s)` : `${deadline.diasRestantes} dia(s) restante(s)`} — {activeEtapa.nome}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
 
       {!isAgent && (
         <>

@@ -1,6 +1,4 @@
 import { useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { computeDeadlineDate, computeWorkflowDeadlineDate } from '../hooks/useEntregasData';
 
@@ -21,15 +19,21 @@ function isSameDay(a: Date, b: Date): boolean {
     a.getDate() === b.getDate();
 }
 
+const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+const weekDays = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
 export function CalendarView({ cards, onCardClick }: CalendarViewProps) {
   const today = new Date();
   const [currentDate, setCurrentDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
+  const [selectedDay, setSelectedDay] = useState<number | null>(today.getDate());
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
+  const isSameMonth = month === today.getMonth() && year === today.getFullYear();
+  const isToday = (d: number) => today.getDate() === d && isSameMonth;
 
-  const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
-  const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
+  const prevMonth = () => { setCurrentDate(new Date(year, month - 1, 1)); setSelectedDay(null); };
+  const nextMonth = () => { setCurrentDate(new Date(year, month + 1, 1)); setSelectedDay(null); };
 
   // Build events for this month
   const events: CalendarEvent[] = [];
@@ -41,7 +45,6 @@ export function CalendarView({ cards, onCardClick }: CalendarViewProps) {
       }
       const wfDeadline = computeWorkflowDeadlineDate(card.allEtapas, card.etapa);
       if (wfDeadline && wfDeadline.getFullYear() === year && wfDeadline.getMonth() === month) {
-        // Only add workflow deadline if different date from etapa deadline
         if (!isSameDay(wfDeadline, etapaDeadline)) {
           events.push({ card, type: 'workflow', date: wfDeadline });
         }
@@ -49,17 +52,14 @@ export function CalendarView({ cards, onCardClick }: CalendarViewProps) {
     }
   }
 
-  // Build grid — first day of month, last day, padding days
-  const firstDay = new Date(year, month, 1).getDay(); // 0=Sun
+  // Build grid
+  const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const cells: (number | null)[] = [
-    ...Array(firstDay).fill(null),
-    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
-  ];
-  // Pad to complete last row
-  while (cells.length % 7 !== 0) cells.push(null);
 
-  const monthLabel = currentDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  // Selected day details
+  const selectedEvents = selectedDay
+    ? events.filter(e => e.date.getDate() === selectedDay)
+    : [];
 
   if (cards.length === 0) {
     return (
@@ -70,76 +70,99 @@ export function CalendarView({ cards, onCardClick }: CalendarViewProps) {
   }
 
   return (
-    <div className="animate-up" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      {/* Navigation */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-        <Button variant="outline" size="icon" onClick={prevMonth}><ChevronLeft className="h-4 w-4" /></Button>
-        <span style={{ fontWeight: 600, fontSize: '1rem', textTransform: 'capitalize', minWidth: 180, textAlign: 'center' }}>{monthLabel}</span>
-        <Button variant="outline" size="icon" onClick={nextMonth}><ChevronRight className="h-4 w-4" /></Button>
-      </div>
-
-      {/* Day headers */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.25rem' }}>
-        {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(d => (
-          <div key={d} style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, padding: '0.5rem 0' }}>{d}</div>
-        ))}
-      </div>
-
-      {/* Calendar grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.25rem' }}>
-        {cells.map((day, idx) => {
-          const dayEvents = day
-            ? events.filter(e => e.date.getDate() === day)
-            : [];
-          const isToday = day !== null && isSameDay(new Date(year, month, day), today);
-          return (
-            <div
-              key={idx}
-              style={{
-                minHeight: 80,
-                padding: '0.4rem',
-                background: 'var(--surface-2)',
-                borderRadius: 6,
-                border: isToday ? '2px solid var(--accent)' : '1px solid var(--border-color)',
-                opacity: day === null ? 0 : 1,
-              }}
-            >
-              {day !== null && (
-                <>
-                  <div style={{ fontSize: '0.75rem', fontWeight: isToday ? 700 : 400, color: isToday ? 'var(--accent)' : 'var(--text-secondary)', marginBottom: '0.25rem' }}>{day}</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-                    {dayEvents.map((ev, i) => (
-                      <div
-                        key={i}
-                        onClick={() => onCardClick(ev.card)}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: '0.3rem',
-                          padding: '0.15rem 0.3rem',
-                          borderRadius: 4,
-                          background: 'var(--surface-3)',
-                          cursor: 'pointer',
-                          fontSize: '0.7rem',
-                          overflow: 'hidden',
-                          whiteSpace: 'nowrap',
-                          textOverflow: 'ellipsis',
-                        }}
-                        title={`${ev.card.workflow.titulo} — ${ev.type === 'etapa' ? 'Etapa: ' + ev.card.etapa.nome : 'Conclusão prevista'}`}
-                      >
-                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: ev.type === 'etapa' ? '#3b82f6' : '#f97316', flexShrink: 0 }} />
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{ev.card.workflow.titulo}</span>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
+    <div className="animate-up">
+      <div className="calendar-layout">
+        <div className="calendar-main">
+          <div className="calendar-header">
+            <div className="calendar-title-group">
+              <h2>{monthNames[month]}</h2>
+              <span>{year}</span>
             </div>
-          );
-        })}
+            <div className="calendar-nav">
+              <button onClick={prevMonth}>‹</button>
+              <button onClick={nextMonth}>›</button>
+            </div>
+          </div>
+          <div className="calendar-weekdays">
+            {weekDays.map(wd => <div key={wd}>{wd}</div>)}
+          </div>
+          <div className="calendar-grid">
+            {Array.from({ length: firstDay }, (_, i) => (
+              <div key={`e${i}`} className="calendar-day empty" />
+            ))}
+            {Array.from({ length: daysInMonth }, (_, i) => {
+              const d = i + 1;
+              const dayEvents = events.filter(e => e.date.getDate() === d);
+              const hasEvents = dayEvents.length > 0;
+              const etapaCount = dayEvents.filter(e => e.type === 'etapa').length;
+              const wfCount = dayEvents.filter(e => e.type === 'workflow').length;
+              return (
+                <div
+                  key={d}
+                  className={`calendar-day ${isToday(d) ? 'today' : ''} ${selectedDay === d ? 'selected' : ''} ${hasEvents ? 'has-events' : ''}`}
+                  onClick={() => setSelectedDay(d)}
+                >
+                  <span className="day-number">{d}</span>
+                  <div className="day-events">
+                    {etapaCount > 0 && (
+                      <div className="event-pill deadline">
+                        ⚑ {etapaCount} Etapa{etapaCount > 1 ? 's' : ''}
+                      </div>
+                    )}
+                    {wfCount > 0 && (
+                      <div className="event-pill" style={{ background: 'rgba(249, 115, 22, 0.12)', color: '#f97316', fontWeight: 600 }}>
+                        ◎ {wfCount} Conclus.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="scheduled-panel">
+          <div className="scheduled-header">
+            <h3>Entregas</h3>
+            <p>{selectedDay ? `${selectedDay} de ${monthNames[month]}, ${year}` : `${monthNames[month]} ${year}`}</p>
+          </div>
+          <div className="scheduled-list">
+            {selectedEvents.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '2rem 0', color: 'var(--text-muted)' }}>
+                <p>{selectedDay ? 'Nenhuma entrega neste dia.' : 'Selecione um dia.'}</p>
+              </div>
+            ) : (
+              selectedEvents.map((ev, i) => (
+                <div
+                  key={i}
+                  className="scheduled-item"
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => onCardClick(ev.card)}
+                >
+                  <div className="item-top">
+                    <div className="item-badge" style={{ background: ev.type === 'etapa' ? '#a855f7' : '#f97316' }} />
+                    <span className="badge" style={{ fontSize: '0.65rem' }}>
+                      {ev.type === 'etapa' ? '⚑ PRAZO DA ETAPA' : '◎ CONCLUSÃO PREVISTA'}
+                    </span>
+                  </div>
+                  <div className="item-title">{ev.card.workflow.titulo}</div>
+                  <div className="item-subtitle">
+                    {ev.card.cliente?.nome || '—'} · ETAPA: {ev.card.etapa.nome}
+                  </div>
+                  <div className="item-divider" />
+                  <div className="item-meta">
+                    {ev.date.toLocaleDateString('pt-BR')}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Legend */}
-      <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#3b82f6', display: 'inline-block' }} /> Prazo da etapa</span>
+      <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '1rem' }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#a855f7', display: 'inline-block' }} /> Prazo da etapa</span>
         <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#f97316', display: 'inline-block' }} /> Conclusão prevista</span>
       </div>
     </div>
