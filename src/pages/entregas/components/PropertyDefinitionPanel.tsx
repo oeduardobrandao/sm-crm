@@ -112,7 +112,7 @@ export function PropertyDefinitionPanel({ templateId, definition, onSave, onClos
         type: selectedType,
         config: buildConfig(),
         portal_visible: portalVisible,
-        display_order: definition?.display_order ?? Date.now(),
+        display_order: definition?.display_order ?? (Date.now() % 1_000_000),
       };
       if (isEditing) {
         await updatePropertyDefinition(definition!.id!, payload);
