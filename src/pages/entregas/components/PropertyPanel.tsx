@@ -35,17 +35,6 @@ export function PropertyPanel({ templateId, postId, workflowId, propertyValues, 
         >
           <Plus className="h-3 w-3" /> Adicionar propriedade
         </button>
-        {showPanel && (
-          <PropertyDefinitionPanel
-            templateId={templateId}
-            onSave={() => {
-              setShowPanel(false);
-              qc.invalidateQueries({ queryKey: ['property-definitions', templateId] });
-              qc.invalidateQueries({ queryKey: ['workflow-posts-with-props', workflowId] });
-            }}
-            onClose={() => setShowPanel(false)}
-          />
-        )}
       </div>
     );
   }
