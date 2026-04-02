@@ -10,13 +10,15 @@ import {
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
-  getWorkflowPosts, addWorkflowPost, updateWorkflowPost, removeWorkflowPost,
+  getWorkflowPosts, getWorkflowPostsWithProperties,
+  addWorkflowPost, updateWorkflowPost, removeWorkflowPost,
   reorderWorkflowPosts, sendPostsToCliente, getPostApprovals, replyToPostApproval,
   completeEtapa,
-  type WorkflowPost, type PostApproval, type Membro,
+  type WorkflowPost, type PostApproval, type Membro, type PostPropertyValue,
 } from '../../../store';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { PostEditor } from './PostEditor';
+import { PropertyPanel } from './PropertyPanel';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -74,8 +76,8 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
   // ── Data queries ──────────────────────────────────────────────────────────
 
   const { data: posts = [], isLoading } = useQuery({
-    queryKey: ['workflow-posts', workflowId],
-    queryFn: () => getWorkflowPosts(workflowId),
+    queryKey: ['workflow-posts-with-props', workflowId],
+    queryFn: () => getWorkflowPostsWithProperties(workflowId),
   });
 
   // Local ordered list for optimistic DnD reordering
@@ -93,7 +95,7 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
 
   const refresh = useCallback(() => {
     setLocalOrder(null);
-    qc.invalidateQueries({ queryKey: ['workflow-posts', workflowId] });
+    qc.invalidateQueries({ queryKey: ['workflow-posts-with-props', workflowId] });
     qc.invalidateQueries({ queryKey: ['post-approvals'] });
   }, [qc, workflowId]);
 
@@ -111,7 +113,7 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
 
     try {
       await reorderWorkflowPosts(newIds.map((id, ordem) => ({ id, ordem })));
-      qc.invalidateQueries({ queryKey: ['workflow-posts', workflowId] });
+      qc.invalidateQueries({ queryKey: ['workflow-posts-with-props', workflowId] });
     } catch {
       toast.error('Erro ao reordenar posts');
       setLocalOrder(null);
@@ -303,6 +305,8 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
                     <SortablePostItem
                       key={post.id}
                       post={post}
+                      templateId={card.workflow.template_id}
+                      workflowId={workflowId}
                       isExpanded={expandedId === post.id}
                       isSaving={savingIds.has(post.id!)}
                       approvals={approvals.filter(a => a.post_id === post.id)}
@@ -345,7 +349,9 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
 // ── Sortable post row ─────────────────────────────────────────────────────────
 
 interface SortablePostItemProps {
-  post: WorkflowPost;
+  post: WorkflowPost & { property_values?: PostPropertyValue[] };
+  templateId: number | null | undefined;
+  workflowId: number;
   isExpanded: boolean;
   isSaving: boolean;
   approvals: PostApproval[];
@@ -361,7 +367,7 @@ interface SortablePostItemProps {
 }
 
 function SortablePostItem({
-  post, isExpanded, isSaving, approvals, membros,
+  post, templateId, workflowId, isExpanded, isSaving, approvals, membros,
   replyText, sendingReply,
   onToggle, onDelete, onFieldChange, onContentUpdate, onReplyChange, onReplySend,
 }: SortablePostItemProps) {
@@ -472,6 +478,17 @@ function SortablePostItem({
               Altere o status para editar novamente.
             </div>
           )}
+          {/* Custom properties — shown when template has properties defined */}
+          {templateId != null && templateId !== 0 && (
+            <PropertyPanel
+              templateId={templateId}
+              postId={post.id!}
+              workflowId={workflowId}
+              propertyValues={post.property_values ?? []}
+              membros={membros}
+            />
+          )}
+
           <PostEditor
             key={post.id}
             initialContent={post.conteudo}
