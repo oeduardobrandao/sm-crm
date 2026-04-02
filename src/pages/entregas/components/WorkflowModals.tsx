@@ -380,9 +380,9 @@ export function EditWorkflowModal({
               </div>
             </div>
           </div>
-          <DialogFooter>
-            <div className="flex items-center gap-2 mr-auto">
-              <Button variant="ghost" className="text-destructive" onClick={() => setDeleteOpen(true)}>
+          <div className="edit-modal-footer">
+            <div className="edit-modal-footer-secondary">
+              <Button variant="outline" className="text-destructive" onClick={() => setDeleteOpen(true)}>
                 <Trash2 className="h-4 w-4" /> Excluir
               </Button>
               {onOpenPosts && (
@@ -391,9 +391,11 @@ export function EditWorkflowModal({
                 </Button>
               )}
             </div>
-            <Button variant="outline" onClick={onClose}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={saving}>{saving && <Spinner size="sm" />} Salvar</Button>
-          </DialogFooter>
+            <div className="edit-modal-footer-primary">
+              <Button variant="outline" onClick={onClose}>Cancelar</Button>
+              <Button onClick={handleSave} disabled={saving}>{saving && <Spinner size="sm" />} Salvar</Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>

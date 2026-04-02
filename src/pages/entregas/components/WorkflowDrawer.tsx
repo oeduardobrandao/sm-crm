@@ -399,11 +399,6 @@ function SortablePostItem({
           }
           <span className="post-tipo-badge">{TIPO_LABELS[post.tipo]}</span>
           <span className="drawer-post-titulo">{post.titulo || 'Post sem título'}</span>
-          {!isExpanded && post.conteudo_plain && (
-            <span className="drawer-post-preview">
-              {post.conteudo_plain.slice(0, 60)}{post.conteudo_plain.length > 60 ? '…' : ''}
-            </span>
-          )}
         </div>
         <div className="drawer-post-trigger-right" onClick={e => e.stopPropagation()}>
           {isSaving && <span className="drawer-saving-indicator">Salvando…</span>}

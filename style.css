@@ -1627,7 +1627,7 @@ select.form-input option {
   }
 
   /* --- ACTIVE STATE --- */
-  .mobile-nav-item .icon-wrapper::before {
+  .mobile-nav-item::before {
     content: '';
     position: absolute;
     inset: 0;
@@ -1637,16 +1637,21 @@ select.form-input option {
     opacity: 0;
     /* Scale gracefully with spring-like cubic bezier */
     transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease;
-    z-index: -1;
+    z-index: 0;
   }
 
-  .mobile-nav-item.active .icon-wrapper::before {
+  .mobile-nav-item .icon-wrapper {
+    position: relative;
+    z-index: 1;
+  }
+
+  .mobile-nav-item.active::before {
     transform: scale(1);
     opacity: 1;
   }
 
   .mobile-nav-item.active i {
-    color: var(--surface-main); 
+    color: var(--surface-main);
   }
 
   .mobile-nav-item:not(.active):active .icon-wrapper {
@@ -4397,6 +4402,8 @@ body.role-agent input[name="valor_total"] {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex-shrink: 1;
+  min-width: 0;
 }
 
 .drawer-post-preview {
@@ -4758,6 +4765,43 @@ body.role-agent input[name="valor_total"] {
   background: transparent;
   color: var(--danger);
   cursor: pointer;
+}
+
+/* ── Edit Workflow Modal footer ─────────────────────────────────────────────── */
+.edit-modal-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
+.edit-modal-footer-secondary {
+  display: flex;
+  gap: 0.5rem;
+  order: 1;
+}
+.edit-modal-footer-secondary > * { flex: 1; }
+.edit-modal-footer-primary {
+  display: flex;
+  gap: 0.5rem;
+  order: 2;
+}
+.edit-modal-footer-primary > * { flex: 1; }
+
+@media (min-width: 640px) {
+  .edit-modal-footer {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-end;
+  }
+  .edit-modal-footer-secondary {
+    margin-right: auto;
+    order: unset;
+  }
+  .edit-modal-footer-primary {
+    order: unset;
+  }
+  .edit-modal-footer-secondary > *,
+  .edit-modal-footer-primary > * { flex: unset; }
 }
 
 .post-editor-content .ProseMirror p.is-editor-empty:first-child::before {
