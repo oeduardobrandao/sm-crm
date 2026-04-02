@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import {
   createPropertyDefinition, updatePropertyDefinition,
   type PropertyType, type TemplatePropertyDefinition, type SelectOption,
@@ -40,6 +41,7 @@ export function PropertyDefinitionPanel({ templateId, definition, onSave, onClos
   const [name, setName] = useState(definition?.name ?? '');
   const [portalVisible, setPortalVisible] = useState(definition?.portal_visible ?? false);
   const [saving, setSaving] = useState(false);
+  const [confirmCloseOpen, setConfirmCloseOpen] = useState(false);
 
   // Options state for select / multiselect / status
   const [options, setOptions] = useState<SelectOption[]>(() => {
@@ -130,11 +132,29 @@ export function PropertyDefinitionPanel({ templateId, definition, onSave, onClos
   };
 
   return (
+    <>
+    <AlertDialog open={confirmCloseOpen} onOpenChange={setConfirmCloseOpen}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Fechar sem salvar?</AlertDialogTitle>
+          <AlertDialogDescription>Você tem alterações não salvas. Deseja fechar mesmo assim?</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Continuar editando</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => { setConfirmCloseOpen(false); onClose(); }}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          >
+            Fechar mesmo assim
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
     <div style={{
       position: 'fixed', inset: 0, zIndex: 60, display: 'flex', alignItems: 'stretch', justifyContent: 'flex-end',
     }}>
       {/* Overlay */}
-      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.3)' }} onClick={() => { if (window.confirm('Você tem alterações não salvas. Deseja fechar mesmo assim?')) onClose(); }} />
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.3)' }} onClick={() => setConfirmCloseOpen(true)} />
 
       {/* Panel */}
       <div style={{
@@ -286,5 +306,6 @@ export function PropertyDefinitionPanel({ templateId, definition, onSave, onClos
         </div>
       </div>
     </div>
+    </>
   );
 }
