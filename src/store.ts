@@ -1195,21 +1195,26 @@ export async function updatePropertyDefinition(
   id: number,
   payload: Partial<Omit<TemplatePropertyDefinition, 'id' | 'template_id' | 'conta_id' | 'created_at'>>
 ): Promise<TemplatePropertyDefinition> {
+  const conta_id = await getContaId();
   const { data, error } = await supabase
     .from('template_property_definitions')
     .update(payload)
     .eq('id', id)
+    .eq('conta_id', conta_id)
     .select()
     .single();
   if (error) throw error;
+  if (!data) throw new Error('Property definition not found');
   return data;
 }
 
 export async function deletePropertyDefinition(id: number): Promise<void> {
+  const conta_id = await getContaId();
   const { error } = await supabase
     .from('template_property_definitions')
     .delete()
-    .eq('id', id);
+    .eq('id', id)
+    .eq('conta_id', conta_id);
   if (error) throw error;
 }
 
