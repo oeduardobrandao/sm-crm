@@ -10,7 +10,7 @@ import {
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
-  getWorkflowPosts, getWorkflowPostsWithProperties,
+  getWorkflowPostsWithProperties,
   addWorkflowPost, updateWorkflowPost, removeWorkflowPost,
   reorderWorkflowPosts, sendPostsToCliente, getPostApprovals, replyToPostApproval,
   completeEtapa,
