@@ -13,6 +13,7 @@ import { KanbanView } from './views/KanbanView';
 import { ChartView } from './views/ChartView';
 import { CalendarView } from './views/CalendarView';
 import { ListView } from './views/ListView';
+import { WorkflowDrawer } from './components/WorkflowDrawer';
 import { duplicateWorkflow } from '../../store';
 
 type ActiveView = 'kanban' | 'chart' | 'calendar' | 'list';
@@ -31,6 +32,7 @@ export default function EntregasPage() {
   const [newWorkflowOpen, setNewWorkflowOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [editCard, setEditCard] = useState<BoardCard | null>(null);
+  const [drawerCard, setDrawerCard] = useState<BoardCard | null>(null);
   const [recurringWfId, setRecurringWfId] = useState<number | null>(null);
 
   const { clientes, membros, templates, cards, activeWorkflows, isLoading, refresh } = useEntregasData();
@@ -115,6 +117,7 @@ export default function EntregasPage() {
         <KanbanView
           cards={filteredCards}
           onCardClick={setEditCard}
+          onPostsClick={setDrawerCard}
           onRefresh={refresh}
           onRecurring={setRecurringWfId}
           membros={membros}
@@ -150,6 +153,7 @@ export default function EntregasPage() {
           onClose={() => setEditCard(null)}
           onSaved={refresh}
           onDeleted={refresh}
+          onOpenPosts={() => { setDrawerCard(editCard); setEditCard(null); }}
         />
       )}
       {templatesOpen && (
@@ -158,6 +162,14 @@ export default function EntregasPage() {
           onClose={() => setTemplatesOpen(false)}
           templates={templates}
           membros={membros}
+          onRefresh={refresh}
+        />
+      )}
+      {drawerCard && (
+        <WorkflowDrawer
+          card={drawerCard}
+          membros={membros}
+          onClose={() => setDrawerCard(null)}
           onRefresh={refresh}
         />
       )}

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { ArrowLeft, Edit2, Share2, Check } from 'lucide-react';
+import { ArrowLeft, Edit2, Share2, Check, FileText } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { updateWorkflowEtapa, createPortalToken, type Membro } from '../../../store';
@@ -22,14 +22,17 @@ interface WorkflowCardProps {
   isDragOverlay?: boolean;
   /** Optional drag handle element rendered at the top-right */
   dragHandle?: React.ReactNode;
-  
   membros?: Membro[];
   onRefresh?: () => void;
   onRevertClick?: () => void;
   onForwardClick?: () => void;
+  /** Opens the posts/sub-tasks drawer for this workflow */
+  onPostsClick?: () => void;
+  /** Number of posts associated with this workflow (shown as badge) */
+  postsCount?: number;
 }
 
-export function WorkflowCard({ card, onClick, isDragOverlay, dragHandle, membros, onRefresh, onRevertClick, onForwardClick }: WorkflowCardProps) {
+export function WorkflowCard({ card, onClick, isDragOverlay, dragHandle, membros, onRefresh, onRevertClick, onForwardClick, onPostsClick, postsCount }: WorkflowCardProps) {
   const [assignDropdownOpen, setAssignDropdownOpen] = useState(false);
   const dl = card.deadline;
   const deadlineClass = dl.estourado
@@ -193,6 +196,17 @@ export function WorkflowCard({ card, onClick, isDragOverlay, dragHandle, membros
         )}
         <button className="btn-edit-workflow" title="Editar fluxo" style={{ padding: '0.4rem', flexShrink: 0 }} onClick={e => { e.stopPropagation(); onClick?.(); }}>
           <Edit2 className="h-4 w-4" />
+        </button>
+        <button
+          className="btn-edit-workflow"
+          title="Posts do fluxo"
+          style={{ padding: '0.4rem', flexShrink: 0, position: 'relative' }}
+          onClick={e => { e.stopPropagation(); onPostsClick?.(); }}
+        >
+          <FileText className="h-4 w-4" />
+          {postsCount !== undefined && postsCount > 0 && (
+            <span className="board-card-posts-badge">{postsCount}</span>
+          )}
         </button>
         <button className="btn-edit-workflow" title="Compartilhar portal do cliente" style={{ padding: '0.4rem', flexShrink: 0 }} onClick={handleShare}>
           <Share2 className="h-4 w-4" />

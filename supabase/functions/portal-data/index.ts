@@ -81,17 +81,39 @@ Deno.serve(async (req) => {
     // Strip internal IDs from workflow response (no sensitive data)
     const { cliente_id: _, conta_id: _cid, ...workflowSafe } = workflow;
 
-    // 6. Fetch portal approvals 
+    // 6. Fetch portal approvals
     const { data: approvals } = await db
       .from("portal_approvals")
-      .select("id, workflow_etapa_id, action, comentario, created_at")
+      .select("id, workflow_etapa_id, action, comentario, is_workspace_user, created_at")
       .eq("token", token)
       .order("created_at", { ascending: false });
+
+    // 7. Fetch posts visible to client (enviado/aprovado/correcao only)
+    const { data: posts } = await db
+      .from("workflow_posts")
+      .select("id, titulo, tipo, status, ordem, conteudo_plain")
+      .eq("workflow_id", tokenRow.workflow_id)
+      .in("status", ["enviado_cliente", "aprovado_cliente", "correcao_cliente"])
+      .order("ordem", { ascending: true });
+
+    // 8. Fetch post approvals for visible posts
+    const visiblePostIds = (posts || []).map((p: any) => p.id as number);
+    let postApprovals: unknown[] = [];
+    if (visiblePostIds.length > 0) {
+      const { data: pa } = await db
+        .from("post_approvals")
+        .select("id, post_id, action, comentario, is_workspace_user, created_at")
+        .in("post_id", visiblePostIds)
+        .order("created_at", { ascending: true });
+      postApprovals = pa || [];
+    }
 
     return json({
       workflow: workflowSafe,
       etapas: etapas || [],
       approvals: approvals || [],
+      posts: posts || [],
+      postApprovals,
       cliente_nome: cliente?.nome || "Cliente",
       workspace: {
         name: ws?.name || "Workspace",

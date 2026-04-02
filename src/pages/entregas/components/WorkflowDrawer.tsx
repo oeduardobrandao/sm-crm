@@ -1,0 +1,549 @@
+import { useState, useRef, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { X, Plus, Trash2, Send, ChevronDown, ChevronRight, MessageSquare, GripVertical } from 'lucide-react';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import {
+  DndContext, closestCenter, PointerSensor, useSensor, useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import {
+  getWorkflowPosts, addWorkflowPost, updateWorkflowPost, removeWorkflowPost,
+  reorderWorkflowPosts, sendPostsToCliente, getPostApprovals, replyToPostApproval,
+  completeEtapa,
+  type WorkflowPost, type PostApproval, type Membro,
+} from '../../../store';
+import type { BoardCard } from '../hooks/useEntregasData';
+import { PostEditor } from './PostEditor';
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+const TIPO_LABELS: Record<WorkflowPost['tipo'], string> = {
+  feed: 'Feed',
+  reels: 'Reels',
+  stories: 'Stories',
+  carrossel: 'Carrossel',
+};
+
+const STATUS_LABELS: Record<WorkflowPost['status'], string> = {
+  rascunho: 'Rascunho',
+  revisao_interna: 'Em revisão',
+  aprovado_interno: 'Aprovado internamente',
+  enviado_cliente: 'Enviado ao cliente',
+  aprovado_cliente: 'Aprovado pelo cliente',
+  correcao_cliente: 'Correção solicitada',
+};
+
+const STATUS_CLASS: Record<WorkflowPost['status'], string> = {
+  rascunho: 'post-status--rascunho',
+  revisao_interna: 'post-status--revisao',
+  aprovado_interno: 'post-status--aprovado-interno',
+  enviado_cliente: 'post-status--enviado',
+  aprovado_cliente: 'post-status--aprovado-cliente',
+  correcao_cliente: 'post-status--correcao',
+};
+
+// ── Props ─────────────────────────────────────────────────────────────────────
+
+interface WorkflowDrawerProps {
+  card: BoardCard;
+  membros: Membro[];
+  onClose: () => void;
+  onRefresh: () => void;
+}
+
+// ── Main Component ────────────────────────────────────────────────────────────
+
+export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDrawerProps) {
+  const workflowId = card.workflow.id!;
+  const qc = useQueryClient();
+
+  // Expanded post id (accordion)
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+  const [replyText, setReplyText] = useState<Record<number, string>>({});
+  const [sendingReply, setSendingReply] = useState<number | null>(null);
+  const [isSending, setIsSending] = useState(false);
+  const saveTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
+  const [savingIds, setSavingIds] = useState<Set<number>>(new Set());
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  // ── Data queries ──────────────────────────────────────────────────────────
+
+  const { data: posts = [], isLoading } = useQuery({
+    queryKey: ['workflow-posts', workflowId],
+    queryFn: () => getWorkflowPosts(workflowId),
+  });
+
+  // Local ordered list for optimistic DnD reordering
+  const [localOrder, setLocalOrder] = useState<number[] | null>(null);
+  const orderedPosts = localOrder
+    ? localOrder.map(id => posts.find(p => p.id === id)).filter(Boolean) as WorkflowPost[]
+    : posts;
+
+  const postIds = posts.map(p => p.id).filter(Boolean) as number[];
+  const { data: approvals = [] } = useQuery({
+    queryKey: ['post-approvals', postIds.join(',')],
+    queryFn: () => getPostApprovals(postIds),
+    enabled: postIds.length > 0,
+  });
+
+  const refresh = useCallback(() => {
+    setLocalOrder(null);
+    qc.invalidateQueries({ queryKey: ['workflow-posts', workflowId] });
+    qc.invalidateQueries({ queryKey: ['post-approvals'] });
+  }, [qc, workflowId]);
+
+  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const ids = orderedPosts.map(p => p.id!);
+    const oldIndex = ids.indexOf(active.id as number);
+    const newIndex = ids.indexOf(over.id as number);
+    const newIds = arrayMove(ids, oldIndex, newIndex);
+
+    // Optimistic update
+    setLocalOrder(newIds);
+
+    try {
+      await reorderWorkflowPosts(newIds.map((id, ordem) => ({ id, ordem })));
+      qc.invalidateQueries({ queryKey: ['workflow-posts', workflowId] });
+    } catch {
+      toast.error('Erro ao reordenar posts');
+      setLocalOrder(null);
+    }
+  }, [orderedPosts, qc, workflowId]);
+
+  // ── Actions ───────────────────────────────────────────────────────────────
+
+  const handleAddPost = async () => {
+    try {
+      const newPost = await addWorkflowPost({
+        workflow_id: workflowId,
+        titulo: `Post ${posts.length + 1}`,
+        conteudo: null,
+        conteudo_plain: '',
+        tipo: 'feed',
+        ordem: posts.length,
+        status: 'rascunho',
+        responsavel_id: null,
+      });
+      refresh();
+      setExpandedId(newPost.id!);
+    } catch { toast.error('Erro ao criar post'); }
+  };
+
+  const handleDeletePost = (id: number) => setPendingDeleteId(id);
+
+  const confirmDeletePost = async () => {
+    if (!pendingDeleteId) return;
+    const id = pendingDeleteId;
+    setPendingDeleteId(null);
+    try {
+      await removeWorkflowPost(id);
+      if (expandedId === id) setExpandedId(null);
+      refresh();
+    } catch { toast.error('Erro ao remover post'); }
+  };
+
+  const handleFieldChange = async (id: number, field: keyof WorkflowPost, value: unknown) => {
+    try {
+      await updateWorkflowPost(id, { [field]: value } as Partial<WorkflowPost>);
+      refresh();
+    } catch { toast.error('Erro ao atualizar post'); }
+  };
+
+  const scheduleContentSave = (
+    post: WorkflowPost,
+    json: Record<string, unknown>,
+    plain: string
+  ) => {
+    const id = post.id!;
+
+    // If post was approved, reset to revisao_interna immediately
+    if (post.status === 'aprovado_interno' || post.status === 'aprovado_cliente') {
+      updateWorkflowPost(id, { status: 'revisao_interna' }).then(() => refresh());
+    }
+
+    setSavingIds(prev => new Set(prev).add(id));
+    if (saveTimers.current[id]) clearTimeout(saveTimers.current[id]);
+    saveTimers.current[id] = setTimeout(async () => {
+      try {
+        await updateWorkflowPost(id, { conteudo: json, conteudo_plain: plain });
+        refresh();
+      } catch { toast.error('Erro ao salvar conteúdo'); }
+      finally {
+        setSavingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+      }
+    }, 1500);
+  };
+
+  const handleSendToCliente = async () => {
+    const readyCount = posts.filter(p => p.status === 'aprovado_interno').length;
+    if (readyCount === 0) {
+      toast.error('Nenhum post aprovado internamente para enviar.');
+      return;
+    }
+    setIsSending(true);
+    try {
+      await sendPostsToCliente(workflowId);
+      toast.success(`${readyCount} post${readyCount > 1 ? 's' : ''} enviado${readyCount > 1 ? 's' : ''} ao cliente!`);
+      refresh();
+      onRefresh();
+    } catch { toast.error('Erro ao enviar posts ao cliente'); }
+    finally { setIsSending(false); }
+  };
+
+  const checkAutoComplete = async (freshPosts: WorkflowPost[]) => {
+    const sent = freshPosts.filter(p =>
+      p.status === 'enviado_cliente' || p.status === 'correcao_cliente'
+    );
+    if (sent.length === 0) return;
+    const allApproved = sent.every(p => p.status === 'aprovado_cliente');
+    if (!allApproved) return;
+
+    const approvalEtapa = card.allEtapas.find(
+      e => e.tipo === 'aprovacao_cliente' && e.status === 'ativo'
+    );
+    if (!approvalEtapa) return;
+
+    try {
+      await completeEtapa(workflowId, approvalEtapa.id!);
+      toast.success('Todos os posts aprovados — etapa concluída!');
+      onRefresh();
+    } catch { /* silent, etapa completion is a bonus */ }
+  };
+
+  const handleReply = async (postId: number) => {
+    const text = (replyText[postId] || '').trim();
+    if (!text) return;
+    setSendingReply(postId);
+    try {
+      await replyToPostApproval(postId, workflowId, text);
+      setReplyText(prev => ({ ...prev, [postId]: '' }));
+      refresh();
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao enviar resposta');
+    } finally {
+      setSendingReply(null);
+    }
+  };
+
+  // ── Stats ─────────────────────────────────────────────────────────────────
+
+  const approvedCount = orderedPosts.filter(p => p.status === 'aprovado_cliente').length;
+  const readyToSend = orderedPosts.filter(p => p.status === 'aprovado_interno').length;
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  return (
+    <>
+      {/* Overlay */}
+      <div className="drawer-overlay" onClick={onClose} />
+
+      {/* Panel */}
+      <div className="drawer-panel">
+        {/* Header */}
+        <div className="drawer-header">
+          <div className="drawer-header-info">
+            <div className="drawer-header-title">{card.workflow.titulo}</div>
+            <div className="drawer-header-subtitle">
+              {card.cliente?.nome || '—'} &bull; Etapa: {card.etapa.nome}
+            </div>
+          </div>
+          <div className="drawer-header-actions">
+            {readyToSend > 0 && (
+              <button
+                className="drawer-send-btn"
+                onClick={handleSendToCliente}
+                disabled={isSending}
+                title={`Enviar ${readyToSend} post${readyToSend > 1 ? 's' : ''} aprovados ao cliente`}
+              >
+                <Send className="h-3.5 w-3.5" />
+                Enviar ao cliente ({readyToSend})
+              </button>
+            )}
+            <button className="drawer-close-btn" onClick={onClose} title="Fechar">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Posts section */}
+        <div className="drawer-body">
+          <div className="drawer-section-header">
+            <span className="drawer-section-title">
+              Posts
+              {posts.length > 0 && (
+                <span className="drawer-post-count">
+                  {approvedCount}/{posts.length} aprovados
+                </span>
+              )}
+            </span>
+            <button className="drawer-add-post-btn" onClick={handleAddPost}>
+              <Plus className="h-3.5 w-3.5" /> Novo Post
+            </button>
+          </div>
+
+          {isLoading ? (
+            <div className="drawer-empty">Carregando...</div>
+          ) : posts.length === 0 ? (
+            <div className="drawer-empty">
+              Nenhum post ainda. Clique em "Novo Post" para começar.
+            </div>
+          ) : (
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={orderedPosts.map(p => p.id!)} strategy={verticalListSortingStrategy}>
+                <div className="drawer-posts-list">
+                  {orderedPosts.map(post => (
+                    <SortablePostItem
+                      key={post.id}
+                      post={post}
+                      isExpanded={expandedId === post.id}
+                      isSaving={savingIds.has(post.id!)}
+                      approvals={approvals.filter(a => a.post_id === post.id)}
+                      membros={membros}
+                      replyText={replyText[post.id!] || ''}
+                      sendingReply={sendingReply === post.id}
+                      onToggle={() => setExpandedId(expandedId === post.id ? null : post.id!)}
+                      onDelete={() => handleDeletePost(post.id!)}
+                      onFieldChange={(field, value) => handleFieldChange(post.id!, field, value)}
+                      onContentUpdate={(json, plain) => scheduleContentSave(post, json, plain)}
+                      onReplyChange={text => setReplyText(prev => ({ ...prev, [post.id!]: text }))}
+                      onReplySend={() => handleReply(post.id!)}
+                    />
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
+          )}
+        </div>
+      </div>
+
+      <AlertDialog open={!!pendingDeleteId} onOpenChange={open => { if (!open) setPendingDeleteId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover post?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação não pode ser desfeita. O post e seu conteúdo serão excluídos permanentemente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPendingDeleteId(null)}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeletePost}>Remover</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
+// ── Sortable post row ─────────────────────────────────────────────────────────
+
+interface SortablePostItemProps {
+  post: WorkflowPost;
+  isExpanded: boolean;
+  isSaving: boolean;
+  approvals: PostApproval[];
+  membros: Membro[];
+  replyText: string;
+  sendingReply: boolean;
+  onToggle: () => void;
+  onDelete: () => void;
+  onFieldChange: (field: keyof WorkflowPost, value: unknown) => void;
+  onContentUpdate: (json: Record<string, unknown>, plain: string) => void;
+  onReplyChange: (text: string) => void;
+  onReplySend: () => void;
+}
+
+function SortablePostItem({
+  post, isExpanded, isSaving, approvals, membros,
+  replyText, sendingReply,
+  onToggle, onDelete, onFieldChange, onContentUpdate, onReplyChange, onReplySend,
+}: SortablePostItemProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: post.id! });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  const isReadonly = post.status === 'enviado_cliente' || post.status === 'aprovado_cliente';
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`drawer-post-item${isExpanded ? ' expanded' : ''}`}
+    >
+      {/* Accordion trigger */}
+      <div className="drawer-post-trigger" onClick={onToggle}>
+        <div className="drawer-post-trigger-left">
+          <span
+            className="drawer-drag-handle"
+            {...attributes}
+            {...listeners}
+            onClick={e => e.stopPropagation()}
+          >
+            <GripVertical className="h-4 w-4" />
+          </span>
+          {isExpanded
+            ? <ChevronDown className="h-4 w-4 drawer-post-chevron" />
+            : <ChevronRight className="h-4 w-4 drawer-post-chevron" />
+          }
+          <span className="post-tipo-badge">{TIPO_LABELS[post.tipo]}</span>
+          <span className="drawer-post-titulo">{post.titulo || 'Post sem título'}</span>
+          {!isExpanded && post.conteudo_plain && (
+            <span className="drawer-post-preview">
+              {post.conteudo_plain.slice(0, 60)}{post.conteudo_plain.length > 60 ? '…' : ''}
+            </span>
+          )}
+        </div>
+        <div className="drawer-post-trigger-right" onClick={e => e.stopPropagation()}>
+          {isSaving && <span className="drawer-saving-indicator">Salvando…</span>}
+          <span className={`post-status-chip ${STATUS_CLASS[post.status]}`}>
+            {STATUS_LABELS[post.status]}
+          </span>
+          <button className="drawer-delete-btn" onClick={onDelete} title="Remover post">
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Accordion content */}
+      {isExpanded && (
+        <div className="drawer-post-content">
+          <div className="drawer-post-meta-row">
+            <div className="drawer-post-field">
+              <label>Título</label>
+              <input
+                className="drawer-input"
+                value={post.titulo}
+                onChange={e => onFieldChange('titulo', e.target.value)}
+                placeholder="Título do post"
+              />
+            </div>
+            <div className="drawer-post-field">
+              <label>Tipo</label>
+              <select
+                className="drawer-select"
+                value={post.tipo}
+                onChange={e => onFieldChange('tipo', e.target.value)}
+              >
+                {(['feed', 'reels', 'stories', 'carrossel'] as const).map(t => (
+                  <option key={t} value={t}>{TIPO_LABELS[t]}</option>
+                ))}
+              </select>
+            </div>
+            <div className="drawer-post-field">
+              <label>Status</label>
+              <select
+                className="drawer-select"
+                value={post.status}
+                onChange={e => onFieldChange('status', e.target.value)}
+                disabled={isReadonly}
+              >
+                {(Object.keys(STATUS_LABELS) as WorkflowPost['status'][]).map(s => (
+                  <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+                ))}
+              </select>
+            </div>
+            {membros.length > 0 && (
+              <div className="drawer-post-field">
+                <label>Responsável</label>
+                <select
+                  className="drawer-select"
+                  value={post.responsavel_id ?? ''}
+                  onChange={e => onFieldChange('responsavel_id', e.target.value ? Number(e.target.value) : null)}
+                >
+                  <option value="">Sem responsável</option>
+                  {membros.map(m => (
+                    <option key={m.id} value={m.id}>{m.nome}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
+          {isReadonly && (
+            <div className="drawer-readonly-notice">
+              Este post foi enviado ao cliente e não pode ser editado.
+              Altere o status para editar novamente.
+            </div>
+          )}
+          <PostEditor
+            key={post.id}
+            initialContent={post.conteudo}
+            disabled={isReadonly}
+            onUpdate={onContentUpdate}
+          />
+
+          {approvals.length > 0 && (
+            <div className="drawer-approval-thread">
+              <div className="drawer-thread-label">
+                <MessageSquare className="h-3.5 w-3.5" /> Comentários
+              </div>
+              {approvals.map(a => (
+                <PostApprovalBubble key={a.id} approval={a} />
+              ))}
+            </div>
+          )}
+
+          <div className="drawer-reply-row">
+            <input
+              className="drawer-input"
+              placeholder="Responder ao cliente…"
+              value={replyText}
+              onChange={e => onReplyChange(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onReplySend(); }
+              }}
+            />
+            <button
+              className="drawer-reply-btn"
+              disabled={sendingReply || !replyText.trim()}
+              onClick={onReplySend}
+            >
+              <Send className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Sub-component ────────────────────────────────────────────────────────────
+
+function PostApprovalBubble({ approval }: { approval: PostApproval }) {
+  const isTeam = approval.is_workspace_user;
+  const actionLabel = isTeam
+    ? 'Equipe'
+    : approval.action === 'correcao'
+    ? 'Correção solicitada'
+    : approval.action === 'aprovado'
+    ? 'Aprovado'
+    : 'Cliente';
+
+  return (
+    <div className={`approval-bubble${isTeam ? ' approval-bubble--team' : ' approval-bubble--client'}`}>
+      <div className="approval-bubble-meta">
+        <span className="approval-bubble-author">{actionLabel}</span>
+        <span className="approval-bubble-date">
+          {new Date(approval.created_at).toLocaleDateString('pt-BR', {
+            day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+          })}
+        </span>
+      </div>
+      {approval.comentario && (
+        <p className="approval-bubble-text">{approval.comentario}</p>
+      )}
+    </div>
+  );
+}

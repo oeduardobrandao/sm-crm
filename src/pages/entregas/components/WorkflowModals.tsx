@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Plus, Trash2, Edit2 } from 'lucide-react';
+import { Plus, Trash2, Edit2, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -270,6 +270,7 @@ export function EditWorkflowModal({
   onClose,
   onSaved,
   onDeleted,
+  onOpenPosts,
 }: {
   card: BoardCard;
   membros: Membro[];
@@ -277,6 +278,7 @@ export function EditWorkflowModal({
   onClose: () => void;
   onSaved: () => void;
   onDeleted: () => void;
+  onOpenPosts?: () => void;
 }) {
   const w = card.workflow;
   const e = card.etapa;
@@ -379,9 +381,16 @@ export function EditWorkflowModal({
             </div>
           </div>
           <DialogFooter>
-            <Button variant="ghost" className="text-destructive mr-auto" onClick={() => setDeleteOpen(true)}>
-              <Trash2 className="h-4 w-4" /> Excluir
-            </Button>
+            <div className="flex items-center gap-2 mr-auto">
+              <Button variant="ghost" className="text-destructive" onClick={() => setDeleteOpen(true)}>
+                <Trash2 className="h-4 w-4" /> Excluir
+              </Button>
+              {onOpenPosts && (
+                <Button variant="outline" onClick={onOpenPosts}>
+                  <FileText className="h-4 w-4" /> Posts
+                </Button>
+              )}
+            </div>
             <Button variant="outline" onClick={onClose}>Cancelar</Button>
             <Button onClick={handleSave} disabled={saving}>{saving && <Spinner size="sm" />} Salvar</Button>
           </DialogFooter>

@@ -16,6 +16,42 @@ function json(body: Record<string, unknown>, status = 200) {
   });
 }
 
+/** Complete an etapa and activate the next one (or mark workflow done). */
+async function completeEtapa(db: any, workflowId: number, etapaId: number) {
+  const now = new Date().toISOString();
+
+  await db
+    .from("workflow_etapas")
+    .update({ status: "concluido", concluido_em: now })
+    .eq("id", etapaId);
+
+  const { data: allEtapas } = await db
+    .from("workflow_etapas")
+    .select("id, ordem, status")
+    .eq("workflow_id", workflowId)
+    .order("ordem", { ascending: true });
+
+  const currentIdx = allEtapas?.findIndex((e: any) => e.id === etapaId) ?? -1;
+  const nextIdx = currentIdx + 1;
+
+  if (allEtapas && nextIdx < allEtapas.length) {
+    await db
+      .from("workflow_etapas")
+      .update({ status: "ativo", iniciado_em: now })
+      .eq("id", allEtapas[nextIdx].id);
+
+    await db
+      .from("workflows")
+      .update({ etapa_atual: nextIdx })
+      .eq("id", workflowId);
+  } else {
+    await db
+      .from("workflows")
+      .update({ status: "concluido", etapa_atual: currentIdx })
+      .eq("id", workflowId);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -26,23 +62,19 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { token, etapa_id, action, comentario } = await req.json();
+    const { token, etapa_id, post_id, action, comentario } = await req.json();
 
-    if (!token || !etapa_id || !action) {
-      return json({ error: "Missing required fields: token, etapa_id, action" }, 400);
+    if (!token || (!etapa_id && !post_id) || !action) {
+      return json({ error: "Missing required fields: token, (etapa_id or post_id), action" }, 400);
     }
 
     if (!["aprovado", "correcao"].includes(action)) {
       return json({ error: "action must be 'aprovado' or 'correcao'" }, 400);
     }
 
-    if (action === "correcao" && (!comentario || !comentario.trim())) {
-      return json({ error: "comentario is required for corrections" }, 400);
-    }
-
     const db = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
-    // 1. Validate token → get workflow_id
+    // Validate token → get workflow_id
     const { data: tokenRow, error: tokenErr } = await db
       .from("portal_tokens")
       .select("workflow_id")
@@ -55,7 +87,88 @@ Deno.serve(async (req) => {
 
     const workflowId = tokenRow.workflow_id;
 
-    // 2. Validate etapa belongs to workflow, is approval type, and is active
+    // ── Per-post approval path ────────────────────────────────────────────────
+    if (post_id) {
+      if (action === "correcao" && (!comentario || !comentario.trim())) {
+        return json({ error: "comentario is required for corrections" }, 400);
+      }
+
+      const { data: post, error: postErr } = await db
+        .from("workflow_posts")
+        .select("id, workflow_id, status")
+        .eq("id", post_id)
+        .single();
+
+      if (postErr || !post) {
+        return json({ error: "Post not found" }, 404);
+      }
+
+      if (post.workflow_id !== workflowId) {
+        return json({ error: "Post does not belong to this workflow" }, 403);
+      }
+
+      if (!["enviado_cliente", "correcao_cliente"].includes(post.status)) {
+        return json({ error: "Post is not awaiting client review" }, 400);
+      }
+
+      // Record approval
+      await db.from("post_approvals").insert({
+        post_id,
+        token,
+        action,
+        comentario: comentario?.trim() || null,
+        is_workspace_user: false,
+      });
+
+      // Update post status
+      const newStatus = action === "aprovado" ? "aprovado_cliente" : "correcao_cliente";
+      await db.from("workflow_posts").update({ status: newStatus }).eq("id", post_id);
+
+      // Check if all client-visible posts are now approved → auto-complete etapa
+      if (action === "aprovado") {
+        const { data: sentPosts } = await db
+          .from("workflow_posts")
+          .select("id, status")
+          .eq("workflow_id", workflowId)
+          .in("status", ["enviado_cliente", "aprovado_cliente", "correcao_cliente"]);
+
+        // Re-fetch the just-updated post to get correct status
+        const updatedStatuses = (sentPosts || []).map((p: any) =>
+          p.id === post_id ? "aprovado_cliente" : p.status
+        );
+        const allApproved = updatedStatuses.every((s: string) => s === "aprovado_cliente");
+
+        if (allApproved) {
+          const { data: approvalEtapa } = await db
+            .from("workflow_etapas")
+            .select("id, ordem")
+            .eq("workflow_id", workflowId)
+            .eq("tipo", "aprovacao_cliente")
+            .eq("status", "ativo")
+            .maybeSingle();
+
+          if (approvalEtapa) {
+            await completeEtapa(db, workflowId, approvalEtapa.id);
+          }
+        }
+      }
+
+      // Return updated posts for portal refresh
+      const { data: updatedPosts } = await db
+        .from("workflow_posts")
+        .select("id, titulo, tipo, status, ordem, conteudo_plain")
+        .eq("workflow_id", workflowId)
+        .in("status", ["enviado_cliente", "aprovado_cliente", "correcao_cliente"])
+        .order("ordem", { ascending: true });
+
+      return json({ success: true, posts: updatedPosts || [] });
+    }
+
+    // ── Per-etapa approval path (existing behavior) ───────────────────────────
+    if (action === "correcao" && (!comentario || !comentario.trim())) {
+      return json({ error: "comentario is required for corrections" }, 400);
+    }
+
     const { data: etapa, error: etapaErr } = await db
       .from("workflow_etapas")
       .select("id, workflow_id, ordem, status, tipo")
@@ -78,7 +191,6 @@ Deno.serve(async (req) => {
       return json({ error: "This etapa is not currently active" }, 400);
     }
 
-    // 3. Record the approval/correction
     await db.from("portal_approvals").insert({
       workflow_etapa_id: etapa_id,
       token,
@@ -86,47 +198,10 @@ Deno.serve(async (req) => {
       comentario: comentario?.trim() || null,
     });
 
-    // 4. If approved, complete the etapa and activate next
     if (action === "aprovado") {
-      const now = new Date().toISOString();
-
-      // Mark current etapa as done
-      await db
-        .from("workflow_etapas")
-        .update({ status: "concluido", concluido_em: now })
-        .eq("id", etapa_id);
-
-      // Get all etapas to find next
-      const { data: allEtapas } = await db
-        .from("workflow_etapas")
-        .select("id, ordem, status")
-        .eq("workflow_id", workflowId)
-        .order("ordem", { ascending: true });
-
-      const currentIdx = allEtapas?.findIndex((e: any) => e.id === etapa_id) ?? -1;
-      const nextIdx = currentIdx + 1;
-
-      if (allEtapas && nextIdx < allEtapas.length) {
-        // Activate next etapa
-        await db
-          .from("workflow_etapas")
-          .update({ status: "ativo", iniciado_em: now })
-          .eq("id", allEtapas[nextIdx].id);
-
-        await db
-          .from("workflows")
-          .update({ etapa_atual: nextIdx })
-          .eq("id", workflowId);
-      } else {
-        // All etapas done — mark workflow complete
-        await db
-          .from("workflows")
-          .update({ status: "concluido", etapa_atual: currentIdx })
-          .eq("id", workflowId);
-      }
+      await completeEtapa(db, workflowId, etapa_id);
     }
 
-    // 5. Return updated etapas
     const { data: updatedEtapas } = await db
       .from("workflow_etapas")
       .select("id, ordem, nome, status, tipo, iniciado_em, concluido_em")

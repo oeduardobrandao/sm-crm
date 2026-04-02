@@ -26,6 +26,24 @@ interface PortalApproval {
   is_workspace_user?: boolean;
 }
 
+interface PortalPost {
+  id: number;
+  titulo: string;
+  tipo: 'feed' | 'reels' | 'stories' | 'carrossel';
+  status: 'enviado_cliente' | 'aprovado_cliente' | 'correcao_cliente';
+  ordem: number;
+  conteudo_plain: string;
+}
+
+interface PostApproval {
+  id: number;
+  post_id: number;
+  action: 'aprovado' | 'correcao' | 'mensagem';
+  comentario: string | null;
+  is_workspace_user: boolean;
+  created_at: string;
+}
+
 interface PortalData {
   workflow: {
     titulo: string;
@@ -37,6 +55,8 @@ interface PortalData {
   };
   etapas: PortalEtapa[];
   approvals: PortalApproval[];
+  posts: PortalPost[];
+  postApprovals: PostApproval[];
   cliente_nome: string;
   workspace: {
     name: string;
@@ -61,10 +81,15 @@ export default function PortalPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Approval state
+  // Etapa-level approval state
   const [comentario, setComentario] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [approvalResult, setApprovalResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Per-post approval state
+  const [postComentarios, setPostComentarios] = useState<Record<number, string>>({});
+  const [postSubmitting, setPostSubmitting] = useState<number | null>(null);
+  const [postResults, setPostResults] = useState<Record<number, { type: 'success' | 'error'; message: string }>>({});
 
   useEffect(() => {
     document.documentElement.style.overflow = 'auto';
@@ -141,6 +166,40 @@ export default function PortalPage() {
       setApprovalResult({ type: 'error', message: err.message || 'Erro ao enviar.' });
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handlePostApprovalAction = async (postId: number, action: 'aprovado' | 'correcao') => {
+    if (!token || !data) return;
+    const comentarioTrimmed = (postComentarios[postId] || '').trim();
+    if (action === 'correcao' && !comentarioTrimmed) return;
+
+    setPostSubmitting(postId);
+    setPostResults(prev => ({ ...prev, [postId]: undefined as any }));
+
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/portal-approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY },
+        body: JSON.stringify({ token, post_id: postId, action, comentario: comentarioTrimmed || null }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Erro ao enviar.');
+
+      const msg = action === 'aprovado' ? 'Post aprovado!' : 'Correções enviadas!';
+      setPostResults(prev => ({ ...prev, [postId]: { type: 'success', message: msg } }));
+      if (action === 'aprovado') {
+        setPostComentarios(prev => ({ ...prev, [postId]: '' }));
+      }
+      if (json.posts) {
+        setData(prev => prev ? { ...prev, posts: json.posts } : prev);
+      } else {
+        await fetchData();
+      }
+    } catch (err: any) {
+      setPostResults(prev => ({ ...prev, [postId]: { type: 'error', message: err.message || 'Erro.' } }));
+    } finally {
+      setPostSubmitting(null);
     }
   };
 
@@ -340,6 +399,106 @@ export default function PortalPage() {
                 {submitting ? <Spinner size="sm" /> : <Send className="h-4 w-4" />}
                 Enviar Correções
               </button>
+            </div>
+          </section>
+        )}
+
+        {/* Posts for client review */}
+        {data.posts && data.posts.length > 0 && (
+          <section className="portal-section card">
+            <h2 className="portal-section-title">
+              <FileText className="h-5 w-5" /> Conteúdos para Aprovação
+            </h2>
+            <p className="portal-section-subtitle">
+              Revise cada post e aprove ou solicite correções.
+            </p>
+
+            <div className="portal-posts-list">
+              {data.posts.map(post => {
+                const postThread = (data.postApprovals || []).filter(a => a.post_id === post.id);
+                const isApproved = post.status === 'aprovado_cliente';
+                const isCorrection = post.status === 'correcao_cliente';
+                const result = postResults[post.id];
+
+                return (
+                  <div key={post.id} className={`portal-post-card${isApproved ? ' portal-post-card--approved' : isCorrection ? ' portal-post-card--correction' : ''}`}>
+                    <div className="portal-post-card-header">
+                      <div className="portal-post-card-meta">
+                        <span className="portal-post-tipo">{post.tipo.charAt(0).toUpperCase() + post.tipo.slice(1)}</span>
+                        <span className="portal-post-titulo">{post.titulo}</span>
+                      </div>
+                      <span className={`portal-post-status-badge ${isApproved ? 'approved' : isCorrection ? 'correction' : 'pending'}`}>
+                        {isApproved ? '✅ Aprovado' : isCorrection ? '✏️ Correção' : '⏳ Aguardando'}
+                      </span>
+                    </div>
+
+                    {post.conteudo_plain && (
+                      <p className="portal-post-content">{post.conteudo_plain}</p>
+                    )}
+
+                    {postThread.length > 0 && (
+                      <div className="portal-post-thread">
+                        {postThread.map(a => {
+                          const isTeam = a.is_workspace_user;
+                          return (
+                            <div key={a.id} style={{
+                              background: isTeam ? 'var(--primary-color)' : 'var(--card-bg)',
+                              border: `1px solid ${isTeam ? 'var(--primary-color)' : 'var(--border-color)'}`,
+                              padding: '0.65rem 0.75rem',
+                              borderRadius: '8px',
+                              marginLeft: isTeam ? '2rem' : '0',
+                              marginRight: isTeam ? '0' : '2rem',
+                            }}>
+                              <div style={{ fontSize: '0.72rem', fontWeight: 600, color: isTeam ? '#111' : (a.action === 'correcao' ? '#ef4444' : 'var(--primary-color)'), marginBottom: '0.2rem' }}>
+                                {isTeam ? 'Equipe' : a.action === 'correcao' ? 'Correção solicitada' : 'Aprovado'} &bull; {new Date(a.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                              </div>
+                              {a.comentario && <p style={{ fontSize: '0.875rem', color: isTeam ? '#111' : 'var(--text-color)', margin: 0, whiteSpace: 'pre-wrap' }}>{a.comentario}</p>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {result && (
+                      <div className={`portal-approval-result ${result.type}`} style={{ marginTop: '0.5rem' }}>
+                        {result.message}
+                      </div>
+                    )}
+
+                    {!isApproved && (
+                      <div className="portal-post-actions">
+                        <div className="portal-approval-comment" style={{ marginBottom: '0.5rem' }}>
+                          <textarea
+                            value={postComentarios[post.id] || ''}
+                            onChange={e => setPostComentarios(prev => ({ ...prev, [post.id]: e.target.value }))}
+                            placeholder="Comentários ou correções (opcional para aprovação)…"
+                            rows={2}
+                            disabled={postSubmitting === post.id}
+                          />
+                        </div>
+                        <div className="portal-approval-actions">
+                          <button
+                            className="portal-approval-btn portal-approval-btn--approve"
+                            onClick={() => handlePostApprovalAction(post.id, 'aprovado')}
+                            disabled={postSubmitting === post.id}
+                          >
+                            {postSubmitting === post.id ? <Spinner size="sm" /> : <ThumbsUp className="h-4 w-4" />}
+                            Aprovar
+                          </button>
+                          <button
+                            className="portal-approval-btn portal-approval-btn--correction"
+                            onClick={() => handlePostApprovalAction(post.id, 'correcao')}
+                            disabled={postSubmitting === post.id || !(postComentarios[post.id] || '').trim()}
+                          >
+                            {postSubmitting === post.id ? <Spinner size="sm" /> : <Send className="h-4 w-4" />}
+                            Enviar Correções
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </section>
         )}

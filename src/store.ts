@@ -1004,6 +1004,130 @@ export async function replyToPortalApproval(workflowId: number, etapaId: number,
   if (error) throw error;
 }
 
+// =============================================
+// WORKFLOW POSTS (Sub-tasks / Content pieces)
+// =============================================
+export interface WorkflowPost {
+  id?: number;
+  workflow_id: number;
+  conta_id?: string; // uuid stored as string in JS
+  titulo: string;
+  conteudo: Record<string, unknown> | null;
+  conteudo_plain: string;
+  tipo: 'feed' | 'reels' | 'stories' | 'carrossel';
+  ordem: number;
+  status:
+    | 'rascunho'
+    | 'revisao_interna'
+    | 'aprovado_interno'
+    | 'enviado_cliente'
+    | 'aprovado_cliente'
+    | 'correcao_cliente';
+  responsavel_id?: number | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface PostApproval {
+  id: number;
+  post_id: number;
+  token: string;
+  action: 'aprovado' | 'correcao' | 'mensagem';
+  comentario: string | null;
+  is_workspace_user: boolean;
+  created_at: string;
+}
+
+export async function getWorkflowPosts(workflowId: number): Promise<WorkflowPost[]> {
+  const { data, error } = await supabase
+    .from('workflow_posts')
+    .select('*')
+    .eq('workflow_id', workflowId)
+    .order('ordem', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function addWorkflowPost(
+  p: Omit<WorkflowPost, 'id' | 'conta_id' | 'created_at' | 'updated_at'>
+): Promise<WorkflowPost> {
+  const conta_id = await getContaId();
+  const { data, error } = await supabase
+    .from('workflow_posts')
+    .insert({ ...p, conta_id })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateWorkflowPost(
+  id: number,
+  p: Partial<Omit<WorkflowPost, 'id' | 'conta_id' | 'workflow_id' | 'created_at' | 'updated_at'>>
+): Promise<WorkflowPost> {
+  const { data, error } = await supabase
+    .from('workflow_posts')
+    .update(p)
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function removeWorkflowPost(id: number): Promise<void> {
+  const { error } = await supabase.from('workflow_posts').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function reorderWorkflowPosts(updates: { id: number; ordem: number }[]): Promise<void> {
+  await Promise.all(
+    updates.map(({ id, ordem }) =>
+      supabase.from('workflow_posts').update({ ordem }).eq('id', id).then(({ error }) => {
+        if (error) throw error;
+      })
+    )
+  );
+}
+
+/** Batch-send all internally-approved posts to the client */
+export async function sendPostsToCliente(workflowId: number): Promise<void> {
+  const { error } = await supabase
+    .from('workflow_posts')
+    .update({ status: 'enviado_cliente' })
+    .eq('workflow_id', workflowId)
+    .eq('status', 'aprovado_interno');
+  if (error) throw error;
+}
+
+export async function getPostApprovals(postIds: number[]): Promise<PostApproval[]> {
+  if (postIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from('post_approvals')
+    .select('*')
+    .in('post_id', postIds)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function replyToPostApproval(
+  postId: number,
+  workflowId: number,
+  comentario: string
+): Promise<void> {
+  const token = await getPortalToken(workflowId);
+  if (!token) throw new Error('Crie e compartilhe o portal antes de responder.');
+  const { error } = await supabase.from('post_approvals').insert({
+    post_id: postId,
+    token,
+    action: 'mensagem',
+    comentario,
+    is_workspace_user: true,
+  });
+  if (error) throw error;
+}
+
 /** Calculate deadline info for an active step. */
 export function getDeadlineInfo(etapa: WorkflowEtapa): { diasRestantes: number; horasRestantes: number; estourado: boolean; urgente: boolean } {
   if (etapa.status !== 'ativo' || !etapa.iniciado_em) {
