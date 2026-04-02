@@ -1177,6 +1177,82 @@ export async function reorderWorkflowPosts(updates: { id: number; ordem: number 
   );
 }
 
+export async function createPropertyDefinition(
+  templateId: number,
+  payload: Omit<TemplatePropertyDefinition, 'id' | 'template_id' | 'conta_id' | 'created_at'>
+): Promise<TemplatePropertyDefinition> {
+  const conta_id = await getContaId();
+  const { data, error } = await supabase
+    .from('template_property_definitions')
+    .insert({ ...payload, template_id: templateId, conta_id })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updatePropertyDefinition(
+  id: number,
+  payload: Partial<Omit<TemplatePropertyDefinition, 'id' | 'template_id' | 'conta_id' | 'created_at'>>
+): Promise<TemplatePropertyDefinition> {
+  const { data, error } = await supabase
+    .from('template_property_definitions')
+    .update(payload)
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deletePropertyDefinition(id: number): Promise<void> {
+  const { error } = await supabase
+    .from('template_property_definitions')
+    .delete()
+    .eq('id', id);
+  if (error) throw error;
+}
+
+export async function upsertPostPropertyValue(
+  postId: number,
+  definitionId: number,
+  value: unknown
+): Promise<void> {
+  const { error } = await supabase
+    .from('post_property_values')
+    .upsert(
+      { post_id: postId, property_definition_id: definitionId, value, updated_at: new Date().toISOString() },
+      { onConflict: 'post_id,property_definition_id' }
+    );
+  if (error) throw error;
+}
+
+export async function createWorkflowSelectOption(
+  workflowId: number,
+  definitionId: number,
+  label: string,
+  color: string
+): Promise<WorkflowSelectOption> {
+  const conta_id = await getContaId();
+  const { data, error } = await supabase
+    .from('workflow_select_options')
+    .insert({ workflow_id: workflowId, property_definition_id: definitionId, label, color, conta_id })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function getWorkflowSelectOptions(workflowId: number, definitionId: number): Promise<WorkflowSelectOption[]> {
+  const { data, error } = await supabase
+    .from('workflow_select_options')
+    .select('*')
+    .eq('workflow_id', workflowId)
+    .eq('property_definition_id', definitionId);
+  if (error) throw error;
+  return data || [];
+}
+
 /** Batch-send all internally-approved posts to the client */
 export async function sendPostsToCliente(workflowId: number): Promise<void> {
   const { error } = await supabase
