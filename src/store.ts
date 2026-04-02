@@ -1120,17 +1120,19 @@ export async function getWorkflowPostsWithProperties(workflowId: number): Promis
     .eq('workflow_id', workflowId)
     .order('ordem', { ascending: true });
   if (error) throw error;
-  return (data || []).map((post: any) => ({
-    ...post,
-    property_values: (post.post_property_values || []).map((pv: any) => ({
-      id: pv.id,
-      post_id: post.id,
-      property_definition_id: pv.property_definition_id,
-      value: pv.value,
-      definition: pv.template_property_definitions,
-    })),
-    post_property_values: undefined,
-  }));
+  return (data || []).map((post: any) => {
+    const { post_property_values: rawPvs, ...rest } = post;
+    return {
+      ...rest,
+      property_values: (rawPvs || []).map((pv: any) => ({
+        id: pv.id,
+        post_id: post.id,
+        property_definition_id: pv.property_definition_id,
+        value: pv.value,
+        definition: pv.template_property_definitions,
+      })),
+    };
+  });
 }
 
 export async function addWorkflowPost(
