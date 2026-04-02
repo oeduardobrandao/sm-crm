@@ -87,9 +87,24 @@ export function PropertyDefinitionPanel({ templateId, definition, onSave, onClos
     setOptions(prev => prev.filter(o => o.id !== id));
   };
 
+  const handleTypeChange = (type: PropertyType) => {
+    setSelectedType(type);
+    if (type === 'status' && options.length === 0) {
+      setOptions([
+        { id: crypto.randomUUID(), label: 'Não iniciado', color: '#94a3b8' },
+        { id: crypto.randomUUID(), label: 'Em andamento', color: '#3b82f6' },
+        { id: crypto.randomUUID(), label: 'Concluído', color: '#22c55e' },
+      ]);
+    }
+  };
+
   const handleSave = async () => {
     const trimmedName = name.trim();
     if (!trimmedName) { toast.error('Nome da propriedade é obrigatório.'); return; }
+    if ((selectedType === 'select' || selectedType === 'multiselect' || selectedType === 'status') && options.length === 0) {
+      toast.error('Adicione pelo menos uma opção.');
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
@@ -97,7 +112,7 @@ export function PropertyDefinitionPanel({ templateId, definition, onSave, onClos
         type: selectedType,
         config: buildConfig(),
         portal_visible: portalVisible,
-        display_order: definition?.display_order ?? 999,
+        display_order: definition?.display_order ?? Date.now(),
       };
       if (isEditing) {
         await updatePropertyDefinition(definition!.id!, payload);
@@ -145,7 +160,7 @@ export function PropertyDefinitionPanel({ templateId, definition, onSave, onClos
             {TYPE_ITEMS.map(item => (
               <button
                 key={item.type}
-                onClick={() => setSelectedType(item.type)}
+                onClick={() => handleTypeChange(item.type)}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 8px',
                   border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: '0.82rem', textAlign: 'left',
