@@ -4829,3 +4829,112 @@ body.role-agent input[name="valor_total"] {
   border-color: var(--primary-color);
 }
 
+
+/* ===== Tablet Sidebar Drawer (768–1100px) ===== */
+
+/* Top bar — hidden by default, shown on tablet */
+.tablet-top-bar {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 48px;
+  z-index: 150;
+  align-items: center;
+  padding: 0 1rem;
+  gap: 0.75rem;
+  background: var(--surface-main);
+  border-bottom: 1px solid var(--border-color);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="dark"] .tablet-top-bar {
+  background: var(--sidebar-bg);
+}
+
+.tablet-top-bar-logo {
+  height: 16px;
+  width: auto;
+  object-fit: contain;
+  opacity: 0.85;
+}
+
+.tablet-top-bar-logo.logo-light { display: inline; }
+.tablet-top-bar-logo.logo-dark  { display: none; }
+[data-theme="dark"] .tablet-top-bar-logo.logo-light { display: none; }
+[data-theme="dark"] .tablet-top-bar-logo.logo-dark  { display: inline; }
+
+.tablet-hamburger {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  color: var(--text-main);
+  transition: background var(--transition);
+}
+
+.tablet-hamburger:hover {
+  background: var(--surface-hover);
+}
+
+/* Drawer backdrop */
+.tablet-drawer-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 199;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.tablet-drawer-backdrop.visible {
+  opacity: 1;
+}
+
+/* Sidebar in drawer mode */
+.sidebar--drawer {
+  transform: translateX(-100%);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 200;
+}
+
+.sidebar--drawer.sidebar--open {
+  transform: translateX(0);
+}
+
+@media (min-width: 768px) and (max-width: 1100px) {
+  /* Hide desktop sidebar and mobile bottom nav */
+  .sidebar {
+    display: flex !important; /* override the <900px display:none */
+  }
+
+  .mobile-nav {
+    display: none !important;
+  }
+
+  /* Show tablet top bar */
+  .tablet-top-bar {
+    display: flex;
+  }
+
+  /* Show backdrop when open */
+  .tablet-drawer-backdrop {
+    display: block;
+  }
+
+  /* Full-width content, offset for top bar */
+  .main-content {
+    margin-left: 0 !important;
+    padding-top: calc(48px + 1.25rem) !important;
+  }
+}
