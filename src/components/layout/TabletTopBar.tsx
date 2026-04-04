@@ -1,8 +1,9 @@
 interface TabletTopBarProps {
   onHamburgerClick: () => void;
+  drawerOpen: boolean;
 }
 
-export default function TabletTopBar({ onHamburgerClick }: TabletTopBarProps) {
+export default function TabletTopBar({ onHamburgerClick, drawerOpen }: TabletTopBarProps) {
   return (
     <div className="tablet-top-bar">
       <img src="/logo-black.svg" className="tablet-top-bar-logo logo-light" alt="Logo" />
@@ -10,10 +11,11 @@ export default function TabletTopBar({ onHamburgerClick }: TabletTopBarProps) {
       <button
         className="tablet-hamburger"
         onClick={onHamburgerClick}
-        aria-label="Abrir menu"
-        aria-expanded={false}
+        aria-label={drawerOpen ? 'Fechar menu' : 'Abrir menu'}
+        aria-expanded={drawerOpen}
+        aria-controls="sidebar"
       >
-        <i className="ph ph-list" style={{ fontSize: '1.4rem' }} />
+        <i className={`ph ${drawerOpen ? 'ph-x' : 'ph-list'}`} style={{ fontSize: '1.4rem' }} />
       </button>
     </div>
   );

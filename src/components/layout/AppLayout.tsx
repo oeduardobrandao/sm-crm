@@ -41,7 +41,10 @@ export default function AppLayout() {
   return (
     <div className="app-container">
       {isTablet && (
-        <TabletTopBar onHamburgerClick={() => setDrawerOpen(true)} />
+        <TabletTopBar
+          onHamburgerClick={() => setDrawerOpen(v => !v)}
+          drawerOpen={drawerOpen}
+        />
       )}
 
       <Sidebar
