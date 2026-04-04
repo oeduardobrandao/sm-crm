@@ -57,7 +57,13 @@ function getNavGroups(role: string): NavGroup[] {
     .filter(g => g.items.length > 0);
 }
 
-export default function Sidebar() {
+interface SidebarProps {
+  isDrawer?: boolean;
+  isOpen?: boolean;
+  onClose?: () => void;
+}
+
+export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: SidebarProps) {
   const { user, profile, role, signOut } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -91,6 +97,15 @@ export default function Sidebar() {
       });
   }, [user?.id]);
 
+  useEffect(() => {
+    if (!isDrawer || !isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose?.();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isDrawer, isOpen, onClose]);
+
   const toggleTheme = () => {
     const next = isDark ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', next === 'dark' ? 'dark' : '');
@@ -107,6 +122,7 @@ export default function Sidebar() {
 
   const handleNavClick = (route: string) => {
     navigate(route);
+    if (isDrawer) onClose?.();
   };
 
   const handleWorkspaceSwitch = async (workspaceId: string) => {
@@ -128,7 +144,10 @@ export default function Sidebar() {
   const bottomGroups = navGroups.filter(g => g.isBottom);
 
   return (
-    <nav className="sidebar" id="sidebar">
+    <nav
+      className={`sidebar${isDrawer ? ' sidebar--drawer' : ''}${isDrawer && isOpen ? ' sidebar--open' : ''}`}
+      id="sidebar"
+    >
       <div className="sidebar-wrapper">
         <div className="logo-container" style={{ height: 64, display: 'flex', alignItems: 'center', justifyContent: 'flex-start', paddingLeft: '1.25rem', width: '100%', marginBottom: '1.5rem', marginTop: '1rem' }}>
           <a href="#" onClick={(e) => { e.preventDefault(); navigate('/dashboard'); }} style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}>
