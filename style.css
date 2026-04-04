@@ -4895,10 +4895,12 @@ body.role-agent input[name="valor_total"] {
   z-index: 199;
   opacity: 0;
   transition: opacity 0.3s ease;
+  pointer-events: none;
 }
 
 .tablet-drawer-backdrop.visible {
   opacity: 1;
+  pointer-events: auto;
 }
 
 /* Sidebar in drawer mode */
@@ -4920,6 +4922,10 @@ body.role-agent input[name="valor_total"] {
 
   .mobile-nav {
     display: none !important;
+  }
+
+  .app-logo-bar {
+    display: none;
   }
 
   /* Show tablet top bar */
