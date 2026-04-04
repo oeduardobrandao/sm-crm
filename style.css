@@ -1477,9 +1477,6 @@ select.form-input option {
   background: rgba(255,255,255,0.1);
   color: #ffffff;
 }
-.sidebar-user:hover .sidebar-label {
-  color: #ffffff;
-}
 .sidebar-user .user-name { display: none; }
 .sidebar-user i.fa-chevron-up { display: none; }
 
