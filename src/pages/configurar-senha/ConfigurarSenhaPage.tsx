@@ -180,8 +180,8 @@ export default function ConfigurarSenhaPage() {
 
               {isInvite && (
                 <p style={{ textAlign: 'center', fontSize: 12, color: '#888780', lineHeight: 1.6 }}>
-                  Ao aceitar, você concorda com os <a href="#/politica-de-privacidade" style={{ color: '#1a3d2b' }}>Termos de Uso</a> e a{' '}
-                  <a href="#/politica-de-privacidade" style={{ color: '#1a3d2b' }}>Política de Privacidade</a> do Mesaas.
+                  Ao aceitar, você concorda com os <a href="/politica-de-privacidade" style={{ color: '#1a3d2b' }}>Termos de Uso</a> e a{' '}
+                  <a href="/politica-de-privacidade" style={{ color: '#1a3d2b' }}>Política de Privacidade</a> do Mesaas.
                 </p>
               )}
             </form>
