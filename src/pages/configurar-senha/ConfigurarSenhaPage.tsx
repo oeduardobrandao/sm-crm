@@ -40,10 +40,15 @@ export default function ConfigurarSenhaPage() {
   const [tokenError, setTokenError] = useState(false);
 
   useEffect(() => {
-    const timeout = setTimeout(() => setTokenError(true), 8000);
+    const sessionReceived = { current: false };
+    const mounted = { current: true };
+    const timeout = setTimeout(() => {
+      if (!sessionReceived.current) setTokenError(true);
+    }, 8000);
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') {
+        sessionReceived.current = true;
         clearTimeout(timeout);
         if (!session) return;
         const userEmail = session.user.email || '';
@@ -58,7 +63,7 @@ export default function ConfigurarSenhaPage() {
             .eq('conta_id', contaId)
             .eq('role', 'owner')
             .maybeSingle();
-          if (data) {
+          if (data && mounted.current) {
             setWorkspaceName(data.empresa || '');
             setInviterName(data.nome || '');
             const initials = (data.nome || '')
@@ -74,6 +79,7 @@ export default function ConfigurarSenhaPage() {
     });
 
     return () => {
+      mounted.current = false;
       clearTimeout(timeout);
       subscription.unsubscribe();
     };
@@ -159,12 +165,13 @@ export default function ConfigurarSenhaPage() {
             <p style={{ fontSize: 14, color: '#888780', lineHeight: 1.6, margin: '0 0 1.5rem' }}>
               Este link é inválido ou já expirou. Solicite um novo link de redefinição de senha.
             </p>
-            <button
+            <Button
               onClick={() => navigate('/login')}
-              style={{ height: 46, background: '#1a3d2b', color: '#fff', border: 'none', borderRadius: 8, padding: '0 2rem', fontSize: 15, fontWeight: 600, cursor: 'pointer', width: '100%' }}
+              className="w-full"
+              style={{ height: 46, background: '#1a3d2b', borderColor: '#1a3d2b', fontSize: 15, fontWeight: 600 }}
             >
               Solicitar novo link
-            </button>
+            </Button>
           </div>
         ) : !success ? (
           <div style={{ padding: '2rem' }}>
