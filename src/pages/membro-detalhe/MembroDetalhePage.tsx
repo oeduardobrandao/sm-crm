@@ -72,12 +72,17 @@ export default function MembroDetalhePage() {
   };
 
   const handleSave = async () => {
+    const diaPag = fDiaPag ? parseInt(fDiaPag, 10) : undefined;
+    if (diaPag !== undefined && (isNaN(diaPag) || diaPag < 1 || diaPag > 31)) {
+      toast.error('Dia de pagamento deve ser entre 1 e 31.');
+      return;
+    }
     setSaving(true);
     try {
       await updateMembro(Number(id), {
         nome: fNome, cargo: fCargo, tipo: fTipo,
         custo_mensal: fCusto ? Number(fCusto) : null,
-        data_pagamento: fDiaPag ? Number(fDiaPag) : undefined,
+        data_pagamento: diaPag,
       } as Partial<Omit<Membro, 'id' | 'user_id' | 'conta_id'>>);
       toast.success('Membro atualizado');
       qc.invalidateQueries({ queryKey: ['membros'] });

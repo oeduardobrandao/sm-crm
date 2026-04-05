@@ -614,7 +614,7 @@ function AnalyticsContent({
       <header className="header animate-up">
         <div className="header-title">
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            {account.profile_picture_url && (
+            {account.profile_picture_url && account.profile_picture_url.startsWith('https://') && (
               <img src={account.profile_picture_url} alt="" style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover' }} />
             )}
             <div>

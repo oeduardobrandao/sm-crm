@@ -75,7 +75,7 @@ export default function App() {
               <Route path="/analytics-fluxos" element={<AnalyticsFluxosPage />} />
             </Route>
 
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            <Route path="*" element={<Navigate to="/login" replace />} />
           </Routes>
         </Suspense>
       </AuthProvider>

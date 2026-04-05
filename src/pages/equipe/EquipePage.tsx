@@ -79,13 +79,18 @@ export default function EquipePage() {
 
   const handleSave = async () => {
     if (!fNome || !fCargo) return;
+    const diaPag = fDiaPag ? parseInt(fDiaPag, 10) : undefined;
+    if (diaPag !== undefined && (isNaN(diaPag) || diaPag < 1 || diaPag > 31)) {
+      toast.error('Dia de pagamento deve ser entre 1 e 31.');
+      return;
+    }
     setSaving(true);
     try {
       const payload: Omit<Membro, 'id' | 'user_id' | 'conta_id'> = {
         nome: fNome, cargo: fCargo, tipo: fTipo,
         custo_mensal: fCusto ? Number(fCusto) : null,
         avatar_url: '',
-        data_pagamento: fDiaPag ? Number(fDiaPag) : undefined,
+        data_pagamento: diaPag,
       };
       if (editing?.id) {
         await updateMembro(editing.id, payload);

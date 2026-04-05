@@ -273,13 +273,18 @@ export default function ClienteDetalhePage() {
 
   const handleEditSubmit = async () => {
     if (!fNome) { toast.error('Nome é obrigatório.'); return; }
+    const diaPag = fDiaPag ? parseInt(fDiaPag, 10) : undefined;
+    if (diaPag !== undefined && (isNaN(diaPag) || diaPag < 1 || diaPag > 31)) {
+      toast.error('Dia de pagamento deve ser entre 1 e 31.');
+      return;
+    }
     setEditLoading(true);
     try {
       await updateCliente(clienteId, {
         nome: fNome, email: fEmail, telefone: fTelefone, plano: fPlano,
         valor_mensal: fValor ? Number(fValor) : undefined,
         notion_page_url: fNotion,
-        data_pagamento: fDiaPag ? Number(fDiaPag) : undefined,
+        data_pagamento: diaPag,
         status: fStatus, especialidade: fEspecialidade,
         data_aniversario: fAniMes && fAniDia ? `${fAniMes}-${fAniDia}` : null,
       });

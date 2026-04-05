@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,6 +12,8 @@ type TabKey = 'login' | 'register' | 'forgot';
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const from = (location.state as { from?: Location })?.from?.pathname ?? '/dashboard';
   const [activeTab, setActiveTab] = useState<TabKey>('login');
   const [loading, setLoading] = useState(false);
 
@@ -23,6 +25,7 @@ export default function LoginPage() {
   const [regPassword, setRegPassword] = useState('');
   const [regConfirm, setRegConfirm] = useState('');
   const [forgotEmail, setForgotEmail] = useState('');
+  const [registerSuccess, setRegisterSuccess] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,7 +36,7 @@ export default function LoginPage() {
       toast.error(error.message === 'Invalid login credentials' ? 'E-mail ou senha incorretos.' : error.message);
     } else {
       toast.success('Login realizado com sucesso!');
-      navigate('/dashboard');
+      navigate(from, { replace: true });
     }
   };
 
@@ -49,7 +52,12 @@ export default function LoginPage() {
     if (error) {
       toast.error(error.message);
     } else {
-      toast.success('Conta criada! Verifique seu e-mail para confirmar o cadastro.');
+      setRegisterSuccess(true);
+      setRegNome('');
+      setRegEmpresa('');
+      setRegEmail('');
+      setRegPassword('');
+      setRegConfirm('');
     }
   };
 
@@ -87,7 +95,7 @@ export default function LoginPage() {
               <button
                 key={t.key}
                 className={`auth-tab${activeTab === t.key ? ' active' : ''}`}
-                onClick={() => setActiveTab(t.key as TabKey)}
+                onClick={() => { setActiveTab(t.key as TabKey); setRegisterSuccess(false); }}
               >
                 {t.label}
               </button>
@@ -134,32 +142,45 @@ export default function LoginPage() {
         )}
 
         {activeTab === 'register' && (
-          <form onSubmit={handleRegister} className="auth-form">
-            <div className="space-y-1">
-              <Label htmlFor="reg-nome">Nome Completo</Label>
-              <Input id="reg-nome" placeholder="Ana Dos Santos" value={regNome} onChange={e => setRegNome(e.target.value)} required />
+          registerSuccess ? (
+            <div className="auth-form" style={{ textAlign: 'center' }}>
+              <p style={{ fontSize: '2rem', marginBottom: '0.75rem' }}>📧</p>
+              <p style={{ fontWeight: 600, marginBottom: '0.5rem' }}>Verifique seu e-mail</p>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1.25rem' }}>
+                Enviamos um link de confirmação. Clique nele para ativar sua conta.
+              </p>
+              <Button className="btn-primary auth-submit w-full" onClick={() => { setRegisterSuccess(false); setActiveTab('login'); }}>
+                Ir para o login
+              </Button>
             </div>
-            <div className="space-y-1">
-              <Label htmlFor="reg-empresa">Nome da Empresa</Label>
-              <Input id="reg-empresa" placeholder="Agência Digital" value={regEmpresa} onChange={e => setRegEmpresa(e.target.value)} />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="reg-email">E-mail</Label>
-              <Input id="reg-email" type="email" placeholder="seu@email.com" autoComplete="email" value={regEmail} onChange={e => setRegEmail(e.target.value)} required />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="reg-password">Senha</Label>
-              <PasswordInput id="reg-password" placeholder="Mínimo 8 caracteres" autoComplete="new-password" minLength={8} value={regPassword} onChange={e => setRegPassword(e.target.value)} required />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="reg-confirm">Confirmar Senha</Label>
-              <PasswordInput id="reg-confirm" placeholder="Repita a senha" autoComplete="new-password" minLength={8} value={regConfirm} onChange={e => setRegConfirm(e.target.value)} required />
-            </div>
-            <Button type="submit" disabled={loading} className="btn-primary auth-submit w-full">
-              {loading && <Spinner size="sm" />}
-              Criar Conta
-            </Button>
-          </form>
+          ) : (
+            <form onSubmit={handleRegister} className="auth-form">
+              <div className="space-y-1">
+                <Label htmlFor="reg-nome">Nome Completo</Label>
+                <Input id="reg-nome" placeholder="Ana Dos Santos" value={regNome} onChange={e => setRegNome(e.target.value)} required />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="reg-empresa">Nome da Empresa</Label>
+                <Input id="reg-empresa" placeholder="Agência Digital" value={regEmpresa} onChange={e => setRegEmpresa(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="reg-email">E-mail</Label>
+                <Input id="reg-email" type="email" placeholder="seu@email.com" autoComplete="email" value={regEmail} onChange={e => setRegEmail(e.target.value)} required />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="reg-password">Senha</Label>
+                <PasswordInput id="reg-password" placeholder="Mínimo 8 caracteres" autoComplete="new-password" minLength={8} value={regPassword} onChange={e => setRegPassword(e.target.value)} required />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="reg-confirm">Confirmar Senha</Label>
+                <PasswordInput id="reg-confirm" placeholder="Repita a senha" autoComplete="new-password" minLength={8} value={regConfirm} onChange={e => setRegConfirm(e.target.value)} required />
+              </div>
+              <Button type="submit" disabled={loading} className="btn-primary auth-submit w-full">
+                {loading && <Spinner size="sm" />}
+                Criar Conta
+              </Button>
+            </form>
+          )
         )}
 
         {activeTab === 'forgot' && (

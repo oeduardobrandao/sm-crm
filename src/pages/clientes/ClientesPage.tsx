@@ -87,13 +87,18 @@ export default function ClientesPage() {
 
   const handleSave = async () => {
     if (!fNome) return;
+    const diaPag = fDiaPag ? parseInt(fDiaPag, 10) : undefined;
+    if (diaPag !== undefined && (isNaN(diaPag) || diaPag < 1 || diaPag > 31)) {
+      toast.error('Dia de pagamento deve ser entre 1 e 31.');
+      return;
+    }
     setSaving(true);
     try {
       if (editing?.id) {
         await updateCliente(editing.id, {
           nome: fNome, email: fEmail, telefone: fTelefone, plano: fPlano,
           valor_mensal: Number(fValor), notion_page_url: fNotion,
-          data_pagamento: fDiaPag ? Number(fDiaPag) : undefined, status: fStatus,
+          data_pagamento: diaPag, status: fStatus,
         });
         toast.success('Cliente atualizado');
       } else {
@@ -101,7 +106,7 @@ export default function ClientesPage() {
         await addCliente({
           nome: fNome, email: fEmail, telefone: fTelefone, plano: fPlano,
           valor_mensal: Number(fValor), notion_page_url: fNotion,
-          data_pagamento: fDiaPag ? Number(fDiaPag) : undefined,
+          data_pagamento: diaPag,
           sigla: getInitials(fNome), cor: randomColor, status: 'ativo',
         });
         toast.success('Cliente adicionado');
