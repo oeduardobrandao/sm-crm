@@ -37,30 +37,46 @@ export default function ConfigurarSenhaPage() {
   const [inviterName, setInviterName] = useState('');
   const [workspaceName, setWorkspaceName] = useState('');
   const [inviterInitials, setInviterInitials] = useState('');
+  const [tokenError, setTokenError] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (!session) return;
-      const userEmail = session.user.email || '';
-      const contaId = session.user.user_metadata?.conta_id || '';
-      setEmail(userEmail);
-      setIsInvite(!!contaId);
+    const timeout = setTimeout(() => setTokenError(true), 8000);
 
-      if (contaId) {
-        const { data } = await supabase
-          .from('profiles')
-          .select('nome, empresa')
-          .eq('conta_id', contaId)
-          .eq('role', 'owner')
-          .maybeSingle();
-        if (data) {
-          setWorkspaceName(data.empresa || '');
-          setInviterName(data.nome || '');
-          const initials = (data.nome || '').split(' ').filter(Boolean).slice(0, 2).map((w: string) => w[0].toUpperCase()).join('');
-          setInviterInitials(initials);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') {
+        clearTimeout(timeout);
+        if (!session) return;
+        const userEmail = session.user.email || '';
+        const contaId = session.user.user_metadata?.conta_id || '';
+        setEmail(userEmail);
+        setIsInvite(!!contaId);
+
+        if (contaId) {
+          const { data } = await supabase
+            .from('profiles')
+            .select('nome, empresa')
+            .eq('conta_id', contaId)
+            .eq('role', 'owner')
+            .maybeSingle();
+          if (data) {
+            setWorkspaceName(data.empresa || '');
+            setInviterName(data.nome || '');
+            const initials = (data.nome || '')
+              .split(' ')
+              .filter(Boolean)
+              .slice(0, 2)
+              .map((w: string) => w[0].toUpperCase())
+              .join('');
+            setInviterInitials(initials);
+          }
         }
       }
     });
+
+    return () => {
+      clearTimeout(timeout);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -134,7 +150,23 @@ export default function ConfigurarSenhaPage() {
           )}
         </div>
 
-        {!success ? (
+        {tokenError ? (
+          <div style={{ padding: '2rem', textAlign: 'center' }}>
+            <div style={{ width: 60, height: 60, background: '#fdecea', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.25rem' }}>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke="#c0392b" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </div>
+            <h2 style={{ fontSize: 18, fontWeight: 600, color: '#1a3d2b', margin: '0 0 0.5rem' }}>Link inválido ou expirado</h2>
+            <p style={{ fontSize: 14, color: '#888780', lineHeight: 1.6, margin: '0 0 1.5rem' }}>
+              Este link é inválido ou já expirou. Solicite um novo link de redefinição de senha.
+            </p>
+            <button
+              onClick={() => navigate('/login')}
+              style={{ height: 46, background: '#1a3d2b', color: '#fff', border: 'none', borderRadius: 8, padding: '0 2rem', fontSize: 15, fontWeight: 600, cursor: 'pointer', width: '100%' }}
+            >
+              Solicitar novo link
+            </button>
+          </div>
+        ) : !success ? (
           <div style={{ padding: '2rem' }}>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-1">
