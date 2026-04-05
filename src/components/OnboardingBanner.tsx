@@ -50,8 +50,8 @@ export function OnboardingBanner({ clientes, leads, membros, portfolioAccounts, 
   const firstIncompleteIndex = steps.findIndex(s => !s.done);
 
   const titles: Record<number, { text: string; emoji: string }> = {
-    0: { text: 'Bem-vindo ao Mesaas!', emoji: '👋' },
-    1: { text: 'Bem-vindo ao Mesaas!', emoji: '👋' },
+    0: { text: 'Bem-vindo ao CRM Fluxo!', emoji: '👋' },
+    1: { text: 'Bem-vindo ao CRM Fluxo!', emoji: '👋' },
     2: { text: 'Você está indo bem!', emoji: '🎯' },
     3: { text: 'Você está indo bem!', emoji: '🎯' },
     4: { text: 'Quase lá!', emoji: '🎯' },
