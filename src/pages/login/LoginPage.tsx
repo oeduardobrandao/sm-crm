@@ -21,6 +21,7 @@ export default function LoginPage() {
   const [regEmpresa, setRegEmpresa] = useState('');
   const [regEmail, setRegEmail] = useState('');
   const [regPassword, setRegPassword] = useState('');
+  const [regConfirm, setRegConfirm] = useState('');
   const [forgotEmail, setForgotEmail] = useState('');
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -38,6 +39,10 @@ export default function LoginPage() {
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (regPassword !== regConfirm) {
+      toast.error('As senhas não coincidem.');
+      return;
+    }
     setLoading(true);
     const { error } = await signUp(regEmail, regPassword, { nome: regNome, empresa: regEmpresa });
     setLoading(false);
@@ -145,6 +150,10 @@ export default function LoginPage() {
             <div className="space-y-1">
               <Label htmlFor="reg-password">Senha</Label>
               <PasswordInput id="reg-password" placeholder="Mínimo 8 caracteres" autoComplete="new-password" minLength={8} value={regPassword} onChange={e => setRegPassword(e.target.value)} required />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="reg-confirm">Confirmar Senha</Label>
+              <PasswordInput id="reg-confirm" placeholder="Repita a senha" autoComplete="new-password" minLength={8} value={regConfirm} onChange={e => setRegConfirm(e.target.value)} required />
             </div>
             <Button type="submit" disabled={loading} className="btn-primary auth-submit w-full">
               {loading && <Spinner size="sm" />}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Check, Circle, ExternalLink, FolderOpen, FileText, ThumbsUp, MessageSquare, Send } from 'lucide-react';
+import { Check, Circle, ExternalLink, FolderOpen, FileText, ThumbsUp, MessageSquare, Send, ChevronDown, ChevronRight } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { PortalPropertyTable } from './PortalPropertyTable';
@@ -104,6 +104,17 @@ export default function PortalPage() {
   const [comentario, setComentario] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [approvalResult, setApprovalResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Post accordion state
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+
+  const togglePost = (id: number) => {
+    setExpandedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   // Per-post approval state
   const [postComentarios, setPostComentarios] = useState<Record<number, string>>({});
@@ -370,6 +381,158 @@ export default function PortalPage() {
           </div>
         </section>
 
+        {/* Posts for client review */}
+        {data.posts && data.posts.length > 0 && (
+          <section className="portal-section card">
+            <h2 className="portal-section-title">
+              <FileText className="h-5 w-5" /> Conteúdos para Aprovação
+            </h2>
+            <p className="portal-section-subtitle">
+              Revise cada post e aprove ou solicite correções.
+            </p>
+
+            <div className="portal-posts-list">
+              {data.posts.map(post => {
+                const postThread = (data.postApprovals || []).filter(a => a.post_id === post.id);
+                const isApproved = post.status === 'aprovado_cliente';
+                const isCorrection = post.status === 'correcao_cliente';
+                const result = postResults[post.id];
+
+                return (
+                  <div key={post.id} className={`portal-post-card${isApproved ? ' portal-post-card--approved' : isCorrection ? ' portal-post-card--correction' : ''}`}>
+                    {/* Accordion header — always visible */}
+                    <div className="portal-post-card-header" onClick={() => togglePost(post.id)} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                      <span className={`portal-post-status-badge ${isApproved ? 'approved' : isCorrection ? 'correction' : 'pending'}`} style={{ marginBottom: '0.35rem' }}>
+                        {isApproved ? '✅ Aprovado' : isCorrection ? '✏️ Correção' : '⏳ Aguardando'}
+                      </span>
+                      <div className="portal-post-card-meta">
+                        {expandedIds.has(post.id)
+                          ? <ChevronDown className="h-4 w-4" style={{ flexShrink: 0 }} />
+                          : <ChevronRight className="h-4 w-4" style={{ flexShrink: 0 }} />
+                        }
+                        <span className="portal-post-tipo">{post.tipo.charAt(0).toUpperCase() + post.tipo.slice(1)}</span>
+                        <span className="portal-post-titulo">{post.titulo}</span>
+                      </div>
+                    </div>
+
+                    {/* Accordion body — visible only when expanded */}
+                    {expandedIds.has(post.id) && (
+                      <>
+                        {/* Custom properties (portal-visible only) */}
+                        {(data.propertyDefinitions ?? []).length > 0 && (
+                          <PortalPropertyTable
+                            definitions={data.propertyDefinitions ?? []}
+                            values={(data.propertyValues ?? []).filter((v: any) => v.post_id === post.id)}
+                            selectOptions={data.selectOptions ?? []}
+                          />
+                        )}
+
+                        {post.conteudo_plain && (
+                          <p className="portal-post-content">{post.conteudo_plain}</p>
+                        )}
+
+                        {postThread.length > 0 && (
+                          <div className="portal-post-thread">
+                            {postThread.map(a => {
+                              const isTeam = a.is_workspace_user;
+                              return (
+                                <div key={a.id} style={{
+                                  background: isTeam ? 'var(--primary-color)' : 'var(--card-bg)',
+                                  border: `1px solid ${isTeam ? 'var(--primary-color)' : 'var(--border-color)'}`,
+                                  padding: '0.65rem 0.75rem',
+                                  borderRadius: '8px',
+                                  marginLeft: isTeam ? '2rem' : '0',
+                                  marginRight: isTeam ? '0' : '2rem',
+                                }}>
+                                  <div style={{ fontSize: '0.72rem', fontWeight: 600, color: isTeam ? '#111' : (a.action === 'correcao' ? '#ef4444' : 'var(--primary-color)'), marginBottom: '0.2rem' }}>
+                                    {isTeam ? 'Equipe' : a.action === 'correcao' ? 'Correção solicitada' : 'Aprovado'} &bull; {new Date(a.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                  </div>
+                                  {a.comentario && <p style={{ fontSize: '0.875rem', color: isTeam ? '#111' : 'var(--text-color)', margin: 0, whiteSpace: 'pre-wrap' }}>{a.comentario}</p>}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {result && (
+                          <div className={`portal-approval-result ${result.type}`} style={{ marginTop: '0.5rem' }}>
+                            {result.message}
+                          </div>
+                        )}
+
+                        {!isApproved && (
+                          <div className="portal-post-actions">
+                            <div className="portal-approval-comment" style={{ marginBottom: '0.5rem' }}>
+                              <textarea
+                                value={postComentarios[post.id] || ''}
+                                onChange={e => setPostComentarios(prev => ({ ...prev, [post.id]: e.target.value }))}
+                                placeholder="Comentários ou correções (opcional para aprovação)…"
+                                rows={2}
+                                disabled={postSubmitting === post.id}
+                              />
+                            </div>
+                            <div className="portal-approval-actions">
+                              <button
+                                className="portal-approval-btn portal-approval-btn--approve"
+                                onClick={() => handlePostApprovalAction(post.id, 'aprovado')}
+                                disabled={postSubmitting === post.id}
+                              >
+                                {postSubmitting === post.id ? <Spinner size="sm" /> : <ThumbsUp className="h-4 w-4" />}
+                                Aprovar
+                              </button>
+                              <button
+                                className="portal-approval-btn portal-approval-btn--correction"
+                                onClick={() => handlePostApprovalAction(post.id, 'correcao')}
+                                disabled={postSubmitting === post.id || !(postComentarios[post.id] || '').trim()}
+                              >
+                                {postSubmitting === post.id ? <Spinner size="sm" /> : <Send className="h-4 w-4" />}
+                                Enviar Correções
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* Links */}
+        {(workflow.link_drive || workflow.link_notion) && (
+          <section className="portal-section card">
+            <h2 className="portal-section-title">
+              <ExternalLink className="h-5 w-5" /> Links do Projeto
+            </h2>
+            <div className="portal-links">
+              {workflow.link_drive && (
+                <a
+                  href={workflow.link_drive}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="portal-link-btn"
+                >
+                  <FolderOpen className="h-5 w-5" />
+                  <span>Abrir Google Drive</span>
+                </a>
+              )}
+              {workflow.link_notion && (
+                <a
+                  href={workflow.link_notion}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="portal-link-btn"
+                >
+                  <FileText className="h-5 w-5" />
+                  <span>Abrir Notion</span>
+                </a>
+              )}
+            </div>
+          </section>
+        )}
+
         {/* Client Approval Section */}
         {approvalEtapa && (
           <section className="portal-section portal-approval card">
@@ -418,148 +581,6 @@ export default function PortalPage() {
                 {submitting ? <Spinner size="sm" /> : <Send className="h-4 w-4" />}
                 Enviar Correções
               </button>
-            </div>
-          </section>
-        )}
-
-        {/* Posts for client review */}
-        {data.posts && data.posts.length > 0 && (
-          <section className="portal-section card">
-            <h2 className="portal-section-title">
-              <FileText className="h-5 w-5" /> Conteúdos para Aprovação
-            </h2>
-            <p className="portal-section-subtitle">
-              Revise cada post e aprove ou solicite correções.
-            </p>
-
-            <div className="portal-posts-list">
-              {data.posts.map(post => {
-                const postThread = (data.postApprovals || []).filter(a => a.post_id === post.id);
-                const isApproved = post.status === 'aprovado_cliente';
-                const isCorrection = post.status === 'correcao_cliente';
-                const result = postResults[post.id];
-
-                return (
-                  <div key={post.id} className={`portal-post-card${isApproved ? ' portal-post-card--approved' : isCorrection ? ' portal-post-card--correction' : ''}`}>
-                    <div className="portal-post-card-header">
-                      <div className="portal-post-card-meta">
-                        <span className="portal-post-tipo">{post.tipo.charAt(0).toUpperCase() + post.tipo.slice(1)}</span>
-                        <span className="portal-post-titulo">{post.titulo}</span>
-                      </div>
-                      <span className={`portal-post-status-badge ${isApproved ? 'approved' : isCorrection ? 'correction' : 'pending'}`}>
-                        {isApproved ? '✅ Aprovado' : isCorrection ? '✏️ Correção' : '⏳ Aguardando'}
-                      </span>
-                    </div>
-
-                    {/* Custom properties (portal-visible only) */}
-                    {(data.propertyDefinitions ?? []).length > 0 && (
-                      <PortalPropertyTable
-                        definitions={data.propertyDefinitions ?? []}
-                        values={(data.propertyValues ?? []).filter((v: any) => v.post_id === post.id)}
-                        selectOptions={data.selectOptions ?? []}
-                      />
-                    )}
-
-                    {post.conteudo_plain && (
-                      <p className="portal-post-content">{post.conteudo_plain}</p>
-                    )}
-
-                    {postThread.length > 0 && (
-                      <div className="portal-post-thread">
-                        {postThread.map(a => {
-                          const isTeam = a.is_workspace_user;
-                          return (
-                            <div key={a.id} style={{
-                              background: isTeam ? 'var(--primary-color)' : 'var(--card-bg)',
-                              border: `1px solid ${isTeam ? 'var(--primary-color)' : 'var(--border-color)'}`,
-                              padding: '0.65rem 0.75rem',
-                              borderRadius: '8px',
-                              marginLeft: isTeam ? '2rem' : '0',
-                              marginRight: isTeam ? '0' : '2rem',
-                            }}>
-                              <div style={{ fontSize: '0.72rem', fontWeight: 600, color: isTeam ? '#111' : (a.action === 'correcao' ? '#ef4444' : 'var(--primary-color)'), marginBottom: '0.2rem' }}>
-                                {isTeam ? 'Equipe' : a.action === 'correcao' ? 'Correção solicitada' : 'Aprovado'} &bull; {new Date(a.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                              </div>
-                              {a.comentario && <p style={{ fontSize: '0.875rem', color: isTeam ? '#111' : 'var(--text-color)', margin: 0, whiteSpace: 'pre-wrap' }}>{a.comentario}</p>}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    {result && (
-                      <div className={`portal-approval-result ${result.type}`} style={{ marginTop: '0.5rem' }}>
-                        {result.message}
-                      </div>
-                    )}
-
-                    {!isApproved && (
-                      <div className="portal-post-actions">
-                        <div className="portal-approval-comment" style={{ marginBottom: '0.5rem' }}>
-                          <textarea
-                            value={postComentarios[post.id] || ''}
-                            onChange={e => setPostComentarios(prev => ({ ...prev, [post.id]: e.target.value }))}
-                            placeholder="Comentários ou correções (opcional para aprovação)…"
-                            rows={2}
-                            disabled={postSubmitting === post.id}
-                          />
-                        </div>
-                        <div className="portal-approval-actions">
-                          <button
-                            className="portal-approval-btn portal-approval-btn--approve"
-                            onClick={() => handlePostApprovalAction(post.id, 'aprovado')}
-                            disabled={postSubmitting === post.id}
-                          >
-                            {postSubmitting === post.id ? <Spinner size="sm" /> : <ThumbsUp className="h-4 w-4" />}
-                            Aprovar
-                          </button>
-                          <button
-                            className="portal-approval-btn portal-approval-btn--correction"
-                            onClick={() => handlePostApprovalAction(post.id, 'correcao')}
-                            disabled={postSubmitting === post.id || !(postComentarios[post.id] || '').trim()}
-                          >
-                            {postSubmitting === post.id ? <Spinner size="sm" /> : <Send className="h-4 w-4" />}
-                            Enviar Correções
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        )}
-
-        {/* Links */}
-        {(workflow.link_drive || workflow.link_notion) && (
-          <section className="portal-section card">
-            <h2 className="portal-section-title">
-              <ExternalLink className="h-5 w-5" /> Links do Projeto
-            </h2>
-            <div className="portal-links">
-              {workflow.link_drive && (
-                <a
-                  href={workflow.link_drive}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="portal-link-btn"
-                >
-                  <FolderOpen className="h-5 w-5" />
-                  <span>Abrir Google Drive</span>
-                </a>
-              )}
-              {workflow.link_notion && (
-                <a
-                  href={workflow.link_notion}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="portal-link-btn"
-                >
-                  <FileText className="h-5 w-5" />
-                  <span>Abrir Notion</span>
-                </a>
-              )}
             </div>
           </section>
         )}

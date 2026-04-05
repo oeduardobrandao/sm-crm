@@ -2,7 +2,7 @@
 // Mesaas - Instagram Overview Card Component
 // =============================================
 import { syncInstagramData, disconnectInstagram } from '../../services/instagram';
-import { showToast, openModal, closeModal } from '../../router';
+import { showToast, openModal, closeModal, escapeHTML, sanitizeUrl } from '../../router';
 import { formatDate } from '../../store';
 
 export function renderInstagramOverviewCard(container: HTMLElement, clientId: number, account: any, onRefresh: () => void) {
@@ -14,10 +14,10 @@ export function renderInstagramOverviewCard(container: HTMLElement, clientId: nu
       </div>
 
       <div style="display: flex; align-items: center; gap: 1.5rem; margin-bottom: 1.5rem;">
-         <img src="${account.profile_picture_url || 'https://ui-avatars.com/api/?name=IG&background=random'}" alt="IG Profile" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 3px solid #E1306C;" />
+         <img src="${account.profile_picture_url ? sanitizeUrl(account.profile_picture_url) : 'https://ui-avatars.com/api/?name=IG&background=random'}" alt="IG Profile" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 3px solid #E1306C;" />
          <div>
             <h3 class="text-xl font-bold tracking-tight text-foreground flex items-center gap-2 mb-1">
-                ${account.username || 'Conta Instagram'}
+                ${escapeHTML(account.username || 'Conta Instagram')}
                 <i class="fa-brands fa-instagram" style="color: #E1306C; font-size: 1.2rem;"></i>
             </h3>
             <p style="color: var(--text-muted); font-size: 0.85rem;">Atualizado em ${(account.last_synced_at || account.updated_at) ? formatDate((account.last_synced_at || account.updated_at).split('T')[0]) : 'agora'}</p>
@@ -91,7 +91,7 @@ export function renderInstagramOverviewCard(container: HTMLElement, clientId: nu
       btnDisconnect.addEventListener('click', () => {
           openModal(
             'Desconectar Instagram',
-            `<p style="color:var(--text-muted);line-height:1.6;">Tem certeza que deseja desconectar <strong>@${account.username || 'esta conta'}</strong> do Instagram?</p>
+            `<p style="color:var(--text-muted);line-height:1.6;">Tem certeza que deseja desconectar <strong>@${escapeHTML(account.username || 'esta conta')}</strong> do Instagram?</p>
              <p style="color:var(--text-muted);font-size:0.85rem;margin-top:0.5rem;">Os dados históricos serão removidos e a sincronização será interrompida.</p>`,
             async () => {
               closeModal();

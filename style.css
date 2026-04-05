@@ -4746,10 +4746,9 @@ body.role-agent input[name="valor_total"] {
 
 .portal-post-card-header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
 }
 
 .portal-post-card-meta {
