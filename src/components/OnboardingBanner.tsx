@@ -1,6 +1,5 @@
 // src/components/OnboardingBanner.tsx
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import type { Cliente, Lead, Membro, Workflow } from '../store';
 import type { PortfolioAccount } from '../services/analytics';
@@ -17,9 +16,11 @@ export function OnboardingBanner({ clientes, leads, membros, portfolioAccounts, 
   const { profile } = useAuth();
   const storageKey = `onboarding_dismissed_${profile?.conta_id ?? 'unknown'}`;
 
-  const [dismissed, setDismissed] = useState<boolean>(() => {
-    return localStorage.getItem(storageKey) === 'true';
-  });
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    setDismissed(localStorage.getItem(storageKey) === 'true');
+  }, [storageKey]);
 
   const steps = [
     { label: 'Conta criada', done: true, to: null },
