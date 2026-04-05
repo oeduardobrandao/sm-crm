@@ -17,11 +17,9 @@ export function OnboardingBanner({ clientes, leads, membros, portfolioAccounts, 
   const { profile } = useAuth();
   const storageKey = `onboarding_dismissed_${profile?.conta_id ?? 'unknown'}`;
 
-  const [dismissed, setDismissed] = useState(false);
-
-  useEffect(() => {
-    setDismissed(localStorage.getItem(storageKey) === 'true');
-  }, [storageKey]);
+  const [dismissed, setDismissed] = useState(
+    () => localStorage.getItem(storageKey) === 'true'
+  );
 
   const steps = [
     { label: 'Conta criada', done: true, to: null },
@@ -46,13 +44,14 @@ export function OnboardingBanner({ clientes, leads, membros, portfolioAccounts, 
     setDismissed(true);
   }
 
+  if (!profile) return null;
   if (dismissed) return null;
 
   const firstIncompleteIndex = steps.findIndex(s => !s.done);
 
   const titles: Record<number, { text: string; emoji: string }> = {
-    0: { text: 'Bem-vindo ao CRM Fluxo!', emoji: '👋' },
-    1: { text: 'Bem-vindo ao CRM Fluxo!', emoji: '👋' },
+    0: { text: 'Bem-vindo ao Mesaas!', emoji: '👋' },
+    1: { text: 'Bem-vindo ao Mesaas!', emoji: '👋' },
     2: { text: 'Você está indo bem!', emoji: '🎯' },
     3: { text: 'Você está indo bem!', emoji: '🎯' },
     4: { text: 'Quase lá!', emoji: '🎯' },
@@ -84,7 +83,7 @@ export function OnboardingBanner({ clientes, leads, membros, portfolioAccounts, 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: '1rem', fontWeight: 700, color: '#fff', marginBottom: 4 }}>
-            {emoji} {titleText}
+            <span aria-hidden="true">{emoji}</span> {titleText}
           </div>
           <div style={{ color: '#a5b4fc', fontSize: '0.82rem', marginBottom: 14 }}>
             Complete estes passos para configurar sua conta
@@ -124,13 +123,13 @@ export function OnboardingBanner({ clientes, leads, membros, portfolioAccounts, 
 
               if (step.to) {
                 return (
-                  <Link key={i} to={step.to} style={pillStyle}>
+                  <Link key={step.label} to={step.to} style={pillStyle}>
                     {content}
                   </Link>
                 );
               }
               return (
-                <div key={i} style={pillStyle}>
+                <div key={step.label} style={pillStyle}>
                   {content}
                 </div>
               );
@@ -139,7 +138,7 @@ export function OnboardingBanner({ clientes, leads, membros, portfolioAccounts, 
         </div>
 
         <div style={{ textAlign: 'center', flexShrink: 0 }}>
-          <div style={{ fontSize: '2rem', lineHeight: 1 }}>{emoji}</div>
+          <div aria-hidden="true" style={{ fontSize: '2rem', lineHeight: 1 }}>{emoji}</div>
           <div style={{ color: '#a5b4fc', fontSize: '0.75rem', marginTop: 4 }}>
             {completedCount} de {steps.length}
           </div>
