@@ -165,7 +165,7 @@ export async function signUp(email: string, password: string, meta?: { nome?: st
 
 export async function resetPassword(email: string) {
   return supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: window.location.origin + '/#/configurar-senha',
+    redirectTo: window.location.origin + '/configurar-senha',
   });
 }
 
