@@ -21,6 +21,7 @@ import {
 } from '../../store';
 import { getPortfolioSummary, type PortfolioSummary } from '../../services/analytics';
 import { useAuth } from '../../context/AuthContext';
+import { OnboardingBanner } from '../../components/OnboardingBanner';
 
 export default function DashboardPage() {
   const { role } = useAuth();
@@ -183,6 +184,17 @@ export default function DashboardPage() {
         <div style={{ textAlign: 'center', padding: '3rem' }}>
           <Spinner size="lg" />
         </div>
+      )}
+
+      {/* Onboarding banner — only for non-agents */}
+      {!isLoading && role !== 'agent' && (
+        <OnboardingBanner
+          clientes={clientes}
+          leads={leads}
+          membros={membros}
+          portfolioAccounts={portfolioAccounts}
+          workflows={workflows}
+        />
       )}
 
       {/* Dashboard Hub */}
