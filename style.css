@@ -4985,3 +4985,165 @@ body.role-agent input[name="valor_total"] {
     padding-top: calc(48px + 1.25rem) !important;
   }
 }
+
+/* ─── Workflow History ─────────────────────────────────── */
+
+/* HistoryDrawer timeline */
+.history-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 1rem 0;
+}
+
+.history-step {
+  display: flex;
+  gap: 0.75rem;
+  position: relative;
+}
+
+.history-step-track {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  width: 24px;
+}
+
+.history-step-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.history-step-icon--ok { background: var(--success, #3ecf8e); }
+.history-step-icon--late { background: var(--danger, #e74c3c); }
+
+.history-step-line {
+  width: 2px;
+  flex: 1;
+  min-height: 24px;
+}
+
+.history-step-line--ok { background: var(--success, #3ecf8e); }
+.history-step-line--late { background: var(--danger, #e74c3c); }
+.history-step-line--neutral { background: var(--border, #e2e8f0); }
+
+.history-step-body {
+  padding-bottom: 1.25rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.history-step-name {
+  font-weight: 600;
+  font-size: 0.875rem;
+  margin-bottom: 0.25rem;
+}
+
+.history-step-badge {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.history-step-badge--ok {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.history-step-badge--late {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.history-step-detail {
+  font-size: 0.75rem;
+  color: var(--text-secondary, #718096);
+}
+
+.history-final-node {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+  font-size: 0.8rem;
+  color: var(--text-secondary, #718096);
+}
+
+/* ConcludedView */
+.concluded-client-group {
+  margin-bottom: 1rem;
+}
+
+.concluded-client-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0;
+  cursor: pointer;
+  user-select: none;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.concluded-client-header:hover {
+  opacity: 0.8;
+}
+
+.concluded-client-count {
+  font-weight: 400;
+  color: var(--text-secondary, #718096);
+  font-size: 0.8rem;
+}
+
+.concluded-client-workflows {
+  margin-left: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+
+.concluded-wf-row {
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  background: var(--bg, #fff);
+  transition: background 0.15s;
+}
+
+.concluded-wf-row:hover {
+  background: var(--bg-hover, #f8fafc);
+}
+
+.concluded-wf-title {
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+
+.concluded-wf-meta {
+  font-size: 0.75rem;
+  color: var(--text-secondary, #718096);
+  margin-top: 0.125rem;
+}
+
+.concluded-wf-arrow {
+  font-size: 0.75rem;
+  color: var(--text-secondary, #718096);
+  flex-shrink: 0;
+}
