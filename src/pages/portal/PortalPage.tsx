@@ -96,27 +96,27 @@ function formatPortalDate(d: string | null): string {
 
 function PortalSkeleton() {
   return (
-    <div className="portal-page">
+    <div className="portal-page" aria-busy="true" aria-label="Carregando portal…">
       <header className="portal-header">
         <div className="portal-header-inner">
-          <div className="portal-skeleton-block" style={{ width: 120, height: 28 }} />
-          <div className="portal-skeleton-block" style={{ width: 72, height: 22, borderRadius: 999 }} />
+          <div className="portal-skeleton-block" aria-hidden="true" style={{ width: 120, height: 28 }} />
+          <div className="portal-skeleton-block" aria-hidden="true" style={{ width: 72, height: 22, borderRadius: 999 }} />
         </div>
       </header>
       <main className="portal-main">
         <section className="portal-hero card">
-          <div className="portal-skeleton-block" style={{ width: 86, height: 20, borderRadius: 999 }} />
-          <div className="portal-skeleton-block" style={{ width: '65%', height: 28, marginTop: 12 }} />
-          <div className="portal-skeleton-block" style={{ width: '40%', height: 16, marginTop: 8, marginBottom: 0 }} />
+          <div className="portal-skeleton-block" aria-hidden="true" style={{ width: 86, height: 20, borderRadius: 999 }} />
+          <div className="portal-skeleton-block" aria-hidden="true" style={{ width: '65%', height: 28, marginTop: 12 }} />
+          <div className="portal-skeleton-block" aria-hidden="true" style={{ width: '40%', height: 16, marginTop: 8, marginBottom: 0 }} />
           <div className="portal-skeleton-progress">
-            <div className="portal-skeleton-block" style={{ width: 60, height: 13 }} />
-            <div className="portal-skeleton-block" style={{ width: 75, height: 13 }} />
+            <div className="portal-skeleton-block" aria-hidden="true" style={{ width: 60, height: 13 }} />
+            <div className="portal-skeleton-block" aria-hidden="true" style={{ width: 75, height: 13 }} />
           </div>
-          <div className="portal-skeleton-block" style={{ width: '100%', height: 8, borderRadius: 4 }} />
+          <div className="portal-skeleton-block" aria-hidden="true" style={{ width: '100%', height: 8, borderRadius: 4 }} />
         </section>
         <div className="portal-skeleton-spinner">
           <Spinner size="sm" />
-          <span>Carregando etapas e conteúdos…</span>
+          <span aria-hidden="true">Carregando etapas e conteúdos…</span>
         </div>
       </main>
     </div>
