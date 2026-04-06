@@ -195,6 +195,7 @@ export default function ClienteDetalhePage() {
     workflowTitle: string;
     date: Date;
     tipo: WorkflowPost['tipo'];
+    status: WorkflowPost['status'];
   }
   const [postCalendarEvents, setPostCalendarEvents] = useState<PostCalendarEvent[]>([]);
   const [calendarMonth, setCalendarMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
@@ -227,6 +228,7 @@ export default function ClienteDetalhePage() {
                   workflowTitle: post._wfTitle,
                   date: parsed,
                   tipo: post.tipo,
+                  status: post.status,
                 });
               }
             }
