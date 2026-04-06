@@ -13,6 +13,7 @@ interface Props {
   postId: number;
   workflowId: number;
   membros: Membro[];
+  readOnly?: boolean;
 }
 
 function formatDisplayValue(definition: TemplatePropertyDefinition, value: unknown): string {
@@ -38,7 +39,7 @@ function formatDisplayValue(definition: TemplatePropertyDefinition, value: unkno
   return String(value);
 }
 
-export function PropertyValue({ definition, value: initialValue, postId, workflowId, membros }: Props) {
+export function PropertyValue({ definition, value: initialValue, postId, workflowId, membros, readOnly }: Props) {
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [localValue, setLocalValue] = useState<unknown>(initialValue);
@@ -306,7 +307,7 @@ export function PropertyValue({ definition, value: initialValue, postId, workflo
     return <span style={{ fontSize: '0.82rem' }}>{formatDisplayValue(definition, localValue)}</span>;
   };
 
-  const isEditable = definition.type !== 'created_time';
+  const isEditable = definition.type !== 'created_time' && !readOnly;
 
   return (
     <div style={{
