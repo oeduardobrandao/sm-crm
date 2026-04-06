@@ -90,6 +90,8 @@ html, body, #root, .app-container {
   --text-muted: #374151;
   --text-light: #4b5563;
   --border-color: rgba(30, 36, 48, 0.15);
+  --skeleton-base: #e8e8e8;
+  --skeleton-highlight: #f5f5f5;
 
   /* Surface aliases used by drawer/editor/portal */
   --surface-1: #f5f6f8;
@@ -3692,6 +3694,41 @@ body.role-agent input[name="valor_total"] {
 }
 .portal-error-card p {
   color: var(--text-muted);
+}
+
+/* Skeleton */
+@keyframes portal-shimmer {
+  0%   { background-position: -600px 0; }
+  100% { background-position:  600px 0; }
+}
+
+.portal-skeleton-block {
+  display: block;
+  border-radius: 6px;
+  background: linear-gradient(
+    90deg,
+    var(--skeleton-base) 25%,
+    var(--skeleton-highlight) 50%,
+    var(--skeleton-base) 75%
+  );
+  background-size: 600px 100%;
+  animation: portal-shimmer 1.4s infinite linear;
+}
+
+.portal-skeleton-progress {
+  display: flex;
+  justify-content: space-between;
+  margin: 12px 0 6px;
+}
+
+.portal-skeleton-spinner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 2rem 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
 }
 
 /* Header */
