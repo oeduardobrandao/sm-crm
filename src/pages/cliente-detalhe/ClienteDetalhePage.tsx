@@ -43,6 +43,7 @@ import {
   getWorkflowPostsWithProperties,
   getConcludedWorkflowsByCliente,
   getWorkflowPosts,
+  updateWorkflowPost,
   type WorkflowPost,
 } from '../../store';
 import { HistoryDrawer } from '../entregas/components/HistoryDrawer';
@@ -200,6 +201,7 @@ export default function ClienteDetalhePage() {
   const [postCalendarEvents, setPostCalendarEvents] = useState<PostCalendarEvent[]>([]);
   const [calendarMonth, setCalendarMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
   const [selectedPostDay, setSelectedPostDay] = useState<number | null>(new Date().getDate());
+  const [postUpdating, setPostUpdating] = useState<number | null>(null);
 
   useEffect(() => {
     const activeWfs = (clienteWorkflowsRaw ?? []).filter(w => w.status === 'ativo');
@@ -239,6 +241,55 @@ export default function ClienteDetalhePage() {
       .catch(() => { if (!cancelled) setPostCalendarEvents([]); });
     return () => { cancelled = true; };
   }, [clienteWorkflowsRaw]);
+
+  const refreshPostCalendar = () => {
+    const activeWfs = (clienteWorkflowsRaw ?? []).filter(w => w.status === 'ativo');
+    if (activeWfs.length === 0) { setPostCalendarEvents([]); return; }
+    Promise.all(activeWfs.map(async wf => {
+      const posts = await getWorkflowPostsWithProperties(wf.id!);
+      return posts.map(p => ({ ...p, _wfId: wf.id!, _wfTitle: wf.titulo }));
+    }))
+      .then(results => {
+        const events: PostCalendarEvent[] = [];
+        for (const posts of results) {
+          for (const post of posts) {
+            const dateProp = post.property_values.find(
+              pv => pv.definition?.name?.toLowerCase() === 'data de postagem' && pv.definition?.type === 'date'
+            );
+            if (dateProp?.value) {
+              const dateStr = typeof dateProp.value === 'string' ? dateProp.value : String(dateProp.value);
+              const parsed = new Date(dateStr);
+              if (!isNaN(parsed.getTime())) {
+                events.push({
+                  postId: post.id!,
+                  postTitle: post.titulo || 'Sem título',
+                  workflowId: post._wfId,
+                  workflowTitle: post._wfTitle,
+                  date: parsed,
+                  tipo: post.tipo,
+                  status: post.status,
+                });
+              }
+            }
+          }
+        }
+        setPostCalendarEvents(events);
+      })
+      .catch(() => {});
+  };
+
+  const handlePostStatusUpdate = async (postId: number, newStatus: 'agendado' | 'postado') => {
+    setPostUpdating(postId);
+    try {
+      await updateWorkflowPost(postId, { status: newStatus });
+      toast.success(newStatus === 'agendado' ? 'Post agendado.' : 'Post marcado como postado.');
+      refreshPostCalendar();
+    } catch {
+      toast.error('Erro ao atualizar status do post.');
+    } finally {
+      setPostUpdating(null);
+    }
+  };
 
   const igSyncAttempted = useRef(false);
   useEffect(() => {
@@ -682,6 +733,60 @@ export default function ClienteDetalhePage() {
                             <div className="item-divider" />
                             <div className="item-meta">
                               {ev.date.toLocaleDateString('pt-BR')}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.6rem', flexWrap: 'wrap' }}>
+                              {/* Chip 1: Aprovado (read-only) */}
+                              {(ev.status === 'aprovado_interno' || ev.status === 'aprovado_cliente' || ev.status === 'agendado' || ev.status === 'postado') ? (
+                                <span style={{ fontSize: '0.68rem', background: '#dbeafe', color: '#1e40af', border: '1px solid #93c5fd44', padding: '2px 8px', borderRadius: '4px' }}>
+                                  ✓ Aprovado
+                                </span>
+                              ) : (
+                                <span style={{ fontSize: '0.68rem', background: 'var(--surface-2)', color: 'var(--text-muted)', border: '1px solid var(--border-color)', padding: '2px 8px', borderRadius: '4px' }}>
+                                  {ev.status === 'rascunho' ? 'Rascunho' : ev.status === 'revisao_interna' ? 'Em revisão' : ev.status === 'enviado_cliente' ? 'Enviado' : ev.status === 'correcao_cliente' ? 'Correção' : ev.status}
+                                </span>
+                              )}
+
+                              {/* Separator */}
+                              {(ev.status === 'aprovado_interno' || ev.status === 'aprovado_cliente' || ev.status === 'agendado' || ev.status === 'postado') && (
+                                <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>→</span>
+                              )}
+
+                              {/* Chip 2: Agendar */}
+                              {(ev.status === 'aprovado_interno' || ev.status === 'aprovado_cliente') && (
+                                <button
+                                  onClick={e => { e.stopPropagation(); handlePostStatusUpdate(ev.postId, 'agendado'); }}
+                                  disabled={postUpdating === ev.postId}
+                                  style={{ fontSize: '0.68rem', background: '#eff6ff', color: '#2563eb', border: '1px solid #3b82f6', padding: '2px 8px', borderRadius: '4px', cursor: 'pointer', fontWeight: 600 }}
+                                >
+                                  {postUpdating === ev.postId ? '...' : '○ Agendar'}
+                                </button>
+                              )}
+                              {(ev.status === 'agendado' || ev.status === 'postado') && (
+                                <span style={{ fontSize: '0.68rem', background: '#ccfbf1', color: '#0f766e', border: '1px solid #5eead444', padding: '2px 8px', borderRadius: '4px' }}>
+                                  ✓ Agendado
+                                </span>
+                              )}
+
+                              {/* Separator */}
+                              {(ev.status === 'agendado' || ev.status === 'postado') && (
+                                <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>→</span>
+                              )}
+
+                              {/* Chip 3: Postado */}
+                              {ev.status === 'agendado' && (
+                                <button
+                                  onClick={e => { e.stopPropagation(); handlePostStatusUpdate(ev.postId, 'postado'); }}
+                                  disabled={postUpdating === ev.postId}
+                                  style={{ fontSize: '0.68rem', background: '#f0fdf4', color: '#15803d', border: '1px solid #22c55e', padding: '2px 8px', borderRadius: '4px', cursor: 'pointer', fontWeight: 600 }}
+                                >
+                                  {postUpdating === ev.postId ? '...' : '○ Marcar Postado'}
+                                </button>
+                              )}
+                              {ev.status === 'postado' && (
+                                <span style={{ fontSize: '0.68rem', background: '#dcfce7', color: '#15803d', border: '1px solid #22c55e', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
+                                  ✓ Postado
+                                </span>
+                              )}
                             </div>
                           </div>
                         ))
