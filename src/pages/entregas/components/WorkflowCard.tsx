@@ -60,7 +60,7 @@ export function WorkflowCard({ card, onClick, isDragOverlay, dragHandle, membros
     e.stopPropagation();
     try {
       const portalToken = await createPortalToken(card.workflow.id!);
-      const url = `${window.location.origin}/#/portal/${portalToken}`;
+      const url = `${window.location.origin}/portal/${portalToken}`;
       if (navigator.share) {
         await navigator.share({ title: card.workflow.titulo, text: `Acompanhe a entrega: ${card.workflow.titulo}`, url });
       } else {
@@ -211,8 +211,8 @@ export function WorkflowCard({ card, onClick, isDragOverlay, dragHandle, membros
         <button className="btn-edit-workflow" title="Compartilhar portal do cliente" style={{ padding: '0.4rem', flexShrink: 0 }} onClick={handleShare}>
           <Share2 className="h-4 w-4" />
         </button>
-        {card.etapaIdx < card.totalEtapas - 1 && onForwardClick && (
-          <button className="btn-edit-workflow btn-forward-etapa" title="Concluir etapa e avançar" style={{ padding: '0.4rem', flexShrink: 0, color: 'var(--success)' }} onClick={e => { e.stopPropagation(); onForwardClick(); }}>
+        {onForwardClick && (
+          <button className="btn-edit-workflow btn-forward-etapa" title={card.etapaIdx < card.totalEtapas - 1 ? 'Concluir etapa e avançar' : 'Concluir fluxo'} style={{ padding: '0.4rem', flexShrink: 0, color: 'var(--success)' }} onClick={e => { e.stopPropagation(); onForwardClick(); }}>
             <Check className="h-4 w-4" />
           </button>
         )}
