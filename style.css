@@ -4575,6 +4575,8 @@ body.role-agent input[name="valor_total"] {
 .post-status--enviado         { background: #dbeafe; color: #1e40af; }
 .post-status--aprovado-cliente{ background: #d1fae5; color: #065f46; }
 .post-status--correcao        { background: #fee2e2; color: #991b1b; }
+.post-status--agendado        { background: #ccfbf1; color: #0f766e; }
+.post-status--postado         { background: #dcfce7; color: #15803d; font-weight: 600; }
 
 /* Posts count badge on WorkflowCard */
 .board-card-posts-badge {
