@@ -245,11 +245,13 @@ export default function ClienteDetalhePage() {
   const refreshPostCalendar = () => {
     const activeWfs = (clienteWorkflowsRaw ?? []).filter(w => w.status === 'ativo');
     if (activeWfs.length === 0) { setPostCalendarEvents([]); return; }
+    let cancelled = false;
     Promise.all(activeWfs.map(async wf => {
       const posts = await getWorkflowPostsWithProperties(wf.id!);
       return posts.map(p => ({ ...p, _wfId: wf.id!, _wfTitle: wf.titulo }));
     }))
       .then(results => {
+        if (cancelled) return;
         const events: PostCalendarEvent[] = [];
         for (const posts of results) {
           for (const post of posts) {
@@ -275,7 +277,7 @@ export default function ClienteDetalhePage() {
         }
         setPostCalendarEvents(events);
       })
-      .catch(() => {});
+      .catch(() => { if (!cancelled) toast.error('Erro ao atualizar calendário.'); });
   };
 
   const handlePostStatusUpdate = async (postId: number, newStatus: 'agendado' | 'postado') => {
