@@ -766,6 +766,27 @@ export async function getWorkflowsByCliente(clienteId: number): Promise<Workflow
   return data || [];
 }
 
+export async function getConcludedWorkflows(): Promise<Workflow[]> {
+  const { data, error } = await supabase
+    .from('workflows')
+    .select('*')
+    .eq('status', 'concluido')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function getConcludedWorkflowsByCliente(clienteId: number): Promise<Workflow[]> {
+  const { data, error } = await supabase
+    .from('workflows')
+    .select('*')
+    .eq('cliente_id', clienteId)
+    .eq('status', 'concluido')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
 export async function addWorkflow(w: Omit<Workflow, 'id' | 'user_id' | 'conta_id' | 'created_at'>): Promise<Workflow> {
   const user_id = await getUserId();
   const conta_id = await getContaId();
