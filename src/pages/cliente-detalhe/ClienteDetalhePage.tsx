@@ -706,7 +706,7 @@ export default function ClienteDetalhePage() {
       {concludedSummaries.length > 0 && (
         <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
           <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">Histórico de Entregas</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             {concludedSummaries.map(s => (
               <div
                 key={s.workflow.id}

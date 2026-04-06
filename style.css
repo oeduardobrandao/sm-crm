@@ -5045,7 +5045,6 @@ body.role-agent input[name="valor_total"] {
 .history-step-name {
   font-weight: 600;
   font-size: 0.875rem;
-  margin-bottom: 0.25rem;
 }
 
 .history-step-badge {
@@ -5054,7 +5053,7 @@ body.role-agent input[name="valor_total"] {
   border-radius: 999px;
   font-size: 0.7rem;
   font-weight: 600;
-  margin-bottom: 0.25rem;
+  margin-left: 0.5rem;
 }
 
 .history-step-badge--ok {
@@ -5069,7 +5068,8 @@ body.role-agent input[name="valor_total"] {
 
 .history-step-detail {
   font-size: 0.75rem;
-  color: var(--text-secondary, #718096);
+  color: var(--text-muted, #718096);
+  margin-top: 0.3rem;
 }
 
 .history-final-node {
@@ -5116,19 +5116,19 @@ body.role-agent input[name="valor_total"] {
 }
 
 .concluded-wf-row {
-  border: 1px solid var(--border, #e2e8f0);
+  border: 1px solid var(--border-color, #e2e8f0);
   border-radius: 8px;
   padding: 0.6rem 0.8rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
   cursor: pointer;
-  background: var(--bg, #fff);
+  background: var(--surface-main, #f8fafc);
   transition: background 0.15s;
 }
 
 .concluded-wf-row:hover {
-  background: var(--bg-hover, #f8fafc);
+  background: var(--surface-hover, #f1f5f9);
 }
 
 .concluded-wf-title {
@@ -5138,12 +5138,12 @@ body.role-agent input[name="valor_total"] {
 
 .concluded-wf-meta {
   font-size: 0.75rem;
-  color: var(--text-secondary, #718096);
-  margin-top: 0.125rem;
+  color: var(--text-muted, #718096);
+  margin-top: 0.3rem;
 }
 
 .concluded-wf-arrow {
   font-size: 0.75rem;
-  color: var(--text-secondary, #718096);
+  color: var(--text-muted, #718096);
   flex-shrink: 0;
 }
