@@ -1087,7 +1087,9 @@ export interface WorkflowPost {
     | 'aprovado_interno'
     | 'enviado_cliente'
     | 'aprovado_cliente'
-    | 'correcao_cliente';
+    | 'correcao_cliente'
+    | 'agendado'
+    | 'postado';
   responsavel_id?: number | null;
   created_at?: string;
   updated_at?: string;
