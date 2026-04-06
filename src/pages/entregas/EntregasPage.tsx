@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Plus, LayoutGrid, Info, BarChart2, Calendar, List, Columns } from 'lucide-react';
+import { Plus, LayoutGrid, Info, BarChart2, Calendar, List, Columns, Archive } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { useEntregasData, type BoardCard } from './hooks/useEntregasData';
@@ -14,16 +14,18 @@ import { KanbanView } from './views/KanbanView';
 import { ChartView } from './views/ChartView';
 import { CalendarView } from './views/CalendarView';
 import { ListView } from './views/ListView';
+import { ConcludedView } from './views/ConcludedView';
 import { WorkflowDrawer } from './components/WorkflowDrawer';
 import { duplicateWorkflow } from '../../store';
 
-type ActiveView = 'kanban' | 'chart' | 'calendar' | 'list';
+type ActiveView = 'kanban' | 'chart' | 'calendar' | 'list' | 'concluded';
 
 const VIEW_TABS: { id: ActiveView; label: string; icon: React.ReactNode }[] = [
   { id: 'kanban', label: 'Kanban', icon: <Columns className="h-4 w-4" /> },
   { id: 'chart', label: 'Gráfico', icon: <BarChart2 className="h-4 w-4" /> },
   { id: 'calendar', label: 'Calendário', icon: <Calendar className="h-4 w-4" /> },
   { id: 'list', label: 'Lista', icon: <List className="h-4 w-4" /> },
+  { id: 'concluded', label: 'Concluídas', icon: <Archive className="h-4 w-4" /> },
 ];
 
 export default function EntregasPage() {
@@ -130,7 +132,9 @@ export default function EntregasPage() {
         ))}
       </div>
 
-      <EntregasFilters filters={filters} onChange={setFilters} clientes={clientes} membros={membros} />
+      {activeView !== 'concluded' && (
+        <EntregasFilters filters={filters} onChange={setFilters} clientes={clientes} membros={membros} />
+      )}
 
       {activeView === 'kanban' && (
         <KanbanView
@@ -153,6 +157,7 @@ export default function EntregasPage() {
           onCardClick={setEditCard}
         />
       )}
+      {activeView === 'concluded' && <ConcludedView />}
 
       {newWorkflowOpen && (
         <NewWorkflowModal
