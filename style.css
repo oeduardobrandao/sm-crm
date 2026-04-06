@@ -3731,6 +3731,12 @@ body.role-agent input[name="valor_total"] {
   font-size: 0.85rem;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .portal-skeleton-block {
+    animation: none;
+  }
+}
+
 /* Header */
 .portal-header {
   background: var(--card-bg);
