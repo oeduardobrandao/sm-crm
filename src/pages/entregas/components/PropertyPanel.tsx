@@ -11,9 +11,10 @@ interface Props {
   workflowId: number;
   propertyValues: PostPropertyValue[];
   membros: Membro[];
+  readOnly?: boolean;
 }
 
-export function PropertyPanel({ templateId, postId, workflowId, propertyValues, membros }: Props) {
+export function PropertyPanel({ templateId, postId, workflowId, propertyValues, membros, readOnly }: Props) {
   const qc = useQueryClient();
   const [showPanel, setShowPanel] = useState(false);
 
@@ -23,6 +24,7 @@ export function PropertyPanel({ templateId, postId, workflowId, propertyValues, 
   });
 
   if (definitions.length === 0 && !showPanel) {
+    if (readOnly) return null;
     return (
       <div style={{ marginBottom: '0.75rem' }}>
         <button
@@ -59,21 +61,24 @@ export function PropertyPanel({ templateId, postId, workflowId, propertyValues, 
               postId={postId}
               workflowId={workflowId}
               membros={membros}
+              readOnly={readOnly}
             />
           );
         })}
-        <button
-          onClick={() => setShowPanel(true)}
-          style={{
-            background: 'none', border: 'none', padding: '5px 0 0', fontSize: '0.78rem',
-            color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, marginTop: 2,
-          }}
-        >
-          <Plus className="h-3 w-3" /> Adicionar propriedade
-        </button>
+        {!readOnly && (
+          <button
+            onClick={() => setShowPanel(true)}
+            style={{
+              background: 'none', border: 'none', padding: '5px 0 0', fontSize: '0.78rem',
+              color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, marginTop: 2,
+            }}
+          >
+            <Plus className="h-3 w-3" /> Adicionar propriedade
+          </button>
+        )}
       </div>
 
-      {showPanel && (
+      {!readOnly && showPanel && (
         <PropertyDefinitionPanel
           templateId={templateId}
           onSave={() => {
