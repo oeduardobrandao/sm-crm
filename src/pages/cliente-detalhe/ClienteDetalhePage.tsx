@@ -245,13 +245,11 @@ export default function ClienteDetalhePage() {
   const refreshPostCalendar = () => {
     const activeWfs = (clienteWorkflowsRaw ?? []).filter(w => w.status === 'ativo');
     if (activeWfs.length === 0) { setPostCalendarEvents([]); return; }
-    let cancelled = false;
     Promise.all(activeWfs.map(async wf => {
       const posts = await getWorkflowPostsWithProperties(wf.id!);
       return posts.map(p => ({ ...p, _wfId: wf.id!, _wfTitle: wf.titulo }));
     }))
       .then(results => {
-        if (cancelled) return;
         const events: PostCalendarEvent[] = [];
         for (const posts of results) {
           for (const post of posts) {
@@ -277,7 +275,7 @@ export default function ClienteDetalhePage() {
         }
         setPostCalendarEvents(events);
       })
-      .catch(() => { if (!cancelled) toast.error('Erro ao atualizar calendário.'); });
+      .catch(() => { toast.error('Erro ao atualizar calendário.'); });
   };
 
   const handlePostStatusUpdate = async (postId: number, newStatus: 'agendado' | 'postado') => {
@@ -757,7 +755,7 @@ export default function ClienteDetalhePage() {
                               {(ev.status === 'aprovado_interno' || ev.status === 'aprovado_cliente') && (
                                 <button
                                   onClick={e => { e.stopPropagation(); handlePostStatusUpdate(ev.postId, 'agendado'); }}
-                                  disabled={postUpdating === ev.postId}
+                                  disabled={postUpdating !== null}
                                   style={{ fontSize: '0.68rem', background: '#eff6ff', color: '#2563eb', border: '1px solid #3b82f6', padding: '2px 8px', borderRadius: '4px', cursor: 'pointer', fontWeight: 600 }}
                                 >
                                   {postUpdating === ev.postId ? '...' : '○ Agendar'}
@@ -778,7 +776,7 @@ export default function ClienteDetalhePage() {
                               {ev.status === 'agendado' && (
                                 <button
                                   onClick={e => { e.stopPropagation(); handlePostStatusUpdate(ev.postId, 'postado'); }}
-                                  disabled={postUpdating === ev.postId}
+                                  disabled={postUpdating !== null}
                                   style={{ fontSize: '0.68rem', background: '#f0fdf4', color: '#15803d', border: '1px solid #22c55e', padding: '2px 8px', borderRadius: '4px', cursor: 'pointer', fontWeight: 600 }}
                                 >
                                   {postUpdating === ev.postId ? '...' : '○ Marcar Postado'}
