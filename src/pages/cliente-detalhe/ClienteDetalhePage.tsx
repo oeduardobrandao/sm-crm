@@ -41,8 +41,11 @@ import {
   type Contrato,
   type Transacao,
   getWorkflowPostsWithProperties,
+  getConcludedWorkflowsByCliente,
+  getWorkflowPosts,
   type WorkflowPost,
 } from '../../store';
+import { HistoryDrawer } from '../entregas/components/HistoryDrawer';
 import { getInstagramSummary, syncInstagramData } from '../../services/instagram';
 import { sanitizeUrl } from '../../utils/security';
 import { useAuth } from '../../context/AuthContext';
@@ -70,6 +73,7 @@ export default function ClienteDetalhePage() {
   const [editOpen, setEditOpen] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
   const [recurringWfId, setRecurringWfId] = useState<number | null>(null);
+  const [historyWorkflow, setHistoryWorkflow] = useState<Workflow | null>(null);
 
   // Address modal state
   const [addrModalOpen, setAddrModalOpen] = useState(false);
@@ -143,6 +147,32 @@ export default function ClienteDetalhePage() {
     enabled: !isNaN(clienteId),
   });
   useQuery({ queryKey: ['membros'], queryFn: getMembros });
+
+  const { data: concludedWfs = [] } = useQuery({
+    queryKey: ['concluded-by-cliente', clienteId],
+    queryFn: () => getConcludedWorkflowsByCliente(clienteId),
+    enabled: !isNaN(clienteId),
+  });
+
+  const { data: concludedSummaries = [] } = useQuery({
+    queryKey: ['concluded-summaries-cliente', concludedWfs.map(w => w.id).join(',')],
+    queryFn: async () => {
+      return Promise.all(concludedWfs.map(async (workflow) => {
+        const [etapas, posts] = await Promise.all([
+          getWorkflowEtapas(workflow.id!),
+          getWorkflowPosts(workflow.id!),
+        ]);
+        const firstStart = etapas.find(e => e.iniciado_em)?.iniciado_em;
+        const concludedEtapas = etapas.filter(e => e.concluido_em);
+        const lastEnd = concludedEtapas.length > 0 ? concludedEtapas[concludedEtapas.length - 1].concluido_em : null;
+        const totalDays = firstStart && lastEnd
+          ? Math.round((new Date(lastEnd).getTime() - new Date(firstStart).getTime()) / (1000 * 60 * 60 * 24))
+          : null;
+        return { workflow, postCount: posts.length, totalDays, completedAt: lastEnd ?? null };
+      }));
+    },
+    enabled: concludedWfs.length > 0,
+  });
 
   const isLoading = loadingClientes || loadingTx || loadingContratos || loadingIg || loadingWf;
 
@@ -673,6 +703,31 @@ export default function ClienteDetalhePage() {
         </div>
       )}
 
+      {concludedSummaries.length > 0 && (
+        <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
+          <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">Histórico de Entregas</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+            {concludedSummaries.map(s => (
+              <div
+                key={s.workflow.id}
+                className="concluded-wf-row"
+                onClick={() => setHistoryWorkflow(s.workflow)}
+              >
+                <div>
+                  <div className="concluded-wf-title">{s.workflow.titulo}</div>
+                  <div className="concluded-wf-meta">
+                    {s.postCount} post{s.postCount !== 1 ? 's' : ''}
+                    {s.totalDays !== null && <> &bull; {s.totalDays} dia{s.totalDays !== 1 ? 's' : ''}</>}
+                    {s.completedAt && <> &bull; Concluído {new Date(s.completedAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}</>}
+                  </div>
+                </div>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>→</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Important Dates Section */}
       <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
@@ -1067,6 +1122,14 @@ export default function ClienteDetalhePage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {historyWorkflow && (
+        <HistoryDrawer
+          workflow={historyWorkflow}
+          clienteName={cliente?.nome}
+          onClose={() => setHistoryWorkflow(null)}
+        />
+      )}
     </div>
   );
 }
