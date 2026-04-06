@@ -3667,7 +3667,6 @@ body.role-agent input[name="valor_total"] {
   flex-direction: column;
 }
 
-.portal-loading,
 .portal-error {
   min-height: 100vh;
   display: flex;
