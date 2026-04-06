@@ -36,6 +36,8 @@ const STATUS_LABELS: Record<WorkflowPost['status'], string> = {
   enviado_cliente: 'Enviado ao cliente',
   aprovado_cliente: 'Aprovado pelo cliente',
   correcao_cliente: 'Correção solicitada',
+  agendado: 'Agendado',
+  postado: 'Postado',
 };
 
 const STATUS_CLASS: Record<WorkflowPost['status'], string> = {
@@ -45,6 +47,8 @@ const STATUS_CLASS: Record<WorkflowPost['status'], string> = {
   enviado_cliente: 'post-status--enviado',
   aprovado_cliente: 'post-status--aprovado-cliente',
   correcao_cliente: 'post-status--correcao',
+  agendado: 'post-status--agendado',
+  postado: 'post-status--postado',
 };
 
 // ── Props ─────────────────────────────────────────────────────────────────────
