@@ -124,7 +124,62 @@ function Features() {
 }
 
 function Faq() {
-  return null;
+  const [open, setOpen] = useState<number | null>(null);
+
+  const items = [
+    {
+      q: 'É gratuito?',
+      a: 'Sim, o Mesaas está em fase beta e é totalmente gratuito agora. Crie sua conta e comece hoje.',
+    },
+    {
+      q: 'Preciso instalar alguma coisa?',
+      a: 'Não. É 100% web, funciona em qualquer navegador.',
+    },
+    {
+      q: 'Consigo migrar meus clientes de planilhas?',
+      a: 'Sim, o cadastro é simples e rápido. Em minutos seus clientes estão dentro do sistema.',
+    },
+    {
+      q: 'Meu cliente precisa criar uma conta para usar o portal?',
+      a: 'Não. O portal de aprovação é acessado por um link único, sem login.',
+    },
+    {
+      q: 'Funciona para freelancers ou só para agências?',
+      a: 'Para os dois. Você pode gerenciar de 1 a dezenas de clientes.',
+    },
+    {
+      q: 'Como faço para começar?',
+      a: 'Clique em "Criar conta grátis", cadastre sua agência e comece a usar imediatamente.',
+    },
+  ];
+
+  return (
+    <section id="faq" className="bg-muted/40 py-24">
+      <div className="mx-auto max-w-3xl px-6">
+        <h2 className="mb-12 text-center text-3xl font-bold tracking-tight md:text-4xl">
+          Perguntas frequentes
+        </h2>
+        <div className="divide-y divide-border rounded-xl border border-border bg-card">
+          {items.map((item, i) => (
+            <div key={i}>
+              <button
+                className="flex w-full items-center justify-between px-6 py-5 text-left font-medium hover:bg-muted/30 transition-colors"
+                onClick={() => setOpen(open === i ? null : i)}
+              >
+                <span>{item.q}</span>
+                <ChevronDown
+                  className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${open === i ? 'rotate-180' : ''}`}
+                />
+              </button>
+              {open === i && (
+                <div className="px-6 pb-5 text-muted-foreground">{item.a}</div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
 }
 
 function CtaFinal() {
