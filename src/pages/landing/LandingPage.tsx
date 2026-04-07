@@ -78,7 +78,49 @@ function Testimonial() {
 }
 
 function Features() {
-  return null;
+  const items = [
+    {
+      icon: <Users className="h-6 w-6 text-primary" />,
+      title: 'Clientes e contratos organizados',
+      description:
+        'Cadastro de clientes, contratos, histórico e dados financeiros em um só lugar. Chega de informação espalhada.',
+    },
+    {
+      icon: <CheckSquare className="h-6 w-6 text-primary" />,
+      title: 'Workflows de entrega sem atrito',
+      description:
+        'Crie etapas de produção, atribua tarefas à equipe e acompanhe o status de cada entrega em tempo real.',
+    },
+    {
+      icon: <ExternalLink className="h-6 w-6 text-primary" />,
+      title: 'Portal de aprovação para o cliente',
+      description:
+        'Seu cliente aprova posts, deixa comentários e acompanha o progresso — sem precisar de login nem acesso ao sistema interno.',
+    },
+    {
+      icon: <Calendar className="h-6 w-6 text-primary" />,
+      title: 'Calendário e visão geral de conteúdo',
+      description:
+        'Veja todos os posts agendados e entregues por cliente em um calendário unificado, com status de cada publicação.',
+    },
+  ];
+
+  return (
+    <section id="features" className="mx-auto max-w-6xl px-6 py-24">
+      <h2 className="text-center text-3xl font-bold tracking-tight md:text-4xl">
+        Tudo que sua agência precisa em um só lugar
+      </h2>
+      <div className="mt-14 grid gap-8 md:grid-cols-2">
+        {items.map((item) => (
+          <div key={item.title} className="rounded-xl border border-border bg-card p-8">
+            <div className="mb-4">{item.icon}</div>
+            <h3 className="mb-2 text-lg font-semibold">{item.title}</h3>
+            <p className="text-muted-foreground">{item.description}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 function Faq() {
