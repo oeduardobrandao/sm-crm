@@ -183,9 +183,36 @@ function Faq() {
 }
 
 function CtaFinal() {
-  return null;
+  return (
+    <section className="mx-auto max-w-6xl px-6 py-24 text-center">
+      <h2 className="text-3xl font-bold tracking-tight md:text-4xl">
+        Pronto para sair das planilhas?
+      </h2>
+      <p className="mt-4 text-lg text-muted-foreground">
+        Crie sua conta grátis e comece a organizar sua agência hoje.
+      </p>
+      <a
+        href="/login"
+        className="mt-8 inline-block rounded-md bg-primary px-8 py-3 text-base font-semibold text-primary-foreground hover:opacity-90 transition-opacity"
+      >
+        Criar conta grátis
+      </a>
+    </section>
+  );
 }
 
 function Footer() {
-  return null;
+  return (
+    <footer className="border-t border-border py-8">
+      <div className="mx-auto flex max-w-6xl flex-col items-center gap-4 px-6 text-sm text-muted-foreground sm:flex-row sm:justify-between">
+        <span className="font-semibold text-foreground">Mesaas</span>
+        <div className="flex gap-6">
+          <a href="/politica-de-privacidade" className="hover:text-foreground transition-colors">
+            Política de Privacidade
+          </a>
+        </div>
+        <span>© 2025 Mesaas. Todos os direitos reservados.</span>
+      </div>
+    </footer>
+  );
 }
