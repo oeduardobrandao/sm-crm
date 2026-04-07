@@ -36,7 +36,30 @@ function Header() {
 }
 
 function Hero() {
-  return null; // implemented in next task
+  return (
+    <section className="mx-auto max-w-6xl px-6 py-24 text-center">
+      <h1 className="mx-auto max-w-4xl text-4xl font-extrabold leading-tight tracking-tight md:text-5xl lg:text-6xl">
+        Sua agência de social media com clientes organizados, entregas no prazo e relatórios em um só lugar
+      </h1>
+      <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground">
+        Mesaas é o CRM feito para gestores e agências de social media. Gerencie clientes, workflows de entrega, financeiro e aprovações — sem planilha, sem caos.
+      </p>
+      <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
+        <a
+          href="/login"
+          className="rounded-md bg-primary px-6 py-3 text-base font-semibold text-primary-foreground hover:opacity-90 transition-opacity"
+        >
+          Criar conta grátis
+        </a>
+        <a
+          href="#features"
+          className="text-base font-medium text-muted-foreground hover:text-foreground transition-colors"
+        >
+          Ver como funciona →
+        </a>
+      </div>
+    </section>
+  );
 }
 
 function Testimonial() {
