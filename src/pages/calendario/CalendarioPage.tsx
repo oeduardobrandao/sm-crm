@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { Globe, Flag } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import {
   getClientes, getMembros, getTransacoes, getWorkflows, getWorkflowEtapas,
@@ -571,8 +572,8 @@ function MedicoCalendar() {
 
   const filterOptions = [
     { key: 'all', label: 'Todos' },
-    { key: 'br', label: '🇧🇷 Brasil' },
-    { key: 'world', label: '🌍 Mundial' },
+    { key: 'br', label: <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><Flag className="h-3.5 w-3.5" /> Brasil</span> },
+    { key: 'world', label: <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><Globe className="h-3.5 w-3.5" /> Mundial</span> },
     { key: 'prof', label: 'Profissional' },
     { key: 'cancer', label: 'Câncer' },
     { key: 'cardio', label: 'Cardiologia' },

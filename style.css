@@ -3051,6 +3051,7 @@ body.role-agent input[name="valor_total"] {
 
 .board-container {
   display: flex;
+  align-items: flex-start;
   gap: 1rem;
   overflow-x: auto;
   padding-bottom: 1rem;
@@ -3073,13 +3074,11 @@ body.role-agent input[name="valor_total"] {
   background: var(--surface-hover);
   border-radius: var(--radius) var(--radius) 0 0;
   border: 1px solid var(--border-color);
-  border-bottom: 2px solid var(--primary-color);
 }
 
 .board-column-title {
   font-weight: 600;
   font-size: 0.82rem;
-  text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--text-main);
 }
@@ -3142,7 +3141,6 @@ body.role-agent input[name="valor_total"] {
 .board-card-client {
   font-size: 0.72rem;
   font-weight: 600;
-  text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-muted);
 }

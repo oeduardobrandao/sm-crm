@@ -1,4 +1,5 @@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Circle } from 'lucide-react';
 import type { Cliente, Membro } from '../../../store';
 
 export interface FilterState {
@@ -25,8 +26,12 @@ export function EntregasFilters({ filters, onChange, clientes, membros }: Entreg
             key={s}
             className={`filter-btn${filters.filterStatus === s ? ' active' : ''}`}
             onClick={() => onChange({ ...filters, filterStatus: s })}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
           >
-            {s === 'todos' ? 'Todos' : s === 'atrasado' ? '🔴 Atrasados' : s === 'urgente' ? '🟡 Urgentes' : '🟢 Em dia'}
+            {s === 'todos' ? 'Todos' : 
+             s === 'atrasado' ? <><Circle className="h-3 w-3" fill="var(--destructive, #ef4444)" color="var(--destructive, #ef4444)" /> Atrasados</> : 
+             s === 'urgente' ? <><Circle className="h-3 w-3" fill="var(--warning, #eab308)" color="var(--warning, #eab308)" /> Urgentes</> : 
+             <><Circle className="h-3 w-3" fill="var(--success, #22c55e)" color="var(--success, #22c55e)" /> Em dia</>}
           </button>
         ))}
       </div>

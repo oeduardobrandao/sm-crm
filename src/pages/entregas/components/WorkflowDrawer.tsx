@@ -69,7 +69,7 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
   // Expanded post id (accordion)
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
-  const [confirmCloseOpen, setConfirmCloseOpen] = useState(false);
+
   const [replyText, setReplyText] = useState<Record<number, string>>({});
   const [sendingReply, setSendingReply] = useState<number | null>(null);
   const [isSending, setIsSending] = useState(false);
@@ -249,26 +249,8 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
 
   return (
     <>
-      <AlertDialog open={confirmCloseOpen} onOpenChange={setConfirmCloseOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Fechar sem salvar?</AlertDialogTitle>
-            <AlertDialogDescription>Você tem alterações não salvas. Deseja fechar mesmo assim?</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Continuar editando</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => { setConfirmCloseOpen(false); onClose(); }}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Fechar mesmo assim
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
       {/* Overlay */}
-      <div className="drawer-overlay" onClick={() => setConfirmCloseOpen(true)} />
+      <div className="drawer-overlay" onClick={onClose} />
 
       {/* Panel */}
       <div className="drawer-panel">

@@ -35,17 +35,23 @@ function buildBoardRows(cards: BoardCard[], templates: WorkflowTemplate[]): Boar
   for (const card of cards) {
     const sorted = [...card.allEtapas].sort((a, b) => a.ordem - b.ordem);
     const stepNames = sorted.map(e => e.nome);
-    const key = stepNames.join(' → ');
+    const key = card.workflow.template_id != null
+      ? `template:${card.workflow.template_id}`
+      : stepNames.join(' → ');
     if (!rowMap.has(key)) {
       const columns = new Map<string, BoardCard[]>();
       for (const name of stepNames) columns.set(name, []);
-      
+
       const t = templates.find(t => t.id === card.workflow.template_id);
       const label = t ? t.nome.toUpperCase() : key.toUpperCase();
 
       rowMap.set(key, { key, label, stepNames, columns });
     }
     const row = rowMap.get(key)!;
+    // Ensure all this card's step columns exist (templates may have evolved)
+    for (const name of stepNames) {
+      if (!row.columns.has(name)) row.columns.set(name, []);
+    }
     const col = row.columns.get(card.etapa.nome);
     if (col) col.push(card);
   }

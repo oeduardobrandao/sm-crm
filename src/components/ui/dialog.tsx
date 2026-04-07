@@ -38,17 +38,25 @@ const CONFIRM_CLOSE_MSG = 'Você tem alterações não salvas. Deseja fechar mes
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+    /** Pass the close handler only when there are unsaved changes that need confirmation. */
     onConfirmClose?: () => void
+    /** When true, closing always prompts; when false/undefined, closes immediately. */
+    confirmClose?: boolean
   }
->(({ className, children, onConfirmClose, onInteractOutside, onEscapeKeyDown, ...props }, ref) => {
+>(({ className, children, onConfirmClose, confirmClose, onInteractOutside, onEscapeKeyDown, ...props }, ref) => {
   const [confirmOpen, setConfirmOpen] = React.useState(false)
+
+  // Guard is active only when the caller says there are unsaved changes
+  const isDirty = confirmClose === true
 
   const handleConfirmTrigger = React.useCallback(
     (e: { preventDefault: () => void }) => {
-      e.preventDefault()
-      setConfirmOpen(true)
+      if (isDirty && onConfirmClose) {
+        e.preventDefault()
+        setConfirmOpen(true)
+      }
     },
-    []
+    [isDirty, onConfirmClose]
   )
 
   return (
@@ -70,14 +78,14 @@ const DialogContent = React.forwardRef<
               e.preventDefault()
               return
             }
-            if (onConfirmClose) {
+            if (isDirty && onConfirmClose) {
               handleConfirmTrigger(e)
             } else {
               onInteractOutside?.(e)
             }
           }}
           onEscapeKeyDown={(e) => {
-            if (onConfirmClose) {
+            if (isDirty && onConfirmClose) {
               handleConfirmTrigger(e)
             } else {
               onEscapeKeyDown?.(e)

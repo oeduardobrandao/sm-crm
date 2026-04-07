@@ -289,6 +289,7 @@ export function EditWorkflowModal({
   const e = card.etapa;
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
   const [fTitulo, setFTitulo] = useState(w.titulo);
   const [fClienteId, setFClienteId] = useState(String(w.cliente_id));
   const [fNotion, setFNotion] = useState(w.link_notion || '');
@@ -298,6 +299,8 @@ export function EditWorkflowModal({
   const [fPrazoDias, setFPrazoDias] = useState(String(e.prazo_dias));
   const [fTipoPrazo, setFTipoPrazo] = useState(e.tipo_prazo);
   const activeClientes = clientes.filter(c => c.status === 'ativo');
+
+  const markDirty = () => setIsDirty(true);
 
   const handleSave = async () => {
     if (!fTitulo || !fClienteId) { toast.error('Título e cliente são obrigatórios.'); return; }
@@ -337,13 +340,13 @@ export function EditWorkflowModal({
   return (
     <>
       <Dialog open={true} onOpenChange={open => { if (!open) onClose(); }}>
-        <DialogContent onConfirmClose={onClose}>
+        <DialogContent onConfirmClose={onClose} confirmClose={isDirty}>
           <DialogHeader><DialogTitle>Editar Fluxo</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <div className="space-y-1"><Label>Título *</Label><Input value={fTitulo} onChange={e => setFTitulo(e.target.value)} /></div>
+            <div className="space-y-1"><Label>Título *</Label><Input value={fTitulo} onChange={e => { setFTitulo(e.target.value); markDirty(); }} /></div>
             <div className="space-y-1">
               <Label>Cliente *</Label>
-              <Select value={fClienteId} onValueChange={setFClienteId}>
+              <Select value={fClienteId} onValueChange={v => { setFClienteId(v); markDirty(); }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {activeClientes.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.nome}</SelectItem>)}
@@ -351,18 +354,18 @@ export function EditWorkflowModal({
               </Select>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-              <div className="space-y-1"><Label>Link do Notion</Label><Input type="url" value={fNotion} onChange={e => setFNotion(e.target.value)} /></div>
-              <div className="space-y-1"><Label>Link do Drive</Label><Input type="url" value={fDrive} onChange={e => setFDrive(e.target.value)} /></div>
+              <div className="space-y-1"><Label>Link do Notion</Label><Input type="url" value={fNotion} onChange={e => { setFNotion(e.target.value); markDirty(); }} /></div>
+              <div className="space-y-1"><Label>Link do Drive</Label><Input type="url" value={fDrive} onChange={e => { setFDrive(e.target.value); markDirty(); }} /></div>
             </div>
             <div className="flex items-center gap-2">
-              <Checkbox id="recorrente-edit" checked={fRecorrente} onCheckedChange={v => setFRecorrente(!!v)} />
+              <Checkbox id="recorrente-edit" checked={fRecorrente} onCheckedChange={v => { setFRecorrente(!!v); markDirty(); }} />
               <Label htmlFor="recorrente-edit">Fluxo recorrente</Label>
             </div>
             <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
               <h4 style={{ marginBottom: '0.75rem' }}>Etapa Atual: {e.nome}</h4>
               <div className="space-y-1">
                 <Label>Responsável</Label>
-                <Select value={fResponsavelId || '__none__'} onValueChange={val => setFResponsavelId(val === '__none__' ? '' : val)}>
+                <Select value={fResponsavelId || '__none__'} onValueChange={val => { setFResponsavelId(val === '__none__' ? '' : val); markDirty(); }}>
                   <SelectTrigger><SelectValue placeholder="Sem responsável" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none__">Sem responsável</SelectItem>
@@ -371,10 +374,10 @@ export function EditWorkflowModal({
                 </Select>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '0.75rem' }}>
-                <div className="space-y-1"><Label>Prazo (dias)</Label><Input type="number" min={1} value={fPrazoDias} onChange={e => setFPrazoDias(e.target.value)} /></div>
+                <div className="space-y-1"><Label>Prazo (dias)</Label><Input type="number" min={1} value={fPrazoDias} onChange={e => { setFPrazoDias(e.target.value); markDirty(); }} /></div>
                 <div className="space-y-1">
                   <Label>Tipo de prazo</Label>
-                  <Select value={fTipoPrazo} onValueChange={v => setFTipoPrazo(v as 'corridos' | 'uteis')}>
+                  <Select value={fTipoPrazo} onValueChange={v => { setFTipoPrazo(v as 'corridos' | 'uteis'); markDirty(); }}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="corridos">Dias corridos</SelectItem>

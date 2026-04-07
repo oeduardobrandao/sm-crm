@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { ArrowLeft, Edit2, Share2, Check, FileText } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -33,6 +34,7 @@ interface WorkflowCardProps {
 }
 
 export function WorkflowCard({ card, onClick, isDragOverlay, dragHandle, membros, onRefresh, onRevertClick, onForwardClick, onPostsClick, postsCount }: WorkflowCardProps) {
+  const navigate = useNavigate();
   const [assignDropdownOpen, setAssignDropdownOpen] = useState(false);
   const dl = card.deadline;
   const deadlineClass = dl.estourado
@@ -82,8 +84,21 @@ export function WorkflowCard({ card, onClick, isDragOverlay, dragHandle, membros
       onClick={assignDropdownOpen ? () => setAssignDropdownOpen(false) : onClick}
     >
       <div className="board-card-top" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <span className="board-card-client" style={{ borderLeft: `3px solid ${card.cliente?.cor || '#888'}`, paddingLeft: '0.5rem' }}>
-          {card.cliente?.nome || '—'}
+        <span
+          className="board-card-client"
+          style={{ borderLeft: `3px solid ${card.cliente?.cor || '#888'}`, paddingLeft: '0.5rem' }}
+        >
+          {card.cliente ? (
+            <span
+              role="link"
+              tabIndex={0}
+              onClick={(e) => { e.stopPropagation(); navigate(`/clientes/${card.cliente!.id}`); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); navigate(`/clientes/${card.cliente!.id}`); } }}
+              style={{ cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted', textUnderlineOffset: '2px' }}
+            >
+              {card.cliente.nome}
+            </span>
+          ) : '—'}
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
           {card.workflow.recorrente && <span title="Recorrente" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>↻</span>}
