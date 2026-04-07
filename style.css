@@ -166,11 +166,15 @@ html, body, #root, .app-container {
 html, body {
   height: 100dvh;
   width: 100vw;
-  overflow: hidden;
 }
 
 @supports not (height: 100dvh) {
   html, body { height: 100vh; }
+}
+
+body.landing-page {
+  height: auto;
+  overflow-y: auto;
 }
 
 body {
@@ -5148,14 +5152,8 @@ body.role-agent input[name="valor_total"] {
   flex-shrink: 0;
 }
 
-/* Landing page — override app overflow constraints */
-body.landing-page,
-body.landing-page html {
-  height: auto !important;
-  overflow: auto !important;
-}
-
+/* Landing page — #root must not clip page scroll */
 body.landing-page #root {
-  height: auto !important;
-  overflow: visible !important;
+  height: auto;
+  overflow: visible;
 }
