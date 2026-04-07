@@ -5147,3 +5147,15 @@ body.role-agent input[name="valor_total"] {
   color: var(--text-muted, #718096);
   flex-shrink: 0;
 }
+
+/* Landing page — override app overflow constraints */
+body.landing-page,
+body.landing-page html {
+  height: auto !important;
+  overflow: auto !important;
+}
+
+body.landing-page #root {
+  height: auto !important;
+  overflow: visible !important;
+}

@@ -1,7 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Users, CheckSquare, ExternalLink, Calendar, ChevronDown } from 'lucide-react';
 
+function scrollTo(id: string) {
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+}
+
 export default function LandingPage() {
+  useEffect(() => {
+    document.body.classList.add('landing-page');
+    return () => document.body.classList.remove('landing-page');
+  }, []);
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Header />
@@ -21,8 +30,8 @@ function Header() {
       <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
         <span className="text-xl font-bold tracking-tight">Mesaas</span>
         <nav className="hidden gap-6 text-sm text-muted-foreground md:flex">
-          <a href="#features" className="hover:text-foreground transition-colors">Funcionalidades</a>
-          <a href="#faq" className="hover:text-foreground transition-colors">FAQ</a>
+          <button onClick={() => scrollTo('features')} className="hover:text-foreground transition-colors">Funcionalidades</button>
+          <button onClick={() => scrollTo('faq')} className="hover:text-foreground transition-colors">FAQ</button>
         </nav>
         <a
           href="/login"
@@ -51,12 +60,12 @@ function Hero() {
         >
           Criar conta grátis
         </a>
-        <a
-          href="#features"
+        <button
+          onClick={() => scrollTo('features')}
           className="text-base font-medium text-muted-foreground hover:text-foreground transition-colors"
         >
           Ver como funciona →
-        </a>
+        </button>
       </div>
     </section>
   );
