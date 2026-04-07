@@ -165,6 +165,8 @@ function Faq() {
               <button
                 className="flex w-full items-center justify-between px-6 py-5 text-left font-medium hover:bg-muted/30 transition-colors"
                 onClick={() => setOpen(open === i ? null : i)}
+                aria-expanded={open === i}
+                aria-controls={`faq-answer-${i}`}
               >
                 <span>{item.q}</span>
                 <ChevronDown
@@ -172,7 +174,7 @@ function Faq() {
                 />
               </button>
               {open === i && (
-                <div className="px-6 pb-5 text-muted-foreground">{item.a}</div>
+                <div id={`faq-answer-${i}`} className="px-6 pb-5 text-muted-foreground">{item.a}</div>
               )}
             </div>
           ))}
