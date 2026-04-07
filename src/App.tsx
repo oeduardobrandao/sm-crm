@@ -12,6 +12,7 @@ const LoginPage = lazy(() => import('./pages/login/LoginPage'));
 const ConfigurarSenhaPage = lazy(() => import('./pages/configurar-senha/ConfigurarSenhaPage'));
 const PoliticaPage = lazy(() => import('./pages/politica-privacidade/PoliticaPage'));
 const PortalPage = lazy(() => import('./pages/portal/PortalPage'));
+const LandingPage = lazy(() => import('./pages/landing/LandingPage'));
 
 // Protected pages
 const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage'));
@@ -50,6 +51,7 @@ export default function App() {
         <Suspense fallback={PageFallback}>
           <Routes>
             {/* Public routes */}
+            <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/configurar-senha" element={<ConfigurarSenhaPage />} />
             <Route path="/politica-de-privacidade" element={<PoliticaPage />} />
@@ -57,7 +59,6 @@ export default function App() {
 
             {/* Protected routes with sidebar layout */}
             <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
-              <Route index element={<Navigate to="/dashboard" replace />} />
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/clientes" element={<ClientesPage />} />
               <Route path="/clientes/:id" element={<ClienteDetalhePage />} />
