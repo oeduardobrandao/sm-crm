@@ -63,7 +63,18 @@ function Hero() {
 }
 
 function Testimonial() {
-  return null;
+  return (
+    <section className="bg-muted/40 py-16">
+      <div className="mx-auto max-w-3xl px-6 text-center">
+        <blockquote className="text-xl font-medium leading-relaxed text-foreground">
+          "[PLACEHOLDER — inserir depoimento real da agência beta]"
+        </blockquote>
+        <p className="mt-4 text-sm text-muted-foreground">
+          — <strong>[Nome]</strong>, [Agência]
+        </p>
+      </div>
+    </section>
+  );
 }
 
 function Features() {
