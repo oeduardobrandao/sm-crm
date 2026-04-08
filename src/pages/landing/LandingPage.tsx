@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Users, CheckSquare, ExternalLink, Calendar, ChevronDown } from 'lucide-react';
+import { Users, CheckSquare, ExternalLink, Calendar, ChevronDown, Sun, Moon } from 'lucide-react';
+import logoBlack from '/logo-black.svg';
+import logoWhite from '/logo-white.svg';
 
 function scrollTo(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
@@ -25,20 +27,45 @@ export default function LandingPage() {
 }
 
 function Header() {
+  const [isDark, setIsDark] = useState(document.documentElement.getAttribute('data-theme') === 'dark');
+
+  const toggleTheme = () => {
+    const next = !isDark;
+    if (next) document.documentElement.setAttribute('data-theme', 'dark');
+    else document.documentElement.removeAttribute('data-theme');
+    setIsDark(next);
+  };
+
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-        <span className="text-xl font-bold tracking-tight">Mesaas</span>
+        <img src={logoBlack} alt="Mesaas" className="h-6 w-auto dark:hidden" />
+        <img src={logoWhite} alt="Mesaas" className="h-6 w-auto hidden dark:block" />
         <nav className="hidden gap-6 text-sm text-muted-foreground md:flex">
           <button onClick={() => scrollTo('features')} className="hover:text-foreground transition-colors">Funcionalidades</button>
           <button onClick={() => scrollTo('faq')} className="hover:text-foreground transition-colors">FAQ</button>
         </nav>
-        <a
-          href="/login"
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 transition-opacity"
-        >
-          Criar conta grátis
-        </a>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={toggleTheme}
+            className="rounded-md p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            aria-label="Alternar tema"
+          >
+            {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </button>
+          <a
+            href="/login"
+            className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Entrar
+          </a>
+          <a
+            href="/login"
+            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 transition-opacity"
+          >
+            Criar conta grátis
+          </a>
+        </div>
       </div>
     </header>
   );
@@ -216,7 +243,8 @@ function Footer() {
   return (
     <footer className="border-t border-border py-8">
       <div className="mx-auto flex max-w-6xl flex-col items-center gap-4 px-6 text-sm text-muted-foreground sm:flex-row sm:justify-between">
-        <span className="font-semibold text-foreground">Mesaas</span>
+        <img src={logoBlack} alt="Mesaas" className="h-5 w-auto dark:hidden" />
+        <img src={logoWhite} alt="Mesaas" className="h-5 w-auto hidden dark:block" />
         <div className="flex gap-6">
           <a href="/politica-de-privacidade" className="hover:text-foreground transition-colors">
             Política de Privacidade
