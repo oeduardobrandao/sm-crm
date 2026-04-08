@@ -6,7 +6,7 @@ import { Spinner } from '@/components/ui/spinner';
 const AGENT_BLOCKED = ['/financeiro', '/contratos', '/leads'];
 
 export default function ProtectedRoute({ children }: { children: ReactNode }) {
-  const { user, role, loading } = useAuth();
+  const { user, profile, role, loading } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -23,6 +23,15 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
 
   if (role === 'agent' && AGENT_BLOCKED.some(p => location.pathname.startsWith(p))) {
     return <Navigate to="/dashboard" replace />;
+  }
+
+  const needsSetup = role === 'owner'
+    && profile !== null
+    && !(profile as any).empresa
+    && location.pathname !== '/workspace-setup';
+
+  if (needsSetup) {
+    return <Navigate to="/workspace-setup" replace />;
   }
 
   return <>{children}</>;

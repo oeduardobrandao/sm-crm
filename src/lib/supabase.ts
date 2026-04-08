@@ -159,7 +159,7 @@ export async function signUp(email: string, password: string, meta?: { nome?: st
   return supabase.auth.signUp({
     email,
     password,
-    options: { data: meta },
+    options: { data: meta, emailRedirectTo: window.location.origin + '/login' },
   });
 }
 

@@ -10,6 +10,7 @@ import ProtectedRoute from './components/layout/ProtectedRoute';
 // Public pages
 const LoginPage = lazy(() => import('./pages/login/LoginPage'));
 const ConfigurarSenhaPage = lazy(() => import('./pages/configurar-senha/ConfigurarSenhaPage'));
+const WorkspaceSetupPage = lazy(() => import('./pages/workspace-setup/WorkspaceSetupPage'));
 const PoliticaPage = lazy(() => import('./pages/politica-privacidade/PoliticaPage'));
 const PortalPage = lazy(() => import('./pages/portal/PortalPage'));
 const LandingPage = lazy(() => import('./pages/landing/LandingPage'));
@@ -56,6 +57,9 @@ export default function App() {
             <Route path="/configurar-senha" element={<ConfigurarSenhaPage />} />
             <Route path="/politica-de-privacidade" element={<PoliticaPage />} />
             <Route path="/portal/:token" element={<PortalPage />} />
+
+            {/* Protected route without sidebar layout */}
+            <Route path="/workspace-setup" element={<ProtectedRoute><WorkspaceSetupPage /></ProtectedRoute>} />
 
             {/* Protected routes with sidebar layout */}
             <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>

@@ -143,11 +143,11 @@ AS $$
 DECLARE
   ws_id uuid;
   meta_conta_id uuid;
-  meta_role user_role;
+  meta_role text;
 BEGIN
   -- Check if this user was invited (has conta_id in metadata)
   meta_conta_id := (NEW.raw_user_meta_data ->> 'conta_id')::uuid;
-  meta_role := COALESCE(NEW.raw_user_meta_data ->> 'role', 'agent')::user_role;
+  meta_role := COALESCE(NEW.raw_user_meta_data ->> 'role', 'agent');
 
   IF meta_conta_id IS NOT NULL THEN
     -- Profile FIRST (workspace_members has FK to profiles)
