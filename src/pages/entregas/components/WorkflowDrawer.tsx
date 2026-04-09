@@ -182,11 +182,6 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
       return;
     }
 
-    // If post was approved and already confirmed, reset status on first save
-    if (isApproved) {
-      updateWorkflowPost(id, { status: 'revisao_interna' }).then(() => refresh());
-    }
-
     setSavingIds(prev => new Set(prev).add(id));
     if (saveTimers.current[id]) clearTimeout(saveTimers.current[id]);
     saveTimers.current[id] = setTimeout(async () => {
