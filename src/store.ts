@@ -1093,68 +1093,6 @@ export interface WorkflowPost {
   responsavel_id?: number | null;
   created_at?: string;
   updated_at?: string;
-  scheduled_at?: string | null;
-  instagram_container_id?: string | null;
-  instagram_media_id?: string | null;
-  music_note?: string | null;
-  cover_url?: string | null;
-}
-
-export interface PostMedia {
-  id?: number;
-  post_id: number;
-  storage_path: string;
-  public_url: string;
-  media_type: 'image' | 'video';
-  position: number;
-  created_at?: string;
-}
-
-export async function getPostMedia(postId: number): Promise<PostMedia[]> {
-  const { data, error } = await supabase
-    .from('post_media')
-    .select('*')
-    .eq('post_id', postId)
-    .order('position', { ascending: true });
-  if (error) throw error;
-  return data ?? [];
-}
-
-export async function addPostMedia(media: Omit<PostMedia, 'id' | 'created_at'>): Promise<PostMedia> {
-  const { data, error } = await supabase
-    .from('post_media')
-    .insert(media)
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
-}
-
-export async function removePostMedia(id: number): Promise<void> {
-  const { error } = await supabase.from('post_media').delete().eq('id', id);
-  if (error) throw error;
-}
-
-export async function uploadPostMediaFile(
-  contaId: string,
-  postId: number,
-  file: File
-): Promise<{ storagePath: string; publicUrl: string }> {
-  const ext = file.name.split('.').pop() || 'jpg';
-  const storagePath = `${contaId}/${postId}/${Date.now()}.${ext}`;
-  const { error } = await supabase.storage
-    .from('post-media')
-    .upload(storagePath, file, { contentType: file.type, upsert: false });
-  if (error) throw error;
-  const { data } = supabase.storage.from('post-media').getPublicUrl(storagePath);
-  return { storagePath, publicUrl: data.publicUrl };
-}
-
-export async function deletePostMediaFile(storagePath: string): Promise<void> {
-  const { error } = await supabase.storage
-    .from('post-media')
-    .remove([storagePath]);
-  if (error) throw error;
 }
 
 export interface PostApproval {

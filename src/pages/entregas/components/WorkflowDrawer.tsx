@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { X, Plus, Trash2, Send, ChevronDown, ChevronRight, MessageSquare, GripVertical, Instagram, Clock } from 'lucide-react';
+import { X, Plus, Trash2, Send, ChevronDown, ChevronRight, MessageSquare, GripVertical } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
@@ -16,8 +16,6 @@ import {
   completeEtapa,
   type WorkflowPost, type PostApproval, type Membro, type PostPropertyValue,
 } from '../../../store';
-import { ScheduleModal } from './ScheduleModal';
-import { cancelInstagramSchedule } from '../../../services/instagram-publish';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { PostEditor } from './PostEditor';
 import { PropertyPanel } from './PropertyPanel';
@@ -77,22 +75,6 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
   const [isSending, setIsSending] = useState(false);
   const saveTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
   const [savingIds, setSavingIds] = useState<Set<number>>(new Set());
-  const [schedulePostId, setSchedulePostId] = useState<number | null>(null);
-  const [cancelingId, setCancelingId] = useState<number | null>(null);
-
-  const handleCancelSchedule = async (postId: number) => {
-    setCancelingId(postId);
-    try {
-      await cancelInstagramSchedule(postId);
-      toast.success('Agendamento cancelado');
-      qc.invalidateQueries({ queryKey: ['workflow-posts-with-props', workflowId] });
-      onRefresh();
-    } catch (err: any) {
-      toast.error(err.message || 'Erro ao cancelar agendamento');
-    } finally {
-      setCancelingId(null);
-    }
-  };
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -342,9 +324,6 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
                       onContentUpdate={(json, plain) => scheduleContentSave(post, json, plain)}
                       onReplyChange={text => setReplyText(prev => ({ ...prev, [post.id!]: text }))}
                       onReplySend={() => handleReply(post.id!)}
-                      onSchedule={() => setSchedulePostId(post.id!)}
-                      onCancelSchedule={() => handleCancelSchedule(post.id!)}
-                      cancelingSchedule={cancelingId === post.id}
                     />
                   ))}
                 </div>
@@ -353,18 +332,6 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
           )}
         </div>
       </div>
-
-      {schedulePostId && (
-        <ScheduleModal
-          post={orderedPosts.find(p => p.id === schedulePostId)!}
-          contaId={card.workflow.conta_id ?? ''}
-          onClose={() => setSchedulePostId(null)}
-          onSuccess={() => {
-            qc.invalidateQueries({ queryKey: ['workflow-posts-with-props', workflowId] });
-            onRefresh();
-          }}
-        />
-      )}
 
       <AlertDialog open={!!pendingDeleteId} onOpenChange={open => { if (!open) setPendingDeleteId(null); }}>
         <AlertDialogContent>
@@ -402,16 +369,12 @@ interface SortablePostItemProps {
   onContentUpdate: (json: Record<string, unknown>, plain: string) => void;
   onReplyChange: (text: string) => void;
   onReplySend: () => void;
-  onSchedule: () => void;
-  onCancelSchedule: () => void;
-  cancelingSchedule: boolean;
 }
 
 function SortablePostItem({
   post, templateId, workflowId, isExpanded, isSaving, approvals, membros,
   replyText, sendingReply,
   onToggle, onDelete, onFieldChange, onContentUpdate, onReplyChange, onReplySend,
-  onSchedule, onCancelSchedule, cancelingSchedule,
 }: SortablePostItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: post.id! });
@@ -453,31 +416,6 @@ function SortablePostItem({
           <span className={`post-status-chip ${STATUS_CLASS[post.status]}`}>
             {STATUS_LABELS[post.status]}
           </span>
-          {post.status === 'aprovado_cliente' && (
-            <button
-              className="btn btn-sm btn-outline flex items-center gap-1"
-              onClick={onSchedule}
-              title="Agendar no Instagram"
-            >
-              <Instagram className="h-3.5 w-3.5" />
-              Agendar
-            </button>
-          )}
-          {post.status === 'agendado' && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground flex items-center gap-1">
-                <Clock className="h-3 w-3" />
-                {new Date(post.scheduled_at!).toLocaleString('pt-BR')}
-              </span>
-              <button
-                className="btn btn-sm btn-outline-destructive"
-                onClick={onCancelSchedule}
-                disabled={cancelingSchedule}
-              >
-                {cancelingSchedule ? 'Cancelando...' : 'Cancelar agendamento'}
-              </button>
-            </div>
-          )}
           <button className="drawer-delete-btn" onClick={onDelete} title="Remover post">
             <Trash2 className="h-3.5 w-3.5" />
           </button>
