@@ -7,11 +7,11 @@ import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } 
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical } from 'lucide-react';
 import { toast } from 'sonner';
-import { completeEtapa, revertEtapa, updateWorkflowPositions } from '../../../store';
+import { completeEtapa, revertEtapa, updateWorkflowPositions, approvePostsInternally, sendPostsToCliente } from '../../../store';
 import type { BoardCard } from '../hooks/useEntregasData';
 import type { Membro, WorkflowTemplate } from '../../../store';
 import { WorkflowCard } from '../components/WorkflowCard';
-import { RevertConfirmDialog } from '../components/WorkflowModals';
+import { RevertConfirmDialog, ClientApprovalChoiceDialog } from '../components/WorkflowModals';
 
 interface KanbanViewProps {
   cards: BoardCard[];
@@ -108,6 +108,7 @@ export function KanbanView({ cards, onCardClick, onPostsClick, onRefresh, onRecu
   const [localCards, setLocalCards] = useState<BoardCard[]>(cards);
   const [activeCard, setActiveCard] = useState<BoardCard | null>(null);
   const [revertTarget, setRevertTarget] = useState<{ workflowId: number; title: string } | null>(null);
+  const [approvalChoiceCard, setApprovalChoiceCard] = useState<BoardCard | null>(null);
 
   // Sync local state when prop cards change (after refresh — detects both workflow list and etapa changes)
   const cardsFingerprint = cards.map(c => `${c.workflow.id}:${c.etapa.id}`).join(',');
@@ -217,18 +218,7 @@ export function KanbanView({ cards, onCardClick, onPostsClick, onRefresh, onRecu
       }
 
       if (diff === 1) {
-        // Forward — completeEtapa
-        try {
-          const result = await completeEtapa(draggedCard.workflow.id!, draggedCard.etapa.id!);
-          if (result.workflow.status === 'concluido' && draggedCard.workflow.recorrente) {
-            onRecurring(draggedCard.workflow.id!);
-          } else {
-            toast.success('Etapa concluída!');
-          }
-          onRefresh();
-        } catch (err: unknown) {
-          toast.error((err as Error).message || 'Erro ao avançar etapa');
-        }
+        handleForwardCard(draggedCard);
       } else {
         // Backward — show confirm dialog
         setRevertTarget({
@@ -238,6 +228,57 @@ export function KanbanView({ cards, onCardClick, onPostsClick, onRefresh, onRecu
       }
     }
   }, [localCards, onRefresh, onRecurring, templates]);
+
+  const handleForwardCard = useCallback((card: BoardCard) => {
+    if (card.etapa.tipo === 'aprovacao_cliente') {
+      setApprovalChoiceCard(card);
+    } else {
+      (async () => {
+        try {
+          const result = await completeEtapa(card.workflow.id!, card.etapa.id!);
+          if (result.workflow.status === 'concluido' && card.workflow.recorrente) {
+            onRecurring(card.workflow.id!);
+          } else {
+            toast.success('Etapa concluída!');
+          }
+          onRefresh();
+        } catch (err: unknown) {
+          toast.error((err as Error).message || 'Erro ao avançar etapa');
+        }
+      })();
+    }
+  }, [onRefresh, onRecurring]);
+
+  const handleApproveInternally = async () => {
+    if (!approvalChoiceCard) return;
+    const card = approvalChoiceCard;
+    setApprovalChoiceCard(null);
+    try {
+      await approvePostsInternally(card.workflow.id!);
+      const result = await completeEtapa(card.workflow.id!, card.etapa.id!);
+      if (result.workflow.status === 'concluido' && card.workflow.recorrente) {
+        onRecurring(card.workflow.id!);
+      } else {
+        toast.success('Posts aprovados internamente — etapa concluída!');
+      }
+      onRefresh();
+    } catch (err: unknown) {
+      toast.error((err as Error).message || 'Erro ao aprovar internamente');
+    }
+  };
+
+  const handleSendToPortal = async () => {
+    if (!approvalChoiceCard) return;
+    const card = approvalChoiceCard;
+    setApprovalChoiceCard(null);
+    try {
+      await sendPostsToCliente(card.workflow.id!);
+      toast.success('Posts enviados ao portal do cliente!');
+      onRefresh();
+    } catch (err: unknown) {
+      toast.error((err as Error).message || 'Erro ao enviar ao portal');
+    }
+  };
 
   const handleRevertConfirm = async () => {
     if (!revertTarget) return;
@@ -289,19 +330,7 @@ export function KanbanView({ cards, onCardClick, onPostsClick, onRefresh, onRecu
                               membros={membros}
                               onRefresh={onRefresh}
                               onRevertClick={() => setRevertTarget({ workflowId: card.workflow.id!, title: card.workflow.titulo })}
-                              onForwardClick={async () => {
-                                try {
-                                  const result = await completeEtapa(card.workflow.id!, card.etapa.id!);
-                                  if (result.workflow.status === 'concluido' && card.workflow.recorrente) {
-                                    onRecurring(card.workflow.id!);
-                                  } else {
-                                    toast.success('Etapa concluída!');
-                                  }
-                                  onRefresh();
-                                } catch (err: unknown) {
-                                  toast.error((err as Error).message || 'Erro ao avançar etapa');
-                                }
-                              }}
+                              onForwardClick={() => handleForwardCard(card)}
                             />
                           ))
                         }
@@ -322,6 +351,13 @@ export function KanbanView({ cards, onCardClick, onPostsClick, onRefresh, onRecu
         workflowTitle={revertTarget?.title || ''}
         onConfirm={handleRevertConfirm}
         onCancel={() => setRevertTarget(null)}
+      />
+      <ClientApprovalChoiceDialog
+        open={!!approvalChoiceCard}
+        workflowTitle={approvalChoiceCard?.workflow.titulo || ''}
+        onApproveInternally={handleApproveInternally}
+        onSendToPortal={handleSendToPortal}
+        onCancel={() => setApprovalChoiceCard(null)}
       />
     </>
   );
