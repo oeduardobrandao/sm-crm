@@ -778,3 +778,43 @@ export function RevertConfirmDialog({ open, workflowTitle, onConfirm, onCancel }
     </AlertDialog>
   );
 }
+
+// ClientApprovalChoiceDialog — shown when completing an aprovacao_cliente step
+interface ClientApprovalChoiceDialogProps {
+  open: boolean;
+  workflowTitle: string;
+  onApproveInternally: () => void;
+  onSendToPortal: () => void;
+  onCancel: () => void;
+}
+export function ClientApprovalChoiceDialog({
+  open,
+  workflowTitle,
+  onApproveInternally,
+  onSendToPortal,
+  onCancel,
+}: ClientApprovalChoiceDialogProps) {
+  return (
+    <Dialog open={open} onOpenChange={open => { if (!open) onCancel(); }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Como deseja prosseguir com a aprovação?</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">
+          "{workflowTitle}" está em etapa de aprovação do cliente.
+        </p>
+        <DialogFooter className="flex-col gap-2 sm:flex-col">
+          <Button className="w-full" onClick={onApproveInternally}>
+            Aprovar internamente
+          </Button>
+          <Button className="w-full" variant="outline" onClick={onSendToPortal}>
+            Enviar ao portal do cliente
+          </Button>
+          <Button className="w-full" variant="ghost" onClick={onCancel}>
+            Cancelar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
