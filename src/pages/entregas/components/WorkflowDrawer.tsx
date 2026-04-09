@@ -75,6 +75,9 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
   const [isSending, setIsSending] = useState(false);
   const saveTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
   const [savingIds, setSavingIds] = useState<Set<number>>(new Set());
+  const [pendingEditPost, setPendingEditPost] = useState<WorkflowPost | null>(null);
+  const [pendingEditData, setPendingEditData] = useState<{ json: Record<string, unknown>; plain: string } | null>(null);
+  const confirmedEditIds = useRef<Set<number>>(new Set());
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -170,9 +173,17 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
     plain: string
   ) => {
     const id = post.id!;
+    const isApproved = post.status === 'aprovado_interno' || post.status === 'aprovado_cliente';
 
-    // If post was approved, reset to revisao_interna immediately
-    if (post.status === 'aprovado_interno' || post.status === 'aprovado_cliente') {
+    // If post is approved and not yet confirmed in this session, show confirmation dialog
+    if (isApproved && !confirmedEditIds.current.has(id)) {
+      setPendingEditPost(post);
+      setPendingEditData({ json, plain });
+      return;
+    }
+
+    // If post was approved and already confirmed, reset status on first save
+    if (isApproved) {
       updateWorkflowPost(id, { status: 'revisao_interna' }).then(() => refresh());
     }
 
@@ -187,6 +198,32 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
         setSavingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
       }
     }, 1500);
+  };
+
+  const handleConfirmEdit = () => {
+    if (!pendingEditPost || !pendingEditData) return;
+    const id = pendingEditPost.id!;
+    confirmedEditIds.current.add(id);
+    updateWorkflowPost(id, { status: 'revisao_interna' }).then(() => refresh());
+    setSavingIds(prev => new Set(prev).add(id));
+    if (saveTimers.current[id]) clearTimeout(saveTimers.current[id]);
+    saveTimers.current[id] = setTimeout(async () => {
+      try {
+        await updateWorkflowPost(id, { conteudo: pendingEditData.json, conteudo_plain: pendingEditData.plain });
+        refresh();
+      } catch { toast.error('Erro ao salvar conteúdo'); }
+      finally {
+        setSavingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+      }
+    }, 1500);
+    setPendingEditPost(null);
+    setPendingEditData(null);
+  };
+
+  const handleCancelEdit = () => {
+    setPendingEditPost(null);
+    setPendingEditData(null);
+    refresh();
   };
 
   const handleSendToCliente = async () => {
@@ -344,6 +381,22 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setPendingDeleteId(null)}>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={confirmDeletePost}>Remover</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmation dialog for editing approved posts */}
+      <AlertDialog open={!!pendingEditPost} onOpenChange={open => { if (!open) handleCancelEdit(); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Post aprovado</AlertDialogTitle>
+            <AlertDialogDescription>
+              Este post foi aprovado. Editá-lo vai invalidar a aprovação e resetar o status para "Em revisão". Deseja continuar?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleCancelEdit}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmEdit}>Confirmar edição</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
