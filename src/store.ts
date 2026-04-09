@@ -1340,7 +1340,7 @@ export async function approvePostsInternally(workflowId: number): Promise<void> 
     .from('workflow_posts')
     .update({ status: 'aprovado_cliente' })
     .eq('workflow_id', workflowId)
-    .not('status', 'in', '("agendado","postado")');
+    .not('status', 'in', '(agendado,postado)');
   if (error) throw error;
 }
 
