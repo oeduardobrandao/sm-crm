@@ -1335,6 +1335,15 @@ export async function sendPostsToCliente(workflowId: number): Promise<void> {
   if (error) throw error;
 }
 
+export async function approvePostsInternally(workflowId: number): Promise<void> {
+  const { error } = await supabase
+    .from('workflow_posts')
+    .update({ status: 'aprovado_cliente' })
+    .eq('workflow_id', workflowId)
+    .not('status', 'in', '("agendado","postado")');
+  if (error) throw error;
+}
+
 export async function getPostApprovals(postIds: number[]): Promise<PostApproval[]> {
   if (postIds.length === 0) return [];
   const { data, error } = await supabase
