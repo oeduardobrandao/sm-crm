@@ -9,12 +9,14 @@ export function showToast(msg: string, type: 'success' | 'error' | 'info' = 'suc
   else toast.success(msg);
 }
 
-export function openModal(_title: string, _html?: string, _onConfirm?: () => void, _opts?: string | Record<string, unknown>): void {
-  // no-op shim — old vanilla modal system replaced by antd Modal
+export function openModal(title: string, _html?: string, onConfirm?: () => void, _opts?: string | Record<string, unknown>): void {
+  if (window.confirm(title)) {
+    onConfirm?.();
+  }
 }
 
 export function closeModal(_id?: string): void {
-  // no-op shim
+  // no-op — confirmation already handled by openModal
 }
 
 export function escapeHTML(str: string): string {
