@@ -1511,3 +1511,54 @@ export async function getWorkspaceSlug(): Promise<string | null> {
   const { data } = await supabase.from('workspaces').select('slug').eq('id', conta_id).maybeSingle();
   return (data as { slug: string | null } | null)?.slug ?? null;
 }
+
+export interface HubBriefingQuestionRow {
+  id: string;
+  cliente_id: number;
+  conta_id: string;
+  question: string;
+  answer: string | null;
+  display_order: number;
+  created_at: string;
+}
+
+export async function getHubBriefingQuestions(clienteId: number): Promise<HubBriefingQuestionRow[]> {
+  const { data, error } = await supabase
+    .from('hub_briefing_questions')
+    .select('*')
+    .eq('cliente_id', clienteId)
+    .order('display_order');
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function addHubBriefingQuestion(clienteId: number, contaId: string, question: string): Promise<void> {
+  const { data: existing } = await supabase
+    .from('hub_briefing_questions')
+    .select('display_order')
+    .eq('cliente_id', clienteId)
+    .order('display_order', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const nextOrder = (existing?.display_order ?? -1) + 1;
+  const { error } = await supabase
+    .from('hub_briefing_questions')
+    .insert({ cliente_id: clienteId, conta_id: contaId, question, display_order: nextOrder });
+  if (error) throw error;
+}
+
+export async function updateHubBriefingQuestion(id: string, question: string): Promise<void> {
+  const { error } = await supabase
+    .from('hub_briefing_questions')
+    .update({ question })
+    .eq('id', id);
+  if (error) throw error;
+}
+
+export async function deleteHubBriefingQuestion(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('hub_briefing_questions')
+    .delete()
+    .eq('id', id);
+  if (error) throw error;
+}
