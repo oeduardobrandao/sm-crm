@@ -1,6 +1,6 @@
 import type {
   HubBootstrap, HubPost, PostApproval, HubBrand, HubBrandFile,
-  HubPage, HubPageFull, ClientBriefing
+  HubPage, HubPageFull, BriefingQuestion
 } from './types';
 
 const BASE = import.meta.env.VITE_SUPABASE_URL as string;
@@ -61,5 +61,9 @@ export function fetchPage(token: string, page_id: string) {
 }
 
 export function fetchBriefing(token: string) {
-  return get<{ briefing: ClientBriefing }>('hub-briefing', { token });
+  return get<{ questions: BriefingQuestion[] }>('hub-briefing', { token });
+}
+
+export function submitBriefingAnswer(token: string, question_id: string, answer: string) {
+  return post<{ ok: boolean }>('hub-briefing', { token, question_id, answer });
 }

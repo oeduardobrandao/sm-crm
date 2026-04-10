@@ -68,10 +68,9 @@ export interface HubContentBlock {
   level?: 1 | 2 | 3;
 }
 
-export interface ClientBriefing {
-  nome: string;
-  email: string | null;
-  telefone: string | null;
-  segmento: string | null;
-  notas: string | null;
+export interface BriefingQuestion {
+  id: string;
+  question: string;
+  answer: string | null;
+  display_order: number;
 }
