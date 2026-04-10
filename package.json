@@ -12,7 +12,7 @@
     "build:hub": "tsc -p apps/hub/tsconfig.json && vite build --config apps/hub/vite.config.ts",
     "build:staging": "tsc -p apps/crm/tsconfig.json && vite build --config apps/crm/vite.config.ts --mode staging",
     "preview": "vite preview --config apps/crm/vite.config.ts",
-    "db:link:staging": "npx supabase link --project-ref wlyzhyfondykzpsiqsce",
+    "db:link:staging": "npx supabase link --project-ref skjzpekeqefvlojenfsw",
     "db:push:staging": "npx supabase db push --linked"
   },
   "dependencies": {
