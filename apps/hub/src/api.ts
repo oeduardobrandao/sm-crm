@@ -1,0 +1,65 @@
+import type {
+  HubBootstrap, HubPost, PostApproval, HubBrand, HubBrandFile,
+  HubPage, HubPageFull, ClientBriefing
+} from './types';
+
+const BASE = import.meta.env.VITE_SUPABASE_URL as string;
+const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+
+function edgeUrl(fn: string, params: Record<string, string>) {
+  const url = new URL(`${BASE}/functions/v1/${fn}`);
+  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+  return url.toString();
+}
+
+async function get<T>(fn: string, params: Record<string, string>): Promise<T> {
+  const res = await fetch(edgeUrl(fn, params), {
+    headers: { apikey: ANON },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+async function post<T>(fn: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE}/functions/v1/${fn}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: ANON },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const b = await res.json().catch(() => ({}));
+    throw new Error((b as { error?: string }).error ?? `HTTP ${res.status}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+export function fetchBootstrap(workspace: string, token: string) {
+  return get<HubBootstrap>('hub-bootstrap', { workspace, token });
+}
+
+export function fetchPosts(token: string) {
+  return get<{ posts: HubPost[]; postApprovals: PostApproval[] }>('hub-posts', { token });
+}
+
+export function submitApproval(token: string, post_id: number, action: 'aprovado' | 'correcao' | 'mensagem', comentario?: string) {
+  return post<{ ok: boolean }>('hub-approve', { token, post_id, action, comentario });
+}
+
+export function fetchBrand(token: string) {
+  return get<{ brand: HubBrand | null; files: HubBrandFile[] }>('hub-brand', { token });
+}
+
+export function fetchPages(token: string) {
+  return get<{ pages: HubPage[] }>('hub-pages', { token });
+}
+
+export function fetchPage(token: string, page_id: string) {
+  return get<{ page: HubPageFull }>('hub-pages', { token, page_id });
+}
+
+export function fetchBriefing(token: string) {
+  return get<{ briefing: ClientBriefing }>('hub-briefing', { token });
+}
