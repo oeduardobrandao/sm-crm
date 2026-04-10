@@ -70,10 +70,10 @@ function QuestionItem({
   }
 
   return (
-    <div className="border rounded-xl p-4 space-y-2">
+    <div className="border rounded-sm p-4 space-y-2">
       <p className="text-sm font-medium">{question}</p>
       <textarea
-        className="w-full border rounded-lg p-2 text-sm resize-none min-h-[100px] focus:outline-none focus:ring-2 focus:ring-primary/30"
+        className="w-full border rounded-sm p-2 text-sm resize-none min-h-[100px] focus:outline-none focus:ring-2 focus:ring-primary/30"
         value={answer}
         onChange={e => setAnswer(e.target.value)}
         placeholder="Digite sua resposta..."
