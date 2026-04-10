@@ -1408,3 +1408,94 @@ export function getDeadlineInfo(etapa: WorkflowEtapa): { diasRestantes: number; 
     urgente: msRestantes >= 0 && msRestantes <= 24 * 60 * 60 * 1000,
   };
 }
+
+// ──────────────────────────────────────────────
+// Hub management types
+// ──────────────────────────────────────────────
+
+export interface HubBrandRow {
+  id?: string;
+  cliente_id: number;
+  logo_url?: string | null;
+  primary_color?: string | null;
+  secondary_color?: string | null;
+  font_primary?: string | null;
+  font_secondary?: string | null;
+}
+
+export interface HubBrandFileRow {
+  id: string;
+  cliente_id: number;
+  name: string;
+  file_url: string;
+  file_type: string;
+  display_order: number;
+}
+
+export interface HubPageRow {
+  id: string;
+  conta_id: string;
+  cliente_id: number;
+  title: string;
+  content: unknown[];
+  display_order: number;
+  created_at: string;
+}
+
+// ──────────────────────────────────────────────
+// Hub management functions
+// ──────────────────────────────────────────────
+
+export async function getHubToken(clienteId: number) {
+  const { data } = await supabase
+    .from('client_hub_tokens')
+    .select('id, token, is_active')
+    .eq('cliente_id', clienteId)
+    .maybeSingle();
+  return data as { id: string; token: string; is_active: boolean } | null;
+}
+
+export async function setHubTokenActive(tokenId: string, isActive: boolean) {
+  await supabase.from('client_hub_tokens').update({ is_active: isActive }).eq('id', tokenId);
+}
+
+export async function getHubBrand(clienteId: number) {
+  const { data: brand } = await supabase.from('hub_brand').select('*').eq('cliente_id', clienteId).maybeSingle();
+  const { data: files } = await supabase.from('hub_brand_files').select('*').eq('cliente_id', clienteId).order('display_order');
+  return { brand: brand as HubBrandRow | null, files: (files ?? []) as HubBrandFileRow[] };
+}
+
+export async function upsertHubBrand(clienteId: number, values: Partial<HubBrandRow>) {
+  await supabase.from('hub_brand').upsert({ ...values, cliente_id: clienteId }, { onConflict: 'cliente_id' });
+}
+
+export async function addHubBrandFile(clienteId: number, name: string, file_url: string, file_type: string, display_order: number) {
+  await supabase.from('hub_brand_files').insert({ cliente_id: clienteId, name, file_url, file_type, display_order });
+}
+
+export async function removeHubBrandFile(fileId: string) {
+  await supabase.from('hub_brand_files').delete().eq('id', fileId);
+}
+
+export async function getHubPages(clienteId: number) {
+  const { data } = await supabase.from('hub_pages').select('*').eq('cliente_id', clienteId).order('display_order');
+  return (data ?? []) as HubPageRow[];
+}
+
+export async function upsertHubPage(page: Partial<HubPageRow> & { cliente_id: number; conta_id: string }) {
+  if (page.id) {
+    await supabase.from('hub_pages').update(page).eq('id', page.id);
+  } else {
+    await supabase.from('hub_pages').insert(page);
+  }
+}
+
+export async function removeHubPage(pageId: string) {
+  await supabase.from('hub_pages').delete().eq('id', pageId);
+}
+
+export async function getWorkspaceSlug(): Promise<string | null> {
+  const conta_id = await getContaId();
+  const { data } = await supabase.from('workspaces').select('slug').eq('id', conta_id).maybeSingle();
+  return (data as { slug: string | null } | null)?.slug ?? null;
+}

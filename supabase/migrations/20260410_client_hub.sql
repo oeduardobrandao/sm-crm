@@ -1,22 +1,21 @@
--- supabase/migrations/20260410_client_hub.sql
-
--- 1. Add workspace slug + hub branding to contas
-ALTER TABLE contas
+-- 1. Add workspace slug + hub branding to workspaces table
+ALTER TABLE workspaces
   ADD COLUMN IF NOT EXISTS slug text UNIQUE,
   ADD COLUMN IF NOT EXISTS brand_color text,
   ADD COLUMN IF NOT EXISTS hub_enabled boolean NOT NULL DEFAULT true;
 
 -- Backfill slugs from existing workspace names (lowercase, spaces → hyphens)
-UPDATE contas SET slug = lower(regexp_replace(name, '[^a-zA-Z0-9]+', '-', 'g'))
+UPDATE workspaces SET slug = lower(regexp_replace(name, '[^a-zA-Z0-9]+', '-', 'g'))
   WHERE slug IS NULL;
 
-ALTER TABLE contas ALTER COLUMN slug SET NOT NULL;
+ALTER TABLE workspaces ALTER COLUMN slug SET NOT NULL;
 
 -- 2. Client hub tokens
+-- clientes.id is bigint, workspaces.id is uuid
 CREATE TABLE IF NOT EXISTS client_hub_tokens (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  cliente_id integer NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
-  conta_id integer NOT NULL REFERENCES contas(id) ON DELETE CASCADE,
+  cliente_id bigint NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
+  conta_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   token uuid NOT NULL UNIQUE DEFAULT gen_random_uuid(),
   is_active boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now()
@@ -32,7 +31,7 @@ WHERE NOT EXISTS (
 -- 3. Brand center
 CREATE TABLE IF NOT EXISTS hub_brand (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  cliente_id integer NOT NULL UNIQUE REFERENCES clientes(id) ON DELETE CASCADE,
+  cliente_id bigint NOT NULL UNIQUE REFERENCES clientes(id) ON DELETE CASCADE,
   logo_url text,
   primary_color text,
   secondary_color text,
@@ -42,7 +41,7 @@ CREATE TABLE IF NOT EXISTS hub_brand (
 
 CREATE TABLE IF NOT EXISTS hub_brand_files (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  cliente_id integer NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
+  cliente_id bigint NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
   name text NOT NULL,
   file_url text NOT NULL,
   file_type text NOT NULL DEFAULT 'file',
@@ -52,8 +51,8 @@ CREATE TABLE IF NOT EXISTS hub_brand_files (
 -- 4. Custom pages
 CREATE TABLE IF NOT EXISTS hub_pages (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  conta_id integer NOT NULL REFERENCES contas(id) ON DELETE CASCADE,
-  cliente_id integer NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
+  conta_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  cliente_id bigint NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
   title text NOT NULL,
   content jsonb NOT NULL DEFAULT '[]',
   display_order integer NOT NULL DEFAULT 0,

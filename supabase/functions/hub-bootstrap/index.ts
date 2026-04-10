@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
 
   // 1. Resolve workspace
   const { data: conta } = await db
-    .from("contas")
+    .from("workspaces")
     .select("id, name, logo_url, brand_color, hub_enabled")
     .eq("slug", workspaceSlug)
     .maybeSingle();

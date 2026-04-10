@@ -45,8 +45,10 @@ import {
   getWorkflowPosts,
   updateWorkflowPost,
   type WorkflowPost,
+  getWorkspaceSlug,
 } from '../../store';
 import { HistoryDrawer } from '../entregas/components/HistoryDrawer';
+import { HubTab } from './HubTab';
 import { getInstagramSummary, syncInstagramData } from '../../services/instagram';
 import { sanitizeUrl } from '../../utils/security';
 import { useAuth } from '../../context/AuthContext';
@@ -148,6 +150,11 @@ export default function ClienteDetalhePage() {
     enabled: !isNaN(clienteId),
   });
   useQuery({ queryKey: ['membros'], queryFn: getMembros });
+
+  const { data: workspaceSlug } = useQuery({
+    queryKey: ['workspace-slug'],
+    queryFn: getWorkspaceSlug,
+  });
 
   const { data: concludedWfs = [] } = useQuery({
     queryKey: ['concluded-by-cliente', clienteId],
@@ -1070,6 +1077,19 @@ export default function ClienteDetalhePage() {
             </Table>
           </div>
         </>
+      )}
+
+      {/* Hub do Cliente */}
+      {!isAgent && cliente && cliente.id != null && cliente.conta_id && workspaceSlug && (
+        <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
+          <h3 className="text-xl font-bold tracking-tight text-foreground mb-1">Hub do Cliente</h3>
+          <p className="text-sm text-muted-foreground mb-4">Link permanente de acesso do cliente ao hub de conteúdo.</p>
+          <HubTab
+            clienteId={cliente.id!}
+            contaId={cliente.conta_id!}
+            workspaceSlug={workspaceSlug}
+          />
+        </div>
       )}
 
       {/* Edit Modal */}
