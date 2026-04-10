@@ -12,8 +12,7 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
-  base: '/crm/',
   build: {
-    outDir: '../../dist/crm',
+    outDir: '../../dist',
   },
 });

@@ -9,8 +9,8 @@
       "destination": "/hub/index.html"
     },
     {
-      "source": "/((?!hub/|crm/|assets/|.*\\.).*)",
-      "destination": "/crm/index.html"
+      "source": "/((?!hub/|crm/|assets/)(?!.*\\.[a-zA-Z0-9]+$).*)",
+      "destination": "/index.html"
     }
   ],
   "buildCommand": "npm run build && npm run build:hub",
