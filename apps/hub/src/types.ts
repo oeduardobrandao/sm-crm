@@ -72,5 +72,6 @@ export interface BriefingQuestion {
   id: string;
   question: string;
   answer: string | null;
+  section: string | null;
   display_order: number;
 }

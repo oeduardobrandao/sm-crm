@@ -10,7 +10,7 @@ import {
   getHubToken, createHubToken, setHubTokenActive,
   getHubBrand, upsertHubBrand,
   getHubPages, upsertHubPage, removeHubPage,
-  getHubBriefingQuestions, addHubBriefingQuestion, updateHubBriefingQuestion, deleteHubBriefingQuestion,
+  getHubBriefingQuestions, addHubBriefingQuestion, updateHubBriefingQuestion, deleteHubBriefingQuestion, updateHubBriefingQuestionSection,
   type HubBrandRow, type HubBrandFileRow, type HubPageRow, type HubBriefingQuestionRow,
 } from '@/store';
 
@@ -259,22 +259,39 @@ function BriefingEditor({ clienteId, contaId, onSaved }: { clienteId: number; co
     queryFn: () => getHubBriefingQuestions(clienteId),
   });
 
-  const [newQuestion, setNewQuestion] = useState('');
-  const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
+  const [newSectionName, setNewSectionName] = useState('');
+  const [addingSectionInput, setAddingSectionInput] = useState(false);
+  // Map of section name -> new question text being typed
+  const [newQuestions, setNewQuestions] = useState<Record<string, string>>({});
+  const [addingFor, setAddingFor] = useState<string | null>(null);
 
-  async function handleAdd() {
-    if (!newQuestion.trim()) return;
-    setAdding(true);
+  // Build ordered list of sections (preserving insertion order)
+  const sections: { name: string; questions: HubBriefingQuestionRow[] }[] = [];
+  for (const q of questions) {
+    const name = q.section ?? '';
+    const existing = sections.find(s => s.name === name);
+    if (existing) existing.questions.push(q);
+    else sections.push({ name, questions: [q] });
+  }
+  // Put unsectioned questions (section='') first if they exist
+  const unsectioned = sections.find(s => s.name === '');
+  const namedSections = sections.filter(s => s.name !== '');
+
+  async function handleAddQuestion(section: string | null) {
+    const key = section ?? '';
+    const text = (newQuestions[key] ?? '').trim();
+    if (!text) return;
+    setAddingFor(key);
     try {
-      await addHubBriefingQuestion(clienteId, contaId, newQuestion.trim());
-      setNewQuestion('');
+      await addHubBriefingQuestion(clienteId, contaId, text, section);
+      setNewQuestions(prev => ({ ...prev, [key]: '' }));
       onSaved();
     } catch (e: any) {
       toast.error(e.message ?? 'Erro ao adicionar pergunta.');
     } finally {
-      setAdding(false);
+      setAddingFor(null);
     }
   }
 
@@ -299,17 +316,31 @@ function BriefingEditor({ clienteId, contaId, onSaved }: { clienteId: number; co
     }
   }
 
+  async function handleAddSection() {
+    const name = newSectionName.trim();
+    if (!name) return;
+    // Section is created implicitly when first question is added to it.
+    // We just add a placeholder question slot by tracking the section name.
+    // Actually: just persist an empty section by adding it to local state only — no DB row yet.
+    // The section is created when the user adds a question to it.
+    setNewSectionName('');
+    setAddingSectionInput(false);
+    // Add to namedSections tracking via a new question slot
+    setNewQuestions(prev => ({ ...prev, [name]: '' }));
+    // Signal that this section exists (we'll render it from newQuestions keys)
+  }
+
   if (isLoading) return <div className="py-8 flex justify-center"><div className="animate-spin h-5 w-5 rounded-full border-2 border-primary border-t-transparent" /></div>;
 
-  return (
-    <section>
-      <h3 className="font-semibold mb-3">Briefing</h3>
+  // Pending sections (typed but not yet saved to DB)
+  const pendingSections = Object.keys(newQuestions).filter(
+    k => k !== '' && !namedSections.find(s => s.name === k)
+  );
 
-      <div className="space-y-3 mb-4">
-        {questions.length === 0 && (
-          <p className="text-sm text-muted-foreground">Nenhuma pergunta cadastrada ainda.</p>
-        )}
-        {questions.map(q => (
+  function renderQuestions(sectionQuestions: HubBriefingQuestionRow[], sectionKey: string | null) {
+    return (
+      <div className="space-y-2 mb-3">
+        {sectionQuestions.map(q => (
           <div key={q.id} className="border rounded-lg p-3">
             {editingId === q.id ? (
               <div className="space-y-2">
@@ -342,20 +373,68 @@ function BriefingEditor({ clienteId, contaId, onSaved }: { clienteId: number; co
             )}
           </div>
         ))}
+        <div className="flex gap-2">
+          <Input
+            value={newQuestions[sectionKey ?? ''] ?? ''}
+            onChange={e => setNewQuestions(prev => ({ ...prev, [sectionKey ?? '']: e.target.value }))}
+            onKeyDown={e => { if (e.key === 'Enter') handleAddQuestion(sectionKey); }}
+            placeholder="Nova pergunta..."
+            className="flex-1"
+          />
+          <Button size="sm" onClick={() => handleAddQuestion(sectionKey)} disabled={addingFor === (sectionKey ?? '') || !(newQuestions[sectionKey ?? ''] ?? '').trim()}>
+            <Plus size={14} className="mr-1.5" /> Adicionar
+          </Button>
+        </div>
       </div>
+    );
+  }
 
-      <div className="flex gap-2">
-        <Input
-          value={newQuestion}
-          onChange={e => setNewQuestion(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') handleAdd(); }}
-          placeholder="Nova pergunta..."
-          className="flex-1"
-        />
-        <Button size="sm" onClick={handleAdd} disabled={adding || !newQuestion.trim()}>
-          <Plus size={14} className="mr-1.5" /> Adicionar
+  return (
+    <section>
+      <h3 className="font-semibold mb-3">Briefing</h3>
+
+      {/* Unsectioned questions */}
+      {(unsectioned || namedSections.length === 0) && (
+        <div className="mb-6">
+          {renderQuestions(unsectioned?.questions ?? [], null)}
+        </div>
+      )}
+
+      {/* Named sections */}
+      {namedSections.map(s => (
+        <div key={s.name} className="mb-6">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">{s.name}</p>
+          {renderQuestions(s.questions, s.name)}
+        </div>
+      ))}
+
+      {/* Pending (not yet saved) sections */}
+      {pendingSections.map(name => (
+        <div key={name} className="mb-6">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">{name}</p>
+          {renderQuestions([], name)}
+        </div>
+      ))}
+
+      {/* Add section */}
+      {addingSectionInput ? (
+        <div className="flex gap-2 mt-2">
+          <Input
+            value={newSectionName}
+            onChange={e => setNewSectionName(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') handleAddSection(); if (e.key === 'Escape') { setAddingSectionInput(false); setNewSectionName(''); } }}
+            placeholder="Nome da seção..."
+            className="flex-1"
+            autoFocus
+          />
+          <Button size="sm" onClick={handleAddSection} disabled={!newSectionName.trim()}>Criar seção</Button>
+          <Button size="sm" variant="outline" onClick={() => { setAddingSectionInput(false); setNewSectionName(''); }}>Cancelar</Button>
+        </div>
+      ) : (
+        <Button size="sm" variant="outline" onClick={() => setAddingSectionInput(true)}>
+          <Plus size={14} className="mr-1.5" /> Nova seção
         </Button>
-      </div>
+      )}
     </section>
   );
 }

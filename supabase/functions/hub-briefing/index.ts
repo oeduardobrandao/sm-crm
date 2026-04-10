@@ -37,7 +37,7 @@ Deno.serve(async (req) => {
 
     const { data, error } = await db
       .from("hub_briefing_questions")
-      .select("id, question, answer, display_order")
+      .select("id, question, answer, section, display_order")
       .eq("cliente_id", hubToken.cliente_id)
       .order("display_order");
 

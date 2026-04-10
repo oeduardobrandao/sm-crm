@@ -1518,6 +1518,7 @@ export interface HubBriefingQuestionRow {
   conta_id: string;
   question: string;
   answer: string | null;
+  section: string | null;
   display_order: number;
   created_at: string;
 }
@@ -1532,7 +1533,7 @@ export async function getHubBriefingQuestions(clienteId: number): Promise<HubBri
   return data ?? [];
 }
 
-export async function addHubBriefingQuestion(clienteId: number, contaId: string, question: string): Promise<void> {
+export async function addHubBriefingQuestion(clienteId: number, contaId: string, question: string, section?: string | null): Promise<void> {
   const { data: existing } = await supabase
     .from('hub_briefing_questions')
     .select('display_order')
@@ -1543,7 +1544,15 @@ export async function addHubBriefingQuestion(clienteId: number, contaId: string,
   const nextOrder = (existing?.display_order ?? -1) + 1;
   const { error } = await supabase
     .from('hub_briefing_questions')
-    .insert({ cliente_id: clienteId, conta_id: contaId, question, display_order: nextOrder });
+    .insert({ cliente_id: clienteId, conta_id: contaId, question, display_order: nextOrder, section: section ?? null });
+  if (error) throw error;
+}
+
+export async function updateHubBriefingQuestionSection(id: string, section: string | null): Promise<void> {
+  const { error } = await supabase
+    .from('hub_briefing_questions')
+    .update({ section })
+    .eq('id', id);
   if (error) throw error;
 }
 
