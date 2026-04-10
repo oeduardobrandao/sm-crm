@@ -2,8 +2,11 @@
 module.exports = {
   darkMode: ["class", "[data-theme='dark']"],
   content: [
-    "./index.html",
-    "./src/**/*.{ts,tsx}",
+    "./apps/crm/index.html",
+    "./apps/hub/index.html",
+    "./apps/crm/src/**/*.{ts,tsx}",
+    "./apps/hub/src/**/*.{ts,tsx}",
+    "./packages/**/*.{ts,tsx}",
   ],
   theme: {
     extend: {

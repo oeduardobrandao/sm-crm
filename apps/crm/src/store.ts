@@ -1451,8 +1451,20 @@ export async function getHubToken(clienteId: number) {
     .from('client_hub_tokens')
     .select('id, token, is_active')
     .eq('cliente_id', clienteId)
+    .order('created_at', { ascending: false })
+    .limit(1)
     .maybeSingle();
   return data as { id: string; token: string; is_active: boolean } | null;
+}
+
+export async function createHubToken(clienteId: number, contaId: string) {
+  const { data, error } = await supabase
+    .from('client_hub_tokens')
+    .insert({ cliente_id: clienteId, conta_id: contaId })
+    .select('id, token, is_active')
+    .single();
+  if (error) throw error;
+  return data as { id: string; token: string; is_active: boolean };
 }
 
 export async function setHubTokenActive(tokenId: string, isActive: boolean) {

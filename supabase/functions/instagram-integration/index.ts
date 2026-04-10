@@ -427,7 +427,7 @@ Deno.serve(async (req) => {
             }
         } catch (e: any) { console.log('[IG-CALLBACK] Posts/history fetch error:', e.message); }
 
-        return Response.redirect(`${OAUTH_REDIRECT_BASE}/#/cliente/${clientId}`, 302);
+        return Response.redirect(`${OAUTH_REDIRECT_BASE}/cliente/${clientId}`, 302);
     }
 
     // 3. POST /sync/:clientId

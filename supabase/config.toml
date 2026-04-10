@@ -1,2 +1,20 @@
 [functions.instagram-analytics]
 verify_jwt = false
+
+[functions.hub-bootstrap]
+verify_jwt = false
+
+[functions.hub-posts]
+verify_jwt = false
+
+[functions.hub-approve]
+verify_jwt = false
+
+[functions.hub-brand]
+verify_jwt = false
+
+[functions.hub-pages]
+verify_jwt = false
+
+[functions.hub-briefing]
+verify_jwt = false

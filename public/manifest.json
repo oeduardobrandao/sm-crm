@@ -1,7 +1,7 @@
 {
   "name": "Mesaas - Gestão Inteligente",
   "short_name": "Mesaas",
-  "start_url": "/#/dashboard",
+  "start_url": "/dashboard",
   "display": "standalone",
   "background_color": "#12151a",
   "theme_color": "#12151a",

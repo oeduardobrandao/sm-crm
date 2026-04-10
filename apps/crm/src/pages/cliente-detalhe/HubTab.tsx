@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
-  getHubToken, setHubTokenActive,
+  getHubToken, createHubToken, setHubTokenActive,
   getHubBrand, upsertHubBrand,
   getHubPages, upsertHubPage, removeHubPage,
   type HubBrandRow, type HubBrandFileRow, type HubPageRow,
@@ -65,7 +65,20 @@ export function HubTab({ clienteId, contaId, workspaceSlug }: HubTabProps) {
             </Button>
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">Token ainda não gerado para este cliente.</p>
+          <div className="flex items-center gap-3">
+            <p className="text-sm text-muted-foreground">Nenhum link gerado ainda.</p>
+            <Button size="sm" onClick={async () => {
+              try {
+                await createHubToken(clienteId, contaId);
+                qc.invalidateQueries({ queryKey: ['hub-token', clienteId] });
+                toast.success('Link gerado!');
+              } catch (e: any) {
+                toast.error(e.message ?? 'Erro ao gerar link.');
+              }
+            }}>
+              <Plus size={14} className="mr-1.5" /> Gerar link
+            </Button>
+          </div>
         )}
       </section>
 

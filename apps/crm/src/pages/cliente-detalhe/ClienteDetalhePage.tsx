@@ -307,24 +307,6 @@ export default function ClienteDetalhePage() {
     }
   }, [igSummary, clienteId, refetchIg]);
 
-  const igOverviewRef = useRef<HTMLDivElement>(null);
-  const igChartRef = useRef<HTMLDivElement>(null);
-  const igPostsRef = useRef<HTMLDivElement>(null);
-  const igConnectRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!igSummary) {
-      if (igConnectRef.current && !isNaN(clienteId)) {
-        renderInstagramConnectButton(igConnectRef.current, clienteId);
-      }
-      return;
-    }
-    if (igSummary.account?.last_synced_at) {
-      if (igOverviewRef.current) renderInstagramOverviewCard(igOverviewRef.current, clienteId, igSummary.account, () => refetchIg());
-      if (igChartRef.current) renderInstagramFollowerChart(igChartRef.current, igSummary.history ?? []);
-      if (igPostsRef.current) renderInstagramPostsTable(igPostsRef.current, clienteId);
-    }
-  }, [igSummary, clienteId, refetchIg]);
 
   const handleCompleteEtapa = async (workflow: Workflow, etapa: WorkflowEtapa) => {
     try {
@@ -976,30 +958,15 @@ export default function ClienteDetalhePage() {
         )}
       </div>
 
-      {/* Instagram Section */}
-      <div id="ig-container" style={{ marginBottom: '1.5rem' }}>
-        <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">Instagram</h3>
-        {loadingIg && <div className="flex justify-center p-4"><Spinner size="lg" /></div>}
-        {!loadingIg && igSummary && !igSummary.account?.last_synced_at && (
-          <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
-            <Spinner size="lg" />
-            <p style={{ color: 'var(--text-muted)', marginTop: 8 }}>Sincronizando dados do Instagram...</p>
-          </div>
-        )}
-        {!loadingIg && igSummary && igSummary.account?.last_synced_at && (
-          <>
-            <div ref={igOverviewRef} />
-            <div ref={igChartRef} />
-            <div ref={igPostsRef} />
-            <div style={{ display: 'flex', justifyContent: 'center', marginTop: '1.5rem', marginBottom: '1rem' }}>
-              <Button onClick={() => navigate(`/analytics/${clienteId}`)}>
-                Ver Analytics Completo →
-              </Button>
-            </div>
-          </>
-        )}
-        {!loadingIg && !igSummary && <div ref={igConnectRef} />}
-      </div>
+      {/* Instagram Section — keyed so it fully remounts on client change */}
+      <InstagramSection
+        key={`ig-${clienteId}`}
+        clienteId={clienteId}
+        loadingIg={loadingIg}
+        igSummary={igSummary}
+        refetchIg={refetchIg}
+        onNavigateAnalytics={() => navigate(`/analytics/${clienteId}`)}
+      />
 
       {!isAgent && (
         <>
@@ -1257,6 +1224,59 @@ export default function ClienteDetalhePage() {
           onClose={() => setHistoryWorkflow(null)}
         />
       )}
+    </div>
+  );
+}
+
+// Isolated component for imperative Instagram widgets.
+// Keyed by clienteId so it fully remounts on navigation.
+// Never conditionally mounts/unmounts its ref divs — React never touches their children.
+function InstagramSection({ clienteId, loadingIg, igSummary, refetchIg, onNavigateAnalytics }: {
+  clienteId: number;
+  loadingIg: boolean;
+  igSummary: any;
+  refetchIg: () => void;
+  onNavigateAnalytics: () => void;
+}) {
+  const igOverviewRef = useRef<HTMLDivElement>(null);
+  const igChartRef = useRef<HTMLDivElement>(null);
+  const igPostsRef = useRef<HTMLDivElement>(null);
+  const igConnectRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (loadingIg) return;
+    if (!igSummary) {
+      if (igConnectRef.current && !isNaN(clienteId)) {
+        renderInstagramConnectButton(igConnectRef.current, clienteId);
+      }
+      return;
+    }
+    if (igSummary.account?.last_synced_at) {
+      if (igOverviewRef.current) renderInstagramOverviewCard(igOverviewRef.current, clienteId, igSummary.account, refetchIg);
+      if (igChartRef.current) renderInstagramFollowerChart(igChartRef.current, igSummary.history ?? []);
+      if (igPostsRef.current) renderInstagramPostsTable(igPostsRef.current, clienteId);
+    }
+  }, [loadingIg, igSummary, clienteId, refetchIg]);
+
+  return (
+    <div id="ig-container" style={{ marginBottom: '1.5rem' }}>
+      <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">Instagram</h3>
+      {loadingIg && <div className="flex justify-center p-4"><Spinner size="lg" /></div>}
+      {!loadingIg && igSummary && !igSummary.account?.last_synced_at && (
+        <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
+          <Spinner size="lg" />
+          <p style={{ color: 'var(--text-muted)', marginTop: 8 }}>Sincronizando dados do Instagram...</p>
+        </div>
+      )}
+      <div ref={igOverviewRef} />
+      <div ref={igChartRef} />
+      <div ref={igPostsRef} />
+      {!loadingIg && igSummary?.account?.last_synced_at && (
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '1.5rem', marginBottom: '1rem' }}>
+          <Button onClick={onNavigateAnalytics}>Ver Analytics Completo →</Button>
+        </div>
+      )}
+      <div ref={igConnectRef} />
     </div>
   );
 }
