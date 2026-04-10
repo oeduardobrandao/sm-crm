@@ -73,7 +73,8 @@ Deno.serve(async (req) => {
     const { error } = await db
       .from("hub_briefing_questions")
       .update({ answer })
-      .eq("id", question_id);
+      .eq("id", question_id)
+      .eq("cliente_id", hubToken.cliente_id);
 
     if (error) return json({ error: error.message }, 500);
     return json({ ok: true });
