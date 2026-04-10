@@ -347,14 +347,14 @@ export default function DashboardPage() {
                   )}
                 </div>
                 <div style={{ display: 'flex', gap: 6, marginTop: 10, marginBottom: 10 }}>
-                  {portfolio?.summary?.growing > 0 && (
-                    <span className="badge badge-success"><i className="ph ph-trend-up" style={{ marginRight: 3 }} />{portfolio.summary.growing} crescendo</span>
+                  {(portfolio?.summary?.growing ?? 0) > 0 && (
+                    <span className="badge badge-success"><i className="ph ph-trend-up" style={{ marginRight: 3 }} />{portfolio!.summary.growing} crescendo</span>
                   )}
-                  {portfolio?.summary?.stagnant > 0 && (
-                    <span className="badge badge-neutral">{portfolio.summary.stagnant} estável</span>
+                  {(portfolio?.summary?.stagnant ?? 0) > 0 && (
+                    <span className="badge badge-neutral">{portfolio!.summary.stagnant} estável</span>
                   )}
-                  {portfolio?.summary?.declining > 0 && (
-                    <span className="badge badge-danger"><i className="ph ph-trend-down" style={{ marginRight: 3 }} />{portfolio.summary.declining} caindo</span>
+                  {(portfolio?.summary?.declining ?? 0) > 0 && (
+                    <span className="badge badge-danger"><i className="ph ph-trend-down" style={{ marginRight: 3 }} />{portfolio!.summary.declining} caindo</span>
                   )}
                 </div>
                 {topAccountsByEngagement.length > 0 && (
@@ -369,7 +369,7 @@ export default function DashboardPage() {
                           <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>{a.client_name}</span>
                           <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>@{a.username}</span>
                         </div>
-                        <div style={{ display: 'flex', align: 'center', gap: '0.75rem', fontSize: '0.8rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.8rem' }}>
                           <span style={{ color: 'var(--text-muted)' }}>{a.follower_count.toLocaleString('pt-BR')} seg.</span>
                           <span className={`badge ${a.engagement_rate_avg >= 3 ? 'badge-success' : a.engagement_rate_avg >= 1 ? 'badge-neutral' : 'badge-outline'}`}>
                             {a.engagement_rate_avg.toFixed(2)}%
