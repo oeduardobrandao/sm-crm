@@ -140,6 +140,7 @@ function BriefingEditor({ clienteId }: { clienteId: number }) {
   }, [data]);
 
   async function save() {
+    if (!data) return;
     setSaving(true);
     try {
       await updateCliente(clienteId, form);
