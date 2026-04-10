@@ -1,3 +1,18 @@
 {
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [
+    {
+      "source": "/:workspace/hub/:token/(.*)",
+      "destination": "/hub/index.html"
+    },
+    {
+      "source": "/:workspace/hub/:token",
+      "destination": "/hub/index.html"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/crm/index.html"
+    }
+  ],
+  "buildCommand": "npm run build && npm run build:hub",
+  "outputDirectory": "dist"
 }
