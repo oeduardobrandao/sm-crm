@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   getHubToken, createHubToken, setHubTokenActive,
   getHubBrand, upsertHubBrand,
@@ -51,53 +52,67 @@ export function HubTab({ clienteId, contaId, workspaceSlug }: HubTabProps) {
   }
 
   return (
-    <div className="space-y-8 py-4">
-      {/* Access control */}
-      <section>
-        <h3 className="font-semibold mb-3">Acesso do Cliente</h3>
-        {tokenData ? (
-          <div className="flex items-center gap-3 flex-wrap">
-            <code className="text-xs bg-muted px-3 py-2 rounded-lg flex-1 min-w-0 truncate">{hubUrl}</code>
-            <Button size="sm" variant="outline" onClick={copyLink}><Copy size={14} className="mr-1.5" /> Copiar</Button>
-            <Button size="sm" variant="outline" onClick={() => window.open(hubUrl, '_blank')}><Eye size={14} className="mr-1.5" /> Preview</Button>
-            <Button size="sm" variant={tokenData.is_active ? 'destructive' : 'default'} onClick={toggleActive}>
-              {tokenData.is_active ? <><ToggleRight size={14} className="mr-1.5" /> Desativar</> : <><ToggleLeft size={14} className="mr-1.5" /> Ativar</>}
-            </Button>
-          </div>
-        ) : (
-          <div className="flex items-center gap-3">
-            <p className="text-sm text-muted-foreground">Nenhum link gerado ainda.</p>
-            <Button size="sm" onClick={async () => {
-              try {
-                await createHubToken(clienteId, contaId);
-                qc.invalidateQueries({ queryKey: ['hub-token', clienteId] });
-                toast.success('Link gerado!');
-              } catch (e: any) {
-                toast.error(e.message ?? 'Erro ao gerar link.');
-              }
-            }}>
-              <Plus size={14} className="mr-1.5" /> Gerar link
-            </Button>
-          </div>
-        )}
-      </section>
+    <Tabs defaultValue="acesso" className="py-4">
+      <TabsList className="mb-6">
+        <TabsTrigger value="acesso">Acesso</TabsTrigger>
+        <TabsTrigger value="briefing">Briefing</TabsTrigger>
+        <TabsTrigger value="marca">Marca</TabsTrigger>
+        <TabsTrigger value="paginas">Páginas</TabsTrigger>
+      </TabsList>
 
-      {/* Brand center */}
-      <BrandEditor
-        clienteId={clienteId}
-        brand={brandData?.brand ?? null}
-        files={brandData?.files ?? []}
-        onSaved={() => qc.invalidateQueries({ queryKey: ['hub-brand-crm', clienteId] })}
-      />
+      <TabsContent value="acesso">
+        <section>
+          <h3 className="font-semibold mb-3">Acesso do Cliente</h3>
+          {tokenData ? (
+            <div className="flex items-center gap-3 flex-wrap">
+              <code className="text-xs bg-muted px-3 py-2 rounded-lg flex-1 min-w-0 truncate">{hubUrl}</code>
+              <Button size="sm" variant="outline" onClick={copyLink}><Copy size={14} className="mr-1.5" /> Copiar</Button>
+              <Button size="sm" variant="outline" onClick={() => window.open(hubUrl, '_blank')}><Eye size={14} className="mr-1.5" /> Preview</Button>
+              <Button size="sm" variant={tokenData.is_active ? 'destructive' : 'default'} onClick={toggleActive}>
+                {tokenData.is_active ? <><ToggleRight size={14} className="mr-1.5" /> Desativar</> : <><ToggleLeft size={14} className="mr-1.5" /> Ativar</>}
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <p className="text-sm text-muted-foreground">Nenhum link gerado ainda.</p>
+              <Button size="sm" onClick={async () => {
+                try {
+                  await createHubToken(clienteId, contaId);
+                  qc.invalidateQueries({ queryKey: ['hub-token', clienteId] });
+                  toast.success('Link gerado!');
+                } catch (e: any) {
+                  toast.error(e.message ?? 'Erro ao gerar link.');
+                }
+              }}>
+                <Plus size={14} className="mr-1.5" /> Gerar link
+              </Button>
+            </div>
+          )}
+        </section>
+      </TabsContent>
 
-      {/* Custom pages */}
-      <PagesEditor
-        clienteId={clienteId}
-        contaId={contaId}
-        pages={pages ?? []}
-        onSaved={() => qc.invalidateQueries({ queryKey: ['hub-pages-crm', clienteId] })}
-      />
-    </div>
+      <TabsContent value="briefing">
+        <div className="text-sm text-muted-foreground py-4">Briefing (em breve)</div>
+      </TabsContent>
+
+      <TabsContent value="marca">
+        <BrandEditor
+          clienteId={clienteId}
+          brand={brandData?.brand ?? null}
+          files={brandData?.files ?? []}
+          onSaved={() => qc.invalidateQueries({ queryKey: ['hub-brand-crm', clienteId] })}
+        />
+      </TabsContent>
+
+      <TabsContent value="paginas">
+        <PagesEditor
+          clienteId={clienteId}
+          contaId={contaId}
+          pages={pages ?? []}
+          onSaved={() => qc.invalidateQueries({ queryKey: ['hub-pages-crm', clienteId] })}
+        />
+      </TabsContent>
+    </Tabs>
   );
 }
 
