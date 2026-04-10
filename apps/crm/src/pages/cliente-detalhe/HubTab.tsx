@@ -145,8 +145,6 @@ function BriefingEditor({ clienteId }: { clienteId: number }) {
       await updateCliente(clienteId, form);
       qc.invalidateQueries({ queryKey: ['hub-briefing-crm', clienteId] });
       toast.success('Briefing salvo!');
-    } catch (e: any) {
-      toast.error(e.message ?? 'Erro ao salvar briefing.');
     } finally {
       setSaving(false);
     }
