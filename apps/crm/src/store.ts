@@ -1494,16 +1494,6 @@ export async function getHubPages(clienteId: number) {
   return (data ?? []) as HubPageRow[];
 }
 
-export async function getClienteBriefing(clienteId: number): Promise<{ nome: string | null; email: string | null; telefone: string | null; segmento: string | null; notas: string | null }> {
-  const { data, error } = await supabase
-    .from('clientes')
-    .select('nome, email, telefone, segmento, notas')
-    .eq('id', clienteId)
-    .single();
-  if (error) throw error;
-  return data;
-}
-
 export async function upsertHubPage(page: Partial<HubPageRow> & { cliente_id: number; conta_id: string }) {
   if (page.id) {
     await supabase.from('hub_pages').update(page).eq('id', page.id);
