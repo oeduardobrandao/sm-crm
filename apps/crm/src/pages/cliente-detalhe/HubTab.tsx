@@ -10,6 +10,7 @@ import {
   getHubToken, createHubToken, setHubTokenActive,
   getHubBrand, upsertHubBrand,
   getHubPages, upsertHubPage, removeHubPage,
+  getClienteBriefing, updateCliente,
   type HubBrandRow, type HubBrandFileRow, type HubPageRow,
 } from '@/store';
 
@@ -92,7 +93,7 @@ export function HubTab({ clienteId, contaId, workspaceSlug }: HubTabProps) {
       </TabsContent>
 
       <TabsContent value="briefing">
-        <div className="text-sm text-muted-foreground py-4">Briefing (em breve)</div>
+        <BriefingEditor clienteId={clienteId} />
       </TabsContent>
 
       <TabsContent value="marca">
@@ -113,6 +114,78 @@ export function HubTab({ clienteId, contaId, workspaceSlug }: HubTabProps) {
         />
       </TabsContent>
     </Tabs>
+  );
+}
+
+type BriefingFields = { nome: string; email: string; telefone: string; segmento: string; notas: string };
+
+function BriefingEditor({ clienteId }: { clienteId: number }) {
+  const qc = useQueryClient();
+  const { data, isLoading } = useQuery({
+    queryKey: ['hub-briefing-crm', clienteId],
+    queryFn: () => getClienteBriefing(clienteId),
+  });
+
+  const [form, setForm] = useState<Partial<BriefingFields>>({});
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (data) setForm({
+      nome: data.nome ?? '',
+      email: data.email ?? '',
+      telefone: data.telefone ?? '',
+      segmento: data.segmento ?? '',
+      notas: data.notas ?? '',
+    });
+  }, [data]);
+
+  async function save() {
+    setSaving(true);
+    try {
+      await updateCliente(clienteId, form);
+      qc.invalidateQueries({ queryKey: ['hub-briefing-crm', clienteId] });
+      toast.success('Briefing salvo!');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (isLoading) return <div className="py-8 flex justify-center"><div className="animate-spin h-5 w-5 rounded-full border-2 border-primary border-t-transparent" /></div>;
+
+  return (
+    <section>
+      <h3 className="font-semibold mb-3">Briefing</h3>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label>Nome</Label>
+          <Input value={form.nome ?? ''} onChange={e => setForm(f => ({ ...f, nome: e.target.value }))} placeholder="Nome do cliente" />
+        </div>
+        <div>
+          <Label>Email</Label>
+          <Input value={form.email ?? ''} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="email@exemplo.com" />
+        </div>
+        <div>
+          <Label>Telefone</Label>
+          <Input value={form.telefone ?? ''} onChange={e => setForm(f => ({ ...f, telefone: e.target.value }))} placeholder="(11) 99999-9999" />
+        </div>
+        <div>
+          <Label>Segmento</Label>
+          <Input value={form.segmento ?? ''} onChange={e => setForm(f => ({ ...f, segmento: e.target.value }))} placeholder="Ex: Saúde, Moda..." />
+        </div>
+        <div className="col-span-2">
+          <Label>Notas</Label>
+          <textarea
+            className="w-full border rounded-lg p-2 text-sm resize-none min-h-[100px]"
+            value={form.notas ?? ''}
+            onChange={e => setForm(f => ({ ...f, notas: e.target.value }))}
+            placeholder="Observações sobre o cliente..."
+          />
+        </div>
+      </div>
+      <Button size="sm" className="mt-3" onClick={save} disabled={saving}>
+        <Save size={14} className="mr-1.5" /> Salvar briefing
+      </Button>
+    </section>
   );
 }
 
