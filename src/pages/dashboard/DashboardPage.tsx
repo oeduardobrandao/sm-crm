@@ -73,7 +73,7 @@ export default function DashboardPage() {
   const last4Transacoes = transacoes.slice(0, 4);
 
   const activeWorkflows = workflows.filter(w => w.status === 'ativo');
-  const first3Workflows = activeWorkflows.slice(0, 3);
+  const first3Workflows = activeWorkflows.slice(0, 5);
 
   const membroTipos = {
     clt: membros.filter(m => m.tipo === 'clt').length,
@@ -97,9 +97,14 @@ export default function DashboardPage() {
 
   const portfolioAccounts = portfolio?.accounts ?? [];
   const totalFollowers = portfolioAccounts.reduce((s, a) => s + a.follower_count, 0);
+  const totalReach = portfolioAccounts.reduce((s, a) => s + a.reach_28d, 0);
+  const totalWebsiteClicks = portfolioAccounts.reduce((s, a) => s + (a.website_clicks_28d ?? 0), 0);
   const avgEngagement = portfolioAccounts.length > 0
     ? portfolioAccounts.reduce((s, a) => s + a.engagement_rate_avg, 0) / portfolioAccounts.length
     : 0;
+  const topAccountsByEngagement = [...portfolioAccounts]
+    .sort((a, b) => b.engagement_rate_avg - a.engagement_rate_avg)
+    .slice(0, 4);
 
   const clienteMap = Object.fromEntries(clientes.map(c => [c.id!, c]));
 
@@ -201,7 +206,7 @@ export default function DashboardPage() {
       <div className="dashboard-hub">
 
         {/* What's happening today */}
-        <Link to="/calendario" style={{ textDecoration: 'none', color: 'inherit' }}>
+        <Link to="/calendario" style={{ textDecoration: 'none', color: 'inherit', gridColumn: 'span 1' }}>
           <div className="card dashboard-hub-card animate-up">
             <div className="dashboard-hub-card-header">
               <h3><i className="ph ph-calendar-check" style={{ marginRight: 8 }} />Hoje</h3>
@@ -261,104 +266,8 @@ export default function DashboardPage() {
           </div>
         </Link>
 
-        {/* Analytics */}
-        <Link to="/analytics" style={{ textDecoration: 'none', color: 'inherit' }}>
-          <div className="card dashboard-hub-card animate-up">
-            <div className="dashboard-hub-card-header">
-              <h3><i className="fa-brands fa-instagram" style={{ marginRight: 8 }} />Analytics</h3>
-              <i className="ph ph-arrow-right" />
-            </div>
-            {portfolioAccounts.length > 0 ? (
-              <>
-                <div className="dashboard-mini-kpis">
-                  <div className="dashboard-mini-kpi">
-                    <span className="kpi-label">CONTAS</span>
-                    <span className="kpi-value" style={{ fontSize: '1.25rem' }}>{portfolioAccounts.length}</span>
-                  </div>
-                  <div className="dashboard-mini-kpi">
-                    <span className="kpi-label">SEGUIDORES</span>
-                    <span className="kpi-value" style={{ fontSize: '1rem' }}>{totalFollowers.toLocaleString('pt-BR')}</span>
-                  </div>
-                  <div className="dashboard-mini-kpi">
-                    <span className="kpi-label">ENG. MÉDIO</span>
-                    <span className="kpi-value" style={{ fontSize: '1rem' }}>{avgEngagement.toFixed(2)}%</span>
-                  </div>
-                </div>
-                {portfolio?.summary && (
-                  <div className="dashboard-hub-list" style={{ marginTop: 8 }}>
-                    <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-                      {portfolio.summary.growing > 0 && (
-                        <span className="badge badge-success"><i className="ph ph-trend-up" style={{ marginRight: 3 }} />{portfolio.summary.growing} crescendo</span>
-                      )}
-                      {portfolio.summary.stagnant > 0 && (
-                        <span className="badge badge-neutral">{portfolio.summary.stagnant} estável</span>
-                      )}
-                      {portfolio.summary.declining > 0 && (
-                        <span className="badge badge-danger"><i className="ph ph-trend-down" style={{ marginRight: 3 }} />{portfolio.summary.declining} caindo</span>
-                      )}
-                    </div>
-                    {portfolio.summary.bestByEngagement && (
-                      <div className="dashboard-hub-row">
-                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                          <i className="ph ph-star" style={{ marginRight: 4 }} />Melhor eng.
-                        </span>
-                        <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>
-                          {portfolio.summary.bestByEngagement.client_name} · {portfolio.summary.bestByEngagement.engagement_rate_avg.toFixed(1)}%
-                        </span>
-                      </div>
-                    )}
-                    {portfolio.summary.mostImproved && portfolio.summary.mostImproved.follower_delta > 0 && (
-                      <div className="dashboard-hub-row">
-                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                          <i className="ph ph-users-three" style={{ marginRight: 4 }} />Mais cresceu
-                        </span>
-                        <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--success)' }}>
-                          {portfolio.summary.mostImproved.client_name} +{portfolio.summary.mostImproved.follower_delta.toLocaleString('pt-BR')}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </>
-            ) : (
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '1rem' }}>
-                <i className="fa-brands fa-instagram" style={{ fontSize: '2rem', display: 'block', marginBottom: 8 }} />
-                Nenhuma conta conectada
-              </p>
-            )}
-          </div>
-        </Link>
-
-        {/* Entregas (Workflows) */}
-        <Link to="/entregas" style={{ textDecoration: 'none', color: 'inherit' }}>
-          <div className="card dashboard-hub-card animate-up">
-            <div className="dashboard-hub-card-header">
-              <h3><i className="ph ph-kanban" style={{ marginRight: 8 }} />Entregas</h3>
-              <i className="ph ph-arrow-right" />
-            </div>
-            <div className="dashboard-mini-kpis">
-              <div className="dashboard-mini-kpi">
-                <span className="kpi-label">ATIVOS</span>
-                <span className="kpi-value" style={{ fontSize: '1.25rem' }}>{activeWorkflows.length}</span>
-              </div>
-            </div>
-            <div className="dashboard-hub-list">
-              {first3Workflows.map((wf: Workflow) => {
-                const cliente = wf.cliente_id ? clienteMap[wf.cliente_id] : null;
-                return (
-                  <div key={wf.id} className="dashboard-hub-row">
-                    <span style={{ fontSize: '0.85rem' }}>{wf.titulo}</span>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{cliente?.nome ?? '—'}</span>
-                  </div>
-                );
-              })}
-              {first3Workflows.length === 0 && <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Nenhum workflow ativo.</p>}
-            </div>
-          </div>
-        </Link>
-
         {/* Leads */}
-        <Link to="/leads" style={{ textDecoration: 'none', color: 'inherit' }}>
+        <Link to="/leads" style={{ textDecoration: 'none', color: 'inherit', gridColumn: 'span 1' }}>
           <div className="card dashboard-hub-card animate-up">
             <div className="dashboard-hub-card-header">
               <h3><i className="ph ph-funnel" style={{ marginRight: 8 }} />Leads</h3>
@@ -388,6 +297,122 @@ export default function DashboardPage() {
                 </div>
               ))}
               {last3Leads.length === 0 && <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Nenhum lead ainda.</p>}
+            </div>
+          </div>
+        </Link>
+
+        {/* Analytics */}
+        <Link to="/analytics" style={{ textDecoration: 'none', color: 'inherit', gridColumn: 'span 2' }}>
+          <div className="card dashboard-hub-card animate-up">
+            <div className="dashboard-hub-card-header">
+              <h3><i className="fa-brands fa-instagram" style={{ marginRight: 8 }} />Analytics</h3>
+              <i className="ph ph-arrow-right" />
+            </div>
+            {portfolioAccounts.length > 0 ? (
+              <>
+                <div className="dashboard-mini-kpis">
+                  <div className="dashboard-mini-kpi">
+                    <span className="kpi-label">CONTAS</span>
+                    <span className="kpi-value" style={{ fontSize: '1.25rem' }}>{portfolioAccounts.length}</span>
+                  </div>
+                  <div className="dashboard-mini-kpi">
+                    <span className="kpi-label">SEGUIDORES</span>
+                    <span className="kpi-value" style={{ fontSize: '1rem' }}>{totalFollowers.toLocaleString('pt-BR')}</span>
+                  </div>
+                  <div className="dashboard-mini-kpi">
+                    <span className="kpi-label">ALCANCE (28D)</span>
+                    <span className="kpi-value" style={{ fontSize: '1rem' }}>{totalReach.toLocaleString('pt-BR')}</span>
+                  </div>
+                  <div className="dashboard-mini-kpi">
+                    <span className="kpi-label">ENG. MÉDIO</span>
+                    <span className="kpi-value" style={{ fontSize: '1rem' }}>{avgEngagement.toFixed(2)}%</span>
+                  </div>
+                  <div className="dashboard-mini-kpi">
+                    <span className="kpi-label">CLIQUES NO LINK</span>
+                    <span className="kpi-value" style={{ fontSize: '1rem' }}>{totalWebsiteClicks.toLocaleString('pt-BR')}</span>
+                  </div>
+                  {portfolio?.summary?.bestByEngagement && (
+                    <div className="dashboard-mini-kpi">
+                      <span className="kpi-label">MELHOR ENG.</span>
+                      <span className="kpi-value" style={{ fontSize: '0.9rem' }}>{portfolio.summary.bestByEngagement.client_name}</span>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--success)' }}>{portfolio.summary.bestByEngagement.engagement_rate_avg.toFixed(1)}%</span>
+                    </div>
+                  )}
+                  {portfolio?.summary?.mostImproved && portfolio.summary.mostImproved.follower_delta > 0 && (
+                    <div className="dashboard-mini-kpi">
+                      <span className="kpi-label">MAIS CRESCEU</span>
+                      <span className="kpi-value" style={{ fontSize: '0.9rem' }}>{portfolio.summary.mostImproved.client_name}</span>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--success)' }}>+{portfolio.summary.mostImproved.follower_delta.toLocaleString('pt-BR')}</span>
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: 6, marginTop: 10, marginBottom: 10 }}>
+                  {portfolio?.summary?.growing > 0 && (
+                    <span className="badge badge-success"><i className="ph ph-trend-up" style={{ marginRight: 3 }} />{portfolio.summary.growing} crescendo</span>
+                  )}
+                  {portfolio?.summary?.stagnant > 0 && (
+                    <span className="badge badge-neutral">{portfolio.summary.stagnant} estável</span>
+                  )}
+                  {portfolio?.summary?.declining > 0 && (
+                    <span className="badge badge-danger"><i className="ph ph-trend-down" style={{ marginRight: 3 }} />{portfolio.summary.declining} caindo</span>
+                  )}
+                </div>
+                {topAccountsByEngagement.length > 0 && (
+                  <div className="dashboard-hub-list">
+                    {topAccountsByEngagement.map(a => (
+                      <div key={a.instagram_account_id} className="dashboard-hub-row">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          {a.profile_picture_url
+                            ? <img src={a.profile_picture_url} alt="" style={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover' }} />
+                            : <span className="avatar" style={{ width: 24, height: 24, fontSize: '0.55rem', background: a.client_cor }}>{a.client_sigla}</span>
+                          }
+                          <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>{a.client_name}</span>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>@{a.username}</span>
+                        </div>
+                        <div style={{ display: 'flex', align: 'center', gap: '0.75rem', fontSize: '0.8rem' }}>
+                          <span style={{ color: 'var(--text-muted)' }}>{a.follower_count.toLocaleString('pt-BR')} seg.</span>
+                          <span className={`badge ${a.engagement_rate_avg >= 3 ? 'badge-success' : a.engagement_rate_avg >= 1 ? 'badge-neutral' : 'badge-outline'}`}>
+                            {a.engagement_rate_avg.toFixed(2)}%
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '1rem' }}>
+                <i className="fa-brands fa-instagram" style={{ fontSize: '2rem', display: 'block', marginBottom: 8 }} />
+                Nenhuma conta conectada
+              </p>
+            )}
+          </div>
+        </Link>
+
+        {/* Entregas (Workflows) */}
+        <Link to="/entregas" style={{ textDecoration: 'none', color: 'inherit', gridColumn: 'span 2' }}>
+          <div className="card dashboard-hub-card animate-up">
+            <div className="dashboard-hub-card-header">
+              <h3><i className="ph ph-kanban" style={{ marginRight: 8 }} />Entregas</h3>
+              <i className="ph ph-arrow-right" />
+            </div>
+            <div className="dashboard-mini-kpis">
+              <div className="dashboard-mini-kpi">
+                <span className="kpi-label">ATIVOS</span>
+                <span className="kpi-value" style={{ fontSize: '1.25rem' }}>{activeWorkflows.length}</span>
+              </div>
+            </div>
+            <div className="dashboard-hub-list">
+              {first3Workflows.map((wf: Workflow) => {
+                const cliente = wf.cliente_id ? clienteMap[wf.cliente_id] : null;
+                return (
+                  <div key={wf.id} className="dashboard-hub-row">
+                    <span style={{ fontSize: '0.85rem' }}>{wf.titulo}</span>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{cliente?.nome ?? '—'}</span>
+                  </div>
+                );
+              })}
+              {first3Workflows.length === 0 && <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Nenhum workflow ativo.</p>}
             </div>
           </div>
         </Link>

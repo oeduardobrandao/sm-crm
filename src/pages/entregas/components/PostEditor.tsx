@@ -17,6 +17,7 @@ export function PostEditor({ initialContent, onUpdate, disabled }: PostEditorPro
   const [linkPopoverOpen, setLinkPopoverOpen] = useState(false);
   const [linkInputValue, setLinkInputValue] = useState('');
   const linkInputRef = useRef<HTMLInputElement>(null);
+  const isInitialized = useRef(false);
 
   const editor = useEditor({
     extensions: [
@@ -27,7 +28,9 @@ export function PostEditor({ initialContent, onUpdate, disabled }: PostEditorPro
     ],
     content: initialContent ?? undefined,
     editable: !disabled,
+    onCreate: () => { isInitialized.current = true; },
     onUpdate: ({ editor }) => {
+      if (!isInitialized.current) return;
       onUpdate(editor.getJSON() as Record<string, unknown>, editor.getText());
     },
   });

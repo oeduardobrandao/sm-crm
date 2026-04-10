@@ -30,7 +30,7 @@ export function PropertyPanel({ templateId, postId, workflowId, propertyValues, 
         <button
           onClick={() => setShowPanel(true)}
           style={{
-            background: 'none', border: '1px dashed var(--border-color, #e2e8f0)',
+            background: 'none', border: '1px dashed var(--border-color)',
             borderRadius: 6, padding: '4px 10px', fontSize: '0.78rem',
             color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4,
           }}
@@ -44,8 +44,8 @@ export function PropertyPanel({ templateId, postId, workflowId, propertyValues, 
   return (
     <div style={{ marginBottom: '1rem' }}>
       <div style={{
-        background: 'var(--card-bg-secondary, #f8fafc)',
-        border: '1px solid var(--border-color, #e2e8f0)',
+        background: 'var(--surface-1)',
+        border: '1px solid var(--border-color)',
         borderRadius: 8, padding: '10px 12px', marginBottom: 4,
       }}>
         <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>

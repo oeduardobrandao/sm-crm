@@ -805,6 +805,7 @@ body {
   display: flex;
   flex-direction: column;
   height: 100%;
+  padding: 1.25rem;
   text-decoration: none;
   color: inherit;
   transition: transform 0.2s ease, box-shadow 0.2s ease;

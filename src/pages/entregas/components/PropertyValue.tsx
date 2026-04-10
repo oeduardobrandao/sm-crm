@@ -312,7 +312,7 @@ export function PropertyValue({ definition, value: initialValue, postId, workflo
   return (
     <div style={{
       display: 'flex', alignItems: 'flex-start', gap: 8,
-      padding: '5px 0', borderBottom: '1px solid var(--border-color, #f1f5f9)',
+      padding: '5px 0', borderBottom: '1px solid var(--border-color)',
       fontSize: '0.85rem',
     }}>
       <div style={{ width: '40%', color: 'var(--text-muted)', paddingTop: 3, flexShrink: 0, fontSize: '0.82rem' }}>
@@ -325,7 +325,7 @@ export function PropertyValue({ definition, value: initialValue, postId, workflo
             <div
               onClick={() => isEditable && setEditing(true)}
               style={{ cursor: isEditable ? 'pointer' : 'default', minHeight: 22, borderRadius: 4, padding: '2px 4px', transition: 'background 0.1s' }}
-              onMouseEnter={e => isEditable && ((e.currentTarget as HTMLDivElement).style.background = 'var(--hover-bg, #f1f5f9)')}
+              onMouseEnter={e => isEditable && ((e.currentTarget as HTMLDivElement).style.background = 'var(--surface-2)')}
               onMouseLeave={e => ((e.currentTarget as HTMLDivElement).style.background = 'transparent')}
             >
               {renderDisplay()}

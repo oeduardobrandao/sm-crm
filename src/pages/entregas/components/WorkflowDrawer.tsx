@@ -78,6 +78,7 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
   const [pendingEditPost, setPendingEditPost] = useState<WorkflowPost | null>(null);
   const [pendingEditData, setPendingEditData] = useState<{ json: Record<string, unknown>; plain: string } | null>(null);
   const confirmedEditIds = useRef<Set<number>>(new Set());
+  const [pendingStatusChange, setPendingStatusChange] = useState<{ id: number; newStatus: string } | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -161,10 +162,28 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
   };
 
   const handleFieldChange = async (id: number, field: keyof WorkflowPost, value: unknown) => {
+    if (field === 'status') {
+      const post = posts.find(p => p.id === id);
+      const isApproved = post?.status === 'aprovado_interno' || post?.status === 'aprovado_cliente';
+      if (isApproved) {
+        setPendingStatusChange({ id, newStatus: value as string });
+        return;
+      }
+    }
     try {
       await updateWorkflowPost(id, { [field]: value } as Partial<WorkflowPost>);
       refresh();
     } catch { toast.error('Erro ao atualizar post'); }
+  };
+
+  const handleConfirmStatusChange = async () => {
+    if (!pendingStatusChange) return;
+    const { id, newStatus } = pendingStatusChange;
+    setPendingStatusChange(null);
+    try {
+      await updateWorkflowPost(id, { status: newStatus as WorkflowPost['status'] });
+      refresh();
+    } catch { toast.error('Erro ao atualizar status'); }
   };
 
   const scheduleContentSave = (
@@ -395,6 +414,22 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Confirmation dialog for changing status of approved posts */}
+      <AlertDialog open={!!pendingStatusChange} onOpenChange={open => { if (!open) setPendingStatusChange(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Post aprovado</AlertDialogTitle>
+            <AlertDialogDescription>
+              Este post foi aprovado. Alterar o status vai invalidar a aprovação. Deseja continuar?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPendingStatusChange(null)}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmStatusChange}>Confirmar</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
@@ -501,7 +536,6 @@ function SortablePostItem({
                 className="drawer-select"
                 value={post.status}
                 onChange={e => onFieldChange('status', e.target.value)}
-                disabled={isReadonly}
               >
                 {(Object.keys(STATUS_LABELS) as WorkflowPost['status'][]).map(s => (
                   <option key={s} value={s}>{STATUS_LABELS[s]}</option>

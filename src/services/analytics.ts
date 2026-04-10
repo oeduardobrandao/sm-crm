@@ -256,15 +256,15 @@ export async function getPortfolioSummary(): Promise<PortfolioSummary> {
   }
 
   // Follower deltas
-  const followerByAccount: Record<number, any[]> = {};
+  const followerByAccount: Record<string, any[]> = {};
   for (const f of (followerHist || [])) {
     if (!followerByAccount[f.instagram_account_id]) followerByAccount[f.instagram_account_id] = [];
     followerByAccount[f.instagram_account_id].push(f);
   }
-  const followerDeltaMap: Record<number, number> = {};
+  const followerDeltaMap: Record<string, number> = {};
   for (const [accId, entries] of Object.entries(followerByAccount)) {
     if (entries.length >= 2) {
-      followerDeltaMap[Number(accId)] = entries[entries.length - 1].follower_count - entries[0].follower_count;
+      followerDeltaMap[accId] = entries[entries.length - 1].follower_count - entries[0].follower_count;
     }
   }
 
