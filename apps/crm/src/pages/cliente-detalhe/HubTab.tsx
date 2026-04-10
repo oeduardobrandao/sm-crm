@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Copy, Eye, ToggleLeft, ToggleRight, Plus, Trash2, Save } from 'lucide-react';
 import { toast } from 'sonner';
@@ -120,6 +120,10 @@ function BrandEditor({ clienteId, brand, files, onSaved }: { clienteId: number; 
   const [form, setForm] = useState<Partial<HubBrandRow>>(brand ?? {});
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    if (brand) setForm(brand);
+  }, [brand]);
+
   async function save() {
     setSaving(true);
     try {
@@ -189,9 +193,13 @@ function PagesEditor({ clienteId, contaId, pages, onSaved }: { clienteId: number
   }
 
   async function deletePage(id: string) {
-    await removeHubPage(id);
-    toast.success('Página removida.');
-    onSaved();
+    try {
+      await removeHubPage(id);
+      toast.success('Página removida.');
+      onSaved();
+    } catch (e: any) {
+      toast.error(e.message ?? 'Erro ao remover página.');
+    }
   }
 
   return (
