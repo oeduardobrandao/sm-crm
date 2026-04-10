@@ -9,7 +9,7 @@
       "destination": "/hub/index.html"
     },
     {
-      "source": "/(.*)",
+      "source": "/((?!hub/|crm/|assets/|.*\\.).*)",
       "destination": "/crm/index.html"
     }
   ],
