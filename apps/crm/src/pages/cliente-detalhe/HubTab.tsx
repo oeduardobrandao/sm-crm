@@ -10,7 +10,8 @@ import {
   getHubToken, createHubToken, setHubTokenActive,
   getHubBrand, upsertHubBrand,
   getHubPages, upsertHubPage, removeHubPage,
-  type HubBrandRow, type HubBrandFileRow, type HubPageRow,
+  getHubBriefingQuestions, addHubBriefingQuestion, updateHubBriefingQuestion, deleteHubBriefingQuestion,
+  type HubBrandRow, type HubBrandFileRow, type HubPageRow, type HubBriefingQuestionRow,
 } from '@/store';
 
 interface HubTabProps {
@@ -92,7 +93,11 @@ export function HubTab({ clienteId, contaId, workspaceSlug }: HubTabProps) {
       </TabsContent>
 
       <TabsContent value="briefing">
-        <div className="text-sm text-muted-foreground py-4">Briefing (em breve)</div>
+        <BriefingEditor
+          clienteId={clienteId}
+          contaId={contaId}
+          onSaved={() => qc.invalidateQueries({ queryKey: ['hub-briefing-questions', clienteId] })}
+        />
       </TabsContent>
 
       <TabsContent value="marca">
@@ -244,6 +249,113 @@ function PagesEditor({ clienteId, contaId, pages, onSaved }: { clienteId: number
           </div>
         </div>
       )}
+    </section>
+  );
+}
+
+function BriefingEditor({ clienteId, contaId, onSaved }: { clienteId: number; contaId: string; onSaved: () => void }) {
+  const { data: questions = [], isLoading } = useQuery({
+    queryKey: ['hub-briefing-questions', clienteId],
+    queryFn: () => getHubBriefingQuestions(clienteId),
+  });
+
+  const [newQuestion, setNewQuestion] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
+
+  async function handleAdd() {
+    if (!newQuestion.trim()) return;
+    setAdding(true);
+    try {
+      await addHubBriefingQuestion(clienteId, contaId, newQuestion.trim());
+      setNewQuestion('');
+      onSaved();
+    } catch (e: any) {
+      toast.error(e.message ?? 'Erro ao adicionar pergunta.');
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  async function handleSaveEdit(id: string) {
+    if (!editText.trim()) return;
+    try {
+      await updateHubBriefingQuestion(id, editText.trim());
+      setEditingId(null);
+      onSaved();
+    } catch (e: any) {
+      toast.error(e.message ?? 'Erro ao salvar pergunta.');
+    }
+  }
+
+  async function handleDelete(id: string) {
+    try {
+      await deleteHubBriefingQuestion(id);
+      onSaved();
+      toast.success('Pergunta removida.');
+    } catch (e: any) {
+      toast.error(e.message ?? 'Erro ao remover pergunta.');
+    }
+  }
+
+  if (isLoading) return <div className="py-8 flex justify-center"><div className="animate-spin h-5 w-5 rounded-full border-2 border-primary border-t-transparent" /></div>;
+
+  return (
+    <section>
+      <h3 className="font-semibold mb-3">Briefing</h3>
+
+      <div className="space-y-3 mb-4">
+        {questions.length === 0 && (
+          <p className="text-sm text-muted-foreground">Nenhuma pergunta cadastrada ainda.</p>
+        )}
+        {questions.map(q => (
+          <div key={q.id} className="border rounded-lg p-3">
+            {editingId === q.id ? (
+              <div className="space-y-2">
+                <Input
+                  value={editText}
+                  onChange={e => setEditText(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleSaveEdit(q.id); if (e.key === 'Escape') setEditingId(null); }}
+                  autoFocus
+                />
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={() => handleSaveEdit(q.id)}><Save size={14} className="mr-1.5" /> Salvar</Button>
+                  <Button size="sm" variant="outline" onClick={() => setEditingId(null)}>Cancelar</Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">{q.question}</p>
+                  {q.answer ? (
+                    <p className="text-sm text-muted-foreground mt-1 whitespace-pre-wrap">{q.answer}</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground mt-1 italic">Sem resposta ainda</p>
+                  )}
+                </div>
+                <div className="flex gap-1 shrink-0">
+                  <Button size="sm" variant="ghost" onClick={() => { setEditingId(q.id); setEditText(q.question); }}>Editar</Button>
+                  <Button size="sm" variant="ghost" onClick={() => handleDelete(q.id)}><Trash2 size={14} /></Button>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="flex gap-2">
+        <Input
+          value={newQuestion}
+          onChange={e => setNewQuestion(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') handleAdd(); }}
+          placeholder="Nova pergunta..."
+          className="flex-1"
+        />
+        <Button size="sm" onClick={handleAdd} disabled={adding || !newQuestion.trim()}>
+          <Plus size={14} className="mr-1.5" /> Adicionar
+        </Button>
+      </div>
     </section>
   );
 }
