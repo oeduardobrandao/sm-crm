@@ -36,6 +36,7 @@ interface WorkflowCardProps {
 export function WorkflowCard({ card, onClick, isDragOverlay, dragHandle, membros, onRefresh, onRevertClick, onForwardClick, onPostsClick, postsCount }: WorkflowCardProps) {
   const navigate = useNavigate();
   const [assignDropdownOpen, setAssignDropdownOpen] = useState(false);
+  const [localMembro, setLocalMembro] = useState<Membro | undefined | null>(undefined);
   const dl = card.deadline;
   const deadlineClass = dl.estourado
     ? 'deadline-overdue'
@@ -127,21 +128,24 @@ export function WorkflowCard({ card, onClick, isDragOverlay, dragHandle, membros
               e.stopPropagation();
             }}
           >
-            {card.membro ? (
-              <>
-                <div style={{ width: 22, height: 22, borderRadius: '50%', background: getAvatarColor(card.membro.nome), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', fontWeight: 700, color: '#fff', flexShrink: 0 }}>
-                  {getInitials(card.membro.nome)}
-                </div>
-                <span>{card.membro.nome}</span>
-              </>
-            ) : (
-              <>
-                <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--surface-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', color: 'var(--text-muted)' }}>
-                  ?
-                </div>
-                <span>Sem responsável</span>
-              </>
-            )}
+            {(() => {
+              const displayMembro = localMembro !== undefined ? localMembro : card.membro;
+              return displayMembro ? (
+                <>
+                  <div style={{ width: 22, height: 22, borderRadius: '50%', background: getAvatarColor(displayMembro.nome), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+                    {getInitials(displayMembro.nome)}
+                  </div>
+                  <span>{displayMembro.nome}</span>
+                </>
+              ) : (
+                <>
+                  <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--surface-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', color: 'var(--text-muted)' }}>
+                    ?
+                  </div>
+                  <span>Sem responsável</span>
+                </>
+              );
+            })()}
           </div>
         </DropdownMenuTrigger>
 
@@ -153,11 +157,15 @@ export function WorkflowCard({ card, onClick, isDragOverlay, dragHandle, membros
                 onClick={async (e) => {
                   e.stopPropagation();
                   setAssignDropdownOpen(false);
+                  setLocalMembro(m);
                   try {
                     await updateWorkflowEtapa(card.etapa.id!, { responsavel_id: m.id });
                     toast.success('Responsável atualizado!');
                     onRefresh?.();
-                  } catch { toast.error('Erro ao atualizar'); }
+                  } catch {
+                    setLocalMembro(undefined);
+                    toast.error('Erro ao atualizar');
+                  }
                 }}
                 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.75rem' }}
               >

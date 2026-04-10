@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Plus, Edit2, Trash2, Upload, Info, HelpCircle } from 'lucide-react';
+import { Plus, Edit2, Trash2, Upload, Info, HelpCircle, UserPlus } from 'lucide-react';
 import { openCSVSelector } from '../../lib/csv';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
-  getLeads, addLead, updateLead, removeLead,
+  getLeads, addLead, updateLead, removeLead, addCliente, getInitials,
   type Lead,
 } from '../../store';
 
@@ -45,6 +45,15 @@ export default function LeadsPage() {
   const [editing, setEditing] = useState<Lead | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  const [convertModalOpen, setConvertModalOpen] = useState(false);
+  const [convertingLead, setConvertingLead] = useState<Lead | null>(null);
+  const [cNome, setCNome] = useState('');
+  const [cEmail, setCEmail] = useState('');
+  const [cTelefone, setCTelefone] = useState('');
+  const [cPlano, setCPlano] = useState('');
+  const [cValor, setCValor] = useState('');
+  const [cDiaPag, setCDiaPag] = useState('');
+  const [convertSaving, setConvertSaving] = useState(false);
 
   const [fNome, setFNome] = useState('');
   const [fEmail, setFEmail] = useState('');
@@ -138,6 +147,48 @@ export default function LeadsPage() {
       qc.invalidateQueries({ queryKey: ['leads'] });
     } catch {
       toast.error('Erro ao atualizar status');
+    }
+  };
+
+  const AVATAR_COLORS = ['#e74c3c','#8e44ad','#27ae60','#2980b9','#d35400','#16a085'];
+
+  const openConvert = (l: Lead) => {
+    setConvertingLead(l);
+    setCNome(l.nome);
+    setCEmail(l.email || '');
+    setCTelefone('');
+    setCPlano('');
+    setCValor('');
+    setCDiaPag('');
+    setConvertModalOpen(true);
+  };
+
+  const handleConvertSave = async () => {
+    if (!cNome || !convertingLead?.id) return;
+    const diaPag = cDiaPag ? parseInt(cDiaPag, 10) : undefined;
+    if (diaPag !== undefined && (isNaN(diaPag) || diaPag < 1 || diaPag > 31)) {
+      toast.error('Dia de pagamento deve ser entre 1 e 31.');
+      return;
+    }
+    setConvertSaving(true);
+    try {
+      const randomColor = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
+      await addCliente({
+        nome: cNome, email: cEmail, telefone: cTelefone, plano: cPlano,
+        valor_mensal: cValor ? Number(cValor) : 0,
+        notion_page_url: '',
+        data_pagamento: diaPag,
+        sigla: getInitials(cNome), cor: randomColor, status: 'ativo',
+      });
+      await updateLead(convertingLead.id, { status: 'convertido' });
+      toast.success('Cliente criado e lead convertido!');
+      qc.invalidateQueries({ queryKey: ['leads'] });
+      qc.invalidateQueries({ queryKey: ['clientes'] });
+      setConvertModalOpen(false);
+    } catch {
+      toast.error('Erro ao converter lead');
+    } finally {
+      setConvertSaving(false);
     }
   };
 
@@ -247,6 +298,9 @@ export default function LeadsPage() {
                   <TableCell data-label="Criado">{l.created_at ? new Date(l.created_at).toLocaleDateString('pt-BR') : '—'}</TableCell>
                   <TableCell>
                     <div className="flex gap-1" style={{ justifyContent: 'flex-end' }}>
+                      <Button size="icon" variant="ghost" title="Converter em cliente" onClick={() => openConvert(l)}>
+                        <UserPlus className="h-4 w-4" />
+                      </Button>
                       <Button size="icon" variant="ghost" onClick={() => openEdit(l)}>
                         <Edit2 className="h-4 w-4" />
                       </Button>
@@ -328,6 +382,28 @@ export default function LeadsPage() {
             <Button variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
             <Button onClick={handleSave} disabled={saving}>
               {saving && <Spinner size="sm" />} Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={convertModalOpen} onOpenChange={setConvertModalOpen}>
+        <DialogContent onConfirmClose={() => setConvertModalOpen(false)}>
+          <DialogHeader>
+            <DialogTitle>Converter Lead em Cliente</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1"><Label>Nome *</Label><Input value={cNome} onChange={e => setCNome(e.target.value)} required /></div>
+            <div className="space-y-1"><Label>E-mail</Label><Input type="email" value={cEmail} onChange={e => setCEmail(e.target.value)} /></div>
+            <div className="space-y-1"><Label>Telefone</Label><Input value={cTelefone} onChange={e => setCTelefone(e.target.value)} /></div>
+            <div className="space-y-1"><Label>Plano</Label><Input value={cPlano} onChange={e => setCPlano(e.target.value)} /></div>
+            <div className="space-y-1"><Label>Valor Mensal (R$)</Label><Input type="number" min={0} step={0.01} value={cValor} onChange={e => setCValor(e.target.value)} /></div>
+            <div className="space-y-1"><Label>Dia de Pagamento (1-31)</Label><Input type="number" min={1} max={31} value={cDiaPag} onChange={e => setCDiaPag(e.target.value)} /></div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConvertModalOpen(false)}>Cancelar</Button>
+            <Button onClick={handleConvertSave} disabled={convertSaving}>
+              {convertSaving && <Spinner size="sm" />} Criar Cliente
             </Button>
           </DialogFooter>
         </DialogContent>
