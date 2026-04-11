@@ -1091,6 +1091,7 @@ export interface WorkflowPost {
     | 'agendado'
     | 'postado';
   responsavel_id?: number | null;
+  scheduled_at?: string | null;
   created_at?: string;
   updated_at?: string;
 }

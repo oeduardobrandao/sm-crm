@@ -557,6 +557,15 @@ function SortablePostItem({
                 </select>
               </div>
             )}
+            <div className="drawer-post-field">
+              <label>Data de postagem</label>
+              <input
+                className="drawer-input"
+                type="date"
+                value={post.scheduled_at ? post.scheduled_at.slice(0, 10) : ''}
+                onChange={e => onFieldChange('scheduled_at', e.target.value || null)}
+              />
+            </div>
           </div>
 
           {isReadonly && (
