@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useHub } from '../HubContext';
 import { fetchBriefing, submitBriefingAnswer } from '../api';
@@ -96,38 +96,37 @@ function QuestionItem({
   onSave: (answer: string) => Promise<void>;
 }) {
   const [answer, setAnswer] = useState(initialAnswer ?? '');
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [status, setStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  async function handleSave() {
-    setSaving(true);
-    try {
-      await onSave(answer);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
-    } finally {
-      setSaving(false);
-    }
-  }
+  const handleChange = useCallback((value: string) => {
+    setAnswer(value);
+    setStatus('saving');
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        await onSave(value);
+        setStatus('saved');
+        setTimeout(() => setStatus('idle'), 2000);
+      } catch {
+        setStatus('idle');
+      }
+    }, 800);
+  }, [onSave]);
 
   return (
     <div className="border rounded-sm p-4 space-y-2">
-      <p className="text-sm font-medium">{question}</p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-medium">{question}</p>
+        {status === 'saving' && <span className="text-xs text-muted-foreground">Salvando...</span>}
+        {status === 'saved' && <span className="text-xs text-green-600">Salvo!</span>}
+      </div>
       <textarea
         className="w-full border rounded-sm p-2 text-sm resize-none min-h-[100px] focus:outline-none focus:ring-2 focus:ring-primary/30"
         value={answer}
-        onChange={e => setAnswer(e.target.value)}
+        onChange={e => handleChange(e.target.value)}
         placeholder="Digite sua resposta..."
       />
-      <div className="flex justify-end">
-        <button
-          className="text-sm px-4 py-1.5 rounded-lg bg-primary text-primary-foreground disabled:opacity-50"
-          onClick={handleSave}
-          disabled={saving}
-        >
-          {saved ? 'Salvo!' : saving ? 'Salvando...' : 'Salvar'}
-        </button>
-      </div>
     </div>
   );
 }
