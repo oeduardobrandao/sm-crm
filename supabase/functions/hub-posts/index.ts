@@ -49,11 +49,16 @@ Deno.serve(async (req) => {
   // Fetch all posts
   const { data: posts } = await db
     .from("workflow_posts")
-    .select("id, titulo, tipo, status, ordem, conteudo_plain, scheduled_at, workflow_id")
+    .select("id, titulo, tipo, status, ordem, conteudo_plain, scheduled_at, workflow_id, workflows(titulo)")
     .in("workflow_id", workflowIds)
     .order("scheduled_at", { ascending: true });
 
-  const postIds = (posts ?? []).map((p: { id: number }) => p.id);
+  const flatPosts = (posts ?? []).map((p: any) => {
+    const { workflows, ...rest } = p;
+    return { ...rest, workflow_titulo: workflows?.titulo ?? '' };
+  });
+
+  const postIds = flatPosts.map((p: { id: number }) => p.id);
 
   // Fetch approval history for those posts
   const { data: postApprovals } = postIds.length > 0
@@ -82,5 +87,5 @@ Deno.serve(async (req) => {
         .in("workflow_id", workflowIds)
     : { data: [] };
 
-  return json({ posts: posts ?? [], postApprovals: postApprovals ?? [], propertyValues: propertyValues ?? [], workflowSelectOptions: workflowSelectOptions ?? [] });
+  return json({ posts: flatPosts, postApprovals: postApprovals ?? [], propertyValues: propertyValues ?? [], workflowSelectOptions: workflowSelectOptions ?? [] });
 });
