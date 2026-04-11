@@ -6,6 +6,7 @@ import { MarcaPage } from './pages/MarcaPage';
 import { PaginasPage } from './pages/PaginasPage';
 import { PaginaPage } from './pages/PaginaPage';
 import { BriefingPage } from './pages/BriefingPage';
+import { PostagensPage } from './pages/PostagensPage';
 
 export const router = createBrowserRouter([
   {
@@ -14,6 +15,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <HomePage /> },
       { path: 'aprovacoes', element: <AprovacoesPage /> },
+      { path: 'postagens', element: <PostagensPage /> },
       { path: 'marca', element: <MarcaPage /> },
       { path: 'paginas', element: <PaginasPage /> },
       { path: 'paginas/:pageId', element: <PaginaPage /> },

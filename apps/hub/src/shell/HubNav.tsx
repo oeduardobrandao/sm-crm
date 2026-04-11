@@ -1,10 +1,11 @@
 import { Link, useLocation, useParams } from 'react-router-dom';
-import { Home, CheckSquare, Palette, FileText, BookOpen } from 'lucide-react';
+import { Home, CheckSquare, Palette, FileText, BookOpen, LayoutList } from 'lucide-react';
 import { useHub } from '../HubContext';
 
 const NAV_ITEMS = [
   { label: 'Home', icon: Home, path: '' },
   { label: 'Aprovações', icon: CheckSquare, path: '/aprovacoes' },
+  { label: 'Postagens', icon: LayoutList, path: '/postagens' },
   { label: 'Marca', icon: Palette, path: '/marca' },
   { label: 'Páginas', icon: FileText, path: '/paginas' },
   { label: 'Briefing', icon: BookOpen, path: '/briefing' },
