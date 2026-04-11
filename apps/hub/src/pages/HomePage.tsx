@@ -23,8 +23,11 @@ export function HomePage() {
     queryFn: () => fetchPosts(token),
   });
 
-  const posts = data?.posts ?? [];
-  const pendingCount = posts.filter(p => p.status === 'enviado_cliente').length;
+  const allPosts = data?.posts ?? [];
+  const pendingCount = allPosts.filter(p => p.status === 'enviado_cliente').length;
+
+  const CALENDAR_STATUSES = new Set(['enviado_cliente', 'aprovado_cliente', 'correcao_cliente', 'agendado', 'publicado']);
+  const posts = allPosts.filter(p => CALENDAR_STATUSES.has(p.status));
 
   return (
     <div className="max-w-2xl mx-auto">
