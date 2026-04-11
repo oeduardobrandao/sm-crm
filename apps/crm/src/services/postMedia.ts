@@ -92,6 +92,14 @@ export async function listPostMedia(postId: number): Promise<PostMedia[]> {
   return media;
 }
 
+export async function getWorkflowCovers(workflowIds: number[]): Promise<Map<number, PostMedia>> {
+  if (workflowIds.length === 0) return new Map();
+  const { covers } = await callFn<{ covers: { workflow_id: number; media: PostMedia }[] }>(
+    'post-media-manage', 'GET', undefined, { workflow_ids: workflowIds.join(',') }
+  );
+  return new Map(covers.map((c) => [c.workflow_id, c.media]));
+}
+
 export async function uploadPostMedia(args: {
   postId: number;
   file: File;

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowLeft, Edit2, Check, FileText } from 'lucide-react';
+import { ArrowLeft, Edit2, Check, FileText, Play } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { updateWorkflowEtapa, type Membro } from '../../../store';
@@ -153,6 +153,44 @@ export function WorkflowCard({ card, onClick, isDragOverlay, dragHandle, membros
       >
         {card.workflow.titulo}
       </div>
+
+      {/* Cover thumbnail */}
+      {card.coverMedia && (
+        <div
+          style={{
+            position: 'relative',
+            width: '100%',
+            aspectRatio: '16 / 9',
+            borderRadius: '8px',
+            overflow: 'hidden',
+            background: 'var(--surface-hover)',
+          }}
+        >
+          <img
+            src={card.coverMedia.kind === 'video' ? (card.coverMedia.thumbnail_url ?? undefined) : card.coverMedia.url}
+            alt=""
+            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+          />
+          {card.coverMedia.kind === 'video' && (
+            <span
+              style={{
+                position: 'absolute',
+                top: '50%', left: '50%',
+                transform: 'translate(-50%, -50%)',
+                width: 28, height: 28,
+                borderRadius: '50%',
+                background: 'rgba(0,0,0,0.55)',
+                color: '#fff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Play className="h-3.5 w-3.5" fill="currentColor" />
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Deadline badge + prazo type */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
