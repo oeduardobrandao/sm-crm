@@ -1,11 +1,10 @@
 import { Link, useLocation, useParams } from 'react-router-dom';
-import { Home, CheckSquare, Calendar, Palette, FileText, BookOpen } from 'lucide-react';
+import { Home, CheckSquare, Palette, FileText, BookOpen } from 'lucide-react';
 import { useHub } from '../HubContext';
 
 const NAV_ITEMS = [
   { label: 'Home', icon: Home, path: '' },
   { label: 'Aprovações', icon: CheckSquare, path: '/aprovacoes' },
-  { label: 'Calendário', icon: Calendar, path: '/calendario' },
   { label: 'Marca', icon: Palette, path: '/marca' },
   { label: 'Páginas', icon: FileText, path: '/paginas' },
   { label: 'Briefing', icon: BookOpen, path: '/briefing' },
@@ -41,7 +40,7 @@ export function HubNav() {
 
       {/* Mobile bottom tab bar */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-black border-t border-zinc-800 z-10 flex">
-        {NAV_ITEMS.slice(0, 5).map(({ label, icon: Icon, path }) => {
+        {NAV_ITEMS.map(({ label, icon: Icon, path }) => {
           const href = `${base}${path}`;
           const active = path === '' ? pathname === base : pathname.startsWith(`${base}${path}`);
           return (
