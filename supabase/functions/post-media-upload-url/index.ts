@@ -64,15 +64,16 @@ Deno.serve(async (req) => {
   const { data: post } = await svc.from("workflow_posts").select("id, conta_id").eq("id", post_id).single();
   if (!post || post.conta_id !== profile.conta_id) return json({ error: "Post not found" }, 404);
 
-  // Quota check
-  const { data: ws } = await svc.from("workspaces").select("storage_quota_bytes").eq("id", profile.conta_id).single();
+  // Advisory quota pre-check against the maintained counter. The authoritative
+  // check happens atomically inside post-media-finalize via an RPC that locks
+  // the workspace row; this early-reject exists only so the client fails fast
+  // before uploading bytes to R2.
+  const { data: ws } = await svc.from("workspaces")
+    .select("storage_quota_bytes, storage_used_bytes")
+    .eq("id", profile.conta_id).single();
   const quota = ws?.storage_quota_bytes ?? null;
   if (quota !== null) {
-    const { data: sumRow } = await svc
-      .from("post_media")
-      .select("size_bytes")
-      .eq("conta_id", profile.conta_id);
-    const used = (sumRow ?? []).reduce((n, r: { size_bytes: number }) => n + Number(r.size_bytes), 0);
+    const used = Number(ws?.storage_used_bytes ?? 0);
     const needed = size_bytes + (thumbnail?.size_bytes ?? 0);
     if (used + needed > quota) {
       return json({ error: "quota_exceeded", used, quota }, 413);

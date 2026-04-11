@@ -40,6 +40,14 @@ Deno.serve(async (req) => {
   const { data: post } = await svc.from("workflow_posts").select("id, conta_id").eq("id", body.post_id).single();
   if (!post || post.conta_id !== profile.conta_id) return json({ error: "Post not found" }, 404);
 
+  // Enforce that r2_key (and thumbnail_r2_key) are scoped to this tenant + post.
+  // Without this, a caller could point a row at an existing object in another tenant's namespace.
+  const expectedPrefix = `contas/${profile.conta_id}/posts/${body.post_id}/`;
+  if (!body.r2_key.startsWith(expectedPrefix)) return json({ error: "invalid r2_key" }, 400);
+  if (body.thumbnail_r2_key && !body.thumbnail_r2_key.startsWith(expectedPrefix)) {
+    return json({ error: "invalid thumbnail_r2_key" }, 400);
+  }
+
   // Verify R2 object exists and length matches
   const head = await headObject(body.r2_key);
   if (!head) return json({ error: "object not found" }, 400);
@@ -58,26 +66,32 @@ Deno.serve(async (req) => {
     .eq("post_id", body.post_id);
   const is_cover = (count ?? 0) === 0;
 
-  const { data: inserted, error: insErr } = await svc
-    .from("post_media")
-    .insert({
+  // Atomic quota check + insert via RPC. The function locks workspaces FOR UPDATE,
+  // re-reads the maintained storage_used_bytes counter, and either inserts or raises
+  // 'quota_exceeded'. This prevents concurrent finalizes from collectively busting
+  // the quota, which a two-step (sum-then-insert) flow would allow.
+  const { data: inserted, error: insErr } = await svc.rpc("post_media_insert_with_quota", {
+    p: {
       post_id: body.post_id,
       conta_id: profile.conta_id,
       r2_key: body.r2_key,
-      thumbnail_r2_key: body.thumbnail_r2_key ?? null,
+      thumbnail_r2_key: body.thumbnail_r2_key ?? "",
       kind: body.kind,
       mime_type: body.mime_type,
       size_bytes: body.size_bytes,
       original_filename: body.original_filename,
-      width: body.width ?? null,
-      height: body.height ?? null,
-      duration_seconds: body.duration_seconds ?? null,
+      width: body.width ?? "",
+      height: body.height ?? "",
+      duration_seconds: body.duration_seconds ?? "",
       is_cover,
       uploaded_by: user.id,
-    })
-    .select()
-    .single();
-  if (insErr || !inserted) return json({ error: insErr?.message ?? "insert failed" }, 500);
+    },
+  }).single();
+  if (insErr || !inserted) {
+    const msg = insErr?.message ?? "insert failed";
+    const status = msg.includes("quota_exceeded") ? 413 : 500;
+    return json({ error: msg }, status);
+  }
 
   const url = await signGetUrl(body.r2_key, 900);
   const thumbnail_url = body.thumbnail_r2_key ? await signGetUrl(body.thumbnail_r2_key, 900) : null;

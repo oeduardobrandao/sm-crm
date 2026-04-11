@@ -479,17 +479,23 @@ function SortablePostItem({
   // round-trip through updateWorkflowPost + refresh on every keystroke.
   const [tituloLocal, setTituloLocal] = useState(post.titulo ?? '');
   const tituloDirty = useRef(false);
+  // Hold the latest onFieldChange in a ref so the debounce effect below does
+  // not re-run (and reset its timer) every time the parent re-renders with a
+  // fresh inline callback — which would otherwise drop the save if the parent
+  // re-renders within 400 ms of the last keystroke.
+  const onFieldChangeRef = useRef(onFieldChange);
+  useEffect(() => { onFieldChangeRef.current = onFieldChange; }, [onFieldChange]);
   useEffect(() => {
     if (!tituloDirty.current) setTituloLocal(post.titulo ?? '');
   }, [post.titulo]);
   useEffect(() => {
     if (!tituloDirty.current) return;
     const t = setTimeout(() => {
-      onFieldChange('titulo', tituloLocal);
+      onFieldChangeRef.current('titulo', tituloLocal);
       tituloDirty.current = false;
     }, 400);
     return () => clearTimeout(t);
-  }, [tituloLocal, onFieldChange]);
+  }, [tituloLocal]);
 
   const style = {
     transform: CSS.Transform.toString(transform),

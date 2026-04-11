@@ -50,7 +50,9 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
       refresh();
     } catch (err) {
       toast.error((err as Error).message);
-      setMedia(serverMedia); // revert
+      // Re-sync from server instead of reverting to a captured snapshot,
+      // which could be stale if a background refetch landed mid-drag.
+      refresh();
     }
   }
 

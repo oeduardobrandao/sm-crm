@@ -119,11 +119,21 @@ Deno.serve(async (req) => {
     }
 
     if (body.is_cover === true) {
-      // Unset any existing cover for this post, then set this row
-      await svc.from("post_media").update({ is_cover: false }).eq("post_id", media.post_id).eq("is_cover", true);
-      patch.is_cover = true;
+      // Atomic cover swap via RPC: a single UPDATE with CASE flips the target row
+      // to true and all siblings to false, relying on Postgres deferring the partial
+      // unique-index check to statement end. A two-statement unset-then-set can
+      // leave the post with zero covers on partial failure.
+      const { error: swapErr } = await svc.rpc("post_media_set_cover", { p_media_id: mediaId });
+      if (swapErr) return json({ error: swapErr.message }, 500);
+      // Drop is_cover from patch since the RPC already handled it.
+      delete patch.is_cover;
     }
 
+    if (Object.keys(patch).length === 0) {
+      // Cover-only patch: return the updated row.
+      const { data: current } = await svc.from("post_media").select("*").eq("id", mediaId).single();
+      return json(current);
+    }
     const { data: updated, error: updErr } = await svc.from("post_media").update(patch).eq("id", mediaId).select().single();
     if (updErr) return json({ error: updErr.message }, 500);
     return json(updated);

@@ -34,16 +34,18 @@ Deno.serve(async () => {
     }
   }
 
-  // 2. Orphan sweep: list objects under contas/ older than 24h with no matching row
+  // 2. Orphan sweep: list objects under contas/ older than 24h with no matching row.
+  // We must check BOTH r2_key and thumbnail_r2_key columns — querying only r2_key
+  // against the candidate list would leave live thumbnails unmatched and delete them.
   const orphanCandidates = await listOrphanKeys("contas/", 24 * 60 * 60 * 1000);
   let orphansDeleted = 0;
   if (orphanCandidates.length > 0) {
-    const { data: existing } = await svc
-      .from("post_media")
-      .select("r2_key, thumbnail_r2_key")
-      .in("r2_key", orphanCandidates);
+    const [byMain, byThumb] = await Promise.all([
+      svc.from("post_media").select("r2_key, thumbnail_r2_key").in("r2_key", orphanCandidates),
+      svc.from("post_media").select("r2_key, thumbnail_r2_key").in("thumbnail_r2_key", orphanCandidates),
+    ]);
     const known = new Set<string>();
-    for (const r of existing ?? []) {
+    for (const r of [...(byMain.data ?? []), ...(byThumb.data ?? [])]) {
       if (r.r2_key) known.add(r.r2_key);
       if (r.thumbnail_r2_key) known.add(r.thumbnail_r2_key);
     }
