@@ -1096,6 +1096,28 @@ export interface WorkflowPost {
   updated_at?: string;
 }
 
+export interface PostMedia {
+  id: number;
+  post_id: number;
+  conta_id: string;
+  r2_key: string;
+  thumbnail_r2_key: string | null;
+  kind: 'image' | 'video';
+  mime_type: string;
+  size_bytes: number;
+  original_filename: string;
+  width: number | null;
+  height: number | null;
+  duration_seconds: number | null;
+  is_cover: boolean;
+  sort_order: number;
+  uploaded_by: string | null;
+  created_at: string;
+  // Populated only on hydrated responses
+  url?: string;
+  thumbnail_url?: string | null;
+}
+
 export interface PostApproval {
   id: number;
   post_id: number;
