@@ -19,6 +19,17 @@ export function HubShell() {
       .finally(() => setLoading(false));
   }, [workspace, token]);
 
+  useEffect(() => {
+    if (!bootstrap?.workspace.logo_url) return;
+    let link = document.querySelector<HTMLLinkElement>("link[rel~='icon']");
+    if (!link) {
+      link = document.createElement('link');
+      link.rel = 'icon';
+      document.head.appendChild(link);
+    }
+    link.href = bootstrap.workspace.logo_url;
+  }, [bootstrap]);
+
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
@@ -35,17 +46,6 @@ export function HubShell() {
       </div>
     );
   }
-
-  useEffect(() => {
-    if (!bootstrap?.workspace.logo_url) return;
-    let link = document.querySelector<HTMLLinkElement>("link[rel~='icon']");
-    if (!link) {
-      link = document.createElement('link');
-      link.rel = 'icon';
-      document.head.appendChild(link);
-    }
-    link.href = bootstrap.workspace.logo_url;
-  }, [bootstrap]);
 
   if (!bootstrap.is_active) {
     return (
