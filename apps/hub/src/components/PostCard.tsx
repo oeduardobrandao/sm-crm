@@ -136,8 +136,8 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
       await submitApproval(token, post.id, 'mensagem', replyText.trim());
       setReplyText('');
       onApprovalSubmitted();
-    } catch {
-      // silent
+    } catch (e) {
+      setResult({ type: 'error', message: (e as Error).message || 'Erro ao enviar mensagem.' });
     } finally {
       setSendingReply(false);
     }
@@ -179,8 +179,8 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
           {postProperties.length > 0 && (
             <div className="rounded-lg border bg-muted/40 px-3 py-1">
               <p className="text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground pt-2 pb-1">Propriedades</p>
-              {postProperties.map((p, i) => (
-                <PropertyRow key={i} prop={p} workflowSelectOptions={workflowSelectOptions} workflowId={post.workflow_id} />
+              {postProperties.map((p) => (
+                <PropertyRow key={`${p.post_id}-${p.template_property_definitions.name}`} prop={p} workflowSelectOptions={workflowSelectOptions} workflowId={post.workflow_id} />
               ))}
             </div>
           )}
