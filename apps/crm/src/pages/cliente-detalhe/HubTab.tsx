@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
+import { openCSVSelector } from '@/lib/csv';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Copy, Eye, ToggleLeft, ToggleRight, Plus, Trash2, Save } from 'lucide-react';
+import { Copy, Eye, ToggleLeft, ToggleRight, Plus, Trash2, Save, Upload, HelpCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -267,6 +268,28 @@ function BriefingEditor({ clienteId, contaId, onSaved }: { clienteId: number; co
   const [newQuestions, setNewQuestions] = useState<Record<string, string>>({});
   const [addingFor, setAddingFor] = useState<string | null>(null);
 
+  function handleCSVImport() {
+    openCSVSelector(
+      async (rows) => {
+        let count = 0;
+        for (const row of rows) {
+          if (!row.pergunta) continue;
+          try {
+            await addHubBriefingQuestion(clienteId, contaId, row.pergunta.trim(), row.secao?.trim() || null, row.resposta?.trim() || null);
+            count++;
+          } catch { /* skip row */ }
+        }
+        if (count > 0) {
+          toast.success(`${count} pergunta${count !== 1 ? 's' : ''} importada${count !== 1 ? 's' : ''} com sucesso!`);
+          onSaved();
+        } else {
+          toast.error('Nenhuma pergunta válida encontrada. Verifique a coluna "pergunta".');
+        }
+      },
+      (err) => toast.error(err.message),
+    );
+  }
+
   // Build ordered list of sections (preserving insertion order)
   const sections: { name: string; questions: HubBriefingQuestionRow[] }[] = [];
   for (const q of questions) {
@@ -391,7 +414,17 @@ function BriefingEditor({ clienteId, contaId, onSaved }: { clienteId: number; co
 
   return (
     <section>
-      <h3 className="font-semibold mb-3">Briefing</h3>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="font-semibold">Briefing</h3>
+        <div className="flex items-center gap-2">
+          <span data-tooltip="Colunas: pergunta*, secao, resposta" data-tooltip-dir="bottom" style={{ display: 'flex' }}>
+            <HelpCircle className="h-4 w-4 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
+          </span>
+          <Button size="sm" variant="outline" onClick={handleCSVImport}>
+            <Upload size={14} className="mr-1.5" /> Importar CSV
+          </Button>
+        </div>
+      </div>
 
       {/* Unsectioned questions */}
       {(unsectioned || namedSections.length === 0) && (

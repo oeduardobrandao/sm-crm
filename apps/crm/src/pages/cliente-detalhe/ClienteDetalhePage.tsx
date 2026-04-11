@@ -560,10 +560,10 @@ export default function ClienteDetalhePage() {
             <span className="client-info-value" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
               {cliente.data_aniversario
                 ? (() => {
-                    const [mm, dd] = cliente.data_aniversario.split('-');
-                    const meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-                    return <><Cake className="h-4 w-4" style={{ color: 'var(--pink, #f542c8)' }} />{`${parseInt(dd)} de ${meses[parseInt(mm) - 1]}`}</>;
-                  })()
+                  const [mm, dd] = cliente.data_aniversario.split('-');
+                  const meses = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+                  return <><Cake className="h-4 w-4" style={{ color: 'var(--pink, #f542c8)' }} />{`${parseInt(dd)} de ${meses[parseInt(mm) - 1]}`}</>;
+                })()
                 : '—'}
             </span>
           </div>
@@ -862,8 +862,8 @@ export default function ClienteDetalhePage() {
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                 transition: 'box-shadow 0.2s ease, transform 0.2s ease',
               }}
-              onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLDivElement).style.boxShadow = '0 6px 16px rgba(0,0,0,0.08)'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = ''; (e.currentTarget as HTMLDivElement).style.boxShadow = ''; }}
+                onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLDivElement).style.boxShadow = '0 6px 16px rgba(0,0,0,0.08)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = ''; (e.currentTarget as HTMLDivElement).style.boxShadow = ''; }}
               >
                 <div>
                   <p style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.1rem' }}>{d.titulo}</p>
@@ -922,8 +922,8 @@ export default function ClienteDetalhePage() {
                 border: '1px solid var(--border-color)', background: 'var(--surface-main)',
                 transition: 'box-shadow 0.2s ease, transform 0.2s ease',
               }}
-              onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLDivElement).style.boxShadow = '0 6px 16px rgba(0,0,0,0.08)'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = ''; (e.currentTarget as HTMLDivElement).style.boxShadow = ''; }}
+                onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLDivElement).style.boxShadow = '0 6px 16px rgba(0,0,0,0.08)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = ''; (e.currentTarget as HTMLDivElement).style.boxShadow = ''; }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
                   <span className={`badge ${addr.tipo === 'residencial' ? 'badge-info' : 'badge-warning'}`}
@@ -967,6 +967,19 @@ export default function ClienteDetalhePage() {
         refetchIg={refetchIg}
         onNavigateAnalytics={() => navigate(`/analytics/${clienteId}`)}
       />
+
+      {/* Hub do Cliente */}
+      {!isAgent && cliente && cliente.id != null && cliente.conta_id && workspaceSlug && (
+        <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
+          <h3 className="text-xl font-bold tracking-tight text-foreground mb-1">Hub do Cliente</h3>
+          <p className="text-sm text-muted-foreground mb-4">Link permanente de acesso do cliente ao hub de conteúdo.</p>
+          <HubTab
+            clienteId={cliente.id!}
+            contaId={cliente.conta_id!}
+            workspaceSlug={workspaceSlug}
+          />
+        </div>
+      )}
 
       {!isAgent && (
         <>
@@ -1046,19 +1059,6 @@ export default function ClienteDetalhePage() {
         </>
       )}
 
-      {/* Hub do Cliente */}
-      {!isAgent && cliente && cliente.id != null && cliente.conta_id && workspaceSlug && (
-        <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-          <h3 className="text-xl font-bold tracking-tight text-foreground mb-1">Hub do Cliente</h3>
-          <p className="text-sm text-muted-foreground mb-4">Link permanente de acesso do cliente ao hub de conteúdo.</p>
-          <HubTab
-            clienteId={cliente.id!}
-            contaId={cliente.conta_id!}
-            workspaceSlug={workspaceSlug}
-          />
-        </div>
-      )}
-
       {/* Edit Modal */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent style={{ maxWidth: 600 }} onConfirmClose={() => setEditOpen(false)}>
@@ -1089,8 +1089,8 @@ export default function ClienteDetalhePage() {
                 <Select value={fAniMes} onValueChange={setFAniMes}>
                   <SelectTrigger><SelectValue placeholder="Mês" /></SelectTrigger>
                   <SelectContent>
-                    {[['01','Janeiro'],['02','Fevereiro'],['03','Março'],['04','Abril'],['05','Maio'],['06','Junho'],
-                      ['07','Julho'],['08','Agosto'],['09','Setembro'],['10','Outubro'],['11','Novembro'],['12','Dezembro']]
+                    {[['01', 'Janeiro'], ['02', 'Fevereiro'], ['03', 'Março'], ['04', 'Abril'], ['05', 'Maio'], ['06', 'Junho'],
+                    ['07', 'Julho'], ['08', 'Agosto'], ['09', 'Setembro'], ['10', 'Outubro'], ['11', 'Novembro'], ['12', 'Dezembro']]
                       .map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
                   </SelectContent>
                 </Select>
@@ -1260,7 +1260,6 @@ function InstagramSection({ clienteId, loadingIg, igSummary, refetchIg, onNaviga
 
   return (
     <div id="ig-container" style={{ marginBottom: '1.5rem' }}>
-      <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">Instagram</h3>
       {loadingIg && <div className="flex justify-center p-4"><Spinner size="lg" /></div>}
       {!loadingIg && igSummary && !igSummary.account?.last_synced_at && (
         <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>

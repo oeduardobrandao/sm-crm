@@ -1533,7 +1533,7 @@ export async function getHubBriefingQuestions(clienteId: number): Promise<HubBri
   return data ?? [];
 }
 
-export async function addHubBriefingQuestion(clienteId: number, contaId: string, question: string, section?: string | null): Promise<void> {
+export async function addHubBriefingQuestion(clienteId: number, contaId: string, question: string, section?: string | null, answer?: string | null): Promise<void> {
   const { data: existing } = await supabase
     .from('hub_briefing_questions')
     .select('display_order')
@@ -1544,7 +1544,7 @@ export async function addHubBriefingQuestion(clienteId: number, contaId: string,
   const nextOrder = (existing?.display_order ?? -1) + 1;
   const { error } = await supabase
     .from('hub_briefing_questions')
-    .insert({ cliente_id: clienteId, conta_id: contaId, question, display_order: nextOrder, section: section ?? null });
+    .insert({ cliente_id: clienteId, conta_id: contaId, question, display_order: nextOrder, section: section ?? null, answer: answer ?? null });
   if (error) throw error;
 }
 
