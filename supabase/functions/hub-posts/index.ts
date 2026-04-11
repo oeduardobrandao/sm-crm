@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { signGetUrl } from "../_shared/r2.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -87,5 +88,45 @@ Deno.serve(async (req) => {
         .in("workflow_id", workflowIds)
     : { data: [] };
 
-  return json({ posts: flatPosts, postApprovals: postApprovals ?? [], propertyValues: propertyValues ?? [], workflowSelectOptions: workflowSelectOptions ?? [] });
+  // Fetch media for those posts
+  const { data: mediaRows } = postIds.length > 0
+    ? await db
+        .from("post_media")
+        .select("id, post_id, kind, mime_type, r2_key, thumbnail_r2_key, width, height, duration_seconds, is_cover, sort_order")
+        .in("post_id", postIds)
+        .order("sort_order", { ascending: true })
+        .order("id", { ascending: true })
+    : { data: [] };
+
+  const mediaWithUrls = await Promise.all((mediaRows ?? []).map(async (m: any) => ({
+    id: m.id,
+    post_id: m.post_id,
+    kind: m.kind,
+    mime_type: m.mime_type,
+    width: m.width,
+    height: m.height,
+    duration_seconds: m.duration_seconds,
+    is_cover: m.is_cover,
+    sort_order: m.sort_order,
+    url: await signGetUrl(m.r2_key, 3600),
+    thumbnail_url: m.thumbnail_r2_key ? await signGetUrl(m.thumbnail_r2_key, 3600) : null,
+  })));
+
+  const mediaByPost: Record<number, typeof mediaWithUrls> = {};
+  for (const m of mediaWithUrls) {
+    (mediaByPost[m.post_id] ??= []).push(m);
+  }
+
+  const flatPostsWithMedia = flatPosts.map((p: any) => {
+    const mediaForPost = mediaByPost[p.id] ?? [];
+    const cover_media = mediaForPost.find((m) => m.is_cover) ?? null;
+    return { ...p, media: mediaForPost, cover_media };
+  });
+
+  return json({
+    posts: flatPostsWithMedia,
+    postApprovals: postApprovals ?? [],
+    propertyValues: propertyValues ?? [],
+    workflowSelectOptions: workflowSelectOptions ?? [],
+  });
 });
