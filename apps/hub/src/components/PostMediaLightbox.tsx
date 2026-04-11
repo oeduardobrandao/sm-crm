@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { HubPostMedia } from '../types';
 
@@ -27,6 +27,24 @@ export function PostMediaLightbox({ media, initialIndex, onClose, onStaleUrl }: 
     return () => window.removeEventListener('keydown', onKey);
   }, [prev, next, onClose]);
 
+  // Touch swipe: horizontal swipe > 50px advances; vertical-dominant gestures are ignored
+  // so scrolling/pinching inside videos still works.
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
+  const onTouchStart = (e: React.TouchEvent) => {
+    const t = e.touches[0];
+    touchStart.current = { x: t.clientX, y: t.clientY };
+  };
+  const onTouchEnd = (e: React.TouchEvent) => {
+    const start = touchStart.current;
+    touchStart.current = null;
+    if (!start) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy)) return;
+    if (dx < 0) next(); else prev();
+  };
+
   if (!current) return null;
 
   return (
@@ -35,6 +53,8 @@ export function PostMediaLightbox({ media, initialIndex, onClose, onStaleUrl }: 
       aria-modal="true"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4"
       onClick={onClose}
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
     >
       <button
         type="button"

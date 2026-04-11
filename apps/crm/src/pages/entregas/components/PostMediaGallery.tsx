@@ -3,8 +3,16 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Upload, Star, Trash2, AlertTriangle } from 'lucide-react';
 import {
+  DndContext, closestCenter, PointerSensor, useSensor, useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext, useSortable, rectSortingStrategy, arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import {
   listPostMedia, uploadPostMedia, deletePostMedia, setPostMediaCover,
-  detectKind,
+  reorderPostMedia, detectKind,
 } from '../../../services/postMedia';
 import type { PostMedia } from '../../../store';
 
@@ -16,15 +24,39 @@ interface PostMediaGalleryProps {
 
 export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGalleryProps) {
   const qc = useQueryClient();
-  const { data: media = [] } = useQuery({
+  const { data: serverMedia = [] } = useQuery({
     queryKey: ['post-media', postId],
     queryFn: () => listPostMedia(postId),
   });
 
+  // Local ordered copy so drag-reorder feels instant and doesn't flash back
+  // while the PATCH round-trips and the query refetches.
+  const [media, setMedia] = useState<PostMedia[]>(serverMedia);
+  useEffect(() => { setMedia(serverMedia); }, [serverMedia]);
   useEffect(() => { onChange?.(media); }, [media, onChange]);
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  async function handleDragEnd(e: DragEndEvent) {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const oldIndex = media.findIndex((m) => m.id === active.id);
+    const newIndex = media.findIndex((m) => m.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+    const next = arrayMove(media, oldIndex, newIndex);
+    setMedia(next);
+    try {
+      await Promise.all(next.map((m, i) => reorderPostMedia(m.id, i)));
+      refresh();
+    } catch (err) {
+      toast.error((err as Error).message);
+      setMedia(serverMedia); // revert
+    }
+  }
 
   const [uploading, setUploading] = useState(false);
   const [pendingVideo, setPendingVideo] = useState<File | null>(null);
+  const [progress, setProgress] = useState<{ name: string; pct: number } | null>(null);
 
   const refresh = () => qc.invalidateQueries({ queryKey: ['post-media', postId] });
 
@@ -38,7 +70,12 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
           setPendingVideo(file);
           return;
         }
-        await uploadPostMedia({ postId, file });
+        setProgress({ name: file.name, pct: 0 });
+        await uploadPostMedia({
+          postId,
+          file,
+          onProgress: (p) => setProgress({ name: file.name, pct: Math.round((p.loaded / p.total) * 100) }),
+        });
       }
       refresh();
       toast.success('Upload concluído');
@@ -46,6 +83,7 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
       toast.error((e as Error).message);
     } finally {
       setUploading(false);
+      setProgress(null);
     }
   }
 
@@ -53,7 +91,13 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
     if (!pendingVideo) return;
     setUploading(true);
     try {
-      await uploadPostMedia({ postId, file: pendingVideo, thumbnail });
+      setProgress({ name: pendingVideo.name, pct: 0 });
+      await uploadPostMedia({
+        postId,
+        file: pendingVideo,
+        thumbnail,
+        onProgress: (p) => setProgress({ name: pendingVideo.name, pct: Math.round((p.loaded / p.total) * 100) }),
+      });
       setPendingVideo(null);
       refresh();
       toast.success('Vídeo enviado');
@@ -61,6 +105,7 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
       toast.error((e as Error).message);
     } finally {
       setUploading(false);
+      setProgress(null);
     }
   }
 
@@ -76,51 +121,40 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-        {media.map((m) => (
-          <div key={m.id} className="relative aspect-square overflow-hidden rounded-xl bg-stone-100 ring-1 ring-stone-200/80 group">
-            {m.kind === 'image' ? (
-              <img src={m.url} alt={m.original_filename} className="w-full h-full object-cover" />
-            ) : (
-              <video src={m.url ?? undefined} poster={m.thumbnail_url ?? undefined} muted className="w-full h-full object-cover" />
-            )}
-            {m.is_cover && (
-              <span className="absolute top-1.5 left-1.5 inline-flex items-center gap-1 text-[10px] font-semibold bg-stone-900/85 text-white px-1.5 py-0.5 rounded-full">
-                <Star className="h-2.5 w-2.5" /> capa
-              </span>
-            )}
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={media.map((m) => m.id)} strategy={rectSortingStrategy}>
+          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+            {media.map((m) => (
+              <SortableMediaTile
+                key={m.id}
+                media={m}
+                disabled={disabled}
+                onSetCover={() => handleSetCover(m.id)}
+                onDelete={() => handleDelete(m.id)}
+              />
+            ))}
             {!disabled && (
-              <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                {!m.is_cover && (
-                  <button
-                    type="button"
-                    onClick={() => handleSetCover(m.id)}
-                    title="Definir como capa"
-                    className="flex items-center justify-center w-6 h-6 rounded-full bg-stone-900/85 text-white hover:bg-stone-900"
-                  >
-                    <Star className="h-3 w-3" />
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => handleDelete(m.id)}
-                  title="Remover"
-                  className="flex items-center justify-center w-6 h-6 rounded-full bg-stone-900/85 text-white hover:bg-rose-600"
-                >
-                  <Trash2 className="h-3 w-3" />
-                </button>
-              </div>
+              <label className="flex flex-col items-center justify-center gap-1 aspect-square rounded-xl border border-dashed border-stone-300 bg-stone-50 text-stone-500 hover:border-stone-400 hover:bg-stone-100 cursor-pointer transition-colors">
+                <Upload className="h-4 w-4" />
+                <span className="text-[11px]">{uploading ? 'Enviando…' : 'Adicionar'}</span>
+                <input type="file" multiple accept="image/*,video/*" hidden onChange={(e) => handleFiles(e.target.files)} />
+              </label>
             )}
           </div>
-        ))}
-        {!disabled && (
-          <label className="flex flex-col items-center justify-center gap-1 aspect-square rounded-xl border border-dashed border-stone-300 bg-stone-50 text-stone-500 hover:border-stone-400 hover:bg-stone-100 cursor-pointer transition-colors">
-            <Upload className="h-4 w-4" />
-            <span className="text-[11px]">{uploading ? 'Enviando…' : 'Adicionar'}</span>
-            <input type="file" multiple accept="image/*,video/*" hidden onChange={(e) => handleFiles(e.target.files)} />
-          </label>
-        )}
-      </div>
+        </SortableContext>
+      </DndContext>
+
+      {progress && (
+        <div className="rounded-xl bg-stone-50 ring-1 ring-stone-200/80 px-3 py-2">
+          <div className="flex items-center justify-between text-[11.5px] text-stone-600 mb-1">
+            <span className="truncate pr-2">{progress.name}</span>
+            <span className="tabular-nums font-medium text-stone-900">{progress.pct}%</span>
+          </div>
+          <div className="h-1.5 rounded-full bg-stone-200 overflow-hidden">
+            <div className="h-full bg-stone-900 transition-all" style={{ width: `${progress.pct}%` }} />
+          </div>
+        </div>
+      )}
 
       {pendingVideo && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl bg-amber-50 ring-1 ring-amber-200/60 px-3 py-2 text-[12.5px] text-amber-900">
@@ -136,6 +170,68 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
             className="text-[11px] text-stone-500 hover:text-stone-700"
           >
             Cancelar
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface SortableMediaTileProps {
+  media: PostMedia;
+  disabled?: boolean;
+  onSetCover: () => void;
+  onDelete: () => void;
+}
+
+function SortableMediaTile({ media: m, disabled, onSetCover, onDelete }: SortableMediaTileProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: m.id, disabled });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      className="relative aspect-square overflow-hidden rounded-xl bg-stone-100 ring-1 ring-stone-200/80 group cursor-grab active:cursor-grabbing touch-none"
+    >
+      {m.kind === 'image' ? (
+        <img src={m.url} alt={m.original_filename} className="w-full h-full object-cover pointer-events-none" />
+      ) : (
+        <video src={m.url ?? undefined} poster={m.thumbnail_url ?? undefined} muted className="w-full h-full object-cover pointer-events-none" />
+      )}
+      {m.is_cover && (
+        <span className="absolute top-1.5 left-1.5 inline-flex items-center gap-1 text-[10px] font-semibold bg-stone-900/85 text-white px-1.5 py-0.5 rounded-full">
+          <Star className="h-2.5 w-2.5" /> capa
+        </span>
+      )}
+      {!disabled && (
+        <div
+          className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          {!m.is_cover && (
+            <button
+              type="button"
+              onClick={onSetCover}
+              title="Definir como capa"
+              className="flex items-center justify-center w-6 h-6 rounded-full bg-stone-900/85 text-white hover:bg-stone-900"
+            >
+              <Star className="h-3 w-3" />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onDelete}
+            title="Remover"
+            className="flex items-center justify-center w-6 h-6 rounded-full bg-stone-900/85 text-white hover:bg-rose-600"
+          >
+            <Trash2 className="h-3 w-3" />
           </button>
         </div>
       )}

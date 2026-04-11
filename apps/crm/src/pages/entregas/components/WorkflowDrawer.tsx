@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { X, Plus, Trash2, Send, ChevronDown, ChevronRight, MessageSquare, GripVertical } from 'lucide-react';
@@ -475,6 +475,22 @@ function SortablePostItem({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: post.id! });
 
+  // Local state for title to avoid input lag / letter-replacement from the
+  // round-trip through updateWorkflowPost + refresh on every keystroke.
+  const [tituloLocal, setTituloLocal] = useState(post.titulo ?? '');
+  const tituloDirty = useRef(false);
+  useEffect(() => {
+    if (!tituloDirty.current) setTituloLocal(post.titulo ?? '');
+  }, [post.titulo]);
+  useEffect(() => {
+    if (!tituloDirty.current) return;
+    const t = setTimeout(() => {
+      onFieldChange('titulo', tituloLocal);
+      tituloDirty.current = false;
+    }, 400);
+    return () => clearTimeout(t);
+  }, [tituloLocal, onFieldChange]);
+
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -526,8 +542,9 @@ function SortablePostItem({
               <label>Título</label>
               <input
                 className="drawer-input"
-                value={post.titulo}
-                onChange={e => onFieldChange('titulo', e.target.value)}
+                value={tituloLocal}
+                onChange={e => { tituloDirty.current = true; setTituloLocal(e.target.value); }}
+                onBlur={() => { if (tituloDirty.current) { onFieldChange('titulo', tituloLocal); tituloDirty.current = false; } }}
                 placeholder="Título do post"
               />
             </div>
