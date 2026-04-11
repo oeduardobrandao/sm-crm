@@ -19,6 +19,8 @@ import {
 import type { BoardCard } from '../hooks/useEntregasData';
 import { PostEditor } from './PostEditor';
 import { PropertyPanel } from './PropertyPanel';
+import { PostMediaGallery, hasVideoMissingThumbnail } from './PostMediaGallery';
+import { listPostMedia } from '../../../services/postMedia';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -241,15 +243,26 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
   };
 
   const handleSendToCliente = async () => {
-    const readyCount = posts.filter(p => p.status === 'aprovado_interno').length;
-    if (readyCount === 0) {
+    const readyPosts = posts.filter(p => p.status === 'aprovado_interno');
+    if (readyPosts.length === 0) {
       toast.error('Nenhum post aprovado internamente para enviar.');
       return;
     }
+
+    // Block sending if any ready post has a video without a thumbnail.
+    const mediaByPost = await Promise.all(
+      readyPosts.map(async (p) => ({ post: p, media: await listPostMedia(p.id!) }))
+    );
+    const blocked = mediaByPost.filter((m) => hasVideoMissingThumbnail(m.media));
+    if (blocked.length > 0) {
+      toast.error(`Há ${blocked.length} post(s) com vídeos sem thumbnail. Adicione uma thumbnail antes de enviar.`);
+      return;
+    }
+
     setIsSending(true);
     try {
       await sendPostsToCliente(workflowId);
-      toast.success(`${readyCount} post${readyCount > 1 ? 's' : ''} enviado${readyCount > 1 ? 's' : ''} ao cliente!`);
+      toast.success(`${readyPosts.length} post${readyPosts.length > 1 ? 's' : ''} enviado${readyPosts.length > 1 ? 's' : ''} ao cliente!`);
       refresh();
       onRefresh();
     } catch { toast.error('Erro ao enviar posts ao cliente'); }
@@ -584,6 +597,8 @@ function SortablePostItem({
               membros={membros}
             />
           )}
+
+          <PostMediaGallery postId={post.id!} disabled={isReadonly} />
 
           <PostEditor
             key={post.id}
