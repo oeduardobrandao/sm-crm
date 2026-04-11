@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import { useHub } from '../HubContext';
 import { fetchPosts, submitApproval } from '../api';
-import type { HubPost } from '../types';
+import type { HubPost, PostApproval } from '../types';
 
 const TIPO_LABEL: Record<string, string> = {
   feed: 'Feed', reels: 'Reels', stories: 'Stories', carrossel: 'Carrossel',
@@ -24,13 +24,14 @@ function formatDate(d: string | null) {
   return new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-function PostCard({ post, token }: { post: HubPost; token: string }) {
+function PostCard({ post, token, approvals }: { post: HubPost; token: string; approvals: PostApproval[] }) {
   const [expanded, setExpanded] = useState(false);
   const [comentario, setComentario] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const qc = useQueryClient();
   const isPending = post.status === 'enviado_cliente';
+  const postApprovals = approvals.filter(a => a.post_id === post.id);
 
   async function handleAction(action: 'aprovado' | 'correcao') {
     setSubmitting(true);
@@ -67,6 +68,25 @@ function PostCard({ post, token }: { post: HubPost; token: string }) {
       {expanded && (
         <div className="mt-3 border-t pt-3">
           <p className="text-sm whitespace-pre-wrap text-muted-foreground">{post.conteudo_plain}</p>
+
+          {postApprovals.length > 0 && (
+            <div className="mt-4 space-y-2">
+              {postApprovals.map(a => {
+                const isTeam = a.is_workspace_user;
+                const label = isTeam ? 'Equipe' : a.action === 'correcao' ? 'Correção solicitada' : a.action === 'aprovado' ? 'Aprovado' : 'Você';
+                const date = new Date(a.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+                return (
+                  <div key={a.id} className={`rounded-xl px-3 py-2 text-sm ${isTeam ? 'bg-primary/10 ml-6' : 'bg-muted mr-6'}`}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-semibold text-xs">{label}</span>
+                      <span className="text-xs text-muted-foreground">{date}</span>
+                    </div>
+                    {a.comentario && <p className="text-sm">{a.comentario}</p>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {isPending && !result && (
             <div className="mt-4 space-y-2">
@@ -113,6 +133,7 @@ export function AprovacoesPage() {
     queryFn: () => fetchPosts(token),
   });
 
+  const approvals = data?.postApprovals ?? [];
   const pending = (data?.posts ?? [])
     .filter(p => p.status === 'enviado_cliente')
     .sort((a, b) => (a.scheduled_at ?? '').localeCompare(b.scheduled_at ?? ''));
@@ -126,7 +147,7 @@ export function AprovacoesPage() {
         {pending.length === 0 ? 'Nenhum post aguardando aprovação.' : `${pending.length} post${pending.length > 1 ? 's' : ''} aguardando sua aprovação.`}
       </p>
       <div className="space-y-3">
-        {pending.map(post => <PostCard key={post.id} post={post} token={token} />)}
+        {pending.map(post => <PostCard key={post.id} post={post} token={token} approvals={approvals} />)}
       </div>
     </div>
   );

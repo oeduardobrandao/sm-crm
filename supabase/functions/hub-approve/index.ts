@@ -50,12 +50,14 @@ Deno.serve(async (req) => {
   if (workflow?.cliente_id !== hubToken.cliente_id) return json({ error: "Não autorizado." }, 403);
 
   // Record approval
-  await db.from("workflow_post_approvals").insert({
+  const { error: insertError } = await db.from("post_approvals").insert({
     post_id,
+    token,
     action,
     comentario: comentario ?? null,
     is_workspace_user: false,
   });
+  if (insertError) return json({ error: insertError.message }, 500);
 
   // Update post status
   const newStatus = action === "aprovado" ? "aprovado_cliente" : action === "correcao" ? "correcao_cliente" : post.status;

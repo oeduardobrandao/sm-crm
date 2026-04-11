@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowLeft, Edit2, Share2, Check, FileText } from 'lucide-react';
+import { ArrowLeft, Edit2, Check, FileText } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import type { BoardCard } from '../hooks/useEntregasData';
-import { updateWorkflowEtapa, createPortalToken, type Membro } from '../../../store';
+import { updateWorkflowEtapa, type Membro } from '../../../store';
 
 const avatarColors = ['#eab308', '#3ecf8e', '#f5a342', '#f542c8', '#42c8f5', '#8b5cf6', '#ef4444', '#14b8a6'];
 function getAvatarColor(name: string): string {
@@ -58,23 +58,6 @@ export function WorkflowCard({ card, onClick, isDragOverlay, dragHandle, membros
   const iniciadoEm = card.etapa.iniciado_em
     ? new Date(card.etapa.iniciado_em).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
     : null;
-
-  const handleShare = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    try {
-      const portalToken = await createPortalToken(card.workflow.id!);
-      const url = `${window.location.origin}/portal/${portalToken}`;
-      if (navigator.share) {
-        await navigator.share({ title: card.workflow.titulo, text: `Acompanhe a entrega: ${card.workflow.titulo}`, url });
-      } else {
-        await navigator.clipboard.writeText(url);
-        toast.success('Link do portal copiado!');
-      }
-    } catch (err: any) {
-      if (err?.name === 'AbortError') return;
-      toast.error('Erro ao compartilhar link do portal.');
-    }
-  };
 
   const sanitizeUrl = (url: string) => url.startsWith('http') ? url : `https://${url}`;
 
@@ -230,9 +213,6 @@ export function WorkflowCard({ card, onClick, isDragOverlay, dragHandle, membros
           {postsCount !== undefined && postsCount > 0 && (
             <span className="board-card-posts-badge">{postsCount}</span>
           )}
-        </button>
-        <button className="btn-edit-workflow" title="Compartilhar portal do cliente" style={{ padding: '0.4rem', flexShrink: 0 }} onClick={handleShare}>
-          <Share2 className="h-4 w-4" />
         </button>
         {onForwardClick && (
           <button className="btn-edit-workflow btn-forward-etapa" title={card.etapaIdx < card.totalEtapas - 1 ? 'Concluir etapa e avançar' : 'Concluir fluxo'} style={{ padding: '0.4rem', flexShrink: 0, color: 'var(--success)' }} onClick={e => { e.stopPropagation(); onForwardClick(); }}>

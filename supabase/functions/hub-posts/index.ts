@@ -58,7 +58,7 @@ Deno.serve(async (req) => {
   // Fetch approval history for those posts
   const { data: postApprovals } = postIds.length > 0
     ? await db
-        .from("workflow_post_approvals")
+        .from("post_approvals")
         .select("id, post_id, action, comentario, is_workspace_user, created_at")
         .in("post_id", postIds)
         .order("created_at", { ascending: true })
