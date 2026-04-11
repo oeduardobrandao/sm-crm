@@ -294,8 +294,9 @@ export function KanbanView({ cards, onCardClick, onPostsClick, onRefresh, onRecu
 
   if (localCards.length === 0) {
     return (
-      <div className="card animate-up" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-        <p>Nenhuma entrega encontrada. Ajuste os filtros ou crie um novo fluxo.</p>
+      <div className="card animate-up" style={{ textAlign: 'center', padding: '4rem 3rem', color: 'var(--text-muted)', borderRadius: '12px' }}>
+        <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem', opacity: 0.3 }}>▣</div>
+        <p style={{ fontSize: '0.82rem', fontFamily: 'var(--font-mono)', letterSpacing: '0.04em' }}>Nenhuma entrega encontrada. Ajuste os filtros ou crie um novo fluxo.</p>
       </div>
     );
   }
@@ -306,7 +307,7 @@ export function KanbanView({ cards, onCardClick, onPostsClick, onRefresh, onRecu
         <div className="board-rows-wrapper animate-up">
           {boardRows.map((row) => (
             <div key={row.key}>
-              {boardRows.length > 1 && <div className="board-row-label" style={{ marginBottom: '1rem' }}>{row.label}</div>}
+              {boardRows.length > 1 && <div className="board-row-label">{row.label}</div>}
               <div className="board-container">
                 {[...row.columns.entries()].map(([stepName, stepCards]) => (
                   <div key={stepName} className="board-column">

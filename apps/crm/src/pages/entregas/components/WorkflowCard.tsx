@@ -16,6 +16,14 @@ function getInitials(name: string): string {
   return name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase();
 }
 
+// Deadline accent colors mapped from class name
+const deadlineAccent: Record<string, string> = {
+  'deadline-ok': '#3ecf8e',
+  'deadline-caution': '#eab308',
+  'deadline-warning': '#ea580c',
+  'deadline-overdue': '#ef4444',
+};
+
 interface WorkflowCardProps {
   card: BoardCard;
   onClick?: () => void;
@@ -59,18 +67,36 @@ export function WorkflowCard({ card, onClick, isDragOverlay, dragHandle, membros
     ? new Date(card.etapa.iniciado_em).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
     : null;
 
+  const accent = deadlineAccent[deadlineClass] ?? '#3ecf8e';
   const sanitizeUrl = (url: string) => url.startsWith('http') ? url : `https://${url}`;
 
   return (
     <div
       className={`board-card ${deadlineClass}`}
-      style={{ opacity: isDragOverlay ? 0.8 : 1, position: 'relative', zIndex: assignDropdownOpen ? 50 : 1 }}
+      style={{
+        opacity: isDragOverlay ? 0.85 : 1,
+        position: 'relative',
+        zIndex: assignDropdownOpen ? 50 : 1,
+        padding: '0.9rem',
+        gap: '0.6rem',
+        borderLeft: `3px solid ${accent}`,
+        borderRadius: '10px',
+      }}
       onClick={assignDropdownOpen ? () => setAssignDropdownOpen(false) : onClick}
     >
-      <div className="board-card-top" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      {/* Top row: client + recurrent + drag handle */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span
           className="board-card-client"
-          style={{ borderLeft: `3px solid ${card.cliente?.cor || '#888'}`, paddingLeft: '0.5rem' }}
+          style={{
+            borderLeft: 'none',
+            paddingLeft: 0,
+            fontSize: '0.68rem',
+            fontWeight: 700,
+            letterSpacing: '0.07em',
+            textTransform: 'uppercase',
+            color: 'var(--text-muted)',
+          }}
         >
           {card.cliente ? (
             <span
@@ -78,34 +104,104 @@ export function WorkflowCard({ card, onClick, isDragOverlay, dragHandle, membros
               tabIndex={0}
               onClick={(e) => { e.stopPropagation(); navigate(`/clientes/${card.cliente!.id}`); }}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); navigate(`/clientes/${card.cliente!.id}`); } }}
-              style={{ cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted', textUnderlineOffset: '2px' }}
+              style={{
+                cursor: 'pointer',
+                color: card.cliente.cor || 'var(--text-muted)',
+                opacity: 0.85,
+                fontWeight: 700,
+              }}
             >
               {card.cliente.nome}
             </span>
           ) : '—'}
         </span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-          {card.workflow.recorrente && <span title="Recorrente" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>↻</span>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+          {card.workflow.recorrente && (
+            <span
+              title="Recorrente"
+              style={{
+                fontSize: '0.68rem',
+                fontWeight: 700,
+                color: 'var(--text-muted)',
+                background: 'var(--surface-hover)',
+                borderRadius: '999px',
+                padding: '0.05rem 0.4rem',
+                letterSpacing: '0',
+              }}
+            >
+              ↻
+            </span>
+          )}
           {dragHandle && (
-            <div style={{ cursor: 'grab', color: 'var(--text-muted)' }}>
+            <div style={{ cursor: 'grab', color: 'var(--text-muted)', display: 'flex' }}>
               {dragHandle}
             </div>
           )}
         </div>
       </div>
-      <div className="board-card-title">{card.workflow.titulo}</div>
-      <div className="board-card-meta">
-        <span className={`board-card-deadline ${deadlineClass}`}>{deadlineText}</span>
-        <span className="board-card-prazo-type">{card.etapa.tipo_prazo === 'uteis' ? 'dias úteis' : 'dias corridos'}</span>
+
+      {/* Title */}
+      <div
+        className="board-card-title"
+        style={{
+          fontSize: '0.9rem',
+          fontWeight: 700,
+          lineHeight: 1.35,
+          color: 'var(--text-main)',
+          letterSpacing: '-0.01em',
+        }}
+      >
+        {card.workflow.titulo}
       </div>
 
+      {/* Deadline badge + prazo type */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+        <span
+          className={`board-card-deadline ${deadlineClass}`}
+          style={{
+            fontSize: '0.7rem',
+            fontWeight: 700,
+            padding: '0.2rem 0.6rem',
+            borderRadius: '999px',
+            letterSpacing: '0.01em',
+          }}
+        >
+          {deadlineText}
+        </span>
+        <span
+          className="board-card-prazo-type"
+          style={{
+            fontSize: '0.62rem',
+            color: 'var(--text-muted)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.06em',
+          }}
+        >
+          {card.etapa.tipo_prazo === 'uteis' ? 'úteis' : 'corridos'}
+        </span>
+      </div>
+
+      {/* Assignee chip */}
       <DropdownMenu open={assignDropdownOpen} onOpenChange={(open) => {
         if (membros) setAssignDropdownOpen(open);
       }}>
         <DropdownMenuTrigger asChild>
           <div
             className={`board-card-assignee ${membros ? 'board-card-assignee--clickable' : ''}`}
-            style={{ cursor: membros ? 'pointer' : 'default', position: 'relative' }}
+            style={{
+              cursor: membros ? 'pointer' : 'default',
+              position: 'relative',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              padding: '0.25rem 0.5rem 0.25rem 0.25rem',
+              borderRadius: '10px',
+              border: '1px solid var(--border-color)',
+              background: 'var(--card-bg)',
+              width: 'fit-content',
+              maxWidth: '100%',
+              transition: 'border-color 0.15s, background 0.15s',
+            }}
             onClick={(e) => {
               if (!membros) return;
               e.stopPropagation();
@@ -115,17 +211,19 @@ export function WorkflowCard({ card, onClick, isDragOverlay, dragHandle, membros
               const displayMembro = localMembro !== undefined ? localMembro : card.membro;
               return displayMembro ? (
                 <>
-                  <div style={{ width: 22, height: 22, borderRadius: '50%', background: getAvatarColor(displayMembro.nome), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+                  <div style={{ width: 20, height: 20, borderRadius: '50%', background: getAvatarColor(displayMembro.nome), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.55rem', fontWeight: 800, color: '#fff', flexShrink: 0 }}>
                     {getInitials(displayMembro.nome)}
                   </div>
-                  <span>{displayMembro.nome}</span>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {displayMembro.nome}
+                  </span>
                 </>
               ) : (
                 <>
-                  <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'var(--surface-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', color: 'var(--text-muted)' }}>
+                  <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--surface-hover)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', color: 'var(--text-muted)', flexShrink: 0 }}>
                     ?
                   </div>
-                  <span>Sem responsável</span>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Sem responsável</span>
                 </>
               );
             })()}
@@ -162,61 +260,144 @@ export function WorkflowCard({ card, onClick, isDragOverlay, dragHandle, membros
         )}
       </DropdownMenu>
 
+      {/* External links */}
       {(card.workflow.link_notion || card.workflow.link_drive) && (
-        <div className="board-card-links">
+        <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
           {card.workflow.link_notion && (
-            <a href={sanitizeUrl(card.workflow.link_notion)} target="_blank" rel="noopener noreferrer" className="board-card-link" onClick={e => e.stopPropagation()}>
+            <a
+              href={sanitizeUrl(card.workflow.link_notion)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="board-card-link"
+              style={{ fontSize: '0.68rem', fontWeight: 600, letterSpacing: '0.03em' }}
+              onClick={e => e.stopPropagation()}
+            >
               Notion
             </a>
           )}
           {card.workflow.link_drive && (
-            <a href={sanitizeUrl(card.workflow.link_drive)} target="_blank" rel="noopener noreferrer" className="board-card-link" onClick={e => e.stopPropagation()}>
+            <a
+              href={sanitizeUrl(card.workflow.link_drive)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="board-card-link"
+              style={{ fontSize: '0.68rem', fontWeight: 600, letterSpacing: '0.03em' }}
+              onClick={e => e.stopPropagation()}
+            >
               Drive
             </a>
           )}
         </div>
       )}
 
+      {/* Client approval badge */}
       {card.etapa.tipo === 'aprovacao_cliente' && (
         <div className="board-card-approval">
-          <div className="board-card-approval-badge">
+          <div
+            className="board-card-approval-badge"
+            style={{ borderRadius: '999px', padding: '0.2rem 0.65rem', fontSize: '0.68rem', letterSpacing: '0.02em' }}
+          >
             ⏳ Aguardando cliente
           </div>
         </div>
       )}
 
-      <div className="board-card-progress">
-        <div className="board-progress-bar">
-          <div className="board-progress-fill" style={{ width: `${progressPct}%` }} />
+      {/* Progress bar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <div
+          style={{
+            flex: 1,
+            height: '5px',
+            background: 'var(--surface-hover)',
+            borderRadius: '999px',
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            style={{
+              height: '100%',
+              width: `${progressPct}%`,
+              background: accent,
+              borderRadius: '999px',
+              transition: 'width 0.4s ease',
+              opacity: 0.85,
+            }}
+          />
         </div>
-        <span className="board-progress-label">{card.etapaIdx + 1}/{card.totalEtapas}</span>
+        <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 600, whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)' }}>
+          {card.etapaIdx + 1}/{card.totalEtapas}
+        </span>
       </div>
 
-      {iniciadoEm && <div className="board-card-created">iniciada em {iniciadoEm}</div>}
+      {/* Initiated date */}
+      {iniciadoEm && (
+        <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.25rem', fontFamily: 'var(--font-mono)', letterSpacing: '0.05em' }}>
+          iniciada em {iniciadoEm}
+        </div>
+      )}
 
-      <div className="board-card-actions">
+      {/* Action buttons */}
+      <div
+        style={{
+          display: 'flex',
+          gap: '0.3rem',
+          paddingTop: '0.5rem',
+          borderTop: '1px solid var(--border-color)',
+          marginTop: '0.1rem',
+        }}
+      >
         {card.etapaIdx > 0 && onRevertClick && (
-          <button className="btn-revert-etapa" title="Voltar etapa" style={{ padding: '0.4rem', flexShrink: 0 }} onClick={e => { e.stopPropagation(); onRevertClick(); }}>
-            <ArrowLeft className="h-4 w-4" />
+          <button
+            className="btn-revert-etapa"
+            title="Voltar etapa"
+            style={{ padding: '0.35rem 0.55rem', borderRadius: '10px', flexShrink: 0 }}
+            onClick={e => { e.stopPropagation(); onRevertClick(); }}
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
           </button>
         )}
-        <button className="btn-edit-workflow" title="Editar fluxo" style={{ padding: '0.4rem', flexShrink: 0 }} onClick={e => { e.stopPropagation(); onClick?.(); }}>
-          <Edit2 className="h-4 w-4" />
-        </button>
         <button
           className="btn-edit-workflow"
+          title="Editar fluxo"
+          style={{ padding: '0.35rem 0.55rem', borderRadius: '10px', flexShrink: 0 }}
+          onClick={e => { e.stopPropagation(); onClick?.(); }}
+        >
+          <Edit2 className="h-3.5 w-3.5" />
+        </button>
+        <button
           title="Posts do fluxo"
-          style={{ padding: '0.4rem', flexShrink: 0, position: 'relative' }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.35rem',
+            padding: '0.4rem 0.75rem',
+            borderRadius: '10px',
+            border: '1px solid var(--primary-color)',
+            background: 'color-mix(in srgb, var(--primary-color) 12%, transparent)',
+            color: 'var(--primary-color)',
+            fontSize: '0.72rem',
+            fontWeight: 700,
+            cursor: 'pointer',
+            flexShrink: 0,
+            position: 'relative',
+            transition: 'background 0.15s',
+          }}
           onClick={e => { e.stopPropagation(); onPostsClick?.(); }}
         >
-          <FileText className="h-4 w-4" />
+          <FileText className="h-3.5 w-3.5" />
+          Posts
           {postsCount !== undefined && postsCount > 0 && (
             <span className="board-card-posts-badge">{postsCount}</span>
           )}
         </button>
         {onForwardClick && (
-          <button className="btn-edit-workflow btn-forward-etapa" title={card.etapaIdx < card.totalEtapas - 1 ? 'Concluir etapa e avançar' : 'Concluir fluxo'} style={{ padding: '0.4rem', flexShrink: 0, color: 'var(--success)' }} onClick={e => { e.stopPropagation(); onForwardClick(); }}>
-            <Check className="h-4 w-4" />
+          <button
+            className="btn-edit-workflow btn-forward-etapa"
+            title={card.etapaIdx < card.totalEtapas - 1 ? 'Concluir etapa e avançar' : 'Concluir fluxo'}
+            style={{ padding: '0.35rem 0.55rem', borderRadius: '10px', flexShrink: 0, marginLeft: 'auto', color: '#3ecf8e', borderColor: '#3ecf8e' }}
+            onClick={e => { e.stopPropagation(); onForwardClick(); }}
+          >
+            <Check className="h-3.5 w-3.5" />
           </button>
         )}
       </div>
