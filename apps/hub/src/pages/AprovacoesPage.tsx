@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import { useHub } from '../HubContext';
 import { fetchPosts, submitApproval } from '../api';
-import type { HubPost, PostApproval } from '../types';
+import type { HubPost, PostApproval, HubPostProperty } from '../types';
 
 const TIPO_LABEL: Record<string, string> = {
   feed: 'Feed', reels: 'Reels', stories: 'Stories', carrossel: 'Carrossel',
@@ -24,7 +24,18 @@ function formatDate(d: string | null) {
   return new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-function PostCard({ post, token, approvals }: { post: HubPost; token: string; approvals: PostApproval[] }) {
+function formatPropertyValue(type: string, value: unknown): string {
+  if (value === null || value === undefined || value === '') return '—';
+  if (type === 'date' && typeof value === 'string') {
+    return new Date(value).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  }
+  if (type === 'select' && typeof value === 'object' && value !== null && 'label' in value) {
+    return (value as { label: string }).label;
+  }
+  return String(value);
+}
+
+function PostCard({ post, token, approvals, properties }: { post: HubPost; token: string; approvals: PostApproval[]; properties: HubPostProperty[] }) {
   const [expanded, setExpanded] = useState(false);
   const [comentario, setComentario] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -32,6 +43,7 @@ function PostCard({ post, token, approvals }: { post: HubPost; token: string; ap
   const qc = useQueryClient();
   const isPending = post.status === 'enviado_cliente';
   const postApprovals = approvals.filter(a => a.post_id === post.id);
+  const postProperties = properties.filter(p => p.post_id === post.id);
 
   async function handleAction(action: 'aprovado' | 'correcao') {
     setSubmitting(true);
@@ -68,6 +80,17 @@ function PostCard({ post, token, approvals }: { post: HubPost; token: string; ap
       {expanded && (
         <div className="mt-3 border-t pt-3">
           <p className="text-sm whitespace-pre-wrap text-muted-foreground">{post.conteudo_plain}</p>
+
+          {postProperties.length > 0 && (
+            <div className="mt-3 rounded-lg border bg-muted/40 divide-y text-sm">
+              {postProperties.map((p, i) => (
+                <div key={i} className="flex items-center gap-2 px-3 py-2">
+                  <span className="text-muted-foreground w-32 shrink-0">{p.template_property_definitions.name}</span>
+                  <span>{formatPropertyValue(p.template_property_definitions.type, p.value)}</span>
+                </div>
+              ))}
+            </div>
+          )}
 
           {postApprovals.length > 0 && (
             <div className="mt-4 space-y-2">
@@ -134,6 +157,7 @@ export function AprovacoesPage() {
   });
 
   const approvals = data?.postApprovals ?? [];
+  const properties = data?.propertyValues ?? [];
   const pending = (data?.posts ?? [])
     .filter(p => p.status === 'enviado_cliente')
     .sort((a, b) => (a.scheduled_at ?? '').localeCompare(b.scheduled_at ?? ''));
@@ -147,7 +171,7 @@ export function AprovacoesPage() {
         {pending.length === 0 ? 'Nenhum post aguardando aprovação.' : `${pending.length} post${pending.length > 1 ? 's' : ''} aguardando sua aprovação.`}
       </p>
       <div className="space-y-3">
-        {pending.map(post => <PostCard key={post.id} post={post} token={token} approvals={approvals} />)}
+        {pending.map(post => <PostCard key={post.id} post={post} token={token} approvals={approvals} properties={properties} />)}
       </div>
     </div>
   );

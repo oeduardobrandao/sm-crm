@@ -22,6 +22,17 @@ export interface HubPost {
   workflow_id: number;
 }
 
+export interface HubPostProperty {
+  post_id: number;
+  value: unknown;
+  template_property_definitions: {
+    name: string;
+    type: string;
+    portal_visible: boolean;
+    display_order: number;
+  };
+}
+
 export interface PostApproval {
   id: number;
   post_id: number;

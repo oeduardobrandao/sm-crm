@@ -64,5 +64,15 @@ Deno.serve(async (req) => {
         .order("created_at", { ascending: true })
     : { data: [] };
 
-  return json({ posts: posts ?? [], postApprovals: postApprovals ?? [] });
+  // Fetch portal-visible property values for those posts
+  const { data: propertyValues } = postIds.length > 0
+    ? await db
+        .from("post_property_values")
+        .select("post_id, value, template_property_definitions!inner(name, type, portal_visible, display_order)")
+        .in("post_id", postIds)
+        .eq("template_property_definitions.portal_visible", true)
+        .order("template_property_definitions(display_order)", { ascending: true })
+    : { data: [] };
+
+  return json({ posts: posts ?? [], postApprovals: postApprovals ?? [], propertyValues: propertyValues ?? [] });
 });
