@@ -20,13 +20,13 @@ export function HubNav() {
   return (
     <>
       {/* Desktop top bar */}
-      <header className="hidden md:block sticky top-0 z-20 border-b border-stone-200/70 bg-[#FAFAF7]/85 backdrop-blur-md">
+      <header className="hidden md:block sticky top-0 z-20 border-b border-stone-900 bg-stone-950/95 backdrop-blur-md">
         <div className="mx-auto w-full max-w-5xl px-8 h-16 flex items-center gap-8">
           <div className="flex items-center gap-2.5">
             {bootstrap.workspace.logo_url && (
               <img src={bootstrap.workspace.logo_url} alt={bootstrap.workspace.name} className="h-6 w-auto object-contain" />
             )}
-            <span className="font-display text-[15px] font-semibold tracking-tight text-stone-900">
+            <span className="font-display text-[15px] font-semibold tracking-tight text-white">
               {bootstrap.workspace.name}
             </span>
           </div>
@@ -40,8 +40,8 @@ export function HubNav() {
                   to={href}
                   className={`relative px-3 py-1.5 text-[13px] font-medium rounded-full transition-all duration-200 ${
                     active
-                      ? 'text-stone-900 bg-stone-900/[0.06]'
-                      : 'text-stone-500 hover:text-stone-900'
+                      ? 'text-white bg-white/10'
+                      : 'text-stone-400 hover:text-white'
                   }`}
                 >
                   {label}
@@ -52,7 +52,7 @@ export function HubNav() {
               );
             })}
           </nav>
-          <span className="ml-auto text-[13px] text-stone-500">{bootstrap.cliente_nome}</span>
+          <span className="ml-auto text-[13px] text-stone-400">{bootstrap.cliente_nome}</span>
         </div>
       </header>
 

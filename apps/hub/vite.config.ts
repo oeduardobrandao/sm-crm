@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   root: path.resolve(__dirname, '.'),
   envDir: path.resolve(__dirname, '../..'),
   plugins: [react()],
@@ -11,8 +11,8 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
-  base: '/hub/',
+  base: command === 'serve' ? '/' : '/hub/',
   build: {
     outDir: '../../dist/hub',
   },
-});
+}));
