@@ -40,9 +40,15 @@ CREATE TABLE IF NOT EXISTS post_media_deletions (
   last_error   text NULL
 );
 
--- 4. Trigger: on delete, enqueue both main key and thumbnail
+-- 4. Trigger: on delete, enqueue both main key and thumbnail.
+--    SECURITY DEFINER is required because post_media_deletions is service-role-only
+--    under RLS, but this trigger must fire for tenant-initiated deletes of post_media.
 CREATE OR REPLACE FUNCTION post_media_enqueue_delete()
-RETURNS trigger LANGUAGE plpgsql AS $$
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 BEGIN
   INSERT INTO post_media_deletions(r2_key) VALUES (OLD.r2_key);
   IF OLD.thumbnail_r2_key IS NOT NULL THEN
