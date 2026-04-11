@@ -20,6 +20,7 @@ export interface HubPost {
   conteudo_plain: string;
   scheduled_at: string | null;
   workflow_id: number;
+  workflow_titulo: string;
 }
 
 export interface HubPostProperty {
