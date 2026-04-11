@@ -29,8 +29,8 @@ Let CRM users attach photos and videos to Entregas posts, stored in Cloudflare R
 ### Storage layout
 
 - Single Cloudflare R2 bucket.
-- Object keys: `workspaces/{workspace_id}/posts/{post_id}/{media_id}.{ext}`
-- Video thumbnails: `workspaces/{workspace_id}/posts/{post_id}/{media_id}.thumb.jpg`
+- Object keys: `contas/{conta_id}/posts/{post_id}/{media_id}.{ext}`
+- Video thumbnails: `contas/{conta_id}/posts/{post_id}/{media_id}.thumb.jpg`
 - Credentials (`R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`) live in Supabase Edge Function secrets only.
 - Bucket is private. All access is via presigned URLs.
 
@@ -64,9 +64,9 @@ Abandoned uploads (tab closed, network lost between step 6 and 8) leave orphan o
 
 | Column | Type | Notes |
 |---|---|---|
-| `id` | `bigint` PK (identity) | |
-| `post_id` | `bigint` FK → `posts.id` ON DELETE CASCADE | |
-| `workspace_id` | `bigint` FK → `workspaces.id` | denormalized for RLS + R2 key prefix |
+| `id` | `bigserial` PK | |
+| `post_id` | `bigint` NOT NULL FK → `workflow_posts(id)` ON DELETE CASCADE | |
+| `conta_id` | `uuid` NOT NULL FK → `workspaces(id)` ON DELETE CASCADE | denormalized for RLS + R2 key prefix (matches project convention) |
 | `r2_key` | `text` NOT NULL | main object key |
 | `thumbnail_r2_key` | `text` NULL | required for `kind='video'`, ignored for images |
 | `kind` | `text` CHECK (`kind` IN ('image', 'video')) | |
@@ -115,11 +115,11 @@ Add to `workspaces`:
 
 - `storage_quota_bytes` `bigint` NULL — null = unlimited.
 
-Enforcement: at `post-media-upload-url`, sum `size_bytes` across `post_media` for the workspace plus the new upload. If over, return `413` with `{ error: 'quota_exceeded', used, quota }`.
+Enforcement: at `post-media-upload-url`, sum `size_bytes` across `post_media` for the `conta_id` plus the new upload. If over, return `413` with `{ error: 'quota_exceeded', used, quota }`.
 
 ### RLS
 
-`post_media` readable/writable by members of the matching `workspace_id`, following the existing `posts`/`workflows` RLS pattern. Hub reads bypass RLS via service role inside `hub-posts` (same as today).
+`post_media` readable/writable by members of the matching `conta_id`, following the `workflow_posts` RLS pattern: policy `USING (conta_id IN (SELECT public.get_my_conta_id()))` plus a `service_role_bypass` policy. Hub reads bypass RLS via service role inside `hub-posts` (same as today).
 
 ## Edge Functions
 
