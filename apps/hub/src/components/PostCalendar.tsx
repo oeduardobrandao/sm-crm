@@ -179,7 +179,7 @@ export function PostCalendar({ posts }: Props) {
                   <p className="text-sm font-medium leading-snug">{p.titulo}</p>
                   {p.scheduled_at && (
                     <p className="text-xs text-muted-foreground">
-                      {new Date(p.scheduled_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                      {new Date(p.scheduled_at.includes('T') ? p.scheduled_at : `${p.scheduled_at}T00:00:00`).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
                     </p>
                   )}
                 </div>
