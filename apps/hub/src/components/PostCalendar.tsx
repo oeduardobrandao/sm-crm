@@ -57,7 +57,8 @@ export function PostCalendar({ posts }: Props) {
   function postsForDay(day: number) {
     return posts.filter(p => {
       if (!p.scheduled_at) return false;
-      const d = new Date(p.scheduled_at);
+      const raw = p.scheduled_at.includes('T') ? p.scheduled_at : `${p.scheduled_at}T00:00:00`;
+      const d = new Date(raw);
       return d.getFullYear() === year && d.getMonth() === month && d.getDate() === day;
     });
   }
@@ -101,7 +102,6 @@ export function PostCalendar({ posts }: Props) {
             {Array.from({ length: daysInMonth }).map((_, i) => {
               const day = i + 1;
               const dayPosts = postsForDay(day);
-              const hasEvents = dayPosts.length > 0;
               const isToday = day === today.getDate() && isSameCalMonth;
               const isSelected = selectedDay === day;
 
@@ -116,7 +116,7 @@ export function PostCalendar({ posts }: Props) {
                   onClick={() => setSelectedDay(day)}
                   className={`min-h-[56px] p-1 rounded cursor-pointer transition-colors ${
                     isSelected ? 'bg-accent ring-1 ring-primary/30' : 'hover:bg-accent/50'
-                  } ${hasEvents ? '' : ''}`}
+                  }`}
                 >
                   <div className={`text-xs mb-1 w-5 h-5 flex items-center justify-center rounded-full font-medium ${
                     isToday ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'
