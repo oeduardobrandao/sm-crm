@@ -28,9 +28,18 @@ export interface HubPostProperty {
   template_property_definitions: {
     name: string;
     type: string;
+    config: { options?: { id: string; label: string; color: string }[] };
     portal_visible: boolean;
     display_order: number;
   };
+}
+
+export interface HubSelectOption {
+  workflow_id: number;
+  property_definition_id: number;
+  option_id: string;
+  label: string;
+  color: string;
 }
 
 export interface PostApproval {

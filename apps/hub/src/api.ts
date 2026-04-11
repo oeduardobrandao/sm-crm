@@ -1,5 +1,5 @@
 import type {
-  HubBootstrap, HubPost, PostApproval, HubPostProperty, HubBrand, HubBrandFile,
+  HubBootstrap, HubPost, PostApproval, HubPostProperty, HubSelectOption, HubBrand, HubBrandFile,
   HubPage, HubPageFull, BriefingQuestion
 } from './types';
 
@@ -41,7 +41,7 @@ export function fetchBootstrap(workspace: string, token: string) {
 }
 
 export function fetchPosts(token: string) {
-  return get<{ posts: HubPost[]; postApprovals: PostApproval[]; propertyValues: HubPostProperty[] }>('hub-posts', { token });
+  return get<{ posts: HubPost[]; postApprovals: PostApproval[]; propertyValues: HubPostProperty[]; workflowSelectOptions: HubSelectOption[] }>('hub-posts', { token });
 }
 
 export function submitApproval(token: string, post_id: number, action: 'aprovado' | 'correcao' | 'mensagem', comentario?: string) {

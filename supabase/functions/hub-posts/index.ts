@@ -68,11 +68,19 @@ Deno.serve(async (req) => {
   const { data: propertyValues } = postIds.length > 0
     ? await db
         .from("post_property_values")
-        .select("post_id, value, template_property_definitions!inner(name, type, portal_visible, display_order)")
+        .select("post_id, value, template_property_definitions!inner(name, type, config, portal_visible, display_order)")
         .in("post_id", postIds)
         .eq("template_property_definitions.portal_visible", true)
         .order("template_property_definitions(display_order)", { ascending: true })
     : { data: [] };
 
-  return json({ posts: posts ?? [], postApprovals: postApprovals ?? [], propertyValues: propertyValues ?? [] });
+  // For select/multiselect, also fetch workflow-level options for these posts' workflows
+  const { data: workflowSelectOptions } = postIds.length > 0
+    ? await db
+        .from("workflow_select_options")
+        .select("workflow_id, property_definition_id, option_id, label, color")
+        .in("workflow_id", workflowIds)
+    : { data: [] };
+
+  return json({ posts: posts ?? [], postApprovals: postApprovals ?? [], propertyValues: propertyValues ?? [], workflowSelectOptions: workflowSelectOptions ?? [] });
 });
