@@ -23,7 +23,7 @@ export function HubNav() {
       <header className="hidden md:flex items-center gap-6 px-6 py-3 border-b border-zinc-800 bg-black text-white sticky top-0 z-10">
         <div className="flex items-center gap-2 mr-4">
           {bootstrap.workspace.logo_url && (
-            <img src={bootstrap.workspace.logo_url} alt={bootstrap.workspace.name} className="h-7 w-auto object-contain" />
+            <img src={bootstrap.workspace.logo_url} alt={bootstrap.workspace.name} className="h-5 w-auto object-contain" />
           )}
           <span className="font-semibold text-sm">{bootstrap.workspace.name}</span>
         </div>

@@ -1,4 +1,5 @@
 import { useQueryClient, useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { useHub } from '../HubContext';
 import { fetchPosts } from '../api';
 import { PostCard } from '../components/PostCard';
@@ -11,6 +12,8 @@ const VISIBLE_STATUSES = new Set<HubPost['status']>([
 export function PostagensPage() {
   const { token } = useHub();
   const qc = useQueryClient();
+  const [searchParams] = useSearchParams();
+  const expandPostId = searchParams.get('post') ? Number(searchParams.get('post')) : null;
   const { data, isLoading, isError } = useQuery({
     queryKey: ['hub-posts', token],
     queryFn: () => fetchPosts(token),
@@ -76,6 +79,7 @@ export function PostagensPage() {
                     propertyValues={propertyValues}
                     workflowSelectOptions={workflowSelectOptions}
                     onApprovalSubmitted={() => qc.invalidateQueries({ queryKey: ['hub-posts', token] })}
+                    defaultExpanded={expandPostId === post.id}
                   />
                 ))}
               </div>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { CheckCircle, AlertCircle, ChevronDown, ChevronUp, MessageSquare, Send } from 'lucide-react';
 import { submitApproval } from '../api';
 import type { HubPost, PostApproval, HubPostProperty, HubSelectOption } from '../types';
@@ -102,10 +102,18 @@ export interface PostCardProps {
   propertyValues: HubPostProperty[];
   workflowSelectOptions: HubSelectOption[];
   onApprovalSubmitted: () => void;
+  defaultExpanded?: boolean;
 }
 
-export function PostCard({ post, token, approvals, propertyValues, workflowSelectOptions, onApprovalSubmitted }: PostCardProps) {
-  const [expanded, setExpanded] = useState(false);
+export function PostCard({ post, token, approvals, propertyValues, workflowSelectOptions, onApprovalSubmitted, defaultExpanded }: PostCardProps) {
+  const [expanded, setExpanded] = useState(defaultExpanded ?? false);
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (defaultExpanded && cardRef.current) {
+      cardRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [defaultExpanded]);
   const [comentario, setComentario] = useState('');
   const [replyText, setReplyText] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -150,7 +158,7 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
     : 'bg-green-100 text-green-800';
 
   return (
-    <div className="border rounded-xl bg-white overflow-hidden">
+    <div ref={cardRef} className="border rounded-xl bg-white overflow-hidden">
       <button
         className="w-full flex items-start justify-between gap-2 p-4 text-left hover:bg-muted/30 transition-colors"
         onClick={() => setExpanded(e => !e)}

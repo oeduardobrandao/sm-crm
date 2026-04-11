@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { HubPost } from '../types';
 
@@ -34,6 +35,7 @@ interface Props {
 }
 
 export function PostCalendar({ posts }: Props) {
+  const navigate = useNavigate();
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
@@ -161,7 +163,7 @@ export function PostCalendar({ posts }: Props) {
           ) : (
             <div className="flex flex-col gap-3">
               {selectedPosts.map(p => (
-                <div key={p.id} className="rounded-lg border bg-card p-3 space-y-1.5">
+                <div key={p.id} className="rounded-lg border bg-card p-3 space-y-1.5 cursor-pointer hover:bg-accent/50 transition-colors" onClick={() => navigate(`postagens?post=${p.id}`)}>
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span
                       className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
