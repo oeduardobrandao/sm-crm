@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { CheckCircle, AlertCircle, ChevronDown, ChevronUp, MessageSquare, Send } from 'lucide-react';
+import { CheckCircle, AlertCircle, ChevronDown, MessageSquare, Send } from 'lucide-react';
 import { submitApproval } from '../api';
 import type { HubPost, PostApproval, HubPostProperty, HubSelectOption } from '../types';
 
@@ -88,9 +88,9 @@ function PropertyRow({ prop, workflowSelectOptions, workflowId }: { prop: HubPos
   };
 
   return (
-    <div className="flex items-start gap-3 py-2 border-b last:border-b-0">
-      <span className="text-sm text-muted-foreground w-36 shrink-0 pt-0.5">{def.name}</span>
-      <div className="flex-1 min-w-0">{renderValue()}</div>
+    <div className="flex items-start gap-3 py-2.5 border-b border-stone-200/70 last:border-b-0">
+      <span className="text-[12.5px] text-stone-500 w-36 shrink-0 pt-0.5">{def.name}</span>
+      <div className="flex-1 min-w-0 text-stone-900">{renderValue()}</div>
     </div>
   );
 }
@@ -151,42 +151,46 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
     }
   }
 
-  const statusColor = post.status === 'correcao_cliente'
-    ? 'bg-red-50 text-red-700'
+  const statusStyles = post.status === 'correcao_cliente'
+    ? 'bg-rose-50 text-rose-700 ring-1 ring-rose-200/60'
     : isPending
-    ? 'bg-yellow-100 text-yellow-800'
-    : 'bg-green-100 text-green-800';
+    ? 'bg-[#FFBF30]/18 text-stone-900 ring-1 ring-[#FFBF30]/50'
+    : post.status === 'agendado'
+    ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200/60'
+    : 'bg-stone-100 text-stone-700 ring-1 ring-stone-200/80';
 
   return (
-    <div ref={cardRef} className="border rounded-xl bg-white overflow-hidden">
+    <div ref={cardRef} className="hub-card overflow-hidden transition-shadow hover:shadow-md">
       <button
-        className="w-full flex items-start justify-between gap-2 p-4 text-left hover:bg-muted/30 transition-colors"
+        className="w-full flex items-start justify-between gap-3 px-5 py-4 text-left hover:bg-stone-50/80 transition-colors"
         onClick={() => setExpanded(e => !e)}
       >
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1.5">
-            <span className="text-xs bg-muted px-2 py-0.5 rounded-full font-medium">{TIPO_LABEL[post.tipo] ?? post.tipo}</span>
-            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColor}`}>
+          <div className="flex items-center gap-1.5 mb-2">
+            <span className="text-[10px] font-bold uppercase tracking-wider bg-stone-900 text-white px-2 py-0.5 rounded-full">
+              {TIPO_LABEL[post.tipo] ?? post.tipo}
+            </span>
+            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${statusStyles}`}>
               {STATUS_LABEL[post.status] ?? post.status}
             </span>
           </div>
-          <p className="font-semibold text-sm">{post.titulo}</p>
-          {post.scheduled_at && <p className="text-xs text-muted-foreground mt-1">{formatDate(post.scheduled_at)}</p>}
+          <p className="font-display font-semibold text-[16px] tracking-tight text-stone-900 leading-snug">{post.titulo}</p>
+          {post.scheduled_at && <p className="text-[12px] text-stone-500 mt-1">{formatDate(post.scheduled_at)}</p>}
         </div>
-        <span className="text-muted-foreground mt-0.5 shrink-0">
-          {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+        <span className={`mt-1 shrink-0 flex items-center justify-center w-7 h-7 rounded-full text-stone-500 transition-all ${expanded ? 'bg-stone-100 rotate-180' : 'hover:bg-stone-100'}`}>
+          <ChevronDown size={15} />
         </span>
       </button>
 
       {expanded && (
-        <div className="border-t px-4 pb-4 pt-3 space-y-4">
+        <div className="border-t border-stone-200/80 px-5 pb-5 pt-4 space-y-5 bg-stone-50/30">
           {post.conteudo_plain && (
-            <p className="text-sm text-muted-foreground whitespace-pre-wrap">{post.conteudo_plain}</p>
+            <p className="text-[13.5px] text-stone-600 leading-relaxed whitespace-pre-wrap">{post.conteudo_plain}</p>
           )}
 
           {postProperties.length > 0 && (
-            <div className="rounded-lg border bg-muted/40 px-3 py-1">
-              <p className="text-[0.65rem] font-bold uppercase tracking-wider text-muted-foreground pt-2 pb-1">Propriedades</p>
+            <div className="rounded-2xl border border-stone-200/80 bg-white px-4 pt-3 pb-1">
+              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-stone-400 pb-2">Propriedades</p>
               {postProperties.map((p) => (
                 <PropertyRow key={`${p.post_id}-${p.template_property_definitions.name}`} prop={p} workflowSelectOptions={workflowSelectOptions} workflowId={post.workflow_id} />
               ))}
@@ -194,8 +198,8 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
           )}
 
           {postApprovals.length > 0 && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-1.5 text-[0.7rem] font-bold uppercase tracking-wider text-muted-foreground">
+            <div className="space-y-2.5">
+              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-stone-400">
                 <MessageSquare size={12} /> Comentários
               </div>
               {postApprovals.map(a => {
@@ -207,12 +211,16 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
                   : 'Você';
                 const date = new Date(a.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
                 return (
-                  <div key={a.id} className={`rounded-xl px-3 py-2.5 text-sm ${isTeam ? 'bg-amber-50 ml-8' : 'bg-muted mr-8'}`}>
+                  <div key={a.id} className={`rounded-2xl px-4 py-3 text-[13.5px] ${
+                    isTeam
+                      ? 'bg-[#FFBF30]/10 ring-1 ring-[#FFBF30]/25 ml-6'
+                      : 'bg-white ring-1 ring-stone-200/80 mr-6'
+                  }`}>
                     <div className="flex items-center gap-2 mb-1">
-                      <span className={`font-semibold text-xs ${isTeam ? 'text-amber-800' : ''}`}>{label}</span>
-                      <span className="text-xs text-muted-foreground">{date}</span>
+                      <span className={`font-semibold text-[11.5px] ${isTeam ? 'text-amber-900' : 'text-stone-900'}`}>{label}</span>
+                      <span className="text-[11px] text-stone-400">{date}</span>
                     </div>
-                    {a.comentario && <p className="text-sm">{a.comentario}</p>}
+                    {a.comentario && <p className="text-[13.5px] leading-relaxed text-stone-800">{a.comentario}</p>}
                   </div>
                 );
               })}
@@ -222,42 +230,43 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
           {!isPending && (
             <div className="flex items-center gap-2">
               <input
-                className="flex-1 border rounded-xl px-3 py-2 text-sm bg-muted/30 placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                className="flex-1 rounded-full border border-stone-200/80 bg-white px-4 py-2.5 text-[13.5px] text-stone-900 placeholder:text-stone-400 focus:outline-none focus:border-stone-300 focus:ring-4 focus:ring-[#FFBF30]/15 transition-all"
                 placeholder="Enviar mensagem…"
                 value={replyText}
                 onChange={e => setReplyText(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleReply(); } }}
               />
               <button
-                className="shrink-0 rounded-xl p-2 bg-primary/10 text-primary hover:bg-primary/20 disabled:opacity-40 transition-colors"
+                className="shrink-0 flex items-center justify-center w-10 h-10 rounded-full bg-stone-900 text-white hover:bg-stone-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 disabled={sendingReply || !replyText.trim()}
                 onClick={handleReply}
+                aria-label="Enviar"
               >
-                <Send size={15} />
+                <Send size={14} />
               </button>
             </div>
           )}
 
           {isPending && !result && (
-            <div className="space-y-2">
+            <div className="space-y-3">
               <textarea
                 value={comentario}
                 onChange={e => setComentario(e.target.value)}
                 placeholder="Comentário (opcional)…"
-                className="w-full border rounded-xl p-3 text-sm resize-none min-h-[64px] bg-muted/30 placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                className="w-full rounded-2xl border border-stone-200/80 px-4 py-3 text-[13.5px] resize-none min-h-[80px] bg-white text-stone-900 placeholder:text-stone-400 focus:outline-none focus:border-stone-300 focus:ring-4 focus:ring-[#FFBF30]/15 transition-all"
               />
-              <div className="flex gap-2">
+              <div className="flex gap-2.5">
                 <button
                   onClick={() => handleAction('aprovado')}
                   disabled={submitting}
-                  className="flex-1 flex items-center justify-center gap-1.5 bg-green-600 text-white rounded-xl py-2.5 text-sm font-semibold hover:bg-green-700 disabled:opacity-50 transition-colors"
+                  className="flex-1 flex items-center justify-center gap-2 bg-stone-900 text-white rounded-full py-3 text-[13.5px] font-semibold hover:bg-stone-800 disabled:opacity-50 transition-colors shadow-sm"
                 >
                   <CheckCircle size={15} /> Aprovar
                 </button>
                 <button
                   onClick={() => handleAction('correcao')}
                   disabled={submitting}
-                  className="flex-1 flex items-center justify-center gap-1.5 border text-destructive rounded-xl py-2.5 text-sm font-semibold hover:bg-destructive/5 disabled:opacity-50 transition-colors"
+                  className="flex-1 flex items-center justify-center gap-2 border border-stone-200/80 bg-white text-stone-800 rounded-full py-3 text-[13.5px] font-semibold hover:border-stone-300 hover:bg-stone-50 disabled:opacity-50 transition-colors"
                 >
                   <AlertCircle size={15} /> Solicitar correção
                 </button>
@@ -266,7 +275,7 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
           )}
 
           {result && (
-            <div className={`rounded-xl p-3 text-sm font-medium ${result.type === 'success' ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
+            <div className={`rounded-2xl px-4 py-3 text-[13.5px] font-medium ${result.type === 'success' ? 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200/60' : 'bg-rose-50 text-rose-800 ring-1 ring-rose-200/60'}`}>
               {result.message}
             </div>
           )}

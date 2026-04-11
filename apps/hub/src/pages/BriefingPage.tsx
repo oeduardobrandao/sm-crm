@@ -16,14 +16,14 @@ export function BriefingPage() {
 
   if (isLoading) return (
     <div className="flex justify-center py-20">
-      <div className="animate-spin h-6 w-6 rounded-full border-2 border-primary border-t-transparent" />
+      <div className="animate-spin h-6 w-6 rounded-full border-2 border-stone-300 border-t-stone-900" />
     </div>
   );
 
   const questions = data?.questions ?? [];
 
   if (questions.length === 0) return (
-    <div className="max-w-2xl mx-auto py-8 text-muted-foreground text-sm">
+    <div className="py-8 text-stone-500 text-sm">
       Nenhuma pergunta disponível ainda.
     </div>
   );
@@ -51,28 +51,36 @@ export function BriefingPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <h2 className="text-xl font-semibold mb-6">Briefing</h2>
+    <div className="max-w-3xl mx-auto hub-fade-up">
+      <header className="mb-8">
+        <p className="text-[11px] uppercase tracking-[0.14em] text-stone-500 font-medium mb-2">
+          <span className="accent-bar" />Seu projeto
+        </p>
+        <h2 className="font-display text-[2rem] sm:text-[2.25rem] leading-[1.05] font-medium tracking-tight text-stone-900">Briefing</h2>
+      </header>
 
       {hasTabs && (
-        <div className="flex gap-1 border-b mb-6">
-          {sections.map((s, i) => (
-            <button
-              key={s.name}
-              onClick={() => setActiveTab(i)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-                activeTab === i
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {s.name}
-            </button>
-          ))}
+        <div className="relative mb-8 border-b border-stone-200/80">
+          <div className="flex gap-1 overflow-x-auto no-scrollbar">
+            {sections.map((s, i) => (
+              <button
+                key={s.name}
+                onClick={() => setActiveTab(i)}
+                className={`relative px-4 py-3 text-[13px] font-semibold whitespace-nowrap transition-colors ${
+                  activeTab === i ? 'text-stone-900' : 'text-stone-500 hover:text-stone-700'
+                }`}
+              >
+                {s.name}
+                {activeTab === i && (
+                  <span className="absolute left-3 right-3 -bottom-[1px] h-[2px] rounded-full bg-[#FFBF30]" />
+                )}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
-      <div className="space-y-6">
+      <div className="space-y-4">
         {visibleQuestions.map(q => (
           <QuestionItem
             key={q.id}
@@ -115,17 +123,19 @@ function QuestionItem({
   }, [onSave]);
 
   return (
-    <div className="border rounded-sm p-4 space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-sm font-medium">{question}</p>
-        {status === 'saving' && <span className="text-xs text-muted-foreground">Salvando...</span>}
-        {status === 'saved' && <span className="text-xs text-green-600">Salvo!</span>}
+    <div className="hub-card p-5 sm:p-6 space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-[14px] font-semibold text-stone-900 leading-snug">{question}</p>
+        <span className="shrink-0 text-[11px] font-medium min-w-[56px] text-right">
+          {status === 'saving' && <span className="text-stone-400">Salvando…</span>}
+          {status === 'saved' && <span className="text-emerald-600">✓ Salvo</span>}
+        </span>
       </div>
       <textarea
-        className="w-full border rounded-sm p-2 text-sm resize-none min-h-[100px] focus:outline-none focus:ring-2 focus:ring-primary/30"
+        className="w-full border border-stone-200/80 rounded-xl px-3.5 py-3 text-[14px] resize-none min-h-[112px] bg-stone-50/40 text-stone-800 placeholder:text-stone-400 focus:outline-none focus:bg-white focus:border-stone-300 focus:ring-4 focus:ring-[#FFBF30]/15 transition-all"
         value={answer}
         onChange={e => handleChange(e.target.value)}
-        placeholder="Digite sua resposta..."
+        placeholder="Digite sua resposta…"
       />
     </div>
   );

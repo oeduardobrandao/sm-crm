@@ -32,26 +32,26 @@ export function HubShell() {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
+      <div className="hub-root min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-2 border-stone-300 border-t-stone-900" />
       </div>
     );
   }
 
   if (error || !bootstrap) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', flexDirection: 'column', gap: '1rem' }}>
-        <p className="text-lg font-medium">Link inválido ou expirado.</p>
-        <p className="text-sm text-muted-foreground">{error}</p>
+      <div className="hub-root min-h-screen flex flex-col items-center justify-center gap-3 px-6 text-center">
+        <p className="font-display text-2xl font-medium text-stone-900">Link inválido ou expirado.</p>
+        <p className="text-sm text-stone-500">{error}</p>
       </div>
     );
   }
 
   if (!bootstrap.is_active) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', flexDirection: 'column', gap: '1rem' }}>
-        <p className="text-lg font-medium">Acesso desativado.</p>
-        <p className="text-sm text-muted-foreground">Entre em contato com a agência.</p>
+      <div className="hub-root min-h-screen flex flex-col items-center justify-center gap-3 px-6 text-center">
+        <p className="font-display text-2xl font-medium text-stone-900">Acesso desativado.</p>
+        <p className="text-sm text-stone-500">Entre em contato com a agência.</p>
       </div>
     );
   }
@@ -59,10 +59,12 @@ export function HubShell() {
   return (
     <HubContext.Provider value={{ bootstrap, token: token!, workspace: workspace! }}>
       <style>{`:root { --brand-color: ${bootstrap.workspace.brand_color}; }`}</style>
-      <div className="min-h-screen bg-background flex flex-col">
+      <div className="hub-root min-h-screen flex flex-col">
         <HubNav />
-        <main className="flex-1 container mx-auto px-4 py-6 pb-24 md:pb-6">
-          <Outlet />
+        <main className="hub-noise flex-1">
+          <div className="mx-auto w-full max-w-5xl px-5 sm:px-8 py-8 sm:py-12 pb-28 md:pb-16">
+            <Outlet />
+          </div>
         </main>
       </div>
     </HubContext.Provider>

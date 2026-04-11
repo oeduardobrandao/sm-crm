@@ -48,27 +48,36 @@ export function PostagensPage() {
 
   if (isLoading) return (
     <div className="flex justify-center py-20">
-      <div className="animate-spin h-6 w-6 rounded-full border-2 border-primary border-t-transparent" />
+      <div className="animate-spin h-6 w-6 rounded-full border-2 border-stone-300 border-t-stone-900" />
     </div>
   );
 
   if (isError) return (
-    <div className="max-w-2xl mx-auto py-20 text-center text-sm text-muted-foreground">
+    <div className="max-w-3xl mx-auto py-20 text-center text-sm text-stone-500">
       Erro ao carregar postagens.
     </div>
   );
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <h2 className="text-xl font-semibold mb-6">Postagens</h2>
+    <div className="max-w-3xl mx-auto hub-fade-up">
+      <header className="mb-8">
+        <p className="text-[11px] uppercase tracking-[0.14em] text-stone-500 font-medium mb-2">
+          <span className="accent-bar" />Calendário editorial
+        </p>
+        <h2 className="font-display text-[2rem] sm:text-[2.25rem] leading-[1.05] font-medium tracking-tight text-stone-900">Postagens</h2>
+      </header>
 
       {groups.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Nenhuma postagem disponível ainda.</p>
+        <p className="text-sm text-stone-500">Nenhuma postagem disponível ainda.</p>
       ) : (
         <div className="space-y-10">
           {groups.map(group => (
             <section key={group.titulo}>
-              <h3 className="text-base font-semibold mb-3 text-foreground">{group.titulo}</h3>
+              <div className="flex items-center gap-2 mb-4">
+                <span className="h-[1px] w-6 bg-stone-300" />
+                <h3 className="font-display text-[17px] font-semibold tracking-tight text-stone-900">{group.titulo}</h3>
+                <span className="text-[11px] text-stone-400">{group.posts.length} {group.posts.length === 1 ? 'post' : 'posts'}</span>
+              </div>
               <div className="space-y-3">
                 {group.posts.map(post => (
                   <PostCard

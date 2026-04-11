@@ -68,38 +68,42 @@ export function PostCalendar({ posts }: Props) {
   const selectedPosts = selectedDay ? postsForDay(selectedDay) : [];
 
   return (
-    <div className="mt-8">
-      <div className="grid grid-cols-1 md:grid-cols-[1fr_280px] gap-4 border rounded-xl overflow-hidden bg-card">
+    <div>
+      <div className="hub-card grid grid-cols-1 md:grid-cols-[1fr_300px] overflow-hidden">
 
         {/* Left: calendar grid */}
-        <div className="p-4">
+        <div className="p-5 sm:p-6">
           {/* Header */}
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-5">
             <div>
-              <h2 className="font-semibold text-base">Postagens</h2>
-              <p className="text-sm text-muted-foreground">{MONTHS_PT[month]} {year}</p>
+              <h2 className="font-display text-[20px] font-semibold tracking-tight text-stone-900 leading-none">Postagens</h2>
+              <p className="text-[12.5px] text-stone-500 mt-1">
+                <span className="capitalize">{MONTHS_PT[month]}</span> {year}
+              </p>
             </div>
-            <div className="flex items-center gap-1">
-              <button onClick={prevMonth} className="p-1.5 rounded hover:bg-accent transition-colors">
-                <ChevronLeft size={16} />
+            <div className="flex items-center gap-1 p-1 rounded-full bg-stone-100">
+              <button onClick={prevMonth} aria-label="Mês anterior"
+                className="w-7 h-7 flex items-center justify-center rounded-full text-stone-600 hover:bg-white hover:text-stone-900 hover:shadow-sm transition-all">
+                <ChevronLeft size={15} />
               </button>
-              <button onClick={nextMonth} className="p-1.5 rounded hover:bg-accent transition-colors">
-                <ChevronRight size={16} />
+              <button onClick={nextMonth} aria-label="Próximo mês"
+                className="w-7 h-7 flex items-center justify-center rounded-full text-stone-600 hover:bg-white hover:text-stone-900 hover:shadow-sm transition-all">
+                <ChevronRight size={15} />
               </button>
             </div>
           </div>
 
           {/* Weekday labels */}
-          <div className="grid grid-cols-7 mb-1">
+          <div className="grid grid-cols-7 mb-2">
             {DAYS_PT.map(d => (
-              <div key={d} className="text-center text-xs text-muted-foreground py-1">{d}</div>
+              <div key={d} className="text-center text-[10px] uppercase tracking-[0.12em] font-semibold text-stone-400 py-1">{d}</div>
             ))}
           </div>
 
           {/* Day grid */}
-          <div className="grid grid-cols-7 gap-px">
+          <div className="grid grid-cols-7 gap-1">
             {Array.from({ length: firstDay }).map((_, i) => (
-              <div key={`empty-${i}`} className="min-h-[56px]" />
+              <div key={`empty-${i}`} className="min-h-[62px]" />
             ))}
             {Array.from({ length: daysInMonth }).map((_, i) => {
               const day = i + 1;
@@ -113,15 +117,21 @@ export function PostCalendar({ posts }: Props) {
               }
 
               return (
-                <div
+                <button
                   key={day}
                   onClick={() => setSelectedDay(day)}
-                  className={`min-h-[56px] p-1 rounded cursor-pointer transition-colors ${
-                    isSelected ? 'bg-accent ring-1 ring-primary/30' : 'hover:bg-accent/50'
+                  className={`min-h-[62px] p-1.5 rounded-xl text-left transition-all ${
+                    isSelected
+                      ? 'bg-[#FFBF30]/12 ring-1 ring-[#FFBF30]/50'
+                      : 'hover:bg-stone-100/80'
                   }`}
                 >
-                  <div className={`text-xs mb-1 w-5 h-5 flex items-center justify-center rounded-full font-medium ${
-                    isToday ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'
+                  <div className={`text-[11px] mb-1 w-6 h-6 flex items-center justify-center rounded-full font-semibold ${
+                    isToday
+                      ? 'bg-stone-900 text-white'
+                      : isSelected
+                      ? 'text-stone-900'
+                      : 'text-stone-500'
                   }`}>
                     {day}
                   </div>
@@ -129,27 +139,27 @@ export function PostCalendar({ posts }: Props) {
                     {Object.entries(byTipo).map(([tipo, count]) => (
                       <div
                         key={tipo}
-                        className="text-[9px] px-1 py-0.5 rounded font-semibold leading-none truncate"
+                        className="text-[9px] px-1.5 py-[3px] rounded-md font-semibold leading-none truncate"
                         style={{
-                          background: `${TIPO_COLOR[tipo] ?? '#6b7280'}18`,
-                          color: TIPO_COLOR[tipo] ?? '#6b7280',
+                          background: `${TIPO_COLOR[tipo] ?? '#78716c'}1c`,
+                          color: TIPO_COLOR[tipo] ?? '#78716c',
                         }}
                       >
                         {count} {TIPO_LABEL[tipo] ?? tipo}
                       </div>
                     ))}
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>
         </div>
 
         {/* Right: side panel */}
-        <div className="border-t md:border-t-0 md:border-l p-4 bg-muted/30">
-          <div className="mb-3">
-            <h3 className="font-medium text-sm">Postagens</h3>
-            <p className="text-xs text-muted-foreground">
+        <div className="border-t md:border-t-0 md:border-l border-stone-200/80 p-5 sm:p-6 bg-stone-50/70">
+          <div className="mb-4">
+            <h3 className="font-display text-[15px] font-semibold tracking-tight text-stone-900">Postagens</h3>
+            <p className="text-[12px] text-stone-500 mt-0.5">
               {selectedDay
                 ? `${selectedDay} de ${MONTHS_PT[month]}, ${year}`
                 : `${MONTHS_PT[month]} ${year}`}
@@ -157,34 +167,36 @@ export function PostCalendar({ posts }: Props) {
           </div>
 
           {selectedPosts.length === 0 ? (
-            <div className="py-8 text-center text-muted-foreground text-sm">
+            <div className="py-10 text-center text-stone-400 text-[13px]">
               {selectedDay ? 'Nenhuma postagem neste dia.' : 'Selecione um dia.'}
             </div>
           ) : (
             <div className="flex flex-col gap-3">
               {selectedPosts.map(p => (
-                <div key={p.id} className="rounded-lg border bg-card p-3 space-y-1.5 cursor-pointer hover:bg-accent/50 transition-colors" onClick={() => navigate(`postagens?post=${p.id}`)}>
+                <button key={p.id}
+                  onClick={() => navigate(`postagens?post=${p.id}`)}
+                  className="text-left rounded-2xl border border-stone-200/80 bg-white p-3.5 space-y-2 hover:border-stone-300 hover:shadow-sm transition-all">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span
-                      className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                      className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full"
                       style={{
-                        background: `${TIPO_COLOR[p.tipo] ?? '#6b7280'}18`,
-                        color: TIPO_COLOR[p.tipo] ?? '#6b7280',
+                        background: `${TIPO_COLOR[p.tipo] ?? '#78716c'}1c`,
+                        color: TIPO_COLOR[p.tipo] ?? '#78716c',
                       }}
                     >
-                      {(TIPO_LABEL[p.tipo] ?? p.tipo).toUpperCase()}
+                      {(TIPO_LABEL[p.tipo] ?? p.tipo)}
                     </span>
-                    <span className="text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted">
+                    <span className="text-[10px] text-stone-500 px-2 py-0.5 rounded-full bg-stone-100">
                       {STATUS_LABEL[p.status] ?? p.status}
                     </span>
                   </div>
-                  <p className="text-sm font-medium leading-snug">{p.titulo}</p>
+                  <p className="text-[13.5px] font-semibold leading-snug text-stone-900">{p.titulo}</p>
                   {p.scheduled_at && (
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-[11px] text-stone-500">
                       {new Date(p.scheduled_at.includes('T') ? p.scheduled_at : `${p.scheduled_at}T00:00:00`).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
                     </p>
                   )}
-                </div>
+                </button>
               ))}
             </div>
           )}

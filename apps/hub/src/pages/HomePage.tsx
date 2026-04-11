@@ -29,38 +29,56 @@ export function HomePage() {
   const CALENDAR_STATUSES = new Set(['enviado_cliente', 'aprovado_cliente', 'correcao_cliente', 'agendado', 'publicado']);
   const posts = allPosts.filter(p => CALENDAR_STATUSES.has(p.status));
 
+  const firstName = bootstrap.cliente_nome.split(' ')[0];
+
   return (
-    <div className="max-w-2xl mx-auto">
-      <div className="mb-8">
-        <p className="text-sm text-muted-foreground mb-1">{bootstrap.workspace.name}</p>
-        <h1 className="text-2xl font-semibold">Olá, {bootstrap.cliente_nome.split(' ')[0]} 👋</h1>
+    <div className="hub-fade-up">
+      {/* Hero */}
+      <div className="mb-10 sm:mb-12">
+        <p className="text-[11px] uppercase tracking-[0.14em] text-stone-500 font-medium mb-2">
+          {bootstrap.workspace.name}
+        </p>
+        <h1 className="font-display text-[2.25rem] sm:text-[2.75rem] leading-[1.05] font-medium tracking-tight text-stone-900">
+          Olá, <span className="italic font-normal">{firstName}</span>
+          <span className="ml-2 inline-block">👋</span>
+        </h1>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {SECTIONS.map(({ label, icon: Icon, path, description }) => {
+      {/* Section cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-12">
+        {SECTIONS.map(({ label, icon: Icon, path, description }, idx) => {
           const isPendente = path === '/aprovacoes' && pendingCount > 0;
           return (
             <button
               key={path}
               onClick={() => navigate(`${base}${path}`)}
-              className="relative flex flex-col items-center text-center p-5 rounded-xl border bg-white hover:bg-accent transition-colors gap-2"
+              style={{ animationDelay: `${idx * 60}ms` }}
+              className="hub-card hub-card-hover hub-fade-up relative flex flex-col items-start text-left p-5 sm:p-6 gap-4 group"
             >
               {isPendente && (
-                <span className="absolute top-2 right-2 bg-destructive text-destructive-foreground text-xs rounded-full px-1.5 py-0.5 font-medium">
+                <span className="absolute top-3 right-3 flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full bg-stone-900 text-white text-[11px] font-semibold leading-none">
                   {pendingCount}
                 </span>
               )}
-              <Icon size={24} className="text-muted-foreground" />
-              <span className="font-medium text-sm">{label}</span>
-              <span className="text-xs text-muted-foreground">{description}</span>
+              <span className="flex items-center justify-center w-11 h-11 rounded-xl bg-stone-100 text-stone-700 group-hover:bg-[#FFBF30]/20 group-hover:text-stone-900 transition-colors">
+                <Icon size={20} strokeWidth={1.75} />
+              </span>
+              <div className="space-y-1">
+                <span className="block font-display text-[17px] font-semibold tracking-tight text-stone-900 leading-tight">
+                  {label}
+                </span>
+                <span className="block text-[12.5px] text-stone-500 leading-snug">
+                  {description}
+                </span>
+              </div>
             </button>
           );
         })}
       </div>
 
       {isLoading ? (
-        <div className="flex justify-center py-12 mt-8">
-          <div className="animate-spin h-6 w-6 rounded-full border-2 border-primary border-t-transparent" />
+        <div className="flex justify-center py-16">
+          <div className="animate-spin h-6 w-6 rounded-full border-2 border-stone-300 border-t-stone-900" />
         </div>
       ) : (
         <PostCalendar posts={posts} />

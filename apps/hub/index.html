@@ -4,6 +4,66 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Hub do Cliente</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --hub-font-display: 'Fraunces', ui-serif, Georgia, serif;
+        --hub-font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+      }
+      .hub-root, .hub-root button, .hub-root input, .hub-root textarea, .hub-root select {
+        font-family: var(--hub-font-sans);
+        font-feature-settings: 'ss01', 'cv11';
+      }
+      .hub-root .font-display {
+        font-family: var(--hub-font-display);
+        font-optical-sizing: auto;
+        letter-spacing: -0.01em;
+      }
+      .hub-root {
+        background-color: #FAFAF7;
+        color: #1C1917;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+      }
+      .hub-root .hub-noise {
+        background-image:
+          radial-gradient(1200px 600px at 10% -10%, rgba(255, 191, 48, 0.06), transparent 60%),
+          radial-gradient(900px 500px at 110% 10%, rgba(28, 25, 23, 0.035), transparent 60%);
+      }
+      .hub-root .accent-bar {
+        display: inline-block;
+        width: 6px;
+        height: 6px;
+        border-radius: 9999px;
+        background-color: #FFBF30;
+        box-shadow: 0 0 0 4px rgba(255, 191, 48, 0.18);
+        margin-right: 10px;
+        vertical-align: middle;
+      }
+      .hub-root .hub-card {
+        background-color: #ffffff;
+        border: 1px solid rgba(231, 229, 228, 0.9);
+        border-radius: 20px;
+        box-shadow: 0 1px 0 rgba(0,0,0,0.02), 0 1px 2px rgba(28, 25, 23, 0.04);
+      }
+      .hub-root .hub-card-hover:hover {
+        border-color: rgba(214, 211, 209, 1);
+        box-shadow: 0 1px 0 rgba(0,0,0,0.02), 0 6px 16px -8px rgba(28, 25, 23, 0.08);
+        transform: translateY(-1px);
+      }
+      .hub-root .hub-card-hover {
+        transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+      }
+      @keyframes hub-fade-up {
+        from { opacity: 0; transform: translateY(8px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .hub-root .hub-fade-up {
+        animation: hub-fade-up 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
