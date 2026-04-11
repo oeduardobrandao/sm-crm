@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { CheckCircle, AlertCircle, ChevronDown, MessageSquare, Send } from 'lucide-react';
 import { submitApproval } from '../api';
 import type { HubPost, PostApproval, HubPostProperty, HubSelectOption } from '../types';
+import { PostMediaLightbox } from './PostMediaLightbox';
 
 export const TIPO_LABEL: Record<string, string> = {
   feed: 'Feed', reels: 'Reels', stories: 'Stories', carrossel: 'Carrossel',
@@ -119,6 +120,7 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
   const [submitting, setSubmitting] = useState(false);
   const [sendingReply, setSendingReply] = useState(false);
   const [result, setResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const isPending = post.status === 'enviado_cliente';
   const postApprovals = approvals.filter(a => a.post_id === post.id);
   const postProperties = propertyValues.filter(p => p.post_id === post.id);
@@ -161,6 +163,26 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
 
   return (
     <div ref={cardRef} className="hub-card overflow-hidden transition-shadow hover:shadow-md">
+      {post.cover_media && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setLightboxIdx(0); }}
+          className="relative block w-full aspect-[4/3] overflow-hidden bg-stone-100"
+        >
+          {post.cover_media.kind === 'image' ? (
+            <img src={post.cover_media.url} alt="" className="w-full h-full object-cover" />
+          ) : (
+            <>
+              <img src={post.cover_media.thumbnail_url ?? ''} alt="" className="w-full h-full object-cover" />
+              <span className="absolute inset-0 flex items-center justify-center">
+                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-black/60 text-white">
+                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                </span>
+              </span>
+            </>
+          )}
+        </button>
+      )}
       <button
         className="w-full flex items-start justify-between gap-3 px-5 py-4 text-left hover:bg-stone-50/80 transition-colors"
         onClick={() => setExpanded(e => !e)}
@@ -280,6 +302,14 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
             </div>
           )}
         </div>
+      )}
+      {lightboxIdx !== null && post.media && post.media.length > 0 && (
+        <PostMediaLightbox
+          media={post.media}
+          initialIndex={lightboxIdx}
+          onClose={() => setLightboxIdx(null)}
+          onStaleUrl={onApprovalSubmitted}
+        />
       )}
     </div>
   );

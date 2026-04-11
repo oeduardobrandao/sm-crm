@@ -3,8 +3,9 @@ import {
   getWorkflows, getClientes, getMembros, getWorkflowTemplates, getWorkflowEtapas,
   getPortalApprovals, getDeadlineInfo,
   type Workflow, type WorkflowEtapa, type Cliente, type Membro,
-  type WorkflowTemplate, type PortalApproval,
+  type WorkflowTemplate, type PortalApproval, type PostMedia,
 } from '../../../store';
+import { getWorkflowCovers } from '../../../services/postMedia';
 
 export interface BoardCard {
   workflow: Workflow;
@@ -15,6 +16,7 @@ export interface BoardCard {
   totalEtapas: number;
   etapaIdx: number;
   allEtapas: WorkflowEtapa[];
+  coverMedia?: PostMedia;
 }
 
 export interface BoardRow {
@@ -127,6 +129,13 @@ export function useEntregasData() {
     enabled: approvalEtapaIds.length > 0,
   });
 
+  const activeWorkflowIds = activeWorkflows.map(w => w.id!).filter(Boolean);
+  const { data: covers } = useQuery({
+    queryKey: ['workflow-covers', activeWorkflowIds.join(',')],
+    queryFn: () => getWorkflowCovers(activeWorkflowIds),
+    enabled: activeWorkflowIds.length > 0,
+  });
+
   // Build BoardCards from active workflows
   const cards: BoardCard[] = [];
   for (const w of activeWorkflows) {
@@ -150,6 +159,7 @@ export function useEntregasData() {
       totalEtapas: etapas.length,
       etapaIdx: activeEtapa.ordem,
       allEtapas: etapas,
+      coverMedia: covers?.get(w.id!),
     });
   }
 
@@ -158,6 +168,7 @@ export function useEntregasData() {
     qc.invalidateQueries({ queryKey: ['workflow-templates'] });
     qc.invalidateQueries({ queryKey: ['all-active-etapas'] });
     qc.invalidateQueries({ queryKey: ['portal-approvals'] });
+    qc.invalidateQueries({ queryKey: ['workflow-covers'] });
   }
 
   const isLoading = loadingWf || etapasQuery.isLoading;

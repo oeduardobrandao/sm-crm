@@ -11,6 +11,20 @@ export interface HubBootstrap {
   cliente_id: number;
 }
 
+export interface HubPostMedia {
+  id: number;
+  post_id: number;
+  kind: 'image' | 'video';
+  mime_type: string;
+  url: string;
+  thumbnail_url: string | null;
+  width: number | null;
+  height: number | null;
+  duration_seconds: number | null;
+  is_cover: boolean;
+  sort_order: number;
+}
+
 export interface HubPost {
   id: number;
   titulo: string;
@@ -21,6 +35,8 @@ export interface HubPost {
   scheduled_at: string | null;
   workflow_id: number;
   workflow_titulo: string;
+  media: HubPostMedia[];
+  cover_media: HubPostMedia | null;
 }
 
 export interface HubPostProperty {

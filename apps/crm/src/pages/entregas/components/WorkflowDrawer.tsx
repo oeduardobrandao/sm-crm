@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { X, Plus, Trash2, Send, ChevronDown, ChevronRight, MessageSquare, GripVertical } from 'lucide-react';
@@ -19,6 +19,8 @@ import {
 import type { BoardCard } from '../hooks/useEntregasData';
 import { PostEditor } from './PostEditor';
 import { PropertyPanel } from './PropertyPanel';
+import { PostMediaGallery, hasVideoMissingThumbnail } from './PostMediaGallery';
+import { listPostMedia } from '../../../services/postMedia';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -241,15 +243,26 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
   };
 
   const handleSendToCliente = async () => {
-    const readyCount = posts.filter(p => p.status === 'aprovado_interno').length;
-    if (readyCount === 0) {
+    const readyPosts = posts.filter(p => p.status === 'aprovado_interno');
+    if (readyPosts.length === 0) {
       toast.error('Nenhum post aprovado internamente para enviar.');
       return;
     }
+
+    // Block sending if any ready post has a video without a thumbnail.
+    const mediaByPost = await Promise.all(
+      readyPosts.map(async (p) => ({ post: p, media: await listPostMedia(p.id!) }))
+    );
+    const blocked = mediaByPost.filter((m) => hasVideoMissingThumbnail(m.media));
+    if (blocked.length > 0) {
+      toast.error(`Há ${blocked.length} post(s) com vídeos sem thumbnail. Adicione uma thumbnail antes de enviar.`);
+      return;
+    }
+
     setIsSending(true);
     try {
       await sendPostsToCliente(workflowId);
-      toast.success(`${readyCount} post${readyCount > 1 ? 's' : ''} enviado${readyCount > 1 ? 's' : ''} ao cliente!`);
+      toast.success(`${readyPosts.length} post${readyPosts.length > 1 ? 's' : ''} enviado${readyPosts.length > 1 ? 's' : ''} ao cliente!`);
       refresh();
       onRefresh();
     } catch { toast.error('Erro ao enviar posts ao cliente'); }
@@ -462,6 +475,28 @@ function SortablePostItem({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: post.id! });
 
+  // Local state for title to avoid input lag / letter-replacement from the
+  // round-trip through updateWorkflowPost + refresh on every keystroke.
+  const [tituloLocal, setTituloLocal] = useState(post.titulo ?? '');
+  const tituloDirty = useRef(false);
+  // Hold the latest onFieldChange in a ref so the debounce effect below does
+  // not re-run (and reset its timer) every time the parent re-renders with a
+  // fresh inline callback — which would otherwise drop the save if the parent
+  // re-renders within 400 ms of the last keystroke.
+  const onFieldChangeRef = useRef(onFieldChange);
+  useEffect(() => { onFieldChangeRef.current = onFieldChange; }, [onFieldChange]);
+  useEffect(() => {
+    if (!tituloDirty.current) setTituloLocal(post.titulo ?? '');
+  }, [post.titulo]);
+  useEffect(() => {
+    if (!tituloDirty.current) return;
+    const t = setTimeout(() => {
+      onFieldChangeRef.current('titulo', tituloLocal);
+      tituloDirty.current = false;
+    }, 400);
+    return () => clearTimeout(t);
+  }, [tituloLocal]);
+
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -513,8 +548,9 @@ function SortablePostItem({
               <label>Título</label>
               <input
                 className="drawer-input"
-                value={post.titulo}
-                onChange={e => onFieldChange('titulo', e.target.value)}
+                value={tituloLocal}
+                onChange={e => { tituloDirty.current = true; setTituloLocal(e.target.value); }}
+                onBlur={() => { if (tituloDirty.current) { onFieldChange('titulo', tituloLocal); tituloDirty.current = false; } }}
                 placeholder="Título do post"
               />
             </div>
@@ -584,6 +620,8 @@ function SortablePostItem({
               membros={membros}
             />
           )}
+
+          <PostMediaGallery postId={post.id!} disabled={isReadonly} />
 
           <PostEditor
             key={post.id}
