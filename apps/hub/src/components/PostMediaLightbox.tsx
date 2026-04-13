@@ -17,6 +17,22 @@ export function PostMediaLightbox({ media, initialIndex, onClose, onStaleUrl }: 
   const prev = useCallback(() => setIdx((i) => (i - 1 + media.length) % media.length), [media.length]);
   const next = useCallback(() => setIdx((i) => (i + 1) % media.length), [media.length]);
 
+  // Preload adjacent images so navigation feels instant
+  useEffect(() => {
+    const toPreload = [
+      (idx + 1) % media.length,
+      (idx - 1 + media.length) % media.length,
+    ];
+    for (const i of toPreload) {
+      if (i === idx) continue;
+      const m = media[i];
+      if (m?.kind === 'image' && m.url) {
+        const img = new Image();
+        img.src = m.url;
+      }
+    }
+  }, [idx, media]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();

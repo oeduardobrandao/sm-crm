@@ -84,11 +84,10 @@ function renderPortalValue(
   }
 
   if (def.type === 'date') {
-    try {
-      return <span style={{ fontSize: '0.85rem' }}>{new Date(value as string).toLocaleDateString('pt-BR')}</span>;
-    } catch {
-      return <span style={{ fontSize: '0.85rem' }}>{String(value)}</span>;
-    }
+    const raw = String(value);
+    const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    const formatted = m ? `${m[3]}/${m[2]}/${m[1]}` : raw;
+    return <span style={{ fontSize: '0.85rem' }}>{formatted}</span>;
   }
 
   if (def.type === 'url') {

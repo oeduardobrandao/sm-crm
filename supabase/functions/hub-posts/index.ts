@@ -119,7 +119,7 @@ Deno.serve(async (req) => {
 
   const flatPostsWithMedia = flatPosts.map((p: any) => {
     const mediaForPost = mediaByPost[p.id] ?? [];
-    const cover_media = mediaForPost.find((m) => m.is_cover) ?? null;
+    const cover_media = mediaForPost.find((m) => m.is_cover) ?? mediaForPost[0] ?? null;
     return { ...p, media: mediaForPost, cover_media };
   });
 

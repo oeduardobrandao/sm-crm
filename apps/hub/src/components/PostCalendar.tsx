@@ -59,9 +59,8 @@ export function PostCalendar({ posts }: Props) {
   function postsForDay(day: number) {
     return posts.filter(p => {
       if (!p.scheduled_at) return false;
-      const raw = p.scheduled_at.includes('T') ? p.scheduled_at : `${p.scheduled_at}T00:00:00`;
-      const d = new Date(raw);
-      return d.getFullYear() === year && d.getMonth() === month && d.getDate() === day;
+      const d = new Date(p.scheduled_at);
+      return d.getUTCFullYear() === year && d.getUTCMonth() === month && d.getUTCDate() === day;
     });
   }
 
@@ -193,7 +192,7 @@ export function PostCalendar({ posts }: Props) {
                   <p className="text-[13.5px] font-semibold leading-snug text-stone-900">{p.titulo}</p>
                   {p.scheduled_at && (
                     <p className="text-[11px] text-stone-500">
-                      {new Date(p.scheduled_at.includes('T') ? p.scheduled_at : `${p.scheduled_at}T00:00:00`).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                      {new Date(p.scheduled_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric', timeZone: 'UTC' })}
                     </p>
                   )}
                 </button>

@@ -228,7 +228,10 @@ export default function ClienteDetalhePage() {
             );
             if (dateProp?.value) {
               const dateStr = typeof dateProp.value === 'string' ? dateProp.value : String(dateProp.value);
-              const parsed = new Date(dateStr);
+              const m = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+              const parsed = m
+                ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+                : new Date(dateStr);
               if (!isNaN(parsed.getTime())) {
                 events.push({
                   postId: post.id!,
@@ -265,7 +268,10 @@ export default function ClienteDetalhePage() {
             );
             if (dateProp?.value) {
               const dateStr = typeof dateProp.value === 'string' ? dateProp.value : String(dateProp.value);
-              const parsed = new Date(dateStr);
+              const m = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+              const parsed = m
+                ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+                : new Date(dateStr);
               if (!isNaN(parsed.getTime())) {
                 events.push({
                   postId: post.id!,

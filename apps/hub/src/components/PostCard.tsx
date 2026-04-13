@@ -20,8 +20,7 @@ export const STATUS_LABEL: Record<string, string> = {
 
 export function formatDate(d: string | null) {
   if (!d) return '—';
-  const raw = d.includes('T') ? d : `${d}T00:00:00`;
-  return new Date(raw).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
+  return new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' });
 }
 
 function sanitizeUrl(url: string) {
@@ -56,7 +55,10 @@ function PropertyRow({ prop, workflowSelectOptions, workflowId }: { prop: HubPos
       );
     }
     if (def.type === 'date') {
-      return <span className="text-sm">{new Date(String(value)).toLocaleDateString('pt-BR')}</span>;
+      const raw = String(value);
+      const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      const formatted = m ? `${m[3]}/${m[2]}/${m[1]}` : raw;
+      return <span className="text-sm">{formatted}</span>;
     }
     if (def.type === 'checkbox') {
       return <span className="text-sm">{value ? 'Sim' : 'Não'}</span>;
@@ -124,6 +126,7 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
   const isPending = post.status === 'enviado_cliente';
   const postApprovals = approvals.filter(a => a.post_id === post.id);
   const postProperties = propertyValues.filter(p => p.post_id === post.id);
+  const displayCover = post.cover_media ?? (post.media && post.media.length > 0 ? post.media[0] : null);
 
   async function handleAction(action: 'aprovado' | 'correcao') {
     setSubmitting(true);
@@ -163,17 +166,21 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
 
   return (
     <div ref={cardRef} className="hub-card overflow-hidden transition-shadow hover:shadow-md">
-      {post.cover_media && (
+      {displayCover && (
         <button
           type="button"
-          onClick={(e) => { e.stopPropagation(); setLightboxIdx(0); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            const coverIdx = post.media?.findIndex(m => m.id === displayCover.id) ?? 0;
+            setLightboxIdx(Math.max(0, coverIdx));
+          }}
           className="relative block w-full aspect-[4/3] overflow-hidden bg-stone-100"
         >
-          {post.cover_media.kind === 'image' ? (
-            <img src={post.cover_media.url} alt="" className="w-full h-full object-cover" />
+          {displayCover.kind === 'image' ? (
+            <img src={displayCover.url} alt="" className="w-full h-full object-cover" />
           ) : (
             <>
-              <img src={post.cover_media.thumbnail_url ?? ''} alt="" className="w-full h-full object-cover" />
+              <img src={displayCover.thumbnail_url ?? ''} alt="" className="w-full h-full object-cover" />
               <span className="absolute inset-0 flex items-center justify-center">
                 <span className="flex h-12 w-12 items-center justify-center rounded-full bg-black/60 text-white">
                   <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
@@ -208,6 +215,25 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
         <div className="border-t border-stone-200/80 px-5 pb-5 pt-4 space-y-5 bg-stone-50/30">
           {post.conteudo_plain && (
             <p className="text-[13.5px] text-stone-600 leading-relaxed whitespace-pre-wrap">{post.conteudo_plain}</p>
+          )}
+
+          {post.media && post.media.length > 1 && (
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {post.media.map((m, i) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setLightboxIdx(i)}
+                  className="shrink-0 w-20 h-20 rounded-xl overflow-hidden bg-stone-100 ring-1 ring-stone-200/80 hover:ring-stone-400 transition-all"
+                >
+                  {m.kind === 'image' ? (
+                    <img src={m.url} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <img src={m.thumbnail_url ?? ''} alt="" className="w-full h-full object-cover" />
+                  )}
+                </button>
+              ))}
+            </div>
           )}
 
           {postProperties.length > 0 && (

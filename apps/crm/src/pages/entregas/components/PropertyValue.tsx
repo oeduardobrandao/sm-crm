@@ -20,9 +20,9 @@ function formatDisplayValue(definition: TemplatePropertyDefinition, value: unkno
   if (value == null) return '';
   if (definition.type === 'checkbox') return (value as boolean) ? 'Sim' : 'Não';
   if (definition.type === 'date') {
-    try {
-      return new Date(value as string).toLocaleDateString('pt-BR');
-    } catch { return value as string; }
+    const raw = String(value);
+    const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? `${m[3]}/${m[2]}/${m[1]}` : raw;
   }
   if (definition.type === 'number') {
     const fmt = (definition.config.format as string) ?? 'integer';
