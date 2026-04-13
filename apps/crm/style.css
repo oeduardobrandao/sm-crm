@@ -1272,6 +1272,8 @@ select.form-input option {
   letter-spacing: -0.5px;
 }
 
+.auth-logo .logo-light { display: inline !important; }
+.auth-logo .logo-dark { display: none !important; }
 [data-theme="dark"] .auth-logo { color: #3462ee; }
 [data-theme="dark"] .auth-logo .logo-light { display: none !important; }
 [data-theme="dark"] .auth-logo .logo-dark { display: inline !important; }
