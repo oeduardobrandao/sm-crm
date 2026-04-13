@@ -253,7 +253,7 @@ function Footer() {
             Política de Privacidade
           </a>
         </div>
-        <span>© 2025 Mesaas. Todos os direitos reservados.</span>
+        <span>© 2025 Mesaas. Todos os direitos reservados. · CNPJ 63.758.902/0001-01 — EBS IT SOLUTIONS</span>
       </div>
     </footer>
   );
