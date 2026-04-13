@@ -14,7 +14,8 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as { from?: Location })?.from?.pathname ?? '/dashboard';
-  const [activeTab, setActiveTab] = useState<TabKey>('login');
+  const initialTab: TabKey = new URLSearchParams(location.search).get('tab') === 'register' ? 'register' : 'login';
+  const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
   const [loading, setLoading] = useState(false);
 
   const [loginEmail, setLoginEmail] = useState('');

@@ -60,7 +60,7 @@ function Header() {
             Entrar
           </a>
           <a
-            href="/login"
+            href="/login?tab=register"
             className="rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:opacity-90 transition-opacity shadow-sm md:px-5 md:py-2.5 md:text-base"
           >
             <span className="hidden sm:inline">Criar conta grátis</span>
@@ -83,7 +83,7 @@ function Hero() {
       </p>
       <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center md:mt-12">
         <a
-          href="/login"
+          href="/login?tab=register"
           className="flex w-full items-center justify-center rounded-lg bg-primary px-8 py-4 text-lg font-semibold text-primary-foreground shadow-xl shadow-primary/20 hover:opacity-90 transition-all active:scale-95 sm:w-auto"
         >
           Criar conta grátis
@@ -232,7 +232,7 @@ function CtaFinal() {
       </p>
       <div className="mt-10 flex justify-center">
         <a
-          href="/login"
+          href="/login?tab=register"
           className="flex w-full items-center justify-center rounded-lg bg-primary px-8 py-4 text-lg font-semibold text-primary-foreground shadow-xl shadow-primary/20 hover:opacity-90 transition-all active:scale-95 sm:w-auto"
         >
           Criar conta grátis
