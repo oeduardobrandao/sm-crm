@@ -85,8 +85,7 @@ export default function LoginPage() {
       <div className="auth-card animate-up">
         <div className="auth-header">
           <div className="auth-logo" style={{ display: 'flex', justifyContent: 'center' }}>
-            <img src="/logo-black.svg" alt="Mesaas" style={{ height: 20, width: 'auto' }} className="app-logo logo-light" />
-            <img src="/logo-white.svg" alt="Mesaas" style={{ height: 20, width: 'auto' }} className="app-logo logo-dark" />
+            <img src="/logo-black.svg" alt="Mesaas" style={{ height: 20, width: 'auto' }} />
           </div>
           <div className="auth-logo-sub" style={{ marginTop: 5, letterSpacing: 1 }}>PLATAFORMA INTELIGENTE</div>
         </div>
