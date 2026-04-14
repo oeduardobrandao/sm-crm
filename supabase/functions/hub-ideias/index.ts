@@ -25,7 +25,8 @@ async function resolveToken(db: ReturnType<typeof createClient>, token: string) 
   return data as { cliente_id: number; is_active: boolean; clientes: { conta_id: string } } | null;
 }
 
-async function isLocked(db: ReturnType<typeof createClient>, ideiaId: string, clienteId: number): Promise<boolean> {
+// Returns null if not found, false if mutable, true if locked
+async function checkLock(db: ReturnType<typeof createClient>, ideiaId: string, clienteId: number): Promise<null | boolean> {
   const { data: ideia } = await db
     .from("ideias")
     .select("status, comentario_agencia")
@@ -33,7 +34,7 @@ async function isLocked(db: ReturnType<typeof createClient>, ideiaId: string, cl
     .eq("cliente_id", clienteId)
     .maybeSingle();
 
-  if (!ideia) return true; // not found → treat as locked (will 404 below)
+  if (!ideia) return null; // not found
   if (ideia.status !== "nova") return true;
   if (ideia.comentario_agencia !== null) return true;
 
@@ -104,7 +105,9 @@ Deno.serve(async (req) => {
 
   // PATCH /hub-ideias/<uuid>?token=...
   if (req.method === "PATCH" && hasId) {
-    if (await isLocked(db, ideiaId, clienteId)) return json({ error: "Esta ideia não pode mais ser editada" }, 409);
+    const lockResult = await checkLock(db, ideiaId, clienteId);
+    if (lockResult === null) return json({ error: "Ideia não encontrada." }, 404);
+    if (lockResult === true) return json({ error: "Esta ideia não pode mais ser editada" }, 409);
 
     const body = await req.json().catch(() => ({}));
     const patch: Record<string, unknown> = {};
@@ -129,7 +132,9 @@ Deno.serve(async (req) => {
 
   // DELETE /hub-ideias/<uuid>?token=...
   if (req.method === "DELETE" && hasId) {
-    if (await isLocked(db, ideiaId, clienteId)) return json({ error: "Esta ideia não pode mais ser editada" }, 409);
+    const lockResult = await checkLock(db, ideiaId, clienteId);
+    if (lockResult === null) return json({ error: "Ideia não encontrada." }, 404);
+    if (lockResult === true) return json({ error: "Esta ideia não pode mais ser editada" }, 409);
 
     const { error } = await db
       .from("ideias")
