@@ -16,8 +16,8 @@ create table ideias (
   updated_at  timestamptz not null default now()
 );
 
--- updated_at trigger (reuses pattern from other tables)
-create or replace function set_updated_at()
+-- updated_at trigger
+create or replace function set_ideias_updated_at()
 returns trigger language plpgsql as $$
 begin
   new.updated_at = now();
@@ -27,7 +27,7 @@ $$;
 
 create trigger ideias_updated_at
   before update on ideias
-  for each row execute function set_updated_at();
+  for each row execute function set_ideias_updated_at();
 
 -- ideia_reactions table
 create table ideia_reactions (
