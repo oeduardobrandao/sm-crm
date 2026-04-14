@@ -112,3 +112,25 @@ export interface BriefingQuestion {
   section: string | null;
   display_order: number;
 }
+
+export interface IdeiaReaction {
+  id: string;
+  membro_id: number;
+  emoji: string;
+  membros: { nome: string };
+}
+
+export interface HubIdeia {
+  id: string;
+  titulo: string;
+  descricao: string;
+  links: string[];
+  status: 'nova' | 'em_analise' | 'aprovada' | 'descartada';
+  comentario_agencia: string | null;
+  comentario_autor_id: number | null;
+  comentario_at: string | null;
+  comentario_autor: { nome: string } | null;
+  created_at: string;
+  updated_at: string;
+  ideia_reactions: IdeiaReaction[];
+}
