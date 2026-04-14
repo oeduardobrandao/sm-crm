@@ -7,6 +7,7 @@ import { PaginasPage } from './pages/PaginasPage';
 import { PaginaPage } from './pages/PaginaPage';
 import { BriefingPage } from './pages/BriefingPage';
 import { PostagensPage } from './pages/PostagensPage';
+import { IdeiasPage } from './pages/IdeiasPage';
 
 export const router = createBrowserRouter([
   {
@@ -20,6 +21,7 @@ export const router = createBrowserRouter([
       { path: 'paginas', element: <PaginasPage /> },
       { path: 'paginas/:pageId', element: <PaginaPage /> },
       { path: 'briefing', element: <BriefingPage /> },
+      { path: 'ideias', element: <IdeiasPage /> },
     ],
   },
   { path: '*', element: <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}><p style={{ fontFamily: 'sans-serif', color: '#666' }}>Link inválido.</p></div> },

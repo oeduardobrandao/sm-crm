@@ -1,5 +1,5 @@
 import { useNavigate, useParams } from 'react-router-dom';
-import { CheckSquare, Palette, FileText, BookOpen } from 'lucide-react';
+import { CheckSquare, Palette, FileText, BookOpen, Lightbulb } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useHub } from '../HubContext';
 import { fetchPosts } from '../api';
@@ -10,6 +10,7 @@ const SECTIONS = [
   { label: 'Marca', icon: Palette, path: '/marca', description: 'Identidade visual e arquivos' },
   { label: 'Páginas', icon: FileText, path: '/paginas', description: 'Materiais e estratégia' },
   { label: 'Briefing', icon: BookOpen, path: '/briefing', description: 'Informações do seu projeto' },
+  { label: 'Ideias', icon: Lightbulb, path: '/ideias', description: 'Compartilhe ideias com sua agência' },
 ];
 
 export function HomePage() {
