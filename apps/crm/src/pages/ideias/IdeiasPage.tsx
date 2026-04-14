@@ -43,8 +43,12 @@ export default function IdeiasPage() {
   });
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
-      <h1 className="text-2xl font-bold text-stone-900 mb-6">Ideias</h1>
+    <div>
+      <div className="header">
+        <div className="header-title">
+          <h1>Ideias</h1>
+        </div>
+      </div>
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3 mb-6">
