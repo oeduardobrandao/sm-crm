@@ -31,6 +31,7 @@ const EntregasPage = lazy(() => import('./pages/entregas/EntregasPage'));
 const AnalyticsPage = lazy(() => import('./pages/analytics/AnalyticsPage'));
 const AnalyticsContaPage = lazy(() => import('./pages/analytics-conta/AnalyticsContaPage'));
 const AnalyticsFluxosPage = lazy(() => import('./pages/analytics-fluxos/AnalyticsFluxosPage'));
+const IdeiasPage = lazy(() => import('./pages/ideias/IdeiasPage'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -78,6 +79,7 @@ export default function App() {
               <Route path="/analytics" element={<AnalyticsPage />} />
               <Route path="/analytics/:id" element={<AnalyticsContaPage />} />
               <Route path="/analytics-fluxos" element={<AnalyticsFluxosPage />} />
+              <Route path="/ideias" element={<IdeiasPage />} />
             </Route>
 
             <Route path="*" element={<Navigate to="/login" replace />} />

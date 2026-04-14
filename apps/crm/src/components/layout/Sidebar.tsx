@@ -17,6 +17,7 @@ const ALL_NAV_GROUPS: NavGroup[] = [
     id: 'crm', label: 'CRM', icon: 'ph-users', items: [
       { id: 'leads', route: '/leads', label: 'Leads', icon: 'ph-funnel' },
       { id: 'clientes', route: '/clientes', label: 'Clientes', icon: 'ph-users' },
+      { id: 'ideias', route: '/ideias', label: 'Ideias', icon: 'ph-lightbulb' },
     ]
   },
   {
