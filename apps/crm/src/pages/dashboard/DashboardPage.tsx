@@ -220,7 +220,7 @@ export default function DashboardPage() {
                 Nenhum evento hoje.
               </p>
             ) : (
-              <div className="dashboard-hub-list" style={{ maxHeight: 180, overflowY: 'auto' }}>
+              <div className="dashboard-hub-list">
                 {todayIncomes.map(c => (
                   <div key={`inc-${c.id}`} className="dashboard-hub-row">
                     <span style={{ fontSize: '0.85rem' }}>

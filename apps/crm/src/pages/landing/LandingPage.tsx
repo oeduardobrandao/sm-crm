@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Users, CheckSquare, ExternalLink, Calendar, ChevronDown, Sun, Moon } from 'lucide-react';
+import { Users, CheckSquare, ExternalLink, Calendar, ChevronDown, Sun, Moon, Check, X } from 'lucide-react';
 import logoBlack from '/logo-black.svg';
 import logoWhite from '/logo-white.svg';
 
@@ -19,6 +19,7 @@ export default function LandingPage() {
       <Hero />
       <Testimonial />
       <Features />
+      <Pricing />
       <Faq />
       <CtaFinal />
       <Footer />
@@ -43,6 +44,7 @@ function Header() {
         <img src={logoWhite} alt="Mesaas" className="h-6 w-auto hidden dark:block md:h-7" />
         <nav className="hidden gap-6 text-sm font-medium text-muted-foreground md:flex">
           <button onClick={() => scrollTo('features')} className="hover:text-foreground transition-colors">Funcionalidades</button>
+          <button onClick={() => scrollTo('pricing')} className="hover:text-foreground transition-colors">Preços</button>
           <button onClick={() => scrollTo('faq')} className="hover:text-foreground transition-colors">FAQ</button>
         </nav>
         <div className="flex items-center gap-3 md:gap-4">
@@ -153,6 +155,141 @@ function Features() {
             <div className="mb-4">{item.icon}</div>
             <h3 className="mb-2 text-lg font-semibold">{item.title}</h3>
             <p className="text-muted-foreground">{item.description}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function Pricing() {
+  const features = [
+    'Planejamento de conteúdo',
+    'Calendário editorial',
+    'Integração Instagram',
+    'Portal do cliente',
+    'Agendamento automático',
+    'Métricas de desempenho',
+  ];
+
+  const plans = [
+    {
+      name: 'Free',
+      price: 'R$ 0',
+      tagline: 'Para conhecer a plataforma.',
+      limits: { Clientes: '2', Usuários: '1', Templates: '2' },
+      features: [true, true, false, false, false, false],
+      cta: 'Começar grátis',
+      highlight: false,
+    },
+    {
+      name: 'Start',
+      price: 'R$ 99,90',
+      tagline: 'Para freelancers que estão começando.',
+      limits: { Clientes: '5', Usuários: '1', Templates: '3' },
+      features: [true, true, true, true, false, false],
+      cta: 'Assinar Start',
+      highlight: false,
+    },
+    {
+      name: 'Pro',
+      price: 'R$ 139,90',
+      tagline: 'Para freelancers com carteira consolidada.',
+      limits: { Clientes: '15', Usuários: '2', Templates: '8' },
+      features: [true, true, true, true, true, true],
+      cta: 'Assinar Pro',
+      highlight: true,
+    },
+    {
+      name: 'Scale',
+      price: 'R$ 199,90',
+      tagline: 'Para micro-agências e equipes completas.',
+      limits: { Clientes: 'Ilimitado', Usuários: 'Ilimitado', Templates: 'Ilimitado' },
+      features: [true, true, true, true, true, true],
+      cta: 'Assinar Scale',
+      highlight: false,
+    },
+  ];
+
+  return (
+    <section id="pricing" className="mx-auto max-w-6xl px-5 py-20 md:px-6 md:py-28">
+      <div className="text-center">
+        <div className="inline-flex items-center gap-2 rounded-full border border-border bg-muted/50 px-4 py-1.5 text-xs font-medium text-muted-foreground">
+          Em breve
+        </div>
+        <h2 className="mt-4 text-3xl font-bold tracking-tight md:text-4xl lg:text-5xl">
+          Planos para cada estágio da sua agência
+        </h2>
+        <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
+          Durante o beta, o Mesaas é totalmente gratuito. Estes são os planos que entrarão em vigor em breve.
+        </p>
+      </div>
+
+      <div className="mt-12 grid gap-6 md:mt-16 md:grid-cols-2 lg:grid-cols-4">
+        {plans.map((plan) => (
+          <div
+            key={plan.name}
+            className={`relative flex flex-col rounded-2xl border bg-card p-6 shadow-sm ${
+              plan.highlight ? 'border-primary shadow-md ring-1 ring-primary' : 'border-border'
+            }`}
+          >
+            {plan.highlight && (
+              <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground">
+                Mais popular
+              </div>
+            )}
+            <div>
+              <h3 className="text-xl font-bold">{plan.name}</h3>
+              <div className="mt-3 flex items-baseline gap-1">
+                <span className="text-3xl font-extrabold tracking-tight">{plan.price}</span>
+                <span className="text-sm text-muted-foreground">/mês</span>
+              </div>
+              <p className="mt-2 text-sm text-muted-foreground">{plan.tagline}</p>
+            </div>
+
+            <div className="mt-6">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Limites</p>
+              <ul className="mt-3 space-y-2 text-sm">
+                {Object.entries(plan.limits).map(([k, v]) => (
+                  <li key={k} className="flex items-center justify-between">
+                    <span className="text-muted-foreground">{k}</span>
+                    <span className="font-semibold">{v}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="mt-6">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Features</p>
+              <ul className="mt-3 space-y-2 text-sm">
+                {features.map((f, i) => {
+                  const included = plan.features[i];
+                  return (
+                    <li key={f} className="flex items-start gap-2">
+                      {included ? (
+                        <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                      ) : (
+                        <X className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground/50" />
+                      )}
+                      <span className={included ? 'text-foreground' : 'text-muted-foreground/60 line-through'}>
+                        {f}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+
+            <button
+              disabled
+              className={`mt-8 w-full cursor-not-allowed rounded-lg px-4 py-2.5 text-sm font-semibold opacity-60 ${
+                plan.highlight
+                  ? 'bg-primary text-primary-foreground'
+                  : 'border border-border bg-background text-foreground'
+              }`}
+            >
+              {plan.cta} · Em breve
+            </button>
           </div>
         ))}
       </div>
