@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { buildCorsHeaders } from "../_shared/cors.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -112,6 +113,20 @@ async function verifySignedState(state: string): Promise<{ clientId: string }> {
   return { clientId: parsed.clientId };
 }
 
+// --- Workspace Ownership Verification ---
+async function verifyClientOwnership(
+  svc: ReturnType<typeof createClient>,
+  clientId: string,
+  contaId: string
+): Promise<boolean> {
+  const { data: client } = await svc
+    .from('clientes')
+    .select('conta_id')
+    .eq('id', parseInt(clientId, 10))
+    .single();
+  return client?.conta_id === contaId;
+}
+
 // --- Main Handler ---
 Deno.serve(async (req) => {
   const url = new URL(req.url);
@@ -128,11 +143,7 @@ Deno.serve(async (req) => {
     global: { headers: { Authorization: authHeader || '' } },
   });
 
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-  };
+  const corsHeaders = buildCorsHeaders(req);
 
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -161,6 +172,13 @@ Deno.serve(async (req) => {
     if (req.method === 'GET' && path.startsWith('/auth/')) {
         const clientId = path.split('/')[2];
         if (!clientId) throw new Error("Client ID required");
+
+        // Verify caller's workspace owns this client
+        const authServiceClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+        const { data: authCallerProfile } = await authServiceClient.from('profiles').select('conta_id').eq('id', user!.id).single();
+        if (!authCallerProfile?.conta_id || !await verifyClientOwnership(authServiceClient, clientId, authCallerProfile.conta_id)) {
+            return new Response(JSON.stringify({ error: true, message: 'Unauthorized' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 });
+        }
 
         // Pass clientId in signed state (HMAC-SHA256)
         const state = await createSignedState(clientId);
@@ -488,6 +506,12 @@ Deno.serve(async (req) => {
         const clientId = path.split('/')[2];
         const serviceClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
+        // Verify caller's workspace owns this client
+        const { data: callerProfile } = await serviceClient.from('profiles').select('conta_id').eq('id', user!.id).single();
+        if (!callerProfile?.conta_id || !await verifyClientOwnership(serviceClient, clientId, callerProfile.conta_id)) {
+            return new Response(JSON.stringify({ error: true, message: 'Unauthorized' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 });
+        }
+
         const { data: accounts, error: accountError } = await serviceClient
             .from('instagram_accounts')
             .select('*')
@@ -675,6 +699,12 @@ Deno.serve(async (req) => {
          const clientId = path.split('/')[2];
          const serviceClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
+         // Verify caller's workspace owns this client
+         const { data: callerProfile } = await serviceClient.from('profiles').select('conta_id').eq('id', user!.id).single();
+         if (!callerProfile?.conta_id || !await verifyClientOwnership(serviceClient, clientId, callerProfile.conta_id)) {
+             return new Response(JSON.stringify({ error: true, message: 'Unauthorized' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 });
+         }
+
          // Get account id first to clean up child tables
          const { data: account } = await serviceClient.from('instagram_accounts').select('id').eq('client_id', clientId).single();
          if (account) {
@@ -689,6 +719,12 @@ Deno.serve(async (req) => {
     if (req.method === 'GET' && path.startsWith('/summary/')) {
          const clientId = path.split('/')[2];
          const serviceClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+
+         // Verify caller's workspace owns this client
+         const { data: callerProfile } = await serviceClient.from('profiles').select('conta_id').eq('id', user!.id).single();
+         if (!callerProfile?.conta_id || !await verifyClientOwnership(serviceClient, clientId, callerProfile.conta_id)) {
+             return new Response(JSON.stringify({ error: true, message: 'Unauthorized' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 });
+         }
 
          const { data, error } = await serviceClient.from('instagram_accounts').select('*').eq('client_id', clientId).single();
          if (error) return new Response(JSON.stringify({ exists: false }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -708,6 +744,12 @@ Deno.serve(async (req) => {
          const offset = (page - 1) * limit;
 
          const serviceClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+
+         // Verify caller's workspace owns this client
+         const { data: callerProfile } = await serviceClient.from('profiles').select('conta_id').eq('id', user!.id).single();
+         if (!callerProfile?.conta_id || !await verifyClientOwnership(serviceClient, clientId, callerProfile.conta_id)) {
+             return new Response(JSON.stringify({ error: true, message: 'Unauthorized' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 });
+         }
 
          const { data: account } = await serviceClient.from('instagram_accounts').select('id').eq('client_id', clientId).single();
          
