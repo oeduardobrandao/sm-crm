@@ -1,4 +1,13 @@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { ChevronDown } from 'lucide-react';
 import type { Cliente, Membro } from '../../../store';
 
 export interface FilterState {
@@ -25,77 +34,40 @@ export function EntregasFilters({ filters, onChange, clientes, membros }: Entreg
   const activeClientes = clientes.filter(c => c.status === 'ativo');
 
   return (
-    <div
-      className="leads-toolbar animate-up"
-      style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', marginBottom: 0 }}
-    >
-      {/* Status pill group */}
-      <div
-        style={{
-          display: 'flex',
-          gap: '0.15rem',
-          background: 'var(--surface-2)',
-          padding: '0.2rem',
-          borderRadius: '10px',
-          border: '1px solid var(--border-color)',
-        }}
-      >
-        {STATUS_OPTIONS.map(({ id, label, color }) => {
-          const active = filters.filterStatus === id;
-          return (
-            <button
-              key={id}
-              onClick={() => onChange({ ...filters, filterStatus: id })}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.35rem',
-                padding: '0.35rem 0.75rem',
-                borderRadius: '7px',
-                border: 'none',
-                background: active ? 'var(--card-bg)' : 'transparent',
-                color: active ? 'var(--text-main)' : 'var(--text-muted)',
-                fontSize: '0.75rem',
-                fontWeight: active ? 700 : 500,
-                fontFamily: 'var(--font-mono)',
-                letterSpacing: '0.06em',
-                textTransform: 'uppercase',
-                cursor: 'pointer',
-                transition: 'all 0.15s',
-                boxShadow: active
-                  ? '0 1px 2px rgba(15, 23, 42, 0.06), 0 0 0 1px var(--border-color)'
-                  : 'none',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {color && (
-                <span
-                  style={{
-                    width: '6px',
-                    height: '6px',
-                    borderRadius: '50%',
-                    background: color,
-                    flexShrink: 0,
-                    opacity: active ? 1 : 0.5,
-                    boxShadow: active ? `0 0 0 2px ${color}33` : 'none',
-                  }}
-                />
-              )}
-              {label}
-            </button>
-          );
-        })}
-      </div>
+    <div className="flex flex-wrap items-center gap-3 mb-0 animate-up">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" className="h-9 rounded-full px-4 text-xs gap-1.5 font-normal shadow-sm mb-0">
+            {(() => {
+              const opt = STATUS_OPTIONS.find(o => o.id === filters.filterStatus);
+              return (
+                <>
+                  {opt?.color && <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0" style={{ background: opt.color }} />}
+                  {opt?.label ?? 'Status'}
+                  <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+                </>
+              );
+            })()}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-40">
+          <DropdownMenuRadioGroup
+            value={filters.filterStatus}
+            onValueChange={(v) => onChange({ ...filters, filterStatus: v as FilterState['filterStatus'] })}
+          >
+            {STATUS_OPTIONS.map(({ id, label, color }) => (
+              <DropdownMenuRadioItem key={id} value={id}>
+                <span className="flex items-center gap-1.5">
+                  {color && <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0" style={{ background: color }} />}
+                  {label}
+                </span>
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
-      {/* Divider */}
-      <div
-        style={{
-          width: '1px',
-          height: '24px',
-          background: 'var(--border-color)',
-          flexShrink: 0,
-        }}
-      />
+      <div className="w-px h-6 bg-border shrink-0" />
 
       {/* Client + member selects */}
       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'nowrap' }}>
@@ -103,7 +75,7 @@ export function EntregasFilters({ filters, onChange, clientes, membros }: Entreg
           value={filters.filterCliente ? String(filters.filterCliente) : '__none__'}
           onValueChange={val => onChange({ ...filters, filterCliente: val === '__none__' ? null : Number(val) })}
         >
-          <SelectTrigger style={{ minWidth: 180 }}>
+          <SelectTrigger className="!rounded-full !text-xs h-9 px-4 mb-0 w-auto min-w-[160px]">
             <SelectValue placeholder="Todos os clientes" />
           </SelectTrigger>
           <SelectContent>
@@ -117,7 +89,7 @@ export function EntregasFilters({ filters, onChange, clientes, membros }: Entreg
           value={filters.filterMembro ? String(filters.filterMembro) : '__none__'}
           onValueChange={val => onChange({ ...filters, filterMembro: val === '__none__' ? null : Number(val) })}
         >
-          <SelectTrigger style={{ minWidth: 180 }}>
+          <SelectTrigger className="!rounded-full !text-xs h-9 px-4 mb-0 w-auto min-w-[160px]">
             <SelectValue placeholder="Todos os membros" />
           </SelectTrigger>
           <SelectContent>

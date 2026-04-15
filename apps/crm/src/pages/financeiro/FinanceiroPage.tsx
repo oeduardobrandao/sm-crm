@@ -1,17 +1,30 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Plus, Edit2, Trash2, Check, Upload, Info, HelpCircle } from 'lucide-react';
 import { openCSVSelector } from '../../lib/csv';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { ChevronDown } from 'lucide-react';
+import { MonthPicker } from '@/components/ui/month-picker';
+import { DatePicker } from '@/components/ui/date-picker';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import {
   getClientes, getMembros, getTransacoes, projetarAgendamentos,
   addTransacao, updateTransacao, removeTransacao,
@@ -22,9 +35,39 @@ import {
 const CATEGORIAS = ['Mensalidade', 'Produção', 'Tráfego', 'Salário', 'Imposto', 'Ferramenta', 'Outro'];
 type FilterType = 'todas' | 'entradas' | 'saidas';
 
+const transacaoSchema = z.object({
+  descricao: z.string().min(1, 'Descrição obrigatória'),
+  valor: z
+    .string()
+    .min(1, 'Valor obrigatório')
+    .refine((v) => Number(v) > 0, 'Valor deve ser positivo'),
+  data: z.string().min(1, 'Data obrigatória'),
+  categoria: z.string().min(1, 'Categoria obrigatória'),
+});
+type TransacaoFormValues = z.infer<typeof transacaoSchema>;
+
+function isoToDate(iso: string): Date | undefined {
+  if (!iso) return undefined;
+  const [y, m, d] = iso.split('-').map(Number);
+  if (!y || !m || !d) return undefined;
+  return new Date(y, m - 1, d);
+}
+
+function dateToIso(date: Date | undefined): string {
+  if (!date) return '';
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 export default function FinanceiroPage() {
   const qc = useQueryClient();
   const [filter, setFilter] = useState<FilterType>('todas');
+  const [monthFilter, setMonthFilter] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
   const [modalOpen, setModalOpen] = useState(false);
   const [modalTipo, setModalTipo] = useState<'entrada' | 'saida'>('entrada');
   const [editing, setEditing] = useState<Transacao | null>(null);
@@ -32,17 +75,18 @@ export default function FinanceiroPage() {
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // form state
-  const [fDescricao, setFDescricao] = useState('');
-  const [fValor, setFValor] = useState('');
-  const [fData, setFData] = useState('');
-  const [fCategoria, setFCategoria] = useState('');
+  const form = useForm<TransacaoFormValues>({
+    resolver: zodResolver(transacaoSchema),
+    defaultValues: { descricao: '', valor: '', data: '', categoria: '' },
+  });
 
   const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: getClientes });
   const { data: membros = [] } = useQuery({ queryKey: ['membros'], queryFn: getMembros });
   const { data: transacoesFisicas = [], isLoading } = useQuery({ queryKey: ['transacoes'], queryFn: getTransacoes });
 
-  const allTransacoes = projetarAgendamentos(transacoesFisicas, clientes, membros);
+  const projected = projetarAgendamentos(transacoesFisicas, clientes, membros);
+  const allTransacoes = projected.filter(t => !monthFilter || t.data.startsWith(monthFilter));
+
   const recebido = allTransacoes.filter(t => t.tipo === 'entrada' && t.status === 'pago').reduce((s, t) => s + t.valor, 0);
   const aReceber = allTransacoes.filter(t => t.tipo === 'entrada' && t.status === 'agendado').reduce((s, t) => s + t.valor, 0);
   const aPagar = allTransacoes.filter(t => t.tipo === 'saida' && t.status === 'agendado').reduce((s, t) => s + t.valor, 0);
@@ -58,30 +102,31 @@ export default function FinanceiroPage() {
   const openAdd = (tipo: 'entrada' | 'saida') => {
     setEditing(null);
     setModalTipo(tipo);
-    setFDescricao(''); setFValor(''); setFData(''); setFCategoria('');
+    form.reset({ descricao: '', valor: '', data: '', categoria: '' });
     setModalOpen(true);
   };
 
   const openEdit = (t: Transacao) => {
     setEditing(t);
     setModalTipo(t.tipo);
-    setFDescricao(t.descricao);
-    setFValor(String(t.valor));
-    setFData(t.data);
-    setFCategoria(t.categoria || '');
+    form.reset({
+      descricao: t.descricao,
+      valor: String(t.valor),
+      data: t.data,
+      categoria: t.categoria || '',
+    });
     setModalOpen(true);
   };
 
-  const handleSave = async () => {
-    if (!fDescricao || !fValor || !fData) return;
+  const onSubmit = async (values: TransacaoFormValues) => {
     setSaving(true);
     try {
       const payload: Omit<Transacao, 'id' | 'user_id' | 'conta_id'> = {
-        descricao: fDescricao,
+        descricao: values.descricao,
         detalhe: '',
-        valor: Number(fValor),
-        data: fData,
-        categoria: fCategoria,
+        valor: Number(values.valor),
+        data: values.data,
+        categoria: values.categoria,
         tipo: modalTipo,
         status: 'pago',
       };
@@ -197,12 +242,23 @@ export default function FinanceiroPage() {
         ))}
       </div>
 
-      <div className="filter-bar" style={{ marginBottom: '1rem' }}>
-        {(['todas', 'entradas', 'saidas'] as FilterType[]).map(f => (
-          <button key={f} className={`filter-btn${filter === f ? ' active' : ''}`} onClick={() => setFilter(f)}>
-            {f.charAt(0).toUpperCase() + f.slice(1)}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" className="h-9 rounded-full px-4 text-xs gap-1.5 font-normal shadow-sm mb-0">
+              {filter === 'todas' ? 'Tipo' : filter === 'entradas' ? 'Entradas' : 'Saídas'}
+              <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-36">
+            <DropdownMenuRadioGroup value={filter} onValueChange={(v) => setFilter(v as FilterType)}>
+              <DropdownMenuRadioItem value="todas">Todas</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="entradas">Entradas</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="saidas">Saídas</DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <MonthPicker value={monthFilter} onChange={setMonthFilter} className="rounded-full text-xs px-4 mb-0" />
       </div>
 
       {isLoading ? (
@@ -272,36 +328,81 @@ export default function FinanceiroPage() {
           <DialogHeader>
             <DialogTitle>{editing ? 'Editar Transação' : modalTipo === 'entrada' ? 'Registrar Entrada' : 'Registrar Saída'}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-1">
-              <Label>Descrição</Label>
-              <Input value={fDescricao} onChange={e => setFDescricao(e.target.value)} required />
-            </div>
-            <div className="space-y-1">
-              <Label>Valor (R$)</Label>
-              <Input type="number" min={0} step={0.01} value={fValor} onChange={e => setFValor(e.target.value)} required />
-            </div>
-            <div className="space-y-1">
-              <Label>Data</Label>
-              <Input type="date" value={fData} onChange={e => setFData(e.target.value)} required />
-            </div>
-            <div className="space-y-1">
-              <Label>Categoria</Label>
-              <Select value={fCategoria} onValueChange={setFCategoria}>
-                <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                <SelectContent>
-                  {CATEGORIAS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={saving}>
-              {saving && <Spinner size="sm" />}
-              Salvar
-            </Button>
-          </DialogFooter>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <FormField
+                control={form.control}
+                name="descricao"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Descrição</FormLabel>
+                    <FormControl><Input {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="valor"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Valor (R$)</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={0}
+                        step={0.01}
+                        {...field}
+                        value={field.value ?? ''}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="data"
+                render={({ field }) => (
+                  <FormItem className="flex flex-col">
+                    <FormLabel>Data</FormLabel>
+                    <FormControl>
+                      <DatePicker
+                        value={isoToDate(field.value)}
+                        onChange={(d) => field.onChange(dateToIso(d))}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="categoria"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Categoria</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {CATEGORIAS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
+                <Button type="submit" disabled={saving}>
+                  {saving && <Spinner size="sm" />}
+                  Salvar
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
         </DialogContent>
       </Dialog>
 

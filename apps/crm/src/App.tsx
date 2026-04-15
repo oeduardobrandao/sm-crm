@@ -24,7 +24,6 @@ const ContratosPage = lazy(() => import('./pages/contratos/ContratosPage'));
 const LeadsPage = lazy(() => import('./pages/leads/LeadsPage'));
 const EquipePage = lazy(() => import('./pages/equipe/EquipePage'));
 const MembroDetalhePage = lazy(() => import('./pages/membro-detalhe/MembroDetalhePage'));
-const IntegracoesPage = lazy(() => import('./pages/integracoes/IntegracoesPage'));
 const ConfiguracaoPage = lazy(() => import('./pages/configuracao/ConfiguracaoPage'));
 const CalendarioPage = lazy(() => import('./pages/calendario/CalendarioPage'));
 const EntregasPage = lazy(() => import('./pages/entregas/EntregasPage'));
@@ -72,7 +71,6 @@ export default function App() {
               <Route path="/leads" element={<LeadsPage />} />
               <Route path="/equipe" element={<EquipePage />} />
               <Route path="/equipe/:id" element={<MembroDetalhePage />} />
-              <Route path="/integracoes" element={<IntegracoesPage />} />
               <Route path="/configuracao" element={<ConfiguracaoPage />} />
               <Route path="/calendario" element={<CalendarioPage />} />
               <Route path="/entregas" element={<EntregasPage />} />

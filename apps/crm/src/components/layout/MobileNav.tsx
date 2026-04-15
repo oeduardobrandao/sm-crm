@@ -78,8 +78,7 @@ export default function MobileNav() {
                 { route: '/contratos', icon: 'ph-file-text', label: 'Contratos' },
                 { route: '/calendario', icon: 'ph-calendar-blank', label: 'Calendário' },
                 { route: '/equipe', icon: 'ph-user-circle-gear', label: 'Equipe' },
-                { route: '/integracoes', icon: 'ph-plugs-connected', label: 'Integrações' },
-                { route: '/financeiro', icon: 'ph-wallet', label: 'Financeiro' },
+{ route: '/financeiro', icon: 'ph-wallet', label: 'Financeiro' },
                 { route: '/configuracao', icon: 'ph-gear', label: 'Configurações' },
               ].map(({ route, icon, label }) => (
                 <a key={route} href="#" className="mobile-more-item" onClick={(e) => { e.preventDefault(); go(route); }}>

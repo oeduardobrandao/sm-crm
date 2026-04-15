@@ -1,4 +1,7 @@
 import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -6,12 +9,20 @@ import { Plus, Edit2, Trash2, Upload, Info, HelpCircle } from 'lucide-react';
 import { openCSVSelector } from '../../lib/csv';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { ChevronDown } from 'lucide-react';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import {
   getMembros, addMembro, updateMembro, removeMembro,
   formatBRL, getInitials,
@@ -21,6 +32,15 @@ import { useAuth } from '../../context/AuthContext';
 
 type FilterTipo = 'todos' | 'clt' | 'freelancer_mensal' | 'freelancer_demanda';
 type SortKey = 'nome' | 'custo_maior' | 'custo_menor';
+
+const membroSchema = z.object({
+  nome: z.string().min(1, 'Nome obrigatório'),
+  cargo: z.string().min(1, 'Cargo obrigatório'),
+  tipo: z.enum(['clt', 'freelancer_mensal', 'freelancer_demanda']),
+  custo: z.string(),
+  diaPag: z.string().refine((v) => v === '' || (Number(v) >= 1 && Number(v) <= 31), 'Dia deve ser entre 1 e 31'),
+});
+type MembroFormValues = z.infer<typeof membroSchema>;
 
 const AVATAR_COLORS = ['#eab308', '#3ecf8e', '#f5a342', '#f542c8', '#42c8f5', '#8b5cf6', '#ef4444', '#14b8a6'];
 const TIPO_LABEL: Record<string, string> = {
@@ -46,11 +66,10 @@ export default function EquipePage() {
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const [fNome, setFNome] = useState('');
-  const [fCargo, setFCargo] = useState('');
-  const [fTipo, setFTipo] = useState<Membro['tipo']>('clt');
-  const [fCusto, setFCusto] = useState('');
-  const [fDiaPag, setFDiaPag] = useState('');
+  const form = useForm<MembroFormValues>({
+    resolver: zodResolver(membroSchema),
+    defaultValues: { nome: '', cargo: '', tipo: 'clt', custo: '', diaPag: '' },
+  });
 
   const { data: membros = [], isLoading } = useQuery({ queryKey: ['membros'], queryFn: getMembros });
   const totalCost = membros.reduce((s, m) => s + (m.custo_mensal ?? 0), 0);
@@ -65,30 +84,31 @@ export default function EquipePage() {
 
   const openAdd = () => {
     setEditing(null);
-    setFNome(''); setFCargo(''); setFTipo('clt'); setFCusto(''); setFDiaPag('');
+    form.reset({ nome: '', cargo: '', tipo: 'clt', custo: '', diaPag: '' });
     setModalOpen(true);
   };
 
   const openEdit = (m: Membro) => {
     setEditing(m);
-    setFNome(m.nome); setFCargo(m.cargo || ''); setFTipo(m.tipo);
-    setFCusto(m.custo_mensal ? String(m.custo_mensal) : '');
-    setFDiaPag(m.data_pagamento ? String(m.data_pagamento) : '');
+    form.reset({
+      nome: m.nome,
+      cargo: m.cargo || '',
+      tipo: m.tipo,
+      custo: m.custo_mensal ? String(m.custo_mensal) : '',
+      diaPag: m.data_pagamento ? String(m.data_pagamento) : '',
+    });
     setModalOpen(true);
   };
 
-  const handleSave = async () => {
-    if (!fNome || !fCargo) return;
-    const diaPag = fDiaPag ? parseInt(fDiaPag, 10) : undefined;
-    if (diaPag !== undefined && (isNaN(diaPag) || diaPag < 1 || diaPag > 31)) {
-      toast.error('Dia de pagamento deve ser entre 1 e 31.');
-      return;
-    }
+  const onSubmit = async (values: MembroFormValues) => {
+    const diaPag = values.diaPag ? parseInt(values.diaPag, 10) : undefined;
     setSaving(true);
     try {
       const payload: Omit<Membro, 'id' | 'user_id' | 'conta_id'> = {
-        nome: fNome, cargo: fCargo, tipo: fTipo,
-        custo_mensal: fCusto ? Number(fCusto) : null,
+        nome: values.nome,
+        cargo: values.cargo,
+        tipo: values.tipo,
+        custo_mensal: values.custo ? Number(values.custo) : null,
         avatar_url: '',
         data_pagamento: diaPag,
       };
@@ -183,16 +203,26 @@ export default function EquipePage() {
         )}
       </div>
 
-      <div style={{ display: 'flex', gap: 12, marginBottom: '0.5rem', alignItems: 'start', flexWrap: 'wrap' }}>
-        <div className="filter-bar">
-          {(['todos', 'clt', 'freelancer_mensal', 'freelancer_demanda'] as FilterTipo[]).map(f => (
-            <button key={f} className={`filter-btn${filter === f ? ' active' : ''}`} onClick={() => setFilter(f)}>
-              {f === 'todos' ? 'Todos' : TIPO_LABEL[f]}
-            </button>
-          ))}
-        </div>
+      <div className="flex flex-wrap items-center gap-3 mb-2">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" className="h-9 rounded-full px-4 text-xs gap-1.5 font-normal shadow-sm mb-0">
+              {filter === 'todos' ? 'Tipo' : TIPO_LABEL[filter]}
+              <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-48">
+            <DropdownMenuRadioGroup value={filter} onValueChange={(v) => setFilter(v as FilterTipo)}>
+              {(['todos', 'clt', 'freelancer_mensal', 'freelancer_demanda'] as FilterTipo[]).map(f => (
+                <DropdownMenuRadioItem key={f} value={f}>
+                  {f === 'todos' ? 'Todos' : TIPO_LABEL[f]}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <Select value={sort} onValueChange={v => setSort(v as SortKey)}>
-          <SelectTrigger style={{ width: 180 }}><SelectValue /></SelectTrigger>
+          <SelectTrigger className="!rounded-full !text-xs h-9 px-4 mb-0 w-auto min-w-[140px]"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="nome">Nome</SelectItem>
             {!isAgent && <>
@@ -252,41 +282,42 @@ export default function EquipePage() {
           <DialogHeader>
             <DialogTitle>{editing ? 'Editar Membro' : 'Adicionar Membro'}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-1">
-              <Label>Nome *</Label>
-              <Input value={fNome} onChange={e => setFNome(e.target.value)} required />
-            </div>
-            <div className="space-y-1">
-              <Label>Cargo *</Label>
-              <Input value={fCargo} onChange={e => setFCargo(e.target.value)} required />
-            </div>
-            <div className="space-y-1">
-              <Label>Tipo</Label>
-              <Select value={fTipo} onValueChange={v => setFTipo(v as Membro['tipo'])}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="clt">CLT</SelectItem>
-                  <SelectItem value="freelancer_mensal">Freelancer Mensal</SelectItem>
-                  <SelectItem value="freelancer_demanda">Freelancer Demanda</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>Custo Mensal (R$)</Label>
-              <Input type="number" min={0} step={0.01} value={fCusto} onChange={e => setFCusto(e.target.value)} />
-            </div>
-            <div className="space-y-1">
-              <Label>Dia de Pagamento (1-31)</Label>
-              <Input type="number" min={1} max={31} value={fDiaPag} onChange={e => setFDiaPag(e.target.value)} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={saving}>
-              {saving && <Spinner size="sm" />} Salvar
-            </Button>
-          </DialogFooter>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <FormField control={form.control} name="nome" render={({ field }) => (
+                <FormItem><FormLabel>Nome *</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+              )} />
+              <FormField control={form.control} name="cargo" render={({ field }) => (
+                <FormItem><FormLabel>Cargo *</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+              )} />
+              <FormField control={form.control} name="tipo" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Tipo</FormLabel>
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                    <SelectContent>
+                      <SelectItem value="clt">CLT</SelectItem>
+                      <SelectItem value="freelancer_mensal">Freelancer Mensal</SelectItem>
+                      <SelectItem value="freelancer_demanda">Freelancer Demanda</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={form.control} name="custo" render={({ field }) => (
+                <FormItem><FormLabel>Custo Mensal (R$)</FormLabel><FormControl><Input type="number" min={0} step={0.01} {...field} /></FormControl><FormMessage /></FormItem>
+              )} />
+              <FormField control={form.control} name="diaPag" render={({ field }) => (
+                <FormItem><FormLabel>Dia de Pagamento (1-31)</FormLabel><FormControl><Input type="number" min={1} max={31} {...field} /></FormControl><FormMessage /></FormItem>
+              )} />
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
+                <Button type="submit" disabled={saving}>
+                  {saving && <Spinner size="sm" />} Salvar
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
         </DialogContent>
       </Dialog>
 
