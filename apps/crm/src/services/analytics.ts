@@ -182,7 +182,7 @@ export interface AnalyticsReport {
 
 // ---- Service Functions (Direct Supabase Queries) ----
 
-export async function getPortfolioSummary(): Promise<PortfolioSummary> {
+export async function getPortfolioSummary(days = 28): Promise<PortfolioSummary> {
   // Get active clients — use RLS-filtered query (same pattern as store.ts getClientes)
   const { data: allClients, error: clientsError } = await supabase
     .from('clientes')
@@ -215,21 +215,21 @@ export async function getPortfolioSummary(): Promise<PortfolioSummary> {
   }
 
   const accountIds = igAccounts.map(a => a.id);
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString();
+  const periodAgo = new Date(Date.now() - days * 86400000).toISOString();
 
   // Get latest post per account + recent posts for engagement
   const { data: allRecentPosts } = await supabase
     .from('instagram_posts')
     .select('instagram_account_id, posted_at, likes, comments, saved, shares, reach')
     .in('instagram_account_id', accountIds)
-    .gte('posted_at', thirtyDaysAgo);
+    .gte('posted_at', periodAgo);
 
   // Get follower history for delta
   const { data: followerHist } = await supabase
     .from('instagram_follower_history')
     .select('instagram_account_id, date, follower_count')
     .in('instagram_account_id', accountIds)
-    .gte('date', new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0])
+    .gte('date', new Date(Date.now() - days * 86400000).toISOString().split('T')[0])
     .order('date', { ascending: true });
 
   // Get latest post date per account (from all posts, not just recent)

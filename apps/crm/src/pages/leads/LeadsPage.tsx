@@ -1,21 +1,57 @@
 import { useState, useMemo } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Plus, Edit2, Trash2, Upload, Info, HelpCircle, UserPlus } from 'lucide-react';
 import { openCSVSelector } from '../../lib/csv';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
 import { Spinner } from '@/components/ui/spinner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { ChevronDown } from 'lucide-react';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import {
   getLeads, addLead, updateLead, removeLead, addCliente, getInitials,
   type Lead,
 } from '../../store';
+
+const leadSchema = z.object({
+  nome: z.string().min(1, 'Nome obrigatório'),
+  email: z.string().email('E-mail inválido').or(z.literal('')),
+  instagram: z.string(),
+  canal: z.string(),
+  especialidade: z.string(),
+  faturamento: z.string(),
+  tags: z.string(),
+  notas: z.string(),
+  status: z.enum(['novo', 'contatado', 'qualificado', 'perdido', 'convertido']),
+});
+type LeadFormValues = z.infer<typeof leadSchema>;
+
+const convertSchema = z.object({
+  nome: z.string().min(1, 'Nome obrigatório'),
+  email: z.string().email('E-mail inválido').or(z.literal('')),
+  telefone: z.string(),
+  plano: z.string(),
+  valor: z.string(),
+  diaPag: z
+    .string()
+    .refine((v) => v === '' || (Number(v) >= 1 && Number(v) <= 31), 'Dia deve ser entre 1 e 31'),
+});
+type ConvertFormValues = z.infer<typeof convertSchema>;
 
 const STATUS_LABELS: Record<string, string> = {
   novo: 'Novo', contatado: 'Contatado', qualificado: 'Qualificado', perdido: 'Perdido', convertido: 'Convertido',
@@ -47,23 +83,20 @@ export default function LeadsPage() {
   const [saving, setSaving] = useState(false);
   const [convertModalOpen, setConvertModalOpen] = useState(false);
   const [convertingLead, setConvertingLead] = useState<Lead | null>(null);
-  const [cNome, setCNome] = useState('');
-  const [cEmail, setCEmail] = useState('');
-  const [cTelefone, setCTelefone] = useState('');
-  const [cPlano, setCPlano] = useState('');
-  const [cValor, setCValor] = useState('');
-  const [cDiaPag, setCDiaPag] = useState('');
   const [convertSaving, setConvertSaving] = useState(false);
 
-  const [fNome, setFNome] = useState('');
-  const [fEmail, setFEmail] = useState('');
-  const [fInstagram, setFInstagram] = useState('');
-  const [fCanal, setFCanal] = useState('');
-  const [fEspecialidade, setFEspecialidade] = useState('');
-  const [fFaturamento, setFFaturamento] = useState('');
-  const [fTags, setFTags] = useState('');
-  const [fObs, setFObs] = useState('');
-  const [fStatus, setFStatus] = useState<Lead['status']>('novo');
+  const form = useForm<LeadFormValues>({
+    resolver: zodResolver(leadSchema),
+    defaultValues: {
+      nome: '', email: '', instagram: '', canal: '', especialidade: '',
+      faturamento: '', tags: '', notas: '', status: 'novo',
+    },
+  });
+
+  const convertForm = useForm<ConvertFormValues>({
+    resolver: zodResolver(convertSchema),
+    defaultValues: { nome: '', email: '', telefone: '', plano: '', valor: '', diaPag: '' },
+  });
 
   const { data: leads = [], isLoading } = useQuery({ queryKey: ['leads'], queryFn: getLeads });
 
@@ -90,28 +123,45 @@ export default function LeadsPage() {
 
   const openAdd = () => {
     setEditing(null);
-    setFNome(''); setFEmail(''); setFInstagram(''); setFCanal(''); setFEspecialidade('');
-    setFFaturamento(''); setFTags(''); setFObs(''); setFStatus('novo');
+    form.reset({
+      nome: '', email: '', instagram: '', canal: '', especialidade: '',
+      faturamento: '', tags: '', notas: '', status: 'novo',
+    });
     setModalOpen(true);
   };
 
   const openEdit = (l: Lead) => {
     setEditing(l);
-    setFNome(l.nome); setFEmail(l.email || ''); setFInstagram(l.instagram || ''); setFCanal(l.canal || '');
-    setFEspecialidade(l.especialidade || ''); setFFaturamento(l.faturamento || ''); setFTags(l.tags || '');
-    setFObs(l.notas || ''); setFStatus(l.status);
+    form.reset({
+      nome: l.nome,
+      email: l.email || '',
+      instagram: l.instagram || '',
+      canal: l.canal || '',
+      especialidade: l.especialidade || '',
+      faturamento: l.faturamento || '',
+      tags: l.tags || '',
+      notas: l.notas || '',
+      status: l.status,
+    });
     setModalOpen(true);
   };
 
-  const handleSave = async () => {
-    if (!fNome) return;
+  const onSubmit = async (values: LeadFormValues) => {
     setSaving(true);
     try {
       const payload: Omit<Lead, 'id' | 'user_id' | 'conta_id' | 'created_at'> = {
-        nome: fNome, email: fEmail, telefone: '',
-        instagram: parseInstagram(fInstagram),
-        canal: fCanal, especialidade: fEspecialidade, faturamento: fFaturamento,
-        tags: fTags, notas: fObs, objetivo: '', origem: 'manual', status: fStatus,
+        nome: values.nome,
+        email: values.email,
+        telefone: '',
+        instagram: parseInstagram(values.instagram),
+        canal: values.canal,
+        especialidade: values.especialidade,
+        faturamento: values.faturamento,
+        tags: values.tags,
+        notas: values.notas,
+        objetivo: '',
+        origem: 'manual',
+        status: values.status,
       };
       if (editing?.id) {
         await updateLead(editing.id, payload);
@@ -154,31 +204,30 @@ export default function LeadsPage() {
 
   const openConvert = (l: Lead) => {
     setConvertingLead(l);
-    setCNome(l.nome);
-    setCEmail(l.email || '');
-    setCTelefone('');
-    setCPlano('');
-    setCValor('');
-    setCDiaPag('');
+    convertForm.reset({
+      nome: l.nome,
+      email: l.email || '',
+      telefone: '', plano: '', valor: '', diaPag: '',
+    });
     setConvertModalOpen(true);
   };
 
-  const handleConvertSave = async () => {
-    if (!cNome || !convertingLead?.id) return;
-    const diaPag = cDiaPag ? parseInt(cDiaPag, 10) : undefined;
-    if (diaPag !== undefined && (isNaN(diaPag) || diaPag < 1 || diaPag > 31)) {
-      toast.error('Dia de pagamento deve ser entre 1 e 31.');
-      return;
-    }
+  const onConvertSubmit = async (values: ConvertFormValues) => {
+    if (!convertingLead?.id) return;
     setConvertSaving(true);
     try {
       const randomColor = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
       await addCliente({
-        nome: cNome, email: cEmail, telefone: cTelefone, plano: cPlano,
-        valor_mensal: cValor ? Number(cValor) : 0,
+        nome: values.nome,
+        email: values.email,
+        telefone: values.telefone,
+        plano: values.plano,
+        valor_mensal: values.valor ? Number(values.valor) : 0,
         notion_page_url: '',
-        data_pagamento: diaPag,
-        sigla: getInitials(cNome), cor: randomColor, status: 'ativo',
+        data_pagamento: values.diaPag ? parseInt(values.diaPag, 10) : undefined,
+        sigla: getInitials(values.nome),
+        cor: randomColor,
+        status: 'ativo',
       });
       await updateLead(convertingLead.id, { status: 'convertido' });
       toast.success('Cliente criado e lead convertido!');
@@ -241,19 +290,29 @@ export default function LeadsPage() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 12, marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
-        <div className="filter-bar" style={{ margin: 0 }}>
-          {(['todos', 'novo', 'contatado', 'qualificado', 'perdido', 'convertido'] as StatusFilter[]).map(f => (
-            <button key={f} className={`filter-btn${filterStatus === f ? ' active' : ''}`} onClick={() => setFilterStatus(f)}>
-              {f === 'todos' ? 'Todos' : STATUS_LABELS[f]}
-            </button>
-          ))}
-        </div>
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" className="h-9 rounded-full px-4 text-xs gap-1.5 font-normal shadow-sm mb-0">
+              {filterStatus === 'todos' ? 'Status' : STATUS_LABELS[filterStatus]}
+              <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-44">
+            <DropdownMenuRadioGroup value={filterStatus} onValueChange={(v) => setFilterStatus(v as StatusFilter)}>
+              {(['todos', 'novo', 'contatado', 'qualificado', 'perdido', 'convertido'] as StatusFilter[]).map(f => (
+                <DropdownMenuRadioItem key={f} value={f}>
+                  {f === 'todos' ? 'Todos' : STATUS_LABELS[f]}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <Input
           placeholder="Buscar..."
           value={search}
           onChange={e => setSearch(e.target.value)}
-          style={{ width: 220 }}
+          className="w-56"
         />
       </div>
 
@@ -323,67 +382,138 @@ export default function LeadsPage() {
           <DialogHeader>
             <DialogTitle>{editing ? 'Editar Lead' : 'Novo Lead'}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <Label>Nome *</Label>
-              <Input value={fNome} onChange={e => setFNome(e.target.value)} required />
-            </div>
-            <div className="space-y-1">
-              <Label>E-mail</Label>
-              <Input type="email" value={fEmail} onChange={e => setFEmail(e.target.value)} />
-            </div>
-            <div className="space-y-1">
-              <Label>Instagram</Label>
-              <Input placeholder="@usuario ou URL" value={fInstagram} onChange={e => setFInstagram(e.target.value)} />
-            </div>
-            <div className="space-y-1">
-              <Label>Canal</Label>
-              <Select value={fCanal} onValueChange={setFCanal}>
-                <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                <SelectContent>
-                  {CANAL_OPTIONS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>Especialidade</Label>
-              <Input value={fEspecialidade} onChange={e => setFEspecialidade(e.target.value)} />
-            </div>
-            <div className="space-y-1">
-              <Label>Faturamento</Label>
-              <Select value={fFaturamento} onValueChange={setFFaturamento}>
-                <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                <SelectContent>
-                  {FATURAMENTO_OPTIONS.map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>Tags</Label>
-              <Input placeholder="tag1, tag2, ..." value={fTags} onChange={e => setFTags(e.target.value)} />
-            </div>
-            <div className="space-y-1">
-              <Label>Observações</Label>
-              <textarea className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm" rows={3} value={fObs} onChange={e => setFObs(e.target.value)} />
-            </div>
-            {editing && (
-              <div className="space-y-1">
-                <Label>Status</Label>
-                <Select value={fStatus} onValueChange={v => setFStatus(v as Lead['status'])}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(STATUS_LABELS).map(([v, label]) => <SelectItem key={v} value={v}>{label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={saving}>
-              {saving && <Spinner size="sm" />} Salvar
-            </Button>
-          </DialogFooter>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3">
+              <FormField
+                control={form.control}
+                name="nome"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nome *</FormLabel>
+                    <FormControl><Input {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>E-mail</FormLabel>
+                    <FormControl><Input type="email" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="instagram"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Instagram</FormLabel>
+                    <FormControl><Input placeholder="@usuario ou URL" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="canal"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Canal</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {CANAL_OPTIONS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="especialidade"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Especialidade</FormLabel>
+                    <FormControl><Input {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="faturamento"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Faturamento</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {FATURAMENTO_OPTIONS.map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="tags"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Tags</FormLabel>
+                    <FormControl><Input placeholder="tag1, tag2, ..." {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="notas"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Observações</FormLabel>
+                    <FormControl><Textarea rows={3} {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              {editing && (
+                <FormField
+                  control={form.control}
+                  name="status"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Status</FormLabel>
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <FormControl>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {Object.entries(STATUS_LABELS).map(([v, label]) => <SelectItem key={v} value={v}>{label}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
+                <Button type="submit" disabled={saving}>
+                  {saving && <Spinner size="sm" />} Salvar
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
         </DialogContent>
       </Dialog>
 
@@ -392,20 +522,82 @@ export default function LeadsPage() {
           <DialogHeader>
             <DialogTitle>Converter Lead em Cliente</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3">
-            <div className="space-y-1"><Label>Nome *</Label><Input value={cNome} onChange={e => setCNome(e.target.value)} required /></div>
-            <div className="space-y-1"><Label>E-mail</Label><Input type="email" value={cEmail} onChange={e => setCEmail(e.target.value)} /></div>
-            <div className="space-y-1"><Label>Telefone</Label><Input value={cTelefone} onChange={e => setCTelefone(e.target.value)} /></div>
-            <div className="space-y-1"><Label>Plano</Label><Input value={cPlano} onChange={e => setCPlano(e.target.value)} /></div>
-            <div className="space-y-1"><Label>Valor Mensal (R$)</Label><Input type="number" min={0} step={0.01} value={cValor} onChange={e => setCValor(e.target.value)} /></div>
-            <div className="space-y-1"><Label>Dia de Pagamento (1-31)</Label><Input type="number" min={1} max={31} value={cDiaPag} onChange={e => setCDiaPag(e.target.value)} /></div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConvertModalOpen(false)}>Cancelar</Button>
-            <Button onClick={handleConvertSave} disabled={convertSaving}>
-              {convertSaving && <Spinner size="sm" />} Criar Cliente
-            </Button>
-          </DialogFooter>
+          <Form {...convertForm}>
+            <form onSubmit={convertForm.handleSubmit(onConvertSubmit)} className="space-y-3">
+              <FormField
+                control={convertForm.control}
+                name="nome"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nome *</FormLabel>
+                    <FormControl><Input {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={convertForm.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>E-mail</FormLabel>
+                    <FormControl><Input type="email" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={convertForm.control}
+                name="telefone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Telefone</FormLabel>
+                    <FormControl><Input {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={convertForm.control}
+                name="plano"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Plano</FormLabel>
+                    <FormControl><Input {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={convertForm.control}
+                name="valor"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Valor Mensal (R$)</FormLabel>
+                    <FormControl><Input type="number" min={0} step={0.01} {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={convertForm.control}
+                name="diaPag"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Dia de Pagamento (1-31)</FormLabel>
+                    <FormControl><Input type="number" min={1} max={31} {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setConvertModalOpen(false)}>Cancelar</Button>
+                <Button type="submit" disabled={convertSaving}>
+                  {convertSaving && <Spinner size="sm" />} Criar Cliente
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
         </DialogContent>
       </Dialog>
 

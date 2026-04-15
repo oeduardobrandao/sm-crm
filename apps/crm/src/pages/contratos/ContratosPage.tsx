@@ -1,4 +1,7 @@
 import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -6,7 +9,6 @@ import { Plus, Edit2, Trash2, Upload, Info, HelpCircle } from 'lucide-react';
 import { openCSVSelector } from '../../lib/csv';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -14,10 +16,39 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { ChevronDown } from 'lucide-react';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { DatePicker } from '@/components/ui/date-picker';
+import {
   getContratos, addContrato, updateContrato, removeContrato,
   getClientes, formatBRL, formatDate,
   type Contrato,
 } from '../../store';
+
+const contratoSchema = z.object({
+  titulo: z.string().min(1, 'Título obrigatório'),
+  clienteId: z.string(),
+  dataInicio: z.string().min(1, 'Data início obrigatória'),
+  dataFim: z.string().min(1, 'Data fim obrigatória'),
+  valor: z.string().min(1, 'Valor obrigatório').refine((v) => Number(v) > 0, 'Valor deve ser positivo'),
+  status: z.enum(['a_assinar', 'vigente', 'encerrado']),
+});
+type ContratoFormValues = z.infer<typeof contratoSchema>;
+
+function isoToDate(iso: string): Date | undefined {
+  if (!iso) return undefined;
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+function dateToIso(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 type FilterStatus = 'todos' | 'vigente' | 'a_assinar' | 'encerrado';
 
@@ -36,12 +67,12 @@ export default function ContratosPage() {
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const [fTitulo, setFTitulo] = useState('');
-  const [fClienteId, setFClienteId] = useState('');
-  const [fDataInicio, setFDataInicio] = useState('');
-  const [fDataFim, setFDataFim] = useState('');
-  const [fValor, setFValor] = useState('');
-  const [fStatus, setFStatus] = useState('a_assinar');
+  const form = useForm<ContratoFormValues>({
+    resolver: zodResolver(contratoSchema),
+    defaultValues: {
+      titulo: '', clienteId: '', dataInicio: '', dataFim: '', valor: '', status: 'a_assinar',
+    },
+  });
 
   const { data: contratos = [], isLoading } = useQuery({ queryKey: ['contratos'], queryFn: getContratos });
   const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: getClientes });
@@ -50,35 +81,36 @@ export default function ContratosPage() {
 
   const openAdd = () => {
     setEditing(null);
-    setFTitulo(''); setFClienteId(''); setFDataInicio(''); setFDataFim(''); setFValor(''); setFStatus('a_assinar');
+    form.reset({ titulo: '', clienteId: '', dataInicio: '', dataFim: '', valor: '', status: 'a_assinar' });
     setModalOpen(true);
   };
 
   const openEdit = (c: Contrato) => {
     setEditing(c);
-    setFTitulo(c.titulo);
-    setFClienteId(c.cliente_id ? String(c.cliente_id) : '');
-    setFDataInicio(c.data_inicio);
-    setFDataFim(c.data_fim);
-    setFValor(String(c.valor_total));
-    setFStatus(c.status);
+    form.reset({
+      titulo: c.titulo,
+      clienteId: c.cliente_id ? String(c.cliente_id) : '',
+      dataInicio: c.data_inicio,
+      dataFim: c.data_fim,
+      valor: String(c.valor_total),
+      status: c.status,
+    });
     setModalOpen(true);
   };
 
-  const handleSave = async () => {
-    if (!fTitulo || !fDataInicio || !fDataFim || !fValor) return;
+  const onSubmit = async (values: ContratoFormValues) => {
     setSaving(true);
     try {
-      const clienteId = fClienteId ? Number(fClienteId) : null;
+      const clienteId = values.clienteId ? Number(values.clienteId) : null;
       const clienteSel = clientes.find(c => c.id === clienteId);
       const payload: Omit<Contrato, 'id' | 'user_id' | 'conta_id'> = {
-        titulo: fTitulo,
+        titulo: values.titulo,
         cliente_id: clienteId,
         cliente_nome: clienteSel?.nome ?? '',
-        data_inicio: fDataInicio,
-        data_fim: fDataFim,
-        valor_total: Number(fValor),
-        status: fStatus as Contrato['status'],
+        data_inicio: values.dataInicio,
+        data_fim: values.dataFim,
+        valor_total: Number(values.valor),
+        status: values.status,
       };
       if (editing?.id) {
         await updateContrato(editing.id, payload);
@@ -154,12 +186,24 @@ export default function ContratosPage() {
         </div>
       </div>
 
-      <div className="filter-bar" style={{ marginBottom: '1rem' }}>
-        {(['todos', 'vigente', 'a_assinar', 'encerrado'] as FilterStatus[]).map(f => (
-          <button key={f} className={`filter-btn${filter === f ? ' active' : ''}`} onClick={() => setFilter(f)}>
-            {f === 'todos' ? 'Todos' : STATUS_LABEL[f]}
-          </button>
-        ))}
+      <div className="mb-4">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" className="h-9 rounded-full px-4 text-xs gap-1.5 font-normal shadow-sm mb-0">
+              {filter === 'todos' ? 'Status' : STATUS_LABEL[filter]}
+              <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-40">
+            <DropdownMenuRadioGroup value={filter} onValueChange={(v) => setFilter(v as FilterStatus)}>
+              {(['todos', 'vigente', 'a_assinar', 'encerrado'] as FilterStatus[]).map(f => (
+                <DropdownMenuRadioItem key={f} value={f}>
+                  {f === 'todos' ? 'Todos' : STATUS_LABEL[f]}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {isLoading ? (
@@ -221,53 +265,80 @@ export default function ContratosPage() {
           <DialogHeader>
             <DialogTitle>{editing ? 'Editar Contrato' : 'Novo Contrato'}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-1">
-              <Label>Título</Label>
-              <Input value={fTitulo} onChange={e => setFTitulo(e.target.value)} required />
-            </div>
-            <div className="space-y-1">
-              <Label>Cliente</Label>
-              <Select value={fClienteId || '__none__'} onValueChange={v => setFClienteId(v === '__none__' ? '' : v)}>
-                <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">Nenhum</SelectItem>
-                  {clientes.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.nome}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label>Data Início</Label>
-                <Input type="date" value={fDataInicio} onChange={e => setFDataInicio(e.target.value)} required />
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <FormField control={form.control} name="titulo" render={({ field }) => (
+                <FormItem><FormLabel>Título</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+              )} />
+              <FormField control={form.control} name="clienteId" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Cliente</FormLabel>
+                  <Select
+                    value={field.value || '__none__'}
+                    onValueChange={(v) => field.onChange(v === '__none__' ? '' : v)}
+                  >
+                    <FormControl><SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger></FormControl>
+                    <SelectContent>
+                      <SelectItem value="__none__">Nenhum</SelectItem>
+                      {clientes.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.nome}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <div className="grid grid-cols-2 gap-3">
+                <FormField control={form.control} name="dataInicio" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Data Início</FormLabel>
+                    <FormControl>
+                      <DatePicker
+                        value={isoToDate(field.value)}
+                        onChange={(d) => field.onChange(d ? dateToIso(d) : '')}
+                        className="w-full"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="dataFim" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Data Fim</FormLabel>
+                    <FormControl>
+                      <DatePicker
+                        value={isoToDate(field.value)}
+                        onChange={(d) => field.onChange(d ? dateToIso(d) : '')}
+                        className="w-full"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
               </div>
-              <div className="space-y-1">
-                <Label>Data Fim</Label>
-                <Input type="date" value={fDataFim} onChange={e => setFDataFim(e.target.value)} required />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <Label>Valor Total (R$)</Label>
-              <Input type="number" min={0} step={0.01} value={fValor} onChange={e => setFValor(e.target.value)} required />
-            </div>
-            <div className="space-y-1">
-              <Label>Status</Label>
-              <Select value={fStatus} onValueChange={setFStatus}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="a_assinar">A Assinar</SelectItem>
-                  <SelectItem value="vigente">Vigente</SelectItem>
-                  <SelectItem value="encerrado">Encerrado</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={saving}>
-              {saving && <Spinner size="sm" />} Salvar
-            </Button>
-          </DialogFooter>
+              <FormField control={form.control} name="valor" render={({ field }) => (
+                <FormItem><FormLabel>Valor Total (R$)</FormLabel><FormControl><Input type="number" min={0} step={0.01} {...field} /></FormControl><FormMessage /></FormItem>
+              )} />
+              <FormField control={form.control} name="status" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Status</FormLabel>
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                    <SelectContent>
+                      <SelectItem value="a_assinar">A Assinar</SelectItem>
+                      <SelectItem value="vigente">Vigente</SelectItem>
+                      <SelectItem value="encerrado">Encerrado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
+                <Button type="submit" disabled={saving}>
+                  {saving && <Spinner size="sm" />} Salvar
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
         </DialogContent>
       </Dialog>
 

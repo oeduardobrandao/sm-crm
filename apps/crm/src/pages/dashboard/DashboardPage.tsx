@@ -33,7 +33,7 @@ export default function DashboardPage() {
       { queryKey: ['contratos'], queryFn: getContratos, retry: 1 },
       { queryKey: ['membros'], queryFn: getMembros, retry: 1 },
       { queryKey: ['clientes'], queryFn: getClientes, retry: 1 },
-      { queryKey: ['portfolioSummary'], queryFn: getPortfolioSummary, retry: 1 },
+      { queryKey: ['portfolioSummary'], queryFn: () => getPortfolioSummary(), retry: 1 },
       { queryKey: ['workflows'], queryFn: getWorkflows, retry: 1 },
     ],
   });

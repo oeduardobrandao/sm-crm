@@ -1,13 +1,38 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import type { DateRange } from 'react-day-picker';
 import { getIdeias, getClientes, type Ideia } from '@/store';
 import { IdeiaStatusBadge } from '@/components/ideias/IdeiaStatusBadge';
 import { IdeiaDrawer } from '@/components/ideias/IdeiaDrawer';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { ChevronDown } from 'lucide-react';
+import { DateRangePicker } from '@/components/ui/date-range-picker';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Spinner } from '@/components/ui/spinner';
 
 const ALL_STATUSES = ['nova', 'em_analise', 'aprovada', 'descartada'] as const;
 const STATUS_LABELS: Record<string, string> = {
   nova: 'Nova', em_analise: 'Em análise', aprovada: 'Aprovada', descartada: 'Descartada',
 };
+
+function startOfDayIso(d: Date): string {
+  const copy = new Date(d);
+  copy.setHours(0, 0, 0, 0);
+  return copy.toISOString();
+}
+
+function endOfDayIso(d: Date): string {
+  const copy = new Date(d);
+  copy.setHours(23, 59, 59, 999);
+  return copy.toISOString();
+}
 
 export default function IdeiasPage() {
   const queryKey = ['hub-ideias-all'];
@@ -22,23 +47,14 @@ export default function IdeiasPage() {
 
   const [selectedIdeia, setSelectedIdeia] = useState<Ideia | null>(null);
   const [clienteFilter, setClienteFilter] = useState<string>('all');
-  const [statusFilters, setStatusFilters] = useState<Set<string>>(new Set());
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-
-  function toggleStatus(s: string) {
-    setStatusFilters(prev => {
-      const next = new Set(prev);
-      if (next.has(s)) next.delete(s); else next.add(s);
-      return next;
-    });
-  }
+  const [statusFilters, setStatusFilters] = useState<string[]>([]);
+  const [dateRange, setDateRange] = useState<DateRange | undefined>();
 
   const filtered = ideias.filter(i => {
     if (clienteFilter !== 'all' && String(i.cliente_id) !== clienteFilter) return false;
-    if (statusFilters.size > 0 && !statusFilters.has(i.status)) return false;
-    if (dateFrom && i.created_at < dateFrom) return false;
-    if (dateTo && i.created_at > dateTo + 'T23:59:59') return false;
+    if (statusFilters.length > 0 && !statusFilters.includes(i.status)) return false;
+    if (dateRange?.from && i.created_at < startOfDayIso(dateRange.from)) return false;
+    if (dateRange?.to && i.created_at > endOfDayIso(dateRange.to)) return false;
     return true;
   });
 
@@ -51,83 +67,85 @@ export default function IdeiasPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3 mb-6">
-        <select
-          value={clienteFilter}
-          onChange={e => setClienteFilter(e.target.value)}
-          className="text-sm border border-stone-200 rounded-lg px-3 py-1.5 outline-none"
-        >
-          <option value="all">Todos os clientes</option>
-          {clientes.map((c: any) => (
-            <option key={c.id} value={String(c.id)}>{c.nome}</option>
-          ))}
-        </select>
+      <div className="flex flex-wrap items-center gap-3 mb-6">
+        <Select value={clienteFilter} onValueChange={setClienteFilter}>
+          <SelectTrigger className="!rounded-full !text-xs h-9 px-4 w-auto min-w-[160px] mb-0">
+            <SelectValue placeholder="Todos os clientes" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os clientes</SelectItem>
+            {[...clientes].sort((a: any, b: any) => a.nome.localeCompare(b.nome, 'pt-BR')).map((c: any) => (
+              <SelectItem key={c.id} value={String(c.id)}>{c.nome}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
-        <div className="flex gap-1">
-          {ALL_STATUSES.map(s => (
-            <button
-              key={s}
-              onClick={() => toggleStatus(s)}
-              className={`text-xs px-2.5 py-1.5 rounded-full border transition-colors ${
-                statusFilters.has(s) ? 'bg-stone-900 text-white border-stone-900' : 'border-stone-200 text-stone-600 hover:border-stone-400'
-              }`}
-            >
-              {STATUS_LABELS[s]}
-            </button>
-          ))}
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" className="h-9 rounded-full px-4 text-xs gap-1.5 font-normal shadow-sm mb-0">
+              {statusFilters.length === 0
+                ? 'Status'
+                : statusFilters.length === 1
+                  ? STATUS_LABELS[statusFilters[0]]
+                  : `Status (${statusFilters.length})`}
+              <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-44">
+            {ALL_STATUSES.map(s => (
+              <DropdownMenuCheckboxItem
+                key={s}
+                checked={statusFilters.includes(s)}
+                onCheckedChange={(checked) => {
+                  setStatusFilters(prev =>
+                    checked ? [...prev, s] : prev.filter(x => x !== s)
+                  );
+                }}
+                onSelect={(e) => e.preventDefault()}
+              >
+                {STATUS_LABELS[s]}
+              </DropdownMenuCheckboxItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
 
-        <input
-          type="date"
-          value={dateFrom}
-          onChange={e => setDateFrom(e.target.value)}
-          className="text-sm border border-stone-200 rounded-lg px-2 py-1.5 outline-none"
-        />
-        <span className="text-sm text-stone-400 self-center">até</span>
-        <input
-          type="date"
-          value={dateTo}
-          onChange={e => setDateTo(e.target.value)}
-          className="text-sm border border-stone-200 rounded-lg px-2 py-1.5 outline-none"
-        />
+        <DateRangePicker value={dateRange} onChange={setDateRange} className="rounded-full text-xs px-4 mb-0" />
       </div>
 
       {isLoading ? (
-        <div className="flex justify-center py-16">
-          <div className="animate-spin h-6 w-6 rounded-full border-2 border-stone-300 border-t-stone-900" />
-        </div>
+        <div className="flex justify-center p-8"><Spinner size="lg" /></div>
       ) : filtered.length === 0 ? (
-        <p className="text-sm text-stone-500 py-8 text-center">Nenhuma ideia encontrada.</p>
+        <p className="text-sm py-8 text-center text-muted-foreground">Nenhuma ideia encontrada.</p>
       ) : (
-        <div className="border border-stone-200 rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-stone-50 border-b border-stone-200">
-              <tr>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-stone-500 uppercase tracking-wide">Cliente</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-stone-500 uppercase tracking-wide">Título</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-stone-500 uppercase tracking-wide">Status</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-stone-500 uppercase tracking-wide">Reações</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-stone-500 uppercase tracking-wide">Resposta</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-stone-500 uppercase tracking-wide">Data</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((ideia, i) => (
-                <tr
+        <div className="border rounded-xl bg-card overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Cliente</TableHead>
+                <TableHead>Título</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Reações</TableHead>
+                <TableHead>Resposta</TableHead>
+                <TableHead>Data</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.map((ideia) => (
+                <TableRow
                   key={ideia.id}
                   onClick={() => setSelectedIdeia(ideia)}
-                  className={`cursor-pointer hover:bg-stone-50 transition-colors ${i !== 0 ? 'border-t border-stone-100' : ''}`}
+                  className="cursor-pointer"
                 >
-                  <td className="px-4 py-3 text-stone-600">{ideia.clientes.nome}</td>
-                  <td className="px-4 py-3 font-medium text-stone-900 max-w-[200px] truncate">{ideia.titulo}</td>
-                  <td className="px-4 py-3"><IdeiaStatusBadge status={ideia.status} /></td>
-                  <td className="px-4 py-3 text-stone-500">{ideia.ideia_reactions.length || '—'}</td>
-                  <td className="px-4 py-3 text-stone-500">{ideia.comentario_agencia ? '✓' : '—'}</td>
-                  <td className="px-4 py-3 text-stone-400">{new Date(ideia.created_at).toLocaleDateString('pt-BR')}</td>
-                </tr>
+                  <TableCell className="text-muted-foreground">{ideia.clientes.nome}</TableCell>
+                  <TableCell className="font-medium max-w-[200px] truncate">{ideia.titulo}</TableCell>
+                  <TableCell><IdeiaStatusBadge status={ideia.status} /></TableCell>
+                  <TableCell className="text-muted-foreground">{ideia.ideia_reactions.length || '—'}</TableCell>
+                  <TableCell className="text-muted-foreground">{ideia.comentario_agencia ? '✓' : '—'}</TableCell>
+                  <TableCell className="text-muted-foreground">{new Date(ideia.created_at).toLocaleDateString('pt-BR')}</TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
 

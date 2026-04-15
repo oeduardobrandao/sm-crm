@@ -1,4 +1,7 @@
 import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -6,12 +9,20 @@ import { Plus, Edit2, Trash2, Upload, Info, HelpCircle, Search, ArrowUpDown } fr
 import { openCSVSelector } from '../../lib/csv';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { ChevronDown } from 'lucide-react';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import {
   getClientes, addCliente, updateCliente, removeCliente,
   getInitials,
@@ -19,6 +30,20 @@ import {
 } from '../../store';
 import { sanitizeUrl } from '../../utils/security';
 import { supabase } from '../../lib/supabase';
+
+const clienteSchema = z.object({
+  nome: z.string().min(1, 'Nome obrigatório'),
+  email: z.string().email('E-mail inválido').or(z.literal('')),
+  telefone: z.string(),
+  plano: z.string(),
+  valor: z.string(),
+  notion: z.string(),
+  diaPag: z
+    .string()
+    .refine((v) => v === '' || (Number(v) >= 1 && Number(v) <= 31), 'Dia deve ser entre 1 e 31'),
+  status: z.enum(['ativo', 'pausado', 'encerrado']),
+});
+type ClienteFormValues = z.infer<typeof clienteSchema>;
 
 type FilterStatus = 'todos' | 'ativo' | 'pausado' | 'encerrado';
 const STATUS_LABEL: Record<string, string> = { ativo: 'Ativo', pausado: 'Pausado', encerrado: 'Encerrado' };
@@ -44,14 +69,12 @@ export default function ClientesPage() {
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const [fNome, setFNome] = useState('');
-  const [fEmail, setFEmail] = useState('');
-  const [fTelefone, setFTelefone] = useState('');
-  const [fPlano, setFPlano] = useState('');
-  const [fValor, setFValor] = useState('');
-  const [fNotion, setFNotion] = useState('');
-  const [fDiaPag, setFDiaPag] = useState('');
-  const [fStatus, setFStatus] = useState<Cliente['status']>('ativo');
+  const form = useForm<ClienteFormValues>({
+    resolver: zodResolver(clienteSchema),
+    defaultValues: {
+      nome: '', email: '', telefone: '', plano: '', valor: '', notion: '', diaPag: '', status: 'ativo',
+    },
+  });
 
   const { data: clientes = [], isLoading } = useQuery({ queryKey: ['clientes'], queryFn: getClientes });
   const { data: avatarMap = {} } = useQuery({
@@ -73,41 +96,45 @@ export default function ClientesPage() {
 
   const openAdd = () => {
     setEditing(null);
-    setFNome(''); setFEmail(''); setFTelefone(''); setFPlano(''); setFValor(''); setFNotion(''); setFDiaPag(''); setFStatus('ativo');
+    form.reset({
+      nome: '', email: '', telefone: '', plano: '', valor: '', notion: '', diaPag: '', status: 'ativo',
+    });
     setModalOpen(true);
   };
 
   const openEdit = (c: Cliente) => {
     setEditing(c);
-    setFNome(c.nome); setFEmail(c.email || ''); setFTelefone(c.telefone || ''); setFPlano(c.plano || '');
-    setFValor(c.valor_mensal ? String(c.valor_mensal) : ''); setFNotion(c.notion_page_url || '');
-    setFDiaPag(c.data_pagamento ? String(c.data_pagamento) : ''); setFStatus(c.status);
+    form.reset({
+      nome: c.nome,
+      email: c.email || '',
+      telefone: c.telefone || '',
+      plano: c.plano || '',
+      valor: c.valor_mensal ? String(c.valor_mensal) : '',
+      notion: c.notion_page_url || '',
+      diaPag: c.data_pagamento ? String(c.data_pagamento) : '',
+      status: c.status,
+    });
     setModalOpen(true);
   };
 
-  const handleSave = async () => {
-    if (!fNome) return;
-    const diaPag = fDiaPag ? parseInt(fDiaPag, 10) : undefined;
-    if (diaPag !== undefined && (isNaN(diaPag) || diaPag < 1 || diaPag > 31)) {
-      toast.error('Dia de pagamento deve ser entre 1 e 31.');
-      return;
-    }
+  const onSubmit = async (values: ClienteFormValues) => {
+    const diaPag = values.diaPag ? parseInt(values.diaPag, 10) : undefined;
     setSaving(true);
     try {
       if (editing?.id) {
         await updateCliente(editing.id, {
-          nome: fNome, email: fEmail, telefone: fTelefone, plano: fPlano,
-          valor_mensal: Number(fValor), notion_page_url: fNotion,
-          data_pagamento: diaPag, status: fStatus,
+          nome: values.nome, email: values.email, telefone: values.telefone, plano: values.plano,
+          valor_mensal: values.valor ? Number(values.valor) : 0, notion_page_url: values.notion,
+          data_pagamento: diaPag, status: values.status,
         });
         toast.success('Cliente atualizado');
       } else {
         const randomColor = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
         await addCliente({
-          nome: fNome, email: fEmail, telefone: fTelefone, plano: fPlano,
-          valor_mensal: Number(fValor), notion_page_url: fNotion,
+          nome: values.nome, email: values.email, telefone: values.telefone, plano: values.plano,
+          valor_mensal: values.valor ? Number(values.valor) : 0, notion_page_url: values.notion,
           data_pagamento: diaPag,
-          sigla: getInitials(fNome), cor: randomColor, status: 'ativo',
+          sigla: getInitials(values.nome), cor: randomColor, status: 'ativo',
         });
         toast.success('Cliente adicionado');
       }
@@ -180,22 +207,31 @@ export default function ClientesPage() {
         </div>
       </div>
 
-      <div className="filter-bar" style={{ marginBottom: '1rem' }}>
-        {(['todos', 'ativo', 'pausado', 'encerrado'] as FilterStatus[]).map(f => (
-          <button key={f} className={`filter-btn${filter === f ? ' active' : ''}`} onClick={() => setFilter(f)}>
-            {f === 'todos' ? 'Todos' : STATUS_LABEL[f]}
-          </button>
-        ))}
-      </div>
-
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" className="h-9 rounded-full px-4 text-xs gap-1.5 font-normal shadow-sm mb-0">
+              {filter === 'todos' ? 'Status' : STATUS_LABEL[filter]}
+              <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-40">
+            <DropdownMenuRadioGroup value={filter} onValueChange={(v) => setFilter(v as FilterStatus)}>
+              {(['todos', 'ativo', 'pausado', 'encerrado'] as FilterStatus[]).map(f => (
+                <DropdownMenuRadioItem key={f} value={f}>
+                  {f === 'todos' ? 'Todos' : STATUS_LABEL[f]}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: '320px' }}>
           <Search className="h-4 w-4" style={{ position: 'absolute', left: '0.625rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
           <Input placeholder="Buscar por nome ou e-mail..." value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: '2rem' }} />
         </div>
         <Select value={sortBy} onValueChange={v => setSortBy(v as typeof sortBy)}>
-          <SelectTrigger style={{ width: '180px' }}>
-            <ArrowUpDown className="h-3.5 w-3.5" style={{ marginRight: '0.375rem', flexShrink: 0 }} />
+          <SelectTrigger className="!rounded-full !text-xs h-9 px-4 mb-0 w-auto min-w-[160px]">
+            <ArrowUpDown className="h-3.5 w-3.5 mr-1.5 shrink-0" />
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -273,32 +309,51 @@ export default function ClientesPage() {
           <DialogHeader>
             <DialogTitle>{editing ? 'Editar Cliente' : 'Novo Cliente'}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3">
-            <div className="space-y-1"><Label>Nome *</Label><Input value={fNome} onChange={e => setFNome(e.target.value)} required /></div>
-            <div className="space-y-1"><Label>E-mail</Label><Input type="email" value={fEmail} onChange={e => setFEmail(e.target.value)} /></div>
-            <div className="space-y-1"><Label>Telefone</Label><Input value={fTelefone} onChange={e => setFTelefone(e.target.value)} /></div>
-            <div className="space-y-1"><Label>Plano</Label><Input value={fPlano} onChange={e => setFPlano(e.target.value)} /></div>
-            <div className="space-y-1"><Label>Valor Mensal (R$)</Label><Input type="number" min={0} step={0.01} value={fValor} onChange={e => setFValor(e.target.value)} /></div>
-            <div className="space-y-1"><Label>URL do Notion</Label><Input placeholder="https://notion.so/..." value={fNotion} onChange={e => setFNotion(e.target.value)} /></div>
-            <div className="space-y-1"><Label>Dia de Pagamento (1-31)</Label><Input type="number" min={1} max={31} value={fDiaPag} onChange={e => setFDiaPag(e.target.value)} /></div>
-            {editing && (
-              <div className="space-y-1">
-                <Label>Status</Label>
-                <Select value={fStatus} onValueChange={v => setFStatus(v as Cliente['status'])}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ativo">Ativo</SelectItem>
-                    <SelectItem value="pausado">Pausado</SelectItem>
-                    <SelectItem value="encerrado">Encerrado</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={saving}>{saving && <Spinner size="sm" />} Salvar</Button>
-          </DialogFooter>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3">
+              <FormField control={form.control} name="nome" render={({ field }) => (
+                <FormItem><FormLabel>Nome *</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+              )} />
+              <FormField control={form.control} name="email" render={({ field }) => (
+                <FormItem><FormLabel>E-mail</FormLabel><FormControl><Input type="email" {...field} /></FormControl><FormMessage /></FormItem>
+              )} />
+              <FormField control={form.control} name="telefone" render={({ field }) => (
+                <FormItem><FormLabel>Telefone</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+              )} />
+              <FormField control={form.control} name="plano" render={({ field }) => (
+                <FormItem><FormLabel>Plano</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+              )} />
+              <FormField control={form.control} name="valor" render={({ field }) => (
+                <FormItem><FormLabel>Valor Mensal (R$)</FormLabel><FormControl><Input type="number" min={0} step={0.01} {...field} /></FormControl><FormMessage /></FormItem>
+              )} />
+              <FormField control={form.control} name="notion" render={({ field }) => (
+                <FormItem><FormLabel>URL do Notion</FormLabel><FormControl><Input placeholder="https://notion.so/..." {...field} /></FormControl><FormMessage /></FormItem>
+              )} />
+              <FormField control={form.control} name="diaPag" render={({ field }) => (
+                <FormItem><FormLabel>Dia de Pagamento (1-31)</FormLabel><FormControl><Input type="number" min={1} max={31} {...field} /></FormControl><FormMessage /></FormItem>
+              )} />
+              {editing && (
+                <FormField control={form.control} name="status" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Status</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                      <SelectContent>
+                        <SelectItem value="ativo">Ativo</SelectItem>
+                        <SelectItem value="pausado">Pausado</SelectItem>
+                        <SelectItem value="encerrado">Encerrado</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              )}
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
+                <Button type="submit" disabled={saving}>{saving && <Spinner size="sm" />} Salvar</Button>
+              </DialogFooter>
+            </form>
+          </Form>
         </DialogContent>
       </Dialog>
 
