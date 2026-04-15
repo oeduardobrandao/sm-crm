@@ -45,6 +45,15 @@ Deno.serve(async (req) => {
     return json({ error: "invalid thumbnail_r2_key" }, 400);
   }
 
+  // Allowlist-validate the declared MIME type before touching any DB rows
+  const ALLOWED_MIME_TYPES = [
+    'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp',
+    'video/mp4', 'video/quicktime', 'video/webm',
+  ];
+  if (!ALLOWED_MIME_TYPES.includes(body.mime_type)) {
+    return json({ error: "unsupported file type" }, 415);
+  }
+
   // Verify R2 object exists and length matches
   const head = await headObject(body.r2_key);
   if (!head) return json({ error: "object not found" }, 400);
