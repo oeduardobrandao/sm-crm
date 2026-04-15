@@ -53,13 +53,13 @@ export function PostagensPage() {
   );
 
   if (isError) return (
-    <div className="max-w-3xl mx-auto py-20 text-center text-sm text-stone-500">
+    <div className="max-w-5xl mx-auto py-20 text-center text-sm text-stone-500">
       Erro ao carregar postagens.
     </div>
   );
 
   return (
-    <div className="max-w-3xl mx-auto hub-fade-up">
+    <div className="max-w-5xl mx-auto hub-fade-up">
       <header className="mb-8">
         <p className="text-[11px] uppercase tracking-[0.14em] text-stone-500 font-medium mb-2">
           <span className="accent-bar" />Calendário editorial
@@ -78,7 +78,7 @@ export function PostagensPage() {
                 <h3 className="font-display text-[17px] font-semibold tracking-tight text-stone-900">{group.titulo}</h3>
                 <span className="text-[11px] text-stone-400">{group.posts.length} {group.posts.length === 1 ? 'post' : 'posts'}</span>
               </div>
-              <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {group.posts.map(post => (
                   <PostCard
                     key={post.id}

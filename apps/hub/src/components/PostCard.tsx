@@ -166,7 +166,7 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
 
   return (
     <div ref={cardRef} className="hub-card overflow-hidden transition-shadow hover:shadow-md">
-      {displayCover && (
+      {displayCover ? (
         <button
           type="button"
           onClick={(e) => {
@@ -189,6 +189,11 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
             </>
           )}
         </button>
+      ) : (
+        <div className="w-full aspect-[4/3] bg-stone-100 flex flex-col items-center justify-center gap-2 text-stone-400">
+          <svg className="h-8 w-8 opacity-40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+          <span className="text-[11px] font-medium tracking-wide uppercase">Nenhuma imagem adicionada</span>
+        </div>
       )}
       <button
         className="w-full flex items-start justify-between gap-3 px-5 py-4 text-left hover:bg-stone-50/80 transition-colors"
@@ -224,7 +229,7 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
                   key={m.id}
                   type="button"
                   onClick={() => setLightboxIdx(i)}
-                  className="shrink-0 w-20 h-20 rounded-xl overflow-hidden bg-stone-100 ring-1 ring-stone-200/80 hover:ring-stone-400 transition-all"
+                  className="shrink-0 w-20 h-20 rounded-lg overflow-hidden bg-stone-100 ring-1 ring-stone-200/80 hover:ring-stone-400 transition-all"
                 >
                   {m.kind === 'image' ? (
                     <img src={m.url} alt="" className="w-full h-full object-cover" />
@@ -237,7 +242,7 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
           )}
 
           {postProperties.length > 0 && (
-            <div className="rounded-2xl border border-stone-200/80 bg-white px-4 pt-3 pb-1">
+            <div className="rounded-xl border border-stone-200/80 bg-white px-4 pt-3 pb-1">
               <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-stone-400 pb-2">Propriedades</p>
               {postProperties.map((p) => (
                 <PropertyRow key={`${p.post_id}-${p.template_property_definitions.name}`} prop={p} workflowSelectOptions={workflowSelectOptions} workflowId={post.workflow_id} />
@@ -259,7 +264,7 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
                   : 'Você';
                 const date = new Date(a.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
                 return (
-                  <div key={a.id} className={`rounded-2xl px-4 py-3 text-[13.5px] ${
+                  <div key={a.id} className={`rounded-xl px-4 py-3 text-[13.5px] ${
                     isTeam
                       ? 'bg-[#FFBF30]/10 ring-1 ring-[#FFBF30]/25 ml-6'
                       : 'bg-white ring-1 ring-stone-200/80 mr-6'
@@ -301,7 +306,7 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
                 value={comentario}
                 onChange={e => setComentario(e.target.value)}
                 placeholder="Comentário (opcional)…"
-                className="w-full rounded-2xl border border-stone-200/80 px-4 py-3 text-[13.5px] resize-none min-h-[80px] bg-white text-stone-900 placeholder:text-stone-400 focus:outline-none focus:border-stone-300 focus:ring-4 focus:ring-[#FFBF30]/15 transition-all"
+                className="w-full rounded-xl border border-stone-200/80 px-4 py-3 text-[13.5px] resize-none min-h-[80px] bg-white text-stone-900 placeholder:text-stone-400 focus:outline-none focus:border-stone-300 focus:ring-4 focus:ring-[#FFBF30]/15 transition-all"
               />
               <div className="flex gap-2.5">
                 <button
@@ -323,7 +328,7 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
           )}
 
           {result && (
-            <div className={`rounded-2xl px-4 py-3 text-[13.5px] font-medium ${result.type === 'success' ? 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200/60' : 'bg-rose-50 text-rose-800 ring-1 ring-rose-200/60'}`}>
+            <div className={`rounded-xl px-4 py-3 text-[13.5px] font-medium ${result.type === 'success' ? 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200/60' : 'bg-rose-50 text-rose-800 ring-1 ring-rose-200/60'}`}>
               {result.message}
             </div>
           )}

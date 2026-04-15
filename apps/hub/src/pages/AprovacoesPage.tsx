@@ -25,7 +25,7 @@ export function AprovacoesPage() {
   );
 
   return (
-    <div className="max-w-3xl mx-auto hub-fade-up">
+    <div className="max-w-5xl mx-auto hub-fade-up">
       <header className="mb-8">
         <p className="text-[11px] uppercase tracking-[0.14em] text-stone-500 font-medium mb-2">
           <span className="accent-bar" />Sua revisão
@@ -37,7 +37,7 @@ export function AprovacoesPage() {
             : `${pending.length} post${pending.length > 1 ? 's' : ''} aguardando sua aprovação.`}
         </p>
       </header>
-      <div className="space-y-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {pending.map(post => (
           <PostCard
             key={post.id}

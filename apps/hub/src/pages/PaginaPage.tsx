@@ -12,7 +12,7 @@ function renderBlock(block: HubContentBlock, i: number) {
       if (block.level === 2) return <h2 key={i} className="font-display text-[1.5rem] font-semibold tracking-tight text-stone-900 mt-8 mb-2.5">{block.content}</h2>;
       return <h3 key={i} className="font-display text-[1.25rem] font-semibold tracking-tight text-stone-900 mt-6 mb-2">{block.content}</h3>;
     case 'image':
-      return <img key={i} src={block.content} alt="" className="rounded-2xl max-w-full my-5 border border-stone-200/80" />;
+      return <img key={i} src={block.content} alt="" className="rounded-xl max-w-full my-5 border border-stone-200/80" />;
     case 'link':
       return <a key={i} href={block.href} target="_blank" rel="noreferrer" className="text-stone-900 font-medium underline decoration-[#FFBF30] decoration-2 underline-offset-4 hover:decoration-stone-900 transition-colors">{block.content}</a>;
     default:

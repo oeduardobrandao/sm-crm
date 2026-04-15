@@ -6,8 +6,8 @@ import { fetchBrand } from '../api';
 
 function ColorSwatch({ color, label }: { color: string; label: string }) {
   return (
-    <div className="flex items-center gap-4 p-3 rounded-2xl border border-stone-200/80 bg-white">
-      <div className="w-12 h-12 rounded-xl border border-stone-200/60 shadow-inner" style={{ backgroundColor: color }} />
+    <div className="flex items-center gap-4 p-3 rounded-xl border border-stone-200/80 bg-white">
+      <div className="w-12 h-12 rounded-lg border border-stone-200/60 shadow-inner" style={{ backgroundColor: color }} />
       <div>
         <p className="text-[13.5px] font-semibold text-stone-900">{label}</p>
         <p className="text-[11px] text-stone-500 uppercase tracking-wider mt-0.5">{color}</p>

@@ -61,7 +61,7 @@ export function HomePage() {
                   {pendingCount}
                 </span>
               )}
-              <span className="flex items-center justify-center w-11 h-11 rounded-xl bg-stone-100 text-stone-700 group-hover:bg-[#FFBF30]/20 group-hover:text-stone-900 transition-colors">
+              <span className="flex items-center justify-center w-11 h-11 rounded-lg bg-stone-100 text-stone-700 group-hover:bg-[#FFBF30]/20 group-hover:text-stone-900 transition-colors">
                 <Icon size={20} strokeWidth={1.75} />
               </span>
               <div className="space-y-1">

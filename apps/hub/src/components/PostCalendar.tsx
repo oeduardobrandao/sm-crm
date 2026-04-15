@@ -174,7 +174,7 @@ export function PostCalendar({ posts }: Props) {
               {selectedPosts.map(p => (
                 <button key={p.id}
                   onClick={() => navigate(`postagens?post=${p.id}`)}
-                  className="text-left rounded-2xl border border-stone-200/80 bg-white p-3.5 space-y-2 hover:border-stone-300 hover:shadow-sm transition-all">
+                  className="text-left rounded-xl border border-stone-200/80 bg-white p-3.5 space-y-2 hover:border-stone-300 hover:shadow-sm transition-all">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span
                       className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full"

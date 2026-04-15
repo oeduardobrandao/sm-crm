@@ -34,7 +34,7 @@ export function PaginasPage() {
             <Link key={p.id} to={`${base}/paginas/${p.id}`}
               className="hub-card hub-card-hover flex items-center justify-between px-5 py-4 group">
               <div className="flex items-center gap-3.5">
-                <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-stone-100 text-stone-600 group-hover:bg-[#FFBF30]/20 group-hover:text-stone-900 transition-colors">
+                <span className="flex items-center justify-center w-10 h-10 rounded-lg bg-stone-100 text-stone-600 group-hover:bg-[#FFBF30]/20 group-hover:text-stone-900 transition-colors">
                   <FileText size={17} strokeWidth={1.75} />
                 </span>
                 <span className="font-display font-semibold text-[15px] tracking-tight text-stone-900">{p.title}</span>

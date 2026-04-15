@@ -132,7 +132,7 @@ function QuestionItem({
         </span>
       </div>
       <textarea
-        className="w-full border border-stone-200/80 rounded-xl px-3.5 py-3 text-[14px] resize-none min-h-[112px] bg-stone-50/40 text-stone-800 placeholder:text-stone-400 focus:outline-none focus:bg-white focus:border-stone-300 focus:ring-4 focus:ring-[#FFBF30]/15 transition-all"
+        className="w-full border border-stone-200/80 rounded-lg px-3.5 py-3 text-[14px] resize-none min-h-[112px] bg-stone-50/40 text-stone-800 placeholder:text-stone-400 focus:outline-none focus:bg-white focus:border-stone-300 focus:ring-4 focus:ring-[#FFBF30]/15 transition-all"
         value={answer}
         onChange={e => handleChange(e.target.value)}
         placeholder="Digite sua resposta…"

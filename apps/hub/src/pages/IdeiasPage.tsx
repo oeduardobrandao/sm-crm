@@ -66,7 +66,7 @@ export function IdeiasPage() {
         </div>
         <button
           onClick={openCreate}
-          className="flex items-center gap-2 shrink-0 px-4 py-2.5 rounded-xl bg-stone-900 text-white text-sm font-semibold hover:bg-stone-800 transition-colors"
+          className="flex items-center gap-2 shrink-0 px-4 py-2.5 rounded-lg bg-stone-900 text-white text-sm font-semibold hover:bg-stone-800 transition-colors"
         >
           <Plus size={16} strokeWidth={2.5} />
           Nova ideia
@@ -85,7 +85,7 @@ export function IdeiasPage() {
           <p className="text-sm text-stone-500 mb-6">Clique em "Nova ideia" para compartilhar sua primeira sugestão.</p>
           <button
             onClick={openCreate}
-            className="px-4 py-2 rounded-xl bg-stone-900 text-white text-sm font-semibold hover:bg-stone-800 transition-colors"
+            className="px-4 py-2 rounded-lg bg-stone-900 text-white text-sm font-semibold hover:bg-stone-800 transition-colors"
           >
             Adicionar ideia
           </button>
@@ -146,10 +146,10 @@ function IdeiaCard({ ideia, onEdit, onDelete }: { ideia: HubIdeia; onEdit: () =>
         </div>
         {mutable && (
           <div className="flex gap-1 shrink-0">
-            <button onClick={onEdit} className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500 hover:text-stone-800 transition-colors">
+            <button onClick={onEdit} className="p-1.5 rounded-md hover:bg-stone-100 text-stone-500 hover:text-stone-800 transition-colors">
               <Pencil size={15} />
             </button>
-            <button onClick={onDelete} className="p-1.5 rounded-lg hover:bg-red-50 text-stone-500 hover:text-red-600 transition-colors">
+            <button onClick={onDelete} className="p-1.5 rounded-md hover:bg-red-50 text-stone-500 hover:text-red-600 transition-colors">
               <Trash2 size={15} />
             </button>
           </div>
@@ -245,12 +245,12 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 space-y-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6 space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="font-display text-lg font-semibold text-stone-900">
             {editing ? 'Editar ideia' : 'Nova ideia'}
           </h2>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-stone-100 transition-colors text-stone-500">
+          <button onClick={onClose} className="p-1.5 rounded-md hover:bg-stone-100 transition-colors text-stone-500">
             <X size={18} />
           </button>
         </div>
@@ -259,7 +259,7 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
           <div>
             <label className="text-[12px] font-semibold text-stone-600 uppercase tracking-wide mb-1 block">Título</label>
             <input
-              className={`w-full border rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-stone-900/20 ${errors.titulo ? 'border-red-400' : 'border-stone-200'}`}
+              className={`w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-stone-900/20 ${errors.titulo ? 'border-red-400' : 'border-stone-200'}`}
               value={titulo}
               onChange={e => setTitulo(e.target.value)}
               placeholder="Ex: Reel mostrando os bastidores..."
@@ -270,7 +270,7 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
           <div>
             <label className="text-[12px] font-semibold text-stone-600 uppercase tracking-wide mb-1 block">Descrição</label>
             <textarea
-              className={`w-full border rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-stone-900/20 resize-none min-h-[100px] ${errors.descricao ? 'border-red-400' : 'border-stone-200'}`}
+              className={`w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-stone-900/20 resize-none min-h-[100px] ${errors.descricao ? 'border-red-400' : 'border-stone-200'}`}
               value={descricao}
               onChange={e => setDescricao(e.target.value)}
               placeholder="Descreva sua ideia com detalhes..."
@@ -285,7 +285,7 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
             {links.map((link, i) => (
               <div key={i} className="flex gap-2 mb-2">
                 <input
-                  className="flex-1 border border-stone-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-stone-900/20"
+                  className="flex-1 border border-stone-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-stone-900/20"
                   value={link}
                   onChange={e => setLinks(ls => ls.map((l, j) => j === i ? e.target.value : l))}
                   placeholder="https://..."
@@ -293,7 +293,7 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
                 {links.length > 1 && (
                   <button
                     onClick={() => setLinks(ls => ls.filter((_, j) => j !== i))}
-                    className="p-2 rounded-xl hover:bg-stone-100 text-stone-400 hover:text-stone-700 transition-colors"
+                    className="p-2 rounded-md hover:bg-stone-100 text-stone-400 hover:text-stone-700 transition-colors"
                   >
                     <X size={14} />
                   </button>
@@ -313,14 +313,14 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
           <button
             onClick={handleSave}
             disabled={saving}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-stone-900 text-white text-sm font-semibold hover:bg-stone-800 disabled:opacity-50 transition-colors"
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg bg-stone-900 text-white text-sm font-semibold hover:bg-stone-800 disabled:opacity-50 transition-colors"
           >
             {saving && <Loader2 size={15} className="animate-spin" />}
             {editing ? 'Salvar alterações' : 'Enviar ideia'}
           </button>
           <button
             onClick={onClose}
-            className="px-4 py-2.5 rounded-xl border border-stone-200 text-sm text-stone-600 hover:bg-stone-50 transition-colors"
+            className="px-4 py-2.5 rounded-lg border border-stone-200 text-sm text-stone-600 hover:bg-stone-50 transition-colors"
           >
             Cancelar
           </button>
