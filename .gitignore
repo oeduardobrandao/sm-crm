@@ -36,3 +36,4 @@ stitch_assets/
 download_assets.*
 /main.ts
 .worktrees/
+markdowns/cybersecurity_analysis.md
