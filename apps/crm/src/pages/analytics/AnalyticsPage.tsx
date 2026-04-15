@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Zap, RefreshCw, ArrowUpDown } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
@@ -219,10 +220,12 @@ export default function AnalyticsPage() {
   const [syncResult, setSyncResult] = useState<{ success: number; failed: number } | null>(null);
   const [sortColumn, setSortColumn] = useState<SortCol>('engagement_rate_avg');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [days, setDays] = useState<number>(28);
+  const [clienteFilter, setClienteFilter] = useState<string>('all');
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['portfolio-summary'],
-    queryFn: getPortfolioSummary,
+    queryKey: ['portfolio-summary', days],
+    queryFn: () => getPortfolioSummary(days),
   });
 
   const handleSyncAll = async () => {
@@ -261,20 +264,24 @@ export default function AnalyticsPage() {
 
   const { accounts, summary } = data;
 
-  const silentAccounts = accounts.filter(a => {
+  const filteredAccounts = clienteFilter === 'all'
+    ? accounts
+    : accounts.filter(a => String(a.client_id) === clienteFilter);
+
+  const silentAccounts = filteredAccounts.filter(a => {
     if (!a.last_post_at) return true;
     const daysSince = (Date.now() - new Date(a.last_post_at).getTime()) / 86400000;
     return daysSince > 7;
   });
 
-  const totalFollowers = accounts.reduce((s, a) => s + a.follower_count, 0);
-  const totalReach = accounts.reduce((s, a) => s + a.reach_28d, 0);
-  const avgEngagement = accounts.length > 0
-    ? accounts.reduce((s, a) => s + a.engagement_rate_avg, 0) / accounts.length
+  const totalFollowers = filteredAccounts.reduce((s, a) => s + a.follower_count, 0);
+  const totalReach = filteredAccounts.reduce((s, a) => s + a.reach_28d, 0);
+  const avgEngagement = filteredAccounts.length > 0
+    ? filteredAccounts.reduce((s, a) => s + a.engagement_rate_avg, 0) / filteredAccounts.length
     : 0;
 
   const specialtyMap: Record<string, PortfolioAccount[]> = {};
-  for (const a of accounts) {
+  for (const a of filteredAccounts) {
     const spec = a.client_especialidade || 'Sem especialidade';
     if (!specialtyMap[spec]) specialtyMap[spec] = [];
     specialtyMap[spec].push(a);
@@ -302,7 +309,7 @@ export default function AnalyticsPage() {
     </TableHead>
   );
 
-  const sortedAccounts = [...accounts].sort((a, b) => {
+  const sortedAccounts = [...filteredAccounts].sort((a, b) => {
     let valA: any = a[sortColumn as keyof typeof a];
     let valB: any = b[sortColumn as keyof typeof b];
 
@@ -324,12 +331,16 @@ export default function AnalyticsPage() {
     return sortDirection === 'asc' ? (valA > valB ? 1 : -1) : (valA < valB ? 1 : -1);
   });
 
+  const sortedClientOptions = [...accounts]
+    .sort((a, b) => a.client_name.localeCompare(b.client_name, 'pt-BR'))
+    .filter((a, i, arr) => arr.findIndex(x => x.client_id === a.client_id) === i); // dedupe
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
       <header className="header animate-up">
         <div className="header-title">
           <h1>Analytics Instagram</h1>
-          <p>Visão geral de todas as contas conectadas.</p>
+          <p>Visão geral de todas as contas conectadas · últimos {days} dias.</p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           {syncResult && (
@@ -344,6 +355,33 @@ export default function AnalyticsPage() {
           </Button>
         </div>
       </header>
+
+      <div className="flex flex-wrap items-center gap-3 mb-4 animate-up">
+        <Select value={clienteFilter} onValueChange={setClienteFilter}>
+          <SelectTrigger className="!rounded-full !text-xs h-9 px-4 w-auto min-w-[160px] mb-0">
+            <SelectValue placeholder="Todos os clientes" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os clientes</SelectItem>
+            {sortedClientOptions.map(a => (
+              <SelectItem key={a.client_id} value={String(a.client_id)}>
+                {a.client_name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={String(days)} onValueChange={v => setDays(Number(v))}>
+          <SelectTrigger className="!rounded-full !text-xs h-9 px-4 w-auto min-w-[130px] mb-0">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="7">Últimos 7 dias</SelectItem>
+            <SelectItem value="28">Últimos 28 dias</SelectItem>
+            <SelectItem value="90">Últimos 90 dias</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
 
       {silentAccounts.length > 0 && (
         <div className="analytics-callout animate-up">
@@ -394,10 +432,10 @@ export default function AnalyticsPage() {
         </div>
       </div>
 
-      {accounts.length > 0 && (() => {
-        const bestByReach = [...accounts].sort((a, b) => b.reach_28d - a.reach_28d)[0];
-        const mostPosts = [...accounts].sort((a, b) => b.posts_last_30d - a.posts_last_30d)[0];
-        const mostFollowers = [...accounts].sort((a, b) => b.follower_count - a.follower_count)[0];
+      {filteredAccounts.length > 0 && (() => {
+        const bestByReach = [...filteredAccounts].sort((a, b) => b.reach_28d - a.reach_28d)[0];
+        const mostPosts = [...filteredAccounts].sort((a, b) => b.posts_last_30d - a.posts_last_30d)[0];
+        const mostFollowers = [...filteredAccounts].sort((a, b) => b.follower_count - a.follower_count)[0];
         return (
           <div className="kpi-grid animate-up" style={{ marginTop: 0 }}>
             {summary.bestByEngagement && (
@@ -443,7 +481,7 @@ export default function AnalyticsPage() {
         <div className="dashboard-hub-card-header" style={{ marginBottom: '1rem' }}>
           <h3>Todas as Contas</h3>
         </div>
-        {accounts.length === 0
+        {filteredAccounts.length === 0
           ? <p style={{ color: 'var(--text-muted)' }}>Nenhuma conta Instagram conectada. Conecte contas na página de cada cliente.</p>
           : (
             <div className="overflow-x-auto">
@@ -524,14 +562,14 @@ export default function AnalyticsPage() {
           )}
       </div>
 
-      {accounts.length >= 2 && (
+      {filteredAccounts.length >= 2 && (
         <div className="widgets-grid animate-up">
           <div className="card">
             <div className="dashboard-hub-card-header">
               <h3>Benchmarking de Engajamento</h3>
             </div>
             <div style={{ marginTop: '1rem' }}>
-              <BenchmarkChart accounts={accounts} />
+              <BenchmarkChart accounts={filteredAccounts} />
             </div>
           </div>
 
@@ -559,7 +597,7 @@ export default function AnalyticsPage() {
         </div>
       )}
 
-      <AIPortfolioSection accounts={accounts} />
+      <AIPortfolioSection accounts={filteredAccounts} />
     </div>
   );
 }
