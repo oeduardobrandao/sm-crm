@@ -454,7 +454,8 @@ Deno.serve(async (req) => {
       const clientId = path.split('/')[2];
       const days = parseInt(url.searchParams.get('days') || '30') || 30;
       const sortBy = url.searchParams.get('sort') || 'posted_at';
-      const sortDir = url.searchParams.get('dir') || 'desc';
+      const rawDir = url.searchParams.get('dir') || 'desc';
+      const sortDir = ['asc', 'desc'].includes(rawDir) ? rawDir : 'desc';
 
       const account = await getAccount(serviceClient, clientId);
 
