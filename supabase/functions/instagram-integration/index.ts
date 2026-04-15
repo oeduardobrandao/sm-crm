@@ -75,24 +75,36 @@ async function getHmacKey(): Promise<CryptoKey> {
   );
 }
 
+function toUrlSafeBase64(b64: string): string {
+  return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function fromUrlSafeBase64(b64: string): string {
+  const padded = b64.replace(/-/g, '+').replace(/_/g, '/');
+  const pad = padded.length % 4;
+  return pad ? padded + '='.repeat(4 - pad) : padded;
+}
+
 async function createSignedState(clientId: string): Promise<string> {
   const payload = JSON.stringify({ clientId, nonce: crypto.randomUUID(), iat: Date.now() });
   const key = await getHmacKey();
   const enc = new TextEncoder();
   const sigBuf = await crypto.subtle.sign('HMAC', key, enc.encode(payload));
-  const sig = btoa(String.fromCharCode(...new Uint8Array(sigBuf)));
-  return btoa(payload) + '.' + sig;
+  const payloadB64 = toUrlSafeBase64(btoa(payload));
+  const sigB64 = toUrlSafeBase64(btoa(String.fromCharCode(...new Uint8Array(sigBuf))));
+  return payloadB64 + '.' + sigB64;
 }
 
 async function verifySignedState(state: string): Promise<{ clientId: string }> {
-  const dotIdx = state.indexOf('.');
+  const s = decodeURIComponent(state);
+  const dotIdx = s.indexOf('.');
   if (dotIdx === -1) throw new Error('Invalid state format');
-  const payloadB64 = state.slice(0, dotIdx);
-  const sigB64 = state.slice(dotIdx + 1);
-  const payload = atob(payloadB64);
+  const payloadB64 = s.slice(0, dotIdx);
+  const sigB64 = s.slice(dotIdx + 1);
+  const payload = atob(fromUrlSafeBase64(payloadB64));
   const key = await getHmacKey();
   const enc = new TextEncoder();
-  const sigBytes = Uint8Array.from(atob(sigB64), c => c.charCodeAt(0));
+  const sigBytes = Uint8Array.from(atob(fromUrlSafeBase64(sigB64)), c => c.charCodeAt(0));
   const valid = await crypto.subtle.verify('HMAC', key, sigBytes, enc.encode(payload));
   if (!valid) throw new Error('State signature invalid');
   const parsed = JSON.parse(payload);
