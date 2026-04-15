@@ -63,6 +63,43 @@ async function decryptToken(encryptedBase64: string): Promise<string> {
   }
 }
 
+// --- Signed OAuth State ---
+async function getHmacKey(): Promise<CryptoKey> {
+  const enc = new TextEncoder();
+  return crypto.subtle.importKey(
+    'raw',
+    enc.encode(TOKEN_ENCRYPTION_KEY.slice(0, 32).padEnd(32, '0')),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign', 'verify']
+  );
+}
+
+async function createSignedState(clientId: string): Promise<string> {
+  const payload = JSON.stringify({ clientId, nonce: crypto.randomUUID(), iat: Date.now() });
+  const key = await getHmacKey();
+  const enc = new TextEncoder();
+  const sigBuf = await crypto.subtle.sign('HMAC', key, enc.encode(payload));
+  const sig = btoa(String.fromCharCode(...new Uint8Array(sigBuf)));
+  return btoa(payload) + '.' + sig;
+}
+
+async function verifySignedState(state: string): Promise<{ clientId: string }> {
+  const dotIdx = state.indexOf('.');
+  if (dotIdx === -1) throw new Error('Invalid state format');
+  const payloadB64 = state.slice(0, dotIdx);
+  const sigB64 = state.slice(dotIdx + 1);
+  const payload = atob(payloadB64);
+  const key = await getHmacKey();
+  const enc = new TextEncoder();
+  const sigBytes = Uint8Array.from(atob(sigB64), c => c.charCodeAt(0));
+  const valid = await crypto.subtle.verify('HMAC', key, sigBytes, enc.encode(payload));
+  if (!valid) throw new Error('State signature invalid');
+  const parsed = JSON.parse(payload);
+  if (Date.now() - parsed.iat > 10 * 60 * 1000) throw new Error('State expired');
+  return { clientId: parsed.clientId };
+}
+
 // --- Main Handler ---
 Deno.serve(async (req) => {
   const url = new URL(req.url);
@@ -113,8 +150,8 @@ Deno.serve(async (req) => {
         const clientId = path.split('/')[2];
         if (!clientId) throw new Error("Client ID required");
 
-        // Pass clientId in state
-        const state = btoa(JSON.stringify({ clientId }));
+        // Pass clientId in signed state (HMAC-SHA256)
+        const state = await createSignedState(clientId);
         
         const oauthUrl = `https://www.instagram.com/oauth/authorize?client_id=${META_APP_ID}&redirect_uri=${encodeURIComponent(functionBaseUrl)}&response_type=code&scope=instagram_business_basic,instagram_business_manage_insights&state=${state}`;
 
@@ -130,8 +167,7 @@ Deno.serve(async (req) => {
 
         if (!code) throw new Error("Missing auth code");
 
-        const decodedState = JSON.parse(atob(state || ''));
-        const clientId = decodedState.clientId;
+        const { clientId } = await verifySignedState(state || '');
         if (!clientId || !/^\d+$/.test(String(clientId))) throw new Error("Invalid client ID in state parameter");
 
         // Exchange code for short-lived token (Instagram Business Login)
