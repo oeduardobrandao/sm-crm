@@ -9,26 +9,37 @@ const OAUTH_REDIRECT_BASE = Deno.env.get("OAUTH_REDIRECT_BASE") || "http://local
 const TOKEN_ENCRYPTION_KEY = Deno.env.get("TOKEN_ENCRYPTION_KEY") ?? (() => { throw new Error("TOKEN_ENCRYPTION_KEY environment variable is required"); })();
 
 // --- Token Encryption Utility ---
-async function encryptToken(token: string): Promise<string> {
+async function getEncryptionKey(purpose: string, usage: KeyUsage[]): Promise<CryptoKey> {
   const enc = new TextEncoder();
-  const rawKey = enc.encode(TOKEN_ENCRYPTION_KEY.padEnd(32, '0').slice(0, 32));
-  const key = await crypto.subtle.importKey(
-    "raw",
-    rawKey,
-    { name: "AES-GCM" },
+  const baseKey = await crypto.subtle.importKey(
+    'raw', enc.encode(TOKEN_ENCRYPTION_KEY), { name: 'HKDF' }, false, ['deriveKey']
+  );
+  return crypto.subtle.deriveKey(
+    { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: enc.encode(purpose) },
+    baseKey,
+    { name: 'AES-GCM', length: 256 },
     false,
-    ["encrypt"]
+    usage
   );
+}
 
+async function getLegacyKey(usage: KeyUsage[]): Promise<CryptoKey> {
+  const enc = new TextEncoder();
+  return crypto.subtle.importKey(
+    'raw',
+    enc.encode(TOKEN_ENCRYPTION_KEY.padEnd(32, '0').slice(0, 32)),
+    { name: 'AES-GCM' },
+    false,
+    usage
+  );
+}
+
+async function encryptToken(token: string): Promise<string> {
+  const key = await getEncryptionKey('instagram-access-token', ['encrypt']);
+  const enc = new TextEncoder();
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const encryptedBuf = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
-    key,
-    enc.encode(token)
-  );
-
+  const encryptedBuf = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(token));
   const encryptedArray = new Uint8Array(encryptedBuf);
-  // Combine IV and encrypted data as base64
   const combined = new Uint8Array(iv.length + encryptedArray.length);
   combined.set(iv);
   combined.set(encryptedArray, iv.length);
@@ -36,26 +47,20 @@ async function encryptToken(token: string): Promise<string> {
 }
 
 async function decryptToken(encryptedBase64: string): Promise<string> {
-  const enc = new TextEncoder();
-  const rawKey = enc.encode(TOKEN_ENCRYPTION_KEY.padEnd(32, '0').slice(0, 32));
-  const key = await crypto.subtle.importKey(
-    "raw",
-    rawKey,
-    { name: "AES-GCM" },
-    false,
-    ["decrypt"]
-  );
-
   const combined = Uint8Array.from(atob(encryptedBase64), c => c.charCodeAt(0));
   const iv = combined.slice(0, 12);
   const data = combined.slice(12);
-
-  const decryptedBuf = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv },
-    key,
-    data
-  );
-  return new TextDecoder().decode(decryptedBuf);
+  // Try HKDF-derived key first (new scheme)
+  try {
+    const key = await getEncryptionKey('instagram-access-token', ['decrypt']);
+    const decryptedBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
+    return new TextDecoder().decode(decryptedBuf);
+  } catch {
+    // Fall back to legacy padEnd key (old scheme — tokens not yet re-encrypted)
+    const legacyKey = await getLegacyKey(['decrypt']);
+    const decryptedBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, legacyKey, data);
+    return new TextDecoder().decode(decryptedBuf);
+  }
 }
 
 // --- Main Handler ---
