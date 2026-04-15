@@ -4,11 +4,17 @@ import { buildCorsHeaders } from "../_shared/cors.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const CRON_SECRET = Deno.env.get('CRON_SECRET') ?? (() => { throw new Error('CRON_SECRET is required'); })();
 
 Deno.serve(async (req: Request) => {
   const cors = buildCorsHeaders(req);
   const json = (b: unknown, s = 200) =>
     new Response(JSON.stringify(b), { status: s, headers: { ...cors, "Content-Type": "application/json" } });
+
+  if (req.headers.get('x-cron-secret') !== CRON_SECRET) {
+    return json({ error: 'Unauthorized' }, 401);
+  }
+
   const svc = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   // 1. Drain the deletion queue
