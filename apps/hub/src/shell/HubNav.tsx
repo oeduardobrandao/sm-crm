@@ -57,16 +57,16 @@ export function HubNav() {
       </header>
 
       {/* Mobile top bar (brand only) */}
-      <header className="md:hidden sticky top-0 z-20 h-14 px-5 flex items-center justify-between border-b border-stone-200/70 bg-[#FAFAF7]/90 backdrop-blur-md">
+      <header className="md:hidden sticky top-0 z-20 h-14 px-5 flex items-center justify-between border-b border-stone-900 bg-stone-950/95 backdrop-blur-md">
         <div className="flex items-center gap-2">
           {bootstrap.workspace.logo_url && (
             <img src={bootstrap.workspace.logo_url} alt={bootstrap.workspace.name} className="h-5 w-auto object-contain" />
           )}
-          <span className="font-display text-sm font-semibold tracking-tight text-stone-900">
+          <span className="font-display text-sm font-semibold tracking-tight text-white">
             {bootstrap.workspace.name}
           </span>
         </div>
-        <span className="text-[11px] text-stone-500 truncate max-w-[40%]">{bootstrap.cliente_nome}</span>
+        <span className="text-[11px] text-stone-400 truncate max-w-[40%]">{bootstrap.cliente_nome}</span>
       </header>
 
       {/* Mobile bottom tab bar */}
