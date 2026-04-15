@@ -1,6 +1,7 @@
 import { Link, useLocation, useParams } from 'react-router-dom';
-import { Home, CheckSquare, Palette, FileText, BookOpen, LayoutList } from 'lucide-react';
+import { Home, CheckSquare, Palette, FileText, BookOpen, LayoutList, Sun, Moon } from 'lucide-react';
 import { useHub } from '../HubContext';
+import { useTheme } from '../hooks/useTheme';
 
 const NAV_ITEMS = [
   { label: 'Home', icon: Home, path: '' },
@@ -16,6 +17,7 @@ export function HubNav() {
   const { workspace, token } = useParams<{ workspace: string; token: string }>();
   const { pathname } = useLocation();
   const base = `/${workspace}/hub/${token}`;
+  const { theme, toggleTheme } = useTheme();
 
   return (
     <>
@@ -52,7 +54,16 @@ export function HubNav() {
               );
             })}
           </nav>
-          <span className="ml-auto text-[13px] text-stone-400">{bootstrap.cliente_nome}</span>
+          <span className="ml-auto flex items-center gap-3">
+            <span className="text-[13px] text-stone-400">{bootstrap.cliente_nome}</span>
+            <button
+              onClick={toggleTheme}
+              aria-label={theme === 'dark' ? 'Modo claro' : 'Modo escuro'}
+              className="w-8 h-8 flex items-center justify-center rounded-full text-stone-400 hover:text-white hover:bg-white/10 transition-colors"
+            >
+              {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
+          </span>
         </div>
       </header>
 
@@ -66,7 +77,16 @@ export function HubNav() {
             {bootstrap.workspace.name}
           </span>
         </div>
-        <span className="text-[11px] text-stone-400 truncate max-w-[40%]">{bootstrap.cliente_nome}</span>
+        <span className="flex items-center gap-2">
+          <span className="text-[11px] text-stone-400 truncate max-w-[120px]">{bootstrap.cliente_nome}</span>
+          <button
+            onClick={toggleTheme}
+            aria-label={theme === 'dark' ? 'Modo claro' : 'Modo escuro'}
+            className="w-8 h-8 flex items-center justify-center rounded-full text-stone-400 hover:text-white hover:bg-white/10 transition-colors"
+          >
+            {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
+          </button>
+        </span>
       </header>
 
       {/* Mobile bottom tab bar */}
