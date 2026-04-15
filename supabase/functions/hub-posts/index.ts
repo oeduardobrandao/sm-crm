@@ -8,7 +8,7 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 async function resolveToken(db: ReturnType<typeof createClient>, token: string) {
   const { data } = await db
     .from("client_hub_tokens")
-    .select("cliente_id, is_active")
+    .select("cliente_id, conta_id, is_active")
     .eq("token", token)
     .gt("expires_at", new Date().toISOString())
     .maybeSingle();
@@ -31,11 +31,12 @@ Deno.serve(async (req) => {
   const hubToken = await resolveToken(db, token);
   if (!hubToken || !hubToken.is_active) return json({ error: "Link inválido." }, 404);
 
-  // Fetch all workflows for this client
+  // Fetch all workflows for this client (scoped to conta_id for IDOR protection)
   const { data: workflows } = await db
     .from("workflows")
     .select("id")
-    .eq("cliente_id", hubToken.cliente_id);
+    .eq("cliente_id", hubToken.cliente_id)
+    .eq("conta_id", hubToken.conta_id);
 
   const workflowIds = (workflows ?? []).map((w: { id: number }) => w.id);
   if (workflowIds.length === 0) return json({ posts: [], postApprovals: [] });

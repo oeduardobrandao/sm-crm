@@ -16,8 +16,17 @@ Deno.serve(async (req) => {
   if (!token) return json({ error: "token required" }, 400);
 
   const db = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
-  const { data: hubToken } = await db.from("client_hub_tokens").select("cliente_id, is_active").eq("token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
+  const { data: hubToken } = await db.from("client_hub_tokens").select("cliente_id, conta_id, is_active").eq("token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
   if (!hubToken || !hubToken.is_active) return json({ error: "Link inválido." }, 404);
+
+  // Verify client belongs to this workspace (IDOR protection)
+  const { data: clientCheck } = await db
+    .from("clientes")
+    .select("id")
+    .eq("id", hubToken.cliente_id)
+    .eq("conta_id", hubToken.conta_id)
+    .maybeSingle();
+  if (!clientCheck) return json({ error: "Link inválido." }, 404);
 
   const { data: brand } = await db.from("hub_brand").select("*").eq("cliente_id", hubToken.cliente_id).maybeSingle();
   const { data: files } = await db.from("hub_brand_files").select("*").eq("cliente_id", hubToken.cliente_id).order("display_order");
