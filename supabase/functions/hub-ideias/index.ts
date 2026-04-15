@@ -1,26 +1,15 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { buildCorsHeaders } from "../_shared/cors.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-const cors = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
-};
-
-function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...cors, "Content-Type": "application/json" },
-  });
-}
 
 async function resolveToken(db: ReturnType<typeof createClient>, token: string) {
   const { data } = await db
     .from("client_hub_tokens")
     .select("cliente_id, is_active, clientes(conta_id)")
     .eq("token", token)
+    .gt("expires_at", new Date().toISOString())
     .maybeSingle();
   return data as { cliente_id: number; is_active: boolean; clientes: { conta_id: string } } | null;
 }
@@ -47,6 +36,10 @@ async function checkLock(db: ReturnType<typeof createClient>, ideiaId: string, c
 }
 
 Deno.serve(async (req) => {
+  const cors = buildCorsHeaders(req);
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
+
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
   const url = new URL(req.url);
