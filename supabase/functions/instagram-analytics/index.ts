@@ -5,6 +5,7 @@ const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const TOKEN_ENCRYPTION_KEY = Deno.env.get("TOKEN_ENCRYPTION_KEY") ?? (() => { throw new Error("TOKEN_ENCRYPTION_KEY environment variable is required"); })();
 const GRAPH_API_VERSION = "v22.0";
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") || '';
+const INTERNAL_FUNCTION_SECRET = Deno.env.get('INTERNAL_FUNCTION_SECRET') ?? (() => { throw new Error('INTERNAL_FUNCTION_SECRET is required'); })();
 
 // --- Token Decryption ---
 async function getEncryptionKey(purpose: string, usage: KeyUsage[]): Promise<CryptoKey> {
@@ -836,7 +837,7 @@ Deno.serve(async (req) => {
       const genRes = await fetch(reportGenUrl, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+          'X-Internal-Token': INTERNAL_FUNCTION_SECRET,
           'apikey': SUPABASE_ANON_KEY,
           'Content-Type': 'application/json',
         },
