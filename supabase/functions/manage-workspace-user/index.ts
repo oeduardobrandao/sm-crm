@@ -59,12 +59,13 @@ Deno.serve(async (req: Request) => {
       if (!email) {
         return new Response(JSON.stringify({ error: "email is required" }), { status: 400, headers });
       }
-      // Mark all pending invites for this email as accepted
+      // Mark all pending invites for this email+workspace as accepted
       const { error: acceptError } = await serviceClient
         .from("invites")
         .update({ status: "accepted", accepted_at: new Date().toISOString() })
         .eq("email", email.toLowerCase())
-        .eq("status", "pending");
+        .eq("status", "pending")
+        .eq("conta_id", callerProfile.conta_id);
 
       if (acceptError) throw acceptError;
 
