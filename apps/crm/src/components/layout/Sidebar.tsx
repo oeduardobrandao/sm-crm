@@ -63,23 +63,12 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
   const { user, profile, role, signOut } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
   const [isDark, setIsDark] = useState(document.documentElement.getAttribute('data-theme') === 'dark');
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [workspaces, setWorkspaces] = useState<any[]>([]);
 
   const navGroups = getNavGroups(role);
-
-  // Determine active group from current route
   const activeRoute = location.pathname;
-  const activeGroupId = navGroups.find(g => g.items.some(i => activeRoute.startsWith(i.route)))?.id ?? null;
-
-  // Auto-expand active group
-  useEffect(() => {
-    if (activeGroupId && !expandedGroups.includes(activeGroupId)) {
-      setExpandedGroups(prev => [...prev, activeGroupId]);
-    }
-  }, [activeGroupId]);
 
   // Load workspaces for switcher
   useEffect(() => {
@@ -110,12 +99,6 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
     setIsDark(next === 'dark');
   };
 
-  const handleGroupClick = (groupId: string) => {
-    setExpandedGroups(prev => 
-      prev.includes(groupId) ? prev.filter(id => id !== groupId) : [...prev, groupId]
-    );
-  };
-
   const handleNavClick = (route: string) => {
     navigate(route);
     if (isDrawer) onClose?.();
@@ -139,6 +122,30 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
   const mainGroups = navGroups.filter(g => !g.isBottom);
   const bottomGroups = navGroups.filter(g => g.isBottom);
 
+  const renderGroup = (group: NavGroup) => (
+    <li key={group.id} className="sidebar-group">
+      <div className="sidebar-group-label">{group.label}</div>
+      <ul className="sidebar-sub-nav">
+        {group.items.map(item => {
+          const isActiveItem = activeRoute.startsWith(item.route);
+          const ItemIcon = isActiveItem ? `ph-fill ${item.icon}` : `ph ${item.icon}`;
+          return (
+            <li key={item.id} className="sidebar-sub-item">
+              <a
+                className={`sidebar-sub-link ${isActiveItem ? 'active' : ''}`}
+                href={`#${item.route}`}
+                onClick={(e) => { e.preventDefault(); handleNavClick(item.route); }}
+              >
+                <i className={ItemIcon} />
+                <span>{item.label}</span>
+              </a>
+            </li>
+          );
+        })}
+      </ul>
+    </li>
+  );
+
   return (
     <nav
       className={`sidebar${isDrawer ? ' sidebar--drawer' : ''}${isDrawer && isOpen ? ' sidebar--open' : ''}`}
@@ -153,99 +160,13 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
 
         <div className="sidebar-scrollable">
           <ul className="sidebar-nav" id="sidebar-nav-main">
-            {mainGroups.map(group => {
-              const isActiveGroup = activeGroupId === group.id;
-              const isExpanded = expandedGroups.includes(group.id);
-              const GroupIcon = isActiveGroup ? `ph-fill ${group.icon}` : `ph ${group.icon}`;
-              
-              return (
-                <li key={group.id} className="sidebar-item">
-                  <button
-                    className={`sidebar-nav-btn ${isActiveGroup ? 'active' : ''}`}
-                    aria-expanded={isExpanded}
-                    onClick={() => handleGroupClick(group.id)}
-                  >
-                    <div className="sidebar-nav-btn-content">
-                      <i className={GroupIcon} />
-                      <span>{group.label}</span>
-                    </div>
-                    {group.items.length > 0 && (
-                      <i className={`ph ${isExpanded ? 'ph-caret-up' : 'ph-caret-down'} chevron-icon`} />
-                    )}
-                  </button>
-
-                  {isExpanded && group.items.length > 0 && (
-                    <ul className="sidebar-sub-nav">
-                      {group.items.map(item => {
-                        const isActiveItem = activeRoute.startsWith(item.route);
-                        const ItemIcon = isActiveItem ? `ph-fill ${item.icon}` : `ph ${item.icon}`;
-                        return (
-                          <li key={item.id} className="sidebar-sub-item">
-                            <a
-                              className={`sidebar-sub-link ${isActiveItem ? 'active' : ''}`}
-                              href={`#${item.route}`}
-                              onClick={(e) => { e.preventDefault(); handleNavClick(item.route); }}
-                            >
-                              <i className={ItemIcon} />
-                              <span>{item.label}</span>
-                            </a>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                </li>
-              );
-            })}
+            {mainGroups.map(renderGroup)}
           </ul>
         </div>
 
         <div className="sidebar-bottom">
           <ul className="sidebar-nav" id="sidebar-nav-bottom">
-            {bottomGroups.map(group => {
-              const isActiveGroup = activeGroupId === group.id;
-              const isExpanded = expandedGroups.includes(group.id);
-              const GroupIcon = isActiveGroup ? `ph-fill ${group.icon}` : `ph ${group.icon}`;
-              
-              return (
-                <li key={group.id} className="sidebar-item">
-                  <button
-                    className={`sidebar-nav-btn ${isActiveGroup ? 'active' : ''}`}
-                    aria-expanded={isExpanded}
-                    onClick={() => handleGroupClick(group.id)}
-                  >
-                    <div className="sidebar-nav-btn-content">
-                      <i className={GroupIcon} />
-                      <span>{group.label}</span>
-                    </div>
-                    {group.items.length > 0 && (
-                      <i className={`ph ${isExpanded ? 'ph-caret-up' : 'ph-caret-down'} chevron-icon`} />
-                    )}
-                  </button>
-
-                  {isExpanded && group.items.length > 0 && (
-                    <ul className="sidebar-sub-nav">
-                      {group.items.map(item => {
-                        const isActiveItem = activeRoute.startsWith(item.route);
-                        const ItemIcon = isActiveItem ? `ph-fill ${item.icon}` : `ph ${item.icon}`;
-                        return (
-                          <li key={item.id} className="sidebar-sub-item">
-                            <a
-                              className={`sidebar-sub-link ${isActiveItem ? 'active' : ''}`}
-                              href={`#${item.route}`}
-                              onClick={(e) => { e.preventDefault(); handleNavClick(item.route); }}
-                            >
-                              <i className={ItemIcon} />
-                              <span>{item.label}</span>
-                            </a>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                </li>
-              );
-            })}
+            {bottomGroups.map(renderGroup)}
           </ul>
 
           <button
@@ -317,4 +238,3 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
     </nav>
   );
 }
-

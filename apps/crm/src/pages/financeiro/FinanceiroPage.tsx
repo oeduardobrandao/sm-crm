@@ -235,9 +235,9 @@ export default function FinanceiroPage() {
           { label: 'Saldo Atual', value: formatBRL(saldoAtual), color: saldoAtual >= 0 ? '#3ecf8e' : '#ef4444' },
           { label: 'Saldo Projetado', value: formatBRL(saldoProjetado), color: saldoProjetado >= 0 ? '#3ecf8e' : '#ef4444' },
         ].map(kpi => (
-          <div key={kpi.label} className="kpi-card">
+          <div key={kpi.label} className="kpi-card" style={{ '--kpi-accent': kpi.color } as React.CSSProperties}>
             <div className="kpi-label">{kpi.label}</div>
-            <div className="kpi-value" style={{ color: kpi.color }}>{kpi.value}</div>
+            <div className="kpi-value">{kpi.value}</div>
           </div>
         ))}
       </div>

@@ -104,7 +104,7 @@ html, body, #root, .app-container {
   --font-heading: 'SF Pro Display', sans-serif;
   --font-mono: 'SF Pro Mono', monospace;
   --shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.075);
-  --radius: 28px;
+  --radius: 12px;
   --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -241,75 +241,30 @@ body {
   gap: 0.25rem;
 }
 
-.sidebar-item {
+.sidebar-group {
   width: 100%;
   display: flex;
   flex-direction: column;
+  margin-bottom: 0.25rem;
 }
 
-.sidebar-nav-btn {
-  background: transparent;
-  border: none;
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.6rem 0.75rem;
-  border-radius: 8px;
-  color: var(--text-main);
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-  font-size: 0.9rem;
-  font-family: inherit;
-  font-weight: 500;
-}
-
-.sidebar-nav-btn-content {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.sidebar-nav-btn-content i {
-  font-size: 1.25rem;
-  color: var(--text-muted);
-}
-
-.sidebar-nav-btn:hover {
-  background: var(--surface-hover);
-}
-
-.sidebar-nav-btn:hover .sidebar-nav-btn-content i {
-  color: var(--text-main);
-}
-
-.sidebar-nav-btn.active {
-  background: rgba(234, 179, 8, 0.15);
-  color: var(--primary-color);
+.sidebar-group-label {
+  padding: 0.5rem 0.75rem 0.25rem;
+  font-size: 0.7rem;
   font-weight: 600;
-}
-
-[data-theme="dark"] .sidebar-nav-btn.active {
-  background: rgba(234, 179, 8, 0.1);
-}
-
-.sidebar-nav-btn.active .sidebar-nav-btn-content i {
-  color: var(--primary-color);
-}
-
-.chevron-icon {
-  font-size: 0.85rem !important;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   color: var(--text-muted);
+  user-select: none;
 }
 
 .sidebar-sub-nav {
   list-style: none;
   padding: 0;
-  margin: 0.25rem 0 0.25rem 2rem;
+  margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
-  border-left: 1px solid var(--border-color);
+  gap: 0.1rem;
 }
 
 .sidebar-sub-item {
@@ -320,11 +275,11 @@ body {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.5rem 0.75rem;
+  padding: 0.3rem 0.75rem;
   color: var(--text-light);
   text-decoration: none;
-  border-radius: 6px;
-  font-size: 0.85rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
   font-weight: 500;
   transition: background 0.15s, color 0.15s;
 }
@@ -674,8 +629,9 @@ body {
 .kpi-card {
   background: var(--card-bg);
   padding: 1.5rem;
-  border-radius: 16px;
+  border-radius: 12px;
   border: 1px solid var(--border-color);
+  border-left: 3px solid var(--kpi-accent, var(--border-color));
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
   display: flex;
   flex-direction: column;
@@ -809,6 +765,7 @@ body {
   text-decoration: none;
   color: inherit;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
+  border-radius: 12px;
 }
 .dashboard-hub-card:hover {
   transform: translateY(-3px);
@@ -1852,7 +1809,7 @@ select.form-input option {
 
   .kpi-card {
     padding: 1rem;
-    border-radius: 16px;
+    border-radius: 12px;
   }
 
   .kpi-label {
@@ -1869,7 +1826,7 @@ select.form-input option {
 
   .card {
     padding: 1rem;
-    border-radius: 18px;
+    border-radius: 12px;
   }
 
   .header {
