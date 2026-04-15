@@ -10,6 +10,7 @@ async function resolveToken(db: ReturnType<typeof createClient>, token: string) 
     .from("client_hub_tokens")
     .select("cliente_id, is_active")
     .eq("token", token)
+    .gt("expires_at", new Date().toISOString())
     .maybeSingle();
   return data;
 }

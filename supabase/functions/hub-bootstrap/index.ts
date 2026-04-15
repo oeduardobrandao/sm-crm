@@ -36,6 +36,7 @@ Deno.serve(async (req) => {
     .select("cliente_id, is_active")
     .eq("token", token)
     .eq("conta_id", conta.id)
+    .gt("expires_at", new Date().toISOString())
     .maybeSingle();
 
   if (!hubToken) return json({ error: "Link inválido." }, 404);

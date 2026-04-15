@@ -35,6 +35,7 @@ Deno.serve(async (req) => {
       .from("portal_tokens")
       .select("workflow_id")
       .eq("token", token)
+      .gt("expires_at", new Date().toISOString())
       .maybeSingle();
 
     if (tokenErr || !tokenRow) {

@@ -18,7 +18,7 @@ Deno.serve(async (req) => {
   if (!token) return json({ error: "token required" }, 400);
 
   const db = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
-  const { data: hubToken } = await db.from("client_hub_tokens").select("cliente_id, is_active").eq("token", token).maybeSingle();
+  const { data: hubToken } = await db.from("client_hub_tokens").select("cliente_id, is_active").eq("token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
   if (!hubToken || !hubToken.is_active) return json({ error: "Link inválido." }, 404);
 
   if (pageId) {
