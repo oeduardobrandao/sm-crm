@@ -994,9 +994,9 @@ Responda APENAS com um JSON válido, sem markdown, sem comentários, sem texto f
 
 O campo actionPlan deve ter entre 3 e 5 ações. Pelo menos 1 deve ser uma ação que o cliente provavelmente NUNCA tentou (ex: collab com outro profissional, série semanal temática, usar comentários como conteúdo, post respondendo dúvida real de paciente).`;
 
-      const aiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+      const aiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: systemPrompt }] },
           contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
@@ -1155,9 +1155,9 @@ Responda APENAS com um JSON válido, sem markdown, sem comentários. Não use as
 
 O campo priorityActions deve ter entre 3 e 5 ações distribuídas entre as contas. O accountRanking deve listar todas as contas.`;
 
-      const aiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+      const aiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: portfolioSystemPrompt }] },
           contents: [{ role: 'user', parts: [{ text: portfolioUserPrompt }] }],
