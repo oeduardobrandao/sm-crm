@@ -11,7 +11,11 @@
 --        UPDATE vault.secrets SET secret = '<value>' WHERE name = 'cron_secret';
 
 -- Re-schedule cleanup cron with authentication header
-SELECT cron.unschedule('post-media-cleanup');
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'post-media-cleanup') THEN
+    PERFORM cron.unschedule('post-media-cleanup');
+  END IF;
+END $$;
 SELECT cron.schedule(
   'post-media-cleanup',
   '0 3 * * *',
@@ -28,7 +32,11 @@ SELECT cron.schedule(
 );
 
 -- Re-schedule analytics report cron with authentication header
-SELECT cron.unschedule('analytics-report-cron-monthly');
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'analytics-report-cron-monthly') THEN
+    PERFORM cron.unschedule('analytics-report-cron-monthly');
+  END IF;
+END $$;
 SELECT cron.schedule(
   'analytics-report-cron-monthly',
   '0 6 1 * *',
