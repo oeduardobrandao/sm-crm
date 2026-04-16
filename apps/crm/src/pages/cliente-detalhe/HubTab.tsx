@@ -193,27 +193,28 @@ function BrandEditor({ clienteId, brand, files, onSaved }: { clienteId: number; 
 }
 
 const mdComponents = {
-  h1: (props: React.ComponentProps<'h1'>) => <h1 {...props} className="text-2xl font-semibold mt-6 mb-2" />,
-  h2: (props: React.ComponentProps<'h2'>) => <h2 {...props} className="text-xl font-semibold mt-5 mb-2" />,
-  h3: (props: React.ComponentProps<'h3'>) => <h3 {...props} className="text-lg font-semibold mt-4 mb-1.5" />,
+  h1: (props: React.ComponentProps<'h1'>) => <h1 {...props} className="text-2xl font-semibold text-foreground mt-6 mb-2" />,
+  h2: (props: React.ComponentProps<'h2'>) => <h2 {...props} className="text-xl font-semibold text-foreground mt-5 mb-2" />,
+  h3: (props: React.ComponentProps<'h3'>) => <h3 {...props} className="text-lg font-semibold text-foreground mt-4 mb-1.5" />,
   p: (props: React.ComponentProps<'p'>) => <p {...props} className="text-sm text-muted-foreground leading-relaxed mb-3" />,
+  strong: (props: React.ComponentProps<'strong'>) => <strong {...props} className="font-semibold text-foreground" />,
   a: (props: React.ComponentProps<'a'>) => <a {...props} className="text-primary underline underline-offset-2" />,
-  img: (props: React.ComponentProps<'img'>) => <img {...props} className="rounded-lg max-w-full my-3 border" />,
+  img: (props: React.ComponentProps<'img'>) => <img {...props} className="rounded-lg max-w-full my-3 border border-border" />,
   ul: (props: React.ComponentProps<'ul'>) => <ul {...props} className="list-disc pl-5 mb-3 text-sm text-muted-foreground leading-relaxed" />,
   ol: (props: React.ComponentProps<'ol'>) => <ol {...props} className="list-decimal pl-5 mb-3 text-sm text-muted-foreground leading-relaxed" />,
   li: (props: React.ComponentProps<'li'>) => <li {...props} className="mb-0.5" />,
-  blockquote: (props: React.ComponentProps<'blockquote'>) => <blockquote {...props} className="border-l-4 border-muted pl-3 my-3 text-muted-foreground italic text-sm" />,
+  blockquote: (props: React.ComponentProps<'blockquote'>) => <blockquote {...props} className="border-l-4 border-border pl-3 my-3 text-muted-foreground italic text-sm" />,
   code: ({ className, children, ...props }: React.ComponentProps<'code'>) => {
     const isBlock = className?.includes('language-');
     return isBlock
-      ? <code {...props} className={`${className ?? ''} block bg-muted rounded-lg p-3 my-3 text-xs overflow-x-auto`}>{children}</code>
-      : <code {...props} className="bg-muted rounded px-1 py-0.5 text-xs">{children}</code>;
+      ? <code {...props} className={`${className ?? ''} block bg-muted text-foreground rounded-lg p-3 my-3 text-xs overflow-x-auto`}>{children}</code>
+      : <code {...props} className="bg-muted text-foreground rounded px-1 py-0.5 text-xs">{children}</code>;
   },
-  pre: (props: React.ComponentProps<'pre'>) => <pre {...props} className="bg-muted rounded-lg p-3 my-3 text-xs overflow-x-auto" />,
-  hr: (props: React.ComponentProps<'hr'>) => <hr {...props} className="my-5 border-muted" />,
-  table: (props: React.ComponentProps<'table'>) => <div className="overflow-x-auto my-3"><table {...props} className="w-full text-sm border-collapse" /></div>,
-  th: (props: React.ComponentProps<'th'>) => <th {...props} className="border px-2 py-1.5 bg-muted font-semibold text-left text-xs" />,
-  td: (props: React.ComponentProps<'td'>) => <td {...props} className="border px-2 py-1.5 text-xs" />,
+  pre: (props: React.ComponentProps<'pre'>) => <pre {...props} className="bg-muted text-foreground rounded-lg p-3 my-3 text-xs overflow-x-auto" />,
+  hr: (props: React.ComponentProps<'hr'>) => <hr {...props} className="my-5 border-border" />,
+  table: (props: React.ComponentProps<'table'>) => <div className="overflow-x-auto my-3"><table {...props} className="w-full text-sm text-muted-foreground border-collapse" /></div>,
+  th: (props: React.ComponentProps<'th'>) => <th {...props} className="border border-border px-2 py-1.5 bg-muted font-semibold text-left text-xs text-foreground" />,
+  td: (props: React.ComponentProps<'td'>) => <td {...props} className="border border-border px-2 py-1.5 text-xs" />,
 };
 
 function PagesEditor({ clienteId, contaId, pages, onSaved }: { clienteId: number; contaId: string; pages: HubPageRow[]; onSaved: () => void }) {
@@ -302,7 +303,7 @@ function PagesEditor({ clienteId, contaId, pages, onSaved }: { clienteId: number
 
             <div className={`flex-1 min-h-0 flex gap-3 ${showPreview ? '' : ''}`}>
               <textarea
-                className={`border rounded-lg p-3 text-sm resize-none font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-ring ${showPreview ? 'w-1/2' : 'w-full'}`}
+                className={`border border-border bg-background text-foreground rounded-lg p-3 text-sm resize-none font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-ring ${showPreview ? 'w-1/2' : 'w-full'}`}
                 style={{ height: '100%' }}
                 value={contentText}
                 onChange={e => setEditingPage(p => ({ ...p!, content: [{ type: 'markdown', content: e.target.value }] }))}

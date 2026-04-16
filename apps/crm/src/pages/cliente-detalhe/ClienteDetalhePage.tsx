@@ -830,6 +830,29 @@ export default function ClienteDetalhePage() {
         </div>
       )}
 
+      {/* Instagram Section — keyed so it fully remounts on client change */}
+      <InstagramSection
+        key={`ig-${clienteId}`}
+        clienteId={clienteId}
+        loadingIg={loadingIg}
+        igSummary={igSummary}
+        refetchIg={refetchIg}
+        onNavigateAnalytics={() => navigate(`/analytics/${clienteId}`)}
+      />
+
+      {/* Hub do Cliente */}
+      {!isAgent && cliente && cliente.id != null && cliente.conta_id && workspaceSlug && (
+        <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
+          <h3 className="text-xl font-bold tracking-tight text-foreground mb-1">Hub do Cliente</h3>
+          <p className="text-sm text-muted-foreground mb-4">Link permanente de acesso do cliente ao hub de conteúdo.</p>
+          <HubTab
+            clienteId={cliente.id!}
+            contaId={cliente.conta_id!}
+            workspaceSlug={workspaceSlug}
+          />
+        </div>
+      )}
+
       {/* Important Dates Section */}
       <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
@@ -963,29 +986,6 @@ export default function ClienteDetalhePage() {
           </div>
         )}
       </div>
-
-      {/* Instagram Section — keyed so it fully remounts on client change */}
-      <InstagramSection
-        key={`ig-${clienteId}`}
-        clienteId={clienteId}
-        loadingIg={loadingIg}
-        igSummary={igSummary}
-        refetchIg={refetchIg}
-        onNavigateAnalytics={() => navigate(`/analytics/${clienteId}`)}
-      />
-
-      {/* Hub do Cliente */}
-      {!isAgent && cliente && cliente.id != null && cliente.conta_id && workspaceSlug && (
-        <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-          <h3 className="text-xl font-bold tracking-tight text-foreground mb-1">Hub do Cliente</h3>
-          <p className="text-sm text-muted-foreground mb-4">Link permanente de acesso do cliente ao hub de conteúdo.</p>
-          <HubTab
-            clienteId={cliente.id!}
-            contaId={cliente.conta_id!}
-            workspaceSlug={workspaceSlug}
-          />
-        </div>
-      )}
 
       {!isAgent && (
         <>
