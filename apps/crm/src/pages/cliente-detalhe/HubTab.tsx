@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react';
 import { openCSVSelector } from '@/lib/csv';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Copy, Eye, ToggleLeft, ToggleRight, Plus, Trash2, Save, Upload, HelpCircle } from 'lucide-react';
+import { Copy, Eye, ToggleLeft, ToggleRight, Plus, Trash2, Save, Upload, HelpCircle, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import {
   getHubToken, createHubToken, setHubTokenActive,
   getHubBrand, upsertHubBrand,
@@ -189,9 +192,37 @@ function BrandEditor({ clienteId, brand, files, onSaved }: { clienteId: number; 
   );
 }
 
+const mdComponents = {
+  h1: (props: React.ComponentProps<'h1'>) => <h1 {...props} className="text-2xl font-semibold mt-6 mb-2" />,
+  h2: (props: React.ComponentProps<'h2'>) => <h2 {...props} className="text-xl font-semibold mt-5 mb-2" />,
+  h3: (props: React.ComponentProps<'h3'>) => <h3 {...props} className="text-lg font-semibold mt-4 mb-1.5" />,
+  p: (props: React.ComponentProps<'p'>) => <p {...props} className="text-sm text-muted-foreground leading-relaxed mb-3" />,
+  a: (props: React.ComponentProps<'a'>) => <a {...props} className="text-primary underline underline-offset-2" />,
+  img: (props: React.ComponentProps<'img'>) => <img {...props} className="rounded-lg max-w-full my-3 border" />,
+  ul: (props: React.ComponentProps<'ul'>) => <ul {...props} className="list-disc pl-5 mb-3 text-sm text-muted-foreground leading-relaxed" />,
+  ol: (props: React.ComponentProps<'ol'>) => <ol {...props} className="list-decimal pl-5 mb-3 text-sm text-muted-foreground leading-relaxed" />,
+  li: (props: React.ComponentProps<'li'>) => <li {...props} className="mb-0.5" />,
+  blockquote: (props: React.ComponentProps<'blockquote'>) => <blockquote {...props} className="border-l-4 border-muted pl-3 my-3 text-muted-foreground italic text-sm" />,
+  code: ({ className, children, ...props }: React.ComponentProps<'code'>) => {
+    const isBlock = className?.includes('language-');
+    return isBlock
+      ? <code {...props} className={`${className ?? ''} block bg-muted rounded-lg p-3 my-3 text-xs overflow-x-auto`}>{children}</code>
+      : <code {...props} className="bg-muted rounded px-1 py-0.5 text-xs">{children}</code>;
+  },
+  pre: (props: React.ComponentProps<'pre'>) => <pre {...props} className="bg-muted rounded-lg p-3 my-3 text-xs overflow-x-auto" />,
+  hr: (props: React.ComponentProps<'hr'>) => <hr {...props} className="my-5 border-muted" />,
+  table: (props: React.ComponentProps<'table'>) => <div className="overflow-x-auto my-3"><table {...props} className="w-full text-sm border-collapse" /></div>,
+  th: (props: React.ComponentProps<'th'>) => <th {...props} className="border px-2 py-1.5 bg-muted font-semibold text-left text-xs" />,
+  td: (props: React.ComponentProps<'td'>) => <td {...props} className="border px-2 py-1.5 text-xs" />,
+};
+
 function PagesEditor({ clienteId, contaId, pages, onSaved }: { clienteId: number; contaId: string; pages: HubPageRow[]; onSaved: () => void }) {
   const [editingPage, setEditingPage] = useState<Partial<HubPageRow> | null>(null);
   const [saving, setSaving] = useState(false);
+  const [showPreview, setShowPreview] = useState(true);
+
+  const contentText = (editingPage?.content as Array<{ content: string }> | undefined)?.[0]?.content ?? '';
+  const isDirty = editingPage != null && (editingPage.title ?? '') !== '';
 
   async function savePage() {
     if (!editingPage?.title) return;
@@ -216,6 +247,10 @@ function PagesEditor({ clienteId, contaId, pages, onSaved }: { clienteId: number
     }
   }
 
+  function closeEditor() {
+    setEditingPage(null);
+  }
+
   return (
     <section>
       <div className="flex items-center justify-between mb-3">
@@ -230,34 +265,69 @@ function PagesEditor({ clienteId, contaId, pages, onSaved }: { clienteId: number
           <div key={p.id} className="flex items-center justify-between border rounded-lg px-3 py-2">
             <span className="text-sm font-medium">{p.title}</span>
             <div className="flex gap-1">
-              <Button size="sm" variant="ghost" onClick={() => setEditingPage(p)}>Editar</Button>
+              <Button size="sm" variant="ghost" onClick={() => setEditingPage(p)}><Pencil size={14} className="mr-1" /> Editar</Button>
               <Button size="sm" variant="ghost" onClick={() => deletePage(p.id)}><Trash2 size={14} /></Button>
             </div>
           </div>
         ))}
       </div>
 
-      {editingPage && (
-        <div className="mt-4 border rounded-xl p-4 space-y-3">
-          <div>
-            <Label>Título da página</Label>
-            <Input value={editingPage.title ?? ''} onChange={e => setEditingPage(p => ({ ...p!, title: e.target.value }))} placeholder="Ex: Manual de Comunicação" />
-          </div>
-          <div>
-            <Label>Conteúdo (texto simples)</Label>
-            <textarea
-              className="w-full border rounded-lg p-2 text-sm resize-none min-h-[120px]"
-              value={(editingPage.content as Array<{ content: string }> | undefined)?.[0]?.content ?? ''}
-              onChange={e => setEditingPage(p => ({ ...p!, content: [{ type: 'paragraph', content: e.target.value }] }))}
-              placeholder="Escreva o conteúdo da página..."
+      <Dialog open={editingPage != null} onOpenChange={open => { if (!open) closeEditor(); }}>
+        <DialogContent
+          className="max-w-5xl w-[95vw] h-[85vh] flex flex-col"
+          confirmClose={isDirty}
+          onConfirmClose={closeEditor}
+        >
+          <DialogHeader>
+            <DialogTitle>{editingPage?.id ? 'Editar página' : 'Nova página'}</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3 flex-1 flex flex-col min-h-0">
+            <Input
+              value={editingPage?.title ?? ''}
+              onChange={e => setEditingPage(p => ({ ...p!, title: e.target.value }))}
+              placeholder="Título da página"
             />
+
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span>Markdown</span>
+              <button
+                type="button"
+                className={`px-2 py-0.5 rounded text-xs transition-colors ${showPreview ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}`}
+                onClick={() => setShowPreview(v => !v)}
+              >
+                {showPreview ? 'Preview on' : 'Preview off'}
+              </button>
+            </div>
+
+            <div className={`flex-1 min-h-0 flex gap-3 ${showPreview ? '' : ''}`}>
+              <textarea
+                className={`border rounded-lg p-3 text-sm resize-none font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-ring ${showPreview ? 'w-1/2' : 'w-full'}`}
+                style={{ height: '100%' }}
+                value={contentText}
+                onChange={e => setEditingPage(p => ({ ...p!, content: [{ type: 'markdown', content: e.target.value }] }))}
+                placeholder="Escreva o conteúdo em markdown..."
+              />
+              {showPreview && (
+                <div className="w-1/2 border rounded-lg p-4 overflow-y-auto bg-muted/30">
+                  {contentText ? (
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{contentText}</ReactMarkdown>
+                  ) : (
+                    <p className="text-sm text-muted-foreground italic">Preview aparecerá aqui...</p>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
-          <div className="flex gap-2">
-            <Button size="sm" onClick={savePage} disabled={saving}><Save size={14} className="mr-1.5" /> Salvar</Button>
-            <Button size="sm" variant="outline" onClick={() => setEditingPage(null)}>Cancelar</Button>
-          </div>
-        </div>
-      )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={closeEditor}>Cancelar</Button>
+            <Button onClick={savePage} disabled={saving || !editingPage?.title}>
+              <Save size={14} className="mr-1.5" /> Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }
