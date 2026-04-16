@@ -209,10 +209,9 @@ Deno.serve(async (req) => {
       status: 200,
     });
   } catch (err: any) {
-    console.error("Catch erro:", JSON.stringify(err), err?.message, err);
-    const message = err?.message || err?.msg || (typeof err === 'string' ? err : 'Erro interno do servidor');
-    return new Response(JSON.stringify({ error: message }), {
-      status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    console.error('[invite-user] error:', err);
+    return new Response(JSON.stringify({ error: 'Erro interno do servidor' }), {
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 });

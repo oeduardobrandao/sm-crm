@@ -778,18 +778,19 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: true, message: `Not Found - method: ${req.method}, path: "${path}"` }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (err: any) {
+    console.error('[instagram-integration] error:', err);
     const isAuthError = err.message && err.message.includes("Unauthorized");
     const isTokenExpired = err.message && err.message.includes("expired");
-    
+
     const statusCode = (isAuthError || isTokenExpired) ? 401 : 400;
-    
-    return new Response(JSON.stringify({ 
-      error: true, 
-      message: err.message,
+
+    return new Response(JSON.stringify({
+      error: true,
+      message: isTokenExpired ? "Token expirado" : isAuthError ? "Não autorizado" : "Erro interno",
       code: isTokenExpired ? "TOKEN_EXPIRED" : undefined
-    }), { 
-        status: statusCode, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    }), {
+        status: statusCode,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   }
 });

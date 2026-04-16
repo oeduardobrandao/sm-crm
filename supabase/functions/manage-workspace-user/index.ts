@@ -219,7 +219,7 @@ Deno.serve(async (req: Request) => {
     }
 
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Internal server error";
-    return new Response(JSON.stringify({ error: message }), { status: 500, headers });
+    console.error('[manage-workspace-user] error:', err);
+    return new Response(JSON.stringify({ error: "Internal server error" }), { status: 500, headers });
   }
 });
