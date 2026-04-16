@@ -145,6 +145,19 @@ async function verifyClientOwnership(serviceClient: any, clientId: string, conta
   }
 }
 
+// --- Helper: verify that a post's account belongs to contaId ---
+async function verifyPostOwnership(serviceClient: any, postId: string, contaId: string): Promise<void> {
+  const { data: post } = await serviceClient
+    .from('instagram_posts')
+    .select('instagram_account_id, instagram_accounts!inner(client_id, clientes!inner(conta_id))')
+    .eq('id', parseInt(postId))
+    .single();
+  const postContaId = (post as any)?.instagram_accounts?.clientes?.conta_id;
+  if (!post || postContaId !== contaId) {
+    throw new Error('Unauthorized');
+  }
+}
+
 // --- Fetch daily insights for a period ---
 async function fetchDailyInsights(_igUserId: string, accessToken: string, since: number, until: number) {
   // Use /me and updated metrics (views replaces impressions, accounts_engaged replaces profile_views)
@@ -761,6 +774,7 @@ Deno.serve(async (req) => {
       const { tag_id } = body;
       if (!tag_id) throw new Error("tag_id is required");
 
+      await verifyPostOwnership(serviceClient, postId, contaId);
       const { error } = await serviceClient
         .from('instagram_post_tag_assignments')
         .insert({ post_id: parseInt(postId), tag_id })
@@ -781,6 +795,7 @@ Deno.serve(async (req) => {
       const parts = path.split('/');
       const postId = parts[2];
       const tagId = parts[4];
+      await verifyPostOwnership(serviceClient, postId, contaId);
       await serviceClient
         .from('instagram_post_tag_assignments')
         .delete()
