@@ -1,6 +1,12 @@
 [functions.instagram-integration]
 verify_jwt = false
 
+[functions.post-media-cleanup-cron]
+verify_jwt = false
+
+[functions.analytics-report-cron]
+verify_jwt = false
+
 [functions.hub-bootstrap]
 verify_jwt = false
 
