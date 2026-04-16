@@ -3,6 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const TOKEN_ENCRYPTION_KEY = Deno.env.get("TOKEN_ENCRYPTION_KEY") ?? (() => { throw new Error("TOKEN_ENCRYPTION_KEY environment variable is required"); })();
+const CRON_SECRET = Deno.env.get('CRON_SECRET') ?? (() => { throw new Error('CRON_SECRET is required'); })();
 
 // --- Token Decryption Utility ---
 async function getEncryptionKey(purpose: string, usage: KeyUsage[]): Promise<CryptoKey> {
@@ -220,7 +221,11 @@ async function syncAccount(
 }
 
 // --- Cron Handler ---
-Deno.serve(async (_req) => {
+Deno.serve(async (req) => {
+  if (req.headers.get('x-cron-secret') !== CRON_SECRET) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+  }
+
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
