@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
+import { insertAuditLog } from "../_shared/audit.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -426,6 +427,13 @@ Deno.serve(async (req) => {
 
         if (dbError) throw new Error(dbError.message);
         console.log('[IG-CALLBACK] Account upserted successfully, id:', upsertedAccount?.id);
+
+        await insertAuditLog(serviceClient, {
+          action: 'instagram-link',
+          resource_type: 'instagram_account',
+          resource_id: String(clientId),
+          metadata: { ig_username: igProfile.username || '', ig_business_id: igBusinessId },
+        });
 
         // Save follower history snapshot + fetch posts
         try {

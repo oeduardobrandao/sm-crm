@@ -1,5 +1,9 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
+import { insertAuditLog } from "../_shared/audit.ts";
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 /** Complete an etapa and activate the next one (or mark workflow done). */
 async function completeEtapa(db: any, workflowId: number, etapaId: number) {
@@ -114,6 +118,13 @@ Deno.serve(async (req) => {
       const newStatus = action === "aprovado" ? "aprovado_cliente" : "correcao_cliente";
       await db.from("workflow_posts").update({ status: newStatus }).eq("id", post_id);
 
+      await insertAuditLog(db, {
+        action: `portal-${action}`,
+        resource_type: 'workflow_post',
+        resource_id: String(post_id),
+        metadata: { workflow_id: workflowId, token_hash: token.slice(0, 8) },
+      });
+
       // Check if all client-visible posts are now approved → auto-complete etapa
       if (action === "aprovado") {
         const { data: sentPosts } = await db
@@ -186,6 +197,13 @@ Deno.serve(async (req) => {
       token,
       action,
       comentario: comentario?.trim() || null,
+    });
+
+    await insertAuditLog(db, {
+      action: `portal-etapa-${action}`,
+      resource_type: 'workflow_etapa',
+      resource_id: String(etapa_id),
+      metadata: { workflow_id: workflowId, token_hash: token.slice(0, 8) },
     });
 
     if (action === "aprovado") {

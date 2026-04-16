@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
+import { insertAuditLog } from "../_shared/audit.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -68,6 +69,14 @@ Deno.serve(async (req: Request) => {
         .eq("conta_id", callerProfile.conta_id);
 
       if (acceptError) throw acceptError;
+
+      await insertAuditLog(serviceClient, {
+        conta_id: callerProfile.conta_id,
+        actor_user_id: user.id,
+        action: 'accept-invite',
+        resource_type: 'invite',
+        metadata: { email: email },
+      });
 
       return new Response(JSON.stringify({ message: "Convite aceito." }), { status: 200, headers });
     }
@@ -157,6 +166,15 @@ Deno.serve(async (req: Request) => {
 
       if (profileUpdateError) throw profileUpdateError;
 
+      await insertAuditLog(serviceClient, {
+        conta_id: callerProfile.conta_id,
+        actor_user_id: user.id,
+        action: 'update-role',
+        resource_type: 'workspace_member',
+        resource_id: targetUserId,
+        metadata: { new_role: role, workspace_id: callerProfile.conta_id },
+      });
+
       return new Response(JSON.stringify({ message: "Permissão atualizada com sucesso." }), { status: 200, headers });
 
     } else if (action === "remove") {
@@ -184,6 +202,15 @@ Deno.serve(async (req: Request) => {
           conta_id: otherMembership?.workspace_id || null,
         })
         .eq("id", targetUserId);
+
+      await insertAuditLog(serviceClient, {
+        conta_id: callerProfile.conta_id,
+        actor_user_id: user.id,
+        action: 'remove-user',
+        resource_type: 'workspace_member',
+        resource_id: targetUserId,
+        metadata: { workspace_id: callerProfile.conta_id },
+      });
 
       return new Response(JSON.stringify({ message: "Usuário removido do workspace." }), { status: 200, headers });
 
