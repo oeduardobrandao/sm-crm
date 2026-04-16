@@ -133,6 +133,18 @@ async function getAccount(serviceClient: any, clientId: string) {
   return account;
 }
 
+// --- Helper: verify that clientId belongs to contaId ---
+async function verifyClientOwnership(serviceClient: any, clientId: string, contaId: string): Promise<void> {
+  const { data: clientRow } = await serviceClient
+    .from('clientes')
+    .select('conta_id')
+    .eq('id', clientId)
+    .single();
+  if (!clientRow || clientRow.conta_id !== contaId) {
+    throw new Error('Unauthorized');
+  }
+}
+
 // --- Fetch daily insights for a period ---
 async function fetchDailyInsights(_igUserId: string, accessToken: string, since: number, until: number) {
   // Use /me and updated metrics (views replaces impressions, accounts_engaged replaces profile_views)
@@ -203,6 +215,7 @@ Deno.serve(async (req) => {
       const clientId = path.split('/')[2];
       const days = parseInt(url.searchParams.get('days') || '30') || 30;
 
+      await verifyClientOwnership(serviceClient, clientId, contaId);
       const { account, accessToken } = await getAccountWithToken(serviceClient, clientId);
 
       const cacheKey = `overview_${days}`;
@@ -294,6 +307,7 @@ Deno.serve(async (req) => {
     // ==========================================
     if (req.method === 'GET' && path.match(/^\/demographics\/\d+$/)) {
       const clientId = path.split('/')[2];
+      await verifyClientOwnership(serviceClient, clientId, contaId);
       const { account, accessToken } = await getAccountWithToken(serviceClient, clientId);
 
       const result = await getCachedOrFetch(serviceClient, account.id, 'demographics', async () => {
@@ -386,6 +400,7 @@ Deno.serve(async (req) => {
     // ==========================================
     if (req.method === 'GET' && path.match(/^\/best-times\/\d+$/)) {
       const clientId = path.split('/')[2];
+      await verifyClientOwnership(serviceClient, clientId, contaId);
       const account = await getAccount(serviceClient, clientId);
 
       const result = await getCachedOrFetch(serviceClient, account.id, 'best_times', async () => {
@@ -457,6 +472,7 @@ Deno.serve(async (req) => {
       const rawDir = url.searchParams.get('dir') || 'desc';
       const sortDir = ['asc', 'desc'].includes(rawDir) ? rawDir : 'desc';
 
+      await verifyClientOwnership(serviceClient, clientId, contaId);
       const account = await getAccount(serviceClient, clientId);
 
       const sinceDate = new Date(Date.now() - days * 86400000).toISOString();
@@ -525,6 +541,7 @@ Deno.serve(async (req) => {
       const clientId = path.split('/')[2];
       const days = parseInt(url.searchParams.get('days') || '90') || 90;
 
+      await verifyClientOwnership(serviceClient, clientId, contaId);
       const account = await getAccount(serviceClient, clientId);
 
       const sinceDate = new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
