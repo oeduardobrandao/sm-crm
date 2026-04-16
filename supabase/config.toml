@@ -1,3 +1,6 @@
+[functions.instagram-integration]
+verify_jwt = false
+
 [functions.hub-bootstrap]
 verify_jwt = false
 
