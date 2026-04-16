@@ -99,7 +99,7 @@ export interface HubPageFull extends HubPage {
 }
 
 export interface HubContentBlock {
-  type: 'paragraph' | 'heading' | 'image' | 'link';
+  type: 'paragraph' | 'heading' | 'image' | 'link' | 'markdown';
   content: string;
   href?: string;
   level?: 1 | 2 | 3;
