@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { supabase, getCurrentProfile, clearProfileCache, signOut as supabaseSignOut } from '../lib/supabase';
+import { initStoreRole } from '../store';
 
 interface Profile {
   id: string;
@@ -30,6 +31,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const fetchProfile = async () => {
     const p = await getCurrentProfile(true);
     setProfile(p);
+    await initStoreRole();
   };
 
   useEffect(() => {
@@ -41,6 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Fetch profile before clearing loading so role is available
         const p = await getCurrentProfile(true);
         setProfile(p);
+        await initStoreRole();
       }
       setLoading(false);
     });

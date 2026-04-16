@@ -6,7 +6,7 @@
  * Set env var: ALLOWED_ORIGINS=https://app.yourdomain.com,https://hub.yourdomain.com
  */
 export function buildCorsHeaders(req: Request): Record<string, string> {
-  const allowedOrigins = (Deno.env.get('ALLOWED_ORIGINS') || 'http://localhost:5173,http://localhost:5174')
+  const allowedOrigins = (Deno.env.get('ALLOWED_ORIGINS') || 'http://localhost:5173,http://localhost:5174,http://localhost:5175')
     .split(',')
     .map(o => o.trim())
     .filter(Boolean);
