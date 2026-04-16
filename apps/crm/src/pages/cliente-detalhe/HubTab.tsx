@@ -573,7 +573,7 @@ function IdeiasTab({ clienteId }: { clienteId: number }) {
         <select
           value={statusFilter}
           onChange={e => setStatusFilter(e.target.value)}
-          className="text-sm border border-stone-200 rounded-lg px-2 py-1 outline-none"
+          className="text-sm border border-border rounded-lg px-2 py-1 outline-none bg-background text-foreground"
         >
           <option value="all">Todos os status</option>
           <option value="nova">Nova</option>
@@ -591,23 +591,23 @@ function IdeiasTab({ clienteId }: { clienteId: number }) {
             <button
               key={ideia.id}
               onClick={() => setSelectedIdeia(ideia)}
-              className="w-full text-left border rounded-lg p-3 hover:bg-stone-50 transition-colors"
+              className="w-full text-left border rounded-lg p-3 hover:bg-muted/50 transition-colors"
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <IdeiaStatusBadge status={ideia.status} />
                     {ideia.ideia_reactions.length > 0 && (
-                      <span className="text-xs text-stone-400">{ideia.ideia_reactions.length} reação(ões)</span>
+                      <span className="text-xs text-muted-foreground">{ideia.ideia_reactions.length} reação(ões)</span>
                     )}
                     {ideia.comentario_agencia && (
-                      <span className="text-xs text-stone-400">com resposta</span>
+                      <span className="text-xs text-muted-foreground">com resposta</span>
                     )}
                   </div>
-                  <p className="text-sm font-medium text-stone-900 truncate">{ideia.titulo}</p>
-                  <p className="text-xs text-stone-500 line-clamp-1 mt-0.5">{ideia.descricao}</p>
+                  <p className="text-sm font-medium text-foreground truncate">{ideia.titulo}</p>
+                  <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{ideia.descricao}</p>
                 </div>
-                <span className="text-xs text-stone-400 shrink-0">
+                <span className="text-xs text-muted-foreground shrink-0">
                   {new Date(ideia.created_at).toLocaleDateString('pt-BR')}
                 </span>
               </div>
