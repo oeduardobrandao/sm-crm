@@ -12,18 +12,24 @@ CREATE TABLE IF NOT EXISTS audit_log (
 -- Only service role can insert; no one can update or delete
 ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "service_role_insert" ON audit_log
-  FOR INSERT TO service_role WITH CHECK (true);
+DO $$ BEGIN
+  DROP POLICY IF EXISTS "service_role_insert" ON audit_log;
+  CREATE POLICY "service_role_insert" ON audit_log
+    FOR INSERT TO service_role WITH CHECK (true);
+END $$;
 
-CREATE POLICY "owner_admin_select" ON audit_log
-  FOR SELECT USING (
-    auth.uid() IN (
-      SELECT id FROM profiles
-      WHERE conta_id = audit_log.conta_id
-      AND role IN ('owner', 'admin')
-    )
-  );
+DO $$ BEGIN
+  DROP POLICY IF EXISTS "owner_admin_select" ON audit_log;
+  CREATE POLICY "owner_admin_select" ON audit_log
+    FOR SELECT USING (
+      auth.uid() IN (
+        SELECT id FROM profiles
+        WHERE conta_id = audit_log.conta_id
+        AND role IN ('owner', 'admin')
+      )
+    );
+END $$;
 
-CREATE INDEX idx_audit_log_conta_id ON audit_log (conta_id);
-CREATE INDEX idx_audit_log_actor ON audit_log (actor_user_id);
-CREATE INDEX idx_audit_log_created_at ON audit_log (created_at);
+CREATE INDEX IF NOT EXISTS idx_audit_log_conta_id ON audit_log (conta_id);
+CREATE INDEX IF NOT EXISTS idx_audit_log_actor ON audit_log (actor_user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log (created_at);
