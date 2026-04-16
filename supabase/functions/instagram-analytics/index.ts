@@ -832,6 +832,7 @@ Deno.serve(async (req) => {
       const month = body.month || `${prevMonth.getFullYear()}-${String(prevMonth.getMonth() + 1).padStart(2, '0')}`;
       const force = body.force === true;
 
+      await verifyClientOwnership(serviceClient, clientId, contaId);
       const account = await getAccount(serviceClient, clientId);
 
       // Check if already exists (skip cache when force=true)
@@ -895,7 +896,8 @@ Deno.serve(async (req) => {
       const clientId = path.split('/')[2];
       const body = await req.json().catch(() => ({}));
 
-      // Verify account belongs to user's conta
+      // Verify account belongs to user's conta before fetching any data
+      await verifyClientOwnership(serviceClient, clientId, contaId);
       const account = await getAccount(serviceClient, clientId);
       const { data: client } = await serviceClient
         .from('clientes')
