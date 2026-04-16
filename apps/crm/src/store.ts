@@ -70,15 +70,20 @@ export interface IntegracaoStatus {
   conta_id?: string;
 }
 
-export let currentUserRole: 'owner' | 'admin' | 'agent' = 'owner';
+export let currentUserRole: 'owner' | 'admin' | 'agent' = 'agent';
 
 export async function initStoreRole() {
   try {
     const profile = await getCurrentProfile();
     if (profile) {
-      currentUserRole = profile.role || 'owner';
+      currentUserRole = profile.role || 'agent';
+    } else {
+      currentUserRole = 'agent';
     }
-  } catch(e) {}
+  } catch (e) {
+    console.error('[store] initStoreRole failed, defaulting to agent:', e);
+    currentUserRole = 'agent';
+  }
 }
 
 // ---- Helpers ----
