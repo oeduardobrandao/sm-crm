@@ -30,7 +30,17 @@ export function escapeHTML(str: string): string {
 
 export function sanitizeUrl(url: string | undefined | null): string {
   if (!url) return '#';
-  const trimmed = url.trim().toLowerCase();
-  if (trimmed.startsWith('javascript:') || trimmed.startsWith('data:')) return '#';
-  return url;
+  try {
+    const parsed = new URL(url.trim());
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      return url.trim();
+    }
+    return '#';
+  } catch {
+    const trimmed = url.trim();
+    if (trimmed.startsWith('/') && !trimmed.startsWith('//')) return trimmed;
+    if (trimmed.startsWith('./') || trimmed.startsWith('../')) return trimmed;
+    if (trimmed.startsWith('#')) return trimmed;
+    return '#';
+  }
 }

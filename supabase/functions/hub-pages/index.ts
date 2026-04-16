@@ -1,19 +1,14 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { buildCorsHeaders } from "../_shared/cors.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-const cors = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
-};
-
-function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
-}
-
 Deno.serve(async (req) => {
+  const cors = buildCorsHeaders(req);
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
+
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "GET") return json({ error: "Method not allowed" }, 405);
 
@@ -23,8 +18,17 @@ Deno.serve(async (req) => {
   if (!token) return json({ error: "token required" }, 400);
 
   const db = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
-  const { data: hubToken } = await db.from("client_hub_tokens").select("cliente_id, is_active").eq("token", token).maybeSingle();
+  const { data: hubToken } = await db.from("client_hub_tokens").select("cliente_id, conta_id, is_active").eq("token", token).gt("expires_at", new Date().toISOString()).maybeSingle();
   if (!hubToken || !hubToken.is_active) return json({ error: "Link inválido." }, 404);
+
+  // Verify client belongs to this workspace (IDOR protection)
+  const { data: clientCheck } = await db
+    .from("clientes")
+    .select("id")
+    .eq("id", hubToken.cliente_id)
+    .eq("conta_id", hubToken.conta_id)
+    .maybeSingle();
+  if (!clientCheck) return json({ error: "Link inválido." }, 404);
 
   if (pageId) {
     const { data: page } = await db.from("hub_pages").select("*").eq("id", pageId).eq("cliente_id", hubToken.cliente_id).maybeSingle();

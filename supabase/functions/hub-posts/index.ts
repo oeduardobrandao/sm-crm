@@ -1,32 +1,25 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { signGetUrl } from "../_shared/r2.ts";
+import { buildCorsHeaders } from "../_shared/cors.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-const cors = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
-};
-
-function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...cors, "Content-Type": "application/json" },
-  });
-}
-
 async function resolveToken(db: ReturnType<typeof createClient>, token: string) {
   const { data } = await db
     .from("client_hub_tokens")
-    .select("cliente_id, is_active")
+    .select("cliente_id, conta_id, is_active")
     .eq("token", token)
+    .gt("expires_at", new Date().toISOString())
     .maybeSingle();
   return data;
 }
 
 Deno.serve(async (req) => {
+  const cors = buildCorsHeaders(req);
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
+
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "GET") return json({ error: "Method not allowed" }, 405);
 
@@ -38,11 +31,12 @@ Deno.serve(async (req) => {
   const hubToken = await resolveToken(db, token);
   if (!hubToken || !hubToken.is_active) return json({ error: "Link inválido." }, 404);
 
-  // Fetch all workflows for this client
+  // Fetch all workflows for this client (scoped to conta_id for IDOR protection)
   const { data: workflows } = await db
     .from("workflows")
     .select("id")
-    .eq("cliente_id", hubToken.cliente_id);
+    .eq("cliente_id", hubToken.cliente_id)
+    .eq("conta_id", hubToken.conta_id);
 
   const workflowIds = (workflows ?? []).map((w: { id: number }) => w.id);
   if (workflowIds.length === 0) return json({ posts: [], postApprovals: [] });

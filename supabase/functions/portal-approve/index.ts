@@ -1,20 +1,9 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { buildCorsHeaders } from "../_shared/cors.ts";
+import { insertAuditLog } from "../_shared/audit.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
-
-function json(body: Record<string, unknown>, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-}
 
 /** Complete an etapa and activate the next one (or mark workflow done). */
 async function completeEtapa(db: any, workflowId: number, etapaId: number) {
@@ -53,8 +42,12 @@ async function completeEtapa(db: any, workflowId: number, etapaId: number) {
 }
 
 Deno.serve(async (req) => {
+  const cors = buildCorsHeaders(req);
+  const json = (body: Record<string, unknown>, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
+
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return new Response("ok", { headers: cors });
   }
 
   if (req.method !== "POST") {
@@ -79,6 +72,7 @@ Deno.serve(async (req) => {
       .from("portal_tokens")
       .select("workflow_id")
       .eq("token", token)
+      .gt("expires_at", new Date().toISOString())
       .maybeSingle();
 
     if (tokenErr || !tokenRow) {
@@ -123,6 +117,13 @@ Deno.serve(async (req) => {
       // Update post status
       const newStatus = action === "aprovado" ? "aprovado_cliente" : "correcao_cliente";
       await db.from("workflow_posts").update({ status: newStatus }).eq("id", post_id);
+
+      await insertAuditLog(db, {
+        action: `portal-${action}`,
+        resource_type: 'workflow_post',
+        resource_id: String(post_id),
+        metadata: { workflow_id: workflowId, token_hash: token.slice(0, 8) },
+      });
 
       // Check if all client-visible posts are now approved → auto-complete etapa
       if (action === "aprovado") {
@@ -196,6 +197,13 @@ Deno.serve(async (req) => {
       token,
       action,
       comentario: comentario?.trim() || null,
+    });
+
+    await insertAuditLog(db, {
+      action: `portal-etapa-${action}`,
+      resource_type: 'workflow_etapa',
+      resource_id: String(etapa_id),
+      metadata: { workflow_id: workflowId, token_hash: token.slice(0, 8) },
     });
 
     if (action === "aprovado") {
