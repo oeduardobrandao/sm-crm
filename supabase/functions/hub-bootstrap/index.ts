@@ -39,7 +39,7 @@ Deno.serve(async (req) => {
     .gt("expires_at", new Date().toISOString())
     .maybeSingle();
 
-  if (!hubToken) return json({ error: "Link inválido." }, 404);
+  if (!hubToken || !hubToken.is_active) return json({ error: "Link inválido." }, 404);
 
   // 3. Fetch client name
   const { data: cliente } = await db

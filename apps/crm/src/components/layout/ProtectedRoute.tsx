@@ -3,7 +3,7 @@ import { ReactNode } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { Spinner } from '@/components/ui/spinner';
 
-const AGENT_BLOCKED = ['/financeiro', '/contratos', '/leads'];
+const AGENT_BLOCKED = ['/financeiro', '/contratos', '/leads', '/equipe'];
 
 export default function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, profile, role, loading } = useAuth();

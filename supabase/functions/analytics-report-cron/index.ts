@@ -5,6 +5,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const CRON_SECRET = Deno.env.get('CRON_SECRET') ?? (() => { throw new Error('CRON_SECRET is required'); })();
+const INTERNAL_FUNCTION_SECRET = Deno.env.get('INTERNAL_FUNCTION_SECRET') ?? (() => { throw new Error('INTERNAL_FUNCTION_SECRET is required'); })();
 
 // --- Monthly Report Cron ---
 // Run on 1st of each month. Generates PDF reports for all connected accounts.
@@ -89,7 +90,7 @@ Deno.serve(async (req: Request) => {
         const genRes = await fetch(genUrl, {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+            'X-Internal-Token': INTERNAL_FUNCTION_SECRET,
             'apikey': SUPABASE_ANON_KEY,
             'Content-Type': 'application/json',
           },

@@ -7,12 +7,12 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 async function resolveToken(db: ReturnType<typeof createClient>, token: string) {
   const { data } = await db
     .from("client_hub_tokens")
-    .select("cliente_id, is_active")
+    .select("cliente_id, is_active, clientes(conta_id)")
     .eq("token", token)
     .gt("expires_at", new Date().toISOString())
     .maybeSingle();
   if (!data || !data.is_active) return null;
-  return data as { cliente_id: number; is_active: boolean };
+  return data as { cliente_id: number; is_active: boolean; clientes: { conta_id: number } };
 }
 
 Deno.serve(async (req) => {
