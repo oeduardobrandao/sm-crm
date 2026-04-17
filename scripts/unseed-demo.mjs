@@ -14,8 +14,13 @@ const env = Object.fromEntries(
     })
 );
 
-const EMAIL = 'deborakristinsm@gmail.com';
-const PASSWORD = 'Bochecha@123';
+const EMAIL = process.env.SEED_EMAIL ?? env.SEED_EMAIL;
+const PASSWORD = process.env.SEED_PASSWORD ?? env.SEED_PASSWORD;
+
+if (!EMAIL || !PASSWORD) {
+  console.error('✗ SEED_EMAIL and SEED_PASSWORD must be set in .env or as environment variables');
+  process.exit(1);
+}
 
 const supabase = createClient(env.VITE_SUPABASE_URL, env.VITE_SUPABASE_ANON_KEY, {
   auth: { persistSession: false },

@@ -94,6 +94,11 @@ Deno.serve(async (req) => {
 
         if (data.error) {
             console.error(`Error refreshing token for account ${account.id}:`, data.error);
+            // Mark as revoked so the UI reflects the real authorization state
+            await supabase
+              .from('instagram_accounts')
+              .update({ authorization_status: 'revoked' })
+              .eq('id', account.id);
             failedCount++;
             continue;
         }
@@ -136,6 +141,7 @@ Deno.serve(async (req) => {
           .update({
             encrypted_access_token: newEncryptedToken,
             token_expires_at: newExpiresAt,
+            authorization_status: 'active',
             ...(storedAvatarUrl ? { profile_picture_url: storedAvatarUrl } : {})
           })
           .eq('id', account.id);
@@ -144,6 +150,11 @@ Deno.serve(async (req) => {
         refreshedCount++;
       } catch (err) {
          console.error(`Failed to process account ${account.id}`, err);
+         // Mark as revoked on unexpected failures (e.g. decryption error, network)
+         await supabase
+           .from('instagram_accounts')
+           .update({ authorization_status: 'revoked' })
+           .eq('id', account.id);
          failedCount++;
       }
     }
