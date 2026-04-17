@@ -24,10 +24,10 @@ export async function signGetUrl(key: string, expiresSeconds = 3600) {
   return getSignedUrl(r2, cmd, { expiresIn: expiresSeconds });
 }
 
-export async function headObject(key: string): Promise<{ contentLength: number } | null> {
+export async function headObject(key: string): Promise<{ contentLength: number; contentType: string | null } | null> {
   try {
     const res = await r2.send(new HeadObjectCommand({ Bucket: R2_BUCKET, Key: key }));
-    return { contentLength: Number(res.ContentLength ?? 0) };
+    return { contentLength: Number(res.ContentLength ?? 0), contentType: res.ContentType ?? null };
   } catch (_e) {
     return null;
   }

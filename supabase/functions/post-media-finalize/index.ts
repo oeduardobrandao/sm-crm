@@ -54,10 +54,11 @@ Deno.serve(async (req) => {
     return json({ error: "unsupported file type" }, 415);
   }
 
-  // Verify R2 object exists and length matches
+  // Verify R2 object exists, length matches, and Content-Type matches declared MIME
   const head = await headObject(body.r2_key);
   if (!head) return json({ error: "object not found" }, 400);
   if (head.contentLength !== body.size_bytes) return json({ error: "size mismatch" }, 400);
+  if (head.contentType && head.contentType !== body.mime_type) return json({ error: "content-type mismatch" }, 400);
 
   if (body.kind === "video") {
     if (!body.thumbnail_r2_key) return json({ error: "video requires thumbnail_r2_key" }, 400);
