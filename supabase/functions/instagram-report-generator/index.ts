@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { jsPDF } from "npm:jspdf@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
+import { timingSafeEqual } from "../_shared/crypto.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -20,7 +21,7 @@ Deno.serve(async (req) => {
 
   // Verify internal call token
   const internalToken = req.headers.get('X-Internal-Token');
-  if (internalToken !== INTERNAL_FUNCTION_SECRET) {
+  if (!timingSafeEqual(internalToken ?? '', INTERNAL_FUNCTION_SECRET)) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
