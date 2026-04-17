@@ -31,11 +31,13 @@ Deno.serve(async (req) => {
   if (!clientCheck) return json({ error: "Link inválido." }, 404);
 
   if (pageId) {
-    const { data: page } = await db.from("hub_pages").select("*").eq("id", pageId).eq("cliente_id", hubToken.cliente_id).maybeSingle();
+    const { data: page } = await db.from("hub_pages").select("*, clientes!inner(conta_id)").eq("id", pageId).eq("cliente_id", hubToken.cliente_id).eq("clientes.conta_id", hubToken.conta_id).maybeSingle();
     if (!page) return json({ error: "Página não encontrada." }, 404);
-    return json({ page });
+    const { clientes: _, ...pageData } = page as any;
+    return json({ page: pageData });
   }
 
-  const { data: pages } = await db.from("hub_pages").select("id, title, display_order, created_at").eq("cliente_id", hubToken.cliente_id).order("display_order");
-  return json({ pages: pages ?? [] });
+  const { data: rawPages } = await db.from("hub_pages").select("id, title, display_order, created_at, clientes!inner(conta_id)").eq("cliente_id", hubToken.cliente_id).eq("clientes.conta_id", hubToken.conta_id).order("display_order");
+  const pages = (rawPages ?? []).map(({ clientes: _, ...p }: any) => p);
+  return json({ pages });
 });
