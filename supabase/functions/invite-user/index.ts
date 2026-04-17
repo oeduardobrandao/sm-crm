@@ -21,8 +21,10 @@ Deno.serve(async (req) => {
 
     const token = authHeader.replace('Bearer ', '');
 
-    // Client for auth verify (Use Anon Key for user requests)
-    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+    // Use service role client to verify the user token (avoids ES256 local verification issue)
+    const supabaseClient = createClient(supabaseUrl, supabaseKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
 
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
 
@@ -117,6 +119,11 @@ Deno.serve(async (req) => {
     if (error) {
       // If user already exists in auth, re-associate them with this workspace
       if (error.message?.includes('already been registered')) {
+        // Re-validate role escalation for re-invite path (same check as initial invite)
+        if (profile.role === 'admin' && role === 'owner') {
+          throw new Error('Administradores não podem convidar novos donos.');
+        }
+
         // Look up existing user by email (paginate to handle large user bases)
         let existingUser = null;
         let page = 1;

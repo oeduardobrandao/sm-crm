@@ -43,9 +43,14 @@ export function IdeiasPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<HubIdeia | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ['hub-ideias', token],
     queryFn: () => fetchIdeias(token),
+    retry: (failureCount, err) => {
+      // Don't retry 4xx errors — they won't self-heal
+      if (err instanceof Error && /HTTP 4\d{2}/.test(err.message)) return false;
+      return failureCount < 2;
+    },
   });
 
   const ideias = data?.ideias ?? [];
@@ -77,6 +82,18 @@ export function IdeiasPage() {
       {isLoading ? (
         <div className="flex justify-center py-16">
           <div className="animate-spin h-6 w-6 rounded-full border-2 border-stone-300 border-t-stone-900" />
+        </div>
+      ) : error ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <span className="text-5xl mb-4">⚠️</span>
+          <p className="font-display text-lg font-semibold text-stone-800 mb-1">Erro ao carregar ideias</p>
+          <p className="text-sm text-stone-500 mb-6">{error.message}</p>
+          <button
+            onClick={() => qc.invalidateQueries({ queryKey: ['hub-ideias', token] })}
+            className="px-4 py-2 rounded-lg bg-stone-900 text-white text-sm font-semibold hover:bg-stone-800 transition-colors"
+          >
+            Tentar novamente
+          </button>
         </div>
       ) : ideias.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">

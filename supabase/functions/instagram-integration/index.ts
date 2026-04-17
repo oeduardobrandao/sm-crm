@@ -172,7 +172,7 @@ Deno.serve(async (req) => {
     // 1. GET /auth/:clientId
     if (req.method === 'GET' && path.startsWith('/auth/')) {
         const clientId = path.split('/')[2];
-        if (!clientId) throw new Error("Client ID required");
+        if (!clientId || !/^\d+$/.test(clientId)) throw new Error("Client ID required");
 
         // Verify caller's workspace owns this client
         const authServiceClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
@@ -462,6 +462,9 @@ Deno.serve(async (req) => {
     // 3. POST /sync/:clientId
     if (req.method === 'POST' && path.startsWith('/sync/')) {
         const clientId = path.split('/')[2];
+        if (!clientId || !/^\d+$/.test(clientId)) {
+            return new Response(JSON.stringify({ error: true, message: 'Invalid client ID' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 });
+        }
         const serviceClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
         // Verify caller's workspace owns this client
@@ -650,6 +653,9 @@ Deno.serve(async (req) => {
      // 4. DELETE /disconnect/:clientId
     if ((req.method === 'POST' || req.method === 'DELETE') && path.startsWith('/disconnect/')) {
          const clientId = path.split('/')[2];
+         if (!clientId || !/^\d+$/.test(clientId)) {
+             return new Response(JSON.stringify({ error: true, message: 'Invalid client ID' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 });
+         }
          const serviceClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
          // Verify caller's workspace owns this client
@@ -671,6 +677,9 @@ Deno.serve(async (req) => {
     // 5. GET /summary/:clientId
     if (req.method === 'GET' && path.startsWith('/summary/')) {
          const clientId = path.split('/')[2];
+         if (!clientId || !/^\d+$/.test(clientId)) {
+             return new Response(JSON.stringify({ error: true, message: 'Invalid client ID' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 });
+         }
          const serviceClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
          // Verify caller's workspace owns this client
@@ -691,6 +700,9 @@ Deno.serve(async (req) => {
     // 6. GET /posts/:clientId
     if (req.method === 'GET' && path.startsWith('/posts/')) {
          const clientId = path.split('/')[2];
+         if (!clientId || !/^\d+$/.test(clientId)) {
+             return new Response(JSON.stringify({ error: true, message: 'Invalid client ID' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 });
+         }
          const pageStr = url.searchParams.get('page') || '1';
          const page = Math.max(1, parseInt(pageStr) || 1);
          const limit = 10;

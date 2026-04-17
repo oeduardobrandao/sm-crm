@@ -1,10 +1,12 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { jsPDF } from "npm:jspdf@2";
+import { jsPDF } from "npm:jspdf@2.5.2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
+import { timingSafeEqual } from "../_shared/crypto.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const INTERNAL_FUNCTION_SECRET = Deno.env.get('INTERNAL_FUNCTION_SECRET') ?? (() => { throw new Error('INTERNAL_FUNCTION_SECRET is required'); })();
+const CRON_SECRET = Deno.env.get('CRON_SECRET') ?? (() => { throw new Error('CRON_SECRET is required'); })();
 
 const MONTHS_PT = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
@@ -18,9 +20,10 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: corsHeaders });
   }
 
-  // Verify internal call token
-  const internalToken = req.headers.get('X-Internal-Token');
-  if (internalToken !== INTERNAL_FUNCTION_SECRET) {
+  // Verify internal call token OR cron secret
+  const internalToken = req.headers.get('X-Internal-Token') ?? '';
+  const cronSecret = req.headers.get('x-cron-secret') ?? '';
+  if (!timingSafeEqual(internalToken, INTERNAL_FUNCTION_SECRET) && !timingSafeEqual(cronSecret, CRON_SECRET)) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

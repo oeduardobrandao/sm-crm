@@ -226,7 +226,7 @@ Deno.serve(async (req) => {
     // ==========================================
     if (req.method === 'GET' && path.match(/^\/overview\/\d+$/)) {
       const clientId = path.split('/')[2];
-      const days = parseInt(url.searchParams.get('days') || '30') || 30;
+      const days = Math.min(365, Math.max(1, parseInt(url.searchParams.get('days') || '30') || 30));
 
       await verifyClientOwnership(serviceClient, clientId, contaId);
       const { account, accessToken } = await getAccountWithToken(serviceClient, clientId);
@@ -480,7 +480,7 @@ Deno.serve(async (req) => {
     // ==========================================
     if (req.method === 'GET' && path.match(/^\/posts-analytics\/\d+$/)) {
       const clientId = path.split('/')[2];
-      const days = parseInt(url.searchParams.get('days') || '30') || 30;
+      const days = Math.min(365, Math.max(1, parseInt(url.searchParams.get('days') || '30') || 30));
       const sortBy = url.searchParams.get('sort') || 'posted_at';
       const rawDir = url.searchParams.get('dir') || 'desc';
       const sortDir = ['asc', 'desc'].includes(rawDir) ? rawDir : 'desc';
@@ -552,7 +552,7 @@ Deno.serve(async (req) => {
     // ==========================================
     if (req.method === 'GET' && path.match(/^\/follower-history\/\d+$/)) {
       const clientId = path.split('/')[2];
-      const days = parseInt(url.searchParams.get('days') || '90') || 90;
+      const days = Math.min(365, Math.max(1, parseInt(url.searchParams.get('days') || '90') || 90));
 
       await verifyClientOwnership(serviceClient, clientId, contaId);
       const account = await getAccount(serviceClient, clientId);
@@ -908,7 +908,7 @@ Deno.serve(async (req) => {
       if (!client) throw new Error("Client not found");
 
       // Gather data for AI
-      const days = body.days || 30;
+      const days = Math.min(365, Math.max(1, parseInt(body.days) || 30));
       const sinceDate = new Date(Date.now() - days * 86400000).toISOString();
 
       const [{ data: posts }, { data: history }] = await Promise.all([
