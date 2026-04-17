@@ -1,3 +1,11 @@
+-- ⚠️  SUPERSEDED: The anon_key stored below is the ORIGINAL key seeded into Vault.
+-- After rotating the anon key, run:
+--   SELECT vault.update_secret('anon_key', '<new-rotated-key>');
+-- The cron schedule created here was replaced by migration
+-- 20260416000003_rotate_anon_key_vault.sql which reads credentials from Vault
+-- at execution time instead of embedding them in the SQL string.
+-- This migration is kept only for the extension setup and initial Vault seeding.
+
 -- Enable required extensions
 create extension if not exists pg_cron with schema pg_catalog;
 create extension if not exists pg_net with schema extensions;

@@ -202,8 +202,6 @@ Deno.serve(async (req) => {
         if (!clientId || !/^\d+$/.test(String(clientId))) throw new Error("Invalid client ID in state parameter");
 
         // Exchange code for short-lived token (Instagram Business Login)
-        console.log('[IG-CALLBACK] Exchanging code for short-lived token...');
-        console.log('[IG-CALLBACK] redirect_uri used:', functionBaseUrl);
         const exchangeRes = await fetch('https://api.instagram.com/oauth/access_token', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -216,9 +214,7 @@ Deno.serve(async (req) => {
             })
         });
         const slTokenData = await exchangeRes.json();
-        console.log('[IG-CALLBACK] Short-lived token response status:', exchangeRes.status);
-        console.log('[IG-CALLBACK] Short-lived token response keys:', Object.keys(slTokenData));
-        console.log('[IG-CALLBACK] Permissions granted:', JSON.stringify(slTokenData.permissions));
+        if (!exchangeRes.ok) console.error('[IG-CALLBACK] Short-lived token exchange failed, status:', exchangeRes.status);
 
         // Handle both error formats: {error: "string"} and {error: {message: "...", type: "...", code: N}}
         if (slTokenData.error || slTokenData.error_type) {
@@ -227,7 +223,7 @@ Deno.serve(async (req) => {
                 || slTokenData.error_description
                 || slTokenData.error
                 || 'Unknown OAuth error';
-            console.error('[IG-CALLBACK] Short-lived token error:', errMsg);
+            console.error('[IG-CALLBACK] Short-lived token exchange error');
             throw new Error(errMsg);
         }
 
@@ -235,10 +231,8 @@ Deno.serve(async (req) => {
         const igBusinessId = String(slTokenData.user_id); // Instagram Business account ID returned directly
 
         if (!shortLivedToken) {
-            console.error('[IG-CALLBACK] No access_token in response:', JSON.stringify(slTokenData));
             throw new Error('Instagram did not return an access token');
         }
-        console.log('[IG-CALLBACK] Got short-lived token, user_id:', igBusinessId);
 
         // Exchange for long-lived token — try multiple approaches
         let llTokenData: any = null;
@@ -246,7 +240,6 @@ Deno.serve(async (req) => {
         
         // Attempt 1: POST to graph.instagram.com/access_token
         try {
-            console.log('[IG-CALLBACK] LL Attempt 1: POST graph.instagram.com/access_token');
             const res1 = await fetch('https://graph.instagram.com/access_token', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -257,51 +250,40 @@ Deno.serve(async (req) => {
                 })
             });
             const data1 = await res1.json();
-            console.log('[IG-CALLBACK] Attempt 1 status:', res1.status, 'keys:', Object.keys(data1));
-            if (data1.access_token) { llTokenData = data1; console.log('[IG-CALLBACK] Attempt 1 SUCCESS'); }
-            else console.log('[IG-CALLBACK] Attempt 1 failed:', JSON.stringify(data1));
-        } catch (e: any) { console.log('[IG-CALLBACK] Attempt 1 exception:', e.message); }
+            if (data1.access_token) llTokenData = data1;
+        } catch { /* try next */ }
 
         // Attempt 2: GET to graph.instagram.com/access_token (no version)
         if (!llTokenData) {
             try {
-                console.log('[IG-CALLBACK] LL Attempt 2: GET graph.instagram.com/access_token');
                 const res2 = await fetch(`https://graph.instagram.com/access_token?${llParams}`);
                 const data2 = await res2.json();
-                console.log('[IG-CALLBACK] Attempt 2 status:', res2.status, 'keys:', Object.keys(data2));
-                if (data2.access_token) { llTokenData = data2; console.log('[IG-CALLBACK] Attempt 2 SUCCESS'); }
-                else console.log('[IG-CALLBACK] Attempt 2 failed:', JSON.stringify(data2));
-            } catch (e: any) { console.log('[IG-CALLBACK] Attempt 2 exception:', e.message); }
+                if (data2.access_token) llTokenData = data2;
+            } catch { /* try next */ }
         }
 
         // Attempt 3: GET to graph.facebook.com/v21.0/oauth/access_token (Facebook Graph endpoint)
         if (!llTokenData) {
             try {
-                console.log('[IG-CALLBACK] LL Attempt 3: GET graph.facebook.com/v21.0/oauth/access_token');
                 const fbParams = `grant_type=ig_exchange_token&client_secret=${META_APP_SECRET}&access_token=${shortLivedToken}`;
                 const res3 = await fetch(`https://graph.facebook.com/v21.0/oauth/access_token?${fbParams}`);
                 const data3 = await res3.json();
-                console.log('[IG-CALLBACK] Attempt 3 status:', res3.status, 'keys:', Object.keys(data3));
-                if (data3.access_token) { llTokenData = data3; console.log('[IG-CALLBACK] Attempt 3 SUCCESS'); }
-                else console.log('[IG-CALLBACK] Attempt 3 failed:', JSON.stringify(data3));
-            } catch (e: any) { console.log('[IG-CALLBACK] Attempt 3 exception:', e.message); }
+                if (data3.access_token) llTokenData = data3;
+            } catch { /* try next */ }
         }
 
         // Attempt 4: GET to graph.instagram.com/v22.0/access_token
         if (!llTokenData) {
             try {
-                console.log('[IG-CALLBACK] LL Attempt 4: GET graph.instagram.com/v22.0/access_token');
                 const res4 = await fetch(`https://graph.instagram.com/v22.0/access_token?${llParams}`);
                 const data4 = await res4.json();
-                console.log('[IG-CALLBACK] Attempt 4 status:', res4.status, 'keys:', Object.keys(data4));
-                if (data4.access_token) { llTokenData = data4; console.log('[IG-CALLBACK] Attempt 4 SUCCESS'); }
-                else console.log('[IG-CALLBACK] Attempt 4 failed:', JSON.stringify(data4));
-            } catch (e: any) { console.log('[IG-CALLBACK] Attempt 4 exception:', e.message); }
+                if (data4.access_token) llTokenData = data4;
+            } catch { /* try next */ }
         }
 
         // If all attempts failed, use the short-lived token directly (it may already be long-lived for new API)
         if (!llTokenData) {
-            console.log('[IG-CALLBACK] All long-lived token attempts failed. Using short-lived token directly.');
+            console.error('[IG-CALLBACK] All long-lived token exchange attempts failed');
             llTokenData = { access_token: shortLivedToken, expires_in: 3600 };
         }
 
@@ -318,44 +300,27 @@ Deno.serve(async (req) => {
         let igProfile: any = null;
 
         // Attempt 1: /{user_id} (required for non-test IGAA tokens with Advanced Access)
-        console.log('[IG-CALLBACK] Profile attempt 1: /{user_id}');
-        const res1 = await fetch(`https://graph.instagram.com/v21.0/${igBusinessId}?fields=${profileFields}&access_token=${longLivedToken}`);
-        const data1 = await res1.json();
-        console.log('[IG-CALLBACK] Profile attempt 1 status:', res1.status, 'keys:', Object.keys(data1));
-        if (data1.username || data1.id) {
-            igProfile = data1;
-            console.log('[IG-CALLBACK] Profile attempt 1 SUCCESS');
-        } else {
-            console.log('[IG-CALLBACK] Profile attempt 1 failed:', JSON.stringify(data1).substring(0, 200));
+        const pRes1 = await fetch(`https://graph.instagram.com/v21.0/${igBusinessId}?fields=${profileFields}&access_token=${longLivedToken}`);
+        const pData1 = await pRes1.json();
+        if (pData1.username || pData1.id) {
+            igProfile = pData1;
         }
 
         // Attempt 2: /me (works for test accounts)
         if (!igProfile) {
-            console.log('[IG-CALLBACK] Profile attempt 2: /me');
-            const res2 = await fetch(`https://graph.instagram.com/v21.0/me?fields=${profileFields}&access_token=${longLivedToken}`);
-            const data2 = await res2.json();
-            console.log('[IG-CALLBACK] Profile attempt 2 status:', res2.status, 'keys:', Object.keys(data2));
-            if (data2.username || data2.id) {
-                igProfile = data2;
-                console.log('[IG-CALLBACK] Profile attempt 2 SUCCESS');
-            } else {
-                console.log('[IG-CALLBACK] Profile attempt 2 failed:', JSON.stringify(data2).substring(0, 200));
-            }
+            const pRes2 = await fetch(`https://graph.instagram.com/v21.0/me?fields=${profileFields}&access_token=${longLivedToken}`);
+            const pData2 = await pRes2.json();
+            if (pData2.username || pData2.id) igProfile = pData2;
         }
 
         // Attempt 3: /me without version prefix (legacy fallback)
         if (!igProfile) {
-            console.log('[IG-CALLBACK] Profile attempt 3: /me (unversioned)');
-            const res3 = await fetch(`https://graph.instagram.com/me?fields=${profileFields}&access_token=${longLivedToken}`);
-            const data3 = await res3.json();
-            console.log('[IG-CALLBACK] Profile attempt 3 status:', res3.status, 'keys:', Object.keys(data3));
-            if (data3.username || data3.id) {
-                igProfile = data3;
-                console.log('[IG-CALLBACK] Profile attempt 3 SUCCESS');
+            const pRes3 = await fetch(`https://graph.instagram.com/me?fields=${profileFields}&access_token=${longLivedToken}`);
+            const pData3 = await pRes3.json();
+            if (pData3.username || pData3.id) {
+                igProfile = pData3;
             } else {
-                console.log('[IG-CALLBACK] Profile attempt 3 failed:', JSON.stringify(data3).substring(0, 200));
-                const errMsg = data3.error?.message || data3.error || 'All profile fetch attempts failed';
-                throw new Error(`Profile fetch failed: ${errMsg}`);
+                throw new Error('Profile fetch failed');
             }
         }
 
@@ -365,7 +330,6 @@ Deno.serve(async (req) => {
         // Fetch 28-day account insights
         let reach_28d = 0, impressions_28d = 0, profile_views_28d = 0, website_clicks_28d = 0;
         try {
-            console.log('[IG-CALLBACK] Fetching 28-day insights...');
             const nowTimestamp = Math.floor(Date.now() / 1000);
             const sinceDate = nowTimestamp - (28 * 24 * 60 * 60);
             // Fetch reach, views, accounts_engaged and website_clicks via total_value
@@ -376,10 +340,6 @@ Deno.serve(async (req) => {
                 fetch(`https://graph.instagram.com/v21.0/me/insights?metric=website_clicks&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${longLivedToken}`)
             ]);
             const [reachData, viewsData, profileTapsData, websiteClicksData] = await Promise.all([reachRes.json(), viewsRes.json(), profileTapsRes.json(), websiteClicksRes.json()]);
-            console.log('[IG-CALLBACK] Insights reach FULL:', JSON.stringify(reachData).substring(0, 500));
-            console.log('[IG-CALLBACK] Insights views FULL:', JSON.stringify(viewsData).substring(0, 500));
-            console.log('[IG-CALLBACK] Insights profile_links_taps FULL:', JSON.stringify(profileTapsData).substring(0, 500));
-            console.log('[IG-CALLBACK] Insights website_clicks FULL:', JSON.stringify(websiteClicksData).substring(0, 500));
             if (reachData.data) {
                 for (const insight of reachData.data) {
                     if (insight.name === 'reach') reach_28d = insight.total_value?.value || 0;
@@ -400,8 +360,7 @@ Deno.serve(async (req) => {
                     if (insight.name === 'website_clicks') website_clicks_28d = insight.total_value?.value || 0;
                 }
             }
-            console.log('[IG-CALLBACK] Insights result: reach=', reach_28d, 'impressions(views)=', impressions_28d, 'accounts_engaged=', profile_views_28d, 'website_clicks=', website_clicks_28d);
-        } catch (e: any) { console.log('[IG-CALLBACK] Insights fetch error:', e.message); }
+        } catch { /* insights are best-effort */ }
 
         // Upsert into DB (with insights + last_synced_at)
         const { data: upsertedAccount, error: dbError } = await serviceClient
@@ -420,13 +379,13 @@ Deno.serve(async (req) => {
                 impressions_28d,
                 profile_views_28d,
                 website_clicks_28d,
-                last_synced_at: new Date().toISOString()
+                last_synced_at: new Date().toISOString(),
+                authorization_status: 'active'
             }, { onConflict: 'client_id' })
             .select('id')
             .single();
 
         if (dbError) throw new Error(dbError.message);
-        console.log('[IG-CALLBACK] Account upserted successfully, id:', upsertedAccount?.id);
 
         await insertAuditLog(serviceClient, {
           action: 'instagram-link',
@@ -456,13 +415,10 @@ Deno.serve(async (req) => {
                     source: 'api',
                 }, { onConflict: 'instagram_account_id,date' });
             }
-            console.log('[IG-CALLBACK] Follower history saved.');
 
             // Fetch posts
-            console.log('[IG-CALLBACK] Fetching media...');
             const mediaRes = await fetch(`https://graph.instagram.com/v21.0/me/media?fields=id,caption,media_type,permalink,timestamp,comments_count,like_count&limit=50&access_token=${longLivedToken}`);
             const mediaData = await mediaRes.json();
-            console.log('[IG-CALLBACK] Media fetch status:', mediaRes.status, 'posts:', mediaData.data?.length || 0, 'error:', mediaData.error?.message || 'none');
 
             if (mediaData.data) {
                 let savedCount = 0;
@@ -480,8 +436,6 @@ Deno.serve(async (req) => {
                                 if (insight.name === 'saved') saved = insight.values[0].value;
                                 if (insight.name === 'shares') shares = insight.values[0].value;
                             }
-                        } else if (postInsightsData.error && savedCount === 0) {
-                            console.log('[IG-CALLBACK] Post insight error (first):', postInsightsData.error.message);
                         }
                     } catch (_) { /* ignore per-post insight errors */ }
 
@@ -497,14 +451,10 @@ Deno.serve(async (req) => {
                         reach, impressions, saved, shares,
                         synced_at: new Date().toISOString()
                     }, { onConflict: 'instagram_post_id' });
-                    if (postErr && savedCount === 0) console.log('[IG-CALLBACK] Post upsert error (first):', postErr.message);
-                    else savedCount++;
+                    if (!postErr) savedCount++;
                 }
-                console.log('[IG-CALLBACK] Posts saved:', savedCount, '/', mediaData.data.length);
-            } else {
-                console.log('[IG-CALLBACK] No media data returned');
             }
-        } catch (e: any) { console.log('[IG-CALLBACK] Posts/history fetch error:', e.message); }
+        } catch { /* posts/history fetch is best-effort */ }
 
         return Response.redirect(`${OAUTH_REDIRECT_BASE}/clientes/${clientId}`, 302);
     }
@@ -547,11 +497,6 @@ Deno.serve(async (req) => {
             const [reachData, viewsData, profileTapsData, websiteClicksData, igProfile, mediaData] = await Promise.all([
                 reachRes.json(), viewsRes.json(), profileTapsRes.json(), websiteClicksRes.json(), igProfileRes.json(), mediaRes.json()
             ]);
-
-            console.log('[IG-SYNC] Insights reach FULL:', JSON.stringify(reachData).substring(0, 500));
-            console.log('[IG-SYNC] Insights views FULL:', JSON.stringify(viewsData).substring(0, 500));
-            console.log('[IG-SYNC] Insights profile_links_taps FULL:', JSON.stringify(profileTapsData).substring(0, 500));
-            console.log('[IG-SYNC] Insights website_clicks FULL:', JSON.stringify(websiteClicksData).substring(0, 500));
 
             // Check if token expired
             if (reachData.error?.code === 190) {
@@ -603,7 +548,7 @@ Deno.serve(async (req) => {
                             storedAvatarUrl = pub.publicUrl;
                         }
                     }
-                } catch (e) { console.log('[IG-SYNC] Avatar cache failed (non-fatal):', e); }
+                } catch { /* avatar cache is non-fatal */ }
             }
 
             const today = new Date().toISOString().split('T')[0];
@@ -778,7 +723,7 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: true, message: `Not Found - method: ${req.method}, path: "${path}"` }), { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (err: any) {
-    console.error('[instagram-integration] error:', err);
+    console.error('[instagram-integration] error:', err?.message ?? 'unknown');
     const isAuthError = err.message && err.message.includes("Unauthorized");
     const isTokenExpired = err.message && err.message.includes("expired");
 
