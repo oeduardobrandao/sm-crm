@@ -24,3 +24,6 @@ verify_jwt = false
 
 [functions.hub-briefing]
 verify_jwt = false
+
+[functions.hub-ideias]
+verify_jwt = false

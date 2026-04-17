@@ -21,8 +21,10 @@ Deno.serve(async (req) => {
 
     const token = authHeader.replace('Bearer ', '');
 
-    // Client for auth verify (Use Anon Key for user requests)
-    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+    // Use service role client to verify the user token (avoids ES256 local verification issue)
+    const supabaseClient = createClient(supabaseUrl, supabaseKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
 
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
 
