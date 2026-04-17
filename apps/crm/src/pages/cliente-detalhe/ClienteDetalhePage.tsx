@@ -534,15 +534,15 @@ export default function ClienteDetalhePage() {
   return (
     <div style={{ padding: '1.5rem' }}>
       {/* Header */}
-      <div className="header" style={{ marginBottom: '1.5rem' }}>
+      <div className="header" style={{ marginBottom: '1.5rem', alignContent: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <Button variant="outline" size="icon" onClick={() => navigate('/clientes')}><ArrowLeft className="h-4 w-4" /></Button>
+          <Button variant="outline" size="icon" style={{ borderRadius: '50%' }} onClick={() => navigate('/clientes')}><ArrowLeft className="h-4 w-4" /></Button>
           <div className="avatar" style={{ background: cliente.cor, width: 48, height: 48, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: '1.1rem', flexShrink: 0 }}>
             {getInitials(cliente.nome)}
           </div>
-          <div>
+          <div style={{ display: 'flex', gap: 24 }}>
             <h2 className="header-title" style={{ margin: 0 }}>{cliente.nome}</h2>
-            <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+            <div style={{ display: 'flex', gap: 8, marginTop: 4, alignItems: 'center' }}>
               <span className="badge badge-neutral">{cliente.plano}</span>
               <StatusBadge status={cliente.status} />
             </div>
