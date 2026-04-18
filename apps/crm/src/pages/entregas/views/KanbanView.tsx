@@ -21,6 +21,7 @@ interface KanbanViewProps {
   onRecurring: (workflowId: number) => void;
   membros: Membro[];
   templates: WorkflowTemplate[];
+  postsCounts: Map<number, number>;
 }
 
 interface BoardRow {
@@ -75,7 +76,7 @@ function DroppableColumnBody({ id, children }: { id: string; children: React.Rea
 }
 
 // Draggable card wrapper
-function SortableCard({ card, onCardClick, onPostsClick, membros, onRefresh, onRevertClick, onForwardClick }: { card: BoardCard; onCardClick: (c: BoardCard) => void; onPostsClick: (c: BoardCard) => void; membros: Membro[]; onRefresh: () => void; onRevertClick: () => void; onForwardClick: () => void }) {
+function SortableCard({ card, onCardClick, onPostsClick, membros, onRefresh, onRevertClick, onForwardClick, postsCount }: { card: BoardCard; onCardClick: (c: BoardCard) => void; onPostsClick: (c: BoardCard) => void; membros: Membro[]; onRefresh: () => void; onRevertClick: () => void; onForwardClick: () => void; postsCount: number }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: String(card.workflow.id),
   });
@@ -96,6 +97,7 @@ function SortableCard({ card, onCardClick, onPostsClick, membros, onRefresh, onR
         onRefresh={onRefresh}
         onRevertClick={onRevertClick}
         onForwardClick={onForwardClick}
+        postsCount={postsCount}
       />
     </div>
   );
@@ -104,7 +106,7 @@ function SortableCard({ card, onCardClick, onPostsClick, membros, onRefresh, onR
 // Column droppable ID prefix — distinguishes column IDs from card IDs in handleDragEnd
 const COL_PREFIX = 'col:';
 
-export function KanbanView({ cards, onCardClick, onPostsClick, onRefresh, onRecurring, membros, templates }: KanbanViewProps) {
+export function KanbanView({ cards, onCardClick, onPostsClick, onRefresh, onRecurring, membros, templates, postsCounts }: KanbanViewProps) {
   const [localCards, setLocalCards] = useState<BoardCard[]>(cards);
   const [activeCard, setActiveCard] = useState<BoardCard | null>(null);
   const [revertTarget, setRevertTarget] = useState<{ workflowId: number; title: string } | null>(null);
@@ -332,6 +334,7 @@ export function KanbanView({ cards, onCardClick, onPostsClick, onRefresh, onRecu
                               onRefresh={onRefresh}
                               onRevertClick={() => setRevertTarget({ workflowId: card.workflow.id!, title: card.workflow.titulo })}
                               onForwardClick={() => handleForwardCard(card)}
+                              postsCount={postsCounts.get(card.workflow.id!) ?? 0}
                             />
                           ))
                         }
@@ -344,7 +347,7 @@ export function KanbanView({ cards, onCardClick, onPostsClick, onRefresh, onRecu
           ))}
         </div>
         <DragOverlay>
-          {activeCard && <WorkflowCard card={activeCard} isDragOverlay />}
+          {activeCard && <WorkflowCard card={activeCard} isDragOverlay postsCount={postsCounts.get(activeCard.workflow.id!) ?? 0} />}
         </DragOverlay>
       </DndContext>
       <RevertConfirmDialog

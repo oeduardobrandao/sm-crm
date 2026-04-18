@@ -108,6 +108,7 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
     setLocalOrder(null);
     qc.invalidateQueries({ queryKey: ['workflow-posts-with-props', workflowId] });
     qc.invalidateQueries({ queryKey: ['post-approvals'] });
+    qc.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
   }, [qc, workflowId]);
 
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
