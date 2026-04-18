@@ -28,6 +28,9 @@ npm-debug.log*
 # Vite
 vite.config.ts.timestamp-*
 
+# Coverage reports (generated, never commit)
+coverage/
+
 # Superpowers brainstorm artifacts
 .superpowers/
 
