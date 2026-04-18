@@ -45,10 +45,12 @@ export default function EntregasPage() {
   const pendingDrawerId = useRef<number | null>(null);
   const drawerParam = searchParams.get('drawer');
   useEffect(() => {
-    if (!drawerParam || pendingDrawerId.current !== null) return;
+    if (!drawerParam) return;
     const parsed = parseInt(drawerParam, 10);
-    if (!isNaN(parsed)) pendingDrawerId.current = parsed;
-    setSearchParams({}, { replace: true });
+    if (!isNaN(parsed)) {
+      pendingDrawerId.current = parsed;
+      setSearchParams({}, { replace: true });
+    }
   }, [drawerParam, setSearchParams]);
 
   useEffect(() => {
