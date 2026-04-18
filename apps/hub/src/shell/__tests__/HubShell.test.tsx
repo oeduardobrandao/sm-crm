@@ -1,5 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Outlet, Route, Routes } from 'react-router-dom';
 
 vi.mock('../../api', () => ({
@@ -15,6 +15,11 @@ import { HubShell } from '../HubShell';
 const mockedFetchBootstrap = vi.mocked(fetchBootstrap);
 
 describe('HubShell', () => {
+  beforeEach(() => {
+    mockedFetchBootstrap.mockReset();
+    document.head.innerHTML = '';
+  });
+
   it('bootstraps the hub context and renders its children', async () => {
     mockedFetchBootstrap.mockResolvedValue({
       workspace: {
@@ -43,6 +48,7 @@ describe('HubShell', () => {
 
     expect(mockedFetchBootstrap).toHaveBeenCalledWith('mesaas', 'token-publico');
     expect(screen.getByText('Hub nav')).toBeInTheDocument();
+    expect(document.querySelector("link[rel='icon']")).toHaveAttribute('href', 'https://cdn.mesaas.com/logo.png');
   });
 
   it('renders the invalid link state when bootstrap fails', async () => {
@@ -63,5 +69,34 @@ describe('HubShell', () => {
     });
 
     expect(screen.getByText('Link inválido.')).toBeInTheDocument();
+  });
+
+  it('renders the disabled state when the hub access is inactive', async () => {
+    mockedFetchBootstrap.mockResolvedValue({
+      workspace: {
+        name: 'Mesaas',
+        logo_url: 'https://cdn.mesaas.com/logo.png',
+        brand_color: '#0f766e',
+      },
+      cliente_nome: 'Clínica Aurora',
+      is_active: false,
+      cliente_id: 14,
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/mesaas/hub/token-desativado']}>
+        <Routes>
+          <Route path="/:workspace/hub/:token" element={<HubShell />}>
+            <Route index element={<Outlet />} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Acesso desativado.')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('Entre em contato com a agência.')).toBeInTheDocument();
   });
 });

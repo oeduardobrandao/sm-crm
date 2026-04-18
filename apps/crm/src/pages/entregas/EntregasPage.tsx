@@ -44,11 +44,13 @@ export default function EntregasPage() {
   // Auto-open drawer when navigated with ?drawer=<workflowId>
   const pendingDrawerId = useRef<number | null>(null);
   const drawerParam = searchParams.get('drawer');
-  if (drawerParam && pendingDrawerId.current === null) {
+  useEffect(() => {
+    if (!drawerParam || pendingDrawerId.current !== null) return;
     const parsed = parseInt(drawerParam, 10);
     if (!isNaN(parsed)) pendingDrawerId.current = parsed;
     setSearchParams({}, { replace: true });
-  }
+  }, [drawerParam, setSearchParams]);
+
   useEffect(() => {
     if (pendingDrawerId.current === null || cards.length === 0) return;
     const match = cards.find(c => c.workflow.id === pendingDrawerId.current);
