@@ -68,7 +68,6 @@ export function WorkflowCard({ card, onClick, isDragOverlay, dragHandle, membros
     : null;
 
   const accent = deadlineAccent[deadlineClass] ?? '#3ecf8e';
-  const sanitizeUrl = (url: string) => url.startsWith('http') ? url : `https://${url}`;
 
   return (
     <div
@@ -298,36 +297,6 @@ export function WorkflowCard({ card, onClick, isDragOverlay, dragHandle, membros
         )}
       </DropdownMenu>
 
-      {/* External links */}
-      {(card.workflow.link_notion || card.workflow.link_drive) && (
-        <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
-          {card.workflow.link_notion && (
-            <a
-              href={sanitizeUrl(card.workflow.link_notion)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="board-card-link"
-              style={{ fontSize: '0.68rem', fontWeight: 600, letterSpacing: '0.03em' }}
-              onClick={e => e.stopPropagation()}
-            >
-              Notion
-            </a>
-          )}
-          {card.workflow.link_drive && (
-            <a
-              href={sanitizeUrl(card.workflow.link_drive)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="board-card-link"
-              style={{ fontSize: '0.68rem', fontWeight: 600, letterSpacing: '0.03em' }}
-              onClick={e => e.stopPropagation()}
-            >
-              Drive
-            </a>
-          )}
-        </div>
-      )}
-
       {/* Client approval badge */}
       {card.etapa.tipo === 'aprovacao_cliente' && (
         <div className="board-card-approval">
@@ -403,6 +372,7 @@ export function WorkflowCard({ card, onClick, isDragOverlay, dragHandle, membros
           <Edit2 className="h-3.5 w-3.5" />
         </button>
         <button
+          className="btn-edit-workflow"
           title="Posts do fluxo"
           style={{
             display: 'flex',
@@ -410,15 +380,14 @@ export function WorkflowCard({ card, onClick, isDragOverlay, dragHandle, membros
             gap: '0.35rem',
             padding: '0.4rem 0.75rem',
             borderRadius: '10px',
-            border: '1px solid var(--primary-color)',
-            background: 'color-mix(in srgb, var(--primary-color) 12%, transparent)',
-            color: 'var(--primary-color)',
+            border: '0px solid var(--border-color)',
+            background: 'transparent',
             fontSize: '0.72rem',
             fontWeight: 700,
             cursor: 'pointer',
             flexShrink: 0,
             position: 'relative',
-            transition: 'background 0.15s',
+            transition: 'all 0.15s',
           }}
           onClick={e => { e.stopPropagation(); onPostsClick?.(); }}
         >
