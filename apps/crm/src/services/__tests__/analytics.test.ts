@@ -255,6 +255,86 @@ describe('analytics service', () => {
     expect(result.posts[1].engagement_rate).toBeLessThan(result.posts[0].engagement_rate);
   });
 
+  it('returns zero summary when clients query errors out', async () => {
+    mockedSupabase.__queueSupabaseResult('clientes', 'select', {
+      data: null,
+      error: { message: 'boom' },
+    });
+
+    const summary = await getPortfolioSummary(28);
+
+    expect(summary).toEqual({
+      accounts: [],
+      summary: { total: 0, connected: 0, growing: 0, stagnant: 0, declining: 0, bestByEngagement: null, mostImproved: null },
+    });
+  });
+
+  it('returns zero summary when no active clients exist', async () => {
+    mockedSupabase.__queueSupabaseResult('clientes', 'select', {
+      data: [
+        { id: 1, nome: 'Antigo', status: 'pausado' },
+        { id: 2, nome: 'Arquivado', status: 'arquivado' },
+      ],
+      error: null,
+    });
+
+    const summary = await getPortfolioSummary(28);
+
+    expect(summary.summary.total).toBe(0);
+    expect(summary.summary.connected).toBe(0);
+    expect(summary.accounts).toEqual([]);
+  });
+
+  it('reports zero connected when active clients have no instagram accounts', async () => {
+    mockedSupabase.__queueSupabaseResult('clientes', 'select', {
+      data: [{ id: 1, nome: 'Clínica', status: 'ativo' }],
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseResult('instagram_accounts', 'select', {
+      data: [],
+      error: null,
+    });
+
+    const summary = await getPortfolioSummary(28);
+
+    expect(summary.summary).toMatchObject({ total: 1, connected: 0, growing: 0, declining: 0, stagnant: 0 });
+    expect(summary.summary.bestByEngagement).toBeNull();
+    expect(summary.summary.mostImproved).toBeNull();
+  });
+
+  it('skips engagement calculation for posts with zero reach', async () => {
+    mockedSupabase.__queueSupabaseResult('clientes', 'select', {
+      data: [{ id: 1, nome: 'Clínica', status: 'ativo' }],
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseResult('instagram_accounts', 'select', {
+      data: [{ id: 10, client_id: 1, username: 'clinica', follower_count: 1000 }],
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseResult('instagram_posts', 'select',
+      {
+        data: [
+          { instagram_account_id: 10, posted_at: '2026-04-10T10:00:00.000Z', likes: 10, comments: 2, saved: 1, shares: 1, reach: 0 },
+          { instagram_account_id: 10, posted_at: '2026-04-11T10:00:00.000Z', likes: 50, comments: 5, saved: 5, shares: 0, reach: 1000 },
+        ],
+        error: null,
+      },
+      { data: [], error: null },
+    );
+    mockedSupabase.__queueSupabaseResult('instagram_follower_history', 'select', {
+      data: [],
+      error: null,
+    });
+
+    const summary = await getPortfolioSummary(28);
+
+    // 2 posts counted, but engagement only from the one with reach>0:
+    //   (50+5+5+0)/1000 * 100 = 6 → avg across 2 posts = 6/2 = 3
+    expect(summary.accounts).toHaveLength(1);
+    expect(summary.accounts[0].posts_last_30d).toBe(2);
+    expect(summary.accounts[0].engagement_rate_avg).toBe(3);
+  });
+
   it('throws a friendly report generation error when the edge function fails', async () => {
     fetchHarness.queueResponse({
       ok: false,

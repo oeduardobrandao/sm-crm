@@ -19,6 +19,9 @@ const subscription = {
   unsubscribe: () => undefined,
 };
 
+type AuthChangeCallback = (event: string, session: { user: { id: string } | null } | null) => void;
+let authChangeCallback: AuthChangeCallback | null = null;
+
 export const supabase = {
   from: (table: string) => queryMock.from(table),
   rpc: (name: string, params: Record<string, unknown>) => queryMock.rpc(name, params),
@@ -29,7 +32,8 @@ export const supabase = {
     async getUser() {
       return { data: { user: currentUser }, error: null };
     },
-    onAuthStateChange() {
+    onAuthStateChange(callback: AuthChangeCallback) {
+      authChangeCallback = callback;
       return { data: { subscription } };
     },
     async signInWithPassword() {
@@ -107,4 +111,8 @@ export function __setCurrentProfile(profile: Record<string, unknown> | null) {
 
 export function __setCurrentSession(session: { access_token: string; user: { id: string } | null } | null) {
   currentSession = session;
+}
+
+export function __emitAuthChange(event: string, session: { user: { id: string } | null } | null) {
+  authChangeCallback?.(event, session);
 }

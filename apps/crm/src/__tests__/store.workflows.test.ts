@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../lib/supabase');
 
@@ -354,5 +354,135 @@ describe('store workflow and portal functions', () => {
       comentario: 'Trocar a imagem principal por uma versão com logo.',
       is_workspace_user: true,
     });
+  });
+
+  it('replyToPostApproval throws when no portal token exists yet', async () => {
+    mockedSupabase.__queueSupabaseResult('portal_tokens', 'select', {
+      data: null,
+      error: null,
+    });
+
+    await expect(store.replyToPostApproval(1, 2, 'mensagem')).rejects.toThrow(
+      'Crie e compartilhe o portal antes de responder.',
+    );
+  });
+});
+
+describe('getDeadlineInfo', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('returns prazo_dias unchanged when the step is not active', () => {
+    const result = store.getDeadlineInfo({
+      id: 1,
+      workflow_id: 1,
+      ordem: 0,
+      nome: 'Briefing',
+      prazo_dias: 5,
+      tipo_prazo: 'corridos',
+      status: 'pendente',
+      iniciado_em: null,
+    } as never);
+
+    expect(result).toEqual({ diasRestantes: 5, horasRestantes: 0, estourado: false, urgente: false });
+  });
+
+  it('returns prazo_dias unchanged when iniciado_em is missing on an active step', () => {
+    const result = store.getDeadlineInfo({
+      id: 1,
+      workflow_id: 1,
+      ordem: 0,
+      nome: 'Briefing',
+      prazo_dias: 3,
+      tipo_prazo: 'corridos',
+      status: 'ativo',
+      iniciado_em: null,
+    } as never);
+
+    expect(result.diasRestantes).toBe(3);
+    expect(result.estourado).toBe(false);
+  });
+
+  it('uses calendar time for tipo_prazo=corridos', () => {
+    // 5 days deadline, 2 calendar days elapsed → 3 days left
+    vi.setSystemTime(new Date('2026-04-10T12:00:00.000Z'));
+
+    const result = store.getDeadlineInfo({
+      id: 1,
+      workflow_id: 1,
+      ordem: 0,
+      nome: 'Briefing',
+      prazo_dias: 5,
+      tipo_prazo: 'corridos',
+      status: 'ativo',
+      iniciado_em: '2026-04-08T12:00:00.000Z',
+    } as never);
+
+    expect(result.diasRestantes).toBe(3);
+    expect(result.estourado).toBe(false);
+    expect(result.urgente).toBe(false);
+  });
+
+  it('skips weekends when tipo_prazo=uteis', () => {
+    // Start Fri 2026-04-10 12:00, now Mon 2026-04-13 12:00.
+    // Calendar elapsed = 3 days, but business days elapsed = 1 (only Monday counted — Sat/Sun skipped).
+    // So with prazo=5 uteis → 5 - 1 = 4 days remaining.
+    vi.setSystemTime(new Date('2026-04-13T12:00:00.000Z'));
+
+    const result = store.getDeadlineInfo({
+      id: 1,
+      workflow_id: 1,
+      ordem: 0,
+      nome: 'Briefing',
+      prazo_dias: 5,
+      tipo_prazo: 'uteis',
+      status: 'ativo',
+      iniciado_em: '2026-04-10T12:00:00.000Z',
+    } as never);
+
+    expect(result.diasRestantes).toBe(4);
+    expect(result.estourado).toBe(false);
+  });
+
+  it('marks estourado=true when deadline has passed', () => {
+    vi.setSystemTime(new Date('2026-04-20T12:00:00.000Z'));
+
+    const result = store.getDeadlineInfo({
+      id: 1,
+      workflow_id: 1,
+      ordem: 0,
+      nome: 'Briefing',
+      prazo_dias: 2,
+      tipo_prazo: 'corridos',
+      status: 'ativo',
+      iniciado_em: '2026-04-10T12:00:00.000Z',
+    } as never);
+
+    expect(result.estourado).toBe(true);
+    expect(result.urgente).toBe(false);
+  });
+
+  it('marks urgente=true when 24h or less remain and not yet overdue', () => {
+    // 2-day deadline (48h), 36h elapsed → 12h remaining, inside the 24h window.
+    vi.setSystemTime(new Date('2026-04-11T12:00:00.000Z'));
+
+    const result = store.getDeadlineInfo({
+      id: 1,
+      workflow_id: 1,
+      ordem: 0,
+      nome: 'Briefing',
+      prazo_dias: 2,
+      tipo_prazo: 'corridos',
+      status: 'ativo',
+      iniciado_em: '2026-04-10T00:00:00.000Z',
+    } as never);
+
+    expect(result.urgente).toBe(true);
+    expect(result.estourado).toBe(false);
   });
 });

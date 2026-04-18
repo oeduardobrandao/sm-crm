@@ -342,3 +342,422 @@ Deno.test("hub-ideias blocks editing locked ideas", async () => {
 
   assertEquals(response.status, 409);
 });
+
+// ---------------------------------------------------------------------------
+// Error-path coverage (Tier 3)
+// ---------------------------------------------------------------------------
+
+Deno.test("hub-bootstrap handles CORS preflight with 200", async () => {
+  const handler = createHubBootstrapHandler({
+    buildCorsHeaders,
+    createDb: () => createSupabaseQueryMock() as never,
+    now,
+  });
+  const response = await handler(new Request("https://example.test/hub-bootstrap", { method: "OPTIONS" }));
+  assertEquals(response.status, 200);
+});
+
+Deno.test("hub-bootstrap rejects non-GET methods with 405", async () => {
+  const handler = createHubBootstrapHandler({
+    buildCorsHeaders,
+    createDb: () => createSupabaseQueryMock() as never,
+    now,
+  });
+  const response = await handler(new Request("https://example.test/hub-bootstrap?workspace=x&token=y", { method: "POST" }));
+  assertEquals(response.status, 405);
+});
+
+Deno.test("hub-bootstrap returns 404 when the workspace slug is unknown", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("workspaces", "select", { data: null, error: null });
+
+  const handler = createHubBootstrapHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+  });
+  const response = await handler(new Request("https://example.test/hub-bootstrap?workspace=nope&token=hub-123"));
+  assertEquals(response.status, 404);
+});
+
+Deno.test("hub-bootstrap returns 403 when the workspace has the hub disabled", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("workspaces", "select", {
+    data: { id: "conta-1", name: "Mesaas", logo_url: null, brand_color: null, hub_enabled: false },
+    error: null,
+  });
+
+  const handler = createHubBootstrapHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+  });
+  const response = await handler(new Request("https://example.test/hub-bootstrap?workspace=mesaas&token=hub-123"));
+  assertEquals(response.status, 403);
+});
+
+Deno.test("hub-bootstrap returns 404 when the hub token is missing or inactive", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("workspaces", "select", {
+    data: { id: "conta-1", name: "Mesaas", logo_url: null, brand_color: null, hub_enabled: true },
+    error: null,
+  });
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, is_active: false },
+    error: null,
+  });
+
+  const handler = createHubBootstrapHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+  });
+  const response = await handler(new Request("https://example.test/hub-bootstrap?workspace=mesaas&token=hub-123"));
+  assertEquals(response.status, 404);
+});
+
+Deno.test("hub-approve rejects non-POST methods with 405", async () => {
+  const handler = createHubApproveHandler({
+    buildCorsHeaders,
+    createDb: () => createSupabaseQueryMock() as never,
+    now,
+  });
+  const response = await handler(new Request("https://example.test/hub-approve", { method: "GET" }));
+  assertEquals(response.status, 405);
+});
+
+Deno.test("hub-approve rejects missing required fields with 400", async () => {
+  const handler = createHubApproveHandler({
+    buildCorsHeaders,
+    createDb: () => createSupabaseQueryMock() as never,
+    now,
+  });
+  const response = await handler(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123" }),
+  }));
+  assertEquals(response.status, 400);
+});
+
+Deno.test("hub-approve returns 404 when the post cannot be found", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, is_active: true }, error: null });
+  db.queue("workflow_posts", "select", { data: null, error: null });
+
+  const handler = createHubApproveHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+  });
+  const response = await handler(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado" }),
+  }));
+  assertEquals(response.status, 404);
+});
+
+Deno.test("hub-approve returns 403 when the post belongs to a different client", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, is_active: true }, error: null });
+  db.queue("workflow_posts", "select", { data: { id: 99, workflow_id: 7, status: "enviado_cliente" }, error: null });
+  db.queue("workflows", "select", { data: { cliente_id: 999 }, error: null });
+
+  const handler = createHubApproveHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+  });
+  const response = await handler(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado" }),
+  }));
+  assertEquals(response.status, 403);
+});
+
+Deno.test("hub-approve returns 500 when the approval insert fails", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, is_active: true }, error: null });
+  db.queue("workflow_posts", "select", { data: { id: 99, workflow_id: 7, status: "enviado_cliente" }, error: null });
+  db.queue("workflows", "select", { data: { cliente_id: 14 }, error: null });
+  db.queue("post_approvals", "insert", { data: null, error: { message: "constraint violation" } });
+
+  const handler = createHubApproveHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+  });
+  const response = await handler(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado" }),
+  }));
+  assertEquals(response.status, 500);
+});
+
+Deno.test("hub-posts rejects non-GET methods with 405", async () => {
+  const handler = createHubPostsHandler({
+    buildCorsHeaders,
+    createDb: () => createSupabaseQueryMock() as never,
+    now,
+    signGetUrl: async () => "https://signed.example",
+  });
+  const response = await handler(new Request("https://example.test/hub-posts?token=hub-123", { method: "POST" }));
+  assertEquals(response.status, 405);
+});
+
+Deno.test("hub-posts returns 404 when the hub token is invalid", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: null, error: null });
+
+  const handler = createHubPostsHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    signGetUrl: async () => "https://signed.example",
+  });
+  const response = await handler(new Request("https://example.test/hub-posts?token=expired"));
+  assertEquals(response.status, 404);
+});
+
+Deno.test("hub-posts returns empty collections when the client has no workflows", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("workflows", "select", { data: [], error: null });
+
+  const handler = createHubPostsHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    signGetUrl: async () => "https://signed.example",
+  });
+  const response = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(response);
+  assertEquals(response.status, 200);
+  assertEquals(body.posts, []);
+  assertEquals(body.postApprovals, []);
+});
+
+Deno.test("hub-brand rejects missing tokens with 400", async () => {
+  const handler = createHubBrandHandler({
+    buildCorsHeaders,
+    createDb: () => createSupabaseQueryMock() as never,
+    now,
+  });
+  const response = await handler(new Request("https://example.test/hub-brand"));
+  assertEquals(response.status, 400);
+});
+
+Deno.test("hub-brand returns 404 for an invalid hub token", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: null, error: null });
+
+  const handler = createHubBrandHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+  });
+  const response = await handler(new Request("https://example.test/hub-brand?token=expired"));
+  assertEquals(response.status, 404);
+});
+
+Deno.test("hub-pages rejects non-GET methods with 405", async () => {
+  const handler = createHubPagesHandler({
+    buildCorsHeaders,
+    createDb: () => createSupabaseQueryMock() as never,
+    now,
+  });
+  const response = await handler(new Request("https://example.test/hub-pages?token=hub-123", { method: "POST" }));
+  assertEquals(response.status, 405);
+});
+
+Deno.test("hub-pages rejects missing tokens with 400", async () => {
+  const handler = createHubPagesHandler({
+    buildCorsHeaders,
+    createDb: () => createSupabaseQueryMock() as never,
+    now,
+  });
+  const response = await handler(new Request("https://example.test/hub-pages"));
+  assertEquals(response.status, 400);
+});
+
+Deno.test("hub-pages returns 404 when the client does not belong to the workspace", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("clientes", "select", { data: null, error: null });
+
+  const handler = createHubPagesHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+  });
+  const response = await handler(new Request("https://example.test/hub-pages?token=hub-123"));
+  assertEquals(response.status, 404);
+});
+
+Deno.test("hub-briefing rejects malformed JSON on POST with 400", async () => {
+  const handler = createHubBriefingHandler({
+    buildCorsHeaders,
+    createDb: () => createSupabaseQueryMock() as never,
+    now,
+  });
+  const response = await handler(new Request("https://example.test/hub-briefing", {
+    method: "POST",
+    body: "{not-json",
+  }));
+  assertEquals(response.status, 400);
+});
+
+Deno.test("hub-briefing rejects unknown HTTP methods with 405", async () => {
+  const handler = createHubBriefingHandler({
+    buildCorsHeaders,
+    createDb: () => createSupabaseQueryMock() as never,
+    now,
+  });
+  const response = await handler(new Request("https://example.test/hub-briefing", { method: "DELETE" }));
+  assertEquals(response.status, 405);
+});
+
+Deno.test("hub-briefing returns 404 when the target question is missing", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, is_active: true, clientes: { conta_id: "conta-1" } },
+    error: null,
+  });
+  db.queue("hub_briefing_questions", "select", { data: null, error: null });
+
+  const handler = createHubBriefingHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+  });
+  const response = await handler(new Request("https://example.test/hub-briefing", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", question_id: "q-missing", answer: "resposta" }),
+  }));
+  assertEquals(response.status, 404);
+});
+
+Deno.test("hub-ideias rejects missing tokens with 400", async () => {
+  const handler = createHubIdeiasHandler({
+    buildCorsHeaders,
+    createDb: () => createSupabaseQueryMock() as never,
+    now,
+  });
+  const response = await handler(new Request("https://example.test/hub-ideias", {
+    method: "POST",
+    body: JSON.stringify({ titulo: "x" }),
+  }));
+  assertEquals(response.status, 400);
+});
+
+Deno.test("hub-ideias returns 404 for expired or inactive hub tokens", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: null, error: null });
+
+  const handler = createHubIdeiasHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+  });
+  const response = await handler(new Request("https://example.test/hub-ideias?token=expired"));
+  assertEquals(response.status, 404);
+});
+
+Deno.test("hub-ideias rejects POSTs missing titulo with 400", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, is_active: true, clientes: { conta_id: "conta-1" } },
+    error: null,
+  });
+
+  const handler = createHubIdeiasHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+  });
+  const response = await handler(new Request("https://example.test/hub-ideias", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", descricao: "só a descrição" }),
+  }));
+  assertEquals(response.status, 400);
+});
+
+Deno.test("hub-ideias rejects POSTs missing descricao with 400", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, is_active: true, clientes: { conta_id: "conta-1" } },
+    error: null,
+  });
+
+  const handler = createHubIdeiasHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+  });
+  const response = await handler(new Request("https://example.test/hub-ideias", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", titulo: "só o título" }),
+  }));
+  assertEquals(response.status, 400);
+});
+
+Deno.test("hub-ideias returns 500 when the insert reports an error", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, is_active: true, clientes: { conta_id: "conta-1" } },
+    error: null,
+  });
+  db.queue("ideias", "insert", { data: null, error: { message: "db offline" } });
+
+  const handler = createHubIdeiasHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+  });
+  const response = await handler(new Request("https://example.test/hub-ideias", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", titulo: "Ideia", descricao: "descrição" }),
+  }));
+  assertEquals(response.status, 500);
+});
+
+Deno.test("hub-ideias returns 404 when PATCH targets a non-existent idea", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, is_active: true, clientes: { conta_id: "conta-1" } },
+    error: null,
+  });
+  db.queue("ideias", "select", { data: null, error: null });
+
+  const handler = createHubIdeiasHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+  });
+  const response = await handler(new Request("https://example.test/hub-ideias/34a7c1ef-9a2e-4707-a833-cb8f871a0df8?token=hub-123", {
+    method: "PATCH",
+    body: JSON.stringify({ titulo: "Novo" }),
+  }));
+  assertEquals(response.status, 404);
+});
+
+Deno.test("hub-ideias returns 404 for unsupported routes", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, is_active: true, clientes: { conta_id: "conta-1" } },
+    error: null,
+  });
+
+  const handler = createHubIdeiasHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+  });
+  const response = await handler(new Request("https://example.test/hub-ideias?token=hub-123", { method: "PUT" }));
+  assertEquals(response.status, 404);
+});
