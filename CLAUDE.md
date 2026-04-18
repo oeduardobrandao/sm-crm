@@ -14,6 +14,12 @@ npm run dev:staging      # CRM against staging Supabase
 npm run build            # tsc + vite build for CRM
 npm run build:hub        # tsc + vite build for Hub
 
+# Tests
+npm run test             # Vitest frontend/unit suite
+npm run test:watch       # Vitest in watch mode
+npm run test:coverage    # Vitest with V8 coverage
+deno test supabase/functions/    # Deno edge-function suite
+
 # Supabase
 npx supabase functions serve                    # local edge functions
 npx supabase functions deploy <name>

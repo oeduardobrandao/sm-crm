@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { timingSafeEqual } from "../_shared/crypto.ts";
+import { createInstagramSyncCronHandler } from "./handler.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -222,13 +223,12 @@ async function syncAccount(
 }
 
 // --- Cron Handler ---
-Deno.serve(async (req) => {
-  if (!timingSafeEqual(req.headers.get('x-cron-secret') ?? '', CRON_SECRET)) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
-  }
-
-  try {
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+Deno.serve(createInstagramSyncCronHandler({
+  cronSecret: CRON_SECRET,
+  timingSafeEqual,
+  run: async () => {
+    try {
+      const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     // Fetch all accounts with valid tokens and auto-sync enabled
     const { data: accounts, error } = await supabase
@@ -272,23 +272,23 @@ Deno.serve(async (req) => {
       }
     }
 
-    console.log(`[IG-SYNC-CRON] Done. Synced: ${syncedCount}, Failed: ${failedCount}`);
+      console.log(`[IG-SYNC-CRON] Done. Synced: ${syncedCount}, Failed: ${failedCount}`);
 
-    return new Response(JSON.stringify({
-      success: true,
-      synced: syncedCount,
-      failed: failedCount,
-      total: accounts.length,
-      errors
-    }), {
-      headers: { 'Content-Type': 'application/json' }
-    });
-
-  } catch (err: any) {
-    console.error("[IG-SYNC-CRON] Cron Job Failed", err);
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    });
-  }
-});
+      return new Response(JSON.stringify({
+        success: true,
+        synced: syncedCount,
+        failed: failedCount,
+        total: accounts.length,
+        errors
+      }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+    } catch (err: any) {
+      console.error("[IG-SYNC-CRON] Cron Job Failed", err);
+      return new Response(JSON.stringify({ error: err.message }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+  },
+}));

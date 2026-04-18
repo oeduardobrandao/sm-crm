@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { timingSafeEqual } from "../_shared/crypto.ts";
+import { createInstagramRefreshCronHandler } from "./handler.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -60,33 +61,31 @@ async function decryptToken(encryptedBase64: string): Promise<string> {
 }
 
 // --- Cron Handler ---
-Deno.serve(async (req) => {
-  if (!timingSafeEqual(req.headers.get('x-cron-secret') ?? '', CRON_SECRET)) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
-  }
+Deno.serve(createInstagramRefreshCronHandler({
+  cronSecret: CRON_SECRET,
+  timingSafeEqual,
+  run: async () => {
+    try {
+      const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-  try {
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+      const thirtyDaysFromNow = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
-    // Find tokens expiring within the next 30 days (generous window to avoid expiry)
-    const thirtyDaysFromNow = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: accounts, error } = await supabase
+        .from('instagram_accounts')
+        .select('id, encrypted_access_token')
+        .lte('token_expires_at', thirtyDaysFromNow);
 
-    const { data: accounts, error } = await supabase
-      .from('instagram_accounts')
-      .select('id, encrypted_access_token')
-      .lte('token_expires_at', thirtyDaysFromNow);
+      if (error) throw error;
+      if (!accounts || accounts.length === 0) {
+        return new Response("No tokens need refreshing", { status: 200 });
+      }
 
-    if (error) throw error;
-    if (!accounts || accounts.length === 0) {
-      return new Response("No tokens need refreshing", { status: 200 });
-    }
+      let refreshedCount = 0;
+      let failedCount = 0;
 
-    let refreshedCount = 0;
-    let failedCount = 0;
-
-    for (const account of accounts) {
-      try {
-        const currentToken = await decryptToken(account.encrypted_access_token);
+      for (const account of accounts) {
+        try {
+          const currentToken = await decryptToken(account.encrypted_access_token);
         
         // Refresh token via Instagram API (new Instagram Login flow)
         const refreshUrl = `https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=${currentToken}`;
@@ -148,31 +147,30 @@ Deno.serve(async (req) => {
           .eq('id', account.id);
 
         if (updateError) throw updateError;
-        refreshedCount++;
-      } catch (err) {
-         console.error(`Failed to process account ${account.id}`, err);
-         // Mark as revoked on unexpected failures (e.g. decryption error, network)
-         await supabase
-           .from('instagram_accounts')
-           .update({ authorization_status: 'revoked' })
-           .eq('id', account.id);
-         failedCount++;
+          refreshedCount++;
+        } catch (err) {
+           console.error(`Failed to process account ${account.id}`, err);
+           await supabase
+             .from('instagram_accounts')
+             .update({ authorization_status: 'revoked' })
+             .eq('id', account.id);
+           failedCount++;
+        }
       }
+
+      return new Response(JSON.stringify({
+        success: true,
+        refreshed: refreshedCount,
+        failed: failedCount
+      }), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+    } catch (err: any) {
+      console.error("Cron Job Failed", err);
+      return new Response(JSON.stringify({ error: err.message }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
     }
-
-    return new Response(JSON.stringify({ 
-      success: true, 
-      refreshed: refreshedCount, 
-      failed: failedCount 
-    }), { 
-      headers: { 'Content-Type': 'application/json' } 
-    });
-
-  } catch (err: any) {
-    console.error("Cron Job Failed", err);
-    return new Response(JSON.stringify({ error: err.message }), { 
-      status: 500, 
-      headers: { 'Content-Type': 'application/json' } 
-    });
-  }
-});
+  },
+}));

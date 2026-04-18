@@ -15,6 +15,9 @@
     "build:hub": "tsc -p apps/hub/tsconfig.json && vite build --config apps/hub/vite.config.ts",
     "build:staging": "tsc -p apps/crm/tsconfig.json && vite build --config apps/crm/vite.config.ts --mode staging",
     "preview": "vite preview --config apps/crm/vite.config.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "db:link:staging": "npx supabase link --project-ref skjzpekeqefvlojenfsw",
     "db:push:staging": "npx supabase db push --linked"
   },
@@ -66,15 +69,20 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.0",
     "@types/node": "^25.5.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "@vitest/coverage-v8": "^3.2.4",
     "@vitejs/plugin-react": "^4.7.0",
     "autoprefixer": "^10.4.27",
+    "jsdom": "^26.1.0",
     "postcss": "^8.5.8",
     "shadcn": "^4.0.8",
     "tailwindcss": "^3.4.19",
     "typescript": "^5.2.2",
-    "vite": "^6.4.2"
+    "vite": "^6.4.2",
+    "vitest": "^3.2.4"
   }
 }
