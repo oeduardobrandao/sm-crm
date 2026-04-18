@@ -136,8 +136,6 @@ export function NewWorkflowModal({
   const [fTitulo, setFTitulo] = useState('');
   const [fClienteId, setFClienteId] = useState('');
   const [fTemplateId, setFTemplateId] = useState('');
-  const [fNotion, setFNotion] = useState('');
-  const [fDrive, setFDrive] = useState('');
   const [fRecorrente, setFRecorrente] = useState(false);
 
   const handleTemplateChange = (templateId: string) => {
@@ -168,8 +166,6 @@ export function NewWorkflowModal({
         status: 'ativo',
         etapa_atual: 0,
         recorrente: fRecorrente,
-        link_notion: fNotion.trim() || null,
-        link_drive: fDrive.trim() || null,
       });
       const now = new Date().toISOString();
       for (let i = 0; i < validEtapas.length; i++) {
@@ -188,7 +184,7 @@ export function NewWorkflowModal({
         });
       }
       toast.success('Fluxo criado com sucesso!');
-      setFTitulo(''); setFClienteId(''); setFTemplateId(''); setFNotion(''); setFDrive(''); setFRecorrente(false);
+      setFTitulo(''); setFClienteId(''); setFTemplateId(''); setFRecorrente(false);
       setEtapas([defaultEtapa()]);
       onCreated();
       onClose();
@@ -227,8 +223,6 @@ export function NewWorkflowModal({
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-1"><Label>Link do Notion</Label><Input type="url" placeholder="https://notion.so/..." value={fNotion} onChange={e => setFNotion(e.target.value)} /></div>
-          <div className="space-y-1"><Label>Link do Drive</Label><Input type="url" placeholder="https://drive.google.com/..." value={fDrive} onChange={e => setFDrive(e.target.value)} /></div>
           <div className="flex items-center gap-2">
             <Checkbox id="recorrente-new" checked={fRecorrente} onCheckedChange={v => setFRecorrente(!!v)} />
             <Label htmlFor="recorrente-new">Fluxo recorrente (ao concluir, oferecer criar novo ciclo)</Label>
@@ -292,8 +286,6 @@ export function EditWorkflowModal({
   const [isDirty, setIsDirty] = useState(false);
   const [fTitulo, setFTitulo] = useState(w.titulo);
   const [fClienteId, setFClienteId] = useState(String(w.cliente_id));
-  const [fNotion, setFNotion] = useState(w.link_notion || '');
-  const [fDrive, setFDrive] = useState(w.link_drive || '');
   const [fRecorrente, setFRecorrente] = useState(w.recorrente || false);
   const [fResponsavelId, setFResponsavelId] = useState(String(e.responsavel_id || ''));
   const [fPrazoDias, setFPrazoDias] = useState(String(e.prazo_dias));
@@ -310,8 +302,6 @@ export function EditWorkflowModal({
         titulo: fTitulo,
         cliente_id: Number(fClienteId),
         recorrente: fRecorrente,
-        link_notion: fNotion.trim() || null,
-        link_drive: fDrive.trim() || null,
       });
       await updateWorkflowEtapa(e.id!, {
         responsavel_id: fResponsavelId ? Number(fResponsavelId) : null,
@@ -352,10 +342,6 @@ export function EditWorkflowModal({
                   {activeClientes.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.nome}</SelectItem>)}
                 </SelectContent>
               </Select>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-              <div className="space-y-1"><Label>Link do Notion</Label><Input type="url" value={fNotion} onChange={e => { setFNotion(e.target.value); markDirty(); }} /></div>
-              <div className="space-y-1"><Label>Link do Drive</Label><Input type="url" value={fDrive} onChange={e => { setFDrive(e.target.value); markDirty(); }} /></div>
             </div>
             <div className="flex items-center gap-2">
               <Checkbox id="recorrente-edit" checked={fRecorrente} onCheckedChange={v => { setFRecorrente(!!v); markDirty(); }} />

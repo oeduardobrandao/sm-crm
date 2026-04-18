@@ -744,7 +744,7 @@ export default function CalendarioPage() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <header className="header animate-up">
         <div className="header-title">
-          <h1>{activeTab === 'financeiro' ? 'Agenda & Pagamentos' : 'Calendário Médico'}</h1>
+          <h1>{activeTab === 'financeiro' ? 'Calendário' : 'Calendário Médico'}</h1>
           <p style={{ color: 'var(--text-muted)' }}>
             {activeTab === 'financeiro' ? 'Visão geral mensal.' : 'Brasil & Mundial — Datas de Saúde & Conscientização'}
           </p>
