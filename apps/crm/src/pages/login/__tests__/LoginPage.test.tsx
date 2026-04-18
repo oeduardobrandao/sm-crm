@@ -124,7 +124,9 @@ describe('LoginPage', () => {
     await waitFor(() => {
       expect(mockedToastSuccess).toHaveBeenCalledWith('Login realizado com sucesso!');
     });
-    expect(screen.getByTestId('current-path')).toHaveTextContent('/clientes');
+    await waitFor(() => {
+      expect(screen.getByTestId('current-path')).toHaveTextContent('/clientes');
+    });
   });
 
   it('blocks registration when the passwords do not match', async () => {
