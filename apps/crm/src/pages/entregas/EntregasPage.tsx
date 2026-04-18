@@ -39,7 +39,7 @@ export default function EntregasPage() {
   const [recurringWfId, setRecurringWfId] = useState<number | null>(null);
 
   const [searchParams, setSearchParams] = useSearchParams();
-  const { clientes, membros, templates, cards, activeWorkflows, isLoading, refresh } = useEntregasData();
+  const { clientes, membros, templates, cards, activeWorkflows, postsCounts, isLoading, refresh } = useEntregasData();
 
   // Auto-open drawer when navigated with ?drawer=<workflowId>
   const pendingDrawerId = useRef<number | null>(null);
@@ -149,6 +149,7 @@ export default function EntregasPage() {
           onRecurring={setRecurringWfId}
           membros={membros}
           templates={templates}
+          postsCounts={postsCounts}
         />
       )}
       {activeView === 'chart' && <ChartView cards={filteredCards} />}

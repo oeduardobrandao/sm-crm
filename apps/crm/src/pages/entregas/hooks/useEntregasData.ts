@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   getWorkflows, getClientes, getMembros, getWorkflowTemplates, getWorkflowEtapas,
-  getPortalApprovals, getDeadlineInfo,
+  getPortalApprovals, getDeadlineInfo, getWorkflowPostsCounts,
   type Workflow, type WorkflowEtapa, type Cliente, type Membro,
   type WorkflowTemplate, type PortalApproval, type PostMedia,
 } from '../../../store';
@@ -135,6 +135,12 @@ export function useEntregasData() {
     queryFn: () => getWorkflowCovers(activeWorkflowIds),
     enabled: activeWorkflowIds.length > 0,
   });
+  const { data: postsCountsData } = useQuery({
+    queryKey: ['workflow-posts-counts', activeWorkflowIds.join(',')],
+    queryFn: () => getWorkflowPostsCounts(activeWorkflowIds),
+    enabled: activeWorkflowIds.length > 0,
+  });
+  const postsCounts: Map<number, number> = postsCountsData ?? new Map();
 
   // Build BoardCards from active workflows
   const cards: BoardCard[] = [];
@@ -169,6 +175,7 @@ export function useEntregasData() {
     qc.invalidateQueries({ queryKey: ['all-active-etapas'] });
     qc.invalidateQueries({ queryKey: ['portal-approvals'] });
     qc.invalidateQueries({ queryKey: ['workflow-covers'] });
+    qc.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
   }
 
   const isLoading = loadingWf || etapasQuery.isLoading;
@@ -181,6 +188,7 @@ export function useEntregasData() {
     templates,
     etapasMap,
     cards,
+    postsCounts,
     portalApprovals,
     isLoading,
     refresh,

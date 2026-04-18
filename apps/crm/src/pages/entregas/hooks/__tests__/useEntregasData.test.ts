@@ -1,9 +1,47 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { renderHook, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { createElement, type ReactNode } from 'react';
 import type { WorkflowEtapa } from '../../../../store';
 import {
   computeDeadlineDate,
   computeWorkflowDeadlineDate,
 } from '../useEntregasData';
+
+// ── Mock store ──────────────────────────────────────────────────────────────
+
+vi.mock('../../../../store', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    getWorkflows: vi.fn().mockResolvedValue([
+      { id: 1, cliente_id: 10, titulo: 'WF-1', status: 'ativo', etapa_atual: 0, recorrente: false },
+      { id: 2, cliente_id: 11, titulo: 'WF-2', status: 'ativo', etapa_atual: 0, recorrente: false },
+    ]),
+    getClientes: vi.fn().mockResolvedValue([
+      { id: 10, nome: 'Cliente A', sigla: 'CA', cor: '#f00', plano: 'basic', email: '', telefone: '', status: 'ativo', valor_mensal: 1000 },
+      { id: 11, nome: 'Cliente B', sigla: 'CB', cor: '#0f0', plano: 'pro', email: '', telefone: '', status: 'ativo', valor_mensal: 2000 },
+    ]),
+    getMembros: vi.fn().mockResolvedValue([]),
+    getWorkflowTemplates: vi.fn().mockResolvedValue([]),
+    getWorkflowEtapas: vi.fn().mockImplementation((wfId: number) =>
+      Promise.resolve([
+        { id: wfId * 100, workflow_id: wfId, ordem: 0, nome: 'Etapa 1', tipo: 'padrao', prazo_dias: 3, tipo_prazo: 'corridos', status: 'ativo', iniciado_em: '2026-04-01T00:00:00Z' },
+      ])
+    ),
+    getPortalApprovals: vi.fn().mockResolvedValue([]),
+    getDeadlineInfo: vi.fn().mockReturnValue({ estourado: false, urgente: false, diasRestantes: 3, resumo: 'em dia' }),
+    getWorkflowPostsCounts: vi.fn().mockResolvedValue(
+      new Map<number, number>([[1, 5], [2, 3]])
+    ),
+  };
+});
+
+vi.mock('../../../../services/postMedia', () => ({
+  getWorkflowCovers: vi.fn().mockResolvedValue(new Map()),
+}));
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
 
 function makeEtapa(overrides: Partial<WorkflowEtapa>): WorkflowEtapa {
   return {
@@ -18,6 +56,16 @@ function makeEtapa(overrides: Partial<WorkflowEtapa>): WorkflowEtapa {
     ...overrides,
   } as WorkflowEtapa;
 }
+
+function createWrapper() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+  });
+  return ({ children }: { children: ReactNode }) =>
+    createElement(QueryClientProvider, { client: queryClient }, children);
+}
+
+// ── Pure-function tests (unchanged) ─────────────────────────────────────────
 
 describe('computeDeadlineDate', () => {
   it('adds calendar days for tipo_prazo=corridos', () => {
@@ -88,5 +136,76 @@ describe('computeWorkflowDeadlineDate', () => {
     const shuffled = [tail, active, head];
     const deadline = computeWorkflowDeadlineDate(shuffled, active);
     expect(deadline?.toISOString().slice(0, 10)).toBe('2026-04-13');
+  });
+});
+
+// ── Hook integration test ───────────────────────────────────────────────────
+
+describe('useEntregasData', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const store = await import('../../../../store');
+    (store.getWorkflows as any).mockResolvedValue([
+      { id: 1, cliente_id: 10, titulo: 'WF-1', status: 'ativo', etapa_atual: 0, recorrente: false },
+      { id: 2, cliente_id: 11, titulo: 'WF-2', status: 'ativo', etapa_atual: 0, recorrente: false },
+    ]);
+    (store.getClientes as any).mockResolvedValue([
+      { id: 10, nome: 'Cliente A', sigla: 'CA', cor: '#f00', plano: 'basic', email: '', telefone: '', status: 'ativo', valor_mensal: 1000 },
+      { id: 11, nome: 'Cliente B', sigla: 'CB', cor: '#0f0', plano: 'pro', email: '', telefone: '', status: 'ativo', valor_mensal: 2000 },
+    ]);
+    (store.getMembros as any).mockResolvedValue([]);
+    (store.getWorkflowTemplates as any).mockResolvedValue([]);
+    (store.getWorkflowEtapas as any).mockImplementation((wfId: number) =>
+      Promise.resolve([
+        { id: wfId * 100, workflow_id: wfId, ordem: 0, nome: 'Etapa 1', tipo: 'padrao', prazo_dias: 3, tipo_prazo: 'corridos', status: 'ativo', iniciado_em: '2026-04-01T00:00:00Z' },
+      ])
+    );
+    (store.getPortalApprovals as any).mockResolvedValue([]);
+    (store.getDeadlineInfo as any).mockReturnValue({ estourado: false, urgente: false, diasRestantes: 3, resumo: 'em dia' });
+    (store.getWorkflowPostsCounts as any).mockResolvedValue(
+      new Map<number, number>([[1, 5], [2, 3]])
+    );
+
+    const postMedia = await import('../../../../services/postMedia');
+    (postMedia.getWorkflowCovers as any).mockResolvedValue(new Map());
+  });
+
+  it('returns postsCounts as a Map with correct workflow counts', async () => {
+    // Dynamic import so vi.mock has taken effect before the module is loaded
+    const { useEntregasData } = await import('../useEntregasData');
+
+    const { result } = renderHook(() => useEntregasData(), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+      expect(result.current.postsCounts.size).toBe(2);
+    });
+
+    const { postsCounts } = result.current;
+    expect(postsCounts).toBeInstanceOf(Map);
+    expect(postsCounts.get(1)).toBe(5);
+    expect(postsCounts.get(2)).toBe(3);
+  });
+
+  it('returns an empty Map when no workflow IDs are available', async () => {
+    // Override getWorkflows to return no active workflows
+    const store = await import('../../../../store');
+    (store.getWorkflows as ReturnType<typeof vi.fn>).mockResolvedValueOnce([]);
+
+    const { useEntregasData } = await import('../useEntregasData');
+
+    const { result } = renderHook(() => useEntregasData(), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    const { postsCounts } = result.current;
+    expect(postsCounts).toBeInstanceOf(Map);
+    expect(postsCounts.size).toBe(0);
   });
 });

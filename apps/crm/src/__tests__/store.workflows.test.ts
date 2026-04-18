@@ -486,3 +486,57 @@ describe('getDeadlineInfo', () => {
     expect(result.estourado).toBe(false);
   });
 });
+
+describe('getWorkflowPostsCounts', () => {
+  beforeEach(() => {
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentProfile({
+      id: 'user-1',
+      nome: 'Eduardo Souza',
+      role: 'owner',
+      conta_id: 'conta-1',
+    });
+  });
+
+  it('returns an empty Map when given no workflow ids (no DB round-trip)', async () => {
+    const result = await store.getWorkflowPostsCounts([]);
+    expect(result).toBeInstanceOf(Map);
+    expect(result.size).toBe(0);
+    expect(getCalls('workflow_posts', 'select')).toHaveLength(0);
+  });
+
+  it('aggregates rows into a Map keyed by workflow_id', async () => {
+    mockedSupabase.__queueSupabaseResult('workflow_posts', 'select', {
+      data: [
+        { workflow_id: 10 },
+        { workflow_id: 10 },
+        { workflow_id: 10 },
+        { workflow_id: 20 },
+      ],
+      error: null,
+    });
+
+    const result = await store.getWorkflowPostsCounts([10, 20, 30]);
+
+    expect(result.get(10)).toBe(3);
+    expect(result.get(20)).toBe(1);
+    expect(result.get(30)).toBeUndefined();
+
+    const calls = getCalls('workflow_posts', 'select');
+    expect(calls).toHaveLength(1);
+    expect(calls[0].selectArgs).toEqual(expect.arrayContaining([['workflow_id']]));
+    expect(calls[0].modifiers).toEqual(
+      expect.arrayContaining([
+        { method: 'in', args: ['workflow_id', [10, 20, 30]] },
+      ]),
+    );
+  });
+
+  it('throws when Supabase returns an error', async () => {
+    mockedSupabase.__queueSupabaseResult('workflow_posts', 'select', {
+      data: null,
+      error: { message: 'boom' },
+    });
+    await expect(store.getWorkflowPostsCounts([1])).rejects.toBeTruthy();
+  });
+});
