@@ -15,6 +15,7 @@ import {
   reorderPostMedia, detectKind,
 } from '../../../services/postMedia';
 import type { PostMedia } from '../../../store';
+import { PostMediaLightbox } from './PostMediaLightbox';
 
 interface PostMediaGalleryProps {
   postId: number;
@@ -63,6 +64,7 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
   }
 
   const [uploading, setUploading] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [pendingVideo, setPendingVideo] = useState<File | null>(null);
   const [progress, setProgress] = useState<{ name: string; pct: number } | null>(null);
 
@@ -132,11 +134,12 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={media.map((m) => m.id)} strategy={rectSortingStrategy}>
           <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-            {media.map((m) => (
+            {media.map((m, i) => (
               <SortableMediaTile
                 key={m.id}
                 media={m}
                 disabled={disabled}
+                onOpen={() => setLightboxIndex(i)}
                 onSetCover={() => handleSetCover(m.id)}
                 onDelete={() => handleDelete(m.id)}
               />
@@ -181,6 +184,13 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
           </button>
         </div>
       )}
+
+      <PostMediaLightbox
+        media={media}
+        initialIndex={lightboxIndex ?? 0}
+        open={lightboxIndex !== null}
+        onOpenChange={(o) => { if (!o) setLightboxIndex(null); }}
+      />
     </div>
   );
 }
@@ -188,11 +198,12 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
 interface SortableMediaTileProps {
   media: PostMedia;
   disabled?: boolean;
+  onOpen: () => void;
   onSetCover: () => void;
   onDelete: () => void;
 }
 
-function SortableMediaTile({ media: m, disabled, onSetCover, onDelete }: SortableMediaTileProps) {
+function SortableMediaTile({ media: m, disabled, onOpen, onSetCover, onDelete }: SortableMediaTileProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: m.id, disabled });
   const style = {
@@ -206,6 +217,7 @@ function SortableMediaTile({ media: m, disabled, onSetCover, onDelete }: Sortabl
       style={style}
       {...attributes}
       {...listeners}
+      onClick={onOpen}
       className="relative aspect-square overflow-hidden rounded-xl bg-stone-100 ring-1 ring-stone-200/80 group cursor-grab active:cursor-grabbing touch-none"
     >
       {m.kind === 'image' ? (
