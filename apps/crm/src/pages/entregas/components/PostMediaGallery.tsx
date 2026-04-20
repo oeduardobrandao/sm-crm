@@ -206,7 +206,7 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
               />
             ))}
             {!disabled && (
-              <label className="flex flex-col items-center justify-center gap-1 aspect-square rounded-xl border border-dashed border-stone-300 bg-stone-50 text-stone-500 hover:border-stone-400 hover:bg-stone-100 cursor-pointer transition-colors">
+              <label className="flex flex-col items-center justify-center gap-1 aspect-square rounded-xl border border-dashed border-stone-300 bg-stone-50 text-stone-500 hover:border-stone-400 hover:bg-stone-100 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-400 dark:hover:border-stone-500 dark:hover:bg-stone-700 cursor-pointer transition-colors">
                 <Upload className="h-4 w-4" />
                 <span className="text-[11px]">{uploading ? 'Enviando…' : 'Adicionar'}</span>
                 <input type="file" multiple accept="image/*,video/*" hidden onChange={(e) => handleFiles(e.target.files)} />
@@ -221,7 +221,7 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
           type="button"
           onClick={handleDownloadAll}
           disabled={downloading}
-          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11.5px] font-medium text-stone-600 bg-stone-100 hover:bg-stone-200 transition-colors disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11.5px] font-medium text-stone-600 bg-stone-100 hover:bg-stone-200 dark:text-stone-300 dark:bg-stone-800 dark:hover:bg-stone-700 transition-colors disabled:opacity-50"
         >
           <Download className="h-3.5 w-3.5" />
           {downloading ? 'Baixando…' : 'Baixar todos'}
