@@ -117,8 +117,10 @@ Deno.serve(async (req) => {
     });
 
     if (error) {
+      console.error('[invite-user] inviteUserByEmail error:', JSON.stringify({ message: error.message, status: error.status, name: error.name }));
       // If user already exists in auth, re-associate them with this workspace
-      if (error.message?.includes('already been registered')) {
+      // Supabase can return "User already registered" or "already been registered"
+      if (error.message?.includes('already been registered') || error.message?.includes('already registered') || error.message?.includes('already exists')) {
         // Re-validate role escalation for re-invite path (same check as initial invite)
         if (profile.role === 'admin' && role === 'owner') {
           throw new Error('Administradores não podem convidar novos donos.');
@@ -149,7 +151,9 @@ Deno.serve(async (req) => {
           .maybeSingle();
 
         if (existingMembership) {
-          throw new Error('Este usuário já pertence a este workspace.');
+          return new Response(JSON.stringify({ error: 'Este usuário já pertence a este workspace.' }), {
+            status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
         }
 
         // Add user to workspace via workspace_members
