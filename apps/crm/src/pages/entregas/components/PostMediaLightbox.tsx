@@ -69,10 +69,10 @@ export function PostMediaLightbox({
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/90 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+        <DialogPrimitive.Overlay className="fixed inset-0 z-[9005] bg-black/90 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
         <DialogPrimitive.Content
           aria-describedby={undefined}
-          className="fixed inset-0 z-50 flex items-center justify-center focus:outline-none pointer-events-none"
+          className="fixed inset-0 z-[9005] flex items-center justify-center focus:outline-none pointer-events-none"
         >
           <DialogPrimitive.Title className="sr-only">
             Pré-visualização de mídia

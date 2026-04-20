@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import JSZip from 'jszip';
 import { Upload, Star, Trash2, AlertTriangle, Download } from 'lucide-react';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
@@ -28,6 +29,7 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
   const { data: serverMedia } = useQuery({
     queryKey: ['post-media', postId],
     queryFn: () => listPostMedia(postId),
+    staleTime: 5 * 60 * 1000,
   });
 
   // Local ordered copy so drag-reorder feels instant and doesn't flash back
@@ -136,19 +138,40 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
     if (media.length === 0) return;
     setDownloading(true);
     try {
-      for (const m of media) {
-        if (!m.url) continue;
-        const res = await fetch(m.url);
-        const blob = await res.blob();
-        const objUrl = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = objUrl;
-        a.download = m.original_filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(objUrl);
+      const entries = await Promise.all(
+        media
+          .filter((m) => m.url)
+          .map(async (m) => {
+            const res = await fetch(m.url!);
+            const blob = await res.blob();
+            return { filename: m.original_filename, blob };
+          }),
+      );
+
+      const zip = new JSZip();
+      const seen = new Map<string, number>();
+      for (const { filename: rawName, blob } of entries) {
+        let filename = rawName;
+        const count = seen.get(rawName) ?? 0;
+        if (count > 0) {
+          const dotIdx = filename.lastIndexOf('.');
+          filename = dotIdx > 0
+            ? `${filename.slice(0, dotIdx)} (${count})${filename.slice(dotIdx)}`
+            : `${filename} (${count})`;
+        }
+        seen.set(rawName, count + 1);
+        zip.file(filename, blob);
       }
+
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const objUrl = URL.createObjectURL(zipBlob);
+      const a = document.createElement('a');
+      a.href = objUrl;
+      a.download = `media-${postId}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(objUrl);
       toast.success('Download concluído');
     } catch (e) {
       toast.error((e as Error).message);
