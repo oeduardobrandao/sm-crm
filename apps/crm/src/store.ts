@@ -1074,7 +1074,7 @@ function _computeDeliveryDeadlines(etapas: WorkflowEtapa[], deliveryDate: Date):
   // Walk backward from anchor
   let cursor = new Date(deliveryDate);
   for (let i = anchorIdx - 1; i >= 0; i--) {
-    cursor = _subtractDays(cursor, sorted[i].prazo_dias, sorted[i].tipo_prazo);
+    cursor = _subtractDays(cursor, sorted[i + 1].prazo_dias, sorted[i + 1].tipo_prazo);
     result.set(sorted[i].ordem, toISO(cursor));
   }
 
