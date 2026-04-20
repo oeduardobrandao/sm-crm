@@ -18,8 +18,6 @@ export function PostMediaLightbox({
 }: PostMediaLightboxProps) {
   const [index, setIndex] = useState(initialIndex);
 
-  // Reseed index each time the lightbox opens so a subsequent click on a
-  // different tile starts at the right slide.
   useEffect(() => {
     if (open) setIndex(initialIndex);
   }, [open, initialIndex]);
@@ -31,7 +29,6 @@ export function PostMediaLightbox({
   const next = () =>
     setIndex((i) => (i + 1) % media.length);
 
-  // Arrow-key navigation. Esc is handled by Radix Dialog itself.
   useEffect(() => {
     if (!open || !hasMultiple) return;
     const onKey = (e: KeyboardEvent) => {
@@ -47,7 +44,6 @@ export function PostMediaLightbox({
     return () => window.removeEventListener('keydown', onKey);
   }, [open, hasMultiple, media.length]);
 
-  // Pointer-based swipe: record start X on pointerdown, compare on pointerup.
   const startX = useRef<number | null>(null);
   const handlePointerDown = (e: React.PointerEvent) => {
     startX.current = e.clientX;
@@ -72,21 +68,19 @@ export function PostMediaLightbox({
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/90 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
         <DialogPrimitive.Content
           aria-describedby={undefined}
-          className="fixed inset-0 z-50 flex items-center justify-center focus:outline-none"
+          className="fixed inset-0 z-50 flex items-center justify-center focus:outline-none pointer-events-none"
         >
           <DialogPrimitive.Title className="sr-only">
             Pré-visualização de mídia
           </DialogPrimitive.Title>
 
-          <div
-            className="flex items-center justify-center max-h-[85vh] max-w-[90vw]"
-            onPointerDown={handlePointerDown}
-            onPointerUp={handlePointerUp}
-          >
+          <div className="flex items-center justify-center max-h-[85vh] max-w-[90vw] touch-none pointer-events-auto">
             {current.kind === 'image' ? (
               <img
                 src={current.url}
                 alt={current.original_filename}
+                onPointerDown={handlePointerDown}
+                onPointerUp={handlePointerUp}
                 className="max-h-[85vh] max-w-[90vw] object-contain select-none"
                 draggable={false}
               />
@@ -103,7 +97,7 @@ export function PostMediaLightbox({
 
           <DialogPrimitive.Close
             aria-label="Fechar"
-            className="fixed top-4 right-4 w-10 h-10 rounded-full bg-stone-900/85 text-white hover:bg-stone-900 flex items-center justify-center"
+            className="fixed top-4 right-4 w-10 h-10 rounded-full bg-stone-900/85 text-white hover:bg-stone-900 flex items-center justify-center pointer-events-auto"
           >
             <X className="h-5 w-5" />
           </DialogPrimitive.Close>
@@ -114,7 +108,7 @@ export function PostMediaLightbox({
                 type="button"
                 aria-label="Anterior"
                 onClick={prev}
-                className="fixed left-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-stone-900/85 text-white hover:bg-stone-900 flex items-center justify-center"
+                className="fixed left-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-stone-900/85 text-white hover:bg-stone-900 flex items-center justify-center pointer-events-auto"
               >
                 <ChevronLeft className="h-5 w-5" />
               </button>
@@ -122,11 +116,11 @@ export function PostMediaLightbox({
                 type="button"
                 aria-label="Próximo"
                 onClick={next}
-                className="fixed right-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-stone-900/85 text-white hover:bg-stone-900 flex items-center justify-center"
+                className="fixed right-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-stone-900/85 text-white hover:bg-stone-900 flex items-center justify-center pointer-events-auto"
               >
                 <ChevronRight className="h-5 w-5" />
               </button>
-              <span className="fixed bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-stone-900/85 text-white text-xs px-2.5 py-1 tabular-nums">
+              <span className="fixed bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-stone-900/85 text-white text-xs px-2.5 py-1 tabular-nums pointer-events-auto">
                 {index + 1} / {media.length}
               </span>
             </>
