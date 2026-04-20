@@ -195,6 +195,88 @@ describe('post media service', () => {
     ).rejects.toThrow('Vídeos exigem uma thumbnail');
   });
 
+  it('uploads a video with thumbnail, probes dimensions and duration', async () => {
+    const video = createFile('bastidores.mp4', 'video/mp4', 1024);
+    const thumbnail = createFile('thumb.jpg', 'image/jpeg', 64);
+    const onProgress = vi.fn();
+
+    fetchHarness.queueResponse({
+      json: {
+        media_id: 'media-v1',
+        upload_url: 'https://upload.r2.dev/media-v1',
+        r2_key: 'contas/1/posts/media-v1.mp4',
+        thumbnail_upload_url: 'https://upload.r2.dev/thumb-v1',
+        thumbnail_r2_key: 'contas/1/posts/thumb-v1.jpg',
+      },
+    });
+    fetchHarness.queueResponse({
+      json: {
+        id: 5,
+        post_id: 31,
+        kind: 'video',
+        r2_key: 'contas/1/posts/media-v1.mp4',
+        thumbnail_r2_key: 'contas/1/posts/thumb-v1.jpg',
+        is_cover: false,
+      },
+    });
+
+    const media = await uploadPostMedia({
+      postId: 31,
+      file: video,
+      thumbnail,
+      onProgress,
+    });
+
+    expect(media).toMatchObject({
+      id: 5,
+      post_id: 31,
+      kind: 'video',
+      thumbnail_r2_key: 'contas/1/posts/thumb-v1.jpg',
+    });
+
+    expect(fetchHarness.calls).toHaveLength(2);
+
+    const uploadUrlBody = JSON.parse(String(fetchHarness.calls[0].init?.body));
+    expect(uploadUrlBody).toMatchObject({
+      post_id: 31,
+      filename: 'bastidores.mp4',
+      mime_type: 'video/mp4',
+      kind: 'video',
+      thumbnail: { mime_type: 'image/jpeg', size_bytes: 64 },
+    });
+
+    const finalizeBody = JSON.parse(String(fetchHarness.calls[1].init?.body));
+    expect(finalizeBody).toMatchObject({
+      post_id: 31,
+      media_id: 'media-v1',
+      width: 1920,
+      height: 1080,
+      duration_seconds: 13,
+      original_filename: 'bastidores.mp4',
+      thumbnail_r2_key: 'contas/1/posts/thumb-v1.jpg',
+    });
+
+    expect(MockXHR.instances).toHaveLength(2);
+    expect(MockXHR.instances[0].url).toBe('https://upload.r2.dev/media-v1');
+    expect(MockXHR.instances[0].method).toBe('PUT');
+    expect(MockXHR.instances[1].url).toBe('https://upload.r2.dev/thumb-v1');
+    expect(MockXHR.instances[1].method).toBe('PUT');
+
+    expect(onProgress).toHaveBeenCalledWith({ loaded: 1024, total: 1024 });
+  });
+
+  it('rejects unsupported video MIME types', () => {
+    expect(() => validateFile(createFile('clip.avi', 'video/x-msvideo', 100), 'video')).toThrow(
+      'Tipo de arquivo não suportado: video/x-msvideo',
+    );
+  });
+
+  it('rejects unsupported image MIME types', () => {
+    expect(() => validateFile(createFile('raw.tiff', 'image/tiff', 100), 'image')).toThrow(
+      'Tipo de arquivo não suportado: image/tiff',
+    );
+  });
+
   it('updates, deletes, and batches uploads through the shared function wrapper', async () => {
     fetchHarness.queueResponse({ json: { id: 7, is_cover: true } });
     fetchHarness.queueResponse({ json: { id: 7, sort_order: 3 } });
