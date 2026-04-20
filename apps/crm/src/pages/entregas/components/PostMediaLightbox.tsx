@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
-import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, X } from 'lucide-react';
 import type { PostMedia } from '../../../store';
 
 interface PostMediaLightboxProps {
@@ -8,6 +8,7 @@ interface PostMediaLightboxProps {
   initialIndex: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onDownloadAll?: () => void;
 }
 
 export function PostMediaLightbox({
@@ -15,6 +16,7 @@ export function PostMediaLightbox({
   initialIndex,
   open,
   onOpenChange,
+  onDownloadAll,
 }: PostMediaLightboxProps) {
   const [index, setIndex] = useState(initialIndex);
 
@@ -99,10 +101,21 @@ export function PostMediaLightbox({
 
           <DialogPrimitive.Close
             aria-label="Fechar"
-            className="fixed top-4 right-4 w-10 h-10 rounded-full bg-stone-900/85 text-white hover:bg-stone-900 flex items-center justify-center pointer-events-auto"
+            className="fixed top-4 right-4 w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm text-white hover:bg-white/30 flex items-center justify-center pointer-events-auto ring-1 ring-white/20"
           >
             <X className="h-5 w-5" />
           </DialogPrimitive.Close>
+
+          {onDownloadAll && (
+            <button
+              type="button"
+              aria-label="Baixar todos"
+              onClick={onDownloadAll}
+              className="fixed top-4 right-16 w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm text-white hover:bg-white/30 flex items-center justify-center pointer-events-auto ring-1 ring-white/20"
+            >
+              <Download className="h-5 w-5" />
+            </button>
+          )}
 
           {hasMultiple && (
             <>
@@ -110,7 +123,7 @@ export function PostMediaLightbox({
                 type="button"
                 aria-label="Anterior"
                 onClick={prev}
-                className="fixed left-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-stone-900/85 text-white hover:bg-stone-900 flex items-center justify-center pointer-events-auto"
+                className="fixed left-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm text-white hover:bg-white/30 flex items-center justify-center pointer-events-auto ring-1 ring-white/20"
               >
                 <ChevronLeft className="h-5 w-5" />
               </button>
@@ -118,11 +131,11 @@ export function PostMediaLightbox({
                 type="button"
                 aria-label="Próximo"
                 onClick={next}
-                className="fixed right-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-stone-900/85 text-white hover:bg-stone-900 flex items-center justify-center pointer-events-auto"
+                className="fixed right-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm text-white hover:bg-white/30 flex items-center justify-center pointer-events-auto ring-1 ring-white/20"
               >
                 <ChevronRight className="h-5 w-5" />
               </button>
-              <span className="fixed bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-stone-900/85 text-white text-xs px-2.5 py-1 tabular-nums pointer-events-auto">
+              <span className="fixed bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-white/20 backdrop-blur-sm text-white text-xs px-2.5 py-1 tabular-nums pointer-events-auto ring-1 ring-white/20">
                 {index + 1} / {media.length}
               </span>
             </>

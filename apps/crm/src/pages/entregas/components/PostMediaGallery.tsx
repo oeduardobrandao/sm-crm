@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Upload, Star, Trash2, AlertTriangle } from 'lucide-react';
+import { Upload, Star, Trash2, AlertTriangle, Download } from 'lucide-react';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
   type DragEndEvent,
@@ -64,9 +64,22 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
   }
 
   const [uploading, setUploading] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [pendingVideo, setPendingVideo] = useState<File | null>(null);
   const [progress, setProgress] = useState<{ name: string; pct: number } | null>(null);
+
+  // Preload images into browser cache so lightbox opens instantly.
+  const preloadCache = useRef<HTMLImageElement[]>([]);
+  useEffect(() => {
+    preloadCache.current = media
+      .filter((m) => m.kind === 'image' && m.url)
+      .map((m) => {
+        const img = new Image();
+        img.src = m.url!;
+        return img;
+      });
+  }, [media]);
 
   const refresh = () => qc.invalidateQueries({ queryKey: ['post-media', postId] });
 
@@ -119,6 +132,31 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
     }
   }
 
+  async function handleDownloadAll() {
+    if (media.length === 0) return;
+    setDownloading(true);
+    try {
+      for (const m of media) {
+        if (!m.url) continue;
+        const res = await fetch(m.url);
+        const blob = await res.blob();
+        const objUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = objUrl;
+        a.download = m.original_filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(objUrl);
+      }
+      toast.success('Download concluído');
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   async function handleDelete(id: number) {
     try { await deletePostMedia(id); refresh(); }
     catch (e) { toast.error((e as Error).message); }
@@ -155,6 +193,18 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
         </SortableContext>
       </DndContext>
 
+      {media.length > 0 && (
+        <button
+          type="button"
+          onClick={handleDownloadAll}
+          disabled={downloading}
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11.5px] font-medium text-stone-600 bg-stone-100 hover:bg-stone-200 transition-colors disabled:opacity-50"
+        >
+          <Download className="h-3.5 w-3.5" />
+          {downloading ? 'Baixando…' : 'Baixar todos'}
+        </button>
+      )}
+
       {progress && (
         <div className="rounded-xl bg-stone-50 ring-1 ring-stone-200/80 px-3 py-2">
           <div className="flex items-center justify-between text-[11.5px] text-stone-600 mb-1">
@@ -190,6 +240,7 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
         initialIndex={lightboxIndex ?? 0}
         open={lightboxIndex !== null}
         onOpenChange={(o) => { if (!o) setLightboxIndex(null); }}
+        onDownloadAll={handleDownloadAll}
       />
     </div>
   );
