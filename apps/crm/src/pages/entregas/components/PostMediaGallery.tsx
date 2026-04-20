@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Upload, Star, Trash2, AlertTriangle } from 'lucide-react';
+import JSZip from 'jszip';
+import { Upload, Star, Trash2, AlertTriangle, Download } from 'lucide-react';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
   type DragEndEvent,
@@ -15,6 +16,7 @@ import {
   reorderPostMedia, detectKind,
 } from '../../../services/postMedia';
 import type { PostMedia } from '../../../store';
+import { PostMediaLightbox } from './PostMediaLightbox';
 
 interface PostMediaGalleryProps {
   postId: number;
@@ -24,16 +26,23 @@ interface PostMediaGalleryProps {
 
 export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGalleryProps) {
   const qc = useQueryClient();
-  const { data: serverMedia = [] } = useQuery({
+  const { data: serverMedia } = useQuery({
     queryKey: ['post-media', postId],
     queryFn: () => listPostMedia(postId),
+    staleTime: 5 * 60 * 1000,
   });
 
   // Local ordered copy so drag-reorder feels instant and doesn't flash back
-  // while the PATCH round-trips and the query refetches.
-  const [media, setMedia] = useState<PostMedia[]>(serverMedia);
-  useEffect(() => { setMedia(serverMedia); }, [serverMedia]);
-  useEffect(() => { onChange?.(media); }, [media, onChange]);
+  // while the PATCH round-trips and the query refetches. Sync only when the
+  // query produces a new defined value — destructuring with a `[]` default
+  // would create a fresh reference each render and loop the effect.
+  const [media, setMedia] = useState<PostMedia[]>([]);
+  useEffect(() => { if (serverMedia) setMedia(serverMedia); }, [serverMedia]);
+
+  // Stash onChange in a ref so an unmemoized parent callback can't loop us.
+  const onChangeRef = useRef(onChange);
+  useEffect(() => { onChangeRef.current = onChange; });
+  useEffect(() => { onChangeRef.current?.(media); }, [media]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -57,8 +66,22 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
   }
 
   const [uploading, setUploading] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [pendingVideo, setPendingVideo] = useState<File | null>(null);
   const [progress, setProgress] = useState<{ name: string; pct: number } | null>(null);
+
+  // Preload images into browser cache so lightbox opens instantly.
+  const preloadCache = useRef<HTMLImageElement[]>([]);
+  useEffect(() => {
+    preloadCache.current = media
+      .filter((m) => m.kind === 'image' && m.url)
+      .map((m) => {
+        const img = new Image();
+        img.src = m.url!;
+        return img;
+      });
+  }, [media]);
 
   const refresh = () => qc.invalidateQueries({ queryKey: ['post-media', postId] });
 
@@ -111,6 +134,52 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
     }
   }
 
+  async function handleDownloadAll() {
+    if (media.length === 0) return;
+    setDownloading(true);
+    try {
+      const entries = await Promise.all(
+        media
+          .filter((m) => m.url)
+          .map(async (m) => {
+            const res = await fetch(m.url!);
+            const blob = await res.blob();
+            return { filename: m.original_filename, blob };
+          }),
+      );
+
+      const zip = new JSZip();
+      const seen = new Map<string, number>();
+      for (const { filename: rawName, blob } of entries) {
+        let filename = rawName;
+        const count = seen.get(rawName) ?? 0;
+        if (count > 0) {
+          const dotIdx = filename.lastIndexOf('.');
+          filename = dotIdx > 0
+            ? `${filename.slice(0, dotIdx)} (${count})${filename.slice(dotIdx)}`
+            : `${filename} (${count})`;
+        }
+        seen.set(rawName, count + 1);
+        zip.file(filename, blob);
+      }
+
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const objUrl = URL.createObjectURL(zipBlob);
+      const a = document.createElement('a');
+      a.href = objUrl;
+      a.download = `media-${postId}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(objUrl);
+      toast.success('Download concluído');
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   async function handleDelete(id: number) {
     try { await deletePostMedia(id); refresh(); }
     catch (e) { toast.error((e as Error).message); }
@@ -126,17 +195,18 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={media.map((m) => m.id)} strategy={rectSortingStrategy}>
           <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-            {media.map((m) => (
+            {media.map((m, i) => (
               <SortableMediaTile
                 key={m.id}
                 media={m}
                 disabled={disabled}
+                onOpen={() => setLightboxIndex(i)}
                 onSetCover={() => handleSetCover(m.id)}
                 onDelete={() => handleDelete(m.id)}
               />
             ))}
             {!disabled && (
-              <label className="flex flex-col items-center justify-center gap-1 aspect-square rounded-xl border border-dashed border-stone-300 bg-stone-50 text-stone-500 hover:border-stone-400 hover:bg-stone-100 cursor-pointer transition-colors">
+              <label className="flex flex-col items-center justify-center gap-1 aspect-square rounded-xl border border-dashed border-stone-300 bg-stone-50 text-stone-500 hover:border-stone-400 hover:bg-stone-100 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-400 dark:hover:border-stone-500 dark:hover:bg-stone-700 cursor-pointer transition-colors">
                 <Upload className="h-4 w-4" />
                 <span className="text-[11px]">{uploading ? 'Enviando…' : 'Adicionar'}</span>
                 <input type="file" multiple accept="image/*,video/*" hidden onChange={(e) => handleFiles(e.target.files)} />
@@ -145,6 +215,18 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
           </div>
         </SortableContext>
       </DndContext>
+
+      {media.length > 0 && (
+        <button
+          type="button"
+          onClick={handleDownloadAll}
+          disabled={downloading}
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11.5px] font-medium text-stone-600 bg-stone-100 hover:bg-stone-200 dark:text-stone-300 dark:bg-stone-800 dark:hover:bg-stone-700 transition-colors disabled:opacity-50"
+        >
+          <Download className="h-3.5 w-3.5" />
+          {downloading ? 'Baixando…' : 'Baixar todos'}
+        </button>
+      )}
 
       {progress && (
         <div className="rounded-xl bg-stone-50 ring-1 ring-stone-200/80 px-3 py-2">
@@ -175,6 +257,14 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
           </button>
         </div>
       )}
+
+      <PostMediaLightbox
+        media={media}
+        initialIndex={lightboxIndex ?? 0}
+        open={lightboxIndex !== null}
+        onOpenChange={(o) => { if (!o) setLightboxIndex(null); }}
+        onDownloadAll={handleDownloadAll}
+      />
     </div>
   );
 }
@@ -182,11 +272,12 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
 interface SortableMediaTileProps {
   media: PostMedia;
   disabled?: boolean;
+  onOpen: () => void;
   onSetCover: () => void;
   onDelete: () => void;
 }
 
-function SortableMediaTile({ media: m, disabled, onSetCover, onDelete }: SortableMediaTileProps) {
+function SortableMediaTile({ media: m, disabled, onOpen, onSetCover, onDelete }: SortableMediaTileProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: m.id, disabled });
   const style = {
@@ -200,6 +291,7 @@ function SortableMediaTile({ media: m, disabled, onSetCover, onDelete }: Sortabl
       style={style}
       {...attributes}
       {...listeners}
+      onClick={onOpen}
       className="relative aspect-square overflow-hidden rounded-xl bg-stone-100 ring-1 ring-stone-200/80 group cursor-grab active:cursor-grabbing touch-none"
     >
       {m.kind === 'image' ? (

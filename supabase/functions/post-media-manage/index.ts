@@ -3,7 +3,6 @@ import { signGetUrl, signPutUrl } from "../_shared/r2.ts";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const THUMB_MIME = new Set(["image/jpeg", "image/png", "image/webp"]);
 
@@ -19,12 +18,21 @@ Deno.serve(async (req) => {
 
   const authHeader = req.headers.get("Authorization");
   if (!authHeader) return json({ error: "Unauthorized" }, 401);
+  const token = authHeader.replace("Bearer ", "");
 
-  const anon = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { headers: { Authorization: authHeader } } });
-  const { data: { user }, error: authErr } = await anon.auth.getUser();
-  if (authErr || !user) return json({ error: "Unauthorized" }, 401);
-
-  const svc = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+  // Service-role client verifies the user token via the Auth API
+  // (avoids ES256 local verification issue with the anon client).
+  const svc = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  const { data: { user }, error: authErr } = await svc.auth.getUser(token);
+  if (authErr || !user) {
+    console.error("[post-media-manage] auth failed:", JSON.stringify({
+      message: authErr?.message, status: (authErr as { status?: number } | null)?.status,
+      hasServiceKey: Boolean(SUPABASE_SERVICE_ROLE_KEY), tokenPrefix: token.slice(0, 12),
+    }));
+    return json({ error: "Unauthorized" }, 401);
+  }
   const { data: profile } = await svc.from("profiles").select("conta_id").eq("id", user.id).single();
   if (!profile?.conta_id) return json({ error: "Profile not found" }, 403);
 
