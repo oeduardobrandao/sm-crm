@@ -109,6 +109,7 @@ export default function ClienteDetalhePage() {
   const [fValor, setFValor] = useState('');
   const [fNotion, setFNotion] = useState('');
   const [fDiaPag, setFDiaPag] = useState('');
+  const [fDiaEntrega, setFDiaEntrega] = useState('');
   const [fStatus, setFStatus] = useState<Cliente['status']>('ativo');
   const [fEspecialidade, setFEspecialidade] = useState('');
   const [fAniMes, setFAniMes] = useState(''); // '01'–'12'
@@ -343,6 +344,7 @@ export default function ClienteDetalhePage() {
     setFNome(cliente.nome); setFEmail(cliente.email || ''); setFTelefone(cliente.telefone || '');
     setFPlano(cliente.plano || ''); setFValor(cliente.valor_mensal ? String(cliente.valor_mensal) : '');
     setFNotion(cliente.notion_page_url || ''); setFDiaPag(cliente.data_pagamento ? String(cliente.data_pagamento) : '');
+    setFDiaEntrega(cliente.dia_entrega ? String(cliente.dia_entrega) : '');
     setFStatus(cliente.status); setFEspecialidade(cliente.especialidade || '');
     const [aniMes = '', aniDia = ''] = (cliente.data_aniversario || '').split('-');
     setFAniMes(aniMes); setFAniDia(aniDia);
@@ -356,6 +358,11 @@ export default function ClienteDetalhePage() {
       toast.error('Dia de pagamento deve ser entre 1 e 31.');
       return;
     }
+    const diaEntrega = fDiaEntrega ? parseInt(fDiaEntrega, 10) : undefined;
+    if (diaEntrega !== undefined && (isNaN(diaEntrega) || diaEntrega < 1 || diaEntrega > 31)) {
+      toast.error('Dia de entrega deve ser entre 1 e 31.');
+      return;
+    }
     setEditLoading(true);
     try {
       await updateCliente(clienteId, {
@@ -363,6 +370,7 @@ export default function ClienteDetalhePage() {
         valor_mensal: fValor ? Number(fValor) : undefined,
         notion_page_url: fNotion,
         data_pagamento: diaPag,
+        dia_entrega: diaEntrega,
         status: fStatus, especialidade: fEspecialidade,
         data_aniversario: fAniMes && fAniDia ? `${fAniMes}-${fAniDia}` : null,
       });
@@ -560,6 +568,7 @@ export default function ClienteDetalhePage() {
           <div className="client-info-item"><span className="client-info-label">Email</span><span className="client-info-value">{cliente.email || '—'}</span></div>
           <div className="client-info-item"><span className="client-info-label">Telefone</span><span className="client-info-value">{cliente.telefone || '—'}</span></div>
           <div className="client-info-item"><span className="client-info-label">Dia de Pagamento</span><span className="client-info-value">{cliente.data_pagamento ? `Dia ${cliente.data_pagamento}` : '—'}</span></div>
+          <div className="client-info-item"><span className="client-info-label">Dia de Entrega</span><span className="client-info-value">{cliente.dia_entrega ? `Dia ${cliente.dia_entrega}` : '—'}</span></div>
           <div className="client-info-item"><span className="client-info-label">Especialidade</span><span className="client-info-value">{cliente.especialidade || '—'}</span></div>
           <div className="client-info-item">
             <span className="client-info-label">Aniversário</span>
@@ -1077,6 +1086,7 @@ export default function ClienteDetalhePage() {
             <div className="space-y-1"><Label>Valor Mensal</Label><Input type="number" value={fValor} onChange={e => setFValor(e.target.value)} /></div>
             <div className="space-y-1"><Label>Notion URL</Label><Input value={fNotion} onChange={e => setFNotion(e.target.value)} /></div>
             <div className="space-y-1"><Label>Dia de Pagamento</Label><Input type="number" min={1} max={31} value={fDiaPag} onChange={e => setFDiaPag(e.target.value)} /></div>
+            <div className="space-y-1"><Label>Dia de Entrega</Label><Input type="number" min={1} max={31} value={fDiaEntrega} onChange={e => setFDiaEntrega(e.target.value)} placeholder="1-31" /></div>
             <div className="space-y-1">
               <Label>Status</Label>
               <Select value={fStatus} onValueChange={v => setFStatus(v as Cliente['status'])}>

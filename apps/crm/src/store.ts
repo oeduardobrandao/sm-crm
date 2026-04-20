@@ -18,6 +18,7 @@ export interface Cliente {
   notion_page_url?: string;
   conta_id?: string;
   data_pagamento?: number;
+  dia_entrega?: number;
   especialidade?: string;
   data_aniversario?: string | null;
 }
@@ -651,6 +652,7 @@ export interface WorkflowTemplate {
   user_id?: string;
   nome: string;
   etapas: WorkflowTemplateEtapa[];
+  modo_prazo?: 'padrao' | 'data_fixa' | 'data_entrega';
   created_at?: string;
 }
 
@@ -746,6 +748,7 @@ export interface Workflow {
   status: 'ativo' | 'concluido' | 'arquivado';
   etapa_atual: number;
   recorrente: boolean;
+  modo_prazo?: 'padrao' | 'data_fixa' | 'data_entrega';
   link_notion?: string | null;
   link_drive?: string | null;
   position?: number;
@@ -845,6 +848,7 @@ export interface WorkflowEtapa {
   status: 'pendente' | 'ativo' | 'concluido';
   iniciado_em?: string | null;
   concluido_em?: string | null;
+  data_limite?: string | null;
 }
 
 export async function getWorkflowEtapas(workflowId: number): Promise<WorkflowEtapa[]> {
@@ -976,6 +980,35 @@ export async function duplicateWorkflow(workflowId: number): Promise<Workflow> {
   ]);
 
   const now = new Date().toISOString();
+  const modoPrazo = workflow.modo_prazo || 'padrao';
+
+  // For data_entrega mode: recalculate delivery deadlines for the next cycle
+  // Fetch cliente to get dia_entrega, then compute new deadlines
+  let nextDeliveryDeadlines: Map<number, string> | null = null;
+  if (modoPrazo === 'data_entrega') {
+    const { data: clienteRow } = await supabase
+      .from('clientes')
+      .select('dia_entrega')
+      .eq('id', workflow.cliente_id)
+      .single();
+    const diaEntrega = clienteRow?.dia_entrega as number | undefined;
+    if (diaEntrega) {
+      // Find anchor (aprovacao_cliente) step and compute from next month's delivery date
+      const anchorEtapa = etapas.find(e => e.tipo === 'aprovacao_cliente');
+      if (anchorEtapa) {
+        // Next delivery date: advance one cycle from today
+        const today = new Date();
+        let nextMonth = today.getMonth() + 2; // +1 for next month, +1 for 1-based
+        let nextYear = today.getFullYear();
+        if (nextMonth > 12) { nextMonth = 1; nextYear++; }
+        const daysInNextMonth = new Date(nextYear, nextMonth, 0).getDate();
+        const deliveryDay = Math.min(diaEntrega, daysInNextMonth);
+        const deliveryDate = new Date(nextYear, nextMonth - 1, deliveryDay);
+        nextDeliveryDeadlines = _computeDeliveryDeadlines(etapas, deliveryDate);
+      }
+    }
+  }
+
   const newWorkflow = await addWorkflow({
     cliente_id: workflow.cliente_id,
     titulo: workflow.titulo,
@@ -983,21 +1016,31 @@ export async function duplicateWorkflow(workflowId: number): Promise<Workflow> {
     status: 'ativo',
     etapa_atual: 0,
     recorrente: workflow.recorrente,
+    modo_prazo: modoPrazo,
   });
 
   try {
     for (let i = 0; i < etapas.length; i++) {
+      const etapa = etapas[i];
+      // Determine data_limite for the new workflow's steps
+      let dataLimite: string | null = null;
+      if (modoPrazo === 'data_entrega' && nextDeliveryDeadlines) {
+        dataLimite = nextDeliveryDeadlines.get(etapa.ordem) || null;
+      }
+      // data_fixa: clear dates (user sets new dates manually)
+      // padrao: no data_limite
       await addWorkflowEtapa({
         workflow_id: newWorkflow.id!,
         ordem: i,
-        nome: etapas[i].nome,
-        prazo_dias: etapas[i].prazo_dias,
-        tipo_prazo: etapas[i].tipo_prazo,
-        responsavel_id: etapas[i].responsavel_id || null,
-        tipo: etapas[i].tipo,
+        nome: etapa.nome,
+        prazo_dias: etapa.prazo_dias,
+        tipo_prazo: etapa.tipo_prazo,
+        responsavel_id: etapa.responsavel_id || null,
+        tipo: etapa.tipo,
         status: i === 0 ? 'ativo' : 'pendente',
         iniciado_em: i === 0 ? now : null,
         concluido_em: null,
+        data_limite: dataLimite,
       });
     }
   } catch (err) {
@@ -1007,6 +1050,72 @@ export async function duplicateWorkflow(workflowId: number): Promise<Workflow> {
   }
 
   return newWorkflow;
+}
+
+/**
+ * Internal helper: compute data_limite for each step given a delivery date.
+ * Exported as computeDeliveryDeadlines from useEntregasData.ts for UI use.
+ * The anchor (aprovacao_cliente) step gets the delivery date.
+ * Steps before anchor: walk backward subtracting prazo_dias.
+ * Steps after anchor: walk forward adding prazo_dias.
+ * Returns Map<ordem, ISO date string>.
+ */
+function _computeDeliveryDeadlines(etapas: WorkflowEtapa[], deliveryDate: Date): Map<number, string> {
+  const sorted = [...etapas].sort((a, b) => a.ordem - b.ordem);
+  const anchorIdx = sorted.findIndex(e => e.tipo === 'aprovacao_cliente');
+  if (anchorIdx === -1) return new Map();
+
+  const result = new Map<number, string>();
+  const toISO = (d: Date) => d.toISOString().split('T')[0];
+
+  // Anchor step gets delivery date
+  result.set(sorted[anchorIdx].ordem, toISO(deliveryDate));
+
+  // Walk backward from anchor
+  let cursor = new Date(deliveryDate);
+  for (let i = anchorIdx - 1; i >= 0; i--) {
+    cursor = _subtractDays(cursor, sorted[i + 1].prazo_dias, sorted[i + 1].tipo_prazo);
+    result.set(sorted[i].ordem, toISO(cursor));
+  }
+
+  // Walk forward from anchor
+  cursor = new Date(deliveryDate);
+  for (let i = anchorIdx + 1; i < sorted.length; i++) {
+    cursor = _addDays(cursor, sorted[i].prazo_dias, sorted[i].tipo_prazo);
+    result.set(sorted[i].ordem, toISO(cursor));
+  }
+
+  return result;
+}
+
+function _subtractDays(from: Date, days: number, tipoPrazo: 'corridos' | 'uteis'): Date {
+  const result = new Date(from);
+  if (tipoPrazo === 'corridos') {
+    result.setDate(result.getDate() - days);
+    return result;
+  }
+  let remaining = days;
+  while (remaining > 0) {
+    result.setDate(result.getDate() - 1);
+    const dow = result.getDay();
+    if (dow !== 0 && dow !== 6) remaining--;
+  }
+  return result;
+}
+
+function _addDays(from: Date, days: number, tipoPrazo: 'corridos' | 'uteis'): Date {
+  const result = new Date(from);
+  if (tipoPrazo === 'corridos') {
+    result.setDate(result.getDate() + days);
+    return result;
+  }
+  let remaining = days;
+  while (remaining > 0) {
+    result.setDate(result.getDate() + 1);
+    const dow = result.getDay();
+    if (dow !== 0 && dow !== 6) remaining--;
+  }
+  return result;
 }
 
 // =============================================
@@ -1418,12 +1527,34 @@ export async function replyToPostApproval(
 
 /** Calculate deadline info for an active step. */
 export function getDeadlineInfo(etapa: WorkflowEtapa): { diasRestantes: number; horasRestantes: number; estourado: boolean; urgente: boolean } {
-  if (etapa.status !== 'ativo' || !etapa.iniciado_em) {
+  if (etapa.status !== 'ativo') {
+    return { diasRestantes: etapa.prazo_dias, horasRestantes: 0, estourado: false, urgente: false };
+  }
+
+  const now = new Date();
+
+  // If a fixed deadline date is set, calculate relative to it directly
+  if (etapa.data_limite) {
+    const limite = new Date(etapa.data_limite);
+    // data_limite is a date (no time), treat end of that day as midnight start of next day
+    limite.setDate(limite.getDate() + 1);
+    const msRestantes = limite.getTime() - now.getTime();
+    const totalHorasRestantes = Math.floor(msRestantes / (1000 * 60 * 60));
+    const diasRestantes = Math.floor(totalHorasRestantes / 24);
+    const horasRestantes = totalHorasRestantes % 24;
+    return {
+      diasRestantes,
+      horasRestantes,
+      estourado: msRestantes < 0,
+      urgente: msRestantes >= 0 && msRestantes <= 24 * 60 * 60 * 1000,
+    };
+  }
+
+  if (!etapa.iniciado_em) {
     return { diasRestantes: etapa.prazo_dias, horasRestantes: 0, estourado: false, urgente: false };
   }
 
   const inicio = new Date(etapa.iniciado_em);
-  const now = new Date();
 
   let msRestantes: number;
   if (etapa.tipo_prazo === 'uteis') {

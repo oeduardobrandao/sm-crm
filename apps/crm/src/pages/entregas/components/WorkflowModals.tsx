@@ -20,7 +20,10 @@ import {
   type Workflow, type WorkflowEtapa, type WorkflowTemplate, type Cliente, type Membro,
   type TemplatePropertyDefinition,
 } from '../../../store';
+import { getNextDeliveryDate, computeDeliveryDeadlines } from '../hooks/useEntregasData';
 import { PropertyDefinitionPanel } from './PropertyDefinitionPanel';
+
+type ModoPrazo = 'padrao' | 'data_fixa' | 'data_entrega';
 
 // ---- Types ----
 interface BoardCard {
@@ -39,10 +42,11 @@ interface EtapaFormData {
   tipoPrazo: 'corridos' | 'uteis';
   responsavelId: number | null;
   tipo: 'padrao' | 'aprovacao_cliente';
+  dataLimite: string; // ISO date string (YYYY-MM-DD), empty when unused
 }
 
 function defaultEtapa(): EtapaFormData {
-  return { nome: '', prazo: 3, tipoPrazo: 'corridos', responsavelId: null, tipo: 'padrao' };
+  return { nome: '', prazo: 3, tipoPrazo: 'corridos', responsavelId: null, tipo: 'padrao', dataLimite: '' };
 }
 
 // ---- EtapaRow component ----
@@ -53,6 +57,8 @@ function EtapaRow({
   tipoPrazo,
   responsavelId,
   tipo,
+  dataLimite,
+  modoPrazo,
   membros,
   onChange,
   onRemove,
@@ -63,6 +69,8 @@ function EtapaRow({
   tipoPrazo: string;
   responsavelId: number | null;
   tipo: 'padrao' | 'aprovacao_cliente';
+  dataLimite: string;
+  modoPrazo: ModoPrazo;
   membros: Membro[];
   onChange: (field: string, val: unknown) => void;
   onRemove: () => void;
@@ -74,22 +82,33 @@ function EtapaRow({
         value={nome}
         onChange={e => onChange('nome', e.target.value)}
       />
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-        <Input
-          type="number"
-          min={1}
-          value={prazo}
-          onChange={e => onChange('prazo', Number(e.target.value))}
-          placeholder="Prazo"
-        />
-        <Select value={tipoPrazo} onValueChange={val => onChange('tipoPrazo', val)}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="corridos">Corridos</SelectItem>
-            <SelectItem value="uteis">Úteis</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+      {modoPrazo === 'data_fixa' ? (
+        <div className="space-y-1">
+          <Label style={{ fontSize: '0.75rem' }}>Data limite</Label>
+          <Input
+            type="date"
+            value={dataLimite}
+            onChange={e => onChange('dataLimite', e.target.value)}
+          />
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+          <Input
+            type="number"
+            min={1}
+            value={prazo}
+            onChange={e => onChange('prazo', Number(e.target.value))}
+            placeholder="Prazo (dias)"
+          />
+          <Select value={tipoPrazo} onValueChange={val => onChange('tipoPrazo', val)}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="corridos">Corridos</SelectItem>
+              <SelectItem value="uteis">Úteis</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
       <Select value={responsavelId != null ? String(responsavelId) : '__none__'} onValueChange={val => onChange('responsavelId', val === '__none__' ? null : Number(val))}>
         <SelectTrigger><SelectValue placeholder="Sem responsável" /></SelectTrigger>
         <SelectContent>
@@ -137,18 +156,21 @@ export function NewWorkflowModal({
   const [fClienteId, setFClienteId] = useState('');
   const [fTemplateId, setFTemplateId] = useState('');
   const [fRecorrente, setFRecorrente] = useState(false);
+  const [fModoPrazo, setFModoPrazo] = useState<ModoPrazo>('padrao');
 
   const handleTemplateChange = (templateId: string) => {
     setFTemplateId(templateId);
     if (!templateId) return;
     const tpl = templates.find(t => t.id === Number(templateId));
     if (!tpl) return;
+    if (tpl.modo_prazo) setFModoPrazo(tpl.modo_prazo);
     setEtapas(tpl.etapas.map(e => ({
       nome: e.nome,
       prazo: e.prazo_dias,
       tipoPrazo: e.tipo_prazo,
       responsavelId: e.responsavel_id || null,
       tipo: e.tipo || 'padrao',
+      dataLimite: '',
     })));
   };
 
@@ -156,6 +178,46 @@ export function NewWorkflowModal({
     if (!fTitulo || !fClienteId) { toast.error('Título e cliente são obrigatórios.'); return; }
     const validEtapas = etapas.filter(e => e.nome.trim());
     if (validEtapas.length === 0) { toast.error('Adicione pelo menos uma etapa.'); return; }
+
+    // Mode-specific validation
+    if (fModoPrazo === 'data_fixa') {
+      if (validEtapas.some(e => !e.dataLimite)) {
+        toast.error('Todas as etapas precisam de uma data limite no modo Data Fixa.');
+        return;
+      }
+    }
+
+    // data_entrega mode: need aprovacao_cliente step and client dia_entrega
+    let deliveryDeadlines: Map<number, string> | null = null;
+    if (fModoPrazo === 'data_entrega') {
+      const hasAprovacao = validEtapas.some(e => e.tipo === 'aprovacao_cliente');
+      if (!hasAprovacao) {
+        toast.error('No modo Data de Entrega, é necessário ter ao menos uma etapa de Aprovação do Cliente como âncora.');
+        return;
+      }
+      const selectedCliente = clientes.find(c => c.id === Number(fClienteId));
+      if (!selectedCliente?.dia_entrega) {
+        toast.error('O cliente selecionado não tem um Dia de Entrega configurado. Configure em Detalhes do Cliente.');
+        return;
+      }
+      const deliveryDate = getNextDeliveryDate(selectedCliente.dia_entrega);
+      // Build minimal WorkflowEtapa objects for the computation
+      const etapasMock = validEtapas.map((e, i) => ({
+        id: i,
+        workflow_id: 0,
+        ordem: i,
+        nome: e.nome,
+        prazo_dias: e.prazo,
+        tipo_prazo: e.tipoPrazo,
+        responsavel_id: e.responsavelId,
+        tipo: e.tipo,
+        status: 'pendente' as const,
+        iniciado_em: null,
+        concluido_em: null,
+      }));
+      deliveryDeadlines = computeDeliveryDeadlines(etapasMock, deliveryDate);
+    }
+
     setSaving(true);
     let wf: Workflow | null = null;
     try {
@@ -166,10 +228,17 @@ export function NewWorkflowModal({
         status: 'ativo',
         etapa_atual: 0,
         recorrente: fRecorrente,
+        modo_prazo: fModoPrazo,
       });
       const now = new Date().toISOString();
       for (let i = 0; i < validEtapas.length; i++) {
         const e = validEtapas[i];
+        let dataLimite: string | null = null;
+        if (fModoPrazo === 'data_fixa') {
+          dataLimite = e.dataLimite || null;
+        } else if (fModoPrazo === 'data_entrega' && deliveryDeadlines) {
+          dataLimite = deliveryDeadlines.get(i) || null;
+        }
         await addWorkflowEtapa({
           workflow_id: wf.id!,
           ordem: i,
@@ -181,10 +250,11 @@ export function NewWorkflowModal({
           status: i === 0 ? 'ativo' : 'pendente',
           iniciado_em: i === 0 ? now : null,
           concluido_em: null,
+          data_limite: dataLimite,
         });
       }
       toast.success('Fluxo criado com sucesso!');
-      setFTitulo(''); setFClienteId(''); setFTemplateId(''); setFRecorrente(false);
+      setFTitulo(''); setFClienteId(''); setFTemplateId(''); setFRecorrente(false); setFModoPrazo('padrao');
       setEtapas([defaultEtapa()]);
       onCreated();
       onClose();
@@ -223,6 +293,22 @@ export function NewWorkflowModal({
               </SelectContent>
             </Select>
           </div>
+          <div className="space-y-1">
+            <Label>Modo de Prazo</Label>
+            <Select value={fModoPrazo} onValueChange={v => setFModoPrazo(v as ModoPrazo)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="padrao">Duração (padrão)</SelectItem>
+                <SelectItem value="data_fixa">Data fixa por etapa</SelectItem>
+                <SelectItem value="data_entrega">Data de entrega do cliente</SelectItem>
+              </SelectContent>
+            </Select>
+            {fModoPrazo === 'data_entrega' && (
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                Prazos calculados automaticamente a partir do dia de entrega do cliente, usando a etapa de Aprovação como âncora.
+              </p>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <Checkbox id="recorrente-new" checked={fRecorrente} onCheckedChange={v => setFRecorrente(!!v)} />
             <Label htmlFor="recorrente-new">Fluxo recorrente (ao concluir, oferecer criar novo ciclo)</Label>
@@ -238,6 +324,8 @@ export function NewWorkflowModal({
                 tipoPrazo={e.tipoPrazo}
                 responsavelId={e.responsavelId}
                 tipo={e.tipo}
+                dataLimite={e.dataLimite}
+                modoPrazo={fModoPrazo}
                 membros={membros}
                 onChange={(field, val) => {
                   const next = [...etapas];
@@ -281,6 +369,7 @@ export function EditWorkflowModal({
 }) {
   const w = card.workflow;
   const e = card.etapa;
+  const modoPrazo: ModoPrazo = (w.modo_prazo as ModoPrazo) || 'padrao';
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
@@ -290,6 +379,7 @@ export function EditWorkflowModal({
   const [fResponsavelId, setFResponsavelId] = useState(String(e.responsavel_id || ''));
   const [fPrazoDias, setFPrazoDias] = useState(String(e.prazo_dias));
   const [fTipoPrazo, setFTipoPrazo] = useState(e.tipo_prazo);
+  const [fDataLimite, setFDataLimite] = useState(e.data_limite || '');
   const activeClientes = clientes.filter(c => c.status === 'ativo');
 
   const markDirty = () => setIsDirty(true);
@@ -303,11 +393,16 @@ export function EditWorkflowModal({
         cliente_id: Number(fClienteId),
         recorrente: fRecorrente,
       });
-      await updateWorkflowEtapa(e.id!, {
+      const etapaUpdate: Parameters<typeof updateWorkflowEtapa>[1] = {
         responsavel_id: fResponsavelId ? Number(fResponsavelId) : null,
-        prazo_dias: Number(fPrazoDias) || e.prazo_dias,
-        tipo_prazo: fTipoPrazo as 'corridos' | 'uteis',
-      });
+      };
+      if (modoPrazo === 'padrao') {
+        etapaUpdate.prazo_dias = Number(fPrazoDias) || e.prazo_dias;
+        etapaUpdate.tipo_prazo = fTipoPrazo as 'corridos' | 'uteis';
+      } else if (modoPrazo === 'data_fixa') {
+        etapaUpdate.data_limite = fDataLimite || null;
+      }
+      await updateWorkflowEtapa(e.id!, etapaUpdate);
       toast.success('Fluxo atualizado!');
       onSaved();
       onClose();
@@ -348,7 +443,18 @@ export function EditWorkflowModal({
               <Label htmlFor="recorrente-edit">Fluxo recorrente</Label>
             </div>
             <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
-              <h4 style={{ marginBottom: '0.75rem' }}>Etapa Atual: {e.nome}</h4>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                <h4>Etapa Atual: {e.nome}</h4>
+                {modoPrazo !== 'padrao' && (
+                  <span style={{
+                    fontSize: '0.72rem', fontWeight: 600, padding: '2px 8px', borderRadius: 10,
+                    background: modoPrazo === 'data_entrega' ? '#dbeafe' : '#f3e8ff',
+                    color: modoPrazo === 'data_entrega' ? '#1d4ed8' : '#7e22ce',
+                  }}>
+                    {modoPrazo === 'data_entrega' ? 'Data de entrega' : 'Data fixa'}
+                  </span>
+                )}
+              </div>
               <div className="space-y-1">
                 <Label>Responsável</Label>
                 <Select value={fResponsavelId || '__none__'} onValueChange={val => { setFResponsavelId(val === '__none__' ? '' : val); markDirty(); }}>
@@ -359,19 +465,32 @@ export function EditWorkflowModal({
                   </SelectContent>
                 </Select>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '0.75rem' }}>
-                <div className="space-y-1"><Label>Prazo (dias)</Label><Input type="number" min={1} value={fPrazoDias} onChange={e => { setFPrazoDias(e.target.value); markDirty(); }} /></div>
-                <div className="space-y-1">
-                  <Label>Tipo de prazo</Label>
-                  <Select value={fTipoPrazo} onValueChange={v => { setFTipoPrazo(v as 'corridos' | 'uteis'); markDirty(); }}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="corridos">Dias corridos</SelectItem>
-                      <SelectItem value="uteis">Dias úteis</SelectItem>
-                    </SelectContent>
-                  </Select>
+              {modoPrazo === 'padrao' && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '0.75rem' }}>
+                  <div className="space-y-1"><Label>Prazo (dias)</Label><Input type="number" min={1} value={fPrazoDias} onChange={e => { setFPrazoDias(e.target.value); markDirty(); }} /></div>
+                  <div className="space-y-1">
+                    <Label>Tipo de prazo</Label>
+                    <Select value={fTipoPrazo} onValueChange={v => { setFTipoPrazo(v as 'corridos' | 'uteis'); markDirty(); }}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="corridos">Dias corridos</SelectItem>
+                        <SelectItem value="uteis">Dias úteis</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
-              </div>
+              )}
+              {modoPrazo === 'data_fixa' && (
+                <div className="space-y-1" style={{ marginTop: '0.75rem' }}>
+                  <Label>Data limite</Label>
+                  <Input type="date" value={fDataLimite} onChange={ev => { setFDataLimite(ev.target.value); markDirty(); }} />
+                </div>
+              )}
+              {modoPrazo === 'data_entrega' && e.data_limite && (
+                <div style={{ marginTop: '0.75rem', padding: '0.5rem 0.75rem', background: '#eff6ff', borderRadius: 6, fontSize: '0.82rem', color: '#1d4ed8' }}>
+                  Data limite calculada: <strong>{new Date(e.data_limite + 'T00:00:00').toLocaleDateString('pt-BR')}</strong>
+                </div>
+              )}
             </div>
           </div>
           <div className="edit-modal-footer">
@@ -427,6 +546,7 @@ export function TemplatesModal({
   const [editingTemplate, setEditingTemplate] = useState<WorkflowTemplate | null>(null);
   const [deleteTemplateId, setDeleteTemplateId] = useState<number | null>(null);
   const [fNome, setFNome] = useState('');
+  const [fModoPrazo, setFModoPrazo] = useState<ModoPrazo>('padrao');
 
   const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState<'templates' | 'properties'>('templates');
@@ -466,16 +586,17 @@ export function TemplatesModal({
         tipo: e.tipo,
       }));
       if (editingTemplate?.id) {
-        await updateWorkflowTemplate(editingTemplate.id, { nome, etapas: etapaData });
+        await updateWorkflowTemplate(editingTemplate.id, { nome, etapas: etapaData, modo_prazo: fModoPrazo });
         await propagateTemplateToWorkflows(editingTemplate.id, etapaData);
         toast.success('Template atualizado!');
       } else {
-        await addWorkflowTemplate({ nome, etapas: etapaData });
+        await addWorkflowTemplate({ nome, etapas: etapaData, modo_prazo: fModoPrazo });
         toast.success('Template criado!');
       }
       setFNome('');
       setEtapas([defaultEtapa()]);
       setEditingTemplate(null);
+      setFModoPrazo('padrao');
       onRefresh();
     } catch (err: unknown) {
       toast.error((err as Error).message || 'Erro');
@@ -487,12 +608,14 @@ export function TemplatesModal({
   const handleEdit = (tpl: WorkflowTemplate) => {
     setEditingTemplate(tpl);
     setFNome(tpl.nome);
+    setFModoPrazo((tpl.modo_prazo as ModoPrazo) || 'padrao');
     setEtapas(tpl.etapas.map(e => ({
       nome: e.nome,
       prazo: e.prazo_dias,
       tipoPrazo: e.tipo_prazo,
       responsavelId: e.responsavel_id || null,
       tipo: e.tipo || 'padrao',
+      dataLimite: '',
     })));
   };
 
@@ -508,8 +631,8 @@ export function TemplatesModal({
 
   return (
     <>
-      <Dialog open={open} onOpenChange={open => { if (!open) { setFNome(''); setEtapas([defaultEtapa()]); setEditingTemplate(null); onClose(); } }}>
-        <DialogContent style={{ maxWidth: 700, maxHeight: '90vh', overflowY: 'auto', width: 'calc(100vw - 2rem)' }} onConfirmClose={() => { setFNome(''); setEtapas([defaultEtapa()]); setEditingTemplate(null); onClose(); }}>
+      <Dialog open={open} onOpenChange={open => { if (!open) { setFNome(''); setEtapas([defaultEtapa()]); setEditingTemplate(null); setFModoPrazo('padrao'); onClose(); } }}>
+        <DialogContent style={{ maxWidth: 700, maxHeight: '90vh', overflowY: 'auto', width: 'calc(100vw - 2rem)' }} onConfirmClose={() => { setFNome(''); setEtapas([defaultEtapa()]); setEditingTemplate(null); setFModoPrazo('padrao'); onClose(); }}>
           <DialogHeader><DialogTitle>Gerenciar Templates</DialogTitle></DialogHeader>
           {/* Tab navigation */}
           <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border-color)', marginBottom: '1rem' }}>
@@ -562,6 +685,17 @@ export function TemplatesModal({
                   <Label>Nome *</Label>
                   <Input placeholder="Ex: Fluxo Padrão de Post" value={fNome} onChange={e => setFNome(e.target.value)} />
                 </div>
+                <div className="space-y-1" style={{ marginBottom: '0.75rem' }}>
+                  <Label>Modo de Prazo</Label>
+                  <Select value={fModoPrazo} onValueChange={v => setFModoPrazo(v as ModoPrazo)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="padrao">Duração (padrão)</SelectItem>
+                      <SelectItem value="data_fixa">Data fixa por etapa</SelectItem>
+                      <SelectItem value="data_entrega">Data de entrega do cliente</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
                 {etapas.map((e, i) => (
                   <EtapaRow
                     key={i}
@@ -571,6 +705,8 @@ export function TemplatesModal({
                     tipoPrazo={e.tipoPrazo}
                     responsavelId={e.responsavelId}
                     tipo={e.tipo}
+                    dataLimite={e.dataLimite}
+                    modoPrazo={fModoPrazo}
                     membros={membros}
                     onChange={(field, val) => {
                       const next = [...etapas];
@@ -682,7 +818,7 @@ export function TemplatesModal({
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setFNome(''); setEtapas([defaultEtapa()]); setEditingTemplate(null); onClose(); }}>Fechar</Button>
+            <Button variant="outline" onClick={() => { setFNome(''); setEtapas([defaultEtapa()]); setEditingTemplate(null); setFModoPrazo('padrao'); onClose(); }}>Fechar</Button>
             <Button onClick={handleSave} disabled={saving}>{saving && <Spinner size="sm" />} {editingTemplate ? 'Salvar' : 'Salvar Template'}</Button>
           </DialogFooter>
         </DialogContent>
