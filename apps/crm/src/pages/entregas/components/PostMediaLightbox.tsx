@@ -18,6 +18,7 @@ export function PostMediaLightbox({
 }: PostMediaLightboxProps) {
   const [index, setIndex] = useState(initialIndex);
 
+  // Reseed when open flips so clicking a different tile lands on its slide.
   useEffect(() => {
     if (open) setIndex(initialIndex);
   }, [open, initialIndex]);
@@ -29,6 +30,7 @@ export function PostMediaLightbox({
   const next = () =>
     setIndex((i) => (i + 1) % media.length);
 
+  // Arrow-key nav only; Esc is handled by Radix Dialog itself.
   useEffect(() => {
     if (!open || !hasMultiple) return;
     const onKey = (e: KeyboardEvent) => {
