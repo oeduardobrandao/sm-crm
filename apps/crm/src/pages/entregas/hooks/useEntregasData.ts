@@ -164,7 +164,7 @@ export function computeDeliveryDeadlines(
   // Walk backward from anchor (each prior step ends when next step begins)
   let cursor = new Date(deliveryDate);
   for (let i = anchorIdx - 1; i >= 0; i--) {
-    cursor = subtractDays(cursor, sorted[i + 1].prazo_dias, sorted[i + 1].tipo_prazo);
+    cursor = subtractDays(cursor, sorted[i].prazo_dias, sorted[i].tipo_prazo);
     result.set(sorted[i].ordem, toISO(cursor));
   }
 

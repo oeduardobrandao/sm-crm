@@ -1074,7 +1074,7 @@ function _computeDeliveryDeadlines(etapas: WorkflowEtapa[], deliveryDate: Date):
   // Walk backward from anchor
   let cursor = new Date(deliveryDate);
   for (let i = anchorIdx - 1; i >= 0; i--) {
-    cursor = _subtractDays(cursor, sorted[i + 1].prazo_dias, sorted[i + 1].tipo_prazo);
+    cursor = _subtractDays(cursor, sorted[i].prazo_dias, sorted[i].tipo_prazo);
     result.set(sorted[i].ordem, toISO(cursor));
   }
 
@@ -1527,13 +1527,10 @@ export async function replyToPostApproval(
 
 /** Calculate deadline info for an active step. */
 export function getDeadlineInfo(etapa: WorkflowEtapa): { diasRestantes: number; horasRestantes: number; estourado: boolean; urgente: boolean } {
-  if (etapa.status !== 'ativo') {
-    return { diasRestantes: etapa.prazo_dias, horasRestantes: 0, estourado: false, urgente: false };
-  }
-
   const now = new Date();
 
-  // If a fixed deadline date is set, calculate relative to it directly
+  // FIRST: if a fixed deadline date is set, calculate relative to it directly
+  // (applies to data_fixa and data_entrega modes — step may still be pending)
   if (etapa.data_limite) {
     const limite = new Date(etapa.data_limite);
     // data_limite is a date (no time), treat end of that day as midnight start of next day
@@ -1550,7 +1547,7 @@ export function getDeadlineInfo(etapa: WorkflowEtapa): { diasRestantes: number; 
     };
   }
 
-  if (!etapa.iniciado_em) {
+  if (etapa.status !== 'ativo' || !etapa.iniciado_em) {
     return { diasRestantes: etapa.prazo_dias, horasRestantes: 0, estourado: false, urgente: false };
   }
 
