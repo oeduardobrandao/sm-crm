@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Upload, Star, Trash2, AlertTriangle } from 'lucide-react';
@@ -24,16 +24,22 @@ interface PostMediaGalleryProps {
 
 export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGalleryProps) {
   const qc = useQueryClient();
-  const { data: serverMedia = [] } = useQuery({
+  const { data: serverMedia } = useQuery({
     queryKey: ['post-media', postId],
     queryFn: () => listPostMedia(postId),
   });
 
   // Local ordered copy so drag-reorder feels instant and doesn't flash back
-  // while the PATCH round-trips and the query refetches.
-  const [media, setMedia] = useState<PostMedia[]>(serverMedia);
-  useEffect(() => { setMedia(serverMedia); }, [serverMedia]);
-  useEffect(() => { onChange?.(media); }, [media, onChange]);
+  // while the PATCH round-trips and the query refetches. Sync only when the
+  // query produces a new defined value — destructuring with a `[]` default
+  // would create a fresh reference each render and loop the effect.
+  const [media, setMedia] = useState<PostMedia[]>([]);
+  useEffect(() => { if (serverMedia) setMedia(serverMedia); }, [serverMedia]);
+
+  // Stash onChange in a ref so an unmemoized parent callback can't loop us.
+  const onChangeRef = useRef(onChange);
+  useEffect(() => { onChangeRef.current = onChange; });
+  useEffect(() => { onChangeRef.current?.(media); }, [media]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 

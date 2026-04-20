@@ -27,3 +27,12 @@ verify_jwt = false
 
 [functions.hub-ideias]
 verify_jwt = false
+
+[functions.post-media-upload-url]
+verify_jwt = false
+
+[functions.post-media-finalize]
+verify_jwt = false
+
+[functions.post-media-manage]
+verify_jwt = false
