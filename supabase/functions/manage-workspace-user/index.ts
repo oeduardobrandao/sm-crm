@@ -47,20 +47,15 @@ Deno.serve(async (req: Request) => {
       return new Response(JSON.stringify({ error: "Profile not found" }), { status: 403, headers });
     }
 
-    if (callerProfile.role !== "owner" && callerProfile.role !== "admin") {
-      return new Response(JSON.stringify({ error: "Insufficient permissions" }), { status: 403, headers });
-    }
-
     const body = await req.json();
     const { action, targetUserId, role, inviteId } = body;
 
-    // --- Accept Invite (called by the invited user themselves) ---
+    // --- Accept Invite (called by the invited user themselves, any role) ---
     if (action === "accept-invite") {
       const { email } = body;
       if (!email) {
         return new Response(JSON.stringify({ error: "email is required" }), { status: 400, headers });
       }
-      // Mark all pending invites for this email+workspace as accepted
       const { error: acceptError } = await serviceClient
         .from("invites")
         .update({ status: "accepted", accepted_at: new Date().toISOString() })
@@ -69,6 +64,20 @@ Deno.serve(async (req: Request) => {
         .eq("conta_id", callerProfile.conta_id);
 
       if (acceptError) throw acceptError;
+
+      // Add user to workspace now that they've completed the invitation flow
+      const { error: memberErr } = await serviceClient
+        .from("workspace_members")
+        .insert({
+          user_id: user.id,
+          workspace_id: callerProfile.conta_id,
+          role: callerProfile.role,
+        })
+        .select()
+        .maybeSingle();
+
+      // Ignore unique constraint violation (user already a member)
+      if (memberErr && !memberErr.message?.includes("duplicate key")) throw memberErr;
 
       await insertAuditLog(serviceClient, {
         conta_id: callerProfile.conta_id,
@@ -79,6 +88,11 @@ Deno.serve(async (req: Request) => {
       });
 
       return new Response(JSON.stringify({ message: "Convite aceito." }), { status: 200, headers });
+    }
+
+    // All other actions require owner/admin
+    if (callerProfile.role !== "owner" && callerProfile.role !== "admin") {
+      return new Response(JSON.stringify({ error: "Insufficient permissions" }), { status: 403, headers });
     }
 
     // --- Cancel Invite (does not require targetUserId) ---

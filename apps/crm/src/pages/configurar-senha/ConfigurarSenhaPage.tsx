@@ -46,36 +46,53 @@ export default function ConfigurarSenhaPage() {
       if (!sessionReceived.current) setTokenError(true);
     }, 8000);
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      const isInviteSignIn = event === 'SIGNED_IN' && !!session?.user.user_metadata?.conta_id;
-      if (event === 'PASSWORD_RECOVERY' || isInviteSignIn) {
-        sessionReceived.current = true;
-        clearTimeout(timeout);
-        if (!session) return;
-        const userEmail = session.user.email || '';
-        const contaId = session.user.user_metadata?.conta_id || '';
-        setEmail(userEmail);
-        setIsInvite(!!contaId);
+    const processSession = async (session: { user: { email?: string; user_metadata?: Record<string, unknown> } }) => {
+      if (!mounted.current) return;
+      sessionReceived.current = true;
+      clearTimeout(timeout);
+      setTokenError(false);
+      const userEmail = session.user.email || '';
+      const contaId = (session.user.user_metadata?.conta_id as string) || '';
+      setEmail(userEmail);
+      setIsInvite(!!contaId);
 
-        if (contaId) {
-          const { data } = await supabase
-            .from('profiles')
-            .select('nome, empresa')
-            .eq('conta_id', contaId)
-            .eq('role', 'owner')
-            .maybeSingle();
-          if (data && mounted.current) {
-            setWorkspaceName(data.empresa || '');
-            setInviterName(data.nome || '');
-            const initials = (data.nome || '')
-              .split(' ')
-              .filter(Boolean)
-              .slice(0, 2)
-              .map((w: string) => w[0].toUpperCase())
-              .join('');
-            setInviterInitials(initials);
-          }
+      if (contaId) {
+        const { data } = await supabase
+          .from('profiles')
+          .select('nome, empresa')
+          .eq('conta_id', contaId)
+          .eq('role', 'owner')
+          .maybeSingle();
+        if (data && mounted.current) {
+          setWorkspaceName(data.empresa || '');
+          setInviterName(data.nome || '');
+          const initials = (data.nome || '')
+            .split(' ')
+            .filter(Boolean)
+            .slice(0, 2)
+            .map((w: string) => w[0].toUpperCase())
+            .join('');
+          setInviterInitials(initials);
         }
+      }
+    };
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session && !sessionReceived.current) {
+        const hasConta = !!session.user.user_metadata?.conta_id;
+        if (hasConta || window.location.pathname === '/configurar-senha') {
+          processSession(session);
+        }
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!session || sessionReceived.current) return;
+      const hasConta = !!session.user.user_metadata?.conta_id;
+      const isInviteEvent = (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && hasConta;
+      const isRecoveryEvent = event === 'PASSWORD_RECOVERY' || (event === 'INITIAL_SESSION' && !hasConta);
+      if (isRecoveryEvent || isInviteEvent) {
+        processSession(session);
       }
     });
 
@@ -169,7 +186,7 @@ export default function ConfigurarSenhaPage() {
             <Button
               onClick={() => navigate('/login')}
               className="w-full"
-              style={{ height: 46, background: '#1a3d2b', borderColor: '#1a3d2b', fontSize: 15, fontWeight: 600 }}
+              style={{ height: 46, background: '#1a3d2b', borderColor: '#1a3d2b', color: '#fff', fontSize: 15, fontWeight: 600 }}
             >
               Solicitar novo link
             </Button>
@@ -212,7 +229,7 @@ export default function ConfigurarSenhaPage() {
                 type="submit"
                 disabled={loading}
                 className="w-full"
-                style={{ height: 46, background: '#1a3d2b', borderColor: '#1a3d2b', fontSize: 15, fontWeight: 600 }}
+                style={{ height: 46, background: '#1a3d2b', borderColor: '#1a3d2b', color: '#fff', fontSize: 15, fontWeight: 600 }}
               >
                 {loading && <Spinner size="sm" />}
                 {isInvite ? 'Aceitar convite e entrar' : 'Salvar senha'}

@@ -45,6 +45,9 @@ export const supabase = {
     async resetPasswordForEmail() {
       return { data: {}, error: null };
     },
+    async updateUser() {
+      return { data: { user: currentUser }, error: null };
+    },
     async signOut() {
       currentSession = null;
       currentUser = null;

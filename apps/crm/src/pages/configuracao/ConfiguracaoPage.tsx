@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { Spinner } from '@/components/ui/spinner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -50,7 +49,6 @@ export default function ConfiguracaoPage() {
   const [pEmpresa, setPEmpresa] = useState('');
   const [pTelefone, setPTelefone] = useState('');
   const [pWhatsapp, setPWhatsapp] = useState('');
-  const [pWhatsappOptIn, setPWhatsappOptIn] = useState(false);
   const [profileLoading, setProfileLoading] = useState(false);
 
   useEffect(() => {
@@ -59,7 +57,6 @@ export default function ConfiguracaoPage() {
       setPEmpresa((profile as unknown as Record<string, string>).empresa ?? '');
       setPTelefone((profile as unknown as Record<string, string>).telefone ?? '');
       setPWhatsapp((profile as unknown as Record<string, string>).whatsapp ?? '');
-      setPWhatsappOptIn(!!(profile as unknown as Record<string, boolean>).whatsapp_opt_in);
     }
   }, [profile]);
 
@@ -69,7 +66,7 @@ export default function ConfiguracaoPage() {
     try {
       const { error } = await supabase
         .from('profiles')
-        .update({ nome: pNome, empresa: pEmpresa, telefone: pTelefone, whatsapp: pWhatsapp, whatsapp_opt_in: pWhatsappOptIn })
+        .update({ nome: pNome, empresa: pEmpresa, telefone: pTelefone, whatsapp: pWhatsapp })
         .eq('id', user!.id);
       if (error) throw error;
       await refetchProfile();
@@ -221,7 +218,7 @@ export default function ConfiguracaoPage() {
     queryKey: ['invites'],
     queryFn: async () => {
       if (!profile?.conta_id) return [];
-      const { data } = await supabase.from('invites').select('*').eq('conta_id', profile.conta_id).order('created_at', { ascending: false });
+      const { data } = await supabase.from('invites').select('*').eq('conta_id', profile.conta_id).eq('status', 'pending').order('created_at', { ascending: false });
       return data ?? [];
     },
     enabled: isOwnerOrAdmin && !!profile?.conta_id,
@@ -360,10 +357,6 @@ export default function ConfiguracaoPage() {
             <div className="space-y-1"><Label>Empresa</Label><Input value={pEmpresa} onChange={e => setPEmpresa(e.target.value)} /></div>
             <div className="space-y-1"><Label>Telefone</Label><Input value={pTelefone} onChange={e => setPTelefone(e.target.value)} /></div>
             <div className="space-y-1"><Label>WhatsApp</Label><Input value={pWhatsapp} onChange={e => setPWhatsapp(e.target.value)} /></div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Checkbox id="wa-opt-in" checked={pWhatsappOptIn} onCheckedChange={v => setPWhatsappOptIn(!!v)} />
-            <Label htmlFor="wa-opt-in">Receber notificações via WhatsApp</Label>
           </div>
           <Button onClick={handleProfileSave} disabled={profileLoading}>{profileLoading && <Spinner size="sm" />} Salvar Perfil</Button>
         </div>
