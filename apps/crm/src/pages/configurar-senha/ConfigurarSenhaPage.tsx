@@ -47,8 +47,10 @@ export default function ConfigurarSenhaPage() {
     }, 8000);
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      const isInviteSignIn = event === 'SIGNED_IN' && !!session?.user.user_metadata?.conta_id;
-      if (event === 'PASSWORD_RECOVERY' || isInviteSignIn) {
+      const hasConta = !!session?.user.user_metadata?.conta_id;
+      const isInviteEvent = (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && hasConta;
+      const isRecoveryEvent = event === 'PASSWORD_RECOVERY' || (event === 'INITIAL_SESSION' && !!session && !hasConta);
+      if (isRecoveryEvent || isInviteEvent) {
         sessionReceived.current = true;
         clearTimeout(timeout);
         if (!session) return;
