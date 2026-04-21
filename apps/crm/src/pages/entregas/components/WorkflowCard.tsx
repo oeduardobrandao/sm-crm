@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowLeft, Edit2, Check, FileText, Play } from 'lucide-react';
+import { ArrowLeft, Edit2, Check, FileText } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { updateWorkflowEtapa, type Membro } from '../../../store';
@@ -95,23 +95,46 @@ export function WorkflowCard({ card, onClick, isDragOverlay, dragHandle, membros
             letterSpacing: '0.07em',
             textTransform: 'uppercase',
             color: 'var(--text-muted)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.35rem',
           }}
         >
           {card.cliente ? (
-            <span
-              role="link"
-              tabIndex={0}
-              onClick={(e) => { e.stopPropagation(); navigate(`/clientes/${card.cliente!.id}`); }}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); navigate(`/clientes/${card.cliente!.id}`); } }}
-              style={{
-                cursor: 'pointer',
-                color: card.cliente.cor || 'var(--text-muted)',
-                opacity: 0.85,
-                fontWeight: 700,
-              }}
-            >
-              {card.cliente.nome}
-            </span>
+            <>
+              {card.clienteAvatarUrl ? (
+                <img
+                  src={card.clienteAvatarUrl}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  style={{ width: 18, height: 18, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+                />
+              ) : (
+                <div style={{
+                  width: 18, height: 18, borderRadius: '50%',
+                  background: card.cliente.cor || 'var(--surface-hover)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '0.45rem', fontWeight: 800, color: '#fff', flexShrink: 0,
+                }}>
+                  {getInitials(card.cliente.nome)}
+                </div>
+              )}
+              <span
+                role="link"
+                tabIndex={0}
+                onClick={(e) => { e.stopPropagation(); navigate(`/clientes/${card.cliente!.id}`); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); navigate(`/clientes/${card.cliente!.id}`); } }}
+                style={{
+                  cursor: 'pointer',
+                  color: card.cliente.cor || 'var(--text-muted)',
+                  opacity: 0.85,
+                  fontWeight: 700,
+                }}
+              >
+                {card.cliente.nome}
+              </span>
+            </>
           ) : '—'}
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
@@ -152,44 +175,6 @@ export function WorkflowCard({ card, onClick, isDragOverlay, dragHandle, membros
       >
         {card.workflow.titulo}
       </div>
-
-      {/* Cover thumbnail */}
-      {card.coverMedia && (
-        <div
-          style={{
-            position: 'relative',
-            width: '100%',
-            aspectRatio: '16 / 9',
-            borderRadius: '8px',
-            overflow: 'hidden',
-            background: 'var(--surface-hover)',
-          }}
-        >
-          <img
-            src={card.coverMedia.kind === 'video' ? (card.coverMedia.thumbnail_url ?? undefined) : card.coverMedia.url}
-            alt=""
-            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-          />
-          {card.coverMedia.kind === 'video' && (
-            <span
-              style={{
-                position: 'absolute',
-                top: '50%', left: '50%',
-                transform: 'translate(-50%, -50%)',
-                width: 28, height: 28,
-                borderRadius: '50%',
-                background: 'rgba(0,0,0,0.55)',
-                color: '#fff',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Play className="h-3.5 w-3.5" fill="currentColor" />
-            </span>
-          )}
-        </div>
-      )}
 
       {/* Deadline badge + prazo type */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
@@ -340,6 +325,57 @@ export function WorkflowCard({ card, onClick, isDragOverlay, dragHandle, membros
       {iniciadoEm && (
         <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.25rem', fontFamily: 'var(--font-mono)', letterSpacing: '0.05em' }}>
           iniciada em {iniciadoEm}
+        </div>
+      )}
+
+      {/* Post cover circles */}
+      {card.postCovers && card.postCovers.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', paddingTop: '0.15rem' }}>
+          {card.postCovers.slice(0, 5).map((media, i) => (
+            <div
+              key={media.id}
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: '50%',
+                overflow: 'hidden',
+                border: '2px solid var(--card-bg)',
+                marginLeft: i === 0 ? 0 : -10,
+                flexShrink: 0,
+                background: 'var(--surface-hover)',
+                zIndex: card.postCovers!.length - i,
+              }}
+            >
+              <img
+                src={media.thumbnail_url ?? media.url}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+              />
+            </div>
+          ))}
+          {card.postCovers.length > 5 && (
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: '50%',
+                border: '2px solid var(--card-bg)',
+                marginLeft: -10,
+                flexShrink: 0,
+                background: 'var(--surface-hover)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '0.6rem',
+                fontWeight: 700,
+                color: 'var(--text-muted)',
+              }}
+            >
+              +{card.postCovers.length - 5}
+            </div>
+          )}
         </div>
       )}
 

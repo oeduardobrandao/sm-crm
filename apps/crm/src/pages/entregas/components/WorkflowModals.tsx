@@ -157,6 +157,7 @@ export function NewWorkflowModal({
   const [fTemplateId, setFTemplateId] = useState('');
   const [fRecorrente, setFRecorrente] = useState(false);
   const [fModoPrazo, setFModoPrazo] = useState<ModoPrazo>('padrao');
+  const [fMesEntrega, setFMesEntrega] = useState('');
 
   const handleTemplateChange = (templateId: string) => {
     setFTemplateId(templateId);
@@ -200,7 +201,15 @@ export function NewWorkflowModal({
         toast.error('O cliente selecionado não tem um Dia de Entrega configurado. Configure em Detalhes do Cliente.');
         return;
       }
-      const deliveryDate = getNextDeliveryDate(selectedCliente.dia_entrega);
+      let deliveryDate: Date;
+      if (fMesEntrega) {
+        const [yr, mo] = fMesEntrega.split('-').map(Number);
+        const lastDay = new Date(yr, mo, 0).getDate();
+        const day = Math.min(selectedCliente.dia_entrega, lastDay);
+        deliveryDate = new Date(yr, mo - 1, day);
+      } else {
+        deliveryDate = getNextDeliveryDate(selectedCliente.dia_entrega);
+      }
       // Build minimal WorkflowEtapa objects for the computation
       const etapasMock = validEtapas.map((e, i) => ({
         id: i,
@@ -254,7 +263,7 @@ export function NewWorkflowModal({
         });
       }
       toast.success('Fluxo criado com sucesso!');
-      setFTitulo(''); setFClienteId(''); setFTemplateId(''); setFRecorrente(false); setFModoPrazo('padrao');
+      setFTitulo(''); setFClienteId(''); setFTemplateId(''); setFRecorrente(false); setFModoPrazo('padrao'); setFMesEntrega('');
       setEtapas([defaultEtapa()]);
       onCreated();
       onClose();
@@ -304,9 +313,27 @@ export function NewWorkflowModal({
               </SelectContent>
             </Select>
             {fModoPrazo === 'data_entrega' && (
-              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-                Prazos calculados automaticamente a partir do dia de entrega do cliente, usando a etapa de Aprovação como âncora.
-              </p>
+              <>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                  Prazos calculados automaticamente a partir do dia de entrega do cliente, usando a etapa de Aprovação como âncora.
+                </p>
+                <div style={{ marginTop: '0.5rem' }}>
+                  <Label>Mês de Entrega</Label>
+                  <Select value={fMesEntrega || '__auto__'} onValueChange={val => setFMesEntrega(val === '__auto__' ? '' : val)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__auto__">Próximo mês disponível</SelectItem>
+                      {Array.from({ length: 6 }, (_, i) => {
+                        const d = new Date();
+                        d.setMonth(d.getMonth() + i);
+                        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                        const label = d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+                        return <SelectItem key={key} value={key}>{label.charAt(0).toUpperCase() + label.slice(1)}</SelectItem>;
+                      })}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
             )}
           </div>
           <div className="flex items-center gap-2">

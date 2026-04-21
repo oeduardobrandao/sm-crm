@@ -50,6 +50,35 @@ export function detectKind(file: File): 'image' | 'video' {
   throw new Error(`Tipo não suportado: ${file.type}`);
 }
 
+const THUMB_SIZE = 128;
+
+function generateImageThumbnail(file: File): Promise<File> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const scale = Math.min(THUMB_SIZE / img.naturalWidth, THUMB_SIZE / img.naturalHeight, 1);
+      const w = Math.round(img.naturalWidth * scale);
+      const h = Math.round(img.naturalHeight * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) return reject(new Error('Thumbnail generation failed'));
+          resolve(new File([blob], 'thumb.webp', { type: 'image/webp' }));
+        },
+        'image/webp',
+        0.7,
+      );
+    };
+    img.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
+    img.src = url;
+  });
+}
+
 export async function probeImage(file: File): Promise<{ width: number; height: number }> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
@@ -93,12 +122,12 @@ export async function listPostMedia(postId: number): Promise<PostMedia[]> {
   return media;
 }
 
-export async function getWorkflowCovers(workflowIds: number[]): Promise<Map<number, PostMedia>> {
+export async function getWorkflowCovers(workflowIds: number[]): Promise<Map<number, PostMedia[]>> {
   if (workflowIds.length === 0) return new Map();
-  const { covers } = await callFn<{ covers: { workflow_id: number; media: PostMedia }[] }>(
+  const { covers } = await callFn<{ covers: { workflow_id: number; media: PostMedia | PostMedia[] }[] }>(
     'post-media-manage', 'GET', undefined, { workflow_ids: workflowIds.join(',') }
   );
-  return new Map(covers.map((c) => [c.workflow_id, c.media]));
+  return new Map(covers.map((c) => [c.workflow_id, Array.isArray(c.media) ? c.media : [c.media]]));
 }
 
 export async function uploadPostMedia(args: {
@@ -114,8 +143,10 @@ export async function uploadPostMedia(args: {
   let width: number | undefined;
   let height: number | undefined;
   let duration_seconds: number | undefined;
+  let thumbFile: File | undefined = thumbnail;
   if (kind === 'image') {
     ({ width, height } = await probeImage(file));
+    thumbFile = await generateImageThumbnail(file);
   } else {
     if (!thumbnail) throw new Error('Vídeos exigem uma thumbnail');
     validateFile(thumbnail, 'image');
@@ -131,12 +162,12 @@ export async function uploadPostMedia(args: {
     mime_type: file.type,
     size_bytes: file.size,
     kind,
-    thumbnail: thumbnail ? { mime_type: thumbnail.type, size_bytes: thumbnail.size } : undefined,
+    thumbnail: thumbFile ? { mime_type: thumbFile.type, size_bytes: thumbFile.size } : undefined,
   });
 
   const uploads: Promise<void>[] = [putWithProgress(signed.upload_url, file, onProgress)];
-  if (thumbnail && signed.thumbnail_upload_url) {
-    uploads.push(putWithProgress(signed.thumbnail_upload_url, thumbnail));
+  if (thumbFile && signed.thumbnail_upload_url) {
+    uploads.push(putWithProgress(signed.thumbnail_upload_url, thumbFile));
   }
   await Promise.all(uploads);
 

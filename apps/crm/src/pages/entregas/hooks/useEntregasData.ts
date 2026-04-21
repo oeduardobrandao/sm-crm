@@ -5,6 +5,7 @@ import {
   type Workflow, type WorkflowEtapa, type Cliente, type Membro,
   type WorkflowTemplate, type PortalApproval, type PostMedia,
 } from '../../../store';
+import { supabase } from '../../../lib/supabase';
 import { getWorkflowCovers } from '../../../services/postMedia';
 
 export interface BoardCard {
@@ -16,7 +17,8 @@ export interface BoardCard {
   totalEtapas: number;
   etapaIdx: number;
   allEtapas: WorkflowEtapa[];
-  coverMedia?: PostMedia;
+  postCovers?: PostMedia[];
+  clienteAvatarUrl?: string;
 }
 
 export interface BoardRow {
@@ -238,6 +240,22 @@ export function useEntregasData() {
   });
   const postsCounts: Map<number, number> = postsCountsData ?? new Map();
 
+  const clienteIds = clientes.map(c => c.id!).filter(Boolean);
+  const { data: clienteAvatars } = useQuery({
+    queryKey: ['instagram-avatars', clienteIds.join(',')],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('instagram_accounts')
+        .select('client_id, profile_picture_url')
+        .in('client_id', clienteIds)
+        .not('profile_picture_url', 'is', null);
+      const map = new Map<number, string>();
+      if (data) for (const row of data) if (row.client_id && row.profile_picture_url) map.set(row.client_id, row.profile_picture_url);
+      return map;
+    },
+    enabled: clienteIds.length > 0,
+  });
+
   // Build BoardCards from active workflows
   const cards: BoardCard[] = [];
   for (const w of activeWorkflows) {
@@ -261,7 +279,8 @@ export function useEntregasData() {
       totalEtapas: etapas.length,
       etapaIdx: activeEtapa.ordem,
       allEtapas: etapas,
-      coverMedia: covers?.get(w.id!),
+      postCovers: covers?.get(w.id!),
+      clienteAvatarUrl: w.cliente_id ? clienteAvatars?.get(w.cliente_id) : undefined,
     });
   }
 

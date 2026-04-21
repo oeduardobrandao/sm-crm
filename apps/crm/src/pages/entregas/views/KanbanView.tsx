@@ -112,9 +112,9 @@ export function KanbanView({ cards, onCardClick, onPostsClick, onRefresh, onRecu
   const [revertTarget, setRevertTarget] = useState<{ workflowId: number; title: string } | null>(null);
   const [approvalChoiceCard, setApprovalChoiceCard] = useState<BoardCard | null>(null);
 
-  // Sync local state when prop cards change (after refresh — detects both workflow list and etapa changes)
-  const cardsFingerprint = cards.map(c => `${c.workflow.id}:${c.etapa.id}`).join(',');
-  const localFingerprint = localCards.map(c => `${c.workflow.id}:${c.etapa.id}`).join(',');
+  // Sync local state when prop cards change (after refresh — detects workflow list, etapa, and cover changes)
+  const cardsFingerprint = cards.map(c => `${c.workflow.id}:${c.etapa.id}:${c.postCovers?.length ?? 0}:${c.clienteAvatarUrl ? 1 : 0}`).join(',');
+  const localFingerprint = localCards.map(c => `${c.workflow.id}:${c.etapa.id}:${c.postCovers?.length ?? 0}:${c.clienteAvatarUrl ? 1 : 0}`).join(',');
   if (cardsFingerprint !== localFingerprint) {
     setLocalCards(cards);
   }
