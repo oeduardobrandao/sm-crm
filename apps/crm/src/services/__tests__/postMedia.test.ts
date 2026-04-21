@@ -102,6 +102,16 @@ describe('post media service', () => {
         } as unknown as HTMLVideoElement;
       }
 
+      if (tagName === 'canvas') {
+        const fakeBlob = new Blob([new Uint8Array(64)], { type: 'image/webp' });
+        return {
+          width: 0,
+          height: 0,
+          getContext: () => ({ drawImage: () => {} }),
+          toBlob: (cb: (blob: Blob | null) => void) => queueMicrotask(() => cb(fakeBlob)),
+        } as unknown as HTMLCanvasElement;
+      }
+
       return realCreateElement(tagName);
     });
   });
@@ -142,6 +152,8 @@ describe('post media service', () => {
         media_id: 'media-1',
         upload_url: 'https://upload.r2.dev/media-1',
         r2_key: 'contas/1/posts/media-1.png',
+        thumbnail_upload_url: 'https://upload.r2.dev/thumb-1',
+        thumbnail_r2_key: 'contas/1/posts/media-1.thumb.webp',
       },
     });
     fetchHarness.queueResponse({
@@ -150,6 +162,7 @@ describe('post media service', () => {
         post_id: 22,
         kind: 'image',
         r2_key: 'contas/1/posts/media-1.png',
+        thumbnail_r2_key: 'contas/1/posts/media-1.thumb.webp',
         is_cover: true,
       },
     });
@@ -167,11 +180,15 @@ describe('post media service', () => {
       is_cover: true,
     });
     expect(fetchHarness.calls).toHaveLength(2);
-    expect(JSON.parse(String(fetchHarness.calls[0].init?.body))).toMatchObject({
+    const uploadUrlBody = JSON.parse(String(fetchHarness.calls[0].init?.body));
+    expect(uploadUrlBody).toMatchObject({
       post_id: 22,
       filename: 'campanha-abril.png',
       mime_type: 'image/png',
       kind: 'image',
+    });
+    expect(uploadUrlBody.thumbnail).toMatchObject({
+      mime_type: 'image/webp',
     });
     expect(JSON.parse(String(fetchHarness.calls[1].init?.body))).toMatchObject({
       post_id: 22,
@@ -179,10 +196,13 @@ describe('post media service', () => {
       width: 1080,
       height: 1350,
       original_filename: 'campanha-abril.png',
+      thumbnail_r2_key: 'contas/1/posts/media-1.thumb.webp',
     });
-    expect(MockXHR.instances).toHaveLength(1);
+    expect(MockXHR.instances).toHaveLength(2);
     expect(MockXHR.instances[0].method).toBe('PUT');
     expect(MockXHR.instances[0].url).toBe('https://upload.r2.dev/media-1');
+    expect(MockXHR.instances[1].method).toBe('PUT');
+    expect(MockXHR.instances[1].url).toBe('https://upload.r2.dev/thumb-1');
     expect(onProgress).toHaveBeenCalledWith({ loaded: 256, total: 256 });
   });
 
