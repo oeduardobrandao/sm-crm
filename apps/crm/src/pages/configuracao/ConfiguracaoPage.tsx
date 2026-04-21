@@ -221,7 +221,7 @@ export default function ConfiguracaoPage() {
     queryKey: ['invites'],
     queryFn: async () => {
       if (!profile?.conta_id) return [];
-      const { data } = await supabase.from('invites').select('*').eq('conta_id', profile.conta_id).order('created_at', { ascending: false });
+      const { data } = await supabase.from('invites').select('*').eq('conta_id', profile.conta_id).eq('status', 'pending').order('created_at', { ascending: false });
       return data ?? [];
     },
     enabled: isOwnerOrAdmin && !!profile?.conta_id,
