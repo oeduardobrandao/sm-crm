@@ -59,8 +59,8 @@ Deno.serve(async (req) => {
   const allowed = kind === "image" ? IMAGE_MIME : VIDEO_MIME;
   if (!allowed.has(mime_type)) return json({ error: "Unsupported mime type" }, 400);
 
-  if (kind === "video") {
-    if (!thumbnail) return json({ error: "video requires thumbnail" }, 400);
+  if (kind === "video" && !thumbnail) return json({ error: "video requires thumbnail" }, 400);
+  if (thumbnail) {
     if (!THUMB_MIME.has(thumbnail.mime_type)) return json({ error: "Unsupported thumbnail mime type" }, 400);
     if (thumbnail.size_bytes <= 0 || thumbnail.size_bytes > 10 * 1024 * 1024) return json({ error: "thumbnail size out of range" }, 400);
   }
@@ -92,7 +92,7 @@ Deno.serve(async (req) => {
 
   let thumbnail_r2_key: string | undefined;
   let thumbnail_upload_url: string | undefined;
-  if (kind === "video" && thumbnail) {
+  if (thumbnail) {
     thumbnail_r2_key = `contas/${profile.conta_id}/posts/${post_id}/${mediaId}.thumb.${extFromMime(thumbnail.mime_type)}`;
     thumbnail_upload_url = await signPutUrl(thumbnail_r2_key, thumbnail.mime_type);
   }

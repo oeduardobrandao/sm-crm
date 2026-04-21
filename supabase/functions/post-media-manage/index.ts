@@ -43,13 +43,12 @@ Deno.serve(async (req) => {
   const sub = parts[idx + 2]; // e.g. 'thumbnail'
 
   // GET ?post_id=... → list media for a post
-  // GET ?workflow_ids=1,2,3 → return one cover per workflow
+  // GET ?workflow_ids=1,2,3 → return all post covers per workflow
   if (req.method === "GET") {
     const workflowIdsParam = url.searchParams.get("workflow_ids");
     if (workflowIdsParam) {
       const workflowIds = workflowIdsParam.split(",").map(Number).filter((n) => Number.isFinite(n));
       if (workflowIds.length === 0) return json({ covers: [] });
-      // Fetch all posts belonging to these workflows within this tenant
       const { data: posts } = await svc.from("workflow_posts")
         .select("id, workflow_id, ordem")
         .in("workflow_id", workflowIds)
@@ -62,26 +61,27 @@ Deno.serve(async (req) => {
         .in("post_id", postIds)
         .eq("is_cover", true);
 
-      // Pick first cover per workflow (by post ordem, then post id)
       const postById = new Map(posts.map((p) => [p.id, p]));
-      const byWorkflow = new Map<number, typeof covers[number]>();
       const sortedCovers = (covers ?? []).slice().sort((a, b) => {
         const pa = postById.get(a.post_id); const pb = postById.get(b.post_id);
         return (pa?.ordem ?? 0) - (pb?.ordem ?? 0) || a.post_id - b.post_id;
       });
+      const byWorkflow = new Map<number, typeof covers[number][]>();
       for (const c of sortedCovers) {
         const post = postById.get(c.post_id);
         if (!post) continue;
-        if (!byWorkflow.has(post.workflow_id)) byWorkflow.set(post.workflow_id, c);
+        const arr = byWorkflow.get(post.workflow_id) ?? [];
+        arr.push(c);
+        byWorkflow.set(post.workflow_id, arr);
       }
 
-      const result = await Promise.all(Array.from(byWorkflow.entries()).map(async ([workflow_id, r]) => ({
+      const result = await Promise.all(Array.from(byWorkflow.entries()).map(async ([workflow_id, mediaRows]) => ({
         workflow_id,
-        media: {
+        media: await Promise.all(mediaRows.map(async (r) => ({
           ...r,
           url: await signGetUrl(r.r2_key, 900),
           thumbnail_url: r.thumbnail_r2_key ? await signGetUrl(r.thumbnail_r2_key, 900) : null,
-        },
+        }))),
       })));
       return json({ covers: result });
     }

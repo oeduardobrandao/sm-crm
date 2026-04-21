@@ -5,6 +5,7 @@ import {
   type Workflow, type WorkflowEtapa, type Cliente, type Membro,
   type WorkflowTemplate, type PortalApproval, type PostMedia,
 } from '../../../store';
+import { supabase } from '../../../lib/supabase';
 import { getWorkflowCovers } from '../../../services/postMedia';
 
 export interface BoardCard {
@@ -16,7 +17,8 @@ export interface BoardCard {
   totalEtapas: number;
   etapaIdx: number;
   allEtapas: WorkflowEtapa[];
-  coverMedia?: PostMedia;
+  postCovers?: PostMedia[];
+  clienteAvatarUrl?: string;
 }
 
 export interface BoardRow {
@@ -62,14 +64,22 @@ export function computeDeadlineDate(
 /**
  * Computes the estimated workflow end date by chaining all remaining etapas
  * from the active one through the last, starting from the active etapa's iniciado_em.
- * Returns null if the active etapa has no iniciado_em.
+ * When steps have data_limite, uses the last step's data_limite as the end date.
+ * Returns null if neither data_limite nor iniciado_em is available.
  */
 export function computeWorkflowDeadlineDate(
   allEtapas: WorkflowEtapa[],
   activeEtapa: WorkflowEtapa
 ): Date | null {
-  if (!activeEtapa.iniciado_em) return null;
   const sorted = [...allEtapas].sort((a, b) => a.ordem - b.ordem);
+
+  // If any steps have data_limite set, use the last step's data_limite
+  const lastWithLimit = [...sorted].reverse().find(e => e.data_limite);
+  if (lastWithLimit?.data_limite) {
+    return new Date(lastWithLimit.data_limite);
+  }
+
+  if (!activeEtapa.iniciado_em) return null;
   const activeIdx = sorted.findIndex(e => e.id === activeEtapa.id);
   if (activeIdx === -1) return null;
   const remaining = sorted.slice(activeIdx);
@@ -81,6 +91,94 @@ export function computeWorkflowDeadlineDate(
     currentStart = deadline.toISOString();
   }
   return deadline;
+}
+
+/**
+ * Subtracts business or calendar days from a date.
+ * Inverse of computeDeadlineDate for backward scheduling.
+ */
+export function subtractDays(
+  from: Date,
+  days: number,
+  tipoPrazo: 'corridos' | 'uteis'
+): Date {
+  const result = new Date(from);
+  if (tipoPrazo === 'corridos') {
+    result.setDate(result.getDate() - days);
+    return result;
+  }
+  let remaining = days;
+  while (remaining > 0) {
+    result.setDate(result.getDate() - 1);
+    const dow = result.getDay();
+    if (dow !== 0 && dow !== 6) remaining--;
+  }
+  return result;
+}
+
+/**
+ * Returns the next upcoming date for the given day of month (1-31).
+ * If this month's occurrence is today or in the future, returns it.
+ * Otherwise returns next month's occurrence (clamped to the last day of that month).
+ */
+export function getNextDeliveryDate(diaEntrega: number): Date {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);  // compare date only
+  const year = today.getFullYear();
+  const month = today.getMonth(); // 0-based
+
+  const daysInCurrentMonth = new Date(year, month + 1, 0).getDate();
+  const dayThisMonth = Math.min(diaEntrega, daysInCurrentMonth);
+  const thisMonthDate = new Date(year, month, dayThisMonth);
+
+  if (thisMonthDate >= today) {
+    return thisMonthDate;
+  }
+
+  // Next month
+  const nextMonth = month + 1 > 11 ? 0 : month + 1;
+  const nextYear = month + 1 > 11 ? year + 1 : year;
+  const daysInNextMonth = new Date(nextYear, nextMonth + 1, 0).getDate();
+  const dayNextMonth = Math.min(diaEntrega, daysInNextMonth);
+  return new Date(nextYear, nextMonth, dayNextMonth);
+}
+
+/**
+ * Computes data_limite (ISO date string) for each step in a data_entrega workflow.
+ * The aprovacao_cliente step gets deliveryDate.
+ * Steps before the anchor: walk backward subtracting each prior step's prazo_dias.
+ * Steps after the anchor: walk forward adding each subsequent step's prazo_dias.
+ * Returns Map<ordem, ISO date string>.
+ */
+export function computeDeliveryDeadlines(
+  etapas: WorkflowEtapa[],
+  deliveryDate: Date
+): Map<number, string> {
+  const sorted = [...etapas].sort((a, b) => a.ordem - b.ordem);
+  const anchorIdx = sorted.findIndex(e => e.tipo === 'aprovacao_cliente');
+  if (anchorIdx === -1) return new Map();
+
+  const toISO = (d: Date) => d.toISOString().split('T')[0];
+  const result = new Map<number, string>();
+
+  // Anchor step gets delivery date
+  result.set(sorted[anchorIdx].ordem, toISO(deliveryDate));
+
+  // Walk backward from anchor (each prior step ends when next step begins)
+  let cursor = new Date(deliveryDate);
+  for (let i = anchorIdx - 1; i >= 0; i--) {
+    cursor = subtractDays(cursor, sorted[i + 1].prazo_dias, sorted[i + 1].tipo_prazo);
+    result.set(sorted[i].ordem, toISO(cursor));
+  }
+
+  // Walk forward from anchor
+  cursor = new Date(deliveryDate);
+  for (let i = anchorIdx + 1; i < sorted.length; i++) {
+    cursor = computeDeadlineDate(cursor.toISOString(), sorted[i].prazo_dias, sorted[i].tipo_prazo);
+    result.set(sorted[i].ordem, toISO(cursor));
+  }
+
+  return result;
 }
 
 export function useEntregasData() {
@@ -142,6 +240,22 @@ export function useEntregasData() {
   });
   const postsCounts: Map<number, number> = postsCountsData ?? new Map();
 
+  const clienteIds = clientes.map(c => c.id!).filter(Boolean);
+  const { data: clienteAvatars } = useQuery({
+    queryKey: ['instagram-avatars', clienteIds.join(',')],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('instagram_accounts')
+        .select('client_id, profile_picture_url')
+        .in('client_id', clienteIds)
+        .not('profile_picture_url', 'is', null);
+      const map = new Map<number, string>();
+      if (data) for (const row of data) if (row.client_id && row.profile_picture_url) map.set(row.client_id, row.profile_picture_url);
+      return map;
+    },
+    enabled: clienteIds.length > 0,
+  });
+
   // Build BoardCards from active workflows
   const cards: BoardCard[] = [];
   for (const w of activeWorkflows) {
@@ -165,7 +279,8 @@ export function useEntregasData() {
       totalEtapas: etapas.length,
       etapaIdx: activeEtapa.ordem,
       allEtapas: etapas,
-      coverMedia: covers?.get(w.id!),
+      postCovers: covers?.get(w.id!),
+      clienteAvatarUrl: w.cliente_id ? clienteAvatars?.get(w.cliente_id) : undefined,
     });
   }
 
