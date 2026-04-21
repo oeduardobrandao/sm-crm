@@ -51,6 +51,12 @@ export default function ConfigurarSenhaPage() {
       sessionReceived.current = true;
       clearTimeout(timeout);
       setTokenError(false);
+
+      // Clear hash fragments left by Supabase implicit-grant redirect to prevent
+      // the auth client from re-processing stale tokens after updateUser().
+      if (window.location.hash) {
+        window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      }
       const userEmail = session.user.email || '';
       const contaId = (session.user.user_metadata?.conta_id as string) || '';
       setEmail(userEmail);
@@ -140,7 +146,7 @@ export default function ConfigurarSenhaPage() {
     setLoading(false);
     setSuccess(true);
     setTimeout(() => setProgressWidth(100), 100);
-    setTimeout(() => navigate('/dashboard'), 2800);
+    setTimeout(() => { window.location.replace('/dashboard'); }, 2800);
   };
 
   const strength = getPasswordStrength(password);
