@@ -65,6 +65,20 @@ Deno.serve(async (req: Request) => {
 
       if (acceptError) throw acceptError;
 
+      // Add user to workspace now that they've completed the invitation flow
+      const { error: memberErr } = await serviceClient
+        .from("workspace_members")
+        .insert({
+          user_id: user.id,
+          workspace_id: callerProfile.conta_id,
+          role: callerProfile.role,
+        })
+        .select()
+        .maybeSingle();
+
+      // Ignore unique constraint violation (user already a member)
+      if (memberErr && !memberErr.message?.includes("duplicate key")) throw memberErr;
+
       await insertAuditLog(serviceClient, {
         conta_id: callerProfile.conta_id,
         actor_user_id: user.id,

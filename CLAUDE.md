@@ -26,7 +26,7 @@ npx supabase functions deploy <name>
 npx supabase db push --linked                   # push migrations to staging
 ```
 
-IMPORTANT: There is no test suite, linter, or formatter configured. Typecheck with `npm run build` (runs `tsc` then `vite build`). Always typecheck after making code changes.
+IMPORTANT: There is no linter or formatter configured. Typecheck with `npm run build` (runs `tsc` then `vite build`). Always typecheck after making code changes. Run `npm run test` after changes to verify no regressions.
 
 ## Architecture
 
