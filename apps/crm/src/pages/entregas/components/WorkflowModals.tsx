@@ -340,7 +340,7 @@ export function NewWorkflowModal({
 
   return (
     <Dialog open={open} onOpenChange={open => { if (!open) { setEtapas([defaultEtapa()]); onClose(); } }}>
-      <DialogContent style={{ maxWidth: 700, maxHeight: '90vh', overflowY: 'auto', width: 'calc(100vw - 2rem)' }} onConfirmClose={() => { setEtapas([defaultEtapa()]); onClose(); }}>
+      <DialogContent style={{ maxWidth: 700, width: 'calc(100vw - 2rem)' }} onConfirmClose={() => { setEtapas([defaultEtapa()]); onClose(); }}>
         <DialogHeader><DialogTitle>Novo Fluxo de Entrega</DialogTitle></DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1"><Label>Título *</Label><Input placeholder="Ex: Posts Instagram — Março 2026" value={fTitulo} onChange={e => setFTitulo(e.target.value)} /></div>
@@ -696,7 +696,7 @@ export function TemplatesModal({
   return (
     <>
       <Dialog open={open} onOpenChange={open => { if (!open) { setFNome(''); setEtapas([defaultEtapa()]); setEditingTemplate(null); setFModoPrazo('padrao'); onClose(); } }}>
-        <DialogContent style={{ maxWidth: 700, maxHeight: '90vh', overflowY: 'auto', width: 'calc(100vw - 2rem)' }} onConfirmClose={() => { setFNome(''); setEtapas([defaultEtapa()]); setEditingTemplate(null); setFModoPrazo('padrao'); onClose(); }}>
+        <DialogContent style={{ maxWidth: 700, width: 'calc(100vw - 2rem)' }} onConfirmClose={() => { setFNome(''); setEtapas([defaultEtapa()]); setEditingTemplate(null); setFModoPrazo('padrao'); onClose(); }}>
           <DialogHeader><DialogTitle>Gerenciar Templates</DialogTitle></DialogHeader>
           {/* Tab navigation */}
           <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border-color)', marginBottom: '1rem' }}>
