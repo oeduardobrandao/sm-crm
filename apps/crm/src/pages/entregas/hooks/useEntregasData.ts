@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   getWorkflows, getClientes, getMembros, getWorkflowTemplates, getWorkflowEtapas,
-  getPortalApprovals, getDeadlineInfo, getWorkflowPostsCounts,
+  getPortalApprovals, getDeadlineInfo, getWorkflowPostsCounts, getWorkflowApprovedPostsCounts,
   type Workflow, type WorkflowEtapa, type Cliente, type Membro,
   type WorkflowTemplate, type PortalApproval, type PostMedia,
 } from '../../../store';
@@ -239,6 +239,12 @@ export function useEntregasData() {
     enabled: activeWorkflowIds.length > 0,
   });
   const postsCounts: Map<number, number> = postsCountsData ?? new Map();
+  const { data: approvedCountsData } = useQuery({
+    queryKey: ['workflow-approved-posts-counts', activeWorkflowIds.join(',')],
+    queryFn: () => getWorkflowApprovedPostsCounts(activeWorkflowIds),
+    enabled: activeWorkflowIds.length > 0,
+  });
+  const approvedPostsCounts: Map<number, number> = approvedCountsData ?? new Map();
 
   const clienteIds = clientes.map(c => c.id!).filter(Boolean);
   const { data: clienteAvatars } = useQuery({
@@ -291,6 +297,7 @@ export function useEntregasData() {
     qc.invalidateQueries({ queryKey: ['portal-approvals'] });
     qc.invalidateQueries({ queryKey: ['workflow-covers'] });
     qc.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
+    qc.invalidateQueries({ queryKey: ['workflow-approved-posts-counts'] });
   }
 
   const isLoading = loadingWf || etapasQuery.isLoading;
@@ -304,6 +311,7 @@ export function useEntregasData() {
     etapasMap,
     cards,
     postsCounts,
+    approvedPostsCounts,
     portalApprovals,
     isLoading,
     refresh,

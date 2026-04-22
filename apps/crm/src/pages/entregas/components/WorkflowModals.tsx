@@ -1,7 +1,10 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Plus, Trash2, Edit2, FileText, Settings } from 'lucide-react';
+import { Plus, Trash2, Edit2, FileText, Settings, GripVertical } from 'lucide-react';
+import { DndContext, PointerSensor, KeyboardSensor, useSensor, useSensors, type DragEndEvent, closestCenter } from '@dnd-kit/core';
+import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -37,32 +40,23 @@ interface BoardCard {
 }
 
 interface EtapaFormData {
+  _id: string;
   nome: string;
   prazo: number;
   tipoPrazo: 'corridos' | 'uteis';
   responsavelId: number | null;
   tipo: 'padrao' | 'aprovacao_cliente';
-  dataLimite: string; // ISO date string (YYYY-MM-DD), empty when unused
+  dataLimite: string;
 }
 
+let _etapaIdCounter = 0;
 function defaultEtapa(): EtapaFormData {
-  return { nome: '', prazo: 3, tipoPrazo: 'corridos', responsavelId: null, tipo: 'padrao', dataLimite: '' };
+  return { _id: `etapa-${++_etapaIdCounter}`, nome: '', prazo: 3, tipoPrazo: 'corridos', responsavelId: null, tipo: 'padrao', dataLimite: '' };
 }
 
-// ---- EtapaRow component ----
-function EtapaRow({
-  index,
-  nome,
-  prazo,
-  tipoPrazo,
-  responsavelId,
-  tipo,
-  dataLimite,
-  modoPrazo,
-  membros,
-  onChange,
-  onRemove,
-}: {
+// ---- SortableEtapaRow component ----
+function SortableEtapaRow(props: {
+  id: string;
   index: number;
   nome: string;
   prazo: number;
@@ -75,13 +69,30 @@ function EtapaRow({
   onChange: (field: string, val: unknown) => void;
   onRemove: () => void;
 }) {
+  const { id, nome, prazo, tipoPrazo, responsavelId, tipo, dataLimite, modoPrazo, membros, onChange, onRemove } = props;
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.75rem', padding: '0.75rem', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
-      <Input
-        placeholder="Nome da etapa"
-        value={nome}
-        onChange={e => onChange('nome', e.target.value)}
-      />
+    <div ref={setNodeRef} style={{ ...style, display: 'flex', flexDirection: 'column' as const, gap: '0.5rem', marginBottom: '0.75rem', padding: '0.75rem', border: '1px solid var(--border-color)', borderRadius: '8px' }} {...attributes}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <div {...listeners} style={{ cursor: 'grab', color: 'var(--text-muted)', flexShrink: 0 }}>
+          <GripVertical className="h-4 w-4" />
+        </div>
+        <Input
+          placeholder="Nome da etapa"
+          value={nome}
+          onChange={e => onChange('nome', e.target.value)}
+          style={{ flex: 1 }}
+        />
+        <Button size="icon" variant="ghost" className="text-destructive" onClick={onRemove} style={{ flexShrink: 0 }}>
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </div>
       {modoPrazo === 'data_fixa' ? (
         <div className="space-y-1">
           <Label style={{ fontSize: '0.75rem' }}>Data limite</Label>
@@ -116,20 +127,69 @@ function EtapaRow({
           {membros.map(m => <SelectItem key={m.id} value={String(m.id)}>{m.nome}</SelectItem>)}
         </SelectContent>
       </Select>
-      <div style={{ display: 'flex', gap: '0.5rem' }}>
-        <Button
-          size="sm"
-          variant={tipo === 'aprovacao_cliente' ? 'default' : 'outline'}
-          title={tipo === 'aprovacao_cliente' ? 'Etapa de aprovação do cliente' : 'Marcar como aprovação do cliente'}
-          onClick={() => onChange('tipo', tipo === 'aprovacao_cliente' ? 'padrao' : 'aprovacao_cliente')}
-          style={{ fontSize: '0.7rem', padding: '0.25rem 0.5rem', whiteSpace: 'nowrap', flex: 1 }}
-        >
-          {tipo === 'aprovacao_cliente' ? '✓ Aprovação' : 'Aprovação'}
-        </Button>
-        <Button size="icon" variant="ghost" className="text-destructive" onClick={onRemove}>
-          <Trash2 className="h-4 w-4" />
-        </Button>
+      <div className="flex items-center gap-2">
+        <Checkbox
+          id={`aprovacao-${id}`}
+          checked={tipo === 'aprovacao_cliente'}
+          onCheckedChange={v => onChange('tipo', v ? 'aprovacao_cliente' : 'padrao')}
+        />
+        <Label htmlFor={`aprovacao-${id}`} style={{ fontSize: '0.8rem', cursor: 'pointer' }}>Aprovação externa</Label>
       </div>
+    </div>
+  );
+}
+
+// ---- Sortable etapa list wrapper ----
+function SortableEtapaList({ etapas, setEtapas, modoPrazo, membros }: {
+  etapas: EtapaFormData[];
+  setEtapas: (e: EtapaFormData[]) => void;
+  modoPrazo: ModoPrazo;
+  membros: Membro[];
+}) {
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const oldIdx = etapas.findIndex(e => e._id === active.id);
+      const newIdx = etapas.findIndex(e => e._id === over.id);
+      if (oldIdx !== -1 && newIdx !== -1) setEtapas(arrayMove(etapas, oldIdx, newIdx));
+    }
+  };
+
+  return (
+    <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem', marginTop: '0.5rem' }}>
+      <h4 style={{ marginBottom: '0.75rem' }}>Etapas</h4>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={etapas.map(e => e._id)} strategy={verticalListSortingStrategy}>
+          {etapas.map((e, i) => (
+            <SortableEtapaRow
+              key={e._id}
+              id={e._id}
+              index={i}
+              nome={e.nome}
+              prazo={e.prazo}
+              tipoPrazo={e.tipoPrazo}
+              responsavelId={e.responsavelId}
+              tipo={e.tipo}
+              dataLimite={e.dataLimite}
+              modoPrazo={modoPrazo}
+              membros={membros}
+              onChange={(field, val) => {
+                const next = [...etapas];
+                (next[i] as unknown as Record<string, unknown>)[field] = val;
+                setEtapas(next);
+              }}
+              onRemove={() => setEtapas(etapas.filter((_, idx) => idx !== i))}
+            />
+          ))}
+        </SortableContext>
+      </DndContext>
+      <Button size="sm" variant="outline" onClick={() => setEtapas([...etapas, defaultEtapa()])}>
+        <Plus className="h-3 w-3" /> Adicionar Etapa
+      </Button>
     </div>
   );
 }
@@ -166,6 +226,7 @@ export function NewWorkflowModal({
     if (!tpl) return;
     if (tpl.modo_prazo) setFModoPrazo(tpl.modo_prazo);
     setEtapas(tpl.etapas.map(e => ({
+      _id: `etapa-${++_etapaIdCounter}`,
       nome: e.nome,
       prazo: e.prazo_dias,
       tipoPrazo: e.tipo_prazo,
@@ -279,7 +340,7 @@ export function NewWorkflowModal({
 
   return (
     <Dialog open={open} onOpenChange={open => { if (!open) { setEtapas([defaultEtapa()]); onClose(); } }}>
-      <DialogContent style={{ maxWidth: 700, maxHeight: '90vh', overflowY: 'auto', width: 'calc(100vw - 2rem)' }} onConfirmClose={() => { setEtapas([defaultEtapa()]); onClose(); }}>
+      <DialogContent style={{ maxWidth: 700, width: 'calc(100vw - 2rem)' }} onConfirmClose={() => { setEtapas([defaultEtapa()]); onClose(); }}>
         <DialogHeader><DialogTitle>Novo Fluxo de Entrega</DialogTitle></DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1"><Label>Título *</Label><Input placeholder="Ex: Posts Instagram — Março 2026" value={fTitulo} onChange={e => setFTitulo(e.target.value)} /></div>
@@ -340,32 +401,7 @@ export function NewWorkflowModal({
             <Checkbox id="recorrente-new" checked={fRecorrente} onCheckedChange={v => setFRecorrente(!!v)} />
             <Label htmlFor="recorrente-new">Fluxo recorrente (ao concluir, oferecer criar novo ciclo)</Label>
           </div>
-          <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem', marginTop: '0.5rem' }}>
-            <h4 style={{ marginBottom: '0.75rem' }}>Etapas</h4>
-            {etapas.map((e, i) => (
-              <EtapaRow
-                key={i}
-                index={i}
-                nome={e.nome}
-                prazo={e.prazo}
-                tipoPrazo={e.tipoPrazo}
-                responsavelId={e.responsavelId}
-                tipo={e.tipo}
-                dataLimite={e.dataLimite}
-                modoPrazo={fModoPrazo}
-                membros={membros}
-                onChange={(field, val) => {
-                  const next = [...etapas];
-                  (next[i] as unknown as Record<string, unknown>)[field] = val;
-                  setEtapas(next);
-                }}
-                onRemove={() => setEtapas(etapas.filter((_, idx) => idx !== i))}
-              />
-            ))}
-            <Button size="sm" variant="outline" onClick={() => setEtapas([...etapas, defaultEtapa()])}>
-              <Plus className="h-3 w-3" /> Adicionar Etapa
-            </Button>
-          </div>
+          <SortableEtapaList etapas={etapas} setEtapas={setEtapas} modoPrazo={fModoPrazo} membros={membros} />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => { setEtapas([defaultEtapa()]); onClose(); }}>Cancelar</Button>
@@ -637,6 +673,7 @@ export function TemplatesModal({
     setFNome(tpl.nome);
     setFModoPrazo((tpl.modo_prazo as ModoPrazo) || 'padrao');
     setEtapas(tpl.etapas.map(e => ({
+      _id: `etapa-${++_etapaIdCounter}`,
       nome: e.nome,
       prazo: e.prazo_dias,
       tipoPrazo: e.tipo_prazo,
@@ -659,7 +696,7 @@ export function TemplatesModal({
   return (
     <>
       <Dialog open={open} onOpenChange={open => { if (!open) { setFNome(''); setEtapas([defaultEtapa()]); setEditingTemplate(null); setFModoPrazo('padrao'); onClose(); } }}>
-        <DialogContent style={{ maxWidth: 700, maxHeight: '90vh', overflowY: 'auto', width: 'calc(100vw - 2rem)' }} onConfirmClose={() => { setFNome(''); setEtapas([defaultEtapa()]); setEditingTemplate(null); setFModoPrazo('padrao'); onClose(); }}>
+        <DialogContent style={{ maxWidth: 700, width: 'calc(100vw - 2rem)' }} onConfirmClose={() => { setFNome(''); setEtapas([defaultEtapa()]); setEditingTemplate(null); setFModoPrazo('padrao'); onClose(); }}>
           <DialogHeader><DialogTitle>Gerenciar Templates</DialogTitle></DialogHeader>
           {/* Tab navigation */}
           <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border-color)', marginBottom: '1rem' }}>
@@ -723,29 +760,7 @@ export function TemplatesModal({
                     </SelectContent>
                   </Select>
                 </div>
-                {etapas.map((e, i) => (
-                  <EtapaRow
-                    key={i}
-                    index={i}
-                    nome={e.nome}
-                    prazo={e.prazo}
-                    tipoPrazo={e.tipoPrazo}
-                    responsavelId={e.responsavelId}
-                    tipo={e.tipo}
-                    dataLimite={e.dataLimite}
-                    modoPrazo={fModoPrazo}
-                    membros={membros}
-                    onChange={(field, val) => {
-                      const next = [...etapas];
-                      (next[i] as unknown as Record<string, unknown>)[field] = val;
-                      setEtapas(next);
-                    }}
-                    onRemove={() => setEtapas(etapas.filter((_, idx) => idx !== i))}
-                  />
-                ))}
-                <Button size="sm" variant="outline" onClick={() => setEtapas([...etapas, defaultEtapa()])}>
-                  <Plus className="h-3 w-3" /> Adicionar Etapa
-                </Button>
+                <SortableEtapaList etapas={etapas} setEtapas={setEtapas} modoPrazo={fModoPrazo} membros={membros} />
               </div>
             </>
           )}

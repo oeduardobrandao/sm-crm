@@ -29,26 +29,26 @@ describe('PostMediaLightbox', () => {
       makeMedia({ id: 3, url: 'https://cdn.example.com/image-3.jpg' }),
     ];
 
-    const { container } = render(
+    render(
       <PostMediaLightbox media={media} initialIndex={1} onClose={onClose} />,
     );
 
-    expect(container.querySelector('img')).toHaveAttribute('src', 'https://cdn.example.com/image-2.jpg');
+    expect(document.body.querySelector('img')).toHaveAttribute('src', 'https://cdn.example.com/image-2.jpg');
     expect(screen.getByText('2 / 3')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Próxima' }));
 
-    expect(container.querySelector('img')).toHaveAttribute('src', 'https://cdn.example.com/image-3.jpg');
+    expect(document.body.querySelector('img')).toHaveAttribute('src', 'https://cdn.example.com/image-3.jpg');
     expect(screen.getByText('3 / 3')).toBeInTheDocument();
 
     fireEvent.keyDown(window, { key: 'ArrowRight' });
 
-    expect(container.querySelector('img')).toHaveAttribute('src', 'https://cdn.example.com/image-1.jpg');
+    expect(document.body.querySelector('img')).toHaveAttribute('src', 'https://cdn.example.com/image-1.jpg');
     expect(screen.getByText('1 / 3')).toBeInTheDocument();
 
     fireEvent.keyDown(window, { key: 'ArrowLeft' });
 
-    expect(container.querySelector('img')).toHaveAttribute('src', 'https://cdn.example.com/image-3.jpg');
+    expect(document.body.querySelector('img')).toHaveAttribute('src', 'https://cdn.example.com/image-3.jpg');
     expect(screen.getByText('3 / 3')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('dialog'));
@@ -64,13 +64,13 @@ describe('PostMediaLightbox', () => {
       makeMedia({ id: 2, url: 'https://cdn.example.com/image-2.jpg' }),
     ];
 
-    const { container } = render(
+    render(
       <PostMediaLightbox media={media} initialIndex={0} onClose={vi.fn()} />,
     );
 
     const dialog = screen.getByRole('dialog');
 
-    expect(container.querySelector('img')).toHaveAttribute('src', 'https://cdn.example.com/image-1.jpg');
+    expect(document.body.querySelector('img')).toHaveAttribute('src', 'https://cdn.example.com/image-1.jpg');
 
     fireEvent.touchStart(dialog, {
       touches: [{ clientX: 220, clientY: 120 }],
@@ -79,7 +79,7 @@ describe('PostMediaLightbox', () => {
       changedTouches: [{ clientX: 120, clientY: 110 }],
     });
 
-    expect(container.querySelector('img')).toHaveAttribute('src', 'https://cdn.example.com/image-2.jpg');
+    expect(document.body.querySelector('img')).toHaveAttribute('src', 'https://cdn.example.com/image-2.jpg');
 
     fireEvent.touchStart(dialog, {
       touches: [{ clientX: 220, clientY: 120 }],
@@ -88,7 +88,7 @@ describe('PostMediaLightbox', () => {
       changedTouches: [{ clientX: 140, clientY: 260 }],
     });
 
-    expect(container.querySelector('img')).toHaveAttribute('src', 'https://cdn.example.com/image-2.jpg');
+    expect(document.body.querySelector('img')).toHaveAttribute('src', 'https://cdn.example.com/image-2.jpg');
 
     fireEvent.touchStart(dialog, {
       touches: [{ clientX: 120, clientY: 120 }],
@@ -97,14 +97,14 @@ describe('PostMediaLightbox', () => {
       changedTouches: [{ clientX: 210, clientY: 130 }],
     });
 
-    expect(container.querySelector('img')).toHaveAttribute('src', 'https://cdn.example.com/image-1.jpg');
+    expect(document.body.querySelector('img')).toHaveAttribute('src', 'https://cdn.example.com/image-1.jpg');
   });
 
   it('calls the stale URL callback when image and video media fail to load', () => {
     const onStaleUrl = vi.fn();
     const onClose = vi.fn();
 
-    const { container, rerender } = render(
+    const { rerender } = render(
       <PostMediaLightbox
         media={[makeMedia({ id: 1, url: 'https://cdn.example.com/image-1.jpg' })]}
         initialIndex={0}
@@ -113,7 +113,7 @@ describe('PostMediaLightbox', () => {
       />,
     );
 
-    const image = container.querySelector('img');
+    const image = document.body.querySelector('img');
 
     if (!image) {
       throw new Error('Image media was not rendered');
@@ -138,7 +138,7 @@ describe('PostMediaLightbox', () => {
       />,
     );
 
-    const video = container.querySelector('video');
+    const video = document.body.querySelector('video');
 
     if (!video) {
       throw new Error('Video media was not rendered');

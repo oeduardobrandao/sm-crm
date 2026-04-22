@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Plus, Edit2, Trash2, Upload, Info, HelpCircle } from 'lucide-react';
+import { Plus, Edit2, Trash2, Upload, Info, HelpCircle, Search } from 'lucide-react';
 import { openCSVSelector } from '../../lib/csv';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -62,6 +62,7 @@ export default function ContratosPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [filter, setFilter] = useState<FilterStatus>('todos');
+  const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Contrato | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
@@ -77,7 +78,9 @@ export default function ContratosPage() {
   const { data: contratos = [], isLoading } = useQuery({ queryKey: ['contratos'], queryFn: getContratos });
   const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: getClientes });
 
-  const filtered = contratos.filter(c => filter === 'todos' || c.status === filter);
+  const filtered = contratos
+    .filter(c => filter === 'todos' || c.status === filter)
+    .filter(c => !search || c.titulo.toLowerCase().includes(search.toLowerCase()) || c.cliente_nome?.toLowerCase().includes(search.toLowerCase()));
 
   const openAdd = () => {
     setEditing(null);
@@ -186,7 +189,11 @@ export default function ContratosPage() {
         </div>
       </div>
 
-      <div className="mb-4">
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: '320px' }}>
+          <Search className="h-4 w-4" style={{ position: 'absolute', left: '0.625rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+          <Input placeholder="Buscar por título ou cliente..." value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: '2rem' }} />
+        </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" className="h-9 rounded-full px-4 text-xs gap-1.5 font-normal shadow-sm mb-0">

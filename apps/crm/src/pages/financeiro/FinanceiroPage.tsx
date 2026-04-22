@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Plus, Edit2, Trash2, Check, Upload, Info, HelpCircle } from 'lucide-react';
+import { Plus, Edit2, Trash2, Check, Upload, Info, HelpCircle, Search } from 'lucide-react';
 import { openCSVSelector } from '../../lib/csv';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -64,6 +64,7 @@ function dateToIso(date: Date | undefined): string {
 export default function FinanceiroPage() {
   const qc = useQueryClient();
   const [filter, setFilter] = useState<FilterType>('todas');
+  const [search, setSearch] = useState('');
   const [monthFilter, setMonthFilter] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -97,7 +98,7 @@ export default function FinanceiroPage() {
     if (filter === 'entradas') return t.tipo === 'entrada';
     if (filter === 'saidas') return t.tipo === 'saida';
     return true;
-  });
+  }).filter(t => !search || t.descricao.toLowerCase().includes(search.toLowerCase()) || t.categoria?.toLowerCase().includes(search.toLowerCase()));
 
   const openAdd = (tipo: 'entrada' | 'saida') => {
     setEditing(null);
@@ -242,7 +243,11 @@ export default function FinanceiroPage() {
         ))}
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: '320px' }}>
+          <Search className="h-4 w-4" style={{ position: 'absolute', left: '0.625rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+          <Input placeholder="Buscar por descrição ou categoria..." value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: '2rem' }} />
+        </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" className="h-9 rounded-full px-4 text-xs gap-1.5 font-normal shadow-sm mb-0">
