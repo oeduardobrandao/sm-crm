@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Plus, LayoutGrid, Info, BarChart2, Calendar, List, Columns, Archive } from 'lucide-react';
@@ -30,7 +30,7 @@ const VIEW_TABS: { id: ActiveView; label: string; icon: React.ReactNode }[] = [
 
 export default function EntregasPage() {
   const [activeView, setActiveView] = useState<ActiveView>('kanban');
-  const [filters, setFilters] = useState<FilterState>({ filterCliente: null, filterMembro: null, filterStatus: 'todos' });
+  const [filters, setFilters] = useState<FilterState>({ filterCliente: null, filterMembro: null, filterStatus: 'todos', filterSearch: '', filterEtapa: null, filterTemplate: null });
   const [listSort, setListSort] = useState<{ column: string; direction: 'asc' | 'desc' }>({ column: 'titulo', direction: 'asc' });
   const [newWorkflowOpen, setNewWorkflowOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
@@ -62,10 +62,23 @@ export default function EntregasPage() {
     }
   }, [cards]);
 
+  // Derive unique active etapa names for the filter dropdown
+  const etapaNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const c of cards) names.add(c.etapa.nome);
+    return Array.from(names);
+  }, [cards]);
+
   // Apply filters
   let filteredCards = cards;
+  if (filters.filterSearch) {
+    const q = filters.filterSearch.toLowerCase();
+    filteredCards = filteredCards.filter(c => c.workflow.titulo.toLowerCase().includes(q));
+  }
   if (filters.filterCliente) filteredCards = filteredCards.filter(c => c.workflow.cliente_id === filters.filterCliente);
   if (filters.filterMembro) filteredCards = filteredCards.filter(c => c.etapa.responsavel_id === filters.filterMembro);
+  if (filters.filterEtapa) filteredCards = filteredCards.filter(c => c.etapa.nome === filters.filterEtapa);
+  if (filters.filterTemplate) filteredCards = filteredCards.filter(c => c.workflow.template_id === filters.filterTemplate);
   if (filters.filterStatus === 'atrasado') filteredCards = filteredCards.filter(c => c.deadline.estourado);
   else if (filters.filterStatus === 'urgente') filteredCards = filteredCards.filter(c => c.deadline.urgente && !c.deadline.estourado);
   else if (filters.filterStatus === 'em_dia') filteredCards = filteredCards.filter(c => !c.deadline.estourado && !c.deadline.urgente);
@@ -137,7 +150,7 @@ export default function EntregasPage() {
       </div>
 
       {activeView !== 'concluded' && (
-        <EntregasFilters filters={filters} onChange={setFilters} clientes={clientes} membros={membros} />
+        <EntregasFilters filters={filters} onChange={setFilters} clientes={clientes} membros={membros} templates={templates} etapaNames={etapaNames} />
       )}
 
       {activeView === 'kanban' && (
