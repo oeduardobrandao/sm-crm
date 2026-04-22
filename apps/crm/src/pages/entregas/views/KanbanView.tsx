@@ -234,7 +234,12 @@ export function KanbanView({ cards, onCardClick, onPostsClick, onRefresh, onRecu
   }, [localCards, onRefresh, onRecurring, templates]);
 
   const handleForwardCard = useCallback((card: BoardCard) => {
-    if (card.etapa.tipo === 'aprovacao_cliente') {
+    const wfId = card.workflow.id!;
+    const total = postsCounts.get(wfId) ?? 0;
+    const approved = approvedPostsCounts.get(wfId) ?? 0;
+    const allApproved = total > 0 && approved === total;
+
+    if (card.etapa.tipo === 'aprovacao_cliente' && !allApproved) {
       setApprovalChoiceCard(card);
     } else {
       (async () => {
@@ -251,7 +256,7 @@ export function KanbanView({ cards, onCardClick, onPostsClick, onRefresh, onRecu
         }
       })();
     }
-  }, [onRefresh, onRecurring]);
+  }, [onRefresh, onRecurring, postsCounts, approvedPostsCounts]);
 
   const handleApproveInternally = async () => {
     if (!approvalChoiceCard) return;

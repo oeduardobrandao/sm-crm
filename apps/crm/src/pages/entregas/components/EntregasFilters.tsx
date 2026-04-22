@@ -31,7 +31,8 @@ const STATUS_OPTIONS: { id: FilterState['filterStatus']; label: string; color?: 
 ];
 
 export function EntregasFilters({ filters, onChange, clientes, membros }: EntregasFiltersProps) {
-  const activeClientes = clientes.filter(c => c.status === 'ativo');
+  const activeClientes = clientes.filter(c => c.status === 'ativo').sort((a, b) => a.nome.localeCompare(b.nome));
+  const sortedMembros = [...membros].sort((a, b) => a.nome.localeCompare(b.nome));
 
   return (
     <div className="flex flex-wrap items-center gap-3 mb-0 animate-up">
@@ -94,7 +95,7 @@ export function EntregasFilters({ filters, onChange, clientes, membros }: Entreg
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="__none__">Todos os membros</SelectItem>
-            {membros.map(m => (
+            {sortedMembros.map(m => (
               <SelectItem key={m.id} value={String(m.id)}>{m.nome}</SelectItem>
             ))}
           </SelectContent>
