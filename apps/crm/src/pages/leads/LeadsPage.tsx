@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Plus, Edit2, Trash2, Upload, Info, HelpCircle, UserPlus } from 'lucide-react';
+import { Plus, Edit2, Trash2, Upload, Info, HelpCircle, UserPlus, Search } from 'lucide-react';
 import { openCSVSelector } from '../../lib/csv';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -308,12 +308,10 @@ export default function LeadsPage() {
             </DropdownMenuRadioGroup>
           </DropdownMenuContent>
         </DropdownMenu>
-        <Input
-          placeholder="Buscar..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="w-56"
-        />
+        <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: '320px' }}>
+          <Search className="h-4 w-4" style={{ position: 'absolute', left: '0.625rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+          <Input placeholder="Buscar por nome, e-mail, Instagram..." value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: '2rem' }} />
+        </div>
       </div>
 
       {isLoading ? (

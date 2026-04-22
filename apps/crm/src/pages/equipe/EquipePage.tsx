@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Plus, Edit2, Trash2, Upload, Info, HelpCircle } from 'lucide-react';
+import { Plus, Edit2, Trash2, Upload, Info, HelpCircle, Search } from 'lucide-react';
 import { openCSVSelector } from '../../lib/csv';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -60,6 +60,7 @@ export default function EquipePage() {
   const isAgent = role === 'agent';
 
   const [filter, setFilter] = useState<FilterTipo>('todos');
+  const [search, setSearch] = useState('');
   const [sort, setSort] = useState<SortKey>('nome');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Membro | null>(null);
@@ -76,6 +77,7 @@ export default function EquipePage() {
 
   const filtered = membros
     .filter(m => filter === 'todos' || m.tipo === filter)
+    .filter(m => !search || m.nome.toLowerCase().includes(search.toLowerCase()) || m.cargo?.toLowerCase().includes(search.toLowerCase()))
     .sort((a, b) => {
       if (sort === 'nome') return a.nome.localeCompare(b.nome);
       if (sort === 'custo_maior') return (b.custo_mensal ?? 0) - (a.custo_mensal ?? 0);
@@ -204,6 +206,10 @@ export default function EquipePage() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3 mb-2">
+        <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: '320px' }}>
+          <Search className="h-4 w-4" style={{ position: 'absolute', left: '0.625rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+          <Input placeholder="Buscar por nome ou cargo..." value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: '2rem' }} />
+        </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" className="h-9 rounded-full px-4 text-xs gap-1.5 font-normal shadow-sm mb-0">

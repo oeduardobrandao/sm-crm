@@ -12,7 +12,8 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Info, Search } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Spinner } from '@/components/ui/spinner';
@@ -46,6 +47,7 @@ export default function IdeiasPage() {
   });
 
   const [selectedIdeia, setSelectedIdeia] = useState<Ideia | null>(null);
+  const [search, setSearch] = useState('');
   const [clienteFilter, setClienteFilter] = useState<string>('all');
   const [statusFilters, setStatusFilters] = useState<string[]>([]);
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
@@ -55,19 +57,30 @@ export default function IdeiasPage() {
     if (statusFilters.length > 0 && !statusFilters.includes(i.status)) return false;
     if (dateRange?.from && i.created_at < startOfDayIso(dateRange.from)) return false;
     if (dateRange?.to && i.created_at > endOfDayIso(dateRange.to)) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      if (!i.titulo.toLowerCase().includes(q) && !i.clientes.nome.toLowerCase().includes(q)) return false;
+    }
     return true;
   });
 
   return (
-    <div>
+    <div style={{ padding: '1.5rem' }}>
       <div className="header">
-        <div className="header-title">
+        <div className="header-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <h1>Ideias</h1>
+          <span data-tooltip="Ideias enviadas pelos clientes no portal." data-tooltip-dir="right" style={{ display: 'flex' }}>
+            <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
+          </span>
         </div>
       </div>
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3 mb-6">
+        <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: '320px' }}>
+          <Search className="h-4 w-4" style={{ position: 'absolute', left: '0.625rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+          <Input placeholder="Buscar por título ou cliente..." value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: '2rem' }} />
+        </div>
         <Select value={clienteFilter} onValueChange={setClienteFilter}>
           <SelectTrigger className="!rounded-full !text-xs h-9 px-4 w-auto min-w-[160px] mb-0">
             <SelectValue placeholder="Todos os clientes" />
