@@ -39,9 +39,11 @@ interface WorkflowCardProps {
   onPostsClick?: () => void;
   /** Number of posts associated with this workflow (shown as badge) */
   postsCount?: number;
+  /** Number of posts approved by client */
+  approvedPostsCount?: number;
 }
 
-export function WorkflowCard({ card, onClick, isDragOverlay, dragHandle, membros, onRefresh, onRevertClick, onForwardClick, onPostsClick, postsCount }: WorkflowCardProps) {
+export function WorkflowCard({ card, onClick, isDragOverlay, dragHandle, membros, onRefresh, onRevertClick, onForwardClick, onPostsClick, postsCount, approvedPostsCount }: WorkflowCardProps) {
   const navigate = useNavigate();
   const [assignDropdownOpen, setAssignDropdownOpen] = useState(false);
   const [localMembro, setLocalMembro] = useState<Membro | undefined | null>(undefined);
@@ -285,12 +287,21 @@ export function WorkflowCard({ card, onClick, isDragOverlay, dragHandle, membros
       {/* Client approval badge */}
       {card.etapa.tipo === 'aprovacao_cliente' && (
         <div className="board-card-approval">
-          <div
-            className="board-card-approval-badge"
-            style={{ borderRadius: '999px', padding: '0.2rem 0.65rem', fontSize: '0.68rem', letterSpacing: '0.02em' }}
-          >
-            ⏳ Aguardando cliente
-          </div>
+          {postsCount != null && postsCount > 0 && approvedPostsCount === postsCount ? (
+            <div
+              className="board-card-approval-badge"
+              style={{ borderRadius: '999px', padding: '0.2rem 0.65rem', fontSize: '0.68rem', letterSpacing: '0.02em', background: 'rgba(62, 207, 142, 0.15)', color: 'var(--success)' }}
+            >
+              ✓ Aprovado pelo cliente
+            </div>
+          ) : (
+            <div
+              className="board-card-approval-badge"
+              style={{ borderRadius: '999px', padding: '0.2rem 0.65rem', fontSize: '0.68rem', letterSpacing: '0.02em' }}
+            >
+              ⏳ Aguardando cliente
+            </div>
+          )}
         </div>
       )}
 
