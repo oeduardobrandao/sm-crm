@@ -1,24 +1,62 @@
-import { useEffect, useState } from 'react';
-import { Users, CheckSquare, ExternalLink, Calendar, ChevronDown, Sun, Moon, Check, X } from 'lucide-react';
-import logoBlack from '/logo-black.svg';
-import logoWhite from '/logo-white.svg';
+import { useEffect, useRef, useState } from 'react';
+import { ArrowRight, ChevronDown, Instagram, Linkedin, Moon, Sun, Youtube } from 'lucide-react';
+
+import {
+  CalendarVisual,
+  Calendar as CalendarIcon,
+  CircleDollarSign,
+  FinanceVisual,
+  HeroDemo,
+  HubVisual,
+  IconSquare,
+  InstagramVisual,
+  Instagram as InstagramIcon,
+  KanbanVisual,
+  LayoutGrid,
+  Users,
+} from './landing-visuals';
+
+import './landing.css';
 
 function scrollTo(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
 }
 
 export default function LandingPage() {
+  const rootRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     document.body.classList.add('landing-page');
     return () => document.body.classList.remove('landing-page');
   }, []);
 
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root || typeof IntersectionObserver === 'undefined') return;
+    const els = root.querySelectorAll('.reveal');
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) {
+            e.target.classList.add('in');
+            io.unobserve(e.target);
+          }
+        });
+      },
+      { threshold: 0.12, rootMargin: '0px 0px -40px 0px' },
+    );
+    els.forEach((el) => io.observe(el));
+    return () => io.disconnect();
+  }, []);
+
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div ref={rootRef} className="lp-root">
       <Header />
       <Hero />
-      <Testimonial />
+      <Ticker />
       <Features />
+      <HowItWorks />
+      <Testimonial />
       <Pricing />
       <Faq />
       <CtaFinal />
@@ -38,35 +76,31 @@ function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4 md:px-6">
-        <img src={logoBlack} alt="Mesaas" className="h-6 w-auto dark:hidden md:h-7" />
-        <img src={logoWhite} alt="Mesaas" className="h-6 w-auto hidden dark:block md:h-7" />
-        <nav className="hidden gap-6 text-sm font-medium text-muted-foreground md:flex">
-          <button onClick={() => scrollTo('features')} className="hover:text-foreground transition-colors">Funcionalidades</button>
-          <button onClick={() => scrollTo('pricing')} className="hover:text-foreground transition-colors">Preços</button>
-          <button onClick={() => scrollTo('faq')} className="hover:text-foreground transition-colors">FAQ</button>
+    <header className="site-hdr">
+      <div className="hdr-inner">
+        <a href="#top" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
+          <img src="/logo-black.svg" className="hdr-logo logo-light" alt="Mesaas" />
+          <img src="/logo-white.svg" className="hdr-logo logo-dark" alt="Mesaas" />
+        </a>
+        <nav className="hdr-nav">
+          <button onClick={() => scrollTo('features')}>Funcionalidades</button>
+          <button onClick={() => scrollTo('how')}>Como funciona</button>
+          <button onClick={() => scrollTo('pricing')}>Preços</button>
+          <button onClick={() => scrollTo('faq')}>FAQ</button>
         </nav>
-        <div className="flex items-center gap-3 md:gap-4">
+        <div className="hdr-actions">
           <button
             onClick={toggleTheme}
-            className="rounded-md p-2 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            className="theme-toggle"
             aria-label="Alternar tema"
           >
-            {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            {isDark ? <Sun size={18} /> : <Moon size={18} />}
           </button>
-          <a
-            href="/login"
-            className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors md:text-base"
-          >
+          <a href="/login" className="link">
             Entrar
           </a>
-          <a
-            href="/login?tab=register"
-            className="rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:opacity-90 transition-opacity shadow-sm md:px-5 md:py-2.5 md:text-base"
-          >
-            <span className="hidden sm:inline">Criar conta grátis</span>
-            <span className="sm:hidden">Começar</span>
+          <a href="/login?tab=register" className="lp-btn lp-btn-primary">
+            Criar conta grátis
           </a>
         </div>
       </div>
@@ -76,26 +110,292 @@ function Header() {
 
 function Hero() {
   return (
-    <section className="mx-auto max-w-6xl px-5 py-16 text-center sm:py-20 md:py-28 md:px-6">
-      <h1 className="mx-auto max-w-4xl text-4xl font-extrabold leading-[1.15] tracking-tight sm:text-3xl md:text-5xl lg:text-6xl">
-        Sua agência de social media com clientes organizados, entregas no prazo e relatórios em um só lugar
-      </h1>
-      <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground md:mt-8 md:text-xl leading-relaxed">
-        Mesaas é o CRM feito para gestores e agências de social media. Gerencie clientes, workflows de entrega, financeiro e aprovações — sem planilha, sem caos.
-      </p>
-      <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center md:mt-12">
-        <a
-          href="/login?tab=register"
-          className="flex w-full items-center justify-center rounded-lg bg-primary px-8 py-4 text-lg font-semibold text-primary-foreground shadow-xl shadow-primary/20 hover:opacity-90 transition-all active:scale-95 sm:w-auto"
-        >
-          Criar conta grátis
-        </a>
-        <button
-          onClick={() => scrollTo('features')}
-          className="flex w-full items-center justify-center rounded-lg border-2 border-border bg-background px-8 py-4 text-lg font-semibold text-foreground hover:bg-muted transition-all active:scale-95 sm:w-auto"
-        >
-          Ver como funciona →
-        </button>
+    <section className="hero-wrap" id="top">
+      <div className="lp-container">
+        <div className="hero-grid">
+          <div>
+            <span className="eyebrow-pill">Beta aberto · 100% gratuito</span>
+            <h1 className="hero-title">
+              Sua agência de social media <em>sem caos</em>, sem planilha, sem grupo de WhatsApp.
+            </h1>
+            <p className="hero-sub">
+              Mesaas é o CRM feito para gestores e agências de social media. Clientes, contratos, entregas, aprovações e métricas do Instagram — em um só lugar.
+            </p>
+            <div className="hero-ctas">
+              <a href="/login?tab=register" className="lp-btn lp-btn-primary lg">
+                Criar conta grátis <ArrowRight size={16} />
+              </a>
+              <button onClick={() => scrollTo('features')} className="lp-btn lp-btn-outline lg">
+                Ver como funciona
+              </button>
+            </div>
+          </div>
+          <div className="hero-stage">
+            <HeroDemo />
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Ticker() {
+  const items = [
+    'Clientes + contratos',
+    'Kanban de entregas',
+    'Portal do cliente',
+    'Integração Instagram',
+    'Calendário editorial',
+    'Financeiro',
+    'Equipe + tarefas',
+    'Aprovações por link',
+    'Métricas reais',
+    'Agendamento automático',
+  ];
+  const doubled = [...items, ...items];
+  return (
+    <div className="ticker" aria-hidden="true">
+      <div className="ticker-track">
+        {doubled.map((t, i) => (
+          <span className="ticker-item" key={i}>
+            <span className="bullet" />
+            {t}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Features() {
+  return (
+    <section className="lp-pad" id="features">
+      <div className="lp-container">
+        <div className="section-head reveal">
+          <span className="eyebrow-pill">Funcionalidades</span>
+          <h2>Tudo que sua agência já faz — só que organizado.</h2>
+          <p>Cada módulo foi desenhado com quem passa o dia gerenciando social media. Menos abas abertas, mais entrega.</p>
+        </div>
+
+        <div className="feat-row reveal">
+          <div className="feat-copy">
+            <IconSquare icon={<LayoutGrid size={22} />} color="#FFBF30" />
+            <h3>Kanban de entregas que sua equipe entende no primeiro dia</h3>
+            <p>Arraste cada post pelas etapas — da ideia à publicação. Cada cliente, cada tipo de conteúdo, cada prazo em um só fluxo visual.</p>
+            <ul className="feat-bullets">
+              <li>
+                <span className="check">✓</span>
+                <span>
+                  <strong>5 etapas padrão</strong> — ideia, produção, aprovação, agendado, publicado
+                </span>
+              </li>
+              <li>
+                <span className="check">✓</span>
+                <span>
+                  Cards mostram <strong>cliente, tipo, prazo e status</strong> em um olhar
+                </span>
+              </li>
+              <li>
+                <span className="check">✓</span>
+                <span>
+                  <strong>Cards atrasados</strong> ficam destacados em vermelho automaticamente
+                </span>
+              </li>
+              <li>
+                <span className="check">✓</span>
+                <span>Filtre por cliente ou tipo de conteúdo com um clique</span>
+              </li>
+            </ul>
+          </div>
+          <div className="feat-visual">
+            <KanbanVisual />
+          </div>
+        </div>
+
+        <div className="feat-row reverse reveal">
+          <div className="feat-copy">
+            <IconSquare icon={<InstagramIcon size={22} />} color="#f542c8" />
+            <h3>Instagram conectado. Métricas reais, sem exportar CSV.</h3>
+            <p>
+              Conecte a conta do seu cliente via API oficial do Meta. Seguidores, alcance, engajamento e top posts atualizados todo dia, prontos para o
+              relatório.
+            </p>
+            <ul className="feat-bullets">
+              <li>
+                <span className="check">✓</span>
+                <span>
+                  <strong>API oficial do Meta</strong> — dados confiáveis, sem scraping
+                </span>
+              </li>
+              <li>
+                <span className="check">✓</span>
+                <span>
+                  Crescimento de seguidores, <strong>alcance e engajamento</strong> por período
+                </span>
+              </li>
+              <li>
+                <span className="check">✓</span>
+                <span>Top posts da semana destacados automaticamente</span>
+              </li>
+              <li>
+                <span className="check">✓</span>
+                <span>Relatório em PDF para enviar ao cliente em um clique</span>
+              </li>
+            </ul>
+          </div>
+          <div className="feat-visual">
+            <InstagramVisual />
+          </div>
+        </div>
+
+        <div className="feat-row reveal">
+          <div className="feat-copy">
+            <IconSquare icon={<Users size={22} />} color="#42c8f5" />
+            <h3>Portal do cliente que o cliente realmente usa</h3>
+            <p>
+              Seu cliente aprova posts, vê o calendário e conversa com a equipe por um link único — <strong>sem login, sem app, sem fricção</strong>. Design
+              editorial pensado para a marca dele, não para a sua CRM.
+            </p>
+            <ul className="feat-bullets">
+              <li>
+                <span className="check">✓</span>
+                <span>
+                  Link único <strong>sem necessidade de conta</strong> para o cliente
+                </span>
+              </li>
+              <li>
+                <span className="check">✓</span>
+                <span>Aprovar, pedir ajustes ou comentar em cada post</span>
+              </li>
+              <li>
+                <span className="check">✓</span>
+                <span>
+                  Calendário editorial e biblioteca de <strong>identidade de marca</strong>
+                </span>
+              </li>
+              <li>
+                <span className="check">✓</span>
+                <span>Notificação automática quando algo precisa de decisão</span>
+              </li>
+            </ul>
+          </div>
+          <div className="feat-visual">
+            <HubVisual />
+          </div>
+        </div>
+
+        <div className="feat-row reverse reveal">
+          <div className="feat-copy">
+            <IconSquare icon={<CalendarIcon size={22} />} color="#3ecf8e" />
+            <h3>Calendário editorial por cliente ou unificado</h3>
+            <p>
+              Veja tudo que foi planejado, agendado e publicado em um mês. Troque entre clientes ou visualize toda a operação de uma vez para identificar
+              semanas vazias antes que virem problema.
+            </p>
+            <ul className="feat-bullets">
+              <li>
+                <span className="check">✓</span>
+                <span>
+                  Visão <strong>mensal, semanal e por cliente</strong>
+                </span>
+              </li>
+              <li>
+                <span className="check">✓</span>
+                <span>Cores por tipo de conteúdo: Feed, Reels, Story, Carrossel</span>
+              </li>
+              <li>
+                <span className="check">✓</span>
+                <span>
+                  Arraste para <strong>reagendar</strong> em segundos
+                </span>
+              </li>
+              <li>
+                <span className="check">✓</span>
+                <span>Integração direta com o agendamento automático</span>
+              </li>
+            </ul>
+          </div>
+          <div className="feat-visual">
+            <CalendarVisual />
+          </div>
+        </div>
+
+        <div className="feat-row reveal">
+          <div className="feat-copy">
+            <IconSquare icon={<CircleDollarSign size={22} />} color="#6b7280" />
+            <h3>Financeiro sem planilha paralela</h3>
+            <p>
+              Contratos, mensalidades e despesas da operação em um lugar só. Saiba o MRR da sua agência, quais clientes estão em aberto e quanto sobra no fim
+              do mês — sem abrir o Excel.
+            </p>
+            <ul className="feat-bullets">
+              <li>
+                <span className="check">✓</span>
+                <span>
+                  MRR, <strong>receita prevista e em aberto</strong> em tempo real
+                </span>
+              </li>
+              <li>
+                <span className="check">✓</span>
+                <span>Contratos com datas de renovação automáticas</span>
+              </li>
+              <li>
+                <span className="check">✓</span>
+                <span>Exportação de CSV para seu contador</span>
+              </li>
+              <li>
+                <span className="check">✓</span>
+                <span>
+                  <strong>Despesas da operação</strong> vinculadas ao cliente que geraram
+                </span>
+              </li>
+            </ul>
+          </div>
+          <div className="feat-visual">
+            <FinanceVisual />
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function HowItWorks() {
+  const steps = [
+    {
+      n: '01',
+      t: 'Cadastre sua agência',
+      d: 'Crie sua conta grátis, importe seus clientes e configure templates de contrato. Simples como digitar um e-mail.',
+    },
+    {
+      n: '02',
+      t: 'Monte o fluxo de entregas',
+      d: 'Arraste os posts pelo kanban. Atribua à equipe, defina prazos, conecte o Instagram de cada cliente.',
+    },
+    {
+      n: '03',
+      t: 'Compartilhe o link do Hub',
+      d: 'Seu cliente aprova posts, acompanha o calendário e vê métricas — tudo por um link único, sem precisar criar conta.',
+    },
+  ];
+
+  return (
+    <section className="lp-pad lp-pad-alt" id="how">
+      <div className="lp-container">
+        <div className="section-head reveal">
+          <span className="eyebrow-pill">Do zero em 5 minutos</span>
+          <h2>Três passos entre você e uma operação organizada.</h2>
+        </div>
+        <div className="how-grid">
+          {steps.map((s, i) => (
+            <div key={i} className="how-step reveal">
+              <span className="how-num">{s.n}</span>
+              <span className="eyebrow-micro">Passo {s.n}</span>
+              <h4>{s.t}</h4>
+              <p>{s.d}</p>
+            </div>
+          ))}
+        </div>
       </div>
     </section>
   );
@@ -103,195 +403,155 @@ function Hero() {
 
 function Testimonial() {
   return (
-    <section className="bg-muted/30 py-20 px-5">
-      <div className="mx-auto max-w-3xl text-center">
-        <blockquote className="text-xl font-medium leading-relaxed text-foreground md:text-2xl">
-          "O Mesaas mudou completamente a forma como gerencio meus clientes. Antes eu vivia perdida em planilhas e grupos de WhatsApp — agora tudo fica em um só lugar e consigo entregar com muito mais qualidade e no prazo."
+    <section className="quote-wrap">
+      <div className="quote-card reveal">
+        <div className="quote-mark">"</div>
+        <blockquote>
+          O Mesaas mudou completamente a forma como gerencio meus clientes. Antes eu vivia perdida em planilhas e grupos de WhatsApp — agora tudo fica em um só
+          lugar e consigo entregar com muito mais qualidade e no prazo.
         </blockquote>
-        <p className="mt-4 text-sm text-muted-foreground">
-          — <strong>Débora Kristin</strong>, DK Marketing Médico
-        </p>
-      </div>
-    </section>
-  );
-}
-
-function Features() {
-  const items = [
-    {
-      icon: <Users className="h-6 w-6 text-primary" />,
-      title: 'Clientes e contratos organizados',
-      description:
-        'Cadastro de clientes, contratos, histórico e dados financeiros em um só lugar. Chega de informação espalhada.',
-    },
-    {
-      icon: <CheckSquare className="h-6 w-6 text-primary" />,
-      title: 'Workflows de entrega sem atrito',
-      description:
-        'Crie etapas de produção, atribua tarefas à equipe e acompanhe o status de cada entrega em tempo real.',
-    },
-    {
-      icon: <ExternalLink className="h-6 w-6 text-primary" />,
-      title: 'Portal de aprovação para o cliente',
-      description:
-        'Seu cliente aprova posts, deixa comentários e acompanha o progresso — sem precisar de login nem acesso ao sistema interno.',
-    },
-    {
-      icon: <Calendar className="h-6 w-6 text-primary" />,
-      title: 'Calendário e visão geral de conteúdo',
-      description:
-        'Veja todos os posts agendados e entregues por cliente em um calendário unificado, com status de cada publicação.',
-    },
-  ];
-
-  return (
-    <section id="features" className="mx-auto max-w-6xl px-5 py-20 md:px-6 md:py-28">
-      <h2 className="text-center text-3xl font-bold tracking-tight md:text-4xl lg:text-5xl">
-        Tudo que sua agência precisa em um só lugar
-      </h2>
-      <div className="mt-12 grid gap-6 md:mt-16 md:grid-cols-2 md:gap-8">
-        {items.map((item) => (
-          <div key={item.title} className="rounded-2xl border border-border bg-card p-8 shadow-sm transition-shadow hover:shadow-md md:p-10">
-            <div className="mb-4">{item.icon}</div>
-            <h3 className="mb-2 text-lg font-semibold">{item.title}</h3>
-            <p className="text-muted-foreground">{item.description}</p>
+        <cite>
+          <div className="quote-avatar">DK</div>
+          <div className="quote-who">
+            <div className="n">Débora Kristin</div>
+            <div className="r">Founder · DK Marketing Médico</div>
           </div>
-        ))}
+        </cite>
       </div>
     </section>
   );
 }
 
 function Pricing() {
-  const features = [
-    'Planejamento de conteúdo',
-    'Calendário editorial',
-    'Integração Instagram',
-    'Portal do cliente',
-    'Agendamento automático',
-    'Métricas de desempenho',
-  ];
-
   const plans = [
     {
       name: 'Free',
       price: 'R$ 0',
-      tagline: 'Para conhecer a plataforma.',
-      limits: { Clientes: '2', Usuários: '1', Templates: '2' },
-      features: [true, true, false, false, false, false],
+      tag: 'Para conhecer a plataforma.',
+      limits: [
+        ['Clientes', '2'],
+        ['Usuários', '1'],
+        ['Templates', '2'],
+      ] as const,
+      feats: [
+        { t: 'Planejamento', y: true },
+        { t: 'Calendário', y: true },
+        { t: 'Integração Instagram', y: false },
+        { t: 'Portal do cliente', y: false },
+      ],
       cta: 'Começar grátis',
       highlight: false,
     },
     {
       name: 'Start',
       price: 'R$ 99,90',
-      tagline: 'Para freelancers que estão começando.',
-      limits: { Clientes: '5', Usuários: '1', Templates: '3' },
-      features: [true, true, true, true, false, false],
+      tag: 'Para freelancers que estão começando.',
+      limits: [
+        ['Clientes', '5'],
+        ['Usuários', '1'],
+        ['Templates', '3'],
+      ] as const,
+      feats: [
+        { t: 'Planejamento', y: true },
+        { t: 'Calendário', y: true },
+        { t: 'Integração Instagram', y: true },
+        { t: 'Portal do cliente', y: true },
+      ],
       cta: 'Assinar Start',
       highlight: false,
     },
     {
       name: 'Pro',
       price: 'R$ 139,90',
-      tagline: 'Para freelancers com carteira consolidada.',
-      limits: { Clientes: '15', Usuários: '2', Templates: '8' },
-      features: [true, true, true, true, true, true],
+      tag: 'Para freelancers com carteira consolidada.',
+      limits: [
+        ['Clientes', '15'],
+        ['Usuários', '2'],
+        ['Templates', '8'],
+      ] as const,
+      feats: [
+        { t: 'Planejamento', y: true },
+        { t: 'Calendário', y: true },
+        { t: 'Integração Instagram', y: true },
+        { t: 'Portal do cliente', y: true },
+        { t: 'Agendamento automático', y: true },
+        { t: 'Métricas avançadas', y: true },
+      ],
       cta: 'Assinar Pro',
       highlight: true,
     },
     {
       name: 'Scale',
       price: 'R$ 199,90',
-      tagline: 'Para micro-agências e equipes completas.',
-      limits: { Clientes: 'Ilimitado', Usuários: 'Ilimitado', Templates: 'Ilimitado' },
-      features: [true, true, true, true, true, true],
+      tag: 'Para micro-agências e equipes completas.',
+      limits: [
+        ['Clientes', 'Ilimitado'],
+        ['Usuários', 'Ilimitado'],
+        ['Templates', 'Ilimitado'],
+      ] as const,
+      feats: [
+        { t: 'Planejamento', y: true },
+        { t: 'Calendário', y: true },
+        { t: 'Integração Instagram', y: true },
+        { t: 'Portal do cliente', y: true },
+        { t: 'Agendamento automático', y: true },
+        { t: 'Métricas avançadas', y: true },
+      ],
       cta: 'Assinar Scale',
       highlight: false,
     },
   ];
 
   return (
-    <section id="pricing" className="mx-auto max-w-6xl px-5 py-20 md:px-6 md:py-28">
-      <div className="text-center">
-        <div className="inline-flex items-center gap-2 rounded-full border border-border bg-muted/50 px-4 py-1.5 text-xs font-medium text-muted-foreground">
-          Em breve
+    <section className="lp-pad" id="pricing">
+      <div className="lp-container">
+        <div className="section-head reveal">
+          <span className="eyebrow-pill">Em breve · Beta 100% grátis</span>
+          <h2>Um plano que cresce junto com a sua agência.</h2>
+          <p>Enquanto o Mesaas está em beta, é totalmente gratuito. Estes são os planos que entrarão em vigor nos próximos meses.</p>
         </div>
-        <h2 className="mt-4 text-3xl font-bold tracking-tight md:text-4xl lg:text-5xl">
-          Planos para cada estágio da sua agência
-        </h2>
-        <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
-          Durante o beta, o Mesaas é totalmente gratuito. Estes são os planos que entrarão em vigor em breve.
-        </p>
-      </div>
-
-      <div className="mt-12 grid gap-6 md:mt-16 md:grid-cols-2 lg:grid-cols-4">
-        {plans.map((plan) => (
-          <div
-            key={plan.name}
-            className={`relative flex flex-col rounded-2xl border bg-card p-6 shadow-sm ${
-              plan.highlight ? 'border-primary shadow-md ring-1 ring-primary' : 'border-border'
-            }`}
-          >
-            {plan.highlight && (
-              <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground">
-                Mais popular
+        <div className="plans-grid">
+          {plans.map((p) => (
+            <div key={p.name} className={`plan-card reveal ${p.highlight ? 'highlight' : ''}`}>
+              {p.highlight && <div className="plan-badge">Mais popular</div>}
+              <h3>{p.name}</h3>
+              <div className="price-row">
+                <span className="price">{p.price}</span>
+                <span className="price-sub">/mês</span>
               </div>
-            )}
-            <div>
-              <h3 className="text-xl font-bold">{plan.name}</h3>
-              <div className="mt-3 flex items-baseline gap-1">
-                <span className="text-3xl font-extrabold tracking-tight">{plan.price}</span>
-                <span className="text-sm text-muted-foreground">/mês</span>
-              </div>
-              <p className="mt-2 text-sm text-muted-foreground">{plan.tagline}</p>
-            </div>
-
-            <div className="mt-6">
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Limites</p>
-              <ul className="mt-3 space-y-2 text-sm">
-                {Object.entries(plan.limits).map(([k, v]) => (
-                  <li key={k} className="flex items-center justify-between">
-                    <span className="text-muted-foreground">{k}</span>
-                    <span className="font-semibold">{v}</span>
+              <div className="plan-tag">{p.tag}</div>
+              <div className="plan-label">Limites</div>
+              <ul className="plan-list plan-limits">
+                {p.limits.map(([k, v]) => (
+                  <li key={k}>
+                    <span className="k">{k}</span>
+                    <span className="v">{v}</span>
                   </li>
                 ))}
               </ul>
-            </div>
-
-            <div className="mt-6">
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Features</p>
-              <ul className="mt-3 space-y-2 text-sm">
-                {features.map((f, i) => {
-                  const included = plan.features[i];
-                  return (
-                    <li key={f} className="flex items-start gap-2">
-                      {included ? (
-                        <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                      ) : (
-                        <X className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground/50" />
-                      )}
-                      <span className={included ? 'text-foreground' : 'text-muted-foreground/60 line-through'}>
-                        {f}
-                      </span>
-                    </li>
-                  );
-                })}
+              <div className="plan-label">Features</div>
+              <ul className="plan-list plan-feats">
+                {p.feats.map((f) => (
+                  <li key={f.t}>
+                    {f.y ? <span className="ck">✓</span> : <span className="xk">✕</span>}
+                    <span className={f.y ? '' : 'strike'}>{f.t}</span>
+                  </li>
+                ))}
               </ul>
+              <div className="plan-cta">
+                {p.highlight ? (
+                  <span className="lp-btn lp-btn-primary">
+                    {p.cta} · Em breve
+                  </span>
+                ) : (
+                  <span className="soon">
+                    {p.cta} · Em breve
+                  </span>
+                )}
+              </div>
             </div>
-
-            <button
-              disabled
-              className={`mt-8 w-full cursor-not-allowed rounded-lg px-4 py-2.5 text-sm font-semibold opacity-60 ${
-                plan.highlight
-                  ? 'bg-primary text-primary-foreground'
-                  : 'border border-border bg-background text-foreground'
-              }`}
-            >
-              {plan.cta} · Em breve
-            </button>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </section>
   );
@@ -302,53 +562,53 @@ function Faq() {
 
   const items = [
     {
-      q: 'É gratuito?',
-      a: 'Sim, o Mesaas está em fase beta e é totalmente gratuito agora. Crie sua conta e comece hoje.',
+      q: 'O Mesaas é gratuito mesmo?',
+      a: 'Sim. Durante a fase beta, todas as funcionalidades são 100% gratuitas para todos os usuários. Quando os planos entrarem em vigor, quem já estava dentro recebe condições especiais.',
     },
     {
       q: 'Preciso instalar alguma coisa?',
-      a: 'Não. É 100% web, funciona em qualquer navegador.',
+      a: 'Não. O Mesaas é 100% web e funciona em qualquer navegador moderno, no computador ou no celular. Nada para baixar, nada para configurar.',
     },
     {
-      q: 'Consigo migrar meus clientes de planilhas?',
-      a: 'Sim, o cadastro é simples e rápido. Em minutos seus clientes estão dentro do sistema.',
+      q: 'Meu cliente precisa criar uma conta para usar o Hub?',
+      a: 'Não. O portal de aprovação é acessado por um link único que você envia ao cliente. Ele abre, aprova, comenta — sem login, sem senha, sem app.',
     },
     {
-      q: 'Meu cliente precisa criar uma conta para usar o portal?',
-      a: 'Não. O portal de aprovação é acessado por um link único, sem login.',
+      q: 'Como funciona a integração com o Instagram?',
+      a: 'Você conecta a conta do seu cliente via API oficial do Meta. A partir daí, o Mesaas puxa métricas de seguidores, alcance, engajamento e posts automaticamente. Nada de scraping — dados 100% confiáveis.',
     },
     {
-      q: 'Funciona para freelancers ou só para agências?',
-      a: 'Para os dois. Você pode gerenciar de 1 a dezenas de clientes.',
+      q: 'Consigo importar meus clientes de uma planilha?',
+      a: 'Sim. Você pode cadastrar cliente por cliente em segundos, ou importar via planilha. Em minutos sua base inteira está dentro do sistema.',
     },
     {
-      q: 'Como faço para começar?',
-      a: 'Clique em "Criar conta grátis", cadastre sua agência e comece a usar imediatamente.',
+      q: 'Funciona para freelancer ou só para agência?',
+      a: 'Para os dois. O plano Start atende freelancers começando, e o Scale suporta agências com dezenas de clientes e uma equipe inteira.',
+    },
+    {
+      q: 'Posso cancelar quando quiser?',
+      a: 'Sim, a qualquer momento. Sem multa, sem burocracia. Seus dados continuam exportáveis por mais 30 dias após o cancelamento.',
     },
   ];
 
   return (
-    <section id="faq" className="bg-muted/30 py-20 md:py-28">
-      <div className="mx-auto max-w-3xl px-5 md:px-6">
-        <h2 className="mb-10 text-center text-3xl font-bold tracking-tight md:mb-14 md:text-4xl lg:text-5xl">
-          Perguntas frequentes
-        </h2>
-        <div className="divide-y divide-border rounded-2xl border border-border bg-card shadow-sm">
+    <section className="lp-pad lp-pad-alt" id="faq">
+      <div className="lp-container">
+        <div className="section-head reveal">
+          <span className="eyebrow-pill">FAQ</span>
+          <h2>Perguntas frequentes</h2>
+        </div>
+        <div className="faqs">
           {items.map((item, i) => (
-            <div key={i}>
-              <button
-                className="flex w-full items-center justify-between px-6 py-6 text-left text-lg font-medium hover:bg-muted/30 transition-colors md:px-8"
-                onClick={() => setOpen(open === i ? null : i)}
-                aria-expanded={open === i}
-                aria-controls={`faq-answer-${i}`}
-              >
+            <div key={i} className="faq-item">
+              <button onClick={() => setOpen(open === i ? null : i)} aria-expanded={open === i} aria-controls={`faq-answer-${i}`}>
                 <span>{item.q}</span>
-                <ChevronDown
-                  className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${open === i ? 'rotate-180' : ''}`}
-                />
+                <ChevronDown className={`faq-chevron ${open === i ? 'open' : ''}`} />
               </button>
               {open === i && (
-                <div id={`faq-answer-${i}`} className="px-6 pb-6 text-muted-foreground md:px-8 md:text-lg">{item.a}</div>
+                <div id={`faq-answer-${i}`} className="ans">
+                  {item.a}
+                </div>
               )}
             </div>
           ))}
@@ -360,20 +620,27 @@ function Faq() {
 
 function CtaFinal() {
   return (
-    <section className="mx-auto max-w-6xl px-5 py-20 text-center md:px-6 md:py-32">
-      <h2 className="text-3xl font-bold tracking-tight md:text-5xl">
-        Pronto para sair das planilhas?
-      </h2>
-      <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground md:text-xl">
-        Crie sua conta grátis e comece a organizar sua agência hoje.
-      </p>
-      <div className="mt-10 flex justify-center">
-        <a
-          href="/login?tab=register"
-          className="flex w-full items-center justify-center rounded-lg bg-primary px-8 py-4 text-lg font-semibold text-primary-foreground shadow-xl shadow-primary/20 hover:opacity-90 transition-all active:scale-95 sm:w-auto"
-        >
-          Criar conta grátis
-        </a>
+    <section className="cta-final-wrap">
+      <div className="lp-container">
+        <div className="cta-final-card reveal">
+          <img src="/icon.svg" style={{ height: 44, margin: '0 auto 22px', display: 'block' }} alt="" />
+          <h2>Pronto para sair das planilhas?</h2>
+          <p>Crie sua conta grátis e comece a organizar sua agência hoje. Sem cartão, sem compromisso.</p>
+          <a href="/login?tab=register" className="lp-btn lp-btn-primary lg">
+            Criar conta grátis <ArrowRight size={16} />
+          </a>
+          <div
+            style={{
+              marginTop: 18,
+              fontSize: '.8rem',
+              color: '#9ca3af',
+              fontFamily: "ui-monospace,'SF Mono',Menlo,monospace",
+              letterSpacing: '.08em',
+            }}
+          >
+            BETA ABERTO · 100% GRATUITO
+          </div>
+        </div>
       </div>
     </section>
   );
@@ -381,16 +648,60 @@ function CtaFinal() {
 
 function Footer() {
   return (
-    <footer className="border-t border-border py-10 md:py-12">
-      <div className="mx-auto flex max-w-6xl flex-col items-center gap-6 px-6 text-sm text-muted-foreground sm:flex-row sm:justify-between">
-        <img src={logoBlack} alt="Mesaas" className="h-6 w-auto dark:hidden md:h-7" />
-        <img src={logoWhite} alt="Mesaas" className="h-6 w-auto hidden dark:block md:h-7" />
-        <div className="flex gap-6">
-          <a href="/politica-de-privacidade" className="hover:text-foreground transition-colors">
-            Política de Privacidade
+    <footer className="lp-footer">
+      <div className="lp-container">
+        <div className="footer-grid">
+          <div className="footer-col">
+            <img src="/logo-black.svg" style={{ height: 22 }} className="logo-light" alt="Mesaas" />
+            <img src="/logo-white.svg" style={{ height: 22 }} className="logo-dark" alt="Mesaas" />
+            <p className="footer-tag">Gestão inteligente para social media managers. Feito no Brasil, pensado para quem entrega conteúdo todo dia.</p>
+          </div>
+          <div className="footer-col">
+            <h5>Produto</h5>
+            <ul>
+              <li>
+                <a href="#features">Funcionalidades</a>
+              </li>
+              <li>
+                <a href="#how">Como funciona</a>
+              </li>
+              <li>
+                <a href="#pricing">Preços</a>
+              </li>
+              <li>
+                <a href="#faq">FAQ</a>
+              </li>
+            </ul>
+          </div>
+          <div className="footer-col">
+            <h5>Legal</h5>
+            <ul>
+              <li>
+                <a href="/politica-de-privacidade">Privacidade</a>
+              </li>
+              <li>
+                <a href="/termos-de-uso">Termos de uso</a>
+              </li>
+              <li>
+                <a href="/lgpd">LGPD</a>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div className="footer-bottom">
+        <span>© 2025 Mesaas. Todos os direitos reservados. · CNPJ 63.758.902/0001-01 — EBS IT SOLUTIONS</span>
+        <div className="footer-socials">
+          <a href="#">
+            <Instagram size={18} />
+          </a>
+          <a href="#">
+            <Linkedin size={18} />
+          </a>
+          <a href="#">
+            <Youtube size={18} />
           </a>
         </div>
-        <span>© 2025 Mesaas. Todos os direitos reservados. · CNPJ 63.758.902/0001-01 — EBS IT SOLUTIONS</span>
       </div>
     </footer>
   );

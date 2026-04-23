@@ -69,21 +69,27 @@ describe('LandingPage', () => {
   it('opens one FAQ answer at a time', () => {
     renderLandingPage();
 
-    const freeQuestion = screen.getByRole('button', { name: 'É gratuito?' });
+    const freeQuestion = screen.getByRole('button', { name: 'O Mesaas é gratuito mesmo?' });
     const installQuestion = screen.getByRole('button', { name: 'Preciso instalar alguma coisa?' });
 
     fireEvent.click(freeQuestion);
 
     expect(freeQuestion).toHaveAttribute('aria-expanded', 'true');
     expect(
-      screen.getByText('Sim, o Mesaas está em fase beta e é totalmente gratuito agora. Crie sua conta e comece hoje.'),
+      screen.getByText(
+        'Sim. Durante a fase beta, todas as funcionalidades são 100% gratuitas para todos os usuários. Quando os planos entrarem em vigor, quem já estava dentro recebe condições especiais.',
+      ),
     ).toBeInTheDocument();
 
     fireEvent.click(installQuestion);
 
     expect(freeQuestion).toHaveAttribute('aria-expanded', 'false');
     expect(installQuestion).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.queryByText(/totalmente gratuito agora/i)).not.toBeInTheDocument();
-    expect(screen.getByText('Não. É 100% web, funciona em qualquer navegador.')).toBeInTheDocument();
+    expect(screen.queryByText(/100% gratuitas para todos/i)).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Não. O Mesaas é 100% web e funciona em qualquer navegador moderno, no computador ou no celular. Nada para baixar, nada para configurar.',
+      ),
+    ).toBeInTheDocument();
   });
 });
