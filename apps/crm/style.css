@@ -4095,17 +4095,20 @@ body.role-agent input[name="valor_total"] {
 
 .drawer-panel {
   position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: min(540px, 100vw);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(1280px, 94vw);
+  max-height: 92vh;
   background: var(--card-bg, #fff);
-  border-left: 1px solid var(--border-color, #e5e7eb);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 16px;
   z-index: 9001;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  animation: drawerSlideIn 0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  box-shadow: 0 24px 80px -12px rgba(0, 0, 0, 0.25);
+  animation: drawerPopIn 0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 @keyframes drawerFadeIn {
@@ -4113,9 +4116,9 @@ body.role-agent input[name="valor_total"] {
   to   { opacity: 1; }
 }
 
-@keyframes drawerSlideIn {
-  from { transform: translateX(100%); }
-  to   { transform: translateX(0); }
+@keyframes drawerPopIn {
+  from { transform: translate(-50%, -50%) scale(0.95); opacity: 0; }
+  to   { transform: translate(-50%, -50%) scale(1); opacity: 1; }
 }
 
 .drawer-header {
@@ -4364,7 +4367,7 @@ body.role-agent input[name="valor_total"] {
 
 .drawer-post-meta-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 0.5rem;
 }
 
@@ -4501,6 +4504,18 @@ body.role-agent input[name="valor_total"] {
 }
 
 .drawer-reply-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+@media (max-width: 900px) {
+  .drawer-panel {
+    width: 100vw;
+    max-height: 100vh;
+    border-radius: 0;
+    top: 0;
+    left: 0;
+    transform: none;
+    animation: none;
+  }
+}
 
 /* ── Post tipo badge & status chip ─────────────────────────────────────────── */
 .post-tipo-badge {
