@@ -26,7 +26,7 @@ interface PostMediaGalleryProps {
 
 export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGalleryProps) {
   const qc = useQueryClient();
-  const { data: serverMedia } = useQuery({
+  const { data: serverMedia, isLoading: mediaLoading } = useQuery({
     queryKey: ['post-media', postId],
     queryFn: () => listPostMedia(postId),
     staleTime: 5 * 60 * 1000,
@@ -190,11 +190,21 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
     catch (e) { toast.error((e as Error).message); }
   }
 
+  if (mediaLoading) {
+    return (
+      <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+        {[1, 0.5, 0.2].map((opacity, i) => (
+          <div key={i} className="aspect-square rounded-xl bg-stone-100 dark:bg-stone-800 animate-pulse" style={{ opacity }} />
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3">
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={media.map((m) => m.id)} strategy={rectSortingStrategy}>
-          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+          <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
             {media.map((m, i) => (
               <SortableMediaTile
                 key={m.id}

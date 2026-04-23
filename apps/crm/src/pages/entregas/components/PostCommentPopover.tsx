@@ -25,8 +25,30 @@ function formatCommentDate(dateStr: string): string {
   });
 }
 
-function resolveAuthorName(authorId: string, membros: Membro[]): string {
-  return membros.find((m) => m.user_id === authorId)?.nome ?? 'Membro';
+function resolveMembro(authorId: string, membros: Membro[]): Membro | undefined {
+  return membros.find((m) => m.user_id === authorId);
+}
+
+function AuthorAvatar({ membro }: { membro: Membro | undefined }) {
+  const name = membro?.nome ?? 'Membro';
+  const initials = name
+    .split(' ')
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join('')
+    .toUpperCase();
+
+  if (membro?.avatar_url) {
+    return (
+      <img
+        src={membro.avatar_url}
+        alt={name}
+        className="comment-avatar"
+      />
+    );
+  }
+
+  return <span className="comment-avatar comment-avatar--initials">{initials}</span>;
 }
 
 function CommentItem({
@@ -53,6 +75,7 @@ function CommentItem({
 
   const isAuthor = comment.author_id === currentUserId;
   const canDelete = isAuthor || currentUserRole === 'owner' || currentUserRole === 'admin';
+  const membro = resolveMembro(comment.author_id, membros);
 
   useEffect(() => {
     if (editing && editRef.current) {
@@ -85,12 +108,36 @@ function CommentItem({
   return (
     <div className="comment-item">
       <div className="comment-item-header">
-        <span className="comment-item-author">
-          {resolveAuthorName(comment.author_id, membros)}
-        </span>
-        <span className="comment-item-date">
-          {formatCommentDate(comment.created_at)}
-        </span>
+        <AuthorAvatar membro={membro} />
+        <div className="comment-item-header-text">
+          <span className="comment-item-author">{membro?.nome ?? 'Membro'}</span>
+          <span className="comment-item-date">{formatCommentDate(comment.created_at)}</span>
+        </div>
+        {!readOnly && !editing && (isAuthor || canDelete) && (
+          <div className="comment-item-actions">
+            {isAuthor && (
+              <button
+                className="comment-item-action"
+                title="Editar"
+                onClick={() => {
+                  setEditContent(comment.content);
+                  setEditing(true);
+                }}
+              >
+                <Pencil size={12} />
+              </button>
+            )}
+            {canDelete && (
+              <button
+                className="comment-item-action comment-item-action--danger"
+                title="Excluir"
+                onClick={() => onDelete(comment.id)}
+              >
+                <Trash2 size={12} />
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {editing ? (
@@ -120,37 +167,12 @@ function CommentItem({
           </div>
         </>
       ) : (
-        <>
+        <div className="comment-item-body">
           <p className="comment-item-content">{comment.content}</p>
           {comment.updated_at && (
             <span className="comment-item-edited">(editado)</span>
           )}
-          {!readOnly && (isAuthor || canDelete) && (
-            <div className="comment-item-actions">
-              {isAuthor && (
-                <button
-                  className="comment-item-action"
-                  onClick={() => {
-                    setEditContent(comment.content);
-                    setEditing(true);
-                  }}
-                >
-                  <Pencil size={12} />
-                  Editar
-                </button>
-              )}
-              {canDelete && (
-                <button
-                  className="comment-item-action comment-item-action--danger"
-                  onClick={() => onDelete(comment.id)}
-                >
-                  <Trash2 size={12} />
-                  Excluir
-                </button>
-              )}
-            </div>
-          )}
-        </>
+        </div>
       )}
     </div>
   );
@@ -173,7 +195,6 @@ export default function PostCommentPopover({
   const [submitting, setSubmitting] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
 
-  // Close on Escape
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -184,7 +205,6 @@ export default function PostCommentPopover({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
-  // Scroll to bottom when comments change
   useEffect(() => {
     if (bodyRef.current) {
       bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
@@ -246,7 +266,7 @@ export default function PostCommentPopover({
               onClick={handleResolve}
               disabled={submitting}
             >
-              <Check size={16} />
+              <Check size={14} />
             </button>
           )}
           {!readOnly && thread.status === 'resolved' && (
@@ -256,7 +276,7 @@ export default function PostCommentPopover({
               onClick={handleReopen}
               disabled={submitting}
             >
-              <RotateCcw size={16} />
+              <RotateCcw size={14} />
             </button>
           )}
           <button
@@ -264,7 +284,7 @@ export default function PostCommentPopover({
             title="Fechar"
             onClick={onClose}
           >
-            <X size={16} />
+            <X size={14} />
           </button>
         </div>
       </div>
@@ -293,6 +313,7 @@ export default function PostCommentPopover({
             onChange={(e) => setReplyContent(e.target.value)}
             onKeyDown={handleReplyKeyDown}
             disabled={submitting}
+            rows={1}
           />
           <button
             className="comment-reply-submit"
