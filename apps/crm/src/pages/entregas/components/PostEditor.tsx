@@ -10,8 +10,12 @@ import { TextStyle } from '@tiptap/extension-text-style';
 import Highlight from '@tiptap/extension-highlight';
 import {
   Bold, Italic, Underline as UnderlineIcon, Link as LinkIcon,
-  List, ListOrdered, Baseline, Highlighter, Check,
+  List, ListOrdered, Baseline, Highlighter, Check, Lightbulb, MessageSquare,
 } from 'lucide-react';
+import { CalloutExtension } from './CalloutExtension';
+import { CommentHighlight } from './CommentHighlight';
+import PostCommentPopover from './PostCommentPopover';
+import type { CommentThreadWithComments, Membro } from '@/store';
 
 const TEXT_COLORS = [
   { name: 'Padrão', color: null },
@@ -41,9 +45,33 @@ interface PostEditorProps {
   initialContent: Record<string, unknown> | null;
   onUpdate: (json: Record<string, unknown>, plain: string) => void;
   disabled?: boolean;
+  threads?: CommentThreadWithComments[];
+  membros?: Membro[];
+  currentUserId?: string;
+  currentUserRole?: 'owner' | 'admin' | 'agent';
+  onCreateComment?: (quotedText: string, comment: string) => Promise<number>;
+  onReplyToComment?: (threadId: number, content: string) => Promise<void>;
+  onResolveThread?: (threadId: number) => Promise<void>;
+  onReopenThread?: (threadId: number) => Promise<void>;
+  onEditComment?: (commentId: number, content: string) => Promise<void>;
+  onDeleteComment?: (commentId: number, threadId: number) => Promise<void>;
 }
 
-export function PostEditor({ initialContent, onUpdate, disabled }: PostEditorProps) {
+export function PostEditor({
+  initialContent,
+  onUpdate,
+  disabled,
+  threads,
+  membros,
+  currentUserId,
+  currentUserRole,
+  onCreateComment,
+  onReplyToComment,
+  onResolveThread,
+  onReopenThread,
+  onEditComment,
+  onDeleteComment,
+}: PostEditorProps) {
   const [linkPopoverOpen, setLinkPopoverOpen] = useState(false);
   const [linkInputValue, setLinkInputValue] = useState('');
   const [textColorOpen, setTextColorOpen] = useState(false);
@@ -52,6 +80,12 @@ export function PostEditor({ initialContent, onUpdate, disabled }: PostEditorPro
   const textColorRef = useRef<HTMLDivElement>(null);
   const highlightRef = useRef<HTMLDivElement>(null);
   const isInitialized = useRef(false);
+  const [commentAddOpen, setCommentAddOpen] = useState(false);
+  const [commentAddText, setCommentAddText] = useState('');
+  const [activeThreadId, setActiveThreadId] = useState<number | null>(null);
+  const [commentSubmitting, setCommentSubmitting] = useState(false);
+  const commentAddRef = useRef<HTMLDivElement>(null);
+  const commentPopoverRef = useRef<HTMLDivElement>(null);
 
   const editor = useEditor({
     extensions: [
@@ -65,6 +99,8 @@ export function PostEditor({ initialContent, onUpdate, disabled }: PostEditorPro
       }),
       Link.configure({ openOnClick: false, autolink: true }),
       Placeholder.configure({ placeholder: 'Escreva o conteúdo do post...' }),
+      CalloutExtension,
+      CommentHighlight,
     ],
     content: initialContent ?? undefined,
     editable: !disabled,
@@ -88,10 +124,16 @@ export function PostEditor({ initialContent, onUpdate, disabled }: PostEditorPro
       if (highlightOpen && highlightRef.current && !highlightRef.current.contains(e.target as Node)) {
         setHighlightOpen(false);
       }
+      if (commentAddOpen && commentAddRef.current && !commentAddRef.current.contains(e.target as Node)) {
+        setCommentAddOpen(false);
+      }
+      if (activeThreadId != null && commentPopoverRef.current && !commentPopoverRef.current.contains(e.target as Node)) {
+        setActiveThreadId(null);
+      }
     };
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
-  }, [textColorOpen, highlightOpen]);
+  }, [textColorOpen, highlightOpen, commentAddOpen, activeThreadId]);
 
   const openLinkPopover = useCallback(() => {
     if (!editor) return;
@@ -139,6 +181,64 @@ export function PostEditor({ initialContent, onUpdate, disabled }: PostEditorPro
     setHighlightOpen(false);
   }, [editor]);
 
+  const handleAddComment = useCallback(async () => {
+    if (!editor || !onCreateComment || !commentAddText.trim()) return;
+    const { from, to } = editor.state.selection;
+    const quotedText = editor.state.doc.textBetween(from, to, ' ');
+    if (!quotedText.trim()) return;
+
+    setCommentSubmitting(true);
+    try {
+      const threadId = await onCreateComment(quotedText, commentAddText.trim());
+      editor.chain().focus().setCommentHighlight({ threadId }).run();
+      setCommentAddOpen(false);
+      setCommentAddText('');
+    } finally {
+      setCommentSubmitting(false);
+    }
+  }, [editor, onCreateComment, commentAddText]);
+
+  // Click handler for comment-highlighted text
+  useEffect(() => {
+    if (!editor) return;
+    const editorDom = editor.view.dom;
+    const handleEditorClick = (e: Event) => {
+      const target = e.target as HTMLElement;
+      const commentSpan = target.closest('span.comment-highlight') as HTMLElement | null;
+      if (commentSpan) {
+        const threadId = Number(commentSpan.getAttribute('data-thread-id'));
+        if (threadId) {
+          setActiveThreadId(threadId);
+          setCommentAddOpen(false);
+        }
+      }
+    };
+    editorDom.addEventListener('click', handleEditorClick);
+    return () => editorDom.removeEventListener('click', handleEditorClick);
+  }, [editor]);
+
+  const handleResolveThread = useCallback(async (threadId: number) => {
+    if (!onResolveThread) return;
+    await onResolveThread(threadId);
+    editor?.commands.updateCommentResolved(threadId, true);
+  }, [editor, onResolveThread]);
+
+  const handleReopenThread = useCallback(async (threadId: number) => {
+    if (!onReopenThread) return;
+    await onReopenThread(threadId);
+    editor?.commands.updateCommentResolved(threadId, false);
+  }, [editor, onReopenThread]);
+
+  const handleDeleteComment = useCallback(async (commentId: number, threadId: number) => {
+    if (!onDeleteComment) return;
+    await onDeleteComment(commentId, threadId);
+    const thread = threads?.find(t => t.id === threadId);
+    if (thread && thread.post_comments.length <= 1) {
+      editor?.commands.unsetCommentHighlight(threadId);
+      setActiveThreadId(null);
+    }
+  }, [editor, onDeleteComment, threads]);
+
   const currentTextColor = editor?.getAttributes('textStyle').color ?? null;
   const currentHighlight = editor?.getAttributes('highlight').color ?? null;
 
@@ -150,7 +250,7 @@ export function PostEditor({ initialContent, onUpdate, disabled }: PostEditorPro
             type="button"
             className={`post-editor-btn${editor?.isActive('bulletList') ? ' active' : ''}`}
             onMouseDown={e => { e.preventDefault(); editor?.chain().focus().toggleBulletList().run(); }}
-            title="Lista"
+            data-tooltip="Lista"
           >
             <List className="h-3.5 w-3.5" />
           </button>
@@ -158,9 +258,18 @@ export function PostEditor({ initialContent, onUpdate, disabled }: PostEditorPro
             type="button"
             className={`post-editor-btn${editor?.isActive('orderedList') ? ' active' : ''}`}
             onMouseDown={e => { e.preventDefault(); editor?.chain().focus().toggleOrderedList().run(); }}
-            title="Lista numerada"
+            data-tooltip="Lista numerada"
           >
             <ListOrdered className="h-3.5 w-3.5" />
+          </button>
+          <div className="post-editor-divider" />
+          <button
+            type="button"
+            className={`post-editor-btn${editor?.isActive('callout') ? ' active' : ''}`}
+            onMouseDown={e => { e.preventDefault(); editor?.chain().focus().insertCallout().run(); }}
+            data-tooltip="Callout"
+          >
+            <Lightbulb className="h-3.5 w-3.5" />
           </button>
           <div className="post-editor-char-count">
             {editor?.storage.characterCount?.characters?.() ?? editor?.getText().length ?? 0} / 2200
@@ -174,7 +283,7 @@ export function PostEditor({ initialContent, onUpdate, disabled }: PostEditorPro
             type="button"
             className={`post-editor-btn${editor.isActive('bold') ? ' active' : ''}`}
             onMouseDown={e => { e.preventDefault(); editor.chain().focus().toggleBold().run(); }}
-            title="Negrito"
+            data-tooltip="Negrito"
           >
             <Bold className="h-3.5 w-3.5" />
           </button>
@@ -182,7 +291,7 @@ export function PostEditor({ initialContent, onUpdate, disabled }: PostEditorPro
             type="button"
             className={`post-editor-btn${editor.isActive('italic') ? ' active' : ''}`}
             onMouseDown={e => { e.preventDefault(); editor.chain().focus().toggleItalic().run(); }}
-            title="Itálico"
+            data-tooltip="Itálico"
           >
             <Italic className="h-3.5 w-3.5" />
           </button>
@@ -190,7 +299,7 @@ export function PostEditor({ initialContent, onUpdate, disabled }: PostEditorPro
             type="button"
             className={`post-editor-btn${editor.isActive('underline') ? ' active' : ''}`}
             onMouseDown={e => { e.preventDefault(); editor.chain().focus().toggleUnderline().run(); }}
-            title="Sublinhado"
+            data-tooltip="Sublinhado"
           >
             <UnderlineIcon className="h-3.5 w-3.5" />
           </button>
@@ -200,7 +309,7 @@ export function PostEditor({ initialContent, onUpdate, disabled }: PostEditorPro
               type="button"
               className={`post-editor-btn${editor.isActive('link') ? ' active' : ''}`}
               onMouseDown={e => { e.preventDefault(); openLinkPopover(); }}
-              title="Inserir link"
+              data-tooltip="Inserir link"
             >
               <LinkIcon className="h-3.5 w-3.5" />
             </button>
@@ -239,7 +348,7 @@ export function PostEditor({ initialContent, onUpdate, disabled }: PostEditorPro
                 setHighlightOpen(false);
                 setLinkPopoverOpen(false);
               }}
-              title="Cor do texto"
+              data-tooltip="Cor do texto"
               style={{ position: 'relative' }}
             >
               <Baseline className="h-3.5 w-3.5" />
@@ -286,7 +395,7 @@ export function PostEditor({ initialContent, onUpdate, disabled }: PostEditorPro
                 setTextColorOpen(false);
                 setLinkPopoverOpen(false);
               }}
-              title="Cor de fundo"
+              data-tooltip="Cor de fundo"
               style={{ position: 'relative' }}
             >
               <Highlighter className="h-3.5 w-3.5" />
@@ -324,10 +433,81 @@ export function PostEditor({ initialContent, onUpdate, disabled }: PostEditorPro
               </div>
             )}
           </div>
+
+          <div className="post-editor-divider" />
+
+          {/* Comment button */}
+          <div className="comment-add-wrapper" ref={commentAddRef}>
+            <button
+              type="button"
+              className="post-editor-btn"
+              onMouseDown={e => {
+                e.preventDefault();
+                setCommentAddOpen(v => !v);
+                setTextColorOpen(false);
+                setHighlightOpen(false);
+                setLinkPopoverOpen(false);
+              }}
+              data-tooltip="Comentar"
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+            </button>
+            {commentAddOpen && (
+              <div className="comment-add-popover" onMouseDown={e => e.stopPropagation()}>
+                <div className="comment-add-label">Adicionar comentário</div>
+                <textarea
+                  className="comment-add-input"
+                  placeholder="Escreva seu comentário..."
+                  value={commentAddText}
+                  onChange={e => setCommentAddText(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleAddComment();
+                    }
+                    if (e.key === 'Escape') setCommentAddOpen(false);
+                  }}
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  className="comment-add-submit"
+                  onClick={handleAddComment}
+                  disabled={!commentAddText.trim() || commentSubmitting}
+                >
+                  Comentar
+                </button>
+              </div>
+            )}
+          </div>
         </BubbleMenu>
       )}
 
       <EditorContent editor={editor} className="post-editor-content" />
+
+      {activeThreadId != null && threads && currentUserId && currentUserRole && (
+        <div ref={commentPopoverRef} style={{ position: 'relative' }}>
+          {(() => {
+            const thread = threads.find(t => t.id === activeThreadId);
+            if (!thread) return null;
+            return (
+              <PostCommentPopover
+                thread={thread}
+                membros={membros ?? []}
+                currentUserId={currentUserId}
+                currentUserRole={currentUserRole}
+                onReply={onReplyToComment ?? (async () => {})}
+                onResolve={handleResolveThread}
+                onReopen={handleReopenThread}
+                onEditComment={onEditComment ?? (async () => {})}
+                onDeleteComment={handleDeleteComment}
+                onClose={() => setActiveThreadId(null)}
+                readOnly={disabled}
+              />
+            );
+          })()}
+        </div>
+      )}
     </div>
   );
 }
