@@ -4786,6 +4786,16 @@ body.role-agent input[name="valor_total"] {
   opacity: 0.5;
 }
 
+/* Dark mode: show darker highlight swatches so they're visible on dark surface */
+[data-theme="dark"] .color-swatch[data-highlight="gray"]   { background: #373737 !important; }
+[data-theme="dark"] .color-swatch[data-highlight="brown"]  { background: #4C3228 !important; }
+[data-theme="dark"] .color-swatch[data-highlight="orange"] { background: #5C3B1E !important; }
+[data-theme="dark"] .color-swatch[data-highlight="yellow"] { background: #564328 !important; }
+[data-theme="dark"] .color-swatch[data-highlight="green"]  { background: #2B4632 !important; }
+[data-theme="dark"] .color-swatch[data-highlight="blue"]   { background: #28456C !important; }
+[data-theme="dark"] .color-swatch[data-highlight="purple"] { background: #412F5A !important; }
+[data-theme="dark"] .color-swatch[data-highlight="pink"]   { background: #5C2746 !important; }
+
 /* ── ProseMirror highlight mark rendering ──────────────────────────────────── */
 /* !important overrides inline style="background-color:..." set by TipTap Highlight multicolor */
 .post-editor-content .ProseMirror mark[data-color] {

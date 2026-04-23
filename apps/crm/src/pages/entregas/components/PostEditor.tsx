@@ -307,6 +307,7 @@ export function PostEditor({ initialContent, onUpdate, disabled }: PostEditorPro
                       type="button"
                       className={`color-swatch${currentHighlight === hc.color || (!currentHighlight && !hc.color) ? ' active' : ''}${!hc.color ? ' color-swatch--default' : ''}`}
                       style={hc.color ? { background: hc.cssColor } : undefined}
+                      data-highlight={hc.color ?? undefined}
                       title={hc.name}
                       onMouseDown={e => {
                         e.preventDefault();
