@@ -89,6 +89,7 @@ export function PostEditor({
   const [threadPopoverPos, setThreadPopoverPos] = useState<{ top: number; left: number } | null>(null);
   const commentBtnRef = useRef<HTMLButtonElement>(null);
   const commentAddRef = useRef<HTMLDivElement>(null);
+  const commentAddWrapperRef = useRef<HTMLDivElement>(null);
   const commentPopoverRef = useRef<HTMLDivElement>(null);
 
   const editor = useEditor({
@@ -128,8 +129,10 @@ export function PostEditor({
       if (highlightOpen && highlightRef.current && !highlightRef.current.contains(e.target as Node)) {
         setHighlightOpen(false);
       }
-      if (commentAddOpen && commentAddRef.current && !commentAddRef.current.contains(e.target as Node)) {
-        setCommentAddOpen(false);
+      if (commentAddOpen) {
+        const inPortal = commentAddRef.current?.contains(e.target as Node);
+        const inWrapper = commentAddWrapperRef.current?.contains(e.target as Node);
+        if (!inPortal && !inWrapper) setCommentAddOpen(false);
       }
       if (activeThreadId != null && commentPopoverRef.current && !commentPopoverRef.current.contains(e.target as Node)) {
         setActiveThreadId(null);
@@ -443,7 +446,7 @@ export function PostEditor({
           <div className="post-editor-divider" />
 
           {/* Comment button */}
-          <div className="comment-add-wrapper" ref={commentAddRef}>
+          <div className="comment-add-wrapper" ref={commentAddWrapperRef}>
             <button
               ref={commentBtnRef}
               type="button"
@@ -463,44 +466,45 @@ export function PostEditor({
             >
               <MessageSquare className="h-3.5 w-3.5" />
             </button>
-            {commentAddOpen && commentAddPos && createPortal(
-              <div
-                ref={commentAddRef}
-                className="comment-add-popover"
-                style={{ position: 'fixed', top: commentAddPos.top, left: commentAddPos.left, zIndex: 9999 }}
-                onMouseDown={e => e.stopPropagation()}
-              >
-                <div className="comment-add-label">Adicionar comentário</div>
-                <textarea
-                  className="comment-add-input"
-                  placeholder="Escreva seu comentário..."
-                  value={commentAddText}
-                  onChange={e => setCommentAddText(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      handleAddComment();
-                    }
-                    if (e.key === 'Escape') setCommentAddOpen(false);
-                  }}
-                  autoFocus
-                />
-                <button
-                  type="button"
-                  className="comment-add-submit"
-                  onClick={handleAddComment}
-                  disabled={!commentAddText.trim() || commentSubmitting}
-                >
-                  Comentar
-                </button>
-              </div>,
-              document.body,
-            )}
           </div>
         </BubbleMenu>
       )}
 
       <EditorContent editor={editor} className="post-editor-content" />
+
+      {commentAddOpen && commentAddPos && createPortal(
+        <div
+          ref={commentAddRef}
+          className="comment-add-popover"
+          style={{ position: 'fixed', top: commentAddPos.top, left: commentAddPos.left, zIndex: 9999 }}
+          onMouseDown={e => e.stopPropagation()}
+        >
+          <div className="comment-add-label">Adicionar comentário</div>
+          <textarea
+            className="comment-add-input"
+            placeholder="Escreva seu comentário..."
+            value={commentAddText}
+            onChange={e => setCommentAddText(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleAddComment();
+              }
+              if (e.key === 'Escape') setCommentAddOpen(false);
+            }}
+            autoFocus
+          />
+          <button
+            type="button"
+            className="comment-add-submit"
+            onClick={handleAddComment}
+            disabled={!commentAddText.trim() || commentSubmitting}
+          >
+            Comentar
+          </button>
+        </div>,
+        document.body,
+      )}
 
       {activeThreadId != null && threadPopoverPos && threads && currentUserId && currentUserRole &&
         createPortal(
