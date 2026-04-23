@@ -30,7 +30,7 @@ const VIEW_TABS: { id: ActiveView; label: string; icon: React.ReactNode }[] = [
 
 export default function EntregasPage() {
   const [activeView, setActiveView] = useState<ActiveView>('kanban');
-  const [filters, setFilters] = useState<FilterState>({ filterCliente: null, filterMembro: null, filterStatus: 'todos', filterSearch: '', filterEtapa: null, filterTemplate: null });
+  const [filters, setFilters] = useState<FilterState>({ filterCliente: null, filterMembro: null, filterPostResponsavel: null, filterStatus: 'todos', filterSearch: '', filterEtapa: null, filterTemplate: null });
   const [listSort, setListSort] = useState<{ column: string; direction: 'asc' | 'desc' }>({ column: 'titulo', direction: 'asc' });
   const [newWorkflowOpen, setNewWorkflowOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
@@ -39,7 +39,7 @@ export default function EntregasPage() {
   const [recurringWfId, setRecurringWfId] = useState<number | null>(null);
 
   const [searchParams, setSearchParams] = useSearchParams();
-  const { clientes, membros, templates, cards, activeWorkflows, postsCounts, approvedPostsCounts, isLoading, refresh } = useEntregasData();
+  const { clientes, membros, templates, cards, activeWorkflows, postsCounts, approvedPostsCounts, postResponsaveis, isLoading, refresh } = useEntregasData();
 
   // Auto-open drawer when navigated with ?drawer=<workflowId>
   const pendingDrawerId = useRef<number | null>(null);
@@ -77,6 +77,10 @@ export default function EntregasPage() {
   }
   if (filters.filterCliente) filteredCards = filteredCards.filter(c => c.workflow.cliente_id === filters.filterCliente);
   if (filters.filterMembro) filteredCards = filteredCards.filter(c => c.etapa.responsavel_id === filters.filterMembro);
+  if (filters.filterPostResponsavel) filteredCards = filteredCards.filter(c => {
+    const responsaveis = postResponsaveis.get(c.workflow.id!);
+    return responsaveis?.includes(filters.filterPostResponsavel!) ?? false;
+  });
   if (filters.filterEtapa) filteredCards = filteredCards.filter(c => c.etapa.nome === filters.filterEtapa);
   if (filters.filterTemplate) filteredCards = filteredCards.filter(c => c.workflow.template_id === filters.filterTemplate);
   if (filters.filterStatus === 'atrasado') filteredCards = filteredCards.filter(c => c.deadline.estourado);

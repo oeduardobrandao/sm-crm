@@ -1397,6 +1397,25 @@ export async function getWorkflowApprovedPostsCounts(
   return counts;
 }
 
+export async function getWorkflowPostResponsaveis(
+  workflowIds: number[]
+): Promise<Map<number, number[]>> {
+  const map = new Map<number, number[]>();
+  if (workflowIds.length === 0) return map;
+  const { data, error } = await supabase
+    .from('workflow_posts')
+    .select('workflow_id, responsavel_id')
+    .in('workflow_id', workflowIds)
+    .not('responsavel_id', 'is', null);
+  if (error) throw error;
+  for (const row of (data ?? []) as { workflow_id: number; responsavel_id: number }[]) {
+    const arr = map.get(row.workflow_id) ?? [];
+    if (!arr.includes(row.responsavel_id)) arr.push(row.responsavel_id);
+    map.set(row.workflow_id, arr);
+  }
+  return map;
+}
+
 export async function addWorkflowPost(
   p: Omit<WorkflowPost, 'id' | 'conta_id' | 'created_at' | 'updated_at'>
 ): Promise<WorkflowPost> {
