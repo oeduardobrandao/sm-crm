@@ -4577,7 +4577,7 @@ body.role-agent input[name="valor_total"] {
   border: 1px solid var(--border-color);
   border-radius: 8px;
   overflow: hidden;
-  background: var(--surface-1);
+  background: var(--card-bg);
 }
 
 .post-editor--readonly {
@@ -4876,9 +4876,6 @@ body.role-agent input[name="valor_total"] {
   position: relative;
 }
 .comment-popover {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
   z-index: 60;
   width: 320px;
   max-height: 400px;
@@ -5083,9 +5080,6 @@ body.role-agent input[name="valor_total"] {
   position: relative;
 }
 .comment-add-popover {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
   z-index: 55;
   width: 280px;
   background: var(--surface-main);
@@ -5353,10 +5347,8 @@ body.role-agent input[name="valor_total"] {
 }
 
 .callout-emoji-picker {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  z-index: 30;
+  position: fixed;
+  z-index: 9999;
   background: var(--surface-1);
   border: 1px solid var(--border-color);
   border-radius: 8px;

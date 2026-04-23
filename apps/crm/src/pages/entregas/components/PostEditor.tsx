@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { BubbleMenu } from '@tiptap/react/menus';
 import StarterKit from '@tiptap/starter-kit';
@@ -84,6 +85,9 @@ export function PostEditor({
   const [commentAddText, setCommentAddText] = useState('');
   const [activeThreadId, setActiveThreadId] = useState<number | null>(null);
   const [commentSubmitting, setCommentSubmitting] = useState(false);
+  const [commentAddPos, setCommentAddPos] = useState<{ top: number; left: number } | null>(null);
+  const [threadPopoverPos, setThreadPopoverPos] = useState<{ top: number; left: number } | null>(null);
+  const commentBtnRef = useRef<HTMLButtonElement>(null);
   const commentAddRef = useRef<HTMLDivElement>(null);
   const commentPopoverRef = useRef<HTMLDivElement>(null);
 
@@ -208,6 +212,8 @@ export function PostEditor({
       if (commentSpan) {
         const threadId = Number(commentSpan.getAttribute('data-thread-id'));
         if (threadId) {
+          const rect = commentSpan.getBoundingClientRect();
+          setThreadPopoverPos({ top: rect.bottom + 6, left: rect.left });
           setActiveThreadId(threadId);
           setCommentAddOpen(false);
         }
@@ -439,10 +445,15 @@ export function PostEditor({
           {/* Comment button */}
           <div className="comment-add-wrapper" ref={commentAddRef}>
             <button
+              ref={commentBtnRef}
               type="button"
               className="post-editor-btn"
               onMouseDown={e => {
                 e.preventDefault();
+                if (!commentAddOpen && commentBtnRef.current) {
+                  const rect = commentBtnRef.current.getBoundingClientRect();
+                  setCommentAddPos({ top: rect.bottom + 6, left: rect.left });
+                }
                 setCommentAddOpen(v => !v);
                 setTextColorOpen(false);
                 setHighlightOpen(false);
@@ -452,8 +463,13 @@ export function PostEditor({
             >
               <MessageSquare className="h-3.5 w-3.5" />
             </button>
-            {commentAddOpen && (
-              <div className="comment-add-popover" onMouseDown={e => e.stopPropagation()}>
+            {commentAddOpen && commentAddPos && createPortal(
+              <div
+                ref={commentAddRef}
+                className="comment-add-popover"
+                style={{ position: 'fixed', top: commentAddPos.top, left: commentAddPos.left, zIndex: 9999 }}
+                onMouseDown={e => e.stopPropagation()}
+              >
                 <div className="comment-add-label">Adicionar comentário</div>
                 <textarea
                   className="comment-add-input"
@@ -477,7 +493,8 @@ export function PostEditor({
                 >
                   Comentar
                 </button>
-              </div>
+              </div>,
+              document.body,
             )}
           </div>
         </BubbleMenu>
@@ -485,29 +502,35 @@ export function PostEditor({
 
       <EditorContent editor={editor} className="post-editor-content" />
 
-      {activeThreadId != null && threads && currentUserId && currentUserRole && (
-        <div ref={commentPopoverRef} style={{ position: 'relative' }}>
-          {(() => {
-            const thread = threads.find(t => t.id === activeThreadId);
-            if (!thread) return null;
-            return (
-              <PostCommentPopover
-                thread={thread}
-                membros={membros ?? []}
-                currentUserId={currentUserId}
-                currentUserRole={currentUserRole}
-                onReply={onReplyToComment ?? (async () => {})}
-                onResolve={handleResolveThread}
-                onReopen={handleReopenThread}
-                onEditComment={onEditComment ?? (async () => {})}
-                onDeleteComment={handleDeleteComment}
-                onClose={() => setActiveThreadId(null)}
-                readOnly={disabled}
-              />
-            );
-          })()}
-        </div>
-      )}
+      {activeThreadId != null && threadPopoverPos && threads && currentUserId && currentUserRole &&
+        createPortal(
+          <div
+            ref={commentPopoverRef}
+            style={{ position: 'fixed', top: threadPopoverPos.top, left: threadPopoverPos.left, zIndex: 9999 }}
+          >
+            {(() => {
+              const thread = threads.find(t => t.id === activeThreadId);
+              if (!thread) return null;
+              return (
+                <PostCommentPopover
+                  thread={thread}
+                  membros={membros ?? []}
+                  currentUserId={currentUserId}
+                  currentUserRole={currentUserRole}
+                  onReply={onReplyToComment ?? (async () => {})}
+                  onResolve={handleResolveThread}
+                  onReopen={handleReopenThread}
+                  onEditComment={onEditComment ?? (async () => {})}
+                  onDeleteComment={handleDeleteComment}
+                  onClose={() => setActiveThreadId(null)}
+                  readOnly={disabled}
+                />
+              );
+            })()}
+          </div>,
+          document.body,
+        )
+      }
     </div>
   );
 }
