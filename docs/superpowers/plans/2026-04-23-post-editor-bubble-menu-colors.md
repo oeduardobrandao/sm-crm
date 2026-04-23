@@ -1,5 +1,206 @@
+# PostEditor BubbleMenu & Text Colors Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Replace PostEditor's fixed inline formatting toolbar with a floating BubbleMenu and add Notion-like text color and background highlight options.
+
+**Architecture:** Add TipTap extensions (Color, TextStyle, Highlight) to the editor. Move inline formatting buttons (bold, italic, underline, link) plus new color/highlight dropdowns into a BubbleMenu component. Simplify the fixed top bar to only block-level controls (lists) and character count. Color dropdowns render as small popovers with swatch grids.
+
+**Tech Stack:** TipTap v3, React, CSS custom properties for dark mode, lucide-react icons
+
+---
+
+### Task 1: Install TipTap extensions
+
+**Files:**
+- Modify: `package.json`
+
+- [ ] **Step 1: Install the three new TipTap extensions**
+
+Run:
+```bash
+npm install @tiptap/extension-color @tiptap/extension-text-style @tiptap/extension-highlight
+```
+
+- [ ] **Step 2: Verify installation**
+
+Run: `npm ls @tiptap/extension-color @tiptap/extension-text-style @tiptap/extension-highlight`
+Expected: All three listed without errors
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add package.json package-lock.json
+git commit -m "chore: add tiptap color, text-style, and highlight extensions"
+```
+
+---
+
+### Task 2: Add CSS styles for BubbleMenu, color dropdowns, and highlight dark mode
+
+**Files:**
+- Modify: `apps/crm/style.css:4561-4725` (post-editor section)
+
+- [ ] **Step 1: Add BubbleMenu styles, color dropdown styles, and dark mode highlight overrides**
+
+Insert the following CSS **after** the `.post-editor-link-remove` block (after line 4679) and **before** the `/* ── Edit Workflow Modal footer */` comment (line 4681):
+
+```css
+/* ── BubbleMenu ────────────────────────────────────────────────────────────── */
+.bubble-menu {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.3rem 0.4rem;
+  background: var(--surface-1);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+}
+[data-theme="dark"] .bubble-menu {
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+.bubble-menu .post-editor-btn { width: 28px; height: 28px; }
+
+.bubble-menu .post-editor-link-wrapper { position: relative; }
+
+/* ── Color dropdown ────────────────────────────────────────────────────────── */
+.color-dropdown-wrapper { position: relative; }
+
+.color-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  background: var(--surface-1);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 0.5rem;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  white-space: nowrap;
+}
+[data-theme="dark"] .color-dropdown {
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+.color-dropdown-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.35rem;
+}
+.color-dropdown-grid {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+  max-width: 196px;
+}
+
+.color-swatch {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-color);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+.color-swatch:hover {
+  transform: scale(1.15);
+  box-shadow: 0 0 0 2px var(--surface-3);
+}
+.color-swatch.active {
+  box-shadow: 0 0 0 2px var(--primary-color);
+  border-color: var(--primary-color);
+}
+.color-swatch--default {
+  background: var(--surface-2);
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+.color-swatch svg.swatch-check {
+  width: 12px;
+  height: 12px;
+  color: #fff;
+}
+.color-swatch--default svg.swatch-check {
+  color: var(--text-color);
+}
+
+/* Color indicator bar under the text-color button */
+.color-indicator {
+  position: absolute;
+  bottom: 2px;
+  left: 5px;
+  right: 5px;
+  height: 3px;
+  border-radius: 1px;
+  background: currentColor;
+}
+
+/* Highlight indicator background on the highlight button */
+.highlight-indicator {
+  position: absolute;
+  inset: 4px;
+  border-radius: 3px;
+  z-index: -1;
+  opacity: 0.5;
+}
+
+/* ── ProseMirror highlight mark rendering ──────────────────────────────────── */
+/* !important overrides inline style="background-color:..." set by TipTap Highlight multicolor */
+.post-editor-content .ProseMirror mark[data-color] {
+  border-radius: 3px;
+  padding: 0.05em 0.15em;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.post-editor-content .ProseMirror mark[data-color="gray"]   { background-color: #E3E2E0 !important; }
+.post-editor-content .ProseMirror mark[data-color="brown"]  { background-color: #EEE0DA !important; }
+.post-editor-content .ProseMirror mark[data-color="orange"] { background-color: #FADEC9 !important; }
+.post-editor-content .ProseMirror mark[data-color="yellow"] { background-color: #FBF3DB !important; }
+.post-editor-content .ProseMirror mark[data-color="green"]  { background-color: #DBEDDB !important; }
+.post-editor-content .ProseMirror mark[data-color="blue"]   { background-color: #D3E5EF !important; }
+.post-editor-content .ProseMirror mark[data-color="purple"] { background-color: #E8DEEE !important; }
+.post-editor-content .ProseMirror mark[data-color="pink"]   { background-color: #F4DFEB !important; }
+
+[data-theme="dark"] .post-editor-content .ProseMirror mark[data-color="gray"]   { background-color: #373737 !important; }
+[data-theme="dark"] .post-editor-content .ProseMirror mark[data-color="brown"]  { background-color: #4C3228 !important; }
+[data-theme="dark"] .post-editor-content .ProseMirror mark[data-color="orange"] { background-color: #5C3B1E !important; }
+[data-theme="dark"] .post-editor-content .ProseMirror mark[data-color="yellow"] { background-color: #564328 !important; }
+[data-theme="dark"] .post-editor-content .ProseMirror mark[data-color="green"]  { background-color: #2B4632 !important; }
+[data-theme="dark"] .post-editor-content .ProseMirror mark[data-color="blue"]   { background-color: #28456C !important; }
+[data-theme="dark"] .post-editor-content .ProseMirror mark[data-color="purple"] { background-color: #412F5A !important; }
+[data-theme="dark"] .post-editor-content .ProseMirror mark[data-color="pink"]   { background-color: #5C2746 !important; }
+```
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add apps/crm/style.css
+git commit -m "style: add bubble menu, color dropdown, and highlight dark mode CSS"
+```
+
+---
+
+### Task 3: Rewrite PostEditor with BubbleMenu, color extensions, and color dropdowns
+
+**Files:**
+- Modify: `apps/crm/src/pages/entregas/components/PostEditor.tsx`
+
+- [ ] **Step 1: Replace the entire PostEditor.tsx with the updated implementation**
+
+Replace the full contents of `apps/crm/src/pages/entregas/components/PostEditor.tsx` with:
+
+```tsx
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { createPortal } from 'react-dom';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { BubbleMenu } from '@tiptap/react/menus';
 import StarterKit from '@tiptap/starter-kit';
@@ -7,16 +208,12 @@ import Placeholder from '@tiptap/extension-placeholder';
 import UnderlineExt from '@tiptap/extension-underline';
 import Link from '@tiptap/extension-link';
 import Color from '@tiptap/extension-color';
-import { TextStyle } from '@tiptap/extension-text-style';
+import TextStyle from '@tiptap/extension-text-style';
 import Highlight from '@tiptap/extension-highlight';
 import {
   Bold, Italic, Underline as UnderlineIcon, Link as LinkIcon,
-  List, ListOrdered, Baseline, Highlighter, Check, Lightbulb, MessageSquare,
+  List, ListOrdered, Baseline, Highlighter, Check,
 } from 'lucide-react';
-import { CalloutExtension } from './CalloutExtension';
-import { CommentHighlight } from './CommentHighlight';
-import PostCommentPopover from './PostCommentPopover';
-import type { CommentThreadWithComments, Membro } from '@/store';
 
 const TEXT_COLORS = [
   { name: 'Padrão', color: null },
@@ -46,33 +243,9 @@ interface PostEditorProps {
   initialContent: Record<string, unknown> | null;
   onUpdate: (json: Record<string, unknown>, plain: string) => void;
   disabled?: boolean;
-  threads?: CommentThreadWithComments[];
-  membros?: Membro[];
-  currentUserId?: string;
-  currentUserRole?: 'owner' | 'admin' | 'agent';
-  onCreateComment?: (quotedText: string, comment: string) => Promise<number>;
-  onReplyToComment?: (threadId: number, content: string) => Promise<void>;
-  onResolveThread?: (threadId: number) => Promise<void>;
-  onReopenThread?: (threadId: number) => Promise<void>;
-  onEditComment?: (commentId: number, content: string) => Promise<void>;
-  onDeleteComment?: (commentId: number, threadId: number) => Promise<void>;
 }
 
-export function PostEditor({
-  initialContent,
-  onUpdate,
-  disabled,
-  threads,
-  membros,
-  currentUserId,
-  currentUserRole,
-  onCreateComment,
-  onReplyToComment,
-  onResolveThread,
-  onReopenThread,
-  onEditComment,
-  onDeleteComment,
-}: PostEditorProps) {
+export function PostEditor({ initialContent, onUpdate, disabled }: PostEditorProps) {
   const [linkPopoverOpen, setLinkPopoverOpen] = useState(false);
   const [linkInputValue, setLinkInputValue] = useState('');
   const [textColorOpen, setTextColorOpen] = useState(false);
@@ -81,16 +254,6 @@ export function PostEditor({
   const textColorRef = useRef<HTMLDivElement>(null);
   const highlightRef = useRef<HTMLDivElement>(null);
   const isInitialized = useRef(false);
-  const [commentAddOpen, setCommentAddOpen] = useState(false);
-  const [commentAddText, setCommentAddText] = useState('');
-  const [activeThreadId, setActiveThreadId] = useState<number | null>(null);
-  const [commentSubmitting, setCommentSubmitting] = useState(false);
-  const [commentAddPos, setCommentAddPos] = useState<{ top: number; left: number } | null>(null);
-  const [threadPopoverPos, setThreadPopoverPos] = useState<{ top: number; left: number } | null>(null);
-  const commentBtnRef = useRef<HTMLButtonElement>(null);
-  const commentAddRef = useRef<HTMLDivElement>(null);
-  const commentAddWrapperRef = useRef<HTMLDivElement>(null);
-  const commentPopoverRef = useRef<HTMLDivElement>(null);
 
   const editor = useEditor({
     extensions: [
@@ -104,8 +267,6 @@ export function PostEditor({
       }),
       Link.configure({ openOnClick: false, autolink: true }),
       Placeholder.configure({ placeholder: 'Escreva o conteúdo do post...' }),
-      CalloutExtension,
-      CommentHighlight,
     ],
     content: initialContent ?? undefined,
     editable: !disabled,
@@ -129,18 +290,10 @@ export function PostEditor({
       if (highlightOpen && highlightRef.current && !highlightRef.current.contains(e.target as Node)) {
         setHighlightOpen(false);
       }
-      if (commentAddOpen) {
-        const inPortal = commentAddRef.current?.contains(e.target as Node);
-        const inWrapper = commentAddWrapperRef.current?.contains(e.target as Node);
-        if (!inPortal && !inWrapper) setCommentAddOpen(false);
-      }
-      if (activeThreadId != null && commentPopoverRef.current && !commentPopoverRef.current.contains(e.target as Node)) {
-        setActiveThreadId(null);
-      }
     };
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
-  }, [textColorOpen, highlightOpen, commentAddOpen, activeThreadId]);
+  }, [textColorOpen, highlightOpen]);
 
   const openLinkPopover = useCallback(() => {
     if (!editor) return;
@@ -188,66 +341,6 @@ export function PostEditor({
     setHighlightOpen(false);
   }, [editor]);
 
-  const handleAddComment = useCallback(async () => {
-    if (!editor || !onCreateComment || !commentAddText.trim()) return;
-    const { from, to } = editor.state.selection;
-    const quotedText = editor.state.doc.textBetween(from, to, ' ');
-    if (!quotedText.trim()) return;
-
-    setCommentSubmitting(true);
-    try {
-      const threadId = await onCreateComment(quotedText, commentAddText.trim());
-      editor.chain().focus().setCommentHighlight({ threadId }).run();
-      setCommentAddOpen(false);
-      setCommentAddText('');
-    } finally {
-      setCommentSubmitting(false);
-    }
-  }, [editor, onCreateComment, commentAddText]);
-
-  // Click handler for comment-highlighted text
-  useEffect(() => {
-    if (!editor) return;
-    const editorDom = editor.view.dom;
-    const handleEditorClick = (e: Event) => {
-      const target = e.target as HTMLElement;
-      const commentSpan = target.closest('span.comment-highlight') as HTMLElement | null;
-      if (commentSpan) {
-        const threadId = Number(commentSpan.getAttribute('data-thread-id'));
-        if (threadId) {
-          const rect = commentSpan.getBoundingClientRect();
-          setThreadPopoverPos({ top: rect.bottom + 6, left: rect.left });
-          setActiveThreadId(threadId);
-          setCommentAddOpen(false);
-        }
-      }
-    };
-    editorDom.addEventListener('click', handleEditorClick);
-    return () => editorDom.removeEventListener('click', handleEditorClick);
-  }, [editor]);
-
-  const handleResolveThread = useCallback(async (threadId: number) => {
-    if (!onResolveThread) return;
-    await onResolveThread(threadId);
-    editor?.commands.updateCommentResolved(threadId, true);
-  }, [editor, onResolveThread]);
-
-  const handleReopenThread = useCallback(async (threadId: number) => {
-    if (!onReopenThread) return;
-    await onReopenThread(threadId);
-    editor?.commands.updateCommentResolved(threadId, false);
-  }, [editor, onReopenThread]);
-
-  const handleDeleteComment = useCallback(async (commentId: number, threadId: number) => {
-    if (!onDeleteComment) return;
-    await onDeleteComment(commentId, threadId);
-    const thread = threads?.find(t => t.id === threadId);
-    if (thread && thread.post_comments.length <= 1) {
-      editor?.commands.unsetCommentHighlight(threadId);
-      setActiveThreadId(null);
-    }
-  }, [editor, onDeleteComment, threads]);
-
   const currentTextColor = editor?.getAttributes('textStyle').color ?? null;
   const currentHighlight = editor?.getAttributes('highlight').color ?? null;
 
@@ -259,7 +352,7 @@ export function PostEditor({
             type="button"
             className={`post-editor-btn${editor?.isActive('bulletList') ? ' active' : ''}`}
             onMouseDown={e => { e.preventDefault(); editor?.chain().focus().toggleBulletList().run(); }}
-            data-tooltip="Lista"
+            title="Lista"
           >
             <List className="h-3.5 w-3.5" />
           </button>
@@ -267,18 +360,9 @@ export function PostEditor({
             type="button"
             className={`post-editor-btn${editor?.isActive('orderedList') ? ' active' : ''}`}
             onMouseDown={e => { e.preventDefault(); editor?.chain().focus().toggleOrderedList().run(); }}
-            data-tooltip="Lista numerada"
+            title="Lista numerada"
           >
             <ListOrdered className="h-3.5 w-3.5" />
-          </button>
-          <div className="post-editor-divider" />
-          <button
-            type="button"
-            className={`post-editor-btn${editor?.isActive('callout') ? ' active' : ''}`}
-            onMouseDown={e => { e.preventDefault(); editor?.chain().focus().insertCallout().run(); }}
-            data-tooltip="Callout"
-          >
-            <Lightbulb className="h-3.5 w-3.5" />
           </button>
           <div className="post-editor-char-count">
             {editor?.storage.characterCount?.characters?.() ?? editor?.getText().length ?? 0} / 2200
@@ -292,7 +376,7 @@ export function PostEditor({
             type="button"
             className={`post-editor-btn${editor.isActive('bold') ? ' active' : ''}`}
             onMouseDown={e => { e.preventDefault(); editor.chain().focus().toggleBold().run(); }}
-            data-tooltip="Negrito"
+            title="Negrito"
           >
             <Bold className="h-3.5 w-3.5" />
           </button>
@@ -300,7 +384,7 @@ export function PostEditor({
             type="button"
             className={`post-editor-btn${editor.isActive('italic') ? ' active' : ''}`}
             onMouseDown={e => { e.preventDefault(); editor.chain().focus().toggleItalic().run(); }}
-            data-tooltip="Itálico"
+            title="Itálico"
           >
             <Italic className="h-3.5 w-3.5" />
           </button>
@@ -308,7 +392,7 @@ export function PostEditor({
             type="button"
             className={`post-editor-btn${editor.isActive('underline') ? ' active' : ''}`}
             onMouseDown={e => { e.preventDefault(); editor.chain().focus().toggleUnderline().run(); }}
-            data-tooltip="Sublinhado"
+            title="Sublinhado"
           >
             <UnderlineIcon className="h-3.5 w-3.5" />
           </button>
@@ -318,7 +402,7 @@ export function PostEditor({
               type="button"
               className={`post-editor-btn${editor.isActive('link') ? ' active' : ''}`}
               onMouseDown={e => { e.preventDefault(); openLinkPopover(); }}
-              data-tooltip="Inserir link"
+              title="Inserir link"
             >
               <LinkIcon className="h-3.5 w-3.5" />
             </button>
@@ -357,7 +441,7 @@ export function PostEditor({
                 setHighlightOpen(false);
                 setLinkPopoverOpen(false);
               }}
-              data-tooltip="Cor do texto"
+              title="Cor do texto"
               style={{ position: 'relative' }}
             >
               <Baseline className="h-3.5 w-3.5" />
@@ -404,7 +488,7 @@ export function PostEditor({
                 setTextColorOpen(false);
                 setLinkPopoverOpen(false);
               }}
-              data-tooltip="Cor de fundo"
+              title="Cor de fundo"
               style={{ position: 'relative' }}
             >
               <Highlighter className="h-3.5 w-3.5" />
@@ -425,7 +509,6 @@ export function PostEditor({
                       type="button"
                       className={`color-swatch${currentHighlight === hc.color || (!currentHighlight && !hc.color) ? ' active' : ''}${!hc.color ? ' color-swatch--default' : ''}`}
                       style={hc.color ? { background: hc.cssColor } : undefined}
-                      data-highlight={hc.color ?? undefined}
                       title={hc.name}
                       onMouseDown={e => {
                         e.preventDefault();
@@ -442,99 +525,92 @@ export function PostEditor({
               </div>
             )}
           </div>
-
-          <div className="post-editor-divider" />
-
-          {/* Comment button */}
-          <div className="comment-add-wrapper" ref={commentAddWrapperRef}>
-            <button
-              ref={commentBtnRef}
-              type="button"
-              className="post-editor-btn"
-              onMouseDown={e => {
-                e.preventDefault();
-                if (!commentAddOpen && commentBtnRef.current) {
-                  const rect = commentBtnRef.current.getBoundingClientRect();
-                  setCommentAddPos({ top: rect.bottom + 6, left: rect.left });
-                }
-                setCommentAddOpen(v => !v);
-                setTextColorOpen(false);
-                setHighlightOpen(false);
-                setLinkPopoverOpen(false);
-              }}
-              data-tooltip="Comentar"
-            >
-              <MessageSquare className="h-3.5 w-3.5" />
-            </button>
-          </div>
         </BubbleMenu>
       )}
 
       <EditorContent editor={editor} className="post-editor-content" />
-
-      {commentAddOpen && commentAddPos && createPortal(
-        <div
-          ref={commentAddRef}
-          className="comment-add-popover"
-          style={{ position: 'fixed', top: commentAddPos.top, left: commentAddPos.left, zIndex: 9999 }}
-          onMouseDown={e => e.stopPropagation()}
-        >
-          <div className="comment-add-label">Adicionar comentário</div>
-          <textarea
-            className="comment-add-input"
-            placeholder="Escreva seu comentário..."
-            value={commentAddText}
-            onChange={e => setCommentAddText(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleAddComment();
-              }
-              if (e.key === 'Escape') setCommentAddOpen(false);
-            }}
-            autoFocus
-          />
-          <button
-            type="button"
-            className="comment-add-submit"
-            onClick={handleAddComment}
-            disabled={!commentAddText.trim() || commentSubmitting}
-          >
-            Comentar
-          </button>
-        </div>,
-        document.body,
-      )}
-
-      {activeThreadId != null && threadPopoverPos && threads && currentUserId && currentUserRole &&
-        createPortal(
-          <div
-            ref={commentPopoverRef}
-            style={{ position: 'fixed', top: threadPopoverPos.top, left: threadPopoverPos.left, zIndex: 9999 }}
-          >
-            {(() => {
-              const thread = threads.find(t => t.id === activeThreadId);
-              if (!thread) return null;
-              return (
-                <PostCommentPopover
-                  thread={thread}
-                  membros={membros ?? []}
-                  currentUserId={currentUserId}
-                  currentUserRole={currentUserRole}
-                  onReply={onReplyToComment ?? (async () => {})}
-                  onResolve={handleResolveThread}
-                  onReopen={handleReopenThread}
-                  onEditComment={onEditComment ?? (async () => {})}
-                  onDeleteComment={handleDeleteComment}
-                  onClose={() => setActiveThreadId(null)}
-                  readOnly={disabled}
-                />
-              );
-            })()}
-          </div>,
-          document.body,
-        )
-      }
     </div>
   );
 }
+```
+
+- [ ] **Step 2: Run typecheck**
+
+Run: `npm run build`
+Expected: Build succeeds without TypeScript errors
+
+- [ ] **Step 3: Run tests**
+
+Run: `npm run test`
+Expected: All existing tests pass
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add apps/crm/src/pages/entregas/components/PostEditor.tsx
+git commit -m "feat: add bubble menu with text color and highlight to PostEditor"
+```
+
+---
+
+### Task 4: Manual verification
+
+- [ ] **Step 1: Start dev server**
+
+Run: `npm run dev`
+
+- [ ] **Step 2: Test BubbleMenu**
+
+1. Navigate to a workflow with a post that has text content
+2. Select some text in the editor
+3. Verify the floating BubbleMenu appears above the selection with buttons: Bold, Italic, Underline, Link, divider, Text Color, Highlight
+4. Verify clicking Bold/Italic/Underline toggles formatting on the selected text
+5. Verify the BubbleMenu disappears when text is deselected
+
+- [ ] **Step 3: Test Link in BubbleMenu**
+
+1. Select text and click the Link button in the BubbleMenu
+2. Verify the link popover appears with URL input
+3. Enter a URL, press Enter
+4. Verify the link is applied
+5. Select the linked text, verify "Remover" button shows
+
+- [ ] **Step 4: Test Text Color**
+
+1. Select text and click the Baseline (A) icon in the BubbleMenu
+2. Verify the color dropdown appears with the label "Cor do texto" and 9 swatches
+3. Click "Azul" swatch — verify text turns blue (#337EA9)
+4. Select the same text again — verify the blue swatch has a checkmark
+5. Click "Padrão" — verify text returns to default color
+
+- [ ] **Step 5: Test Highlight**
+
+1. Select text and click the Highlighter icon in the BubbleMenu
+2. Verify the dropdown appears with label "Cor de fundo" and 9 swatches
+3. Click "Amarelo" — verify text gets a yellow background
+4. Click "Nenhum" — verify highlight is removed
+
+- [ ] **Step 6: Test dark mode**
+
+1. Switch to dark mode
+2. Apply a highlight (e.g. blue) — verify it uses the dark variant (#28456C) not the light one
+3. Verify text colors remain legible in dark mode
+
+- [ ] **Step 7: Test fixed top bar**
+
+1. Verify the top bar only shows bullet list, ordered list, and character count
+2. Verify list buttons work correctly
+
+- [ ] **Step 8: Test readonly mode**
+
+1. View a post in readonly/disabled mode
+2. Verify neither the BubbleMenu nor the top bar toolbar appear
+3. Verify highlight and text color formatting renders correctly in readonly
+
+- [ ] **Step 9: Commit any fixes if needed**
+
+If any issues found, fix and commit:
+```bash
+git add -u
+git commit -m "fix: address issues found during PostEditor manual testing"
+```

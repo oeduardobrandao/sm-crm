@@ -34,6 +34,12 @@ vi.mock('../../../../store', async (importOriginal) => {
     getWorkflowPostsCounts: vi.fn().mockResolvedValue(
       new Map<number, number>([[1, 5], [2, 3]])
     ),
+    getWorkflowApprovedPostsCounts: vi.fn().mockResolvedValue(
+      new Map<number, number>()
+    ),
+    getWorkflowPostResponsaveis: vi.fn().mockResolvedValue(
+      new Map<number, number[]>([[1, [10, 20]], [2, [10]]])
+    ),
   };
 });
 
@@ -165,6 +171,12 @@ describe('useEntregasData', () => {
     (store.getWorkflowPostsCounts as any).mockResolvedValue(
       new Map<number, number>([[1, 5], [2, 3]])
     );
+    (store.getWorkflowApprovedPostsCounts as any).mockResolvedValue(
+      new Map<number, number>()
+    );
+    (store.getWorkflowPostResponsaveis as any).mockResolvedValue(
+      new Map<number, number[]>([[1, [10, 20]], [2, [10]]])
+    );
 
     const postMedia = await import('../../../../services/postMedia');
     (postMedia.getWorkflowCovers as any).mockResolvedValue(new Map());
@@ -187,6 +199,24 @@ describe('useEntregasData', () => {
     expect(postsCounts).toBeInstanceOf(Map);
     expect(postsCounts.get(1)).toBe(5);
     expect(postsCounts.get(2)).toBe(3);
+  });
+
+  it('returns postResponsaveis as a Map with per-workflow responsavel arrays', async () => {
+    const { useEntregasData } = await import('../useEntregasData');
+
+    const { result } = renderHook(() => useEntregasData(), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+      expect(result.current.postResponsaveis.size).toBe(2);
+    });
+
+    const { postResponsaveis } = result.current;
+    expect(postResponsaveis).toBeInstanceOf(Map);
+    expect(postResponsaveis.get(1)).toEqual([10, 20]);
+    expect(postResponsaveis.get(2)).toEqual([10]);
   });
 
   it('returns an empty Map when no workflow IDs are available', async () => {

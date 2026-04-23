@@ -18,6 +18,7 @@ import type { Cliente, Membro, WorkflowTemplate } from '../../../store';
 export interface FilterState {
   filterCliente: number | null;
   filterMembro: number | null;
+  filterPostResponsavel: number | null;
   filterStatus: 'todos' | 'atrasado' | 'urgente' | 'em_dia';
   filterSearch: string;
   filterEtapa: string | null;
@@ -44,6 +45,7 @@ function countActiveFilters(filters: FilterState): number {
   let count = 0;
   if (filters.filterCliente) count++;
   if (filters.filterMembro) count++;
+  if (filters.filterPostResponsavel) count++;
   if (filters.filterStatus !== 'todos') count++;
   if (filters.filterEtapa) count++;
   if (filters.filterTemplate) count++;
@@ -119,6 +121,20 @@ function FilterControls({ filters, onChange, layout, activeClientes, sortedMembr
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="__none__">Todos os membros</SelectItem>
+            {sortedMembros.map(m => (
+              <SelectItem key={m.id} value={String(m.id)}>{m.nome}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select
+          value={filters.filterPostResponsavel ? String(filters.filterPostResponsavel) : '__none__'}
+          onValueChange={val => onChange({ ...filters, filterPostResponsavel: val === '__none__' ? null : Number(val) })}
+        >
+          <SelectTrigger className={`!text-xs h-9 px-4 mb-0 ${isStacked ? '!rounded-lg w-full' : '!rounded-full w-auto min-w-[160px]'}`}>
+            <SelectValue placeholder="Responsável do post" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__none__">Responsável do post</SelectItem>
             {sortedMembros.map(m => (
               <SelectItem key={m.id} value={String(m.id)}>{m.nome}</SelectItem>
             ))}
@@ -225,7 +241,7 @@ export function EntregasFilters({ filters, onChange, clientes, membros, template
               variant="ghost"
               className="w-full mt-4 text-xs"
               onClick={() => {
-                onChange({ ...filters, filterCliente: null, filterMembro: null, filterStatus: 'todos', filterEtapa: null, filterTemplate: null });
+                onChange({ ...filters, filterCliente: null, filterMembro: null, filterPostResponsavel: null, filterStatus: 'todos', filterEtapa: null, filterTemplate: null });
               }}
             >
               Limpar filtros

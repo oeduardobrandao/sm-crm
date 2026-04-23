@@ -142,6 +142,45 @@ describe('store workflow posts', () => {
     expect(result).toEqual([]);
   });
 
+  it('getWorkflowPostResponsaveis returns a map of workflow_id to responsavel arrays', async () => {
+    mockedSupabase.__queueSupabaseResult('workflow_posts', 'select', {
+      data: [
+        { workflow_id: 5, responsavel_id: 10 },
+        { workflow_id: 5, responsavel_id: 20 },
+        { workflow_id: 7, responsavel_id: 10 },
+      ],
+      error: null,
+    });
+
+    const map = await store.getWorkflowPostResponsaveis([5, 7]);
+
+    expect(map.get(5)).toEqual([10, 20]);
+    expect(map.get(7)).toEqual([10]);
+    const call = getCalls('workflow_posts', 'select').at(-1)!;
+    expect(call.modifiers).toContainEqual({ method: 'in', args: ['workflow_id', [5, 7]] });
+    expect(call.modifiers).toContainEqual({ method: 'not', args: ['responsavel_id', 'is', null] });
+  });
+
+  it('getWorkflowPostResponsaveis deduplicates responsavel_id per workflow', async () => {
+    mockedSupabase.__queueSupabaseResult('workflow_posts', 'select', {
+      data: [
+        { workflow_id: 5, responsavel_id: 10 },
+        { workflow_id: 5, responsavel_id: 10 },
+        { workflow_id: 5, responsavel_id: 10 },
+      ],
+      error: null,
+    });
+
+    const map = await store.getWorkflowPostResponsaveis([5]);
+
+    expect(map.get(5)).toEqual([10]);
+  });
+
+  it('getWorkflowPostResponsaveis returns empty map for empty input', async () => {
+    const map = await store.getWorkflowPostResponsaveis([]);
+    expect(map.size).toBe(0);
+  });
+
   it('getPostApprovals queries with in filter', async () => {
     mockedSupabase.__queueSupabaseResult('post_approvals', 'select', {
       data: [
