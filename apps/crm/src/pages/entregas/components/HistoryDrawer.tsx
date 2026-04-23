@@ -3,12 +3,14 @@ import { useQuery } from '@tanstack/react-query';
 import { X, ChevronDown, ChevronRight, MessageSquare, Check, Flag } from 'lucide-react';
 import {
   getWorkflowEtapas, getWorkflowPostsWithProperties, getPostApprovals,
-  getMembros,
+  getMembros, getPostCommentThreads,
   type Workflow, type WorkflowEtapa, type WorkflowPost, type PostApproval, type PostPropertyValue,
+  type CommentThreadWithComments,
 } from '../../../store';
 import { computeDeadlineDate } from '../hooks/useEntregasData';
 import { PostEditor } from './PostEditor';
 import { PropertyPanel } from './PropertyPanel';
+import PostCommentSummary from './PostCommentSummary';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -94,6 +96,12 @@ export function HistoryDrawer({ workflow, clienteName, onClose }: HistoryDrawerP
   const { data: approvals = [] } = useQuery({
     queryKey: ['history-approvals', postIds.join(',')],
     queryFn: () => getPostApprovals(postIds),
+    enabled: postIds.length > 0,
+  });
+
+  const { data: commentThreads = [] } = useQuery({
+    queryKey: ['history-comment-threads', postIds.join(',')],
+    queryFn: () => getPostCommentThreads(postIds),
     enabled: postIds.length > 0,
   });
 
@@ -206,6 +214,15 @@ export function HistoryDrawer({ workflow, clienteName, onClose }: HistoryDrawerP
                           initialContent={post.conteudo}
                           disabled
                           onUpdate={() => {}}
+                          threads={commentThreads.filter(t => t.post_id === post.id)}
+                          membros={membros}
+                        />
+
+                        <PostCommentSummary
+                          threads={commentThreads.filter(t => t.post_id === post.id)}
+                          membros={membros}
+                          onThreadClick={() => {}}
+                          readOnly
                         />
 
                         {postApprovals.length > 0 && (

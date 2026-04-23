@@ -14,11 +14,16 @@ import {
   addWorkflowPost, updateWorkflowPost, removeWorkflowPost,
   reorderWorkflowPosts, sendPostsToCliente, getPostApprovals, replyToPostApproval,
   completeEtapa,
+  getPostCommentThreads, createCommentThread, addPostComment, updatePostComment,
+  deletePostComment, resolveCommentThread, reopenCommentThread, deleteCommentThread,
   type WorkflowPost, type PostApproval, type Membro, type PostPropertyValue,
+  type CommentThreadWithComments,
 } from '../../../store';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { PostEditor } from './PostEditor';
 import { PropertyPanel } from './PropertyPanel';
+import PostCommentSummary from './PostCommentSummary';
+import { useAuth } from '@/context/AuthContext';
 import { PostMediaGallery, hasVideoMissingThumbnail } from './PostMediaGallery';
 import { listPostMedia } from '../../../services/postMedia';
 
@@ -104,11 +109,20 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
     enabled: postIds.length > 0,
   });
 
+  const { user, role } = useAuth();
+
+  const { data: commentThreads = [], refetch: refetchComments } = useQuery({
+    queryKey: ['post-comment-threads', postIds.join(',')],
+    queryFn: () => getPostCommentThreads(postIds),
+    enabled: postIds.length > 0,
+  });
+
   const refresh = useCallback(() => {
     setLocalOrder(null);
     qc.invalidateQueries({ queryKey: ['workflow-posts-with-props', workflowId] });
     qc.invalidateQueries({ queryKey: ['post-approvals'] });
     qc.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
+    qc.invalidateQueries({ queryKey: ['post-comment-threads'] });
   }, [qc, workflowId]);
 
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
@@ -305,6 +319,44 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
     }
   };
 
+  // ── Comment thread handlers ───────────────────────────────────────────────
+
+  const handleCreateComment = useCallback(async (postId: number, quotedText: string, comment: string) => {
+    const thread = await createCommentThread(postId, quotedText, comment);
+    await refetchComments();
+    return thread.id;
+  }, [refetchComments]);
+
+  const handleReplyToComment = useCallback(async (threadId: number, content: string) => {
+    await addPostComment(threadId, content);
+    await refetchComments();
+  }, [refetchComments]);
+
+  const handleResolveThread = useCallback(async (threadId: number) => {
+    await resolveCommentThread(threadId);
+    await refetchComments();
+  }, [refetchComments]);
+
+  const handleReopenThread = useCallback(async (threadId: number) => {
+    await reopenCommentThread(threadId);
+    await refetchComments();
+  }, [refetchComments]);
+
+  const handleEditComment = useCallback(async (commentId: number, content: string) => {
+    await updatePostComment(commentId, content);
+    await refetchComments();
+  }, [refetchComments]);
+
+  const handleDeleteComment = useCallback(async (commentId: number, threadId: number) => {
+    const thread = commentThreads.find(t => t.id === threadId);
+    if (thread && thread.post_comments.length <= 1) {
+      await deleteCommentThread(threadId);
+    } else {
+      await deletePostComment(commentId);
+    }
+    await refetchComments();
+  }, [refetchComments, commentThreads]);
+
   // ── Stats ─────────────────────────────────────────────────────────────────
 
   const approvedCount = orderedPosts.filter(p => p.status === 'aprovado_cliente').length;
@@ -383,12 +435,21 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
                       membros={membros}
                       replyText={replyText[post.id!] || ''}
                       sendingReply={sendingReply === post.id}
+                      commentThreads={commentThreads.filter(t => t.post_id === post.id)}
+                      currentUserId={user?.id}
+                      currentUserRole={role}
                       onToggle={() => setExpandedId(expandedId === post.id ? null : post.id!)}
                       onDelete={() => handleDeletePost(post.id!)}
                       onFieldChange={(field, value) => handleFieldChange(post.id!, field, value)}
                       onContentUpdate={(json, plain) => scheduleContentSave(post, json, plain)}
                       onReplyChange={text => setReplyText(prev => ({ ...prev, [post.id!]: text }))}
                       onReplySend={() => handleReply(post.id!)}
+                      onCreateComment={handleCreateComment}
+                      onReplyToComment={handleReplyToComment}
+                      onResolveThread={handleResolveThread}
+                      onReopenThread={handleReopenThread}
+                      onEditComment={handleEditComment}
+                      onDeleteComment={handleDeleteComment}
                     />
                   ))}
                 </div>
@@ -460,18 +521,29 @@ interface SortablePostItemProps {
   membros: Membro[];
   replyText: string;
   sendingReply: boolean;
+  commentThreads: CommentThreadWithComments[];
+  currentUserId?: string;
+  currentUserRole: 'owner' | 'admin' | 'agent';
   onToggle: () => void;
   onDelete: () => void;
   onFieldChange: (field: keyof WorkflowPost, value: unknown) => void;
   onContentUpdate: (json: Record<string, unknown>, plain: string) => void;
   onReplyChange: (text: string) => void;
   onReplySend: () => void;
+  onCreateComment: (postId: number, quotedText: string, comment: string) => Promise<number>;
+  onReplyToComment: (threadId: number, content: string) => Promise<void>;
+  onResolveThread: (threadId: number) => Promise<void>;
+  onReopenThread: (threadId: number) => Promise<void>;
+  onEditComment: (commentId: number, content: string) => Promise<void>;
+  onDeleteComment: (commentId: number, threadId: number) => Promise<void>;
 }
 
 function SortablePostItem({
   post, templateId, workflowId, isExpanded, isSaving, approvals, membros,
   replyText, sendingReply,
+  commentThreads, currentUserId, currentUserRole,
   onToggle, onDelete, onFieldChange, onContentUpdate, onReplyChange, onReplySend,
+  onCreateComment, onReplyToComment, onResolveThread, onReopenThread, onEditComment, onDeleteComment,
 }: SortablePostItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: post.id! });
@@ -629,6 +701,22 @@ function SortablePostItem({
             initialContent={post.conteudo}
             disabled={isReadonly}
             onUpdate={onContentUpdate}
+            threads={commentThreads}
+            membros={membros}
+            currentUserId={currentUserId}
+            currentUserRole={currentUserRole}
+            onCreateComment={(qt, c) => onCreateComment(post.id!, qt, c)}
+            onReplyToComment={onReplyToComment}
+            onResolveThread={onResolveThread}
+            onReopenThread={onReopenThread}
+            onEditComment={onEditComment}
+            onDeleteComment={onDeleteComment}
+          />
+
+          <PostCommentSummary
+            threads={commentThreads}
+            membros={membros}
+            onThreadClick={() => {}}
           />
 
           {approvals.length > 0 && (
