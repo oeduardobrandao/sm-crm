@@ -12,6 +12,8 @@ const LoginPage = lazy(() => import('./pages/login/LoginPage'));
 const ConfigurarSenhaPage = lazy(() => import('./pages/configurar-senha/ConfigurarSenhaPage'));
 const WorkspaceSetupPage = lazy(() => import('./pages/workspace-setup/WorkspaceSetupPage'));
 const PoliticaPage = lazy(() => import('./pages/politica-privacidade/PoliticaPage'));
+const TermosPage = lazy(() => import('./pages/termos-de-uso/TermosPage'));
+const LgpdPage = lazy(() => import('./pages/lgpd/LgpdPage'));
 const PortalPage = lazy(() => import('./pages/portal/PortalPage'));
 const LandingPage = lazy(() => import('./pages/landing/LandingPage'));
 
@@ -56,6 +58,8 @@ export default function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/configurar-senha" element={<ConfigurarSenhaPage />} />
             <Route path="/politica-de-privacidade" element={<PoliticaPage />} />
+            <Route path="/termos-de-uso" element={<TermosPage />} />
+            <Route path="/lgpd" element={<LgpdPage />} />
             <Route path="/portal/:token" element={<PortalPage />} />
 
             {/* Protected route without sidebar layout */}
