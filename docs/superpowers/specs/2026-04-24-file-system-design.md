@@ -5,9 +5,10 @@ A file-first media management system for the CRM, using Cloudflare R2 for storag
 ## Scope
 
 - CRM app only — no Hub changes (Hub continues accessing media through `hub-posts` edge function)
-- Any file type (images, videos, PDFs, PSDs, ZIPs, etc.)
+- Any file type (images, videos, PDFs, PSDs, ZIPs, etc.) for standalone storage
+- Only images and videos can be linked to workflow posts (matches existing CRM/Hub rendering capabilities)
 - Workspace-level and client-level files supported
-- Files are linkable across multiple posts with reference counting
+- Media files are linkable across multiple posts with reference counting
 
 ## Data Model
 
@@ -79,7 +80,8 @@ A file-first media management system for the CRM, using Cloudflare R2 for storag
 |--------|------|-------|
 | id | bigserial | PK |
 | post_id | bigint | FK → workflow_posts ON DELETE CASCADE |
-| file_id | bigint | FK → files |
+| file_id | bigint | FK → files ON DELETE RESTRICT |
+| conta_id | uuid | FK → workspaces, NOT NULL (denormalized for RLS) |
 | is_cover | boolean | DEFAULT false |
 | sort_order | int | DEFAULT 0 |
 | created_at | timestamptz | DEFAULT now() |
@@ -87,6 +89,15 @@ A file-first media management system for the CRM, using Cloudflare R2 for storag
 **Constraints:**
 - UNIQUE(post_id, file_id) — no duplicate links
 - Partial unique index: one cover per post (WHERE is_cover = true)
+- Only image/video files can be linked: CHECK enforced at edge function level (file.kind IN ('image', 'video'))
+
+**Cover behavior (triggers):**
+- **Auto-cover on first link:** When the first `post_file_link` is inserted for a post and no cover exists, `is_cover` is set to true automatically.
+- **Cover reassignment on unlink/delete:** When a link with `is_cover = true` is deleted, the trigger promotes the next link (lowest sort_order, then lowest id) to cover. If no links remain, the post has no cover.
+- These match the existing `post_media` cover rules from the current system.
+
+**Adapter ID mapping:**
+- The `post-media-manage` adapter operates on `post_file_links.id` as the "media ID" for backward compatibility. CRM callers that PATCH/DELETE by media ID are actually targeting the link record. The adapter translates: `link.id` maps to the old `post_media.id`, and the response shape merges file metadata (from `files`) with link metadata (is_cover, sort_order) into the legacy `PostMedia`-shaped record.
 
 ### file_deletions
 
@@ -96,8 +107,11 @@ A file-first media management system for the CRM, using Cloudflare R2 for storag
 | r2_key | text | NOT NULL |
 | thumbnail_r2_key | text | nullable |
 | queued_at | timestamptz | DEFAULT now() |
+| attempts | int | DEFAULT 0 |
+| last_error | text | nullable |
+| next_retry_at | timestamptz | DEFAULT now() |
 
-Same async R2 cleanup queue pattern as the existing `post_media_deletions`.
+Matches the existing `post_media_deletions` pattern including retry/error tracking. The cleanup cron increments `attempts` on failure, stores the error in `last_error`, and sets `next_retry_at` with exponential backoff. Rows with `attempts >= 5` are logged and skipped (dead-lettered).
 
 ## Auto-Folder Sync (Postgres Triggers)
 
@@ -107,17 +121,26 @@ Same async R2 cleanup queue pattern as the existing `post_media_deletions`.
 - **workflows INSERT** → Look up client folder by (source_type=client, source_id=NEW.cliente_id). Create folder with source=system, source_type=workflow, source_id=NEW.id, parent_id=client_folder.id, name=NEW.titulo
 - **workflow_posts INSERT** → Look up workflow folder by (source_type=workflow, source_id=NEW.workflow_id). Create folder with source=system, source_type=post, source_id=NEW.id, parent_id=workflow_folder.id, name=NEW.titulo
 
-### ON UPDATE (name changes)
+### ON UPDATE
 
-- When a client/workflow/post name changes, update the matching folder's name — but only if `name_overridden = false`.
+- **Name changes:** When a client/workflow/post name changes, update the matching folder's name — but only if `name_overridden = false`.
+- **Workflow client reassignment:** When `workflows.cliente_id` changes, look up the new client's folder and update the workflow folder's `parent_id` to point to it. This keeps the folder hierarchy consistent when workflows are moved between clients via the UI.
 
-### ON DELETE
+### ON DELETE (entity-side triggers)
 
-- Folder has ON DELETE CASCADE for child **folders** (nested folders are removed).
-- Files use ON DELETE SET NULL on folder_id — when a folder is deleted, files inside it are orphaned to root (folder_id=NULL) rather than deleted. This prevents conflicts with reference counting.
+When a source entity is deleted, the corresponding system folder is deleted by entity-side triggers:
+
+- **clientes DELETE** → DELETE FROM folders WHERE source_type='client' AND source_id=OLD.id AND conta_id=OLD.conta_id
+- **workflows DELETE** → DELETE FROM folders WHERE source_type='workflow' AND source_id=OLD.id AND conta_id=OLD.conta_id
+- **workflow_posts DELETE** → DELETE FROM folders WHERE source_type='post' AND source_id=OLD.id AND conta_id=OLD.conta_id
+
+### ON DELETE (folder-side FK behavior)
+
+- Folder `parent_id` uses ON DELETE CASCADE — deleting a parent folder cascades to child folders.
+- Files use ON DELETE SET NULL on `folder_id` — when a folder is deleted, files inside it are orphaned to root (folder_id=NULL) rather than deleted. This prevents conflicts with reference counting.
 - File deletion trigger (on actual file DELETE) queues r2_key and thumbnail_r2_key to `file_deletions`.
-- `post_file_links` ON DELETE CASCADE on post_id cleans up links when a post is deleted.
-- `post_file_links` file_id FK uses RESTRICT — cannot delete a file row while links exist (enforced at DB level, UI blocks this via reference_count check before attempting).
+- `post_file_links` ON DELETE CASCADE on `post_id` cleans up links when a post is deleted.
+- `post_file_links` `file_id` FK uses RESTRICT — cannot delete a file row while links exist (enforced at DB level, UI blocks this via reference_count check before attempting).
 
 ## Soft-Lock Protection Model
 
@@ -132,7 +155,9 @@ System folders (source='system') show an "AUTO" badge in the UI.
 **Warning before proceeding:**
 - **Rename system folder** → "This folder is linked to [entity type]. Renaming here won't rename the [entity]." Sets `name_overridden = true`.
 - **Move system folder** → "Moving this folder changes its location in the file browser only, not in the workflow."
-- **Delete system folder** → "This will remove the folder from the file browser. Files linked to posts will remain accessible in the workflow."
+
+**Blocked:**
+- **Delete system folder** → Blocked entirely. System folders are owned by the sync lifecycle and cannot be deleted by users. They are removed only when the source entity (client/workflow/post) is deleted. This preserves the guarantee that auto-folders mirror the hierarchy, and prevents the upload flow from losing its target folder.
 
 **Blocked (with explanation):**
 - **Delete file with reference_count > 0** → Shows dialog listing which posts use the file. User must unlink from posts first.
@@ -230,12 +255,10 @@ Opened from PostMediaGallery via "Escolher arquivo" button.
 
 ## RLS Policies
 
-All tables use `conta_id IN (SELECT get_my_conta_id())` pattern, consistent with existing tables:
-
-- `folders`: SELECT, INSERT, UPDATE, DELETE restricted to workspace members
-- `files`: SELECT, INSERT, UPDATE, DELETE restricted to workspace members
-- `post_file_links`: SELECT, INSERT, DELETE restricted to workspace members
-- `file_deletions`: INSERT only (triggered by system), no direct user access
+- `folders`: `conta_id IN (SELECT get_my_conta_id())` — SELECT, INSERT, UPDATE, DELETE restricted to workspace members
+- `files`: `conta_id IN (SELECT get_my_conta_id())` — SELECT, INSERT, UPDATE, DELETE restricted to workspace members
+- `post_file_links`: `conta_id IN (SELECT get_my_conta_id())` — denormalized `conta_id` column enables the same direct RLS pattern. SELECT, INSERT, DELETE restricted to workspace members.
+- `file_deletions`: RLS disabled. Only written by triggers (SECURITY DEFINER functions) and read by the cleanup cron (service-role). No direct user access.
 
 ## Quota
 
