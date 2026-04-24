@@ -3,6 +3,7 @@ import { CheckCircle, AlertCircle, ChevronDown, MessageSquare, Send } from 'luci
 import { submitApproval } from '../api';
 import type { HubPost, PostApproval, HubPostProperty, HubSelectOption } from '../types';
 import { PostMediaLightbox } from './PostMediaLightbox';
+import { OptimizedImage } from './OptimizedImage';
 
 export const TIPO_LABEL: Record<string, string> = {
   feed: 'Feed', reels: 'Reels', stories: 'Stories', carrossel: 'Carrossel',
@@ -177,7 +178,15 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
           className="relative block w-full aspect-[4/3] overflow-hidden bg-stone-100"
         >
           {displayCover.kind === 'image' ? (
-            <img src={displayCover.url} alt="" className="w-full h-full object-cover" />
+            <OptimizedImage
+              src={displayCover.url}
+              alt=""
+              width={displayCover.width ?? undefined}
+              height={displayCover.height ?? undefined}
+              blurDataURL={displayCover.blur_data_url ?? undefined}
+              sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+              className="w-full h-full object-cover"
+            />
           ) : (
             <>
               <img src={displayCover.thumbnail_url ?? ''} alt="" className="w-full h-full object-cover" />
@@ -232,7 +241,14 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
                   className="shrink-0 w-20 h-20 rounded-lg overflow-hidden bg-stone-100 ring-1 ring-stone-200/80 hover:ring-stone-400 transition-all"
                 >
                   {m.kind === 'image' ? (
-                    <img src={m.url} alt="" className="w-full h-full object-cover" />
+                    <OptimizedImage
+                      src={m.url}
+                      alt=""
+                      width={80}
+                      height={80}
+                      blurDataURL={m.blur_data_url ?? undefined}
+                      className="w-full h-full object-cover"
+                    />
                   ) : (
                     <img src={m.thumbnail_url ?? ''} alt="" className="w-full h-full object-cover" />
                   )}

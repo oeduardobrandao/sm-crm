@@ -16,6 +16,7 @@ import {
   reorderPostMedia, detectKind,
 } from '../../../services/postMedia';
 import type { PostMedia } from '../../../store';
+import { OptimizedImage } from '../../../components/OptimizedImage';
 import { PostMediaLightbox } from './PostMediaLightbox';
 
 interface PostMediaGalleryProps {
@@ -305,7 +306,14 @@ function SortableMediaTile({ media: m, disabled, onOpen, onSetCover, onDelete }:
       className="relative aspect-square overflow-hidden rounded-xl bg-stone-100 ring-1 ring-stone-200/80 group cursor-grab active:cursor-grabbing touch-none"
     >
       {m.kind === 'image' ? (
-        <img src={m.url} alt={m.original_filename} className="w-full h-full object-cover pointer-events-none" />
+        <OptimizedImage
+          src={m.url ?? ''}
+          alt={m.original_filename}
+          width={m.width ?? undefined}
+          height={m.height ?? undefined}
+          blurDataURL={m.blur_data_url ?? undefined}
+          className="w-full h-full object-cover pointer-events-none"
+        />
       ) : (
         <video src={m.url ?? undefined} poster={m.thumbnail_url ?? undefined} muted className="w-full h-full object-cover pointer-events-none" />
       )}

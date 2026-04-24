@@ -51,6 +51,31 @@ export function detectKind(file: File): 'image' | 'video' {
 }
 
 const THUMB_SIZE = 128;
+const BLUR_SIZE = 16;
+
+function generateBlurDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      try {
+        const ratio = img.naturalWidth / img.naturalHeight;
+        const w = ratio >= 1 ? BLUR_SIZE : Math.round(BLUR_SIZE * ratio);
+        const h = ratio >= 1 ? Math.round(BLUR_SIZE / ratio) : BLUR_SIZE;
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/webp', 0.2));
+      } catch (e) {
+        reject(e);
+      }
+    };
+    img.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
+    img.src = url;
+  });
+}
 
 function generateImageThumbnail(file: File): Promise<File> {
   return new Promise((resolve, reject) => {
@@ -144,9 +169,13 @@ export async function uploadPostMedia(args: {
   let height: number | undefined;
   let duration_seconds: number | undefined;
   let thumbFile: File | undefined = thumbnail;
+  let blur_data_url: string | undefined;
   if (kind === 'image') {
-    ({ width, height } = await probeImage(file));
-    thumbFile = await generateImageThumbnail(file);
+    [{ width, height }, thumbFile, blur_data_url] = await Promise.all([
+      probeImage(file),
+      generateImageThumbnail(file),
+      generateBlurDataUrl(file).catch(() => undefined),
+    ]);
   } else {
     if (!thumbnail) throw new Error('Vídeos exigem uma thumbnail');
     validateFile(thumbnail, 'image');
@@ -181,6 +210,7 @@ export async function uploadPostMedia(args: {
     size_bytes: file.size,
     original_filename: file.name,
     width, height, duration_seconds,
+    blur_data_url,
   });
 }
 

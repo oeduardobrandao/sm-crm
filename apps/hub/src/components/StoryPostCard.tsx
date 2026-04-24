@@ -3,6 +3,7 @@ import { CheckCircle, AlertCircle } from 'lucide-react';
 import { submitApproval } from '../api';
 import { formatDate } from './PostCard';
 import { PostMediaLightbox } from './PostMediaLightbox';
+import { OptimizedImage } from './OptimizedImage';
 import type { HubPost, PostApproval, InstagramProfile } from '../types';
 
 interface StoryPostCardProps {
@@ -71,7 +72,15 @@ export function StoryPostCard({
         {currentMedia && (
           <button type="button" onClick={() => setLightboxIdx(currentSlide)} className="absolute inset-0 w-full h-full z-0">
             {currentMedia.kind === 'image' ? (
-              <img src={currentMedia.url} alt="" className="w-full h-full object-cover" />
+              <OptimizedImage
+                src={currentMedia.url}
+                alt=""
+                width={currentMedia.width ?? undefined}
+                height={currentMedia.height ?? undefined}
+                blurDataURL={currentMedia.blur_data_url ?? undefined}
+                sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+                className="w-full h-full object-cover"
+              />
             ) : (
               <img src={currentMedia.thumbnail_url ?? ''} alt="" className="w-full h-full object-cover" />
             )}

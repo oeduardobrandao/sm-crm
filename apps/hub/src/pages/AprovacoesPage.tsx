@@ -78,7 +78,7 @@ export function AprovacoesPage() {
       {withMedia.length > 0 && (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {withMedia.map(post => (
+            {withMedia.map((post, i) => (
               <InstagramPostCard
                 key={post.id}
                 post={post}
@@ -89,6 +89,7 @@ export function AprovacoesPage() {
                 isSelected={selectedIds.has(post.id)}
                 onToggleSelect={handleToggleSelect}
                 onApprovalSubmitted={handleInvalidate}
+                priority={i === 0}
               />
             ))}
           </div>

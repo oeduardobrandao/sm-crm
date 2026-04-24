@@ -3,6 +3,7 @@ import { CheckCircle, AlertCircle } from 'lucide-react';
 import { submitApproval } from '../api';
 import { formatDate } from './PostCard';
 import { PostMediaLightbox } from './PostMediaLightbox';
+import { OptimizedImage } from './OptimizedImage';
 import type { HubPost, PostApproval, InstagramProfile } from '../types';
 
 interface InstagramPostCardProps {
@@ -15,11 +16,13 @@ interface InstagramPostCardProps {
   onToggleSelect?: (postId: number) => void;
   onApprovalSubmitted?: () => void;
   readOnly?: boolean;
+  /** Mark the first visible card's image as LCP priority */
+  priority?: boolean;
 }
 
 export function InstagramPostCard({
   post, token, approvals, instagramProfile, workspaceName,
-  isSelected, onToggleSelect, onApprovalSubmitted, readOnly,
+  isSelected, onToggleSelect, onApprovalSubmitted, readOnly, priority,
 }: InstagramPostCardProps) {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [captionExpanded, setCaptionExpanded] = useState(false);
@@ -97,7 +100,16 @@ export function InstagramPostCard({
         {currentMedia && (
           <button type="button" onClick={() => setLightboxIdx(currentSlide)} className="w-full h-full">
             {currentMedia.kind === 'image' ? (
-              <img src={currentMedia.url} alt="" className="w-full h-full object-cover" />
+              <OptimizedImage
+                src={currentMedia.url}
+                alt=""
+                width={currentMedia.width ?? undefined}
+                height={currentMedia.height ?? undefined}
+                blurDataURL={currentMedia.blur_data_url ?? undefined}
+                sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+                priority={priority && currentSlide === 0}
+                className="w-full h-full object-cover"
+              />
             ) : (
               <img src={currentMedia.thumbnail_url ?? ''} alt="" className="w-full h-full object-cover" />
             )}

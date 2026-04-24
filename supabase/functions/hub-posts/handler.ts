@@ -102,7 +102,7 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
     const { data: mediaRows } = postIds.length > 0
       ? await db
           .from("post_media")
-          .select("id, post_id, kind, mime_type, r2_key, thumbnail_r2_key, width, height, duration_seconds, is_cover, sort_order")
+          .select("id, post_id, kind, mime_type, r2_key, thumbnail_r2_key, width, height, duration_seconds, is_cover, sort_order, blur_data_url")
           .in("post_id", postIds)
           .order("sort_order", { ascending: true })
           .order("id", { ascending: true })
@@ -118,6 +118,7 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
       duration_seconds: media.duration_seconds,
       is_cover: media.is_cover,
       sort_order: media.sort_order,
+      blur_data_url: media.blur_data_url ?? null,
       url: await deps.signGetUrl(media.r2_key, 3600),
       thumbnail_url: media.thumbnail_r2_key ? await deps.signGetUrl(media.thumbnail_r2_key, 3600) : null,
     })));

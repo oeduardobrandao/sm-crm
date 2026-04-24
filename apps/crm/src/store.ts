@@ -1227,6 +1227,7 @@ export interface PostMedia {
   sort_order: number;
   uploaded_by: string | null;
   created_at: string;
+  blur_data_url?: string | null;
   // Populated only on hydrated responses
   url?: string;
   thumbnail_url?: string | null;
