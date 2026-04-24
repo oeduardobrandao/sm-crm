@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { ChevronDown } from 'lucide-react';
 import { useHub } from '../HubContext';
 import { fetchPosts } from '../api';
 import { InstagramPostCard } from '../components/InstagramPostCard';
@@ -12,6 +14,7 @@ const VISIBLE_STATUSES = new Set<HubPost['status']>([
 
 export function PostagensPage() {
   const { token, bootstrap } = useHub();
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const { data, isLoading, isError } = useQuery({
     queryKey: ['hub-posts', token],
     queryFn: () => fetchPosts(token),
@@ -73,13 +76,23 @@ export function PostagensPage() {
 
             return (
               <section key={group.titulo}>
-                <div className="flex items-center gap-2 mb-4">
+                <button
+                  type="button"
+                  className="flex items-center gap-2 mb-4 w-full text-left group"
+                  onClick={() => setCollapsed(prev => {
+                    const next = new Set(prev);
+                    if (next.has(group.titulo)) next.delete(group.titulo);
+                    else next.add(group.titulo);
+                    return next;
+                  })}
+                >
                   <span className="h-[1px] w-6 bg-stone-300" />
                   <h3 className="font-display text-[17px] font-semibold tracking-tight text-stone-900">{group.titulo}</h3>
                   <span className="text-[11px] text-stone-400">{group.posts.length} {group.posts.length === 1 ? 'post' : 'posts'}</span>
-                </div>
+                  <ChevronDown size={16} className={`ml-auto text-stone-400 transition-transform ${collapsed.has(group.titulo) ? '-rotate-90' : ''}`} />
+                </button>
 
-                {withMedia.length > 0 && (
+                {!collapsed.has(group.titulo) && withMedia.length > 0 && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     {withMedia.map(post => (
                       <InstagramPostCard
@@ -95,7 +108,7 @@ export function PostagensPage() {
                   </div>
                 )}
 
-                {stories.length > 0 && (
+                {!collapsed.has(group.titulo) && stories.length > 0 && (
                   <div className={withMedia.length > 0 ? 'mt-4' : ''}>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                       {stories.map(post => (
@@ -113,7 +126,7 @@ export function PostagensPage() {
                   </div>
                 )}
 
-                {withoutMedia.length > 0 && (
+                {!collapsed.has(group.titulo) && withoutMedia.length > 0 && (
                   <div className={(withMedia.length > 0 || stories.length > 0) ? 'mt-4' : ''}>
                     <div className="max-w-[640px] space-y-3">
                       {withoutMedia.map(post => (

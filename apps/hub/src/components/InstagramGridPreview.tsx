@@ -6,6 +6,7 @@ interface GridItem {
   type: 'pending' | 'live';
   id: string;
   thumbnailUrl: string | null;
+  videoUrl: string | null;
   mediaType: string;
   impressions: number;
   isCarousel: boolean;
@@ -36,19 +37,25 @@ export function InstagramGridPreview({ selectedPosts, feedProfile, livePosts, on
   const touchRef = useRef<{ startX: number; startY: number; idx: number } | null>(null);
 
   useEffect(() => {
-    const pending: GridItem[] = selectedPosts.map(p => ({
-      type: 'pending' as const,
-      id: `pending-${p.id}`,
-      thumbnailUrl: p.cover_media?.url ?? p.media?.[0]?.url ?? null,
-      mediaType: p.tipo === 'carrossel' || (p.media?.length ?? 0) > 1 ? 'CAROUSEL_ALBUM' : p.tipo === 'reels' ? 'VIDEO' : 'IMAGE',
-      impressions: 0,
-      isCarousel: (p.media?.length ?? 0) > 1,
-    }));
+    const pending: GridItem[] = selectedPosts.map(p => {
+      const firstMedia = p.media?.[0];
+      const isVideo = firstMedia?.kind === 'video';
+      return {
+        type: 'pending' as const,
+        id: `pending-${p.id}`,
+        thumbnailUrl: p.cover_media?.url ?? (isVideo ? firstMedia.thumbnail_url : firstMedia?.url) ?? null,
+        videoUrl: isVideo ? firstMedia.url : null,
+        mediaType: p.tipo === 'carrossel' || (p.media?.length ?? 0) > 1 ? 'CAROUSEL_ALBUM' : p.tipo === 'reels' ? 'VIDEO' : 'IMAGE',
+        impressions: 0,
+        isCarousel: (p.media?.length ?? 0) > 1,
+      };
+    });
 
     const live: GridItem[] = livePosts.map(p => ({
       type: 'live' as const,
       id: `live-${p.id}`,
       thumbnailUrl: p.thumbnailUrl,
+      videoUrl: null,
       mediaType: p.mediaType,
       impressions: p.impressions,
       isCarousel: p.mediaType === 'CAROUSEL_ALBUM',
@@ -264,6 +271,8 @@ export function InstagramGridPreview({ selectedPosts, feedProfile, livePosts, on
             >
               {item.thumbnailUrl ? (
                 <img src={item.thumbnailUrl} alt="" className="w-full h-full object-cover" />
+              ) : item.videoUrl ? (
+                <video src={item.videoUrl} muted preload="metadata" className="w-full h-full object-cover" />
               ) : (
                 <div data-grid-placeholder className="w-full h-full bg-[#efefef]" />
               )}

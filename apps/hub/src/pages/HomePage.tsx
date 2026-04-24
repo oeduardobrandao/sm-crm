@@ -57,7 +57,7 @@ export function HomePage() {
               className="hub-card hub-card-hover hub-fade-up relative flex flex-col items-start text-left p-5 sm:p-6 gap-4 group"
             >
               {isPendente && (
-                <span className="absolute top-3 right-3 flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full bg-stone-900 text-white text-[11px] font-semibold leading-none">
+                <span className="absolute top-3 right-3 flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full bg-red-500 dark:bg-red-500 text-white text-[11px] font-semibold leading-none">
                   {pendingCount}
                 </span>
               )}
