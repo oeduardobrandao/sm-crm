@@ -78,20 +78,24 @@ Deno.test("hub-posts returns flattened post data with signed media URLs", async 
   db.queue("post_approvals", "select", { data: [], error: null });
   db.queue("post_property_values", "select", { data: [], error: null });
   db.queue("workflow_select_options", "select", { data: [], error: null });
-  db.queue("post_media", "select", {
+  db.queue("post_file_links", "select", {
     data: [
       {
         id: 1,
         post_id: 99,
-        kind: "image",
-        mime_type: "image/png",
-        r2_key: "contas/1/post.png",
-        thumbnail_r2_key: null,
-        width: 1080,
-        height: 1350,
-        duration_seconds: null,
         is_cover: true,
         sort_order: 0,
+        files: {
+          id: 10,
+          kind: "image",
+          mime_type: "image/png",
+          r2_key: "contas/1/post.png",
+          thumbnail_r2_key: null,
+          width: 1080,
+          height: 1350,
+          duration_seconds: null,
+          blur_data_url: null,
+        },
       },
     ],
     error: null,
