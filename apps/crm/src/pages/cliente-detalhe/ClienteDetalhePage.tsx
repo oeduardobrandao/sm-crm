@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ArrowLeft, Edit2, MapPin, Plus, Pencil, Trash2, Building2, Home, Loader2, Cake, CalendarDays } from 'lucide-react';
+import { ArrowLeft, Edit2, MapPin, Plus, Pencil, Trash2, Building2, Home, Loader2, Cake, CalendarDays, FolderOpen, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -49,6 +49,8 @@ import {
 } from '../../store';
 import { HistoryDrawer } from '../entregas/components/HistoryDrawer';
 import { HubTab } from './HubTab';
+import { getFolderContents } from '../../services/fileService';
+import { FileGrid } from '../arquivos/components/FileGrid';
 import { getInstagramSummary, syncInstagramData } from '../../services/instagram';
 import { sanitizeUrl } from '../../utils/security';
 import { useAuth } from '../../context/AuthContext';
@@ -862,6 +864,11 @@ export default function ClienteDetalhePage() {
         </div>
       )}
 
+      {/* Arquivos do Cliente */}
+      {cliente && cliente.id != null && (
+        <ClienteArquivosSection clienteId={cliente.id!} />
+      )}
+
       {/* Important Dates Section */}
       <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
@@ -1239,6 +1246,78 @@ export default function ClienteDetalhePage() {
           clienteName={cliente?.nome}
           onClose={() => setHistoryWorkflow(null)}
         />
+      )}
+    </div>
+  );
+}
+
+function ClienteArquivosSection({ clienteId }: { clienteId: number }) {
+  const navigate = useNavigate();
+  const { data: folderData } = useQuery({
+    queryKey: ['client-folder', clienteId],
+    queryFn: async () => {
+      const { supabase } = await import('../../lib/supabase');
+      const { data } = await supabase
+        .from('folders')
+        .select('id')
+        .eq('source_type', 'client')
+        .eq('source_id', clienteId)
+        .single();
+      return data;
+    },
+  });
+
+  const folderId = folderData?.id ?? null;
+
+  const { data: contents, isLoading } = useQuery({
+    queryKey: ['folder-contents', folderId],
+    queryFn: () => getFolderContents(folderId),
+    enabled: folderId !== null,
+  });
+
+  const files = (contents?.files ?? []).slice(0, 12);
+  const subfolders = contents?.subfolders ?? [];
+  const totalFiles = contents?.files?.length ?? 0;
+
+  return (
+    <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2 mb-0">
+          <FolderOpen className="h-5 w-5" style={{ color: 'var(--primary-color)' }} />
+          Arquivos
+        </h3>
+        {folderId && (
+          <button
+            onClick={() => navigate('/arquivos')}
+            className="inline-flex items-center gap-1 text-sm text-[var(--text-muted)] hover:text-[var(--text-main)] transition-colors"
+          >
+            Ver todos <ExternalLink className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+      {isLoading ? (
+        <div className="flex items-center justify-center py-8"><Spinner size="md" /></div>
+      ) : files.length === 0 && subfolders.length === 0 ? (
+        <p className="text-sm text-[var(--text-muted)] py-4">Nenhum arquivo encontrado para este cliente.</p>
+      ) : (
+        <>
+          <FileGrid
+            files={files}
+            subfolders={subfolders}
+            onOpenFolder={() => navigate('/arquivos')}
+            onFileAction={() => {}}
+            onActionComplete={() => {}}
+            viewMode="grid"
+          />
+          {totalFiles > 12 && (
+            <button
+              onClick={() => navigate('/arquivos')}
+              className="mt-3 text-sm text-[var(--primary-color)] hover:underline"
+            >
+              Ver mais {totalFiles - 12} arquivo(s)
+            </button>
+          )}
+        </>
       )}
     </div>
   );
