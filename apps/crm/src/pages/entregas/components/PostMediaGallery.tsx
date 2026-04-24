@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import JSZip from 'jszip';
-import { Upload, Star, Trash2, AlertTriangle, Download } from 'lucide-react';
+import { Upload, Star, Trash2, AlertTriangle, Download, FolderOpen } from 'lucide-react';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
   type DragEndEvent,
@@ -18,6 +18,8 @@ import {
 import type { PostMedia } from '../../../store';
 import { OptimizedImage } from '../../../components/OptimizedImage';
 import { PostMediaLightbox } from './PostMediaLightbox';
+import { FilePickerModal } from '../../arquivos/components/FilePickerModal';
+import { linkFileToPost, unlinkFileFromPost } from '../../../services/fileService';
 
 interface PostMediaGalleryProps {
   postId: number;
@@ -70,6 +72,7 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
   const [downloading, setDownloading] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [pendingVideo, setPendingVideo] = useState<File | null>(null);
+  const [showFilePicker, setShowFilePicker] = useState(false);
   const [progress, setProgress] = useState<{ name: string; pct: number } | null>(null);
 
   // Preload images into browser cache so lightbox opens instantly.
@@ -191,6 +194,16 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
     catch (e) { toast.error((e as Error).message); }
   }
 
+  async function handlePickFiles(fileIds: number[]) {
+    try {
+      await Promise.all(fileIds.map((fileId) => linkFileToPost(fileId, postId)));
+      refresh();
+      toast.success(`${fileIds.length} arquivo(s) vinculado(s)`);
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }
+
   if (mediaLoading) {
     return (
       <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
@@ -222,6 +235,16 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
                 <span className="text-[11px]">{uploading ? 'Enviando…' : 'Adicionar'}</span>
                 <input type="file" multiple accept="image/*,video/*" hidden onChange={(e) => handleFiles(e.target.files)} />
               </label>
+            )}
+            {!disabled && (
+              <button
+                type="button"
+                onClick={() => setShowFilePicker(true)}
+                className="flex flex-col items-center justify-center gap-1 aspect-square rounded-xl border border-dashed border-stone-300 bg-stone-50 text-stone-500 hover:border-stone-400 hover:bg-stone-100 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-400 dark:hover:border-stone-500 dark:hover:bg-stone-700 cursor-pointer transition-colors"
+              >
+                <FolderOpen className="h-4 w-4" />
+                <span className="text-[11px]">Escolher</span>
+              </button>
             )}
           </div>
         </SortableContext>
@@ -275,6 +298,13 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
         open={lightboxIndex !== null}
         onOpenChange={(o) => { if (!o) setLightboxIndex(null); }}
         onDownloadAll={handleDownloadAll}
+      />
+
+      <FilePickerModal
+        open={showFilePicker}
+        onClose={() => setShowFilePicker(false)}
+        onSelect={handlePickFiles}
+        filterKind={['image', 'video']}
       />
     </div>
   );
