@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   getWorkflows, getClientes, getMembros, getWorkflowTemplates, getWorkflowEtapas,
   getPortalApprovals, getDeadlineInfo, getWorkflowPostsCounts, getWorkflowApprovedPostsCounts,
-  getWorkflowPostResponsaveis,
+  getWorkflowPostResponsaveis, getWorkspaceSlug,
   type Workflow, type WorkflowEtapa, type Cliente, type Membro,
   type WorkflowTemplate, type PortalApproval, type PostMedia,
 } from '../../../store';
@@ -20,6 +20,7 @@ export interface BoardCard {
   allEtapas: WorkflowEtapa[];
   postCovers?: PostMedia[];
   clienteAvatarUrl?: string;
+  hubUrl?: string;
 }
 
 export interface BoardRow {
@@ -269,6 +270,26 @@ export function useEntregasData() {
     enabled: clienteIds.length > 0,
   });
 
+  const { data: workspaceSlug } = useQuery({
+    queryKey: ['workspace-slug'],
+    queryFn: getWorkspaceSlug,
+  });
+
+  const { data: hubTokens } = useQuery({
+    queryKey: ['hub-tokens-batch', clienteIds.join(',')],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('client_hub_tokens')
+        .select('cliente_id, token, is_active')
+        .in('cliente_id', clienteIds)
+        .eq('is_active', true);
+      const map = new Map<number, string>();
+      if (data) for (const row of data) if (row.cliente_id && row.token) map.set(row.cliente_id, row.token);
+      return map;
+    },
+    enabled: clienteIds.length > 0,
+  });
+
   // Build BoardCards from active workflows
   const cards: BoardCard[] = [];
   for (const w of activeWorkflows) {
@@ -283,6 +304,10 @@ export function useEntregasData() {
       ? membros.find(m => m.id === activeEtapa!.responsavel_id)
       : undefined;
     const deadline = getDeadlineInfo(activeEtapa);
+    const hubToken = w.cliente_id ? hubTokens?.get(w.cliente_id) : undefined;
+    const hubUrl = hubToken && workspaceSlug
+      ? `${window.location.origin}/${workspaceSlug}/hub/${hubToken}`
+      : undefined;
     cards.push({
       workflow: w,
       etapa: activeEtapa,
@@ -294,6 +319,7 @@ export function useEntregasData() {
       allEtapas: etapas,
       postCovers: covers?.get(w.id!),
       clienteAvatarUrl: w.cliente_id ? clienteAvatars?.get(w.cliente_id) : undefined,
+      hubUrl,
     });
   }
 
