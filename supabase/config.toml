@@ -7,6 +7,9 @@ verify_jwt = false
 [functions.analytics-report-cron]
 verify_jwt = false
 
+[functions.invite-expire-cron]
+verify_jwt = false
+
 [functions.hub-bootstrap]
 verify_jwt = false
 

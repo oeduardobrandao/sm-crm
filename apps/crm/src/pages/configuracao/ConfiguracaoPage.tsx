@@ -218,8 +218,13 @@ export default function ConfiguracaoPage() {
     queryKey: ['invites'],
     queryFn: async () => {
       if (!profile?.conta_id) return [];
-      const { data } = await supabase.from('invites').select('*').eq('conta_id', profile.conta_id).eq('status', 'pending').order('created_at', { ascending: false });
-      return data ?? [];
+      const { data } = await supabase.from('invites').select('*').eq('conta_id', profile.conta_id).in('status', ['pending', 'expired']).order('created_at', { ascending: false });
+      return (data ?? []).map((inv) => {
+        if (inv.status === 'pending' && inv.expires_at && new Date(inv.expires_at) < new Date()) {
+          return { ...inv, status: 'expired' };
+        }
+        return inv;
+      });
     },
     enabled: isOwnerOrAdmin && !!profile?.conta_id,
   });
