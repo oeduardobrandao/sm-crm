@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { LayoutGrid, List, Upload, FolderPlus } from 'lucide-react';
 import { toast } from 'sonner';
@@ -7,12 +7,14 @@ import { getFolderContents, createFolder } from '@/services/fileService';
 import { Breadcrumbs } from './components/Breadcrumbs';
 import { FolderTree } from './components/FolderTree';
 import { FileGrid } from './components/FileGrid';
+import { FileUploader } from './components/FileUploader';
 import type { FileRecord } from './types';
 
 export default function ArquivosPage() {
   const [currentFolderId, setCurrentFolderId] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const queryClient = useQueryClient();
+  const uploaderRef = useRef<{ openFilePicker: () => void }>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['folder-contents', currentFolderId],
@@ -75,10 +77,10 @@ export default function ArquivosPage() {
           />
 
           <div className="flex items-center gap-2 flex-shrink-0">
-            {/* Upload placeholder */}
+            {/* Upload */}
             <button
               className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-[var(--primary-color)] text-[#12151a] hover:opacity-90 transition-opacity"
-              onClick={() => toast.info('Upload — disponível em breve')}
+              onClick={() => uploaderRef.current?.openFilePicker()}
             >
               <Upload className="h-4 w-4" />
               Upload
@@ -121,22 +123,28 @@ export default function ArquivosPage() {
           </div>
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-5">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-20">
-              <Spinner size="lg" />
-            </div>
-          ) : (
-            <FileGrid
-              files={files}
-              subfolders={subfolders}
-              onOpenFolder={setCurrentFolderId}
-              onFileAction={handleFileAction}
-              viewMode={viewMode}
-            />
-          )}
-        </div>
+        {/* Content — wrapped in FileUploader for drag-and-drop */}
+        <FileUploader
+          folderId={currentFolderId}
+          onUploadComplete={() => queryClient.invalidateQueries({ queryKey: ['folder-contents'] })}
+          triggerRef={uploaderRef}
+        >
+          <div className="flex-1 overflow-y-auto p-5">
+            {isLoading ? (
+              <div className="flex items-center justify-center py-20">
+                <Spinner size="lg" />
+              </div>
+            ) : (
+              <FileGrid
+                files={files}
+                subfolders={subfolders}
+                onOpenFolder={setCurrentFolderId}
+                onFileAction={handleFileAction}
+                viewMode={viewMode}
+              />
+            )}
+          </div>
+        </FileUploader>
       </main>
     </div>
   );
