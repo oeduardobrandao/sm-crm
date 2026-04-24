@@ -1,6 +1,7 @@
 import type {
   HubBootstrap, HubPost, PostApproval, HubPostProperty, HubSelectOption, HubBrand, HubBrandFile,
-  HubPage, HubPageFull, BriefingQuestion, HubIdeia, IdeiaReaction
+  HubPage, HubPageFull, BriefingQuestion, HubIdeia, IdeiaReaction,
+  InstagramFeedData, HubPostsResponse
 } from './types';
 
 const BASE = import.meta.env.VITE_SUPABASE_URL as string;
@@ -41,11 +42,15 @@ export function fetchBootstrap(workspace: string, token: string) {
 }
 
 export function fetchPosts(token: string) {
-  return get<{ posts: HubPost[]; postApprovals: PostApproval[]; propertyValues: HubPostProperty[]; workflowSelectOptions: HubSelectOption[] }>('hub-posts', { token });
+  return get<HubPostsResponse>('hub-posts', { token });
 }
 
 export function submitApproval(token: string, post_id: number, action: 'aprovado' | 'correcao' | 'mensagem', comentario?: string) {
   return post<{ ok: boolean }>('hub-approve', { token, post_id, action, comentario });
+}
+
+export function fetchInstagramFeed(token: string) {
+  return get<InstagramFeedData>('hub-instagram-feed', { token });
 }
 
 export function fetchBrand(token: string) {
