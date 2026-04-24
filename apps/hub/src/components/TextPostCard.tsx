@@ -8,15 +8,16 @@ interface TextPostCardProps {
   post: HubPost;
   token: string;
   approvals: PostApproval[];
-  onApprovalSubmitted: () => void;
+  onApprovalSubmitted?: () => void;
+  readOnly?: boolean;
 }
 
-export function TextPostCard({ post, token, approvals, onApprovalSubmitted }: TextPostCardProps) {
+export function TextPostCard({ post, token, approvals, onApprovalSubmitted, readOnly }: TextPostCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [comentario, setComentario] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-  const isPending = post.status === 'enviado_cliente';
+  const isPending = !readOnly && post.status === 'enviado_cliente';
 
   async function handleAction(action: 'aprovado' | 'correcao') {
     setSubmitting(true);
@@ -24,7 +25,7 @@ export function TextPostCard({ post, token, approvals, onApprovalSubmitted }: Te
     try {
       await submitApproval(token, post.id, action, comentario || undefined);
       setResult({ type: 'success', message: action === 'aprovado' ? 'Post aprovado!' : 'Correção enviada!' });
-      onApprovalSubmitted();
+      onApprovalSubmitted?.();
     } catch (e) {
       setResult({ type: 'error', message: (e as Error).message });
     } finally {

@@ -74,6 +74,15 @@ vi.mock('../../components/TextPostCard', () => ({
   ),
 }));
 
+vi.mock('../../components/StoryPostCard', () => ({
+  StoryPostCard: ({ post, onApprovalSubmitted }: { post: { id: number; titulo: string }; onApprovalSubmitted: () => void }) => (
+    <article data-testid="story-post-card" data-post-id={String(post.id)}>
+      <h4>{post.titulo}</h4>
+      <button type="button" onClick={onApprovalSubmitted}>Refresh {post.id}</button>
+    </article>
+  ),
+}));
+
 vi.mock('../../components/FeedPreviewButton', () => ({
   FeedPreviewButton: () => null,
 }));
@@ -296,10 +305,12 @@ describe('hub approval, posts, and brand pages', () => {
       );
 
       expect(await screen.findByText('Nenhuma postagem disponível ainda.')).toBeInTheDocument();
-      expect(screen.queryByTestId('post-card')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('text-post-card')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('instagram-post-card')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('story-post-card')).not.toBeInTheDocument();
     });
 
-    it('groups and sorts visible posts, wires defaultExpanded from the query string, and invalidates on refresh', async () => {
+    it('groups and sorts visible posts in read-only mode', async () => {
       mockedFetchPosts.mockResolvedValue({
         posts: [
           makePost({
@@ -342,19 +353,16 @@ describe('hub approval, posts, and brand pages', () => {
             status: 'rascunho',
           }),
         ],
-        postApprovals: [{ id: 2, post_id: 30, action: 'mensagem', comentario: 'Ver legenda', is_workspace_user: false, created_at: '2026-04-18T12:00:00.000Z' }],
-        propertyValues: [{ post_id: 30, value: 'Urgente', template_property_definitions: { name: 'Prioridade', type: 'text', config: {}, portal_visible: true, display_order: 1 } }],
-        workflowSelectOptions: [{ workflow_id: 2, property_definition_id: 5, option_id: 'ig', label: 'Instagram', color: '#ff8a00' }],
+        postApprovals: [],
+        propertyValues: [],
+        workflowSelectOptions: [],
+        instagramProfile: null,
       } as never);
 
-      const queryClient = createQueryClient();
-      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
-
       renderHubPage(
-        '/mesaas/hub/token-publico/postagens?post=30',
+        '/mesaas/hub/token-publico/postagens',
         '/:workspace/hub/:token/postagens',
         <PostagensPage />,
-        queryClient,
       );
 
       expect(await screen.findByRole('heading', { name: 'Postagens' })).toBeInTheDocument();
@@ -377,14 +385,6 @@ describe('hub approval, posts, and brand pages', () => {
       ]);
 
       expect(screen.queryByText('Rascunho oculto')).not.toBeInTheDocument();
-      expect(screen.getByTestId('post-wire-30')).toHaveTextContent('token-publico|1|1|1|expanded');
-      expect(screen.getByTestId('post-wire-32')).toHaveTextContent('token-publico|1|1|1|collapsed');
-
-      fireEvent.click(screen.getByRole('button', { name: 'Refresh 30' }));
-
-      await waitFor(() => {
-        expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['hub-posts', 'token-publico'] });
-      });
     });
   });
 

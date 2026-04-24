@@ -11,12 +11,13 @@ interface StoryPostCardProps {
   approvals: PostApproval[];
   instagramProfile: InstagramProfile | null;
   workspaceName?: string;
-  onApprovalSubmitted: () => void;
+  onApprovalSubmitted?: () => void;
+  readOnly?: boolean;
 }
 
 export function StoryPostCard({
   post, token, approvals, instagramProfile, workspaceName,
-  onApprovalSubmitted,
+  onApprovalSubmitted, readOnly,
 }: StoryPostCardProps) {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [comentario, setComentario] = useState('');
@@ -24,7 +25,7 @@ export function StoryPostCard({
   const [result, setResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
 
-  const isPending = post.status === 'enviado_cliente';
+  const isPending = !readOnly && post.status === 'enviado_cliente';
   const media = post.media ?? [];
   const displayName = instagramProfile?.username ?? workspaceName ?? '';
   const profilePic = instagramProfile?.profilePictureUrl;
@@ -42,7 +43,7 @@ export function StoryPostCard({
     try {
       await submitApproval(token, post.id, action, comentario || undefined);
       setResult({ type: 'success', message: action === 'aprovado' ? 'Post aprovado!' : 'Correção enviada!' });
-      onApprovalSubmitted();
+      onApprovalSubmitted?.();
     } catch (e) {
       setResult({ type: 'error', message: (e as Error).message });
     } finally {

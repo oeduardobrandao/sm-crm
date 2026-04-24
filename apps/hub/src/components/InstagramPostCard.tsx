@@ -11,14 +11,15 @@ interface InstagramPostCardProps {
   approvals: PostApproval[];
   instagramProfile: InstagramProfile | null;
   workspaceName?: string;
-  isSelected: boolean;
-  onToggleSelect: (postId: number) => void;
-  onApprovalSubmitted: () => void;
+  isSelected?: boolean;
+  onToggleSelect?: (postId: number) => void;
+  onApprovalSubmitted?: () => void;
+  readOnly?: boolean;
 }
 
 export function InstagramPostCard({
   post, token, approvals, instagramProfile, workspaceName,
-  isSelected, onToggleSelect, onApprovalSubmitted,
+  isSelected, onToggleSelect, onApprovalSubmitted, readOnly,
 }: InstagramPostCardProps) {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [captionExpanded, setCaptionExpanded] = useState(false);
@@ -27,7 +28,7 @@ export function InstagramPostCard({
   const [result, setResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
 
-  const isPending = post.status === 'enviado_cliente';
+  const isPending = !readOnly && post.status === 'enviado_cliente';
   const media = post.media ?? [];
   const isCarousel = media.length > 1;
   const displayName = instagramProfile?.username ?? workspaceName ?? '';
@@ -45,7 +46,7 @@ export function InstagramPostCard({
     try {
       await submitApproval(token, post.id, action, comentario || undefined);
       setResult({ type: 'success', message: action === 'aprovado' ? 'Post aprovado!' : 'Correção enviada!' });
-      onApprovalSubmitted();
+      onApprovalSubmitted?.();
     } catch (e) {
       setResult({ type: 'error', message: (e as Error).message });
     } finally {
@@ -64,17 +65,19 @@ export function InstagramPostCard({
       style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' }}
     >
       {/* Selection checkbox */}
-      <div className="absolute top-2 right-2 z-10">
-        <button
-          type="button"
-          role="checkbox"
-          aria-checked={isSelected}
-          onClick={(e) => { e.stopPropagation(); onToggleSelect(post.id); }}
-          className={`w-5 h-5 rounded-full flex items-center justify-center cursor-pointer shadow-md ${isSelected ? 'bg-[#0095f6]' : 'bg-black/30 dark:bg-white/20 border-2 border-white dark:border-white/60'}`}
-        >
-          <svg width="10" height="10" fill="none" stroke="#fff" strokeWidth="2.5" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
-        </button>
-      </div>
+      {onToggleSelect && (
+        <div className="absolute top-2 right-2 z-10">
+          <button
+            type="button"
+            role="checkbox"
+            aria-checked={isSelected}
+            onClick={(e) => { e.stopPropagation(); onToggleSelect(post.id); }}
+            className={`w-5 h-5 rounded-full flex items-center justify-center cursor-pointer shadow-md ${isSelected ? 'bg-[#0095f6]' : 'bg-black/30 dark:bg-white/20 border-2 border-white dark:border-white/60'}`}
+          >
+            <svg width="10" height="10" fill="none" stroke="#fff" strokeWidth="2.5" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+          </button>
+        </div>
+      )}
 
       {/* Profile header */}
       <div className="flex items-center px-2.5 py-2 gap-2 relative">

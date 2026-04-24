@@ -1,8 +1,9 @@
-import { useQueryClient, useQuery } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useHub } from '../HubContext';
 import { fetchPosts } from '../api';
-import { PostCard } from '../components/PostCard';
+import { InstagramPostCard } from '../components/InstagramPostCard';
+import { StoryPostCard } from '../components/StoryPostCard';
+import { TextPostCard } from '../components/TextPostCard';
 import type { HubPost } from '../types';
 
 const VISIBLE_STATUSES = new Set<HubPost['status']>([
@@ -10,10 +11,7 @@ const VISIBLE_STATUSES = new Set<HubPost['status']>([
 ]);
 
 export function PostagensPage() {
-  const { token } = useHub();
-  const qc = useQueryClient();
-  const [searchParams] = useSearchParams();
-  const expandPostId = searchParams.get('post') ? Number(searchParams.get('post')) : null;
+  const { token, bootstrap } = useHub();
   const { data, isLoading, isError } = useQuery({
     queryKey: ['hub-posts', token],
     queryFn: () => fetchPosts(token),
@@ -21,10 +19,8 @@ export function PostagensPage() {
 
   const allPosts = (data?.posts ?? []).filter(p => VISIBLE_STATUSES.has(p.status));
   const approvals = data?.postApprovals ?? [];
-  const propertyValues = data?.propertyValues ?? [];
-  const workflowSelectOptions = data?.workflowSelectOptions ?? [];
+  const instagramProfile = data?.instagramProfile ?? null;
 
-  // Group by workflow_id, sorted by workflow_titulo alphabetically
   const groups = Object.values(
     allPosts.reduce<Record<number, { titulo: string; posts: HubPost[] }>>((acc, post) => {
       if (!acc[post.workflow_id]) {
@@ -35,7 +31,6 @@ export function PostagensPage() {
     }, {})
   ).sort((a, b) => a.titulo.localeCompare(b.titulo, 'pt-BR'));
 
-  // Within each group: sort by scheduled_at asc (nulls last), then by ordem
   groups.forEach(g => {
     g.posts.sort((a, b) => {
       if (!a.scheduled_at && !b.scheduled_at) return a.ordem - b.ordem;
@@ -71,29 +66,71 @@ export function PostagensPage() {
         <p className="text-sm text-stone-500">Nenhuma postagem disponível ainda.</p>
       ) : (
         <div className="space-y-10">
-          {groups.map(group => (
-            <section key={group.titulo}>
-              <div className="flex items-center gap-2 mb-4">
-                <span className="h-[1px] w-6 bg-stone-300" />
-                <h3 className="font-display text-[17px] font-semibold tracking-tight text-stone-900">{group.titulo}</h3>
-                <span className="text-[11px] text-stone-400">{group.posts.length} {group.posts.length === 1 ? 'post' : 'posts'}</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {group.posts.map(post => (
-                  <PostCard
-                    key={post.id}
-                    post={post}
-                    token={token}
-                    approvals={approvals}
-                    propertyValues={propertyValues}
-                    workflowSelectOptions={workflowSelectOptions}
-                    onApprovalSubmitted={() => qc.invalidateQueries({ queryKey: ['hub-posts', token] })}
-                    defaultExpanded={expandPostId === post.id}
-                  />
-                ))}
-              </div>
-            </section>
-          ))}
+          {groups.map(group => {
+            const withMedia = group.posts.filter(p => p.media.length > 0 && p.tipo !== 'stories');
+            const stories = group.posts.filter(p => p.media.length > 0 && p.tipo === 'stories');
+            const withoutMedia = group.posts.filter(p => p.media.length === 0);
+
+            return (
+              <section key={group.titulo}>
+                <div className="flex items-center gap-2 mb-4">
+                  <span className="h-[1px] w-6 bg-stone-300" />
+                  <h3 className="font-display text-[17px] font-semibold tracking-tight text-stone-900">{group.titulo}</h3>
+                  <span className="text-[11px] text-stone-400">{group.posts.length} {group.posts.length === 1 ? 'post' : 'posts'}</span>
+                </div>
+
+                {withMedia.length > 0 && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {withMedia.map(post => (
+                      <InstagramPostCard
+                        key={post.id}
+                        post={post}
+                        token={token}
+                        approvals={approvals}
+                        instagramProfile={instagramProfile}
+                        workspaceName={bootstrap.workspace.name}
+                        readOnly
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {stories.length > 0 && (
+                  <div className={withMedia.length > 0 ? 'mt-4' : ''}>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {stories.map(post => (
+                        <StoryPostCard
+                          key={post.id}
+                          post={post}
+                          token={token}
+                          approvals={approvals}
+                          instagramProfile={instagramProfile}
+                          workspaceName={bootstrap.workspace.name}
+                          readOnly
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {withoutMedia.length > 0 && (
+                  <div className={(withMedia.length > 0 || stories.length > 0) ? 'mt-4' : ''}>
+                    <div className="max-w-[640px] space-y-3">
+                      {withoutMedia.map(post => (
+                        <TextPostCard
+                          key={post.id}
+                          post={post}
+                          token={token}
+                          approvals={approvals}
+                          readOnly
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </section>
+            );
+          })}
         </div>
       )}
     </div>
