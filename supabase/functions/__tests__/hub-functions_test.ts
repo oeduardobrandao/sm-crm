@@ -7,6 +7,7 @@ import { createHubBriefingHandler } from "../hub-briefing/handler.ts";
 import { createHubIdeiasHandler } from "../hub-ideias/handler.ts";
 import { createHubPagesHandler } from "../hub-pages/handler.ts";
 import { createHubPostsHandler } from "../hub-posts/handler.ts";
+import { createHubInstagramFeedHandler } from "../hub-instagram-feed/handler.ts";
 
 const now = () => "2026-04-17T12:00:00.000Z";
 const buildCorsHeaders = () => ({ "Access-Control-Allow-Origin": "https://hub.mesaas.com" });
@@ -93,6 +94,10 @@ Deno.test("hub-posts returns flattened post data with signed media URLs", async 
         sort_order: 0,
       },
     ],
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", {
+    data: { username: "studio_marca", profile_picture_url: "https://cdn.ig/pic.jpg" },
     error: null,
   });
 
@@ -525,6 +530,7 @@ Deno.test("hub-posts returns empty collections when the client has no workflows"
     error: null,
   });
   db.queue("workflows", "select", { data: [], error: null });
+  db.queue("instagram_accounts", "select", { data: null, error: null });
 
   const handler = createHubPostsHandler({
     buildCorsHeaders,
@@ -537,6 +543,60 @@ Deno.test("hub-posts returns empty collections when the client has no workflows"
   assertEquals(response.status, 200);
   assertEquals(body.posts, []);
   assertEquals(body.postApprovals, []);
+  assertEquals(body.instagramProfile, null);
+});
+
+Deno.test("hub-posts includes instagramProfile when the client has a linked account", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("workflows", "select", { data: [], error: null });
+  db.queue("instagram_accounts", "select", {
+    data: { username: "studio_marca", profile_picture_url: "https://cdn.ig/pic.jpg" },
+    error: null,
+  });
+
+  const handler = createHubPostsHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    signGetUrl: async () => "https://signed.example",
+  });
+  const response = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.instagramProfile.username, "studio_marca");
+  assertEquals(body.instagramProfile.profilePictureUrl, "https://cdn.ig/pic.jpg");
+  assertEquals(body.propertyValues, []);
+  assertEquals(body.workflowSelectOptions, []);
+});
+
+Deno.test("hub-posts returns instagramProfile as null when no account is linked", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("workflows", "select", { data: [], error: null });
+  db.queue("instagram_accounts", "select", {
+    data: null,
+    error: null,
+  });
+
+  const handler = createHubPostsHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    signGetUrl: async () => "https://signed.example",
+  });
+  const response = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.instagramProfile, null);
 });
 
 Deno.test("hub-brand rejects missing tokens with 400", async () => {
@@ -759,5 +819,107 @@ Deno.test("hub-ideias returns 404 for unsupported routes", async () => {
     now,
   });
   const response = await handler(new Request("https://example.test/hub-ideias?token=hub-123", { method: "PUT" }));
+  assertEquals(response.status, 404);
+});
+
+Deno.test("hub-instagram-feed returns profile and recent posts for a valid token", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", {
+    data: {
+      id: "ig-acc-1",
+      username: "studio_marca",
+      profile_picture_url: "https://cdn.ig/pic.jpg",
+      follower_count: 15300,
+      following_count: 892,
+      media_count: 42,
+    },
+    error: null,
+  });
+  db.queue("instagram_posts", "select", {
+    data: [
+      {
+        instagram_post_id: "ig-post-1",
+        thumbnail_url: "https://cdn.ig/thumb1.jpg",
+        media_type: "IMAGE",
+        permalink: "https://instagram.com/p/abc",
+        posted_at: "2026-04-20T10:00:00.000Z",
+        impressions: 5292,
+      },
+      {
+        instagram_post_id: "ig-post-2",
+        thumbnail_url: null,
+        media_type: "CAROUSEL_ALBUM",
+        permalink: "https://instagram.com/p/def",
+        posted_at: "2026-04-18T14:00:00.000Z",
+        impressions: 4555,
+      },
+    ],
+    error: null,
+  });
+
+  const handler = createHubInstagramFeedHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+  });
+
+  const response = await handler(new Request("https://example.test/hub-instagram-feed?token=hub-123"));
+  const body = await readJson(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.profile.username, "studio_marca");
+  assertEquals(body.profile.followerCount, 15300);
+  assertEquals(body.recentPosts.length, 2);
+  assertEquals(body.recentPosts[0].id, "ig-post-1");
+  assertEquals(body.recentPosts[1].thumbnailUrl, null);
+});
+
+Deno.test("hub-instagram-feed returns 404 when no Instagram account is linked", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("instagram_accounts", "select", {
+    data: null,
+    error: null,
+  });
+
+  const handler = createHubInstagramFeedHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+  });
+
+  const response = await handler(new Request("https://example.test/hub-instagram-feed?token=hub-123"));
+  assertEquals(response.status, 404);
+});
+
+Deno.test("hub-instagram-feed rejects missing tokens with 400", async () => {
+  const handler = createHubInstagramFeedHandler({
+    buildCorsHeaders,
+    createDb: () => createSupabaseQueryMock() as never,
+    now,
+  });
+
+  const response = await handler(new Request("https://example.test/hub-instagram-feed"));
+  assertEquals(response.status, 400);
+});
+
+Deno.test("hub-instagram-feed returns 404 for invalid tokens", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: null, error: null });
+
+  const handler = createHubInstagramFeedHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+  });
+
+  const response = await handler(new Request("https://example.test/hub-instagram-feed?token=expired"));
   assertEquals(response.status, 404);
 });

@@ -134,3 +134,36 @@ export interface HubIdeia {
   updated_at: string;
   ideia_reactions: IdeiaReaction[];
 }
+
+export interface InstagramProfile {
+  username: string | null;
+  profilePictureUrl: string | null;
+}
+
+export interface InstagramFeedProfile extends InstagramProfile {
+  followerCount: number;
+  followingCount: number;
+  mediaCount: number;
+}
+
+export interface InstagramFeedPost {
+  id: string;
+  thumbnailUrl: string | null;
+  mediaType: 'IMAGE' | 'VIDEO' | 'CAROUSEL_ALBUM';
+  permalink: string;
+  postedAt: string;
+  impressions: number;
+}
+
+export interface InstagramFeedData {
+  profile: InstagramFeedProfile;
+  recentPosts: InstagramFeedPost[];
+}
+
+export interface HubPostsResponse {
+  posts: HubPost[];
+  postApprovals: PostApproval[];
+  propertyValues: HubPostProperty[];
+  workflowSelectOptions: HubSelectOption[];
+  instagramProfile: InstagramProfile | null;
+}
