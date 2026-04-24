@@ -43,7 +43,7 @@ export function InstagramGridPreview({ selectedPosts, feedProfile, livePosts, on
       return {
         type: 'pending' as const,
         id: `pending-${p.id}`,
-        thumbnailUrl: p.cover_media?.url ?? (isVideo ? firstMedia.thumbnail_url : firstMedia?.url) ?? null,
+        thumbnailUrl: isVideo ? (firstMedia.thumbnail_url ?? null) : (firstMedia?.url ?? null),
         videoUrl: isVideo ? firstMedia.url : null,
         mediaType: p.tipo === 'carrossel' || (p.media?.length ?? 0) > 1 ? 'CAROUSEL_ALBUM' : p.tipo === 'reels' ? 'VIDEO' : 'IMAGE',
         impressions: 0,
