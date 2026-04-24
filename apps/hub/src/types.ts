@@ -23,6 +23,7 @@ export interface HubPostMedia {
   duration_seconds: number | null;
   is_cover: boolean;
   sort_order: number;
+  blur_data_url?: string | null;
 }
 
 export interface HubPost {

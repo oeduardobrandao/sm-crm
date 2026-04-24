@@ -1,6 +1,11 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { headObject, signGetUrl } from "../_shared/r2.ts";
+import { signMediaUrl, isMediaProxyEnabled } from "../_shared/media-url.ts";
 import { buildCorsHeaders } from "../_shared/cors.ts";
+
+const signUrl = isMediaProxyEnabled()
+  ? (key: string) => signMediaUrl(key)
+  : (key: string) => signGetUrl(key, 900);
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -38,6 +43,7 @@ Deno.serve(async (req) => {
     kind: "image" | "video"; mime_type: string; size_bytes: number;
     original_filename: string;
     width?: number; height?: number; duration_seconds?: number;
+    blur_data_url?: string;
   };
   try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
 
@@ -108,8 +114,12 @@ Deno.serve(async (req) => {
     return json({ error: msg }, status);
   }
 
-  const url = await signGetUrl(body.r2_key, 900);
-  const thumbnail_url = body.thumbnail_r2_key ? await signGetUrl(body.thumbnail_r2_key, 900) : null;
+  if (body.blur_data_url && typeof body.blur_data_url === "string" && body.blur_data_url.startsWith("data:")) {
+    await svc.from("post_media").update({ blur_data_url: body.blur_data_url }).eq("id", (inserted as any).id);
+  }
 
-  return json({ ...inserted, url, thumbnail_url });
+  const url = await signUrl(body.r2_key);
+  const thumbnail_url = body.thumbnail_r2_key ? await signUrl(body.thumbnail_r2_key) : null;
+
+  return json({ ...inserted, url, thumbnail_url, blur_data_url: body.blur_data_url ?? null });
 });

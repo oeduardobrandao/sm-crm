@@ -1,0 +1,13 @@
+name = "media-proxy"
+main = "src/index.ts"
+compatibility_date = "2024-05-12"
+
+[[r2_buckets]]
+binding = "MEDIA_BUCKET"
+bucket_name = "YOUR_BUCKET_NAME"  # ← Replace with your R2 bucket name
+
+[vars]
+# MEDIA_SIGNING_KEY must be set via `wrangler secret put MEDIA_SIGNING_KEY`
+# Use the same value in the Supabase edge function env as MEDIA_SIGNING_KEY
+# ALLOWED_ORIGINS is optional — comma-separated origins for CORS
+# ALLOWED_ORIGINS = "https://app.mesaas.com,https://hub.mesaas.com"

@@ -1,6 +1,11 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { signGetUrl, signPutUrl } from "../_shared/r2.ts";
+import { signMediaUrl, isMediaProxyEnabled } from "../_shared/media-url.ts";
 import { buildCorsHeaders } from "../_shared/cors.ts";
+
+const signUrl = isMediaProxyEnabled()
+  ? (key: string) => signMediaUrl(key)
+  : (key: string) => signGetUrl(key, 900);
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -79,8 +84,8 @@ Deno.serve(async (req) => {
         workflow_id,
         media: await Promise.all(mediaRows.map(async (r) => ({
           ...r,
-          url: await signGetUrl(r.r2_key, 900),
-          thumbnail_url: r.thumbnail_r2_key ? await signGetUrl(r.thumbnail_r2_key, 900) : null,
+          url: await signUrl(r.r2_key),
+          thumbnail_url: r.thumbnail_r2_key ? await signUrl(r.thumbnail_r2_key) : null,
         }))),
       })));
       return json({ covers: result });
