@@ -62,7 +62,7 @@ describe('InstagramPostCard', () => {
       />,
     );
 
-    expect(screen.getByText('studio_marca')).toBeInTheDocument();
+    expect(screen.getAllByText('studio_marca').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByAltText('studio_marca')).toHaveAttribute('src', 'https://cdn.ig/pic.jpg');
   });
 
@@ -80,7 +80,7 @@ describe('InstagramPostCard', () => {
       />,
     );
 
-    expect(screen.getByText('Mesaas')).toBeInTheDocument();
+    expect(screen.getAllByText('Mesaas').length).toBeGreaterThanOrEqual(1);
   });
 
   it('shows carousel dots when post has multiple media items', () => {

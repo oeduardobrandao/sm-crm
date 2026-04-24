@@ -130,14 +130,13 @@ export function InstagramPostCard({
 
       {/* Caption */}
       <div className="px-3.5 py-1.5">
-        {caption && (
-          <p className="text-[13px] text-[#262626] leading-[1.4]">
-            {captionExpanded ? caption : truncatedCaption}
-            {caption.length > 125 && !captionExpanded && (
-              <button onClick={() => setCaptionExpanded(true)} className="text-[#737373] ml-1">mais</button>
-            )}
-          </p>
-        )}
+        <p className="text-[13px] text-[#262626] leading-[1.4]">
+          <span className="font-semibold">{displayName}</span>{' '}
+          {captionExpanded ? caption : truncatedCaption}
+          {caption.length > 125 && !captionExpanded && (
+            <button onClick={() => setCaptionExpanded(true)} className="text-[#737373] ml-1">mais</button>
+          )}
+        </p>
         <p className="text-[11px] text-[#737373] mt-1.5">Agendado: {formatDate(post.scheduled_at)}</p>
       </div>
 
