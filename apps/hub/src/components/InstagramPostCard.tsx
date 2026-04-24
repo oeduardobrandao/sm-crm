@@ -32,7 +32,11 @@ export function InstagramPostCard({
   const isCarousel = media.length > 1;
   const displayName = instagramProfile?.username ?? workspaceName ?? '';
   const profilePic = instagramProfile?.profilePictureUrl;
-  const caption = post.conteudo_plain ?? '';
+  const rawText = post.conteudo_plain ?? '';
+  const legendaIdx = rawText.toUpperCase().indexOf('LEGENDA');
+  const caption = legendaIdx !== -1
+    ? rawText.slice(legendaIdx + 'LEGENDA'.length).replace(/^[:\s\n]+/, '').trim()
+    : rawText;
   const truncatedCaption = caption.length > 125 ? caption.slice(0, 125) + '...' : caption;
 
   async function handleAction(action: 'aprovado' | 'correcao') {
