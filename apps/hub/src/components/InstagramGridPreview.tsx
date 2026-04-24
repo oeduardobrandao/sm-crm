@@ -133,16 +133,14 @@ export function InstagramGridPreview({ selectedPosts, feedProfile, livePosts, on
   );
 
   const carouselIcon = (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-      <rect x="2" y="4" width="14" height="14" rx="2.5" stroke="white" strokeWidth="2" fill="rgba(0,0,0,0.15)"/>
-      <rect x="8" y="6" width="14" height="14" rx="2.5" stroke="white" strokeWidth="2" fill="rgba(0,0,0,0.15)"/>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="white" style={{ filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.5))' }}>
+      <path d="M4 6.5C4 5.12 5.12 4 6.5 4h8C15.88 4 17 5.12 17 6.5v8c0 1.38-1.12 2.5-2.5 2.5h-8C5.12 17 4 15.88 4 14.5v-8zm2.5-.5a.5.5 0 00-.5.5v8a.5.5 0 00.5.5h8a.5.5 0 00.5-.5v-8a.5.5 0 00-.5-.5h-8zM19 7.5v10c0 1.38-1.12 2.5-2.5 2.5h-10c-.55 0-1 .45-1 1s.45 1 1 1h10c2.49 0 4.5-2.01 4.5-4.5v-10c0-.55-.45-1-1-1s-1 .45-1 1z"/>
     </svg>
   );
 
   const reelsIcon = (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-      <rect x="3" y="3" width="18" height="18" rx="3" stroke="white" strokeWidth="1.8" fill="rgba(0,0,0,0.15)"/>
-      <path d="M10 8.5v7l5.5-3.5L10 8.5z" fill="white"/>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="white" style={{ filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.5))' }}>
+      <path d="M3 5.5C3 4.12 4.12 3 5.5 3h13C19.88 3 21 4.12 21 5.5v13c0 1.38-1.12 2.5-2.5 2.5h-13C4.12 21 3 19.88 3 18.5v-13zM5.5 5a.5.5 0 00-.5.5v13a.5.5 0 00.5.5h13a.5.5 0 00.5-.5v-13a.5.5 0 00-.5-.5h-13zM10 8.5v7a.5.5 0 00.77.42l5.5-3.5a.5.5 0 000-.84l-5.5-3.5A.5.5 0 0010 8.5z"/>
     </svg>
   );
 
