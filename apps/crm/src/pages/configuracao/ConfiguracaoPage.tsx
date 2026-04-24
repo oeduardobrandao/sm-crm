@@ -29,13 +29,22 @@ function RoleBadge({ role }: { role: string }) {
   return <span className={`badge ${map[role] ?? 'badge-neutral'}`}>{pt[role] ?? role}</span>;
 }
 
-function InviteStatusBadge({ status }: { status: string }) {
+export function InviteStatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = { pending: 'badge-warning', expired: 'badge-danger', accepted: 'badge-success' };
   const pt: Record<string, string> = { pending: 'PENDENTE', expired: 'EXPIRADO', accepted: 'ACEITO' };
   return <span className={`badge ${map[status] ?? 'badge-neutral'}`}>{pt[status] ?? status}</span>;
 }
 
-function InviteTimeLeft({ expiresAt, status }: { expiresAt: string; status: string }) {
+export function computeEffectiveInviteStatus<T extends { status: string; expires_at?: string | null }>(invites: T[]): T[] {
+  return invites.map((inv) => {
+    if (inv.status === 'pending' && inv.expires_at && new Date(inv.expires_at) < new Date()) {
+      return { ...inv, status: 'expired' as T['status'] };
+    }
+    return inv;
+  });
+}
+
+export function InviteTimeLeft({ expiresAt, status }: { expiresAt: string; status: string }) {
   if (status !== 'pending' || !expiresAt) return null;
   const diff = new Date(expiresAt).getTime() - Date.now();
   if (diff <= 0) return null;
@@ -234,12 +243,7 @@ export default function ConfiguracaoPage() {
     queryFn: async () => {
       if (!profile?.conta_id) return [];
       const { data } = await supabase.from('invites').select('*').eq('conta_id', profile.conta_id).in('status', ['pending', 'expired']).order('created_at', { ascending: false });
-      return (data ?? []).map((inv) => {
-        if (inv.status === 'pending' && inv.expires_at && new Date(inv.expires_at) < new Date()) {
-          return { ...inv, status: 'expired' };
-        }
-        return inv;
-      });
+      return computeEffectiveInviteStatus(data ?? []);
     },
     enabled: isOwnerOrAdmin && !!profile?.conta_id,
   });
