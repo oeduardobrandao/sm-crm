@@ -109,6 +109,12 @@ Deno.serve(async (req) => {
       await adminClient.from('invites').update({ status: 'expired' }).eq('id', existingInvite.id);
     }
 
+    // Clean up any previously expired invites for this email + workspace
+    await adminClient.from('invites').delete()
+      .eq('email', email.toLowerCase())
+      .eq('conta_id', profile.conta_id)
+      .eq('status', 'expired');
+
     // Check if user already exists in auth before attempting invite
     let existingUser = null;
     let page = 1;
