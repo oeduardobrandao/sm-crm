@@ -116,6 +116,11 @@ class QueryBuilder {
     return this;
   }
 
+  is(...args: unknown[]) {
+    this.modifiers.push({ method: 'is', args });
+    return this;
+  }
+
   order(...args: unknown[]) {
     this.modifiers.push({ method: 'order', args });
     return this;
@@ -177,10 +182,16 @@ class QueryBuilder {
   }
 }
 
+interface AuthResponse {
+  data: { user: any };
+  error: any;
+}
+
 interface MockState {
   calls: QueryCall[];
   responses: Map<string, SupabaseResponse[]>;
   rpcResponses: Map<string, SupabaseResponse[]>;
+  authResponse: AuthResponse;
 }
 
 function createState(): MockState {
@@ -188,6 +199,7 @@ function createState(): MockState {
     calls: [],
     responses: new Map(),
     rpcResponses: new Map(),
+    authResponse: { data: { user: null }, error: { message: "not configured" } },
   };
 }
 
@@ -195,6 +207,11 @@ export function createSupabaseQueryMock() {
   const state = createState();
 
   return {
+    auth: {
+      getUser(_token: string) {
+        return Promise.resolve(state.authResponse);
+      },
+    },
     from(table: string) {
       return new QueryBuilder(state, table);
     },
@@ -214,7 +231,16 @@ export function createSupabaseQueryMock() {
         modifiers: [],
       });
 
-      return resultPromise.then(cloneResult);
+      const resolved = resultPromise.then(cloneResult);
+
+      // Return a thenable with .single() and .maybeSingle() for chaining
+      return {
+        single: () => resolved,
+        maybeSingle: () => resolved,
+        then: (onfulfilled?: any, onrejected?: any) => resolved.then(onfulfilled, onrejected),
+        catch: (onrejected?: any) => resolved.catch(onrejected),
+        finally: (onfinally?: any) => resolved.finally(onfinally),
+      };
     },
     queue(table: string, operation: SupabaseOperation, ...responses: SupabaseResponse[]) {
       const key = `${table}:${operation}`;
@@ -231,6 +257,13 @@ export function createSupabaseQueryMock() {
       state.calls.length = 0;
       state.responses.clear();
       state.rpcResponses.clear();
+      state.authResponse = { data: { user: null }, error: { message: "not configured" } };
+    },
+    withAuth(user: { id: string; [key: string]: unknown } | null, error?: { message: string } | null) {
+      state.authResponse = {
+        data: { user },
+        error: error ?? null,
+      };
     },
     get calls() {
       return state.calls;
