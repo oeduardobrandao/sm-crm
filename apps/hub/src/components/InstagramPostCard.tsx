@@ -101,6 +101,14 @@ export function InstagramPostCard({
           </button>
         )}
 
+        {currentMedia?.kind === 'video' && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="w-12 h-12 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
+            </div>
+          </div>
+        )}
+
         {isCarousel && currentSlide > 0 && (
           <button onClick={prevSlide} className="absolute left-1.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/80 dark:bg-black/60 flex items-center justify-center shadow-sm text-[#262626] dark:text-white">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M15 18l-6-6 6-6"/></svg>
