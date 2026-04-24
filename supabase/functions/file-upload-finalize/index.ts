@@ -70,6 +70,10 @@ Deno.serve(async (req) => {
     if (!folder || folder.conta_id !== profile.conta_id) return json({ error: "Folder not found" }, 404);
   }
 
+  if (body.post_id && body.kind === "document") {
+    return json({ error: "documents cannot be linked to posts" }, 400);
+  }
+
   const { data: inserted, error: insErr } = await svc.rpc("file_insert_with_quota", {
     p: {
       conta_id: profile.conta_id,
@@ -97,16 +101,15 @@ Deno.serve(async (req) => {
   }
 
   if (body.post_id) {
-    if (body.kind === "document") return json({ error: "documents cannot be linked to posts" }, 400);
-
     const { data: post } = await svc.from("workflow_posts").select("conta_id").eq("id", body.post_id).single();
     if (!post || post.conta_id !== profile.conta_id) return json({ error: "Post not found" }, 404);
 
-    await svc.from("post_file_links").insert({
+    const { error: linkErr } = await svc.from("post_file_links").insert({
       post_id: body.post_id,
       file_id: (inserted as any).id,
       conta_id: profile.conta_id,
     });
+    if (linkErr) return json({ error: linkErr.message }, 500);
   }
 
   const url = await signUrl(body.r2_key);

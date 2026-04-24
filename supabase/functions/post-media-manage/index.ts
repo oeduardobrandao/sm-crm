@@ -128,8 +128,8 @@ Deno.serve(async (req) => {
 
     const media = await Promise.all((links ?? []).map(async (l: any) => {
       const f = l.files;
-      const u = await signGetUrl(f.r2_key, 900);
-      const tu = f.thumbnail_r2_key ? await signGetUrl(f.thumbnail_r2_key, 900) : null;
+      const u = await signUrl(f.r2_key);
+      const tu = f.thumbnail_r2_key ? await signUrl(f.thumbnail_r2_key) : null;
       return toLegacy(l, f, u, tu);
     }));
     return json({ media });
