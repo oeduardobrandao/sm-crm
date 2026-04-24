@@ -23,6 +23,7 @@ const ALL_NAV_GROUPS: NavGroup[] = [
   {
     id: 'gestao', label: 'Gestão', icon: 'ph-folder', items: [
       { id: 'entregas', route: '/entregas', label: 'Entregas', icon: 'ph-kanban' },
+      { id: 'arquivos', route: '/arquivos', label: 'Arquivos', icon: 'ph-folder-open' },
       { id: 'financeiro', route: '/financeiro', label: 'Financeiro', icon: 'ph-wallet' },
       { id: 'contratos', route: '/contratos', label: 'Contratos', icon: 'ph-file-text' },
       { id: 'equipe', route: '/equipe', label: 'Equipe', icon: 'ph-user-circle-gear' },
