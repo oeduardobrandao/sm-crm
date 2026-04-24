@@ -8,46 +8,78 @@ import { HubContext } from '../../HubContext';
 vi.mock('../../api', () => ({
   fetchPosts: vi.fn(),
   fetchBrand: vi.fn(),
+  fetchInstagramFeed: vi.fn(),
+  submitApproval: vi.fn(),
 }));
 
-vi.mock('../../components/PostCard', () => ({
-  PostCard: ({
-    post,
-    token,
-    approvals,
-    propertyValues,
-    workflowSelectOptions,
-    defaultExpanded,
-    onApprovalSubmitted,
-  }: {
-    post: { id: number; titulo: string };
-    token: string;
-    approvals: unknown[];
-    propertyValues: unknown[];
-    workflowSelectOptions: unknown[];
-    defaultExpanded?: boolean;
-    onApprovalSubmitted: () => void;
-  }) => (
-    <article
-      data-testid="post-card"
-      data-default-expanded={defaultExpanded ? 'true' : 'false'}
-      data-post-id={String(post.id)}
-    >
+vi.mock('../../components/PostCard', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../components/PostCard')>();
+  return {
+    ...actual,
+    PostCard: ({
+      post,
+      token,
+      approvals,
+      propertyValues,
+      workflowSelectOptions,
+      defaultExpanded,
+      onApprovalSubmitted,
+    }: {
+      post: { id: number; titulo: string };
+      token: string;
+      approvals: unknown[];
+      propertyValues: unknown[];
+      workflowSelectOptions: unknown[];
+      defaultExpanded?: boolean;
+      onApprovalSubmitted: () => void;
+    }) => (
+      <article
+        data-testid="post-card"
+        data-default-expanded={defaultExpanded ? 'true' : 'false'}
+        data-post-id={String(post.id)}
+      >
+        <h4>{post.titulo}</h4>
+        <p data-testid={`post-wire-${post.id}`}>
+          {[
+            token,
+            approvals.length,
+            propertyValues.length,
+            workflowSelectOptions.length,
+            defaultExpanded ? 'expanded' : 'collapsed',
+          ].join('|')}
+        </p>
+        <button type="button" onClick={onApprovalSubmitted}>
+          Refresh {post.id}
+        </button>
+      </article>
+    ),
+  };
+});
+
+vi.mock('../../components/InstagramPostCard', () => ({
+  InstagramPostCard: ({ post, onApprovalSubmitted }: { post: { id: number; titulo: string }; onApprovalSubmitted: () => void }) => (
+    <article data-testid="instagram-post-card" data-post-id={String(post.id)}>
       <h4>{post.titulo}</h4>
-      <p data-testid={`post-wire-${post.id}`}>
-        {[
-          token,
-          approvals.length,
-          propertyValues.length,
-          workflowSelectOptions.length,
-          defaultExpanded ? 'expanded' : 'collapsed',
-        ].join('|')}
-      </p>
-      <button type="button" onClick={onApprovalSubmitted}>
-        Refresh {post.id}
-      </button>
+      <button type="button" onClick={onApprovalSubmitted}>Refresh {post.id}</button>
     </article>
   ),
+}));
+
+vi.mock('../../components/TextPostCard', () => ({
+  TextPostCard: ({ post, onApprovalSubmitted }: { post: { id: number; titulo: string }; onApprovalSubmitted: () => void }) => (
+    <article data-testid="text-post-card" data-post-id={String(post.id)}>
+      <h4>{post.titulo}</h4>
+      <button type="button" onClick={onApprovalSubmitted}>Refresh {post.id}</button>
+    </article>
+  ),
+}));
+
+vi.mock('../../components/FeedPreviewButton', () => ({
+  FeedPreviewButton: () => null,
+}));
+
+vi.mock('../../components/InstagramGridPreview', () => ({
+  InstagramGridPreview: () => null,
 }));
 
 import { fetchBrand, fetchPosts } from '../../api';
@@ -157,6 +189,7 @@ describe('hub approval, posts, and brand pages', () => {
         postApprovals: [],
         propertyValues: [],
         workflowSelectOptions: [],
+        instagramProfile: null,
       } as never);
 
       renderHubPage(
@@ -166,7 +199,8 @@ describe('hub approval, posts, and brand pages', () => {
       );
 
       expect(await screen.findByText('Tudo em dia. Nenhum post aguardando aprovação.')).toBeInTheDocument();
-      expect(screen.queryByTestId('post-card')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('text-post-card')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('instagram-post-card')).not.toBeInTheDocument();
     });
 
     it('sorts pending posts and invalidates the posts query after an approval callback', async () => {
@@ -191,6 +225,7 @@ describe('hub approval, posts, and brand pages', () => {
         postApprovals: [{ id: 1, post_id: 12, action: 'mensagem', comentario: 'Olhar CTA', is_workspace_user: false, created_at: '2026-04-18T10:00:00.000Z' }],
         propertyValues: [{ post_id: 12, value: 'Instagram', template_property_definitions: { name: 'Canal', type: 'text', config: {}, portal_visible: true, display_order: 1 } }],
         workflowSelectOptions: [{ workflow_id: 1, property_definition_id: 99, option_id: 'feed', label: 'Feed', color: '#0f766e' }],
+        instagramProfile: null,
       } as never);
 
       const queryClient = createQueryClient();
@@ -209,7 +244,6 @@ describe('hub approval, posts, and brand pages', () => {
         'Post mais tarde',
       ]);
       expect(screen.queryByText('Post já agendado')).not.toBeInTheDocument();
-      expect(screen.getByTestId('post-wire-12')).toHaveTextContent('token-publico|1|1|1|collapsed');
 
       fireEvent.click(screen.getByRole('button', { name: 'Refresh 12' }));
 
