@@ -8,6 +8,7 @@ import {
   Link as LinkIcon,
 } from 'lucide-react';
 import type { FileRecord, Folder as FolderType } from '../types';
+import { FileContextMenu } from './FileContextMenu';
 
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -34,9 +35,10 @@ interface FileGridProps {
   onOpenFolder: (id: number) => void;
   onFileAction: (action: string, file: FileRecord) => void;
   viewMode: 'grid' | 'list';
+  onActionComplete: () => void;
 }
 
-export function FileGrid({ files, subfolders, onOpenFolder, onFileAction, viewMode }: FileGridProps) {
+export function FileGrid({ files, subfolders, onOpenFolder, onFileAction, viewMode, onActionComplete }: FileGridProps) {
   const isEmpty = subfolders.length === 0 && files.length === 0;
 
   if (isEmpty) {
@@ -63,65 +65,67 @@ export function FileGrid({ files, subfolders, onOpenFolder, onFileAction, viewMo
           </thead>
           <tbody className="divide-y divide-[var(--border-color)]">
             {subfolders.map((folder) => (
-              <tr
-                key={`folder-${folder.id}`}
-                className="hover:bg-[var(--surface-hover)] cursor-pointer transition-colors"
-                onClick={() => onOpenFolder(folder.id)}
-              >
-                <td className="py-2.5 pr-4">
-                  <div className="flex items-center gap-2">
-                    <Folder className="h-4 w-4 text-[var(--primary-color)] flex-shrink-0" />
-                    <span className="font-medium text-[var(--text-main)] truncate max-w-[260px]">
-                      {folder.name}
-                    </span>
-                    {folder.source === 'system' && (
-                      <span className="text-[0.6rem] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded bg-[var(--surface-hover)] text-[var(--text-muted)]">
-                        AUTO
+              <FileContextMenu key={`folder-${folder.id}`} item={folder} type="folder" onActionComplete={onActionComplete}>
+                <tr
+                  className="hover:bg-[var(--surface-hover)] cursor-pointer transition-colors"
+                  onClick={() => onOpenFolder(folder.id)}
+                >
+                  <td className="py-2.5 pr-4">
+                    <div className="flex items-center gap-2">
+                      <Folder className="h-4 w-4 text-[var(--primary-color)] flex-shrink-0" />
+                      <span className="font-medium text-[var(--text-main)] truncate max-w-[260px]">
+                        {folder.name}
                       </span>
-                    )}
-                  </div>
-                </td>
-                <td className="py-2.5 pr-4 text-[var(--text-muted)]">Pasta</td>
-                <td className="py-2.5 pr-4 text-[var(--text-muted)]">—</td>
-                <td className="py-2.5 pr-4 text-[var(--text-muted)]">
-                  {formatDistanceToNow(new Date(folder.created_at), { addSuffix: true, locale: ptBR })}
-                </td>
-                <td className="py-2.5 text-[var(--text-muted)]">—</td>
-              </tr>
+                      {folder.source === 'system' && (
+                        <span className="text-[0.6rem] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded bg-[var(--surface-hover)] text-[var(--text-muted)]">
+                          AUTO
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="py-2.5 pr-4 text-[var(--text-muted)]">Pasta</td>
+                  <td className="py-2.5 pr-4 text-[var(--text-muted)]">—</td>
+                  <td className="py-2.5 pr-4 text-[var(--text-muted)]">
+                    {formatDistanceToNow(new Date(folder.created_at), { addSuffix: true, locale: ptBR })}
+                  </td>
+                  <td className="py-2.5 text-[var(--text-muted)]">—</td>
+                </tr>
+              </FileContextMenu>
             ))}
 
             {files.map((file) => (
-              <tr
-                key={`file-${file.id}`}
-                className="hover:bg-[var(--surface-hover)] cursor-pointer transition-colors"
-                onClick={() => onFileAction('open', file)}
-              >
-                <td className="py-2.5 pr-4">
-                  <div className="flex items-center gap-2">
-                    <FileIcon kind={file.kind} className="h-4 w-4 text-[var(--text-muted)] flex-shrink-0" />
-                    <span className="font-medium text-[var(--text-main)] truncate max-w-[260px]">
-                      {file.name}
-                    </span>
-                  </div>
-                </td>
-                <td className="py-2.5 pr-4 text-[var(--text-muted)]">{kindLabel(file.kind)}</td>
-                <td className="py-2.5 pr-4 text-[var(--text-muted)] font-mono text-xs">
-                  {formatBytes(file.size_bytes)}
-                </td>
-                <td className="py-2.5 pr-4 text-[var(--text-muted)]">
-                  {formatDistanceToNow(new Date(file.created_at), { addSuffix: true, locale: ptBR })}
-                </td>
-                <td className="py-2.5">
-                  {file.reference_count > 0 ? (
-                    <span className="inline-flex items-center gap-1 text-[0.65rem] font-semibold px-1.5 py-0.5 rounded bg-[var(--surface-hover)] text-[var(--text-muted)]">
-                      <LinkIcon className="h-2.5 w-2.5" />
-                      {file.reference_count}
-                    </span>
-                  ) : (
-                    <span className="text-[var(--text-muted)]">—</span>
-                  )}
-                </td>
-              </tr>
+              <FileContextMenu key={`file-${file.id}`} item={file} type="file" onActionComplete={onActionComplete}>
+                <tr
+                  className="hover:bg-[var(--surface-hover)] cursor-pointer transition-colors"
+                  onClick={() => onFileAction('open', file)}
+                >
+                  <td className="py-2.5 pr-4">
+                    <div className="flex items-center gap-2">
+                      <FileIcon kind={file.kind} className="h-4 w-4 text-[var(--text-muted)] flex-shrink-0" />
+                      <span className="font-medium text-[var(--text-main)] truncate max-w-[260px]">
+                        {file.name}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="py-2.5 pr-4 text-[var(--text-muted)]">{kindLabel(file.kind)}</td>
+                  <td className="py-2.5 pr-4 text-[var(--text-muted)] font-mono text-xs">
+                    {formatBytes(file.size_bytes)}
+                  </td>
+                  <td className="py-2.5 pr-4 text-[var(--text-muted)]">
+                    {formatDistanceToNow(new Date(file.created_at), { addSuffix: true, locale: ptBR })}
+                  </td>
+                  <td className="py-2.5">
+                    {file.reference_count > 0 ? (
+                      <span className="inline-flex items-center gap-1 text-[0.65rem] font-semibold px-1.5 py-0.5 rounded bg-[var(--surface-hover)] text-[var(--text-muted)]">
+                        <LinkIcon className="h-2.5 w-2.5" />
+                        {file.reference_count}
+                      </span>
+                    ) : (
+                      <span className="text-[var(--text-muted)]">—</span>
+                    )}
+                  </td>
+                </tr>
+              </FileContextMenu>
             ))}
           </tbody>
         </table>
@@ -133,58 +137,60 @@ export function FileGrid({ files, subfolders, onOpenFolder, onFileAction, viewMo
   return (
     <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))' }}>
       {subfolders.map((folder) => (
-        <button
-          key={`folder-${folder.id}`}
-          onClick={() => onOpenFolder(folder.id)}
-          className="group flex flex-col items-center gap-2 p-4 rounded-[18px] bg-[var(--card-bg)] border border-[var(--border-color)] hover:border-[var(--primary-color)] hover:shadow-md transition-all duration-150 text-left"
-        >
-          <Folder className="h-10 w-10 text-[var(--primary-color)]" />
-          <span className="text-sm font-medium text-[var(--text-main)] text-center leading-tight line-clamp-2 w-full">
-            {folder.name}
-          </span>
-          {folder.source === 'system' && (
-            <span className="text-[0.6rem] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded bg-[var(--surface-hover)] text-[var(--text-muted)]">
-              AUTO
+        <FileContextMenu key={`folder-${folder.id}`} item={folder} type="folder" onActionComplete={onActionComplete}>
+          <button
+            onClick={() => onOpenFolder(folder.id)}
+            className="group flex flex-col items-center gap-2 p-4 rounded-[18px] bg-[var(--card-bg)] border border-[var(--border-color)] hover:border-[var(--primary-color)] hover:shadow-md transition-all duration-150 text-left"
+          >
+            <Folder className="h-10 w-10 text-[var(--primary-color)]" />
+            <span className="text-sm font-medium text-[var(--text-main)] text-center leading-tight line-clamp-2 w-full">
+              {folder.name}
             </span>
-          )}
-        </button>
+            {folder.source === 'system' && (
+              <span className="text-[0.6rem] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded bg-[var(--surface-hover)] text-[var(--text-muted)]">
+                AUTO
+              </span>
+            )}
+          </button>
+        </FileContextMenu>
       ))}
 
       {files.map((file) => (
-        <button
-          key={`file-${file.id}`}
-          onClick={() => onFileAction('open', file)}
-          className="group flex flex-col rounded-[18px] bg-[var(--card-bg)] border border-[var(--border-color)] hover:border-[var(--primary-color)] hover:shadow-md transition-all duration-150 overflow-hidden text-left"
-        >
-          {/* Thumbnail area */}
-          <div className="relative w-full aspect-square bg-[var(--surface-hover)] flex items-center justify-center overflow-hidden">
-            {(file.kind === 'image' || file.kind === 'video') && (file.thumbnail_url ?? file.url) ? (
-              <img
-                src={(file.thumbnail_url ?? file.url)!}
-                alt={file.name}
-                className="w-full h-full object-cover"
-                loading="lazy"
-              />
-            ) : (
-              <FileIcon kind={file.kind} className="h-10 w-10 text-[var(--text-muted)] opacity-40" />
-            )}
+        <FileContextMenu key={`file-${file.id}`} item={file} type="file" onActionComplete={onActionComplete}>
+          <button
+            onClick={() => onFileAction('open', file)}
+            className="group flex flex-col rounded-[18px] bg-[var(--card-bg)] border border-[var(--border-color)] hover:border-[var(--primary-color)] hover:shadow-md transition-all duration-150 overflow-hidden text-left"
+          >
+            {/* Thumbnail area */}
+            <div className="relative w-full aspect-square bg-[var(--surface-hover)] flex items-center justify-center overflow-hidden">
+              {(file.kind === 'image' || file.kind === 'video') && (file.thumbnail_url ?? file.url) ? (
+                <img
+                  src={(file.thumbnail_url ?? file.url)!}
+                  alt={file.name}
+                  className="w-full h-full object-cover"
+                  loading="lazy"
+                />
+              ) : (
+                <FileIcon kind={file.kind} className="h-10 w-10 text-[var(--text-muted)] opacity-40" />
+              )}
 
-            {file.reference_count > 0 && (
-              <span className="absolute top-2 right-2 inline-flex items-center gap-1 text-[0.6rem] font-semibold px-1.5 py-0.5 rounded bg-[var(--card-bg)] border border-[var(--border-color)] text-[var(--text-muted)]">
-                <LinkIcon className="h-2.5 w-2.5" />
-                {file.reference_count}
-              </span>
-            )}
-          </div>
+              {file.reference_count > 0 && (
+                <span className="absolute top-2 right-2 inline-flex items-center gap-1 text-[0.6rem] font-semibold px-1.5 py-0.5 rounded bg-[var(--card-bg)] border border-[var(--border-color)] text-[var(--text-muted)]">
+                  <LinkIcon className="h-2.5 w-2.5" />
+                  {file.reference_count}
+                </span>
+              )}
+            </div>
 
-          {/* File info */}
-          <div className="px-3 py-2">
-            <p className="text-xs font-medium text-[var(--text-main)] truncate">{file.name}</p>
-            <p className="text-[0.65rem] text-[var(--text-muted)] mt-0.5 font-mono">
-              {formatBytes(file.size_bytes)}
-            </p>
-          </div>
-        </button>
+            {/* File info */}
+            <div className="px-3 py-2">
+              <p className="text-xs font-medium text-[var(--text-main)] truncate">{file.name}</p>
+              <p className="text-[0.65rem] text-[var(--text-muted)] mt-0.5 font-mono">
+                {formatBytes(file.size_bytes)}
+              </p>
+            </div>
+          </button>
+        </FileContextMenu>
       ))}
     </div>
   );

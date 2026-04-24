@@ -141,6 +141,7 @@ export default function ArquivosPage() {
                 onOpenFolder={setCurrentFolderId}
                 onFileAction={handleFileAction}
                 viewMode={viewMode}
+                onActionComplete={() => queryClient.invalidateQueries({ queryKey: ['folder-contents'] })}
               />
             )}
           </div>
