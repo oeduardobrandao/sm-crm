@@ -95,6 +95,10 @@ Deno.test("hub-posts returns flattened post data with signed media URLs", async 
     ],
     error: null,
   });
+  db.queue("instagram_accounts", "select", {
+    data: { username: "studio_marca", profile_picture_url: "https://cdn.ig/pic.jpg" },
+    error: null,
+  });
 
   const handler = createHubPostsHandler({
     buildCorsHeaders,
@@ -525,6 +529,7 @@ Deno.test("hub-posts returns empty collections when the client has no workflows"
     error: null,
   });
   db.queue("workflows", "select", { data: [], error: null });
+  db.queue("instagram_accounts", "select", { data: null, error: null });
 
   const handler = createHubPostsHandler({
     buildCorsHeaders,
@@ -537,6 +542,60 @@ Deno.test("hub-posts returns empty collections when the client has no workflows"
   assertEquals(response.status, 200);
   assertEquals(body.posts, []);
   assertEquals(body.postApprovals, []);
+  assertEquals(body.instagramProfile, null);
+});
+
+Deno.test("hub-posts includes instagramProfile when the client has a linked account", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("workflows", "select", { data: [], error: null });
+  db.queue("instagram_accounts", "select", {
+    data: { username: "studio_marca", profile_picture_url: "https://cdn.ig/pic.jpg" },
+    error: null,
+  });
+
+  const handler = createHubPostsHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    signGetUrl: async () => "https://signed.example",
+  });
+  const response = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.instagramProfile.username, "studio_marca");
+  assertEquals(body.instagramProfile.profilePictureUrl, "https://cdn.ig/pic.jpg");
+  assertEquals(body.propertyValues, []);
+  assertEquals(body.workflowSelectOptions, []);
+});
+
+Deno.test("hub-posts returns instagramProfile as null when no account is linked", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  db.queue("workflows", "select", { data: [], error: null });
+  db.queue("instagram_accounts", "select", {
+    data: null,
+    error: null,
+  });
+
+  const handler = createHubPostsHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    signGetUrl: async () => "https://signed.example",
+  });
+  const response = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
+  const body = await readJson(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.instagramProfile, null);
 });
 
 Deno.test("hub-brand rejects missing tokens with 400", async () => {

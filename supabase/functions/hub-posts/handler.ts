@@ -44,7 +44,23 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
       .eq("conta_id", hubToken.conta_id);
 
     const workflowIds = (workflows ?? []).map((workflow: { id: number }) => workflow.id);
-    if (workflowIds.length === 0) return json({ posts: [], postApprovals: [] });
+    if (workflowIds.length === 0) {
+      const { data: igAccount } = await db
+        .from("instagram_accounts")
+        .select("username, profile_picture_url")
+        .eq("client_id", hubToken.cliente_id)
+        .maybeSingle();
+
+      return json({
+        posts: [],
+        postApprovals: [],
+        propertyValues: [],
+        workflowSelectOptions: [],
+        instagramProfile: igAccount
+          ? { username: igAccount.username, profilePictureUrl: igAccount.profile_picture_url }
+          : null,
+      });
+    }
 
     const { data: posts } = await db
       .from("workflow_posts")
@@ -117,11 +133,20 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
       return { ...post, media: mediaForPost, cover_media };
     });
 
+    const { data: igAccount } = await db
+      .from("instagram_accounts")
+      .select("username, profile_picture_url")
+      .eq("client_id", hubToken.cliente_id)
+      .maybeSingle();
+
     return json({
       posts: flatPostsWithMedia,
       postApprovals: postApprovals ?? [],
       propertyValues: propertyValues ?? [],
       workflowSelectOptions: workflowSelectOptions ?? [],
+      instagramProfile: igAccount
+        ? { username: igAccount.username, profilePictureUrl: igAccount.profile_picture_url }
+        : null,
     });
   };
 }
