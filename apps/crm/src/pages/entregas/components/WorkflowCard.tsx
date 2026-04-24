@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowLeft, Edit2, Check, FileText } from 'lucide-react';
+import { ArrowLeft, Edit2, Check, FileText, ExternalLink } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { updateWorkflowEtapa, type Membro } from '../../../store';
@@ -136,6 +136,37 @@ export function WorkflowCard({ card, onClick, isDragOverlay, dragHandle, membros
               >
                 {card.cliente.nome}
               </span>
+              {card.hubUrl && (
+                <a
+                  href={card.hubUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Abrir Hub do cliente"
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.2rem',
+                    fontSize: '0.58rem',
+                    fontWeight: 700,
+                    letterSpacing: '0.04em',
+                    textTransform: 'uppercase',
+                    color: 'var(--text-muted)',
+                    background: 'var(--surface-hover)',
+                    padding: '0.1rem 0.35rem',
+                    borderRadius: '4px',
+                    textDecoration: 'none',
+                    opacity: 0.75,
+                    transition: 'opacity 0.15s',
+                    flexShrink: 0,
+                  }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.75'; }}
+                >
+                  <ExternalLink style={{ width: 10, height: 10 }} />
+                  Hub
+                </a>
+              )}
             </>
           ) : '—'}
         </span>
