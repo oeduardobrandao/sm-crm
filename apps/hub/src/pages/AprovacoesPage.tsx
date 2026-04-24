@@ -60,8 +60,13 @@ export function AprovacoesPage() {
         <p className="text-[11px] uppercase tracking-[0.14em] text-stone-500 font-medium mb-2">
           <span className="accent-bar" />Sua revisão
         </p>
-        <h2 className="font-display text-[2rem] sm:text-[2.25rem] leading-[1.05] font-medium tracking-tight text-stone-900 mb-2">Aprovações</h2>
-        <p className="text-[14px] text-stone-500">
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="font-display text-[2rem] sm:text-[2.25rem] leading-[1.05] font-medium tracking-tight text-stone-900">Aprovações</h2>
+          {instagramProfile && (
+            <FeedPreviewButton selectedCount={selectedIds.size} onClick={() => setShowGrid(true)} />
+          )}
+        </div>
+        <p className="text-[14px] text-stone-500 mt-2">
           {pending.length === 0
             ? 'Tudo em dia. Nenhum post aguardando aprovação.'
             : `${pending.length} post${pending.length > 1 ? 's' : ''} aguardando sua aprovação.`}
@@ -85,12 +90,6 @@ export function AprovacoesPage() {
               />
             ))}
           </div>
-          {instagramProfile && (
-            <FeedPreviewButton
-              selectedCount={selectedIds.size}
-              onClick={() => setShowGrid(true)}
-            />
-          )}
         </>
       )}
 

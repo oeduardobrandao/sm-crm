@@ -69,21 +69,22 @@ export function TextPostCard({ post, token, approvals, onApprovalSubmitted }: Te
               <textarea
                 value={comentario}
                 onChange={e => setComentario(e.target.value)}
-                placeholder="Comentário (opcional)…"
-                className="w-full rounded-lg border border-stone-200 px-4 py-3 text-[13px] resize-none min-h-[70px] bg-white text-stone-900 placeholder:text-stone-400 focus:outline-none focus:border-stone-300 focus:ring-4 focus:ring-[#FFBF30]/15 transition-all"
+                placeholder="Comentário (opcional para aprovação)…"
+                className="w-full rounded border border-stone-200 px-4 py-3 text-[13px] resize-none min-h-[70px] bg-white text-stone-900 placeholder:text-stone-400 focus:outline-none focus:border-stone-300 focus:ring-4 focus:ring-[#FFBF30]/15 transition-all"
               />
               <div className="flex gap-2">
                 <button
                   onClick={() => handleAction('aprovado')}
                   disabled={submitting}
-                  className="flex-1 flex items-center justify-center gap-1.5 bg-stone-900 text-white rounded-lg py-2.5 text-[13px] font-semibold hover:bg-stone-800 disabled:opacity-50 transition-colors"
+                  className="flex-1 flex items-center justify-center gap-1.5 bg-stone-900 text-white rounded py-2.5 text-[13px] font-semibold hover:bg-stone-800 disabled:opacity-50 transition-colors"
                 >
                   <CheckCircle size={14} /> Aprovar
                 </button>
                 <button
                   onClick={() => handleAction('correcao')}
-                  disabled={submitting}
-                  className="flex-1 flex items-center justify-center gap-1.5 border border-stone-200 bg-white text-stone-800 rounded-lg py-2.5 text-[13px] font-semibold hover:bg-stone-50 disabled:opacity-50 transition-colors"
+                  disabled={submitting || !comentario.trim()}
+                  title={!comentario.trim() ? 'Deixe um comentário para solicitar correção' : undefined}
+                  className="flex-1 flex items-center justify-center gap-1.5 border border-stone-200 bg-white text-stone-800 rounded py-2.5 text-[13px] font-semibold hover:bg-stone-50 disabled:opacity-50 transition-colors"
                 >
                   <AlertCircle size={14} /> Solicitar correção
                 </button>
