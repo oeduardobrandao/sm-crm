@@ -115,7 +115,7 @@ describe('InstagramGridPreview', () => {
   });
 
   it('shows gray placeholder for live posts with null thumbnail', () => {
-    const { container } = render(
+    render(
       <InstagramGridPreview
         selectedPosts={[makePost()]}
         feedProfile={profile}
@@ -124,7 +124,7 @@ describe('InstagramGridPreview', () => {
       />,
     );
 
-    const placeholders = container.querySelectorAll('[data-grid-placeholder]');
+    const placeholders = document.body.querySelectorAll('[data-grid-placeholder]');
     expect(placeholders.length).toBeGreaterThanOrEqual(1);
   });
 });

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import type { HubPost, InstagramFeedProfile, InstagramFeedPost } from '../types';
 
 interface GridItem {
@@ -145,7 +146,7 @@ export function InstagramGridPreview({ selectedPosts, feedProfile, livePosts, on
     </svg>
   );
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[9010] bg-black/70 backdrop-blur-sm flex items-center justify-center" onClick={onClose}>
       <div
         className="bg-white rounded-2xl w-[420px] max-h-[92vh] overflow-y-auto relative"
@@ -300,6 +301,7 @@ export function InstagramGridPreview({ selectedPosts, feedProfile, livePosts, on
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
