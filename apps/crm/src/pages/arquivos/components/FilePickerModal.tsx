@@ -60,6 +60,7 @@ export function FilePickerModal({ open, onClose, onSelect, filterKind }: FilePic
     queryKey: ['folder-contents', currentFolderId],
     queryFn: () => getFolderContents(currentFolderId),
     enabled: open,
+    gcTime: 5 * 60 * 1000,
   });
 
   const breadcrumbs = data?.breadcrumbs ?? [];

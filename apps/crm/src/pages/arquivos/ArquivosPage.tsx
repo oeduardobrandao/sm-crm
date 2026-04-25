@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { LayoutGrid, List, Upload, FolderPlus, ArrowUpDown } from 'lucide-react';
 import { toast } from 'sonner';
-import { Spinner } from '@/components/ui/spinner';
 import { getFolderContents, createFolder } from '@/services/fileService';
 import { Breadcrumbs } from './components/Breadcrumbs';
 import { FolderTree } from './components/FolderTree';
@@ -11,7 +10,7 @@ import { FileUploader } from './components/FileUploader';
 import { CreateFolderModal } from './components/CreateFolderModal';
 import { MobileArquivosView } from './components/MobileArquivosView';
 import type { SortBy } from './components/FileGrid';
-import type { FileRecord } from './types';
+import type { FileRecord, FolderContents } from './types';
 
 function useIsMobile(breakpoint = 900) {
   const [isMobile, setIsMobile] = useState(() => window.innerWidth <= breakpoint);
@@ -42,23 +41,71 @@ export default function ArquivosPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['folder-contents', currentFolderId],
     queryFn: () => getFolderContents(currentFolderId),
+    gcTime: 5 * 60 * 1000,
   });
+
+  // Seed the folder-tree cache whenever we load folder contents
+  useEffect(() => {
+    if (data?.subfolders) {
+      queryClient.setQueryData(
+        ['folder-tree', currentFolderId],
+        data.subfolders.map(f => ({
+          id: f.id,
+          name: f.name,
+          source: f.source,
+          source_type: f.source_type,
+          position: f.position,
+          has_children: f.has_children ?? false,
+        }))
+      );
+    }
+  }, [data, currentFolderId, queryClient]);
 
   const breadcrumbs = data?.breadcrumbs ?? [];
   const subfolders = data?.subfolders ?? [];
   const files = data?.files ?? [];
   const storage = data?.storage;
 
-  async function handleCreateFolder(name: string) {
-    try {
-      await createFolder(name, createFolderParent ?? null);
-      await queryClient.invalidateQueries({ queryKey: ['folder-contents'] });
-      await queryClient.invalidateQueries({ queryKey: ['folders'] });
-      toast.success('Pasta criada');
-    } catch {
+  const createFolderMutation = useMutation({
+    mutationFn: (name: string) => createFolder(name, createFolderParent ?? null),
+    onMutate: async (name) => {
+      const parentId = createFolderParent ?? null;
+      await queryClient.cancelQueries({ queryKey: ['folder-contents', parentId] });
+      const previous = queryClient.getQueryData<FolderContents>(['folder-contents', parentId]);
+      queryClient.setQueryData<FolderContents>(['folder-contents', parentId], old => {
+        if (!old) return old;
+        const tempFolder = {
+          id: -Date.now(),
+          conta_id: '',
+          parent_id: parentId,
+          name,
+          source: 'user' as const,
+          source_type: null,
+          source_id: null,
+          name_overridden: false,
+          position: 9999,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          total_size_bytes: 0,
+          file_count: 0,
+          _optimistic: true,
+        };
+        return { ...old, subfolders: [...old.subfolders, tempFolder] };
+      });
+      return { previous, parentId };
+    },
+    onError: (_err, _vars, context) => {
+      if (context) queryClient.setQueryData(['folder-contents', context.parentId], context.previous);
       toast.error('Erro ao criar pasta');
-    }
-  }
+    },
+    onSettled: (_data, _err, _vars, context) => {
+      if (context) {
+        queryClient.invalidateQueries({ queryKey: ['folder-contents', context.parentId] });
+        queryClient.invalidateQueries({ queryKey: ['folder-tree'] });
+      }
+    },
+    onSuccess: () => toast.success('Pasta criada'),
+  });
 
   function handleFileAction(action: string, _file: FileRecord) {
     if (action === 'open') {
@@ -71,7 +118,10 @@ export default function ArquivosPage() {
       <div className="page-full-bleed flex flex-col">
         <FileUploader
           folderId={currentFolderId}
-          onUploadComplete={() => queryClient.invalidateQueries({ queryKey: ['folder-contents'] })}
+          onUploadComplete={() => {
+            queryClient.invalidateQueries({ queryKey: ['folder-contents', currentFolderId] });
+            queryClient.invalidateQueries({ queryKey: ['folder-tree', currentFolderId] });
+          }}
           triggerRef={uploaderRef}
         >
           <MobileArquivosView
@@ -85,13 +135,16 @@ export default function ArquivosPage() {
             onFileAction={handleFileAction}
             onUploadClick={() => uploaderRef.current?.openFilePicker()}
             onCreateFolder={() => setCreateFolderParent(currentFolderId)}
-            onActionComplete={() => queryClient.invalidateQueries({ queryKey: ['folder-contents'] })}
+            onActionComplete={() => {
+              queryClient.invalidateQueries({ queryKey: ['folder-contents', currentFolderId] });
+              queryClient.invalidateQueries({ queryKey: ['folder-tree'] });
+            }}
           />
         </FileUploader>
         <CreateFolderModal
           open={createFolderParent !== undefined}
           onOpenChange={(open) => { if (!open) setCreateFolderParent(undefined); }}
-          onConfirm={handleCreateFolder}
+          onConfirm={(name) => createFolderMutation.mutate(name)}
         />
       </div>
     );
@@ -156,12 +209,13 @@ export default function ArquivosPage() {
           <Breadcrumbs
             breadcrumbs={breadcrumbs}
             onNavigate={setCurrentFolderId}
+            isLoading={isLoading}
           />
 
           <div className="flex items-center gap-2 flex-shrink-0">
             {/* Upload */}
             <button
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-[var(--primary-color)] text-[#12151a] hover:opacity-90 transition-opacity"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium bg-[var(--primary-color)] text-[#12151a] hover:opacity-90 transition-opacity"
               onClick={() => uploaderRef.current?.openFilePicker()}
             >
               <Upload className="h-4 w-4" />
@@ -171,14 +225,14 @@ export default function ArquivosPage() {
             {/* New folder for current location */}
             <button
               onClick={() => setCreateFolderParent(currentFolderId)}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium border border-[var(--border-color)] text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium border border-[var(--border-color)] text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors"
             >
               <FolderPlus className="h-4 w-4" />
               Nova pasta
             </button>
 
             {/* Sort dropdown */}
-            <div className="flex items-center gap-1.5 border border-[var(--border-color)] rounded-lg px-2.5 py-1.5">
+            <div className="flex items-center gap-1.5 border border-[var(--border-color)] rounded-md px-2.5 py-1.5">
               <ArrowUpDown className="h-3.5 w-3.5 text-[var(--text-muted)]" />
               <select
                 value={sortBy}
@@ -195,7 +249,7 @@ export default function ArquivosPage() {
             </div>
 
             {/* View mode toggle */}
-            <div className="flex items-center border border-[var(--border-color)] rounded-lg overflow-hidden">
+            <div className="flex items-center border border-[var(--border-color)] rounded-md overflow-hidden">
               <button
                 onClick={() => setViewMode('grid')}
                 className={`p-1.5 transition-colors ${
@@ -225,25 +279,26 @@ export default function ArquivosPage() {
         {/* Content — wrapped in FileUploader for drag-and-drop */}
         <FileUploader
           folderId={currentFolderId}
-          onUploadComplete={() => queryClient.invalidateQueries({ queryKey: ['folder-contents'] })}
+          onUploadComplete={() => {
+            queryClient.invalidateQueries({ queryKey: ['folder-contents', currentFolderId] });
+            queryClient.invalidateQueries({ queryKey: ['folder-tree', currentFolderId] });
+          }}
           triggerRef={uploaderRef}
         >
           <div className="flex-1 overflow-y-auto p-5">
-            {isLoading ? (
-              <div className="flex items-center justify-center py-20">
-                <Spinner size="lg" />
-              </div>
-            ) : (
-              <FileGrid
-                files={files}
-                subfolders={subfolders}
-                onOpenFolder={setCurrentFolderId}
-                onFileAction={handleFileAction}
-                viewMode={viewMode}
-                onActionComplete={() => queryClient.invalidateQueries({ queryKey: ['folder-contents'] })}
-                sortBy={sortBy}
-              />
-            )}
+            <FileGrid
+              files={files}
+              subfolders={subfolders}
+              onOpenFolder={setCurrentFolderId}
+              onFileAction={handleFileAction}
+              viewMode={viewMode}
+              onActionComplete={() => {
+                queryClient.invalidateQueries({ queryKey: ['folder-contents', currentFolderId] });
+                queryClient.invalidateQueries({ queryKey: ['folder-tree'] });
+              }}
+              sortBy={sortBy}
+              isLoading={isLoading}
+            />
           </div>
         </FileUploader>
       </main>
@@ -251,7 +306,7 @@ export default function ArquivosPage() {
       <CreateFolderModal
         open={createFolderParent !== undefined}
         onOpenChange={(open) => { if (!open) setCreateFolderParent(undefined); }}
-        onConfirm={handleCreateFolder}
+        onConfirm={(name) => createFolderMutation.mutate(name)}
       />
     </div>
   );
