@@ -76,26 +76,32 @@ export default function ArquivosPage() {
         />
 
         {/* Storage usage bar */}
-        {storage && storage.quota_bytes > 0 && (
+        {storage && (
           <div className="px-4 py-3 border-t border-[var(--border-color)]">
             <div className="flex items-center justify-between text-xs text-[var(--text-muted)] mb-1.5">
               <span>Armazenamento</span>
-              <span>{formatBytes(storage.used_bytes)} de {formatBytes(storage.quota_bytes)}</span>
+              <span>
+                {storage.quota_bytes
+                  ? `${formatBytes(storage.used_bytes)} de ${formatBytes(storage.quota_bytes)}`
+                  : formatBytes(storage.used_bytes)}
+              </span>
             </div>
-            <div className="h-1.5 rounded-full bg-[var(--surface-hover)] overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all duration-300"
-                style={{
-                  width: `${Math.min((storage.used_bytes / storage.quota_bytes) * 100, 100)}%`,
-                  backgroundColor:
-                    storage.used_bytes / storage.quota_bytes >= 1
-                      ? 'var(--danger)'
-                      : storage.used_bytes / storage.quota_bytes >= 0.9
-                        ? 'var(--warning)'
-                        : 'var(--primary-color)',
-                }}
-              />
-            </div>
+            {storage.quota_bytes > 0 && (
+              <div className="h-1.5 rounded-full bg-[var(--surface-hover)] overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-300"
+                  style={{
+                    width: `${Math.min((storage.used_bytes / storage.quota_bytes) * 100, 100)}%`,
+                    backgroundColor:
+                      storage.used_bytes / storage.quota_bytes >= 1
+                        ? 'var(--danger)'
+                        : storage.used_bytes / storage.quota_bytes >= 0.9
+                          ? 'var(--warning)'
+                          : 'var(--primary-color)',
+                  }}
+                />
+              </div>
+            )}
           </div>
         )}
       </aside>
