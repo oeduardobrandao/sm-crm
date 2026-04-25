@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Folder, FolderOpen, ChevronRight, ChevronDown, Plus } from 'lucide-react';
-import { getFolderContents } from '@/services/fileService';
-import type { Folder as FolderType } from '../types';
+import { getTreeChildren } from '@/services/fileService';
+import type { TreeNode } from '@/services/fileService';
 
 interface FolderNodeProps {
-  folder: FolderType;
+  folder: TreeNode;
   selectedFolderId: number | null;
   onSelectFolder: (id: number | null) => void;
   onRequestCreateFolder: (parentId: number | null) => void;
@@ -15,13 +15,12 @@ interface FolderNodeProps {
 function FolderNode({ folder, selectedFolderId, onSelectFolder, onRequestCreateFolder, depth }: FolderNodeProps) {
   const [expanded, setExpanded] = useState(false);
 
-  const { data } = useQuery({
-    queryKey: ['folders', folder.id],
-    queryFn: () => getFolderContents(folder.id),
+  const { data: subfolders = [] } = useQuery({
+    queryKey: ['folder-tree', folder.id],
+    queryFn: () => getTreeChildren(folder.id),
     enabled: expanded,
   });
 
-  const subfolders = data?.subfolders ?? [];
   const isSelected = selectedFolderId === folder.id;
 
   return (
@@ -34,17 +33,21 @@ function FolderNode({ folder, selectedFolderId, onSelectFolder, onRequestCreateF
         }`}
         style={{ paddingLeft: `${0.5 + depth * 1}rem` }}
       >
-        <button
-          onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v); }}
-          className="flex-shrink-0 p-0.5 rounded opacity-60 hover:opacity-100"
-          aria-label={expanded ? 'Recolher' : 'Expandir'}
-        >
-          {expanded ? (
-            <ChevronDown className="h-3.5 w-3.5" />
-          ) : (
-            <ChevronRight className="h-3.5 w-3.5" />
-          )}
-        </button>
+        {folder.has_children ? (
+          <button
+            onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v); }}
+            className="flex-shrink-0 p-0.5 rounded opacity-60 hover:opacity-100"
+            aria-label={expanded ? 'Recolher' : 'Expandir'}
+          >
+            {expanded ? (
+              <ChevronDown className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5" />
+            )}
+          </button>
+        ) : (
+          <span className="flex-shrink-0 w-[22px]" />
+        )}
 
         <button
           onClick={() => onSelectFolder(folder.id)}
@@ -105,12 +108,10 @@ interface FolderTreeProps {
 }
 
 export function FolderTree({ selectedFolderId, onSelectFolder, onRequestCreateFolder }: FolderTreeProps) {
-  const { data, isLoading } = useQuery({
-    queryKey: ['folders', null],
-    queryFn: () => getFolderContents(null),
+  const { data: rootFolders = [], isLoading } = useQuery({
+    queryKey: ['folder-tree', null],
+    queryFn: () => getTreeChildren(null),
   });
-
-  const rootFolders = data?.subfolders ?? [];
 
   return (
     <div className="flex flex-col h-full">

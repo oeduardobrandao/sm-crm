@@ -57,7 +57,7 @@ export function FilePickerModal({ open, onClose, onSelect, filterKind }: FilePic
   }, [open]);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['picker-folder-contents', currentFolderId],
+    queryKey: ['folder-contents', currentFolderId],
     queryFn: () => getFolderContents(currentFolderId),
     enabled: open,
   });
