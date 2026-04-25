@@ -88,6 +88,38 @@ function FolderCards({ folders, onOpen }: { folders: FolderType[]; onOpen: (id: 
   );
 }
 
+function FolderList({ folders, onOpen }: { folders: FolderType[]; onOpen: (id: number) => void }) {
+  return (
+    <div
+      className="mx-3 rounded-xl bg-[var(--card-bg)] border border-[var(--border-color)] overflow-hidden"
+      style={{ boxShadow: '0 1px 0 rgba(0,0,0,.02), 0 1px 2px rgba(28,25,23,.04)' }}
+    >
+      {folders.map((f, i) => (
+        <button
+          key={f.id}
+          onClick={() => onOpen(f.id)}
+          className="flex items-center gap-3 px-3.5 py-3 w-full text-left active:bg-[var(--surface-hover)]"
+          style={i > 0 ? { borderTop: '1px solid var(--border-color)' } : undefined}
+        >
+          <div
+            className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
+            style={{ background: 'color-mix(in srgb, var(--primary-color) 15%, transparent)' }}
+          >
+            <Folder className="h-[18px] w-[18px] text-[var(--primary-color)]" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-[var(--text-main)] truncate">{f.name}</p>
+            <p className="font-mono text-[11px] text-[var(--text-light)] mt-0.5">
+              {f.file_count ?? 0} arquivos
+            </p>
+          </div>
+          <ChevronRight className="h-4 w-4 text-[var(--text-muted)] flex-shrink-0" />
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function StorageCard({ storage }: { storage: { used_bytes: number; quota_bytes: number } }) {
   const totalFiles = '--';
   const pct = storage.quota_bytes > 0 ? Math.round((storage.used_bytes / storage.quota_bytes) * 100) : 0;
@@ -336,16 +368,18 @@ export function MobileArquivosView({
             <span className="font-mono text-[10px] tracking-[.12em] uppercase text-[var(--text-muted)] font-semibold">
               Recentes
             </span>
-            <div className="flex gap-0.5">
+            <div className="flex gap-1">
               <button
+                type="button"
                 onClick={() => setViewMode('grid')}
-                className={`p-1 ${viewMode === 'grid' ? 'text-[var(--primary-color)]' : 'text-[var(--text-muted)]'}`}
+                className={`p-2 rounded-md ${viewMode === 'grid' ? 'text-[var(--primary-color)] bg-[var(--surface-hover)]' : 'text-[var(--text-muted)]'}`}
               >
                 <LayoutGrid className="h-4 w-4" />
               </button>
               <button
+                type="button"
                 onClick={() => setViewMode('list')}
-                className={`p-1 ${viewMode === 'list' ? 'text-[var(--primary-color)]' : 'text-[var(--text-muted)]'}`}
+                className={`p-2 rounded-md ${viewMode === 'list' ? 'text-[var(--primary-color)] bg-[var(--surface-hover)]' : 'text-[var(--text-muted)]'}`}
               >
                 <List className="h-4 w-4" />
               </button>
@@ -380,7 +414,10 @@ export function MobileArquivosView({
                 <p className="font-mono text-[11px] tracking-[.12em] uppercase text-[var(--text-muted)] font-semibold mb-2 px-4">
                   Pastas
                 </p>
-                <FolderCards folders={subfolders} onOpen={onNavigate} />
+                {viewMode === 'grid'
+                  ? <FolderCards folders={subfolders} onOpen={onNavigate} />
+                  : <FolderList folders={subfolders} onOpen={onNavigate} />
+                }
               </div>
             )}
             {filteredFiles.length > 0 && viewMode === 'grid' && (
