@@ -47,6 +47,31 @@ function putWithProgress(url: string, file: File, onProgress?: (p: UploadProgres
   });
 }
 
+// ─── TREE OPERATIONS ────────────────────────────────────────────
+
+export interface TreeNode {
+  id: number;
+  name: string;
+  source: 'system' | 'user';
+  source_type: 'client' | 'workflow' | 'post' | null;
+  position: number;
+  has_children: boolean;
+}
+
+export async function getTreeChildren(parentId: number | null): Promise<TreeNode[]> {
+  const query: Record<string, string> = parentId ? { parent_id: String(parentId) } : {};
+  return callFn<TreeNode[]>('file-manage', 'GET', undefined, query, '/tree');
+}
+
+export async function getFileDownloadUrl(fileId: number): Promise<string> {
+  const { url } = await callFn<{ url: string }>('file-manage', 'GET', undefined, undefined, `/files/${fileId}/url`);
+  return url;
+}
+
+export async function patchFileBlurHash(fileId: number, blurDataUrl: string): Promise<void> {
+  await callFn('file-manage', 'PATCH', { blur_data_url: blurDataUrl }, undefined, `/files/${fileId}`);
+}
+
 // ─── FOLDER OPERATIONS ─────────────────────────────────────────
 
 export async function getFolderContents(parentId: number | null): Promise<FolderContents> {

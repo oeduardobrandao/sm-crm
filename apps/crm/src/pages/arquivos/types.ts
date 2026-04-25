@@ -15,6 +15,8 @@ export interface Folder {
   file_count?: number;
   subfolder_count?: number;
   total_size_bytes?: number;
+  has_children?: boolean;
+  _optimistic?: boolean;
 }
 
 export interface FileRecord {
@@ -36,6 +38,9 @@ export interface FileRecord {
   created_at: string;
   url?: string;
   thumbnail_url?: string | null;
+  _uploading?: boolean;
+  _progress?: number;
+  _localPreviewUrl?: string;
 }
 
 export interface PostFileLink {
