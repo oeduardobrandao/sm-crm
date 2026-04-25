@@ -68,7 +68,7 @@ export default function ArquivosPage() {
 
   if (isMobile) {
     return (
-      <div className="page-full-bleed">
+      <div className="page-full-bleed flex flex-col">
         <FileUploader
           folderId={currentFolderId}
           onUploadComplete={() => queryClient.invalidateQueries({ queryKey: ['folder-contents'] })}
