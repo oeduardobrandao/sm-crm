@@ -14,6 +14,7 @@ export interface Folder {
   updated_at: string;
   file_count?: number;
   subfolder_count?: number;
+  total_size_bytes?: number;
 }
 
 export interface FileRecord {
@@ -52,4 +53,12 @@ export interface FolderContents {
   subfolders: Folder[];
   files: FileRecord[];
   breadcrumbs: Pick<Folder, 'id' | 'name'>[];
+  storage?: { used_bytes: number; quota_bytes: number };
+}
+
+export interface FolderInfo extends Folder {
+  total_size_bytes: number;
+  total_file_count: number;
+  direct_subfolder_count: number;
+  direct_file_count: number;
 }

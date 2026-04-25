@@ -1,6 +1,6 @@
 // apps/crm/src/services/fileService.ts
 import { supabase } from '../lib/supabase';
-import type { Folder, FileRecord, FolderContents, PostFileLink } from '../pages/arquivos/types';
+import type { Folder, FileRecord, FolderContents, FolderInfo, PostFileLink } from '../pages/arquivos/types';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 
@@ -68,6 +68,10 @@ export async function moveFolder(folderId: number, newParentId: number | null): 
 
 export async function deleteFolder(folderId: number): Promise<void> {
   await callFn('file-manage', 'DELETE', undefined, undefined, `/folders/${folderId}`);
+}
+
+export async function getFolderInfo(folderId: number): Promise<FolderInfo> {
+  return callFn<FolderInfo>('file-manage', 'GET', undefined, undefined, `/folders/${folderId}`);
 }
 
 // ─── FILE OPERATIONS ────────────────────────────────────────────

@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
 import {
@@ -9,6 +10,8 @@ import {
 } from 'lucide-react';
 import type { FileRecord, Folder as FolderType } from '../types';
 import { FileContextMenu } from './FileContextMenu';
+
+export type SortBy = 'name' | 'size' | 'date';
 
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -36,10 +39,42 @@ interface FileGridProps {
   onFileAction: (action: string, file: FileRecord) => void;
   viewMode: 'grid' | 'list';
   onActionComplete: () => void;
+  sortBy?: SortBy;
 }
 
-export function FileGrid({ files, subfolders, onOpenFolder, onFileAction, viewMode, onActionComplete }: FileGridProps) {
+function sortFolders(folders: FolderType[], sortBy: SortBy): FolderType[] {
+  return [...folders].sort((a, b) => {
+    switch (sortBy) {
+      case 'size':
+        return (b.total_size_bytes ?? 0) - (a.total_size_bytes ?? 0);
+      case 'date':
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      case 'name':
+      default:
+        return a.name.localeCompare(b.name, 'pt-BR');
+    }
+  });
+}
+
+function sortFiles(files: FileRecord[], sortBy: SortBy): FileRecord[] {
+  return [...files].sort((a, b) => {
+    switch (sortBy) {
+      case 'size':
+        return b.size_bytes - a.size_bytes;
+      case 'date':
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      case 'name':
+      default:
+        return a.name.localeCompare(b.name, 'pt-BR');
+    }
+  });
+}
+
+export function FileGrid({ files, subfolders, onOpenFolder, onFileAction, viewMode, onActionComplete, sortBy = 'name' }: FileGridProps) {
   const isEmpty = subfolders.length === 0 && files.length === 0;
+
+  const sortedFolders = useMemo(() => sortFolders(subfolders, sortBy), [subfolders, sortBy]);
+  const sortedFiles = useMemo(() => sortFiles(files, sortBy), [files, sortBy]);
 
   if (isEmpty) {
     return (
@@ -64,7 +99,7 @@ export function FileGrid({ files, subfolders, onOpenFolder, onFileAction, viewMo
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--border-color)]">
-            {subfolders.map((folder) => (
+            {sortedFolders.map((folder) => (
               <FileContextMenu key={`folder-${folder.id}`} item={folder} type="folder" onActionComplete={onActionComplete}>
                 <tr
                   className="hover:bg-[var(--surface-hover)] cursor-pointer transition-colors"
@@ -84,16 +119,22 @@ export function FileGrid({ files, subfolders, onOpenFolder, onFileAction, viewMo
                     </div>
                   </td>
                   <td className="py-2.5 pr-4 text-[var(--text-muted)]">Pasta</td>
-                  <td className="py-2.5 pr-4 text-[var(--text-muted)]">—</td>
+                  <td className="py-2.5 pr-4 text-[var(--text-muted)] font-mono text-xs">
+                    {folder.total_size_bytes != null ? formatBytes(folder.total_size_bytes) : '—'}
+                  </td>
                   <td className="py-2.5 pr-4 text-[var(--text-muted)]">
                     {formatDistanceToNow(new Date(folder.created_at), { addSuffix: true, locale: ptBR })}
                   </td>
-                  <td className="py-2.5 text-[var(--text-muted)]">—</td>
+                  <td className="py-2.5 text-[var(--text-muted)]">
+                    {folder.file_count != null ? (
+                      <span className="text-xs">{folder.file_count} arquivos</span>
+                    ) : '—'}
+                  </td>
                 </tr>
               </FileContextMenu>
             ))}
 
-            {files.map((file) => (
+            {sortedFiles.map((file) => (
               <FileContextMenu key={`file-${file.id}`} item={file} type="file" onActionComplete={onActionComplete}>
                 <tr
                   className="hover:bg-[var(--surface-hover)] cursor-pointer transition-colors"
@@ -136,7 +177,7 @@ export function FileGrid({ files, subfolders, onOpenFolder, onFileAction, viewMo
   // Grid mode
   return (
     <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))' }}>
-      {subfolders.map((folder) => (
+      {sortedFolders.map((folder) => (
         <FileContextMenu key={`folder-${folder.id}`} item={folder} type="folder" onActionComplete={onActionComplete}>
           <button
             onClick={() => onOpenFolder(folder.id)}
@@ -146,6 +187,9 @@ export function FileGrid({ files, subfolders, onOpenFolder, onFileAction, viewMo
             <span className="text-sm font-medium text-[var(--text-main)] text-center leading-tight line-clamp-2 w-full">
               {folder.name}
             </span>
+            {folder.total_size_bytes != null && (
+              <p className="text-[0.65rem] text-[var(--text-muted)] mt-0.5 font-mono">{formatBytes(folder.total_size_bytes)}</p>
+            )}
             {folder.source === 'system' && (
               <span className="text-[0.6rem] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded bg-[var(--surface-hover)] text-[var(--text-muted)]">
                 AUTO
@@ -155,7 +199,7 @@ export function FileGrid({ files, subfolders, onOpenFolder, onFileAction, viewMo
         </FileContextMenu>
       ))}
 
-      {files.map((file) => (
+      {sortedFiles.map((file) => (
         <FileContextMenu key={`file-${file.id}`} item={file} type="file" onActionComplete={onActionComplete}>
           <button
             onClick={() => onFileAction('open', file)}

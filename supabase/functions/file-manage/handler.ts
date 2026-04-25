@@ -40,6 +40,30 @@ export function createFileManageHandler(deps: FileManageDeps) {
 
     // ─── FOLDERS ──────────────────────────────────────────────────
     if (resource === "folders") {
+      // GET /folders/:id → single folder info
+      if (req.method === "GET" && idStr) {
+        const folderId = Number(idStr);
+        const { data: folder } = await svc.from("folders").select("*").eq("id", folderId).single();
+        if (!folder || folder.conta_id !== contaId) return json({ error: "Folder not found" }, 404);
+
+        const { data: sizeData } = await svc.rpc("folder_total_size", { p_folder_id: folderId }).single();
+
+        const { count: subfolderCount } = await svc.from("folders")
+          .select("id", { count: "exact", head: true })
+          .eq("parent_id", folderId);
+        const { count: directFileCount } = await svc.from("files")
+          .select("id", { count: "exact", head: true })
+          .eq("folder_id", folderId);
+
+        return json({
+          ...folder,
+          total_size_bytes: sizeData?.total_size_bytes ?? 0,
+          total_file_count: sizeData?.file_count ?? 0,
+          direct_subfolder_count: subfolderCount ?? 0,
+          direct_file_count: directFileCount ?? 0,
+        });
+      }
+
       // GET /folders?parent_id=... → list folder contents
       if (req.method === "GET") {
         const parentId = url.searchParams.get("parent_id");
@@ -56,6 +80,25 @@ export function createFileManageHandler(deps: FileManageDeps) {
         filesQ.order("created_at", { ascending: false });
 
         const [{ data: subfolders }, { data: files }] = await Promise.all([foldersQ, filesQ]);
+
+        // Compute folder sizes for each subfolder
+        const folderIds = (subfolders ?? []).map((f: any) => f.id);
+        let folderSizes: Record<number, { total_size_bytes: number; file_count: number }> = {};
+        if (folderIds.length > 0) {
+          const sizeResults = await Promise.all(
+            folderIds.map(async (id: number) => {
+              const { data } = await svc.rpc("folder_total_size", { p_folder_id: id }).single();
+              return { id, ...(data ?? { total_size_bytes: 0, file_count: 0 }) };
+            })
+          );
+          for (const r of sizeResults) folderSizes[r.id] = { total_size_bytes: r.total_size_bytes, file_count: r.file_count };
+        }
+
+        const subfoldersWithSize = (subfolders ?? []).map((f: any) => ({
+          ...f,
+          total_size_bytes: folderSizes[f.id]?.total_size_bytes ?? 0,
+          file_count: folderSizes[f.id]?.file_count ?? 0,
+        }));
 
         const signedFiles = await Promise.all((files ?? []).map(async (f: any) => ({
           ...f,
@@ -80,7 +123,22 @@ export function createFileManageHandler(deps: FileManageDeps) {
           folder = f;
         }
 
-        return json({ folder, subfolders: subfolders ?? [], files: signedFiles, breadcrumbs });
+        // Fetch workspace storage usage
+        const { data: workspace } = await svc.from("workspaces")
+          .select("storage_used_bytes, storage_quota_bytes")
+          .eq("id", contaId)
+          .single();
+
+        return json({
+          folder,
+          subfolders: subfoldersWithSize,
+          files: signedFiles,
+          breadcrumbs,
+          storage: {
+            used_bytes: workspace?.storage_used_bytes ?? 0,
+            quota_bytes: workspace?.storage_quota_bytes ?? 0,
+          },
+        });
       }
 
       // POST /folders → create folder

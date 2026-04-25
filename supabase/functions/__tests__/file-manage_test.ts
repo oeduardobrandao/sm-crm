@@ -83,15 +83,23 @@ Deno.test("file-manage: GET /folders lists root folders and files", async () => 
     data: [{ id: 10, name: "logo.png", kind: "image", r2_key: "contas/conta-1/files/logo.png", thumbnail_r2_key: null }],
     error: null,
   });
+  // folder_total_size RPC for subfolder id=1
+  db.queueRpc("folder_total_size", { data: { total_size_bytes: 1024, file_count: 2 }, error: null });
+  // workspace storage query
+  db.queue("workspaces", "select", { data: { storage_used_bytes: 5000, storage_quota_bytes: 1000000 }, error: null });
   const handler = makeHandler(db);
   const res = await handler(req("GET", "/folders"));
   assertEquals(res.status, 200);
   const body = await readJson(res);
   assertEquals(body.subfolders.length, 1);
+  assertEquals(body.subfolders[0].total_size_bytes, 1024);
+  assertEquals(body.subfolders[0].file_count, 2);
   assertEquals(body.files.length, 1);
   assertEquals(body.files[0].url, "https://signed.example.com/contas/conta-1/files/logo.png");
   assertEquals(body.breadcrumbs, []);
   assertEquals(body.folder, null);
+  assertEquals(body.storage.used_bytes, 5000);
+  assertEquals(body.storage.quota_bytes, 1000000);
 });
 
 Deno.test("file-manage: GET /folders?parent_id builds breadcrumbs", async () => {
@@ -107,6 +115,8 @@ Deno.test("file-manage: GET /folders?parent_id builds breadcrumbs", async () => 
   db.queue("folders", "select", { data: { id: 1, name: "Root", parent_id: null }, error: null });
   // folder detail
   db.queue("folders", "select", { data: { id: 5, name: "Sub" }, error: null });
+  // workspace storage query
+  db.queue("workspaces", "select", { data: { storage_used_bytes: 0, storage_quota_bytes: 1000000 }, error: null });
   const handler = makeHandler(db);
   const res = await handler(req("GET", "/folders?parent_id=5"));
   assertEquals(res.status, 200);
@@ -114,6 +124,7 @@ Deno.test("file-manage: GET /folders?parent_id builds breadcrumbs", async () => 
   assertEquals(body.breadcrumbs.length, 2);
   assertEquals(body.breadcrumbs[0].name, "Root");
   assertEquals(body.breadcrumbs[1].name, "Sub");
+  assertEquals(body.storage.used_bytes, 0);
 });
 
 Deno.test("file-manage: GET /folders signs documents as url:null", async () => {
@@ -124,6 +135,8 @@ Deno.test("file-manage: GET /folders signs documents as url:null", async () => {
     data: [{ id: 20, name: "report.pdf", kind: "document", r2_key: "contas/conta-1/files/report.pdf", thumbnail_r2_key: null }],
     error: null,
   });
+  // workspace storage query (no subfolders, so no RPC calls needed)
+  db.queue("workspaces", "select", { data: { storage_used_bytes: 0, storage_quota_bytes: 1000000 }, error: null });
   const handler = makeHandler(db);
   const res = await handler(req("GET", "/folders"));
   assertEquals(res.status, 200);
