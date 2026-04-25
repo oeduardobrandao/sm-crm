@@ -41,8 +41,10 @@ function captureVideoThumbnail(file: File): Promise<File> {
     };
     video.onseeked = () => {
       const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+      const MAX_THUMB_WIDTH = 400;
+      const scale = video.videoWidth > MAX_THUMB_WIDTH ? MAX_THUMB_WIDTH / video.videoWidth : 1;
+      canvas.width = Math.round(video.videoWidth * scale);
+      canvas.height = Math.round(video.videoHeight * scale);
       canvas.getContext('2d')!.drawImage(video, 0, 0);
       canvas.toBlob(
         (blob) => {
@@ -73,6 +75,10 @@ export function FileUploader({
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [queue, setQueue] = useState<UploadItem[]>([]);
+
+  const activeUploads = useRef(0);
+  const pendingQueue = useRef<{ file: File; itemId: string }[]>([]);
+  const MAX_CONCURRENT = 3;
 
   // Expose openFilePicker via triggerRef
   useImperativeHandle(triggerRef, () => ({
@@ -136,6 +142,23 @@ export function FileUploader({
     },
   });
 
+  const startUpload = useCallback(
+    (file: File, itemId: string) => {
+      activeUploads.current++;
+      mutation.mutate(
+        { file, itemId },
+        {
+          onSettled: () => {
+            activeUploads.current--;
+            const next = pendingQueue.current.shift();
+            if (next) startUpload(next.file, next.itemId);
+          },
+        },
+      );
+    },
+    [mutation],
+  );
+
   const processFiles = useCallback(
     (files: FileList | File[]) => {
       const fileArray = Array.from(files).filter((f) => f.type !== '');
@@ -148,10 +171,14 @@ export function FileUploader({
           { id: itemId, name: file.name, progress: 0, status: 'uploading' },
         ]);
 
-        mutation.mutate({ file, itemId });
+        if (activeUploads.current < MAX_CONCURRENT) {
+          startUpload(file, itemId);
+        } else {
+          pendingQueue.current.push({ file, itemId });
+        }
       }
     },
-    [folderId, mutation],
+    [startUpload],
   );
 
   // ─── File input change ─────────────────────────────────────────

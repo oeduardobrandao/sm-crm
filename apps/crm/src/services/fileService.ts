@@ -110,6 +110,16 @@ export async function uploadFile(args: {
 }): Promise<FileRecord> {
   const { file, folderId, thumbnail, onProgress, postId } = args;
 
+  const kind = file.type.startsWith('image/') ? 'image'
+    : file.type.startsWith('video/') ? 'video'
+    : 'document';
+
+  // For images: probe dimensions in parallel with URL request
+  let dimensionPromise: Promise<{ width: number; height: number }> | undefined;
+  if (kind === 'image') {
+    dimensionPromise = probeImage(file);
+  }
+
   const signed = await callFn<{
     file_id: string; upload_url: string; r2_key: string; kind: string;
     thumbnail_upload_url?: string; thumbnail_r2_key?: string;
@@ -130,21 +140,19 @@ export async function uploadFile(args: {
   let width: number | undefined;
   let height: number | undefined;
   let duration_seconds: number | undefined;
-  let blur_data_url: string | undefined;
 
-  if (signed.kind === 'image') {
-    const dims = await probeImage(file);
+  if (kind === 'image' && dimensionPromise) {
+    const dims = await dimensionPromise;
     width = dims.width;
     height = dims.height;
-    blur_data_url = await generateBlurDataUrl(file).catch(() => undefined);
-  } else if (signed.kind === 'video') {
+  } else if (kind === 'video') {
     const dims = await probeVideo(file);
     width = dims.width;
     height = dims.height;
     duration_seconds = dims.duration_seconds;
   }
 
-  return callFn<FileRecord>('file-upload-finalize', 'POST', {
+  const record = await callFn<FileRecord>('file-upload-finalize', 'POST', {
     file_id: signed.file_id,
     r2_key: signed.r2_key,
     thumbnail_r2_key: signed.thumbnail_r2_key,
@@ -153,9 +161,18 @@ export async function uploadFile(args: {
     size_bytes: file.size,
     name: file.name,
     folder_id: folderId,
-    width, height, duration_seconds, blur_data_url,
+    width, height, duration_seconds,
     post_id: postId,
   });
+
+  // Generate and PATCH blur hash in background (non-blocking)
+  if (kind === 'image') {
+    generateBlurDataUrl(file)
+      .then(blur => patchFileBlurHash(record.id, blur))
+      .catch(() => {});
+  }
+
+  return record;
 }
 
 export async function renameFile(fileId: number, name: string): Promise<FileRecord> {
