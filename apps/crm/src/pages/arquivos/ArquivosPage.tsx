@@ -2,15 +2,17 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { LayoutGrid, List, Upload, FolderPlus, ArrowUpDown } from 'lucide-react';
 import { toast } from 'sonner';
-import { getFolderContents, createFolder } from '@/services/fileService';
+import { getFolderContents, createFolder, getFileDownloadUrl } from '@/services/fileService';
 import { Breadcrumbs } from './components/Breadcrumbs';
 import { FolderTree } from './components/FolderTree';
 import { FileGrid, formatBytes } from './components/FileGrid';
 import { FileUploader } from './components/FileUploader';
 import { CreateFolderModal } from './components/CreateFolderModal';
 import { MobileArquivosView } from './components/MobileArquivosView';
+import { PostMediaLightbox } from '../entregas/components/PostMediaLightbox';
 import type { SortBy } from './components/FileGrid';
 import type { FileRecord, FolderContents } from './types';
+import type { PostMedia } from '../../store';
 
 function useIsMobile(breakpoint = 900) {
   const [isMobile, setIsMobile] = useState(() => window.innerWidth <= breakpoint);
@@ -35,6 +37,8 @@ export default function ArquivosPage() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [sortBy, setSortBy] = useState<SortBy>('name');
   const [createFolderParent, setCreateFolderParent] = useState<number | null | undefined>(undefined);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
   const queryClient = useQueryClient();
   const uploaderRef = useRef<{ openFilePicker: () => void }>(null);
 
@@ -65,6 +69,29 @@ export default function ArquivosPage() {
   const subfolders = data?.subfolders ?? [];
   const files = data?.files ?? [];
   const storage = data?.storage;
+
+  const mediaFiles = files.filter(f => f.kind === 'image' || f.kind === 'video');
+  const lightboxMedia: PostMedia[] = mediaFiles.map(f => ({
+    id: f.id,
+    post_id: 0,
+    conta_id: f.conta_id,
+    r2_key: f.r2_key,
+    thumbnail_r2_key: f.thumbnail_r2_key,
+    kind: f.kind as 'image' | 'video',
+    mime_type: f.mime_type,
+    size_bytes: f.size_bytes,
+    original_filename: f.name,
+    width: f.width,
+    height: f.height,
+    duration_seconds: f.duration_seconds,
+    is_cover: false,
+    sort_order: 0,
+    uploaded_by: f.uploaded_by,
+    created_at: f.created_at,
+    blur_data_url: f.blur_data_url,
+    url: f.url,
+    thumbnail_url: f.thumbnail_url,
+  }));
 
   const createFolderMutation = useMutation({
     mutationFn: (name: string) => createFolder(name, createFolderParent ?? null),
@@ -107,9 +134,23 @@ export default function ArquivosPage() {
     onSuccess: () => toast.success('Pasta criada'),
   });
 
-  function handleFileAction(action: string, _file: FileRecord) {
-    if (action === 'open') {
-      // Task 14: file preview / detail
+  function handleFileAction(action: string, file: FileRecord) {
+    if (action !== 'open') return;
+
+    if (file.kind === 'image' || file.kind === 'video') {
+      const idx = mediaFiles.findIndex(f => f.id === file.id);
+      if (idx >= 0) {
+        setLightboxIndex(idx);
+        setLightboxOpen(true);
+      }
+    } else {
+      if (file.url) {
+        window.open(file.url, '_blank');
+      } else {
+        getFileDownloadUrl(file.id)
+          .then(url => window.open(url, '_blank'))
+          .catch(() => toast.error('Erro ao abrir arquivo'));
+      }
     }
   }
 
@@ -141,6 +182,12 @@ export default function ArquivosPage() {
             }}
           />
         </FileUploader>
+        <PostMediaLightbox
+          media={lightboxMedia}
+          initialIndex={lightboxIndex}
+          open={lightboxOpen}
+          onOpenChange={setLightboxOpen}
+        />
         <CreateFolderModal
           open={createFolderParent !== undefined}
           onOpenChange={(open) => { if (!open) setCreateFolderParent(undefined); }}
@@ -303,6 +350,12 @@ export default function ArquivosPage() {
         </FileUploader>
       </main>
 
+      <PostMediaLightbox
+        media={lightboxMedia}
+        initialIndex={lightboxIndex}
+        open={lightboxOpen}
+        onOpenChange={setLightboxOpen}
+      />
       <CreateFolderModal
         open={createFolderParent !== undefined}
         onOpenChange={(open) => { if (!open) setCreateFolderParent(undefined); }}
