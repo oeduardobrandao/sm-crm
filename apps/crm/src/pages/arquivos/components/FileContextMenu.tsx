@@ -25,6 +25,17 @@ import { renameFolder, deleteFolder, renameFile, deleteFile } from '@/services/f
 import { FolderInfoModal } from './FolderInfoModal';
 import type { Folder, FileRecord } from '../types';
 
+function truncateName(name: string, max = 40): string {
+  if (name.length <= max) return name;
+  const ext = name.lastIndexOf('.');
+  if (ext > 0) {
+    const suffix = name.slice(ext);
+    const keep = max - suffix.length - 3;
+    if (keep > 4) return name.slice(0, keep) + '…' + suffix;
+  }
+  return name.slice(0, max - 1) + '…';
+}
+
 interface FileContextMenuProps {
   children: React.ReactNode;
   item: Folder | FileRecord;
@@ -269,10 +280,10 @@ export function FileContextMenu({ children, item, type, onActionComplete }: File
             <AlertDialogTitle>
               Excluir {isFolder ? 'pasta' : 'arquivo'}?
             </AlertDialogTitle>
-            <AlertDialogDescription>
+            <AlertDialogDescription className="break-all">
               {isFolder
-                ? `A pasta "${item.name}" e todos os seus arquivos serão excluídos permanentemente. Esta ação não pode ser desfeita.`
-                : `O arquivo "${item.name}" será excluído permanentemente. Esta ação não pode ser desfeita.`}
+                ? `A pasta "${truncateName(item.name)}" e todos os seus arquivos serão excluídos permanentemente. Esta ação não pode ser desfeita.`
+                : `O arquivo "${truncateName(item.name)}" será excluído permanentemente. Esta ação não pode ser desfeita.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { LayoutGrid, List, Upload, FolderPlus, ArrowUpDown } from 'lucide-react';
 import { toast } from 'sonner';
@@ -8,8 +8,21 @@ import { Breadcrumbs } from './components/Breadcrumbs';
 import { FolderTree } from './components/FolderTree';
 import { FileGrid, formatBytes } from './components/FileGrid';
 import { FileUploader } from './components/FileUploader';
+import { CreateFolderModal } from './components/CreateFolderModal';
+import { MobileArquivosView } from './components/MobileArquivosView';
 import type { SortBy } from './components/FileGrid';
 import type { FileRecord } from './types';
+
+function useIsMobile(breakpoint = 900) {
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= breakpoint);
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${breakpoint}px)`);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, [breakpoint]);
+  return isMobile;
+}
 
 const SORT_OPTIONS: { value: SortBy; label: string }[] = [
   { value: 'name', label: 'Nome' },
@@ -18,9 +31,11 @@ const SORT_OPTIONS: { value: SortBy; label: string }[] = [
 ];
 
 export default function ArquivosPage() {
+  const isMobile = useIsMobile();
   const [currentFolderId, setCurrentFolderId] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [sortBy, setSortBy] = useState<SortBy>('name');
+  const [createFolderParent, setCreateFolderParent] = useState<number | null | undefined>(undefined);
   const queryClient = useQueryClient();
   const uploaderRef = useRef<{ openFilePicker: () => void }>(null);
 
@@ -34,12 +49,11 @@ export default function ArquivosPage() {
   const files = data?.files ?? [];
   const storage = data?.storage;
 
-  async function handleCreateFolder() {
-    const name = window.prompt('Nome da nova pasta:');
-    if (!name?.trim()) return;
+  async function handleCreateFolder(name: string) {
     try {
-      await createFolder(name.trim(), currentFolderId);
+      await createFolder(name, createFolderParent ?? null);
       await queryClient.invalidateQueries({ queryKey: ['folder-contents'] });
+      await queryClient.invalidateQueries({ queryKey: ['folders'] });
       toast.success('Pasta criada');
     } catch {
       toast.error('Erro ao criar pasta');
@@ -52,11 +66,39 @@ export default function ArquivosPage() {
     }
   }
 
+  if (isMobile) {
+    return (
+      <div className="page-full-bleed">
+        <FileUploader
+          folderId={currentFolderId}
+          onUploadComplete={() => queryClient.invalidateQueries({ queryKey: ['folder-contents'] })}
+          triggerRef={uploaderRef}
+        >
+          <MobileArquivosView
+            breadcrumbs={breadcrumbs}
+            subfolders={subfolders}
+            files={files}
+            storage={storage}
+            isLoading={isLoading}
+            currentFolderId={currentFolderId}
+            onNavigate={setCurrentFolderId}
+            onFileAction={handleFileAction}
+            onUploadClick={() => uploaderRef.current?.openFilePicker()}
+            onCreateFolder={() => setCreateFolderParent(currentFolderId)}
+            onActionComplete={() => queryClient.invalidateQueries({ queryKey: ['folder-contents'] })}
+          />
+        </FileUploader>
+        <CreateFolderModal
+          open={createFolderParent !== undefined}
+          onOpenChange={(open) => { if (!open) setCreateFolderParent(undefined); }}
+          onConfirm={handleCreateFolder}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div
-      className="flex h-full min-h-0"
-      style={{ padding: 0 }}
-    >
+    <div className="page-full-bleed flex min-h-0">
       {/* Left panel — folder tree */}
       <aside
         className="flex flex-col border-r border-[var(--border-color)] bg-[var(--card-bg)] flex-shrink-0"
@@ -73,6 +115,7 @@ export default function ArquivosPage() {
         <FolderTree
           selectedFolderId={currentFolderId}
           onSelectFolder={setCurrentFolderId}
+          onRequestCreateFolder={setCreateFolderParent}
         />
 
         {/* Storage usage bar */}
@@ -127,7 +170,7 @@ export default function ArquivosPage() {
 
             {/* New folder for current location */}
             <button
-              onClick={handleCreateFolder}
+              onClick={() => setCreateFolderParent(currentFolderId)}
               className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium border border-[var(--border-color)] text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors"
             >
               <FolderPlus className="h-4 w-4" />
@@ -204,6 +247,12 @@ export default function ArquivosPage() {
           </div>
         </FileUploader>
       </main>
+
+      <CreateFolderModal
+        open={createFolderParent !== undefined}
+        onOpenChange={(open) => { if (!open) setCreateFolderParent(undefined); }}
+        onConfirm={handleCreateFolder}
+      />
     </div>
   );
 }

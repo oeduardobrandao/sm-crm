@@ -516,6 +516,21 @@ body {
   .main-content { height: 100vh; }
 }
 
+.page-full-bleed {
+  height: 100dvh;
+  flex: 1;
+}
+
+.main-content:has(> .page-full-bleed) {
+  margin-left: var(--sidebar-width);
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+.main-content:has(> .page-full-bleed) > .app-logo-bar {
+  display: none !important;
+}
+
 .header {
   display: flex;
   justify-content: space-between;
@@ -1787,6 +1802,14 @@ select.form-input option {
     padding-top: calc(1.25rem + env(safe-area-inset-top, 0px));
     padding-bottom: calc(64px + env(safe-area-inset-bottom, 0));
     height: 100dvh;
+  }
+
+  .main-content:has(> .page-full-bleed) {
+    margin-left: 0;
+  }
+
+  .crisp-client {
+    transform: translateY(-5.5rem);
   }
 
   @supports not (height: 100dvh) {
@@ -5720,6 +5743,7 @@ body.role-agent input[name="valor_total"] {
     margin-left: 0 !important;
     padding-top: calc(48px + 1.25rem) !important;
   }
+
 }
 
 /* ─── Workflow History ─────────────────────────────────── */

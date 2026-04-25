@@ -181,7 +181,7 @@ export function FileGrid({ files, subfolders, onOpenFolder, onFileAction, viewMo
         <FileContextMenu key={`folder-${folder.id}`} item={folder} type="folder" onActionComplete={onActionComplete}>
           <button
             onClick={() => onOpenFolder(folder.id)}
-            className="group flex flex-col items-center gap-2 p-4 rounded-[18px] bg-[var(--card-bg)] border border-[var(--border-color)] hover:border-[var(--primary-color)] hover:shadow-md transition-all duration-150 text-left"
+            className="group flex flex-col items-center gap-2 p-4 rounded-lg bg-[var(--card-bg)] border border-[var(--border-color)] hover:border-[var(--primary-color)] hover:shadow-md transition-all duration-150 text-left"
           >
             <Folder className="h-10 w-10 text-[var(--primary-color)]" />
             <span className="text-sm font-medium text-[var(--text-main)] text-center leading-tight line-clamp-2 w-full">
@@ -203,7 +203,7 @@ export function FileGrid({ files, subfolders, onOpenFolder, onFileAction, viewMo
         <FileContextMenu key={`file-${file.id}`} item={file} type="file" onActionComplete={onActionComplete}>
           <button
             onClick={() => onFileAction('open', file)}
-            className="group flex flex-col rounded-[18px] bg-[var(--card-bg)] border border-[var(--border-color)] hover:border-[var(--primary-color)] hover:shadow-md transition-all duration-150 overflow-hidden text-left"
+            className="group flex flex-col rounded-lg bg-[var(--card-bg)] border border-[var(--border-color)] hover:border-[var(--primary-color)] hover:shadow-md transition-all duration-150 overflow-hidden text-left"
           >
             {/* Thumbnail area */}
             <div className="relative w-full aspect-square bg-[var(--surface-hover)] flex items-center justify-center overflow-hidden">
