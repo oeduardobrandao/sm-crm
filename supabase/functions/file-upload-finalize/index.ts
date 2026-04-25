@@ -1,11 +1,9 @@
-// supabase/functions/post-media-manage/index.ts
-// Adapter: queries post_file_links + files, returns legacy PostMedia-shaped records.
-// link.id serves as the legacy "media ID".
+// supabase/functions/file-upload-finalize/index.ts
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { signGetUrl, signPutUrl } from "../_shared/r2.ts";
+import { headObject, signGetUrl } from "../_shared/r2.ts";
 import { signMediaUrl, isMediaProxyEnabled } from "../_shared/media-url.ts";
 import { buildCorsHeaders } from "../_shared/cors.ts";
-import { createPostMediaManageHandler } from "./handler.ts";
+import { createFileUploadFinalizeHandler } from "./handler.ts";
 
 const signUrl = isMediaProxyEnabled()
   ? (key: string) => signMediaUrl(key)
@@ -14,11 +12,11 @@ const signUrl = isMediaProxyEnabled()
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-Deno.serve(createPostMediaManageHandler({
+Deno.serve(createFileUploadFinalizeHandler({
   buildCorsHeaders,
   createDb: () => createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   }),
+  headObject,
   signUrl,
-  signPutUrl,
 }));

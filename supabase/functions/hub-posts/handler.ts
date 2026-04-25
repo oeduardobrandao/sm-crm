@@ -99,29 +99,32 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
           .in("workflow_id", workflowIds)
       : { data: [] };
 
-    const { data: mediaRows } = postIds.length > 0
+    const { data: mediaLinks } = postIds.length > 0
       ? await db
-          .from("post_media")
-          .select("id, post_id, kind, mime_type, r2_key, thumbnail_r2_key, width, height, duration_seconds, is_cover, sort_order, blur_data_url")
+          .from("post_file_links")
+          .select("id, post_id, is_cover, sort_order, files(id, kind, mime_type, r2_key, thumbnail_r2_key, width, height, duration_seconds, blur_data_url)")
           .in("post_id", postIds)
           .order("sort_order", { ascending: true })
           .order("id", { ascending: true })
       : { data: [] };
 
-    const mediaWithUrls = await Promise.all((mediaRows ?? []).map(async (media: any) => ({
-      id: media.id,
-      post_id: media.post_id,
-      kind: media.kind,
-      mime_type: media.mime_type,
-      width: media.width,
-      height: media.height,
-      duration_seconds: media.duration_seconds,
-      is_cover: media.is_cover,
-      sort_order: media.sort_order,
-      blur_data_url: media.blur_data_url ?? null,
-      url: await deps.signGetUrl(media.r2_key, 3600),
-      thumbnail_url: media.thumbnail_r2_key ? await deps.signGetUrl(media.thumbnail_r2_key, 3600) : null,
-    })));
+    const mediaWithUrls = await Promise.all((mediaLinks ?? []).map(async (link: any) => {
+      const f = link.files;
+      return {
+        id: link.id,
+        post_id: link.post_id,
+        kind: f.kind,
+        mime_type: f.mime_type,
+        width: f.width,
+        height: f.height,
+        duration_seconds: f.duration_seconds,
+        is_cover: link.is_cover,
+        sort_order: link.sort_order,
+        blur_data_url: f.blur_data_url ?? null,
+        url: await deps.signGetUrl(f.r2_key, 3600),
+        thumbnail_url: f.thumbnail_r2_key ? await deps.signGetUrl(f.thumbnail_r2_key, 3600) : null,
+      };
+    }));
 
     const mediaByPost: Record<number, typeof mediaWithUrls> = {};
     for (const media of mediaWithUrls) {
