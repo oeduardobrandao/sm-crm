@@ -26,7 +26,7 @@ function FolderNode({ folder, selectedFolderId, onSelectFolder, onRequestCreateF
   return (
     <div>
       <div
-        className={`flex items-center gap-1 rounded-lg px-2 py-1.5 cursor-pointer group transition-colors duration-150 ${
+        className={`flex items-center gap-1 rounded-sm px-2 py-1.5 cursor-pointer group transition-colors duration-150 ${
           isSelected
             ? 'bg-[var(--primary-color)] text-[#12151a]'
             : 'hover:bg-[var(--surface-hover)] text-[var(--text-main)]'
@@ -36,7 +36,7 @@ function FolderNode({ folder, selectedFolderId, onSelectFolder, onRequestCreateF
         {folder.has_children ? (
           <button
             onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v); }}
-            className="flex-shrink-0 p-0.5 rounded opacity-60 hover:opacity-100"
+            className="flex-shrink-0 w-4 flex items-center justify-center opacity-60 hover:opacity-100"
             aria-label={expanded ? 'Recolher' : 'Expandir'}
           >
             {expanded ? (
@@ -46,7 +46,7 @@ function FolderNode({ folder, selectedFolderId, onSelectFolder, onRequestCreateF
             )}
           </button>
         ) : (
-          <span className="flex-shrink-0 w-[22px]" />
+          <span className="flex-shrink-0 w-4" />
         )}
 
         <button
@@ -143,7 +143,7 @@ export function FolderTree({ selectedFolderId, onSelectFolder, onRequestCreateFo
       <div className="border-t border-[var(--border-color)] p-2">
         <button
           onClick={() => onRequestCreateFolder(null)}
-          className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors duration-150"
+          className="flex items-center gap-2 w-full px-3 py-2 rounded-sm text-sm text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors duration-150"
         >
           <Plus className="h-4 w-4" />
           Nova pasta

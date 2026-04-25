@@ -226,7 +226,7 @@ export function FileGrid({ files, subfolders, onOpenFolder, onFileAction, viewMo
             onClick={() => onOpenFolder(folder.id)}
             onMouseEnter={() => handleFolderMouseEnter(folder.id)}
             onMouseLeave={handleFolderMouseLeave}
-            className={`group flex flex-col items-center gap-2 p-4 rounded-md bg-[var(--card-bg)] border border-[var(--border-color)] hover:border-[var(--primary-color)] hover:shadow-md transition-all duration-150 text-left${(folder as any)._optimistic ? ' opacity-50 animate-pulse pointer-events-none' : ''}`}
+            className={`group flex flex-col items-center gap-2 p-4 rounded-sm bg-[var(--card-bg)] border border-[var(--border-color)] hover:border-[var(--primary-color)] hover:shadow-md transition-all duration-150 text-left${(folder as any)._optimistic ? ' opacity-50 animate-pulse pointer-events-none' : ''}`}
           >
             <Folder className="h-10 w-10 text-[var(--primary-color)]" />
             <span className="text-sm font-medium text-[var(--text-main)] text-center leading-tight line-clamp-2 w-full">
@@ -248,7 +248,7 @@ export function FileGrid({ files, subfolders, onOpenFolder, onFileAction, viewMo
         <FileContextMenu key={`file-${file.id}`} item={file} type="file" onActionComplete={onActionComplete}>
           <button
             onClick={() => onFileAction('open', file)}
-            className="group flex flex-col rounded-md bg-[var(--card-bg)] border border-[var(--border-color)] hover:border-[var(--primary-color)] hover:shadow-md transition-all duration-150 overflow-hidden text-left"
+            className="group flex flex-col rounded-sm bg-[var(--card-bg)] border border-[var(--border-color)] hover:border-[var(--primary-color)] hover:shadow-md transition-all duration-150 overflow-hidden text-left"
           >
             {/* Thumbnail area */}
             <div className="relative w-full aspect-square bg-[var(--surface-hover)] flex items-center justify-center overflow-hidden">

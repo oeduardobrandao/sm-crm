@@ -262,7 +262,7 @@ export default function ArquivosPage() {
           <div className="flex items-center gap-2 flex-shrink-0">
             {/* Upload */}
             <button
-              className="flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium bg-[var(--primary-color)] text-[#12151a] hover:opacity-90 transition-opacity"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-sm text-sm font-medium bg-[var(--primary-color)] text-[#12151a] hover:opacity-90 transition-opacity"
               onClick={() => uploaderRef.current?.openFilePicker()}
             >
               <Upload className="h-4 w-4" />
@@ -272,14 +272,14 @@ export default function ArquivosPage() {
             {/* New folder for current location */}
             <button
               onClick={() => setCreateFolderParent(currentFolderId)}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium border border-[var(--border-color)] text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-sm text-sm font-medium border border-[var(--border-color)] text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors"
             >
               <FolderPlus className="h-4 w-4" />
               Nova pasta
             </button>
 
             {/* Sort dropdown */}
-            <div className="flex items-center gap-1.5 border border-[var(--border-color)] rounded-md px-2.5 py-1.5">
+            <div className="flex items-center gap-1.5 border border-[var(--border-color)] rounded-sm px-2.5 py-1.5">
               <ArrowUpDown className="h-3.5 w-3.5 text-[var(--text-muted)]" />
               <select
                 value={sortBy}
@@ -296,7 +296,7 @@ export default function ArquivosPage() {
             </div>
 
             {/* View mode toggle */}
-            <div className="flex items-center border border-[var(--border-color)] rounded-md overflow-hidden">
+            <div className="flex items-center border border-[var(--border-color)] rounded-sm overflow-hidden">
               <button
                 onClick={() => setViewMode('grid')}
                 className={`p-1.5 transition-colors ${

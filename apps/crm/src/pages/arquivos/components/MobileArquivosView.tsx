@@ -69,7 +69,7 @@ function FolderCards({ folders, onOpen }: { folders: FolderType[]; onOpen: (id: 
         >
           <div className="flex items-center justify-between">
             <div
-              className="w-9 h-9 rounded-lg flex items-center justify-center"
+              className="w-9 h-9 rounded-sm flex items-center justify-center"
               style={{ background: 'color-mix(in srgb, var(--primary-color) 15%, transparent)' }}
             >
               <Folder className="h-[18px] w-[18px] text-[var(--primary-color)]" />
@@ -102,7 +102,7 @@ function FolderList({ folders, onOpen }: { folders: FolderType[]; onOpen: (id: n
           style={i > 0 ? { borderTop: '1px solid var(--border-color)' } : undefined}
         >
           <div
-            className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
+            className="w-10 h-10 rounded-sm flex items-center justify-center flex-shrink-0"
             style={{ background: 'color-mix(in srgb, var(--primary-color) 15%, transparent)' }}
           >
             <Folder className="h-[18px] w-[18px] text-[var(--primary-color)]" />
@@ -221,7 +221,7 @@ function MobileFileList({
             className="flex items-center gap-3 px-3.5 py-3 cursor-pointer active:bg-[var(--surface-hover)]"
             style={i > 0 ? { borderTop: '1px solid var(--border-color)' } : undefined}
           >
-            <div className="w-10 h-10 rounded-lg bg-[var(--surface-hover)] flex items-center justify-center flex-shrink-0 overflow-hidden">
+            <div className="w-10 h-10 rounded-sm bg-[var(--surface-hover)] flex items-center justify-center flex-shrink-0 overflow-hidden">
               {(f.kind === 'image' || f.kind === 'video') && (f.thumbnail_url ?? f.url) ? (
                 <img src={(f.thumbnail_url ?? f.url)!} alt={f.name} className="w-full h-full object-cover" />
               ) : (
@@ -308,12 +308,12 @@ export function MobileArquivosView({
             )}
           </div>
           <div className="flex gap-1.5">
-            <button className="w-[34px] h-[34px] rounded-lg bg-[var(--surface-hover)] flex items-center justify-center text-[var(--text-main)]">
+            <button className="w-[34px] h-[34px] rounded-sm bg-[var(--surface-hover)] flex items-center justify-center text-[var(--text-main)]">
               <Search className="h-4 w-4" />
             </button>
             <button
               onClick={isInsideFolder ? onUploadClick : onCreateFolder}
-              className="w-[34px] h-[34px] rounded-lg bg-[var(--primary-color)] flex items-center justify-center text-[#12151a]"
+              className="w-[34px] h-[34px] rounded-sm bg-[var(--primary-color)] flex items-center justify-center text-[#12151a]"
             >
               <Plus className="h-4 w-4" strokeWidth={2.5} />
             </button>
@@ -372,14 +372,14 @@ export function MobileArquivosView({
               <button
                 type="button"
                 onClick={() => setViewMode('grid')}
-                className={`p-2 rounded-md ${viewMode === 'grid' ? 'text-[var(--primary-color)] bg-[var(--surface-hover)]' : 'text-[var(--text-muted)]'}`}
+                className={`p-2 rounded-sm ${viewMode === 'grid' ? 'text-[var(--primary-color)] bg-[var(--surface-hover)]' : 'text-[var(--text-muted)]'}`}
               >
                 <LayoutGrid className="h-4 w-4" />
               </button>
               <button
                 type="button"
                 onClick={() => setViewMode('list')}
-                className={`p-2 rounded-md ${viewMode === 'list' ? 'text-[var(--primary-color)] bg-[var(--surface-hover)]' : 'text-[var(--text-muted)]'}`}
+                className={`p-2 rounded-sm ${viewMode === 'list' ? 'text-[var(--primary-color)] bg-[var(--surface-hover)]' : 'text-[var(--text-muted)]'}`}
               >
                 <List className="h-4 w-4" />
               </button>
