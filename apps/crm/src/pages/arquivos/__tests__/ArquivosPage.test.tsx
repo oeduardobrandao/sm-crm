@@ -157,18 +157,20 @@ describe('ArquivosPage', () => {
 
     // In list view we should see table headers
     await waitFor(() => {
-      expect(screen.getByText('Nome')).toBeInTheDocument();
+      // "Nome" appears both in the sort dropdown and the table header
+      expect(screen.getAllByText('Nome').length).toBeGreaterThanOrEqual(2);
     });
     expect(screen.getByText('Tipo')).toBeInTheDocument();
-    expect(screen.getByText('Tamanho')).toBeInTheDocument();
+    // "Tamanho" appears both in the sort dropdown and the table header
+    expect(screen.getAllByText('Tamanho').length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText('Documento')).toBeInTheDocument();
 
     // Switch back to grid view
     fireEvent.click(screen.getByLabelText('Grade'));
 
     await waitFor(() => {
-      // Table headers should disappear in grid mode
-      expect(screen.queryByText('Tamanho')).not.toBeInTheDocument();
+      // Table header "Tamanho" should disappear in grid mode, but sort dropdown "Tamanho" remains
+      expect(screen.getAllByText('Tamanho').length).toBe(1);
     });
   });
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Pencil, Trash2, Download } from 'lucide-react';
+import { Pencil, Trash2, Download, Info } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -22,6 +22,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { renameFolder, deleteFolder, renameFile, deleteFile } from '@/services/fileService';
+import { FolderInfoModal } from './FolderInfoModal';
 import type { Folder, FileRecord } from '../types';
 
 interface FileContextMenuProps {
@@ -40,6 +41,7 @@ export function FileContextMenu({ children, item, type, onActionComplete }: File
   const [menuPos, setMenuPos] = useState<MenuPosition | null>(null);
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
   const [renameValue, setRenameValue] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -79,7 +81,7 @@ export function FileContextMenu({ children, item, type, onActionComplete }: File
 
     // Clamp menu so it doesn't overflow the viewport
     const menuWidth = 192;
-    const menuHeight = isFolder ? 100 : 140;
+    const menuHeight = isFolder ? 140 : 180;
     const x = Math.min(e.clientX, window.innerWidth - menuWidth - 8);
     const y = Math.min(e.clientY, window.innerHeight - menuHeight - 8);
 
@@ -89,6 +91,11 @@ export function FileContextMenu({ children, item, type, onActionComplete }: File
   function openRename() {
     setRenameValue(item.name);
     setRenameOpen(true);
+    closeMenu();
+  }
+
+  function openInfo() {
+    setInfoOpen(true);
     closeMenu();
   }
 
@@ -176,6 +183,16 @@ export function FileContextMenu({ children, item, type, onActionComplete }: File
           >
             <Pencil className="h-3.5 w-3.5 text-[var(--text-muted)]" />
             Renomear
+          </button>
+
+          {/* Info */}
+          <button
+            role="menuitem"
+            onClick={openInfo}
+            className="flex w-full items-center gap-2.5 px-3 py-2 text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors"
+          >
+            <Info className="h-3.5 w-3.5 text-[var(--text-muted)]" />
+            Informações
           </button>
 
           {/* Download — files only */}
@@ -270,6 +287,14 @@ export function FileContextMenu({ children, item, type, onActionComplete }: File
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Info modal */}
+      <FolderInfoModal
+        open={infoOpen}
+        onOpenChange={setInfoOpen}
+        item={item}
+        type={type}
+      />
     </>
   );
 }

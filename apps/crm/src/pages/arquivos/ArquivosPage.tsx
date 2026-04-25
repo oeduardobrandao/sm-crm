@@ -1,18 +1,26 @@
 import { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { LayoutGrid, List, Upload, FolderPlus } from 'lucide-react';
+import { LayoutGrid, List, Upload, FolderPlus, ArrowUpDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { Spinner } from '@/components/ui/spinner';
 import { getFolderContents, createFolder } from '@/services/fileService';
 import { Breadcrumbs } from './components/Breadcrumbs';
 import { FolderTree } from './components/FolderTree';
-import { FileGrid } from './components/FileGrid';
+import { FileGrid, formatBytes } from './components/FileGrid';
 import { FileUploader } from './components/FileUploader';
+import type { SortBy } from './components/FileGrid';
 import type { FileRecord } from './types';
+
+const SORT_OPTIONS: { value: SortBy; label: string }[] = [
+  { value: 'name', label: 'Nome' },
+  { value: 'size', label: 'Tamanho' },
+  { value: 'date', label: 'Data' },
+];
 
 export default function ArquivosPage() {
   const [currentFolderId, setCurrentFolderId] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [sortBy, setSortBy] = useState<SortBy>('name');
   const queryClient = useQueryClient();
   const uploaderRef = useRef<{ openFilePicker: () => void }>(null);
 
@@ -24,6 +32,7 @@ export default function ArquivosPage() {
   const breadcrumbs = data?.breadcrumbs ?? [];
   const subfolders = data?.subfolders ?? [];
   const files = data?.files ?? [];
+  const storage = data?.storage;
 
   async function handleCreateFolder() {
     const name = window.prompt('Nome da nova pasta:');
@@ -65,6 +74,30 @@ export default function ArquivosPage() {
           selectedFolderId={currentFolderId}
           onSelectFolder={setCurrentFolderId}
         />
+
+        {/* Storage usage bar */}
+        {storage && storage.quota_bytes > 0 && (
+          <div className="px-4 py-3 border-t border-[var(--border-color)]">
+            <div className="flex items-center justify-between text-xs text-[var(--text-muted)] mb-1.5">
+              <span>Armazenamento</span>
+              <span>{formatBytes(storage.used_bytes)} de {formatBytes(storage.quota_bytes)}</span>
+            </div>
+            <div className="h-1.5 rounded-full bg-[var(--surface-hover)] overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-300"
+                style={{
+                  width: `${Math.min((storage.used_bytes / storage.quota_bytes) * 100, 100)}%`,
+                  backgroundColor:
+                    storage.used_bytes / storage.quota_bytes >= 1
+                      ? 'var(--danger)'
+                      : storage.used_bytes / storage.quota_bytes >= 0.9
+                        ? 'var(--warning)'
+                        : 'var(--primary-color)',
+                }}
+              />
+            </div>
+          </div>
+        )}
       </aside>
 
       {/* Right panel — content area */}
@@ -94,6 +127,23 @@ export default function ArquivosPage() {
               <FolderPlus className="h-4 w-4" />
               Nova pasta
             </button>
+
+            {/* Sort dropdown */}
+            <div className="flex items-center gap-1.5 border border-[var(--border-color)] rounded-lg px-2.5 py-1.5">
+              <ArrowUpDown className="h-3.5 w-3.5 text-[var(--text-muted)]" />
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SortBy)}
+                className="text-sm bg-transparent text-[var(--text-main)] outline-none cursor-pointer appearance-none pr-1"
+                aria-label="Ordenar por"
+              >
+                {SORT_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
 
             {/* View mode toggle */}
             <div className="flex items-center border border-[var(--border-color)] rounded-lg overflow-hidden">
@@ -142,6 +192,7 @@ export default function ArquivosPage() {
                 onFileAction={handleFileAction}
                 viewMode={viewMode}
                 onActionComplete={() => queryClient.invalidateQueries({ queryKey: ['folder-contents'] })}
+                sortBy={sortBy}
               />
             )}
           </div>
