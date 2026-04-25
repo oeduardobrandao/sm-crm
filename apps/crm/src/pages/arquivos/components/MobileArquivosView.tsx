@@ -64,12 +64,12 @@ function FolderCards({ folders, onOpen }: { folders: FolderType[]; onOpen: (id: 
         <button
           key={f.id}
           onClick={() => onOpen(f.id)}
-          className="flex flex-col gap-2.5 p-3 rounded-xl bg-[var(--card-bg)] border border-[var(--border-color)] text-left active:scale-[0.97] transition-transform"
+          className="flex flex-col gap-2.5 p-3 rounded-lg bg-[var(--card-bg)] border border-[var(--border-color)] text-left active:scale-[0.97] transition-transform"
           style={{ boxShadow: '0 1px 0 rgba(0,0,0,.02), 0 1px 2px rgba(28,25,23,.04)' }}
         >
           <div className="flex items-center justify-between">
             <div
-              className="w-9 h-9 rounded-[10px] flex items-center justify-center"
+              className="w-9 h-9 rounded-lg flex items-center justify-center"
               style={{ background: 'color-mix(in srgb, var(--primary-color) 15%, transparent)' }}
             >
               <Folder className="h-[18px] w-[18px] text-[var(--primary-color)]" />
@@ -91,7 +91,7 @@ function FolderCards({ folders, onOpen }: { folders: FolderType[]; onOpen: (id: 
 function FolderList({ folders, onOpen }: { folders: FolderType[]; onOpen: (id: number) => void }) {
   return (
     <div
-      className="mx-3 rounded-xl bg-[var(--card-bg)] border border-[var(--border-color)] overflow-hidden"
+      className="mx-3 rounded-lg bg-[var(--card-bg)] border border-[var(--border-color)] overflow-hidden"
       style={{ boxShadow: '0 1px 0 rgba(0,0,0,.02), 0 1px 2px rgba(28,25,23,.04)' }}
     >
       {folders.map((f, i) => (
@@ -130,7 +130,7 @@ function StorageCard({ storage }: { storage: { used_bytes: number; quota_bytes: 
         Armazenamento
       </p>
       <div
-        className="p-3.5 rounded-xl bg-[var(--card-bg)] border border-[var(--border-color)]"
+        className="p-3.5 rounded-lg bg-[var(--card-bg)] border border-[var(--border-color)]"
         style={{ boxShadow: '0 1px 0 rgba(0,0,0,.02), 0 1px 2px rgba(28,25,23,.04)' }}
       >
         <div className="flex justify-between items-baseline mb-2">
@@ -176,7 +176,7 @@ function MobileFileGrid({
         <FileContextMenu key={f.id} item={f} type="file" onActionComplete={onActionComplete}>
           <button
             onClick={() => onFileAction('open', f)}
-            className="flex flex-col rounded-xl bg-[var(--card-bg)] border border-[var(--border-color)] overflow-hidden text-left active:scale-[0.97] transition-transform"
+            className="flex flex-col rounded-lg bg-[var(--card-bg)] border border-[var(--border-color)] overflow-hidden text-left active:scale-[0.97] transition-transform"
             style={{ boxShadow: '0 1px 0 rgba(0,0,0,.02), 0 1px 2px rgba(28,25,23,.04)' }}
           >
             <div className="relative w-full aspect-square bg-[var(--surface-hover)] flex items-center justify-center overflow-hidden">
@@ -211,7 +211,7 @@ function MobileFileList({
 }) {
   return (
     <div
-      className="mx-3 rounded-xl bg-[var(--card-bg)] border border-[var(--border-color)] overflow-hidden"
+      className="mx-3 rounded-lg bg-[var(--card-bg)] border border-[var(--border-color)] overflow-hidden"
       style={{ boxShadow: '0 1px 0 rgba(0,0,0,.02), 0 1px 2px rgba(28,25,23,.04)' }}
     >
       {files.map((f, i) => (
@@ -308,12 +308,12 @@ export function MobileArquivosView({
             )}
           </div>
           <div className="flex gap-1.5">
-            <button className="w-[34px] h-[34px] rounded-[10px] bg-[var(--surface-hover)] flex items-center justify-center text-[var(--text-main)]">
+            <button className="w-[34px] h-[34px] rounded-lg bg-[var(--surface-hover)] flex items-center justify-center text-[var(--text-main)]">
               <Search className="h-4 w-4" />
             </button>
             <button
               onClick={isInsideFolder ? onUploadClick : onCreateFolder}
-              className="w-[34px] h-[34px] rounded-[10px] bg-[var(--primary-color)] flex items-center justify-center text-[#12151a]"
+              className="w-[34px] h-[34px] rounded-lg bg-[var(--primary-color)] flex items-center justify-center text-[#12151a]"
             >
               <Plus className="h-4 w-4" strokeWidth={2.5} />
             </button>
