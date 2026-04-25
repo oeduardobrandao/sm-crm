@@ -55,7 +55,7 @@ export function createFileManageHandler(deps: FileManageDeps) {
 
         let parentSet = new Set<number>();
         if (folderIds.length > 0) {
-          const { data: children } = await svc.from("folders").select("parent_id").in("parent_id", folderIds);
+          const { data: children } = await svc.from("folders").select("parent_id").eq("conta_id", contaId).in("parent_id", folderIds);
           for (const c of (children ?? [])) parentSet.add(c.parent_id);
         }
 
@@ -116,7 +116,7 @@ export function createFileManageHandler(deps: FileManageDeps) {
             folderSizes[r.folder_id] = { total_size_bytes: r.total_size_bytes, file_count: r.file_count };
           }
 
-          const { data: children } = await svc.from("folders").select("parent_id").in("parent_id", folderIds);
+          const { data: children } = await svc.from("folders").select("parent_id").eq("conta_id", contaId).in("parent_id", folderIds);
           const parentSet = new Set((children ?? []).map((c: any) => c.parent_id));
           for (const id of folderIds) hasChildrenFlags[id] = parentSet.has(id);
         }
