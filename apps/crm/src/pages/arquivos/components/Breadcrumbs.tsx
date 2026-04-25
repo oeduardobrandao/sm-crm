@@ -3,9 +3,10 @@ import { ChevronRight } from 'lucide-react';
 interface BreadcrumbsProps {
   breadcrumbs: { id: number; name: string }[];
   onNavigate: (folderId: number | null) => void;
+  isLoading?: boolean;
 }
 
-export function Breadcrumbs({ breadcrumbs, onNavigate }: BreadcrumbsProps) {
+export function Breadcrumbs({ breadcrumbs, onNavigate, isLoading }: BreadcrumbsProps) {
   return (
     <nav className="flex items-center gap-1 text-sm flex-wrap">
       <button
@@ -14,6 +15,13 @@ export function Breadcrumbs({ breadcrumbs, onNavigate }: BreadcrumbsProps) {
       >
         Todos os Arquivos
       </button>
+
+      {isLoading && breadcrumbs.length === 0 && (
+        <>
+          <ChevronRight className="h-3.5 w-3.5 text-[var(--text-muted)] opacity-50 flex-shrink-0" />
+          <span className="h-4 w-24 bg-[var(--surface-hover)] rounded animate-pulse" />
+        </>
+      )}
 
       {breadcrumbs.map((crumb, index) => {
         const isLast = index === breadcrumbs.length - 1;

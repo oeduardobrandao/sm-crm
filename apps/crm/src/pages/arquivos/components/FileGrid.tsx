@@ -1,4 +1,5 @@
-import { useMemo } from 'react';
+import { useRef, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
 import {
@@ -10,6 +11,7 @@ import {
 } from 'lucide-react';
 import type { FileRecord, Folder as FolderType } from '../types';
 import { FileContextMenu } from './FileContextMenu';
+import { getFolderContents } from '@/services/fileService';
 
 export type SortBy = 'name' | 'size' | 'date';
 
@@ -40,6 +42,7 @@ interface FileGridProps {
   viewMode: 'grid' | 'list';
   onActionComplete: () => void;
   sortBy?: SortBy;
+  isLoading?: boolean;
 }
 
 function sortFolders(folders: FolderType[], sortBy: SortBy): FolderType[] {
@@ -70,11 +73,49 @@ function sortFiles(files: FileRecord[], sortBy: SortBy): FileRecord[] {
   });
 }
 
-export function FileGrid({ files, subfolders, onOpenFolder, onFileAction, viewMode, onActionComplete, sortBy = 'name' }: FileGridProps) {
-  const isEmpty = subfolders.length === 0 && files.length === 0;
+export function FileGrid({ files, subfolders, onOpenFolder, onFileAction, viewMode, onActionComplete, sortBy = 'name', isLoading }: FileGridProps) {
+  const queryClient = useQueryClient();
+  const prefetchTimeout = useRef<number | undefined>(undefined);
 
+  function handleFolderMouseEnter(folderId: number) {
+    prefetchTimeout.current = window.setTimeout(() => {
+      queryClient.prefetchQuery({
+        queryKey: ['folder-contents', folderId],
+        queryFn: () => getFolderContents(folderId),
+        staleTime: 30_000,
+      });
+    }, 150);
+  }
+
+  function handleFolderMouseLeave() {
+    if (prefetchTimeout.current !== undefined) {
+      clearTimeout(prefetchTimeout.current);
+      prefetchTimeout.current = undefined;
+    }
+  }
+
+  // Hooks must always be called before any early return (Rules of Hooks)
   const sortedFolders = useMemo(() => sortFolders(subfolders, sortBy), [subfolders, sortBy]);
   const sortedFiles = useMemo(() => sortFiles(files, sortBy), [files, sortBy]);
+
+  // Skeleton loading state
+  if (isLoading) {
+    return (
+      <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))' }}>
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div key={i} className="flex flex-col rounded-lg bg-[var(--card-bg)] border border-[var(--border-color)] overflow-hidden animate-pulse">
+            <div className="w-full aspect-square bg-[var(--surface-hover)]" />
+            <div className="px-3 py-2 space-y-1.5">
+              <div className="h-3 w-3/4 bg-[var(--surface-hover)] rounded" />
+              <div className="h-2.5 w-1/2 bg-[var(--surface-hover)] rounded" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  const isEmpty = subfolders.length === 0 && files.length === 0;
 
   if (isEmpty) {
     return (
@@ -104,11 +145,13 @@ export function FileGrid({ files, subfolders, onOpenFolder, onFileAction, viewMo
                 <tr
                   className="hover:bg-[var(--surface-hover)] cursor-pointer transition-colors"
                   onClick={() => onOpenFolder(folder.id)}
+                  onMouseEnter={() => handleFolderMouseEnter(folder.id)}
+                  onMouseLeave={handleFolderMouseLeave}
                 >
                   <td className="py-2.5 pr-4">
                     <div className="flex items-center gap-2">
                       <Folder className="h-4 w-4 text-[var(--primary-color)] flex-shrink-0" />
-                      <span className="font-medium text-[var(--text-main)] truncate max-w-[260px]">
+                      <span className={`font-medium text-[var(--text-main)] truncate max-w-[260px]${(folder as any)._optimistic ? ' opacity-50' : ''}`}>
                         {folder.name}
                       </span>
                       {folder.source === 'system' && (
@@ -181,7 +224,9 @@ export function FileGrid({ files, subfolders, onOpenFolder, onFileAction, viewMo
         <FileContextMenu key={`folder-${folder.id}`} item={folder} type="folder" onActionComplete={onActionComplete}>
           <button
             onClick={() => onOpenFolder(folder.id)}
-            className="group flex flex-col items-center gap-2 p-4 rounded-lg bg-[var(--card-bg)] border border-[var(--border-color)] hover:border-[var(--primary-color)] hover:shadow-md transition-all duration-150 text-left"
+            onMouseEnter={() => handleFolderMouseEnter(folder.id)}
+            onMouseLeave={handleFolderMouseLeave}
+            className={`group flex flex-col items-center gap-2 p-4 rounded-md bg-[var(--card-bg)] border border-[var(--border-color)] hover:border-[var(--primary-color)] hover:shadow-md transition-all duration-150 text-left${(folder as any)._optimistic ? ' opacity-50 animate-pulse pointer-events-none' : ''}`}
           >
             <Folder className="h-10 w-10 text-[var(--primary-color)]" />
             <span className="text-sm font-medium text-[var(--text-main)] text-center leading-tight line-clamp-2 w-full">
@@ -203,7 +248,7 @@ export function FileGrid({ files, subfolders, onOpenFolder, onFileAction, viewMo
         <FileContextMenu key={`file-${file.id}`} item={file} type="file" onActionComplete={onActionComplete}>
           <button
             onClick={() => onFileAction('open', file)}
-            className="group flex flex-col rounded-lg bg-[var(--card-bg)] border border-[var(--border-color)] hover:border-[var(--primary-color)] hover:shadow-md transition-all duration-150 overflow-hidden text-left"
+            className="group flex flex-col rounded-md bg-[var(--card-bg)] border border-[var(--border-color)] hover:border-[var(--primary-color)] hover:shadow-md transition-all duration-150 overflow-hidden text-left"
           >
             {/* Thumbnail area */}
             <div className="relative w-full aspect-square bg-[var(--surface-hover)] flex items-center justify-center overflow-hidden">
@@ -223,6 +268,17 @@ export function FileGrid({ files, subfolders, onOpenFolder, onFileAction, viewMo
                   <LinkIcon className="h-2.5 w-2.5" />
                   {file.reference_count}
                 </span>
+              )}
+
+              {(file as any)._uploading && (
+                <div className="absolute inset-0 flex items-end bg-black/20">
+                  <div className="w-full h-1 bg-black/30">
+                    <div
+                      className="h-full bg-[var(--primary-color)] transition-all duration-300"
+                      style={{ width: `${(file as any)._progress ?? 0}%` }}
+                    />
+                  </div>
+                </div>
               )}
             </div>
 
