@@ -34,9 +34,34 @@ export function createFileManageHandler(deps: FileManageDeps) {
     const url = new URL(req.url);
     const parts = url.pathname.split("/").filter(Boolean);
     const idx = parts.indexOf("file-manage");
-    const resource = parts[idx + 1]; // 'folders' or 'files' or 'links'
+    const resource = parts[idx + 1]; // 'tree' or 'folders' or 'files' or 'links'
     const idStr = parts[idx + 2];
     const contaId = profile.conta_id;
+
+    // ─── TREE ─────────────────────────────────────────────────────
+    if (resource === "tree") {
+      if (req.method === "GET") {
+        const parentParam = url.searchParams.get("parent_id");
+
+        const foldersQ = svc.from("folders")
+          .select("id, name, source, source_type, position")
+          .eq("conta_id", contaId);
+        if (parentParam) foldersQ.eq("parent_id", Number(parentParam));
+        else foldersQ.is("parent_id", null);
+        foldersQ.order("source", { ascending: true }).order("name", { ascending: true });
+
+        const { data: folders } = await foldersQ;
+        const folderIds = (folders ?? []).map((f: any) => f.id);
+
+        let parentSet = new Set<number>();
+        if (folderIds.length > 0) {
+          const { data: children } = await svc.from("folders").select("parent_id").in("parent_id", folderIds);
+          for (const c of (children ?? [])) parentSet.add(c.parent_id);
+        }
+
+        return json((folders ?? []).map((f: any) => ({ ...f, has_children: parentSet.has(f.id) })));
+      }
+    }
 
     // ─── FOLDERS ──────────────────────────────────────────────────
     if (resource === "folders") {
@@ -81,23 +106,26 @@ export function createFileManageHandler(deps: FileManageDeps) {
 
         const [{ data: subfolders }, { data: files }] = await Promise.all([foldersQ, filesQ]);
 
-        // Compute folder sizes for each subfolder
+        // Compute folder sizes using batch RPC (replaces N+1 individual calls)
         const folderIds = (subfolders ?? []).map((f: any) => f.id);
         let folderSizes: Record<number, { total_size_bytes: number; file_count: number }> = {};
+        let hasChildrenFlags: Record<number, boolean> = {};
         if (folderIds.length > 0) {
-          const sizeResults = await Promise.all(
-            folderIds.map(async (id: number) => {
-              const { data } = await svc.rpc("folder_total_size", { p_folder_id: id }).single();
-              return { id, ...(data ?? { total_size_bytes: 0, file_count: 0 }) };
-            })
-          );
-          for (const r of sizeResults) folderSizes[r.id] = { total_size_bytes: r.total_size_bytes, file_count: r.file_count };
+          const { data: sizeRows } = await svc.rpc("folder_sizes_batch", { p_folder_ids: folderIds });
+          for (const r of (sizeRows ?? [])) {
+            folderSizes[r.folder_id] = { total_size_bytes: r.total_size_bytes, file_count: r.file_count };
+          }
+
+          const { data: children } = await svc.from("folders").select("parent_id").in("parent_id", folderIds);
+          const parentSet = new Set((children ?? []).map((c: any) => c.parent_id));
+          for (const id of folderIds) hasChildrenFlags[id] = parentSet.has(id);
         }
 
         const subfoldersWithSize = (subfolders ?? []).map((f: any) => ({
           ...f,
           total_size_bytes: folderSizes[f.id]?.total_size_bytes ?? 0,
           file_count: folderSizes[f.id]?.file_count ?? 0,
+          has_children: hasChildrenFlags[f.id] ?? false,
         }));
 
         const signedFiles = await Promise.all((files ?? []).map(async (f: any) => ({
@@ -106,15 +134,11 @@ export function createFileManageHandler(deps: FileManageDeps) {
           thumbnail_url: f.thumbnail_r2_key ? await deps.signUrl(f.thumbnail_r2_key) : null,
         })));
 
+        // Build breadcrumbs via RPC (replaces while-loop of individual selects)
         let breadcrumbs: { id: number; name: string }[] = [];
         if (parentFilter) {
-          let currentId: number | null = parentFilter;
-          while (currentId) {
-            const { data: f } = await svc.from("folders").select("id, name, parent_id").eq("id", currentId).single();
-            if (!f) break;
-            breadcrumbs.unshift({ id: f.id, name: f.name });
-            currentId = f.parent_id;
-          }
+          const { data: crumbs } = await svc.rpc("folder_breadcrumbs", { p_folder_id: parentFilter });
+          breadcrumbs = (crumbs ?? []).map((c: any) => ({ id: c.id, name: c.name }));
         }
 
         let folder: any = null;
@@ -203,7 +227,19 @@ export function createFileManageHandler(deps: FileManageDeps) {
 
     // ─── FILES ────────────────────────────────────────────────────
     if (resource === "files") {
-      // PATCH /files/:id → rename or move
+      // GET /files/:id/url → return a signed URL for the file
+      if (req.method === "GET" && idStr) {
+        const subResource = parts[idx + 3];
+        if (subResource === "url") {
+          const fileId = Number(idStr);
+          const { data: file } = await svc.from("files").select("conta_id, r2_key").eq("id", fileId).single();
+          if (!file || file.conta_id !== contaId) return json({ error: "File not found" }, 404);
+          const signedUrl = await deps.signUrl(file.r2_key);
+          return json({ url: signedUrl });
+        }
+      }
+
+      // PATCH /files/:id → rename, move, or update blur_data_url
       if (req.method === "PATCH" && idStr) {
         const fileId = Number(idStr);
         const { data: file } = await svc.from("files").select("conta_id").eq("id", fileId).single();
@@ -213,6 +249,7 @@ export function createFileManageHandler(deps: FileManageDeps) {
         const patch: Record<string, unknown> = {};
         if (typeof body.name === "string") patch.name = body.name;
         if (body.folder_id !== undefined) patch.folder_id = body.folder_id;
+        if (typeof body.blur_data_url === "string") patch.blur_data_url = body.blur_data_url;
 
         if (Object.keys(patch).length === 0) return json({ error: "Nothing to update" }, 400);
 
