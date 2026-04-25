@@ -1,6 +1,6 @@
 CREATE OR REPLACE FUNCTION folder_sizes_batch(p_folder_ids bigint[])
 RETURNS TABLE(folder_id bigint, total_size_bytes bigint, file_count bigint) AS $$
-  SELECT sub.folder_id, sub.total_size_bytes, sub.file_count
+  SELECT input.folder_id, sub.total_size_bytes, sub.file_count
   FROM unnest(p_folder_ids) AS input(folder_id)
   CROSS JOIN LATERAL (
     SELECT
