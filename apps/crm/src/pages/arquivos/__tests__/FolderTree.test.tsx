@@ -3,8 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/services/fileService', () => ({
-  getFolderContents: vi.fn(),
-  createFolder: vi.fn(),
+  getTreeChildren: vi.fn(),
 }));
 
 vi.mock('sonner', () => ({
@@ -14,25 +13,19 @@ vi.mock('sonner', () => ({
   },
 }));
 
-import { getFolderContents, createFolder } from '@/services/fileService';
+import { getTreeChildren } from '@/services/fileService';
 import { FolderTree } from '../components/FolderTree';
 
-const mockedGetFolderContents = vi.mocked(getFolderContents);
-const mockedCreateFolder = vi.mocked(createFolder);
+const mockedGetTreeChildren = vi.mocked(getTreeChildren);
 
-function makeFolder(overrides: Record<string, unknown> = {}) {
+function makeTreeNode(overrides: Record<string, unknown> = {}) {
   return {
     id: 1,
-    conta_id: 'conta-1',
-    parent_id: null,
     name: 'Pasta Teste',
     source: 'user' as const,
-    source_type: null,
-    source_id: null,
-    name_overridden: false,
+    source_type: null as string | null,
     position: 0,
-    created_at: '2026-04-01T00:00:00Z',
-    updated_at: '2026-04-01T00:00:00Z',
+    has_children: false,
     ...overrides,
   };
 }
@@ -52,24 +45,18 @@ function createWrapper() {
 
 describe('FolderTree', () => {
   beforeEach(() => {
-    mockedGetFolderContents.mockReset();
-    mockedCreateFolder.mockReset();
+    mockedGetTreeChildren.mockReset();
   });
 
   it('renders root folders after loading', async () => {
-    mockedGetFolderContents.mockResolvedValue({
-      folder: null,
-      subfolders: [
-        makeFolder({ id: 1, name: 'Clientes' }),
-        makeFolder({ id: 2, name: 'Campanhas' }),
-      ],
-      files: [],
-      breadcrumbs: [],
-    });
+    mockedGetTreeChildren.mockResolvedValue([
+      makeTreeNode({ id: 1, name: 'Clientes' }),
+      makeTreeNode({ id: 2, name: 'Campanhas' }),
+    ]);
 
     const onSelectFolder = vi.fn();
     render(
-      <FolderTree selectedFolderId={null} onSelectFolder={onSelectFolder} />,
+      <FolderTree selectedFolderId={null} onSelectFolder={onSelectFolder} onRequestCreateFolder={vi.fn()} />,
       { wrapper: createWrapper() },
     );
 
@@ -80,10 +67,10 @@ describe('FolderTree', () => {
   });
 
   it('shows loading state initially', () => {
-    mockedGetFolderContents.mockReturnValue(new Promise(() => {}));
+    mockedGetTreeChildren.mockReturnValue(new Promise(() => {}));
 
     render(
-      <FolderTree selectedFolderId={null} onSelectFolder={vi.fn()} />,
+      <FolderTree selectedFolderId={null} onSelectFolder={vi.fn()} onRequestCreateFolder={vi.fn()} />,
       { wrapper: createWrapper() },
     );
 
@@ -91,18 +78,13 @@ describe('FolderTree', () => {
   });
 
   it('shows AUTO badge for system folders', async () => {
-    mockedGetFolderContents.mockResolvedValue({
-      folder: null,
-      subfolders: [
-        makeFolder({ id: 1, name: 'Pastas Automáticas', source: 'system' }),
-        makeFolder({ id: 2, name: 'Minha Pasta', source: 'user' }),
-      ],
-      files: [],
-      breadcrumbs: [],
-    });
+    mockedGetTreeChildren.mockResolvedValue([
+      makeTreeNode({ id: 1, name: 'Pastas Automáticas', source: 'system' }),
+      makeTreeNode({ id: 2, name: 'Minha Pasta', source: 'user' }),
+    ]);
 
     render(
-      <FolderTree selectedFolderId={null} onSelectFolder={vi.fn()} />,
+      <FolderTree selectedFolderId={null} onSelectFolder={vi.fn()} onRequestCreateFolder={vi.fn()} />,
       { wrapper: createWrapper() },
     );
 
@@ -114,16 +96,13 @@ describe('FolderTree', () => {
   });
 
   it('clicking folder calls onSelectFolder', async () => {
-    mockedGetFolderContents.mockResolvedValue({
-      folder: null,
-      subfolders: [makeFolder({ id: 5, name: 'Minha Pasta' })],
-      files: [],
-      breadcrumbs: [],
-    });
+    mockedGetTreeChildren.mockResolvedValue([
+      makeTreeNode({ id: 5, name: 'Minha Pasta' }),
+    ]);
 
     const onSelectFolder = vi.fn();
     render(
-      <FolderTree selectedFolderId={null} onSelectFolder={onSelectFolder} />,
+      <FolderTree selectedFolderId={null} onSelectFolder={onSelectFolder} onRequestCreateFolder={vi.fn()} />,
       { wrapper: createWrapper() },
     );
 
@@ -136,15 +115,12 @@ describe('FolderTree', () => {
   });
 
   it('selected folder is visually highlighted', async () => {
-    mockedGetFolderContents.mockResolvedValue({
-      folder: null,
-      subfolders: [makeFolder({ id: 3, name: 'Selecionada' })],
-      files: [],
-      breadcrumbs: [],
-    });
+    mockedGetTreeChildren.mockResolvedValue([
+      makeTreeNode({ id: 3, name: 'Selecionada' }),
+    ]);
 
     render(
-      <FolderTree selectedFolderId={3} onSelectFolder={vi.fn()} />,
+      <FolderTree selectedFolderId={3} onSelectFolder={vi.fn()} onRequestCreateFolder={vi.fn()} />,
       { wrapper: createWrapper() },
     );
 
@@ -152,7 +128,6 @@ describe('FolderTree', () => {
       expect(screen.getByText('Selecionada')).toBeInTheDocument();
     });
 
-    // The parent container of the selected folder gets the primary background class
     const folderText = screen.getByText('Selecionada');
     const row = folderText.closest('[class*="bg-[var(--primary-color)]"]');
     expect(row).toBeTruthy();
@@ -160,23 +135,17 @@ describe('FolderTree', () => {
 
   it('toggling expand loads children and shows them', async () => {
     // Root call
-    mockedGetFolderContents.mockResolvedValueOnce({
-      folder: null,
-      subfolders: [makeFolder({ id: 1, name: 'Parent' })],
-      files: [],
-      breadcrumbs: [],
-    });
+    mockedGetTreeChildren.mockResolvedValueOnce([
+      makeTreeNode({ id: 1, name: 'Parent', has_children: true }),
+    ]);
 
     // Expanded children call
-    mockedGetFolderContents.mockResolvedValueOnce({
-      folder: makeFolder({ id: 1, name: 'Parent' }),
-      subfolders: [makeFolder({ id: 10, name: 'Child Folder', parent_id: 1 })],
-      files: [],
-      breadcrumbs: [{ id: 1, name: 'Parent' }],
-    });
+    mockedGetTreeChildren.mockResolvedValueOnce([
+      makeTreeNode({ id: 10, name: 'Child Folder' }),
+    ]);
 
     render(
-      <FolderTree selectedFolderId={null} onSelectFolder={vi.fn()} />,
+      <FolderTree selectedFolderId={null} onSelectFolder={vi.fn()} onRequestCreateFolder={vi.fn()} />,
       { wrapper: createWrapper() },
     );
 
@@ -184,7 +153,6 @@ describe('FolderTree', () => {
       expect(screen.getByText('Parent')).toBeInTheDocument();
     });
 
-    // Click the expand button
     const expandBtn = screen.getByLabelText('Expandir');
     fireEvent.click(expandBtn);
 
@@ -192,20 +160,14 @@ describe('FolderTree', () => {
       expect(screen.getByText('Child Folder')).toBeInTheDocument();
     });
 
-    // Now the button should say "Recolher"
     expect(screen.getByLabelText('Recolher')).toBeInTheDocument();
   });
 
   it('shows empty state when there are no folders', async () => {
-    mockedGetFolderContents.mockResolvedValue({
-      folder: null,
-      subfolders: [],
-      files: [],
-      breadcrumbs: [],
-    });
+    mockedGetTreeChildren.mockResolvedValue([]);
 
     render(
-      <FolderTree selectedFolderId={null} onSelectFolder={vi.fn()} />,
+      <FolderTree selectedFolderId={null} onSelectFolder={vi.fn()} onRequestCreateFolder={vi.fn()} />,
       { wrapper: createWrapper() },
     );
 
@@ -215,15 +177,10 @@ describe('FolderTree', () => {
   });
 
   it('renders "Nova pasta" button at the bottom', async () => {
-    mockedGetFolderContents.mockResolvedValue({
-      folder: null,
-      subfolders: [],
-      files: [],
-      breadcrumbs: [],
-    });
+    mockedGetTreeChildren.mockResolvedValue([]);
 
     render(
-      <FolderTree selectedFolderId={null} onSelectFolder={vi.fn()} />,
+      <FolderTree selectedFolderId={null} onSelectFolder={vi.fn()} onRequestCreateFolder={vi.fn()} />,
       { wrapper: createWrapper() },
     );
 

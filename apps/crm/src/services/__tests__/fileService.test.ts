@@ -439,7 +439,7 @@ describe('fileService', () => {
       expect(result).toMatchObject({ id: 43, kind: 'video' });
     });
 
-    it('probes image dimensions and generates blur data url for image uploads', async () => {
+    it('probes image dimensions for image uploads and sends blur hash as background PATCH', async () => {
       fetchHarness.queueResponse({
         json: {
           file_id: 'uuid-3',
@@ -451,12 +451,10 @@ describe('fileService', () => {
       fetchHarness.queueResponse({
         json: { id: 44, name: 'banner.png', kind: 'image' },
       });
+      // Background blur hash PATCH response
+      fetchHarness.queueResponse({ json: {} });
 
       const file = mockFile('banner.png', 'image/png', 2000);
-
-      // Mock Image constructor for probeImage and generateBlurDataUrl
-      // probeImage creates one Image, generateBlurDataUrl creates another
-      const mockImages: { onload: (() => void) | null; onerror: (() => void) | null; src: string }[] = [];
 
       vi.stubGlobal('Image', class MockImage {
         naturalWidth = 800;
@@ -464,9 +462,7 @@ describe('fileService', () => {
         onload: (() => void) | null = null;
         onerror: (() => void) | null = null;
         _src = '';
-        constructor() {
-          mockImages.push(this);
-        }
+        constructor() {}
         set src(val: string) {
           this._src = val;
           setTimeout(() => this.onload?.(), 0);
@@ -474,7 +470,6 @@ describe('fileService', () => {
         get src() { return this._src; }
       });
 
-      // Mock canvas for generateBlurDataUrl
       const mockCtx = { drawImage: vi.fn() };
       const mockCanvas = {
         width: 0,
@@ -493,7 +488,7 @@ describe('fileService', () => {
       const finalizeBody = lastCallBody(1);
       expect(finalizeBody.width).toBe(800);
       expect(finalizeBody.height).toBe(600);
-      expect(finalizeBody.blur_data_url).toBe('data:image/webp;base64,blur-placeholder');
+      expect(finalizeBody.blur_data_url).toBeUndefined();
       expect(finalizeBody.duration_seconds).toBeUndefined();
 
       expect(result).toMatchObject({ id: 44, kind: 'image' });
