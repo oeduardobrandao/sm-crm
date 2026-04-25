@@ -83,8 +83,10 @@ Deno.test("file-manage: GET /folders lists root folders and files", async () => 
     data: [{ id: 10, name: "logo.png", kind: "image", r2_key: "contas/conta-1/files/logo.png", thumbnail_r2_key: null }],
     error: null,
   });
-  // folder_total_size RPC for subfolder id=1
-  db.queueRpc("folder_total_size", { data: { total_size_bytes: 1024, file_count: 2 }, error: null });
+  // folder_sizes_batch RPC (replaces N+1 folder_total_size calls)
+  db.queueRpc("folder_sizes_batch", { data: [{ folder_id: 1, total_size_bytes: 1024, file_count: 2 }], error: null });
+  // has_children check for subfolders
+  db.queue("folders", "select", { data: [], error: null });
   // workspace storage query
   db.queue("workspaces", "select", { data: { storage_used_bytes: 5000, storage_quota_bytes: 1000000 }, error: null });
   const handler = makeHandler(db);
@@ -94,6 +96,7 @@ Deno.test("file-manage: GET /folders lists root folders and files", async () => 
   assertEquals(body.subfolders.length, 1);
   assertEquals(body.subfolders[0].total_size_bytes, 1024);
   assertEquals(body.subfolders[0].file_count, 2);
+  assertEquals(body.subfolders[0].has_children, false);
   assertEquals(body.files.length, 1);
   assertEquals(body.files[0].url, "https://signed.example.com/contas/conta-1/files/logo.png");
   assertEquals(body.breadcrumbs, []);
@@ -109,10 +112,8 @@ Deno.test("file-manage: GET /folders?parent_id builds breadcrumbs", async () => 
   db.queue("folders", "select", { data: [], error: null });
   // files query
   db.queue("files", "select", { data: [], error: null });
-  // breadcrumb: current folder
-  db.queue("folders", "select", { data: { id: 5, name: "Sub", parent_id: 1 }, error: null });
-  // breadcrumb: parent folder
-  db.queue("folders", "select", { data: { id: 1, name: "Root", parent_id: null }, error: null });
+  // folder_breadcrumbs RPC (replaces while-loop selects)
+  db.queueRpc("folder_breadcrumbs", { data: [{ id: 1, name: "Root" }, { id: 5, name: "Sub" }], error: null });
   // folder detail
   db.queue("folders", "select", { data: { id: 5, name: "Sub" }, error: null });
   // workspace storage query
@@ -474,4 +475,164 @@ Deno.test("file-manage: PATCH /links/:id set_cover RPC error returns 500", async
   const handler = makeHandler(db);
   const res = await handler(req("PATCH", "/links/1", { is_cover: true }));
   assertEquals(res.status, 500);
+});
+
+// ─── TREE ─────────────────────────────────────────────────────
+
+Deno.test("file-manage: GET /tree returns root subfolders with has_children", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  // folders query (root: parent_id is null)
+  db.queue("folders", "select", {
+    data: [
+      { id: 1, name: "Clientes", source: "system", source_type: null, position: 0 },
+      { id: 2, name: "Projetos", source: "user", source_type: null, position: 1 },
+    ],
+    error: null,
+  });
+  // has_children batch: folder 1 has children, folder 2 does not
+  db.queue("folders", "select", { data: [{ parent_id: 1 }], error: null });
+  const handler = makeHandler(db);
+  const res = await handler(req("GET", "/tree"));
+  assertEquals(res.status, 200);
+  const body = await readJson(res);
+  assertEquals(body.length, 2);
+  assertEquals(body[0].id, 1);
+  assertEquals(body[0].has_children, true);
+  assertEquals(body[1].id, 2);
+  assertEquals(body[1].has_children, false);
+});
+
+Deno.test("file-manage: GET /tree?parent_id=1 returns children of folder 1", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  // folders query filtered by parent_id=1
+  db.queue("folders", "select", {
+    data: [{ id: 10, name: "ClienteA", source: "user", source_type: null, position: 0 }],
+    error: null,
+  });
+  // has_children batch: folder 10 has no children
+  db.queue("folders", "select", { data: [], error: null });
+  const handler = makeHandler(db);
+  const res = await handler(req("GET", "/tree?parent_id=1"));
+  assertEquals(res.status, 200);
+  const body = await readJson(res);
+  assertEquals(body.length, 1);
+  assertEquals(body[0].id, 10);
+  assertEquals(body[0].has_children, false);
+});
+
+// ─── GET /folders uses folder_sizes_batch and has_children ────
+
+Deno.test("file-manage: GET /folders uses folder_sizes_batch and includes has_children", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("folders", "select", {
+    data: [
+      { id: 3, name: "Alpha" },
+      { id: 4, name: "Beta" },
+    ],
+    error: null,
+  });
+  db.queue("files", "select", { data: [], error: null });
+  // Single batch RPC instead of N individual calls
+  db.queueRpc("folder_sizes_batch", {
+    data: [
+      { folder_id: 3, total_size_bytes: 500, file_count: 1 },
+      { folder_id: 4, total_size_bytes: 2048, file_count: 5 },
+    ],
+    error: null,
+  });
+  // has_children: folder 4 has children
+  db.queue("folders", "select", { data: [{ parent_id: 4 }], error: null });
+  db.queue("workspaces", "select", { data: { storage_used_bytes: 0, storage_quota_bytes: 1000000 }, error: null });
+  const handler = makeHandler(db);
+  const res = await handler(req("GET", "/folders"));
+  assertEquals(res.status, 200);
+  const body = await readJson(res);
+  assertEquals(body.subfolders.length, 2);
+  assertEquals(body.subfolders[0].total_size_bytes, 500);
+  assertEquals(body.subfolders[0].has_children, false);
+  assertEquals(body.subfolders[1].total_size_bytes, 2048);
+  assertEquals(body.subfolders[1].has_children, true);
+  // Verify only one RPC call was made (not two folder_total_size calls)
+  const rpcCalls = db.calls.filter((c) => c.table === "rpc:folder_sizes_batch");
+  assertEquals(rpcCalls.length, 1);
+});
+
+// ─── GET /folders?parent_id uses folder_breadcrumbs RPC ───────
+
+Deno.test("file-manage: GET /folders?parent_id=5 uses folder_breadcrumbs RPC", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("folders", "select", { data: [], error: null });
+  db.queue("files", "select", { data: [], error: null });
+  db.queueRpc("folder_breadcrumbs", {
+    data: [{ id: 1, name: "Root" }, { id: 5, name: "Sub" }],
+    error: null,
+  });
+  db.queue("folders", "select", { data: { id: 5, name: "Sub" }, error: null });
+  db.queue("workspaces", "select", { data: { storage_used_bytes: 0, storage_quota_bytes: 1000000 }, error: null });
+  const handler = makeHandler(db);
+  const res = await handler(req("GET", "/folders?parent_id=5"));
+  assertEquals(res.status, 200);
+  const body = await readJson(res);
+  assertEquals(body.breadcrumbs.length, 2);
+  assertEquals(body.breadcrumbs[0], { id: 1, name: "Root" });
+  assertEquals(body.breadcrumbs[1], { id: 5, name: "Sub" });
+  // Confirm the breadcrumbs RPC was called
+  const rpcCall = db.calls.find((c) => c.table === "rpc:folder_breadcrumbs");
+  assertEquals(!!rpcCall, true);
+});
+
+// ─── FILES PATCH blur_data_url ─────────────────────────────────
+
+Deno.test("file-manage: PATCH /files/:id accepts blur_data_url", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("files", "select", { data: { conta_id: "conta-1" }, error: null });
+  db.queue("files", "update", { data: { id: 10, blur_data_url: "data:image/png;base64,abc" }, error: null });
+  const handler = makeHandler(db);
+  const res = await handler(req("PATCH", "/files/10", { blur_data_url: "data:image/png;base64,abc" }));
+  assertEquals(res.status, 200);
+  const body = await readJson(res);
+  assertEquals(body.blur_data_url, "data:image/png;base64,abc");
+  // Confirm the update call included blur_data_url
+  const updateCall = db.calls.find((c) => c.table === "files" && c.operation === "update");
+  assertEquals(!!(updateCall?.payload as any)?.blur_data_url, true);
+});
+
+// ─── FILES GET /:id/url ────────────────────────────────────────
+
+Deno.test("file-manage: GET /files/:id/url returns signed URL", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("files", "select", { data: { conta_id: "conta-1", r2_key: "contas/conta-1/files/img.png" }, error: null });
+  const handler = makeHandler(db);
+  const res = await handler(req("GET", "/files/10/url"));
+  assertEquals(res.status, 200);
+  const body = await readJson(res);
+  assertEquals(body.url, "https://signed.example.com/contas/conta-1/files/img.png");
+});
+
+Deno.test("file-manage: GET /files/:id/url not found returns 404", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("files", "select", { data: null, error: null });
+  const handler = makeHandler(db);
+  const res = await handler(req("GET", "/files/999/url"));
+  assertEquals(res.status, 404);
+  const body = await readJson(res);
+  assertEquals(body.error, "File not found");
+});
+
+Deno.test("file-manage: GET /files/:id/url wrong workspace returns 404", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("files", "select", { data: { conta_id: "other-ws", r2_key: "contas/other-ws/files/img.png" }, error: null });
+  const handler = makeHandler(db);
+  const res = await handler(req("GET", "/files/10/url"));
+  assertEquals(res.status, 404);
+  const body = await readJson(res);
+  assertEquals(body.error, "File not found");
 });
