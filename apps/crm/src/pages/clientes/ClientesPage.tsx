@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Plus, Edit2, Trash2, Upload, Info, HelpCircle, Search, ArrowUpDown } from 'lucide-react';
+import { Plus, Edit2, Trash2, Upload, Info, HelpCircle, Search, ArrowUpDown, MoreVertical, SlidersHorizontal } from 'lucide-react';
 import { openCSVSelector } from '../../lib/csv';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,11 +17,13 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { ChevronDown } from 'lucide-react';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import {
   getClientes, addCliente, updateCliente, removeCliente,
@@ -190,7 +192,7 @@ export default function ClientesPage() {
   };
 
   return (
-    <div style={{ padding: '1.5rem' }}>
+    <div className="page-content">
       <div className="header">
         <div className="header-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <h1>Clientes</h1>
@@ -207,15 +209,22 @@ export default function ClientesPage() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center' }}>
+        <div style={{ position: 'relative', flex: 1 }}>
+          <Search className="h-4 w-4" style={{ position: 'absolute', left: '0.625rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+          <Input className="h-9" placeholder="Buscar por nome ou e-mail..." value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: '2rem' }} />
+        </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="h-9 rounded-full px-4 text-xs gap-1.5 font-normal shadow-sm mb-0">
-              {filter === 'todos' ? 'Status' : STATUS_LABEL[filter]}
-              <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+            <Button variant="outline" size="icon" className="h-9 w-9 shrink-0 mb-0" style={{ position: 'relative' }}>
+              <SlidersHorizontal className="h-4 w-4" />
+              {(filter !== 'todos' || sortBy !== 'nome' || sortDir !== 'asc') && (
+                <span style={{ position: 'absolute', top: -2, right: -2, width: 8, height: 8, borderRadius: '50%', background: 'var(--primary-color)' }} />
+              )}
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-40">
+          <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuLabel>Status</DropdownMenuLabel>
             <DropdownMenuRadioGroup value={filter} onValueChange={(v) => setFilter(v as FilterStatus)}>
               {(['todos', 'ativo', 'pausado', 'encerrado'] as FilterStatus[]).map(f => (
                 <DropdownMenuRadioItem key={f} value={f}>
@@ -223,26 +232,19 @@ export default function ClientesPage() {
                 </DropdownMenuRadioItem>
               ))}
             </DropdownMenuRadioGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>Ordenar por</DropdownMenuLabel>
+            <DropdownMenuRadioGroup value={sortBy} onValueChange={v => setSortBy(v as typeof sortBy)}>
+              <DropdownMenuRadioItem value="nome">Nome</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="valor_mensal">Valor Mensal</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="data_pagamento">Dia Pagamento</DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}>
+              <ArrowUpDown className="h-4 w-4 mr-2" />{sortDir === 'asc' ? 'Decrescente' : 'Crescente'}
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: '320px' }}>
-          <Search className="h-4 w-4" style={{ position: 'absolute', left: '0.625rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
-          <Input placeholder="Buscar por nome ou e-mail..." value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: '2rem' }} />
-        </div>
-        <Select value={sortBy} onValueChange={v => setSortBy(v as typeof sortBy)}>
-          <SelectTrigger className="!rounded-full !text-xs h-9 px-4 mb-0 w-auto min-w-[160px]">
-            <ArrowUpDown className="h-3.5 w-3.5 mr-1.5 shrink-0" />
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="nome">Nome</SelectItem>
-            <SelectItem value="valor_mensal">Valor Mensal</SelectItem>
-            <SelectItem value="data_pagamento">Dia Pagamento</SelectItem>
-          </SelectContent>
-        </Select>
-        <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}>
-          <ArrowUpDown className="h-4 w-4" style={{ transform: sortDir === 'desc' ? 'scaleY(-1)' : undefined }} />
-        </Button>
       </div>
 
       {isLoading ? (
@@ -253,12 +255,12 @@ export default function ClientesPage() {
             const avatarUrl = c.id ? avatarMap[c.id] : undefined;
             const initials = getInitials(c.nome);
             return (
-              <div key={c.id ?? c.nome} className="team-card card animate-up" style={{ padding: '1.25rem 1rem' }}>
-                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+              <div key={c.id ?? c.nome} className="team-card card animate-up">
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
                   {avatarUrl ? (
-                    <img src={avatarUrl} alt={initials} className="avatar" style={{ width: 44, height: 44, objectFit: 'cover', flexShrink: 0 }} />
+                    <img src={avatarUrl} alt={initials} className="avatar client-avatar" style={{ objectFit: 'cover', flexShrink: 0 }} />
                   ) : (
-                    <div className="avatar" style={{ background: c.cor, color: '#fff', fontWeight: 700, width: 44, height: 44, fontSize: '1rem', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div className="avatar client-avatar" style={{ background: c.cor, color: '#fff', fontWeight: 700, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       {initials}
                     </div>
                   )}
@@ -278,25 +280,33 @@ export default function ClientesPage() {
                         </a>
                       )}
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: '#888', display: 'flex', gap: '0.35rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                      {c.plano && <span>{c.plano}</span>}
-                      {c.plano && c.email && <span>&bull;</span>}
-                      {c.email && <span>{c.email}</span>}
-                      {c.email && c.telefone && <span>&bull;</span>}
-                      {c.telefone && <span>{c.telefone}</span>}
-                    </div>
-                  </div>
-
-                  <div className="flex gap-1" style={{ marginLeft: 'auto' }}>
-                    <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openEdit(c)}>
-                      <Edit2 className="h-4 w-4 text-muted-foreground" />
-                    </Button>
-                    {c.id && (
-                      <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setDeleteId(c.id!)}>
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
+                    {c.plano && (
+                      <div style={{ fontSize: '0.75rem', color: '#888' }}>
+                        {c.plano}
+                      </div>
                     )}
                   </div>
+
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0" style={{ marginLeft: 'auto' }}>
+                        <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => openEdit(c)}>
+                        <Edit2 className="h-4 w-4 mr-2" />Editar
+                      </DropdownMenuItem>
+                      {c.id && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem className="text-destructive" onClick={() => setDeleteId(c.id!)}>
+                            <Trash2 className="h-4 w-4 mr-2" />Remover
+                          </DropdownMenuItem>
+                        </>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </div>
             );

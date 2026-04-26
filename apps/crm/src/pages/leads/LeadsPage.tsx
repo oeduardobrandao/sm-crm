@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Plus, Edit2, Trash2, Upload, Info, HelpCircle, UserPlus, Search } from 'lucide-react';
+import { Plus, Edit2, Trash2, Upload, Info, HelpCircle, UserPlus, Search, SlidersHorizontal, MoreVertical, ArrowUpDown } from 'lucide-react';
 import { openCSVSelector } from '../../lib/csv';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,11 +17,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { ChevronDown } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import {
   getLeads, addLead, updateLead, removeLead, addCliente, getInitials,
@@ -273,7 +276,7 @@ export default function LeadsPage() {
   };
 
   return (
-    <div style={{ padding: '1.5rem' }}>
+    <div className="page-content">
       <div className="header">
         <div className="header-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <h1>Leads</h1>
@@ -290,15 +293,22 @@ export default function LeadsPage() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 mb-4">
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center' }}>
+        <div style={{ position: 'relative', flex: 1 }}>
+          <Search className="h-4 w-4" style={{ position: 'absolute', left: '0.625rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+          <Input className="h-9" placeholder="Buscar por nome, e-mail, Instagram..." value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: '2rem' }} />
+        </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="h-9 rounded-full px-4 text-xs gap-1.5 font-normal shadow-sm mb-0">
-              {filterStatus === 'todos' ? 'Status' : STATUS_LABELS[filterStatus]}
-              <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+            <Button variant="outline" size="icon" className="h-9 w-9 shrink-0 mb-0" style={{ position: 'relative' }}>
+              <SlidersHorizontal className="h-4 w-4" />
+              {(filterStatus !== 'todos' || sortCol !== 'created_at' || sortDir !== 'desc') && (
+                <span style={{ position: 'absolute', top: -2, right: -2, width: 8, height: 8, borderRadius: '50%', background: 'var(--primary-color)' }} />
+              )}
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-44">
+          <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuLabel>Status</DropdownMenuLabel>
             <DropdownMenuRadioGroup value={filterStatus} onValueChange={(v) => setFilterStatus(v as StatusFilter)}>
               {(['todos', 'novo', 'contatado', 'qualificado', 'perdido', 'convertido'] as StatusFilter[]).map(f => (
                 <DropdownMenuRadioItem key={f} value={f}>
@@ -306,73 +316,132 @@ export default function LeadsPage() {
                 </DropdownMenuRadioItem>
               ))}
             </DropdownMenuRadioGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>Ordenar por</DropdownMenuLabel>
+            <DropdownMenuRadioGroup value={sortCol} onValueChange={v => { setSortCol(v); setSortDir('asc'); }}>
+              <DropdownMenuRadioItem value="nome">Nome</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="email">E-mail</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="canal">Canal</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="created_at">Data de criação</DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}>
+              <ArrowUpDown className="h-4 w-4 mr-2" />{sortDir === 'asc' ? 'Decrescente' : 'Crescente'}
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: '320px' }}>
-          <Search className="h-4 w-4" style={{ position: 'absolute', left: '0.625rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
-          <Input placeholder="Buscar por nome, e-mail, Instagram..." value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: '2rem' }} />
-        </div>
       </div>
 
       {isLoading ? (
         <div className="flex justify-center p-8"><Spinner size="lg" /></div>
       ) : (
-        <div className="card">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead style={{ cursor: 'pointer', fontWeight: '800' }} onClick={() => handleSort('nome')}>Nome{sortIcon('nome')}</TableHead>
-                <TableHead style={{ cursor: 'pointer', fontWeight: '800' }} onClick={() => handleSort('email')}>E-mail{sortIcon('email')}</TableHead>
-                <TableHead style={{ cursor: 'pointer', fontWeight: '800' }} onClick={() => handleSort('canal')}>Canal{sortIcon('canal')}</TableHead>
-                <TableHead style={{ cursor: 'pointer', fontWeight: '800' }} onClick={() => handleSort('especialidade')}>Especialidade{sortIcon('especialidade')}</TableHead>
-                <TableHead style={{ cursor: 'pointer', fontWeight: '800' }}>Status</TableHead>
-                <TableHead style={{ cursor: 'pointer', fontWeight: '800' }} onClick={() => handleSort('created_at')}>Criado{sortIcon('created_at')}</TableHead>
-                <TableHead style={{ fontWeight: '800' }}>Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map(l => (
-                <TableRow key={l.id ?? l.nome}>
-                  <TableCell data-label="Nome">
-                    <div>{l.nome}</div>
-                    {l.instagram && <div style={{ fontSize: 12, color: '#888' }}>{l.instagram}</div>}
-                  </TableCell>
-                  <TableCell data-label="E-mail">{l.email}</TableCell>
-                  <TableCell data-label="Canal">{l.canal}</TableCell>
-                  <TableCell data-label="Especialidade">{l.especialidade}</TableCell>
-                  <TableCell data-label="Status">
-                    <Select value={l.status} onValueChange={val => l.id && handleStatusChange(l.id, val as Lead['status'])}>
-                      <SelectTrigger style={{ width: 140 }}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Object.entries(STATUS_LABELS).map(([v, label]) => (
-                          <SelectItem key={v} value={v}>{label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell data-label="Criado">{l.created_at ? new Date(l.created_at).toLocaleDateString('pt-BR') : '—'}</TableCell>
-                  <TableCell>
-                    <div className="flex gap-1" style={{ justifyContent: 'flex-end' }}>
-                      <Button size="icon" variant="ghost" title="Converter em cliente" onClick={() => openConvert(l)}>
-                        <UserPlus className="h-4 w-4" />
-                      </Button>
-                      <Button size="icon" variant="ghost" onClick={() => openEdit(l)}>
-                        <Edit2 className="h-4 w-4" />
-                      </Button>
-                      {l.id && (
-                        <Button size="icon" variant="ghost" className="text-destructive" onClick={() => setDeleteId(l.id!)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
-                  </TableCell>
+        <>
+          {/* Desktop table */}
+          <div className="card leads-desktop-table">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead style={{ cursor: 'pointer', fontWeight: '800' }} onClick={() => handleSort('nome')}>Nome{sortIcon('nome')}</TableHead>
+                  <TableHead style={{ cursor: 'pointer', fontWeight: '800' }} onClick={() => handleSort('email')}>E-mail{sortIcon('email')}</TableHead>
+                  <TableHead style={{ cursor: 'pointer', fontWeight: '800' }} onClick={() => handleSort('canal')}>Canal{sortIcon('canal')}</TableHead>
+                  <TableHead style={{ cursor: 'pointer', fontWeight: '800' }} onClick={() => handleSort('especialidade')}>Especialidade{sortIcon('especialidade')}</TableHead>
+                  <TableHead style={{ cursor: 'pointer', fontWeight: '800' }}>Status</TableHead>
+                  <TableHead style={{ cursor: 'pointer', fontWeight: '800' }} onClick={() => handleSort('created_at')}>Criado{sortIcon('created_at')}</TableHead>
+                  <TableHead style={{ fontWeight: '800' }}>Ações</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+              </TableHeader>
+              <TableBody>
+                {filtered.map(l => (
+                  <TableRow key={l.id ?? l.nome}>
+                    <TableCell data-label="Nome">
+                      <div>{l.nome}</div>
+                      {l.instagram && <div style={{ fontSize: 12, color: '#888' }}>{l.instagram}</div>}
+                    </TableCell>
+                    <TableCell data-label="E-mail">{l.email}</TableCell>
+                    <TableCell data-label="Canal">{l.canal}</TableCell>
+                    <TableCell data-label="Especialidade">{l.especialidade}</TableCell>
+                    <TableCell data-label="Status">
+                      <Select value={l.status} onValueChange={val => l.id && handleStatusChange(l.id, val as Lead['status'])}>
+                        <SelectTrigger style={{ width: 140 }}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(STATUS_LABELS).map(([v, label]) => (
+                            <SelectItem key={v} value={v}>{label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell data-label="Criado">{l.created_at ? new Date(l.created_at).toLocaleDateString('pt-BR') : '—'}</TableCell>
+                    <TableCell>
+                      <div className="flex gap-1" style={{ justifyContent: 'flex-end' }}>
+                        <Button size="icon" variant="ghost" title="Converter em cliente" onClick={() => openConvert(l)}>
+                          <UserPlus className="h-4 w-4" />
+                        </Button>
+                        <Button size="icon" variant="ghost" onClick={() => openEdit(l)}>
+                          <Edit2 className="h-4 w-4" />
+                        </Button>
+                        {l.id && (
+                          <Button size="icon" variant="ghost" className="text-destructive" onClick={() => setDeleteId(l.id!)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          {/* Mobile cards */}
+          <div className="leads-mobile-cards">
+            {filtered.map(l => (
+              <div key={l.id ?? l.nome} className="team-card card animate-up">
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{l.nome}</span>
+                      <Badge variant={l.status === 'novo' ? 'default' : l.status === 'qualificado' ? 'default' : l.status === 'convertido' ? 'default' : 'secondary'} style={{ fontSize: '0.6rem', padding: '0 0.4rem', pointerEvents: 'none' }}>
+                        {STATUS_LABELS[l.status]}
+                      </Badge>
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: '#888', display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginTop: 2 }}>
+                      {l.instagram && <span>{l.instagram}</span>}
+                      {l.instagram && l.canal && <span>&bull;</span>}
+                      {l.canal && <span>{l.canal}</span>}
+                      {(l.instagram || l.canal) && l.created_at && <span>&bull;</span>}
+                      {l.created_at && <span>{new Date(l.created_at).toLocaleDateString('pt-BR')}</span>}
+                    </div>
+                  </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0 mb-0">
+                        <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => openConvert(l)}>
+                        <UserPlus className="h-4 w-4 mr-2" />Converter em cliente
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => openEdit(l)}>
+                        <Edit2 className="h-4 w-4 mr-2" />Editar
+                      </DropdownMenuItem>
+                      {l.id && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem className="text-destructive" onClick={() => setDeleteId(l.id!)}>
+                            <Trash2 className="h-4 w-4 mr-2" />Remover
+                          </DropdownMenuItem>
+                        </>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
       )}
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>

@@ -695,6 +695,10 @@ body {
   min-width: 0;
 }
 
+.page-content {
+  padding: 1.5rem;
+}
+
 .team-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -704,6 +708,18 @@ body {
 .team-card {
   padding: 1.25rem 1.75rem;
   border-radius: 16px;
+}
+
+.client-avatar {
+  width: 44px;
+  height: 44px;
+  font-size: 1rem;
+}
+
+.leads-mobile-cards {
+  display: none;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 .card-blue {
@@ -770,6 +786,10 @@ body {
   height: 100%;
   text-decoration: none;
   color: inherit;
+}
+
+.dashboard-hub-wide {
+  grid-column: span 2;
 }
 
 .dashboard-hub-card {
@@ -1947,6 +1967,15 @@ select.form-input option {
     gap: 1rem;
   }
 
+  .dashboard-hub-wide {
+    grid-column: span 1;
+  }
+
+  .dashboard-mini-kpis {
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
   /* Calendar tabs on mobile */
   .calendar-tabs {
     overflow-x: auto;
@@ -1962,6 +1991,29 @@ select.form-input option {
     white-space: nowrap;
   }
 
+
+  .page-content {
+    padding: 0.75rem;
+  }
+
+  .team-card {
+    padding: 0.75rem !important;
+    border-radius: 12px;
+  }
+
+  .client-avatar {
+    width: 36px !important;
+    height: 36px !important;
+    font-size: 0.85rem !important;
+  }
+
+  .leads-desktop-table {
+    display: none;
+  }
+
+  .leads-mobile-cards {
+    display: flex;
+  }
 
   /* Tables to Cards on Mobile */
   .card.animate-up {
@@ -2762,7 +2814,6 @@ body.role-agent input[name="valor_total"] {
   text-shadow: 0 0 8px rgba(0,0,0,0.5);
 }
 
-/* ===== Leads Page ===== */
 .leads-table th.sortable {
   cursor: pointer;
   user-select: none;

@@ -302,7 +302,7 @@ export default function DashboardPage() {
         </Link>
 
         {/* Analytics */}
-        <Link to="/analytics" style={{ textDecoration: 'none', color: 'inherit', gridColumn: 'span 2' }}>
+        <Link to="/analytics" className="dashboard-hub-wide" style={{ textDecoration: 'none', color: 'inherit' }}>
           <div className="card dashboard-hub-card animate-up">
             <div className="dashboard-hub-card-header">
               <h3><i className="fa-brands fa-instagram" style={{ marginRight: 8 }} />Analytics</h3>
@@ -390,7 +390,7 @@ export default function DashboardPage() {
         </Link>
 
         {/* Entregas (Workflows) */}
-        <Link to="/entregas" style={{ textDecoration: 'none', color: 'inherit', gridColumn: 'span 2' }}>
+        <Link to="/entregas" className="dashboard-hub-wide" style={{ textDecoration: 'none', color: 'inherit' }}>
           <div className="card dashboard-hub-card animate-up">
             <div className="dashboard-hub-card-header">
               <h3><i className="ph ph-kanban" style={{ marginRight: 8 }} />Entregas</h3>

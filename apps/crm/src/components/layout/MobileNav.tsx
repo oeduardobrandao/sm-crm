@@ -50,8 +50,16 @@ export default function MobileNav() {
         animate(activeIndexRef.current, activeIndex, () => {})
       }
       activeIndexRef.current = activeIndex
+    } else {
+      if (bubbleRef.current) {
+        bubbleRef.current.style.opacity = '0'
+      }
+      if (canvasRef.current) {
+        drawNavBar(canvasRef.current, fillColor, -100, 0)
+      }
+      activeIndexRef.current = -1
     }
-  }, [activeIndex, animate, initBubble, animatingRef])
+  }, [activeIndex, animate, initBubble, animatingRef, fillColor])
 
   useEffect(() => {
     if (activeIndex >= 0 && canvasRef.current) {
