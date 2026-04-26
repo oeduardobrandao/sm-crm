@@ -4,7 +4,7 @@ const H = 120
 const BAR_Y = 42
 const CORNER_R = 20
 const CUTOUT_R = 32
-const CUTOUT_CY = 44
+const CUTOUT_CY = 50
 
 export function drawNavBar(
   canvas: HTMLCanvasElement,

@@ -1563,6 +1563,11 @@ select.form-input option {
     left: 0;
     width: 100%;
     height: 120px;
+    filter: drop-shadow(0 -2px 8px rgba(0, 0, 0, 0.08));
+  }
+
+  [data-theme="dark"] .mobile-nav-canvas {
+    filter: drop-shadow(0 -2px 8px rgba(0, 0, 0, 0.25));
   }
 
   /* Floating bubble circle */
@@ -1633,6 +1638,7 @@ select.form-input option {
   .mobile-nav-item.active .icon-wrap {
     opacity: 0;
     visibility: hidden;
+    transition: none;
   }
 
   .mobile-nav-item i {
@@ -1642,7 +1648,7 @@ select.form-input option {
   }
 
   [data-theme="dark"] .mobile-nav-item i {
-    color: #4a4f5a;
+    color: #7a8194;
   }
 
   .mobile-nav-item .nav-label {
@@ -1654,7 +1660,7 @@ select.form-input option {
   }
 
   [data-theme="dark"] .mobile-nav-item .nav-label {
-    color: #4a4f5a;
+    color: #7a8194;
   }
 
   .mobile-nav-item.active .nav-label {

@@ -11,8 +11,8 @@ export function easeInOutCubic(t: number) {
 
 const CLOSE_DUR = 280
 const OPEN_DUR = 350
-const BUBBLE_TOP_UP = 18
-const BUBBLE_TOP_DOWN = 38
+const BUBBLE_TOP_UP = 24
+const BUBBLE_TOP_DOWN = 44
 const BUBBLE_SIZE = 52
 
 interface AnimationRefs {
