@@ -1,5 +1,5 @@
 import { useRef, useCallback } from 'react'
-import { drawNavBar, getItemCenterX } from './mobile-nav-canvas'
+import { drawNavBar, getItemCenterX, BAR_WIDTH } from './mobile-nav-canvas'
 
 export function easeOutCubic(t: number) {
   return 1 - Math.pow(1 - t, 3)
@@ -27,7 +27,8 @@ export function useBubbleAnimation({ canvasRef, bubbleRef, fillColor, itemCount 
 
   const positionBubble = useCallback((el: HTMLDivElement, index: number, up: boolean) => {
     const cx = getItemCenterX(index, itemCount)
-    el.style.left = `${cx - BUBBLE_SIZE / 2}px`
+    const pct = (cx / BAR_WIDTH) * 100
+    el.style.left = `calc(${pct}% - ${BUBBLE_SIZE / 2}px)`
     el.style.top = `${up ? BUBBLE_TOP_UP : BUBBLE_TOP_DOWN}px`
     el.style.opacity = up ? '1' : '0'
   }, [itemCount])

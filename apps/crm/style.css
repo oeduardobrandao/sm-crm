@@ -1595,7 +1595,7 @@ select.form-input option {
   /* Nav items row */
   .mobile-nav-items {
     position: absolute;
-    bottom: 0;
+    bottom: env(safe-area-inset-bottom, 0);
     left: 0;
     right: 0;
     height: 68px;
