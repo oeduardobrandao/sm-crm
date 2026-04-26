@@ -1,101 +1,150 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { useAuth } from '../../../context/AuthContext'
+import { useBubbleAnimation } from '../use-bubble-animation'
 
 vi.mock('../../../context/AuthContext', () => ({
   useAuth: vi.fn(),
-}));
+}))
 
-import { useAuth } from '../../../context/AuthContext';
-import MobileNav from '../MobileNav';
+vi.mock('../mobile-nav-canvas', () => ({
+  drawNavBar: vi.fn(),
+  getItemCenterX: vi.fn().mockReturnValue(50),
+  BAR_WIDTH: 390,
+  CUTOUT_R: 32,
+  CUTOUT_CY: 44,
+}))
 
-const mockedUseAuth = vi.mocked(useAuth);
+vi.mock('../use-bubble-animation', () => ({
+  useBubbleAnimation: vi.fn(),
+  BUBBLE_SIZE: 52,
+  BUBBLE_TOP_UP: 18,
+}))
+
+import MobileNav from '../MobileNav'
+
+const mockedUseAuth = vi.mocked(useAuth)
+const mockedUseBubbleAnimation = vi.mocked(useBubbleAnimation)
 
 function PathProbe() {
-  const location = useLocation();
-  return <div data-testid="current-path">{location.pathname}</div>;
+  const loc = useLocation()
+  return <div data-testid="path">{loc.pathname}</div>
 }
 
 function setAuth(overrides: Record<string, unknown> = {}) {
   mockedUseAuth.mockReturnValue({
-    user: { id: 'user-1' } as never,
+    user: { id: '1' } as any,
+    session: {} as any,
     profile: {
-      id: 'user-1',
+      id: '1',
       nome: 'Ana Maria',
       role: 'owner',
-      conta_id: 'w-1',
-    } as never,
-    role: 'owner',
+      conta_id: 'c1',
+      ...overrides,
+    } as any,
+    role: (overrides.role as string) || 'owner',
     loading: false,
-    refetchProfile: vi.fn(),
-    signOut: vi.fn(),
-    ...overrides,
-  });
+    signOut: overrides.signOut as any || vi.fn(),
+    refreshProfile: vi.fn(),
+  } as any)
 }
 
 function renderMobileNav(pathname = '/dashboard') {
+  HTMLCanvasElement.prototype.getContext = vi.fn().mockReturnValue({
+    clearRect: vi.fn(),
+    save: vi.fn(),
+    restore: vi.fn(),
+    scale: vi.fn(),
+    beginPath: vi.fn(),
+    moveTo: vi.fn(),
+    lineTo: vi.fn(),
+    quadraticCurveTo: vi.fn(),
+    arc: vi.fn(),
+    closePath: vi.fn(),
+    fill: vi.fn(),
+    fillStyle: '',
+    globalCompositeOperation: 'source-over',
+  }) as any
+
   return render(
     <MemoryRouter initialEntries={[pathname]}>
       <Routes>
-        <Route
-          path="*"
-          element={(
-            <>
-              <MobileNav />
-              <PathProbe />
-            </>
-          )}
-        />
+        <Route path="*" element={<><MobileNav /><PathProbe /></>} />
       </Routes>
-    </MemoryRouter>,
-  );
+    </MemoryRouter>
+  )
 }
 
 describe('MobileNav', () => {
   beforeEach(() => {
-    document.documentElement.removeAttribute('data-theme');
-    localStorage.clear();
-  });
+    document.documentElement.removeAttribute('data-theme')
+    localStorage.clear()
+    mockedUseBubbleAnimation.mockReturnValue({
+      animate: vi.fn(),
+      initBubble: vi.fn(),
+      animatingRef: { current: false },
+    } as any)
+  })
 
-  it('marks the current tab as active and shows the current profile in the more sheet', () => {
-    setAuth();
-    const { container } = renderMobileNav('/analytics');
+  it('marks active item and shows profile in more sheet', async () => {
+    setAuth()
+    renderMobileNav('/analytics')
 
-    expect(container.querySelectorAll('a.mobile-nav-item')[2]).toHaveClass('active');
+    const labels = document.querySelectorAll('.mobile-nav-item')
+    const analyticsItem = Array.from(labels).find(el => el.textContent?.includes('Analytics'))
+    expect(analyticsItem?.classList.contains('active')).toBe(true)
 
-    fireEvent.click(container.querySelector('#mobile-more-btn')!);
+    fireEvent.click(document.getElementById('mobile-more-btn')!)
+    expect(document.getElementById('mobile-avatar')?.textContent).toBe('AM')
+    expect(document.getElementById('mobile-user-name')?.textContent).toBe('Ana Maria')
+  })
 
-    expect(screen.getByText('Navegação')).toBeInTheDocument();
-    expect(screen.getByText('Ana Maria')).toBeInTheDocument();
-    expect(screen.getByText('AM')).toBeInTheDocument();
-  });
+  it('navigates from more sheet and closes it', async () => {
+    setAuth()
+    renderMobileNav('/dashboard')
 
-  it('navigates from the more sheet and closes it afterwards', async () => {
-    setAuth();
-    const { container } = renderMobileNav('/dashboard');
+    fireEvent.click(document.getElementById('mobile-more-btn')!)
 
-    fireEvent.click(container.querySelector('#mobile-more-btn')!);
-    fireEvent.click(screen.getByText('Configurações'));
+    const configBtn = Array.from(document.querySelectorAll('.mobile-more-item'))
+      .find(el => el.textContent?.includes('Configurações'))
+    expect(configBtn).toBeTruthy()
+    fireEvent.click(configBtn!)
 
     await waitFor(() => {
-      expect(screen.getByTestId('current-path')).toHaveTextContent('/configuracao');
-    });
+      expect(screen.getByTestId('path').textContent).toBe('/configuracao')
+    })
+    expect(document.querySelector('.mobile-more-overlay.visible')).toBeNull()
+  })
 
-    expect(screen.queryByText('Navegação')).not.toBeInTheDocument();
-  });
+  it('includes all sidebar routes in more sheet', () => {
+    setAuth()
+    renderMobileNav('/dashboard')
+    fireEvent.click(document.getElementById('mobile-more-btn')!)
 
-  it('toggles the theme and signs out from the more sheet actions', () => {
-    const signOut = vi.fn();
-    setAuth({ signOut });
-    const { container } = renderMobileNav('/dashboard');
+    const items = Array.from(document.querySelectorAll('.mobile-more-item'))
+      .map(el => el.textContent?.trim())
 
-    fireEvent.click(container.querySelector('#mobile-more-btn')!);
-    fireEvent.click(screen.getByText('Tema'));
+    expect(items).toContain('Calendário')
+    expect(items).toContain('Leads')
+    expect(items).toContain('Ideias')
+    expect(items).toContain('Arquivos')
+    expect(items).toContain('Fluxos')
+    expect(items).toContain('Privacidade')
+  })
 
-    expect(document.documentElement).toHaveAttribute('data-theme', 'dark');
-    expect(localStorage.getItem('theme')).toBe('dark');
+  it('toggles theme and signs out', async () => {
+    const signOut = vi.fn()
+    setAuth({ signOut })
+    renderMobileNav('/dashboard')
 
-    fireEvent.click(screen.getByText('Sair da Conta'));
-    expect(signOut).toHaveBeenCalled();
-  });
-});
+    fireEvent.click(document.getElementById('mobile-more-btn')!)
+    fireEvent.click(document.getElementById('mobile-theme-toggle')!)
+
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
+    expect(localStorage.getItem('theme')).toBe('dark')
+
+    fireEvent.click(document.getElementById('mobile-logout-btn')!)
+    expect(signOut).toHaveBeenCalled()
+  })
+})
