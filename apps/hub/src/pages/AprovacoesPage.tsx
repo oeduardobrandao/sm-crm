@@ -158,7 +158,9 @@ export function AprovacoesPage() {
           selectedPosts={selectedPosts}
           feedProfile={feedData.profile}
           livePosts={feedData.recentPosts}
+          token={token}
           onClose={() => setShowGrid(false)}
+          onScheduleUpdated={handleInvalidate}
         />
       )}
     </div>
