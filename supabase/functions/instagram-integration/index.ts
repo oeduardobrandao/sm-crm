@@ -6,7 +6,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const META_APP_ID = Deno.env.get("META_APP_ID")!;
 const META_APP_SECRET = Deno.env.get("META_APP_SECRET")!;
-const META_REDIRECT_URI = Deno.env.get("META_REDIRECT_URI")!;
+const META_REDIRECT_URI = Deno.env.get("META_REDIRECT_URI");
 const OAUTH_REDIRECT_BASE = Deno.env.get("OAUTH_REDIRECT_BASE") || "http://localhost:3000";
 const TOKEN_ENCRYPTION_KEY = Deno.env.get("TOKEN_ENCRYPTION_KEY") ?? (() => { throw new Error("TOKEN_ENCRYPTION_KEY environment variable is required"); })();
 
@@ -132,11 +132,10 @@ async function verifyClientOwnership(
 Deno.serve(async (req) => {
   const url = new URL(req.url);
   const path = url.pathname.replace('/instagram-integration', '').replace(/\/$/, '');
-  // Derive the function's own base URL to use as redirect_uri (avoids META_REDIRECT_URI mismatch)
-  // Force HTTPS: edge functions run behind a reverse proxy that terminates SSL,
-  // so url.origin reports http:// but the public URL is always https://
+  // Use META_REDIRECT_URI (registered in Meta Developer Console) as canonical redirect_uri.
+  // Fall back to deriving from req.url if the env var isn't set.
   const origin = url.origin.replace(/^http:\/\//, 'https://');
-  const functionBaseUrl = `${origin}/functions/v1/instagram-integration`;
+  const functionBaseUrl = META_REDIRECT_URI || `${origin}/functions/v1/instagram-integration`;
 
   // Setup Supabase Client
   const authHeader = req.headers.get('Authorization');
@@ -184,7 +183,7 @@ Deno.serve(async (req) => {
         // Pass clientId in signed state (HMAC-SHA256)
         const state = await createSignedState(clientId);
         
-        const oauthUrl = `https://www.instagram.com/oauth/authorize?client_id=${META_APP_ID}&redirect_uri=${encodeURIComponent(functionBaseUrl)}&response_type=code&scope=instagram_business_basic,instagram_business_manage_insights&state=${state}`;
+        const oauthUrl = `https://www.instagram.com/oauth/authorize?client_id=${META_APP_ID}&redirect_uri=${encodeURIComponent(functionBaseUrl)}&response_type=code&scope=instagram_business_basic&state=${state}`;
 
         return new Response(JSON.stringify({ url: oauthUrl }), { 
             headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -214,7 +213,10 @@ Deno.serve(async (req) => {
             })
         });
         const slTokenData = await exchangeRes.json();
-        if (!exchangeRes.ok) console.error('[IG-CALLBACK] Short-lived token exchange failed, status:', exchangeRes.status);
+        if (!exchangeRes.ok) {
+            console.error('[IG-CALLBACK] Token exchange failed:', exchangeRes.status, 'redirect_uri:', functionBaseUrl);
+            console.error('[IG-CALLBACK] Instagram response:', JSON.stringify(slTokenData));
+        }
 
         // Handle both error formats: {error: "string"} and {error: {message: "...", type: "...", code: N}}
         if (slTokenData.error || slTokenData.error_type) {
@@ -223,7 +225,7 @@ Deno.serve(async (req) => {
                 || slTokenData.error_description
                 || slTokenData.error
                 || 'Unknown OAuth error';
-            console.error('[IG-CALLBACK] Short-lived token exchange error');
+            console.error('[IG-CALLBACK] Token exchange error:', errMsg);
             throw new Error(errMsg);
         }
 
