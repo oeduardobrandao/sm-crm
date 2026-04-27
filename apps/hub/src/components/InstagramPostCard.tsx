@@ -173,14 +173,14 @@ export function InstagramPostCard({
           <textarea
             value={comentario}
             onChange={e => setComentario(e.target.value)}
-            placeholder="Comentário (opcional para aprovação)…"
+            placeholder="Comentário (necessário para correção)…"
             className="w-full rounded border border-stone-200 dark:border-[#333] px-2.5 py-1.5 text-[11px] resize-none min-h-[48px] bg-white dark:bg-[#0a0a0a] text-stone-900 dark:text-[#f5f5f5] placeholder:text-stone-400 dark:placeholder:text-[#666] focus:outline-none focus:border-stone-300 dark:focus:border-[#555] transition-all"
           />
           <div className="flex gap-1.5">
             <button
               onClick={() => handleAction('aprovado')}
               disabled={submitting}
-              className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded bg-emerald-500 text-white text-[11px] font-semibold hover:bg-emerald-600 disabled:opacity-50 transition-colors"
+              className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-[4px] bg-stone-900 text-white text-[11px] font-semibold hover:bg-stone-800 disabled:opacity-50 transition-colors"
             >
               <CheckCircle size={12} /> Aprovar
             </button>
@@ -188,7 +188,7 @@ export function InstagramPostCard({
               onClick={() => handleAction('correcao')}
               disabled={submitting || !comentario.trim()}
               title={!comentario.trim() ? 'Deixe um comentário para solicitar correção' : undefined}
-              className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded border border-[#dbdbdb] dark:border-[#333] bg-white dark:bg-transparent text-[#262626] dark:text-[#f5f5f5] text-[11px] font-medium hover:bg-stone-50 dark:hover:bg-[#222] disabled:opacity-50 transition-colors"
+              className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-[4px] border border-stone-200 dark:border-stone-700 bg-white dark:bg-transparent text-stone-700 dark:text-stone-300 text-[11px] font-medium hover:bg-stone-50 dark:hover:bg-stone-800 disabled:opacity-50 transition-colors"
             >
               <AlertCircle size={12} /> Correção
             </button>

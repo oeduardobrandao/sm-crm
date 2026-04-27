@@ -63,7 +63,7 @@ export function StoryPostCard({
 
   return (
     <div
-      className="relative rounded-2xl overflow-hidden"
+      className="relative rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]"
       style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' }}
     >
       {/* Story frame */}
@@ -173,18 +173,18 @@ export function StoryPostCard({
 
       {/* Approval section */}
       {isPending && !result && (
-        <div className="bg-white dark:bg-[#1a1a1a] border border-[#dbdbdb] dark:border-[#262626] border-t-0 rounded-b-2xl px-3 py-2.5 space-y-1.5 -mt-2 pt-4">
+        <div className="bg-white dark:bg-[#1a1a1a] rounded-b-2xl px-3 py-2.5 space-y-1.5 -mt-2 pt-4 shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]">
           <textarea
             value={comentario}
             onChange={e => setComentario(e.target.value)}
-            placeholder="Comentário (opcional para aprovação)…"
+            placeholder="Comentário (necessário para correção)…"
             className="w-full rounded border border-stone-200 dark:border-[#333] px-2.5 py-1.5 text-[11px] resize-none min-h-[48px] bg-white dark:bg-[#0a0a0a] text-stone-900 dark:text-[#f5f5f5] placeholder:text-stone-400 dark:placeholder:text-[#666] focus:outline-none focus:border-stone-300 dark:focus:border-[#555] transition-all"
           />
           <div className="flex gap-1.5">
             <button
               onClick={() => handleAction('aprovado')}
               disabled={submitting}
-              className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded bg-emerald-500 text-white text-[11px] font-semibold hover:bg-emerald-600 disabled:opacity-50 transition-colors"
+              className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-[4px] bg-stone-900 text-white text-[11px] font-semibold hover:bg-stone-800 disabled:opacity-50 transition-colors"
             >
               <CheckCircle size={12} /> Aprovar
             </button>
@@ -192,7 +192,7 @@ export function StoryPostCard({
               onClick={() => handleAction('correcao')}
               disabled={submitting || !comentario.trim()}
               title={!comentario.trim() ? 'Deixe um comentário para solicitar correção' : undefined}
-              className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded border border-[#dbdbdb] dark:border-[#333] bg-white dark:bg-transparent text-[#262626] dark:text-[#f5f5f5] text-[11px] font-medium hover:bg-stone-50 dark:hover:bg-[#222] disabled:opacity-50 transition-colors"
+              className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-[4px] border border-stone-200 dark:border-stone-700 bg-white dark:bg-transparent text-stone-700 dark:text-stone-300 text-[11px] font-medium hover:bg-stone-50 dark:hover:bg-stone-800 disabled:opacity-50 transition-colors"
             >
               <AlertCircle size={12} /> Correção
             </button>
@@ -201,7 +201,7 @@ export function StoryPostCard({
       )}
 
       {result && (
-        <div className={`bg-white dark:bg-[#1a1a1a] border border-[#dbdbdb] dark:border-[#262626] border-t-0 rounded-b-2xl px-3 py-2.5 -mt-2 pt-4`}>
+        <div className={`bg-white dark:bg-[#1a1a1a] rounded-b-2xl px-3 py-2.5 -mt-2 pt-4 shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]`}>
           <div className={`rounded-lg px-3 py-2 text-[11px] font-medium ${result.type === 'success' ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300' : 'bg-rose-50 dark:bg-rose-950/50 text-rose-800 dark:text-rose-300'}`}>
             {result.message}
           </div>
