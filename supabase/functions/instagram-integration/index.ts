@@ -236,56 +236,14 @@ Deno.serve(async (req) => {
             throw new Error('Instagram did not return an access token');
         }
 
-        // Exchange for long-lived token — try multiple approaches
+        // Exchange short-lived token for long-lived token
         let llTokenData: any = null;
-        const llParams = `grant_type=ig_exchange_token&client_secret=${META_APP_SECRET}&access_token=${shortLivedToken}`;
-        
-        // Attempt 1: POST to graph.instagram.com/access_token
-        try {
-            const res1 = await fetch('https://graph.instagram.com/access_token', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: new URLSearchParams({
-                    grant_type: 'ig_exchange_token',
-                    client_secret: META_APP_SECRET,
-                    access_token: shortLivedToken
-                })
-            });
-            const data1 = await res1.json();
-            if (data1.access_token) llTokenData = data1;
-        } catch { /* try next */ }
-
-        // Attempt 2: GET to graph.instagram.com/access_token (no version)
-        if (!llTokenData) {
-            try {
-                const res2 = await fetch(`https://graph.instagram.com/access_token?${llParams}`);
-                const data2 = await res2.json();
-                if (data2.access_token) llTokenData = data2;
-            } catch { /* try next */ }
-        }
-
-        // Attempt 3: GET to graph.facebook.com/v21.0/oauth/access_token (Facebook Graph endpoint)
-        if (!llTokenData) {
-            try {
-                const fbParams = `grant_type=ig_exchange_token&client_secret=${META_APP_SECRET}&access_token=${shortLivedToken}`;
-                const res3 = await fetch(`https://graph.facebook.com/v21.0/oauth/access_token?${fbParams}`);
-                const data3 = await res3.json();
-                if (data3.access_token) llTokenData = data3;
-            } catch { /* try next */ }
-        }
-
-        // Attempt 4: GET to graph.instagram.com/v22.0/access_token
-        if (!llTokenData) {
-            try {
-                const res4 = await fetch(`https://graph.instagram.com/v22.0/access_token?${llParams}`);
-                const data4 = await res4.json();
-                if (data4.access_token) llTokenData = data4;
-            } catch { /* try next */ }
-        }
-
-        // If all attempts failed, use the short-lived token directly (it may already be long-lived for new API)
-        if (!llTokenData) {
-            console.error('[IG-CALLBACK] All long-lived token exchange attempts failed');
+        const llRes = await fetch(`https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${META_APP_SECRET}&access_token=${shortLivedToken}`);
+        const llData = await llRes.json();
+        if (llData.access_token) {
+            llTokenData = llData;
+        } else {
+            console.error('[IG-CALLBACK] Long-lived token exchange failed:', llRes.status, JSON.stringify(llData));
             llTokenData = { access_token: shortLivedToken, expires_in: 3600 };
         }
 
@@ -301,27 +259,20 @@ Deno.serve(async (req) => {
         const profileFields = 'username,profile_picture_url,followers_count,follows_count,media_count';
         let igProfile: any = null;
 
-        // Attempt 1: /{user_id} (required for non-test IGAA tokens with Advanced Access)
+        // Fetch profile — try /{user_id} first, then /me
         const pRes1 = await fetch(`https://graph.instagram.com/v21.0/${igBusinessId}?fields=${profileFields}&access_token=${longLivedToken}`);
         const pData1 = await pRes1.json();
         if (pData1.username || pData1.id) {
             igProfile = pData1;
         }
 
-        // Attempt 2: /me (works for test accounts)
         if (!igProfile) {
             const pRes2 = await fetch(`https://graph.instagram.com/v21.0/me?fields=${profileFields}&access_token=${longLivedToken}`);
             const pData2 = await pRes2.json();
-            if (pData2.username || pData2.id) igProfile = pData2;
-        }
-
-        // Attempt 3: /me without version prefix (legacy fallback)
-        if (!igProfile) {
-            const pRes3 = await fetch(`https://graph.instagram.com/me?fields=${profileFields}&access_token=${longLivedToken}`);
-            const pData3 = await pRes3.json();
-            if (pData3.username || pData3.id) {
-                igProfile = pData3;
+            if (pData2.username || pData2.id) {
+                igProfile = pData2;
             } else {
+                console.error('[IG-CALLBACK] Profile fetch failed. user_id:', igBusinessId, '/{user_id} response:', JSON.stringify(pData1), '/me response:', JSON.stringify(pData2));
                 throw new Error('Profile fetch failed');
             }
         }
