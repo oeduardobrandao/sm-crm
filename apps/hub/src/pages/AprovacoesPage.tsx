@@ -7,6 +7,7 @@ import { StoryPostCard } from '../components/StoryPostCard';
 import { TextPostCard } from '../components/TextPostCard';
 import { FeedPreviewButton } from '../components/FeedPreviewButton';
 import { InstagramGridPreview } from '../components/InstagramGridPreview';
+import { formatDate } from '../components/PostCard';
 
 export function AprovacoesPage() {
   const { token, bootstrap } = useHub();
@@ -79,18 +80,20 @@ export function AprovacoesPage() {
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {withMedia.map((post, i) => (
-              <InstagramPostCard
-                key={post.id}
-                post={post}
-                token={token}
-                approvals={approvals}
-                instagramProfile={instagramProfile}
-                workspaceName={bootstrap.workspace.name}
-                isSelected={selectedIds.has(post.id)}
-                onToggleSelect={handleToggleSelect}
-                onApprovalSubmitted={handleInvalidate}
-                priority={i === 0}
-              />
+              <div key={post.id}>
+                <p className="text-[11px] text-stone-400 mb-1.5 pl-0.5">{formatDate(post.scheduled_at)}</p>
+                <InstagramPostCard
+                  post={post}
+                  token={token}
+                  approvals={approvals}
+                  instagramProfile={instagramProfile}
+                  workspaceName={bootstrap.workspace.name}
+                  isSelected={selectedIds.has(post.id)}
+                  onToggleSelect={handleToggleSelect}
+                  onApprovalSubmitted={handleInvalidate}
+                  priority={i === 0}
+                />
+              </div>
             ))}
           </div>
         </>
@@ -105,15 +108,17 @@ export function AprovacoesPage() {
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {stories.map(post => (
-              <StoryPostCard
-                key={post.id}
-                post={post}
-                token={token}
-                approvals={approvals}
-                instagramProfile={instagramProfile}
-                workspaceName={bootstrap.workspace.name}
-                onApprovalSubmitted={handleInvalidate}
-              />
+              <div key={post.id}>
+                <p className="text-[11px] text-stone-400 mb-1.5 pl-0.5">{formatDate(post.scheduled_at)}</p>
+                <StoryPostCard
+                  post={post}
+                  token={token}
+                  approvals={approvals}
+                  instagramProfile={instagramProfile}
+                  workspaceName={bootstrap.workspace.name}
+                  onApprovalSubmitted={handleInvalidate}
+                />
+              </div>
             ))}
           </div>
         </div>
@@ -128,13 +133,15 @@ export function AprovacoesPage() {
           )}
           <div className="max-w-[640px] space-y-3">
             {withoutMedia.map(post => (
-              <TextPostCard
-                key={post.id}
-                post={post}
-                token={token}
-                approvals={approvals}
-                onApprovalSubmitted={handleInvalidate}
-              />
+              <div key={post.id}>
+                <p className="text-[11px] text-stone-400 mb-1.5 pl-0.5">{formatDate(post.scheduled_at)}</p>
+                <TextPostCard
+                  post={post}
+                  token={token}
+                  approvals={approvals}
+                  onApprovalSubmitted={handleInvalidate}
+                />
+              </div>
             ))}
           </div>
         </div>

@@ -129,7 +129,7 @@ export function StoryPostCard({
             </div>
           )}
           <span className="text-white text-[13px] font-semibold drop-shadow-sm">{displayName}</span>
-          <span className="text-white/60 text-[12px] drop-shadow-sm">{formatDate(post.scheduled_at)}</span>
+          <span className="text-white/60 text-[11px] drop-shadow-sm whitespace-nowrap">{post.scheduled_at ? new Date(post.scheduled_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', timeZone: 'UTC' }) : ''}</span>
 
           <div className="ml-auto flex items-center gap-3">
             {/* Play icon */}
