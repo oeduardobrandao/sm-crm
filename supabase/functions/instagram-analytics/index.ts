@@ -4,7 +4,6 @@ import { buildCorsHeaders } from "../_shared/cors.ts";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const TOKEN_ENCRYPTION_KEY = Deno.env.get("TOKEN_ENCRYPTION_KEY") ?? (() => { throw new Error("TOKEN_ENCRYPTION_KEY environment variable is required"); })();
-const GRAPH_API_VERSION = "v25.0";
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") || '';
 const INTERNAL_FUNCTION_SECRET = Deno.env.get('INTERNAL_FUNCTION_SECRET') ?? (() => { throw new Error('INTERNAL_FUNCTION_SECRET is required'); })();
 
@@ -160,11 +159,10 @@ async function verifyPostOwnership(serviceClient: any, postId: string, contaId: 
 
 // --- Fetch daily insights for a period ---
 async function fetchDailyInsights(_igUserId: string, accessToken: string, since: number, until: number) {
-  // Use /me and updated metrics (views replaces impressions, accounts_engaged replaces profile_views)
   const [reachRes, viewsRes, engagedRes] = await Promise.allSettled([
-    graphFetch(`https://graph.instagram.com/${GRAPH_API_VERSION}/me/insights?metric=reach&metric_type=total_value&period=day&since=${since}&until=${until}&access_token=${accessToken}`),
-    graphFetch(`https://graph.instagram.com/${GRAPH_API_VERSION}/me/insights?metric=views&metric_type=total_value&period=day&since=${since}&until=${until}&access_token=${accessToken}`),
-    graphFetch(`https://graph.instagram.com/${GRAPH_API_VERSION}/me/insights?metric=accounts_engaged&metric_type=total_value&period=day&since=${since}&until=${until}&access_token=${accessToken}`),
+    graphFetch(`https://graph.instagram.com/me/insights?metric=reach&metric_type=total_value&period=day&since=${since}&until=${until}&access_token=${accessToken}`),
+    graphFetch(`https://graph.instagram.com/me/insights?metric=views&metric_type=total_value&period=day&since=${since}&until=${until}&access_token=${accessToken}`),
+    graphFetch(`https://graph.instagram.com/me/insights?metric=accounts_engaged&metric_type=total_value&period=day&since=${since}&until=${until}&access_token=${accessToken}`),
   ]);
 
   const result: Record<string, number> = { reach: 0, impressions: 0, profile_views: 0 };
@@ -325,7 +323,7 @@ Deno.serve(async (req) => {
 
       const result = await getCachedOrFetch(serviceClient, account.id, 'demographics', async () => {
         console.log('[demographics] fetching for account', account.instagram_user_id);
-        const baseUrl = `https://graph.instagram.com/${GRAPH_API_VERSION}/me/insights?metric=follower_demographics&period=lifetime&metric_type=total_value`;
+        const baseUrl = `https://graph.instagram.com/me/insights?metric=follower_demographics&period=lifetime&metric_type=total_value`;
 
         // Fetch all 3 breakdowns in parallel, tolerating individual failures
         const [ageGenderResult, cityResult, countryResult] = await Promise.allSettled([
