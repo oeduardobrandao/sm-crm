@@ -67,12 +67,12 @@ async function syncAccount(
   const sinceDate = nowTimestamp - (28 * 24 * 60 * 60);
 
   const [reachRes, viewsRes, engagedRes, websiteClicksRes, igProfileRes, mediaRes] = await Promise.all([
-    fetch(`https://graph.instagram.com/v21.0/me/insights?metric=reach&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
-    fetch(`https://graph.instagram.com/v21.0/me/insights?metric=views&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
-    fetch(`https://graph.instagram.com/v21.0/me/insights?metric=accounts_engaged&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
-    fetch(`https://graph.instagram.com/v21.0/me/insights?metric=website_clicks&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
-    fetch(`https://graph.instagram.com/v21.0/me?fields=followers_count,follows_count,media_count,profile_picture_url&access_token=${accessToken}`),
-    fetch(`https://graph.instagram.com/v21.0/me/media?fields=id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,comments_count,like_count&limit=50&access_token=${accessToken}`)
+    fetch(`https://graph.instagram.com/v25.0/me/insights?metric=reach&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
+    fetch(`https://graph.instagram.com/v25.0/me/insights?metric=views&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
+    fetch(`https://graph.instagram.com/v25.0/me/insights?metric=accounts_engaged&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
+    fetch(`https://graph.instagram.com/v25.0/me/insights?metric=profile_links_taps&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
+    fetch(`https://graph.instagram.com/v25.0/me?fields=followers_count,follows_count,media_count,profile_picture_url&access_token=${accessToken}`),
+    fetch(`https://graph.instagram.com/v25.0/me/media?fields=id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,comments_count,like_count&limit=50&access_token=${accessToken}`)
   ]);
 
   const [reachData, viewsData, engagedData, websiteClicksData, igProfile, mediaData] = await Promise.all([
@@ -103,7 +103,7 @@ async function syncAccount(
   }
   if (websiteClicksData.data) {
     for (const insight of websiteClicksData.data) {
-      if (insight.name === 'website_clicks') totalWebsiteClicks = insight.total_value?.value || 0;
+      if (insight.name === 'profile_links_taps') totalWebsiteClicks = insight.total_value?.value || 0;
     }
   }
 
@@ -177,7 +177,7 @@ async function syncAccount(
         try {
           let metrics = 'reach,views,saved';
           if (post.media_type === 'VIDEO') metrics += ',shares';
-          const postInsightsRes = await fetch(`https://graph.instagram.com/v21.0/${post.id}/insights?metric=${metrics}&access_token=${accessToken}`);
+          const postInsightsRes = await fetch(`https://graph.instagram.com/v25.0/${post.id}/insights?metric=${metrics}&access_token=${accessToken}`);
           const postInsightsData = await postInsightsRes.json();
           if (postInsightsData.data) {
             for (const insight of postInsightsData.data) {
@@ -193,7 +193,7 @@ async function syncAccount(
         let thumbUrl = post.thumbnail_url || post.media_url || null;
         if (!thumbUrl && post.media_type === 'CAROUSEL_ALBUM') {
           try {
-            const childRes = await fetch(`https://graph.instagram.com/v21.0/${post.id}/children?fields=media_url,media_type&limit=1&access_token=${accessToken}`);
+            const childRes = await fetch(`https://graph.instagram.com/v25.0/${post.id}/children?fields=media_url,media_type&limit=1&access_token=${accessToken}`);
             const childData = await childRes.json();
             if (childData.data?.[0]?.media_url) thumbUrl = childData.data[0].media_url;
           } catch (_) { /* ignore */ }
