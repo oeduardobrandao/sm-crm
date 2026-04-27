@@ -64,7 +64,7 @@ export function InstagramPostCard({
 
   return (
     <div
-      className={`relative bg-white dark:bg-[#1a1a1a] rounded-xl overflow-hidden border-[1.5px] transition-all ${isSelected ? 'border-[#0095f6] shadow-[0_0_0_2px_rgba(0,149,246,0.2)]' : 'border-[#dbdbdb] dark:border-[#262626]'}`}
+      className={`relative bg-white dark:bg-[#1a1a1a] rounded-xl overflow-hidden transition-all ${isSelected ? 'border-[1.5px] border-[#0095f6] shadow-[0_0_0_2px_rgba(0,149,246,0.2)]' : 'shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]'}`}
       style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' }}
     >
       {/* Selection checkbox */}
