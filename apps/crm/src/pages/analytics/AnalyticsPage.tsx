@@ -1,12 +1,22 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Zap, RefreshCw, ArrowUpDown } from 'lucide-react';
+import { Zap, RefreshCw, ArrowUpDown, SlidersHorizontal } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Chart, registerables } from 'chart.js';
 import { getPortfolioSummary, getPortfolioAIAnalysis, type PortfolioAccount } from '../../services/analytics';
 import { syncInstagramData } from '../../services/instagram';
@@ -336,13 +346,12 @@ export default function AnalyticsPage() {
     .filter((a, i, arr) => arr.findIndex(x => x.client_id === a.client_id) === i); // dedupe
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+    <div className="page-content" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
       <header className="header animate-up">
         <div className="header-title">
-          <h1>Analytics Instagram</h1>
-          <p>Visão geral de todas as contas conectadas · últimos {days} dias.</p>
+          <h1>Analytics</h1>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        <div className="header-actions">
           {syncResult && (
             <span style={{ fontSize: '0.8rem', color: syncResult.failed > 0 ? 'var(--warning)' : 'var(--success)' }}>
               {syncResult.success} sincronizada{syncResult.success !== 1 ? 's' : ''}
@@ -351,14 +360,14 @@ export default function AnalyticsPage() {
           )}
           <Button onClick={handleSyncAll} disabled={syncing || !data?.accounts.length} size="sm" variant="outline">
             <RefreshCw className={`h-4 w-4${syncing ? ' animate-spin' : ''}`} />
-            {syncing ? 'Sincronizando...' : 'Sincronizar Tudo'}
+            {syncing ? 'Sincronizando...' : 'Sync'}
           </Button>
         </div>
       </header>
 
-      <div className="flex flex-wrap items-center gap-3 mb-4 animate-up">
+      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
         <Select value={clienteFilter} onValueChange={setClienteFilter}>
-          <SelectTrigger className="!rounded-full !text-xs h-9 px-4 w-auto min-w-[160px] mb-0">
+          <SelectTrigger className="!rounded-full !text-xs h-9 px-4 mb-0" style={{ flex: 1 }}>
             <SelectValue placeholder="Todos os clientes" />
           </SelectTrigger>
           <SelectContent>
@@ -372,13 +381,13 @@ export default function AnalyticsPage() {
         </Select>
 
         <Select value={String(days)} onValueChange={v => setDays(Number(v))}>
-          <SelectTrigger className="!rounded-full !text-xs h-9 px-4 w-auto min-w-[130px] mb-0">
+          <SelectTrigger className="!rounded-full !text-xs h-9 px-4 mb-0 w-auto min-w-[130px] shrink-0">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="7">Últimos 7 dias</SelectItem>
-            <SelectItem value="28">Últimos 28 dias</SelectItem>
-            <SelectItem value="90">Últimos 90 dias</SelectItem>
+            <SelectItem value="7">7 dias</SelectItem>
+            <SelectItem value="28">28 dias</SelectItem>
+            <SelectItem value="90">90 dias</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -477,7 +486,8 @@ export default function AnalyticsPage() {
         );
       })()}
 
-      <div className="card animate-up">
+      {/* Desktop table */}
+      <div className="card animate-up analytics-desktop-table">
         <div className="dashboard-hub-card-header" style={{ marginBottom: '1rem' }}>
           <h3>Todas as Contas</h3>
         </div>
@@ -536,8 +546,8 @@ export default function AnalyticsPage() {
                         </TableCell>
                         <TableCell data-label="Alcance (28d)">{formatNumber(a.reach_28d)}</TableCell>
                         <TableCell data-label="Alcance / Seg.">
-                          {a.follower_count > 0 
-                            ? ((a.reach_28d / a.follower_count) * 100).toFixed(1) + '%' 
+                          {a.follower_count > 0
+                            ? ((a.reach_28d / a.follower_count) * 100).toFixed(1) + '%'
                             : '0.0%'}
                         </TableCell>
                         <TableCell data-label="Posts (30d)">{a.posts_last_30d}</TableCell>
@@ -560,6 +570,77 @@ export default function AnalyticsPage() {
               </Table>
             </div>
           )}
+      </div>
+
+      {/* Mobile cards */}
+      <div className="analytics-mobile-cards">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+          <h3 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.1rem', fontWeight: 600, margin: 0 }}>Todas as Contas</h3>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon" className="h-8 w-8 shrink-0 mb-0">
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuLabel>Ordenar por</DropdownMenuLabel>
+              <DropdownMenuRadioGroup value={sortColumn} onValueChange={v => { setSortColumn(v as SortCol); setSortDirection('desc'); }}>
+                <DropdownMenuRadioItem value="client_name">Nome</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="follower_count">Seguidores</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="engagement_rate_avg">Engajamento</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="reach_28d">Alcance</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="posts_last_30d">Posts (30d)</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="last_post_at">Último Post</DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setSortDirection(d => d === 'asc' ? 'desc' : 'asc')}>
+                <ArrowUpDown className="h-4 w-4 mr-2" />{sortDirection === 'asc' ? 'Decrescente' : 'Crescente'}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+        {filteredAccounts.length === 0
+          ? <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Nenhuma conta conectada.</p>
+          : sortedAccounts.map(a => {
+            const daysSince = a.last_post_at
+              ? Math.floor((Date.now() - new Date(a.last_post_at).getTime()) / 86400000)
+              : null;
+            const isSilent = daysSince === null || daysSince > 7;
+            const deltaColor = a.follower_delta > 0 ? 'var(--success)' : a.follower_delta < 0 ? 'var(--danger)' : 'var(--text-muted)';
+            const deltaIcon = a.follower_delta > 0 ? '↑' : a.follower_delta < 0 ? '↓' : '';
+            return (
+              <Link key={a.client_id} to={`/analytics/${a.client_id}`} className="team-card card animate-up" style={{ textDecoration: 'none', color: 'inherit' }}>
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                  {a.profile_picture_url
+                    ? <img src={a.profile_picture_url} alt="" className="client-avatar" style={{ objectFit: 'cover', flexShrink: 0 }} />
+                    : <span className="avatar client-avatar" style={{ background: a.client_cor, flexShrink: 0 }}>{a.client_sigla}</span>
+                  }
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{a.client_name}</span>
+                      <Badge variant={a.engagement_rate_avg >= 3 ? 'default' : a.engagement_rate_avg >= 1 ? 'secondary' : 'outline'} style={{ fontSize: '0.6rem', padding: '0 0.4rem' }}>
+                        {a.engagement_rate_avg.toFixed(2)}%
+                      </Badge>
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: '#888', display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginTop: 2 }}>
+                      <span>{formatNumber(a.follower_count)} seg.</span>
+                      {a.follower_delta !== 0 && (
+                        <span style={{ color: deltaColor }}>{deltaIcon}{formatNumber(Math.abs(a.follower_delta))}</span>
+                      )}
+                      <span>&bull;</span>
+                      <span>{formatNumber(a.reach_28d)} alcance</span>
+                      <span>&bull;</span>
+                      {daysSince !== null
+                        ? <span style={{ color: isSilent ? 'var(--danger)' : undefined }}>{daysSince}d atrás</span>
+                        : <span style={{ color: 'var(--danger)' }}>Sem posts</span>
+                      }
+                    </div>
+                  </div>
+                </div>
+              </Link>
+            );
+          })
+        }
       </div>
 
       {filteredAccounts.length >= 2 && (
