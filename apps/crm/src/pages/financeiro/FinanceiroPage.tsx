@@ -218,7 +218,10 @@ export default function FinanceiroPage() {
           <span data-tooltip="Colunas: descricao*, valor*, data* (AAAA-MM-DD), tipo (entrada|saida), categoria, detalhe" data-tooltip-dir="bottom" style={{ display: 'flex' }}>
             <HelpCircle className="h-4 w-4" style={{ color: 'var(--text-muted)', cursor: 'pointer' }} />
           </span>
-          <Button variant="outline" onClick={handleCSVImport}>
+          <Button variant="outline" size="icon" onClick={handleCSVImport} className="header-actions-icon-only">
+            <Upload className="h-4 w-4" />
+          </Button>
+          <Button variant="outline" onClick={handleCSVImport} className="header-actions-full-only">
             <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Importar CSV
           </Button>
           <Button onClick={() => openAdd('entrada')}>

@@ -699,6 +699,20 @@ body {
   padding: 1.5rem;
 }
 
+.config-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 1rem;
+}
+
+.config-member-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
 .team-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -718,10 +732,16 @@ body {
 
 .leads-mobile-cards,
 .analytics-mobile-cards,
-.financeiro-mobile-cards {
+.financeiro-mobile-cards,
+.fluxos-team-mobile,
+.fluxos-bottleneck-mobile {
   display: none;
   flex-direction: column;
   gap: 0.5rem;
+}
+
+.header-actions-icon-only {
+  display: none;
 }
 
 .card-blue {
@@ -1890,6 +1910,13 @@ select.form-input option {
     gap: 0.75rem;
   }
 
+
+  .kpi-grid > :last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+    max-width: 50%;
+    justify-self: center;
+  }
+
   .widgets-grid {
     grid-template-columns: 1fr;
   }
@@ -1897,6 +1924,8 @@ select.form-input option {
   .kpi-card {
     padding: 1rem;
     border-radius: 12px;
+    border-left: 1px solid var(--border-color);
+    border-top: 3px solid var(--kpi-accent, var(--border-color));
   }
 
   .kpi-label {
@@ -1998,6 +2027,15 @@ select.form-input option {
     padding: 0.75rem;
   }
 
+  .config-form-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .config-member-row {
+    gap: 8px;
+  }
+
   .team-card {
     padding: 0.75rem !important;
     border-radius: 12px;
@@ -2011,14 +2049,26 @@ select.form-input option {
 
   .leads-desktop-table,
   .analytics-desktop-table,
-  .financeiro-desktop-table {
+  .financeiro-desktop-table,
+  .fluxos-team-desktop,
+  .fluxos-bottleneck-desktop {
     display: none;
   }
 
   .leads-mobile-cards,
   .analytics-mobile-cards,
-  .financeiro-mobile-cards {
+  .financeiro-mobile-cards,
+  .fluxos-team-mobile,
+  .fluxos-bottleneck-mobile {
     display: flex;
+  }
+
+  .header-actions-icon-only {
+    display: inline-flex !important;
+  }
+
+  .header-actions-full-only {
+    display: none !important;
   }
 
   /* Tables to Cards on Mobile */

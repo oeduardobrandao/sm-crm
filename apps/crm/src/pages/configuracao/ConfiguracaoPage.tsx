@@ -359,24 +359,24 @@ export default function ConfiguracaoPage() {
   const initials = profile?.nome ? getInitials(profile.nome) : '??';
 
   return (
-    <div style={{ padding: '1.5rem', maxWidth: 900, margin: '0 auto' }}>
+    <div className="page-content" style={{ maxWidth: 900, margin: '0 auto' }}>
       <h2 className="header-title" style={{ marginBottom: '1.5rem' }}>Configurações</h2>
 
       {/* Profile Card */}
       <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem', minWidth: 0 }}>
           <div className="avatar" style={{ width: 64, height: 64, borderRadius: '50%', background: 'var(--primary-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: '1.4rem', flexShrink: 0 }}>
             {initials}
           </div>
-          <div>
-            <h3 style={{ margin: 0 }}>{profile?.nome ?? user.email}</h3>
-            <p style={{ color: 'var(--text-muted)', margin: '4px 0 4px' }}>{user.email}</p>
+          <div style={{ minWidth: 0 }}>
+            <h3 style={{ margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profile?.nome ?? user.email}</h3>
+            <p style={{ color: 'var(--text-muted)', margin: '4px 0 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</p>
             <span className="badge badge-success">Conta Ativa</span>
           </div>
         </div>
 
         <div className="space-y-3">
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 1rem' }}>
+          <div className="config-form-grid">
             <div className="space-y-1"><Label>Nome *</Label><Input value={pNome} onChange={e => setPNome(e.target.value)} /></div>
             <div className="space-y-1"><Label>Empresa</Label><Input value={pEmpresa} onChange={e => setPEmpresa(e.target.value)} /></div>
             <div className="space-y-1"><Label>Telefone</Label><Input value={pTelefone} onChange={e => setPTelefone(e.target.value)} /></div>
@@ -431,7 +431,7 @@ export default function ConfiguracaoPage() {
               <Label style={{ display: 'block', marginBottom: 6 }}>Nome do Workspace</Label>
               <Input value={wsName} onChange={e => setWsName(e.target.value)} />
             </div>
-            <Button onClick={handleWsSave}>Salvar</Button>
+            <Button className="mb-0" onClick={handleWsSave}>Salvar</Button>
           </div>
         </div>
       )}
@@ -460,16 +460,16 @@ export default function ConfiguracaoPage() {
 
           <div style={{ marginBottom: '1rem' }}>
             {(wsUsers ?? []).map((u: Record<string, string>) => (
-              <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid var(--border-color)' }}>
+              <div key={u.id} className="config-member-row">
                 <div className="avatar" style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--primary-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, flexShrink: 0 }}>
                   {getInitials(u.nome || '?')}
                 </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 500 }}>{u.nome}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.nome}</div>
                   <RoleBadge role={u.role} />
                 </div>
                 {u.id !== user?.id && (
-                  <div style={{ display: 'flex', gap: 8 }}>
+                  <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                     <Button size="sm" variant="outline" onClick={() => handleEditRole(u)}>Função</Button>
                     <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setRemoveUserId(u.id)}>Remover</Button>
                   </div>
@@ -483,9 +483,9 @@ export default function ConfiguracaoPage() {
             <>
               <h4 style={{ marginBottom: 8, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Convites</h4>
               {(invites ?? []).map((inv: Record<string, string>) => (
-                <div key={inv.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderBottom: '1px solid var(--border-color)' }}>
-                  <div style={{ flex: 1 }}>
-                    <span style={{ fontWeight: 500 }}>{inv.email}</span>
+                <div key={inv.id} className="config-member-row">
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ fontWeight: 500, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inv.email}</span>
                     <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
                       <InviteStatusBadge status={inv.status} />
                       <span style={{ marginLeft: 8, color: 'var(--text-muted)', fontSize: '0.8rem' }}>

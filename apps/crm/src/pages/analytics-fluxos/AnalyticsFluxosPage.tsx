@@ -1,8 +1,17 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { SlidersHorizontal } from 'lucide-react';
 import { Chart, registerables } from 'chart.js';
 import {
   getWorkflows, getClientes, getWorkflowTemplates, getMembros, getAllEtapasWithWorkflow,
@@ -377,46 +386,18 @@ export default function AnalyticsFluxosPage() {
     );
   }
 
+  const hasActiveFilters = filters.clienteId !== null || filters.templateId !== null;
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+    <div className="page-content" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <header className="header animate-up">
         <div className="header-title">
           <h1>Analytics de Fluxos</h1>
-          <p style={{ color: 'var(--text-muted)' }}>{workflows.length} fluxos no total</p>
+          <p style={{ color: 'var(--text-muted)' }}>{workflows.length} fluxos</p>
         </div>
       </header>
 
-      <div className="filter-bar animate-up">
-        <Select
-          value={filters.clienteId !== null ? String(filters.clienteId) : 'all'}
-          onValueChange={val => setFilters(f => ({ ...f, clienteId: val === 'all' ? null : Number(val) }))}
-        >
-          <SelectTrigger style={{ width: 'auto', minWidth: 200 }}>
-            <SelectValue placeholder="Todos os clientes" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos os clientes</SelectItem>
-            {clientes.map(c => (
-              <SelectItem key={c.id} value={String(c.id)}>{c.nome}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select
-          value={filters.templateId !== null ? String(filters.templateId) : 'all'}
-          onValueChange={val => setFilters(f => ({ ...f, templateId: val === 'all' ? null : Number(val) }))}
-        >
-          <SelectTrigger style={{ width: 'auto', minWidth: 200 }}>
-            <SelectValue placeholder="Todos os templates" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos os templates</SelectItem>
-            {templates.map(t => (
-              <SelectItem key={t.id} value={String(t.id)}>{t.nome}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
+      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }} className="animate-up">
         <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
           {DAY_OPTIONS.map(opt => (
             <button
@@ -428,6 +409,54 @@ export default function AnalyticsFluxosPage() {
             </button>
           ))}
         </div>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="icon" className="h-9 w-9 shrink-0 mb-0" style={{ position: 'relative' }}>
+              <SlidersHorizontal className="h-4 w-4" />
+              {hasActiveFilters && (
+                <span style={{ position: 'absolute', top: 4, right: 4, width: 6, height: 6, borderRadius: '50%', background: '#eab308' }} />
+              )}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" style={{ minWidth: 220, padding: '0.5rem' }}>
+            <DropdownMenuLabel>Cliente</DropdownMenuLabel>
+            <div style={{ padding: '0 0.5rem 0.5rem' }}>
+              <Select
+                value={filters.clienteId !== null ? String(filters.clienteId) : 'all'}
+                onValueChange={val => setFilters(f => ({ ...f, clienteId: val === 'all' ? null : Number(val) }))}
+              >
+                <SelectTrigger style={{ width: '100%' }}>
+                  <SelectValue placeholder="Todos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  {clientes.map(c => (
+                    <SelectItem key={c.id} value={String(c.id)}>{c.nome}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>Template</DropdownMenuLabel>
+            <div style={{ padding: '0 0.5rem 0.5rem' }}>
+              <Select
+                value={filters.templateId !== null ? String(filters.templateId) : 'all'}
+                onValueChange={val => setFilters(f => ({ ...f, templateId: val === 'all' ? null : Number(val) }))}
+              >
+                <SelectTrigger style={{ width: '100%' }}>
+                  <SelectValue placeholder="Todos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  {templates.map(t => (
+                    <SelectItem key={t.id} value={String(t.id)}>{t.nome}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {!hasData ? (
@@ -461,77 +490,121 @@ export default function AnalyticsFluxosPage() {
 
           <AnalyticsCharts metrics={metrics} />
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }} className="animate-up">
-            <div className="card">
-              <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1rem' }}>Desempenho da equipe</h3>
-              {metrics.memberPerformance.length === 0
-                ? <p style={{ color: 'var(--text-muted)' }}>Nenhuma etapa com responsável atribuído.</p>
-                : (
-                  <div style={{ overflowX: 'auto' }}>
-                    <table className="data-table">
-                      <thead>
-                        <tr>
-                          <th>Membro</th>
-                          <th>Concluídas</th>
-                          <th>Tempo médio</th>
-                          <th>Pontualidade</th>
-                          <th>Atrasos</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {metrics.memberPerformance.map(mp => {
-                          const badgeVariant = mp.onTimeRate >= 80 ? 'default' : mp.onTimeRate >= 50 ? 'secondary' : 'destructive';
-                          return (
-                            <tr key={mp.membro.id}>
-                              <td data-label="Membro">
-                                {mp.membro.avatar_url && <img src={mp.membro.avatar_url} style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover', marginRight: '0.5rem', verticalAlign: 'middle' }} alt="" />}
-                                {mp.membro.nome}
-                              </td>
-                              <td data-label="Concluídas">{mp.completed}</td>
-                              <td data-label="Tempo médio">{formatDuration(mp.avgDays)}</td>
-                              <td data-label="Pontualidade"><Badge variant={badgeVariant}>{mp.onTimeRate}%</Badge></td>
-                              <td data-label="Atrasos">{mp.overdueCount > 0 ? <Badge variant="destructive">{mp.overdueCount}</Badge> : '0'}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+          {/* Team Performance */}
+          <div className="animate-up">
+            <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.75rem' }}>Desempenho da equipe</h3>
+            {metrics.memberPerformance.length === 0
+              ? <p style={{ color: 'var(--text-muted)' }}>Nenhuma etapa com responsável atribuído.</p>
+              : (
+                <>
+                  <div className="fluxos-team-desktop card">
+                    <div style={{ overflowX: 'auto' }}>
+                      <table className="data-table">
+                        <thead>
+                          <tr>
+                            <th>Membro</th>
+                            <th>Concluídas</th>
+                            <th>Tempo médio</th>
+                            <th>Pontualidade</th>
+                            <th>Atrasos</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {metrics.memberPerformance.map(mp => {
+                            const badgeVariant = mp.onTimeRate >= 80 ? 'default' : mp.onTimeRate >= 50 ? 'secondary' : 'destructive';
+                            return (
+                              <tr key={mp.membro.id}>
+                                <td data-label="Membro">
+                                  {mp.membro.avatar_url && <img src={mp.membro.avatar_url} style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover', marginRight: '0.5rem', verticalAlign: 'middle' }} alt="" />}
+                                  {mp.membro.nome}
+                                </td>
+                                <td data-label="Concluídas">{mp.completed}</td>
+                                <td data-label="Tempo médio">{formatDuration(mp.avgDays)}</td>
+                                <td data-label="Pontualidade"><Badge variant={badgeVariant}>{mp.onTimeRate}%</Badge></td>
+                                <td data-label="Atrasos">{mp.overdueCount > 0 ? <Badge variant="destructive">{mp.overdueCount}</Badge> : '0'}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
-                )}
-            </div>
+                  <div className="fluxos-team-mobile">
+                    {metrics.memberPerformance.map(mp => {
+                      const badgeVariant = mp.onTimeRate >= 80 ? 'default' : mp.onTimeRate >= 50 ? 'secondary' : 'destructive';
+                      return (
+                        <div key={mp.membro.id} className="card" style={{ padding: '0.875rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                            {mp.membro.avatar_url && <img src={mp.membro.avatar_url} style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} alt="" />}
+                            <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{mp.membro.nome}</span>
+                            <Badge variant={badgeVariant} style={{ marginLeft: 'auto' }}>{mp.onTimeRate}%</Badge>
+                          </div>
+                          <div style={{ display: 'flex', gap: '1rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                            <span><strong style={{ color: 'var(--text-main)' }}>{mp.completed}</strong> concluídas</span>
+                            <span><strong style={{ color: 'var(--text-main)' }}>{formatDuration(mp.avgDays)}</strong> média</span>
+                            {mp.overdueCount > 0 && <span><Badge variant="destructive" style={{ fontSize: '0.7rem' }}>{mp.overdueCount} atrasos</Badge></span>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+          </div>
 
-            <div className="card">
-              <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1rem' }}>Gargalos</h3>
-              {metrics.bottlenecks.length === 0
-                ? <p style={{ color: 'var(--text-muted)' }}>Nenhuma etapa concluída ainda.</p>
-                : (
-                  <div style={{ overflowX: 'auto' }}>
-                    <table className="data-table">
-                      <thead>
-                        <tr>
-                          <th>Etapa</th>
-                          <th>Tempo médio</th>
-                          <th>Taxa de atraso</th>
-                          <th>Amostras</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {metrics.bottlenecks.map((b, i) => {
-                          const badgeVariant2 = b.overdueRate <= 20 ? 'default' : b.overdueRate <= 50 ? 'secondary' : 'destructive';
-                          return (
-                            <tr key={i}>
-                              <td data-label="Etapa">{b.nome}</td>
-                              <td data-label="Tempo médio">{formatDuration(b.avgDays)}</td>
-                              <td data-label="Taxa de atraso"><Badge variant={badgeVariant2}>{b.overdueRate}%</Badge></td>
-                              <td data-label="Amostras">{b.count}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+          {/* Bottlenecks */}
+          <div className="animate-up">
+            <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.75rem' }}>Gargalos</h3>
+            {metrics.bottlenecks.length === 0
+              ? <p style={{ color: 'var(--text-muted)' }}>Nenhuma etapa concluída ainda.</p>
+              : (
+                <>
+                  <div className="fluxos-bottleneck-desktop card">
+                    <div style={{ overflowX: 'auto' }}>
+                      <table className="data-table">
+                        <thead>
+                          <tr>
+                            <th>Etapa</th>
+                            <th>Tempo médio</th>
+                            <th>Taxa de atraso</th>
+                            <th>Amostras</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {metrics.bottlenecks.map((b, i) => {
+                            const badgeVariant2 = b.overdueRate <= 20 ? 'default' : b.overdueRate <= 50 ? 'secondary' : 'destructive';
+                            return (
+                              <tr key={i}>
+                                <td data-label="Etapa">{b.nome}</td>
+                                <td data-label="Tempo médio">{formatDuration(b.avgDays)}</td>
+                                <td data-label="Taxa de atraso"><Badge variant={badgeVariant2}>{b.overdueRate}%</Badge></td>
+                                <td data-label="Amostras">{b.count}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
-                )}
-            </div>
+                  <div className="fluxos-bottleneck-mobile">
+                    {metrics.bottlenecks.map((b, i) => {
+                      const badgeVariant2 = b.overdueRate <= 20 ? 'default' : b.overdueRate <= 50 ? 'secondary' : 'destructive';
+                      return (
+                        <div key={i} className="card" style={{ padding: '0.875rem' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
+                            <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{b.nome}</span>
+                            <Badge variant={badgeVariant2}>{b.overdueRate}% atraso</Badge>
+                          </div>
+                          <div style={{ display: 'flex', gap: '1rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                            <span>Tempo médio: <strong style={{ color: 'var(--text-main)' }}>{formatDuration(b.avgDays)}</strong></span>
+                            <span>{b.count} amostras</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
           </div>
         </>
       )}
