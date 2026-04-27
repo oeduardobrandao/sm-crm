@@ -78,6 +78,12 @@ export function AprovacoesPage() {
 
       {withMedia.length > 0 && (
         <>
+          {instagramProfile && selectedIds.size === 0 && (
+            <p className="text-[12px] text-stone-400 mb-3 flex items-center gap-1.5">
+              <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" className="shrink-0"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></svg>
+              Selecione posts para visualizar como ficarão no feed do Instagram.
+            </p>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {withMedia.map((post, i) => (
               <div key={post.id}>
