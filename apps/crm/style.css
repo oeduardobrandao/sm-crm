@@ -716,7 +716,9 @@ body {
   font-size: 1rem;
 }
 
-.leads-mobile-cards {
+.leads-mobile-cards,
+.analytics-mobile-cards,
+.financeiro-mobile-cards {
   display: none;
   flex-direction: column;
   gap: 0.5rem;
@@ -2007,11 +2009,15 @@ select.form-input option {
     font-size: 0.85rem !important;
   }
 
-  .leads-desktop-table {
+  .leads-desktop-table,
+  .analytics-desktop-table,
+  .financeiro-desktop-table {
     display: none;
   }
 
-  .leads-mobile-cards {
+  .leads-mobile-cards,
+  .analytics-mobile-cards,
+  .financeiro-mobile-cards {
     display: flex;
   }
 

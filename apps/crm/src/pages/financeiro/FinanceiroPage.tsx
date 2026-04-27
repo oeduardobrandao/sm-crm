@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Plus, Edit2, Trash2, Check, Upload, Info, HelpCircle, Search } from 'lucide-react';
+import { Plus, Edit2, Trash2, Check, Upload, Info, HelpCircle, Search, SlidersHorizontal, MoreVertical } from 'lucide-react';
 import { openCSVSelector } from '../../lib/csv';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,11 +17,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { ChevronDown } from 'lucide-react';
 import { MonthPicker } from '@/components/ui/month-picker';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
@@ -204,7 +206,7 @@ export default function FinanceiroPage() {
   };
 
   return (
-    <div style={{ padding: '1.5rem' }}>
+    <div className="page-content">
       <div className="header">
         <div className="header-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <h1>Financeiro</h1>
@@ -220,10 +222,10 @@ export default function FinanceiroPage() {
             <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Importar CSV
           </Button>
           <Button onClick={() => openAdd('entrada')}>
-            <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Registrar Entrada
+            <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Entrada
           </Button>
           <Button variant="outline" onClick={() => openAdd('saida')}>
-            <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Registrar Saída
+            <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Saída
           </Button>
         </div>
       </div>
@@ -243,19 +245,23 @@ export default function FinanceiroPage() {
         ))}
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 mb-4">
-        <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: '320px' }}>
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center' }}>
+        <div style={{ position: 'relative', flex: 1 }}>
           <Search className="h-4 w-4" style={{ position: 'absolute', left: '0.625rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
-          <Input placeholder="Buscar por descrição ou categoria..." value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: '2rem' }} />
+          <Input className="h-9" placeholder="Buscar por descrição ou categoria..." value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: '2rem' }} />
         </div>
+        <MonthPicker value={monthFilter} onChange={setMonthFilter} className="rounded-full text-xs px-4 mb-0 shrink-0" />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="h-9 rounded-full px-4 text-xs gap-1.5 font-normal shadow-sm mb-0">
-              {filter === 'todas' ? 'Tipo' : filter === 'entradas' ? 'Entradas' : 'Saídas'}
-              <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+            <Button variant="outline" size="icon" className="h-9 w-9 shrink-0 mb-0" style={{ position: 'relative' }}>
+              <SlidersHorizontal className="h-4 w-4" />
+              {filter !== 'todas' && (
+                <span style={{ position: 'absolute', top: -2, right: -2, width: 8, height: 8, borderRadius: '50%', background: 'var(--primary-color)' }} />
+              )}
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-36">
+          <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuLabel>Tipo</DropdownMenuLabel>
             <DropdownMenuRadioGroup value={filter} onValueChange={(v) => setFilter(v as FilterType)}>
               <DropdownMenuRadioItem value="todas">Todas</DropdownMenuRadioItem>
               <DropdownMenuRadioItem value="entradas">Entradas</DropdownMenuRadioItem>
@@ -263,68 +269,127 @@ export default function FinanceiroPage() {
             </DropdownMenuRadioGroup>
           </DropdownMenuContent>
         </DropdownMenu>
-        <MonthPicker value={monthFilter} onChange={setMonthFilter} className="rounded-full text-xs px-4 mb-0" />
       </div>
 
       {isLoading ? (
         <div className="flex justify-center p-8"><Spinner size="lg" /></div>
       ) : (
-        <div className="card">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Data</TableHead>
-                <TableHead>Descrição</TableHead>
-                <TableHead>Categoria</TableHead>
-                <TableHead>Valor</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((t, i) => (
-                <TableRow key={t.id ?? `proj-${i}`}>
-                  <TableCell data-label="Data">{formatDate(t.data)}</TableCell>
-                  <TableCell data-label="Descrição">
-                    <div>{t.descricao}</div>
-                    {t.detalhe && <div style={{ fontSize: 12, color: '#888' }}>{t.detalhe}</div>}
-                  </TableCell>
-                  <TableCell data-label="Categoria">{t.categoria}</TableCell>
-                  <TableCell data-label="Valor">
-                    <span style={{ color: t.tipo === 'entrada' ? '#3ecf8e' : '#ef4444', fontWeight: 600 }}>
-                      {t.tipo === 'entrada' ? '+' : '-'}{formatBRL(t.valor)}
-                    </span>
-                  </TableCell>
-                  <TableCell data-label="Status">
-                    <Badge variant={t.status === 'pago' ? 'default' : 'secondary'}>
-                      {t.status === 'pago' ? 'Pago' : 'Agendado'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-1" style={{ justifyContent: 'flex-end' }}>
-                      {t.status === 'agendado' ? (
-                        <Button size="sm" onClick={() => setConfirmT(t)}>
-                          <Check className="h-3 w-3" /> Confirmar
-                        </Button>
-                      ) : (
-                        <>
-                          <Button size="icon" variant="ghost" onClick={() => openEdit(t)}>
-                            <Edit2 className="h-4 w-4" />
+        <>
+          {/* Desktop table */}
+          <div className="card financeiro-desktop-table">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Data</TableHead>
+                  <TableHead>Descrição</TableHead>
+                  <TableHead>Categoria</TableHead>
+                  <TableHead>Valor</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filtered.map((t, i) => (
+                  <TableRow key={t.id ?? `proj-${i}`}>
+                    <TableCell data-label="Data">{formatDate(t.data)}</TableCell>
+                    <TableCell data-label="Descrição">
+                      <div>{t.descricao}</div>
+                      {t.detalhe && <div style={{ fontSize: 12, color: '#888' }}>{t.detalhe}</div>}
+                    </TableCell>
+                    <TableCell data-label="Categoria">{t.categoria}</TableCell>
+                    <TableCell data-label="Valor">
+                      <span style={{ color: t.tipo === 'entrada' ? '#3ecf8e' : '#ef4444', fontWeight: 600 }}>
+                        {t.tipo === 'entrada' ? '+' : '-'}{formatBRL(t.valor)}
+                      </span>
+                    </TableCell>
+                    <TableCell data-label="Status">
+                      <Badge variant={t.status === 'pago' ? 'default' : 'secondary'}>
+                        {t.status === 'pago' ? 'Pago' : 'Agendado'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-1" style={{ justifyContent: 'flex-end' }}>
+                        {t.status === 'agendado' ? (
+                          <Button size="sm" onClick={() => setConfirmT(t)}>
+                            <Check className="h-3 w-3" /> Confirmar
                           </Button>
-                          {t.id && (
-                            <Button size="icon" variant="ghost" className="text-destructive" onClick={() => setDeleteId(t.id!)}>
-                              <Trash2 className="h-4 w-4" />
+                        ) : (
+                          <>
+                            <Button size="icon" variant="ghost" onClick={() => openEdit(t)}>
+                              <Edit2 className="h-4 w-4" />
                             </Button>
-                          )}
+                            {t.id && (
+                              <Button size="icon" variant="ghost" className="text-destructive" onClick={() => setDeleteId(t.id!)}>
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          {/* Mobile cards */}
+          <div className="financeiro-mobile-cards">
+            {filtered.map((t, i) => (
+              <div key={t.id ?? `proj-${i}`} className="team-card card animate-up">
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{t.descricao}</span>
+                      <Badge variant={t.status === 'pago' ? 'default' : 'secondary'} style={{ fontSize: '0.6rem', padding: '0 0.4rem', pointerEvents: 'none' }}>
+                        {t.status === 'pago' ? 'Pago' : 'Agendado'}
+                      </Badge>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap', marginTop: 2 }}>
+                      <span style={{ color: t.tipo === 'entrada' ? '#3ecf8e' : '#ef4444', fontWeight: 600, fontSize: '0.85rem' }}>
+                        {t.tipo === 'entrada' ? '+' : '-'}{formatBRL(t.valor)}
+                      </span>
+                      <span style={{ fontSize: '0.75rem', color: '#888' }}>&bull;</span>
+                      <span style={{ fontSize: '0.75rem', color: '#888' }}>{formatDate(t.data)}</span>
+                      {t.categoria && (
+                        <>
+                          <span style={{ fontSize: '0.75rem', color: '#888' }}>&bull;</span>
+                          <span style={{ fontSize: '0.75rem', color: '#888' }}>{t.categoria}</span>
                         </>
                       )}
                     </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+                  </div>
+                  {t.status === 'agendado' ? (
+                    <Button size="sm" className="shrink-0 mb-0" onClick={() => setConfirmT(t)}>
+                      <Check className="h-3 w-3" />
+                    </Button>
+                  ) : (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0 mb-0">
+                          <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => openEdit(t)}>
+                          <Edit2 className="h-4 w-4 mr-2" />Editar
+                        </DropdownMenuItem>
+                        {t.id && (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem className="text-destructive" onClick={() => setDeleteId(t.id!)}>
+                              <Trash2 className="h-4 w-4 mr-2" />Remover
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
       )}
 
       {/* Modal de edição/criação */}
