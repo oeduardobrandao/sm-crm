@@ -92,7 +92,6 @@ export function InstagramPostCard({
           </div>
         )}
         <span className="text-[11px] font-semibold text-[#262626] dark:text-[#f5f5f5] truncate">{displayName}</span>
-        <span className="ml-auto text-[#262626] dark:text-[#f5f5f5] text-xs">•••</span>
       </div>
 
       {/* Image area */}
