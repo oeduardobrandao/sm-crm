@@ -49,6 +49,19 @@ export function submitApproval(token: string, post_id: number, action: 'aprovado
   return post<{ ok: boolean }>('hub-approve', { token, post_id, action, comentario });
 }
 
+export async function reorderPostSchedules(token: string, updates: { post_id: number; scheduled_at: string | null }[]) {
+  const res = await fetch(`${BASE}/functions/v1/hub-posts`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', apikey: ANON },
+    body: JSON.stringify({ token, updates }),
+  });
+  if (!res.ok) {
+    const b = await res.json().catch(() => ({}));
+    throw new Error((b as { error?: string }).error ?? `HTTP ${res.status}`);
+  }
+  return res.json() as Promise<{ ok: boolean; updated: number }>;
+}
+
 export function fetchInstagramFeed(token: string) {
   return get<InstagramFeedData>('hub-instagram-feed', { token });
 }

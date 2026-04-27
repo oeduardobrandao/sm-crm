@@ -1,15 +1,19 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { CheckCircle } from 'lucide-react';
+import { reorderPostSchedules } from '../api';
 import type { HubPost, InstagramFeedProfile, InstagramFeedPost } from '../types';
 
 interface GridItem {
   type: 'pending' | 'live';
   id: string;
+  postId: number | null;
   thumbnailUrl: string | null;
   videoUrl: string | null;
   mediaType: string;
   impressions: number;
   isCarousel: boolean;
+  scheduledAt: string | null;
 }
 
 function formatCount(n: number): string {
@@ -23,45 +27,69 @@ function formatImpressions(n: number): string {
   return n.toLocaleString('pt-BR');
 }
 
+function formatShortDate(d: string | null): string {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', timeZone: 'UTC' });
+}
+
 interface InstagramGridPreviewProps {
   selectedPosts: HubPost[];
   feedProfile: InstagramFeedProfile;
   livePosts: InstagramFeedPost[];
+  token: string;
   onClose: () => void;
+  onScheduleUpdated?: () => void;
 }
 
-export function InstagramGridPreview({ selectedPosts, feedProfile, livePosts, onClose }: InstagramGridPreviewProps) {
+export function InstagramGridPreview({ selectedPosts, feedProfile, livePosts, token, onClose, onScheduleUpdated }: InstagramGridPreviewProps) {
   const [gridItems, setGridItems] = useState<GridItem[]>([]);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
   const touchRef = useRef<{ startX: number; startY: number; idx: number } | null>(null);
+  const initialSchedulesRef = useRef<Map<number, string | null>>(new Map());
 
   useEffect(() => {
-    const pending: GridItem[] = selectedPosts.map(p => {
+    const scheduleMap = new Map<number, string | null>();
+    selectedPosts.forEach(p => scheduleMap.set(p.id, p.scheduled_at));
+    initialSchedulesRef.current = scheduleMap;
+
+    const sortedPosts = [...selectedPosts].sort((a, b) =>
+      (b.scheduled_at ?? '').localeCompare(a.scheduled_at ?? '')
+    );
+    const pending: GridItem[] = sortedPosts.map(p => {
       const firstMedia = p.media?.[0];
       const isVideo = firstMedia?.kind === 'video';
       return {
         type: 'pending' as const,
         id: `pending-${p.id}`,
+        postId: p.id,
         thumbnailUrl: isVideo ? (firstMedia.thumbnail_url ?? null) : (firstMedia?.url ?? null),
         videoUrl: isVideo ? firstMedia.url : null,
         mediaType: p.tipo === 'carrossel' || (p.media?.length ?? 0) > 1 ? 'CAROUSEL_ALBUM' : p.tipo === 'reels' ? 'VIDEO' : 'IMAGE',
         impressions: 0,
         isCarousel: (p.media?.length ?? 0) > 1,
+        scheduledAt: p.scheduled_at,
       };
     });
 
     const live: GridItem[] = livePosts.map(p => ({
       type: 'live' as const,
       id: `live-${p.id}`,
+      postId: null,
       thumbnailUrl: p.thumbnailUrl,
       videoUrl: null,
       mediaType: p.mediaType,
       impressions: p.impressions,
       isCarousel: p.mediaType === 'CAROUSEL_ALBUM',
+      scheduledAt: null,
     }));
 
     setGridItems([...pending, ...live]);
+    setHasChanges(false);
+    setSaved(false);
   }, [selectedPosts, livePosts]);
 
   useEffect(() => {
@@ -75,6 +103,31 @@ export function InstagramGridPreview({ selectedPosts, feedProfile, livePosts, on
       document.body.style.overflow = '';
     };
   }, [onClose]);
+
+  const reassignDates = useCallback((items: GridItem[]): GridItem[] => {
+    const pendingItems = items.filter(i => i.type === 'pending');
+    const dates = selectedPosts
+      .map(p => p.scheduled_at)
+      .sort((a, b) => (b ?? '').localeCompare(a ?? ''));
+
+    let dateIdx = 0;
+    return items.map(item => {
+      if (item.type !== 'pending') return item;
+      const newDate = dates[dateIdx] ?? null;
+      dateIdx++;
+      return { ...item, scheduledAt: newDate };
+    });
+  }, [selectedPosts]);
+
+  const checkForChanges = useCallback((items: GridItem[]) => {
+    const initial = initialSchedulesRef.current;
+    const changed = items.some(item => {
+      if (item.type !== 'pending' || item.postId === null) return false;
+      return item.scheduledAt !== initial.get(item.postId);
+    });
+    setHasChanges(changed);
+    setSaved(false);
+  }, []);
 
   const handleDragStart = useCallback((idx: number) => {
     if (gridItems[idx].type !== 'pending') return;
@@ -96,11 +149,13 @@ export function InstagramGridPreview({ selectedPosts, feedProfile, livePosts, on
       const next = [...prev];
       const [moved] = next.splice(dragIdx, 1);
       next.splice(targetIdx, 0, moved);
-      return next;
+      const reassigned = reassignDates(next);
+      checkForChanges(reassigned);
+      return reassigned;
     });
     setDragIdx(null);
     setDragOverIdx(null);
-  }, [dragIdx]);
+  }, [dragIdx, reassignDates, checkForChanges]);
 
   const handleTouchStart = useCallback((e: React.TouchEvent, idx: number) => {
     if (gridItems[idx].type !== 'pending') return;
@@ -121,14 +176,40 @@ export function InstagramGridPreview({ selectedPosts, feedProfile, livePosts, on
           const next = [...prev];
           const [moved] = next.splice(sourceIdx, 1);
           next.splice(targetIdx, 0, moved);
-          return next;
+          const reassigned = reassignDates(next);
+          checkForChanges(reassigned);
+          return reassigned;
         });
       }
     }
     touchRef.current = null;
     setDragIdx(null);
     setDragOverIdx(null);
-  }, []);
+  }, [reassignDates, checkForChanges]);
+
+  async function handleSave() {
+    const updates = gridItems
+      .filter(i => i.type === 'pending' && i.postId !== null)
+      .map(i => ({ post_id: i.postId!, scheduled_at: i.scheduledAt }));
+
+    if (updates.length === 0) return;
+
+    setSaving(true);
+    try {
+      await reorderPostSchedules(token, updates);
+      initialSchedulesRef.current = new Map(
+        gridItems.filter(i => i.type === 'pending' && i.postId !== null)
+          .map(i => [i.postId!, i.scheduledAt])
+      );
+      setHasChanges(false);
+      setSaved(true);
+      onScheduleUpdated?.();
+    } catch {
+      // keep hasChanges true so user can retry
+    } finally {
+      setSaving(false);
+    }
+  }
 
   const displayName = feedProfile.username ?? '';
 
@@ -154,7 +235,7 @@ export function InstagramGridPreview({ selectedPosts, feedProfile, livePosts, on
   return createPortal(
     <div className="fixed inset-0 z-[9010] bg-black/70 backdrop-blur-sm flex items-center justify-center" onClick={onClose}>
       <div
-        className="bg-white rounded-2xl w-[420px] max-h-[92vh] overflow-y-auto relative"
+        className="bg-white rounded-2xl w-[420px] max-h-[92vh] flex flex-col relative"
         style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' }}
         onClick={e => e.stopPropagation()}
       >
@@ -167,6 +248,7 @@ export function InstagramGridPreview({ selectedPosts, feedProfile, livePosts, on
           ✕
         </button>
 
+        <div className="overflow-y-auto flex-1 min-h-0">
         {/* Top bar */}
         <div className="flex items-center justify-center pt-4 pb-2">
           <span className="text-[20px] font-bold text-[#262626] flex items-center gap-1">
@@ -245,11 +327,11 @@ export function InstagramGridPreview({ selectedPosts, feedProfile, livePosts, on
         </div>
 
         {/* Drag hint */}
-        <div className="flex items-center justify-center gap-1.5 py-2 bg-[#f0f7ff] text-[#0095f6] text-[11px] font-medium">
+        <div className="flex items-center justify-center gap-1.5 py-2 bg-stone-50 text-stone-500 text-[11px] font-medium">
           <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
             <path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3"/>
           </svg>
-          Arraste os posts novos para reordenar
+          Arraste os posts para reordenar — as datas de publicação serão ajustadas
         </div>
 
         {/* Grid */}
@@ -278,7 +360,9 @@ export function InstagramGridPreview({ selectedPosts, feedProfile, livePosts, on
               )}
 
               {item.type === 'pending' && (
-                <span className="absolute top-1.5 left-1.5 bg-[#0095f6] text-white text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide">Novo</span>
+                <span className="absolute top-1.5 left-1.5 bg-[#0095f6] text-white text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide">
+                  {formatShortDate(item.scheduledAt)}
+                </span>
               )}
 
               {item.isCarousel && (
@@ -307,6 +391,35 @@ export function InstagramGridPreview({ selectedPosts, feedProfile, livePosts, on
             Posts publicados
           </div>
         </div>
+        </div>{/* end scrollable */}
+
+        {/* Sticky footer */}
+        {(hasChanges || saved) && (
+          <div className="shrink-0 border-t border-[#efefef] px-4 py-3">
+            {hasChanges && (
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-stone-900 text-white text-[13px] font-semibold hover:bg-stone-800 disabled:opacity-50 transition-colors"
+              >
+                {saving ? (
+                  <div className="animate-spin h-4 w-4 rounded-full border-2 border-white/30 border-t-white" />
+                ) : (
+                  <>
+                    <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+                    Salvar agendamento
+                  </>
+                )}
+              </button>
+            )}
+            {saved && !hasChanges && (
+              <div className="flex items-center justify-center gap-1.5 text-[12px] text-emerald-600 font-medium">
+                <CheckCircle size={14} />
+                Agendamento atualizado
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>,
     document.body,

@@ -7,6 +7,7 @@ import { StoryPostCard } from '../components/StoryPostCard';
 import { TextPostCard } from '../components/TextPostCard';
 import { FeedPreviewButton } from '../components/FeedPreviewButton';
 import { InstagramGridPreview } from '../components/InstagramGridPreview';
+import { formatDate } from '../components/PostCard';
 
 export function AprovacoesPage() {
   const { token, bootstrap } = useHub();
@@ -77,20 +78,28 @@ export function AprovacoesPage() {
 
       {withMedia.length > 0 && (
         <>
+          {instagramProfile && selectedIds.size === 0 && (
+            <p className="text-[12px] text-stone-400 mb-3 flex items-center gap-1.5">
+              <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" className="shrink-0"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /></svg>
+              Selecione posts para visualizar como ficarão no feed do Instagram.
+            </p>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {withMedia.map((post, i) => (
-              <InstagramPostCard
-                key={post.id}
-                post={post}
-                token={token}
-                approvals={approvals}
-                instagramProfile={instagramProfile}
-                workspaceName={bootstrap.workspace.name}
-                isSelected={selectedIds.has(post.id)}
-                onToggleSelect={handleToggleSelect}
-                onApprovalSubmitted={handleInvalidate}
-                priority={i === 0}
-              />
+              <div key={post.id}>
+                <p className="text-[11px] text-stone-400 mb-1.5 pl-0.5">{formatDate(post.scheduled_at)}</p>
+                <InstagramPostCard
+                  post={post}
+                  token={token}
+                  approvals={approvals}
+                  instagramProfile={instagramProfile}
+                  workspaceName={bootstrap.workspace.name}
+                  isSelected={selectedIds.has(post.id)}
+                  onToggleSelect={handleToggleSelect}
+                  onApprovalSubmitted={handleInvalidate}
+                  priority={i === 0}
+                />
+              </div>
             ))}
           </div>
         </>
@@ -105,15 +114,17 @@ export function AprovacoesPage() {
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {stories.map(post => (
-              <StoryPostCard
-                key={post.id}
-                post={post}
-                token={token}
-                approvals={approvals}
-                instagramProfile={instagramProfile}
-                workspaceName={bootstrap.workspace.name}
-                onApprovalSubmitted={handleInvalidate}
-              />
+              <div key={post.id}>
+                <p className="text-[11px] text-stone-400 mb-1.5 pl-0.5">{formatDate(post.scheduled_at)}</p>
+                <StoryPostCard
+                  post={post}
+                  token={token}
+                  approvals={approvals}
+                  instagramProfile={instagramProfile}
+                  workspaceName={bootstrap.workspace.name}
+                  onApprovalSubmitted={handleInvalidate}
+                />
+              </div>
             ))}
           </div>
         </div>
@@ -128,13 +139,15 @@ export function AprovacoesPage() {
           )}
           <div className="max-w-[640px] space-y-3">
             {withoutMedia.map(post => (
-              <TextPostCard
-                key={post.id}
-                post={post}
-                token={token}
-                approvals={approvals}
-                onApprovalSubmitted={handleInvalidate}
-              />
+              <div key={post.id}>
+                <p className="text-[11px] text-stone-400 mb-1.5 pl-0.5">{formatDate(post.scheduled_at)}</p>
+                <TextPostCard
+                  post={post}
+                  token={token}
+                  approvals={approvals}
+                  onApprovalSubmitted={handleInvalidate}
+                />
+              </div>
             ))}
           </div>
         </div>
@@ -145,7 +158,9 @@ export function AprovacoesPage() {
           selectedPosts={selectedPosts}
           feedProfile={feedData.profile}
           livePosts={feedData.recentPosts}
+          token={token}
           onClose={() => setShowGrid(false)}
+          onScheduleUpdated={handleInvalidate}
         />
       )}
     </div>

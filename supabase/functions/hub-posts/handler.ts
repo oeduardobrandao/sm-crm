@@ -27,15 +27,57 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
     const json = createJsonResponder(cors);
 
     if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
-    if (req.method !== "GET") return json({ error: "Method not allowed" }, 405);
+    if (req.method !== "GET" && req.method !== "PATCH") {
+      return json({ error: "Method not allowed" }, 405);
+    }
 
     const url = new URL(req.url);
-    const token = url.searchParams.get("token");
+    const token = url.searchParams.get("token")
+      ?? (req.method === "PATCH" ? (await req.clone().json().catch(() => ({}))).token : null);
     if (!token) return json({ error: "token required" }, 400);
 
     const db = deps.createDb();
     const hubToken = await resolveToken(db, token, deps.now());
     if (!hubToken || !hubToken.is_active) return json({ error: "Link inválido." }, 404);
+
+    if (req.method === "PATCH") {
+      const body = await req.json().catch(() => ({}));
+      const updates: { post_id: number; scheduled_at: string | null }[] = body.updates;
+      if (!Array.isArray(updates) || updates.length === 0) {
+        return json({ error: "updates array required" }, 400);
+      }
+
+      const { data: workflows } = await db
+        .from("workflows")
+        .select("id")
+        .eq("cliente_id", hubToken.cliente_id)
+        .eq("conta_id", hubToken.conta_id);
+      const workflowIds = (workflows ?? []).map((w: { id: number }) => w.id);
+
+      const postIds = updates.map((u) => u.post_id);
+      const { data: posts } = await db
+        .from("workflow_posts")
+        .select("id, workflow_id")
+        .in("id", postIds)
+        .in("workflow_id", workflowIds);
+
+      const allowedIds = new Set((posts ?? []).map((p: { id: number }) => p.id));
+      const validUpdates = updates.filter((u) => allowedIds.has(u.post_id));
+
+      if (validUpdates.length === 0) {
+        return json({ error: "No valid posts to update" }, 400);
+      }
+
+      for (const u of validUpdates) {
+        const { error } = await db
+          .from("workflow_posts")
+          .update({ scheduled_at: u.scheduled_at })
+          .eq("id", u.post_id);
+        if (error) return json({ error: error.message }, 500);
+      }
+
+      return json({ ok: true, updated: validUpdates.length });
+    }
 
     const { data: workflows } = await db
       .from("workflows")

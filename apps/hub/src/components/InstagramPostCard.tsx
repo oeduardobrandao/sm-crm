@@ -30,6 +30,7 @@ export function InstagramPostCard({
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+  const [liked, setLiked] = useState(false);
 
   const isPending = !readOnly && post.status === 'enviado_cliente';
   const media = post.media ?? [];
@@ -64,7 +65,7 @@ export function InstagramPostCard({
 
   return (
     <div
-      className={`relative bg-white dark:bg-[#1a1a1a] rounded-xl overflow-hidden border-[1.5px] transition-all ${isSelected ? 'border-[#0095f6] shadow-[0_0_0_2px_rgba(0,149,246,0.2)]' : 'border-[#dbdbdb] dark:border-[#262626]'}`}
+      className={`relative bg-white dark:bg-[#1a1a1a] rounded-xl overflow-hidden transition-all ${isSelected ? 'border-[1.5px] border-[#0095f6] shadow-[0_0_0_2px_rgba(0,149,246,0.2)]' : 'shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]'}`}
       style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' }}
     >
       {/* Selection checkbox */}
@@ -92,7 +93,6 @@ export function InstagramPostCard({
           </div>
         )}
         <span className="text-[11px] font-semibold text-[#262626] dark:text-[#f5f5f5] truncate">{displayName}</span>
-        <span className="ml-auto text-[#262626] dark:text-[#f5f5f5] text-xs">•••</span>
       </div>
 
       {/* Image area */}
@@ -148,7 +148,9 @@ export function InstagramPostCard({
       {/* Action icons */}
       <div className={`px-2.5 ${isCarousel ? 'pt-0' : 'pt-1.5'} pb-0.5`}>
         <div className="flex items-center gap-2.5 text-[#262626] dark:text-[#f5f5f5]">
-          <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+          <button type="button" onClick={() => setLiked(l => !l)} className="transition-transform active:scale-125">
+            <svg width="18" height="18" fill={liked ? '#ed4956' : 'none'} stroke={liked ? '#ed4956' : 'currentColor'} strokeWidth="1.8" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+          </button>
           <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
           <svg className="ml-auto" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
@@ -173,14 +175,14 @@ export function InstagramPostCard({
           <textarea
             value={comentario}
             onChange={e => setComentario(e.target.value)}
-            placeholder="Comentário (opcional para aprovação)…"
+            placeholder="Comentário (necessário para correção)…"
             className="w-full rounded border border-stone-200 dark:border-[#333] px-2.5 py-1.5 text-[11px] resize-none min-h-[48px] bg-white dark:bg-[#0a0a0a] text-stone-900 dark:text-[#f5f5f5] placeholder:text-stone-400 dark:placeholder:text-[#666] focus:outline-none focus:border-stone-300 dark:focus:border-[#555] transition-all"
           />
           <div className="flex gap-1.5">
             <button
               onClick={() => handleAction('aprovado')}
               disabled={submitting}
-              className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded bg-emerald-500 text-white text-[11px] font-semibold hover:bg-emerald-600 disabled:opacity-50 transition-colors"
+              className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-[4px] bg-stone-900 text-white text-[11px] font-semibold hover:bg-stone-800 disabled:opacity-50 transition-colors"
             >
               <CheckCircle size={12} /> Aprovar
             </button>
@@ -188,7 +190,7 @@ export function InstagramPostCard({
               onClick={() => handleAction('correcao')}
               disabled={submitting || !comentario.trim()}
               title={!comentario.trim() ? 'Deixe um comentário para solicitar correção' : undefined}
-              className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded border border-[#dbdbdb] dark:border-[#333] bg-white dark:bg-transparent text-[#262626] dark:text-[#f5f5f5] text-[11px] font-medium hover:bg-stone-50 dark:hover:bg-[#222] disabled:opacity-50 transition-colors"
+              className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-[4px] border border-stone-200 dark:border-stone-700 bg-white dark:bg-transparent text-stone-700 dark:text-stone-300 text-[11px] font-medium hover:bg-stone-50 dark:hover:bg-stone-800 disabled:opacity-50 transition-colors"
             >
               <AlertCircle size={12} /> Correção
             </button>

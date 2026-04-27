@@ -5,6 +5,7 @@ import type { HubPost, HubPostMedia, InstagramFeedProfile, InstagramFeedPost } f
 
 vi.mock('../../api', () => ({
   fetchInstagramFeed: vi.fn(),
+  reorderPostSchedules: vi.fn().mockResolvedValue({ ok: true, updated: 0 }),
 }));
 
 function makeMedia(overrides: Partial<HubPostMedia> = {}): HubPostMedia {
@@ -47,6 +48,7 @@ describe('InstagramGridPreview', () => {
         selectedPosts={[makePost()]}
         feedProfile={profile}
         livePosts={livePosts}
+        token="test-token"
         onClose={vi.fn()}
       />,
     );
@@ -57,17 +59,18 @@ describe('InstagramGridPreview', () => {
     expect(screen.getByText('42')).toBeInTheDocument();
   });
 
-  it('renders pending posts with Novo badge', () => {
+  it('renders pending posts with date badge', () => {
     render(
       <InstagramGridPreview
         selectedPosts={[makePost()]}
         feedProfile={profile}
         livePosts={livePosts}
+        token="test-token"
         onClose={vi.fn()}
       />,
     );
 
-    expect(screen.getByText('Novo')).toBeInTheDocument();
+    expect(screen.getByText('22 de abr.')).toBeInTheDocument();
   });
 
   it('renders live posts with view counts', () => {
@@ -76,6 +79,7 @@ describe('InstagramGridPreview', () => {
         selectedPosts={[makePost()]}
         feedProfile={profile}
         livePosts={livePosts}
+        token="test-token"
         onClose={vi.fn()}
       />,
     );
@@ -91,6 +95,7 @@ describe('InstagramGridPreview', () => {
         selectedPosts={[makePost()]}
         feedProfile={profile}
         livePosts={livePosts}
+        token="test-token"
         onClose={onClose}
       />,
     );
@@ -106,6 +111,7 @@ describe('InstagramGridPreview', () => {
         selectedPosts={[makePost()]}
         feedProfile={profile}
         livePosts={livePosts}
+        token="test-token"
         onClose={onClose}
       />,
     );
@@ -120,6 +126,7 @@ describe('InstagramGridPreview', () => {
         selectedPosts={[makePost()]}
         feedProfile={profile}
         livePosts={livePosts}
+        token="test-token"
         onClose={vi.fn()}
       />,
     );
