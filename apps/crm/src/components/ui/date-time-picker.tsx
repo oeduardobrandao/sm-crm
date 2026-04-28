@@ -1,11 +1,13 @@
 import * as React from 'react';
-import { format, setHours, setMinutes } from 'date-fns';
+import { format, setHours, setMinutes, startOfDay, addMinutes, isBefore, isToday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Calendar as CalendarIcon, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+
+const MIN_SCHEDULE_MINUTES = 15;
 
 export interface DateTimePickerProps {
   value?: Date;
@@ -14,6 +16,15 @@ export interface DateTimePickerProps {
   className?: string;
   disabled?: boolean;
   clearable?: boolean;
+  futureOnly?: boolean;
+}
+
+function roundUpToNext5(date: Date): { h: number; m: number } {
+  let h = date.getHours();
+  let m = Math.ceil(date.getMinutes() / 5) * 5;
+  if (m >= 60) { m = 0; h += 1; }
+  if (h >= 24) { h = 0; m = 0; }
+  return { h, m };
 }
 
 export function DateTimePicker({
@@ -23,11 +34,24 @@ export function DateTimePicker({
   className,
   disabled,
   clearable = true,
+  futureOnly = false,
 }: DateTimePickerProps) {
   const [open, setOpen] = React.useState(false);
 
+  const now = React.useMemo(() => new Date(), [open]);
+  const minDateTime = futureOnly ? addMinutes(now, MIN_SCHEDULE_MINUTES) : undefined;
+  const calendarDisabled = futureOnly
+    ? { before: startOfDay(now) }
+    : undefined;
+
   const hours = value ? value.getHours() : 10;
   const minutes = value ? value.getMinutes() : 0;
+
+  const clampToMin = React.useCallback((date: Date): Date => {
+    if (!minDateTime || !isBefore(date, minDateTime)) return date;
+    const { h, m } = roundUpToNext5(minDateTime);
+    return setMinutes(setHours(date, h), m);
+  }, [minDateTime]);
 
   const handleDateSelect = (date: Date | undefined) => {
     if (!date) {
@@ -35,14 +59,19 @@ export function DateTimePicker({
       return;
     }
     const withTime = setMinutes(setHours(date, hours), minutes);
-    onChange?.(withTime);
+    onChange?.(clampToMin(withTime));
   };
 
   const handleTimeChange = (h: number, m: number) => {
     if (!value) return;
     const updated = setMinutes(setHours(new Date(value), h), m);
-    onChange?.(updated);
+    onChange?.(clampToMin(updated));
   };
+
+  const selectedIsToday = value ? isToday(value) : false;
+  const earliestTime = selectedIsToday && minDateTime
+    ? roundUpToNext5(minDateTime)
+    : { h: 0, m: 0 };
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -92,6 +121,7 @@ export function DateTimePicker({
           locale={ptBR}
           selected={value}
           onSelect={handleDateSelect}
+          disabled={calendarDisabled}
           initialFocus
         />
         <div className="border-t px-3 py-2 flex items-center gap-2">
@@ -102,7 +132,9 @@ export function DateTimePicker({
             onChange={(e) => handleTimeChange(parseInt(e.target.value, 10), minutes)}
           >
             {Array.from({ length: 24 }, (_, i) => (
-              <option key={i} value={i}>{String(i).padStart(2, '0')}</option>
+              <option key={i} value={i} disabled={i < earliestTime.h}>
+                {String(i).padStart(2, '0')}
+              </option>
             ))}
           </select>
           <span className="text-sm text-muted-foreground">:</span>
@@ -112,10 +144,17 @@ export function DateTimePicker({
             onChange={(e) => handleTimeChange(hours, parseInt(e.target.value, 10))}
           >
             {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map((m) => (
-              <option key={m} value={m}>{String(m).padStart(2, '0')}</option>
+              <option key={m} value={m} disabled={hours === earliestTime.h && m < earliestTime.m}>
+                {String(m).padStart(2, '0')}
+              </option>
             ))}
           </select>
         </div>
+        {futureOnly && (
+          <div className="border-t px-3 py-1.5">
+            <p className="text-[11px] text-muted-foreground">Mínimo {MIN_SCHEDULE_MINUTES} min no futuro</p>
+          </div>
+        )}
       </PopoverContent>
     </Popover>
   );

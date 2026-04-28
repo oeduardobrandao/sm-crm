@@ -706,6 +706,7 @@ function SortablePostItem({
                 value={post.scheduled_at ? new Date(post.scheduled_at) : undefined}
                 onChange={(date) => onFieldChange('scheduled_at', date?.toISOString() ?? null)}
                 disabled={isScheduleLocked}
+                futureOnly
                 className="w-full"
               />
             </div>
