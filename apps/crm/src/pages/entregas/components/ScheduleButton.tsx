@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import { Calendar, AlertCircle, RefreshCw, X, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialog, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import type { WorkflowPost } from '../../../store';
@@ -18,13 +18,34 @@ interface ScheduleButtonProps {
 export function ScheduleButton({ post, hasInstagramAccount, onStatusChange }: ScheduleButtonProps) {
   const [loading, setLoading] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [publishPct, setPublishPct] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopProgressTimer = useCallback(() => {
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+  }, []);
+  useEffect(() => stopProgressTimer, [stopProgressTimer]);
 
   if (!hasInstagramAccount) return null;
 
   const handlePublishNow = async () => {
+    setPublishing(true);
+    setPublishPct(0);
     setLoading(true);
+
+    let pct = 0;
+    timerRef.current = setInterval(() => {
+      pct += (90 - pct) * 0.08;
+      setPublishPct(Math.round(pct));
+    }, 300);
+
     try {
       const result = await publishInstagramPostNow(post.id!);
+      stopProgressTimer();
+      setPublishPct(100);
+      await new Promise(r => setTimeout(r, 600));
+      setConfirmOpen(false);
       if (result.status === 'postado') {
         toast.success('Post publicado no Instagram!');
       } else {
@@ -32,9 +53,13 @@ export function ScheduleButton({ post, hasInstagramAccount, onStatusChange }: Sc
       }
       onStatusChange();
     } catch (err: any) {
+      stopProgressTimer();
+      setConfirmOpen(false);
       toast.error(err.message);
     } finally {
       setLoading(false);
+      setPublishing(false);
+      setPublishPct(0);
     }
   };
 
@@ -135,24 +160,38 @@ export function ScheduleButton({ post, hasInstagramAccount, onStatusChange }: Sc
             <AlertCircle className="h-3 w-3" /> Falta: {missingItems.join(', ')}
           </p>
         )}
-        <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialog open={confirmOpen} onOpenChange={(o) => { if (!publishing) setConfirmOpen(o); }}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Publicar agora?</AlertDialogTitle>
+              <AlertDialogTitle>{publishing ? 'Publicando…' : 'Publicar agora?'}</AlertDialogTitle>
               <AlertDialogDescription>
-                O post será publicado imediatamente no Instagram. Esta ação não pode ser desfeita.
+                {publishing
+                  ? 'Aguarde enquanto o post é publicado no Instagram.'
+                  : 'O post será publicado imediatamente no Instagram. Esta ação não pode ser desfeita.'}
               </AlertDialogDescription>
             </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel disabled={loading}>Cancelar</AlertDialogCancel>
-              <AlertDialogAction
-                disabled={loading}
-                onClick={handlePublishNow}
-                style={{ background: '#E1306C', color: 'white' }}
-              >
-                {loading ? 'Publicando…' : 'Publicar'}
-              </AlertDialogAction>
-            </AlertDialogFooter>
+            {publishing && (
+              <div className="px-1">
+                <div className="flex items-center justify-between text-xs text-stone-500 mb-1.5">
+                  <span>{publishPct < 100 ? 'Enviando para o Instagram…' : 'Concluído!'}</span>
+                  <span className="tabular-nums font-medium text-stone-900">{publishPct}%</span>
+                </div>
+                <div className="h-2 rounded-full bg-stone-200 overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-300 ease-out"
+                    style={{ width: `${publishPct}%`, background: publishPct < 100 ? '#E1306C' : '#3ecf8e' }}
+                  />
+                </div>
+              </div>
+            )}
+            {!publishing && (
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <Button onClick={handlePublishNow} style={{ background: '#E1306C', color: 'white' }}>
+                  Publicar
+                </Button>
+              </AlertDialogFooter>
+            )}
           </AlertDialogContent>
         </AlertDialog>
       </div>
