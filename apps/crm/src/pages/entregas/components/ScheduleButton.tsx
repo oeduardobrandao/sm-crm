@@ -1,9 +1,13 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Calendar, AlertCircle, RefreshCw, X } from 'lucide-react';
+import { Calendar, AlertCircle, RefreshCw, X, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import type { WorkflowPost } from '../../../store';
-import { scheduleInstagramPost, cancelInstagramSchedule, retryInstagramPublish } from '../../../services/instagram';
+import { scheduleInstagramPost, cancelInstagramSchedule, retryInstagramPublish, publishInstagramPostNow } from '../../../services/instagram';
 
 interface ScheduleButtonProps {
   post: WorkflowPost;
@@ -13,8 +17,26 @@ interface ScheduleButtonProps {
 
 export function ScheduleButton({ post, hasInstagramAccount, onStatusChange }: ScheduleButtonProps) {
   const [loading, setLoading] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   if (!hasInstagramAccount) return null;
+
+  const handlePublishNow = async () => {
+    setLoading(true);
+    try {
+      const result = await publishInstagramPostNow(post.id!);
+      if (result.status === 'postado') {
+        toast.success('Post publicado no Instagram!');
+      } else {
+        toast.info(result.message ?? 'Post será publicado automaticamente em instantes.');
+      }
+      onStatusChange();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSchedule = async () => {
     setLoading(true);
@@ -89,22 +111,50 @@ export function ScheduleButton({ post, hasInstagramAccount, onStatusChange }: Sc
 
   if (post.status === 'aprovado_cliente') {
     const canSchedule = !!post.scheduled_at && !!post.ig_caption?.trim();
+    const canPublishNow = !!post.ig_caption?.trim();
     const missingItems: string[] = [];
     if (!post.scheduled_at) missingItems.push('data de publicação');
     if (!post.ig_caption?.trim()) missingItems.push('legenda do Instagram');
 
     return (
       <div className="mt-3">
-        <Button onClick={handleSchedule} disabled={!canSchedule || loading} size="sm"
-          className="text-xs font-semibold"
-          style={canSchedule ? { background: '#eab308', color: '#12151a' } : undefined}>
-          <Calendar className="h-3 w-3 mr-1" /> Agendar publicação
-        </Button>
-        {!canSchedule && missingItems.length > 0 && (
+        <div className="flex items-center gap-2">
+          <Button onClick={handleSchedule} disabled={!canSchedule || loading} size="sm"
+            className="text-xs font-semibold"
+            style={canSchedule ? { background: '#eab308', color: '#12151a' } : undefined}>
+            <Calendar className="h-3 w-3 mr-1" /> Agendar publicação
+          </Button>
+          <Button onClick={() => setConfirmOpen(true)} disabled={!canPublishNow || loading} size="sm"
+            className="text-xs font-semibold"
+            style={canPublishNow ? { background: '#E1306C', color: 'white' } : undefined}>
+            <Send className="h-3 w-3 mr-1" /> Publicar agora
+          </Button>
+        </div>
+        {!canPublishNow && missingItems.length > 0 && (
           <p className="text-xs mt-1 flex items-center gap-1" style={{ color: '#f5a342' }}>
             <AlertCircle className="h-3 w-3" /> Falta: {missingItems.join(', ')}
           </p>
         )}
+        <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Publicar agora?</AlertDialogTitle>
+              <AlertDialogDescription>
+                O post será publicado imediatamente no Instagram. Esta ação não pode ser desfeita.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={loading}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                disabled={loading}
+                onClick={handlePublishNow}
+                style={{ background: '#E1306C', color: 'white' }}
+              >
+                {loading ? 'Publicando…' : 'Publicar'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     );
   }

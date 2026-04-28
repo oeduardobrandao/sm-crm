@@ -131,6 +131,7 @@ export interface ScheduleValidationResult {
 export async function validateForScheduling(
   db: DbClient,
   postId: number,
+  opts?: { skipDateCheck?: boolean },
 ): Promise<ScheduleValidationResult> {
   const errors: string[] = [];
 
@@ -141,10 +142,12 @@ export async function validateForScheduling(
     .single();
   if (!post) return { ok: false, errors: ["Post não encontrado."] };
 
-  if (!post.scheduled_at) {
-    errors.push("Data de publicação não definida.");
-  } else if (new Date(post.scheduled_at).getTime() < Date.now() + 10 * 60 * 1000) {
-    errors.push("Data de publicação deve ser pelo menos 10 minutos no futuro.");
+  if (!opts?.skipDateCheck) {
+    if (!post.scheduled_at) {
+      errors.push("Data de publicação não definida.");
+    } else if (new Date(post.scheduled_at).getTime() < Date.now() + 10 * 60 * 1000) {
+      errors.push("Data de publicação deve ser pelo menos 10 minutos no futuro.");
+    }
   }
   if (!post.ig_caption?.trim()) errors.push("Legenda do Instagram não definida.");
 
