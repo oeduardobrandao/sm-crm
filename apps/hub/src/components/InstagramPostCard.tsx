@@ -27,7 +27,6 @@ export function InstagramPostCard({
   autoPublishOnApproval = false,
 }: InstagramPostCardProps) {
   const [currentSlide, setCurrentSlide] = useState(0);
-  const [captionExpanded, setCaptionExpanded] = useState(false);
   const [comentario, setComentario] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -48,7 +47,6 @@ export function InstagramPostCard({
           ? rawText.slice(legendaIdx + 'LEGENDA'.length).replace(/^[:\s\n]+/, '').trim()
           : rawText;
       })();
-  const truncatedCaption = caption.length > 125 ? caption.slice(0, 125) + '...' : caption;
 
   async function handleAction(action: 'aprovado' | 'correcao') {
     setSubmitting(true);
@@ -74,7 +72,7 @@ export function InstagramPostCard({
 
   return (
     <div
-      className={`relative bg-white dark:bg-[#1a1a1a] rounded-xl overflow-hidden transition-all ${isSelected ? 'border-[1.5px] border-[#0095f6] shadow-[0_0_0_2px_rgba(0,149,246,0.2)]' : 'shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]'}`}
+      className={`relative flex flex-col h-full bg-white dark:bg-[#1a1a1a] rounded-xl overflow-hidden transition-all ${isSelected ? 'border-[1.5px] border-[#0095f6] shadow-[0_0_0_2px_rgba(0,149,246,0.2)]' : 'shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]'}`}
       style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' }}
     >
       {/* Selection checkbox */}
@@ -105,7 +103,7 @@ export function InstagramPostCard({
       </div>
 
       {/* Image area */}
-      <div className="relative aspect-[4/5] bg-stone-100 dark:bg-stone-900">
+      <div className="relative aspect-[4/5] bg-stone-100 dark:bg-stone-900 group/carousel">
         {currentMedia && (
           <button type="button" onClick={() => setLightboxIdx(currentSlide)} className="w-full h-full">
             {currentMedia.kind === 'image' ? (
@@ -134,25 +132,23 @@ export function InstagramPostCard({
         )}
 
         {isCarousel && currentSlide > 0 && (
-          <button onClick={prevSlide} className="absolute left-1.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/80 dark:bg-black/60 flex items-center justify-center shadow-sm text-[#262626] dark:text-white">
+          <button onClick={prevSlide} className="absolute left-1.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/80 dark:bg-black/60 flex items-center justify-center shadow-sm text-[#262626] dark:text-white opacity-0 group-hover/carousel:opacity-100 transition-opacity">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M15 18l-6-6 6-6"/></svg>
           </button>
         )}
         {isCarousel && currentSlide < media.length - 1 && (
-          <button onClick={nextSlide} className="absolute right-1.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/80 dark:bg-black/60 flex items-center justify-center shadow-sm text-[#262626] dark:text-white">
+          <button onClick={nextSlide} className="absolute right-1.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/80 dark:bg-black/60 flex items-center justify-center shadow-sm text-[#262626] dark:text-white opacity-0 group-hover/carousel:opacity-100 transition-opacity">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M9 18l6-6-6-6"/></svg>
           </button>
         )}
       </div>
 
-      {/* Carousel dots */}
-      {isCarousel && (
-        <div className="flex justify-center gap-0.5 py-1.5">
-          {media.map((_, i) => (
-            <div key={i} data-carousel-dot className={`w-1 h-1 rounded-full ${i === currentSlide ? 'bg-[#0095f6]' : 'bg-[#c7c7c7] dark:bg-[#555]'}`} />
-          ))}
-        </div>
-      )}
+      {/* Carousel dots (fixed height so feed and carousel cards match) */}
+      <div className="flex justify-center gap-0.5 py-1.5 min-h-[18px]">
+        {isCarousel && media.map((_, i) => (
+          <div key={i} data-carousel-dot className={`w-1 h-1 rounded-full ${i === currentSlide ? 'bg-[#0095f6]' : 'bg-[#c7c7c7] dark:bg-[#555]'}`} />
+        ))}
+      </div>
 
       {/* Action icons */}
       <div className={`px-2.5 ${isCarousel ? 'pt-0' : 'pt-1.5'} pb-0.5`}>
@@ -167,14 +163,13 @@ export function InstagramPostCard({
       </div>
 
       {/* Caption */}
-      <div className="px-2.5 py-1">
-        <p className="text-[11px] text-[#262626] dark:text-[#f5f5f5] leading-[1.4]">
-          <span className="font-semibold">{displayName}</span>{' '}
-          {captionExpanded ? caption : truncatedCaption}
-          {caption.length > 125 && !captionExpanded && (
-            <button onClick={() => setCaptionExpanded(true)} className="text-[#737373] dark:text-[#a8a8a8] ml-0.5">mais</button>
-          )}
-        </p>
+      <div className="flex-1 flex flex-col px-2.5 py-1">
+        <div className="flex-1 max-h-[72px] overflow-y-auto overscroll-contain" style={{ scrollbarWidth: 'thin' }}>
+          <p className="text-[11px] text-[#262626] dark:text-[#f5f5f5] leading-[1.4]">
+            <span className="font-semibold">{displayName}</span>{' '}
+            {caption}
+          </p>
+        </div>
         <p className="text-[10px] text-[#737373] dark:text-[#a8a8a8] mt-1">Agendado: {formatDate(post.scheduled_at)}</p>
       </div>
 

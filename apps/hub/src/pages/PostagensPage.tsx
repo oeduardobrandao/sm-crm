@@ -77,7 +77,11 @@ export function PostagensPage() {
       acc[post.workflow_id].posts.push(post);
       return acc;
     }, {})
-  ).sort((a, b) => a.titulo.localeCompare(b.titulo, 'pt-BR'));
+  ).sort((a, b) => {
+    const aDate = a.posts[0]?.workflow_created_at ?? '';
+    const bDate = b.posts[0]?.workflow_created_at ?? '';
+    return bDate.localeCompare(aDate);
+  });
 
   groups.forEach(g => {
     g.posts.sort((a, b) => {

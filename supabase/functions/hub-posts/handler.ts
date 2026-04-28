@@ -124,13 +124,13 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
 
     const { data: posts } = await db
       .from("workflow_posts")
-      .select("id, titulo, tipo, status, ordem, conteudo_plain, scheduled_at, ig_caption, instagram_permalink, published_at, publish_error, workflow_id, workflows(titulo)")
+      .select("id, titulo, tipo, status, ordem, conteudo_plain, scheduled_at, ig_caption, instagram_permalink, published_at, publish_error, workflow_id, workflows(titulo, created_at)")
       .in("workflow_id", workflowIds)
       .order("scheduled_at", { ascending: true });
 
     const flatPosts = (posts ?? []).map((post: any) => {
       const { workflows: workflow, ...rest } = post;
-      return { ...rest, workflow_titulo: workflow?.titulo ?? "" };
+      return { ...rest, workflow_titulo: workflow?.titulo ?? "", workflow_created_at: workflow?.created_at ?? "" };
     });
 
     const postIds = flatPosts.map((post: { id: number }) => post.id);

@@ -41,6 +41,7 @@ export interface HubPost {
   publish_error: string | null;
   workflow_id: number;
   workflow_titulo: string;
+  workflow_created_at: string;
   media: HubPostMedia[];
   cover_media: HubPostMedia | null;
 }
