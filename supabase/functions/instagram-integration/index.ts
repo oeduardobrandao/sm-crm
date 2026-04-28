@@ -230,12 +230,19 @@ Deno.serve(async (req) => {
         }
 
         const shortLivedToken = slTokenData.access_token;
-        const igBusinessId = String(slTokenData.user_id);
-        console.error('[IG-CALLBACK] Token exchange OK. user_id:', igBusinessId, 'token_type:', slTokenData.token_type, 'permissions:', JSON.stringify(slTokenData.permissions), 'keys:', Object.keys(slTokenData).join(','));
-
         if (!shortLivedToken) {
             throw new Error('Instagram did not return an access token');
         }
+
+        // Fetch the real user ID via /me to avoid JSON number precision loss
+        // (Instagram user IDs exceed Number.MAX_SAFE_INTEGER)
+        const meRes = await fetch(`https://graph.instagram.com/me?fields=id&access_token=${shortLivedToken}`);
+        const meData = await meRes.json();
+        if (meData.error || !meData.id) {
+            throw new Error(`Failed to fetch Instagram user ID: ${meData.error?.message ?? 'no id returned'}`);
+        }
+        const igBusinessId = String(meData.id);
+        console.error('[IG-CALLBACK] Token exchange OK. user_id (from /me):', igBusinessId, 'token_type:', slTokenData.token_type, 'permissions:', JSON.stringify(slTokenData.permissions));
 
         // Exchange short-lived token for long-lived token (retry on transient 500s)
         let longLivedToken = shortLivedToken;

@@ -12,6 +12,7 @@ export const r2 = new S3Client({
   region: "auto",
   endpoint: `https://${ACCOUNT_ID}.r2.cloudflarestorage.com`,
   credentials: { accessKeyId: ACCESS_KEY_ID, secretAccessKey: SECRET_ACCESS_KEY },
+  forcePathStyle: true,
 });
 
 export async function signPutUrl(key: string, mimeType: string, expiresSeconds = 900) {

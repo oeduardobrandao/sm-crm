@@ -211,7 +211,7 @@ export async function validateForScheduling(
 
 // --- Graph API Helpers ---
 
-const GRAPH_BASE = "https://graph.instagram.com";
+const GRAPH_BASE = "https://graph.instagram.com/v22.0";
 
 export async function createSingleImageContainer(
   igUserId: string,
@@ -225,7 +225,11 @@ export async function createSingleImageContainer(
     body: JSON.stringify({ image_url: imageUrl, caption, access_token: token }),
   });
   const data = await res.json();
-  if (data.error) throw new Error(data.error.message);
+  if (data.error) {
+    console.error(`[IG-PUBLISH] Graph API error (HTTP ${res.status}):`, JSON.stringify(data.error));
+    throw new Error(data.error.message);
+  }
+  console.log(`[IG-PUBLISH] Container created: ${data.id}`);
   return { id: data.id };
 }
 
