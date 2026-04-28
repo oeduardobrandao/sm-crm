@@ -98,6 +98,7 @@ export function AprovacoesPage() {
                   onToggleSelect={handleToggleSelect}
                   onApprovalSubmitted={handleInvalidate}
                   priority={i === 0}
+                  autoPublishOnApproval={data?.autoPublishOnApproval ?? false}
                 />
               </div>
             ))}

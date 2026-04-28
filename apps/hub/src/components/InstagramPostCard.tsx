@@ -18,11 +18,13 @@ interface InstagramPostCardProps {
   readOnly?: boolean;
   /** Mark the first visible card's image as LCP priority */
   priority?: boolean;
+  autoPublishOnApproval?: boolean;
 }
 
 export function InstagramPostCard({
   post, token, approvals, instagramProfile, workspaceName,
   isSelected, onToggleSelect, onApprovalSubmitted, readOnly, priority,
+  autoPublishOnApproval = false,
 }: InstagramPostCardProps) {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [captionExpanded, setCaptionExpanded] = useState(false);
@@ -37,11 +39,15 @@ export function InstagramPostCard({
   const isCarousel = media.length > 1;
   const displayName = instagramProfile?.username ?? workspaceName ?? '';
   const profilePic = instagramProfile?.profilePictureUrl;
-  const rawText = post.conteudo_plain ?? '';
-  const legendaIdx = rawText.toUpperCase().indexOf('LEGENDA');
-  const caption = legendaIdx !== -1
-    ? rawText.slice(legendaIdx + 'LEGENDA'.length).replace(/^[:\s\n]+/, '').trim()
-    : rawText;
+  const caption = post.ig_caption
+    ? post.ig_caption
+    : (() => {
+        const rawText = post.conteudo_plain || '';
+        const legendaIdx = rawText.toUpperCase().indexOf('LEGENDA');
+        return legendaIdx !== -1
+          ? rawText.slice(legendaIdx + 'LEGENDA'.length).replace(/^[:\s\n]+/, '').trim()
+          : rawText;
+      })();
   const truncatedCaption = caption.length > 125 ? caption.slice(0, 125) + '...' : caption;
 
   async function handleAction(action: 'aprovado' | 'correcao') {
@@ -169,6 +175,60 @@ export function InstagramPostCard({
         <p className="text-[10px] text-[#737373] dark:text-[#a8a8a8] mt-1">Agendado: {formatDate(post.scheduled_at)}</p>
       </div>
 
+      {/* Agendado banner */}
+      {post.status === 'agendado' && post.scheduled_at && (
+        <div style={{
+          padding: '0.75rem 1rem',
+          borderTop: '1px solid var(--border-color)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem',
+          background: 'rgba(62, 207, 142, 0.03)',
+        }}>
+          <div style={{ width: 8, height: 8, background: '#3ecf8e', borderRadius: '50%', flexShrink: 0 }} />
+          <div>
+            <div style={{ color: '#3ecf8e', fontSize: '0.8rem', fontWeight: 600 }}>Agendado para publicação</div>
+            <div style={{ color: 'var(--text-light)', fontSize: '0.75rem' }}>
+              {new Date(post.scheduled_at).toLocaleDateString('pt-BR', {
+                day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Postado banner */}
+      {post.status === 'postado' && (
+        <div style={{
+          padding: '0.75rem 1rem',
+          borderTop: '1px solid var(--border-color)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          background: 'rgba(234, 179, 8, 0.03)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{ color: '#eab308', fontSize: '0.9rem' }}>✓</span>
+            <div>
+              <div style={{ color: '#eab308', fontSize: '0.8rem', fontWeight: 600 }}>Publicado</div>
+              {post.published_at && (
+                <div style={{ color: 'var(--text-light)', fontSize: '0.75rem' }}>
+                  {new Date(post.published_at).toLocaleDateString('pt-BR', {
+                    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+          {post.instagram_permalink && (
+            <a href={post.instagram_permalink} target="_blank" rel="noopener noreferrer"
+              style={{ color: '#E1306C', fontSize: '0.75rem', fontWeight: 500, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+              Ver no Instagram <span style={{ fontSize: '0.7rem' }}>↗</span>
+            </a>
+          )}
+        </div>
+      )}
+
       {/* Approval buttons */}
       {isPending && !result && (
         <div className="border-t border-[#efefef] dark:border-[#262626] px-2.5 py-2 space-y-1.5">
@@ -195,6 +255,28 @@ export function InstagramPostCard({
               <AlertCircle size={12} /> Correção
             </button>
           </div>
+          {autoPublishOnApproval && post.scheduled_at && post.ig_caption && isPending && (
+            <div style={{
+              marginTop: '0.75rem',
+              padding: '0.6rem',
+              background: 'rgba(234, 179, 8, 0.06)',
+              border: '1px solid rgba(234, 179, 8, 0.19)',
+              borderRadius: 6,
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '0.4rem',
+            }}>
+              <span style={{ color: '#eab308', fontSize: '0.8rem', flexShrink: 0 }}>⚡</span>
+              <div style={{ color: '#eab308', fontSize: '0.7rem', lineHeight: 1.4 }}>
+                Ao aprovar, este post será publicado automaticamente no Instagram em{' '}
+                <strong>
+                  {new Date(post.scheduled_at).toLocaleDateString('pt-BR', {
+                    day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+                  })}
+                </strong>.
+              </div>
+            </div>
+          )}
         </div>
       )}
 
