@@ -4538,9 +4538,22 @@ body.role-agent input[name="valor_total"] {
 }
 
 .drawer-post-meta-row {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+.drawer-post-meta-row > .drawer-post-field {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+
+.drawer-post-meta-row > .drawer-post-field:first-child {
+  flex: 2 1 200px;
+}
+
+.drawer-post-meta-row > .drawer-post-field:last-child {
+  flex: 1.5 1 200px;
 }
 
 .drawer-post-field {
