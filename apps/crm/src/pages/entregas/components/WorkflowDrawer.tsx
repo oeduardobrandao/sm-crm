@@ -45,6 +45,7 @@ const STATUS_LABELS: Record<WorkflowPost['status'], string> = {
   correcao_cliente: 'Correção solicitada',
   agendado: 'Agendado',
   postado: 'Postado',
+  falha_publicacao: 'Falha na publicação',
 };
 
 const STATUS_CLASS: Record<WorkflowPost['status'], string> = {
@@ -56,6 +57,7 @@ const STATUS_CLASS: Record<WorkflowPost['status'], string> = {
   correcao_cliente: 'post-status--correcao',
   agendado: 'post-status--agendado',
   postado: 'post-status--postado',
+  falha_publicacao: 'status-danger',
 };
 
 // ── Props ─────────────────────────────────────────────────────────────────────

@@ -1203,9 +1203,17 @@ export interface WorkflowPost {
     | 'aprovado_cliente'
     | 'correcao_cliente'
     | 'agendado'
-    | 'postado';
+    | 'postado'
+    | 'falha_publicacao';
   responsavel_id?: number | null;
   scheduled_at?: string | null;
+  ig_caption?: string | null;
+  instagram_permalink?: string | null;
+  published_at?: string | null;
+  publish_error?: string | null;
+  publish_retry_count?: number;
+  instagram_container_id?: string | null;
+  instagram_media_id?: string | null;
   created_at?: string;
   updated_at?: string;
 }
