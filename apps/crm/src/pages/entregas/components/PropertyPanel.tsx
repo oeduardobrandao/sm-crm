@@ -44,7 +44,7 @@ export function PropertyPanel({ templateId, postId, workflowId, propertyValues, 
   return (
     <div style={{ marginBottom: '1rem' }}>
       <div style={{
-        background: 'var(--surface-1)',
+        background: 'var(--card-bg)',
         border: '1px solid var(--border-color)',
         borderRadius: 8, padding: '10px 12px', marginBottom: 4,
       }}>

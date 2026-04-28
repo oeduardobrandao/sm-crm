@@ -56,7 +56,7 @@ export function DateTimePicker({
             !value && 'text-muted-foreground',
             className,
           )}
-          style={{ padding: '0.4rem 0.6rem', borderRadius: 6, fontSize: '0.82rem' }}
+          style={{ padding: '0.4rem 0.6rem', borderRadius: 6, fontSize: '0.82rem', background: 'var(--card-bg)' }}
         >
           <CalendarIcon className="mr-2 h-4 w-4" />
           {value
