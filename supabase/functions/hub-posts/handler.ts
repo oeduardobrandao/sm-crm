@@ -62,6 +62,24 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
         .in("workflow_id", workflowIds);
 
       const allowedIds = new Set((posts ?? []).map((p: { id: number }) => p.id));
+
+      const { data: postStatuses } = await db
+        .from("workflow_posts")
+        .select("id, status")
+        .in("id", Array.from(allowedIds));
+
+      const lockedStatuses = new Set(["agendado", "postado", "falha_publicacao"]);
+      const lockedPosts = (postStatuses ?? []).filter(
+        (p: { id: number; status: string }) => lockedStatuses.has(p.status)
+      );
+      if (lockedPosts.length > 0) {
+        const lockedIds = lockedPosts.map((p: { id: number }) => p.id);
+        return json({
+          error: "Não é possível alterar a data de posts agendados ou publicados. Cancele o agendamento primeiro.",
+          locked_post_ids: lockedIds,
+        }, 409);
+      }
+
       const validUpdates = updates.filter((u) => allowedIds.has(u.post_id));
 
       if (validUpdates.length === 0) {
@@ -106,7 +124,7 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
 
     const { data: posts } = await db
       .from("workflow_posts")
-      .select("id, titulo, tipo, status, ordem, conteudo_plain, scheduled_at, workflow_id, workflows(titulo)")
+      .select("id, titulo, tipo, status, ordem, conteudo_plain, scheduled_at, ig_caption, instagram_permalink, published_at, publish_error, workflow_id, workflows(titulo)")
       .in("workflow_id", workflowIds)
       .order("scheduled_at", { ascending: true });
 
@@ -185,6 +203,12 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
       .eq("client_id", hubToken.cliente_id)
       .maybeSingle();
 
+    const { data: clienteRow } = await db
+      .from("clientes")
+      .select("auto_publish_on_approval")
+      .eq("id", hubToken.cliente_id)
+      .single();
+
     return json({
       posts: flatPostsWithMedia,
       postApprovals: postApprovals ?? [],
@@ -193,6 +217,7 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
       instagramProfile: igAccount
         ? { username: igAccount.username, profilePictureUrl: igAccount.profile_picture_url }
         : null,
+      autoPublishOnApproval: clienteRow?.auto_publish_on_approval ?? false,
     });
   };
 }
