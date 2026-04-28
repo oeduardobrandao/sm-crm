@@ -183,7 +183,7 @@ Deno.serve(async (req) => {
         // Pass clientId in signed state (HMAC-SHA256)
         const state = await createSignedState(clientId);
         
-        const oauthUrl = `https://www.instagram.com/oauth/authorize?client_id=${META_APP_ID}&redirect_uri=${encodeURIComponent(functionBaseUrl)}&response_type=code&scope=instagram_business_basic,instagram_business_manage_insights&state=${state}`;
+        const oauthUrl = `https://www.instagram.com/oauth/authorize?client_id=${META_APP_ID}&redirect_uri=${encodeURIComponent(functionBaseUrl)}&response_type=code&scope=instagram_business_basic,instagram_business_manage_insights,instagram_business_content_publish&state=${state}`;
 
         return new Response(JSON.stringify({ url: oauthUrl }), { 
             headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
