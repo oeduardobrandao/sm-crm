@@ -52,10 +52,11 @@ export function DateTimePicker({
           variant="outline"
           disabled={disabled}
           className={cn(
-            'h-9 justify-start text-left font-normal',
+            'h-auto justify-start text-left font-normal',
             !value && 'text-muted-foreground',
             className,
           )}
+          style={{ padding: '0.4rem 0.6rem', borderRadius: 6, fontSize: '0.82rem' }}
         >
           <CalendarIcon className="mr-2 h-4 w-4" />
           {value
