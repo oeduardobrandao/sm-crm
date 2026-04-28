@@ -903,9 +903,10 @@ export async function getAllEtapasWithWorkflow(): Promise<(WorkflowEtapa & {
 }
 
 export async function addWorkflowEtapa(e: Omit<WorkflowEtapa, 'id'>): Promise<WorkflowEtapa> {
+  const payload = { ...e, responsavel_id: e.responsavel_id || null };
   const { data, error } = await supabase
     .from('workflow_etapas')
-    .insert(e)
+    .insert(payload)
     .select()
     .single();
   if (error) throw error;

@@ -240,6 +240,10 @@ export function NewWorkflowModal({
     if (!fTitulo || !fClienteId) { toast.error('Título e cliente são obrigatórios.'); return; }
     const validEtapas = etapas.filter(e => e.nome.trim());
     if (validEtapas.length === 0) { toast.error('Adicione pelo menos uma etapa.'); return; }
+    if (validEtapas.some(e => e.responsavelId == null)) {
+      toast.error('Todas as etapas precisam de um responsável atribuído.');
+      return;
+    }
 
     // Mode-specific validation
     if (fModoPrazo === 'data_fixa') {
@@ -288,6 +292,8 @@ export function NewWorkflowModal({
       deliveryDeadlines = computeDeliveryDeadlines(etapasMock, deliveryDate);
     }
 
+    const validMemberIds = new Set(membros.map(m => m.id));
+
     setSaving(true);
     let wf: Workflow | null = null;
     try {
@@ -309,6 +315,7 @@ export function NewWorkflowModal({
         } else if (fModoPrazo === 'data_entrega' && deliveryDeadlines) {
           dataLimite = deliveryDeadlines.get(i) || null;
         }
+        const safeResponsavelId = e.responsavelId && validMemberIds.has(e.responsavelId) ? e.responsavelId : null;
         await addWorkflowEtapa({
           workflow_id: wf.id!,
           ordem: i,
@@ -316,7 +323,7 @@ export function NewWorkflowModal({
           prazo_dias: e.prazo,
           tipo_prazo: e.tipoPrazo,
           tipo: e.tipo,
-          responsavel_id: e.responsavelId,
+          responsavel_id: safeResponsavelId,
           status: i === 0 ? 'ativo' : 'pendente',
           iniciado_em: i === 0 ? now : null,
           concluido_em: null,

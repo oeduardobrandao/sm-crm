@@ -32,6 +32,31 @@ const STATUS_LABELS: Record<string, string> = {
 
 const LOCKED_STATUSES = new Set(['agendado', 'postado', 'falha_publicacao']);
 
+function StatusTag({ status }: { status: string }) {
+  const color = STATUS_COLORS[status] ?? '#94a3b8';
+  const label = STATUS_LABELS[status] ?? status;
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 5,
+        fontSize: '0.65rem',
+        fontWeight: 600,
+        letterSpacing: '0.02em',
+        color,
+        background: `${color}14`,
+        border: `1px solid ${color}30`,
+        borderRadius: 6,
+        padding: '0.2rem 0.5rem',
+      }}
+    >
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: color, flexShrink: 0 }} />
+      {label}
+    </span>
+  );
+}
+
 export function PostagensPage() {
   const { token, bootstrap } = useHub();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -115,17 +140,19 @@ export function PostagensPage() {
                 {!collapsed.has(group.titulo) && withMedia.length > 0 && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     {withMedia.map((post, i) => (
-                      <InstagramPostCard
-                        key={post.id}
-                        post={post}
-                        token={token}
-                        approvals={approvals}
-                        instagramProfile={instagramProfile}
-                        workspaceName={bootstrap.workspace.name}
-                        readOnly
-                        priority={i === 0}
-                        autoPublishOnApproval={data?.autoPublishOnApproval ?? false}
-                      />
+                      <div key={post.id} className="flex flex-col gap-1.5">
+                        <StatusTag status={post.status} />
+                        <InstagramPostCard
+                          post={post}
+                          token={token}
+                          approvals={approvals}
+                          instagramProfile={instagramProfile}
+                          workspaceName={bootstrap.workspace.name}
+                          readOnly
+                          priority={i === 0}
+                          autoPublishOnApproval={data?.autoPublishOnApproval ?? false}
+                        />
+                      </div>
                     ))}
                   </div>
                 )}
@@ -134,15 +161,17 @@ export function PostagensPage() {
                   <div className={withMedia.length > 0 ? 'mt-4' : ''}>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                       {stories.map(post => (
-                        <StoryPostCard
-                          key={post.id}
-                          post={post}
-                          token={token}
-                          approvals={approvals}
-                          instagramProfile={instagramProfile}
-                          workspaceName={bootstrap.workspace.name}
-                          readOnly
-                        />
+                        <div key={post.id} className="flex flex-col gap-1.5">
+                          <StatusTag status={post.status} />
+                          <StoryPostCard
+                            post={post}
+                            token={token}
+                            approvals={approvals}
+                            instagramProfile={instagramProfile}
+                            workspaceName={bootstrap.workspace.name}
+                            readOnly
+                          />
+                        </div>
                       ))}
                     </div>
                   </div>
@@ -152,13 +181,15 @@ export function PostagensPage() {
                   <div className={(withMedia.length > 0 || stories.length > 0) ? 'mt-4' : ''}>
                     <div className="max-w-[640px] space-y-3">
                       {withoutMedia.map(post => (
-                        <TextPostCard
-                          key={post.id}
-                          post={post}
-                          token={token}
-                          approvals={approvals}
-                          readOnly
-                        />
+                        <div key={post.id} className="flex flex-col gap-1.5">
+                          <StatusTag status={post.status} />
+                          <TextPostCard
+                            post={post}
+                            token={token}
+                            approvals={approvals}
+                            readOnly
+                          />
+                        </div>
                       ))}
                     </div>
                   </div>
