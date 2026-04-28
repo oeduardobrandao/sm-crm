@@ -14,7 +14,7 @@ const MAX_CHARS = 2200;
 
 export function InstagramCaptionField({ value, onChange, disabled, lockedMessage }: InstagramCaptionFieldProps) {
   const [local, setLocal] = useState(value);
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => { setLocal(value); }, [value]);
 

@@ -26,6 +26,10 @@ import PostCommentSummary from './PostCommentSummary';
 import { useAuth } from '@/context/AuthContext';
 import { PostMediaGallery, hasVideoMissingThumbnail } from './PostMediaGallery';
 import { listPostMedia } from '../../../services/postMedia';
+import { InstagramCaptionField } from './InstagramCaptionField';
+import { ScheduleButton } from './ScheduleButton';
+import { DateTimePicker } from '@/components/ui/date-time-picker';
+import { supabase } from '@/lib/supabase';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -118,6 +122,26 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
     queryFn: () => getPostCommentThreads(postIds),
     enabled: postIds.length > 0,
   });
+
+  const { data: igAccount } = useQuery({
+    queryKey: ['igAccountForWorkflow', workflowId],
+    queryFn: async () => {
+      const { data: workflow } = await supabase
+        .from('workflows')
+        .select('cliente_id')
+        .eq('id', workflowId)
+        .single();
+      if (!workflow) return null;
+      const { data: account } = await supabase
+        .from('instagram_accounts')
+        .select('id')
+        .eq('client_id', workflow.cliente_id)
+        .maybeSingle();
+      return account;
+    },
+    enabled: !!workflowId,
+  });
+  const hasInstagramAccount = !!igAccount;
 
   const refresh = useCallback(() => {
     setLocalOrder(null);
@@ -440,12 +464,14 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
                       commentThreads={commentThreads.filter(t => t.post_id === post.id)}
                       currentUserId={user?.id}
                       currentUserRole={role}
+                      hasInstagramAccount={hasInstagramAccount}
                       onToggle={() => setExpandedId(expandedId === post.id ? null : post.id!)}
                       onDelete={() => handleDeletePost(post.id!)}
                       onFieldChange={(field, value) => handleFieldChange(post.id!, field, value)}
                       onContentUpdate={(json, plain) => scheduleContentSave(post, json, plain)}
                       onReplyChange={text => setReplyText(prev => ({ ...prev, [post.id!]: text }))}
                       onReplySend={() => handleReply(post.id!)}
+                      onRefresh={refresh}
                       onCreateComment={handleCreateComment}
                       onReplyToComment={handleReplyToComment}
                       onResolveThread={handleResolveThread}
@@ -526,12 +552,14 @@ interface SortablePostItemProps {
   commentThreads: CommentThreadWithComments[];
   currentUserId?: string;
   currentUserRole: 'owner' | 'admin' | 'agent';
+  hasInstagramAccount: boolean;
   onToggle: () => void;
   onDelete: () => void;
   onFieldChange: (field: keyof WorkflowPost, value: unknown) => void;
   onContentUpdate: (json: Record<string, unknown>, plain: string) => void;
   onReplyChange: (text: string) => void;
   onReplySend: () => void;
+  onRefresh: () => void;
   onCreateComment: (postId: number, quotedText: string, comment: string) => Promise<number>;
   onReplyToComment: (threadId: number, content: string) => Promise<void>;
   onResolveThread: (threadId: number) => Promise<void>;
@@ -544,7 +572,9 @@ function SortablePostItem({
   post, templateId, workflowId, isExpanded, isSaving, approvals, membros,
   replyText, sendingReply,
   commentThreads, currentUserId, currentUserRole,
+  hasInstagramAccount,
   onToggle, onDelete, onFieldChange, onContentUpdate, onReplyChange, onReplySend,
+  onRefresh,
   onCreateComment, onReplyToComment, onResolveThread, onReopenThread, onEditComment, onDeleteComment,
 }: SortablePostItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
@@ -578,7 +608,8 @@ function SortablePostItem({
     opacity: isDragging ? 0.5 : 1,
   };
 
-  const isReadonly = post.status === 'enviado_cliente' || post.status === 'aprovado_cliente';
+  const isReadonly = post.status === 'enviado_cliente' || post.status === 'aprovado_cliente' || post.status === 'agendado';
+  const isScheduleLocked = post.status === 'agendado';
 
   return (
     <div
@@ -670,19 +701,21 @@ function SortablePostItem({
             )}
             <div className="drawer-post-field">
               <label>Data de postagem</label>
-              <input
-                className="drawer-input"
-                type="date"
-                value={post.scheduled_at ? post.scheduled_at.slice(0, 10) : ''}
-                onChange={e => onFieldChange('scheduled_at', e.target.value || null)}
+              <DateTimePicker
+                value={post.scheduled_at ? new Date(post.scheduled_at) : undefined}
+                onChange={(date) => onFieldChange('scheduled_at', date?.toISOString() ?? null)}
+                disabled={isScheduleLocked}
+                className="w-full"
               />
             </div>
           </div>
 
           {isReadonly && (
             <div className="drawer-readonly-notice">
-              Este post foi enviado ao cliente e não pode ser editado.
-              Altere o status para editar novamente.
+              {isScheduleLocked
+                ? 'Este post está agendado. Cancele o agendamento para editar mídia e legenda.'
+                : 'Este post foi enviado ao cliente e não pode ser editado. Altere o status para editar novamente.'
+              }
             </div>
           )}
           {/* Custom properties — shown when template has properties defined */}
@@ -713,6 +746,21 @@ function SortablePostItem({
             onReopenThread={onReopenThread}
             onEditComment={onEditComment}
             onDeleteComment={onDeleteComment}
+          />
+
+          {hasInstagramAccount && (
+            <InstagramCaptionField
+              value={post.ig_caption ?? ''}
+              onChange={(val) => onFieldChange('ig_caption', val)}
+              disabled={isScheduleLocked}
+              lockedMessage="Cancelar agendamento para editar"
+            />
+          )}
+
+          <ScheduleButton
+            post={post}
+            hasInstagramAccount={hasInstagramAccount}
+            onStatusChange={onRefresh}
           />
 
           <PostCommentSummary
