@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronDown } from 'lucide-react';
 import { useHub } from '../HubContext';
@@ -59,7 +59,7 @@ function StatusTag({ status }: { status: string }) {
 
 export function PostagensPage() {
   const { token, bootstrap } = useHub();
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [collapsed, setCollapsed] = useState<Set<string> | null>(null);
   const { data, isLoading, isError } = useQuery({
     queryKey: ['hub-posts', token],
     queryFn: () => fetchPosts(token),
@@ -69,7 +69,7 @@ export function PostagensPage() {
   const approvals = data?.postApprovals ?? [];
   const instagramProfile = data?.instagramProfile ?? null;
 
-  const groups = Object.values(
+  const groups = useMemo(() => Object.values(
     allPosts.reduce<Record<number, { titulo: string; posts: HubPost[] }>>((acc, post) => {
       if (!acc[post.workflow_id]) {
         acc[post.workflow_id] = { titulo: post.workflow_titulo, posts: [] };
@@ -81,7 +81,14 @@ export function PostagensPage() {
     const aDate = a.posts[0]?.workflow_created_at ?? '';
     const bDate = b.posts[0]?.workflow_created_at ?? '';
     return bDate.localeCompare(aDate);
-  });
+  }), [allPosts]);
+
+  const initializedRef = useRef(false);
+  if (!initializedRef.current && groups.length > 0 && collapsed === null) {
+    initializedRef.current = true;
+    setCollapsed(new Set(groups.slice(1).map(g => g.titulo)));
+  }
+  const effectiveCollapsed = collapsed ?? new Set<string>();
 
   groups.forEach(g => {
     g.posts.sort((a, b) => {
@@ -127,21 +134,24 @@ export function PostagensPage() {
               <section key={group.titulo}>
                 <button
                   type="button"
-                  className="flex items-center gap-2 mb-4 w-full text-left group"
+                  className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mb-4 w-full text-left group"
                   onClick={() => setCollapsed(prev => {
-                    const next = new Set(prev);
+                    const next = new Set(prev ?? new Set<string>());
                     if (next.has(group.titulo)) next.delete(group.titulo);
                     else next.add(group.titulo);
                     return next;
                   })}
                 >
-                  <span className="h-[1px] w-6 bg-stone-300" />
+                  <span className="h-[1px] w-6 bg-stone-300 hidden sm:block" />
                   <h3 className="font-display text-[17px] font-semibold tracking-tight text-stone-900">{group.titulo}</h3>
                   <span className="text-[11px] text-stone-400">{group.posts.length} {group.posts.length === 1 ? 'post' : 'posts'}</span>
-                  <ChevronDown size={16} className={`ml-auto text-stone-400 transition-transform ${collapsed.has(group.titulo) ? '-rotate-90' : ''}`} />
+                  {effectiveCollapsed.has(group.titulo) && (
+                    <span className="text-[10px] text-stone-300 dark:text-stone-600 hidden sm:inline">clique para expandir</span>
+                  )}
+                  <ChevronDown size={16} className={`ml-auto text-stone-400 transition-transform ${effectiveCollapsed.has(group.titulo) ? '-rotate-90' : ''}`} />
                 </button>
 
-                {!collapsed.has(group.titulo) && withMedia.length > 0 && (
+                {!effectiveCollapsed.has(group.titulo) && withMedia.length > 0 && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     {withMedia.map((post, i) => (
                       <div key={post.id} className="flex flex-col gap-1.5">
@@ -161,7 +171,7 @@ export function PostagensPage() {
                   </div>
                 )}
 
-                {!collapsed.has(group.titulo) && stories.length > 0 && (
+                {!effectiveCollapsed.has(group.titulo) && stories.length > 0 && (
                   <div className={withMedia.length > 0 ? 'mt-4' : ''}>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                       {stories.map(post => (
@@ -181,7 +191,7 @@ export function PostagensPage() {
                   </div>
                 )}
 
-                {!collapsed.has(group.titulo) && withoutMedia.length > 0 && (
+                {!effectiveCollapsed.has(group.titulo) && withoutMedia.length > 0 && (
                   <div className={(withMedia.length > 0 || stories.length > 0) ? 'mt-4' : ''}>
                     <div className="max-w-[640px] space-y-3">
                       {withoutMedia.map(post => (

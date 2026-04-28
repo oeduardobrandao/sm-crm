@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { CheckCircle, AlertCircle } from 'lucide-react';
 import { submitApproval } from '../api';
 import { formatDate } from './PostCard';
@@ -32,10 +32,25 @@ export function InstagramPostCard({
   const [result, setResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const [liked, setLiked] = useState(false);
+  const touchStartX = useRef(0);
+  const touchDelta = useRef(0);
 
   const isPending = !readOnly && post.status === 'enviado_cliente';
   const media = post.media ?? [];
   const isCarousel = media.length > 1;
+
+  const onTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchDelta.current = 0;
+  }, []);
+  const onTouchMove = useCallback((e: React.TouchEvent) => {
+    touchDelta.current = e.touches[0].clientX - touchStartX.current;
+  }, []);
+  const onTouchEnd = useCallback(() => {
+    const MIN_SWIPE = 40;
+    if (touchDelta.current < -MIN_SWIPE) nextSlide();
+    else if (touchDelta.current > MIN_SWIPE) prevSlide();
+  }, []);
   const displayName = instagramProfile?.username ?? workspaceName ?? '';
   const profilePic = instagramProfile?.profilePictureUrl;
   const caption = post.ig_caption
@@ -103,7 +118,12 @@ export function InstagramPostCard({
       </div>
 
       {/* Image area */}
-      <div className="relative aspect-[4/5] bg-stone-100 dark:bg-stone-900 group/carousel">
+      <div
+        className="relative aspect-[4/5] bg-stone-100 dark:bg-stone-900 group/carousel"
+        onTouchStart={isCarousel ? onTouchStart : undefined}
+        onTouchMove={isCarousel ? onTouchMove : undefined}
+        onTouchEnd={isCarousel ? onTouchEnd : undefined}
+      >
         {currentMedia && (
           <button type="button" onClick={() => setLightboxIdx(currentSlide)} className="w-full h-full">
             {currentMedia.kind === 'image' ? (
