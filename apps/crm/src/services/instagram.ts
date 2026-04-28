@@ -116,3 +116,60 @@ export async function getInstagramPosts(clientId: number, page: number = 1): Pro
     return data;
 }
 
+export async function scheduleInstagramPost(postId: number): Promise<{ ok: boolean; status: string }> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('Not authenticated');
+
+  const res = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/instagram-publish/schedule/${postId}`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+    }
+  );
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.details?.join('; ') ?? data.error ?? 'Erro ao agendar');
+  return data;
+}
+
+export async function cancelInstagramSchedule(postId: number): Promise<{ ok: boolean }> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('Not authenticated');
+
+  const res = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/instagram-publish/cancel/${postId}`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+    }
+  );
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? 'Erro ao cancelar');
+  return data;
+}
+
+export async function retryInstagramPublish(postId: number): Promise<{ ok: boolean }> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('Not authenticated');
+
+  const res = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/instagram-publish/retry/${postId}`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+    }
+  );
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? 'Erro ao reenviar');
+  return data;
+}
+
