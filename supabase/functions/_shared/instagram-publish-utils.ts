@@ -61,7 +61,7 @@ interface ValidationError {
   message: string;
 }
 
-const ALLOWED_IMAGE_MIMES = new Set(["image/jpeg"]);
+const ALLOWED_IMAGE_MIMES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const ALLOWED_VIDEO_MIMES = new Set(["video/mp4", "video/quicktime"]);
 const IMAGE_MAX_BYTES = 8 * 1024 * 1024;
 const VIDEO_MAX_BYTES = 250 * 1024 * 1024;
@@ -187,21 +187,9 @@ export async function validateForScheduling(
     }
     if (errors.length === 0 && account.encrypted_access_token) {
       try {
-        const token = await decryptToken(account.encrypted_access_token);
-        const permRes = await fetch(
-          `https://graph.instagram.com/me/permissions?access_token=${token}`,
-        );
-        const permData = await permRes.json();
-        const granted = new Set(
-          (permData.data ?? [])
-            .filter((p: any) => p.status === "granted")
-            .map((p: any) => p.permission),
-        );
-        if (!granted.has("instagram_business_content_publish")) {
-          errors.push("Conta Instagram precisa ser reconectada com permissão de publicação.");
-        }
+        await decryptToken(account.encrypted_access_token);
       } catch {
-        errors.push("Erro ao verificar permissões do Instagram.");
+        errors.push("Erro ao decifrar token do Instagram. Reconecte a conta.");
       }
     }
   }

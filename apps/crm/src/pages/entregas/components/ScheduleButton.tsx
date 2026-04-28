@@ -58,12 +58,12 @@ export function ScheduleButton({ post, hasInstagramAccount, onStatusChange }: Sc
   if (post.status === 'agendado') {
     return (
       <div className="flex items-center gap-2 mt-3">
-        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold"
+        <div className="flex items-center gap-1.5 px-2.5 h-8 rounded-lg text-xs font-semibold"
           style={{ background: 'rgba(62, 207, 142, 0.12)', color: '#3ecf8e' }}>
           <Calendar className="h-3.5 w-3.5" /> Agendado
         </div>
         <Button variant="outline" size="sm" onClick={handleCancel} disabled={loading}
-          className="text-xs" style={{ color: '#f55a42', borderColor: 'rgba(245, 90, 66, 0.25)' }}>
+          className="h-8 text-xs" style={{ color: '#f55a42', borderColor: 'rgba(245, 90, 66, 0.25)' }}>
           <X className="h-3 w-3 mr-1" /> Cancelar
         </Button>
       </div>

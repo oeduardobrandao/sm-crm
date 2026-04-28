@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Instagram, Lock } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 
 interface InstagramCaptionFieldProps {
   value: string;
@@ -33,12 +33,14 @@ export function InstagramCaptionField({ value, onChange, disabled, lockedMessage
           Legenda do Instagram
         </span>
         {disabled && lockedMessage && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Lock className="h-3.5 w-3.5 ml-auto" style={{ color: 'var(--text-light)' }} />
-            </TooltipTrigger>
-            <TooltipContent>{lockedMessage}</TooltipContent>
-          </Tooltip>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Lock className="h-3.5 w-3.5 ml-auto" style={{ color: 'var(--text-light)' }} />
+              </TooltipTrigger>
+              <TooltipContent>{lockedMessage}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         )}
         <span className="ml-auto text-xs" style={{ color: 'var(--text-light)', fontFamily: 'var(--font-mono)' }}>
           {local.length} / {MAX_CHARS}

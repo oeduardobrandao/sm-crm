@@ -54,8 +54,11 @@ export function InstagramPostCard({
     setSubmitting(true);
     setResult(null);
     try {
-      await submitApproval(token, post.id, action, comentario || undefined);
-      setResult({ type: 'success', message: action === 'aprovado' ? 'Post aprovado!' : 'Correção enviada!' });
+      const res = await submitApproval(token, post.id, action, comentario || undefined);
+      const message = action === 'aprovado'
+        ? (res.scheduled ? 'Post aprovado e agendado para publicação!' : 'Post aprovado!')
+        : 'Correção enviada!';
+      setResult({ type: 'success', message });
       onApprovalSubmitted?.();
     } catch (e) {
       setResult({ type: 'error', message: (e as Error).message });
@@ -255,25 +258,27 @@ export function InstagramPostCard({
               <AlertCircle size={12} /> Correção
             </button>
           </div>
-          {autoPublishOnApproval && post.scheduled_at && post.ig_caption && isPending && (
+          {autoPublishOnApproval && isPending && (
             <div style={{
               marginTop: '0.75rem',
               padding: '0.6rem',
-              background: 'rgba(234, 179, 8, 0.06)',
-              border: '1px solid rgba(234, 179, 8, 0.19)',
+              background: post.scheduled_at ? 'rgba(234, 179, 8, 0.06)' : 'rgba(62, 207, 142, 0.06)',
+              border: `1px solid ${post.scheduled_at ? 'rgba(234, 179, 8, 0.19)' : 'rgba(62, 207, 142, 0.19)'}`,
               borderRadius: 6,
               display: 'flex',
               alignItems: 'flex-start',
               gap: '0.4rem',
             }}>
-              <span style={{ color: '#eab308', fontSize: '0.8rem', flexShrink: 0 }}>⚡</span>
-              <div style={{ color: '#eab308', fontSize: '0.7rem', lineHeight: 1.4 }}>
-                Ao aprovar, este post será publicado automaticamente no Instagram em{' '}
-                <strong>
-                  {new Date(post.scheduled_at).toLocaleDateString('pt-BR', {
-                    day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
-                  })}
-                </strong>.
+              <span style={{ color: post.scheduled_at ? '#eab308' : '#3ecf8e', fontSize: '0.8rem', flexShrink: 0 }}>⚡</span>
+              <div style={{ color: post.scheduled_at ? '#eab308' : '#3ecf8e', fontSize: '0.7rem', lineHeight: 1.4 }}>
+                {post.scheduled_at
+                  ? <>Ao aprovar, este post será publicado automaticamente no Instagram em{' '}
+                      <strong>
+                        {new Date(post.scheduled_at).toLocaleDateString('pt-BR', {
+                          day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+                        })}
+                      </strong>.</>
+                  : 'Ao aprovar, este post será agendado para publicação automática no Instagram.'}
               </div>
             </div>
           )}

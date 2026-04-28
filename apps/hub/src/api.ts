@@ -46,7 +46,7 @@ export function fetchPosts(token: string) {
 }
 
 export function submitApproval(token: string, post_id: number, action: 'aprovado' | 'correcao' | 'mensagem', comentario?: string) {
-  return post<{ ok: boolean }>('hub-approve', { token, post_id, action, comentario });
+  return post<{ ok: boolean; scheduled?: boolean }>('hub-approve', { token, post_id, action, comentario });
 }
 
 export async function reorderPostSchedules(token: string, updates: { post_id: number; scheduled_at: string | null }[]) {

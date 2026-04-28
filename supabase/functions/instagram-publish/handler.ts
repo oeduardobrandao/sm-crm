@@ -50,9 +50,14 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
       if (post.status !== "aprovado_cliente") {
         return json({ error: "Post precisa estar aprovado pelo cliente para agendar." }, 422);
       }
-      const validation = await validateForScheduling(svcDb, postId);
-      if (!validation.ok) {
-        return json({ error: "Validação falhou", details: validation.errors }, 422);
+      try {
+        const validation = await validateForScheduling(svcDb, postId);
+        if (!validation.ok) {
+          return json({ error: "Validação falhou", details: validation.errors }, 422);
+        }
+      } catch (e) {
+        console.error("Schedule validation error:", e);
+        return json({ error: "Erro ao validar post para agendamento." }, 500);
       }
       await svcDb.from("workflow_posts")
         .update({ status: "agendado" })
