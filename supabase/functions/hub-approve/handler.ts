@@ -58,6 +58,24 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
     const newStatus = action === "aprovado" ? "aprovado_cliente" : action === "correcao" ? "correcao_cliente" : post.status;
     await db.from("workflow_posts").update({ status: newStatus }).eq("id", post_id);
 
+    if (action === "aprovado") {
+      const { data: client } = await db
+        .from("clientes")
+        .select("auto_publish_on_approval")
+        .eq("id", workflow.cliente_id)
+        .single();
+
+      if (client?.auto_publish_on_approval) {
+        const { validateForScheduling } = await import("../_shared/instagram-publish-utils.ts");
+        const validation = await validateForScheduling(db, post_id);
+        if (validation.ok) {
+          await db.from("workflow_posts")
+            .update({ status: "agendado" })
+            .eq("id", post_id);
+        }
+      }
+    }
+
     return json({ ok: true });
   };
 }
