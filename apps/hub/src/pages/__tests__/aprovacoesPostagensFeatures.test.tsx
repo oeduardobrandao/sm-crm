@@ -167,6 +167,10 @@ function makePost(overrides: Partial<HubPost> = {}): HubPost {
     ordem: 1,
     conteudo_plain: 'Conteúdo',
     scheduled_at: '2026-04-20T10:00:00.000Z',
+    ig_caption: null,
+    instagram_permalink: null,
+    published_at: null,
+    publish_error: null,
     workflow_id: 1,
     workflow_titulo: 'Editorial',
     media: [{ ...MEDIA, post_id: overrides.id ?? 1 }],
@@ -712,25 +716,27 @@ describe('PostagensPage — status filtering', () => {
     mockedFetchPosts.mockReset();
   });
 
-  it('shows all visible statuses: enviado_cliente, aprovado_cliente, correcao_cliente, agendado, publicado', async () => {
+  it('shows all visible statuses: enviado_cliente, aprovado_cliente, correcao_cliente, agendado, postado, falha_publicacao', async () => {
     mockedFetchPosts.mockResolvedValue(makeResponse({
       posts: [
         makePost({ id: 1, titulo: 'Enviado', status: 'enviado_cliente', workflow_id: 1, workflow_titulo: 'W' }),
         makePost({ id: 2, titulo: 'Aprovado', status: 'aprovado_cliente', workflow_id: 1, workflow_titulo: 'W' }),
         makePost({ id: 3, titulo: 'Correção', status: 'correcao_cliente', workflow_id: 1, workflow_titulo: 'W' }),
         makePost({ id: 4, titulo: 'Agendado', status: 'agendado', workflow_id: 1, workflow_titulo: 'W' }),
-        makePost({ id: 5, titulo: 'Publicado', status: 'publicado', workflow_id: 1, workflow_titulo: 'W' }),
+        makePost({ id: 5, titulo: 'Postado', status: 'postado', workflow_id: 1, workflow_titulo: 'W' }),
+        makePost({ id: 6, titulo: 'Falha', status: 'falha_publicacao', workflow_id: 1, workflow_titulo: 'W' }),
       ],
     }));
 
     renderHubPage(POSTAGENS_PATH, POSTAGENS_ROUTE, <PostagensPage />);
 
-    expect(await screen.findByText('5 posts')).toBeInTheDocument();
+    expect(await screen.findByText('6 posts')).toBeInTheDocument();
     expect(screen.getByText('Enviado')).toBeInTheDocument();
     expect(screen.getByText('Aprovado')).toBeInTheDocument();
     expect(screen.getByText('Correção')).toBeInTheDocument();
     expect(screen.getByText('Agendado')).toBeInTheDocument();
-    expect(screen.getByText('Publicado')).toBeInTheDocument();
+    expect(screen.getByText('Postado')).toBeInTheDocument();
+    expect(screen.getByText('Falha')).toBeInTheDocument();
   });
 
   it('filters out rascunho and em_producao statuses', async () => {
