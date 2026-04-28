@@ -10,6 +10,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   getClientes,
@@ -58,6 +59,7 @@ import { renderInstagramOverviewCard } from '../../components/instagram/Instagra
 import { renderInstagramFollowerChart } from '../../components/instagram/InstagramFollowerChart';
 import { renderInstagramPostsTable } from '../../components/instagram/InstagramPostsTable';
 import { renderInstagramConnectButton } from '../../components/instagram/InstagramConnectButton';
+import { supabase } from '@/lib/supabase';
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
@@ -1338,6 +1340,23 @@ function InstagramSection({ clienteId, loadingIg, igSummary, refetchIg, onNaviga
   const igPostsRef = useRef<HTMLDivElement>(null);
   const igConnectRef = useRef<HTMLDivElement>(null);
 
+  const [autoPublish, setAutoPublish] = useState(false);
+  const [autoPublishLoading, setAutoPublishLoading] = useState(false);
+
+  useEffect(() => {
+    supabase.from('clientes').select('auto_publish_on_approval').eq('id', clienteId).single()
+      .then(({ data }) => { if (data) setAutoPublish(data.auto_publish_on_approval); });
+  }, [clienteId]);
+
+  const handleAutoPublishToggle = async (checked: boolean) => {
+    setAutoPublishLoading(true);
+    try {
+      await supabase.from('clientes').update({ auto_publish_on_approval: checked }).eq('id', clienteId);
+      setAutoPublish(checked);
+    } catch { /* ignore */ }
+    finally { setAutoPublishLoading(false); }
+  };
+
   useEffect(() => {
     if (loadingIg) return;
     if (!igSummary) {
@@ -1368,6 +1387,25 @@ function InstagramSection({ clienteId, loadingIg, igSummary, refetchIg, onNaviga
       {!loadingIg && igSummary?.account?.last_synced_at && (
         <div style={{ display: 'flex', justifyContent: 'center', marginTop: '1.5rem', marginBottom: '1rem' }}>
           <Button onClick={onNavigateAnalytics}>Ver Analytics Completo →</Button>
+        </div>
+      )}
+      {igSummary?.account?.last_synced_at && (
+        <div className="card" style={{ padding: '1.25rem', marginTop: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ color: 'var(--text-main)', fontSize: '0.85rem', fontWeight: 500 }}>
+                Publicar automaticamente após aprovação
+              </div>
+              <div style={{ color: 'var(--text-light)', fontSize: '0.75rem', marginTop: '0.25rem' }}>
+                Quando o cliente aprovar, o post será agendado automaticamente se tiver data e legenda definidas.
+              </div>
+            </div>
+            <Switch
+              checked={autoPublish}
+              onCheckedChange={handleAutoPublishToggle}
+              disabled={autoPublishLoading}
+            />
+          </div>
         </div>
       )}
       <div ref={igConnectRef} />
