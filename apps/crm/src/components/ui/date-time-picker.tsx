@@ -85,7 +85,7 @@ export function DateTimePicker({
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="start">
+      <PopoverContent className="w-auto p-0" align="start" style={{ zIndex: 9999 }}>
         <Calendar
           mode="single"
           locale={ptBR}
