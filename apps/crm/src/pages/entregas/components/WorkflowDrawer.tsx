@@ -608,7 +608,8 @@ function SortablePostItem({
     opacity: isDragging ? 0.5 : 1,
   };
 
-  const isReadonly = post.status === 'enviado_cliente' || post.status === 'aprovado_cliente' || post.status === 'agendado';
+  const isExternallyVisible = post.status === 'enviado_cliente' || post.status === 'aprovado_cliente'
+    || post.status === 'correcao_cliente' || post.status === 'agendado' || post.status === 'postado' || post.status === 'falha_publicacao';
   const isScheduleLocked = post.status === 'agendado';
 
   return (
@@ -710,11 +711,11 @@ function SortablePostItem({
             </div>
           </div>
 
-          {isReadonly && (
-            <div className="drawer-readonly-notice">
+          {isExternallyVisible && (
+            <div className="drawer-external-warning">
               {isScheduleLocked
-                ? 'Este post está agendado. Cancele o agendamento para editar mídia e legenda.'
-                : 'Este post foi enviado ao cliente e não pode ser editado. Altere o status para editar novamente.'
+                ? '⚠ Este post está agendado para publicação. Data e legenda do Instagram estão travadas — cancele o agendamento para editá-las.'
+                : '⚠ Este post já está visível no portal do cliente. Alterações serão refletidas imediatamente.'
               }
             </div>
           )}
@@ -729,12 +730,11 @@ function SortablePostItem({
             />
           )}
 
-          <PostMediaGallery postId={post.id!} disabled={isReadonly} />
+          <PostMediaGallery postId={post.id!} />
 
           <PostEditor
             key={post.id}
             initialContent={post.conteudo}
-            disabled={isReadonly}
             onUpdate={onContentUpdate}
             threads={commentThreads}
             membros={membros}
