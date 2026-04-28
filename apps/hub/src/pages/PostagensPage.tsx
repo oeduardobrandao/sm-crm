@@ -9,8 +9,28 @@ import { TextPostCard } from '../components/TextPostCard';
 import type { HubPost } from '../types';
 
 const VISIBLE_STATUSES = new Set<HubPost['status']>([
-  'enviado_cliente', 'aprovado_cliente', 'correcao_cliente', 'agendado', 'publicado',
+  'enviado_cliente', 'aprovado_cliente', 'correcao_cliente', 'agendado', 'postado', 'falha_publicacao',
 ]);
+
+const STATUS_COLORS: Record<string, string> = {
+  enviado_cliente: '#f5a342',
+  aprovado_cliente: '#3ecf8e',
+  correcao_cliente: '#f55a42',
+  agendado: '#42c8f5',
+  postado: '#eab308',
+  falha_publicacao: '#f55a42',
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  enviado_cliente: 'Aguardando aprovação',
+  aprovado_cliente: 'Aprovado',
+  correcao_cliente: 'Correção solicitada',
+  agendado: 'Agendado',
+  postado: 'Publicado',
+  falha_publicacao: 'Falha na publicação',
+};
+
+const LOCKED_STATUSES = new Set(['agendado', 'postado', 'falha_publicacao']);
 
 export function PostagensPage() {
   const { token, bootstrap } = useHub();
@@ -104,6 +124,7 @@ export function PostagensPage() {
                         workspaceName={bootstrap.workspace.name}
                         readOnly
                         priority={i === 0}
+                        autoPublishOnApproval={data?.autoPublishOnApproval ?? false}
                       />
                     ))}
                   </div>
