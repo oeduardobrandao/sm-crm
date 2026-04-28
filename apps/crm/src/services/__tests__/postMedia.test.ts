@@ -149,11 +149,11 @@ describe('post media service', () => {
 
     fetchHarness.queueResponse({
       json: {
-        media_id: 'media-1',
+        file_id: 'file-1',
         upload_url: 'https://upload.r2.dev/media-1',
-        r2_key: 'contas/1/posts/media-1.png',
+        r2_key: 'contas/1/files/file-1.png',
         thumbnail_upload_url: 'https://upload.r2.dev/thumb-1',
-        thumbnail_r2_key: 'contas/1/posts/media-1.thumb.webp',
+        thumbnail_r2_key: 'contas/1/files/file-1.thumb.webp',
       },
     });
     fetchHarness.queueResponse({
@@ -161,8 +161,8 @@ describe('post media service', () => {
         id: 1,
         post_id: 22,
         kind: 'image',
-        r2_key: 'contas/1/posts/media-1.png',
-        thumbnail_r2_key: 'contas/1/posts/media-1.thumb.webp',
+        r2_key: 'contas/1/files/file-1.png',
+        thumbnail_r2_key: 'contas/1/files/file-1.thumb.webp',
         is_cover: true,
       },
     });
@@ -182,21 +182,20 @@ describe('post media service', () => {
     expect(fetchHarness.calls).toHaveLength(2);
     const uploadUrlBody = JSON.parse(String(fetchHarness.calls[0].init?.body));
     expect(uploadUrlBody).toMatchObject({
-      post_id: 22,
       filename: 'campanha-abril.png',
       mime_type: 'image/png',
-      kind: 'image',
     });
+    expect(uploadUrlBody).not.toHaveProperty('post_id');
     expect(uploadUrlBody.thumbnail).toMatchObject({
       mime_type: 'image/webp',
     });
     expect(JSON.parse(String(fetchHarness.calls[1].init?.body))).toMatchObject({
       post_id: 22,
-      media_id: 'media-1',
+      file_id: 'file-1',
       width: 1080,
       height: 1350,
-      original_filename: 'campanha-abril.png',
-      thumbnail_r2_key: 'contas/1/posts/media-1.thumb.webp',
+      name: 'campanha-abril.png',
+      thumbnail_r2_key: 'contas/1/files/file-1.thumb.webp',
     });
     expect(MockXHR.instances).toHaveLength(2);
     expect(MockXHR.instances[0].method).toBe('PUT');
@@ -222,11 +221,11 @@ describe('post media service', () => {
 
     fetchHarness.queueResponse({
       json: {
-        media_id: 'media-v1',
+        file_id: 'file-v1',
         upload_url: 'https://upload.r2.dev/media-v1',
-        r2_key: 'contas/1/posts/media-v1.mp4',
+        r2_key: 'contas/1/files/file-v1.mp4',
         thumbnail_upload_url: 'https://upload.r2.dev/thumb-v1',
-        thumbnail_r2_key: 'contas/1/posts/thumb-v1.jpg',
+        thumbnail_r2_key: 'contas/1/files/file-v1.thumb.jpg',
       },
     });
     fetchHarness.queueResponse({
@@ -234,8 +233,8 @@ describe('post media service', () => {
         id: 5,
         post_id: 31,
         kind: 'video',
-        r2_key: 'contas/1/posts/media-v1.mp4',
-        thumbnail_r2_key: 'contas/1/posts/thumb-v1.jpg',
+        r2_key: 'contas/1/files/file-v1.mp4',
+        thumbnail_r2_key: 'contas/1/files/file-v1.thumb.jpg',
         is_cover: false,
       },
     });
@@ -251,29 +250,28 @@ describe('post media service', () => {
       id: 5,
       post_id: 31,
       kind: 'video',
-      thumbnail_r2_key: 'contas/1/posts/thumb-v1.jpg',
+      thumbnail_r2_key: 'contas/1/files/file-v1.thumb.jpg',
     });
 
     expect(fetchHarness.calls).toHaveLength(2);
 
     const uploadUrlBody = JSON.parse(String(fetchHarness.calls[0].init?.body));
     expect(uploadUrlBody).toMatchObject({
-      post_id: 31,
       filename: 'bastidores.mp4',
       mime_type: 'video/mp4',
-      kind: 'video',
       thumbnail: { mime_type: 'image/jpeg', size_bytes: 64 },
     });
+    expect(uploadUrlBody).not.toHaveProperty('post_id');
 
     const finalizeBody = JSON.parse(String(fetchHarness.calls[1].init?.body));
     expect(finalizeBody).toMatchObject({
       post_id: 31,
-      media_id: 'media-v1',
+      file_id: 'file-v1',
       width: 1920,
       height: 1080,
       duration_seconds: 13,
-      original_filename: 'bastidores.mp4',
-      thumbnail_r2_key: 'contas/1/posts/thumb-v1.jpg',
+      name: 'bastidores.mp4',
+      thumbnail_r2_key: 'contas/1/files/file-v1.thumb.jpg',
     });
 
     expect(MockXHR.instances).toHaveLength(2);

@@ -74,6 +74,7 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
   const [pendingVideo, setPendingVideo] = useState<File | null>(null);
   const [showFilePicker, setShowFilePicker] = useState(false);
   const [progress, setProgress] = useState<{ name: string; pct: number } | null>(null);
+  const [dragOver, setDragOver] = useState(false);
 
   // Preload images into browser cache so lightbox opens instantly.
   const preloadCache = useRef<HTMLImageElement[]>([]);
@@ -214,6 +215,24 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
     );
   }
 
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    if (disabled) return;
+    const files = e.dataTransfer.files;
+    if (files.length > 0) handleFiles(files);
+  };
+
+  const handleDragOverEvent = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (!disabled) setDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+    setDragOver(false);
+  };
+
   return (
     <div className="space-y-3">
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -230,10 +249,15 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
               />
             ))}
             {!disabled && (
-              <label className="flex flex-col items-center justify-center gap-1 aspect-square rounded-xl border border-dashed border-stone-300 bg-stone-50 text-stone-500 hover:border-stone-400 hover:bg-stone-100 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-400 dark:hover:border-stone-500 dark:hover:bg-stone-700 cursor-pointer transition-colors">
+              <label
+                onDrop={handleDrop}
+                onDragOver={handleDragOverEvent}
+                onDragLeave={handleDragLeave}
+                className={`flex flex-col items-center justify-center gap-1 aspect-square rounded-xl border border-dashed cursor-pointer transition-colors ${dragOver ? 'ring-2 ring-[#eab308] border-[#eab308] bg-[#eab308]/10 text-[#eab308]' : 'border-stone-300 bg-stone-50 text-stone-500 hover:border-stone-400 hover:bg-stone-100 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-400 dark:hover:border-stone-500 dark:hover:bg-stone-700'}`}
+              >
                 <Upload className="h-4 w-4" />
-                <span className="text-[11px]">{uploading ? 'Enviando…' : 'Adicionar'}</span>
-                <input type="file" multiple accept="image/*,video/*" hidden onChange={(e) => handleFiles(e.target.files)} />
+                <span className="text-[11px]">{dragOver ? 'Soltar aqui' : uploading ? 'Enviando…' : 'Adicionar'}</span>
+                <input type="file" multiple accept="image/*,video/*" hidden onChange={(e) => { handleFiles(e.target.files); e.target.value = ''; }} />
               </label>
             )}
             {!disabled && (

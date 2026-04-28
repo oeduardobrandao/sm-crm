@@ -18,6 +18,7 @@ export function TextPostCard({ post, token, approvals, onApprovalSubmitted, read
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const isPending = !readOnly && post.status === 'enviado_cliente';
+  const subtitle = post.ig_caption || post.conteudo_plain;
 
   async function handleAction(action: 'aprovado' | 'correcao') {
     setSubmitting(true);
@@ -50,8 +51,8 @@ export function TextPostCard({ post, token, approvals, onApprovalSubmitted, read
             <span className="text-[12px] text-stone-400 ml-auto">{formatDate(post.scheduled_at)}</span>
           </div>
           <p className="font-semibold text-[14px] text-stone-900 mb-1">{post.titulo}</p>
-          {!expanded && post.conteudo_plain && (
-            <p className="text-[13px] text-stone-500 truncate">{post.conteudo_plain}</p>
+          {!expanded && subtitle && (
+            <p className="text-[13px] text-stone-500 truncate">{subtitle}</p>
           )}
         </div>
         <span className={`mt-2 shrink-0 text-stone-400 transition-transform ${expanded ? 'rotate-180' : ''}`}>
@@ -61,8 +62,8 @@ export function TextPostCard({ post, token, approvals, onApprovalSubmitted, read
 
       {expanded && (
         <div className="px-5 pb-5 pt-1 border-t border-stone-100 space-y-4">
-          {post.conteudo_plain && (
-            <p className="text-[13px] text-stone-600 leading-relaxed whitespace-pre-wrap">{post.conteudo_plain}</p>
+          {subtitle && (
+            <p className="text-[13px] text-stone-600 leading-relaxed whitespace-pre-wrap">{subtitle}</p>
           )}
 
           {isPending && !result && (
