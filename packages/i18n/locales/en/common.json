@@ -117,8 +117,8 @@
     "noData": "No data found."
   },
   "hub": {
-    "invalidLink": "Invalid link",
-    "accessDisabled": "Access disabled",
-    "contactAgency": "Contact your agency"
+    "invalidLink": "Invalid or expired link.",
+    "accessDisabled": "Access disabled.",
+    "contactAgency": "Please contact the agency."
   }
 }

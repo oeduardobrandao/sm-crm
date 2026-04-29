@@ -117,8 +117,8 @@
     "noData": "Nenhum dado encontrado."
   },
   "hub": {
-    "invalidLink": "Link inválido",
-    "accessDisabled": "Acesso desabilitado",
-    "contactAgency": "Entre em contato com sua agência"
+    "invalidLink": "Link inválido ou expirado.",
+    "accessDisabled": "Acesso desativado.",
+    "contactAgency": "Entre em contato com a agência."
   }
 }

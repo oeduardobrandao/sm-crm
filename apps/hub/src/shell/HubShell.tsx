@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Outlet, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { HubContext } from '../HubContext';
 import { HubNav } from './HubNav';
 import { fetchBootstrap } from '../api';
@@ -7,6 +8,7 @@ import type { HubBootstrap } from '../types';
 
 export function HubShell() {
   const { workspace, token } = useParams<{ workspace: string; token: string }>();
+  const { t } = useTranslation();
   const [bootstrap, setBootstrap] = useState<HubBootstrap | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -41,7 +43,7 @@ export function HubShell() {
   if (error || !bootstrap) {
     return (
       <div className="hub-root min-h-screen flex flex-col items-center justify-center gap-3 px-6 text-center">
-        <p className="font-display text-2xl font-medium text-stone-900">Link inválido ou expirado.</p>
+        <p className="font-display text-2xl font-medium text-stone-900">{t('hub.invalidLink')}</p>
         <p className="text-sm text-stone-500">{error}</p>
       </div>
     );
@@ -50,8 +52,8 @@ export function HubShell() {
   if (!bootstrap.is_active) {
     return (
       <div className="hub-root min-h-screen flex flex-col items-center justify-center gap-3 px-6 text-center">
-        <p className="font-display text-2xl font-medium text-stone-900">Acesso desativado.</p>
-        <p className="text-sm text-stone-500">Entre em contato com a agência.</p>
+        <p className="font-display text-2xl font-medium text-stone-900">{t('hub.accessDisabled')}</p>
+        <p className="text-sm text-stone-500">{t('hub.contactAgency')}</p>
       </div>
     );
   }
