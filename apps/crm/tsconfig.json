@@ -1,7 +1,10 @@
 {
   "compilerOptions": {
     "baseUrl": ".",
-    "paths": { "@/*": ["./src/*"] },
+    "paths": {
+      "@/*": ["./src/*"],
+      "@mesaas/i18n": ["../../packages/i18n/index.ts"]
+    },
     "target": "ES2020",
     "useDefineForClassFields": true,
     "module": "ESNext",

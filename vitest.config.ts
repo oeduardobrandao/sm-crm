@@ -7,6 +7,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'apps/crm/src'),
+      '@mesaas/i18n': path.resolve(__dirname, 'packages/i18n/index.ts'),
     },
   },
   define: {
