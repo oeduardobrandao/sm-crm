@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Send, AlertCircle, Image, Film, Images } from 'lucide-react';
@@ -11,7 +12,7 @@ import { supabase } from '@/lib/supabase';
 import {
   getClientes, addWorkflow, addWorkflowEtapa, addWorkflowPost,
   updateWorkflowPost, updateWorkflow, removeWorkflow,
-  type Cliente, type PostMedia,
+  type PostMedia,
 } from '../../store';
 import { publishInstagramPostNow } from '../../services/instagram';
 import { PostMediaGallery } from '../entregas/components/PostMediaGallery';
@@ -48,6 +49,7 @@ function getTypeLabel(type: 'feed' | 'reels' | 'carrossel'): { label: string; co
 const MAX_CAPTION = 2200;
 
 export default function ExpressPostPage() {
+  const navigate = useNavigate();
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
   const [caption, setCaption] = useState('');
   const [mediaList, setMediaList] = useState<PostMedia[]>([]);
@@ -101,7 +103,6 @@ export default function ExpressPostPage() {
   });
 
   const eligibleClients = clientes.filter((c) => clientsWithIg.includes(c.id!));
-  const selectedClient = clientes.find((c) => c.id === selectedClientId) ?? null;
 
   const igAccountStatus = igAccount ? {
     revoked: igAccount.authorization_status === 'revoked',
@@ -163,8 +164,8 @@ export default function ExpressPostPage() {
       });
 
       setDraft({ workflowId: workflow.id!, postId: post.id! });
-    } catch (err: any) {
-      toast.error('Erro ao preparar rascunho: ' + err.message);
+    } catch (err: unknown) {
+      toast.error('Erro ao preparar rascunho: ' + (err instanceof Error ? err.message : String(err)));
     } finally {
       setCreatingDraft(false);
     }
@@ -229,11 +230,11 @@ export default function ExpressPostPage() {
 
       if (result.status === 'postado') {
         toast.success('Post publicado no Instagram!', {
-          action: { label: 'Ver post', onClick: () => window.location.assign('/entregas') },
+          action: { label: 'Ver post', onClick: () => navigate('/entregas') },
         });
       } else {
         toast.info('Post sendo processado pelo Instagram. Acompanhe na página de entregas.', {
-          action: { label: 'Ver entregas', onClick: () => window.location.assign('/entregas') },
+          action: { label: 'Ver entregas', onClick: () => navigate('/entregas') },
         });
       }
 
@@ -241,10 +242,10 @@ export default function ExpressPostPage() {
       setSelectedClientId(null);
       setCaption('');
       setMediaList([]);
-    } catch (err: any) {
+    } catch (err: unknown) {
       stopProgressTimer();
       setConfirmOpen(false);
-      toast.error(err.message);
+      toast.error(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
       setPublishing(false);
@@ -291,7 +292,7 @@ export default function ExpressPostPage() {
             <select
               value={selectedClientId ?? ''}
               onChange={(e) => handleClientChange(e.target.value ? parseInt(e.target.value, 10) : null)}
-              disabled={loading}
+              disabled={loading || creatingDraft}
               className="w-full rounded-lg px-3 py-2 text-sm border"
               style={{ fontFamily: 'var(--font-mono)', background: 'var(--surface-main)', borderColor: 'var(--border-color)', color: 'var(--text-main)' }}
             >
