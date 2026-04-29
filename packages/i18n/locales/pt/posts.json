@@ -46,5 +46,19 @@
     "revoked": "Token do Instagram foi revogado. Reconecte a conta nas configurações do cliente.",
     "expired": "Token do Instagram expirou. Reconecte a conta nas configurações do cliente.",
     "missingPermission": "Permissão de publicação não concedida. Reconecte a conta com as permissões necessárias."
+  },
+  "mediaGallery": {
+    "dropHere": "Soltar aqui",
+    "uploading": "Enviando…",
+    "add": "Adicionar",
+    "choose": "Escolher",
+    "downloadAll": "Baixar todos",
+    "downloading": "Baixando…",
+    "error": "Erro",
+    "uploadDone": "Upload concluído",
+    "videoUploaded": "Vídeo enviado",
+    "downloadDone": "Download concluído",
+    "selectThumbnail": "Selecione uma thumbnail para o vídeo",
+    "chooseThumbnail": "Escolher thumbnail"
   }
 }
