@@ -2,9 +2,12 @@ import { useEffect, useState } from 'react';
 import {
   ArrowRight,
   Calendar,
+  CalendarClock,
   Check,
   CheckCircle2,
   CircleDollarSign,
+  Clock,
+  ExternalLink,
   Filter,
   Heart,
   Instagram,
@@ -13,6 +16,7 @@ import {
   MessageCircle,
   MousePointer2,
   Plus,
+  Send,
   Users,
 } from 'lucide-react';
 
@@ -1477,6 +1481,262 @@ export function FinanceVisual() {
   );
 }
 
+export function SchedulingVisual() {
+  const mobile = useIsMobile();
+  const [phase, setPhase] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setPhase((p) => (p + 1) % 3), 3200);
+    return () => clearInterval(id);
+  }, []);
+
+  const steps = [
+    { label: 'Aprovado', color: BRAND.yellow },
+    { label: 'Agendado', color: BRAND.blue },
+    { label: 'Publicado', color: BRAND.green },
+  ];
+
+  return (
+    <div
+      style={{
+        background: BRAND.dark,
+        borderRadius: 22,
+        padding: mobile ? 16 : 22,
+        color: '#fff',
+        boxShadow: '0 30px 80px -20px rgba(0,0,0,.3)',
+        position: 'relative',
+        overflow: 'hidden',
+      }}
+    >
+      <div
+        style={{
+          position: 'absolute',
+          top: -60,
+          right: -60,
+          width: 220,
+          height: 220,
+          borderRadius: 9999,
+          background: 'radial-gradient(closest-side,rgba(57,132,255,.25),transparent)',
+          pointerEvents: 'none',
+        }}
+      />
+      <div
+        style={{
+          position: 'absolute',
+          bottom: -80,
+          left: -40,
+          width: 240,
+          height: 240,
+          borderRadius: 9999,
+          background: 'radial-gradient(closest-side,rgba(62,207,142,.15),transparent)',
+          pointerEvents: 'none',
+        }}
+      />
+
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, position: 'relative' }}>
+        <div
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 8,
+            background: 'linear-gradient(135deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Instagram size={16} color="#fff" />
+        </div>
+        <div>
+          <div style={{ fontSize: '.82rem', fontWeight: 600, lineHeight: 1.2 }}>@bella.moda</div>
+          <div style={{ fontSize: '.6rem', color: 'rgba(255,255,255,.45)', fontFamily: MONO, letterSpacing: '.06em' }}>CONTA CONECTADA</div>
+        </div>
+        <Badge tone="success" small>
+          <Send size={9} style={{ marginRight: 2 }} /> PUBLICAÇÃO AUTO
+        </Badge>
+      </div>
+
+      {/* Post card */}
+      <div
+        style={{
+          background: 'rgba(255,255,255,.06)',
+          borderRadius: 14,
+          padding: mobile ? 12 : 16,
+          border: '1px solid rgba(255,255,255,.08)',
+          marginBottom: 14,
+          position: 'relative',
+        }}
+      >
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+          <div
+            style={{
+              width: mobile ? 56 : 68,
+              height: mobile ? 56 : 68,
+              borderRadius: 10,
+              background: 'linear-gradient(135deg,#e8d5b7,#d4a574)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: mobile ? 22 : 28,
+              flexShrink: 0,
+            }}
+          >
+            👗
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+              <Badge tone="teal" small>CARROSSEL</Badge>
+              <span style={{ fontSize: '.6rem', color: 'rgba(255,255,255,.35)', fontFamily: MONO }}>3 MÍDIAS</span>
+            </div>
+            <div style={{ fontSize: '.85rem', fontWeight: 600, marginBottom: 3, lineHeight: 1.3 }}>
+              Lançamento Coleção Inverno
+            </div>
+            <div
+              style={{
+                fontSize: '.72rem',
+                color: 'rgba(255,255,255,.5)',
+                lineHeight: 1.4,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              As peças mais quentes da temporada estão aqui. Confira...
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Action row — phase-dependent */}
+      <div
+        style={{
+          background: 'rgba(255,255,255,.04)',
+          borderRadius: 12,
+          padding: mobile ? '10px 12px' : '12px 16px',
+          border: '1px solid rgba(255,255,255,.06)',
+          marginBottom: 16,
+          transition: 'all .4s ease',
+          position: 'relative',
+        }}
+      >
+        {phase === 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <CalendarClock size={15} color={BRAND.yellow} />
+              <span style={{ fontFamily: MONO, fontSize: '.75rem', fontWeight: 600, letterSpacing: '.04em' }}>
+                15 Mai · 14:00
+              </span>
+            </div>
+            <div
+              style={{
+                padding: '6px 14px',
+                borderRadius: 8,
+                background: BRAND.blue,
+                color: '#fff',
+                fontSize: '.72rem',
+                fontWeight: 700,
+                fontFamily: MONO,
+                letterSpacing: '.04em',
+                animation: 'sched-pulse 2s infinite',
+                cursor: 'default',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <Send size={11} style={{ marginRight: 4, verticalAlign: '-1px' }} />
+              AGENDAR
+            </div>
+          </div>
+        )}
+        {phase === 1 && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Clock size={15} color={BRAND.teal} />
+              <div>
+                <div style={{ fontFamily: MONO, fontSize: '.75rem', fontWeight: 600, letterSpacing: '.04em' }}>
+                  15 Mai · 14:00
+                </div>
+                <div style={{ fontFamily: MONO, fontSize: '.58rem', color: BRAND.teal, letterSpacing: '.08em', marginTop: 2 }}>
+                  PUBLICA EM 2 DIAS
+                </div>
+              </div>
+            </div>
+            <Badge tone="success">
+              <Check size={10} style={{ marginRight: 2 }} /> AGENDADO
+            </Badge>
+          </div>
+        )}
+        {phase === 2 && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <CheckCircle2 size={15} color={BRAND.green} />
+              <div>
+                <div style={{ fontFamily: MONO, fontSize: '.75rem', fontWeight: 600, letterSpacing: '.04em', color: BRAND.green }}>
+                  PUBLICADO
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginTop: 2 }}>
+                  <ExternalLink size={9} color="rgba(255,255,255,.4)" />
+                  <span style={{ fontFamily: MONO, fontSize: '.55rem', color: 'rgba(255,255,255,.4)', letterSpacing: '.04em' }}>
+                    instagram.com/p/Cx7k...
+                  </span>
+                </div>
+              </div>
+            </div>
+            <Badge tone="success">
+              <CheckCircle2 size={10} style={{ marginRight: 2 }} /> NO AR
+            </Badge>
+          </div>
+        )}
+      </div>
+
+      {/* Timeline */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0, position: 'relative' }}>
+        {steps.map((s, i) => (
+          <div key={s.label} style={{ display: 'flex', alignItems: 'center' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+              <div
+                style={{
+                  width: i <= phase ? 10 : 8,
+                  height: i <= phase ? 10 : 8,
+                  borderRadius: 9999,
+                  background: i <= phase ? s.color : 'rgba(255,255,255,.15)',
+                  transition: 'all .4s ease',
+                  boxShadow: i === phase ? `0 0 8px ${s.color}60` : 'none',
+                }}
+              />
+              <span
+                style={{
+                  fontFamily: MONO,
+                  fontSize: '.52rem',
+                  fontWeight: i <= phase ? 700 : 500,
+                  letterSpacing: '.08em',
+                  color: i <= phase ? s.color : 'rgba(255,255,255,.25)',
+                  transition: 'all .4s ease',
+                  textTransform: 'uppercase',
+                }}
+              >
+                {s.label}
+              </span>
+            </div>
+            {i < 2 && (
+              <div
+                style={{
+                  width: mobile ? 36 : 56,
+                  height: 2,
+                  background: i < phase ? steps[i + 1].color : 'rgba(255,255,255,.1)',
+                  borderRadius: 1,
+                  margin: '0 8px',
+                  marginBottom: 16,
+                  transition: 'background .4s ease',
+                }}
+              />
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function IconSquare({ icon, color = BRAND.yellow }: { icon: React.ReactNode; color?: string }) {
   return (
     <div
@@ -1497,4 +1757,4 @@ export function IconSquare({ icon, color = BRAND.yellow }: { icon: React.ReactNo
   );
 }
 
-export { ArrowRight, Calendar, CircleDollarSign, Instagram, LayoutGrid, Users };
+export { ArrowRight, Calendar, CircleDollarSign, Instagram, LayoutGrid, Send, Users };

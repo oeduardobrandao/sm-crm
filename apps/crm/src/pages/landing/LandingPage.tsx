@@ -14,6 +14,8 @@ import {
   Instagram as InstagramIcon,
   KanbanVisual,
   LayoutGrid,
+  SchedulingVisual,
+  Send,
   Users,
 } from './landing-visuals';
 
@@ -134,7 +136,7 @@ function Hero() {
               Sua agência de social media <em>sem caos</em>, sem planilha, sem grupo de WhatsApp.
             </h1>
             <p className="hero-sub">
-              Mesaas é o CRM feito para gestores e agências de social media. Clientes, contratos, entregas, aprovações e métricas do Instagram — em um só lugar.
+              Mesaas é o CRM feito para gestores e agências de social media. Clientes, entregas, aprovações, agendamento automático no Instagram e métricas — em um só lugar.
             </p>
             <div className="hero-ctas">
               {!loading && (
@@ -166,14 +168,16 @@ function Ticker() {
   const items = [
     'Clientes + contratos',
     'Kanban de entregas',
+    'Agendamento no Instagram',
     'Portal do cliente',
-    'Integração Instagram',
+    'Publicação automática',
     'Calendário editorial',
+    'Métricas reais',
     'Financeiro',
     'Equipe + tarefas',
     'Aprovações por link',
-    'Métricas reais',
-    'Agendamento automático',
+    'Feed, Reels e Carrossel',
+    'Integração Meta API',
   ];
   const doubled = [...items, ...items];
   return (
@@ -237,11 +241,45 @@ function Features() {
 
         <div className="feat-row reverse reveal">
           <div className="feat-copy">
-            <IconSquare icon={<InstagramIcon size={22} />} color="#f542c8" />
-            <h3>Instagram conectado. Métricas reais, sem exportar CSV.</h3>
+            <IconSquare icon={<Send size={22} />} color="#3984FF" />
+            <h3>Agende e publique no Instagram — sem sair do Mesaas.</h3>
             <p>
-              Conecte a conta do seu cliente via API oficial do Meta. Seguidores, alcance, engajamento e top posts atualizados todo dia, prontos para o
-              relatório.
+              Escolha o dia e horário, escreva a legenda e pronto: o Mesaas publica automaticamente no perfil do seu cliente via API oficial do Meta. Feed, Reels
+              e Carrossel — sem aplicativos externos, sem alarmes no celular.
+            </p>
+            <ul className="feat-bullets">
+              <li>
+                <span className="check">✓</span>
+                <span>
+                  <strong>Publicação automática</strong> — o post vai ao ar sozinho no dia e hora marcados
+                </span>
+              </li>
+              <li>
+                <span className="check">✓</span>
+                <span>
+                  Suporta <strong>Feed, Reels e Carrossel</strong> com validação de mídia
+                </span>
+              </li>
+              <li>
+                <span className="check">✓</span>
+                <span>
+                  Opção de <strong>publicar agora</strong> para posts urgentes
+                </span>
+              </li>
+            </ul>
+          </div>
+          <div className="feat-visual">
+            <SchedulingVisual />
+          </div>
+        </div>
+
+        <div className="feat-row reveal">
+          <div className="feat-copy">
+            <IconSquare icon={<InstagramIcon size={22} />} color="#f542c8" />
+            <h3>Métricas reais do Instagram — prontas para o relatório.</h3>
+            <p>
+              Seguidores, alcance, engajamento e top posts atualizados todo dia. Conecte a conta via API oficial e tenha dados confiáveis para mostrar o valor do
+              seu trabalho ao cliente.
             </p>
             <ul className="feat-bullets">
               <li>
@@ -271,7 +309,7 @@ function Features() {
           </div>
         </div>
 
-        <div className="feat-row reveal">
+        <div className="feat-row reverse reveal">
           <div className="feat-copy">
             <IconSquare icon={<Users size={22} />} color="#42c8f5" />
             <h3>Portal do cliente que o cliente realmente usa</h3>
@@ -307,7 +345,7 @@ function Features() {
           </div>
         </div>
 
-        <div className="feat-row reverse reveal">
+        <div className="feat-row reveal">
           <div className="feat-copy">
             <IconSquare icon={<CalendarIcon size={22} />} color="#3ecf8e" />
             <h3>Calendário editorial por cliente ou unificado</h3>
@@ -343,7 +381,7 @@ function Features() {
           </div>
         </div>
 
-        <div className="feat-row reveal">
+        <div className="feat-row reverse reveal">
           <div className="feat-copy">
             <IconSquare icon={<CircleDollarSign size={22} />} color="#6b7280" />
             <h3>Financeiro sem planilha paralela</h3>
@@ -598,7 +636,7 @@ function Faq() {
     },
     {
       q: 'Como funciona a integração com o Instagram?',
-      a: 'Você conecta a conta do seu cliente via API oficial do Meta. A partir daí, o Mesaas puxa métricas de seguidores, alcance, engajamento e posts automaticamente. Nada de scraping — dados 100% confiáveis.',
+      a: 'Você conecta a conta do seu cliente via API oficial do Meta. A partir daí, o Mesaas puxa métricas de seguidores, alcance, engajamento e posts automaticamente. Além disso, você pode agendar posts para publicação automática — escolha o dia e horário, e o sistema publica direto no perfil. Suporta Feed, Reels e Carrossel. Nada de scraping — dados e publicações 100% via API oficial.',
     },
     {
       q: 'Consigo importar meus clientes de uma planilha?',
