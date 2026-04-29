@@ -148,6 +148,18 @@ vi.mock('@/components/ui/dropdown-menu', async () => {
     return <div>{children}</div>;
   }
 
+  function DropdownMenuLabel({ children }: { children: React.ReactNode }) {
+    return <div>{children}</div>;
+  }
+
+  function DropdownMenuSeparator() {
+    return <hr />;
+  }
+
+  function DropdownMenuItem({ children, onClick }: { children: React.ReactNode; onClick?: () => void }) {
+    return <button type="button" onClick={onClick}>{children}</button>;
+  }
+
   function DropdownMenuRadioGroup({
     value,
     onValueChange,
@@ -177,6 +189,9 @@ vi.mock('@/components/ui/dropdown-menu', async () => {
     DropdownMenu,
     DropdownMenuTrigger,
     DropdownMenuContent,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuItem,
     DropdownMenuRadioGroup,
     DropdownMenuRadioItem,
   };

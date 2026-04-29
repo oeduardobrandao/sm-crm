@@ -1,0 +1,77 @@
+{
+  "title": "Leads",
+  "tooltip": "Manage and track potential client contacts.",
+  "csvTooltip": "Columns: nome*, email, instagram, canal, especialidade, faturamento, tags, notas, status",
+  "newLead": "New Lead",
+  "searchPlaceholder": "Search by name, email, Instagram...",
+  "table": {
+    "name": "Name",
+    "email": "Email",
+    "channel": "Channel",
+    "specialty": "Specialty",
+    "status": "Status",
+    "created": "Created",
+    "actions": "Actions",
+    "createdAt": "Created date"
+  },
+  "channels": {
+    "Instagram": "Instagram",
+    "Facebook": "Facebook",
+    "Google Ads": "Google Ads",
+    "Indicação": "Referral",
+    "Site": "Website",
+    "WhatsApp": "WhatsApp",
+    "Typeform": "Typeform",
+    "Outro": "Other"
+  },
+  "revenue": {
+    "upTo5k": "Up to R$ 5,000/mo",
+    "5kTo10k": "R$ 5,000 to R$ 10,000/mo",
+    "10kTo20k": "R$ 10,000 to R$ 20,000/mo",
+    "20kTo50k": "R$ 20,000 to R$ 50,000/mo",
+    "above50k": "Above R$ 50,000/mo"
+  },
+  "convertToClient": "Convert to client",
+  "convertDialog": {
+    "title": "Convert Lead to Client",
+    "submit": "Create Client"
+  },
+  "dialog": {
+    "editTitle": "Edit Lead",
+    "newTitle": "New Lead"
+  },
+  "form": {
+    "name": "Name *",
+    "email": "Email",
+    "instagram": "Instagram",
+    "instagramPlaceholder": "@username or URL",
+    "channel": "Channel",
+    "selectPlaceholder": "Select...",
+    "specialty": "Specialty",
+    "revenue": "Revenue",
+    "tags": "Tags",
+    "tagsPlaceholder": "tag1, tag2, ...",
+    "notes": "Notes",
+    "status": "Status",
+    "phone": "Phone",
+    "plan": "Plan",
+    "monthlyValue": "Monthly Value (R$)",
+    "paymentDay": "Payment Day (1-31)"
+  },
+  "deleteConfirm": "Remove this lead?",
+  "toast": {
+    "updated": "Lead updated",
+    "created": "Lead created",
+    "removed": "Lead removed",
+    "converted": "Client created and lead converted!",
+    "convertError": "Error converting lead",
+    "statusError": "Error updating status",
+    "csvImport_one": "{{count}} lead imported successfully!",
+    "csvImport_other": "{{count}} leads imported successfully!"
+  },
+  "validation": {
+    "nameRequired": "Name is required",
+    "emailInvalid": "Invalid email",
+    "dayRange": "Day must be between 1 and 31"
+  }
+}

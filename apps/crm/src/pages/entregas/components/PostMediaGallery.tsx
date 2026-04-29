@@ -15,6 +15,7 @@ import {
   listPostMedia, uploadPostMedia, deletePostMedia, setPostMediaCover,
   reorderPostMedia, detectKind,
 } from '../../../services/postMedia';
+import { useTranslation } from 'react-i18next';
 import type { PostMedia } from '../../../store';
 import { OptimizedImage } from '../../../components/OptimizedImage';
 import { PostMediaLightbox } from './PostMediaLightbox';
@@ -29,6 +30,8 @@ interface PostMediaGalleryProps {
 }
 
 export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostMediaGalleryProps) {
+  const { t } = useTranslation('posts');
+  const { t: tc } = useTranslation();
   const qc = useQueryClient();
   const { data: serverMedia, isLoading: mediaLoading } = useQuery({
     queryKey: ['post-media', postId],
@@ -145,7 +148,7 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
     );
 
     refresh();
-    if (!hasError) toast.success('Upload concluído');
+    if (!hasError) toast.success(t('mediaGallery.uploadDone'));
     setUploading(false);
     setTimeout(() => setUploadQueue(new Map()), 2000);
   }
@@ -177,7 +180,7 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
       });
       setPendingVideo(null);
       refresh();
-      toast.success('Vídeo enviado');
+      toast.success(t('mediaGallery.videoUploaded'));
     } catch (e) {
       toast.error((e as Error).message);
       setUploadQueue(prev => {
@@ -229,7 +232,7 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(objUrl);
-      toast.success('Download concluído');
+      toast.success(t('mediaGallery.downloadDone'));
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -308,7 +311,7 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
                 className={`flex flex-col items-center justify-center gap-1 aspect-square rounded-xl border border-dashed cursor-pointer transition-colors ${dragOver ? 'ring-2 ring-[#eab308] border-[#eab308] bg-[#eab308]/10 text-[#eab308]' : 'border-stone-300 bg-stone-50 text-stone-500 hover:border-stone-400 hover:bg-stone-100 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-400 dark:hover:border-stone-500 dark:hover:bg-stone-700'}`}
               >
                 <Upload className="h-4 w-4" />
-                <span className="text-[11px]">{dragOver ? 'Soltar aqui' : uploading ? 'Enviando…' : 'Adicionar'}</span>
+                <span className="text-[11px]">{dragOver ? t('mediaGallery.dropHere') : uploading ? t('mediaGallery.uploading') : t('mediaGallery.add')}</span>
                 <input type="file" multiple accept="image/*,video/*" hidden onChange={(e) => { handleFiles(e.target.files); e.target.value = ''; }} />
               </label>
             )}
@@ -319,7 +322,7 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
                 className="flex flex-col items-center justify-center gap-1 aspect-square rounded-xl border border-dashed border-stone-300 bg-stone-50 text-stone-500 hover:border-stone-400 hover:bg-stone-100 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-400 dark:hover:border-stone-500 dark:hover:bg-stone-700 cursor-pointer transition-colors"
               >
                 <FolderOpen className="h-4 w-4" />
-                <span className="text-[11px]">Escolher</span>
+                <span className="text-[11px]">{t('mediaGallery.choose')}</span>
               </button>
             )}
           </div>
@@ -334,7 +337,7 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
           className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11.5px] font-medium text-stone-600 bg-stone-100 hover:bg-stone-200 dark:text-stone-300 dark:bg-stone-800 dark:hover:bg-stone-700 transition-colors disabled:opacity-50"
         >
           <Download className="h-3.5 w-3.5" />
-          {downloading ? 'Baixando…' : 'Baixar todos'}
+          {downloading ? t('mediaGallery.downloading') : t('mediaGallery.downloadAll')}
         </button>
       )}
 
@@ -345,7 +348,7 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
               <div className="flex items-center justify-between text-[11.5px] text-stone-600 mb-1">
                 <span className="truncate pr-2">{item.name}</span>
                 <span className="tabular-nums font-medium text-stone-900">
-                  {item.status === 'done' ? '✓' : item.status === 'error' ? 'Erro' : `${item.pct}%`}
+                  {item.status === 'done' ? '✓' : item.status === 'error' ? t('mediaGallery.error') : `${item.pct}%`}
                 </span>
               </div>
               <div className="h-1.5 rounded-full bg-stone-200 overflow-hidden">
@@ -362,9 +365,9 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
       {pendingVideo && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl bg-amber-50 ring-1 ring-amber-200/60 px-3 py-2 text-[12.5px] text-amber-900">
           <AlertTriangle className="h-4 w-4 shrink-0" />
-          <span>Selecione uma thumbnail para o vídeo <strong>{pendingVideo.name}</strong></span>
+          <span>{t('mediaGallery.selectThumbnail')} <strong>{pendingVideo.name}</strong></span>
           <label className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-stone-900 text-white text-[11px] font-semibold cursor-pointer hover:bg-stone-700">
-            Escolher thumbnail
+            {t('mediaGallery.chooseThumbnail')}
             <input type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) handleVideoThumbnail(f); }} />
           </label>
           <button
@@ -372,7 +375,7 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
             onClick={() => setPendingVideo(null)}
             className="text-[11px] text-stone-500 hover:text-stone-700"
           >
-            Cancelar
+            {tc('actions.cancel')}
           </button>
         </div>
       )}

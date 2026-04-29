@@ -1,0 +1,64 @@
+{
+  "title": "Post Express",
+  "subtitle": "Publique rapidamente no Instagram",
+  "labels": {
+    "client": "Cliente",
+    "media": "Mídia",
+    "caption": "Legenda do Instagram",
+    "preview": "Preview"
+  },
+  "select": {
+    "client": "Selecionar cliente..."
+  },
+  "empty": {
+    "noClientsWithIg": "Nenhum cliente com Instagram conectado.",
+    "connectAccount": "Conectar conta",
+    "preparingDraft": "Preparando rascunho...",
+    "mediaPlaceholder": "Mídia aparece aqui"
+  },
+  "publish": {
+    "button": "Publicar agora",
+    "note": "O post será publicado imediatamente no Instagram",
+    "confirmTitle": "Publicar agora?",
+    "publishingTitle": "Publicando…",
+    "confirmDescription": "O post será publicado imediatamente no Instagram. Esta ação não pode ser desfeita.",
+    "publishingDescription": "Aguarde enquanto o post é publicado no Instagram."
+  },
+  "progress": {
+    "sending": "Enviando para o Instagram…",
+    "done": "Concluído!"
+  },
+  "toast": {
+    "published": "Post publicado no Instagram!",
+    "processing": "Post sendo processado pelo Instagram. Acompanhe na página de entregas.",
+    "draftError": "Erro ao preparar rascunho: {{error}}",
+    "viewPost": "Ver post",
+    "viewDeliveries": "Ver entregas"
+  },
+  "postType": {
+    "feed": "Feed",
+    "reels": "Reels",
+    "carrossel": "Carrossel"
+  },
+  "captionPlaceholder": "Escreva a legenda do post aqui...",
+  "publish_action": "Publicar",
+  "warnings": {
+    "revoked": "Token do Instagram foi revogado. Reconecte a conta nas configurações do cliente.",
+    "expired": "Token do Instagram expirou. Reconecte a conta nas configurações do cliente.",
+    "missingPermission": "Permissão de publicação não concedida. Reconecte a conta com as permissões necessárias."
+  },
+  "mediaGallery": {
+    "dropHere": "Soltar aqui",
+    "uploading": "Enviando…",
+    "add": "Adicionar",
+    "choose": "Escolher",
+    "downloadAll": "Baixar todos",
+    "downloading": "Baixando…",
+    "error": "Erro",
+    "uploadDone": "Upload concluído",
+    "videoUploaded": "Vídeo enviado",
+    "downloadDone": "Download concluído",
+    "selectThumbnail": "Selecione uma thumbnail para o vídeo",
+    "chooseThumbnail": "Escolher thumbnail"
+  }
+}

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { Send, AlertCircle, Image, Film, Images } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -38,11 +39,11 @@ function detectPostType(media: PostMedia[]): 'feed' | 'reels' | 'carrossel' | nu
   return 'feed';
 }
 
-function getTypeLabel(type: 'feed' | 'reels' | 'carrossel'): { label: string; color: string; bg: string; icon: typeof Image } {
+function getTypeLabel(type: 'feed' | 'reels' | 'carrossel', t: (key: string) => string): { label: string; color: string; bg: string; icon: typeof Image } {
   switch (type) {
-    case 'feed': return { label: 'Feed', color: '#eab308', bg: 'rgba(234,179,8,0.12)', icon: Image };
-    case 'reels': return { label: 'Reels', color: '#E1306C', bg: 'rgba(225,48,108,0.12)', icon: Film };
-    case 'carrossel': return { label: 'Carrossel', color: '#42c8f5', bg: 'rgba(66,200,245,0.12)', icon: Images };
+    case 'feed': return { label: t('postType.feed'), color: '#eab308', bg: 'rgba(234,179,8,0.12)', icon: Image };
+    case 'reels': return { label: t('postType.reels'), color: '#E1306C', bg: 'rgba(225,48,108,0.12)', icon: Film };
+    case 'carrossel': return { label: t('postType.carrossel'), color: '#42c8f5', bg: 'rgba(66,200,245,0.12)', icon: Images };
   }
 }
 
@@ -50,6 +51,8 @@ const MAX_CAPTION = 2200;
 
 export default function ExpressPostPage() {
   const navigate = useNavigate();
+  const { t } = useTranslation('posts');
+  const { t: tc } = useTranslation();
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
   const [caption, setCaption] = useState('');
   const [mediaList, setMediaList] = useState<PostMedia[]>([]);
@@ -116,11 +119,11 @@ export default function ExpressPostPage() {
 
   let warningMessage: string | null = null;
   if (igAccountStatus?.revoked) {
-    warningMessage = 'Token do Instagram foi revogado. Reconecte a conta nas configurações do cliente.';
+    warningMessage = t('warnings.revoked');
   } else if (igAccountStatus?.expired) {
-    warningMessage = 'Token do Instagram expirou. Reconecte a conta nas configurações do cliente.';
+    warningMessage = t('warnings.expired');
   } else if (missingPublishPermission) {
-    warningMessage = 'Permissão de publicação não concedida. Reconecte a conta com as permissões necessárias.';
+    warningMessage = t('warnings.missingPermission');
   }
 
   const detectedType = detectPostType(mediaList);
@@ -165,7 +168,7 @@ export default function ExpressPostPage() {
 
       setDraft({ workflowId: workflow.id!, postId: post.id! });
     } catch (err: unknown) {
-      toast.error('Erro ao preparar rascunho: ' + (err instanceof Error ? err.message : String(err)));
+      toast.error(t('toast.draftError', { error: err instanceof Error ? err.message : String(err) }));
     } finally {
       setCreatingDraft(false);
     }
@@ -229,12 +232,12 @@ export default function ExpressPostPage() {
       await updateWorkflow(draft.workflowId, { status: 'concluido' });
 
       if (result.status === 'postado') {
-        toast.success('Post publicado no Instagram!', {
-          action: { label: 'Ver post', onClick: () => navigate('/entregas') },
+        toast.success(t('toast.published'), {
+          action: { label: t('toast.viewPost'), onClick: () => navigate('/entregas') },
         });
       } else {
-        toast.info('Post sendo processado pelo Instagram. Acompanhe na página de entregas.', {
-          action: { label: 'Ver entregas', onClick: () => navigate('/entregas') },
+        toast.info(t('toast.processing'), {
+          action: { label: t('toast.viewDeliveries'), onClick: () => navigate('/entregas') },
         });
       }
 
@@ -262,10 +265,10 @@ export default function ExpressPostPage() {
       {/* Header */}
       <div style={{ marginBottom: '1.5rem' }}>
         <h1 style={{ fontFamily: 'var(--font-heading)', fontSize: 'clamp(2rem, 4vw, 3.2rem)', fontWeight: 900 }}>
-          Post Express
+          {t('title')}
         </h1>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.25rem' }}>
-          Publique rapidamente no Instagram
+          {t('subtitle')}
         </p>
       </div>
 
@@ -287,7 +290,7 @@ export default function ExpressPostPage() {
           {/* Client Picker */}
           <div style={{ background: 'var(--card-bg)', borderRadius: '16px', padding: '1.25rem', border: '1px solid var(--border-color)' }}>
             <label className="block text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
-              Cliente
+              {t('labels.client')}
             </label>
             <select
               value={selectedClientId ?? ''}
@@ -296,15 +299,15 @@ export default function ExpressPostPage() {
               className="w-full rounded-lg px-3 py-2 text-sm border"
               style={{ fontFamily: 'var(--font-mono)', background: 'var(--surface-main)', borderColor: 'var(--border-color)', color: 'var(--text-main)' }}
             >
-              <option value="">Selecionar cliente...</option>
+              <option value="">{t('select.client')}</option>
               {eligibleClients.map((c) => (
                 <option key={c.id} value={c.id}>{c.nome}</option>
               ))}
             </select>
             {eligibleClients.length === 0 && (
               <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
-                Nenhum cliente com Instagram conectado.{' '}
-                <a href="/clientes" style={{ color: '#eab308' }}>Conectar conta</a>
+                {t('empty.noClientsWithIg')}{' '}
+                <a href="/clientes" style={{ color: '#eab308' }}>{t('empty.connectAccount')}</a>
               </p>
             )}
             {igAccount && (
@@ -323,7 +326,7 @@ export default function ExpressPostPage() {
           {draft && (
             <div style={{ background: 'var(--card-bg)', borderRadius: '16px', padding: '1.25rem', border: '1px solid var(--border-color)' }}>
               <label className="block text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
-                Mídia
+                {t('labels.media')}
               </label>
               <PostMediaGallery
                 postId={draft.postId}
@@ -335,12 +338,12 @@ export default function ExpressPostPage() {
               {detectedType && (
                 <div className="mt-3">
                   {(() => {
-                    const t = getTypeLabel(detectedType);
-                    const Icon = t.icon;
+                    const typeInfo = getTypeLabel(detectedType, t);
+                    const Icon = typeInfo.icon;
                     return (
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold"
-                        style={{ color: t.color, background: t.bg }}>
-                        <Icon className="h-3.5 w-3.5" /> {t.label}
+                        style={{ color: typeInfo.color, background: typeInfo.bg }}>
+                        <Icon className="h-3.5 w-3.5" /> {typeInfo.label}
                       </span>
                     );
                   })()}
@@ -351,7 +354,7 @@ export default function ExpressPostPage() {
 
           {creatingDraft && (
             <div style={{ background: 'var(--card-bg)', borderRadius: '16px', padding: '2rem', border: '1px solid var(--border-color)', textAlign: 'center' }}>
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Preparando rascunho...</p>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{t('empty.preparingDraft')}</p>
             </div>
           )}
         </div>
@@ -362,12 +365,12 @@ export default function ExpressPostPage() {
           {/* Caption */}
           <div style={{ background: 'var(--card-bg)', borderRadius: '16px', padding: '1.25rem', border: '1px solid var(--border-color)' }}>
             <label className="block text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
-              Legenda do Instagram
+              {t('labels.caption')}
             </label>
             <textarea
               value={caption}
               onChange={(e) => setCaption(e.target.value.slice(0, MAX_CAPTION))}
-              placeholder="Escreva a legenda do post aqui..."
+              placeholder={t('captionPlaceholder')}
               disabled={!draft || loading}
               rows={8}
               className="w-full rounded-lg px-3 py-2.5 text-sm resize-none border"
@@ -384,7 +387,7 @@ export default function ExpressPostPage() {
           {draft && igAccount && (
             <div style={{ background: 'var(--card-bg)', borderRadius: '16px', padding: '1.25rem', border: '1px solid var(--border-color)' }}>
               <label className="block text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
-                Preview
+                {t('labels.preview')}
               </label>
               <div className="rounded-xl overflow-hidden" style={{ background: '#000', padding: '0.75rem', maxWidth: '300px', margin: '0 auto' }}>
                 <div className="flex items-center gap-2 mb-2">
@@ -403,7 +406,7 @@ export default function ExpressPostPage() {
                       <img src={mediaList[0].thumbnail_url ?? mediaList[0].url} alt="" className="w-full h-full object-cover" />
                     )
                   ) : (
-                    <span className="text-xs" style={{ color: '#4b5563' }}>Mídia aparece aqui</span>
+                    <span className="text-xs" style={{ color: '#4b5563' }}>{t('empty.mediaPlaceholder')}</span>
                   )}
                 </div>
                 {caption && (
@@ -423,11 +426,11 @@ export default function ExpressPostPage() {
             className="w-full text-sm font-bold py-3"
             style={canPublish ? { background: '#E1306C', color: 'white' } : undefined}
           >
-            <Send className="h-4 w-4 mr-2" /> Publicar agora
+            <Send className="h-4 w-4 mr-2" /> {t('publish.button')}
           </Button>
           {draft && (
             <p className="text-center text-xs" style={{ color: 'var(--text-muted)' }}>
-              O post será publicado imediatamente no Instagram
+              {t('publish.note')}
             </p>
           )}
         </div>
@@ -437,17 +440,17 @@ export default function ExpressPostPage() {
       <AlertDialog open={confirmOpen} onOpenChange={(o) => { if (!publishing) setConfirmOpen(o); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{publishing ? 'Publicando…' : 'Publicar agora?'}</AlertDialogTitle>
+            <AlertDialogTitle>{publishing ? t('publish.publishingTitle') : t('publish.confirmTitle')}</AlertDialogTitle>
             <AlertDialogDescription>
               {publishing
-                ? 'Aguarde enquanto o post é publicado no Instagram.'
-                : 'O post será publicado imediatamente no Instagram. Esta ação não pode ser desfeita.'}
+                ? t('publish.publishingDescription')
+                : t('publish.confirmDescription')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           {publishing && (
             <div className="px-1">
               <div className="flex items-center justify-between text-xs text-stone-500 mb-1.5">
-                <span>{publishPct < 100 ? 'Enviando para o Instagram…' : 'Concluído!'}</span>
+                <span>{publishPct < 100 ? t('progress.sending') : t('progress.done')}</span>
                 <span className="tabular-nums font-medium text-stone-900">{publishPct}%</span>
               </div>
               <div className="h-2 rounded-full bg-stone-200 overflow-hidden">
@@ -460,9 +463,9 @@ export default function ExpressPostPage() {
           )}
           {!publishing && (
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogCancel>{tc('actions.cancel')}</AlertDialogCancel>
               <Button onClick={handlePublishNow} style={{ background: '#E1306C', color: 'white' }}>
-                Publicar
+                {t('publish_action')}
               </Button>
             </AlertDialogFooter>
           )}

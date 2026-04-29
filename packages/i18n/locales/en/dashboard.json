@@ -1,0 +1,74 @@
+{
+  "title": "Dashboard",
+  "cards": {
+    "today": "Today",
+    "leads": "Leads",
+    "analytics": "Analytics",
+    "deliveries": "Deliveries",
+    "contracts": "Contracts",
+    "team": "Team",
+    "finances": "Finances",
+    "calendar": "Calendar"
+  },
+  "kpi": {
+    "novo": "NEW",
+    "contatado": "CONTACTED",
+    "qualificado": "QUALIFIED",
+    "contas": "ACCOUNTS",
+    "seguidores": "FOLLOWERS",
+    "alcance28d": "REACH (28D)",
+    "engMedio": "AVG. ENG.",
+    "cliquesLink": "LINK CLICKS",
+    "melhorEng": "BEST ENG.",
+    "maisCresceu": "MOST GROWN",
+    "ativos": "ACTIVE",
+    "vigentes": "ACTIVE",
+    "aAssinar": "TO SIGN",
+    "membros": "MEMBERS",
+    "custoMes": "COST/MO.",
+    "aReceber": "RECEIVABLE",
+    "aPagar": "PAYABLE",
+    "receitaMensal": "MONTHLY REVENUE",
+    "despesas": "EXPENSES",
+    "saldo": "BALANCE",
+    "clientesAtivos": "ACTIVE CLIENTS",
+    "contratosVigentes": "ACTIVE CONTRACTS"
+  },
+  "events": {
+    "recebimento": "Income",
+    "despesa": "Expense",
+    "aniversario": "Birthday"
+  },
+  "empty": {
+    "noEventsToday": "No events today.",
+    "noLeads": "No leads yet.",
+    "noAccounts": "No connected accounts",
+    "noWorkflows": "No active workflows.",
+    "noTransactions": "No transactions this month.",
+    "noPayments": "No upcoming payments."
+  },
+  "badges": {
+    "growing": "{{count}} growing",
+    "stable": "{{count}} stable",
+    "declining": "{{count}} declining"
+  },
+  "suffix": {
+    "followers": "fol.",
+    "activeClients": "active clients",
+    "thisMonth": "this month",
+    "projected": "projected",
+    "ofTotal": "of {{total}} total",
+    "toSign": "to sign"
+  },
+  "date": {
+    "todayFormat": "{{weekday}}, {{month}} {{day}}",
+    "paymentsIn": "Payments in {{month}}/{{year}}",
+    "day": "Day {{n}}"
+  },
+  "expiring30": "EXPIRING IN 30 DAYS",
+  "memberTypes": {
+    "clt": "CLT",
+    "mensal": "Monthly",
+    "demanda": "On demand"
+  }
+}

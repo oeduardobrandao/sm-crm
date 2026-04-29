@@ -1,0 +1,74 @@
+{
+  "title": "Dashboard",
+  "cards": {
+    "today": "Hoje",
+    "leads": "Leads",
+    "analytics": "Analytics",
+    "deliveries": "Entregas",
+    "contracts": "Contratos",
+    "team": "Equipe",
+    "finances": "Financeiro",
+    "calendar": "Calendário"
+  },
+  "kpi": {
+    "novo": "NOVO",
+    "contatado": "CONTATADO",
+    "qualificado": "QUALIFICADO",
+    "contas": "CONTAS",
+    "seguidores": "SEGUIDORES",
+    "alcance28d": "ALCANCE (28D)",
+    "engMedio": "ENG. MÉDIO",
+    "cliquesLink": "CLIQUES NO LINK",
+    "melhorEng": "MELHOR ENG.",
+    "maisCresceu": "MAIS CRESCEU",
+    "ativos": "ATIVOS",
+    "vigentes": "VIGENTES",
+    "aAssinar": "A ASSINAR",
+    "membros": "MEMBROS",
+    "custoMes": "CUSTO/MÊS",
+    "aReceber": "A RECEBER",
+    "aPagar": "A PAGAR",
+    "receitaMensal": "RECEITA MENSAL",
+    "despesas": "DESPESAS",
+    "saldo": "SALDO",
+    "clientesAtivos": "CLIENTES ATIVOS",
+    "contratosVigentes": "CONTRATOS VIGENTES"
+  },
+  "events": {
+    "recebimento": "Recebimento",
+    "despesa": "Despesa",
+    "aniversario": "Aniversário"
+  },
+  "empty": {
+    "noEventsToday": "Nenhum evento hoje.",
+    "noLeads": "Nenhum lead ainda.",
+    "noAccounts": "Nenhuma conta conectada",
+    "noWorkflows": "Nenhum workflow ativo.",
+    "noTransactions": "Nenhuma transação este mês.",
+    "noPayments": "Nenhum pagamento próximo."
+  },
+  "badges": {
+    "growing": "{{count}} crescendo",
+    "stable": "{{count}} estável",
+    "declining": "{{count}} caindo"
+  },
+  "suffix": {
+    "followers": "seg.",
+    "activeClients": "clientes ativos",
+    "thisMonth": "este mês",
+    "projected": "projetado",
+    "ofTotal": "de {{total}} total",
+    "toSign": "a assinar"
+  },
+  "date": {
+    "todayFormat": "{{weekday}}, {{day}} de {{month}}",
+    "paymentsIn": "Pagamentos em {{month}}/{{year}}",
+    "day": "Dia {{n}}"
+  },
+  "expiring30": "EXPIRANDO EM 30 DIAS",
+  "memberTypes": {
+    "clt": "CLT",
+    "mensal": "Mensal",
+    "demanda": "Demanda"
+  }
+}
