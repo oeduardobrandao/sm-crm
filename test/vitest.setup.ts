@@ -1,7 +1,9 @@
-import '@testing-library/jest-dom/vitest';
+import { afterEach, expect, vi } from 'vitest';
+import * as matchers from '@testing-library/jest-dom/matchers';
 import { cleanup } from '@testing-library/react';
-import { afterEach, vi } from 'vitest';
 import { initI18n } from '@mesaas/i18n';
+
+expect.extend(matchers);
 import ptCommon from '../packages/i18n/locales/pt/common.json';
 import enCommon from '../packages/i18n/locales/en/common.json';
 import ptDashboard from '../packages/i18n/locales/pt/dashboard.json';
