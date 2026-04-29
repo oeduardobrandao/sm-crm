@@ -18,7 +18,7 @@ export function TextPostCard({ post, token, approvals, onApprovalSubmitted, read
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const isPending = !readOnly && post.status === 'enviado_cliente';
-  const subtitle = post.ig_caption || post.conteudo_plain;
+  const preview = post.ig_caption || post.conteudo_plain;
 
   async function handleAction(action: 'aprovado' | 'correcao') {
     setSubmitting(true);
@@ -51,8 +51,8 @@ export function TextPostCard({ post, token, approvals, onApprovalSubmitted, read
             <span className="text-[12px] text-stone-400 ml-auto">{formatDate(post.scheduled_at)}</span>
           </div>
           <p className="font-semibold text-[14px] text-stone-900 mb-1">{post.titulo}</p>
-          {!expanded && subtitle && (
-            <p className="text-[13px] text-stone-500 truncate">{subtitle}</p>
+          {!expanded && preview && (
+            <p className="text-[13px] text-stone-500 truncate">{preview}</p>
           )}
         </div>
         <span className={`mt-2 shrink-0 text-stone-400 transition-transform ${expanded ? 'rotate-180' : ''}`}>
@@ -62,8 +62,14 @@ export function TextPostCard({ post, token, approvals, onApprovalSubmitted, read
 
       {expanded && (
         <div className="px-5 pb-5 pt-1 border-t border-stone-100 space-y-4">
-          {subtitle && (
-            <p className="text-[13px] text-stone-600 leading-relaxed whitespace-pre-wrap">{subtitle}</p>
+          {post.conteudo_plain && (
+            <p className="text-[13px] text-stone-600 leading-relaxed whitespace-pre-wrap">{post.conteudo_plain}</p>
+          )}
+          {post.ig_caption && (
+            <div className="border-l-2 border-stone-200 pl-3">
+              <p className="text-[11px] text-stone-400 font-medium mb-1">Legenda do Instagram</p>
+              <p className="text-[13px] text-stone-600 leading-relaxed whitespace-pre-wrap">{post.ig_caption}</p>
+            </div>
           )}
 
           {isPending && !result && (
@@ -71,7 +77,7 @@ export function TextPostCard({ post, token, approvals, onApprovalSubmitted, read
               <textarea
                 value={comentario}
                 onChange={e => setComentario(e.target.value)}
-                placeholder="Comentário (opcional para aprovação)…"
+                placeholder="Comentário (necessário para solicitar correção)…"
                 className="w-full rounded border border-stone-200 px-4 py-3 text-[13px] resize-none min-h-[70px] bg-white text-stone-900 placeholder:text-stone-400 focus:outline-none focus:border-stone-300 focus:ring-4 focus:ring-[#FFBF30]/15 transition-all"
               />
               <div className="flex gap-2">
