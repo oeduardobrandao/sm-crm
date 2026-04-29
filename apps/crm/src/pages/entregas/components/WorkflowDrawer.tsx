@@ -16,6 +16,7 @@ import {
   completeEtapa,
   getPostCommentThreads, createCommentThread, addPostComment, updatePostComment,
   deletePostComment, resolveCommentThread, reopenCommentThread, deleteCommentThread,
+  getWorkspaceUsers,
   type WorkflowPost, type PostApproval, type Membro, type PostPropertyValue,
   type CommentThreadWithComments,
 } from '../../../store';
@@ -116,6 +117,11 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
   });
 
   const { user, role } = useAuth();
+
+  const { data: workspaceUsers = [] } = useQuery({
+    queryKey: ['workspace-users'],
+    queryFn: getWorkspaceUsers,
+  });
 
   const { data: commentThreads = [], refetch: refetchComments } = useQuery({
     queryKey: ['post-comment-threads', postIds.join(',')],
@@ -464,6 +470,7 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
                       commentThreads={commentThreads.filter(t => t.post_id === post.id)}
                       currentUserId={user?.id}
                       currentUserRole={role}
+                      workspaceUsers={workspaceUsers}
                       hasInstagramAccount={hasInstagramAccount}
                       igAccountStatus={igAccountStatus}
                       onToggle={() => setExpandedId(expandedId === post.id ? null : post.id!)}
@@ -553,6 +560,7 @@ interface SortablePostItemProps {
   commentThreads: CommentThreadWithComments[];
   currentUserId?: string;
   currentUserRole: 'owner' | 'admin' | 'agent';
+  workspaceUsers: { id: string; nome: string; avatar_url: string }[];
   hasInstagramAccount: boolean;
   igAccountStatus: { revoked: boolean; expired: boolean; canPublish: boolean } | null;
   onToggle: () => void;
@@ -574,6 +582,7 @@ function SortablePostItem({
   post, templateId, workflowId, isExpanded, isSaving, approvals, membros,
   replyText, sendingReply,
   commentThreads, currentUserId, currentUserRole,
+  workspaceUsers,
   hasInstagramAccount,
   igAccountStatus,
   onToggle, onDelete, onFieldChange, onContentUpdate, onReplyChange, onReplySend,
@@ -638,6 +647,12 @@ function SortablePostItem({
           }
           <span className="post-tipo-badge">{TIPO_LABELS[post.tipo]}</span>
           <span className="drawer-post-titulo">{post.titulo || 'Post sem título'}</span>
+          {commentThreads.length > 0 && (
+            <span className="drawer-post-comment-badge" title={`${commentThreads.length} comentário${commentThreads.length > 1 ? 's' : ''}`}>
+              <MessageSquare className="h-3 w-3" />
+              {commentThreads.length}
+            </span>
+          )}
         </div>
         <div className="drawer-post-trigger-right" onClick={e => e.stopPropagation()}>
           {isSaving && <span className="drawer-saving-indicator">Salvando…</span>}
@@ -742,6 +757,7 @@ function SortablePostItem({
             onUpdate={onContentUpdate}
             threads={commentThreads}
             membros={membros}
+            workspaceUsers={workspaceUsers}
             currentUserId={currentUserId}
             currentUserRole={currentUserRole}
             onCreateComment={(qt, c) => onCreateComment(post.id!, qt, c)}
@@ -771,6 +787,7 @@ function SortablePostItem({
           <PostCommentSummary
             threads={commentThreads}
             membros={membros}
+            workspaceUsers={workspaceUsers}
             onThreadClick={() => {}}
           />
 

@@ -4,20 +4,30 @@ import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import type { CommentThreadWithComments, Membro } from '@/store';
 
+interface WorkspaceUser {
+  id: string;
+  nome: string;
+  avatar_url: string;
+}
+
 interface PostCommentSummaryProps {
   threads: CommentThreadWithComments[];
   membros: Membro[];
+  workspaceUsers?: WorkspaceUser[];
   onThreadClick: (threadId: number) => void;
   readOnly?: boolean;
 }
 
-function resolveAuthorName(userId: string, membros: Membro[]): string {
+function resolveAuthorName(userId: string, membros: Membro[], workspaceUsers: WorkspaceUser[]): string {
+  const wsUser = workspaceUsers.find((u) => u.id === userId);
+  if (wsUser) return wsUser.nome;
   return membros.find((m) => m.user_id === userId)?.nome ?? 'Membro';
 }
 
 export default function PostCommentSummary({
   threads,
   membros,
+  workspaceUsers = [],
   onThreadClick,
 }: PostCommentSummaryProps) {
   const activeThreads = threads.filter((t) => t.status === 'active');
@@ -93,7 +103,7 @@ export default function PostCommentSummary({
                   )}
                   <div className="comment-summary-meta">
                     <span className="comment-summary-author">
-                      {resolveAuthorName(thread.created_by, membros)}
+                      {resolveAuthorName(thread.created_by, membros, workspaceUsers)}
                     </span>
                     <span className="comment-summary-date">
                       {formatDistanceToNow(new Date(thread.created_at), {

@@ -2,9 +2,16 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Check, RotateCcw, Pencil, Trash2 } from 'lucide-react';
 import type { CommentThreadWithComments, PostComment, Membro } from '@/store';
 
+interface WorkspaceUser {
+  id: string;
+  nome: string;
+  avatar_url: string;
+}
+
 interface PostCommentPopoverProps {
   thread: CommentThreadWithComments;
   membros: Membro[];
+  workspaceUsers?: WorkspaceUser[];
   currentUserId: string;
   currentUserRole: 'owner' | 'admin' | 'agent';
   onReply: (threadId: number, content: string) => Promise<void>;
@@ -25,11 +32,13 @@ function formatCommentDate(dateStr: string): string {
   });
 }
 
-function resolveMembro(authorId: string, membros: Membro[]): Membro | undefined {
+function resolveAuthor(authorId: string, membros: Membro[], workspaceUsers: WorkspaceUser[]): { nome: string; avatar_url: string } | undefined {
+  const wsUser = workspaceUsers.find((u) => u.id === authorId);
+  if (wsUser) return { nome: wsUser.nome, avatar_url: wsUser.avatar_url };
   return membros.find((m) => m.user_id === authorId);
 }
 
-function AuthorAvatar({ membro }: { membro: Membro | undefined }) {
+function AuthorAvatar({ membro }: { membro: { nome: string; avatar_url: string } | undefined }) {
   const name = membro?.nome ?? 'Membro';
   const initials = name
     .split(' ')
@@ -54,6 +63,7 @@ function AuthorAvatar({ membro }: { membro: Membro | undefined }) {
 function CommentItem({
   comment,
   membros,
+  workspaceUsers,
   currentUserId,
   currentUserRole,
   readOnly,
@@ -62,6 +72,7 @@ function CommentItem({
 }: {
   comment: PostComment;
   membros: Membro[];
+  workspaceUsers: WorkspaceUser[];
   currentUserId: string;
   currentUserRole: 'owner' | 'admin' | 'agent';
   readOnly?: boolean;
@@ -75,7 +86,7 @@ function CommentItem({
 
   const isAuthor = comment.author_id === currentUserId;
   const canDelete = isAuthor || currentUserRole === 'owner' || currentUserRole === 'admin';
-  const membro = resolveMembro(comment.author_id, membros);
+  const membro = resolveAuthor(comment.author_id, membros, workspaceUsers);
 
   useEffect(() => {
     if (editing && editRef.current) {
@@ -181,6 +192,7 @@ function CommentItem({
 export default function PostCommentPopover({
   thread,
   membros,
+  workspaceUsers = [],
   currentUserId,
   currentUserRole,
   onReply,
@@ -295,6 +307,7 @@ export default function PostCommentPopover({
             key={comment.id}
             comment={comment}
             membros={membros}
+            workspaceUsers={workspaceUsers}
             currentUserId={currentUserId}
             currentUserRole={currentUserRole}
             readOnly={readOnly}

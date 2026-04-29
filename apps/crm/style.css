@@ -4435,7 +4435,7 @@ body.role-agent input[name="valor_total"] {
   border: 1px solid var(--border-color);
   border-radius: 8px;
   overflow: hidden;
-  background: var(--surface-1, #fafafa);
+  background: var(--card-bg);
   transition: border-color 0.15s;
 }
 
@@ -4488,6 +4488,16 @@ body.role-agent input[name="valor_total"] {
   text-overflow: ellipsis;
   flex-shrink: 1;
   min-width: 0;
+}
+
+.drawer-post-comment-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  flex-shrink: 0;
 }
 
 .drawer-post-preview {
@@ -4645,8 +4655,9 @@ body.role-agent input[name="valor_total"] {
 }
 
 .approval-bubble--team {
-  background: var(--primary-color, #000);
-  color: #fff;
+  background: rgba(234, 179, 8, 0.15);
+  color: var(--text-main);
+  border: 1px solid rgba(234, 179, 8, 0.3);
   margin-left: 1.5rem;
 }
 
@@ -5445,20 +5456,17 @@ body.role-agent input[name="valor_total"] {
   min-width: 0;
 }
 .comment-summary-quote {
+  display: block;
   font-size: 0.72rem;
   font-style: italic;
   color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .comment-summary-preview {
+  display: block;
   font-size: 0.78rem;
   color: var(--text-main);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  margin-left: 0.4rem;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 .comment-summary-meta {
   display: flex;

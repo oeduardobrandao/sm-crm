@@ -8,6 +8,7 @@
 @keyframes ticker-scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
 @keyframes bar-grow{from{transform:scaleY(0)}to{transform:scaleY(1)}}
 @keyframes card-drop-in{from{opacity:0;transform:translateY(-20px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes sched-pulse{0%,100%{box-shadow:0 0 0 0 rgba(57,132,255,.35)}50%{box-shadow:0 0 0 6px rgba(57,132,255,0)}}
 
 .reveal{opacity:0;transform:translateY(24px);transition:opacity .7s cubic-bezier(.22,1,.36,1),transform .7s cubic-bezier(.22,1,.36,1)}
 .reveal.in{opacity:1;transform:none}
