@@ -4490,6 +4490,16 @@ body.role-agent input[name="valor_total"] {
   min-width: 0;
 }
 
+.drawer-post-comment-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
 .drawer-post-preview {
   font-size: 0.75rem;
   color: var(--text-muted);

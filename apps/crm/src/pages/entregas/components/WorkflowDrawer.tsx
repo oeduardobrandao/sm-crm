@@ -647,6 +647,12 @@ function SortablePostItem({
           }
           <span className="post-tipo-badge">{TIPO_LABELS[post.tipo]}</span>
           <span className="drawer-post-titulo">{post.titulo || 'Post sem título'}</span>
+          {commentThreads.length > 0 && (
+            <span className="drawer-post-comment-badge" title={`${commentThreads.length} comentário${commentThreads.length > 1 ? 's' : ''}`}>
+              <MessageSquare className="h-3 w-3" />
+              {commentThreads.length}
+            </span>
+          )}
         </div>
         <div className="drawer-post-trigger-right" onClick={e => e.stopPropagation()}>
           {isSaving && <span className="drawer-saving-indicator">Salvando…</span>}
