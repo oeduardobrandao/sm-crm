@@ -4655,8 +4655,9 @@ body.role-agent input[name="valor_total"] {
 }
 
 .approval-bubble--team {
-  background: var(--primary-color, #000);
-  color: #fff;
+  background: rgba(234, 179, 8, 0.15);
+  color: var(--text-main);
+  border: 1px solid rgba(234, 179, 8, 0.3);
   margin-left: 1.5rem;
 }
 
