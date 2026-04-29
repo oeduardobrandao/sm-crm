@@ -61,7 +61,7 @@
     "syncError": "Erro na sincronização: {{error}}",
     "disconnectTitle": "Desconectar Instagram",
     "disconnectConfirm": "Tem certeza que deseja desconectar <strong>@{{username}}</strong> do Instagram?",
-    "disconnectWarning": "Os dados históricos serão removidos e a sincronização será interrompida.",
+    "disconnectWarning": "As postagens serão removidas e a sincronização será interrompida. O histórico de seguidores será preservado.",
     "disconnectButton": "Desconectar",
     "disconnectSuccess": "Conta desconectada com sucesso.",
     "disconnectError": "Erro ao desconectar: {{error}}",
