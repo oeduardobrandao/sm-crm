@@ -36,6 +36,14 @@
     "dayRange": "Day must be between 1 and 31"
   },
   "openNotion": "Open in Notion",
+  "instagram": {
+    "connectTitle": "Connect Instagram",
+    "connectDescription": "Connect this client's Instagram Business account to view metrics, follower growth, and post performance directly in the CRM.",
+    "connectButton": "Connect with Instagram",
+    "connecting": "Connecting...",
+    "connectFallback": "Connect with Facebook",
+    "connectError": "Error starting connection: {{error}}"
+  },
   "detail": {
     "igNotBusiness": "The Instagram account is not a Business account. Reconnect with a Business or Creator account.",
     "noTitle": "Untitled",

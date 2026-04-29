@@ -36,6 +36,14 @@
     "dayRange": "Dia deve ser entre 1 e 31"
   },
   "openNotion": "Abrir no Notion",
+  "instagram": {
+    "connectTitle": "Conectar Instagram",
+    "connectDescription": "Conecte a conta Business do Instagram deste cliente para visualizar métricas, crescimento de seguidores e performance de posts diretamente no CRM.",
+    "connectButton": "Conectar com o Instagram",
+    "connecting": "Conectando...",
+    "connectFallback": "Conectar com o Facebook",
+    "connectError": "Erro ao iniciar conexão: {{error}}"
+  },
   "detail": {
     "igNotBusiness": "A conta Instagram não é uma conta Business. Reconecte com uma conta Business ou Creator.",
     "noTitle": "Sem título",
