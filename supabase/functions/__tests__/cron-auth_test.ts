@@ -1,5 +1,6 @@
 import { assertEquals } from "./assert.ts";
 import { createAnalyticsReportCronHandler } from "../analytics-report-cron/handler.ts";
+import { createExpressPostCleanupCronHandler } from "../express-post-cleanup-cron/handler.ts";
 import { createInstagramRefreshCronHandler } from "../instagram-refresh-cron/handler.ts";
 import { createInstagramSyncCronHandler } from "../instagram-sync-cron/handler.ts";
 import { createPostMediaCleanupCronHandler } from "../post-media-cleanup-cron/handler.ts";
@@ -51,6 +52,20 @@ Deno.test("post-media-cleanup-cron rejects requests without the shared cron secr
   });
 
   const response = await handler(new Request("https://example.test/post-media-cleanup-cron"));
+  assertEquals(response.status, 401);
+});
+
+// ─── instagram-publish-cron ──────────────────────────────────
+
+Deno.test("express-post-cleanup-cron rejects requests without the shared cron secret", async () => {
+  const handler = createExpressPostCleanupCronHandler({
+    buildCorsHeaders,
+    cronSecret: "segredo-cron",
+    timingSafeEqual,
+    run: async () => new Response("ok"),
+  });
+
+  const response = await handler(new Request("https://example.test/express-post-cleanup-cron"));
   assertEquals(response.status, 401);
 });
 
