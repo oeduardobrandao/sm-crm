@@ -1,5 +1,5 @@
 import { Link, useLocation, useParams } from 'react-router-dom';
-import { Home, CheckSquare, Palette, FileText, BookOpen, LayoutList, Sun, Moon, Globe } from 'lucide-react';
+import { Home, CheckSquare, Palette, FileText, BookOpen, LayoutList, Sun, Moon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useHub } from '../HubContext';
 import { useTheme } from '../hooks/useTheme';

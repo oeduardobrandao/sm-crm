@@ -70,10 +70,6 @@ const FATURAMENTO_DB_VALUES: Record<string, string> = {
   '20kTo50k': 'De R$ 20.000 a R$ 50.000/mês',
   'above50k': 'Acima de R$ 50.000/mês',
 };
-const FATURAMENTO_DB_REVERSE: Record<string, string> = Object.fromEntries(
-  Object.entries(FATURAMENTO_DB_VALUES).map(([k, v]) => [v, k])
-);
-
 type StatusFilter = 'todos' | Lead['status'];
 type SortDir = 'asc' | 'desc';
 

@@ -79,8 +79,9 @@ export default function ClienteDetalhePage() {
   const queryClient = useQueryClient();
   const { role } = useAuth();
   const isAgent = role === 'agent';
-  const { t } = useTranslation('clients');
+  const { t, i18n } = useTranslation('clients');
   const { t: tc } = useTranslation();
+  const dateLocale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
   const [editOpen, setEditOpen] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
   const [recurringWfId, setRecurringWfId] = useState<number | null>(null);
@@ -133,7 +134,7 @@ export default function ClienteDetalhePage() {
     if (params.get('ig_error') === 'no_business_account') {
       toast.error(t('detail.igNotBusiness'));
     }
-  }, []);
+  }, [t]);
 
   const { data: clientes, isLoading: loadingClientes } = useQuery({ queryKey: ['clientes'], queryFn: getClientes });
   const { data: transacoes, isLoading: loadingTx } = useQuery({ queryKey: ['transacoes'], queryFn: getTransacoes });
@@ -743,7 +744,7 @@ export default function ClienteDetalhePage() {
                             <div className="item-subtitle">{ev.workflowTitle}</div>
                             <div className="item-divider" />
                             <div className="item-meta">
-                              {ev.date.toLocaleDateString('pt-BR')}
+                              {ev.date.toLocaleDateString(dateLocale)}
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.6rem', flexWrap: 'wrap' }}>
                               {/* Chip 1: Aprovado (read-only) */}
@@ -836,7 +837,7 @@ export default function ClienteDetalhePage() {
                   <div className="concluded-wf-meta">
                     {t('detail.postCount', { count: s.postCount })}
                     {s.totalDays !== null && <> &bull; {t('detail.dayCount', { count: s.totalDays })}</>}
-                    {s.completedAt && <> &bull; {t('detail.concluded')} {new Date(s.completedAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}</>}
+                    {s.completedAt && <> &bull; {t('detail.concluded')} {new Date(s.completedAt).toLocaleDateString(dateLocale, { day: '2-digit', month: 'short' })}</>}
                   </div>
                 </div>
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>→</span>
