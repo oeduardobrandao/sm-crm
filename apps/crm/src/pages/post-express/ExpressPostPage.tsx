@@ -105,7 +105,9 @@ export default function ExpressPostPage() {
     },
   });
 
-  const eligibleClients = clientes.filter((c) => clientsWithIg.includes(c.id!));
+  const eligibleClients = clientes
+    .filter((c) => clientsWithIg.includes(c.id!))
+    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
 
   const igAccountStatus = igAccount ? {
     revoked: igAccount.authorization_status === 'revoked',
@@ -274,7 +276,7 @@ export default function ExpressPostPage() {
 
       {/* Warning banner */}
       {warningMessage && selectedClientId && (
-        <div className="flex items-center gap-2 rounded-2xl px-4 py-3 text-xs mb-4"
+        <div className="flex items-center gap-2 rounded-lg px-4 py-3 text-xs mb-4"
           style={{ color: '#f55a42', background: 'rgba(245, 90, 66, 0.08)' }}>
           <AlertCircle className="h-4 w-4 flex-shrink-0" />
           {warningMessage}
@@ -288,7 +290,7 @@ export default function ExpressPostPage() {
         <div className="flex flex-col gap-4">
 
           {/* Client Picker */}
-          <div style={{ background: 'var(--card-bg)', borderRadius: '16px', padding: '1.25rem', border: '1px solid var(--border-color)' }}>
+          <div style={{ background: 'var(--card-bg)', borderRadius: '8px', padding: '1.25rem', border: '1px solid var(--border-color)' }}>
             <label className="block text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
               {t('labels.client')}
             </label>
@@ -296,8 +298,8 @@ export default function ExpressPostPage() {
               value={selectedClientId ?? ''}
               onChange={(e) => handleClientChange(e.target.value ? parseInt(e.target.value, 10) : null)}
               disabled={loading || creatingDraft}
-              className="w-full rounded-lg px-3 py-2 text-sm border"
-              style={{ fontFamily: 'var(--font-mono)', background: 'var(--surface-main)', borderColor: 'var(--border-color)', color: 'var(--text-main)' }}
+              className="w-full pl-3 pr-10 py-2 text-sm border"
+              style={{ fontFamily: 'var(--font-main)', background: 'var(--surface-main)', borderColor: 'var(--border-color)', color: 'var(--text-main)', borderRadius: '4px', appearance: 'none', WebkitAppearance: 'none', backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 0.75rem center' }}
             >
               <option value="">{t('select.client')}</option>
               {eligibleClients.map((c) => (
@@ -324,7 +326,7 @@ export default function ExpressPostPage() {
 
           {/* Media Upload */}
           {draft && (
-            <div style={{ background: 'var(--card-bg)', borderRadius: '16px', padding: '1.25rem', border: '1px solid var(--border-color)' }}>
+            <div style={{ background: 'var(--card-bg)', borderRadius: '8px', padding: '1.25rem', border: '1px solid var(--border-color)' }}>
               <label className="block text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
                 {t('labels.media')}
               </label>
@@ -353,7 +355,7 @@ export default function ExpressPostPage() {
           )}
 
           {creatingDraft && (
-            <div style={{ background: 'var(--card-bg)', borderRadius: '16px', padding: '2rem', border: '1px solid var(--border-color)', textAlign: 'center' }}>
+            <div style={{ background: 'var(--card-bg)', borderRadius: '8px', padding: '2rem', border: '1px solid var(--border-color)', textAlign: 'center' }}>
               <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{t('empty.preparingDraft')}</p>
             </div>
           )}
@@ -363,7 +365,7 @@ export default function ExpressPostPage() {
         <div className="flex flex-col gap-4">
 
           {/* Caption */}
-          <div style={{ background: 'var(--card-bg)', borderRadius: '16px', padding: '1.25rem', border: '1px solid var(--border-color)' }}>
+          <div style={{ background: 'var(--card-bg)', borderRadius: '8px', padding: '1.25rem', border: '1px solid var(--border-color)' }}>
             <label className="block text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
               {t('labels.caption')}
             </label>
@@ -373,8 +375,8 @@ export default function ExpressPostPage() {
               placeholder={t('captionPlaceholder')}
               disabled={!draft || loading}
               rows={8}
-              className="w-full rounded-lg px-3 py-2.5 text-sm resize-none border"
-              style={{ fontFamily: 'var(--font-mono)', background: 'var(--surface-main)', borderColor: 'var(--border-color)', color: 'var(--text-main)' }}
+              className="w-full rounded px-3 py-2.5 text-sm resize-none border"
+              style={{ fontFamily: 'var(--font-main)', background: 'var(--surface-main)', borderColor: 'var(--border-color)', color: 'var(--text-main)' }}
             />
             <div className="flex justify-end mt-1">
               <span className="text-xs tabular-nums" style={{ color: 'var(--text-muted)' }}>
@@ -385,11 +387,11 @@ export default function ExpressPostPage() {
 
           {/* Instagram Preview */}
           {draft && igAccount && (
-            <div style={{ background: 'var(--card-bg)', borderRadius: '16px', padding: '1.25rem', border: '1px solid var(--border-color)' }}>
+            <div style={{ background: 'var(--card-bg)', borderRadius: '8px', padding: '1.25rem', border: '1px solid var(--border-color)' }}>
               <label className="block text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
                 {t('labels.preview')}
               </label>
-              <div className="rounded-xl overflow-hidden" style={{ background: '#000', padding: '0.75rem', maxWidth: '300px', margin: '0 auto' }}>
+              <div className="rounded-lg overflow-hidden" style={{ background: '#000', padding: '0.75rem', maxWidth: '300px', margin: '0 auto' }}>
                 <div className="flex items-center gap-2 mb-2">
                   {igAccount.profile_picture_url ? (
                     <img src={igAccount.profile_picture_url} alt="" className="w-6 h-6 rounded-full" style={{ border: '1.5px solid #E1306C' }} />
@@ -424,7 +426,7 @@ export default function ExpressPostPage() {
             onClick={() => setConfirmOpen(true)}
             disabled={!canPublish}
             className="w-full text-sm font-bold py-3"
-            style={canPublish ? { background: '#E1306C', color: 'white' } : undefined}
+            style={canPublish ? { background: '#E1306C', color: 'white', borderRadius: '8px' } : { borderRadius: '8px' }}
           >
             <Send className="h-4 w-4 mr-2" /> {t('publish.button')}
           </Button>
@@ -453,9 +455,9 @@ export default function ExpressPostPage() {
                 <span>{publishPct < 100 ? t('progress.sending') : t('progress.done')}</span>
                 <span className="tabular-nums font-medium text-stone-900">{publishPct}%</span>
               </div>
-              <div className="h-2 rounded-full bg-stone-200 overflow-hidden">
+              <div className="h-2 rounded-lg bg-stone-200 overflow-hidden">
                 <div
-                  className="h-full rounded-full transition-all duration-300 ease-out"
+                  className="h-full rounded-lg transition-all duration-300 ease-out"
                   style={{ width: `${publishPct}%`, background: publishPct < 100 ? '#E1306C' : '#3ecf8e' }}
                 />
               </div>
