@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -24,6 +24,7 @@ vi.mock('../../../lib/supabase', () => ({
   supabase: {
     from: vi.fn(() => ({
       select: vi.fn(() => ({
+        data: [{ client_id: 1 }, { client_id: 2 }],
         eq: vi.fn(() => ({
           maybeSingle: vi.fn().mockResolvedValue({ data: null }),
         })),
@@ -49,10 +50,8 @@ vi.mock('sonner', () => ({
 import ExpressPostPage from '../ExpressPostPage';
 import {
   getClientes, addWorkflow, addWorkflowEtapa, addWorkflowPost,
-  updateWorkflowPost, updateWorkflow, removeWorkflow,
+  removeWorkflow,
 } from '../../../store';
-import { publishInstagramPostNow } from '../../../services/instagram';
-import { toast } from 'sonner';
 
 function renderWithProviders(ui: React.ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -71,6 +70,7 @@ describe('ExpressPostPage', () => {
     vi.mocked(addWorkflow).mockResolvedValue({ id: 10, cliente_id: 1, titulo: 'Post Express', status: 'ativo', etapa_atual: 0, recorrente: false });
     vi.mocked(addWorkflowEtapa).mockResolvedValue({ id: 20, workflow_id: 10, ordem: 0, nome: 'Publicação', prazo_dias: 0, tipo_prazo: 'corridos', status: 'concluido' });
     vi.mocked(addWorkflowPost).mockResolvedValue({ id: 30, workflow_id: 10, titulo: 'Post Express', conteudo: null, conteudo_plain: '', tipo: 'feed', ordem: 0, status: 'rascunho' });
+    vi.mocked(removeWorkflow).mockResolvedValue(undefined);
   });
 
   it('renders page title and subtitle', async () => {
@@ -80,6 +80,15 @@ describe('ExpressPostPage', () => {
   });
 
   it('shows empty state when no clients have Instagram', async () => {
+    const { supabase } = await import('../../../lib/supabase');
+    vi.mocked(supabase.from).mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        data: [],
+        eq: vi.fn(() => ({
+          maybeSingle: vi.fn().mockResolvedValue({ data: null }),
+        })),
+      }),
+    } as any);
     renderWithProviders(<ExpressPostPage />);
     await waitFor(() => {
       expect(screen.getByText(/Nenhum cliente com Instagram conectado/)).toBeTruthy();
@@ -92,14 +101,24 @@ describe('ExpressPostPage', () => {
     expect(publishBtn.hasAttribute('disabled')).toBe(true);
   });
 
-  it('publish button is disabled when caption is empty', async () => {
+  it('publish button stays disabled after selecting client without caption or media', async () => {
     renderWithProviders(<ExpressPostPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Client A')).toBeTruthy();
+    });
+
+    fireEvent.change(screen.getByDisplayValue('Selecionar cliente...'), { target: { value: '1' } });
+
+    await waitFor(() => {
+      expect(addWorkflow).toHaveBeenCalled();
+    });
+
     const publishBtn = screen.getByText('Publicar agora').closest('button')!;
     expect(publishBtn.hasAttribute('disabled')).toBe(true);
   });
 
-  it('calls removeWorkflow on unmount when draft has no content', async () => {
-    vi.mocked(removeWorkflow).mockResolvedValue(undefined);
+  it('does not call removeWorkflow on unmount when no draft exists', async () => {
     const { unmount } = renderWithProviders(<ExpressPostPage />);
     unmount();
     expect(removeWorkflow).not.toHaveBeenCalled();
