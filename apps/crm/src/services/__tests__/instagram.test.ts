@@ -9,6 +9,10 @@ import {
   getInstagramPosts,
   getInstagramSummary,
   syncInstagramData,
+  scheduleInstagramPost,
+  cancelInstagramSchedule,
+  retryInstagramPublish,
+  publishInstagramPostNow,
 } from '../instagram';
 
 type MockedSupabaseModule = typeof supabaseModule & {
@@ -142,5 +146,119 @@ describe('instagram service', () => {
     expect(headers.Authorization).toBe('Bearer token-de-teste');
     expect(headers.apikey).toBe('anon-key-for-tests');
     expect(headers['Content-Type']).toBe('application/json');
+  });
+
+  // ─── Publishing service functions ──────────────────────────────
+
+  describe('scheduleInstagramPost', () => {
+    it('calls the schedule endpoint and returns the result', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        jsonResponse({ ok: true, status: 'agendado' }),
+      );
+      const result = await scheduleInstagramPost(123);
+      expect(result).toEqual({ ok: true, status: 'agendado' });
+      expect(fetchSpy.mock.calls[0][0]).toContain('/instagram-publish/schedule/123');
+      expect((fetchSpy.mock.calls[0][1] as RequestInit).method).toBe('POST');
+    });
+
+    it('throws validation details when scheduling fails', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        jsonResponse(
+          { error: 'Validação falhou', details: ['Data de publicação não definida.', 'Legenda não definida.'] },
+          { status: 422 },
+        ),
+      );
+      await expect(scheduleInstagramPost(123)).rejects.toThrow(
+        'Data de publicação não definida.; Legenda não definida.',
+      );
+    });
+  });
+
+  describe('cancelInstagramSchedule', () => {
+    it('calls the cancel endpoint and returns ok', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        jsonResponse({ ok: true, status: 'aprovado_cliente' }),
+      );
+      const result = await cancelInstagramSchedule(456);
+      expect(result).toEqual({ ok: true, status: 'aprovado_cliente' });
+      expect(fetchSpy.mock.calls[0][0]).toContain('/instagram-publish/cancel/456');
+    });
+
+    it('throws on wrong status', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        jsonResponse({ error: 'Apenas posts agendados podem ser cancelados.' }, { status: 422 }),
+      );
+      await expect(cancelInstagramSchedule(456)).rejects.toThrow('Apenas posts agendados');
+    });
+  });
+
+  describe('retryInstagramPublish', () => {
+    it('calls the retry endpoint and returns ok', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        jsonResponse({ ok: true, status: 'agendado' }),
+      );
+      const result = await retryInstagramPublish(789);
+      expect(result).toEqual({ ok: true, status: 'agendado' });
+      expect(fetchSpy.mock.calls[0][0]).toContain('/instagram-publish/retry/789');
+    });
+
+    it('throws on wrong status', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        jsonResponse({ error: 'Apenas posts com falha podem ser reenviados.' }, { status: 422 }),
+      );
+      await expect(retryInstagramPublish(789)).rejects.toThrow('Apenas posts com falha');
+    });
+  });
+
+  describe('publishInstagramPostNow', () => {
+    it('calls the publish-now endpoint and returns postado result', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        jsonResponse({ ok: true, status: 'postado', instagram_permalink: 'https://instagram.com/p/abc' }),
+      );
+      const result = await publishInstagramPostNow(100);
+      expect(result.status).toBe('postado');
+      expect(result.instagram_permalink).toBe('https://instagram.com/p/abc');
+      expect(fetchSpy.mock.calls[0][0]).toContain('/instagram-publish/publish-now/100');
+      expect((fetchSpy.mock.calls[0][1] as RequestInit).method).toBe('POST');
+    });
+
+    it('returns agendado when container is still processing', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        jsonResponse({
+          ok: true,
+          status: 'agendado',
+          message: 'Mídia ainda processando no Instagram. O post será publicado automaticamente em alguns minutos.',
+        }),
+      );
+      const result = await publishInstagramPostNow(100);
+      expect(result.status).toBe('agendado');
+      expect(result.message).toContain('processando');
+    });
+
+    it('throws validation details on failure', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        jsonResponse(
+          { error: 'Validação falhou', details: ['Legenda do Instagram não definida.'] },
+          { status: 422 },
+        ),
+      );
+      await expect(publishInstagramPostNow(100)).rejects.toThrow('Legenda do Instagram não definida.');
+    });
+
+    it('throws server error message on publish failure', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        jsonResponse({ error: 'Container falhou no processamento do Instagram' }, { status: 500 }),
+      );
+      await expect(publishInstagramPostNow(100)).rejects.toThrow('Container falhou');
+    });
+
+    it('sends bearer token in Authorization header', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        jsonResponse({ ok: true, status: 'postado' }),
+      );
+      await publishInstagramPostNow(100);
+      const headers = (fetchSpy.mock.calls[0][1] as RequestInit).headers as Record<string, string>;
+      expect(headers.Authorization).toBe('Bearer token-de-teste');
+    });
   });
 });
