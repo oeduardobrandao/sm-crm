@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowRight, ChevronDown, Instagram, Linkedin, Moon, Sun, Youtube } from 'lucide-react';
+import { ArrowRight, ChevronDown, Instagram, Linkedin, LogIn, Moon, Sun, Youtube } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
 
 import {
   CalendarVisual,
@@ -66,6 +67,7 @@ export default function LandingPage() {
 }
 
 function Header() {
+  const { user, loading } = useAuth();
   const [isDark, setIsDark] = useState(document.documentElement.getAttribute('data-theme') === 'dark');
 
   const toggleTheme = () => {
@@ -96,12 +98,23 @@ function Header() {
           >
             {isDark ? <Sun size={18} /> : <Moon size={18} />}
           </button>
-          <a href="/login" className="link">
-            Entrar
-          </a>
-          <a href="/login?tab=register" className="lp-btn lp-btn-primary">
-            Criar conta grátis
-          </a>
+          {!loading && (
+            user ? (
+              <a href="/dashboard" className="lp-btn lp-btn-primary">
+                Acessar painel <ArrowRight size={14} />
+              </a>
+            ) : (
+              <>
+                <a href="/login" className="link">
+                  <LogIn size={15} style={{ marginRight: 4, verticalAlign: '-2px' }} />
+                  Entrar
+                </a>
+                <a href="/login?tab=register" className="lp-btn lp-btn-primary">
+                  Criar conta grátis
+                </a>
+              </>
+            )
+          )}
         </div>
       </div>
     </header>
@@ -109,6 +122,8 @@ function Header() {
 }
 
 function Hero() {
+  const { user, loading } = useAuth();
+
   return (
     <section className="hero-wrap" id="top">
       <div className="lp-container">
@@ -122,9 +137,17 @@ function Hero() {
               Mesaas é o CRM feito para gestores e agências de social media. Clientes, contratos, entregas, aprovações e métricas do Instagram — em um só lugar.
             </p>
             <div className="hero-ctas">
-              <a href="/login?tab=register" className="lp-btn lp-btn-primary lg">
-                Criar conta grátis <ArrowRight size={16} />
-              </a>
+              {!loading && (
+                user ? (
+                  <a href="/dashboard" className="lp-btn lp-btn-primary lg">
+                    Acessar painel <ArrowRight size={16} />
+                  </a>
+                ) : (
+                  <a href="/login?tab=register" className="lp-btn lp-btn-primary lg">
+                    Criar conta grátis <ArrowRight size={16} />
+                  </a>
+                )
+              )}
               <button onClick={() => scrollTo('features')} className="lp-btn lp-btn-outline lg">
                 Ver como funciona
               </button>
@@ -619,16 +642,35 @@ function Faq() {
 }
 
 function CtaFinal() {
+  const { user, loading } = useAuth();
+
   return (
     <section className="cta-final-wrap">
       <div className="lp-container">
         <div className="cta-final-card reveal">
           <img src="/icon.svg" style={{ height: 44, margin: '0 auto 22px', display: 'block' }} alt="" />
-          <h2>Pronto para sair das planilhas?</h2>
-          <p>Crie sua conta grátis e comece a organizar sua agência hoje. Sem cartão, sem compromisso.</p>
-          <a href="/login?tab=register" className="lp-btn lp-btn-primary lg">
-            Criar conta grátis <ArrowRight size={16} />
-          </a>
+          {user ? (
+            <>
+              <h2>Bem-vindo de volta!</h2>
+              <p>Sua conta já está ativa. Acesse seu painel e continue organizando sua agência.</p>
+            </>
+          ) : (
+            <>
+              <h2>Pronto para sair das planilhas?</h2>
+              <p>Crie sua conta grátis e comece a organizar sua agência hoje. Sem cartão, sem compromisso.</p>
+            </>
+          )}
+          {!loading && (
+            user ? (
+              <a href="/dashboard" className="lp-btn lp-btn-primary lg">
+                Acessar painel <ArrowRight size={16} />
+              </a>
+            ) : (
+              <a href="/login?tab=register" className="lp-btn lp-btn-primary lg">
+                Criar conta grátis <ArrowRight size={16} />
+              </a>
+            )
+          )}
           <div
             style={{
               marginTop: 18,
