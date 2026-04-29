@@ -41,9 +41,11 @@ interface WorkflowCardProps {
   postsCount?: number;
   /** Number of posts approved by client */
   approvedPostsCount?: number;
+  /** Number of posts in revisao_interna status */
+  revisaoInternaCount?: number;
 }
 
-export function WorkflowCard({ card, onClick, isDragOverlay, dragHandle, membros, onRefresh, onRevertClick, onForwardClick, onPostsClick, postsCount, approvedPostsCount }: WorkflowCardProps) {
+export function WorkflowCard({ card, onClick, isDragOverlay, dragHandle, membros, onRefresh, onRevertClick, onForwardClick, onPostsClick, postsCount, approvedPostsCount, revisaoInternaCount }: WorkflowCardProps) {
   const navigate = useNavigate();
   const [assignDropdownOpen, setAssignDropdownOpen] = useState(false);
   const [localMembro, setLocalMembro] = useState<Membro | undefined | null>(undefined);
@@ -315,7 +317,7 @@ export function WorkflowCard({ card, onClick, isDragOverlay, dragHandle, membros
         )}
       </DropdownMenu>
 
-      {/* Client approval badge */}
+      {/* Status badges */}
       {card.etapa.tipo === 'aprovacao_cliente' && (
         <div className="board-card-approval">
           {postsCount != null && postsCount > 0 && approvedPostsCount === postsCount ? (
@@ -333,6 +335,16 @@ export function WorkflowCard({ card, onClick, isDragOverlay, dragHandle, membros
               ⏳ Aguardando cliente
             </div>
           )}
+        </div>
+      )}
+      {card.etapa.tipo !== 'aprovacao_cliente' && revisaoInternaCount != null && revisaoInternaCount > 0 && (
+        <div className="board-card-approval">
+          <div
+            className="board-card-approval-badge"
+            style={{ borderRadius: '999px', padding: '0.2rem 0.65rem', fontSize: '0.68rem', letterSpacing: '0.02em', background: 'rgba(234, 179, 8, 0.12)', color: '#eab308' }}
+          >
+            ✏️ Aguardando aprovação interna
+          </div>
         </div>
       )}
 

@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   getWorkflows, getClientes, getMembros, getWorkflowTemplates, getWorkflowEtapas,
   getPortalApprovals, getDeadlineInfo, getWorkflowPostsCounts, getWorkflowApprovedPostsCounts,
-  getWorkflowPostResponsaveis, getWorkspaceSlug,
+  getWorkflowRevisaoInternaCounts, getWorkflowPostResponsaveis, getWorkspaceSlug,
   type Workflow, type WorkflowEtapa, type Cliente, type Membro,
   type WorkflowTemplate, type PortalApproval, type PostMedia,
 } from '../../../store';
@@ -247,6 +247,12 @@ export function useEntregasData() {
     enabled: activeWorkflowIds.length > 0,
   });
   const approvedPostsCounts: Map<number, number> = approvedCountsData ?? new Map();
+  const { data: revisaoInternaCountsData } = useQuery({
+    queryKey: ['workflow-revisao-interna-counts', activeWorkflowIds.join(',')],
+    queryFn: () => getWorkflowRevisaoInternaCounts(activeWorkflowIds),
+    enabled: activeWorkflowIds.length > 0,
+  });
+  const revisaoInternaCounts: Map<number, number> = revisaoInternaCountsData ?? new Map();
   const { data: postResponsaveisData } = useQuery({
     queryKey: ['workflow-post-responsaveis', activeWorkflowIds.join(',')],
     queryFn: () => getWorkflowPostResponsaveis(activeWorkflowIds),
@@ -331,6 +337,7 @@ export function useEntregasData() {
     qc.invalidateQueries({ queryKey: ['workflow-covers'] });
     qc.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
     qc.invalidateQueries({ queryKey: ['workflow-approved-posts-counts'] });
+    qc.invalidateQueries({ queryKey: ['workflow-revisao-interna-counts'] });
     qc.invalidateQueries({ queryKey: ['workflow-post-responsaveis'] });
   }
 
@@ -346,6 +353,7 @@ export function useEntregasData() {
     cards,
     postsCounts,
     approvedPostsCounts,
+    revisaoInternaCounts,
     postResponsaveis,
     portalApprovals,
     isLoading,
