@@ -202,20 +202,24 @@ vi.mock('@/components/ui/dialog', async () => {
 
   interface DialogContextValue {
     open: boolean;
+    onOpenChange?: (open: boolean) => void;
   }
 
   const DialogContext = ReactModule.createContext<DialogContextValue>({ open: false });
 
   function Dialog({
-    open = false,
+    open: openProp = false,
+    onOpenChange,
     children,
   }: {
     open?: boolean;
     onOpenChange?: (open: boolean) => void;
     children: React.ReactNode;
   }) {
+    const [open, setOpen] = ReactModule.useState(openProp);
+    ReactModule.useEffect(() => { setOpen(openProp); }, [openProp]);
     return (
-      <DialogContext.Provider value={{ open }}>
+      <DialogContext.Provider value={{ open, onOpenChange: (v: boolean) => { setOpen(v); onOpenChange?.(v); } }}>
         <div>{children}</div>
       </DialogContext.Provider>
     );
@@ -258,7 +262,7 @@ vi.mock('@/components/ui/alert-dialog', async () => {
   const AlertDialogContext = ReactModule.createContext<AlertDialogContextValue>({ open: false });
 
   function AlertDialog({
-    open = false,
+    open: openProp = false,
     onOpenChange,
     children,
   }: {
@@ -266,8 +270,10 @@ vi.mock('@/components/ui/alert-dialog', async () => {
     onOpenChange?: (open: boolean) => void;
     children: React.ReactNode;
   }) {
+    const [open, setOpen] = ReactModule.useState(openProp);
+    ReactModule.useEffect(() => { setOpen(openProp); }, [openProp]);
     return (
-      <AlertDialogContext.Provider value={{ open, onOpenChange }}>
+      <AlertDialogContext.Provider value={{ open, onOpenChange: (v: boolean) => { setOpen(v); onOpenChange?.(v); } }}>
         <div>{children}</div>
       </AlertDialogContext.Provider>
     );
@@ -480,9 +486,7 @@ describe('ClientesPage', () => {
       'Alpha Studio',
     ]);
 
-    const sortToggle = screen
-      .getAllByRole('button')
-      .find((button) => button.dataset.variant === 'outline' && button.dataset.size === 'icon');
+    const sortToggle = screen.getByRole('button', { name: 'Decrescente' });
 
     expect(sortToggle).toBeDefined();
     fireEvent.click(sortToggle as HTMLButtonElement);
@@ -562,7 +566,7 @@ describe('ClientesPage', () => {
     await screen.findByRole('button', { name: 'Beta Care' });
 
     const card = getClientCard('Beta Care');
-    fireEvent.click(within(card).getAllByRole('button')[1]);
+    fireEvent.click(within(card).getByRole('button', { name: 'Editar' }));
 
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByDisplayValue('Beta Care')).toBeInTheDocument();
@@ -602,7 +606,7 @@ describe('ClientesPage', () => {
     await screen.findByRole('button', { name: 'Delta Clinic' });
 
     const card = getClientCard('Delta Clinic');
-    fireEvent.click(within(card).getAllByRole('button')[2]);
+    fireEvent.click(within(card).getByRole('button', { name: 'Remover' }));
 
     expect(screen.getByRole('alertdialog')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Sim' }));

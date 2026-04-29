@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../context/AuthContext'
 import { getMoreSheetGroups } from './nav-data'
 import { drawNavBar, getItemCenterX, BAR_WIDTH } from './mobile-nav-canvas'
@@ -23,6 +24,7 @@ export default function MobileNav() {
   const navigate = useNavigate()
   const location = useLocation()
   const { profile, role, signOut } = useAuth()
+  const { t } = useTranslation()
   const [moreOpen, setMoreOpen] = useState(false)
   const [isDark, setIsDark] = useState(document.documentElement.getAttribute('data-theme') === 'dark')
 
@@ -164,7 +166,7 @@ export default function MobileNav() {
           {/* Grouped nav items */}
           {moreSheetGroups.map(group => (
             <div key={group.id}>
-              <div className="mobile-more-group-label">{group.label}</div>
+              <div className="mobile-more-group-label">{t(group.labelKey, group.label)}</div>
               {group.items.map(item => {
                 const isActive = location.pathname.startsWith(item.route)
                 return (
@@ -177,7 +179,7 @@ export default function MobileNav() {
                     <div className="mobile-more-item-icon">
                       <i className={`${isActive ? 'ph-fill' : 'ph'} ${item.icon}`} />
                     </div>
-                    <span>{item.label}</span>
+                    <span>{t(item.labelKey, item.label)}</span>
                   </button>
                 )
               })}

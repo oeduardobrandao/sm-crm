@@ -61,7 +61,7 @@
     "syncError": "Sync error: {{error}}",
     "disconnectTitle": "Disconnect Instagram",
     "disconnectConfirm": "Are you sure you want to disconnect <strong>@{{username}}</strong> from Instagram?",
-    "disconnectWarning": "Historical data will be removed and syncing will stop.",
+    "disconnectWarning": "Posts will be removed and syncing will stop. Follower history will be preserved.",
     "disconnectButton": "Disconnect",
     "disconnectSuccess": "Account disconnected successfully.",
     "disconnectError": "Error disconnecting: {{error}}",

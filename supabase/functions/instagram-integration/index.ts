@@ -616,12 +616,16 @@ Deno.serve(async (req) => {
              return new Response(JSON.stringify({ error: true, message: 'Unauthorized' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 });
          }
 
-         // Get account id first to clean up child tables
          const { data: account } = await serviceClient.from('instagram_accounts').select('id').eq('client_id', clientId).single();
          if (account) {
            await serviceClient.from('instagram_posts').delete().eq('instagram_account_id', account.id);
-           await serviceClient.from('instagram_follower_history').delete().eq('instagram_account_id', account.id);
-           await serviceClient.from('instagram_accounts').delete().eq('id', account.id);
+           const { error: updateErr } = await serviceClient.from('instagram_accounts').update({
+             encrypted_access_token: null,
+             token_expires_at: null,
+             authorization_status: 'disconnected',
+             last_synced_at: null,
+           }).eq('id', account.id);
+           if (updateErr) throw new Error(updateErr.message);
          }
          return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
@@ -641,7 +645,7 @@ Deno.serve(async (req) => {
          }
 
          const { data, error } = await serviceClient.from('instagram_accounts').select('*').eq('client_id', clientId).single();
-         if (error) return new Response(JSON.stringify({ exists: false }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+         if (error || !data || data.authorization_status === 'disconnected') return new Response(JSON.stringify({ exists: false }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
          // Fetch recent 30 day history
          const { data: history } = await serviceClient.from('instagram_follower_history').select('*').eq('instagram_account_id', data.id).order('date', { ascending: true }).limit(30);

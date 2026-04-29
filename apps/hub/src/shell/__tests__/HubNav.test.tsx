@@ -52,7 +52,7 @@ describe('HubNav', () => {
     expect(paginasLinks[0]).toHaveAttribute('href', '/mesaas/hub/token-publico/paginas');
     expect(paginasLinks[0]).toHaveClass('bg-white/10');
 
-    expect(screen.getAllByRole('button', { name: 'Modo claro' })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: 'Modo Claro' })).toHaveLength(2);
   });
 
   it('marks the home route as active and toggles the theme when requested', () => {
@@ -69,7 +69,7 @@ describe('HubNav', () => {
     expect(homeLinks[0]).toHaveClass('bg-white/10');
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Modo escuro' })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Modo Escuro' })[0]);
     expect(toggleTheme).toHaveBeenCalled();
   });
 });

@@ -623,6 +623,9 @@ describe('PostagensPage — collapse/expand groups', () => {
     renderHubPage(POSTAGENS_PATH, POSTAGENS_ROUTE, <PostagensPage />);
 
     await screen.findByText('Post Alpha');
+
+    // Beta is collapsed by default (second group), expand it first
+    fireEvent.click(screen.getByRole('button', { name: /Beta/ }));
     await screen.findByText('Post Beta');
 
     fireEvent.click(screen.getByRole('button', { name: /Alpha/ }));
@@ -720,9 +723,9 @@ describe('PostagensPage — status filtering', () => {
     mockedFetchPosts.mockResolvedValue(makeResponse({
       posts: [
         makePost({ id: 1, titulo: 'Enviado', status: 'enviado_cliente', workflow_id: 1, workflow_titulo: 'W' }),
-        makePost({ id: 2, titulo: 'Aprovado', status: 'aprovado_cliente', workflow_id: 1, workflow_titulo: 'W' }),
+        makePost({ id: 2, titulo: 'Post Aprovado', status: 'aprovado_cliente', workflow_id: 1, workflow_titulo: 'W' }),
         makePost({ id: 3, titulo: 'Correção', status: 'correcao_cliente', workflow_id: 1, workflow_titulo: 'W' }),
-        makePost({ id: 4, titulo: 'Agendado', status: 'agendado', workflow_id: 1, workflow_titulo: 'W' }),
+        makePost({ id: 4, titulo: 'Post Agendado', status: 'agendado', workflow_id: 1, workflow_titulo: 'W' }),
         makePost({ id: 5, titulo: 'Postado', status: 'postado', workflow_id: 1, workflow_titulo: 'W' }),
         makePost({ id: 6, titulo: 'Falha', status: 'falha_publicacao', workflow_id: 1, workflow_titulo: 'W' }),
       ],
@@ -732,9 +735,9 @@ describe('PostagensPage — status filtering', () => {
 
     expect(await screen.findByText('6 posts')).toBeInTheDocument();
     expect(screen.getByText('Enviado')).toBeInTheDocument();
-    expect(screen.getByText('Aprovado')).toBeInTheDocument();
+    expect(screen.getByText('Post Aprovado')).toBeInTheDocument();
     expect(screen.getByText('Correção')).toBeInTheDocument();
-    expect(screen.getByText('Agendado')).toBeInTheDocument();
+    expect(screen.getByText('Post Agendado')).toBeInTheDocument();
     expect(screen.getByText('Postado')).toBeInTheDocument();
     expect(screen.getByText('Falha')).toBeInTheDocument();
   });

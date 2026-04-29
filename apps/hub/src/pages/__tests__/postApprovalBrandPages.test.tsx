@@ -155,6 +155,7 @@ function makePost(
     ordem: number;
     workflow_id: number;
     workflow_titulo: string;
+    workflow_created_at: string;
   }> = {},
 ) {
   return {
@@ -167,6 +168,7 @@ function makePost(
     scheduled_at: '2026-04-20T10:00:00.000Z',
     workflow_id: 1,
     workflow_titulo: 'Editorial',
+    workflow_created_at: '2026-04-01T00:00:00.000Z',
     media: [],
     cover_media: null,
     ...overrides,
@@ -318,6 +320,7 @@ describe('hub approval, posts, and brand pages', () => {
             titulo: 'Mais tarde',
             workflow_id: 2,
             workflow_titulo: 'Branding',
+            workflow_created_at: '2026-04-10T00:00:00.000Z',
             scheduled_at: '2026-04-25T09:00:00.000Z',
             ordem: 2,
           }),
@@ -326,6 +329,7 @@ describe('hub approval, posts, and brand pages', () => {
             titulo: 'Sem data',
             workflow_id: 2,
             workflow_titulo: 'Branding',
+            workflow_created_at: '2026-04-10T00:00:00.000Z',
             scheduled_at: null,
             ordem: 1,
           }),
@@ -334,6 +338,7 @@ describe('hub approval, posts, and brand pages', () => {
             titulo: 'Mais cedo',
             workflow_id: 2,
             workflow_titulo: 'Branding',
+            workflow_created_at: '2026-04-10T00:00:00.000Z',
             scheduled_at: '2026-04-20T09:00:00.000Z',
             ordem: 3,
           }),
@@ -342,6 +347,7 @@ describe('hub approval, posts, and brand pages', () => {
             titulo: 'Aprovado hoje',
             workflow_id: 1,
             workflow_titulo: 'Atendimento',
+            workflow_created_at: '2026-04-18T00:00:00.000Z',
             status: 'aprovado_cliente',
             scheduled_at: '2026-04-18T09:00:00.000Z',
           }),
@@ -350,6 +356,7 @@ describe('hub approval, posts, and brand pages', () => {
             titulo: 'Rascunho oculto',
             workflow_id: 1,
             workflow_titulo: 'Atendimento',
+            workflow_created_at: '2026-04-18T00:00:00.000Z',
             status: 'rascunho',
           }),
         ],
@@ -378,6 +385,10 @@ describe('hub approval, posts, and brand pages', () => {
       expect(within(atendimentoSection as HTMLElement).getAllByRole('heading', { level: 4 }).map((heading) => heading.textContent)).toEqual([
         'Aprovado hoje',
       ]);
+
+      // Branding is the second group and is collapsed by default — expand it first
+      fireEvent.click(screen.getByRole('button', { name: /Branding/ }));
+
       expect(within(brandingSection as HTMLElement).getAllByRole('heading', { level: 4 }).map((heading) => heading.textContent)).toEqual([
         'Mais cedo',
         'Mais tarde',
