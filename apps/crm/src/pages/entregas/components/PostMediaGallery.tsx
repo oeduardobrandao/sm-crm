@@ -277,7 +277,7 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
 
   const handleDragOverEvent = (e: React.DragEvent) => {
     e.preventDefault();
-    if (!disabled) setDragOver(true);
+    if (!disabled && !atLimit) setDragOver(true);
   };
 
   const handleDragLeave = (e: React.DragEvent) => {
