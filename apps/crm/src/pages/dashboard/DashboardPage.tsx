@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useQueries, useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { Spinner } from '@/components/ui/spinner';
 import {
   getDashboardStats,
@@ -25,6 +26,9 @@ import { OnboardingBanner } from '../../components/OnboardingBanner';
 
 export default function DashboardPage() {
   const { role } = useAuth();
+  const { t, i18n } = useTranslation('dashboard');
+  const { t: tc } = useTranslation();
+  const locale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
 
   const results = useQueries({
     queries: [
@@ -174,14 +178,11 @@ export default function DashboardPage() {
   });
   const todayEventCount = todayIncomes.length + todayExpenses.length + todayDeadlines.length + todayBirthdays.length + todayDatas.length;
 
-  const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
-  const weekDayNames = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
-
   return (
     <div>
       <div className="header">
         <div className="header-title">
-          <h1>Dashboard</h1>
+          <h1>{t('title')}</h1>
         </div>
       </div>
 
@@ -209,15 +210,15 @@ export default function DashboardPage() {
         <Link to="/calendario" style={{ textDecoration: 'none', color: 'inherit', gridColumn: 'span 1' }}>
           <div className="card dashboard-hub-card animate-up">
             <div className="dashboard-hub-card-header">
-              <h3><i className="ph ph-calendar-check" style={{ marginRight: 8 }} />Hoje</h3>
+              <h3><i className="ph ph-calendar-check" style={{ marginRight: 8 }} />{t('cards.today')}</h3>
               <i className="ph ph-arrow-right" />
             </div>
             <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 8 }}>
-              {weekDayNames[now.getDay()]}, {todayDay} de {monthNames[todayMonth]}
+              {t('date.todayFormat', { weekday: tc(`weekdays.${now.getDay()}`), day: todayDay, month: tc(`months.${todayMonth}`) })}
             </p>
             {todayEventCount === 0 ? (
               <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '0.5rem 0' }}>
-                Nenhum evento hoje.
+                {t('empty.noEventsToday')}
               </p>
             ) : (
               <div className="dashboard-hub-list">
@@ -226,7 +227,7 @@ export default function DashboardPage() {
                     <span style={{ fontSize: '0.85rem' }}>
                       <i className="ph ph-arrow-up-right" style={{ color: 'var(--success)', marginRight: 4 }} />{c.nome}
                     </span>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--success)', fontWeight: 600 }}>Recebimento</span>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--success)', fontWeight: 600 }}>{t('events.recebimento')}</span>
                   </div>
                 ))}
                 {todayExpenses.map(m => (
@@ -234,7 +235,7 @@ export default function DashboardPage() {
                     <span style={{ fontSize: '0.85rem' }}>
                       <i className="ph ph-arrow-down-left" style={{ color: 'var(--danger)', marginRight: 4 }} />{m.nome}
                     </span>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--danger)', fontWeight: 600 }}>Despesa</span>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--danger)', fontWeight: 600 }}>{t('events.despesa')}</span>
                   </div>
                 ))}
                 {todayDeadlines.map((d, i) => (
@@ -250,7 +251,7 @@ export default function DashboardPage() {
                     <span style={{ fontSize: '0.85rem' }}>
                       <i className="ph ph-cake" style={{ color: 'var(--pink, #ec4899)', marginRight: 4 }} />{c.nome}
                     </span>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Aniversário</span>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{t('events.aniversario')}</span>
                   </div>
                 ))}
                 {todayDatas.map(d => (
@@ -270,20 +271,20 @@ export default function DashboardPage() {
         <Link to="/leads" style={{ textDecoration: 'none', color: 'inherit', gridColumn: 'span 1' }}>
           <div className="card dashboard-hub-card animate-up">
             <div className="dashboard-hub-card-header">
-              <h3><i className="ph ph-funnel" style={{ marginRight: 8 }} />Leads</h3>
+              <h3><i className="ph ph-funnel" style={{ marginRight: 8 }} />{t('cards.leads')}</h3>
               <i className="ph ph-arrow-right" />
             </div>
             <div className="dashboard-mini-kpis">
               <div className="dashboard-mini-kpi">
-                <span className="kpi-label">NOVO</span>
+                <span className="kpi-label">{t('kpi.novo')}</span>
                 <span className="kpi-value" style={{ fontSize: '1.25rem' }}>{leadCounts.novo}</span>
               </div>
               <div className="dashboard-mini-kpi">
-                <span className="kpi-label">CONTATADO</span>
+                <span className="kpi-label">{t('kpi.contatado')}</span>
                 <span className="kpi-value" style={{ fontSize: '1.25rem' }}>{leadCounts.contatado}</span>
               </div>
               <div className="dashboard-mini-kpi">
-                <span className="kpi-label">QUALIFICADO</span>
+                <span className="kpi-label">{t('kpi.qualificado')}</span>
                 <span className="kpi-value" style={{ fontSize: '1.25rem' }}>{leadCounts.qualificado}</span>
               </div>
             </div>
@@ -292,11 +293,11 @@ export default function DashboardPage() {
                 <div key={lead.id} className="dashboard-hub-row">
                   <span>{lead.nome}</span>
                   <span className={`badge ${lead.status === 'novo' ? 'badge-info' : lead.status === 'qualificado' ? 'badge-success' : 'badge-neutral'}`}>
-                    {lead.status}
+                    {tc(`status.${lead.status}`)}
                   </span>
                 </div>
               ))}
-              {last3Leads.length === 0 && <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Nenhum lead ainda.</p>}
+              {last3Leads.length === 0 && <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{t('empty.noLeads')}</p>}
             </div>
           </div>
         </Link>
@@ -305,56 +306,56 @@ export default function DashboardPage() {
         <Link to="/analytics" className="dashboard-hub-wide" style={{ textDecoration: 'none', color: 'inherit' }}>
           <div className="card dashboard-hub-card animate-up">
             <div className="dashboard-hub-card-header">
-              <h3><i className="fa-brands fa-instagram" style={{ marginRight: 8 }} />Analytics</h3>
+              <h3><i className="fa-brands fa-instagram" style={{ marginRight: 8 }} />{t('cards.analytics')}</h3>
               <i className="ph ph-arrow-right" />
             </div>
             {portfolioAccounts.length > 0 ? (
               <>
                 <div className="dashboard-mini-kpis">
                   <div className="dashboard-mini-kpi">
-                    <span className="kpi-label">CONTAS</span>
+                    <span className="kpi-label">{t('kpi.contas')}</span>
                     <span className="kpi-value" style={{ fontSize: '1.25rem' }}>{portfolioAccounts.length}</span>
                   </div>
                   <div className="dashboard-mini-kpi">
-                    <span className="kpi-label">SEGUIDORES</span>
-                    <span className="kpi-value" style={{ fontSize: '1rem' }}>{totalFollowers.toLocaleString('pt-BR')}</span>
+                    <span className="kpi-label">{t('kpi.seguidores')}</span>
+                    <span className="kpi-value" style={{ fontSize: '1rem' }}>{totalFollowers.toLocaleString(locale)}</span>
                   </div>
                   <div className="dashboard-mini-kpi">
-                    <span className="kpi-label">ALCANCE (28D)</span>
-                    <span className="kpi-value" style={{ fontSize: '1rem' }}>{totalReach.toLocaleString('pt-BR')}</span>
+                    <span className="kpi-label">{t('kpi.alcance28d')}</span>
+                    <span className="kpi-value" style={{ fontSize: '1rem' }}>{totalReach.toLocaleString(locale)}</span>
                   </div>
                   <div className="dashboard-mini-kpi">
-                    <span className="kpi-label">ENG. MÉDIO</span>
+                    <span className="kpi-label">{t('kpi.engMedio')}</span>
                     <span className="kpi-value" style={{ fontSize: '1rem' }}>{avgEngagement.toFixed(2)}%</span>
                   </div>
                   <div className="dashboard-mini-kpi">
-                    <span className="kpi-label">CLIQUES NO LINK</span>
-                    <span className="kpi-value" style={{ fontSize: '1rem' }}>{totalWebsiteClicks.toLocaleString('pt-BR')}</span>
+                    <span className="kpi-label">{t('kpi.cliquesLink')}</span>
+                    <span className="kpi-value" style={{ fontSize: '1rem' }}>{totalWebsiteClicks.toLocaleString(locale)}</span>
                   </div>
                   {portfolio?.summary?.bestByEngagement && (
                     <div className="dashboard-mini-kpi">
-                      <span className="kpi-label">MELHOR ENG.</span>
+                      <span className="kpi-label">{t('kpi.melhorEng')}</span>
                       <span className="kpi-value" style={{ fontSize: '0.9rem' }}>{portfolio.summary.bestByEngagement.client_name}</span>
                       <span style={{ fontSize: '0.75rem', color: 'var(--success)' }}>{portfolio.summary.bestByEngagement.engagement_rate_avg.toFixed(1)}%</span>
                     </div>
                   )}
                   {portfolio?.summary?.mostImproved && portfolio.summary.mostImproved.follower_delta > 0 && (
                     <div className="dashboard-mini-kpi">
-                      <span className="kpi-label">MAIS CRESCEU</span>
+                      <span className="kpi-label">{t('kpi.maisCresceu')}</span>
                       <span className="kpi-value" style={{ fontSize: '0.9rem' }}>{portfolio.summary.mostImproved.client_name}</span>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--success)' }}>+{portfolio.summary.mostImproved.follower_delta.toLocaleString('pt-BR')}</span>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--success)' }}>+{portfolio.summary.mostImproved.follower_delta.toLocaleString(locale)}</span>
                     </div>
                   )}
                 </div>
                 <div style={{ display: 'flex', gap: 6, marginTop: 10, marginBottom: 10 }}>
                   {(portfolio?.summary?.growing ?? 0) > 0 && (
-                    <span className="badge badge-success"><i className="ph ph-trend-up" style={{ marginRight: 3 }} />{portfolio!.summary.growing} crescendo</span>
+                    <span className="badge badge-success"><i className="ph ph-trend-up" style={{ marginRight: 3 }} />{t('badges.growing', { count: portfolio!.summary.growing })}</span>
                   )}
                   {(portfolio?.summary?.stagnant ?? 0) > 0 && (
-                    <span className="badge badge-neutral">{portfolio!.summary.stagnant} estável</span>
+                    <span className="badge badge-neutral">{t('badges.stable', { count: portfolio!.summary.stagnant })}</span>
                   )}
                   {(portfolio?.summary?.declining ?? 0) > 0 && (
-                    <span className="badge badge-danger"><i className="ph ph-trend-down" style={{ marginRight: 3 }} />{portfolio!.summary.declining} caindo</span>
+                    <span className="badge badge-danger"><i className="ph ph-trend-down" style={{ marginRight: 3 }} />{t('badges.declining', { count: portfolio!.summary.declining })}</span>
                   )}
                 </div>
                 {topAccountsByEngagement.length > 0 && (
@@ -370,7 +371,7 @@ export default function DashboardPage() {
                           <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>@{a.username}</span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.8rem' }}>
-                          <span style={{ color: 'var(--text-muted)' }}>{a.follower_count.toLocaleString('pt-BR')} seg.</span>
+                          <span style={{ color: 'var(--text-muted)' }}>{a.follower_count.toLocaleString(locale)} {t('suffix.followers')}</span>
                           <span className={`badge ${a.engagement_rate_avg >= 3 ? 'badge-success' : a.engagement_rate_avg >= 1 ? 'badge-neutral' : 'badge-outline'}`}>
                             {a.engagement_rate_avg.toFixed(2)}%
                           </span>
@@ -383,7 +384,7 @@ export default function DashboardPage() {
             ) : (
               <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '1rem' }}>
                 <i className="fa-brands fa-instagram" style={{ fontSize: '2rem', display: 'block', marginBottom: 8 }} />
-                Nenhuma conta conectada
+                {t('empty.noAccounts')}
               </p>
             )}
           </div>
@@ -393,12 +394,12 @@ export default function DashboardPage() {
         <Link to="/entregas" className="dashboard-hub-wide" style={{ textDecoration: 'none', color: 'inherit' }}>
           <div className="card dashboard-hub-card animate-up">
             <div className="dashboard-hub-card-header">
-              <h3><i className="ph ph-kanban" style={{ marginRight: 8 }} />Entregas</h3>
+              <h3><i className="ph ph-kanban" style={{ marginRight: 8 }} />{t('cards.deliveries')}</h3>
               <i className="ph ph-arrow-right" />
             </div>
             <div className="dashboard-mini-kpis">
               <div className="dashboard-mini-kpi">
-                <span className="kpi-label">ATIVOS</span>
+                <span className="kpi-label">{t('kpi.ativos')}</span>
                 <span className="kpi-value" style={{ fontSize: '1.25rem' }}>{activeWorkflows.length}</span>
               </div>
             </div>
@@ -412,7 +413,7 @@ export default function DashboardPage() {
                   </div>
                 );
               })}
-              {first3Workflows.length === 0 && <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Nenhum workflow ativo.</p>}
+              {first3Workflows.length === 0 && <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{t('empty.noWorkflows')}</p>}
             </div>
           </div>
         </Link>
@@ -422,22 +423,22 @@ export default function DashboardPage() {
           <Link to="/contratos" style={{ textDecoration: 'none', color: 'inherit' }}>
             <div className="card dashboard-hub-card animate-up">
               <div className="dashboard-hub-card-header">
-                <h3><i className="ph ph-file-text" style={{ marginRight: 8 }} />Contratos</h3>
+                <h3><i className="ph ph-file-text" style={{ marginRight: 8 }} />{t('cards.contracts')}</h3>
                 <i className="ph ph-arrow-right" />
               </div>
               <div className="dashboard-mini-kpis">
                 <div className="dashboard-mini-kpi">
-                  <span className="kpi-label">VIGENTES</span>
+                  <span className="kpi-label">{t('kpi.vigentes')}</span>
                   <span className="kpi-value" style={{ fontSize: '1.25rem' }}>{contratosVigentes.length}</span>
                 </div>
                 <div className="dashboard-mini-kpi">
-                  <span className="kpi-label">A ASSINAR</span>
+                  <span className="kpi-label">{t('kpi.aAssinar')}</span>
                   <span className="kpi-value" style={{ fontSize: '1.25rem', color: 'var(--warning)' }}>{contratosAAssinar.length}</span>
                 </div>
               </div>
               {contratosExpirando.length > 0 && (
                 <div className="dashboard-hub-list">
-                  <p style={{ fontSize: '0.75rem', color: 'var(--warning)', marginBottom: 4, fontWeight: 600 }}>EXPIRANDO EM 30 DIAS</p>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--warning)', marginBottom: 4, fontWeight: 600 }}>{t('expiring30')}</p>
                   {contratosExpirando.map(c => (
                     <div key={c.id} className="dashboard-hub-row">
                       <span style={{ fontSize: '0.85rem' }}>{c.titulo}</span>
@@ -454,25 +455,25 @@ export default function DashboardPage() {
         <Link to="/equipe" style={{ textDecoration: 'none', color: 'inherit' }}>
           <div className="card dashboard-hub-card animate-up">
             <div className="dashboard-hub-card-header">
-              <h3><i className="ph ph-users" style={{ marginRight: 8 }} />Equipe</h3>
+              <h3><i className="ph ph-users" style={{ marginRight: 8 }} />{t('cards.team')}</h3>
               <i className="ph ph-arrow-right" />
             </div>
             <div className="dashboard-mini-kpis">
               <div className="dashboard-mini-kpi">
-                <span className="kpi-label">MEMBROS</span>
+                <span className="kpi-label">{t('kpi.membros')}</span>
                 <span className="kpi-value" style={{ fontSize: '1.25rem' }}>{membros.length}</span>
               </div>
               {role !== 'agent' && (
                 <div className="dashboard-mini-kpi">
-                  <span className="kpi-label">CUSTO/MÊS</span>
+                  <span className="kpi-label">{t('kpi.custoMes')}</span>
                   <span className="kpi-value" style={{ fontSize: '0.95rem' }}>{formatBRL(custoEquipe)}</span>
                 </div>
               )}
             </div>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
-              {membroTipos.clt > 0 && <span className="badge badge-info">CLT: {membroTipos.clt}</span>}
-              {membroTipos.mensal > 0 && <span className="badge badge-warning">Mensal: {membroTipos.mensal}</span>}
-              {membroTipos.demanda > 0 && <span className="badge badge-neutral">Demanda: {membroTipos.demanda}</span>}
+              {membroTipos.clt > 0 && <span className="badge badge-info">{t('memberTypes.clt')}: {membroTipos.clt}</span>}
+              {membroTipos.mensal > 0 && <span className="badge badge-warning">{t('memberTypes.mensal')}: {membroTipos.mensal}</span>}
+              {membroTipos.demanda > 0 && <span className="badge badge-neutral">{t('memberTypes.demanda')}: {membroTipos.demanda}</span>}
             </div>
           </div>
         </Link>
@@ -486,16 +487,16 @@ export default function DashboardPage() {
           <Link to="/financeiro" style={{ textDecoration: 'none', color: 'inherit' }}>
             <div className="card dashboard-hub-card animate-up">
               <div className="dashboard-hub-card-header">
-                <h3><i className="ph ph-currency-dollar" style={{ marginRight: 8 }} />Financeiro</h3>
+                <h3><i className="ph ph-currency-dollar" style={{ marginRight: 8 }} />{t('cards.finances')}</h3>
                 <i className="ph ph-arrow-right" />
               </div>
               <div className="dashboard-mini-kpis">
                 <div className="dashboard-mini-kpi">
-                  <span className="kpi-label">A RECEBER</span>
+                  <span className="kpi-label">{t('kpi.aReceber')}</span>
                   <span className="kpi-value" style={{ fontSize: '1rem', color: 'var(--success)' }}>{formatBRL(aReceber)}</span>
                 </div>
                 <div className="dashboard-mini-kpi">
-                  <span className="kpi-label">A PAGAR</span>
+                  <span className="kpi-label">{t('kpi.aPagar')}</span>
                   <span className="kpi-value" style={{ fontSize: '1rem', color: 'var(--danger)' }}>{formatBRL(aPagar)}</span>
                 </div>
               </div>
@@ -508,7 +509,7 @@ export default function DashboardPage() {
                     </span>
                   </div>
                 ))}
-                {last4Transacoes.length === 0 && <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Nenhuma transação este mês.</p>}
+                {last4Transacoes.length === 0 && <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{t('empty.noTransactions')}</p>}
               </div>
             </div>
           </Link>
@@ -517,23 +518,23 @@ export default function DashboardPage() {
           <Link to="/financeiro" style={{ textDecoration: 'none', color: 'inherit' }}>
             <div className="card dashboard-hub-card animate-up">
               <div className="dashboard-hub-card-header">
-                <h3><i className="ph ph-calendar" style={{ marginRight: 8 }} />Calendário</h3>
+                <h3><i className="ph ph-calendar" style={{ marginRight: 8 }} />{t('cards.calendar')}</h3>
                 <i className="ph ph-arrow-right" />
               </div>
               <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 8 }}>
-                Pagamentos em {mesAtual}/{anoAtual}
+                {t('date.paymentsIn', { month: mesAtual, year: anoAtual })}
               </p>
               <div className="dashboard-hub-list">
                 {upcomingEvents.map((ev, i) => (
                   <div key={i} className="dashboard-hub-row">
                     <span style={{ fontSize: '0.85rem' }}>{ev.label}</span>
                     <span style={{ fontSize: '0.8rem', color: ev.tipo === 'entrada' ? 'var(--success)' : 'var(--danger)' }}>
-                      Dia {ev.dia}
+                      {t('date.day', { n: ev.dia })}
                     </span>
                   </div>
                 ))}
                 {upcomingEvents.length === 0 && (
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Nenhum pagamento próximo.</p>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{t('empty.noPayments')}</p>
                 )}
               </div>
             </div>
@@ -545,29 +546,29 @@ export default function DashboardPage() {
       {role !== 'agent' && stats && (
         <div className="kpi-grid" style={{ marginTop: '1.5rem' }}>
           <div className="kpi-card animate-up">
-            <span className="kpi-label">RECEITA MENSAL</span>
+            <span className="kpi-label">{t('kpi.receitaMensal')}</span>
             <span className="kpi-value">{formatBRL(stats.receitaMensal)}</span>
-            <span className="kpi-sub">{stats.clientesAtivos.length} clientes ativos</span>
+            <span className="kpi-sub">{stats.clientesAtivos.length} {t('suffix.activeClients')}</span>
           </div>
           <div className="kpi-card animate-up">
-            <span className="kpi-label">DESPESAS</span>
+            <span className="kpi-label">{t('kpi.despesas')}</span>
             <span className="kpi-value">{formatBRL(stats.despesaTotal)}</span>
-            <span className="kpi-sub">este mês</span>
+            <span className="kpi-sub">{t('suffix.thisMonth')}</span>
           </div>
           <div className="kpi-card animate-up">
-            <span className="kpi-label">SALDO</span>
+            <span className="kpi-label">{t('kpi.saldo')}</span>
             <span className="kpi-value" style={{ color: stats.saldo >= 0 ? 'var(--success)' : 'var(--danger)' }}>{formatBRL(stats.saldo)}</span>
-            <span className="kpi-sub">projetado</span>
+            <span className="kpi-sub">{t('suffix.projected')}</span>
           </div>
           <div className="kpi-card animate-up">
-            <span className="kpi-label">CLIENTES ATIVOS</span>
+            <span className="kpi-label">{t('kpi.clientesAtivos')}</span>
             <span className="kpi-value">{stats.clientesAtivos.length}</span>
-            <span className="kpi-sub">de {stats.clientes.length} total</span>
+            <span className="kpi-sub">{t('suffix.ofTotal', { total: stats.clientes.length })}</span>
           </div>
           <div className="kpi-card animate-up">
-            <span className="kpi-label">CONTRATOS VIGENTES</span>
+            <span className="kpi-label">{t('kpi.contratosVigentes')}</span>
             <span className="kpi-value">{contratosVigentes.length}</span>
-            <span className="kpi-sub">{contratosAAssinar.length} a assinar</span>
+            <span className="kpi-sub">{contratosAAssinar.length} {t('suffix.toSign')}</span>
           </div>
         </div>
       )}

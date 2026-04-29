@@ -1,0 +1,39 @@
+{
+  "title": "Clientes",
+  "tooltip": "Gerencie todos os clientes e contratos ativos.",
+  "csvTooltip": "Colunas: nome*, email, telefone, plano, valor_mensal, notion_page_url, data_pagamento",
+  "newClient": "Novo Cliente",
+  "searchPlaceholder": "Buscar por nome ou e-mail...",
+  "sort": {
+    "monthlyValue": "Valor Mensal",
+    "paymentDay": "Dia Pagamento"
+  },
+  "dialog": {
+    "editTitle": "Editar Cliente",
+    "newTitle": "Novo Cliente"
+  },
+  "form": {
+    "name": "Nome *",
+    "email": "E-mail",
+    "phone": "Telefone",
+    "plan": "Plano",
+    "monthlyValue": "Valor Mensal (R$)",
+    "notionUrl": "URL do Notion",
+    "paymentDay": "Dia de Pagamento (1-31)",
+    "status": "Status"
+  },
+  "deleteConfirm": "Remover este cliente?",
+  "toast": {
+    "updated": "Cliente atualizado",
+    "added": "Cliente adicionado",
+    "removed": "Cliente removido",
+    "csvImport_one": "{{count}} cliente importado com sucesso!",
+    "csvImport_other": "{{count}} clientes importados com sucesso!"
+  },
+  "validation": {
+    "nameRequired": "Nome obrigatório",
+    "emailInvalid": "E-mail inválido",
+    "dayRange": "Dia deve ser entre 1 e 31"
+  },
+  "openNotion": "Abrir no Notion"
+}

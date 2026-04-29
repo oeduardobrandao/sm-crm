@@ -1,0 +1,50 @@
+{
+  "title": "Express Post",
+  "subtitle": "Quickly publish to Instagram",
+  "labels": {
+    "client": "Client",
+    "media": "Media",
+    "caption": "Instagram Caption",
+    "preview": "Preview"
+  },
+  "select": {
+    "client": "Select client..."
+  },
+  "empty": {
+    "noClientsWithIg": "No clients with Instagram connected.",
+    "connectAccount": "Connect account",
+    "preparingDraft": "Preparing draft...",
+    "mediaPlaceholder": "Media appears here"
+  },
+  "publish": {
+    "button": "Publish now",
+    "note": "The post will be published immediately on Instagram",
+    "confirmTitle": "Publish now?",
+    "publishingTitle": "Publishing…",
+    "confirmDescription": "The post will be published immediately on Instagram. This action cannot be undone.",
+    "publishingDescription": "Please wait while the post is published on Instagram."
+  },
+  "progress": {
+    "sending": "Sending to Instagram…",
+    "done": "Done!"
+  },
+  "toast": {
+    "published": "Post published on Instagram!",
+    "processing": "Post being processed by Instagram. Track on the deliveries page.",
+    "draftError": "Error preparing draft: {{error}}",
+    "viewPost": "View post",
+    "viewDeliveries": "View deliveries"
+  },
+  "postType": {
+    "feed": "Feed",
+    "reels": "Reels",
+    "carrossel": "Carousel"
+  },
+  "captionPlaceholder": "Write the post caption here...",
+  "publish_action": "Publish",
+  "warnings": {
+    "revoked": "Instagram token has been revoked. Reconnect the account in the client settings.",
+    "expired": "Instagram token has expired. Reconnect the account in the client settings.",
+    "missingPermission": "Publish permission not granted. Reconnect the account with the required permissions."
+  }
+}

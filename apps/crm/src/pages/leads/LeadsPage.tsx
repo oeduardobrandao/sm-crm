@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { Plus, Edit2, Trash2, Upload, Info, HelpCircle, UserPlus, Search, SlidersHorizontal, MoreVertical, ArrowUpDown } from 'lucide-react';
 import { openCSVSelector } from '../../lib/csv';
 import { Button } from '@/components/ui/button';
@@ -31,39 +32,47 @@ import {
   type Lead,
 } from '../../store';
 
-const leadSchema = z.object({
-  nome: z.string().min(1, 'Nome obrigatório'),
-  email: z.string().email('E-mail inválido').or(z.literal('')),
-  instagram: z.string(),
-  canal: z.string(),
-  especialidade: z.string(),
-  faturamento: z.string(),
-  tags: z.string(),
-  notas: z.string(),
-  status: z.enum(['novo', 'contatado', 'qualificado', 'perdido', 'convertido']),
-});
-type LeadFormValues = z.infer<typeof leadSchema>;
+function createLeadSchema(t: (key: string) => string) {
+  return z.object({
+    nome: z.string().min(1, t('validation.nameRequired')),
+    email: z.string().email(t('validation.emailInvalid')).or(z.literal('')),
+    instagram: z.string(),
+    canal: z.string(),
+    especialidade: z.string(),
+    faturamento: z.string(),
+    tags: z.string(),
+    notas: z.string(),
+    status: z.enum(['novo', 'contatado', 'qualificado', 'perdido', 'convertido']),
+  });
+}
+type LeadFormValues = z.infer<ReturnType<typeof createLeadSchema>>;
 
-const convertSchema = z.object({
-  nome: z.string().min(1, 'Nome obrigatório'),
-  email: z.string().email('E-mail inválido').or(z.literal('')),
-  telefone: z.string(),
-  plano: z.string(),
-  valor: z.string(),
-  diaPag: z
-    .string()
-    .refine((v) => v === '' || (Number(v) >= 1 && Number(v) <= 31), 'Dia deve ser entre 1 e 31'),
-});
-type ConvertFormValues = z.infer<typeof convertSchema>;
+function createConvertSchema(t: (key: string) => string) {
+  return z.object({
+    nome: z.string().min(1, t('validation.nameRequired')),
+    email: z.string().email(t('validation.emailInvalid')).or(z.literal('')),
+    telefone: z.string(),
+    plano: z.string(),
+    valor: z.string(),
+    diaPag: z
+      .string()
+      .refine((v) => v === '' || (Number(v) >= 1 && Number(v) <= 31), t('validation.dayRange')),
+  });
+}
+type ConvertFormValues = z.infer<ReturnType<typeof createConvertSchema>>;
 
-const STATUS_LABELS: Record<string, string> = {
-  novo: 'Novo', contatado: 'Contatado', qualificado: 'Qualificado', perdido: 'Perdido', convertido: 'Convertido',
+const CANAL_KEYS = ['Instagram', 'Facebook', 'Google Ads', 'Indicação', 'Site', 'WhatsApp', 'Typeform', 'Outro'] as const;
+const FATURAMENTO_KEYS = ['upTo5k', '5kTo10k', '10kTo20k', '20kTo50k', 'above50k'] as const;
+const FATURAMENTO_DB_VALUES: Record<string, string> = {
+  'upTo5k': 'Até R$ 5.000/mês',
+  '5kTo10k': 'De R$ 5.000 a R$ 10.000/mês',
+  '10kTo20k': 'De R$ 10.000 a R$ 20.000/mês',
+  '20kTo50k': 'De R$ 20.000 a R$ 50.000/mês',
+  'above50k': 'Acima de R$ 50.000/mês',
 };
-const CANAL_OPTIONS = ['Instagram', 'Facebook', 'Google Ads', 'Indicação', 'Site', 'WhatsApp', 'Typeform', 'Outro'];
-const FATURAMENTO_OPTIONS = [
-  'Até R$ 5.000/mês', 'De R$ 5.000 a R$ 10.000/mês', 'De R$ 10.000 a R$ 20.000/mês',
-  'De R$ 20.000 a R$ 50.000/mês', 'Acima de R$ 50.000/mês',
-];
+const FATURAMENTO_DB_REVERSE: Record<string, string> = Object.fromEntries(
+  Object.entries(FATURAMENTO_DB_VALUES).map(([k, v]) => [v, k])
+);
 
 type StatusFilter = 'todos' | Lead['status'];
 type SortDir = 'asc' | 'desc';
@@ -76,6 +85,9 @@ function parseInstagram(raw: string): string {
 
 export default function LeadsPage() {
   const qc = useQueryClient();
+  const { t, i18n } = useTranslation('leads');
+  const { t: tc } = useTranslation();
+  const locale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
   const [filterStatus, setFilterStatus] = useState<StatusFilter>('todos');
   const [search, setSearch] = useState('');
   const [sortCol, setSortCol] = useState<string>('created_at');
@@ -87,6 +99,9 @@ export default function LeadsPage() {
   const [convertModalOpen, setConvertModalOpen] = useState(false);
   const [convertingLead, setConvertingLead] = useState<Lead | null>(null);
   const [convertSaving, setConvertSaving] = useState(false);
+
+  const leadSchema = useMemo(() => createLeadSchema(t), [t]);
+  const convertSchema = useMemo(() => createConvertSchema(t), [t]);
 
   const form = useForm<LeadFormValues>({
     resolver: zodResolver(leadSchema),
@@ -168,15 +183,15 @@ export default function LeadsPage() {
       };
       if (editing?.id) {
         await updateLead(editing.id, payload);
-        toast.success('Lead atualizado');
+        toast.success(t('toast.updated'));
       } else {
         await addLead(payload);
-        toast.success('Lead criado');
+        toast.success(t('toast.created'));
       }
       qc.invalidateQueries({ queryKey: ['leads'] });
       setModalOpen(false);
     } catch {
-      toast.error('Erro ao salvar');
+      toast.error(tc('toast.saveError'));
     } finally {
       setSaving(false);
     }
@@ -186,10 +201,10 @@ export default function LeadsPage() {
     if (deleteId == null) return;
     try {
       await removeLead(deleteId);
-      toast.success('Lead removido');
+      toast.success(t('toast.removed'));
       qc.invalidateQueries({ queryKey: ['leads'] });
     } catch {
-      toast.error('Erro ao remover');
+      toast.error(tc('toast.deleteError'));
     }
     setDeleteId(null);
   };
@@ -199,7 +214,7 @@ export default function LeadsPage() {
       await updateLead(id, { status });
       qc.invalidateQueries({ queryKey: ['leads'] });
     } catch {
-      toast.error('Erro ao atualizar status');
+      toast.error(t('toast.statusError'));
     }
   };
 
@@ -233,12 +248,12 @@ export default function LeadsPage() {
         status: 'ativo',
       });
       await updateLead(convertingLead.id, { status: 'convertido' });
-      toast.success('Cliente criado e lead convertido!');
+      toast.success(t('toast.converted'));
       qc.invalidateQueries({ queryKey: ['leads'] });
       qc.invalidateQueries({ queryKey: ['clientes'] });
       setConvertModalOpen(false);
     } catch {
-      toast.error('Erro ao converter lead');
+      toast.error(t('toast.convertError'));
     } finally {
       setConvertSaving(false);
     }
@@ -268,35 +283,37 @@ export default function LeadsPage() {
             count++;
           } catch { /* skip row */ }
         }
-        toast.success(`${count} lead${count !== 1 ? 's' : ''} importado${count !== 1 ? 's' : ''} com sucesso!`);
+        toast.success(t('toast.csvImport', { count }));
         qc.invalidateQueries({ queryKey: ['leads'] });
       },
       (err) => toast.error(err.message),
     );
   };
 
+  const STATUS_KEYS = ['novo', 'contatado', 'qualificado', 'perdido', 'convertido'] as const;
+
   return (
     <div className="page-content">
       <div className="header">
         <div className="header-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <h1>Leads</h1>
-          <span data-tooltip="Gerencie e acompanhe contatos de potenciais clientes." data-tooltip-dir="right" style={{ display: 'flex' }}>
+          <h1>{t('title')}</h1>
+          <span data-tooltip={t('tooltip')} data-tooltip-dir="right" style={{ display: 'flex' }}>
             <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
           </span>
         </div>
         <div className="header-actions">
-          <span data-tooltip="Colunas: nome*, email, instagram, canal, especialidade, faturamento, tags, notas, status" data-tooltip-dir="bottom" style={{ display: 'flex' }}>
+          <span data-tooltip={t('csvTooltip')} data-tooltip-dir="bottom" style={{ display: 'flex' }}>
             <HelpCircle className="h-4 w-4" style={{ color: 'var(--text-muted)', cursor: 'pointer' }} />
           </span>
-          <Button variant="outline" onClick={handleCSVImport}><Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Importar CSV</Button>
-          <Button onClick={openAdd}><Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Novo Lead</Button>
+          <Button variant="outline" onClick={handleCSVImport}><Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {tc('actions.importCsv')}</Button>
+          <Button onClick={openAdd}><Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('newLead')}</Button>
         </div>
       </div>
 
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center' }}>
         <div style={{ position: 'relative', flex: 1 }}>
           <Search className="h-4 w-4" style={{ position: 'absolute', left: '0.625rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
-          <Input className="h-9" placeholder="Buscar por nome, e-mail, Instagram..." value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: '2rem' }} />
+          <Input className="h-9" placeholder={t('searchPlaceholder')} value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: '2rem' }} />
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -308,25 +325,25 @@ export default function LeadsPage() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuLabel>Status</DropdownMenuLabel>
+            <DropdownMenuLabel>{tc('filter.status')}</DropdownMenuLabel>
             <DropdownMenuRadioGroup value={filterStatus} onValueChange={(v) => setFilterStatus(v as StatusFilter)}>
-              {(['todos', 'novo', 'contatado', 'qualificado', 'perdido', 'convertido'] as StatusFilter[]).map(f => (
+              {(['todos', ...STATUS_KEYS] as StatusFilter[]).map(f => (
                 <DropdownMenuRadioItem key={f} value={f}>
-                  {f === 'todos' ? 'Todos' : STATUS_LABELS[f]}
+                  {tc(`status.${f}`)}
                 </DropdownMenuRadioItem>
               ))}
             </DropdownMenuRadioGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuLabel>Ordenar por</DropdownMenuLabel>
+            <DropdownMenuLabel>{tc('filter.sortBy')}</DropdownMenuLabel>
             <DropdownMenuRadioGroup value={sortCol} onValueChange={v => { setSortCol(v); setSortDir('asc'); }}>
-              <DropdownMenuRadioItem value="nome">Nome</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="email">E-mail</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="canal">Canal</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="created_at">Data de criação</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="nome">{tc('sort.name')}</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="email">{t('table.email')}</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="canal">{t('table.channel')}</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="created_at">{t('table.createdAt')}</DropdownMenuRadioItem>
             </DropdownMenuRadioGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}>
-              <ArrowUpDown className="h-4 w-4 mr-2" />{sortDir === 'asc' ? 'Decrescente' : 'Crescente'}
+              <ArrowUpDown className="h-4 w-4 mr-2" />{sortDir === 'asc' ? tc('sort.descending') : tc('sort.ascending')}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -341,41 +358,41 @@ export default function LeadsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead style={{ cursor: 'pointer', fontWeight: '800' }} onClick={() => handleSort('nome')}>Nome{sortIcon('nome')}</TableHead>
-                  <TableHead style={{ cursor: 'pointer', fontWeight: '800' }} onClick={() => handleSort('email')}>E-mail{sortIcon('email')}</TableHead>
-                  <TableHead style={{ cursor: 'pointer', fontWeight: '800' }} onClick={() => handleSort('canal')}>Canal{sortIcon('canal')}</TableHead>
-                  <TableHead style={{ cursor: 'pointer', fontWeight: '800' }} onClick={() => handleSort('especialidade')}>Especialidade{sortIcon('especialidade')}</TableHead>
-                  <TableHead style={{ cursor: 'pointer', fontWeight: '800' }}>Status</TableHead>
-                  <TableHead style={{ cursor: 'pointer', fontWeight: '800' }} onClick={() => handleSort('created_at')}>Criado{sortIcon('created_at')}</TableHead>
-                  <TableHead style={{ fontWeight: '800' }}>Ações</TableHead>
+                  <TableHead style={{ cursor: 'pointer', fontWeight: '800' }} onClick={() => handleSort('nome')}>{t('table.name')}{sortIcon('nome')}</TableHead>
+                  <TableHead style={{ cursor: 'pointer', fontWeight: '800' }} onClick={() => handleSort('email')}>{t('table.email')}{sortIcon('email')}</TableHead>
+                  <TableHead style={{ cursor: 'pointer', fontWeight: '800' }} onClick={() => handleSort('canal')}>{t('table.channel')}{sortIcon('canal')}</TableHead>
+                  <TableHead style={{ cursor: 'pointer', fontWeight: '800' }} onClick={() => handleSort('especialidade')}>{t('table.specialty')}{sortIcon('especialidade')}</TableHead>
+                  <TableHead style={{ cursor: 'pointer', fontWeight: '800' }}>{t('table.status')}</TableHead>
+                  <TableHead style={{ cursor: 'pointer', fontWeight: '800' }} onClick={() => handleSort('created_at')}>{t('table.created')}{sortIcon('created_at')}</TableHead>
+                  <TableHead style={{ fontWeight: '800' }}>{t('table.actions')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filtered.map(l => (
                   <TableRow key={l.id ?? l.nome}>
-                    <TableCell data-label="Nome">
+                    <TableCell data-label={t('table.name')}>
                       <div>{l.nome}</div>
                       {l.instagram && <div style={{ fontSize: 12, color: '#888' }}>{l.instagram}</div>}
                     </TableCell>
-                    <TableCell data-label="E-mail">{l.email}</TableCell>
-                    <TableCell data-label="Canal">{l.canal}</TableCell>
-                    <TableCell data-label="Especialidade">{l.especialidade}</TableCell>
-                    <TableCell data-label="Status">
+                    <TableCell data-label={t('table.email')}>{l.email}</TableCell>
+                    <TableCell data-label={t('table.channel')}>{l.canal}</TableCell>
+                    <TableCell data-label={t('table.specialty')}>{l.especialidade}</TableCell>
+                    <TableCell data-label={t('table.status')}>
                       <Select value={l.status} onValueChange={val => l.id && handleStatusChange(l.id, val as Lead['status'])}>
                         <SelectTrigger style={{ width: 140 }}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {Object.entries(STATUS_LABELS).map(([v, label]) => (
-                            <SelectItem key={v} value={v}>{label}</SelectItem>
+                          {STATUS_KEYS.map(v => (
+                            <SelectItem key={v} value={v}>{tc(`status.${v}`)}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </TableCell>
-                    <TableCell data-label="Criado">{l.created_at ? new Date(l.created_at).toLocaleDateString('pt-BR') : '—'}</TableCell>
+                    <TableCell data-label={t('table.created')}>{l.created_at ? new Date(l.created_at).toLocaleDateString(locale) : '—'}</TableCell>
                     <TableCell>
                       <div className="flex gap-1" style={{ justifyContent: 'flex-end' }}>
-                        <Button size="icon" variant="ghost" title="Converter em cliente" onClick={() => openConvert(l)}>
+                        <Button size="icon" variant="ghost" title={t('convertToClient')} onClick={() => openConvert(l)}>
                           <UserPlus className="h-4 w-4" />
                         </Button>
                         <Button size="icon" variant="ghost" onClick={() => openEdit(l)}>
@@ -403,7 +420,7 @@ export default function LeadsPage() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                       <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{l.nome}</span>
                       <Badge variant={l.status === 'novo' ? 'default' : l.status === 'qualificado' ? 'default' : l.status === 'convertido' ? 'default' : 'secondary'} style={{ fontSize: '0.6rem', padding: '0 0.4rem', pointerEvents: 'none' }}>
-                        {STATUS_LABELS[l.status]}
+                        {tc(`status.${l.status}`)}
                       </Badge>
                     </div>
                     <div style={{ fontSize: '0.75rem', color: '#888', display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginTop: 2 }}>
@@ -411,7 +428,7 @@ export default function LeadsPage() {
                       {l.instagram && l.canal && <span>&bull;</span>}
                       {l.canal && <span>{l.canal}</span>}
                       {(l.instagram || l.canal) && l.created_at && <span>&bull;</span>}
-                      {l.created_at && <span>{new Date(l.created_at).toLocaleDateString('pt-BR')}</span>}
+                      {l.created_at && <span>{new Date(l.created_at).toLocaleDateString(locale)}</span>}
                     </div>
                   </div>
                   <DropdownMenu>
@@ -422,16 +439,16 @@ export default function LeadsPage() {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={() => openConvert(l)}>
-                        <UserPlus className="h-4 w-4 mr-2" />Converter em cliente
+                        <UserPlus className="h-4 w-4 mr-2" />{t('convertToClient')}
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => openEdit(l)}>
-                        <Edit2 className="h-4 w-4 mr-2" />Editar
+                        <Edit2 className="h-4 w-4 mr-2" />{tc('actions.edit')}
                       </DropdownMenuItem>
                       {l.id && (
                         <>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem className="text-destructive" onClick={() => setDeleteId(l.id!)}>
-                            <Trash2 className="h-4 w-4 mr-2" />Remover
+                            <Trash2 className="h-4 w-4 mr-2" />{tc('actions.delete')}
                           </DropdownMenuItem>
                         </>
                       )}
@@ -447,7 +464,7 @@ export default function LeadsPage() {
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto" onConfirmClose={() => setModalOpen(false)}>
           <DialogHeader>
-            <DialogTitle>{editing ? 'Editar Lead' : 'Novo Lead'}</DialogTitle>
+            <DialogTitle>{editing ? t('dialog.editTitle') : t('dialog.newTitle')}</DialogTitle>
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3">
@@ -456,7 +473,7 @@ export default function LeadsPage() {
                 name="nome"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Nome *</FormLabel>
+                    <FormLabel>{t('form.name')}</FormLabel>
                     <FormControl><Input {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
@@ -467,7 +484,7 @@ export default function LeadsPage() {
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>E-mail</FormLabel>
+                    <FormLabel>{t('form.email')}</FormLabel>
                     <FormControl><Input type="email" {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
@@ -478,8 +495,8 @@ export default function LeadsPage() {
                 name="instagram"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Instagram</FormLabel>
-                    <FormControl><Input placeholder="@usuario ou URL" {...field} /></FormControl>
+                    <FormLabel>{t('form.instagram')}</FormLabel>
+                    <FormControl><Input placeholder={t('form.instagramPlaceholder')} {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -489,13 +506,13 @@ export default function LeadsPage() {
                 name="canal"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Canal</FormLabel>
+                    <FormLabel>{t('form.channel')}</FormLabel>
                     <Select value={field.value} onValueChange={field.onChange}>
                       <FormControl>
-                        <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                        <SelectTrigger><SelectValue placeholder={t('form.selectPlaceholder')} /></SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {CANAL_OPTIONS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                        {CANAL_KEYS.map(c => <SelectItem key={c} value={c}>{t(`channels.${c}`)}</SelectItem>)}
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -507,7 +524,7 @@ export default function LeadsPage() {
                 name="especialidade"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Especialidade</FormLabel>
+                    <FormLabel>{t('form.specialty')}</FormLabel>
                     <FormControl><Input {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
@@ -518,13 +535,13 @@ export default function LeadsPage() {
                 name="faturamento"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Faturamento</FormLabel>
+                    <FormLabel>{t('form.revenue')}</FormLabel>
                     <Select value={field.value} onValueChange={field.onChange}>
                       <FormControl>
-                        <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                        <SelectTrigger><SelectValue placeholder={t('form.selectPlaceholder')} /></SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {FATURAMENTO_OPTIONS.map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}
+                        {FATURAMENTO_KEYS.map(k => <SelectItem key={k} value={FATURAMENTO_DB_VALUES[k]}>{t(`revenue.${k}`)}</SelectItem>)}
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -536,8 +553,8 @@ export default function LeadsPage() {
                 name="tags"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Tags</FormLabel>
-                    <FormControl><Input placeholder="tag1, tag2, ..." {...field} /></FormControl>
+                    <FormLabel>{t('form.tags')}</FormLabel>
+                    <FormControl><Input placeholder={t('form.tagsPlaceholder')} {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -547,7 +564,7 @@ export default function LeadsPage() {
                 name="notas"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Observações</FormLabel>
+                    <FormLabel>{t('form.notes')}</FormLabel>
                     <FormControl><Textarea rows={3} {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
@@ -559,13 +576,13 @@ export default function LeadsPage() {
                   name="status"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Status</FormLabel>
+                      <FormLabel>{t('form.status')}</FormLabel>
                       <Select value={field.value} onValueChange={field.onChange}>
                         <FormControl>
                           <SelectTrigger><SelectValue /></SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {Object.entries(STATUS_LABELS).map(([v, label]) => <SelectItem key={v} value={v}>{label}</SelectItem>)}
+                          {STATUS_KEYS.map(v => <SelectItem key={v} value={v}>{tc(`status.${v}`)}</SelectItem>)}
                         </SelectContent>
                       </Select>
                       <FormMessage />
@@ -574,9 +591,9 @@ export default function LeadsPage() {
                 />
               )}
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
+                <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>{tc('actions.cancel')}</Button>
                 <Button type="submit" disabled={saving}>
-                  {saving && <Spinner size="sm" />} Salvar
+                  {saving && <Spinner size="sm" />} {tc('actions.save')}
                 </Button>
               </DialogFooter>
             </form>
@@ -587,7 +604,7 @@ export default function LeadsPage() {
       <Dialog open={convertModalOpen} onOpenChange={setConvertModalOpen}>
         <DialogContent onConfirmClose={() => setConvertModalOpen(false)}>
           <DialogHeader>
-            <DialogTitle>Converter Lead em Cliente</DialogTitle>
+            <DialogTitle>{t('convertDialog.title')}</DialogTitle>
           </DialogHeader>
           <Form {...convertForm}>
             <form onSubmit={convertForm.handleSubmit(onConvertSubmit)} className="space-y-3">
@@ -596,7 +613,7 @@ export default function LeadsPage() {
                 name="nome"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Nome *</FormLabel>
+                    <FormLabel>{t('form.name')}</FormLabel>
                     <FormControl><Input {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
@@ -607,7 +624,7 @@ export default function LeadsPage() {
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>E-mail</FormLabel>
+                    <FormLabel>{t('form.email')}</FormLabel>
                     <FormControl><Input type="email" {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
@@ -618,7 +635,7 @@ export default function LeadsPage() {
                 name="telefone"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Telefone</FormLabel>
+                    <FormLabel>{t('form.phone')}</FormLabel>
                     <FormControl><Input {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
@@ -629,7 +646,7 @@ export default function LeadsPage() {
                 name="plano"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Plano</FormLabel>
+                    <FormLabel>{t('form.plan')}</FormLabel>
                     <FormControl><Input {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
@@ -640,7 +657,7 @@ export default function LeadsPage() {
                 name="valor"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Valor Mensal (R$)</FormLabel>
+                    <FormLabel>{t('form.monthlyValue')}</FormLabel>
                     <FormControl><Input type="number" min={0} step={0.01} {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
@@ -651,16 +668,16 @@ export default function LeadsPage() {
                 name="diaPag"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Dia de Pagamento (1-31)</FormLabel>
+                    <FormLabel>{t('form.paymentDay')}</FormLabel>
                     <FormControl><Input type="number" min={1} max={31} {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setConvertModalOpen(false)}>Cancelar</Button>
+                <Button type="button" variant="outline" onClick={() => setConvertModalOpen(false)}>{tc('actions.cancel')}</Button>
                 <Button type="submit" disabled={convertSaving}>
-                  {convertSaving && <Spinner size="sm" />} Criar Cliente
+                  {convertSaving && <Spinner size="sm" />} {t('convertDialog.submit')}
                 </Button>
               </DialogFooter>
             </form>
@@ -670,10 +687,10 @@ export default function LeadsPage() {
 
       <AlertDialog open={deleteId != null} onOpenChange={open => { if (!open) setDeleteId(null); }}>
         <AlertDialogContent>
-          <AlertDialogHeader><AlertDialogTitle>Remover este lead?</AlertDialogTitle></AlertDialogHeader>
+          <AlertDialogHeader><AlertDialogTitle>{t('deleteConfirm')}</AlertDialogTitle></AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Não</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete}>Sim</AlertDialogAction>
+            <AlertDialogCancel>{tc('actions.no')}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete}>{tc('actions.yes')}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

@@ -173,7 +173,7 @@ describe('DashboardPage', () => {
     expect(screen.queryByTestId('onboarding-banner')).not.toBeInTheDocument();
     expect(screen.getByText('Leads')).toBeInTheDocument();
     expect(screen.getByText('Lead 1')).toBeInTheDocument();
-    expect(screen.getByText('CLT: 1')).toBeInTheDocument();
+    expect(screen.getByText(/CLT.*1/)).toBeInTheDocument();
     expect(screen.getAllByText('Conta A').length).toBeGreaterThan(0);
     expect(screen.getByText('Workflow 1')).toBeInTheDocument();
     expect(screen.queryByText('Contratos')).not.toBeInTheDocument();

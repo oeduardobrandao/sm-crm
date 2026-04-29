@@ -1,0 +1,77 @@
+{
+  "title": "Leads",
+  "tooltip": "Gerencie e acompanhe contatos de potenciais clientes.",
+  "csvTooltip": "Colunas: nome*, email, instagram, canal, especialidade, faturamento, tags, notas, status",
+  "newLead": "Novo Lead",
+  "searchPlaceholder": "Buscar por nome, e-mail, Instagram...",
+  "table": {
+    "name": "Nome",
+    "email": "E-mail",
+    "channel": "Canal",
+    "specialty": "Especialidade",
+    "status": "Status",
+    "created": "Criado",
+    "actions": "Ações",
+    "createdAt": "Data de criação"
+  },
+  "channels": {
+    "Instagram": "Instagram",
+    "Facebook": "Facebook",
+    "Google Ads": "Google Ads",
+    "Indicação": "Indicação",
+    "Site": "Site",
+    "WhatsApp": "WhatsApp",
+    "Typeform": "Typeform",
+    "Outro": "Outro"
+  },
+  "revenue": {
+    "upTo5k": "Até R$ 5.000/mês",
+    "5kTo10k": "De R$ 5.000 a R$ 10.000/mês",
+    "10kTo20k": "De R$ 10.000 a R$ 20.000/mês",
+    "20kTo50k": "De R$ 20.000 a R$ 50.000/mês",
+    "above50k": "Acima de R$ 50.000/mês"
+  },
+  "convertToClient": "Converter em cliente",
+  "convertDialog": {
+    "title": "Converter Lead em Cliente",
+    "submit": "Criar Cliente"
+  },
+  "dialog": {
+    "editTitle": "Editar Lead",
+    "newTitle": "Novo Lead"
+  },
+  "form": {
+    "name": "Nome *",
+    "email": "E-mail",
+    "instagram": "Instagram",
+    "instagramPlaceholder": "@usuario ou URL",
+    "channel": "Canal",
+    "selectPlaceholder": "Selecione...",
+    "specialty": "Especialidade",
+    "revenue": "Faturamento",
+    "tags": "Tags",
+    "tagsPlaceholder": "tag1, tag2, ...",
+    "notes": "Observações",
+    "status": "Status",
+    "phone": "Telefone",
+    "plan": "Plano",
+    "monthlyValue": "Valor Mensal (R$)",
+    "paymentDay": "Dia de Pagamento (1-31)"
+  },
+  "deleteConfirm": "Remover este lead?",
+  "toast": {
+    "updated": "Lead atualizado",
+    "created": "Lead criado",
+    "removed": "Lead removido",
+    "converted": "Cliente criado e lead convertido!",
+    "convertError": "Erro ao converter lead",
+    "statusError": "Erro ao atualizar status",
+    "csvImport_one": "{{count}} lead importado com sucesso!",
+    "csvImport_other": "{{count}} leads importados com sucesso!"
+  },
+  "validation": {
+    "nameRequired": "Nome obrigatório",
+    "emailInvalid": "E-mail inválido",
+    "dayRange": "Dia deve ser entre 1 e 31"
+  }
+}
