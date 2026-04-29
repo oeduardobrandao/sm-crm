@@ -186,7 +186,7 @@ export async function validateForScheduling(
   if (!account) {
     errors.push("Cliente não tem conta Instagram conectada.");
   } else {
-    if (account.authorization_status === "revoked") {
+    if (account.authorization_status === "revoked" || account.authorization_status === "disconnected") {
       errors.push("Token do Instagram foi revogado. Reconecte a conta.");
     }
     if (account.token_expires_at && new Date(account.token_expires_at) < new Date()) {

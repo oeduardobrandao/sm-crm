@@ -645,7 +645,7 @@ Deno.serve(async (req) => {
          }
 
          const { data, error } = await serviceClient.from('instagram_accounts').select('*').eq('client_id', clientId).single();
-         if (error || data.authorization_status === 'disconnected') return new Response(JSON.stringify({ exists: false }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+         if (error || !data || data.authorization_status === 'disconnected') return new Response(JSON.stringify({ exists: false }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
          // Fetch recent 30 day history
          const { data: history } = await serviceClient.from('instagram_follower_history').select('*').eq('instagram_account_id', data.id).order('date', { ascending: true }).limit(30);
