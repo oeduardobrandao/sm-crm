@@ -1,16 +1,27 @@
 import { Link, useLocation, useParams } from 'react-router-dom';
-import { Home, CheckSquare, Palette, FileText, BookOpen, LayoutList, Sun, Moon } from 'lucide-react';
+import { Home, CheckSquare, Palette, FileText, BookOpen, LayoutList, Sun, Moon, Globe } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useHub } from '../HubContext';
 import { useTheme } from '../hooks/useTheme';
+import { changeLanguage, SUPPORTED_LANGUAGES } from '@mesaas/i18n';
+import type { Language } from '@mesaas/i18n';
+
+const LANGUAGE_FLAGS: Record<Language, string> = { pt: '\u{1F1E7}\u{1F1F7}', en: '\u{1F1FA}\u{1F1F8}' };
 
 const NAV_ITEMS = [
-  { label: 'Home', icon: Home, path: '' },
-  { label: 'Aprovações', icon: CheckSquare, path: '/aprovacoes' },
-  { label: 'Postagens', icon: LayoutList, path: '/postagens' },
-  { label: 'Marca', icon: Palette, path: '/marca' },
-  { label: 'Páginas', icon: FileText, path: '/paginas' },
-  { label: 'Briefing', icon: BookOpen, path: '/briefing' },
+  { label: 'Home', labelKey: 'nav.home', icon: Home, path: '' },
+  { label: 'Aprovacoes', labelKey: 'nav.aprovacoes', icon: CheckSquare, path: '/aprovacoes' },
+  { label: 'Postagens', labelKey: 'nav.postagens', icon: LayoutList, path: '/postagens' },
+  { label: 'Marca', labelKey: 'nav.marca', icon: Palette, path: '/marca' },
+  { label: 'Paginas', labelKey: 'nav.paginas', icon: FileText, path: '/paginas' },
+  { label: 'Briefing', labelKey: 'nav.briefing', icon: BookOpen, path: '/briefing' },
 ];
+
+function cycleLanguage(current: string) {
+  const idx = SUPPORTED_LANGUAGES.indexOf(current as Language);
+  const next = SUPPORTED_LANGUAGES[(idx + 1) % SUPPORTED_LANGUAGES.length];
+  changeLanguage(next);
+}
 
 export function HubNav() {
   const { bootstrap } = useHub();
@@ -18,6 +29,7 @@ export function HubNav() {
   const { pathname } = useLocation();
   const base = `/${workspace}/hub/${token}`;
   const { theme, toggleTheme } = useTheme();
+  const { t, i18n } = useTranslation();
 
   return (
     <>
@@ -33,7 +45,7 @@ export function HubNav() {
             </span>
           </div>
           <nav className="flex items-center gap-1">
-            {NAV_ITEMS.map(({ label, path }) => {
+            {NAV_ITEMS.map(({ label, labelKey, path }) => {
               const href = `${base}${path}`;
               const active = path === '' ? pathname === base : pathname.startsWith(`${base}${path}`);
               return (
@@ -46,7 +58,7 @@ export function HubNav() {
                       : 'text-stone-400 hover:text-white'
                   }`}
                 >
-                  {label}
+                  {t(labelKey, label)}
                   {active && (
                     <span className="absolute left-1/2 -translate-x-1/2 -bottom-[17px] h-[2px] w-8 rounded-full bg-[#FFBF30]" />
                   )}
@@ -57,8 +69,15 @@ export function HubNav() {
           <span className="ml-auto flex items-center gap-3">
             <span className="text-[13px] text-stone-400">{bootstrap.cliente_nome}</span>
             <button
+              onClick={() => cycleLanguage(i18n.language)}
+              aria-label={t('sidebar.language')}
+              className="w-8 h-8 flex items-center justify-center rounded-full text-stone-400 hover:text-white hover:bg-white/10 transition-colors text-sm"
+            >
+              {LANGUAGE_FLAGS[i18n.language as Language] || LANGUAGE_FLAGS.pt}
+            </button>
+            <button
               onClick={toggleTheme}
-              aria-label={theme === 'dark' ? 'Modo claro' : 'Modo escuro'}
+              aria-label={theme === 'dark' ? t('sidebar.lightMode') : t('sidebar.darkMode')}
               className="w-8 h-8 flex items-center justify-center rounded-full text-stone-400 hover:text-white hover:bg-white/10 transition-colors"
             >
               {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
@@ -80,8 +99,15 @@ export function HubNav() {
         <span className="flex items-center gap-2">
           <span className="text-[11px] text-stone-400 truncate max-w-[120px]">{bootstrap.cliente_nome}</span>
           <button
+            onClick={() => cycleLanguage(i18n.language)}
+            aria-label={t('sidebar.language')}
+            className="w-8 h-8 flex items-center justify-center rounded-full text-stone-400 hover:text-white hover:bg-white/10 transition-colors text-sm"
+          >
+            {LANGUAGE_FLAGS[i18n.language as Language] || LANGUAGE_FLAGS.pt}
+          </button>
+          <button
             onClick={toggleTheme}
-            aria-label={theme === 'dark' ? 'Modo claro' : 'Modo escuro'}
+            aria-label={theme === 'dark' ? t('sidebar.lightMode') : t('sidebar.darkMode')}
             className="w-8 h-8 flex items-center justify-center rounded-full text-stone-400 hover:text-white hover:bg-white/10 transition-colors"
           >
             {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
@@ -92,7 +118,7 @@ export function HubNav() {
       {/* Mobile bottom tab bar */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-20 border-t border-stone-200/80 bg-white/95 backdrop-blur-md pb-[env(safe-area-inset-bottom)]">
         <div className="flex">
-          {NAV_ITEMS.map(({ label, icon: Icon, path }) => {
+          {NAV_ITEMS.map(({ label, labelKey, icon: Icon, path }) => {
             const href = `${base}${path}`;
             const active = path === '' ? pathname === base : pathname.startsWith(`${base}${path}`);
             return (
@@ -105,7 +131,7 @@ export function HubNav() {
                   <span className="absolute top-0 left-1/2 -translate-x-1/2 h-[2px] w-8 rounded-full bg-[#FFBF30]" />
                 )}
                 <Icon size={19} strokeWidth={active ? 2.25 : 1.75} className={active ? 'text-stone-900' : 'text-stone-400'} />
-                <span className={active ? 'text-stone-900 font-semibold' : 'text-stone-500 font-medium'}>{label}</span>
+                <span className={active ? 'text-stone-900 font-semibold' : 'text-stone-500 font-medium'}>{t(labelKey, label)}</span>
               </Link>
             );
           })}

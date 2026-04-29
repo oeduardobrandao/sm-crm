@@ -1,0 +1,113 @@
+{
+  "nav": {
+    "visaoGeral": "Visão Geral",
+    "dashboard": "Dashboard",
+    "calendario": "Calendário",
+    "crm": "CRM",
+    "leads": "Leads",
+    "clientes": "Clientes",
+    "ideias": "Ideias",
+    "gestao": "Gestão",
+    "entregas": "Entregas",
+    "postExpress": "Post Express",
+    "arquivos": "Arquivos",
+    "financeiro": "Financeiro",
+    "contratos": "Contratos",
+    "equipe": "Equipe",
+    "analytics": "Analytics",
+    "instagram": "Instagram",
+    "fluxos": "Fluxos",
+    "configuracoes": "Configurações",
+    "privacidade": "Privacidade",
+    "home": "Home",
+    "aprovacoes": "Aprovações",
+    "postagens": "Postagens",
+    "marca": "Marca",
+    "paginas": "Páginas",
+    "briefing": "Briefing"
+  },
+  "sidebar": {
+    "accountOptions": "Opções da Conta",
+    "workspace": "Workspace",
+    "language": "Idioma",
+    "lightMode": "Modo Claro",
+    "darkMode": "Modo Escuro",
+    "logout": "Sair",
+    "myAccount": "Minha Conta"
+  },
+  "language": {
+    "pt": "Português",
+    "en": "English"
+  },
+  "actions": {
+    "save": "Salvar",
+    "cancel": "Cancelar",
+    "delete": "Remover",
+    "edit": "Editar",
+    "add": "Adicionar",
+    "close": "Fechar",
+    "confirm": "Confirmar",
+    "yes": "Sim",
+    "no": "Não",
+    "search": "Buscar",
+    "importCsv": "Importar CSV",
+    "back": "Voltar"
+  },
+  "status": {
+    "ativo": "Ativo",
+    "pausado": "Pausado",
+    "encerrado": "Encerrado",
+    "novo": "Novo",
+    "contatado": "Contatado",
+    "qualificado": "Qualificado",
+    "perdido": "Perdido",
+    "convertido": "Convertido",
+    "vigente": "Vigente",
+    "a_assinar": "A assinar",
+    "todos": "Todos"
+  },
+  "toast": {
+    "saveError": "Erro ao salvar",
+    "deleteError": "Erro ao remover"
+  },
+  "months": {
+    "0": "Janeiro",
+    "1": "Fevereiro",
+    "2": "Março",
+    "3": "Abril",
+    "4": "Maio",
+    "5": "Junho",
+    "6": "Julho",
+    "7": "Agosto",
+    "8": "Setembro",
+    "9": "Outubro",
+    "10": "Novembro",
+    "11": "Dezembro"
+  },
+  "weekdays": {
+    "0": "Domingo",
+    "1": "Segunda",
+    "2": "Terça",
+    "3": "Quarta",
+    "4": "Quinta",
+    "5": "Sexta",
+    "6": "Sábado"
+  },
+  "sort": {
+    "name": "Nome",
+    "ascending": "Crescente",
+    "descending": "Decrescente"
+  },
+  "filter": {
+    "status": "Status",
+    "sortBy": "Ordenar por"
+  },
+  "empty": {
+    "noData": "Nenhum dado encontrado."
+  },
+  "hub": {
+    "invalidLink": "Link inválido",
+    "accessDisabled": "Acesso desabilitado",
+    "contactAgency": "Entre em contato com sua agência"
+  }
+}

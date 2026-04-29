@@ -103,7 +103,9 @@ describe('Sidebar', () => {
 
     renderSidebar('/dashboard', { isDrawer: true, isOpen: true, onClose });
 
-    fireEvent.click(screen.getByTitle('Alternar Tema'));
+    // Open user menu, then click the theme toggle button inside it
+    fireEvent.click(screen.getByText('Ana Maria'));
+    fireEvent.click(screen.getByText('Modo Escuro'));
 
     expect(document.documentElement).toHaveAttribute('data-theme', 'dark');
     expect(localStorage.getItem('theme')).toBe('dark');

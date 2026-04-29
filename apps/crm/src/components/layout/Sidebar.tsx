@@ -1,9 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { changeLanguage, SUPPORTED_LANGUAGES } from '@mesaas/i18n';
+import type { Language } from '@mesaas/i18n';
 import { getNavGroups } from './nav-data';
 import type { NavGroup } from './nav-data';
+
+const LANGUAGE_FLAGS: Record<Language, string> = { pt: '\u{1F1E7}\u{1F1F7}', en: '\u{1F1FA}\u{1F1F8}' };
 
 interface SidebarProps {
   isDrawer?: boolean;
@@ -15,6 +20,7 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
   const { user, profile, role, signOut } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const { t, i18n } = useTranslation();
   const [isDark, setIsDark] = useState(document.documentElement.getAttribute('data-theme') === 'dark');
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [workspaces, setWorkspaces] = useState<any[]>([]);
@@ -65,18 +71,22 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
     window.location.reload();
   };
 
+  const handleLanguageChange = (lang: Language) => {
+    changeLanguage(lang);
+  };
+
   const initials = profile?.nome
     ? profile.nome.split(' ').map((w: string) => w?.[0] || '').join('').substring(0, 2).toUpperCase()
     : 'U';
 
-  const userName = profile?.nome || 'Minha Conta';
+  const userName = profile?.nome || t('sidebar.myAccount');
 
   const mainGroups = navGroups.filter(g => !g.isBottom);
   const configItems = navGroups.find(g => g.id === 'config')?.items ?? [];
 
   const renderGroup = (group: NavGroup) => (
     <li key={group.id} className="sidebar-group">
-      <div className="sidebar-group-label">{group.label}</div>
+      <div className="sidebar-group-label">{t(group.labelKey, group.label)}</div>
       <ul className="sidebar-sub-nav">
         {group.items.map(item => {
           const isActiveItem = activeRoute.startsWith(item.route);
@@ -89,7 +99,7 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
                 onClick={(e) => { e.preventDefault(); handleNavClick(item.route); }}
               >
                 <i className={ItemIcon} />
-                <span>{item.label}</span>
+                <span>{t(item.labelKey, item.label)}</span>
               </a>
             </li>
           );
@@ -134,12 +144,12 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
 
             {userMenuOpen && (
               <div className="user-menu-popover">
-                <div className="user-dropdown-header" style={{ padding: '0.75rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Opções da Conta</div>
+                <div className="user-dropdown-header" style={{ padding: '0.75rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t('sidebar.accountOptions')}</div>
 
                 {workspaces.length > 1 && (
                   <div style={{ padding: '0.25rem 0', borderBottom: '1px solid var(--border-color)', marginBottom: '0.25rem' }}>
                     <div style={{ padding: '0.25rem 0.75rem', fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                      Workspace
+                      {t('sidebar.workspace')}
                     </div>
                     {workspaces.map((m: any) => {
                       const isActive = m.workspaces.id === (profile?.active_workspace_id || profile?.conta_id);
@@ -168,11 +178,38 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
                         onClick={() => { handleNavClick(item.route); setUserMenuOpen(false); }}
                       >
                         <i className={`ph ${item.icon}`} />
-                        <span>{item.label}</span>
+                        <span>{t(item.labelKey, item.label)}</span>
                       </button>
                     ))}
                   </div>
                 )}
+
+                <div style={{ padding: '0.25rem 0', borderBottom: '1px solid var(--border-color)', marginBottom: '0.25rem' }}>
+                  <div style={{ padding: '0.25rem 0.75rem', fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    {t('sidebar.language')}
+                  </div>
+                  {SUPPORTED_LANGUAGES.map(lang => {
+                    const isActive = i18n.language === lang;
+                    return (
+                      <button
+                        key={lang}
+                        className="user-dropdown-item"
+                        style={{
+                          width: '100%', border: 'none', textAlign: 'left', fontFamily: 'inherit', fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem',
+                          background: isActive ? 'rgba(234, 179, 8, 0.08)' : 'transparent',
+                          fontWeight: isActive ? 600 : 400,
+                          color: isActive ? 'var(--primary-color)' : 'var(--text-main)',
+                          borderRadius: '6px',
+                        }}
+                        onClick={(e) => { e.stopPropagation(); handleLanguageChange(lang); }}
+                      >
+                        <span>{LANGUAGE_FLAGS[lang]}</span>
+                        <span>{t(`language.${lang}`)}</span>
+                        {isActive && <i className="ph ph-check" style={{ marginLeft: 'auto' }} />}
+                      </button>
+                    );
+                  })}
+                </div>
 
                 <button
                   className="user-dropdown-item"
@@ -180,7 +217,7 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
                   onClick={(e) => { e.stopPropagation(); toggleTheme(); }}
                 >
                   <i className={`ph ${isDark ? 'ph-sun' : 'ph-moon'}`} />
-                  <span>{isDark ? 'Modo Claro' : 'Modo Escuro'}</span>
+                  <span>{isDark ? t('sidebar.lightMode') : t('sidebar.darkMode')}</span>
                 </button>
 
                 <button
@@ -189,7 +226,7 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
                   style={{ width: '100%', border: 'none', background: 'transparent', textAlign: 'left', fontFamily: 'inherit', fontSize: '0.85rem', cursor: 'pointer', color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem' }}
                   onClick={signOut}
                 >
-                  <i className="ph ph-sign-out" /> Sair
+                  <i className="ph ph-sign-out" /> {t('sidebar.logout')}
                 </button>
               </div>
             )}
