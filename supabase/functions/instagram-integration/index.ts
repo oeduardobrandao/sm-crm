@@ -271,6 +271,12 @@ Deno.serve(async (req) => {
             throw new Error('Profile fetch failed');
         }
 
+        const REQUESTED_SCOPES = ['instagram_business_basic', 'instagram_business_manage_insights', 'instagram_business_content_publish'];
+        const grantedPermissions = Array.isArray(slTokenData.permissions) && slTokenData.permissions.length > 0
+            ? slTokenData.permissions
+            : REQUESTED_SCOPES;
+        console.error('[IG-CALLBACK] Permissions:', JSON.stringify(grantedPermissions), Array.isArray(slTokenData.permissions) ? '(from token response)' : '(from requested scopes)');
+
         // Encrypt Long Lived Token
         const encryptedToken = await encryptToken(longLivedToken);
 
@@ -328,7 +334,7 @@ Deno.serve(async (req) => {
                 website_clicks_28d,
                 last_synced_at: new Date().toISOString(),
                 authorization_status: 'active',
-                permissions: Array.isArray(slTokenData.permissions) ? slTokenData.permissions : [],
+                permissions: grantedPermissions,
             }, { onConflict: 'client_id' })
             .select('id')
             .single();

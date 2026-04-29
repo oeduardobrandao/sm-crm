@@ -1407,6 +1407,23 @@ export async function getWorkflowApprovedPostsCounts(
   return counts;
 }
 
+export async function getWorkflowRevisaoInternaCounts(
+  workflowIds: number[]
+): Promise<Map<number, number>> {
+  const counts = new Map<number, number>();
+  if (workflowIds.length === 0) return counts;
+  const { data, error } = await supabase
+    .from('workflow_posts')
+    .select('workflow_id')
+    .in('workflow_id', workflowIds)
+    .eq('status', 'revisao_interna');
+  if (error) throw error;
+  for (const row of (data ?? []) as { workflow_id: number }[]) {
+    counts.set(row.workflow_id, (counts.get(row.workflow_id) ?? 0) + 1);
+  }
+  return counts;
+}
+
 export async function getWorkflowPostResponsaveis(
   workflowIds: number[]
 ): Promise<Map<number, number[]>> {
