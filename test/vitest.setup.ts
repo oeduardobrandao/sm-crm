@@ -12,10 +12,12 @@ import ptLeads from '../packages/i18n/locales/pt/leads.json';
 import enLeads from '../packages/i18n/locales/en/leads.json';
 import ptPosts from '../packages/i18n/locales/pt/posts.json';
 import enPosts from '../packages/i18n/locales/en/posts.json';
+import ptAuth from '../packages/i18n/locales/pt/auth.json';
+import enAuth from '../packages/i18n/locales/en/auth.json';
 
 initI18n({
-  pt: { common: ptCommon, dashboard: ptDashboard, clients: ptClients, leads: ptLeads, posts: ptPosts },
-  en: { common: enCommon, dashboard: enDashboard, clients: enClients, leads: enLeads, posts: enPosts },
+  pt: { common: ptCommon, dashboard: ptDashboard, clients: ptClients, leads: ptLeads, posts: ptPosts, auth: ptAuth },
+  en: { common: enCommon, dashboard: enDashboard, clients: enClients, leads: enLeads, posts: enPosts, auth: enAuth },
 });
 
 Object.defineProperty(window, 'matchMedia', {

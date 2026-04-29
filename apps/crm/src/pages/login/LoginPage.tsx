@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PasswordInput } from '@/components/ui/password-input';
@@ -11,6 +12,7 @@ import { signIn, signUp, resetPassword } from '../../lib/supabase';
 type TabKey = 'login' | 'register' | 'forgot';
 
 export default function LoginPage() {
+  const { t } = useTranslation('auth');
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as { from?: Location })?.from?.pathname ?? '/dashboard';
@@ -34,9 +36,9 @@ export default function LoginPage() {
     const { error } = await signIn(loginEmail, loginPassword);
     setLoading(false);
     if (error) {
-      toast.error(error.message === 'Invalid login credentials' ? 'E-mail ou senha incorretos.' : error.message);
+      toast.error(error.message === 'Invalid login credentials' ? t('login.invalidCredentials') : error.message);
     } else {
-      toast.success('Login realizado com sucesso!');
+      toast.success(t('login.success'));
       navigate(from, { replace: true });
     }
   };
@@ -44,7 +46,7 @@ export default function LoginPage() {
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     if (regPassword !== regConfirm) {
-      toast.error('As senhas não coincidem.');
+      toast.error(t('register.passwordMismatch'));
       return;
     }
     setLoading(true);
@@ -70,14 +72,14 @@ export default function LoginPage() {
     if (error) {
       toast.error(error.message);
     } else {
-      toast.success(`Link de redefinição enviado para ${forgotEmail}. Verifique sua caixa de entrada.`);
+      toast.success(t('forgot.success', { email: forgotEmail }));
       setActiveTab('login');
     }
   };
 
   const tabItems = [
-    { key: 'login', label: 'Entrar' },
-    { key: 'register', label: 'Criar Conta' },
+    { key: 'login', label: t('tabs.login') },
+    { key: 'register', label: t('tabs.register') },
   ];
 
   return (
@@ -87,18 +89,18 @@ export default function LoginPage() {
           <div className="auth-logo" style={{ display: 'flex', justifyContent: 'center' }}>
             <img src="/logo-black.svg" alt="Mesaas" style={{ height: 20, width: 'auto' }} />
           </div>
-          <div className="auth-logo-sub" style={{ marginTop: 5, letterSpacing: 1 }}>PLATAFORMA INTELIGENTE</div>
+          <div className="auth-logo-sub" style={{ marginTop: 5, letterSpacing: 1 }}>{t('tagline')}</div>
         </div>
 
         {activeTab !== 'forgot' && (
           <div className="auth-tabs">
-            {tabItems.map(t => (
+            {tabItems.map(tab => (
               <button
-                key={t.key}
-                className={`auth-tab${activeTab === t.key ? ' active' : ''}`}
-                onClick={() => { setActiveTab(t.key as TabKey); setRegisterSuccess(false); }}
+                key={tab.key}
+                className={`auth-tab${activeTab === tab.key ? ' active' : ''}`}
+                onClick={() => { setActiveTab(tab.key as TabKey); setRegisterSuccess(false); }}
               >
-                {t.label}
+                {tab.label}
               </button>
             ))}
           </div>
@@ -107,11 +109,11 @@ export default function LoginPage() {
         {activeTab === 'login' && (
           <form onSubmit={handleLogin} className="auth-form">
             <div className="space-y-1">
-              <Label htmlFor="login-email">E-mail</Label>
+              <Label htmlFor="login-email">{t('login.email')}</Label>
               <Input
                 id="login-email"
                 type="email"
-                placeholder="seu@email.com"
+                placeholder={t('login.emailPlaceholder')}
                 autoComplete="email"
                 value={loginEmail}
                 onChange={e => setLoginEmail(e.target.value)}
@@ -119,7 +121,7 @@ export default function LoginPage() {
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="login-password">Senha</Label>
+              <Label htmlFor="login-password">{t('login.password')}</Label>
               <PasswordInput
                 id="login-password"
                 placeholder="••••••••"
@@ -132,11 +134,11 @@ export default function LoginPage() {
             </div>
             <Button type="submit" disabled={loading} className="btn-primary auth-submit w-full">
               {loading && <Spinner size="sm" />}
-              Entrar
+              {t('login.submit')}
             </Button>
             <p style={{ textAlign: 'center', marginTop: '0.75rem' }}>
               <a href="#" className="auth-text-link" onClick={(e) => { e.preventDefault(); setActiveTab('forgot'); }}>
-                Esqueci minha senha
+                {t('login.forgotPassword')}
               </a>
             </p>
           </form>
@@ -146,39 +148,39 @@ export default function LoginPage() {
           registerSuccess ? (
             <div className="auth-form" style={{ textAlign: 'center' }}>
               <p style={{ fontSize: '2rem', marginBottom: '0.75rem' }}>📧</p>
-              <p style={{ fontWeight: 600, marginBottom: '0.5rem' }}>Verifique seu e-mail</p>
+              <p style={{ fontWeight: 600, marginBottom: '0.5rem' }}>{t('registerSuccess.title')}</p>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1.25rem' }}>
-                Enviamos um link de confirmação. Clique nele para ativar sua conta.
+                {t('registerSuccess.description')}
               </p>
               <Button className="btn-primary auth-submit w-full" onClick={() => { setRegisterSuccess(false); setActiveTab('login'); }}>
-                Ir para o login
+                {t('registerSuccess.goToLogin')}
               </Button>
             </div>
           ) : (
             <form onSubmit={handleRegister} className="auth-form">
               <div className="space-y-1">
-                <Label htmlFor="reg-nome">Nome Completo</Label>
-                <Input id="reg-nome" placeholder="Ana Dos Santos" value={regNome} onChange={e => setRegNome(e.target.value)} required />
+                <Label htmlFor="reg-nome">{t('register.fullName')}</Label>
+                <Input id="reg-nome" placeholder={t('register.fullNamePlaceholder')} value={regNome} onChange={e => setRegNome(e.target.value)} required />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="reg-empresa">Nome da Empresa</Label>
-                <Input id="reg-empresa" placeholder="Agência Digital" value={regEmpresa} onChange={e => setRegEmpresa(e.target.value)} />
+                <Label htmlFor="reg-empresa">{t('register.companyName')}</Label>
+                <Input id="reg-empresa" placeholder={t('register.companyPlaceholder')} value={regEmpresa} onChange={e => setRegEmpresa(e.target.value)} />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="reg-email">E-mail</Label>
-                <Input id="reg-email" type="email" placeholder="seu@email.com" autoComplete="email" value={regEmail} onChange={e => setRegEmail(e.target.value)} required />
+                <Label htmlFor="reg-email">{t('register.email')}</Label>
+                <Input id="reg-email" type="email" placeholder={t('register.emailPlaceholder')} autoComplete="email" value={regEmail} onChange={e => setRegEmail(e.target.value)} required />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="reg-password">Senha</Label>
-                <PasswordInput id="reg-password" placeholder="Mínimo 8 caracteres" autoComplete="new-password" minLength={8} value={regPassword} onChange={e => setRegPassword(e.target.value)} required />
+                <Label htmlFor="reg-password">{t('register.password')}</Label>
+                <PasswordInput id="reg-password" placeholder={t('register.passwordPlaceholder')} autoComplete="new-password" minLength={8} value={regPassword} onChange={e => setRegPassword(e.target.value)} required />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="reg-confirm">Confirmar Senha</Label>
-                <PasswordInput id="reg-confirm" placeholder="Repita a senha" autoComplete="new-password" minLength={8} value={regConfirm} onChange={e => setRegConfirm(e.target.value)} required />
+                <Label htmlFor="reg-confirm">{t('register.confirmPassword')}</Label>
+                <PasswordInput id="reg-confirm" placeholder={t('register.confirmPlaceholder')} autoComplete="new-password" minLength={8} value={regConfirm} onChange={e => setRegConfirm(e.target.value)} required />
               </div>
               <Button type="submit" disabled={loading} className="btn-primary auth-submit w-full">
                 {loading && <Spinner size="sm" />}
-                Criar Conta
+                {t('register.submit')}
               </Button>
             </form>
           )
@@ -187,25 +189,25 @@ export default function LoginPage() {
         {activeTab === 'forgot' && (
           <form onSubmit={handleForgot} className="auth-form">
             <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1rem' }}>
-              Informe seu e-mail para receber um link de redefinição de senha.
+              {t('forgot.description')}
             </p>
             <div className="space-y-1">
-              <Label htmlFor="forgot-email">E-mail</Label>
-              <Input id="forgot-email" type="email" placeholder="seu@email.com" autoComplete="email" value={forgotEmail} onChange={e => setForgotEmail(e.target.value)} required />
+              <Label htmlFor="forgot-email">{t('forgot.email')}</Label>
+              <Input id="forgot-email" type="email" placeholder={t('forgot.emailPlaceholder')} autoComplete="email" value={forgotEmail} onChange={e => setForgotEmail(e.target.value)} required />
             </div>
             <Button type="submit" disabled={loading} className="btn-primary auth-submit w-full">
               {loading && <Spinner size="sm" />}
-              Enviar Link
+              {t('forgot.submit')}
             </Button>
             <p style={{ textAlign: 'center', marginTop: '0.75rem' }}>
               <a href="#" className="auth-text-link" onClick={(e) => { e.preventDefault(); setActiveTab('login'); }}>
-                ← Voltar para o login
+                {t('forgot.backToLogin')}
               </a>
             </p>
           </form>
         )}
 
-        <p className="auth-footer">Plataforma segura para gestão de Social Media 🇧🇷</p>
+        <p className="auth-footer">{t('footer')}</p>
       </div>
     </div>
   );
