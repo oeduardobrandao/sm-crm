@@ -48,6 +48,7 @@ interface PostEditorProps {
   disabled?: boolean;
   threads?: CommentThreadWithComments[];
   membros?: Membro[];
+  workspaceUsers?: { id: string; nome: string; avatar_url: string }[];
   currentUserId?: string;
   currentUserRole?: 'owner' | 'admin' | 'agent';
   onCreateComment?: (quotedText: string, comment: string) => Promise<number>;
@@ -64,6 +65,7 @@ export function PostEditor({
   disabled,
   threads,
   membros,
+  workspaceUsers,
   currentUserId,
   currentUserRole,
   onCreateComment,
@@ -216,7 +218,13 @@ export function PostEditor({
         const threadId = Number(commentSpan.getAttribute('data-thread-id'));
         if (threadId) {
           const rect = commentSpan.getBoundingClientRect();
-          setThreadPopoverPos({ top: rect.bottom + 6, left: rect.left });
+          const popoverW = 320;
+          const popoverH = 400;
+          const left = Math.min(rect.left, window.innerWidth - popoverW - 16);
+          const top = rect.bottom + 6 + popoverH > window.innerHeight
+            ? Math.max(8, rect.top - popoverH - 6)
+            : rect.bottom + 6;
+          setThreadPopoverPos({ top, left });
           setActiveThreadId(threadId);
           setCommentAddOpen(false);
         }
@@ -455,7 +463,8 @@ export function PostEditor({
                 e.preventDefault();
                 if (!commentAddOpen && commentBtnRef.current) {
                   const rect = commentBtnRef.current.getBoundingClientRect();
-                  setCommentAddPos({ top: rect.bottom + 6, left: rect.left });
+                  const left = Math.min(rect.left, window.innerWidth - 280 - 16);
+                  setCommentAddPos({ top: rect.bottom + 6, left });
                 }
                 setCommentAddOpen(v => !v);
                 setTextColorOpen(false);
@@ -519,6 +528,7 @@ export function PostEditor({
                 <PostCommentPopover
                   thread={thread}
                   membros={membros ?? []}
+                  workspaceUsers={workspaceUsers ?? []}
                   currentUserId={currentUserId}
                   currentUserRole={currentUserRole}
                   onReply={onReplyToComment ?? (async () => {})}
