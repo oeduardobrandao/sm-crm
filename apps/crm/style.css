@@ -5445,20 +5445,17 @@ body.role-agent input[name="valor_total"] {
   min-width: 0;
 }
 .comment-summary-quote {
+  display: block;
   font-size: 0.72rem;
   font-style: italic;
   color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .comment-summary-preview {
+  display: block;
   font-size: 0.78rem;
   color: var(--text-main);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  margin-left: 0.4rem;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 .comment-summary-meta {
   display: flex;
