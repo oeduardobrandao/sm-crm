@@ -24,10 +24,11 @@ import { linkFileToPost, unlinkFileFromPost } from '../../../services/fileServic
 interface PostMediaGalleryProps {
   postId: number;
   disabled?: boolean;
+  maxFiles?: number;
   onChange?: (media: PostMedia[]) => void;
 }
 
-export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGalleryProps) {
+export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostMediaGalleryProps) {
   const qc = useQueryClient();
   const { data: serverMedia, isLoading: mediaLoading } = useQuery({
     queryKey: ['post-media', postId],
@@ -89,6 +90,7 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
   }, [media]);
 
   const refresh = () => qc.invalidateQueries({ queryKey: ['post-media', postId] });
+  const atLimit = maxFiles != null && media.length >= maxFiles;
 
   async function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
@@ -268,7 +270,7 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
-    if (disabled) return;
+    if (disabled || atLimit) return;
     const files = e.dataTransfer.files;
     if (files.length > 0) handleFiles(files);
   };
@@ -298,7 +300,7 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
                 onDelete={() => handleDelete(m.id)}
               />
             ))}
-            {!disabled && (
+            {!disabled && !atLimit && (
               <label
                 onDrop={handleDrop}
                 onDragOver={handleDragOverEvent}
@@ -310,7 +312,7 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
                 <input type="file" multiple accept="image/*,video/*" hidden onChange={(e) => { handleFiles(e.target.files); e.target.value = ''; }} />
               </label>
             )}
-            {!disabled && (
+            {!disabled && !atLimit && (
               <button
                 type="button"
                 onClick={() => setShowFilePicker(true)}
