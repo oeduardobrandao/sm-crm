@@ -64,6 +64,8 @@
     "convertido": "Converted",
     "vigente": "Active",
     "a_assinar": "To sign",
+    "pago": "Paid",
+    "agendado": "Scheduled",
     "todos": "All"
   },
   "toast": {
@@ -92,6 +94,15 @@
     "4": "Thursday",
     "5": "Friday",
     "6": "Saturday"
+  },
+  "weekdaysShort": {
+    "0": "Sun",
+    "1": "Mon",
+    "2": "Tue",
+    "3": "Wed",
+    "4": "Thu",
+    "5": "Fri",
+    "6": "Sat"
   },
   "sort": {
     "name": "Name",

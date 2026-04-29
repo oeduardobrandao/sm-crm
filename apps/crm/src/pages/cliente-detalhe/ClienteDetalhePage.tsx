@@ -55,6 +55,7 @@ import { FileGrid } from '../arquivos/components/FileGrid';
 import { getInstagramSummary, syncInstagramData } from '../../services/instagram';
 import { sanitizeUrl } from '../../utils/security';
 import { useAuth } from '../../context/AuthContext';
+import { useTranslation } from 'react-i18next';
 import { renderInstagramOverviewCard } from '../../components/instagram/InstagramOverviewCard';
 import { renderInstagramFollowerChart } from '../../components/instagram/InstagramFollowerChart';
 import { renderInstagramPostsTable } from '../../components/instagram/InstagramPostsTable';
@@ -62,11 +63,12 @@ import { renderInstagramConnectButton } from '../../components/instagram/Instagr
 import { supabase } from '@/lib/supabase';
 
 function StatusBadge({ status }: { status: string }) {
+  const { t: tc } = useTranslation();
   const map: Record<string, string> = {
     ativo: 'badge-success', pausado: 'badge-warning', encerrado: 'badge-danger',
     vigente: 'badge-success', a_assinar: 'badge-warning', pago: 'badge-success', agendado: 'badge-neutral',
   };
-  return <span className={`badge ${map[status] ?? 'badge-neutral'}`}>{status}</span>;
+  return <span className={`badge ${map[status] ?? 'badge-neutral'}`}>{tc(`status.${status}`, { defaultValue: status })}</span>;
 }
 
 interface WorkflowWithEtapas { workflow: Workflow; etapas: WorkflowEtapa[] }
@@ -77,6 +79,8 @@ export default function ClienteDetalhePage() {
   const queryClient = useQueryClient();
   const { role } = useAuth();
   const isAgent = role === 'agent';
+  const { t } = useTranslation('clients');
+  const { t: tc } = useTranslation();
   const [editOpen, setEditOpen] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
   const [recurringWfId, setRecurringWfId] = useState<number | null>(null);
@@ -127,7 +131,7 @@ export default function ClienteDetalhePage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('ig_error') === 'no_business_account') {
-      toast.error('A conta Instagram não é uma conta Business. Reconecte com uma conta Business ou Creator.');
+      toast.error(t('detail.igNotBusiness'));
     }
   }, []);
 
@@ -240,7 +244,7 @@ export default function ClienteDetalhePage() {
               if (!isNaN(parsed.getTime())) {
                 events.push({
                   postId: post.id!,
-                  postTitle: post.titulo || 'Sem título',
+                  postTitle: post.titulo || t('detail.noTitle'),
                   workflowId: post._wfId,
                   workflowTitle: post._wfTitle,
                   date: parsed,
@@ -280,7 +284,7 @@ export default function ClienteDetalhePage() {
               if (!isNaN(parsed.getTime())) {
                 events.push({
                   postId: post.id!,
-                  postTitle: post.titulo || 'Sem título',
+                  postTitle: post.titulo || t('detail.noTitle'),
                   workflowId: post._wfId,
                   workflowTitle: post._wfTitle,
                   date: parsed,
@@ -293,17 +297,17 @@ export default function ClienteDetalhePage() {
         }
         setPostCalendarEvents(events);
       })
-      .catch(() => { toast.error('Erro ao atualizar calendário.'); });
+      .catch(() => { toast.error(t('detail.calendarUpdateError')); });
   };
 
   const handlePostStatusUpdate = async (postId: number, newStatus: 'agendado' | 'postado') => {
     setPostUpdating(postId);
     try {
       await updateWorkflowPost(postId, { status: newStatus });
-      toast.success(newStatus === 'agendado' ? 'Post agendado.' : 'Post marcado como postado.');
+      toast.success(newStatus === 'agendado' ? t('detail.postScheduled') : t('detail.postMarkedPosted'));
       refreshPostCalendar();
     } catch {
-      toast.error('Erro ao atualizar status do post.');
+      toast.error(t('detail.postStatusError'));
     } finally {
       setPostUpdating(null);
     }
@@ -326,10 +330,10 @@ export default function ClienteDetalhePage() {
         setRecurringWfId(workflow.id!);
       } else {
         queryClient.invalidateQueries({ queryKey: ['workflowsByCliente', clienteId] });
-        toast.success('Etapa concluída!');
+        toast.success(t('detail.stepCompleted'));
       }
     } catch (err: unknown) {
-      toast.error('Erro ao concluir etapa: ' + (err as Error).message);
+      toast.error(t('detail.stepError', { error: (err as Error).message }));
     }
   };
 
@@ -338,8 +342,8 @@ export default function ClienteDetalhePage() {
     try {
       await duplicateWorkflow(recurringWfId);
       queryClient.invalidateQueries({ queryKey: ['workflowsByCliente', clienteId] });
-      toast.success('Novo ciclo criado!');
-    } catch { toast.error('Erro ao criar ciclo'); }
+      toast.success(t('detail.newCycleCreated'));
+    } catch { toast.error(t('detail.newCycleError')); }
     setRecurringWfId(null);
   };
 
@@ -356,15 +360,15 @@ export default function ClienteDetalhePage() {
   };
 
   const handleEditSubmit = async () => {
-    if (!fNome) { toast.error('Nome é obrigatório.'); return; }
+    if (!fNome) { toast.error(t('detail.nameRequired')); return; }
     const diaPag = fDiaPag ? parseInt(fDiaPag, 10) : undefined;
     if (diaPag !== undefined && (isNaN(diaPag) || diaPag < 1 || diaPag > 31)) {
-      toast.error('Dia de pagamento deve ser entre 1 e 31.');
+      toast.error(t('detail.paymentDayRange'));
       return;
     }
     const diaEntrega = fDiaEntrega ? parseInt(fDiaEntrega, 10) : undefined;
     if (diaEntrega !== undefined && (isNaN(diaEntrega) || diaEntrega < 1 || diaEntrega > 31)) {
-      toast.error('Dia de entrega deve ser entre 1 e 31.');
+      toast.error(t('detail.deliveryDayRange'));
       return;
     }
     setEditLoading(true);
@@ -380,9 +384,9 @@ export default function ClienteDetalhePage() {
       });
       queryClient.invalidateQueries({ queryKey: ['clientes'] });
       setEditOpen(false);
-      toast.success('Cliente atualizado!');
+      toast.success(t('detail.clientUpdated'));
     } catch (err: unknown) {
-      toast.error('Erro ao salvar: ' + (err as Error).message);
+      toast.error(t('detail.saveError', { error: (err as Error).message }));
     } finally {
       setEditLoading(false);
     }
@@ -416,7 +420,7 @@ export default function ClienteDetalhePage() {
       const res = await fetch(`https://viacep.com.br/ws/${digits}/json/`);
       const data = await res.json();
       if (data.erro) {
-        toast.error('CEP não encontrado.');
+        toast.error(t('detail.cepNotFound'));
       } else {
         if (data.logradouro) setAdrLogradouro(data.logradouro);
         if (data.bairro) setAdrBairro(data.bairro);
@@ -432,7 +436,7 @@ export default function ClienteDetalhePage() {
 
   const handleAddrSubmit = async () => {
     if (!adrLogradouro || !adrNumero || !adrBairro || !adrCidade || !adrEstado || !adrCep) {
-      toast.error('Preencha todos os campos obrigatórios.'); return;
+      toast.error(t('detail.fillRequired')); return;
     }
     setAddrLoading(true);
     try {
@@ -443,16 +447,16 @@ export default function ClienteDetalhePage() {
       };
       if (addrEditing?.id) {
         await updateClienteEndereco(addrEditing.id, payload);
-        toast.success('Endereço atualizado!');
+        toast.success(t('detail.addressUpdated'));
       } else {
         await addClienteEndereco(payload);
-        toast.success('Endereço adicionado!');
+        toast.success(t('detail.addressAdded'));
       }
       queryClient.invalidateQueries({ queryKey: ['clienteEnderecos', clienteId] });
       setAddrModalOpen(false);
       resetAddrForm();
     } catch (err: unknown) {
-      toast.error('Erro ao salvar endereço: ' + (err as Error).message);
+      toast.error(t('detail.addressSaveError', { error: (err as Error).message }));
     } finally {
       setAddrLoading(false);
     }
@@ -463,9 +467,9 @@ export default function ClienteDetalhePage() {
     try {
       await removeClienteEndereco(addrDeleteId);
       queryClient.invalidateQueries({ queryKey: ['clienteEnderecos', clienteId] });
-      toast.success('Endereço removido!');
+      toast.success(t('detail.addressRemoved'));
     } catch (err: unknown) {
-      toast.error('Erro ao remover: ' + (err as Error).message);
+      toast.error(t('detail.addressRemoveError', { error: (err as Error).message }));
     }
     setAddrDeleteId(null);
   };
@@ -487,22 +491,22 @@ export default function ClienteDetalhePage() {
 
   const handleDateSubmit = async () => {
     if (!dateTitulo || !dateData) {
-      toast.error('Preencha título e data.'); return;
+      toast.error(t('detail.fillTitleAndDate')); return;
     }
     setDateLoading(true);
     try {
       if (dateEditing?.id) {
         await updateClienteData(dateEditing.id, { titulo: dateTitulo, data: dateData });
-        toast.success('Data atualizada!');
+        toast.success(t('detail.dateUpdated'));
       } else {
         await addClienteData({ cliente_id: clienteId, titulo: dateTitulo, data: dateData });
-        toast.success('Data adicionada!');
+        toast.success(t('detail.dateAdded'));
       }
       queryClient.invalidateQueries({ queryKey: ['clienteDatas', clienteId] });
       setDateModalOpen(false);
       resetDateForm();
     } catch (err: unknown) {
-      toast.error('Erro: ' + (err as Error).message);
+      toast.error(t('detail.genericError', { error: (err as Error).message }));
     } finally {
       setDateLoading(false);
     }
@@ -513,9 +517,9 @@ export default function ClienteDetalhePage() {
     try {
       await removeClienteData(dateDeleteId);
       queryClient.invalidateQueries({ queryKey: ['clienteDatas', clienteId] });
-      toast.success('Data removida!');
+      toast.success(t('detail.dateRemoved'));
     } catch (err: unknown) {
-      toast.error('Erro: ' + (err as Error).message);
+      toast.error(t('detail.genericError', { error: (err as Error).message }));
     }
     setDateDeleteId(null);
   };
@@ -534,8 +538,8 @@ export default function ClienteDetalhePage() {
   if (!cliente) {
     return (
       <div className="card" style={{ margin: '2rem', textAlign: 'center', padding: '3rem' }}>
-        <h2>Cliente não encontrado</h2>
-        <Button onClick={() => navigate('/clientes')} style={{ marginTop: 16 }}>Voltar</Button>
+        <h2>{t('detail.notFound')}</h2>
+        <Button onClick={() => navigate('/clientes')} style={{ marginTop: 16 }}>{tc('actions.back')}</Button>
       </div>
     );
   }
@@ -561,27 +565,26 @@ export default function ClienteDetalhePage() {
           </div>
         </div>
         <div className="header-actions">
-          <Button variant="outline" onClick={handleEdit}><Edit2 className="h-4 w-4" /> Editar</Button>
+          <Button variant="outline" onClick={handleEdit}><Edit2 className="h-4 w-4" /> {tc('actions.edit')}</Button>
         </div>
       </div>
 
       {/* Info Card */}
       <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-        <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">Informações</h3>
+        <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">{t('detail.information')}</h3>
         <div className="client-info-grid">
-          <div className="client-info-item"><span className="client-info-label">Email</span><span className="client-info-value">{cliente.email || '—'}</span></div>
-          <div className="client-info-item"><span className="client-info-label">Telefone</span><span className="client-info-value">{cliente.telefone || '—'}</span></div>
-          <div className="client-info-item"><span className="client-info-label">Dia de Pagamento</span><span className="client-info-value">{cliente.data_pagamento ? `Dia ${cliente.data_pagamento}` : '—'}</span></div>
-          <div className="client-info-item"><span className="client-info-label">Dia de Entrega</span><span className="client-info-value">{cliente.dia_entrega ? `Dia ${cliente.dia_entrega}` : '—'}</span></div>
-          <div className="client-info-item"><span className="client-info-label">Especialidade</span><span className="client-info-value">{cliente.especialidade || '—'}</span></div>
+          <div className="client-info-item"><span className="client-info-label">{t('detail.email')}</span><span className="client-info-value">{cliente.email || '—'}</span></div>
+          <div className="client-info-item"><span className="client-info-label">{t('detail.phone')}</span><span className="client-info-value">{cliente.telefone || '—'}</span></div>
+          <div className="client-info-item"><span className="client-info-label">{t('detail.paymentDay')}</span><span className="client-info-value">{cliente.data_pagamento ? t('detail.dayN', { day: cliente.data_pagamento }) : '—'}</span></div>
+          <div className="client-info-item"><span className="client-info-label">{t('detail.deliveryDay')}</span><span className="client-info-value">{cliente.dia_entrega ? t('detail.dayN', { day: cliente.dia_entrega }) : '—'}</span></div>
+          <div className="client-info-item"><span className="client-info-label">{t('detail.specialty')}</span><span className="client-info-value">{cliente.especialidade || '—'}</span></div>
           <div className="client-info-item">
-            <span className="client-info-label">Aniversário</span>
+            <span className="client-info-label">{t('detail.birthday')}</span>
             <span className="client-info-value" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
               {cliente.data_aniversario
                 ? (() => {
                   const [mm, dd] = cliente.data_aniversario.split('-');
-                  const meses = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-                  return <><Cake className="h-4 w-4" style={{ color: 'var(--pink, #f542c8)' }} />{`${parseInt(dd)} de ${meses[parseInt(mm) - 1]}`}</>;
+                  return <><Cake className="h-4 w-4" style={{ color: 'var(--pink, #f542c8)' }} />{t('detail.dayOf', { day: parseInt(dd), month: tc(`months.${parseInt(mm) - 1}`) })}</>;
                 })()
                 : '—'}
             </span>
@@ -590,7 +593,7 @@ export default function ClienteDetalhePage() {
             <div className="client-info-item">
               <span className="client-info-label">Notion</span>
               <span className="client-info-value">
-                <a href={sanitizeUrl(cliente.notion_page_url)} target="_blank" rel="noopener noreferrer">Abrir no Notion</a>
+                <a href={sanitizeUrl(cliente.notion_page_url)} target="_blank" rel="noopener noreferrer">{t('openNotion')}</a>
               </span>
             </div>
           )}
@@ -600,7 +603,7 @@ export default function ClienteDetalhePage() {
       {/* Entregas Ativas + Post Calendar */}
       {workflowsWithEtapas.length > 0 && (
         <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-          <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">Entregas Ativas</h3>
+          <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">{t('detail.activeDeliveries')}</h3>
           {workflowsWithEtapas.map(({ workflow, etapas }) => {
             const activeEtapa = etapas.find(e => e.status === 'ativo');
             const deadline = activeEtapa ? getDeadlineInfo(activeEtapa) : null;
@@ -609,7 +612,7 @@ export default function ClienteDetalhePage() {
                 <div className="wf-flow-header">
                   <span className="wf-flow-title">{workflow.titulo}</span>
                   {activeEtapa && (
-                    <Button size="sm" onClick={() => handleCompleteEtapa(workflow, activeEtapa)}>Concluir</Button>
+                    <Button size="sm" onClick={() => handleCompleteEtapa(workflow, activeEtapa)}>{t('detail.complete')}</Button>
                   )}
                 </div>
                 <div className="wf-steps-row">
@@ -622,7 +625,7 @@ export default function ClienteDetalhePage() {
                 </div>
                 {activeEtapa && deadline && (
                   <div className="wf-step-info" style={{ marginTop: 8, fontSize: '0.8rem', color: deadline.estourado ? 'var(--danger)' : deadline.urgente ? 'var(--warning)' : 'var(--text-muted)' }}>
-                    {deadline.estourado ? `Estourado por ${Math.abs(deadline.diasRestantes)} dia(s)` : `${deadline.diasRestantes} dia(s) restante(s)`} — {activeEtapa.nome}
+                    {deadline.estourado ? t('detail.overdueBy', { days: Math.abs(deadline.diasRestantes) }) : t('detail.daysRemaining', { days: deadline.diasRestantes })} — {activeEtapa.nome}
                   </div>
                 )}
               </div>
@@ -637,8 +640,8 @@ export default function ClienteDetalhePage() {
             const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
             const today = new Date();
             const isSameCalMonth = calMonth === today.getMonth() && calYear === today.getFullYear();
-            const monthNamesLocal = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
-            const weekDaysLocal = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+            const monthNamesLocal = Array.from({ length: 12 }, (_, i) => tc(`months.${i}`));
+            const weekDaysLocal = Array.from({ length: 7 }, (_, i) => tc(`weekdaysShort.${i}`));
 
             const tipoColors: Record<string, string> = {
               feed: '#3b82f6',
@@ -647,10 +650,10 @@ export default function ClienteDetalhePage() {
               carrossel: '#10b981',
             };
             const tipoLabels: Record<string, string> = {
-              feed: 'Feed',
-              reels: 'Reels',
-              stories: 'Stories',
-              carrossel: 'Carrossel',
+              feed: t('detail.postType.feed'),
+              reels: t('detail.postType.reels'),
+              stories: t('detail.postType.stories'),
+              carrossel: t('detail.postType.carrossel'),
             };
 
             const selectedEvents = selectedPostDay
@@ -663,7 +666,7 @@ export default function ClienteDetalhePage() {
                   <div className="calendar-main">
                     <div className="calendar-header">
                       <div className="calendar-title-group">
-                        <h2 style={{ fontSize: '1.2rem' }}>Postagens</h2>
+                        <h2 style={{ fontSize: '1.2rem' }}>{t('detail.posts')}</h2>
                         <span>{monthNamesLocal[calMonth]} {calYear}</span>
                       </div>
                       <div className="calendar-nav">
@@ -714,13 +717,13 @@ export default function ClienteDetalhePage() {
 
                   <div className="scheduled-panel">
                     <div className="scheduled-header">
-                      <h3>Postagens</h3>
-                      <p>{selectedPostDay ? `${selectedPostDay} de ${monthNamesLocal[calMonth]}, ${calYear}` : `${monthNamesLocal[calMonth]} ${calYear}`}</p>
+                      <h3>{t('detail.posts')}</h3>
+                      <p>{selectedPostDay ? t('detail.dayOf', { day: selectedPostDay, month: `${monthNamesLocal[calMonth]}, ${calYear}` }) : `${monthNamesLocal[calMonth]} ${calYear}`}</p>
                     </div>
                     <div className="scheduled-list">
                       {selectedEvents.length === 0 ? (
                         <div style={{ textAlign: 'center', padding: '2rem 0', color: 'var(--text-muted)' }}>
-                          <p>{selectedPostDay ? 'Nenhuma postagem neste dia.' : 'Selecione um dia.'}</p>
+                          <p>{selectedPostDay ? t('detail.noPostsThisDay') : t('detail.selectDay')}</p>
                         </div>
                       ) : (
                         selectedEvents.map((ev, i) => (
@@ -746,11 +749,11 @@ export default function ClienteDetalhePage() {
                               {/* Chip 1: Aprovado (read-only) */}
                               {(ev.status === 'aprovado_interno' || ev.status === 'aprovado_cliente' || ev.status === 'agendado' || ev.status === 'postado') ? (
                                 <span style={{ fontSize: '0.68rem', background: '#dbeafe', color: '#1e40af', border: '1px solid #93c5fd44', padding: '2px 8px', borderRadius: '4px' }}>
-                                  ✓ Aprovado
+                                  ✓ {t('detail.approved')}
                                 </span>
                               ) : (
                                 <span style={{ fontSize: '0.68rem', background: 'var(--surface-2)', color: 'var(--text-muted)', border: '1px solid var(--border-color)', padding: '2px 8px', borderRadius: '4px' }}>
-                                  {ev.status === 'rascunho' ? 'Rascunho' : ev.status === 'revisao_interna' ? 'Em revisão' : ev.status === 'enviado_cliente' ? 'Enviado' : ev.status === 'correcao_cliente' ? 'Correção' : ev.status}
+                                  {t(`detail.postStatus.${ev.status}`, { defaultValue: ev.status })}
                                 </span>
                               )}
 
@@ -766,12 +769,12 @@ export default function ClienteDetalhePage() {
                                   disabled={postUpdating !== null}
                                   style={{ fontSize: '0.68rem', background: '#eff6ff', color: '#2563eb', border: '1px solid #3b82f6', padding: '2px 8px', borderRadius: '4px', cursor: 'pointer', fontWeight: 600 }}
                                 >
-                                  {postUpdating === ev.postId ? '...' : '○ Agendar'}
+                                  {postUpdating === ev.postId ? '...' : `○ ${t('detail.schedule')}`}
                                 </button>
                               )}
                               {(ev.status === 'agendado' || ev.status === 'postado') && (
                                 <span style={{ fontSize: '0.68rem', background: '#ccfbf1', color: '#0f766e', border: '1px solid #5eead444', padding: '2px 8px', borderRadius: '4px' }}>
-                                  ✓ Agendado
+                                  ✓ {t('detail.scheduled')}
                                 </span>
                               )}
 
@@ -787,12 +790,12 @@ export default function ClienteDetalhePage() {
                                   disabled={postUpdating !== null}
                                   style={{ fontSize: '0.68rem', background: '#f0fdf4', color: '#15803d', border: '1px solid #22c55e', padding: '2px 8px', borderRadius: '4px', cursor: 'pointer', fontWeight: 600 }}
                                 >
-                                  {postUpdating === ev.postId ? '...' : '○ Marcar Postado'}
+                                  {postUpdating === ev.postId ? '...' : `○ ${t('detail.markPosted')}`}
                                 </button>
                               )}
                               {ev.status === 'postado' && (
                                 <span style={{ fontSize: '0.68rem', background: '#dcfce7', color: '#15803d', border: '1px solid #22c55e', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
-                                  ✓ Postado
+                                  ✓ {t('detail.posted')}
                                 </span>
                               )}
                             </div>
@@ -820,7 +823,7 @@ export default function ClienteDetalhePage() {
 
       {concludedSummaries.length > 0 && (
         <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-          <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">Histórico de Entregas</h3>
+          <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">{t('detail.deliveryHistory')}</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             {concludedSummaries.map(s => (
               <div
@@ -831,9 +834,9 @@ export default function ClienteDetalhePage() {
                 <div>
                   <div className="concluded-wf-title">{s.workflow.titulo}</div>
                   <div className="concluded-wf-meta">
-                    {s.postCount} post{s.postCount !== 1 ? 's' : ''}
-                    {s.totalDays !== null && <> &bull; {s.totalDays} dia{s.totalDays !== 1 ? 's' : ''}</>}
-                    {s.completedAt && <> &bull; Concluído {new Date(s.completedAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}</>}
+                    {t('detail.postCount', { count: s.postCount })}
+                    {s.totalDays !== null && <> &bull; {t('detail.dayCount', { count: s.totalDays })}</>}
+                    {s.completedAt && <> &bull; {t('detail.concluded')} {new Date(s.completedAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}</>}
                   </div>
                 </div>
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>→</span>
@@ -856,8 +859,8 @@ export default function ClienteDetalhePage() {
       {/* Hub do Cliente */}
       {!isAgent && cliente && cliente.id != null && cliente.conta_id && workspaceSlug && (
         <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-          <h3 className="text-xl font-bold tracking-tight text-foreground mb-1">Hub do Cliente</h3>
-          <p className="text-sm text-muted-foreground mb-4">Link permanente de acesso do cliente ao hub de conteúdo.</p>
+          <h3 className="text-xl font-bold tracking-tight text-foreground mb-1">{t('detail.clientHub')}</h3>
+          <p className="text-sm text-muted-foreground mb-4">{t('detail.clientHubDesc')}</p>
           <HubTab
             clienteId={cliente.id!}
             contaId={cliente.conta_id!}
@@ -876,10 +879,10 @@ export default function ClienteDetalhePage() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
           <h3 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2 mb-0">
             <CalendarDays className="h-5 w-5" style={{ color: 'var(--primary-color)' }} />
-            Datas Importantes
+            {t('detail.importantDates')}
           </h3>
           <Button size="sm" onClick={() => handleOpenDateModal()}>
-            <Plus className="h-4 w-4" style={{ marginRight: 4 }} /> Adicionar
+            <Plus className="h-4 w-4" style={{ marginRight: 4 }} /> {tc('actions.add')}
           </Button>
         </div>
 
@@ -895,8 +898,8 @@ export default function ClienteDetalhePage() {
             border: '1px dashed var(--border-color)', borderRadius: '12px',
           }}>
             <CalendarDays className="h-8 w-8" style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-            <p style={{ fontSize: '0.9rem' }}>Nenhuma data importante cadastrada</p>
-            <p style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>Clique em "Adicionar" para registrar datas relevantes.</p>
+            <p style={{ fontSize: '0.9rem' }}>{t('detail.noImportantDates')}</p>
+            <p style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>{t('detail.addDateHint')}</p>
           </div>
         )}
 
@@ -937,10 +940,10 @@ export default function ClienteDetalhePage() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
           <h3 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2 mb-0">
             <MapPin className="h-5 w-5" style={{ color: 'var(--primary-color)' }} />
-            Endereços
+            {t('detail.addresses')}
           </h3>
           <Button size="sm" onClick={() => handleOpenAddrModal()}>
-            <Plus className="h-4 w-4" style={{ marginRight: 4 }} /> Adicionar
+            <Plus className="h-4 w-4" style={{ marginRight: 4 }} /> {tc('actions.add')}
           </Button>
         </div>
 
@@ -956,8 +959,8 @@ export default function ClienteDetalhePage() {
             border: '1px dashed var(--border-color)', borderRadius: '12px',
           }}>
             <MapPin className="h-8 w-8" style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
-            <p style={{ fontSize: '0.9rem' }}>Nenhum endereço cadastrado</p>
-            <p style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>Clique em "Adicionar" para cadastrar um endereço.</p>
+            <p style={{ fontSize: '0.9rem' }}>{t('detail.noAddresses')}</p>
+            <p style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>{t('detail.addAddressHint')}</p>
           </div>
         )}
 
@@ -976,8 +979,8 @@ export default function ClienteDetalhePage() {
                   <span className={`badge ${addr.tipo === 'residencial' ? 'badge-info' : 'badge-warning'}`}
                     style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem' }}>
                     {addr.tipo === 'residencial'
-                      ? <><Home className="h-3 w-3" /> Residencial</>
-                      : <><Building2 className="h-3 w-3" /> Comercial</>}
+                      ? <><Home className="h-3 w-3" /> {t('detail.residential')}</>
+                      : <><Building2 className="h-3 w-3" /> {t('detail.commercial')}</>}
                   </span>
                   <div style={{ display: 'flex', gap: '4px' }}>
                     <Button variant="ghost" size="icon" style={{ width: 28, height: 28 }}
@@ -1010,40 +1013,40 @@ export default function ClienteDetalhePage() {
           {/* KPI Cards */}
           <div className="kpi-grid" style={{ marginBottom: '1.5rem' }}>
             <div className="kpi-card animate-up">
-              <span className="kpi-label">VALOR MENSAL</span>
+              <span className="kpi-label">{t('detail.monthlyValue')}</span>
               <span className="kpi-value">{formatBRL(Number(cliente.valor_mensal))}</span>
             </div>
             <div className="kpi-card animate-up">
-              <span className="kpi-label">TOTAL RECEBIDO</span>
+              <span className="kpi-label">{t('detail.totalReceived')}</span>
               <span className="kpi-value">{formatBRL(receitaTotal)}</span>
             </div>
             <div className="kpi-card animate-up">
-              <span className="kpi-label">PENDENTE</span>
+              <span className="kpi-label">{t('detail.pending')}</span>
               <span className="kpi-value" style={{ color: 'var(--warning)' }}>{formatBRL(pendente)}</span>
             </div>
           </div>
 
           {/* Contratos Table */}
           <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-            <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">Contratos</h3>
+            <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">{t('detail.contracts')}</h3>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Título</TableHead>
-                  <TableHead>Período</TableHead>
-                  <TableHead>Valor</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead>{t('detail.contractTitle')}</TableHead>
+                  <TableHead>{t('detail.contractPeriod')}</TableHead>
+                  <TableHead>{t('detail.contractValue')}</TableHead>
+                  <TableHead>{t('detail.contractStatus')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {contratosCliente.length === 0 ? (
-                  <TableRow><TableCell colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Nenhum contrato</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>{t('detail.noContracts')}</TableCell></TableRow>
                 ) : contratosCliente.map(r => (
                   <TableRow key={r.id ?? Math.random()}>
-                    <TableCell data-label="Título">{r.titulo}</TableCell>
-                    <TableCell data-label="Período">{formatDate(r.data_inicio)} – {formatDate(r.data_fim)}</TableCell>
-                    <TableCell data-label="Valor">{formatBRL(Number(r.valor_total))}</TableCell>
-                    <TableCell data-label="Status"><StatusBadge status={r.status} /></TableCell>
+                    <TableCell data-label={t('detail.contractTitle')}>{r.titulo}</TableCell>
+                    <TableCell data-label={t('detail.contractPeriod')}>{formatDate(r.data_inicio)} – {formatDate(r.data_fim)}</TableCell>
+                    <TableCell data-label={t('detail.contractValue')}>{formatBRL(Number(r.valor_total))}</TableCell>
+                    <TableCell data-label={t('detail.contractStatus')}><StatusBadge status={r.status} /></TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -1052,29 +1055,29 @@ export default function ClienteDetalhePage() {
 
           {/* Transações Table */}
           <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-            <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">Transações</h3>
+            <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">{t('detail.transactions')}</h3>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Descrição</TableHead>
-                  <TableHead>Data</TableHead>
-                  <TableHead>Valor</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead>{t('detail.txDescription')}</TableHead>
+                  <TableHead>{t('detail.txDate')}</TableHead>
+                  <TableHead>{t('detail.txValue')}</TableHead>
+                  <TableHead>{t('detail.txStatus')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {transacoesCliente.length === 0 ? (
-                  <TableRow><TableCell colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>Nenhuma transação</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>{t('detail.noTransactions')}</TableCell></TableRow>
                 ) : transacoesCliente.map(r => (
                   <TableRow key={r.id ?? Math.random()}>
-                    <TableCell data-label="Descrição">{r.descricao}</TableCell>
-                    <TableCell data-label="Data">{formatDate(r.data)}</TableCell>
-                    <TableCell data-label="Valor">
+                    <TableCell data-label={t('detail.txDescription')}>{r.descricao}</TableCell>
+                    <TableCell data-label={t('detail.txDate')}>{formatDate(r.data)}</TableCell>
+                    <TableCell data-label={t('detail.txValue')}>
                       <span style={{ color: r.tipo === 'entrada' ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>
                         {r.tipo === 'entrada' ? '+' : '-'}{formatBRL(Number(r.valor))}
                       </span>
                     </TableCell>
-                    <TableCell data-label="Status"><StatusBadge status={r.status ?? 'pago'} /></TableCell>
+                    <TableCell data-label={t('detail.txStatus')}><StatusBadge status={r.status ?? 'pago'} /></TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -1086,41 +1089,40 @@ export default function ClienteDetalhePage() {
       {/* Edit Modal */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent style={{ maxWidth: 600 }} onConfirmClose={() => setEditOpen(false)}>
-          <DialogHeader><DialogTitle>Editar Cliente</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t('detail.editClient')}</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <div className="space-y-1"><Label>Nome *</Label><Input value={fNome} onChange={e => setFNome(e.target.value)} /></div>
-            <div className="space-y-1"><Label>Email</Label><Input type="email" value={fEmail} onChange={e => setFEmail(e.target.value)} /></div>
-            <div className="space-y-1"><Label>Telefone</Label><Input value={fTelefone} onChange={e => setFTelefone(e.target.value)} /></div>
-            <div className="space-y-1"><Label>Plano</Label><Input value={fPlano} onChange={e => setFPlano(e.target.value)} /></div>
-            <div className="space-y-1"><Label>Valor Mensal</Label><Input type="number" value={fValor} onChange={e => setFValor(e.target.value)} /></div>
-            <div className="space-y-1"><Label>Notion URL</Label><Input value={fNotion} onChange={e => setFNotion(e.target.value)} /></div>
-            <div className="space-y-1"><Label>Dia de Pagamento</Label><Input type="number" min={1} max={31} value={fDiaPag} onChange={e => setFDiaPag(e.target.value)} /></div>
-            <div className="space-y-1"><Label>Dia de Entrega</Label><Input type="number" min={1} max={31} value={fDiaEntrega} onChange={e => setFDiaEntrega(e.target.value)} placeholder="1-31" /></div>
+            <div className="space-y-1"><Label>{t('detail.formName')}</Label><Input value={fNome} onChange={e => setFNome(e.target.value)} /></div>
+            <div className="space-y-1"><Label>{t('detail.formEmail')}</Label><Input type="email" value={fEmail} onChange={e => setFEmail(e.target.value)} /></div>
+            <div className="space-y-1"><Label>{t('detail.formPhone')}</Label><Input value={fTelefone} onChange={e => setFTelefone(e.target.value)} /></div>
+            <div className="space-y-1"><Label>{t('detail.formPlan')}</Label><Input value={fPlano} onChange={e => setFPlano(e.target.value)} /></div>
+            <div className="space-y-1"><Label>{t('detail.formMonthlyValue')}</Label><Input type="number" value={fValor} onChange={e => setFValor(e.target.value)} /></div>
+            <div className="space-y-1"><Label>{t('detail.formNotionUrl')}</Label><Input value={fNotion} onChange={e => setFNotion(e.target.value)} /></div>
+            <div className="space-y-1"><Label>{t('detail.formPaymentDay')}</Label><Input type="number" min={1} max={31} value={fDiaPag} onChange={e => setFDiaPag(e.target.value)} /></div>
+            <div className="space-y-1"><Label>{t('detail.formDeliveryDay')}</Label><Input type="number" min={1} max={31} value={fDiaEntrega} onChange={e => setFDiaEntrega(e.target.value)} placeholder="1-31" /></div>
             <div className="space-y-1">
-              <Label>Status</Label>
+              <Label>{t('detail.formStatus')}</Label>
               <Select value={fStatus} onValueChange={v => setFStatus(v as Cliente['status'])}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="ativo">Ativo</SelectItem>
-                  <SelectItem value="pausado">Pausado</SelectItem>
-                  <SelectItem value="encerrado">Encerrado</SelectItem>
+                  <SelectItem value="ativo">{tc('status.ativo')}</SelectItem>
+                  <SelectItem value="pausado">{tc('status.pausado')}</SelectItem>
+                  <SelectItem value="encerrado">{tc('status.encerrado')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1"><Label>Especialidade</Label><Input value={fEspecialidade} onChange={e => setFEspecialidade(e.target.value)} /></div>
+            <div className="space-y-1"><Label>{t('detail.formSpecialty')}</Label><Input value={fEspecialidade} onChange={e => setFEspecialidade(e.target.value)} /></div>
             <div className="space-y-1">
-              <Label>Aniversário (Dia e Mês)</Label>
+              <Label>{t('detail.formBirthday')}</Label>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                 <Select value={fAniMes} onValueChange={setFAniMes}>
-                  <SelectTrigger><SelectValue placeholder="Mês" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder={t('detail.monthPlaceholder')} /></SelectTrigger>
                   <SelectContent>
-                    {[['01', 'Janeiro'], ['02', 'Fevereiro'], ['03', 'Março'], ['04', 'Abril'], ['05', 'Maio'], ['06', 'Junho'],
-                    ['07', 'Julho'], ['08', 'Agosto'], ['09', 'Setembro'], ['10', 'Outubro'], ['11', 'Novembro'], ['12', 'Dezembro']]
+                    {Array.from({ length: 12 }, (_, i) => [String(i + 1).padStart(2, '0'), tc(`months.${i}`)] as [string, string])
                       .map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
                   </SelectContent>
                 </Select>
                 <Select value={fAniDia} onValueChange={setFAniDia}>
-                  <SelectTrigger><SelectValue placeholder="Dia" /></SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder={t('detail.dayPlaceholder')} /></SelectTrigger>
                   <SelectContent>
                     {Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, '0'))
                       .map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
@@ -1130,8 +1132,8 @@ export default function ClienteDetalhePage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancelar</Button>
-            <Button onClick={handleEditSubmit} disabled={editLoading}>{editLoading && <Spinner size="sm" />} Salvar</Button>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>{tc('actions.cancel')}</Button>
+            <Button onClick={handleEditSubmit} disabled={editLoading}>{editLoading && <Spinner size="sm" />} {tc('actions.save')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1140,21 +1142,21 @@ export default function ClienteDetalhePage() {
       <Dialog open={addrModalOpen} onOpenChange={open => { if (!open) { setAddrModalOpen(false); resetAddrForm(); } }}>
         <DialogContent style={{ maxWidth: 540 }} onConfirmClose={() => { setAddrModalOpen(false); resetAddrForm(); }}>
           <DialogHeader>
-            <DialogTitle>{addrEditing ? 'Editar Endereço' : 'Novo Endereço'}</DialogTitle>
+            <DialogTitle>{addrEditing ? t('detail.editAddress') : t('detail.newAddress')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1">
-              <Label>Tipo *</Label>
+              <Label>{t('detail.addrType')}</Label>
               <Select value={adrTipo} onValueChange={v => setAdrTipo(v as 'residencial' | 'comercial')}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="comercial">Comercial</SelectItem>
-                  <SelectItem value="residencial">Residencial</SelectItem>
+                  <SelectItem value="comercial">{t('detail.commercial')}</SelectItem>
+                  <SelectItem value="residencial">{t('detail.residential')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1">
-              <Label>CEP *</Label>
+              <Label>{t('detail.addrCep')}</Label>
               <div style={{ position: 'relative' }}>
                 <Input placeholder="00000-000" value={adrCep} onChange={e => handleCepChange(e.target.value)} />
                 {cepLoading && (
@@ -1163,22 +1165,22 @@ export default function ClienteDetalhePage() {
                   </div>
                 )}
               </div>
-              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Digite o CEP para preencher automaticamente</p>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>{t('detail.addrCepHint')}</p>
             </div>
-            <div className="space-y-1"><Label>Logradouro *</Label><Input placeholder="Ex: Rua das Flores" value={adrLogradouro} onChange={e => setAdrLogradouro(e.target.value)} /></div>
+            <div className="space-y-1"><Label>{t('detail.addrStreet')}</Label><Input placeholder={t('detail.addrStreetPlaceholder')} value={adrLogradouro} onChange={e => setAdrLogradouro(e.target.value)} /></div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '0.75rem' }}>
-              <div className="space-y-1"><Label>Número *</Label><Input placeholder="123" value={adrNumero} onChange={e => setAdrNumero(e.target.value)} /></div>
-              <div className="space-y-1"><Label>Complemento</Label><Input placeholder="Sala 1, Bloco B..." value={adrComplemento} onChange={e => setAdrComplemento(e.target.value)} /></div>
+              <div className="space-y-1"><Label>{t('detail.addrNumber')}</Label><Input placeholder="123" value={adrNumero} onChange={e => setAdrNumero(e.target.value)} /></div>
+              <div className="space-y-1"><Label>{t('detail.addrComplement')}</Label><Input placeholder={t('detail.addrComplementPlaceholder')} value={adrComplemento} onChange={e => setAdrComplemento(e.target.value)} /></div>
             </div>
-            <div className="space-y-1"><Label>Bairro *</Label><Input placeholder="Centro" value={adrBairro} onChange={e => setAdrBairro(e.target.value)} /></div>
+            <div className="space-y-1"><Label>{t('detail.addrNeighborhood')}</Label><Input placeholder={t('detail.addrNeighborhoodPlaceholder')} value={adrBairro} onChange={e => setAdrBairro(e.target.value)} /></div>
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '0.75rem' }}>
-              <div className="space-y-1"><Label>Cidade *</Label><Input placeholder="São Paulo" value={adrCidade} onChange={e => setAdrCidade(e.target.value)} /></div>
-              <div className="space-y-1"><Label>Estado *</Label><Input placeholder="SP" maxLength={2} value={adrEstado} onChange={e => setAdrEstado(e.target.value.toUpperCase())} /></div>
+              <div className="space-y-1"><Label>{t('detail.addrCity')}</Label><Input placeholder={t('detail.addrCityPlaceholder')} value={adrCidade} onChange={e => setAdrCidade(e.target.value)} /></div>
+              <div className="space-y-1"><Label>{t('detail.addrState')}</Label><Input placeholder={t('detail.addrStatePlaceholder')} maxLength={2} value={adrEstado} onChange={e => setAdrEstado(e.target.value.toUpperCase())} /></div>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setAddrModalOpen(false); resetAddrForm(); }}>Cancelar</Button>
-            <Button onClick={handleAddrSubmit} disabled={addrLoading}>{addrLoading && <Spinner size="sm" />} {addrEditing ? 'Salvar' : 'Adicionar'}</Button>
+            <Button variant="outline" onClick={() => { setAddrModalOpen(false); resetAddrForm(); }}>{tc('actions.cancel')}</Button>
+            <Button onClick={handleAddrSubmit} disabled={addrLoading}>{addrLoading && <Spinner size="sm" />} {addrEditing ? tc('actions.save') : tc('actions.add')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1187,12 +1189,12 @@ export default function ClienteDetalhePage() {
       <AlertDialog open={addrDeleteId !== null} onOpenChange={open => { if (!open) setAddrDeleteId(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remover Endereço</AlertDialogTitle>
-            <AlertDialogDescription>Tem certeza que deseja remover este endereço? Esta ação não pode ser desfeita.</AlertDialogDescription>
+            <AlertDialogTitle>{t('detail.removeAddress')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('detail.removeAddressConfirm')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleAddrDelete}>Remover</AlertDialogAction>
+            <AlertDialogCancel>{tc('actions.cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleAddrDelete}>{tc('actions.delete')}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -1201,15 +1203,15 @@ export default function ClienteDetalhePage() {
       <Dialog open={dateModalOpen} onOpenChange={open => { if (!open) { setDateModalOpen(false); resetDateForm(); } }}>
         <DialogContent style={{ maxWidth: 440 }} onConfirmClose={() => { setDateModalOpen(false); resetDateForm(); }}>
           <DialogHeader>
-            <DialogTitle>{dateEditing ? 'Editar Data' : 'Nova Data Importante'}</DialogTitle>
+            <DialogTitle>{dateEditing ? t('detail.editDate') : t('detail.newImportantDate')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            <div className="space-y-1"><Label>Título *</Label><Input placeholder="Ex: Dia de inauguração" value={dateTitulo} onChange={e => setDateTitulo(e.target.value)} /></div>
-            <div className="space-y-1"><Label>Data *</Label><Input type="date" value={dateData} onChange={e => setDateData(e.target.value)} /></div>
+            <div className="space-y-1"><Label>{t('detail.dateTitle')}</Label><Input placeholder={t('detail.dateTitlePlaceholder')} value={dateTitulo} onChange={e => setDateTitulo(e.target.value)} /></div>
+            <div className="space-y-1"><Label>{t('detail.dateField')}</Label><Input type="date" value={dateData} onChange={e => setDateData(e.target.value)} /></div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setDateModalOpen(false); resetDateForm(); }}>Cancelar</Button>
-            <Button onClick={handleDateSubmit} disabled={dateLoading}>{dateLoading && <Spinner size="sm" />} {dateEditing ? 'Salvar' : 'Adicionar'}</Button>
+            <Button variant="outline" onClick={() => { setDateModalOpen(false); resetDateForm(); }}>{tc('actions.cancel')}</Button>
+            <Button onClick={handleDateSubmit} disabled={dateLoading}>{dateLoading && <Spinner size="sm" />} {dateEditing ? tc('actions.save') : tc('actions.add')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1218,12 +1220,12 @@ export default function ClienteDetalhePage() {
       <AlertDialog open={dateDeleteId !== null} onOpenChange={open => { if (!open) setDateDeleteId(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remover Data</AlertDialogTitle>
-            <AlertDialogDescription>Tem certeza que deseja remover esta data? Esta ação não pode ser desfeita.</AlertDialogDescription>
+            <AlertDialogTitle>{t('detail.removeDate')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('detail.removeDateConfirm')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDateDelete}>Remover</AlertDialogAction>
+            <AlertDialogCancel>{tc('actions.cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDateDelete}>{tc('actions.delete')}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -1232,12 +1234,12 @@ export default function ClienteDetalhePage() {
       <AlertDialog open={recurringWfId !== null} onOpenChange={open => { if (!open) { setRecurringWfId(null); queryClient.invalidateQueries({ queryKey: ['workflowsByCliente', clienteId] }); } }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Workflow Concluído</AlertDialogTitle>
-            <AlertDialogDescription>Este workflow é recorrente. Deseja criar um novo ciclo?</AlertDialogDescription>
+            <AlertDialogTitle>{t('detail.workflowCompleted')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('detail.workflowRecurring')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => { setRecurringWfId(null); queryClient.invalidateQueries({ queryKey: ['workflowsByCliente', clienteId] }); }}>Não</AlertDialogCancel>
-            <AlertDialogAction onClick={handleRecurringConfirm}>Criar Novo Ciclo</AlertDialogAction>
+            <AlertDialogCancel onClick={() => { setRecurringWfId(null); queryClient.invalidateQueries({ queryKey: ['workflowsByCliente', clienteId] }); }}>{tc('actions.no')}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRecurringConfirm}>{t('detail.createNewCycle')}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -1254,6 +1256,7 @@ export default function ClienteDetalhePage() {
 }
 
 function ClienteArquivosSection({ clienteId }: { clienteId: number }) {
+  const { t } = useTranslation('clients');
   const navigate = useNavigate();
   const { data: folderData } = useQuery({
     queryKey: ['client-folder', clienteId],
@@ -1286,21 +1289,21 @@ function ClienteArquivosSection({ clienteId }: { clienteId: number }) {
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2 mb-0">
           <FolderOpen className="h-5 w-5" style={{ color: 'var(--primary-color)' }} />
-          Arquivos
+          {t('detail.files')}
         </h3>
         {folderId && (
           <button
             onClick={() => navigate('/arquivos')}
             className="inline-flex items-center gap-1 text-sm text-[var(--text-muted)] hover:text-[var(--text-main)] transition-colors"
           >
-            Ver todos <ExternalLink className="h-3.5 w-3.5" />
+            {t('detail.viewAll')} <ExternalLink className="h-3.5 w-3.5" />
           </button>
         )}
       </div>
       {isLoading ? (
         <div className="flex items-center justify-center py-8"><Spinner size="md" /></div>
       ) : files.length === 0 && subfolders.length === 0 ? (
-        <p className="text-sm text-[var(--text-muted)] py-4">Nenhum arquivo encontrado para este cliente.</p>
+        <p className="text-sm text-[var(--text-muted)] py-4">{t('detail.noFiles')}</p>
       ) : (
         <>
           <FileGrid
@@ -1316,7 +1319,7 @@ function ClienteArquivosSection({ clienteId }: { clienteId: number }) {
               onClick={() => navigate('/arquivos')}
               className="mt-3 text-sm text-[var(--primary-color)] hover:underline"
             >
-              Ver mais {totalFiles - 12} arquivo(s)
+              {t('detail.viewMoreFiles', { count: totalFiles - 12 })}
             </button>
           )}
         </>
@@ -1335,6 +1338,7 @@ function InstagramSection({ clienteId, loadingIg, igSummary, refetchIg, onNaviga
   refetchIg: () => void;
   onNavigateAnalytics: () => void;
 }) {
+  const { t } = useTranslation('clients');
   const igOverviewRef = useRef<HTMLDivElement>(null);
   const igChartRef = useRef<HTMLDivElement>(null);
   const igPostsRef = useRef<HTMLDivElement>(null);
@@ -1378,7 +1382,7 @@ function InstagramSection({ clienteId, loadingIg, igSummary, refetchIg, onNaviga
       {!loadingIg && igSummary && !igSummary.account?.last_synced_at && (
         <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
           <Spinner size="lg" />
-          <p style={{ color: 'var(--text-muted)', marginTop: 8 }}>Sincronizando dados do Instagram...</p>
+          <p style={{ color: 'var(--text-muted)', marginTop: 8 }}>{t('detail.igSyncing')}</p>
         </div>
       )}
       <div ref={igOverviewRef} />
@@ -1386,7 +1390,7 @@ function InstagramSection({ clienteId, loadingIg, igSummary, refetchIg, onNaviga
       <div ref={igPostsRef} />
       {!loadingIg && igSummary?.account?.last_synced_at && (
         <div style={{ display: 'flex', justifyContent: 'center', marginTop: '1.5rem', marginBottom: '1rem' }}>
-          <Button onClick={onNavigateAnalytics}>Ver Analytics Completo →</Button>
+          <Button onClick={onNavigateAnalytics}>{t('detail.viewFullAnalytics')}</Button>
         </div>
       )}
       {igSummary?.account?.last_synced_at && (
@@ -1394,10 +1398,10 @@ function InstagramSection({ clienteId, loadingIg, igSummary, refetchIg, onNaviga
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div>
               <div style={{ color: 'var(--text-main)', fontSize: '0.85rem', fontWeight: 500 }}>
-                Publicar automaticamente após aprovação
+                {t('detail.autoPublishTitle')}
               </div>
               <div style={{ color: 'var(--text-light)', fontSize: '0.75rem', marginTop: '0.25rem' }}>
-                Quando o cliente aprovar, o post será agendado automaticamente se tiver data e legenda definidas.
+                {t('detail.autoPublishDesc')}
               </div>
             </div>
             <Switch

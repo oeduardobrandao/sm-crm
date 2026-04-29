@@ -64,6 +64,8 @@
     "convertido": "Convertido",
     "vigente": "Vigente",
     "a_assinar": "A assinar",
+    "pago": "Pago",
+    "agendado": "Agendado",
     "todos": "Todos"
   },
   "toast": {
@@ -92,6 +94,15 @@
     "4": "Quinta",
     "5": "Sexta",
     "6": "Sábado"
+  },
+  "weekdaysShort": {
+    "0": "Dom",
+    "1": "Seg",
+    "2": "Ter",
+    "3": "Qua",
+    "4": "Qui",
+    "5": "Sex",
+    "6": "Sáb"
   },
   "sort": {
     "name": "Nome",
