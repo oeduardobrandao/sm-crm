@@ -1602,10 +1602,9 @@ export async function replyToPostApproval(
   comentario: string
 ): Promise<void> {
   const token = await getPortalToken(workflowId);
-  if (!token) throw new Error('Crie e compartilhe o portal antes de responder.');
   const { error } = await supabase.from('post_approvals').insert({
     post_id: postId,
-    token,
+    token: token ?? null,
     action: 'mensagem',
     comentario,
     is_workspace_user: true,

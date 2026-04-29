@@ -356,15 +356,17 @@ describe('store workflow and portal functions', () => {
     });
   });
 
-  it('replyToPostApproval throws when no portal token exists yet', async () => {
+  it('replyToPostApproval works without portal token', async () => {
     mockedSupabase.__queueSupabaseResult('portal_tokens', 'select', {
       data: null,
       error: null,
     });
+    mockedSupabase.__queueSupabaseResult('post_approvals', 'insert', {
+      data: null,
+      error: null,
+    });
 
-    await expect(store.replyToPostApproval(1, 2, 'mensagem')).rejects.toThrow(
-      'Crie e compartilhe o portal antes de responder.',
-    );
+    await expect(store.replyToPostApproval(1, 2, 'mensagem')).resolves.not.toThrow();
   });
 });
 
