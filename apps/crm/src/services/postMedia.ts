@@ -183,14 +183,12 @@ export async function uploadPostMedia(args: {
   }
 
   const signed = await callFn<{
-    media_id: string; upload_url: string; r2_key: string;
+    file_id: string; upload_url: string; r2_key: string;
     thumbnail_upload_url?: string; thumbnail_r2_key?: string;
-  }>('post-media-upload-url', 'POST', {
-    post_id: postId,
+  }>('file-upload-url', 'POST', {
     filename: file.name,
     mime_type: file.type,
     size_bytes: file.size,
-    kind,
     thumbnail: thumbFile ? { mime_type: thumbFile.type, size_bytes: thumbFile.size } : undefined,
   });
 
@@ -200,15 +198,15 @@ export async function uploadPostMedia(args: {
   }
   await Promise.all(uploads);
 
-  return callFn<PostMedia>('post-media-finalize', 'POST', {
-    post_id: postId,
-    media_id: signed.media_id,
+  return callFn<PostMedia>('file-upload-finalize', 'POST', {
+    file_id: signed.file_id,
     r2_key: signed.r2_key,
     thumbnail_r2_key: signed.thumbnail_r2_key,
     kind,
     mime_type: file.type,
     size_bytes: file.size,
-    original_filename: file.name,
+    name: file.name,
+    post_id: postId,
     width, height, duration_seconds,
     blur_data_url,
   });

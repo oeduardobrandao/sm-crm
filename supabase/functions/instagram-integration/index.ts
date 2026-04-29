@@ -6,7 +6,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const META_APP_ID = Deno.env.get("META_APP_ID")!;
 const META_APP_SECRET = Deno.env.get("META_APP_SECRET")!;
-const META_REDIRECT_URI = Deno.env.get("META_REDIRECT_URI")!;
+const META_REDIRECT_URI = Deno.env.get("META_REDIRECT_URI");
 const OAUTH_REDIRECT_BASE = Deno.env.get("OAUTH_REDIRECT_BASE") || "http://localhost:3000";
 const TOKEN_ENCRYPTION_KEY = Deno.env.get("TOKEN_ENCRYPTION_KEY") ?? (() => { throw new Error("TOKEN_ENCRYPTION_KEY environment variable is required"); })();
 
@@ -132,11 +132,10 @@ async function verifyClientOwnership(
 Deno.serve(async (req) => {
   const url = new URL(req.url);
   const path = url.pathname.replace('/instagram-integration', '').replace(/\/$/, '');
-  // Derive the function's own base URL to use as redirect_uri (avoids META_REDIRECT_URI mismatch)
-  // Force HTTPS: edge functions run behind a reverse proxy that terminates SSL,
-  // so url.origin reports http:// but the public URL is always https://
+  // Use META_REDIRECT_URI (registered in Meta Developer Console) as canonical redirect_uri.
+  // Fall back to deriving from req.url if the env var isn't set.
   const origin = url.origin.replace(/^http:\/\//, 'https://');
-  const functionBaseUrl = `${origin}/functions/v1/instagram-integration`;
+  const functionBaseUrl = META_REDIRECT_URI || `${origin}/functions/v1/instagram-integration`;
 
   // Setup Supabase Client
   const authHeader = req.headers.get('Authorization');
@@ -184,7 +183,7 @@ Deno.serve(async (req) => {
         // Pass clientId in signed state (HMAC-SHA256)
         const state = await createSignedState(clientId);
         
-        const oauthUrl = `https://www.instagram.com/oauth/authorize?client_id=${META_APP_ID}&redirect_uri=${encodeURIComponent(functionBaseUrl)}&response_type=code&scope=instagram_business_basic,instagram_business_manage_insights&state=${state}`;
+        const oauthUrl = `https://www.instagram.com/oauth/authorize?client_id=${META_APP_ID}&redirect_uri=${encodeURIComponent(functionBaseUrl)}&response_type=code&scope=instagram_business_basic,instagram_business_manage_insights,instagram_business_content_publish&state=${state}`;
 
         return new Response(JSON.stringify({ url: oauthUrl }), { 
             headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -214,7 +213,10 @@ Deno.serve(async (req) => {
             })
         });
         const slTokenData = await exchangeRes.json();
-        if (!exchangeRes.ok) console.error('[IG-CALLBACK] Short-lived token exchange failed, status:', exchangeRes.status);
+        if (!exchangeRes.ok) {
+            console.error('[IG-CALLBACK] Token exchange failed:', exchangeRes.status, 'redirect_uri:', functionBaseUrl);
+            console.error('[IG-CALLBACK] Instagram response:', JSON.stringify(slTokenData));
+        }
 
         // Handle both error formats: {error: "string"} and {error: {message: "...", type: "...", code: N}}
         if (slTokenData.error || slTokenData.error_type) {
@@ -223,105 +225,50 @@ Deno.serve(async (req) => {
                 || slTokenData.error_description
                 || slTokenData.error
                 || 'Unknown OAuth error';
-            console.error('[IG-CALLBACK] Short-lived token exchange error');
+            console.error('[IG-CALLBACK] Token exchange error:', errMsg);
             throw new Error(errMsg);
         }
 
         const shortLivedToken = slTokenData.access_token;
-        const igBusinessId = String(slTokenData.user_id); // Instagram Business account ID returned directly
-
         if (!shortLivedToken) {
             throw new Error('Instagram did not return an access token');
         }
 
-        // Exchange for long-lived token — try multiple approaches
-        let llTokenData: any = null;
-        const llParams = `grant_type=ig_exchange_token&client_secret=${META_APP_SECRET}&access_token=${shortLivedToken}`;
-        
-        // Attempt 1: POST to graph.instagram.com/access_token
-        try {
-            const res1 = await fetch('https://graph.instagram.com/access_token', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: new URLSearchParams({
-                    grant_type: 'ig_exchange_token',
-                    client_secret: META_APP_SECRET,
-                    access_token: shortLivedToken
-                })
-            });
-            const data1 = await res1.json();
-            if (data1.access_token) llTokenData = data1;
-        } catch { /* try next */ }
-
-        // Attempt 2: GET to graph.instagram.com/access_token (no version)
-        if (!llTokenData) {
-            try {
-                const res2 = await fetch(`https://graph.instagram.com/access_token?${llParams}`);
-                const data2 = await res2.json();
-                if (data2.access_token) llTokenData = data2;
-            } catch { /* try next */ }
+        // Fetch the real user ID via /me to avoid JSON number precision loss
+        // (Instagram user IDs exceed Number.MAX_SAFE_INTEGER)
+        const meRes = await fetch(`https://graph.instagram.com/me?fields=id&access_token=${shortLivedToken}`);
+        const meData = await meRes.json();
+        if (meData.error || !meData.id) {
+            throw new Error(`Failed to fetch Instagram user ID: ${meData.error?.message ?? 'no id returned'}`);
         }
+        const igBusinessId = String(meData.id);
+        console.error('[IG-CALLBACK] Token exchange OK. user_id (from /me):', igBusinessId, 'token_type:', slTokenData.token_type, 'permissions:', JSON.stringify(slTokenData.permissions));
 
-        // Attempt 3: GET to graph.facebook.com/v21.0/oauth/access_token (Facebook Graph endpoint)
-        if (!llTokenData) {
-            try {
-                const fbParams = `grant_type=ig_exchange_token&client_secret=${META_APP_SECRET}&access_token=${shortLivedToken}`;
-                const res3 = await fetch(`https://graph.facebook.com/v21.0/oauth/access_token?${fbParams}`);
-                const data3 = await res3.json();
-                if (data3.access_token) llTokenData = data3;
-            } catch { /* try next */ }
+        // Exchange short-lived token for long-lived token (retry on transient 500s)
+        let longLivedToken = shortLivedToken;
+        let expiresInSeconds = 3600;
+        for (let attempt = 0; attempt < 3; attempt++) {
+            if (attempt > 0) await new Promise(r => setTimeout(r, 1000 * attempt));
+            const llRes = await fetch(`https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${META_APP_SECRET}&access_token=${shortLivedToken}`);
+            const llData = await llRes.json();
+            if (llData.access_token) {
+                longLivedToken = llData.access_token;
+                expiresInSeconds = llData.expires_in || (60 * 60 * 24 * 60);
+                break;
+            }
+            console.error(`[IG-CALLBACK] LL token attempt ${attempt + 1} failed:`, llRes.status, JSON.stringify(llData));
+            if (!llData.error?.is_transient) break;
         }
-
-        // Attempt 4: GET to graph.instagram.com/v22.0/access_token
-        if (!llTokenData) {
-            try {
-                const res4 = await fetch(`https://graph.instagram.com/v22.0/access_token?${llParams}`);
-                const data4 = await res4.json();
-                if (data4.access_token) llTokenData = data4;
-            } catch { /* try next */ }
-        }
-
-        // If all attempts failed, use the short-lived token directly (it may already be long-lived for new API)
-        if (!llTokenData) {
-            console.error('[IG-CALLBACK] All long-lived token exchange attempts failed');
-            llTokenData = { access_token: shortLivedToken, expires_in: 3600 };
-        }
-
-
-        const longLivedToken = llTokenData.access_token;
-        const expiresInSeconds = llTokenData.expires_in || (60 * 60 * 24 * 60);
         const expiresAt = new Date(Date.now() + expiresInSeconds * 1000).toISOString();
 
         const serviceClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
-        // Get basic profile data — try /{user_id} first (for non-test/Advanced Access),
-        // then fall back to /me (for test accounts)
         const profileFields = 'username,profile_picture_url,followers_count,follows_count,media_count';
-        let igProfile: any = null;
-
-        // Attempt 1: /{user_id} (required for non-test IGAA tokens with Advanced Access)
-        const pRes1 = await fetch(`https://graph.instagram.com/v21.0/${igBusinessId}?fields=${profileFields}&access_token=${longLivedToken}`);
-        const pData1 = await pRes1.json();
-        if (pData1.username || pData1.id) {
-            igProfile = pData1;
-        }
-
-        // Attempt 2: /me (works for test accounts)
-        if (!igProfile) {
-            const pRes2 = await fetch(`https://graph.instagram.com/v21.0/me?fields=${profileFields}&access_token=${longLivedToken}`);
-            const pData2 = await pRes2.json();
-            if (pData2.username || pData2.id) igProfile = pData2;
-        }
-
-        // Attempt 3: /me without version prefix (legacy fallback)
-        if (!igProfile) {
-            const pRes3 = await fetch(`https://graph.instagram.com/me?fields=${profileFields}&access_token=${longLivedToken}`);
-            const pData3 = await pRes3.json();
-            if (pData3.username || pData3.id) {
-                igProfile = pData3;
-            } else {
-                throw new Error('Profile fetch failed');
-            }
+        const profileRes = await fetch(`https://graph.instagram.com/me?fields=${profileFields}&access_token=${longLivedToken}`);
+        const igProfile = await profileRes.json();
+        if (igProfile.error) {
+            console.error('[IG-CALLBACK] Profile fetch failed:', profileRes.status, JSON.stringify(igProfile));
+            throw new Error('Profile fetch failed');
         }
 
         // Encrypt Long Lived Token
@@ -334,10 +281,10 @@ Deno.serve(async (req) => {
             const sinceDate = nowTimestamp - (28 * 24 * 60 * 60);
             // Fetch reach, views, accounts_engaged and website_clicks via total_value
             const [reachRes, viewsRes, profileTapsRes, websiteClicksRes] = await Promise.all([
-                fetch(`https://graph.instagram.com/v21.0/me/insights?metric=reach&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${longLivedToken}`),
-                fetch(`https://graph.instagram.com/v21.0/me/insights?metric=views&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${longLivedToken}`),
-                fetch(`https://graph.instagram.com/v21.0/me/insights?metric=accounts_engaged&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${longLivedToken}`),
-                fetch(`https://graph.instagram.com/v21.0/me/insights?metric=website_clicks&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${longLivedToken}`)
+                fetch(`https://graph.instagram.com/me/insights?metric=reach&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${longLivedToken}`),
+                fetch(`https://graph.instagram.com/me/insights?metric=views&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${longLivedToken}`),
+                fetch(`https://graph.instagram.com/me/insights?metric=accounts_engaged&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${longLivedToken}`),
+                fetch(`https://graph.instagram.com/me/insights?metric=website_clicks&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${longLivedToken}`)
             ]);
             const [reachData, viewsData, profileTapsData, websiteClicksData] = await Promise.all([reachRes.json(), viewsRes.json(), profileTapsRes.json(), websiteClicksRes.json()]);
             if (reachData.data) {
@@ -380,7 +327,8 @@ Deno.serve(async (req) => {
                 profile_views_28d,
                 website_clicks_28d,
                 last_synced_at: new Date().toISOString(),
-                authorization_status: 'active'
+                authorization_status: 'active',
+                permissions: Array.isArray(slTokenData.permissions) ? slTokenData.permissions : [],
             }, { onConflict: 'client_id' })
             .select('id')
             .single();
@@ -417,7 +365,7 @@ Deno.serve(async (req) => {
             }
 
             // Fetch posts
-            const mediaRes = await fetch(`https://graph.instagram.com/v21.0/me/media?fields=id,caption,media_type,permalink,timestamp,comments_count,like_count&limit=50&access_token=${longLivedToken}`);
+            const mediaRes = await fetch(`https://graph.instagram.com/me/media?fields=id,caption,media_type,permalink,timestamp,comments_count,like_count&limit=50&access_token=${longLivedToken}`);
             const mediaData = await mediaRes.json();
 
             if (mediaData.data) {
@@ -427,7 +375,7 @@ Deno.serve(async (req) => {
                     try {
                         let metrics = 'reach,views,saved';
                         if (post.media_type === 'VIDEO') metrics += ',shares';
-                        const postInsightsRes = await fetch(`https://graph.instagram.com/v21.0/${post.id}/insights?metric=${metrics}&access_token=${longLivedToken}`);
+                        const postInsightsRes = await fetch(`https://graph.instagram.com/${post.id}/insights?metric=${metrics}&access_token=${longLivedToken}`);
                         const postInsightsData = await postInsightsRes.json();
                         if (postInsightsData.data) {
                             for (const insight of postInsightsData.data) {
@@ -489,12 +437,12 @@ Deno.serve(async (req) => {
             const nowTimestamp = Math.floor(Date.now() / 1000);
             const sinceDate = nowTimestamp - (28 * 24 * 60 * 60);
             const [reachRes, viewsRes, profileTapsRes, websiteClicksRes, igProfileRes, mediaRes] = await Promise.all([
-                fetch(`https://graph.instagram.com/v21.0/me/insights?metric=reach&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
-                fetch(`https://graph.instagram.com/v21.0/me/insights?metric=views&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
-                fetch(`https://graph.instagram.com/v21.0/me/insights?metric=accounts_engaged&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
-                fetch(`https://graph.instagram.com/v21.0/me/insights?metric=website_clicks&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
-                fetch(`https://graph.instagram.com/v21.0/me?fields=followers_count,follows_count,media_count,profile_picture_url&access_token=${accessToken}`),
-                fetch(`https://graph.instagram.com/v21.0/me/media?fields=id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,comments_count,like_count&limit=50&access_token=${accessToken}`)
+                fetch(`https://graph.instagram.com/me/insights?metric=reach&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
+                fetch(`https://graph.instagram.com/me/insights?metric=views&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
+                fetch(`https://graph.instagram.com/me/insights?metric=accounts_engaged&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
+                fetch(`https://graph.instagram.com/me/insights?metric=website_clicks&metric_type=total_value&period=day&since=${sinceDate}&until=${nowTimestamp}&access_token=${accessToken}`),
+                fetch(`https://graph.instagram.com/me?fields=followers_count,follows_count,media_count,profile_picture_url&access_token=${accessToken}`),
+                fetch(`https://graph.instagram.com/me/media?fields=id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,comments_count,like_count&limit=50&access_token=${accessToken}`)
             ]);
 
             const [reachData, viewsData, profileTapsData, websiteClicksData, igProfile, mediaData] = await Promise.all([
@@ -528,6 +476,10 @@ Deno.serve(async (req) => {
                     if (insight.name === 'website_clicks') totalWebsiteClicks = insight.total_value?.value || 0;
                 }
             }
+            if (websiteClicksData.error) {
+                console.error('[IG-SYNC] website_clicks error:', JSON.stringify(websiteClicksData));
+            }
+            console.error('[IG-SYNC] Insights results — reach:', totalReach, 'views:', totalImpressions, 'engaged:', totalViews, 'link_taps:', totalWebsiteClicks);
 
             // Cache profile picture in Supabase Storage to avoid CDN hotlink issues
             let storedAvatarUrl: string | undefined;
@@ -600,7 +552,7 @@ Deno.serve(async (req) => {
                         try {
                             let metrics = 'reach,views,saved';
                             if (post.media_type === 'VIDEO') metrics += ',shares';
-                            const postInsightsRes = await fetch(`https://graph.instagram.com/v21.0/${post.id}/insights?metric=${metrics}&access_token=${accessToken}`);
+                            const postInsightsRes = await fetch(`https://graph.instagram.com/${post.id}/insights?metric=${metrics}&access_token=${accessToken}`);
                             const postInsightsData = await postInsightsRes.json();
                             if (postInsightsData.data) {
                                 for (const insight of postInsightsData.data) {
@@ -616,7 +568,7 @@ Deno.serve(async (req) => {
                         let thumbUrl = post.thumbnail_url || post.media_url || null;
                         if (!thumbUrl && post.media_type === 'CAROUSEL_ALBUM') {
                             try {
-                                const childRes = await fetch(`https://graph.instagram.com/v21.0/${post.id}/children?fields=media_url,media_type&limit=1&access_token=${accessToken}`);
+                                const childRes = await fetch(`https://graph.instagram.com/${post.id}/children?fields=media_url,media_type&limit=1&access_token=${accessToken}`);
                                 const childData = await childRes.json();
                                 if (childData.data?.[0]?.media_url) thumbUrl = childData.data[0].media_url;
                             } catch (_) { /* ignore */ }
@@ -736,9 +688,21 @@ Deno.serve(async (req) => {
 
   } catch (err: any) {
     console.error('[instagram-integration] error:', err?.message ?? 'unknown');
+
+    // If this was a callback (browser redirect), send user back to client page instead of showing JSON
+    const isCallback = path === '/callback' || (path === '' && url.searchParams.has('code'));
+    if (isCallback) {
+      const stateParam = url.searchParams.get('state');
+      let redirectClientId: string | undefined;
+      try { redirectClientId = (await verifySignedState(stateParam || '')).clientId; } catch { /* ignore */ }
+      const target = redirectClientId
+        ? `${OAUTH_REDIRECT_BASE}/clientes/${redirectClientId}?ig_error=1`
+        : `${OAUTH_REDIRECT_BASE}?ig_error=1`;
+      return Response.redirect(target, 302);
+    }
+
     const isAuthError = err.message && err.message.includes("Unauthorized");
     const isTokenExpired = err.message && err.message.includes("expired");
-
     const statusCode = (isAuthError || isTokenExpired) ? 401 : 400;
 
     return new Response(JSON.stringify({

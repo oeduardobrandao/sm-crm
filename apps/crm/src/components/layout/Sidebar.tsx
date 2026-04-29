@@ -72,7 +72,7 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
   const userName = profile?.nome || 'Minha Conta';
 
   const mainGroups = navGroups.filter(g => !g.isBottom);
-  const bottomGroups = navGroups.filter(g => g.isBottom);
+  const configItems = navGroups.find(g => g.id === 'config')?.items ?? [];
 
   const renderGroup = (group: NavGroup) => (
     <li key={group.id} className="sidebar-group">
@@ -117,22 +117,6 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
         </div>
 
         <div className="sidebar-bottom">
-          <ul className="sidebar-nav" id="sidebar-nav-bottom">
-            {bottomGroups.map(renderGroup)}
-          </ul>
-
-          <button
-            id="theme-toggle"
-            className="sidebar-action-btn"
-            title="Alternar Tema"
-            onClick={toggleTheme}
-          >
-            <div className="sidebar-action-btn-content">
-              <i className={`ph ${isDark ? 'ph-sun' : 'ph-moon'}`} />
-              <span>{isDark ? 'Modo Claro' : 'Modo Escuro'}</span>
-            </div>
-          </button>
-
           <div
             className="sidebar-user-menu"
             id="user-menu-wrap"
@@ -173,6 +157,31 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
                     })}
                   </div>
                 )}
+
+                {configItems.length > 0 && (
+                  <div style={{ padding: '0.25rem 0', borderBottom: '1px solid var(--border-color)', marginBottom: '0.25rem' }}>
+                    {configItems.map(item => (
+                      <button
+                        key={item.id}
+                        className="user-dropdown-item"
+                        style={{ width: '100%', border: 'none', background: 'transparent', textAlign: 'left', fontFamily: 'inherit', fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-main)', padding: '0.5rem 0.75rem' }}
+                        onClick={() => { handleNavClick(item.route); setUserMenuOpen(false); }}
+                      >
+                        <i className={`ph ${item.icon}`} />
+                        <span>{item.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <button
+                  className="user-dropdown-item"
+                  style={{ width: '100%', border: 'none', background: 'transparent', textAlign: 'left', fontFamily: 'inherit', fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-main)', padding: '0.5rem 0.75rem' }}
+                  onClick={(e) => { e.stopPropagation(); toggleTheme(); }}
+                >
+                  <i className={`ph ${isDark ? 'ph-sun' : 'ph-moon'}`} />
+                  <span>{isDark ? 'Modo Claro' : 'Modo Escuro'}</span>
+                </button>
 
                 <button
                   id="btn-logout-flutuante"

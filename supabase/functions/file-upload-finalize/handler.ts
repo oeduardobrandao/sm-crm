@@ -78,10 +78,21 @@ export function createFileUploadFinalizeHandler(deps: FileUploadFinalizeDeps) {
       return json({ error: "documents cannot be linked to posts" }, 400);
     }
 
+    let folderId = body.folder_id ?? null;
+    if (!folderId && body.post_id) {
+      const { data: postFolder } = await svc.from("folders")
+        .select("id")
+        .eq("conta_id", profile.conta_id)
+        .eq("source_type", "post")
+        .eq("source_id", body.post_id)
+        .maybeSingle();
+      if (postFolder) folderId = postFolder.id;
+    }
+
     const { data: inserted, error: insErr } = await svc.rpc("file_insert_with_quota", {
       p: {
         conta_id: profile.conta_id,
-        folder_id: body.folder_id ?? "",
+        folder_id: folderId ?? "",
         r2_key: body.r2_key,
         thumbnail_r2_key: body.thumbnail_r2_key ?? "",
         name: body.name,

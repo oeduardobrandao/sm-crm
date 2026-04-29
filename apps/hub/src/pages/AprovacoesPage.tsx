@@ -86,7 +86,7 @@ export function AprovacoesPage() {
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {withMedia.map((post, i) => (
-              <div key={post.id}>
+              <div key={post.id} className="flex flex-col">
                 <p className="text-[11px] text-stone-400 mb-1.5 pl-0.5">{formatDate(post.scheduled_at)}</p>
                 <InstagramPostCard
                   post={post}
@@ -98,6 +98,7 @@ export function AprovacoesPage() {
                   onToggleSelect={handleToggleSelect}
                   onApprovalSubmitted={handleInvalidate}
                   priority={i === 0}
+                  autoPublishOnApproval={data?.autoPublishOnApproval ?? false}
                 />
               </div>
             ))}

@@ -6,12 +6,25 @@ import { showToast, openModal, closeModal, escapeHTML, sanitizeUrl } from '../..
 import { formatDate } from '../../store';
 
 export function renderInstagramOverviewCard(container: HTMLElement, clientId: number, account: any, onRefresh: () => void) {
+  const isRevoked = account.authorization_status === 'revoked';
+  const isExpired = account.token_expires_at && new Date(account.token_expires_at) < new Date();
+
+  let statusBanner = '';
+  if (isRevoked) {
+    statusBanner = '<div style="background: rgba(245, 90, 66, 0.08); color: var(--danger); padding: 0.5rem 0.75rem; border-radius: 8px; font-size: 0.8rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;"><i class="ph ph-warning"></i> Token do Instagram foi revogado. Reconecte a conta para continuar sincronizando e publicando.</div>';
+  } else if (isExpired) {
+    statusBanner = '<div style="background: rgba(245, 163, 66, 0.08); color: var(--warning); padding: 0.5rem 0.75rem; border-radius: 8px; font-size: 0.8rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;"><i class="ph ph-warning"></i> Token do Instagram expirou. Reconecte a conta para continuar sincronizando e publicando.</div>';
+  }
+
+  // Static HTML banner — no user data interpolated, safe for innerHTML
   container.innerHTML = `
     <div class="card animate-up" style="position: relative; margin-bottom: 1.5rem; overflow: visible;">
       <div style="position: absolute; top: 1rem; right: 1rem; display: flex; gap: 0.5rem;">
          <button id="btn-ig-sync" class="btn-icon" data-tooltip="Sincronizar Dados" data-tooltip-dir="bottom" style="color: var(--text-muted);"><i class="ph ph-arrows-clockwise"></i></button>
          <button id="btn-ig-disconnect" class="btn-icon" data-tooltip="Desconectar" data-tooltip-dir="bottom" style="color: var(--danger);"><i class="ph ph-plugs"></i></button>
       </div>
+
+      ${statusBanner}
 
       <div style="display: flex; align-items: center; gap: 1.5rem; margin-bottom: 1.5rem;">
          <img src="${account.profile_picture_url ? sanitizeUrl(account.profile_picture_url) : 'https://ui-avatars.com/api/?name=IG&background=random'}" alt="IG Profile" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 3px solid #E1306C;" />

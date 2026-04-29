@@ -1,4 +1,5 @@
 import { createJsonResponder } from "../_shared/http.ts";
+import { validateForScheduling } from "../_shared/instagram-publish-utils.ts";
 
 type DbClient = {
   from: (table: string) => any;
@@ -58,6 +59,25 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
     const newStatus = action === "aprovado" ? "aprovado_cliente" : action === "correcao" ? "correcao_cliente" : post.status;
     await db.from("workflow_posts").update({ status: newStatus }).eq("id", post_id);
 
-    return json({ ok: true });
+    let scheduled = false;
+    if (action === "aprovado") {
+      const { data: client } = await db
+        .from("clientes")
+        .select("auto_publish_on_approval")
+        .eq("id", workflow.cliente_id)
+        .single();
+
+      if (client?.auto_publish_on_approval) {
+        const validation = await validateForScheduling(db, post_id);
+        if (validation.ok) {
+          await db.from("workflow_posts")
+            .update({ status: "agendado" })
+            .eq("id", post_id);
+          scheduled = true;
+        }
+      }
+    }
+
+    return json({ ok: true, scheduled });
   };
 }

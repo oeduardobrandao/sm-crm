@@ -29,6 +29,7 @@ const MembroDetalhePage = lazy(() => import('./pages/membro-detalhe/MembroDetalh
 const ConfiguracaoPage = lazy(() => import('./pages/configuracao/ConfiguracaoPage'));
 const CalendarioPage = lazy(() => import('./pages/calendario/CalendarioPage'));
 const EntregasPage = lazy(() => import('./pages/entregas/EntregasPage'));
+const ExpressPostPage = lazy(() => import('./pages/post-express/ExpressPostPage'));
 const AnalyticsPage = lazy(() => import('./pages/analytics/AnalyticsPage'));
 const AnalyticsContaPage = lazy(() => import('./pages/analytics-conta/AnalyticsContaPage'));
 const AnalyticsFluxosPage = lazy(() => import('./pages/analytics-fluxos/AnalyticsFluxosPage'));
@@ -79,6 +80,7 @@ export default function App() {
               <Route path="/configuracao" element={<ConfiguracaoPage />} />
               <Route path="/calendario" element={<CalendarioPage />} />
               <Route path="/entregas" element={<EntregasPage />} />
+              <Route path="/post-express" element={<ExpressPostPage />} />
               <Route path="/arquivos" element={<ArquivosPage />} />
               <Route path="/analytics" element={<AnalyticsPage />} />
               <Route path="/analytics/:id" element={<AnalyticsContaPage />} />

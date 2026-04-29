@@ -30,12 +30,18 @@ export interface HubPost {
   id: number;
   titulo: string;
   tipo: 'feed' | 'reels' | 'stories' | 'carrossel';
-  status: 'rascunho' | 'em_producao' | 'enviado_cliente' | 'aprovado_cliente' | 'correcao_cliente' | 'agendado' | 'publicado';
+  status: 'rascunho' | 'em_producao' | 'enviado_cliente'
+    | 'aprovado_cliente' | 'correcao_cliente' | 'agendado' | 'postado' | 'falha_publicacao';
   ordem: number;
   conteudo_plain: string;
   scheduled_at: string | null;
+  ig_caption: string | null;
+  instagram_permalink: string | null;
+  published_at: string | null;
+  publish_error: string | null;
   workflow_id: number;
   workflow_titulo: string;
+  workflow_created_at: string;
   media: HubPostMedia[];
   cover_media: HubPostMedia | null;
 }
@@ -167,4 +173,5 @@ export interface HubPostsResponse {
   propertyValues: HubPostProperty[];
   workflowSelectOptions: HubSelectOption[];
   instagramProfile: InstagramProfile | null;
+  autoPublishOnApproval?: boolean;
 }

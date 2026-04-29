@@ -30,11 +30,15 @@ export function StoryPostCard({
   const media = post.media ?? [];
   const displayName = instagramProfile?.username ?? workspaceName ?? '';
   const profilePic = instagramProfile?.profilePictureUrl;
-  const rawText = post.conteudo_plain ?? '';
-  const legendaIdx = rawText.toUpperCase().indexOf('LEGENDA');
-  const caption = legendaIdx !== -1
-    ? rawText.slice(legendaIdx + 'LEGENDA'.length).replace(/^[:\s\n]+/, '').trim()
-    : rawText;
+  const caption = post.ig_caption
+    ? post.ig_caption
+    : (() => {
+        const rawText = post.conteudo_plain ?? '';
+        const legendaIdx = rawText.toUpperCase().indexOf('LEGENDA');
+        return legendaIdx !== -1
+          ? rawText.slice(legendaIdx + 'LEGENDA'.length).replace(/^[:\s\n]+/, '').trim()
+          : rawText;
+      })();
 
   const currentMedia = media[currentSlide];
 

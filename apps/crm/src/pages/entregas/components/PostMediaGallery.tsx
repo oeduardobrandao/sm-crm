@@ -24,10 +24,11 @@ import { linkFileToPost, unlinkFileFromPost } from '../../../services/fileServic
 interface PostMediaGalleryProps {
   postId: number;
   disabled?: boolean;
+  maxFiles?: number;
   onChange?: (media: PostMedia[]) => void;
 }
 
-export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGalleryProps) {
+export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostMediaGalleryProps) {
   const qc = useQueryClient();
   const { data: serverMedia, isLoading: mediaLoading } = useQuery({
     queryKey: ['post-media', postId],
@@ -73,7 +74,8 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [pendingVideo, setPendingVideo] = useState<File | null>(null);
   const [showFilePicker, setShowFilePicker] = useState(false);
-  const [progress, setProgress] = useState<{ name: string; pct: number } | null>(null);
+  const [uploadQueue, setUploadQueue] = useState<Map<string, { name: string; pct: number; status: 'uploading' | 'done' | 'error' }>>(new Map());
+  const [dragOver, setDragOver] = useState(false);
 
   // Preload images into browser cache so lightbox opens instantly.
   const preloadCache = useRef<HTMLImageElement[]>([]);
@@ -88,53 +90,104 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
   }, [media]);
 
   const refresh = () => qc.invalidateQueries({ queryKey: ['post-media', postId] });
+  const atLimit = maxFiles != null && media.length >= maxFiles;
 
   async function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
-    setUploading(true);
-    try {
-      for (const file of Array.from(files)) {
-        const kind = detectKind(file);
-        if (kind === 'video') {
-          setPendingVideo(file);
-          return;
-        }
-        setProgress({ name: file.name, pct: 0 });
-        await uploadPostMedia({
-          postId,
-          file,
-          onProgress: (p) => setProgress({ name: file.name, pct: Math.round((p.loaded / p.total) * 100) }),
-        });
+    const fileArr = Array.from(files);
+    const images: File[] = [];
+    for (const file of fileArr) {
+      if (detectKind(file) === 'video') {
+        setPendingVideo(file);
+        return;
       }
-      refresh();
-      toast.success('Upload concluído');
-    } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      setUploading(false);
-      setProgress(null);
+      images.push(file);
     }
+    if (images.length === 0) return;
+
+    setUploading(true);
+    const ids = images.map((_, i) => `upload-${Date.now()}-${i}`);
+    setUploadQueue(prev => {
+      const next = new Map(prev);
+      images.forEach((f, i) => next.set(ids[i], { name: f.name, pct: 0, status: 'uploading' }));
+      return next;
+    });
+
+    let hasError = false;
+    await Promise.all(
+      images.map(async (file, i) => {
+        const uid = ids[i];
+        try {
+          await uploadPostMedia({
+            postId,
+            file,
+            onProgress: (p) => setUploadQueue(prev => {
+              const next = new Map(prev);
+              next.set(uid, { name: file.name, pct: Math.round((p.loaded / p.total) * 100), status: 'uploading' });
+              return next;
+            }),
+          });
+          setUploadQueue(prev => {
+            const next = new Map(prev);
+            next.set(uid, { name: file.name, pct: 100, status: 'done' });
+            return next;
+          });
+        } catch (e) {
+          hasError = true;
+          toast.error(`${file.name}: ${(e as Error).message}`);
+          setUploadQueue(prev => {
+            const next = new Map(prev);
+            next.set(uid, { name: file.name, pct: 0, status: 'error' });
+            return next;
+          });
+        }
+      })
+    );
+
+    refresh();
+    if (!hasError) toast.success('Upload concluído');
+    setUploading(false);
+    setTimeout(() => setUploadQueue(new Map()), 2000);
   }
 
   async function handleVideoThumbnail(thumbnail: File) {
     if (!pendingVideo) return;
     setUploading(true);
+    const uid = `upload-video-${Date.now()}`;
+    setUploadQueue(prev => {
+      const next = new Map(prev);
+      next.set(uid, { name: pendingVideo.name, pct: 0, status: 'uploading' });
+      return next;
+    });
     try {
-      setProgress({ name: pendingVideo.name, pct: 0 });
       await uploadPostMedia({
         postId,
         file: pendingVideo,
         thumbnail,
-        onProgress: (p) => setProgress({ name: pendingVideo.name, pct: Math.round((p.loaded / p.total) * 100) }),
+        onProgress: (p) => setUploadQueue(prev => {
+          const next = new Map(prev);
+          next.set(uid, { name: pendingVideo.name, pct: Math.round((p.loaded / p.total) * 100), status: 'uploading' });
+          return next;
+        }),
+      });
+      setUploadQueue(prev => {
+        const next = new Map(prev);
+        next.set(uid, { name: pendingVideo.name, pct: 100, status: 'done' });
+        return next;
       });
       setPendingVideo(null);
       refresh();
       toast.success('Vídeo enviado');
     } catch (e) {
       toast.error((e as Error).message);
+      setUploadQueue(prev => {
+        const next = new Map(prev);
+        next.set(uid, { name: pendingVideo.name, pct: 0, status: 'error' });
+        return next;
+      });
     } finally {
       setUploading(false);
-      setProgress(null);
+      setTimeout(() => setUploadQueue(new Map()), 2000);
     }
   }
 
@@ -214,6 +267,24 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
     );
   }
 
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    if (disabled || atLimit) return;
+    const files = e.dataTransfer.files;
+    if (files.length > 0) handleFiles(files);
+  };
+
+  const handleDragOverEvent = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (!disabled && !atLimit) setDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+    setDragOver(false);
+  };
+
   return (
     <div className="space-y-3">
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -229,14 +300,19 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
                 onDelete={() => handleDelete(m.id)}
               />
             ))}
-            {!disabled && (
-              <label className="flex flex-col items-center justify-center gap-1 aspect-square rounded-xl border border-dashed border-stone-300 bg-stone-50 text-stone-500 hover:border-stone-400 hover:bg-stone-100 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-400 dark:hover:border-stone-500 dark:hover:bg-stone-700 cursor-pointer transition-colors">
+            {!disabled && !atLimit && (
+              <label
+                onDrop={handleDrop}
+                onDragOver={handleDragOverEvent}
+                onDragLeave={handleDragLeave}
+                className={`flex flex-col items-center justify-center gap-1 aspect-square rounded-xl border border-dashed cursor-pointer transition-colors ${dragOver ? 'ring-2 ring-[#eab308] border-[#eab308] bg-[#eab308]/10 text-[#eab308]' : 'border-stone-300 bg-stone-50 text-stone-500 hover:border-stone-400 hover:bg-stone-100 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-400 dark:hover:border-stone-500 dark:hover:bg-stone-700'}`}
+              >
                 <Upload className="h-4 w-4" />
-                <span className="text-[11px]">{uploading ? 'Enviando…' : 'Adicionar'}</span>
-                <input type="file" multiple accept="image/*,video/*" hidden onChange={(e) => handleFiles(e.target.files)} />
+                <span className="text-[11px]">{dragOver ? 'Soltar aqui' : uploading ? 'Enviando…' : 'Adicionar'}</span>
+                <input type="file" multiple accept="image/*,video/*" hidden onChange={(e) => { handleFiles(e.target.files); e.target.value = ''; }} />
               </label>
             )}
-            {!disabled && (
+            {!disabled && !atLimit && (
               <button
                 type="button"
                 onClick={() => setShowFilePicker(true)}
@@ -262,15 +338,24 @@ export function PostMediaGallery({ postId, disabled, onChange }: PostMediaGaller
         </button>
       )}
 
-      {progress && (
-        <div className="rounded-xl bg-stone-50 ring-1 ring-stone-200/80 px-3 py-2">
-          <div className="flex items-center justify-between text-[11.5px] text-stone-600 mb-1">
-            <span className="truncate pr-2">{progress.name}</span>
-            <span className="tabular-nums font-medium text-stone-900">{progress.pct}%</span>
-          </div>
-          <div className="h-1.5 rounded-full bg-stone-200 overflow-hidden">
-            <div className="h-full bg-stone-900 transition-all" style={{ width: `${progress.pct}%` }} />
-          </div>
+      {uploadQueue.size > 0 && (
+        <div className="space-y-1.5">
+          {[...uploadQueue.entries()].map(([uid, item]) => (
+            <div key={uid} className="rounded-xl bg-stone-50 ring-1 ring-stone-200/80 px-3 py-2">
+              <div className="flex items-center justify-between text-[11.5px] text-stone-600 mb-1">
+                <span className="truncate pr-2">{item.name}</span>
+                <span className="tabular-nums font-medium text-stone-900">
+                  {item.status === 'done' ? '✓' : item.status === 'error' ? 'Erro' : `${item.pct}%`}
+                </span>
+              </div>
+              <div className="h-1.5 rounded-full bg-stone-200 overflow-hidden">
+                <div
+                  className={`h-full transition-all ${item.status === 'error' ? 'bg-red-500' : item.status === 'done' ? 'bg-emerald-500' : 'bg-stone-900'}`}
+                  style={{ width: `${item.status === 'error' ? 100 : item.pct}%` }}
+                />
+              </div>
+            </div>
+          ))}
         </div>
       )}
 

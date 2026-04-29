@@ -316,7 +316,7 @@ describe('WorkflowModals', () => {
             nome: 'Template social',
             etapas: [
               { nome: 'Briefing', prazo_dias: 2, tipo_prazo: 'corridos', responsavel_id: 9, tipo: 'padrao' },
-              { nome: 'Aprovação final', prazo_dias: 1, tipo_prazo: 'uteis', responsavel_id: null, tipo: 'aprovacao_cliente' },
+              { nome: 'Aprovação final', prazo_dias: 1, tipo_prazo: 'uteis', responsavel_id: 9, tipo: 'aprovacao_cliente' },
             ],
           },
         ] as any}
@@ -362,6 +362,41 @@ describe('WorkflowModals', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it('shows error when etapas are missing a responsible', async () => {
+    render(
+      <NewWorkflowModal
+        open={true}
+        onClose={vi.fn()}
+        onCreated={vi.fn()}
+        clientes={[{ id: 1, nome: 'Aurora', status: 'ativo' } as any]}
+        membros={[{ id: 9, nome: 'Ana' } as any]}
+        templates={[
+          {
+            id: 12,
+            nome: 'Template social',
+            etapas: [
+              { nome: 'Briefing', prazo_dias: 2, tipo_prazo: 'corridos', responsavel_id: 9, tipo: 'padrao' },
+              { nome: 'Aprovação final', prazo_dias: 1, tipo_prazo: 'uteis', responsavel_id: null, tipo: 'aprovacao_cliente' },
+            ],
+          },
+        ] as any}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText('Ex: Posts Instagram — Março 2026'), {
+      target: { value: 'Fluxo Teste' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Aurora' }));
+    fireEvent.click(screen.getByRole('button', { name: /Template social \(2 etapas\)/i }));
+
+    fireEvent.click(screen.getByRole('button', { name: /Criar Fluxo/i }));
+
+    await waitFor(() => {
+      expect(toastErrorMock).toHaveBeenCalledWith('Todas as etapas precisam de um responsável atribuído.');
+    });
+    expect(mockedAddWorkflow).not.toHaveBeenCalled();
+  });
+
   it('rolls back the workflow when etapa creation fails', async () => {
     mockedAddWorkflow.mockResolvedValue({ id: 45 } as never);
     mockedAddWorkflowEtapa.mockRejectedValue(new Error('Falha ao criar etapa'));
@@ -372,7 +407,7 @@ describe('WorkflowModals', () => {
         onClose={vi.fn()}
         onCreated={vi.fn()}
         clientes={[{ id: 1, nome: 'Aurora', status: 'ativo' } as any]}
-        membros={[]}
+        membros={[{ id: 5, nome: 'João' } as any]}
         templates={[]}
       />,
     );
@@ -384,6 +419,7 @@ describe('WorkflowModals', () => {
     fireEvent.change(screen.getByPlaceholderText('Nome da etapa'), {
       target: { value: 'Briefing' },
     });
+    fireEvent.click(screen.getByRole('button', { name: 'João' }));
 
     fireEvent.click(screen.getByRole('button', { name: /Criar Fluxo/i }));
 
