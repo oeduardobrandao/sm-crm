@@ -318,4 +318,71 @@ describe('ScheduleButton', () => {
       expect(toast.error).toHaveBeenCalledWith('Erro ao reenviar');
     });
   });
+
+  // ─── Account status warnings ──────────────────────────────
+
+  describe('igAccountStatus warnings', () => {
+    const revokedStatus = { revoked: true, expired: false, canPublish: true };
+    const expiredStatus = { revoked: false, expired: true, canPublish: true };
+    const noPublishPermission = { revoked: false, expired: false, canPublish: false };
+
+    it('shows revoked warning and disables buttons for aprovado_cliente', () => {
+      render(
+        <ScheduleButton post={makePost()} {...defaultProps} igAccountStatus={revokedStatus} />,
+      );
+      expect(screen.getByText(/Token do Instagram foi revogado/)).toBeTruthy();
+      const scheduleBtn = screen.getByText('Agendar publicação').closest('button')!;
+      const publishBtn = screen.getByText('Publicar agora').closest('button')!;
+      expect(scheduleBtn.hasAttribute('disabled')).toBe(true);
+      expect(publishBtn.hasAttribute('disabled')).toBe(true);
+    });
+
+    it('shows expired warning and disables buttons for aprovado_cliente', () => {
+      render(
+        <ScheduleButton post={makePost()} {...defaultProps} igAccountStatus={expiredStatus} />,
+      );
+      expect(screen.getByText(/Token do Instagram expirou/)).toBeTruthy();
+      const scheduleBtn = screen.getByText('Agendar publicação').closest('button')!;
+      expect(scheduleBtn.hasAttribute('disabled')).toBe(true);
+    });
+
+    it('shows missing permission warning and disables buttons', () => {
+      render(
+        <ScheduleButton post={makePost()} {...defaultProps} igAccountStatus={noPublishPermission} />,
+      );
+      expect(screen.getByText(/Permissão de publicação não concedida/)).toBeTruthy();
+      const scheduleBtn = screen.getByText('Agendar publicação').closest('button')!;
+      const publishBtn = screen.getByText('Publicar agora').closest('button')!;
+      expect(scheduleBtn.hasAttribute('disabled')).toBe(true);
+      expect(publishBtn.hasAttribute('disabled')).toBe(true);
+    });
+
+    it('shows warning banner for agendado status with revoked token', () => {
+      render(
+        <ScheduleButton post={makePost({ status: 'agendado' })} {...defaultProps} igAccountStatus={revokedStatus} />,
+      );
+      expect(screen.getByText(/Token do Instagram foi revogado/)).toBeTruthy();
+      expect(screen.getByText('Agendado')).toBeTruthy();
+    });
+
+    it('shows warning and disables retry for falha_publicacao with revoked token', () => {
+      render(
+        <ScheduleButton post={makePost({ status: 'falha_publicacao' })} {...defaultProps} igAccountStatus={revokedStatus} />,
+      );
+      expect(screen.getByText(/Token do Instagram foi revogado/)).toBeTruthy();
+      const retryBtn = screen.getByText('Tentar novamente').closest('button')!;
+      expect(retryBtn.hasAttribute('disabled')).toBe(true);
+    });
+
+    it('does not show warning when account status is healthy', () => {
+      const healthyStatus = { revoked: false, expired: false, canPublish: true };
+      render(
+        <ScheduleButton post={makePost()} {...defaultProps} igAccountStatus={healthyStatus} />,
+      );
+      expect(screen.queryByText(/Token do Instagram/)).toBeNull();
+      expect(screen.queryByText(/Permissão de publicação/)).toBeNull();
+      const scheduleBtn = screen.getByText('Agendar publicação').closest('button')!;
+      expect(scheduleBtn.hasAttribute('disabled')).toBe(false);
+    });
+  });
 });

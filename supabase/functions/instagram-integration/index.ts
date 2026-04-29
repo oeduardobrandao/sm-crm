@@ -327,7 +327,8 @@ Deno.serve(async (req) => {
                 profile_views_28d,
                 website_clicks_28d,
                 last_synced_at: new Date().toISOString(),
-                authorization_status: 'active'
+                authorization_status: 'active',
+                permissions: Array.isArray(slTokenData.permissions) ? slTokenData.permissions : [],
             }, { onConflict: 'client_id' })
             .select('id')
             .single();

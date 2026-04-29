@@ -134,7 +134,7 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
       if (!workflow) return null;
       const { data: account } = await supabase
         .from('instagram_accounts')
-        .select('id')
+        .select('id, authorization_status, token_expires_at, permissions')
         .eq('client_id', workflow.cliente_id)
         .maybeSingle();
       return account;
@@ -142,6 +142,11 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
     enabled: !!workflowId,
   });
   const hasInstagramAccount = !!igAccount;
+  const igAccountStatus = igAccount ? {
+    revoked: igAccount.authorization_status === 'revoked',
+    expired: igAccount.token_expires_at ? new Date(igAccount.token_expires_at) < new Date() : false,
+    canPublish: Array.isArray(igAccount.permissions) && igAccount.permissions.includes('instagram_business_content_publish'),
+  } : null;
 
   const refresh = useCallback(() => {
     setLocalOrder(null);
@@ -465,6 +470,7 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
                       currentUserId={user?.id}
                       currentUserRole={role}
                       hasInstagramAccount={hasInstagramAccount}
+                      igAccountStatus={igAccountStatus}
                       onToggle={() => setExpandedId(expandedId === post.id ? null : post.id!)}
                       onDelete={() => handleDeletePost(post.id!)}
                       onFieldChange={(field, value) => handleFieldChange(post.id!, field, value)}
@@ -553,6 +559,7 @@ interface SortablePostItemProps {
   currentUserId?: string;
   currentUserRole: 'owner' | 'admin' | 'agent';
   hasInstagramAccount: boolean;
+  igAccountStatus: { revoked: boolean; expired: boolean; canPublish: boolean } | null;
   onToggle: () => void;
   onDelete: () => void;
   onFieldChange: (field: keyof WorkflowPost, value: unknown) => void;
@@ -573,6 +580,7 @@ function SortablePostItem({
   replyText, sendingReply,
   commentThreads, currentUserId, currentUserRole,
   hasInstagramAccount,
+  igAccountStatus,
   onToggle, onDelete, onFieldChange, onContentUpdate, onReplyChange, onReplySend,
   onRefresh,
   onCreateComment, onReplyToComment, onResolveThread, onReopenThread, onEditComment, onDeleteComment,
@@ -761,6 +769,7 @@ function SortablePostItem({
           <ScheduleButton
             post={post}
             hasInstagramAccount={hasInstagramAccount}
+            igAccountStatus={igAccountStatus}
             onStatusChange={onRefresh}
           />
 
