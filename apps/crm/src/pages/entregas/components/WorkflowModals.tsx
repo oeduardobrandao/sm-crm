@@ -124,7 +124,7 @@ function SortableEtapaRow(props: {
         <SelectTrigger><SelectValue placeholder="Sem responsável" /></SelectTrigger>
         <SelectContent>
           <SelectItem value="__none__">Sem responsável</SelectItem>
-          {membros.map(m => <SelectItem key={m.id} value={String(m.id)}>{m.nome}</SelectItem>)}
+          {[...membros].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')).map(m => <SelectItem key={m.id} value={String(m.id)}>{m.nome}</SelectItem>)}
         </SelectContent>
       </Select>
       <div className="flex items-center gap-2">
@@ -343,7 +343,7 @@ export function NewWorkflowModal({
     }
   };
 
-  const activeClientes = clientes.filter(c => c.status === 'ativo');
+  const activeClientes = clientes.filter(c => c.status === 'ativo').sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
 
   return (
     <Dialog open={open} onOpenChange={open => { if (!open) { setEtapas([defaultEtapa()]); onClose(); } }}>
@@ -450,7 +450,7 @@ export function EditWorkflowModal({
   const [fPrazoDias, setFPrazoDias] = useState(String(e.prazo_dias));
   const [fTipoPrazo, setFTipoPrazo] = useState(e.tipo_prazo);
   const [fDataLimite, setFDataLimite] = useState(e.data_limite || '');
-  const activeClientes = clientes.filter(c => c.status === 'ativo');
+  const activeClientes = clientes.filter(c => c.status === 'ativo').sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
 
   const markDirty = () => setIsDirty(true);
 
@@ -531,7 +531,7 @@ export function EditWorkflowModal({
                   <SelectTrigger><SelectValue placeholder="Sem responsável" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none__">Sem responsável</SelectItem>
-                    {membros.map(m => <SelectItem key={m.id} value={String(m.id)}>{m.nome}</SelectItem>)}
+                    {[...membros].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')).map(m => <SelectItem key={m.id} value={String(m.id)}>{m.nome}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>

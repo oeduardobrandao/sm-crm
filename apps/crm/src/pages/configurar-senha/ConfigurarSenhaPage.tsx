@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -27,6 +27,7 @@ function getPasswordStrength(password: string): { percent: number; label: string
 
 export default function ConfigurarSenhaPage() {
   const navigate = useNavigate();
+  const redirectTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [progressWidth, setProgressWidth] = useState(0);
@@ -105,6 +106,7 @@ export default function ConfigurarSenhaPage() {
     return () => {
       mounted.current = false;
       clearTimeout(timeout);
+      redirectTimers.current.forEach(clearTimeout);
       subscription.unsubscribe();
     };
   }, []);
@@ -145,8 +147,8 @@ export default function ConfigurarSenhaPage() {
 
     setLoading(false);
     setSuccess(true);
-    setTimeout(() => setProgressWidth(100), 100);
-    setTimeout(() => { window.location.replace('/dashboard'); }, 2800);
+    redirectTimers.current.push(setTimeout(() => setProgressWidth(100), 100));
+    redirectTimers.current.push(setTimeout(() => { window.location.replace('/dashboard'); }, 2800));
   };
 
   const strength = getPasswordStrength(password);
