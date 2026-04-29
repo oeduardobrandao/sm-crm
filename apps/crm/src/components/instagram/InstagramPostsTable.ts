@@ -4,6 +4,11 @@
 import { getInstagramPosts } from '../../services/instagram';
 import { formatDate } from '../../store';
 import { escapeHTML, sanitizeUrl } from '../../router';
+import { i18n } from '@mesaas/i18n';
+
+function t(key: string, opts?: Record<string, unknown>) {
+  return i18n.t(key, { ns: 'clients', ...opts });
+}
 
 export async function renderInstagramPostsTable(container: HTMLElement, clientId: number) {
   let currentPage = 1;
@@ -11,7 +16,7 @@ export async function renderInstagramPostsTable(container: HTMLElement, clientId
   container.innerHTML = `
     <div class="card animate-up" style="margin-bottom: 1.5rem;">
        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
-           <h3 class="text-xl font-bold tracking-tight mb-4 text-foreground"><i class="ph ph-images" style="color: var(--primary-color); margin-right: 0.5rem;"></i> Últimas Publicações</h3>
+           <h3 class="text-xl font-bold tracking-tight mb-4 text-foreground"><i class="ph ph-images" style="color: var(--primary-color); margin-right: 0.5rem;"></i> ${t('instagram.postsTitle')}</h3>
            <div id="ig-pagination" class="pagination-controls" style="display: none; gap: 0.5rem; align-items: center;">
               <button id="btn-ig-prev" class="btn-icon" disabled><i class="ph ph-caret-left"></i></button>
               <span id="ig-page-indicator" style="font-size: 0.8rem; color: var(--text-muted); font-family: var(--font-mono);">Pg 1</span>
@@ -43,7 +48,10 @@ export async function renderInstagramPostsTable(container: HTMLElement, clientId
       const totalPages = Math.ceil(total / 10);
 
       if (posts.length === 0) {
-          contentArea.innerHTML = '<p style="color:var(--text-muted);font-size:0.9rem;text-align:center;padding:1rem;">Nenhuma publicação encontrada.</p>';
+          const noPostsEl = document.createElement('p');
+          noPostsEl.style.cssText = 'color:var(--text-muted);font-size:0.9rem;text-align:center;padding:1rem;';
+          noPostsEl.textContent = t('instagram.noPosts');
+          contentArea.replaceChildren(noPostsEl);
           btnPrev.disabled = true;
           btnNext.disabled = true;
           lblPage.textContent = '-';
@@ -54,11 +62,11 @@ export async function renderInstagramPostsTable(container: HTMLElement, clientId
         <table class="data-table" style="font-size: 0.85rem;">
           <thead>
             <tr>
-              <th>Data</th>
-              <th>Legenda</th>
-              <th>Engajamento</th>
-              <th>Desempenho</th>
-              <th>Link</th>
+              <th>${escapeHTML(t('instagram.colDate'))}</th>
+              <th>${escapeHTML(t('instagram.colCaption'))}</th>
+              <th>${escapeHTML(t('instagram.colEngagement'))}</th>
+              <th>${escapeHTML(t('instagram.colPerformance'))}</th>
+              <th>${escapeHTML(t('instagram.colLink'))}</th>
             </tr>
           </thead>
           <tbody>
@@ -74,7 +82,7 @@ export async function renderInstagramPostsTable(container: HTMLElement, clientId
 
           html += `
             <tr${rowIndex >= COLLAPSED_LIMIT ? ' class="ig-row-hidden" style="display:none;"' : ''}>
-              <td data-label="Data" style="width: 140px;">
+              <td data-label="${escapeHTML(t('instagram.colDate'))}" style="width: 140px;">
                   <div style="display:flex;align-items:center;gap:0.75rem;">
                     ${safeThumbnail ? `<img loading="lazy" src="${safeThumbnail}" alt="" style="width:44px;height:44px;border-radius:6px;object-fit:cover;flex-shrink:0;background:var(--bg-secondary);" onerror="this.style.display='none'">` : `<div style="width:44px;height:44px;border-radius:6px;background:var(--bg-secondary);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><i class="ph ph-image" style="color:var(--text-muted);font-size:1.1rem;"></i></div>`}
                     <div>
@@ -83,22 +91,22 @@ export async function renderInstagramPostsTable(container: HTMLElement, clientId
                     </div>
                   </div>
               </td>
-              <td data-label="Legenda" style="max-width: 200px; white-space: normal; line-height: 1.4;">
+              <td data-label="${escapeHTML(t('instagram.colCaption'))}" style="max-width: 200px; white-space: normal; line-height: 1.4;">
                  ${captionStr}
               </td>
-              <td data-label="Engajamento">
+              <td data-label="${escapeHTML(t('instagram.colEngagement'))}">
                  <div style="display:flex;gap:0.75rem;color:var(--text-main);">
-                    <span data-tooltip="Curtidas"><i class="ph ph-heart" style="color:#e25563"></i> ${Number(p.likes) || 0}</span>
-                    <span data-tooltip="Comentários"><i class="ph ph-chat-circle"></i> ${Number(p.comments) || 0}</span>
+                    <span data-tooltip="${escapeHTML(t('instagram.likes'))}"><i class="ph ph-heart" style="color:#e25563"></i> ${Number(p.likes) || 0}</span>
+                    <span data-tooltip="${escapeHTML(t('instagram.comments'))}"><i class="ph ph-chat-circle"></i> ${Number(p.comments) || 0}</span>
                  </div>
               </td>
-              <td data-label="Desempenho">
+              <td data-label="${escapeHTML(t('instagram.colPerformance'))}">
                  <div style="display:flex;gap:0.75rem;color:var(--text-muted);">
-                    <span data-tooltip="Alcançadas"><i class="ph ph-users"></i> ${p.reach || 0}</span>
-                    <span data-tooltip="Impressões"><i class="ph ph-eye"></i> ${p.impressions || 0}</span>
+                    <span data-tooltip="${escapeHTML(t('instagram.reachTooltip'))}"><i class="ph ph-users"></i> ${p.reach || 0}</span>
+                    <span data-tooltip="${escapeHTML(t('instagram.impressionsTooltip'))}"><i class="ph ph-eye"></i> ${p.impressions || 0}</span>
                  </div>
               </td>
-              <td data-label="Link">
+              <td data-label="${escapeHTML(t('instagram.colLink'))}">
                  ${safePermalink ? `<a href="${safePermalink}" target="_blank" class="btn-icon" style="text-decoration:none;display:inline-block;"><i class="ph ph-arrow-square-out"></i></a>` : '—'}
               </td>
             </tr>
@@ -110,7 +118,7 @@ export async function renderInstagramPostsTable(container: HTMLElement, clientId
 
       if (posts.length > COLLAPSED_LIMIT) {
         html += `<button id="btn-ig-expand" style="display:flex;align-items:center;justify-content:center;gap:0.4rem;margin:0.75rem auto 0;padding:0.4rem 1rem;font-size:0.8rem;color:var(--primary-color);background:none;border:1px solid var(--border-color);border-radius:6px;cursor:pointer;transition:background 0.15s;">
-          <i class="ph ph-caret-down"></i> Ver mais publicações
+          <i class="ph ph-caret-down"></i> ${escapeHTML(t('instagram.viewMore'))}
         </button>`;
       }
 
@@ -129,21 +137,21 @@ export async function renderInstagramPostsTable(container: HTMLElement, clientId
           const textNode = expandBtn.childNodes[expandBtn.childNodes.length - 1];
           if (isExpanded) {
             icon.className = 'ph ph-caret-down';
-            textNode.textContent = ' Ver mais publicações';
+            textNode.textContent = ` ${t('instagram.viewMore')}`;
           } else {
             icon.className = 'ph ph-caret-up';
-            textNode.textContent = ' Ver menos';
+            textNode.textContent = ` ${t('instagram.viewLess')}`;
           }
         });
       }
 
       // Update Pagination UI
-      lblPage.textContent = `Pg ${page} de ${totalPages}`;
+      lblPage.textContent = t('instagram.pageIndicator', { page: String(page), total: String(totalPages) });
       btnPrev.disabled = page <= 1;
       btnNext.disabled = page >= totalPages;
 
     } catch (err: any) {
-        contentArea.innerHTML = `<p style="color:var(--danger);font-size:0.9rem;padding:1rem;">Erro ao carregar posts: ${escapeHTML(err.message || 'Erro desconhecido')}</p>`;
+        contentArea.innerHTML = `<p style="color:var(--danger);font-size:0.9rem;padding:1rem;">${escapeHTML(t('instagram.postsError', { error: err.message || t('instagram.unknownError') }))}</p>`;
     }
   }
 

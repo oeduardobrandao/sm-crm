@@ -3,6 +3,11 @@
 // =============================================
 import { formatDate } from '../../store';
 import { Chart, registerables } from 'chart.js';
+import { i18n } from '@mesaas/i18n';
+
+function t(key: string, opts?: Record<string, unknown>) {
+  return i18n.t(key, { ns: 'clients', ...opts });
+}
 
 Chart.register(...registerables);
 
@@ -10,7 +15,7 @@ export function renderInstagramFollowerChart(container: HTMLElement, history: an
   if (!history || history.length === 0) {
     container.innerHTML = `
        <div class="card animate-up" style="height: 300px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); text-align: center; margin-bottom: 1.5rem;">
-          <p>Dados de seguidores insuficientes para exibir o gráfico.</p>
+          <p>${t('instagram.followerChartEmpty')}</p>
        </div>
     `;
     return;
@@ -18,7 +23,7 @@ export function renderInstagramFollowerChart(container: HTMLElement, history: an
 
   container.innerHTML = `
     <div class="card animate-up" style="margin-bottom: 1.5rem;">
-       <h3 class="text-xl font-bold tracking-tight mb-4 text-foreground"><i class="ph ph-trend-up" style="color: var(--primary-color); margin-right: 0.5rem;"></i> Crescimento de Seguidores (Últimos 30 Dias)</h3>
+       <h3 class="text-xl font-bold tracking-tight mb-4 text-foreground"><i class="ph ph-trend-up" style="color: var(--primary-color); margin-right: 0.5rem;"></i> ${t('instagram.followerChartTitle')}</h3>
        <div style="position: relative; height: 300px; width: 100%;">
           <canvas id="ig-follower-chart"></canvas>
        </div>
@@ -41,7 +46,7 @@ export function renderInstagramFollowerChart(container: HTMLElement, history: an
     data: {
       labels: labels,
       datasets: [{
-        label: 'Seguidores',
+        label: t('instagram.followers'),
         data: data,
         borderColor: '#E1306C',
         backgroundColor: 'rgba(225, 48, 108, 0.1)',
@@ -69,7 +74,8 @@ export function renderInstagramFollowerChart(container: HTMLElement, history: an
           displayColors: false,
           callbacks: {
             label: function(context: any) {
-              return ` ${context.parsed.y.toLocaleString('pt-BR')} Seguidores`;
+              const locale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
+              return t('instagram.followerTooltip', { count: context.parsed.y.toLocaleString(locale) });
             }
           }
         }
