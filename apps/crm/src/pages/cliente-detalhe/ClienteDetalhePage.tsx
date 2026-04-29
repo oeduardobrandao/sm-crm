@@ -1339,7 +1339,7 @@ function InstagramSection({ clienteId, loadingIg, igSummary, refetchIg, onNaviga
   refetchIg: () => void;
   onNavigateAnalytics: () => void;
 }) {
-  const { t } = useTranslation('clients');
+  const { t, i18n } = useTranslation('clients');
   const igOverviewRef = useRef<HTMLDivElement>(null);
   const igChartRef = useRef<HTMLDivElement>(null);
   const igPostsRef = useRef<HTMLDivElement>(null);
@@ -1375,7 +1375,7 @@ function InstagramSection({ clienteId, loadingIg, igSummary, refetchIg, onNaviga
       if (igChartRef.current) renderInstagramFollowerChart(igChartRef.current, igSummary.history ?? []);
       if (igPostsRef.current) renderInstagramPostsTable(igPostsRef.current, clienteId);
     }
-  }, [loadingIg, igSummary, clienteId, refetchIg]);
+  }, [loadingIg, igSummary, clienteId, refetchIg, i18n.language]);
 
   return (
     <div id="ig-container" style={{ marginBottom: '1.5rem' }}>
