@@ -123,23 +123,18 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
     enabled: postIds.length > 0,
   });
 
+  const clienteId = card.workflow.cliente_id;
   const { data: igAccount } = useQuery({
-    queryKey: ['igAccountForWorkflow', workflowId],
+    queryKey: ['igAccountForWorkflow', clienteId],
     queryFn: async () => {
-      const { data: workflow } = await supabase
-        .from('workflows')
-        .select('cliente_id')
-        .eq('id', workflowId)
-        .single();
-      if (!workflow) return null;
       const { data: account } = await supabase
         .from('instagram_accounts')
         .select('id, authorization_status, token_expires_at, permissions')
-        .eq('client_id', workflow.cliente_id)
+        .eq('client_id', clienteId)
         .maybeSingle();
       return account;
     },
-    enabled: !!workflowId,
+    enabled: !!clienteId,
   });
   const hasInstagramAccount = !!igAccount;
   const igAccountStatus = igAccount ? {
