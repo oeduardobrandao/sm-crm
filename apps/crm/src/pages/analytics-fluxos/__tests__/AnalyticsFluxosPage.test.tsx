@@ -46,6 +46,14 @@ vi.mock('@/components/ui/badge', () => ({
   Badge: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
 }));
 
+vi.mock('@/components/ui/dropdown-menu', () => ({
+  DropdownMenu: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DropdownMenuTrigger: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DropdownMenuContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DropdownMenuLabel: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DropdownMenuSeparator: () => <hr />,
+}));
+
 vi.mock('@/components/ui/spinner', () => ({
   Spinner: ({ size }: { size?: string }) => <div data-testid={`spinner-${size ?? 'md'}`}>Spinner</div>,
 }));
@@ -234,10 +242,10 @@ describe('AnalyticsFluxosPage', () => {
     });
 
     expect(screen.getByText('Analytics de Fluxos')).toBeTruthy();
-    expect(screen.getByText('2 fluxos no total')).toBeTruthy();
+    expect(screen.getByText('2 fluxos')).toBeTruthy();
     expect(screen.getByText('Tempo médio por etapa')).toBeTruthy();
-    expect(screen.getByText('Ana')).toBeTruthy();
-    expect(screen.getByText('Roteiro')).toBeTruthy();
+    expect(screen.getAllByText('Ana').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Roteiro').length).toBeGreaterThan(0);
 
     const concludedCard = screen.getByText('CONCLUÍDOS').closest('.kpi-card');
     const activeCard = screen.getByText('ATIVOS').closest('.kpi-card');

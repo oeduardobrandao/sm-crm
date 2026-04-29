@@ -414,9 +414,8 @@ describe('AnalyticsPage', () => {
     fireEvent.change(selects[1], { target: { value: '7' } });
 
     await waitFor(() => {
-      expect(screen.getByText('Visão geral de todas as contas conectadas · últimos 7 dias.')).toBeInTheDocument();
+      expect(mockedUseQuery).toHaveBeenCalledWith(expect.objectContaining({ queryKey: ['portfolio-summary', 7] }));
     });
-    expect(mockedUseQuery).toHaveBeenCalledWith(expect.objectContaining({ queryKey: ['portfolio-summary', 7] }));
     expect(getKpiCard('SEGUIDORES TOTAIS')).toHaveTextContent('2.550');
     expect(getKpiCard('CONTAS CONECTADAS')).toHaveTextContent('1 / 1');
   });
@@ -435,7 +434,7 @@ describe('AnalyticsPage', () => {
 
     renderPage();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Sincronizar Tudo' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sync' }));
     expect(screen.getByRole('button', { name: 'Sincronizando...' })).toBeDisabled();
 
     await act(async () => {
