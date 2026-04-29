@@ -4435,7 +4435,7 @@ body.role-agent input[name="valor_total"] {
   border: 1px solid var(--border-color);
   border-radius: 8px;
   overflow: hidden;
-  background: var(--surface-1, #fafafa);
+  background: var(--card-bg);
   transition: border-color 0.15s;
 }
 
