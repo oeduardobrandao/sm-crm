@@ -363,3 +363,209 @@ CREATE TRIGGER notify_briefing_answered
   FOR EACH ROW
   WHEN (OLD.answer IS NULL AND NEW.answer IS NOT NULL)
   EXECUTE FUNCTION trg_notify_briefing_answered();
+
+-- =====================================================================
+-- Workflow / Team triggers (actor excluded via auth.uid())
+-- =====================================================================
+
+-- workflow_etapas: status → 'ativo' (step_activated)
+CREATE OR REPLACE FUNCTION trg_notify_step_activated()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_conta_id      uuid;
+  v_client_name   text;
+  v_workflow_title text;
+  v_targets       uuid[];
+BEGIN
+  BEGIN
+    SELECT w.conta_id, c.nome, w.titulo
+      INTO v_conta_id, v_client_name, v_workflow_title
+      FROM workflows w
+      LEFT JOIN clientes c ON c.id = w.cliente_id
+     WHERE w.id = NEW.workflow_id;
+
+    IF v_conta_id IS NULL THEN
+      RETURN NEW;
+    END IF;
+
+    v_targets := resolve_notification_targets(v_conta_id, NEW.responsavel_id, ARRAY['owner','admin']);
+
+    PERFORM insert_notification_batch(
+      v_conta_id,
+      v_targets,
+      'step_activated',
+      '/workflows/' || NEW.workflow_id,
+      jsonb_build_object(
+        'client_name',     v_client_name,
+        'workflow_title',  v_workflow_title,
+        'step_name',       NEW.titulo,
+        'workflow_id',     NEW.workflow_id,
+        'etapa_id',        NEW.id
+      ),
+      auth.uid()
+    );
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'trg_notify_step_activated failed: % %', SQLERRM, SQLSTATE;
+  END;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS notify_step_activated ON workflow_etapas;
+CREATE TRIGGER notify_step_activated
+  AFTER UPDATE ON workflow_etapas
+  FOR EACH ROW
+  WHEN (NEW.status = 'ativo' AND OLD.status IS DISTINCT FROM NEW.status)
+  EXECUTE FUNCTION trg_notify_step_activated();
+
+-- workflow_etapas: status → 'concluido' (step_completed, owners/admins only)
+CREATE OR REPLACE FUNCTION trg_notify_step_completed()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_conta_id      uuid;
+  v_client_name   text;
+  v_workflow_title text;
+  v_targets       uuid[];
+BEGIN
+  BEGIN
+    SELECT w.conta_id, c.nome, w.titulo
+      INTO v_conta_id, v_client_name, v_workflow_title
+      FROM workflows w
+      LEFT JOIN clientes c ON c.id = w.cliente_id
+     WHERE w.id = NEW.workflow_id;
+
+    IF v_conta_id IS NULL THEN
+      RETURN NEW;
+    END IF;
+
+    v_targets := resolve_notification_targets(v_conta_id, NULL, ARRAY['owner','admin']);
+
+    PERFORM insert_notification_batch(
+      v_conta_id,
+      v_targets,
+      'step_completed',
+      '/workflows/' || NEW.workflow_id,
+      jsonb_build_object(
+        'client_name',     v_client_name,
+        'workflow_title',  v_workflow_title,
+        'step_name',       NEW.titulo,
+        'workflow_id',     NEW.workflow_id,
+        'etapa_id',        NEW.id
+      ),
+      auth.uid()
+    );
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'trg_notify_step_completed failed: % %', SQLERRM, SQLSTATE;
+  END;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS notify_step_completed ON workflow_etapas;
+CREATE TRIGGER notify_step_completed
+  AFTER UPDATE ON workflow_etapas
+  FOR EACH ROW
+  WHEN (NEW.status = 'concluido' AND OLD.status IS DISTINCT FROM NEW.status)
+  EXECUTE FUNCTION trg_notify_step_completed();
+
+-- workflow_posts: responsavel_id changed (and not → NULL) (post_assigned)
+CREATE OR REPLACE FUNCTION trg_notify_post_assigned()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_conta_id    uuid;
+  v_client_name text;
+  v_targets     uuid[];
+BEGIN
+  BEGIN
+    SELECT w.conta_id, c.nome
+      INTO v_conta_id, v_client_name
+      FROM workflows w
+      LEFT JOIN clientes c ON c.id = w.cliente_id
+     WHERE w.id = NEW.workflow_id;
+
+    IF v_conta_id IS NULL THEN
+      RETURN NEW;
+    END IF;
+
+    v_targets := resolve_notification_targets(v_conta_id, NEW.responsavel_id, ARRAY['owner','admin']);
+
+    PERFORM insert_notification_batch(
+      v_conta_id,
+      v_targets,
+      'post_assigned',
+      '/workflows/' || NEW.workflow_id || '/posts/' || NEW.id,
+      jsonb_build_object(
+        'client_name', v_client_name,
+        'post_title',  NEW.titulo,
+        'workflow_id', NEW.workflow_id,
+        'post_id',     NEW.id
+      ),
+      auth.uid()
+    );
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'trg_notify_post_assigned failed: % %', SQLERRM, SQLSTATE;
+  END;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS notify_post_assigned ON workflow_posts;
+CREATE TRIGGER notify_post_assigned
+  AFTER UPDATE ON workflow_posts
+  FOR EACH ROW
+  WHEN (NEW.responsavel_id IS DISTINCT FROM OLD.responsavel_id AND NEW.responsavel_id IS NOT NULL)
+  EXECUTE FUNCTION trg_notify_post_assigned();
+
+-- workflows: status → 'concluido' (workflow_completed)
+CREATE OR REPLACE FUNCTION trg_notify_workflow_completed()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_client_name text;
+  v_targets     uuid[];
+BEGIN
+  BEGIN
+    SELECT nome INTO v_client_name FROM clientes WHERE id = NEW.cliente_id;
+
+    v_targets := resolve_notification_targets(NEW.conta_id, NULL, ARRAY['owner','admin']);
+
+    PERFORM insert_notification_batch(
+      NEW.conta_id,
+      v_targets,
+      'workflow_completed',
+      '/workflows/' || NEW.id,
+      jsonb_build_object(
+        'client_name',    v_client_name,
+        'workflow_title', NEW.titulo,
+        'workflow_id',    NEW.id
+      ),
+      auth.uid()
+    );
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'trg_notify_workflow_completed failed: % %', SQLERRM, SQLSTATE;
+  END;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS notify_workflow_completed ON workflows;
+CREATE TRIGGER notify_workflow_completed
+  AFTER UPDATE ON workflows
+  FOR EACH ROW
+  WHEN (NEW.status = 'concluido' AND OLD.status IS DISTINCT FROM NEW.status)
+  EXECUTE FUNCTION trg_notify_workflow_completed();
