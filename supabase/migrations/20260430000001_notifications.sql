@@ -709,3 +709,44 @@ DROP TRIGGER IF EXISTS notify_member_removed ON workspace_members;
 CREATE TRIGGER notify_member_removed
   AFTER DELETE ON workspace_members
   FOR EACH ROW EXECUTE FUNCTION trg_notify_member_removed();
+
+-- =====================================================================
+-- Cron support: notification_deadline_candidates
+-- Returns active workflow_etapas due tomorrow with the data
+-- the deadline cron needs in one call.
+-- =====================================================================
+CREATE OR REPLACE FUNCTION notification_deadline_candidates()
+RETURNS TABLE (
+  etapa_id        bigint,
+  workflow_id     bigint,
+  conta_id        uuid,
+  cliente_id      bigint,
+  client_name     text,
+  workflow_title  text,
+  step_name       text,
+  responsavel_id  bigint,
+  deadline_date   date
+)
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT
+    e.id            AS etapa_id,
+    e.workflow_id   AS workflow_id,
+    w.conta_id      AS conta_id,
+    w.cliente_id    AS cliente_id,
+    c.nome          AS client_name,
+    w.titulo        AS workflow_title,
+    e.nome          AS step_name,
+    e.responsavel_id AS responsavel_id,
+    e.data_limite   AS deadline_date
+  FROM workflow_etapas e
+  JOIN workflows w ON w.id = e.workflow_id
+  LEFT JOIN clientes c ON c.id = w.cliente_id
+  WHERE e.status = 'ativo'
+    AND e.data_limite = CURRENT_DATE + 1;
+$$;
+
+REVOKE ALL ON FUNCTION notification_deadline_candidates() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION notification_deadline_candidates() TO service_role;
