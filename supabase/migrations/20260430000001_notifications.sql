@@ -1,8 +1,12 @@
 -- =====================================================================
 -- 20260430000001_notifications.sql
--- Notification system: table + RLS + indexes + column grants.
--- Subsequent sections (helpers, triggers, membros ALTER, RPC) are
--- appended in later tasks of the implementation plan.
+-- Notification system: table + RLS + indexes + column grants
+-- + membros.crm_user_id + set_membro_crm_user RPC
+-- + helper functions (resolve_notification_targets, insert_notification_batch)
+-- + 10 AFTER triggers across hub, workflow, and workspace surfaces.
+-- All trigger functions are SECURITY DEFINER (owned by postgres) and
+-- wrap their core logic in EXCEPTION WHEN OTHERS so notification
+-- failures never roll back the underlying business operation.
 -- =====================================================================
 
 -- ---------- Table -----------------------------------------------------
