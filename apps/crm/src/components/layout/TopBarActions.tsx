@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Bell, MessageCircle } from 'lucide-react';
+import { MessageCircle } from 'lucide-react';
+import NotificationBell from './NotificationBell';
 
 declare global {
   interface Window {
@@ -23,9 +24,7 @@ export default function TopBarActions() {
 
   return (
     <>
-      <button type="button" className="topbar-action-btn" aria-label="Notificações">
-        <Bell size={18} />
-      </button>
+      <NotificationBell />
 
       <button
         type="button"
