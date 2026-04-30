@@ -123,12 +123,12 @@ export default function EquipePage() {
         data_pagamento: diaPag,
       };
       if (editing?.id) {
-        await updateMembro(editing.id, payload);
         const desiredCrmUser = values.crmUserId === '' || values.crmUserId == null ? null : values.crmUserId;
         const currentCrmUser = editing.crm_user_id ?? null;
         if (desiredCrmUser !== currentCrmUser) {
-          await setMembroCrmUser(editing.id!, desiredCrmUser);
+          await setMembroCrmUser(editing.id, desiredCrmUser);
         }
+        await updateMembro(editing.id, payload);
         toast.success('Membro atualizado');
       } else {
         await addMembro(payload);
