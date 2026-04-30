@@ -62,3 +62,53 @@ DROP POLICY IF EXISTS notifications_update ON notifications;
 CREATE POLICY notifications_update ON notifications
   FOR UPDATE USING (user_id = auth.uid())
   WITH CHECK (user_id = auth.uid());
+
+-- =====================================================================
+-- membros.crm_user_id + privileged RPC
+-- =====================================================================
+
+-- Add nullable crm_user_id (links membro → CRM auth user).
+-- Distinct from the existing membros.user_id column (which tracks who
+-- created the membro record — different concept entirely).
+ALTER TABLE membros
+  ADD COLUMN IF NOT EXISTS crm_user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL;
+
+-- Existing membros RLS lets any workspace member UPDATE any membro row.
+-- Strip authenticated's UPDATE access to crm_user_id specifically so
+-- agents cannot redirect admin notifications to themselves.
+REVOKE UPDATE (crm_user_id) ON membros FROM authenticated;
+
+-- Privileged setter — only owners/admins can change crm_user_id.
+CREATE OR REPLACE FUNCTION set_membro_crm_user(
+  p_membro_id bigint,
+  p_crm_user_id uuid
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_caller_role text;
+  v_membro_conta uuid;
+BEGIN
+  SELECT conta_id INTO v_membro_conta FROM membros WHERE id = p_membro_id;
+  IF v_membro_conta IS NULL THEN
+    RAISE EXCEPTION 'Membro not found';
+  END IF;
+
+  SELECT role INTO v_caller_role
+    FROM workspace_members
+    WHERE user_id = auth.uid()
+      AND workspace_id = v_membro_conta;
+
+  IF v_caller_role NOT IN ('owner', 'admin') THEN
+    RAISE EXCEPTION 'Insufficient permissions';
+  END IF;
+
+  UPDATE membros SET crm_user_id = p_crm_user_id WHERE id = p_membro_id;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION set_membro_crm_user(bigint, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION set_membro_crm_user(bigint, uuid) TO authenticated;
