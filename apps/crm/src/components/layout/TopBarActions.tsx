@@ -11,6 +11,7 @@ export default function TopBarActions() {
   const [crispUnread, setCrispUnread] = useState(false);
 
   const openCrisp = useCallback(() => {
+    window.$crisp?.push(['do', 'chat:show']);
     window.$crisp?.push(['do', 'chat:open']);
     setCrispUnread(false);
   }, []);

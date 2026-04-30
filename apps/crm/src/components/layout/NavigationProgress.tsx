@@ -1,11 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
-import { useIsFetching } from '@tanstack/react-query';
 
 export default function NavigationProgress() {
   const location = useLocation();
-  const isFetching = useIsFetching();
-  const [state, setState] = useState<'idle' | 'loading' | 'completing'>('idle');
+  const [state, setState] = useState<'idle' | 'loading' | 'completing' | 'fading'>('idle');
   const prevPathRef = useRef(location.pathname);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -13,29 +11,26 @@ export default function NavigationProgress() {
     if (location.pathname !== prevPathRef.current) {
       prevPathRef.current = location.pathname;
       setState('loading');
-    }
-  }, [location.pathname]);
 
-  useEffect(() => {
-    if (isFetching > 0) {
-      setState('loading');
-      return;
-    }
-
-    if (state === 'loading') {
-      setState('completing');
-      timeoutRef.current = setTimeout(() => setState('idle'), 500);
+      timeoutRef.current = setTimeout(() => {
+        setState('completing');
+        setTimeout(() => setState('fading'), 200);
+        setTimeout(() => setState('idle'), 600);
+      }, 400);
     }
 
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
-  }, [isFetching, state]);
+  }, [location.pathname]);
+
+  if (state === 'idle') return null;
 
   const className = [
     'nav-progress-bar',
     state === 'loading' && 'nav-progress-bar--active',
-    state === 'completing' && 'nav-progress-bar--completing',
+    (state === 'completing' || state === 'fading') && 'nav-progress-bar--completing',
+    state === 'fading' && 'nav-progress-bar--fade',
   ].filter(Boolean).join(' ');
 
   return (
