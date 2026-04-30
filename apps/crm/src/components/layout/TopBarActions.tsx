@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { MessageCircle } from 'lucide-react';
 import NotificationBell from './NotificationBell';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 declare global {
   interface Window {
@@ -20,21 +21,27 @@ export default function TopBarActions() {
   useEffect(() => {
     window.$crisp?.push(['on', 'message:received', () => setCrispUnread(true)]);
     window.$crisp?.push(['on', 'chat:opened', () => setCrispUnread(false)]);
+    window.$crisp?.push(['on', 'chat:closed', () => window.$crisp?.push(['do', 'chat:hide'])]);
   }, []);
 
   return (
-    <>
+    <TooltipProvider delayDuration={200}>
       <NotificationBell />
 
-      <button
-        type="button"
-        className="topbar-action-btn"
-        aria-label="Chat"
-        onClick={openCrisp}
-      >
-        <MessageCircle size={18} />
-        {crispUnread && <span className="unread-dot unread-dot--primary" />}
-      </button>
-    </>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className="topbar-action-btn"
+            aria-label="Chat"
+            onClick={openCrisp}
+          >
+            <MessageCircle size={18} />
+            {crispUnread && <span className="unread-dot unread-dot--primary" />}
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>Chat de suporte</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
