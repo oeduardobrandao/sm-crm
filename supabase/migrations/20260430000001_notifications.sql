@@ -74,9 +74,14 @@ ALTER TABLE membros
   ADD COLUMN IF NOT EXISTS crm_user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL;
 
 -- Existing membros RLS lets any workspace member UPDATE any membro row.
--- Strip authenticated's UPDATE access to crm_user_id specifically so
--- agents cannot redirect admin notifications to themselves.
-REVOKE UPDATE (crm_user_id) ON membros FROM authenticated;
+-- We do NOT want agents to be able to change crm_user_id (privilege escalation —
+-- an agent could redirect admin notifications to themselves), so we strip
+-- table-level UPDATE and re-grant only the columns that should be agent-editable.
+-- NOTE: any new column added to `membros` must be appended to this GRANT or it
+-- will be silently read-only for the `authenticated` role.
+REVOKE UPDATE ON membros FROM authenticated;
+GRANT UPDATE (nome, cargo, tipo, custo_mensal, avatar_url, data_pagamento)
+  ON membros TO authenticated;
 
 -- Privileged setter — only owners/admins can change crm_user_id.
 CREATE OR REPLACE FUNCTION set_membro_crm_user(
