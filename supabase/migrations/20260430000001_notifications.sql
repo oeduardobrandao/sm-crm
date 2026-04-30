@@ -194,3 +194,172 @@ REVOKE ALL ON FUNCTION resolve_notification_targets(uuid, bigint, text[]) FROM P
 REVOKE ALL ON FUNCTION insert_notification_batch(uuid, uuid[], text, text, jsonb, uuid) FROM PUBLIC;
 -- These helpers are only called from trigger functions (also SECURITY DEFINER)
 -- so no broader EXECUTE grant is needed.
+
+-- =====================================================================
+-- Hub / Client triggers
+-- All wrapped in EXCEPTION blocks so notification failures never
+-- roll back the underlying business operation.
+-- =====================================================================
+
+-- post_approvals AFTER INSERT → post_approved | post_correction | post_message
+CREATE OR REPLACE FUNCTION trg_notify_post_approval()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_responsavel_id bigint;
+  v_workflow_id    bigint;
+  v_conta_id       uuid;
+  v_cliente_id     bigint;
+  v_post_title     text;
+  v_client_name    text;
+  v_targets        uuid[];
+  v_type           text;
+  v_link           text;
+  v_metadata       jsonb;
+BEGIN
+  BEGIN
+    SELECT wp.responsavel_id, wp.workflow_id, wp.titulo,
+           w.conta_id, w.cliente_id
+      INTO v_responsavel_id, v_workflow_id, v_post_title, v_conta_id, v_cliente_id
+      FROM workflow_posts wp
+      JOIN workflows w ON w.id = wp.workflow_id
+     WHERE wp.id = NEW.post_id;
+
+    IF v_conta_id IS NULL THEN
+      RETURN NEW;
+    END IF;
+
+    SELECT nome INTO v_client_name FROM clientes WHERE id = v_cliente_id;
+
+    v_type := CASE NEW.action
+      WHEN 'aprovado' THEN 'post_approved'
+      WHEN 'correcao' THEN 'post_correction'
+      WHEN 'mensagem' THEN 'post_message'
+      ELSE NULL
+    END;
+
+    IF v_type IS NULL THEN
+      RETURN NEW;
+    END IF;
+
+    v_targets := resolve_notification_targets(v_conta_id, v_responsavel_id, ARRAY['owner','admin']);
+    v_link := '/workflows/' || v_workflow_id || '/posts/' || NEW.post_id;
+    v_metadata := jsonb_build_object(
+      'client_name', v_client_name,
+      'post_title',  v_post_title,
+      'workflow_id', v_workflow_id,
+      'post_id',     NEW.post_id
+    );
+
+    IF v_type IN ('post_correction', 'post_message') THEN
+      v_metadata := v_metadata || jsonb_build_object('comentario', NEW.comentario);
+    END IF;
+
+    PERFORM insert_notification_batch(v_conta_id, v_targets, v_type, v_link, v_metadata, NULL);
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'trg_notify_post_approval failed: % %', SQLERRM, SQLSTATE;
+  END;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS notify_post_approval ON post_approvals;
+CREATE TRIGGER notify_post_approval
+  AFTER INSERT ON post_approvals
+  FOR EACH ROW EXECUTE FUNCTION trg_notify_post_approval();
+
+-- ideias AFTER INSERT (status = 'nova') → idea_submitted
+CREATE OR REPLACE FUNCTION trg_notify_idea_submitted()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_client_name text;
+  v_targets     uuid[];
+BEGIN
+  BEGIN
+    IF NEW.status IS DISTINCT FROM 'nova' THEN
+      RETURN NEW;
+    END IF;
+
+    SELECT nome INTO v_client_name FROM clientes WHERE id = NEW.cliente_id;
+
+    v_targets := resolve_notification_targets(NEW.workspace_id, NULL, ARRAY['owner','admin']);
+
+    PERFORM insert_notification_batch(
+      NEW.workspace_id,
+      v_targets,
+      'idea_submitted',
+      '/ideias/' || NEW.id,
+      jsonb_build_object(
+        'client_name', v_client_name,
+        'idea_title',  NEW.titulo,
+        'idea_id',     NEW.id
+      ),
+      NULL
+    );
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'trg_notify_idea_submitted failed: % %', SQLERRM, SQLSTATE;
+  END;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS notify_idea_submitted ON ideias;
+CREATE TRIGGER notify_idea_submitted
+  AFTER INSERT ON ideias
+  FOR EACH ROW EXECUTE FUNCTION trg_notify_idea_submitted();
+
+-- hub_briefing_questions AFTER UPDATE (answer NULL→non-NULL) → briefing_answered
+CREATE OR REPLACE FUNCTION trg_notify_briefing_answered()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_workspace_id uuid;
+  v_client_name  text;
+  v_targets      uuid[];
+BEGIN
+  BEGIN
+    SELECT c.conta_id, c.nome
+      INTO v_workspace_id, v_client_name
+      FROM clientes c
+     WHERE c.id = NEW.cliente_id;
+
+    IF v_workspace_id IS NULL THEN
+      RETURN NEW;
+    END IF;
+
+    v_targets := resolve_notification_targets(v_workspace_id, NULL, ARRAY['owner','admin']);
+
+    PERFORM insert_notification_batch(
+      v_workspace_id,
+      v_targets,
+      'briefing_answered',
+      '/clientes/' || NEW.cliente_id,
+      jsonb_build_object(
+        'client_name',   v_client_name,
+        'question_text', NEW.question
+      ),
+      NULL
+    );
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'trg_notify_briefing_answered failed: % %', SQLERRM, SQLSTATE;
+  END;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS notify_briefing_answered ON hub_briefing_questions;
+CREATE TRIGGER notify_briefing_answered
+  AFTER UPDATE ON hub_briefing_questions
+  FOR EACH ROW
+  WHEN (OLD.answer IS NULL AND NEW.answer IS NOT NULL)
+  EXECUTE FUNCTION trg_notify_briefing_answered();
