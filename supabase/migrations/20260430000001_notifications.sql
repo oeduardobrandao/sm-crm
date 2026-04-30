@@ -201,8 +201,11 @@ $$;
 
 REVOKE ALL ON FUNCTION resolve_notification_targets(uuid, bigint, text[]) FROM PUBLIC;
 REVOKE ALL ON FUNCTION insert_notification_batch(uuid, uuid[], text, text, jsonb, uuid) FROM PUBLIC;
--- These helpers are only called from trigger functions (also SECURITY DEFINER)
--- so no broader EXECUTE grant is needed.
+-- Trigger functions (also SECURITY DEFINER, owned by postgres) can call these
+-- without an explicit grant. The deadline cron edge function runs as
+-- `service_role` and needs explicit EXECUTE on both helpers.
+GRANT EXECUTE ON FUNCTION resolve_notification_targets(uuid, bigint, text[]) TO service_role;
+GRANT EXECUTE ON FUNCTION insert_notification_batch(uuid, uuid[], text, text, jsonb, uuid) TO service_role;
 
 -- =====================================================================
 -- Hub / Client triggers
