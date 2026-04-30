@@ -78,7 +78,7 @@ Deno.serve(createNotificationDeadlineCronHandler({
             p_workspace_id: c.conta_id,
             p_user_ids:     userIds,
             p_type:         "deadline_approaching",
-            p_link:         `/workflows/${c.workflow_id}`,
+            p_link:         `/entregas?drawer=${c.workflow_id}`,
             p_metadata: {
               client_name:    c.client_name,
               workflow_title: c.workflow_title,
