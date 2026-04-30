@@ -18,6 +18,26 @@ vi.mock('../MobileNav', () => ({
   default: () => <div data-testid="mobile-nav">Mobile nav</div>,
 }));
 
+vi.mock('../TopBar', () => ({
+  default: ({ showHamburger, isDrawerOpen, onHamburgerClick }: {
+    showHamburger?: boolean;
+    isDrawerOpen?: boolean;
+    onHamburgerClick?: () => void;
+  }) => (
+    <div data-testid="topbar">
+      {showHamburger && (
+        <button
+          type="button"
+          onClick={onHamburgerClick}
+          aria-label={isDrawerOpen ? 'Fechar menu' : 'Abrir menu'}
+        >
+          Menu
+        </button>
+      )}
+    </div>
+  ),
+}));
+
 import AppLayout from '../AppLayout';
 
 function setViewport(width: number) {
@@ -28,15 +48,13 @@ function setViewport(width: number) {
   });
 }
 
-function mockMatchMedia(initialMatches: boolean) {
+function createMediaQuery(initialMatches: boolean) {
   let matches = initialMatches;
   const listeners = new Set<(event: MediaQueryListEvent) => void>();
 
-  const mediaQueryList = {
-    get matches() {
-      return matches;
-    },
-    media: '(min-width: 768px) and (max-width: 1100px)',
+  return {
+    get matches() { return matches; },
+    media: '',
     addEventListener: vi.fn((_event: string, listener: (event: MediaQueryListEvent) => void) => {
       listeners.add(listener);
     }),
@@ -48,10 +66,18 @@ function mockMatchMedia(initialMatches: boolean) {
       listeners.forEach((listener) => listener({ matches: nextMatches } as MediaQueryListEvent));
     },
   };
+}
 
-  vi.stubGlobal('matchMedia', vi.fn(() => mediaQueryList));
+function mockMatchMedia(tabletMatches: boolean) {
+  const tabletQuery = createMediaQuery(tabletMatches);
+  const mobileQuery = createMediaQuery(false);
 
-  return mediaQueryList;
+  vi.stubGlobal('matchMedia', vi.fn((query: string) => {
+    if (query.includes('max-width: 767px')) return mobileQuery;
+    return tabletQuery;
+  }));
+
+  return tabletQuery;
 }
 
 function renderLayout(pathname = '/dashboard') {

@@ -25,6 +25,7 @@ import { ChevronDown } from 'lucide-react';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import {
   getMembros, addMembro, updateMembro, removeMembro,
+  getWorkspaceUsers, setMembroCrmUser,
   formatBRL, getInitials,
   type Membro,
 } from '../../store';
@@ -39,6 +40,7 @@ const membroSchema = z.object({
   tipo: z.enum(['clt', 'freelancer_mensal', 'freelancer_demanda']),
   custo: z.string(),
   diaPag: z.string().refine((v) => v === '' || (Number(v) >= 1 && Number(v) <= 31), 'Dia deve ser entre 1 e 31'),
+  crmUserId: z.string().optional(),
 });
 type MembroFormValues = z.infer<typeof membroSchema>;
 
@@ -69,10 +71,15 @@ export default function EquipePage() {
 
   const form = useForm<MembroFormValues>({
     resolver: zodResolver(membroSchema),
-    defaultValues: { nome: '', cargo: '', tipo: 'clt', custo: '', diaPag: '' },
+    defaultValues: { nome: '', cargo: '', tipo: 'clt', custo: '', diaPag: '', crmUserId: '' },
   });
 
   const { data: membros = [], isLoading } = useQuery({ queryKey: ['membros'], queryFn: getMembros });
+  const { data: workspaceUsers = [] } = useQuery({
+    queryKey: ['workspace-users'],
+    queryFn: getWorkspaceUsers,
+    enabled: !isAgent,
+  });
   const totalCost = membros.reduce((s, m) => s + (m.custo_mensal ?? 0), 0);
 
   const filtered = membros
@@ -86,7 +93,7 @@ export default function EquipePage() {
 
   const openAdd = () => {
     setEditing(null);
-    form.reset({ nome: '', cargo: '', tipo: 'clt', custo: '', diaPag: '' });
+    form.reset({ nome: '', cargo: '', tipo: 'clt', custo: '', diaPag: '', crmUserId: '' });
     setModalOpen(true);
   };
 
@@ -98,6 +105,7 @@ export default function EquipePage() {
       tipo: m.tipo,
       custo: m.custo_mensal ? String(m.custo_mensal) : '',
       diaPag: m.data_pagamento ? String(m.data_pagamento) : '',
+      crmUserId: m.crm_user_id ?? '',
     });
     setModalOpen(true);
   };
@@ -115,6 +123,11 @@ export default function EquipePage() {
         data_pagamento: diaPag,
       };
       if (editing?.id) {
+        const desiredCrmUser = values.crmUserId === '' || values.crmUserId == null ? null : values.crmUserId;
+        const currentCrmUser = editing.crm_user_id ?? null;
+        if (desiredCrmUser !== currentCrmUser) {
+          await setMembroCrmUser(editing.id, desiredCrmUser);
+        }
         await updateMembro(editing.id, payload);
         toast.success('Membro atualizado');
       } else {
@@ -256,8 +269,13 @@ export default function EquipePage() {
                       {m.nome}
                     </button>
                     <div style={{ fontSize: '0.75rem', color: '#888' }}>{m.cargo}</div>
-                    <div style={{ marginTop: 2 }}>
+                    <div style={{ marginTop: 2, display: 'flex', flexWrap: 'wrap', gap: '0.25rem', alignItems: 'center' }}>
                       <Badge variant="secondary" style={{ fontSize: '0.65rem', padding: '0 0.4rem', pointerEvents: 'none' }}>{TIPO_LABEL[m.tipo]}</Badge>
+                      {!isAgent && !m.crm_user_id && (
+                        <Badge variant="outline" style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
+                          sem conta vinculada
+                        </Badge>
+                      )}
                     </div>
                   </div>
 
@@ -316,6 +334,36 @@ export default function EquipePage() {
               <FormField control={form.control} name="diaPag" render={({ field }) => (
                 <FormItem><FormLabel>Dia de Pagamento (1-31)</FormLabel><FormControl><Input type="number" min={1} max={31} {...field} /></FormControl><FormMessage /></FormItem>
               )} />
+              {!isAgent && (
+                <FormField
+                  control={form.control}
+                  name="crmUserId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Conta CRM</FormLabel>
+                      <Select
+                        value={field.value ? field.value : '__none__'}
+                        onValueChange={(v) => field.onChange(v === '__none__' ? '' : v)}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Não vinculado" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="__none__">Não vinculado</SelectItem>
+                          {workspaceUsers.map((u: { id: string; nome?: string }) => (
+                            <SelectItem key={u.id} value={u.id}>
+                              {u.nome || u.id}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
                 <Button type="submit" disabled={saving}>
