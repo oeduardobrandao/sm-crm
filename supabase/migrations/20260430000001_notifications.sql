@@ -112,3 +112,85 @@ $$;
 
 REVOKE ALL ON FUNCTION set_membro_crm_user(bigint, uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION set_membro_crm_user(bigint, uuid) TO authenticated;
+
+-- =====================================================================
+-- Helper functions (SECURITY DEFINER, owned by postgres)
+-- =====================================================================
+
+-- Resolve recipients for a notification.
+-- Returns a deduped uuid[] of CRM user_ids to notify:
+--   1. If p_responsavel_id is given, append membros.crm_user_id (may be NULL → skipped)
+--   2. Append workspace_members.user_id where role IN p_roles_filter
+CREATE OR REPLACE FUNCTION resolve_notification_targets(
+  p_workspace_id uuid,
+  p_responsavel_id bigint,
+  p_roles_filter text[]
+)
+RETURNS uuid[]
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_targets uuid[] := '{}';
+  v_responsavel_user uuid;
+BEGIN
+  IF p_responsavel_id IS NOT NULL THEN
+    SELECT crm_user_id INTO v_responsavel_user
+      FROM membros
+      WHERE id = p_responsavel_id;
+    IF v_responsavel_user IS NOT NULL THEN
+      v_targets := array_append(v_targets, v_responsavel_user);
+    END IF;
+  END IF;
+
+  IF p_roles_filter IS NOT NULL AND array_length(p_roles_filter, 1) > 0 THEN
+    SELECT array_agg(DISTINCT user_id) INTO v_targets
+      FROM (
+        SELECT unnest(v_targets) AS user_id
+        UNION
+        SELECT user_id
+          FROM workspace_members
+          WHERE workspace_id = p_workspace_id
+            AND role = ANY (p_roles_filter)
+      ) s
+      WHERE user_id IS NOT NULL;
+  END IF;
+
+  RETURN COALESCE(v_targets, '{}');
+END;
+$$;
+
+-- Insert one row per user_id. NULLs in array are skipped.
+-- p_exclude_actor (if non-NULL) is removed from the recipient set so
+-- users do not notify themselves on CRM-originated actions.
+CREATE OR REPLACE FUNCTION insert_notification_batch(
+  p_workspace_id uuid,
+  p_user_ids uuid[],
+  p_type text,
+  p_link text,
+  p_metadata jsonb,
+  p_exclude_actor uuid DEFAULT NULL
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF p_user_ids IS NULL OR array_length(p_user_ids, 1) IS NULL THEN
+    RETURN;
+  END IF;
+
+  INSERT INTO notifications (workspace_id, user_id, type, metadata, link)
+  SELECT p_workspace_id, u, p_type, COALESCE(p_metadata, '{}'::jsonb), p_link
+    FROM unnest(p_user_ids) AS u
+   WHERE u IS NOT NULL
+     AND (p_exclude_actor IS NULL OR u <> p_exclude_actor);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION resolve_notification_targets(uuid, bigint, text[]) FROM PUBLIC;
+REVOKE ALL ON FUNCTION insert_notification_batch(uuid, uuid[], text, text, jsonb, uuid) FROM PUBLIC;
+-- These helpers are only called from trigger functions (also SECURITY DEFINER)
+-- so no broader EXECUTE grant is needed.
