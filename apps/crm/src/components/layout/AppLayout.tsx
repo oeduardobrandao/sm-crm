@@ -2,7 +2,7 @@ import { Outlet, useLocation } from 'react-router-dom';
 import { useEffect, useState, useCallback } from 'react';
 import Sidebar from './Sidebar';
 import MobileNav from './MobileNav';
-import TabletTopBar from './TabletTopBar';
+import TopBar from './TopBar';
 
 function useIsTablet() {
   const [isTablet, setIsTablet] = useState(() => {
@@ -20,30 +20,46 @@ function useIsTablet() {
   return isTablet;
 }
 
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+
+  return isMobile;
+}
+
 export default function AppLayout() {
   const location = useLocation();
   const isTablet = useIsTablet();
+  const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  // Close drawer when leaving tablet range
   useEffect(() => {
     if (!isTablet) setDrawerOpen(false);
   }, [isTablet]);
 
-  // Scroll to top on route change
   useEffect(() => {
     const main = document.getElementById('app');
     if (main) main.scrollTop = 0;
   }, [location.pathname]);
 
+  useEffect(() => {
+    window.$crisp?.push(['do', 'chat:hide']);
+  }, []);
+
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
 
   return (
     <div className="app-container">
-      {isTablet && (
-        <TabletTopBar
+      {!isMobile && (
+        <TopBar
+          showHamburger={isTablet}
           onHamburgerClick={() => setDrawerOpen(v => !v)}
-          drawerOpen={drawerOpen}
         />
       )}
 
@@ -61,10 +77,6 @@ export default function AppLayout() {
       )}
 
       <main className="main-content" id="app">
-        <div className="app-logo-bar">
-          <img src="/logo-black.svg" className="app-logo logo-light" alt="Logo" />
-          <img src="/logo-white.svg" className="app-logo logo-dark" alt="Logo" />
-        </div>
         <Outlet />
       </main>
 
