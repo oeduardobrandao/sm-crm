@@ -569,3 +569,134 @@ CREATE TRIGGER notify_workflow_completed
   FOR EACH ROW
   WHEN (NEW.status = 'concluido' AND OLD.status IS DISTINCT FROM NEW.status)
   EXECUTE FUNCTION trg_notify_workflow_completed();
+
+-- =====================================================================
+-- Workspace triggers (owners/admins only, actor excluded)
+-- =====================================================================
+
+-- INSERT (invite_accepted)
+CREATE OR REPLACE FUNCTION trg_notify_invite_accepted()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_user_email text;
+  v_user_name  text;
+  v_targets    uuid[];
+BEGIN
+  BEGIN
+    SELECT email, COALESCE(raw_user_meta_data->>'full_name', email)
+      INTO v_user_email, v_user_name
+      FROM auth.users
+     WHERE id = NEW.user_id;
+
+    v_targets := resolve_notification_targets(NEW.workspace_id, NULL, ARRAY['owner','admin']);
+
+    PERFORM insert_notification_batch(
+      NEW.workspace_id,
+      v_targets,
+      'invite_accepted',
+      '/equipe',
+      jsonb_build_object(
+        'user_name',  v_user_name,
+        'user_email', v_user_email
+      ),
+      NEW.user_id  -- the user who just joined doesn't need to be told
+    );
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'trg_notify_invite_accepted failed: % %', SQLERRM, SQLSTATE;
+  END;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS notify_invite_accepted ON workspace_members;
+CREATE TRIGGER notify_invite_accepted
+  AFTER INSERT ON workspace_members
+  FOR EACH ROW EXECUTE FUNCTION trg_notify_invite_accepted();
+
+-- UPDATE role (member_role_changed)
+CREATE OR REPLACE FUNCTION trg_notify_role_changed()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_user_name text;
+  v_targets   uuid[];
+BEGIN
+  BEGIN
+    SELECT COALESCE(raw_user_meta_data->>'full_name', email)
+      INTO v_user_name
+      FROM auth.users
+     WHERE id = NEW.user_id;
+
+    v_targets := resolve_notification_targets(NEW.workspace_id, NULL, ARRAY['owner','admin']);
+
+    PERFORM insert_notification_batch(
+      NEW.workspace_id,
+      v_targets,
+      'member_role_changed',
+      '/equipe',
+      jsonb_build_object(
+        'user_name', v_user_name,
+        'old_role',  OLD.role,
+        'new_role',  NEW.role
+      ),
+      auth.uid()
+    );
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'trg_notify_role_changed failed: % %', SQLERRM, SQLSTATE;
+  END;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS notify_role_changed ON workspace_members;
+CREATE TRIGGER notify_role_changed
+  AFTER UPDATE ON workspace_members
+  FOR EACH ROW
+  WHEN (NEW.role IS DISTINCT FROM OLD.role)
+  EXECUTE FUNCTION trg_notify_role_changed();
+
+-- DELETE (member_removed)
+CREATE OR REPLACE FUNCTION trg_notify_member_removed()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_user_name text;
+  v_targets   uuid[];
+BEGIN
+  BEGIN
+    SELECT COALESCE(raw_user_meta_data->>'full_name', email)
+      INTO v_user_name
+      FROM auth.users
+     WHERE id = OLD.user_id;
+
+    v_targets := resolve_notification_targets(OLD.workspace_id, NULL, ARRAY['owner','admin']);
+
+    PERFORM insert_notification_batch(
+      OLD.workspace_id,
+      v_targets,
+      'member_removed',
+      NULL,  -- no destination route
+      jsonb_build_object('user_name', v_user_name),
+      auth.uid()
+    );
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'trg_notify_member_removed failed: % %', SQLERRM, SQLSTATE;
+  END;
+  RETURN OLD;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS notify_member_removed ON workspace_members;
+CREATE TRIGGER notify_member_removed
+  AFTER DELETE ON workspace_members
+  FOR EACH ROW EXECUTE FUNCTION trg_notify_member_removed();
