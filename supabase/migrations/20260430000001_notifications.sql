@@ -402,7 +402,7 @@ BEGIN
       jsonb_build_object(
         'client_name',     v_client_name,
         'workflow_title',  v_workflow_title,
-        'step_name',       NEW.titulo,
+        'step_name',       NEW.nome,
         'workflow_id',     NEW.workflow_id,
         'etapa_id',        NEW.id
       ),
@@ -456,7 +456,7 @@ BEGIN
       jsonb_build_object(
         'client_name',     v_client_name,
         'workflow_title',  v_workflow_title,
-        'step_name',       NEW.titulo,
+        'step_name',       NEW.nome,
         'workflow_id',     NEW.workflow_id,
         'etapa_id',        NEW.id
       ),
