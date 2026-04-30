@@ -1342,6 +1342,15 @@ export async function getWorkflowPosts(workflowId: number): Promise<WorkflowPost
   return data || [];
 }
 
+export async function getAllWorkflowPosts(): Promise<WorkflowPost[]> {
+  const { data, error } = await supabase
+    .from('workflow_posts')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
 export async function getWorkflowPostsWithProperties(workflowId: number): Promise<(WorkflowPost & { property_values: PostPropertyValue[] })[]> {
   const { data, error } = await supabase
     .from('workflow_posts')
@@ -1855,6 +1864,15 @@ export async function removeHubBrandFile(fileId: string) {
 
 export async function getHubPages(clienteId: number) {
   const { data } = await supabase.from('hub_pages').select('*').eq('cliente_id', clienteId).order('display_order');
+  return (data ?? []) as HubPageRow[];
+}
+
+export async function getAllHubPages(): Promise<HubPageRow[]> {
+  const { data, error } = await supabase
+    .from('hub_pages')
+    .select('*')
+    .order('display_order');
+  if (error) throw error;
   return (data ?? []) as HubPageRow[];
 }
 
