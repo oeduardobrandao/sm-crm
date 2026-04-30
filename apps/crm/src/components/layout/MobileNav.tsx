@@ -5,6 +5,19 @@ import { useAuth } from '../../context/AuthContext'
 import { getMoreSheetGroups } from './nav-data'
 import { drawNavBar, getItemCenterX, BAR_WIDTH } from './mobile-nav-canvas'
 import { useBubbleAnimation, BUBBLE_SIZE } from './use-bubble-animation'
+import { Search, MessageCircle } from 'lucide-react'
+import {
+  CommandDialog,
+  CommandInput,
+  CommandList,
+  CommandEmpty,
+} from '@/components/ui/command'
+
+declare global {
+  interface Window {
+    $crisp?: Array<unknown[]>;
+  }
+}
 
 const PRIMARY_ITEMS = [
   { id: 'dashboard', route: '/dashboard', label: 'Dashboard', icon: 'ph-chart-pie-slice' },
@@ -27,6 +40,7 @@ export default function MobileNav() {
   const { t } = useTranslation()
   const [moreOpen, setMoreOpen] = useState(false)
   const [isDark, setIsDark] = useState(document.documentElement.getAttribute('data-theme') === 'dark')
+  const [searchOpen, setSearchOpen] = useState(false)
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const bubbleRef = useRef<HTMLDivElement>(null)
@@ -163,6 +177,31 @@ export default function MobileNav() {
 
           <div className="mobile-more-divider" />
 
+          {/* Quick actions */}
+          <button
+            className="mobile-more-item"
+            onClick={() => { setMoreOpen(false); setSearchOpen(true); }}
+            type="button"
+          >
+            <div className="mobile-more-item-icon">
+              <Search size={18} />
+            </div>
+            <span>Buscar</span>
+          </button>
+
+          <button
+            className="mobile-more-item"
+            onClick={() => { window.$crisp?.push(['do', 'chat:open']); setMoreOpen(false); }}
+            type="button"
+          >
+            <div className="mobile-more-item-icon">
+              <MessageCircle size={18} />
+            </div>
+            <span>Chat</span>
+          </button>
+
+          <div className="mobile-more-divider" />
+
           {/* Grouped nav items */}
           {moreSheetGroups.map(group => (
             <div key={group.id}>
@@ -214,6 +253,12 @@ export default function MobileNav() {
           </button>
         </div>
       </div>
+      <CommandDialog open={searchOpen} onOpenChange={setSearchOpen}>
+        <CommandInput placeholder="Buscar..." />
+        <CommandList>
+          <CommandEmpty>Nenhum resultado.</CommandEmpty>
+        </CommandList>
+      </CommandDialog>
     </>
   )
 }
