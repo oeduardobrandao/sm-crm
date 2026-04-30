@@ -59,6 +59,7 @@ export default function AppLayout() {
       {!isMobile && (
         <TopBar
           showHamburger={isTablet}
+          isDrawerOpen={drawerOpen}
           onHamburgerClick={() => setDrawerOpen(v => !v)}
         />
       )}

@@ -5,9 +5,10 @@ import NavigationProgress from './NavigationProgress';
 interface TopBarProps {
   onHamburgerClick?: () => void;
   showHamburger?: boolean;
+  isDrawerOpen?: boolean;
 }
 
-export default function TopBar({ onHamburgerClick, showHamburger }: TopBarProps) {
+export default function TopBar({ onHamburgerClick, showHamburger, isDrawerOpen }: TopBarProps) {
   return (
     <header className="topbar">
       <div className="topbar-left">
@@ -16,7 +17,7 @@ export default function TopBar({ onHamburgerClick, showHamburger }: TopBarProps)
             type="button"
             className="topbar-action-btn"
             onClick={onHamburgerClick}
-            aria-label="Menu"
+            aria-label={isDrawerOpen ? 'Fechar menu' : 'Abrir menu'}
           >
             <i className="ph ph-list" style={{ fontSize: '1.2rem' }} />
           </button>
