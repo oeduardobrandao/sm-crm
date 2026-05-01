@@ -25,7 +25,7 @@ Six features:
 - **Filter UX:** popover panel with type checkboxes (Imagens / Vídeos / Docs) and a small badge showing the active-filter count. Future filter dimensions (uploader, date) slot into the same panel.
 - **Inline rename:** F2 on a focused tile, or double-click on the name *label* (not the thumbnail — that still opens / navigates). Mobile keeps the existing rename modal.
 - **Mobile parity:** all features ship on mobile *except* inline rename (mobile keeps its existing rename modal). Drag-and-drop is desktop-only by definition; the picker covers mobile.
-- **No DB migrations.** Move is a `parent_id` / `folder_id` update. Copy is R2 COPY + new row using existing columns. ZIP is read-only. Filters are client-side. Inline rename hits the existing PATCH.
+- **No schema migrations.** Move is a `parent_id` / `folder_id` update. Copy is R2 COPY + new row using existing columns. ZIP is read-only. Filters are client-side. Inline rename hits the existing PATCH. One new Postgres RPC (`bulk_move_items`) requires a migration file, but it adds no tables or columns — just a function.
 
 ## Out of Scope (deferred)
 
@@ -42,8 +42,8 @@ Six features:
 - `ArquivosPage.tsx` — host the selection state, bulk bar, filter state, picker modal, drag context. Mostly composition glue.
 - `components/FileGrid.tsx` — render hover checkbox, selection ring, drag source, "double-click name → inline rename" target.
 - `components/FolderTree.tsx` — drop targets on tree nodes; expand-on-hover-during-drag (500 ms).
-- `components/FileContextMenu.tsx` — add "Mover para…" and "Copiar para…" items; route Rename to the inline rename instead of the modal on desktop. Modal kept for mobile.
-- `components/MobileArquivosView.tsx` — long-press to enter selection mode; mobile pill bar.
+- `components/FileContextMenu.tsx` — add "Mover para…" and "Copiar para…" items; route Rename to the inline rename instead of the modal on desktop. Mobile: receives an `isMobile` prop (from the existing responsive hook) to keep the rename modal and hide drag-only options.
+- `components/MobileArquivosView.tsx` — long-press (400 ms threshold with subtle haptic/scale feedback) to enter selection mode; mobile pill bar docked at bottom. Exit selection via `✕` in header, `✕` in pill bar, or browser back gesture. `onTouchMove` during long-press cancels the timer (prevents accidental selection while scrolling).
 
 `apps/crm/src/services/fileService.ts` — add `bulkMove`, `bulkDelete`, `copyFile`, `copyFolder`, `requestZipDownload`.
 
@@ -62,20 +62,24 @@ Six features:
 
 All endpoints enforce `conta_id` ownership and the system-folder validity matrix.
 
-- `POST /file-manage/bulk-move` — `{ file_ids[], folder_ids[], destination_id: number | null }` (null = root). Atomic via a new Postgres RPC `bulk_move_items(p_conta_id, p_file_ids, p_folder_ids, p_destination_id)` so all updates commit or roll back together. The RPC validates every item belongs to `conta_id`, target is reachable, no folder is being moved into itself or a descendant. Any failure rolls back and returns `400` with `{ error, invalid_ids }`.
-- `POST /file-manage/bulk-delete` — `{ file_ids[], folder_ids[] }`. Partitions items: any file with `reference_count > 0` or any system folder is "blocked." Returns `409` with `{ blocked, deletable }` *without deleting anything* if the partition is non-empty. Frontend re-issues with just `deletable` ids on user confirmation.
-- `POST /file-manage/files/:id/copy` — `{ destination_folder_id }`. Pre-checks remaining quota; refuses with `413 quota_exceeded` if the copy bytes don't fit. Performs R2 server-side COPY for the file's `r2_key` (and `thumbnail_r2_key` if present), then inserts a new `files` row with the new keys, `folder_id = destination`, fresh `reference_count = 0`.
-- `POST /file-manage/folders/:id/copy` — `{ destination_folder_id: number | null }`. Recursive depth-first. Per-file flow: R2 COPY → insert row. R2 COPY failures are skipped and logged (no orphan R2 object since the row is only inserted on success). Insert failures are rare; if they occur, the R2 object is left orphaned and accepted as best-effort. Frontend gets an "X of Y copied" toast on partial success.
+- `POST /file-manage/bulk-move` — `{ file_ids[], folder_ids[], destination_id: number | null }` (null = root). Atomic via a new Postgres RPC `bulk_move_items(p_conta_id, p_file_ids, p_folder_ids, p_destination_id)` so all updates commit or roll back together. The RPC validates every item belongs to `conta_id`, target is reachable, no folder is being moved into itself or a descendant. Any failure rolls back and returns `400` with `{ error, invalid_ids }`. The handler reuses the same validation logic as the existing single-item `PATCH /files/:id` and `PATCH /folders/:id` endpoints — extract shared helpers (`assertOwnership`, `assertNotCycle`, `assertSystemFolderRules`) so both paths stay consistent.
+- `POST /file-manage/bulk-delete` — `{ file_ids[], folder_ids[] }`. Partitions items: any file with `reference_count > 0` or any system folder is "blocked." Returns `409` with `{ blocked, deletable }` *without deleting anything* if the partition is non-empty. Frontend re-issues with just `deletable` ids on user confirmation. On successful deletion, decrements `workspaces.storage_used_bytes` by the sum of deleted files' `size_bytes`. Reuses the same ownership check as the existing single-item `DELETE /files/:id`.
+- `POST /file-manage/files/:id/copy` — `{ destination_folder_id }`. Pre-checks remaining quota; refuses with `413 quota_exceeded` if the copy bytes don't fit. Performs R2 server-side COPY for the file's `r2_key` (and `thumbnail_r2_key` if present) using a new `copyObject(sourceKey, destKey)` helper in `_shared/r2.ts` (wraps `CopyObjectCommand` from `@aws-sdk/client-s3`), then inserts a new `files` row with the new keys, `folder_id = destination`, fresh `reference_count = 0`. The copy does NOT carry over `post_file_links` — it's a standalone file with no post associations.
+- `POST /file-manage/folders/:id/copy` — `{ destination_folder_id: number | null }`. Hard limits: max depth 10 levels, max 200 files total across the tree. Exceeding either → `413 copy_limit_exceeded` before any work begins. Pre-compute total bytes across all files in the tree and refuse with `413 quota_exceeded` if `used + total_copy_bytes > quota`, also before any work. Then recursive depth-first: create folder rows top-down, copy files per-folder. Per-file flow: R2 COPY → insert row. R2 COPY failures are skipped and logged (no orphan R2 object since the row is only inserted on success). Insert failures are rare; if they occur, the R2 object is left orphaned and accepted as best-effort. Frontend gets an "X of Y copied" toast on partial success.
 
 ### Backend — new edge function `supabase/functions/file-zip/`
 
 ZIP downloads can't carry an `Authorization` header (the browser triggers them as plain navigations), so the auth flow is split:
 
-1. **Token issuance** — Frontend POSTs `/file-manage/zip-token` with `{ folder_id }` or `{ file_ids: number[] }`. `file-manage` validates ownership, runs the cap pre-check (sum sizes, count files via SQL), and returns `{ token, download_url }`. Token is HMAC-signed with a new `ZIP_TOKEN_SECRET` env var; payload `{ conta_id, scope, expires_at }`; TTL 5 minutes.
-2. **Download** — Frontend sets `window.location.href = download_url`. Browser navigates to `GET /file-zip?token=...`.
+1. **Token issuance** — Frontend POSTs `/file-manage/zip-token` with `{ folder_id }` or `{ file_ids: number[] }`. `file-manage` validates ownership, runs the cap pre-check (sum sizes, count files via SQL), and returns `{ token, download_url }`. Token is HMAC-signed with `ZIP_TOKEN_SECRET`; payload `{ conta_id, folder_id | file_ids, expires_at }`; TTL 5 minutes. The token encodes the exact scope (specific folder or file IDs) so a stolen token can only download those specific items, not arbitrary files from the account.
+2. **Download** — Frontend creates a hidden `<a href={download_url} download>` and `click()`s it. Browser navigates to `GET /file-zip?token=...`.
 3. **Streaming** — `file-zip` verifies the token (signature + expiry + `conta_id`), walks the tree, and streams: for each file, fetch from R2 → write into a zip stream (`@zip-js/zip-js`, Deno-compatible) → flush. Sets `Content-Disposition: attachment; filename="..."`.
 
 Cap pre-check happens during token issuance. If `total_bytes > 1 GB` or `file_count > 500`, the issuance call returns `413 zip_limit_exceeded` with `{ total_bytes, file_count, limit_bytes, limit_files }`. No token is created. Frontend surfaces a toast.
+
+**Deno Deploy constraints:** Deno Deploy has a 400-second wall-time limit per request. For large archives near the 1 GB cap, the bottleneck is R2 fetch throughput (not CPU). The streaming design (fetch → zip → flush per file) keeps memory bounded and CPU low. If a request hits the wall-time limit, the browser receives a truncated stream — the download will fail or produce a corrupt ZIP. The 1 GB / 500-file cap is sized to stay well within this limit under normal R2 latency. If we observe timeouts in production, lower the cap.
+
+**R2 mid-stream failures:** Once streaming has begun (HTTP 200 already sent), the status code can't change. If an R2 fetch fails mid-stream, the file is skipped: an empty entry is written to the ZIP with a `.skipped` suffix, and a warning header `X-Zip-Skipped` is appended (though browsers may not surface it). The edge function logs the skip. Partial ZIPs are the accepted trade-off — the alternative (buffering the entire archive before responding) would blow memory limits.
 
 ### Why these abstractions
 
@@ -87,11 +91,11 @@ Cap pre-check happens during token issuance. If `total_bytes > 1 GB` or `file_co
 
 | Source | Target | Allowed? |
 |---|---|---|
-| User file | Anywhere (incl. inside system folder) | ✓ |
+| User file | Anywhere (incl. inside any system folder) | ✓ |
 | User folder | Inside another user folder | ✓ |
 | User folder | Inside a `client` or `workflow` system folder | ✓ |
-| User folder | Inside a `post` system folder | ✗ — post folders are leaf-only |
-| System folder (any kind) | Anywhere | ✗ — folder itself sealed |
+| User folder | Inside a `post` system folder | ✗ — post folders accept files but not subfolders |
+| System folder (any kind) | Anywhere | ✗ — folder itself is sealed to its entity |
 | Any | Source folder, or a descendant of any source folder | ✗ — cycle |
 | Any | Same folder it's already in | ✗ — no-op (frontend skips the call) |
 
@@ -112,11 +116,11 @@ prune(displayedIds)           // drops stale ids when the rendered list changes
 clear()                       // also resets anchor
 ```
 
-`ArquivosPage` clears selection in a `useEffect` watching `currentFolderId` (rule: clears on navigation). It calls `prune` in a `useEffect` watching the rendered list so that items removed by another tab or by a recent operation drop out of the selection automatically. Display order for shift-click matches the rendered grid: subfolders first, then files, ordered by current `sortBy`.
+`ArquivosPage` clears selection in a `useEffect` watching `currentFolderId` (rule: clears on navigation). It calls `prune` inside `onSuccess` of mutations (move, delete, copy) — not in a `useEffect` watching the rendered list, to avoid a flash where the pill bar shows a stale count between the mutation settling and the re-render. Display order for shift-click matches the rendered grid: the flat array is `[...subfolders, ...files]` ordered by current `sortBy`. Shift-click range selection walks this flat array from `anchor` to `target`, selecting every item in between regardless of whether it's a folder or file (mixed selection is first-class).
 
 ### Move (drag-and-drop)
 
-1. `onDragStart(item)` — if `item.id ∈ selectedIds`, drag the whole selection; otherwise drag just this item. Set `dataTransfer.setData('application/x-arquivos', JSON.stringify({fileIds, folderIds}))` and a custom drag image showing "Mover N itens".
+1. `onDragStart(item)` — if `item.id ∈ selectedIds`, drag the whole selection; otherwise drag just this item. Set `dataTransfer.setData('application/x-arquivos', JSON.stringify({fileIds, folderIds}))`. Create a drag ghost by rendering a small off-screen DOM element (a styled `<div>` with the count label, e.g. "Mover 3 itens") and passing it to `dataTransfer.setDragImage(element, 0, 0)`. The element is appended to `document.body` before `setDragImage` and removed in `onDragEnd`.
 2. `onDragOver(target)` — call `isValidDropTarget(source, target)` (see validity matrix). If valid: `preventDefault()` + highlight target. Tree nodes auto-expand after 500 ms of hover during a drag.
 3. `onDrop(target)` — POST `/file-manage/bulk-move`. Optimistic update: remove items from the current folder's TanStack Query cache.
 4. On error: rollback + toast. On success: invalidate `folder-contents` for both source and destination, plus `folder-tree`.
@@ -133,7 +137,7 @@ Same UX as Move (drag and picker), different endpoint. Backend per item:
 2. Pre-check quota: if `used + total_copy_bytes > quota`, return `413 quota_exceeded` *before* any R2 work.
 3. Generate a new `r2_key` (e.g., `{conta_id}/{uuid}-{filename}`).
 4. R2 server-side COPY from `source.r2_key` to the new key. Same for `thumbnail_r2_key`.
-5. Insert new `files` row with new keys, `folder_id = destination`, `reference_count = 0`.
+5. Insert new `files` row with new keys, `folder_id = destination`, `reference_count = 0`. The copy does NOT carry over `post_file_links`.
 6. Update `workspaces.storage_used_bytes`.
 
 For folder copy: depth-first walk. Per file: R2 COPY then INSERT. R2 failures are logged and skipped (no orphan R2 object). Frontend gets an "X of Y copied" toast on partial success.
@@ -156,11 +160,11 @@ F2 on focused tile, or double-click on the name label, replaces the label with `
 
 ### Filter
 
-Filter state lives in `ArquivosPage`: `{ types: Set<'image' | 'video' | 'document'> }`. Filter is applied client-side on the already-fetched list — subfolders are always shown; files are filtered by `kind`. Filter persists across navigation. Empty filter set (all types unchecked) shows an empty state with a "Limpar filtros" CTA.
+Filter state lives in `ArquivosPage` as a `FilterState` object: `{ types: Set<'image' | 'video' | 'document'> }`. The type is an object (not a bare `Set`) so future filter dimensions (uploader, date range) add as new keys without breaking the shape. Filter is applied client-side on the already-fetched list — subfolders are always shown; files are filtered by `kind`. Filter persists across navigation. Empty filter set (all types unchecked) shows an empty state with a "Limpar filtros" CTA. On mobile, the filter popover renders the same checkbox UI inside a bottom sheet instead of a popover (triggered by the same "Filtros" button).
 
 ## Error Handling & Edge Cases
 
-- **Selection vs. data drift:** `useSelection.prune` removes stale ids whenever the rendered list changes (deletes from another tab, refetches, navigation). Pill bar count updates automatically.
+- **Selection vs. data drift:** `useSelection.prune` is called in mutation `onSuccess` callbacks (not in a render-watching `useEffect`) to avoid a flash of stale count between mutation and re-render. Also called on TanStack Query refetch (`onSuccess` of the folder-contents query) for cross-tab drift. Pill bar count updates automatically.
 - **Drag-and-drop disambiguation:** internal moves and external uploads coexist. Handlers check `dataTransfer.types`: external = `"Files"`, internal = `"application/x-arquivos"`.
 - **Drag onto source folder or descendant:** pre-computed descendant set blocks the drop client-side; the backend re-validates.
 - **Bulk-move atomicity:** single SQL transaction. Any one failure rolls the whole operation back; toast lists the offending ids.
@@ -174,13 +178,15 @@ Filter state lives in `ArquivosPage`: `{ types: Set<'image' | 'video' | 'documen
 - **Inline rename concurrent edits:** last write wins. No version checks in Phase 1.
 - **Filter empty state:** all types unchecked → empty state with "Limpar filtros" CTA, not a silent blank screen.
 - **Race conditions across tabs:** all mutations rely on TanStack Query's `onError` rollback and post-success invalidation of source folder, destination folder, and folder-tree caches.
+- **Concurrent bulk operations:** no client-side locking in Phase 1 — if the user fires two bulk-moves simultaneously, both hit the RPC independently. The RPC's transaction isolation handles row-level conflicts (one succeeds, the other fails with `400` since the item has already moved). Frontend disables the bulk bar buttons while a mutation is in-flight (`isPending` from `useMutation`) to prevent accidental double-fires.
 
 ## Security
 
 - Every new endpoint verifies the user's session and resolves `conta_id` from the `profiles` row, then checks that every input id (file_id, folder_id, destination_id) belongs to that `conta_id`. No client-supplied `conta_id` is trusted.
-- ZIP token: HMAC-SHA256 with a new `ZIP_TOKEN_SECRET` env var (no fallback — throws on missing). Payload includes `conta_id`; `file-zip` re-checks `conta_id` on every file fetch even though the token already encodes it.
+- ZIP token: HMAC-SHA256 with `ZIP_TOKEN_SECRET` env var (no fallback — throws on missing). Payload encodes `{ conta_id, folder_id | file_ids, expires_at }` — the token is scoped to specific items, not the entire account. `file-zip` re-checks `conta_id` on every file fetch even though the token already encodes it. Key rotation: deploy new secret, old tokens (max 5-min TTL) expire naturally. No dual-key needed.
 - CORS: use existing `buildCorsHeaders(req)` on all new endpoints. No wildcards.
-- Rate-limit ZIP token issuance to 10 per minute per user (cheap in-memory counter in the edge function isolate is sufficient for Phase 1; revisit if abuse appears).
+- Rate-limit: No in-memory rate-limit for Phase 1 (Deno Deploy isolates are ephemeral — counters reset on cold starts). The 1 GB / 500-file cap per archive and the 5-minute token TTL provide natural abuse bounds. If abuse appears, add a Supabase counter table keyed by `(user_id, minute)` in a follow-up.
+- **Audit trail:** Bulk-move, bulk-delete, and copy operations log to the existing `audit_log` table via `insertAuditLog()` from `_shared/audit.ts`. Logged fields: action type, user ID, `conta_id`, item IDs, destination, and outcome (success / partial / error). Single-item operations already audit-log through the existing endpoints.
 
 ## Testing Strategy
 
@@ -236,6 +242,11 @@ New:
 Unchanged but used:
 - `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` — for R2 server-side COPY and signed-URL fetches.
 - `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` — for `file-zip` to read file rows during streaming.
+
+## Prerequisites (existing code changes)
+
+- **`_shared/r2.ts`** — add `copyObject(sourceKey: string, destKey: string)` helper wrapping `CopyObjectCommand` from `@aws-sdk/client-s3`. Used by the copy endpoints.
+- **New Postgres migration** — creates the `bulk_move_items` RPC function. No schema changes (no new tables or columns).
 
 ## Build Sequence
 
