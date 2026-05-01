@@ -192,6 +192,9 @@ export function FileUploader({
 
   // ─── Drag and drop ─────────────────────────────────────────────
   function handleDragOver(e: DragEvent<HTMLDivElement>) {
+    // Only activate for external file drops, not internal move drags
+    const types: readonly string[] | string[] = e.dataTransfer.types ?? [];
+    if (Array.from(types).includes('application/x-arquivos')) return;
     e.preventDefault();
     e.stopPropagation();
     setIsDragOver(true);
@@ -207,6 +210,9 @@ export function FileUploader({
   }
 
   function handleDrop(e: DragEvent<HTMLDivElement>) {
+    // Ignore internal move drags
+    const types: readonly string[] | string[] = e.dataTransfer.types ?? [];
+    if (Array.from(types).includes('application/x-arquivos')) return;
     e.preventDefault();
     e.stopPropagation();
     setIsDragOver(false);

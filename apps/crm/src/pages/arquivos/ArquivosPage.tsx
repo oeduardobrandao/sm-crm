@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { LayoutGrid, List, Upload, FolderPlus, ArrowUpDown } from 'lucide-react';
 import { toast } from 'sonner';
@@ -192,6 +192,27 @@ export default function ArquivosPage() {
     onError: () => toast.error('Erro ao mover itens'),
   });
 
+  const classifySelection = useCallback(() => {
+    const fileIds = [...selection.selectedIds].filter((id) =>
+      data?.files.some((f) => f.id === id)
+    );
+    const folderIds = [...selection.selectedIds].filter((id) =>
+      data?.subfolders.some((f) => f.id === id)
+    );
+    return { fileIds, folderIds };
+  }, [selection.selectedIds, data]);
+
+  const handleDrop = useCallback(
+    (targetFolderId: number, payload: { fileIds: number[]; folderIds: number[] }) => {
+      bulkMoveMutation.mutate({
+        fileIds: payload.fileIds,
+        folderIds: payload.folderIds,
+        destinationId: targetFolderId,
+      });
+    },
+    [bulkMoveMutation],
+  );
+
   function handleFileAction(action: string, file: FileRecord) {
     if (action !== 'open') return;
 
@@ -274,6 +295,7 @@ export default function ArquivosPage() {
           selectedFolderId={currentFolderId}
           onSelectFolder={setCurrentFolderId}
           onRequestCreateFolder={setCreateFolderParent}
+          onDrop={handleDrop}
         />
 
         {/* Storage usage bar */}
@@ -416,6 +438,8 @@ export default function ArquivosPage() {
                 selection.toggle(id);
                 setPickerMode('move');
               }}
+              onDrop={handleDrop}
+              classifySelection={classifySelection}
             />
             {isFilterActive(filter) && filteredFiles.length === 0 && files.length > 0 && (
               <div className="text-center py-4">

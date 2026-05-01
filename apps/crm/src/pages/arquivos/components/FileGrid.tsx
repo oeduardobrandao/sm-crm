@@ -1,4 +1,4 @@
-import { useRef, useMemo, useState } from 'react';
+import { useRef, useMemo, useState, useCallback } from 'react';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
@@ -51,6 +51,8 @@ interface FileGridProps {
   onToggleRangeSelect?: (id: number) => void;
   selectionCount?: number;
   onRequestMove?: (id: number, type: 'file' | 'folder') => void;
+  onDrop?: (targetFolderId: number, payload: { fileIds: number[]; folderIds: number[] }) => void;
+  classifySelection?: () => { fileIds: number[]; folderIds: number[] };
 }
 
 function sortFolders(folders: FolderType[], sortBy: SortBy): FolderType[] {
@@ -97,10 +99,50 @@ export function FileGrid(props: FileGridProps) {
     onToggleRangeSelect,
     selectionCount = 0,
     onRequestMove,
+    onDrop,
+    classifySelection,
   } = props;
   const queryClient = useQueryClient();
   const prefetchTimeout = useRef<number | undefined>(undefined);
+  const ghostRef = useRef<HTMLDivElement | null>(null);
   const [renamingId, setRenamingId] = useState<{ id: number; type: 'file' | 'folder' } | null>(null);
+  const [dragOverFolderId, setDragOverFolderId] = useState<number | null>(null);
+
+  const handleDragStart = useCallback(
+    (e: React.DragEvent, itemId: number, itemType: 'file' | 'folder') => {
+      let fileIds: number[];
+      let folderIds: number[];
+
+      if (selectedIds.has(itemId) && selectionCount > 1) {
+        const classified = classifySelection?.() ?? { fileIds: [], folderIds: [] };
+        fileIds = classified.fileIds;
+        folderIds = classified.folderIds;
+      } else {
+        fileIds = itemType === 'file' ? [itemId] : [];
+        folderIds = itemType === 'folder' ? [itemId] : [];
+      }
+
+      e.dataTransfer.setData('application/x-arquivos', JSON.stringify({ fileIds, folderIds }));
+      e.dataTransfer.effectAllowed = 'move';
+
+      const ghost = document.createElement('div');
+      const count = fileIds.length + folderIds.length;
+      ghost.textContent = `Mover ${count} ${count === 1 ? 'item' : 'itens'}`;
+      ghost.style.cssText =
+        'position:fixed;top:-100px;left:-100px;padding:6px 12px;border-radius:8px;background:#1a1e26;color:#eab308;font-size:12px;font-weight:700;border:1px solid rgba(234,179,8,0.4);white-space:nowrap;pointer-events:none;z-index:9999;';
+      document.body.appendChild(ghost);
+      e.dataTransfer.setDragImage(ghost, 0, 0);
+      ghostRef.current = ghost;
+    },
+    [selectedIds, selectionCount, classifySelection],
+  );
+
+  const handleDragEnd = useCallback(() => {
+    if (ghostRef.current) {
+      document.body.removeChild(ghostRef.current);
+      ghostRef.current = null;
+    }
+  }, []);
 
   function handleFolderMouseEnter(folderId: number) {
     prefetchTimeout.current = window.setTimeout(() => {
@@ -411,7 +453,41 @@ export function FileGrid(props: FileGridProps) {
               }}
               onMouseEnter={() => handleFolderMouseEnter(folder.id)}
               onMouseLeave={handleFolderMouseLeave}
-              className={`group relative flex flex-col items-center gap-2 p-4 rounded-sm bg-[var(--card-bg)] border border-[var(--border-color)] hover:border-[var(--primary-color)] hover:shadow-md transition-all duration-150 text-left${isSelected ? ' ring-2 ring-[var(--primary-color)]' : ''}${(folder as any)._optimistic ? ' opacity-50 animate-pulse pointer-events-none' : ''}`}
+              draggable={folder.source !== 'system'}
+              onDragStart={(e) => {
+                if (folder.source === 'system') return;
+                handleDragStart(e, folder.id, 'folder');
+              }}
+              onDragEnd={handleDragEnd}
+              onDragOver={(e) => {
+                if (e.dataTransfer.types.includes('application/x-arquivos')) {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                }
+              }}
+              onDragEnter={(e) => {
+                if (e.dataTransfer.types.includes('application/x-arquivos')) {
+                  setDragOverFolderId(folder.id);
+                }
+              }}
+              onDragLeave={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                  setDragOverFolderId(null);
+                }
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setDragOverFolderId(null);
+                const raw = e.dataTransfer.getData('application/x-arquivos');
+                if (raw) {
+                  try {
+                    const payload = JSON.parse(raw);
+                    onDrop?.(folder.id, payload);
+                  } catch {}
+                }
+              }}
+              className={`group relative flex flex-col items-center gap-2 p-4 rounded-sm bg-[var(--card-bg)] border border-[var(--border-color)] hover:border-[var(--primary-color)] hover:shadow-md transition-all duration-150 text-left${isSelected ? ' ring-2 ring-[var(--primary-color)]' : ''}${dragOverFolderId === folder.id ? ' ring-2 ring-[var(--primary-color)] bg-[rgba(234,179,8,0.08)]' : ''}${(folder as any)._optimistic ? ' opacity-50 animate-pulse pointer-events-none' : ''}`}
             >
               {/* Hover checkbox */}
               <div
@@ -483,6 +559,9 @@ export function FileGrid(props: FileGridProps) {
                 }
                 onFileAction('open', file);
               }}
+              draggable
+              onDragStart={(e) => handleDragStart(e, file.id, 'file')}
+              onDragEnd={handleDragEnd}
               className={`group flex flex-col rounded-sm bg-[var(--card-bg)] border border-[var(--border-color)] hover:border-[var(--primary-color)] hover:shadow-md transition-all duration-150 overflow-hidden text-left${isSelected ? ' ring-2 ring-[var(--primary-color)]' : ''}`}
             >
               {/* Thumbnail area */}

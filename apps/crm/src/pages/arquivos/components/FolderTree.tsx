@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Folder, FolderOpen, ChevronRight, ChevronDown, Plus } from 'lucide-react';
 import { getTreeChildren } from '@/services/fileService';
@@ -10,10 +10,13 @@ interface FolderNodeProps {
   onSelectFolder: (id: number | null) => void;
   onRequestCreateFolder: (parentId: number | null) => void;
   depth: number;
+  onDrop?: (targetFolderId: number, payload: { fileIds: number[]; folderIds: number[] }) => void;
 }
 
-function FolderNode({ folder, selectedFolderId, onSelectFolder, onRequestCreateFolder, depth }: FolderNodeProps) {
+function FolderNode({ folder, selectedFolderId, onSelectFolder, onRequestCreateFolder, depth, onDrop }: FolderNodeProps) {
   const [expanded, setExpanded] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const expandTimerRef = useRef<number | undefined>(undefined);
 
   const { data: subfolders = [] } = useQuery({
     queryKey: ['folder-tree', folder.id],
@@ -29,9 +32,53 @@ function FolderNode({ folder, selectedFolderId, onSelectFolder, onRequestCreateF
         className={`flex items-center gap-1 rounded-sm px-2 py-1.5 cursor-pointer group transition-colors duration-150 ${
           isSelected
             ? 'bg-[var(--primary-color)] text-[#12151a]'
-            : 'hover:bg-[var(--surface-hover)] text-[var(--text-main)]'
+            : isDragOver
+              ? 'bg-[rgba(234,179,8,0.15)] border-l-2 border-l-[var(--primary-color)] text-[var(--text-main)]'
+              : 'hover:bg-[var(--surface-hover)] text-[var(--text-main)]'
         }`}
         style={{ paddingLeft: `${0.5 + depth * 1}rem` }}
+        onDragOver={(e) => {
+          if (e.dataTransfer.types.includes('application/x-arquivos')) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.dataTransfer.dropEffect = 'move';
+            setIsDragOver(true);
+          }
+        }}
+        onDragEnter={(e) => {
+          if (e.dataTransfer.types.includes('application/x-arquivos')) {
+            if (folder.has_children && !expanded) {
+              expandTimerRef.current = window.setTimeout(() => {
+                setExpanded(true);
+              }, 500);
+            }
+          }
+        }}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+            setIsDragOver(false);
+            if (expandTimerRef.current) {
+              clearTimeout(expandTimerRef.current);
+              expandTimerRef.current = undefined;
+            }
+          }
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsDragOver(false);
+          if (expandTimerRef.current) {
+            clearTimeout(expandTimerRef.current);
+            expandTimerRef.current = undefined;
+          }
+          const raw = e.dataTransfer.getData('application/x-arquivos');
+          if (raw) {
+            try {
+              const payload = JSON.parse(raw);
+              onDrop?.(folder.id, payload);
+            } catch {}
+          }
+        }}
       >
         {folder.has_children ? (
           <button
@@ -93,6 +140,7 @@ function FolderNode({ folder, selectedFolderId, onSelectFolder, onRequestCreateF
               onSelectFolder={onSelectFolder}
               onRequestCreateFolder={onRequestCreateFolder}
               depth={depth + 1}
+              onDrop={onDrop}
             />
           ))}
         </div>
@@ -105,9 +153,10 @@ interface FolderTreeProps {
   selectedFolderId: number | null;
   onSelectFolder: (id: number | null) => void;
   onRequestCreateFolder: (parentId: number | null) => void;
+  onDrop?: (targetFolderId: number, payload: { fileIds: number[]; folderIds: number[] }) => void;
 }
 
-export function FolderTree({ selectedFolderId, onSelectFolder, onRequestCreateFolder }: FolderTreeProps) {
+export function FolderTree({ selectedFolderId, onSelectFolder, onRequestCreateFolder, onDrop }: FolderTreeProps) {
   const { data: rootFolders = [], isLoading } = useQuery({
     queryKey: ['folder-tree', null],
     queryFn: () => getTreeChildren(null),
@@ -130,6 +179,7 @@ export function FolderTree({ selectedFolderId, onSelectFolder, onRequestCreateFo
             onSelectFolder={onSelectFolder}
             onRequestCreateFolder={onRequestCreateFolder}
             depth={0}
+            onDrop={onDrop}
           />
         ))}
 
