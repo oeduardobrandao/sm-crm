@@ -41,6 +41,7 @@ interface FileContextMenuProps {
   item: Folder | FileRecord;
   type: 'folder' | 'file';
   onActionComplete: () => void;
+  onRename?: () => void;
 }
 
 interface MenuPosition {
@@ -48,7 +49,7 @@ interface MenuPosition {
   y: number;
 }
 
-export function FileContextMenu({ children, item, type, onActionComplete }: FileContextMenuProps) {
+export function FileContextMenu({ children, item, type, onActionComplete, onRename }: FileContextMenuProps) {
   const [menuPos, setMenuPos] = useState<MenuPosition | null>(null);
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -100,9 +101,13 @@ export function FileContextMenu({ children, item, type, onActionComplete }: File
   }
 
   function openRename() {
+    closeMenu();
+    if (onRename) {
+      onRename();
+      return;
+    }
     setRenameValue(item.name);
     setRenameOpen(true);
-    closeMenu();
   }
 
   function openInfo() {

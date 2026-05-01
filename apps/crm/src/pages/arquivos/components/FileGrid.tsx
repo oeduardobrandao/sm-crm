@@ -1,5 +1,6 @@
-import { useRef, useMemo } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useRef, useMemo, useState } from 'react';
+import { useQueryClient, useMutation } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
 import {
@@ -9,9 +10,10 @@ import {
   FileImage,
   Link as LinkIcon,
 } from 'lucide-react';
-import type { FileRecord, Folder as FolderType } from '../types';
+import type { FileRecord, Folder as FolderType, FolderContents } from '../types';
 import { FileContextMenu } from './FileContextMenu';
-import { getFolderContents } from '@/services/fileService';
+import { InlineRenameInput } from './InlineRenameInput';
+import { getFolderContents, renameFile, renameFolder } from '@/services/fileService';
 
 export type SortBy = 'name' | 'size' | 'date';
 
@@ -43,6 +45,7 @@ interface FileGridProps {
   onActionComplete: () => void;
   sortBy?: SortBy;
   isLoading?: boolean;
+  currentFolderId?: number | null;
 }
 
 function sortFolders(folders: FolderType[], sortBy: SortBy): FolderType[] {
@@ -73,9 +76,11 @@ function sortFiles(files: FileRecord[], sortBy: SortBy): FileRecord[] {
   });
 }
 
-export function FileGrid({ files, subfolders, onOpenFolder, onFileAction, viewMode, onActionComplete, sortBy = 'name', isLoading }: FileGridProps) {
+export function FileGrid(props: FileGridProps) {
+  const { files, subfolders, onOpenFolder, onFileAction, viewMode, onActionComplete, sortBy = 'name', isLoading, currentFolderId } = props;
   const queryClient = useQueryClient();
   const prefetchTimeout = useRef<number | undefined>(undefined);
+  const [renamingId, setRenamingId] = useState<{ id: number; type: 'file' | 'folder' } | null>(null);
 
   function handleFolderMouseEnter(folderId: number) {
     prefetchTimeout.current = window.setTimeout(() => {
@@ -92,6 +97,45 @@ export function FileGrid({ files, subfolders, onOpenFolder, onFileAction, viewMo
       clearTimeout(prefetchTimeout.current);
       prefetchTimeout.current = undefined;
     }
+  }
+
+  const renameMutation = useMutation({
+    mutationFn: async ({ id, type, name }: { id: number; type: 'file' | 'folder'; name: string }) => {
+      if (type === 'folder') return renameFolder(id, name);
+      return renameFile(id, name);
+    },
+    onMutate: async ({ id, type, name }) => {
+      const queryKey = ['folder-contents', currentFolderId ?? null];
+      await queryClient.cancelQueries({ queryKey });
+      const prev = queryClient.getQueryData<FolderContents>(queryKey);
+      if (prev) {
+        queryClient.setQueryData(queryKey, {
+          ...prev,
+          ...(type === 'folder'
+            ? { subfolders: prev.subfolders.map((f) => (f.id === id ? { ...f, name } : f)) }
+            : { files: prev.files.map((f) => (f.id === id ? { ...f, name } : f)) }),
+        });
+      }
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(['folder-contents', currentFolderId ?? null], ctx.prev);
+      toast.error('Erro ao renomear');
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['folder-contents'] });
+      queryClient.invalidateQueries({ queryKey: ['folder-tree'] });
+    },
+    onSuccess: () => toast.success('Nome atualizado'),
+  });
+
+  function handleRenameCommit(id: number, type: 'file' | 'folder', newName: string) {
+    setRenamingId(null);
+    renameMutation.mutate({ id, type, name: newName });
+  }
+
+  function handleRenameCancel() {
+    setRenamingId(null);
   }
 
   // Hooks must always be called before any early return (Rules of Hooks)
@@ -141,19 +185,42 @@ export function FileGrid({ files, subfolders, onOpenFolder, onFileAction, viewMo
           </thead>
           <tbody className="divide-y divide-[var(--border-color)]">
             {sortedFolders.map((folder) => (
-              <FileContextMenu key={`folder-${folder.id}`} item={folder} type="folder" onActionComplete={onActionComplete}>
+              <FileContextMenu
+                key={`folder-${folder.id}`}
+                item={folder}
+                type="folder"
+                onActionComplete={onActionComplete}
+                onRename={() => setRenamingId({ id: folder.id, type: 'folder' })}
+              >
                 <tr
                   className="hover:bg-[var(--surface-hover)] cursor-pointer transition-colors"
-                  onClick={() => onOpenFolder(folder.id)}
+                  onClick={() => {
+                    if (renamingId?.id === folder.id && renamingId?.type === 'folder') return;
+                    onOpenFolder(folder.id);
+                  }}
                   onMouseEnter={() => handleFolderMouseEnter(folder.id)}
                   onMouseLeave={handleFolderMouseLeave}
                 >
                   <td className="py-2.5 pr-4">
                     <div className="flex items-center gap-2">
                       <Folder className="h-4 w-4 text-[var(--primary-color)] flex-shrink-0" />
-                      <span className={`font-medium text-[var(--text-main)] truncate max-w-[260px]${(folder as any)._optimistic ? ' opacity-50' : ''}`}>
-                        {folder.name}
-                      </span>
+                      {renamingId?.id === folder.id && renamingId?.type === 'folder' ? (
+                        <InlineRenameInput
+                          currentName={folder.name}
+                          onCommit={(newName) => handleRenameCommit(folder.id, 'folder', newName)}
+                          onCancel={handleRenameCancel}
+                        />
+                      ) : (
+                        <span
+                          className={`font-medium text-[var(--text-main)] truncate max-w-[260px]${(folder as any)._optimistic ? ' opacity-50' : ''}`}
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            setRenamingId({ id: folder.id, type: 'folder' });
+                          }}
+                        >
+                          {folder.name}
+                        </span>
+                      )}
                       {folder.source === 'system' && (
                         <span className="text-[0.6rem] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded bg-[var(--surface-hover)] text-[var(--text-muted)]">
                           AUTO
@@ -178,17 +245,40 @@ export function FileGrid({ files, subfolders, onOpenFolder, onFileAction, viewMo
             ))}
 
             {sortedFiles.map((file) => (
-              <FileContextMenu key={`file-${file.id}`} item={file} type="file" onActionComplete={onActionComplete}>
+              <FileContextMenu
+                key={`file-${file.id}`}
+                item={file}
+                type="file"
+                onActionComplete={onActionComplete}
+                onRename={() => setRenamingId({ id: file.id, type: 'file' })}
+              >
                 <tr
                   className="hover:bg-[var(--surface-hover)] cursor-pointer transition-colors"
-                  onClick={() => onFileAction('open', file)}
+                  onClick={() => {
+                    if (renamingId?.id === file.id && renamingId?.type === 'file') return;
+                    onFileAction('open', file);
+                  }}
                 >
                   <td className="py-2.5 pr-4">
                     <div className="flex items-center gap-2">
                       <FileIcon kind={file.kind} className="h-4 w-4 text-[var(--text-muted)] flex-shrink-0" />
-                      <span className="font-medium text-[var(--text-main)] truncate max-w-[260px]">
-                        {file.name}
-                      </span>
+                      {renamingId?.id === file.id && renamingId?.type === 'file' ? (
+                        <InlineRenameInput
+                          currentName={file.name}
+                          onCommit={(newName) => handleRenameCommit(file.id, 'file', newName)}
+                          onCancel={handleRenameCancel}
+                        />
+                      ) : (
+                        <span
+                          className="font-medium text-[var(--text-main)] truncate max-w-[260px]"
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            setRenamingId({ id: file.id, type: 'file' });
+                          }}
+                        >
+                          {file.name}
+                        </span>
+                      )}
                     </div>
                   </td>
                   <td className="py-2.5 pr-4 text-[var(--text-muted)]">{kindLabel(file.kind)}</td>
@@ -221,17 +311,40 @@ export function FileGrid({ files, subfolders, onOpenFolder, onFileAction, viewMo
   return (
     <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))' }}>
       {sortedFolders.map((folder) => (
-        <FileContextMenu key={`folder-${folder.id}`} item={folder} type="folder" onActionComplete={onActionComplete}>
+        <FileContextMenu
+          key={`folder-${folder.id}`}
+          item={folder}
+          type="folder"
+          onActionComplete={onActionComplete}
+          onRename={() => setRenamingId({ id: folder.id, type: 'folder' })}
+        >
           <button
-            onClick={() => onOpenFolder(folder.id)}
+            onClick={() => {
+              if (renamingId?.id === folder.id && renamingId?.type === 'folder') return;
+              onOpenFolder(folder.id);
+            }}
             onMouseEnter={() => handleFolderMouseEnter(folder.id)}
             onMouseLeave={handleFolderMouseLeave}
             className={`group flex flex-col items-center gap-2 p-4 rounded-sm bg-[var(--card-bg)] border border-[var(--border-color)] hover:border-[var(--primary-color)] hover:shadow-md transition-all duration-150 text-left${(folder as any)._optimistic ? ' opacity-50 animate-pulse pointer-events-none' : ''}`}
           >
             <Folder className="h-10 w-10 text-[var(--primary-color)]" />
-            <span className="text-sm font-medium text-[var(--text-main)] text-center leading-tight line-clamp-2 w-full">
-              {folder.name}
-            </span>
+            {renamingId?.id === folder.id && renamingId?.type === 'folder' ? (
+              <InlineRenameInput
+                currentName={folder.name}
+                onCommit={(newName) => handleRenameCommit(folder.id, 'folder', newName)}
+                onCancel={handleRenameCancel}
+              />
+            ) : (
+              <span
+                className="text-sm font-medium text-[var(--text-main)] text-center leading-tight line-clamp-2 w-full"
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  setRenamingId({ id: folder.id, type: 'folder' });
+                }}
+              >
+                {folder.name}
+              </span>
+            )}
             {folder.total_size_bytes != null && (
               <p className="text-[0.65rem] text-[var(--text-muted)] mt-0.5 font-mono">{formatBytes(folder.total_size_bytes)}</p>
             )}
@@ -245,9 +358,18 @@ export function FileGrid({ files, subfolders, onOpenFolder, onFileAction, viewMo
       ))}
 
       {sortedFiles.map((file) => (
-        <FileContextMenu key={`file-${file.id}`} item={file} type="file" onActionComplete={onActionComplete}>
+        <FileContextMenu
+          key={`file-${file.id}`}
+          item={file}
+          type="file"
+          onActionComplete={onActionComplete}
+          onRename={() => setRenamingId({ id: file.id, type: 'file' })}
+        >
           <button
-            onClick={() => onFileAction('open', file)}
+            onClick={() => {
+              if (renamingId?.id === file.id && renamingId?.type === 'file') return;
+              onFileAction('open', file);
+            }}
             className="group flex flex-col rounded-sm bg-[var(--card-bg)] border border-[var(--border-color)] hover:border-[var(--primary-color)] hover:shadow-md transition-all duration-150 overflow-hidden text-left"
           >
             {/* Thumbnail area */}
@@ -284,7 +406,23 @@ export function FileGrid({ files, subfolders, onOpenFolder, onFileAction, viewMo
 
             {/* File info */}
             <div className="px-3 py-2">
-              <p className="text-xs font-medium text-[var(--text-main)] truncate">{file.name}</p>
+              {renamingId?.id === file.id && renamingId?.type === 'file' ? (
+                <InlineRenameInput
+                  currentName={file.name}
+                  onCommit={(newName) => handleRenameCommit(file.id, 'file', newName)}
+                  onCancel={handleRenameCancel}
+                />
+              ) : (
+                <p
+                  className="text-xs font-medium text-[var(--text-main)] truncate"
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    setRenamingId({ id: file.id, type: 'file' });
+                  }}
+                >
+                  {file.name}
+                </p>
+              )}
               <p className="text-[0.65rem] text-[var(--text-muted)] mt-0.5 font-mono">
                 {formatBytes(file.size_bytes)}
               </p>

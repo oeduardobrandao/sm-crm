@@ -345,6 +345,7 @@ export default function ArquivosPage() {
               }}
               sortBy={sortBy}
               isLoading={isLoading}
+              currentFolderId={currentFolderId}
             />
           </div>
         </FileUploader>
