@@ -239,6 +239,12 @@ export async function bulkDelete(
   return data as BulkDeleteResult;
 }
 
+export async function requestZipToken(
+  params: { folder_id: number } | { file_ids: number[] },
+): Promise<{ token: string; download_url: string }> {
+  return callFn('file-manage', 'POST', params, undefined, '/zip-token');
+}
+
 // ─── LINK OPERATIONS ────────────────────────────────────────────
 
 export async function linkFileToPost(fileId: number, postId: number): Promise<PostFileLink> {

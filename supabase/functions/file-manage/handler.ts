@@ -2,6 +2,17 @@ import { createJsonResponder } from "../_shared/http.ts";
 import { insertAuditLog } from "../_shared/audit.ts";
 import { copyObject } from "../_shared/r2.ts";
 
+async function signZipToken(payload: Record<string, unknown>, secret: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const payloadStr = JSON.stringify(payload);
+  const key = await crypto.subtle.importKey(
+    "raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(payloadStr));
+  const sigHex = Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  return btoa(JSON.stringify({ payload: payloadStr, sig: sigHex }));
+}
+
 type DbClient = {
   from: (table: string) => any;
   auth: { getUser: (token: string) => Promise<{ data: { user: any }; error: any }> };
@@ -667,6 +678,58 @@ export function createFileManageHandler(deps: FileManageDeps) {
       });
 
       return json({ ok: true, files_deleted: deletableFileIds.length, folders_deleted: deletableFolderIds.length });
+    }
+
+    // ─── ZIP-TOKEN ────────────────────────────────────────────────
+    if (resource === "zip-token" && req.method === "POST") {
+      const ZIP_TOKEN_SECRET = Deno.env.get("ZIP_TOKEN_SECRET");
+      if (!ZIP_TOKEN_SECRET) throw new Error("ZIP_TOKEN_SECRET is required");
+
+      const body = await req.json().catch(() => ({}));
+      const { folder_id, file_ids } = body as { folder_id?: number; file_ids?: number[] };
+
+      if (!folder_id && (!file_ids || file_ids.length === 0)) {
+        return json({ error: "folder_id or file_ids required" }, 400);
+      }
+
+      let totalBytes = 0;
+      let fileCount = 0;
+
+      if (folder_id) {
+        const { data: sizeInfo } = await svc.rpc("folder_sizes_batch", { p_folder_ids: [folder_id] });
+        totalBytes = sizeInfo?.[0]?.total_size_bytes ?? 0;
+        fileCount = sizeInfo?.[0]?.file_count ?? 0;
+      } else if (file_ids) {
+        const { data: files } = await svc.from("files").select("size_bytes").eq("conta_id", contaId).in("id", file_ids);
+        totalBytes = (files ?? []).reduce((sum: number, f: { size_bytes: number }) => sum + f.size_bytes, 0);
+        fileCount = file_ids.length;
+      }
+
+      const LIMIT_BYTES = 1024 * 1024 * 1024;
+      const LIMIT_FILES = 500;
+
+      if (totalBytes > LIMIT_BYTES || fileCount > LIMIT_FILES) {
+        return json({
+          error: "zip_limit_exceeded",
+          total_bytes: totalBytes,
+          file_count: fileCount,
+          limit_bytes: LIMIT_BYTES,
+          limit_files: LIMIT_FILES,
+        }, 413);
+      }
+
+      const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+      const tokenPayload = {
+        conta_id: contaId,
+        ...(folder_id ? { folder_id } : { file_ids }),
+        expires_at: expiresAt,
+      };
+
+      const token = await signZipToken(tokenPayload, ZIP_TOKEN_SECRET);
+      const baseUrl = Deno.env.get("SUPABASE_URL")!;
+      const downloadUrl = `${baseUrl}/functions/v1/file-zip?token=${encodeURIComponent(token)}`;
+
+      return json({ token, download_url: downloadUrl });
     }
 
     return json({ error: "Not found" }, 404);
