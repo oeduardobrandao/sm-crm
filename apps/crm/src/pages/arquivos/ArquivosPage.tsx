@@ -12,6 +12,8 @@ import { FileUploader } from './components/FileUploader';
 import { CreateFolderModal } from './components/CreateFolderModal';
 import { MobileArquivosView } from './components/MobileArquivosView';
 import { PostMediaLightbox } from '../entregas/components/PostMediaLightbox';
+import { BulkActionBar } from './components/BulkActionBar';
+import { useSelection } from './hooks/useSelection';
 import type { SortBy } from './components/FileGrid';
 import type { FileRecord, FolderContents } from './types';
 import type { PostMedia } from '../../store';
@@ -44,6 +46,7 @@ export default function ArquivosPage() {
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const queryClient = useQueryClient();
   const uploaderRef = useRef<{ openFilePicker: () => void }>(null);
+  const selection = useSelection();
 
   const { data, isLoading } = useQuery({
     queryKey: ['folder-contents', currentFolderId],
@@ -73,10 +76,43 @@ export default function ArquivosPage() {
   const files = data?.files ?? [];
   const storage = data?.storage;
 
+  // Clear selection when navigating to a different folder
+  useEffect(() => { selection.clear(); }, [currentFolderId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Escape key clears selection
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape' && selection.count > 0) {
+        selection.clear();
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selection.count, selection.clear]);
+
   const filteredFiles = useMemo(() => {
     if (!isFilterActive(filter) || !data?.files) return data?.files ?? [];
     return data.files.filter((f) => filter.types.has(f.kind as 'image' | 'video' | 'document'));
   }, [data?.files, filter]);
+
+  // Flat ordered item list matching FileGrid's render order — used for range selection
+  const displayItems = useMemo(() => {
+    const folderItems = [...(data?.subfolders ?? [])].sort((a, b) => {
+      switch (sortBy) {
+        case 'size': return (b.total_size_bytes ?? 0) - (a.total_size_bytes ?? 0);
+        case 'date': return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        default: return a.name.localeCompare(b.name, 'pt-BR');
+      }
+    }).map(f => ({ id: f.id }));
+    const fileItems = [...filteredFiles].sort((a, b) => {
+      switch (sortBy) {
+        case 'size': return b.size_bytes - a.size_bytes;
+        case 'date': return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        default: return a.name.localeCompare(b.name, 'pt-BR');
+      }
+    }).map(f => ({ id: f.id }));
+    return [...folderItems, ...fileItems];
+  }, [data?.subfolders, filteredFiles, sortBy]);
 
   const mediaFiles = files.filter(f => f.kind === 'image' || f.kind === 'video');
   const lightboxMedia: PostMedia[] = mediaFiles.map(f => ({
@@ -357,6 +393,10 @@ export default function ArquivosPage() {
               sortBy={sortBy}
               isLoading={isLoading}
               currentFolderId={currentFolderId}
+              selectedIds={selection.selectedIds}
+              onToggleSelect={selection.toggle}
+              onToggleRangeSelect={(id) => selection.toggleRange(id, displayItems)}
+              selectionCount={selection.count}
             />
             {isFilterActive(filter) && filteredFiles.length === 0 && files.length > 0 && (
               <div className="text-center py-4">
@@ -372,6 +412,15 @@ export default function ArquivosPage() {
           </div>
         </FileUploader>
       </main>
+
+      <BulkActionBar
+        count={selection.count}
+        onMove={() => {}}
+        onCopy={() => {}}
+        onZip={() => {}}
+        onDelete={() => {}}
+        onClear={selection.clear}
+      />
 
       <PostMediaLightbox
         media={lightboxMedia}
