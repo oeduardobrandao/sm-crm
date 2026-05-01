@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { LayoutGrid, List, Upload, FolderPlus, ArrowUpDown } from 'lucide-react';
 import { toast } from 'sonner';
-import { getFolderContents, createFolder, getFileDownloadUrl, bulkMove, bulkDelete, copyFile, copyFolder } from '@/services/fileService';
+import { getFolderContents, createFolder, getFileDownloadUrl, bulkMove, bulkDelete, copyFile, copyFolder, requestZipToken } from '@/services/fileService';
 import type { BulkDeleteResult } from '@/services/fileService';
 import {
   AlertDialog,
@@ -266,6 +266,28 @@ export default function ArquivosPage() {
         toast.error('Pasta muito grande para copiar (máximo 200 arquivos).');
       } else {
         toast.error('Erro ao copiar pasta');
+      }
+    },
+  });
+
+  const zipMutation = useMutation({
+    mutationFn: async (params: { folder_id: number } | { file_ids: number[] }) => {
+      const result = await requestZipToken(params);
+      const a = document.createElement('a');
+      a.href = result.download_url;
+      a.download = '';
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      return result;
+    },
+    retry: 1,
+    onError: (err) => {
+      if (err.message.includes('zip_limit_exceeded')) {
+        toast.error('Pasta muito grande para download ZIP. Selecione menos arquivos.');
+      } else {
+        toast.error('Erro ao preparar download');
       }
     },
   });
@@ -543,7 +565,17 @@ export default function ArquivosPage() {
         count={selection.count}
         onMove={() => setPickerMode('move')}
         onCopy={() => setPickerMode('copy')}
-        onZip={() => {}}
+        onZip={() => {
+          const fileIds = [...selection.selectedIds].filter((id) => data?.files.some((f) => f.id === id));
+          const folderIds = [...selection.selectedIds].filter((id) => data?.subfolders.some((f) => f.id === id));
+
+          if (folderIds.length === 1 && fileIds.length === 0) {
+            zipMutation.mutate({ folder_id: folderIds[0] });
+          } else {
+            zipMutation.mutate({ file_ids: fileIds });
+          }
+        }}
+        isZipping={zipMutation.isPending}
         onDelete={() => {
           const fileIds = [...selection.selectedIds].filter((id) => data?.files.some((f) => f.id === id));
           const folderIds = [...selection.selectedIds].filter((id) => data?.subfolders.some((f) => f.id === id));
