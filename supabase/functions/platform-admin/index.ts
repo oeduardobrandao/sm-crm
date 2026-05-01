@@ -435,6 +435,16 @@ async function handleSetWorkspaceOverrides(
     return new Response(JSON.stringify({ error: "workspace_id is required" }), { status: 400, headers });
   }
 
+  const { data: existing } = await svc
+    .from("workspace_plan_overrides")
+    .select("id")
+    .eq("workspace_id", workspace_id)
+    .maybeSingle();
+
+  if (!existing) {
+    return new Response(JSON.stringify({ error: "Workspace has no plan assigned. Assign a plan first." }), { status: 400, headers });
+  }
+
   const updatePayload: Record<string, unknown> = {
     updated_by: adminId,
     updated_at: new Date().toISOString(),
@@ -462,6 +472,16 @@ async function handleClearWorkspaceOverrides(
   const { workspace_id } = body;
   if (!workspace_id) {
     return new Response(JSON.stringify({ error: "workspace_id is required" }), { status: 400, headers });
+  }
+
+  const { data: existing } = await svc
+    .from("workspace_plan_overrides")
+    .select("id")
+    .eq("workspace_id", workspace_id)
+    .maybeSingle();
+
+  if (!existing) {
+    return new Response(JSON.stringify({ error: "Workspace has no plan assigned." }), { status: 400, headers });
   }
 
   const { error } = await svc
@@ -520,7 +540,7 @@ async function handleInviteAdmin(
     return new Response(JSON.stringify({ error: "email is required" }), { status: 400, headers });
   }
 
-  const { data: users } = await svc.auth.admin.listUsers();
+  const { data: users } = await svc.auth.admin.listUsers({ page: 1, perPage: 1000 });
   const authUser = users?.users?.find(
     (u) => u.email?.toLowerCase() === email.toLowerCase()
   );

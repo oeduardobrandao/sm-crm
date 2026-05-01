@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { verifyAdmin } from '../lib/api';
@@ -17,6 +17,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
+  const initialCheckDone = useRef(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data }) => {
@@ -30,6 +31,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
           setIsAdmin(false);
         }
       }
+      initialCheckDone.current = true;
       setLoading(false);
     });
 
@@ -45,6 +47,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (!initialCheckDone.current) return;
     if (user) {
       verifyAdmin().then((r) => setIsAdmin(r.is_admin)).catch(() => setIsAdmin(false));
     } else {
