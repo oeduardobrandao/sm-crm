@@ -42,3 +42,9 @@ verify_jwt = false
 
 [functions.hub-instagram-feed]
 verify_jwt = false
+
+[functions.platform-admin]
+verify_jwt = false
+
+[functions.workspace-limits]
+verify_jwt = false
