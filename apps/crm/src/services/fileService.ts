@@ -187,6 +187,18 @@ export async function deleteFile(fileId: number): Promise<void> {
   await callFn('file-manage', 'DELETE', undefined, undefined, `/files/${fileId}`);
 }
 
+export async function bulkMove(
+  fileIds: number[],
+  folderIds: number[],
+  destinationId: number | null,
+): Promise<{ ok: boolean; files_moved: number; folders_moved: number }> {
+  return callFn('file-manage', 'POST', {
+    file_ids: fileIds,
+    folder_ids: folderIds,
+    destination_id: destinationId,
+  }, undefined, '/bulk-move');
+}
+
 // ─── LINK OPERATIONS ────────────────────────────────────────────
 
 export async function linkFileToPost(fileId: number, postId: number): Promise<PostFileLink> {

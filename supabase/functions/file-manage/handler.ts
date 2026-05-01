@@ -1,4 +1,5 @@
 import { createJsonResponder } from "../_shared/http.ts";
+import { insertAuditLog } from "../_shared/audit.ts";
 
 type DbClient = {
   from: (table: string) => any;
@@ -373,6 +374,40 @@ export function createFileManageHandler(deps: FileManageDeps) {
         if (updErr) return json({ error: updErr.message }, 500);
         return json(updated);
       }
+    }
+
+    // ─── BULK-MOVE ────────────────────────────────────────────────
+    if (resource === "bulk-move" && req.method === "POST") {
+      const body = await req.json().catch(() => ({}));
+      const { file_ids, folder_ids, destination_id } = body as {
+        file_ids?: number[];
+        folder_ids?: number[];
+        destination_id?: number | null;
+      };
+
+      if ((!file_ids || file_ids.length === 0) && (!folder_ids || folder_ids.length === 0)) {
+        return json({ error: "No items to move" }, 400);
+      }
+
+      const { data: result, error: rpcError } = await svc.rpc("bulk_move_items", {
+        p_conta_id: contaId,
+        p_file_ids: file_ids ?? [],
+        p_folder_ids: folder_ids ?? [],
+        p_destination_id: destination_id ?? null,
+      });
+
+      if (rpcError) return json({ error: rpcError.message }, 500);
+      if (result?.error) return json(result, 400);
+
+      await insertAuditLog(svc, {
+        conta_id: contaId,
+        actor_user_id: user.id,
+        action: "bulk_move",
+        resource_type: "files_and_folders",
+        metadata: { file_ids, folder_ids, destination_id, result },
+      });
+
+      return json(result);
     }
 
     return json({ error: "Not found" }, 404);
