@@ -1,5 +1,5 @@
 // supabase/functions/_shared/r2.ts
-import { S3Client, HeadObjectCommand, DeleteObjectCommand, ListObjectsV2Command } from "npm:@aws-sdk/client-s3@3.637.0";
+import { S3Client, HeadObjectCommand, DeleteObjectCommand, ListObjectsV2Command, CopyObjectCommand } from "npm:@aws-sdk/client-s3@3.637.0";
 import { getSignedUrl } from "npm:@aws-sdk/s3-request-presigner@3.637.0";
 import { PutObjectCommand, GetObjectCommand } from "npm:@aws-sdk/client-s3@3.637.0";
 
@@ -50,4 +50,21 @@ export async function listOrphanKeys(prefix: string, olderThanMs: number): Promi
     token = res.IsTruncated ? res.NextContinuationToken : undefined;
   } while (token);
   return out;
+}
+
+export async function copyObject(sourceKey: string, destKey: string): Promise<void> {
+  await r2.send(new CopyObjectCommand({
+    Bucket: R2_BUCKET,
+    CopySource: `${R2_BUCKET}/${sourceKey}`,
+    Key: destKey,
+  }));
+}
+
+export async function getObject(key: string): Promise<ReadableStream<Uint8Array> | null> {
+  try {
+    const res = await r2.send(new GetObjectCommand({ Bucket: R2_BUCKET, Key: key }));
+    return (res.Body as ReadableStream<Uint8Array>) ?? null;
+  } catch {
+    return null;
+  }
 }

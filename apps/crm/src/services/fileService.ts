@@ -187,6 +187,14 @@ export async function deleteFile(fileId: number): Promise<void> {
   await callFn('file-manage', 'DELETE', undefined, undefined, `/files/${fileId}`);
 }
 
+export async function copyFile(fileId: number, destinationFolderId: number | null): Promise<FileRecord> {
+  return callFn<FileRecord>('file-manage', 'POST', { destination_folder_id: destinationFolderId }, undefined, `/files/${fileId}/copy`);
+}
+
+export async function copyFolder(folderId: number, destinationFolderId: number | null): Promise<{ ok: boolean; copied: number; failed: number }> {
+  return callFn('file-manage', 'POST', { destination_folder_id: destinationFolderId }, undefined, `/folders/${folderId}/copy`);
+}
+
 export async function bulkMove(
   fileIds: number[],
   folderIds: number[],
