@@ -410,6 +410,98 @@ export function createFileManageHandler(deps: FileManageDeps) {
       return json(result);
     }
 
+    // ─── BULK-DELETE ──────────────────────────────────────────────
+    if (resource === "bulk-delete" && req.method === "POST") {
+      const body = await req.json().catch(() => ({}));
+      const { file_ids, folder_ids } = body as { file_ids?: number[]; folder_ids?: number[] };
+
+      if ((!file_ids || file_ids.length === 0) && (!folder_ids || folder_ids.length === 0)) {
+        return json({ error: "No items to delete" }, 400);
+      }
+
+      const blocked: { id: number; type: string; reason: string }[] = [];
+      const deletableFileIds: number[] = [];
+      const deletableFolderIds: number[] = [];
+
+      if (file_ids && file_ids.length > 0) {
+        const { data: files } = await svc
+          .from("files")
+          .select("id, reference_count, size_bytes")
+          .eq("conta_id", contaId)
+          .in("id", file_ids);
+
+        for (const f of files ?? []) {
+          if (f.reference_count > 0) {
+            blocked.push({ id: f.id, type: "file", reason: "file_in_use" });
+          } else {
+            deletableFileIds.push(f.id);
+          }
+        }
+
+        const foundIds = new Set((files ?? []).map((f: { id: number }) => f.id));
+        for (const id of file_ids) {
+          if (!foundIds.has(id)) blocked.push({ id, type: "file", reason: "not_found" });
+        }
+      }
+
+      if (folder_ids && folder_ids.length > 0) {
+        const { data: folders } = await svc
+          .from("folders")
+          .select("id, source")
+          .eq("conta_id", contaId)
+          .in("id", folder_ids);
+
+        for (const f of folders ?? []) {
+          if (f.source === "system") {
+            blocked.push({ id: f.id, type: "folder", reason: "system_folder" });
+          } else {
+            deletableFolderIds.push(f.id);
+          }
+        }
+
+        const foundIds = new Set((folders ?? []).map((f: { id: number }) => f.id));
+        for (const id of folder_ids) {
+          if (!foundIds.has(id)) blocked.push({ id, type: "folder", reason: "not_found" });
+        }
+      }
+
+      if (blocked.length > 0) {
+        return json({ blocked, deletable: { file_ids: deletableFileIds, folder_ids: deletableFolderIds } }, 409);
+      }
+
+      let totalBytesFreed = 0;
+      if (deletableFileIds.length > 0) {
+        const { data: filesToDelete } = await svc
+          .from("files")
+          .select("size_bytes")
+          .in("id", deletableFileIds);
+
+        totalBytesFreed = (filesToDelete ?? []).reduce((sum: number, f: { size_bytes: number }) => sum + f.size_bytes, 0);
+
+        const { error: delErr } = await svc.from("files").delete().in("id", deletableFileIds);
+        if (delErr) return json({ error: delErr.message }, 500);
+      }
+
+      if (deletableFolderIds.length > 0) {
+        const { error: delErr } = await svc.from("folders").delete().in("id", deletableFolderIds);
+        if (delErr) return json({ error: delErr.message }, 500);
+      }
+
+      if (totalBytesFreed > 0) {
+        await svc.rpc("decrement_storage", { p_conta_id: contaId, p_bytes: totalBytesFreed }).catch(() => {});
+      }
+
+      await insertAuditLog(svc, {
+        conta_id: contaId,
+        actor_user_id: user.id,
+        action: "bulk_delete",
+        resource_type: "files_and_folders",
+        metadata: { file_ids: deletableFileIds, folder_ids: deletableFolderIds, bytes_freed: totalBytesFreed },
+      });
+
+      return json({ ok: true, files_deleted: deletableFileIds.length, folders_deleted: deletableFolderIds.length });
+    }
+
     return json({ error: "Not found" }, 404);
   };
 }

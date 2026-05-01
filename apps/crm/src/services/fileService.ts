@@ -199,6 +199,38 @@ export async function bulkMove(
   }, undefined, '/bulk-move');
 }
 
+export interface BulkDeleteResult {
+  ok?: boolean;
+  files_deleted?: number;
+  folders_deleted?: number;
+  blocked?: { id: number; type: string; reason: string }[];
+  deletable?: { file_ids: number[]; folder_ids: number[] };
+}
+
+export async function bulkDelete(
+  fileIds: number[],
+  folderIds: number[],
+): Promise<BulkDeleteResult> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('Not authenticated');
+
+  const url = new URL(`${SUPABASE_URL}/functions/v1/file-manage/bulk-delete`);
+  const res = await fetch(url.toString(), {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${session.access_token}`,
+      'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY as string,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ file_ids: fileIds, folder_ids: folderIds }),
+  });
+
+  const data = await res.json();
+  if (res.status === 409) return data as BulkDeleteResult;
+  if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+  return data as BulkDeleteResult;
+}
+
 // ─── LINK OPERATIONS ────────────────────────────────────────────
 
 export async function linkFileToPost(fileId: number, postId: number): Promise<PostFileLink> {
