@@ -2,7 +2,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { LayoutGrid, List, Upload, FolderPlus, ArrowUpDown } from 'lucide-react';
 import { toast } from 'sonner';
-import { getFolderContents, createFolder, getFileDownloadUrl, bulkMove } from '@/services/fileService';
+import { getFolderContents, createFolder, getFileDownloadUrl, bulkMove, bulkDelete } from '@/services/fileService';
+import type { BulkDeleteResult } from '@/services/fileService';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Breadcrumbs } from './components/Breadcrumbs';
 import { FolderTree } from './components/FolderTree';
 import { FileGrid, formatBytes } from './components/FileGrid';
@@ -44,6 +55,12 @@ export default function ArquivosPage() {
   const [filter, setFilter] = useState<FilterState>(EMPTY_FILTER);
   const [createFolderParent, setCreateFolderParent] = useState<number | null | undefined>(undefined);
   const [pickerMode, setPickerMode] = useState<'move' | 'copy' | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    fileIds: number[];
+    folderIds: number[];
+    blocked?: { id: number; type: string; reason: string }[];
+    stage: 'confirm' | 'partial';
+  } | null>(null);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const queryClient = useQueryClient();
@@ -190,6 +207,28 @@ export default function ArquivosPage() {
       queryClient.invalidateQueries({ queryKey: ['folder-tree'] });
     },
     onError: () => toast.error('Erro ao mover itens'),
+  });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: ({ fileIds, folderIds }: { fileIds: number[]; folderIds: number[] }) =>
+      bulkDelete(fileIds, folderIds),
+    onSuccess: (result: BulkDeleteResult) => {
+      if (result.blocked && result.blocked.length > 0) {
+        setDeleteConfirm({
+          fileIds: result.deletable?.file_ids ?? [],
+          folderIds: result.deletable?.folder_ids ?? [],
+          blocked: result.blocked,
+          stage: 'partial',
+        });
+      } else {
+        toast.success(`${(result.files_deleted ?? 0) + (result.folders_deleted ?? 0)} itens excluídos`);
+        selection.clear();
+        setDeleteConfirm(null);
+        queryClient.invalidateQueries({ queryKey: ['folder-contents'] });
+        queryClient.invalidateQueries({ queryKey: ['folder-tree'] });
+      }
+    },
+    onError: () => toast.error('Erro ao excluir itens'),
   });
 
   const classifySelection = useCallback(() => {
@@ -461,9 +500,14 @@ export default function ArquivosPage() {
         onMove={() => setPickerMode('move')}
         onCopy={() => {}}
         onZip={() => {}}
-        onDelete={() => {}}
+        onDelete={() => {
+          const fileIds = [...selection.selectedIds].filter((id) => data?.files.some((f) => f.id === id));
+          const folderIds = [...selection.selectedIds].filter((id) => data?.subfolders.some((f) => f.id === id));
+          setDeleteConfirm({ fileIds, folderIds, stage: 'confirm' });
+        }}
         onClear={selection.clear}
         isMoving={bulkMoveMutation.isPending}
+        isDeleting={bulkDeleteMutation.isPending}
       />
 
       <PostMediaLightbox
@@ -498,6 +542,54 @@ export default function ArquivosPage() {
           setPickerMode(null);
         }}
       />
+      <AlertDialog open={deleteConfirm !== null} onOpenChange={(open) => { if (!open) setDeleteConfirm(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {deleteConfirm?.stage === 'partial'
+                ? 'Alguns itens não podem ser excluídos'
+                : 'Excluir itens?'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteConfirm?.stage === 'partial' ? (
+                <>
+                  {deleteConfirm.blocked?.length} {deleteConfirm.blocked?.length === 1 ? 'item está' : 'itens estão'} em uso e{' '}
+                  {deleteConfirm.blocked?.length === 1 ? 'não pode' : 'não podem'} ser {deleteConfirm.blocked?.length === 1 ? 'excluído' : 'excluídos'}.
+                  {(deleteConfirm.fileIds.length + deleteConfirm.folderIds.length) > 0
+                    ? ` Deseja excluir os outros ${deleteConfirm.fileIds.length + deleteConfirm.folderIds.length}?`
+                    : ' Nenhum item pode ser excluído.'}
+                </>
+              ) : (
+                `Tem certeza que deseja excluir ${
+                  (deleteConfirm?.fileIds.length ?? 0) + (deleteConfirm?.folderIds.length ?? 0)
+                } ${
+                  ((deleteConfirm?.fileIds.length ?? 0) + (deleteConfirm?.folderIds.length ?? 0)) === 1
+                    ? 'item'
+                    : 'itens'
+                }? Esta ação não pode ser desfeita.`
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            {((deleteConfirm?.fileIds.length ?? 0) + (deleteConfirm?.folderIds.length ?? 0)) > 0 && (
+              <AlertDialogAction
+                onClick={() => {
+                  if (deleteConfirm) {
+                    bulkDeleteMutation.mutate({
+                      fileIds: deleteConfirm.fileIds,
+                      folderIds: deleteConfirm.folderIds,
+                    });
+                  }
+                }}
+                className="bg-[var(--danger)] hover:bg-[var(--danger)] text-white"
+              >
+                Excluir
+              </AlertDialogAction>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
