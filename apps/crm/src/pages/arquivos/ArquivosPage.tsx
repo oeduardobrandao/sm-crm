@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { LayoutGrid, List, Upload, FolderPlus, ArrowUpDown } from 'lucide-react';
 import { toast } from 'sonner';
@@ -6,6 +6,8 @@ import { getFolderContents, createFolder, getFileDownloadUrl } from '@/services/
 import { Breadcrumbs } from './components/Breadcrumbs';
 import { FolderTree } from './components/FolderTree';
 import { FileGrid, formatBytes } from './components/FileGrid';
+import { FilterPopover, EMPTY_FILTER, isFilterActive } from './components/FilterPopover';
+import type { FilterState } from './components/FilterPopover';
 import { FileUploader } from './components/FileUploader';
 import { CreateFolderModal } from './components/CreateFolderModal';
 import { MobileArquivosView } from './components/MobileArquivosView';
@@ -36,6 +38,7 @@ export default function ArquivosPage() {
   const [currentFolderId, setCurrentFolderId] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [sortBy, setSortBy] = useState<SortBy>('name');
+  const [filter, setFilter] = useState<FilterState>(EMPTY_FILTER);
   const [createFolderParent, setCreateFolderParent] = useState<number | null | undefined>(undefined);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
@@ -69,6 +72,11 @@ export default function ArquivosPage() {
   const subfolders = data?.subfolders ?? [];
   const files = data?.files ?? [];
   const storage = data?.storage;
+
+  const filteredFiles = useMemo(() => {
+    if (!isFilterActive(filter) || !data?.files) return data?.files ?? [];
+    return data.files.filter((f) => filter.types.has(f.kind as 'image' | 'video' | 'document'));
+  }, [data?.files, filter]);
 
   const mediaFiles = files.filter(f => f.kind === 'image' || f.kind === 'video');
   const lightboxMedia: PostMedia[] = mediaFiles.map(f => ({
@@ -278,6 +286,9 @@ export default function ArquivosPage() {
               Nova pasta
             </button>
 
+            {/* Filter popover */}
+            <FilterPopover filter={filter} onChange={setFilter} />
+
             {/* Sort dropdown */}
             <div className="flex items-center gap-1.5 border border-[var(--border-color)] rounded-sm px-2.5 py-1.5">
               <ArrowUpDown className="h-3.5 w-3.5 text-[var(--text-muted)]" />
@@ -334,7 +345,7 @@ export default function ArquivosPage() {
         >
           <div className="flex-1 overflow-y-auto p-5">
             <FileGrid
-              files={files}
+              files={filteredFiles}
               subfolders={subfolders}
               onOpenFolder={setCurrentFolderId}
               onFileAction={handleFileAction}
@@ -347,6 +358,17 @@ export default function ArquivosPage() {
               isLoading={isLoading}
               currentFolderId={currentFolderId}
             />
+            {isFilterActive(filter) && filteredFiles.length === 0 && files.length > 0 && (
+              <div className="text-center py-4">
+                <p className="text-sm text-[var(--text-muted)] mb-2">Nenhum arquivo corresponde ao filtro</p>
+                <button
+                  onClick={() => setFilter(EMPTY_FILTER)}
+                  className="text-sm text-[var(--primary-color)] hover:underline"
+                >
+                  Limpar filtros
+                </button>
+              </div>
+            )}
           </div>
         </FileUploader>
       </main>
