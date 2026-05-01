@@ -51,6 +51,7 @@ interface FileGridProps {
   onToggleRangeSelect?: (id: number) => void;
   selectionCount?: number;
   onRequestMove?: (id: number, type: 'file' | 'folder') => void;
+  onRequestCopy?: (id: number, type: 'file' | 'folder') => void;
   onDrop?: (targetFolderId: number, payload: { fileIds: number[]; folderIds: number[] }) => void;
   classifySelection?: () => { fileIds: number[]; folderIds: number[] };
 }
@@ -99,6 +100,7 @@ export function FileGrid(props: FileGridProps) {
     onToggleRangeSelect,
     selectionCount = 0,
     onRequestMove,
+    onRequestCopy,
     onDrop,
     classifySelection,
   } = props;
@@ -257,6 +259,7 @@ export function FileGrid(props: FileGridProps) {
                   onActionComplete={onActionComplete}
                   onRename={() => setRenamingId({ id: folder.id, type: 'folder' })}
                   onRequestMove={() => onRequestMove?.(folder.id, 'folder')}
+                  onRequestCopy={() => onRequestCopy?.(folder.id, 'folder')}
                 >
                   <tr
                     className={`hover:bg-[var(--surface-hover)] cursor-pointer transition-colors group${isSelected ? ' bg-[rgba(234,179,8,0.06)]' : ''}`}
@@ -346,6 +349,7 @@ export function FileGrid(props: FileGridProps) {
                   onActionComplete={onActionComplete}
                   onRename={() => setRenamingId({ id: file.id, type: 'file' })}
                   onRequestMove={() => onRequestMove?.(file.id, 'file')}
+                  onRequestCopy={() => onRequestCopy?.(file.id, 'file')}
                 >
                   <tr
                     className={`hover:bg-[var(--surface-hover)] cursor-pointer transition-colors group${isSelected ? ' bg-[rgba(234,179,8,0.06)]' : ''}`}
@@ -441,6 +445,7 @@ export function FileGrid(props: FileGridProps) {
             onActionComplete={onActionComplete}
             onRename={() => setRenamingId({ id: folder.id, type: 'folder' })}
             onRequestMove={() => onRequestMove?.(folder.id, 'folder')}
+            onRequestCopy={() => onRequestCopy?.(folder.id, 'folder')}
           >
             <button
               onClick={() => {
@@ -549,6 +554,7 @@ export function FileGrid(props: FileGridProps) {
             onActionComplete={onActionComplete}
             onRename={() => setRenamingId({ id: file.id, type: 'file' })}
             onRequestMove={() => onRequestMove?.(file.id, 'file')}
+            onRequestCopy={() => onRequestCopy?.(file.id, 'file')}
           >
             <button
               onClick={() => {

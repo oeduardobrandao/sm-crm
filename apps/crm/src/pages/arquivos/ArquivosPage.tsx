@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { LayoutGrid, List, Upload, FolderPlus, ArrowUpDown } from 'lucide-react';
 import { toast } from 'sonner';
-import { getFolderContents, createFolder, getFileDownloadUrl, bulkMove, bulkDelete } from '@/services/fileService';
+import { getFolderContents, createFolder, getFileDownloadUrl, bulkMove, bulkDelete, copyFile, copyFolder } from '@/services/fileService';
 import type { BulkDeleteResult } from '@/services/fileService';
 import {
   AlertDialog,
@@ -229,6 +229,45 @@ export default function ArquivosPage() {
       }
     },
     onError: () => toast.error('Erro ao excluir itens'),
+  });
+
+  const copyFileMutation = useMutation({
+    mutationFn: ({ fileId, destinationId }: { fileId: number; destinationId: number | null }) =>
+      copyFile(fileId, destinationId),
+    onSuccess: () => {
+      toast.success('Arquivo copiado');
+      queryClient.invalidateQueries({ queryKey: ['folder-contents'] });
+    },
+    onError: (err) => {
+      if (err.message.includes('quota_exceeded')) {
+        toast.error('Cópia excederia o armazenamento. Libere espaço ou faça upgrade.');
+      } else {
+        toast.error('Erro ao copiar arquivo');
+      }
+    },
+  });
+
+  const copyFolderMutation = useMutation({
+    mutationFn: ({ folderId, destinationId }: { folderId: number; destinationId: number | null }) =>
+      copyFolder(folderId, destinationId),
+    onSuccess: (result) => {
+      if (result.failed > 0) {
+        toast.warning(`${result.copied} de ${result.copied + result.failed} arquivos copiados`);
+      } else {
+        toast.success(`${result.copied} arquivo${result.copied !== 1 ? 's' : ''} copiado${result.copied !== 1 ? 's' : ''}`);
+      }
+      queryClient.invalidateQueries({ queryKey: ['folder-contents'] });
+      queryClient.invalidateQueries({ queryKey: ['folder-tree'] });
+    },
+    onError: (err) => {
+      if (err.message.includes('quota_exceeded')) {
+        toast.error('Cópia excederia o armazenamento. Libere espaço ou faça upgrade.');
+      } else if (err.message.includes('copy_limit_exceeded')) {
+        toast.error('Pasta muito grande para copiar (máximo 200 arquivos).');
+      } else {
+        toast.error('Erro ao copiar pasta');
+      }
+    },
   });
 
   const classifySelection = useCallback(() => {
@@ -477,6 +516,11 @@ export default function ArquivosPage() {
                 selection.toggle(id);
                 setPickerMode('move');
               }}
+              onRequestCopy={(id, _type) => {
+                selection.clear();
+                selection.toggle(id);
+                setPickerMode('copy');
+              }}
               onDrop={handleDrop}
               classifySelection={classifySelection}
             />
@@ -498,7 +542,7 @@ export default function ArquivosPage() {
       <BulkActionBar
         count={selection.count}
         onMove={() => setPickerMode('move')}
-        onCopy={() => {}}
+        onCopy={() => setPickerMode('copy')}
         onZip={() => {}}
         onDelete={() => {
           const fileIds = [...selection.selectedIds].filter((id) => data?.files.some((f) => f.id === id));
@@ -507,6 +551,7 @@ export default function ArquivosPage() {
         }}
         onClear={selection.clear}
         isMoving={bulkMoveMutation.isPending}
+        isCopying={copyFileMutation.isPending || copyFolderMutation.isPending}
         isDeleting={bulkDeleteMutation.isPending}
       />
 
@@ -540,6 +585,31 @@ export default function ArquivosPage() {
           );
           bulkMoveMutation.mutate({ fileIds, folderIds, destinationId: destId });
           setPickerMode(null);
+        }}
+      />
+      <FolderPickerModal
+        open={pickerMode === 'copy'}
+        onOpenChange={(open) => { if (!open) setPickerMode(null); }}
+        title={`Copiar ${selection.count} ${selection.count === 1 ? 'item' : 'itens'}`}
+        confirmLabel="Copiar"
+        isLoading={copyFileMutation.isPending || copyFolderMutation.isPending}
+        sourceFolderIds={[]}
+        currentFolderId={null}
+        onConfirm={(destId) => {
+          const fileIds = [...selection.selectedIds].filter((id) =>
+            data?.files.some((f) => f.id === id)
+          );
+          const folderIds = [...selection.selectedIds].filter((id) =>
+            data?.subfolders.some((f) => f.id === id)
+          );
+          for (const fid of fileIds) {
+            copyFileMutation.mutate({ fileId: fid, destinationId: destId });
+          }
+          for (const fid of folderIds) {
+            copyFolderMutation.mutate({ folderId: fid, destinationId: destId });
+          }
+          setPickerMode(null);
+          selection.clear();
         }}
       />
       <AlertDialog open={deleteConfirm !== null} onOpenChange={(open) => { if (!open) setDeleteConfirm(null); }}>
