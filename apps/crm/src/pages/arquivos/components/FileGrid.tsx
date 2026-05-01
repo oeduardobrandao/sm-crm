@@ -50,6 +50,7 @@ interface FileGridProps {
   onToggleSelect?: (id: number) => void;
   onToggleRangeSelect?: (id: number) => void;
   selectionCount?: number;
+  onRequestMove?: (id: number, type: 'file' | 'folder') => void;
 }
 
 function sortFolders(folders: FolderType[], sortBy: SortBy): FolderType[] {
@@ -95,6 +96,7 @@ export function FileGrid(props: FileGridProps) {
     onToggleSelect,
     onToggleRangeSelect,
     selectionCount = 0,
+    onRequestMove,
   } = props;
   const queryClient = useQueryClient();
   const prefetchTimeout = useRef<number | undefined>(undefined);
@@ -212,6 +214,7 @@ export function FileGrid(props: FileGridProps) {
                   type="folder"
                   onActionComplete={onActionComplete}
                   onRename={() => setRenamingId({ id: folder.id, type: 'folder' })}
+                  onRequestMove={() => onRequestMove?.(folder.id, 'folder')}
                 >
                   <tr
                     className={`hover:bg-[var(--surface-hover)] cursor-pointer transition-colors group${isSelected ? ' bg-[rgba(234,179,8,0.06)]' : ''}`}
@@ -300,6 +303,7 @@ export function FileGrid(props: FileGridProps) {
                   type="file"
                   onActionComplete={onActionComplete}
                   onRename={() => setRenamingId({ id: file.id, type: 'file' })}
+                  onRequestMove={() => onRequestMove?.(file.id, 'file')}
                 >
                   <tr
                     className={`hover:bg-[var(--surface-hover)] cursor-pointer transition-colors group${isSelected ? ' bg-[rgba(234,179,8,0.06)]' : ''}`}
@@ -394,6 +398,7 @@ export function FileGrid(props: FileGridProps) {
             type="folder"
             onActionComplete={onActionComplete}
             onRename={() => setRenamingId({ id: folder.id, type: 'folder' })}
+            onRequestMove={() => onRequestMove?.(folder.id, 'folder')}
           >
             <button
               onClick={() => {
@@ -467,6 +472,7 @@ export function FileGrid(props: FileGridProps) {
             type="file"
             onActionComplete={onActionComplete}
             onRename={() => setRenamingId({ id: file.id, type: 'file' })}
+            onRequestMove={() => onRequestMove?.(file.id, 'file')}
           >
             <button
               onClick={() => {

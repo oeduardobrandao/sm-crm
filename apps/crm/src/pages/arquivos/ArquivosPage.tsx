@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { LayoutGrid, List, Upload, FolderPlus, ArrowUpDown } from 'lucide-react';
 import { toast } from 'sonner';
-import { getFolderContents, createFolder, getFileDownloadUrl } from '@/services/fileService';
+import { getFolderContents, createFolder, getFileDownloadUrl, bulkMove } from '@/services/fileService';
 import { Breadcrumbs } from './components/Breadcrumbs';
 import { FolderTree } from './components/FolderTree';
 import { FileGrid, formatBytes } from './components/FileGrid';
@@ -10,6 +10,7 @@ import { FilterPopover, EMPTY_FILTER, isFilterActive } from './components/Filter
 import type { FilterState } from './components/FilterPopover';
 import { FileUploader } from './components/FileUploader';
 import { CreateFolderModal } from './components/CreateFolderModal';
+import { FolderPickerModal } from './components/FolderPickerModal';
 import { MobileArquivosView } from './components/MobileArquivosView';
 import { PostMediaLightbox } from '../entregas/components/PostMediaLightbox';
 import { BulkActionBar } from './components/BulkActionBar';
@@ -42,6 +43,7 @@ export default function ArquivosPage() {
   const [sortBy, setSortBy] = useState<SortBy>('name');
   const [filter, setFilter] = useState<FilterState>(EMPTY_FILTER);
   const [createFolderParent, setCreateFolderParent] = useState<number | null | undefined>(undefined);
+  const [pickerMode, setPickerMode] = useState<'move' | 'copy' | null>(null);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const queryClient = useQueryClient();
@@ -176,6 +178,18 @@ export default function ArquivosPage() {
       }
     },
     onSuccess: () => toast.success('Pasta criada'),
+  });
+
+  const bulkMoveMutation = useMutation({
+    mutationFn: ({ fileIds, folderIds, destinationId }: { fileIds: number[]; folderIds: number[]; destinationId: number | null }) =>
+      bulkMove(fileIds, folderIds, destinationId),
+    onSuccess: () => {
+      toast.success('Itens movidos com sucesso');
+      selection.clear();
+      queryClient.invalidateQueries({ queryKey: ['folder-contents'] });
+      queryClient.invalidateQueries({ queryKey: ['folder-tree'] });
+    },
+    onError: () => toast.error('Erro ao mover itens'),
   });
 
   function handleFileAction(action: string, file: FileRecord) {
@@ -397,6 +411,11 @@ export default function ArquivosPage() {
               onToggleSelect={selection.toggle}
               onToggleRangeSelect={(id) => selection.toggleRange(id, displayItems)}
               selectionCount={selection.count}
+              onRequestMove={(id, _type) => {
+                selection.clear();
+                selection.toggle(id);
+                setPickerMode('move');
+              }}
             />
             {isFilterActive(filter) && filteredFiles.length === 0 && files.length > 0 && (
               <div className="text-center py-4">
@@ -415,11 +434,12 @@ export default function ArquivosPage() {
 
       <BulkActionBar
         count={selection.count}
-        onMove={() => {}}
+        onMove={() => setPickerMode('move')}
         onCopy={() => {}}
         onZip={() => {}}
         onDelete={() => {}}
         onClear={selection.clear}
+        isMoving={bulkMoveMutation.isPending}
       />
 
       <PostMediaLightbox
@@ -432,6 +452,27 @@ export default function ArquivosPage() {
         open={createFolderParent !== undefined}
         onOpenChange={(open) => { if (!open) setCreateFolderParent(undefined); }}
         onConfirm={(name) => createFolderMutation.mutate(name)}
+      />
+      <FolderPickerModal
+        open={pickerMode === 'move'}
+        onOpenChange={(open) => { if (!open) setPickerMode(null); }}
+        title={`Mover ${selection.count} ${selection.count === 1 ? 'item' : 'itens'}`}
+        confirmLabel="Mover"
+        isLoading={bulkMoveMutation.isPending}
+        sourceFolderIds={[...selection.selectedIds].filter((id) =>
+          data?.subfolders.some((f) => f.id === id)
+        )}
+        currentFolderId={currentFolderId}
+        onConfirm={(destId) => {
+          const fileIds = [...selection.selectedIds].filter((id) =>
+            data?.files.some((f) => f.id === id)
+          );
+          const folderIds = [...selection.selectedIds].filter((id) =>
+            data?.subfolders.some((f) => f.id === id)
+          );
+          bulkMoveMutation.mutate({ fileIds, folderIds, destinationId: destId });
+          setPickerMode(null);
+        }}
       />
     </div>
   );
