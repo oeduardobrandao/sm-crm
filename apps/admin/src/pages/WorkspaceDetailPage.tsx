@@ -253,16 +253,18 @@ function LimitRow({ label, fieldKey, value, planValue, isOverridden, onChange }:
   isOverridden: boolean; onChange: (val: string) => void;
 }) {
   return (
-    <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
-      <span className="min-w-0 text-sm text-[#9ca3af]">{label}</span>
-      <div className="flex min-w-0 items-center gap-2">
+    <div className="flex items-center justify-between gap-2 min-w-0">
+      <span className="text-sm text-[#9ca3af] truncate">{label}</span>
+      <div className="flex items-center gap-2 shrink-0">
         <input type="number" value={value} onChange={(e) => onChange(e.target.value)}
-          className={`w-24 min-w-0 shrink-0 px-2 py-1 rounded text-right font-['DM_Mono'] text-sm bg-[#1e2430] border focus:outline-none focus:border-[#eab308] ${
+          className={`w-20 px-2 py-1 rounded text-right font-['DM_Mono'] text-sm bg-[#1e2430] border focus:outline-none focus:border-[#eab308] ${
             isOverridden ? 'border-[#eab308]/30 text-[#eab308]' : 'border-transparent text-[#e8eaf0]'
           }`} />
-        <span className={`min-w-0 flex-1 truncate text-[0.7rem] sm:min-w-[80px] ${isOverridden ? 'text-[#f5a342]' : 'text-[#4b5563]'}`}>
-          {isOverridden ? `override (${planValue ?? '—'})` : `plan: ${planValue ?? '—'}`}
-        </span>
+        {isOverridden ? (
+          <span className="w-1.5 h-1.5 rounded-full bg-[#f5a342] shrink-0" title={`plan: ${planValue ?? '—'}`} />
+        ) : (
+          <span className="text-[0.7rem] text-[#4b5563] hidden sm:inline whitespace-nowrap">plan: {planValue ?? '—'}</span>
+        )}
       </div>
     </div>
   );
