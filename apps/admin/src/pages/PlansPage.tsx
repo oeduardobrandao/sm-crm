@@ -104,12 +104,12 @@ export default function PlansPage() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
         <div>
           <h1 className="font-['Playfair_Display'] text-2xl font-bold mb-1">Plans</h1>
           <p className="text-sm text-[#9ca3af]">Manage plan templates</p>
         </div>
-        <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#eab308] text-[#12151a] font-semibold text-sm hover:bg-[#ca8a04] transition-colors">
+        <button onClick={openCreate} className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-[#eab308] text-[#12151a] font-semibold text-sm hover:bg-[#ca8a04] transition-colors">
           <Plus size={16} /> New Plan
         </button>
       </div>
@@ -117,7 +117,7 @@ export default function PlansPage() {
       {isLoading ? (
         <p className="text-[#4b5563]">Loading...</p>
       ) : (
-        <div className="grid grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {(data?.plans || []).map((plan) => (
             <PlanCard key={plan.id} plan={plan} onEdit={openEdit} />
           ))}
@@ -126,13 +126,13 @@ export default function PlansPage() {
 
       {showForm && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={closeForm}>
-          <div className="bg-[#12151a] border border-[#1e2430] rounded-2xl p-8 w-full max-w-2xl max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-[#12151a] border border-[#1e2430] rounded-2xl p-5 md:p-8 w-full max-w-2xl max-h-[85vh] overflow-y-auto mx-4 md:mx-0" onClick={(e) => e.stopPropagation()}>
             <h2 className="font-['Playfair_Display'] text-lg font-bold mb-6">
               {editingPlan ? `Edit: ${editingPlan.name}` : 'New Plan'}
             </h2>
 
             <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium text-[#9ca3af] uppercase tracking-wider mb-1.5">Name</label>
                   <input type="text" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required
@@ -160,7 +160,7 @@ export default function PlansPage() {
 
               <div>
                 <label className="block text-xs font-medium text-[#9ca3af] uppercase tracking-wider mb-2">Feature Flags</label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                   {FEATURE_FLAG_KEYS.map((key) => (
                     <div key={key} className="flex justify-between items-center bg-[#1e2430]/50 rounded-lg px-3 py-1.5">
                       <span className="text-xs text-[#9ca3af]">{FEATURE_FLAG_LABELS[key]}</span>
@@ -268,7 +268,7 @@ function NumberFieldGroup({ title, keys, labels, values, onChange }: {
   return (
     <div>
       <label className="block text-xs font-medium text-[#9ca3af] uppercase tracking-wider mb-2">{title}</label>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {keys.map((key) => (
           <div key={key}>
             <label className="block text-xs text-[#4b5563] mb-1">{labels[key]}</label>

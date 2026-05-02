@@ -30,7 +30,7 @@ export default function WorkspacesPage() {
       <h1 className="font-['Playfair_Display'] text-2xl font-bold mb-1">Workspaces</h1>
       <p className="text-sm text-[#9ca3af] mb-6">All registered workspaces</p>
 
-      <div className="flex gap-3 mb-6">
+      <div className="flex flex-col sm:flex-row gap-3 mb-6">
         <div className="flex-1 relative">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9ca3af]" />
           <input
@@ -54,7 +54,8 @@ export default function WorkspacesPage() {
       </div>
 
       <div className="bg-[#12151a] border border-[#1e2430] rounded-2xl p-5">
-        <div className="grid grid-cols-[2fr_1.5fr_1fr_0.75fr_0.75fr_0.75fr_0.5fr] gap-2 text-[0.7rem] text-[#9ca3af] uppercase tracking-wider pb-3 border-b border-[#1e2430]">
+        {/* Desktop table header */}
+        <div className="hidden md:grid grid-cols-[2fr_1.5fr_1fr_0.75fr_0.75fr_0.75fr_0.5fr] gap-2 text-[0.7rem] text-[#9ca3af] uppercase tracking-wider pb-3 border-b border-[#1e2430]">
           <span>Workspace</span>
           <span>Owner</span>
           <span>Plan</span>
@@ -73,9 +74,32 @@ export default function WorkspacesPage() {
             <div
               key={ws.id}
               onClick={() => navigate(`/admin/workspaces/${ws.id}`)}
-              className="grid grid-cols-[2fr_1.5fr_1fr_0.75fr_0.75fr_0.75fr_0.5fr] gap-2 py-3 border-b border-[#1e2430]/50 text-sm items-center cursor-pointer hover:bg-[#1e2430]/30 transition-colors -mx-5 px-5"
+              className="cursor-pointer hover:bg-[#1e2430]/30 transition-colors border-b border-[#1e2430]/50 py-3 -mx-5 px-5 md:grid md:grid-cols-[2fr_1.5fr_1fr_0.75fr_0.75fr_0.75fr_0.5fr] md:gap-2 md:items-center"
             >
-              <span>
+              {/* Mobile card layout */}
+              <div className="md:hidden flex flex-col gap-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-[#eab308] font-medium">{ws.name}</span>
+                  {ws.has_overrides && (
+                    <span className="text-[0.6rem] font-semibold uppercase px-1.5 py-0.5 rounded-sm bg-[#f5a342]/10 text-[#f5a342]">
+                      OVERRIDES
+                    </span>
+                  )}
+                  <ArrowRight size={14} className="ml-auto text-[#eab308]" />
+                </div>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#9ca3af]">
+                  <span className="truncate max-w-[180px]">{ws.owner?.email || '—'}</span>
+                  {ws.plan_name && (
+                    <span className="inline-block text-[0.65rem] font-semibold uppercase px-1.5 py-0.5 rounded-sm bg-[#eab308]/15 text-[#eab308]">
+                      {ws.plan_name}
+                    </span>
+                  )}
+                  <span>{ws.client_count} clients</span>
+                  <span>{ws.member_count} members</span>
+                </div>
+              </div>
+              {/* Desktop row */}
+              <span className="hidden md:inline">
                 <span className="text-[#eab308] font-medium">{ws.name}</span>
                 {ws.has_overrides && (
                   <span className="ml-2 text-[0.6rem] font-semibold uppercase px-1.5 py-0.5 rounded-sm bg-[#f5a342]/10 text-[#f5a342]">
@@ -83,8 +107,8 @@ export default function WorkspacesPage() {
                   </span>
                 )}
               </span>
-              <span className="text-[#9ca3af] truncate">{ws.owner?.email || '—'}</span>
-              <span>
+              <span className="hidden md:inline text-[#9ca3af] truncate text-sm">{ws.owner?.email || '—'}</span>
+              <span className="hidden md:inline text-sm">
                 {ws.plan_name ? (
                   <span className="inline-block text-[0.7rem] font-semibold uppercase px-2 py-0.5 rounded-sm bg-[#eab308]/15 text-[#eab308]">
                     {ws.plan_name}
@@ -93,12 +117,12 @@ export default function WorkspacesPage() {
                   <span className="text-[#4b5563]">—</span>
                 )}
               </span>
-              <span className="font-['DM_Mono']">{ws.client_count}</span>
-              <span className="font-['DM_Mono']">{ws.member_count}</span>
-              <span className="text-[#9ca3af]">
+              <span className="hidden md:inline font-['DM_Mono'] text-sm">{ws.client_count}</span>
+              <span className="hidden md:inline font-['DM_Mono'] text-sm">{ws.member_count}</span>
+              <span className="hidden md:inline text-[#9ca3af] text-sm">
                 {new Date(ws.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
               </span>
-              <span className="text-[#eab308]"><ArrowRight size={16} /></span>
+              <span className="hidden md:inline text-[#eab308]"><ArrowRight size={16} /></span>
             </div>
           ))
         )}

@@ -129,15 +129,17 @@ export default function WorkspaceDetailPage() {
         <ArrowLeft size={16} /> Back
       </button>
 
-      <div className="flex items-center gap-4 mb-8">
-        <div className="w-12 h-12 bg-[#1e2430] rounded-xl flex items-center justify-center text-lg font-bold text-[#eab308]">
-          {data.workspace.name.charAt(0).toUpperCase()}
-        </div>
-        <div className="flex-1">
-          <h1 className="font-['Playfair_Display'] text-xl font-bold">{data.workspace.name}</h1>
-          <p className="text-sm text-[#9ca3af]">
-            Owner: {data.owner?.email || '—'} · Created {new Date(data.workspace.created_at).toLocaleDateString('pt-BR')}
-          </p>
+      <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-8">
+        <div className="flex items-center gap-4 flex-1">
+          <div className="w-12 h-12 bg-[#1e2430] rounded-xl flex items-center justify-center text-lg font-bold text-[#eab308] shrink-0">
+            {data.workspace.name.charAt(0).toUpperCase()}
+          </div>
+          <div className="min-w-0">
+            <h1 className="font-['Playfair_Display'] text-xl font-bold">{data.workspace.name}</h1>
+            <p className="text-sm text-[#9ca3af] truncate">
+              Owner: {data.owner?.email || '—'} · Created {new Date(data.workspace.created_at).toLocaleDateString('pt-BR')}
+            </p>
+          </div>
         </div>
 
         <select
@@ -155,7 +157,7 @@ export default function WorkspaceDetailPage() {
         </select>
       </div>
 
-      <div className="grid grid-cols-2 gap-6 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         <div className="bg-[#12151a] border border-[#1e2430] rounded-2xl p-5">
           <h2 className="font-semibold mb-4">Resource Limits</h2>
           <div className="flex flex-col gap-2">
@@ -209,7 +211,7 @@ export default function WorkspaceDetailPage() {
           className="w-full px-3 py-2 rounded-lg bg-[#1e2430] border border-transparent text-sm text-[#e8eaf0] placeholder-[#4b5563] focus:outline-none focus:border-[#eab308] resize-none" />
       </div>
 
-      <div className="flex gap-3 mb-8">
+      <div className="flex flex-col sm:flex-row gap-3 mb-8">
         <button onClick={() => saveOverridesMutation.mutate()} disabled={saveOverridesMutation.isPending}
           className="px-6 py-2.5 rounded-lg bg-[#eab308] text-[#12151a] font-semibold text-sm hover:bg-[#ca8a04] transition-colors disabled:opacity-50">
           {saveOverridesMutation.isPending ? 'Saving...' : 'Save Overrides'}
@@ -222,15 +224,25 @@ export default function WorkspaceDetailPage() {
 
       <div className="bg-[#12151a] border border-[#1e2430] rounded-2xl p-5">
         <h2 className="font-semibold mb-4">Members ({data.members.length})</h2>
-        <div className="grid grid-cols-[2fr_2fr_1fr_1fr] gap-2 text-[0.7rem] text-[#9ca3af] uppercase tracking-wider pb-3 border-b border-[#1e2430]">
+        {/* Desktop table header */}
+        <div className="hidden md:grid grid-cols-[2fr_2fr_1fr_1fr] gap-2 text-[0.7rem] text-[#9ca3af] uppercase tracking-wider pb-3 border-b border-[#1e2430]">
           <span>Name</span><span>Email</span><span>Role</span><span>Joined</span>
         </div>
         {data.members.map((m) => (
-          <div key={m.user_id} className="grid grid-cols-[2fr_2fr_1fr_1fr] gap-2 py-2.5 border-b border-[#1e2430]/50 text-sm">
-            <span>{m.name}</span>
-            <span className="text-[#9ca3af]">{m.email}</span>
-            <span className={m.role === 'owner' ? 'text-[#eab308]' : 'text-[#9ca3af]'}>{m.role}</span>
-            <span className="text-[#9ca3af]">{new Date(m.joined_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}</span>
+          <div key={m.user_id} className="border-b border-[#1e2430]/50 py-2.5 md:grid md:grid-cols-[2fr_2fr_1fr_1fr] md:gap-2">
+            {/* Mobile card */}
+            <div className="md:hidden flex items-center justify-between">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm">{m.name}</span>
+                <span className="text-xs text-[#9ca3af]">{m.email}</span>
+              </div>
+              <span className={`text-xs font-medium ${m.role === 'owner' ? 'text-[#eab308]' : 'text-[#9ca3af]'}`}>{m.role}</span>
+            </div>
+            {/* Desktop row */}
+            <span className="hidden md:inline text-sm">{m.name}</span>
+            <span className="hidden md:inline text-sm text-[#9ca3af]">{m.email}</span>
+            <span className={`hidden md:inline text-sm ${m.role === 'owner' ? 'text-[#eab308]' : 'text-[#9ca3af]'}`}>{m.role}</span>
+            <span className="hidden md:inline text-sm text-[#9ca3af]">{new Date(m.joined_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}</span>
           </div>
         ))}
       </div>
@@ -243,7 +255,7 @@ function LimitRow({ label, fieldKey, value, planValue, isOverridden, onChange }:
   isOverridden: boolean; onChange: (val: string) => void;
 }) {
   return (
-    <div className="flex justify-between items-center">
+    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1 sm:gap-2">
       <span className="text-sm text-[#9ca3af]">{label}</span>
       <div className="flex items-center gap-2">
         <input type="number" value={value} onChange={(e) => onChange(e.target.value)}

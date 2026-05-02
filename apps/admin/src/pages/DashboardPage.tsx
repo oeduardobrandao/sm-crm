@@ -34,7 +34,7 @@ export default function DashboardPage() {
       <h1 className="font-['Playfair_Display'] text-2xl font-bold mb-1">Dashboard</h1>
       <p className="text-sm text-[#9ca3af] mb-8">Platform overview</p>
 
-      <div className="grid grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         {kpis.map((kpi) => (
           <div key={kpi.label} className="bg-[#12151a] border border-[#1e2430] rounded-2xl p-5">
             <p className="text-xs text-[#9ca3af] uppercase tracking-wider mb-2">{kpi.label}</p>
@@ -48,7 +48,8 @@ export default function DashboardPage() {
       <div className="bg-[#12151a] border border-[#1e2430] rounded-2xl p-5">
         <h2 className="font-semibold mb-4">Recent Workspaces</h2>
 
-        <div className="grid grid-cols-[2fr_1.5fr_1fr_1fr_0.75fr] gap-2 text-xs text-[#9ca3af] uppercase tracking-wider pb-3 border-b border-[#1e2430]">
+        {/* Desktop table header */}
+        <div className="hidden md:grid grid-cols-[2fr_1.5fr_1fr_1fr_0.75fr] gap-2 text-xs text-[#9ca3af] uppercase tracking-wider pb-3 border-b border-[#1e2430]">
           <span>Workspace</span>
           <span>Owner</span>
           <span>Plan</span>
@@ -63,11 +64,29 @@ export default function DashboardPage() {
             <div
               key={ws.id}
               onClick={() => navigate(`/admin/workspaces/${ws.id}`)}
-              className="grid grid-cols-[2fr_1.5fr_1fr_1fr_0.75fr] gap-2 py-3 border-b border-[#1e2430]/50 text-sm cursor-pointer hover:bg-[#1e2430]/30 transition-colors -mx-5 px-5"
+              className="cursor-pointer hover:bg-[#1e2430]/30 transition-colors border-b border-[#1e2430]/50 py-3 -mx-5 px-5 md:grid md:grid-cols-[2fr_1.5fr_1fr_1fr_0.75fr] md:gap-2 md:items-center"
             >
-              <span className="text-[#eab308] font-medium">{ws.name}</span>
-              <span className="text-[#9ca3af]">{ws.owner?.name || '—'}</span>
-              <span>
+              {/* Mobile card layout */}
+              <div className="md:hidden flex flex-col gap-1">
+                <span className="text-[#eab308] font-medium">{ws.name}</span>
+                <div className="flex items-center gap-3 text-xs text-[#9ca3af]">
+                  <span>{ws.owner?.name || '—'}</span>
+                  <span>·</span>
+                  <span>{ws.member_count} members</span>
+                  {ws.plan_name && (
+                    <>
+                      <span>·</span>
+                      <span className="inline-block text-[0.65rem] font-semibold uppercase px-1.5 py-0.5 rounded-sm bg-[#eab308]/15 text-[#eab308]">
+                        {ws.plan_name}
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+              {/* Desktop row */}
+              <span className="hidden md:inline text-[#eab308] font-medium text-sm">{ws.name}</span>
+              <span className="hidden md:inline text-[#9ca3af] text-sm">{ws.owner?.name || '—'}</span>
+              <span className="hidden md:inline text-sm">
                 {ws.plan_name ? (
                   <span className="inline-block text-[0.7rem] font-semibold uppercase px-2 py-0.5 rounded-sm bg-[#eab308]/15 text-[#eab308]">
                     {ws.plan_name}
@@ -76,8 +95,8 @@ export default function DashboardPage() {
                   <span className="text-[#4b5563]">—</span>
                 )}
               </span>
-              <span className="font-['DM_Mono']">{ws.member_count}</span>
-              <span className="text-[#9ca3af]">
+              <span className="hidden md:inline font-['DM_Mono'] text-sm">{ws.member_count}</span>
+              <span className="hidden md:inline text-[#9ca3af] text-sm">
                 {new Date(ws.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
               </span>
             </div>
