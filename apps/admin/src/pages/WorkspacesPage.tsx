@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Search, ArrowRight } from 'lucide-react';
 import { listWorkspaces, listPlans } from '../lib/api';
+import { getPlanColor } from '../lib/plan-colors';
 
 export default function WorkspacesPage() {
   const navigate = useNavigate();
@@ -90,7 +91,8 @@ export default function WorkspacesPage() {
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                   <span className="truncate max-w-[180px]">{ws.owner?.email || '—'}</span>
                   {ws.plan_name && (
-                    <span className="inline-block text-[0.65rem] font-semibold uppercase px-1.5 py-0.5 rounded-sm bg-primary/15 text-primary">
+                    <span className="inline-block text-[0.65rem] font-semibold uppercase px-1.5 py-0.5 rounded-sm"
+                      style={{ color: getPlanColor(ws.plan_name), backgroundColor: getPlanColor(ws.plan_name) + '26' }}>
                       {ws.plan_name}
                     </span>
                   )}
@@ -110,7 +112,8 @@ export default function WorkspacesPage() {
               <span className="hidden md:inline text-muted-foreground truncate text-sm">{ws.owner?.email || '—'}</span>
               <span className="hidden md:inline text-sm">
                 {ws.plan_name ? (
-                  <span className="inline-block text-[0.7rem] font-semibold uppercase px-2 py-0.5 rounded-sm bg-primary/15 text-primary">
+                  <span className="inline-block text-[0.7rem] font-semibold uppercase px-2 py-0.5 rounded-sm"
+                    style={{ color: getPlanColor(ws.plan_name), backgroundColor: getPlanColor(ws.plan_name) + '26' }}>
                     {ws.plan_name}
                   </span>
                 ) : (

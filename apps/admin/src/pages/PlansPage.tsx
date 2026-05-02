@@ -9,6 +9,7 @@ import {
   FEATURE_FLAG_KEYS, FEATURE_FLAG_LABELS,
   RATE_LIMIT_KEYS, RATE_LIMIT_LABELS,
 } from '../lib/api';
+import { getPlanColor } from '../lib/plan-colors';
 
 const DEFAULT_RESOURCES: Record<string, number> = {
   max_clients: 5, max_team_members: 3, max_instagram_accounts: 1,
@@ -210,9 +211,9 @@ function PlanCard({ plan, onEdit }: { plan: Plan; onEdit: (p: Plan) => void }) {
   const enabledFeatures = FEATURE_FLAG_KEYS.filter((k) => plan[k]);
 
   return (
-    <div className="bg-card border border-border rounded-2xl p-6 relative">
+    <div className="bg-card border border-border rounded-2xl p-6 relative border-l-[3px]" style={{ borderLeftColor: getPlanColor(plan.name) }}>
       <div className="flex justify-between items-center mb-4">
-        <span className="text-lg font-bold">{plan.name}</span>
+        <span className="text-lg font-bold" style={{ color: getPlanColor(plan.name) }}>{plan.name}</span>
         <div className="flex items-center gap-2">
           {plan.is_default && (
             <span className="text-[0.65rem] font-semibold uppercase px-2 py-0.5 rounded-sm bg-success/15 text-success">DEFAULT</span>

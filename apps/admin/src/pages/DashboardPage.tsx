@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { listWorkspaces, listPlans } from '../lib/api';
+import { getPlanColor } from '../lib/plan-colors';
 
 export default function DashboardPage() {
   const navigate = useNavigate();
@@ -76,7 +77,8 @@ export default function DashboardPage() {
                   {ws.plan_name && (
                     <>
                       <span>·</span>
-                      <span className="inline-block text-[0.65rem] font-semibold uppercase px-1.5 py-0.5 rounded-sm bg-primary/15 text-primary">
+                      <span className="inline-block text-[0.65rem] font-semibold uppercase px-1.5 py-0.5 rounded-sm"
+                        style={{ color: getPlanColor(ws.plan_name), backgroundColor: getPlanColor(ws.plan_name) + '26' }}>
                         {ws.plan_name}
                       </span>
                     </>
@@ -88,7 +90,8 @@ export default function DashboardPage() {
               <span className="hidden md:inline text-muted-foreground text-sm">{ws.owner?.name || '—'}</span>
               <span className="hidden md:inline text-sm">
                 {ws.plan_name ? (
-                  <span className="inline-block text-[0.7rem] font-semibold uppercase px-2 py-0.5 rounded-sm bg-primary/15 text-primary">
+                  <span className="inline-block text-[0.7rem] font-semibold uppercase px-2 py-0.5 rounded-sm"
+                    style={{ color: getPlanColor(ws.plan_name), backgroundColor: getPlanColor(ws.plan_name) + '26' }}>
                     {ws.plan_name}
                   </span>
                 ) : (
