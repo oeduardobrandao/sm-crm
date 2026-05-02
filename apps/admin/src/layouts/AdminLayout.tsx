@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Outlet, NavLink } from 'react-router-dom';
-import { LayoutDashboard, Building2, Package, Users, Menu, X } from 'lucide-react';
+import { LayoutDashboard, Building2, Package, Users, Menu, X, Sun, Moon } from 'lucide-react';
 import { useAdminAuth } from '../context/AdminAuthContext';
 
 const NAV_ITEMS = [
@@ -13,13 +13,21 @@ const NAV_ITEMS = [
 export default function AdminLayout() {
   const { adminEmail, signOut } = useAdminAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    return (localStorage.getItem('admin-theme') as 'light' | 'dark') || 'dark';
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('admin-theme', theme);
+  }, [theme]);
 
   return (
     <div className="flex min-h-screen">
       {/* Mobile hamburger */}
       <button
         onClick={() => setSidebarOpen(true)}
-        className="md:hidden fixed top-4 left-4 z-30 p-2 rounded-lg bg-[#12151a] border border-[#1e2430] text-[#e8eaf0]"
+        className="md:hidden fixed top-4 left-4 z-30 p-2 rounded-lg bg-card border border-border text-foreground"
       >
         <Menu size={20} />
       </button>
@@ -32,7 +40,7 @@ export default function AdminLayout() {
         />
       )}
 
-      {/* Sidebar */}
+      {/* Sidebar — always dark */}
       <aside className={`w-[220px] bg-[#12151a] border-r border-[#1e2430] flex flex-col fixed inset-y-0 left-0 z-50 transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
         <div className="px-5 pt-6 pb-4 flex items-center justify-between">
           <div>
@@ -66,10 +74,19 @@ export default function AdminLayout() {
         </nav>
 
         <div className="px-4 py-4 border-t border-[#1e2430] mt-auto">
-          <p className="text-sm text-[#9ca3af] truncate">{adminEmail}</p>
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-sm text-[#9ca3af] truncate">{adminEmail}</p>
+            <button
+              onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}
+              className="p-1.5 rounded-lg text-[#9ca3af] hover:text-[#eab308] hover:bg-[#1e2430] transition-colors"
+              title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+            >
+              {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
+            </button>
+          </div>
           <button
             onClick={signOut}
-            className="text-xs text-[#4b5563] hover:text-[#eab308] transition-colors mt-1"
+            className="text-xs text-[#4b5563] hover:text-[#eab308] transition-colors"
           >
             Sair
           </button>

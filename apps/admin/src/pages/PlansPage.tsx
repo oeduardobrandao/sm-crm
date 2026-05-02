@@ -107,15 +107,15 @@ export default function PlansPage() {
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
         <div>
           <h1 className="font-['Playfair_Display'] text-2xl font-bold mb-1">Plans</h1>
-          <p className="text-sm text-[#9ca3af]">Manage plan templates</p>
+          <p className="text-sm text-muted-foreground">Manage plan templates</p>
         </div>
-        <button onClick={openCreate} className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-[#eab308] text-[#12151a] font-semibold text-sm hover:bg-[#ca8a04] transition-colors">
+        <button onClick={openCreate} className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary-hover transition-colors">
           <Plus size={16} /> New Plan
         </button>
       </div>
 
       {isLoading ? (
-        <p className="text-[#4b5563]">Loading...</p>
+        <p className="text-dim-foreground">Loading...</p>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {(data?.plans || []).map((plan) => (
@@ -126,7 +126,7 @@ export default function PlansPage() {
 
       {showForm && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={closeForm}>
-          <div className="bg-[#12151a] border border-[#1e2430] rounded-2xl p-5 md:p-8 w-full max-w-2xl max-h-[85vh] overflow-y-auto mx-4 md:mx-0" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-card border border-border rounded-2xl p-5 md:p-8 w-full max-w-2xl max-h-[85vh] overflow-y-auto mx-4 md:mx-0" onClick={(e) => e.stopPropagation()}>
             <h2 className="font-['Playfair_Display'] text-lg font-bold mb-6">
               {editingPlan ? `Edit: ${editingPlan.name}` : 'New Plan'}
             </h2>
@@ -134,16 +134,16 @@ export default function PlansPage() {
             <form onSubmit={handleSubmit} className="flex flex-col gap-5">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-[#9ca3af] uppercase tracking-wider mb-1.5">Name</label>
+                  <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">Name</label>
                   <input type="text" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required
-                    className="w-full px-3 py-2 rounded-lg bg-[#1e2430] border border-transparent text-sm font-['DM_Mono'] text-[#e8eaf0] focus:outline-none focus:border-[#eab308]" />
+                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Mono'] text-foreground focus:outline-none focus:border-primary" />
                 </div>
                 <div className="flex items-end gap-4">
-                  <label className="flex items-center gap-2 text-sm text-[#9ca3af]">
+                  <label className="flex items-center gap-2 text-sm text-muted-foreground">
                     <input type="checkbox" checked={form.is_default} onChange={(e) => setForm((f) => ({ ...f, is_default: e.target.checked }))} className="rounded" />
                     Default
                   </label>
-                  <label className="flex items-center gap-2 text-sm text-[#9ca3af]">
+                  <label className="flex items-center gap-2 text-sm text-muted-foreground">
                     <input type="checkbox" checked={form.is_active} onChange={(e) => setForm((f) => ({ ...f, is_active: e.target.checked }))} className="rounded" />
                     Active
                   </label>
@@ -159,14 +159,14 @@ export default function PlansPage() {
               />
 
               <div>
-                <label className="block text-xs font-medium text-[#9ca3af] uppercase tracking-wider mb-2">Feature Flags</label>
+                <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Feature Flags</label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                   {FEATURE_FLAG_KEYS.map((key) => (
-                    <div key={key} className="flex justify-between items-center bg-[#1e2430]/50 rounded-lg px-3 py-1.5">
-                      <span className="text-xs text-[#9ca3af]">{FEATURE_FLAG_LABELS[key]}</span>
+                    <div key={key} className="flex justify-between items-center bg-secondary/50 rounded-lg px-3 py-1.5">
+                      <span className="text-xs text-muted-foreground">{FEATURE_FLAG_LABELS[key]}</span>
                       <button type="button"
                         onClick={() => setForm((f) => ({ ...f, features: { ...f.features, [key]: !f.features[key] } }))}
-                        className={`text-xs font-medium ${form.features[key] ? 'text-[#3ecf8e]' : 'text-[#f55a42]'}`}>
+                        className={`text-xs font-medium ${form.features[key] ? 'text-success' : 'text-destructive'}`}>
                         {form.features[key] ? 'ON' : 'OFF'}
                       </button>
                     </div>
@@ -184,16 +184,16 @@ export default function PlansPage() {
 
               <div className="flex gap-3 mt-2">
                 <button type="submit" disabled={createMutation.isPending || updateMutation.isPending}
-                  className="flex-1 py-2.5 rounded-lg bg-[#eab308] text-[#12151a] font-semibold text-sm hover:bg-[#ca8a04] transition-colors disabled:opacity-50">
+                  className="flex-1 py-2.5 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary-hover transition-colors disabled:opacity-50">
                   {editingPlan ? 'Update' : 'Create'}
                 </button>
                 <button type="button" onClick={closeForm}
-                  className="px-4 py-2.5 rounded-lg border border-[#1e2430] text-sm text-[#9ca3af] hover:border-[#eab308] transition-colors">
+                  className="px-4 py-2.5 rounded-lg border border-border text-sm text-muted-foreground hover:border-primary transition-colors">
                   Cancel
                 </button>
                 {editingPlan && editingPlan.workspace_count === 0 && (
                   <button type="button" onClick={() => deleteMutation.mutate(editingPlan.id)} disabled={deleteMutation.isPending}
-                    className="px-4 py-2.5 rounded-lg border border-[#f55a42]/30 text-sm text-[#f55a42] hover:bg-[#f55a42]/10 transition-colors disabled:opacity-50">
+                    className="px-4 py-2.5 rounded-lg border border-destructive/30 text-sm text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50">
                     <Trash2 size={16} />
                   </button>
                 )}
@@ -210,48 +210,48 @@ function PlanCard({ plan, onEdit }: { plan: Plan; onEdit: (p: Plan) => void }) {
   const enabledFeatures = FEATURE_FLAG_KEYS.filter((k) => plan[k]);
 
   return (
-    <div className="bg-[#12151a] border border-[#1e2430] rounded-2xl p-6 relative">
+    <div className="bg-card border border-border rounded-2xl p-6 relative">
       <div className="flex justify-between items-center mb-4">
         <span className="text-lg font-bold">{plan.name}</span>
         <div className="flex items-center gap-2">
           {plan.is_default && (
-            <span className="text-[0.65rem] font-semibold uppercase px-2 py-0.5 rounded-sm bg-[#3ecf8e]/15 text-[#3ecf8e]">DEFAULT</span>
+            <span className="text-[0.65rem] font-semibold uppercase px-2 py-0.5 rounded-sm bg-success/15 text-success">DEFAULT</span>
           )}
           {!plan.is_active && (
-            <span className="text-[0.65rem] font-semibold uppercase px-2 py-0.5 rounded-sm bg-[#f55a42]/15 text-[#f55a42]">INACTIVE</span>
+            <span className="text-[0.65rem] font-semibold uppercase px-2 py-0.5 rounded-sm bg-destructive/15 text-destructive">INACTIVE</span>
           )}
-          <button onClick={() => onEdit(plan)} className="text-[#9ca3af] hover:text-[#eab308] transition-colors">
+          <button onClick={() => onEdit(plan)} className="text-muted-foreground hover:text-primary transition-colors">
             <Pencil size={14} />
           </button>
         </div>
       </div>
 
       {plan.price_brl != null && (
-        <p className="text-sm text-[#9ca3af] mb-3">
+        <p className="text-sm text-muted-foreground mb-3">
           R$ {(plan.price_brl / 100).toFixed(2)}/mo
-          {plan.price_brl_annual != null && <span className="text-[#4b5563]"> · R$ {(plan.price_brl_annual / 100).toFixed(2)}/yr</span>}
+          {plan.price_brl_annual != null && <span className="text-dim-foreground"> · R$ {(plan.price_brl_annual / 100).toFixed(2)}/yr</span>}
         </p>
       )}
 
-      <p className="text-[0.75rem] text-[#9ca3af] uppercase tracking-wider mb-2">Key Limits</p>
-      <div className="flex flex-col gap-0.5 mb-3 text-sm text-[#9ca3af]">
-        <div>Clients: <span className="text-[#e8eaf0] font-['DM_Mono']">{plan.max_clients ?? '∞'}</span></div>
-        <div>Members: <span className="text-[#e8eaf0] font-['DM_Mono']">{plan.max_team_members ?? '∞'}</span></div>
-        <div>Instagram: <span className="text-[#e8eaf0] font-['DM_Mono']">{plan.max_instagram_accounts ?? '∞'}</span></div>
-        <div>Storage: <span className="text-[#e8eaf0] font-['DM_Mono']">{plan.storage_quota_bytes != null ? `${Math.round(plan.storage_quota_bytes / 1048576)} MB` : '∞'}</span></div>
+      <p className="text-[0.75rem] text-muted-foreground uppercase tracking-wider mb-2">Key Limits</p>
+      <div className="flex flex-col gap-0.5 mb-3 text-sm text-muted-foreground">
+        <div>Clients: <span className="text-foreground font-['DM_Mono']">{plan.max_clients ?? '∞'}</span></div>
+        <div>Members: <span className="text-foreground font-['DM_Mono']">{plan.max_team_members ?? '∞'}</span></div>
+        <div>Instagram: <span className="text-foreground font-['DM_Mono']">{plan.max_instagram_accounts ?? '∞'}</span></div>
+        <div>Storage: <span className="text-foreground font-['DM_Mono']">{plan.storage_quota_bytes != null ? `${Math.round(plan.storage_quota_bytes / 1048576)} MB` : '∞'}</span></div>
       </div>
 
-      <p className="text-[0.75rem] text-[#9ca3af] uppercase tracking-wider mb-2">Features ({enabledFeatures.length}/{FEATURE_FLAG_KEYS.length})</p>
+      <p className="text-[0.75rem] text-muted-foreground uppercase tracking-wider mb-2">Features ({enabledFeatures.length}/{FEATURE_FLAG_KEYS.length})</p>
       <div className="flex flex-wrap gap-1 mb-4">
         {enabledFeatures.map((k) => (
-          <span key={k} className="text-[0.6rem] px-1.5 py-0.5 rounded bg-[#3ecf8e]/10 text-[#3ecf8e]">
+          <span key={k} className="text-[0.6rem] px-1.5 py-0.5 rounded bg-success/10 text-success">
             {FEATURE_FLAG_LABELS[k]}
           </span>
         ))}
-        {enabledFeatures.length === 0 && <span className="text-[0.65rem] text-[#4b5563]">None</span>}
+        {enabledFeatures.length === 0 && <span className="text-[0.65rem] text-dim-foreground">None</span>}
       </div>
 
-      <div className="pt-3 border-t border-[#1e2430] text-[#4b5563] text-sm">
+      <div className="pt-3 border-t border-border text-dim-foreground text-sm">
         {plan.workspace_count} workspaces
       </div>
     </div>
@@ -267,18 +267,18 @@ function NumberFieldGroup({ title, keys, labels, values, onChange }: {
 }) {
   return (
     <div>
-      <label className="block text-xs font-medium text-[#9ca3af] uppercase tracking-wider mb-2">{title}</label>
+      <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">{title}</label>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {keys.map((key) => (
           <div key={key}>
-            <label className="block text-xs text-[#4b5563] mb-1">{labels[key]}</label>
+            <label className="block text-xs text-dim-foreground mb-1">{labels[key]}</label>
             <input type="number" value={values[key] ?? ''}
               placeholder="∞"
               onChange={(e) => {
                 const v = e.target.value;
                 onChange(key, v === '' ? null : parseInt(v, 10));
               }}
-              className="w-full px-3 py-2 rounded-lg bg-[#1e2430] border border-transparent text-sm font-['DM_Mono'] text-[#e8eaf0] placeholder-[#4b5563] focus:outline-none focus:border-[#eab308]" />
+              className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Mono'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary" />
           </div>
         ))}
       </div>

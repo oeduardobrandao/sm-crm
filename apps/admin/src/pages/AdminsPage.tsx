@@ -43,7 +43,7 @@ export default function AdminsPage() {
   return (
     <div>
       <h1 className="font-['Playfair_Display'] text-2xl font-bold mb-1">Admins</h1>
-      <p className="text-sm text-[#9ca3af] mb-6">Platform administrators</p>
+      <p className="text-sm text-muted-foreground mb-6">Platform administrators</p>
 
       <form onSubmit={handleInvite} className="flex flex-col sm:flex-row gap-3 mb-8">
         <input
@@ -52,21 +52,21 @@ export default function AdminsPage() {
           onChange={(e) => setEmail(e.target.value)}
           placeholder="Email do novo admin..."
           required
-          className="flex-1 px-3 py-2.5 rounded-lg bg-[#12151a] border border-[#1e2430] text-sm font-['DM_Mono'] text-[#e8eaf0] placeholder-[#9ca3af] focus:outline-none focus:border-[#eab308] transition-colors"
+          className="flex-1 px-3 py-2.5 rounded-lg bg-card border border-border text-sm font-['DM_Mono'] text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary transition-colors"
         />
         <button
           type="submit"
           disabled={inviteMutation.isPending}
-          className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-[#eab308] text-[#12151a] font-semibold text-sm hover:bg-[#ca8a04] transition-colors disabled:opacity-50"
+          className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
         >
           <UserPlus size={16} />
           Convidar Admin
         </button>
       </form>
 
-      <div className="bg-[#12151a] border border-[#1e2430] rounded-2xl p-5">
+      <div className="bg-card border border-border rounded-2xl p-5">
         {/* Desktop table header */}
-        <div className="hidden md:grid grid-cols-[2fr_2fr_1.5fr_0.5fr] gap-2 text-[0.7rem] text-[#9ca3af] uppercase tracking-wider pb-3 border-b border-[#1e2430]">
+        <div className="hidden md:grid grid-cols-[2fr_2fr_1.5fr_0.5fr] gap-2 text-[0.7rem] text-muted-foreground uppercase tracking-wider pb-3 border-b border-border">
           <span>Email</span>
           <span>Invited By</span>
           <span>Added</span>
@@ -74,17 +74,17 @@ export default function AdminsPage() {
         </div>
 
         {isLoading ? (
-          <p className="text-sm text-[#4b5563] py-4">Loading...</p>
+          <p className="text-sm text-dim-foreground py-4">Loading...</p>
         ) : (
           (data?.admins || []).map((admin) => {
             const isSelf = admin.user_id === user?.id;
             return (
-              <div key={admin.id} className="border-b border-[#1e2430]/50 py-3 md:grid md:grid-cols-[2fr_2fr_1.5fr_0.5fr] md:gap-2 md:items-center">
+              <div key={admin.id} className="border-b border-border/50 py-3 md:grid md:grid-cols-[2fr_2fr_1.5fr_0.5fr] md:gap-2 md:items-center">
                 {/* Mobile card */}
                 <div className="md:hidden flex items-center justify-between">
                   <div className="flex flex-col gap-0.5">
-                    <span className="text-sm text-[#e8eaf0]">{admin.email}</span>
-                    <span className="text-xs text-[#9ca3af]">
+                    <span className="text-sm text-foreground">{admin.email}</span>
+                    <span className="text-xs text-muted-foreground">
                       {admin.invited_by_email ? `By ${admin.invited_by_email}` : '—'} · {new Date(admin.created_at).toLocaleDateString('pt-BR')}
                     </span>
                   </div>
@@ -92,16 +92,16 @@ export default function AdminsPage() {
                     <button
                       onClick={() => removeMutation.mutate(admin.id)}
                       disabled={removeMutation.isPending}
-                      className="text-[#4b5563] hover:text-[#f55a42] transition-colors disabled:opacity-50 p-1"
+                      className="text-dim-foreground hover:text-destructive transition-colors disabled:opacity-50 p-1"
                     >
                       <Trash2 size={14} />
                     </button>
                   )}
                 </div>
                 {/* Desktop row */}
-                <span className="hidden md:inline text-sm text-[#e8eaf0]">{admin.email}</span>
-                <span className="hidden md:inline text-sm text-[#9ca3af]">{admin.invited_by_email || '—'}</span>
-                <span className="hidden md:inline text-sm text-[#9ca3af]">
+                <span className="hidden md:inline text-sm text-foreground">{admin.email}</span>
+                <span className="hidden md:inline text-sm text-muted-foreground">{admin.invited_by_email || '—'}</span>
+                <span className="hidden md:inline text-sm text-muted-foreground">
                   {new Date(admin.created_at).toLocaleDateString('pt-BR')}
                 </span>
                 <span className="hidden md:inline">
@@ -109,7 +109,7 @@ export default function AdminsPage() {
                     <button
                       onClick={() => removeMutation.mutate(admin.id)}
                       disabled={removeMutation.isPending}
-                      className="text-[#4b5563] hover:text-[#f55a42] transition-colors disabled:opacity-50"
+                      className="text-dim-foreground hover:text-destructive transition-colors disabled:opacity-50"
                     >
                       <Trash2 size={14} />
                     </button>
