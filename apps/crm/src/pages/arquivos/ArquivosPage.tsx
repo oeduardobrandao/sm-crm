@@ -359,6 +359,27 @@ export default function ArquivosPage() {
               queryClient.invalidateQueries({ queryKey: ['folder-contents', currentFolderId] });
               queryClient.invalidateQueries({ queryKey: ['folder-tree'] });
             }}
+            selectedIds={selection.selectedIds}
+            selectionCount={selection.count}
+            onToggleSelect={selection.toggle}
+            onClearSelection={selection.clear}
+            onBulkMove={() => setPickerMode('move')}
+            onBulkCopy={() => setPickerMode('copy')}
+            onBulkZip={() => {
+              const fileIds = [...selection.selectedIds].filter((id) => data?.files.some((f) => f.id === id));
+              const folderIds = [...selection.selectedIds].filter((id) => data?.subfolders.some((f) => f.id === id));
+              if (folderIds.length === 1 && fileIds.length === 0) {
+                zipMutation.mutate({ folder_id: folderIds[0] });
+              } else {
+                zipMutation.mutate({ file_ids: fileIds });
+              }
+            }}
+            onBulkDelete={() => {
+              const fileIds = [...selection.selectedIds].filter((id) => data?.files.some((f) => f.id === id));
+              const folderIds = [...selection.selectedIds].filter((id) => data?.subfolders.some((f) => f.id === id));
+              setDeleteConfirm({ fileIds, folderIds, stage: 'confirm' });
+            }}
+            isBusy={bulkMoveMutation.isPending || bulkDeleteMutation.isPending || copyFileMutation.isPending || copyFolderMutation.isPending || zipMutation.isPending}
           />
         </FileUploader>
         <PostMediaLightbox
@@ -372,6 +393,100 @@ export default function ArquivosPage() {
           onOpenChange={(open) => { if (!open) setCreateFolderParent(undefined); }}
           onConfirm={(name) => createFolderMutation.mutate(name)}
         />
+        <FolderPickerModal
+          open={pickerMode === 'move'}
+          onOpenChange={(open) => { if (!open) setPickerMode(null); }}
+          title={`Mover ${selection.count} ${selection.count === 1 ? 'item' : 'itens'}`}
+          confirmLabel="Mover"
+          isLoading={bulkMoveMutation.isPending}
+          sourceFolderIds={[...selection.selectedIds].filter((id) =>
+            data?.subfolders.some((f) => f.id === id)
+          )}
+          currentFolderId={currentFolderId}
+          onConfirm={(destId) => {
+            const fileIds = [...selection.selectedIds].filter((id) =>
+              data?.files.some((f) => f.id === id)
+            );
+            const folderIds = [...selection.selectedIds].filter((id) =>
+              data?.subfolders.some((f) => f.id === id)
+            );
+            bulkMoveMutation.mutate({ fileIds, folderIds, destinationId: destId });
+            setPickerMode(null);
+          }}
+        />
+        <FolderPickerModal
+          open={pickerMode === 'copy'}
+          onOpenChange={(open) => { if (!open) setPickerMode(null); }}
+          title={`Copiar ${selection.count} ${selection.count === 1 ? 'item' : 'itens'}`}
+          confirmLabel="Copiar"
+          isLoading={copyFileMutation.isPending || copyFolderMutation.isPending}
+          sourceFolderIds={[]}
+          currentFolderId={null}
+          onConfirm={(destId) => {
+            const fileIds = [...selection.selectedIds].filter((id) =>
+              data?.files.some((f) => f.id === id)
+            );
+            const folderIds = [...selection.selectedIds].filter((id) =>
+              data?.subfolders.some((f) => f.id === id)
+            );
+            for (const fid of fileIds) {
+              copyFileMutation.mutate({ fileId: fid, destinationId: destId });
+            }
+            for (const fid of folderIds) {
+              copyFolderMutation.mutate({ folderId: fid, destinationId: destId });
+            }
+            setPickerMode(null);
+            selection.clear();
+          }}
+        />
+        <AlertDialog open={deleteConfirm !== null} onOpenChange={(open) => { if (!open) setDeleteConfirm(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {deleteConfirm?.stage === 'partial'
+                  ? 'Alguns itens não podem ser excluídos'
+                  : 'Excluir itens?'}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {deleteConfirm?.stage === 'partial' ? (
+                  <>
+                    {deleteConfirm.blocked?.length} {deleteConfirm.blocked?.length === 1 ? 'item está' : 'itens estão'} em uso e{' '}
+                    {deleteConfirm.blocked?.length === 1 ? 'não pode' : 'não podem'} ser {deleteConfirm.blocked?.length === 1 ? 'excluído' : 'excluídos'}.
+                    {(deleteConfirm.fileIds.length + deleteConfirm.folderIds.length) > 0
+                      ? ` Deseja excluir os outros ${deleteConfirm.fileIds.length + deleteConfirm.folderIds.length}?`
+                      : ' Nenhum item pode ser excluído.'}
+                  </>
+                ) : (
+                  `Tem certeza que deseja excluir ${
+                    (deleteConfirm?.fileIds.length ?? 0) + (deleteConfirm?.folderIds.length ?? 0)
+                  } ${
+                    ((deleteConfirm?.fileIds.length ?? 0) + (deleteConfirm?.folderIds.length ?? 0)) === 1
+                      ? 'item'
+                      : 'itens'
+                  }? Esta ação não pode ser desfeita.`
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              {((deleteConfirm?.fileIds.length ?? 0) + (deleteConfirm?.folderIds.length ?? 0)) > 0 && (
+                <AlertDialogAction
+                  onClick={() => {
+                    if (deleteConfirm) {
+                      bulkDeleteMutation.mutate({
+                        fileIds: deleteConfirm.fileIds,
+                        folderIds: deleteConfirm.folderIds,
+                      });
+                    }
+                  }}
+                  className="bg-[var(--danger)] hover:bg-[var(--danger)] text-white"
+                >
+                  Excluir
+                </AlertDialogAction>
+              )}
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     );
   }
