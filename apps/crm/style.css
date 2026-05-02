@@ -201,10 +201,10 @@ body {
 /* ===== Sidebar ===== */
 .sidebar {
   width: var(--sidebar-width);
-  height: calc(100dvh - var(--topbar-height) - var(--banner-height, 0px));
+  height: calc(100dvh - var(--topbar-height));
   position: fixed;
   left: 0;
-  top: calc(var(--topbar-height) + var(--banner-height, 0px));
+  top: var(--topbar-height);
   z-index: 100;
   display: flex;
   background: var(--surface-main);
@@ -688,7 +688,7 @@ body {
   font-family: var(--font-main);
   font-size: 0.85rem;
   text-decoration: none;
-  color: var(--text-main);
+  color: #e8eaf0;
 }
 
 .banner-content {
@@ -705,7 +705,7 @@ body {
   flex-shrink: 0;
   background: none;
   border: none;
-  color: var(--text-muted);
+  color: rgba(255, 255, 255, 0.5);
   font-size: 1.1rem;
   cursor: pointer;
   padding: 0 4px;
@@ -713,7 +713,7 @@ body {
 }
 
 .banner-dismiss:hover {
-  color: var(--text-main);
+  color: #e8eaf0;
 }
 
 /* ===== Main Content ===== */
