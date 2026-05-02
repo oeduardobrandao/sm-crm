@@ -187,6 +187,64 @@ export async function deleteFile(fileId: number): Promise<void> {
   await callFn('file-manage', 'DELETE', undefined, undefined, `/files/${fileId}`);
 }
 
+export async function copyFile(fileId: number, destinationFolderId: number | null): Promise<FileRecord> {
+  return callFn<FileRecord>('file-manage', 'POST', { destination_folder_id: destinationFolderId }, undefined, `/files/${fileId}/copy`);
+}
+
+export async function copyFolder(folderId: number, destinationFolderId: number | null): Promise<{ ok: boolean; copied: number; failed: number }> {
+  return callFn('file-manage', 'POST', { destination_folder_id: destinationFolderId }, undefined, `/folders/${folderId}/copy`);
+}
+
+export async function bulkMove(
+  fileIds: number[],
+  folderIds: number[],
+  destinationId: number | null,
+): Promise<{ ok: boolean; files_moved: number; folders_moved: number }> {
+  return callFn('file-manage', 'POST', {
+    file_ids: fileIds,
+    folder_ids: folderIds,
+    destination_id: destinationId,
+  }, undefined, '/bulk-move');
+}
+
+export interface BulkDeleteResult {
+  ok?: boolean;
+  files_deleted?: number;
+  folders_deleted?: number;
+  blocked?: { id: number; type: string; reason: string }[];
+  deletable?: { file_ids: number[]; folder_ids: number[] };
+}
+
+export async function bulkDelete(
+  fileIds: number[],
+  folderIds: number[],
+): Promise<BulkDeleteResult> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('Not authenticated');
+
+  const url = new URL(`${SUPABASE_URL}/functions/v1/file-manage/bulk-delete`);
+  const res = await fetch(url.toString(), {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${session.access_token}`,
+      'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY as string,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ file_ids: fileIds, folder_ids: folderIds }),
+  });
+
+  const data = await res.json();
+  if (res.status === 409) return data as BulkDeleteResult;
+  if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+  return data as BulkDeleteResult;
+}
+
+export async function requestZipToken(
+  params: { folder_id: number } | { file_ids: number[] },
+): Promise<{ token: string; download_url: string }> {
+  return callFn('file-manage', 'POST', params, undefined, '/zip-token');
+}
+
 // ─── LINK OPERATIONS ────────────────────────────────────────────
 
 export async function linkFileToPost(fileId: number, postId: number): Promise<PostFileLink> {

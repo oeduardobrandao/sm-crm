@@ -12,16 +12,29 @@ vi.mock('../components/FileContextMenu', () => ({
   }) => <>{children}</>,
 }));
 
-// Mock tanstack/react-query so FileGrid can call useQueryClient without a provider
+// Mock tanstack/react-query so FileGrid can call useQueryClient/useMutation without a provider
 vi.mock('@tanstack/react-query', () => ({
   useQueryClient: () => ({
     prefetchQuery: vi.fn(),
+    cancelQueries: vi.fn(),
+    getQueryData: vi.fn(),
+    setQueryData: vi.fn(),
+    invalidateQueries: vi.fn(),
+  }),
+  useMutation: ({ onSuccess }: { onSuccess?: () => void } = {}) => ({
+    mutate: vi.fn((_vars: unknown, opts?: { onSuccess?: () => void }) => {
+      opts?.onSuccess?.();
+      onSuccess?.();
+    }),
+    isPending: false,
   }),
 }));
 
 // Mock fileService so the import in FileGrid doesn't require a real implementation
 vi.mock('@/services/fileService', () => ({
   getFolderContents: vi.fn(),
+  renameFile: vi.fn(),
+  renameFolder: vi.fn(),
 }));
 
 function makeFolder(overrides: Partial<Folder> = {}): Folder {

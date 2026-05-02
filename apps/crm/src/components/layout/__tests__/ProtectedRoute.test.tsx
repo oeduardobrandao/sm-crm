@@ -6,6 +6,16 @@ vi.mock('../../../context/AuthContext', () => ({
   useAuth: vi.fn(),
 }));
 
+vi.mock('../../../hooks/useWorkspaceLimits', () => ({
+  useWorkspaceLimits: () => ({
+    limits: null,
+    features: null,
+    planName: null,
+    isLoading: false,
+    isUnlimited: true,
+  }),
+}));
+
 import { useAuth } from '../../../context/AuthContext';
 import ProtectedRoute from '../ProtectedRoute';
 

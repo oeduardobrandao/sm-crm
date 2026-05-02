@@ -4,8 +4,10 @@ module.exports = {
   content: [
     "./apps/crm/index.html",
     "./apps/hub/index.html",
+    "./apps/admin/index.html",
     "./apps/crm/src/**/*.{ts,tsx}",
     "./apps/hub/src/**/*.{ts,tsx}",
+    "./apps/admin/src/**/*.{ts,tsx}",
     "./packages/**/*.{ts,tsx}",
   ],
   theme: {

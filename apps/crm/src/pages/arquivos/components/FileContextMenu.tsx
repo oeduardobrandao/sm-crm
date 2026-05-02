@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Pencil, Trash2, Download, Info } from 'lucide-react';
+import { Pencil, Trash2, Download, Info, ArrowRight, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -41,6 +41,9 @@ interface FileContextMenuProps {
   item: Folder | FileRecord;
   type: 'folder' | 'file';
   onActionComplete: () => void;
+  onRename?: () => void;
+  onRequestMove?: () => void;
+  onRequestCopy?: () => void;
 }
 
 interface MenuPosition {
@@ -48,7 +51,7 @@ interface MenuPosition {
   y: number;
 }
 
-export function FileContextMenu({ children, item, type, onActionComplete }: FileContextMenuProps) {
+export function FileContextMenu({ children, item, type, onActionComplete, onRename, onRequestMove, onRequestCopy }: FileContextMenuProps) {
   const [menuPos, setMenuPos] = useState<MenuPosition | null>(null);
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -100,9 +103,13 @@ export function FileContextMenu({ children, item, type, onActionComplete }: File
   }
 
   function openRename() {
+    closeMenu();
+    if (onRename) {
+      onRename();
+      return;
+    }
     setRenameValue(item.name);
     setRenameOpen(true);
-    closeMenu();
   }
 
   function openInfo() {
@@ -220,6 +227,32 @@ export function FileContextMenu({ children, item, type, onActionComplete }: File
               Download
             </a>
           )}
+
+          {/* Move to… */}
+          <button
+            role="menuitem"
+            onClick={() => {
+              closeMenu();
+              onRequestMove?.();
+            }}
+            className="flex w-full items-center gap-2.5 px-3 py-2 text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors"
+          >
+            <ArrowRight className="h-3.5 w-3.5 text-[var(--text-muted)]" />
+            Mover para…
+          </button>
+
+          {/* Copy to… */}
+          <button
+            role="menuitem"
+            onClick={() => {
+              closeMenu();
+              onRequestCopy?.();
+            }}
+            className="flex w-full items-center gap-2.5 px-3 py-2 text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors"
+          >
+            <Copy className="h-3.5 w-3.5 text-[var(--text-muted)]" />
+            Copiar para…
+          </button>
 
           {/* Separator before delete */}
           <div className="my-1 h-px bg-[var(--border-color)]" />

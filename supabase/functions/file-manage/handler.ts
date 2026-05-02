@@ -1,4 +1,17 @@
 import { createJsonResponder } from "../_shared/http.ts";
+import { insertAuditLog } from "../_shared/audit.ts";
+import { copyObject } from "../_shared/r2.ts";
+
+async function signZipToken(payload: Record<string, unknown>, secret: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const payloadStr = JSON.stringify(payload);
+  const key = await crypto.subtle.importKey(
+    "raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(payloadStr));
+  const sigHex = Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  return btoa(JSON.stringify({ payload: payloadStr, sig: sigHex }));
+}
 
 type DbClient = {
   from: (table: string) => any;
@@ -36,6 +49,7 @@ export function createFileManageHandler(deps: FileManageDeps) {
     const idx = parts.indexOf("file-manage");
     const resource = parts[idx + 1]; // 'tree' or 'folders' or 'files' or 'links'
     const idStr = parts[idx + 2];
+    const subResource = parts[idx + 3]; // e.g. 'copy', 'url'
     const contaId = profile.conta_id;
 
     // ─── TREE ─────────────────────────────────────────────────────
@@ -166,7 +180,7 @@ export function createFileManageHandler(deps: FileManageDeps) {
       }
 
       // POST /folders → create folder
-      if (req.method === "POST") {
+      if (req.method === "POST" && !idStr) {
         const body = await req.json().catch(() => ({}));
         const { name, parent_id } = body as { name?: string; parent_id?: number | null };
         if (!name) return json({ error: "name required" }, 400);
@@ -223,13 +237,113 @@ export function createFileManageHandler(deps: FileManageDeps) {
         if (delErr) return json({ error: delErr.message }, 500);
         return json({ ok: true });
       }
+
+      // POST /folders/:id/copy → recursively copy a folder to a destination
+      if (req.method === "POST" && idStr && subResource === "copy") {
+        const folderId = Number(idStr);
+        const body = await req.json().catch(() => ({}));
+        const { destination_folder_id } = body as { destination_folder_id?: number | null };
+
+        const { data: source } = await svc.from("folders").select("*").eq("id", folderId).single();
+        if (!source || source.conta_id !== contaId) return json({ error: "Folder not found" }, 404);
+
+        const { data: sizeInfo } = await svc.rpc("folder_sizes_batch", { p_folder_ids: [folderId] });
+        const totalFiles = sizeInfo?.[0]?.file_count ?? 0;
+        const totalBytes = sizeInfo?.[0]?.total_size_bytes ?? 0;
+
+        if (totalFiles > 200) {
+          return json({ error: "copy_limit_exceeded", file_count: totalFiles, limit: 200 }, 413);
+        }
+
+        const { data: ws } = await svc.from("workspaces").select("storage_used_bytes, storage_quota_bytes").eq("id", contaId).single();
+        if (ws && ws.storage_quota_bytes > 0 && (ws.storage_used_bytes + totalBytes) > ws.storage_quota_bytes) {
+          return json({ error: "quota_exceeded", used: ws.storage_used_bytes, quota: ws.storage_quota_bytes, copy_bytes: totalBytes }, 413);
+        }
+
+        let copiedCount = 0;
+        let failedCount = 0;
+
+        async function copyFolderRecursive(srcId: number, destParentId: number | null, depth: number): Promise<void> {
+          if (depth > 10) {
+            console.error(`[copy] Depth limit exceeded for folder ${srcId}`);
+            return;
+          }
+
+          const { data: srcFolder } = await svc.from("folders").select("name").eq("id", srcId).single();
+          if (!srcFolder) return;
+
+          const { data: newFolder } = await svc.from("folders").insert({
+            conta_id: contaId,
+            parent_id: destParentId,
+            name: srcFolder.name,
+            source: "user",
+          }).select().single();
+          if (!newFolder) return;
+
+          const { data: files } = await svc.from("files").select("*").eq("folder_id", srcId).eq("conta_id", contaId);
+          for (const f of (files ?? [])) {
+            const newR2Key = `${contaId}/${crypto.randomUUID()}-${f.name}`;
+            let newThumbKey: string | null = null;
+
+            try {
+              await copyObject(f.r2_key, newR2Key);
+              if (f.thumbnail_r2_key) {
+                newThumbKey = `${contaId}/thumb-${crypto.randomUUID()}-${f.name}`;
+                await copyObject(f.thumbnail_r2_key, newThumbKey);
+              }
+
+              await svc.from("files").insert({
+                conta_id: contaId,
+                folder_id: newFolder.id,
+                r2_key: newR2Key,
+                thumbnail_r2_key: newThumbKey,
+                name: f.name,
+                kind: f.kind,
+                mime_type: f.mime_type,
+                size_bytes: f.size_bytes,
+                width: f.width,
+                height: f.height,
+                duration_seconds: f.duration_seconds,
+                blur_data_url: f.blur_data_url,
+                uploaded_by: user.id,
+                reference_count: 0,
+              });
+              copiedCount++;
+            } catch (err) {
+              console.error(`[copy] Failed to copy file ${f.id}:`, err);
+              failedCount++;
+            }
+          }
+
+          const { data: subfolders } = await svc.from("folders").select("id").eq("parent_id", srcId).eq("conta_id", contaId);
+          for (const sub of (subfolders ?? [])) {
+            await copyFolderRecursive(sub.id, newFolder.id, depth + 1);
+          }
+        }
+
+        await copyFolderRecursive(folderId, destination_folder_id ?? null, 0);
+
+        if (copiedCount > 0) {
+          await svc.from("workspaces").update({ storage_used_bytes: (ws?.storage_used_bytes ?? 0) + totalBytes }).eq("id", contaId);
+        }
+
+        await insertAuditLog(svc, {
+          conta_id: contaId,
+          actor_user_id: user.id,
+          action: "copy_folder",
+          resource_type: "folder",
+          resource_id: String(folderId),
+          metadata: { destination_folder_id, copied: copiedCount, failed: failedCount },
+        });
+
+        return json({ ok: true, copied: copiedCount, failed: failedCount }, 201);
+      }
     }
 
     // ─── FILES ────────────────────────────────────────────────────
     if (resource === "files") {
       // GET /files/:id/url → return a signed URL for the file
       if (req.method === "GET" && idStr) {
-        const subResource = parts[idx + 3];
         if (subResource === "url") {
           const fileId = Number(idStr);
           const { data: file } = await svc.from("files").select("conta_id, r2_key").eq("id", fileId).single();
@@ -237,6 +351,71 @@ export function createFileManageHandler(deps: FileManageDeps) {
           const signedUrl = await deps.signUrl(file.r2_key);
           return json({ url: signedUrl });
         }
+      }
+
+      // POST /files/:id/copy → copy a file to a destination folder
+      if (req.method === "POST" && idStr && subResource === "copy") {
+        const fileId = Number(idStr);
+        const body = await req.json().catch(() => ({}));
+        const { destination_folder_id } = body as { destination_folder_id?: number | null };
+
+        const { data: source } = await svc.from("files").select("*").eq("id", fileId).single();
+        if (!source || source.conta_id !== contaId) return json({ error: "File not found" }, 404);
+
+        if (destination_folder_id !== null && destination_folder_id !== undefined) {
+          const { data: destFolder } = await svc.from("folders").select("conta_id").eq("id", destination_folder_id).single();
+          if (!destFolder || destFolder.conta_id !== contaId) return json({ error: "Destination not found" }, 404);
+        }
+
+        const { data: ws } = await svc.from("workspaces").select("storage_used_bytes, storage_quota_bytes").eq("id", contaId).single();
+        if (ws && ws.storage_quota_bytes > 0 && (ws.storage_used_bytes + source.size_bytes) > ws.storage_quota_bytes) {
+          return json({ error: "quota_exceeded", used: ws.storage_used_bytes, quota: ws.storage_quota_bytes, copy_bytes: source.size_bytes }, 413);
+        }
+
+        const newR2Key = `${contaId}/${crypto.randomUUID()}-${source.name}`;
+        let newThumbKey: string | null = null;
+
+        try {
+          await copyObject(source.r2_key, newR2Key);
+          if (source.thumbnail_r2_key) {
+            newThumbKey = `${contaId}/thumb-${crypto.randomUUID()}-${source.name}`;
+            await copyObject(source.thumbnail_r2_key, newThumbKey);
+          }
+        } catch {
+          return json({ error: "R2 copy failed" }, 500);
+        }
+
+        const { data: newFile, error: insertErr } = await svc.from("files").insert({
+          conta_id: contaId,
+          folder_id: destination_folder_id ?? null,
+          r2_key: newR2Key,
+          thumbnail_r2_key: newThumbKey,
+          name: source.name,
+          kind: source.kind,
+          mime_type: source.mime_type,
+          size_bytes: source.size_bytes,
+          width: source.width,
+          height: source.height,
+          duration_seconds: source.duration_seconds,
+          blur_data_url: source.blur_data_url,
+          uploaded_by: user.id,
+          reference_count: 0,
+        }).select().single();
+
+        if (insertErr) return json({ error: insertErr.message }, 500);
+
+        await svc.from("workspaces").update({ storage_used_bytes: (ws?.storage_used_bytes ?? 0) + source.size_bytes }).eq("id", contaId);
+
+        await insertAuditLog(svc, {
+          conta_id: contaId,
+          actor_user_id: user.id,
+          action: "copy_file",
+          resource_type: "file",
+          resource_id: String(newFile.id),
+          metadata: { source_file_id: fileId, destination_folder_id },
+        });
+
+        return json(newFile, 201);
       }
 
       // PATCH /files/:id → rename, move, or update blur_data_url
@@ -373,6 +552,184 @@ export function createFileManageHandler(deps: FileManageDeps) {
         if (updErr) return json({ error: updErr.message }, 500);
         return json(updated);
       }
+    }
+
+    // ─── BULK-MOVE ────────────────────────────────────────────────
+    if (resource === "bulk-move" && req.method === "POST") {
+      const body = await req.json().catch(() => ({}));
+      const { file_ids, folder_ids, destination_id } = body as {
+        file_ids?: number[];
+        folder_ids?: number[];
+        destination_id?: number | null;
+      };
+
+      if ((!file_ids || file_ids.length === 0) && (!folder_ids || folder_ids.length === 0)) {
+        return json({ error: "No items to move" }, 400);
+      }
+
+      const { data: result, error: rpcError } = await svc.rpc("bulk_move_items", {
+        p_conta_id: contaId,
+        p_file_ids: file_ids ?? [],
+        p_folder_ids: folder_ids ?? [],
+        p_destination_id: destination_id ?? null,
+      });
+
+      if (rpcError) return json({ error: rpcError.message }, 500);
+      if (result?.error) return json(result, 400);
+
+      await insertAuditLog(svc, {
+        conta_id: contaId,
+        actor_user_id: user.id,
+        action: "bulk_move",
+        resource_type: "files_and_folders",
+        metadata: { file_ids, folder_ids, destination_id, result },
+      });
+
+      return json(result);
+    }
+
+    // ─── BULK-DELETE ──────────────────────────────────────────────
+    if (resource === "bulk-delete" && req.method === "POST") {
+      const body = await req.json().catch(() => ({}));
+      const { file_ids, folder_ids } = body as { file_ids?: number[]; folder_ids?: number[] };
+
+      if ((!file_ids || file_ids.length === 0) && (!folder_ids || folder_ids.length === 0)) {
+        return json({ error: "No items to delete" }, 400);
+      }
+
+      const blocked: { id: number; type: string; reason: string }[] = [];
+      const deletableFileIds: number[] = [];
+      const deletableFolderIds: number[] = [];
+
+      if (file_ids && file_ids.length > 0) {
+        const { data: files } = await svc
+          .from("files")
+          .select("id, reference_count, size_bytes")
+          .eq("conta_id", contaId)
+          .in("id", file_ids);
+
+        for (const f of files ?? []) {
+          if (f.reference_count > 0) {
+            blocked.push({ id: f.id, type: "file", reason: "file_in_use" });
+          } else {
+            deletableFileIds.push(f.id);
+          }
+        }
+
+        const foundIds = new Set((files ?? []).map((f: { id: number }) => f.id));
+        for (const id of file_ids) {
+          if (!foundIds.has(id)) blocked.push({ id, type: "file", reason: "not_found" });
+        }
+      }
+
+      if (folder_ids && folder_ids.length > 0) {
+        const { data: folders } = await svc
+          .from("folders")
+          .select("id, source")
+          .eq("conta_id", contaId)
+          .in("id", folder_ids);
+
+        for (const f of folders ?? []) {
+          if (f.source === "system") {
+            blocked.push({ id: f.id, type: "folder", reason: "system_folder" });
+          } else {
+            deletableFolderIds.push(f.id);
+          }
+        }
+
+        const foundIds = new Set((folders ?? []).map((f: { id: number }) => f.id));
+        for (const id of folder_ids) {
+          if (!foundIds.has(id)) blocked.push({ id, type: "folder", reason: "not_found" });
+        }
+      }
+
+      if (blocked.length > 0) {
+        return json({ blocked, deletable: { file_ids: deletableFileIds, folder_ids: deletableFolderIds } }, 409);
+      }
+
+      let totalBytesFreed = 0;
+      if (deletableFileIds.length > 0) {
+        const { data: filesToDelete } = await svc
+          .from("files")
+          .select("size_bytes")
+          .in("id", deletableFileIds);
+
+        totalBytesFreed = (filesToDelete ?? []).reduce((sum: number, f: { size_bytes: number }) => sum + f.size_bytes, 0);
+
+        const { error: delErr } = await svc.from("files").delete().in("id", deletableFileIds);
+        if (delErr) return json({ error: delErr.message }, 500);
+      }
+
+      if (deletableFolderIds.length > 0) {
+        const { error: delErr } = await svc.from("folders").delete().in("id", deletableFolderIds);
+        if (delErr) return json({ error: delErr.message }, 500);
+      }
+
+      if (totalBytesFreed > 0) {
+        await svc.rpc("decrement_storage", { p_conta_id: contaId, p_bytes: totalBytesFreed }).catch(() => {});
+      }
+
+      await insertAuditLog(svc, {
+        conta_id: contaId,
+        actor_user_id: user.id,
+        action: "bulk_delete",
+        resource_type: "files_and_folders",
+        metadata: { file_ids: deletableFileIds, folder_ids: deletableFolderIds, bytes_freed: totalBytesFreed },
+      });
+
+      return json({ ok: true, files_deleted: deletableFileIds.length, folders_deleted: deletableFolderIds.length });
+    }
+
+    // ─── ZIP-TOKEN ────────────────────────────────────────────────
+    if (resource === "zip-token" && req.method === "POST") {
+      const ZIP_TOKEN_SECRET = Deno.env.get("ZIP_TOKEN_SECRET");
+      if (!ZIP_TOKEN_SECRET) throw new Error("ZIP_TOKEN_SECRET is required");
+
+      const body = await req.json().catch(() => ({}));
+      const { folder_id, file_ids } = body as { folder_id?: number; file_ids?: number[] };
+
+      if (!folder_id && (!file_ids || file_ids.length === 0)) {
+        return json({ error: "folder_id or file_ids required" }, 400);
+      }
+
+      let totalBytes = 0;
+      let fileCount = 0;
+
+      if (folder_id) {
+        const { data: sizeInfo } = await svc.rpc("folder_sizes_batch", { p_folder_ids: [folder_id] });
+        totalBytes = sizeInfo?.[0]?.total_size_bytes ?? 0;
+        fileCount = sizeInfo?.[0]?.file_count ?? 0;
+      } else if (file_ids) {
+        const { data: files } = await svc.from("files").select("size_bytes").eq("conta_id", contaId).in("id", file_ids);
+        totalBytes = (files ?? []).reduce((sum: number, f: { size_bytes: number }) => sum + f.size_bytes, 0);
+        fileCount = file_ids.length;
+      }
+
+      const LIMIT_BYTES = 1024 * 1024 * 1024;
+      const LIMIT_FILES = 500;
+
+      if (totalBytes > LIMIT_BYTES || fileCount > LIMIT_FILES) {
+        return json({
+          error: "zip_limit_exceeded",
+          total_bytes: totalBytes,
+          file_count: fileCount,
+          limit_bytes: LIMIT_BYTES,
+          limit_files: LIMIT_FILES,
+        }, 413);
+      }
+
+      const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+      const tokenPayload = {
+        conta_id: contaId,
+        ...(folder_id ? { folder_id } : { file_ids }),
+        expires_at: expiresAt,
+      };
+
+      const token = await signZipToken(tokenPayload, ZIP_TOKEN_SECRET);
+      const baseUrl = Deno.env.get("SUPABASE_URL")!;
+      const downloadUrl = `${baseUrl}/functions/v1/file-zip?token=${encodeURIComponent(token)}`;
+
+      return json({ token, download_url: downloadUrl });
     }
 
     return json({ error: "Not found" }, 404);

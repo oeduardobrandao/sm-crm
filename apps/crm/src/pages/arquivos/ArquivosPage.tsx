@@ -1,15 +1,31 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { LayoutGrid, List, Upload, FolderPlus, ArrowUpDown } from 'lucide-react';
 import { toast } from 'sonner';
-import { getFolderContents, createFolder, getFileDownloadUrl } from '@/services/fileService';
+import { getFolderContents, createFolder, getFileDownloadUrl, bulkMove, bulkDelete, copyFile, copyFolder, requestZipToken } from '@/services/fileService';
+import type { BulkDeleteResult } from '@/services/fileService';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Breadcrumbs } from './components/Breadcrumbs';
 import { FolderTree } from './components/FolderTree';
 import { FileGrid, formatBytes } from './components/FileGrid';
+import { FilterPopover, EMPTY_FILTER, isFilterActive } from './components/FilterPopover';
+import type { FilterState } from './components/FilterPopover';
 import { FileUploader } from './components/FileUploader';
 import { CreateFolderModal } from './components/CreateFolderModal';
+import { FolderPickerModal } from './components/FolderPickerModal';
 import { MobileArquivosView } from './components/MobileArquivosView';
 import { PostMediaLightbox } from '../entregas/components/PostMediaLightbox';
+import { BulkActionBar } from './components/BulkActionBar';
+import { useSelection } from './hooks/useSelection';
 import type { SortBy } from './components/FileGrid';
 import type { FileRecord, FolderContents } from './types';
 import type { PostMedia } from '../../store';
@@ -36,11 +52,20 @@ export default function ArquivosPage() {
   const [currentFolderId, setCurrentFolderId] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [sortBy, setSortBy] = useState<SortBy>('name');
+  const [filter, setFilter] = useState<FilterState>(EMPTY_FILTER);
   const [createFolderParent, setCreateFolderParent] = useState<number | null | undefined>(undefined);
+  const [pickerMode, setPickerMode] = useState<'move' | 'copy' | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    fileIds: number[];
+    folderIds: number[];
+    blocked?: { id: number; type: string; reason: string }[];
+    stage: 'confirm' | 'partial';
+  } | null>(null);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const queryClient = useQueryClient();
   const uploaderRef = useRef<{ openFilePicker: () => void }>(null);
+  const selection = useSelection();
 
   const { data, isLoading } = useQuery({
     queryKey: ['folder-contents', currentFolderId],
@@ -69,6 +94,44 @@ export default function ArquivosPage() {
   const subfolders = data?.subfolders ?? [];
   const files = data?.files ?? [];
   const storage = data?.storage;
+
+  // Clear selection when navigating to a different folder
+  useEffect(() => { selection.clear(); }, [currentFolderId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Escape key clears selection
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape' && selection.count > 0) {
+        selection.clear();
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selection.count, selection.clear]);
+
+  const filteredFiles = useMemo(() => {
+    if (!isFilterActive(filter) || !data?.files) return data?.files ?? [];
+    return data.files.filter((f) => filter.types.has(f.kind as 'image' | 'video' | 'document'));
+  }, [data?.files, filter]);
+
+  // Flat ordered item list matching FileGrid's render order — used for range selection
+  const displayItems = useMemo(() => {
+    const folderItems = [...(data?.subfolders ?? [])].sort((a, b) => {
+      switch (sortBy) {
+        case 'size': return (b.total_size_bytes ?? 0) - (a.total_size_bytes ?? 0);
+        case 'date': return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        default: return a.name.localeCompare(b.name, 'pt-BR');
+      }
+    }).map(f => ({ id: f.id }));
+    const fileItems = [...filteredFiles].sort((a, b) => {
+      switch (sortBy) {
+        case 'size': return b.size_bytes - a.size_bytes;
+        case 'date': return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        default: return a.name.localeCompare(b.name, 'pt-BR');
+      }
+    }).map(f => ({ id: f.id }));
+    return [...folderItems, ...fileItems];
+  }, [data?.subfolders, filteredFiles, sortBy]);
 
   const mediaFiles = files.filter(f => f.kind === 'image' || f.kind === 'video');
   const lightboxMedia: PostMedia[] = mediaFiles.map(f => ({
@@ -134,6 +197,122 @@ export default function ArquivosPage() {
     onSuccess: () => toast.success('Pasta criada'),
   });
 
+  const bulkMoveMutation = useMutation({
+    mutationFn: ({ fileIds, folderIds, destinationId }: { fileIds: number[]; folderIds: number[]; destinationId: number | null }) =>
+      bulkMove(fileIds, folderIds, destinationId),
+    onSuccess: () => {
+      toast.success('Itens movidos com sucesso');
+      selection.clear();
+      queryClient.invalidateQueries({ queryKey: ['folder-contents'] });
+      queryClient.invalidateQueries({ queryKey: ['folder-tree'] });
+    },
+    onError: () => toast.error('Erro ao mover itens'),
+  });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: ({ fileIds, folderIds }: { fileIds: number[]; folderIds: number[] }) =>
+      bulkDelete(fileIds, folderIds),
+    onSuccess: (result: BulkDeleteResult) => {
+      if (result.blocked && result.blocked.length > 0) {
+        setDeleteConfirm({
+          fileIds: result.deletable?.file_ids ?? [],
+          folderIds: result.deletable?.folder_ids ?? [],
+          blocked: result.blocked,
+          stage: 'partial',
+        });
+      } else {
+        toast.success(`${(result.files_deleted ?? 0) + (result.folders_deleted ?? 0)} itens excluídos`);
+        selection.clear();
+        setDeleteConfirm(null);
+        queryClient.invalidateQueries({ queryKey: ['folder-contents'] });
+        queryClient.invalidateQueries({ queryKey: ['folder-tree'] });
+      }
+    },
+    onError: () => toast.error('Erro ao excluir itens'),
+  });
+
+  const copyFileMutation = useMutation({
+    mutationFn: ({ fileId, destinationId }: { fileId: number; destinationId: number | null }) =>
+      copyFile(fileId, destinationId),
+    onSuccess: () => {
+      toast.success('Arquivo copiado');
+      queryClient.invalidateQueries({ queryKey: ['folder-contents'] });
+    },
+    onError: (err) => {
+      if (err.message.includes('quota_exceeded')) {
+        toast.error('Cópia excederia o armazenamento. Libere espaço ou faça upgrade.');
+      } else {
+        toast.error('Erro ao copiar arquivo');
+      }
+    },
+  });
+
+  const copyFolderMutation = useMutation({
+    mutationFn: ({ folderId, destinationId }: { folderId: number; destinationId: number | null }) =>
+      copyFolder(folderId, destinationId),
+    onSuccess: (result) => {
+      if (result.failed > 0) {
+        toast.warning(`${result.copied} de ${result.copied + result.failed} arquivos copiados`);
+      } else {
+        toast.success(`${result.copied} arquivo${result.copied !== 1 ? 's' : ''} copiado${result.copied !== 1 ? 's' : ''}`);
+      }
+      queryClient.invalidateQueries({ queryKey: ['folder-contents'] });
+      queryClient.invalidateQueries({ queryKey: ['folder-tree'] });
+    },
+    onError: (err) => {
+      if (err.message.includes('quota_exceeded')) {
+        toast.error('Cópia excederia o armazenamento. Libere espaço ou faça upgrade.');
+      } else if (err.message.includes('copy_limit_exceeded')) {
+        toast.error('Pasta muito grande para copiar (máximo 200 arquivos).');
+      } else {
+        toast.error('Erro ao copiar pasta');
+      }
+    },
+  });
+
+  const zipMutation = useMutation({
+    mutationFn: async (params: { folder_id: number } | { file_ids: number[] }) => {
+      const result = await requestZipToken(params);
+      const a = document.createElement('a');
+      a.href = result.download_url;
+      a.download = '';
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      return result;
+    },
+    retry: 1,
+    onError: (err) => {
+      if (err.message.includes('zip_limit_exceeded')) {
+        toast.error('Pasta muito grande para download ZIP. Selecione menos arquivos.');
+      } else {
+        toast.error('Erro ao preparar download');
+      }
+    },
+  });
+
+  const classifySelection = useCallback(() => {
+    const fileIds = [...selection.selectedIds].filter((id) =>
+      data?.files.some((f) => f.id === id)
+    );
+    const folderIds = [...selection.selectedIds].filter((id) =>
+      data?.subfolders.some((f) => f.id === id)
+    );
+    return { fileIds, folderIds };
+  }, [selection.selectedIds, data]);
+
+  const handleDrop = useCallback(
+    (targetFolderId: number, payload: { fileIds: number[]; folderIds: number[] }) => {
+      bulkMoveMutation.mutate({
+        fileIds: payload.fileIds,
+        folderIds: payload.folderIds,
+        destinationId: targetFolderId,
+      });
+    },
+    [bulkMoveMutation],
+  );
+
   function handleFileAction(action: string, file: FileRecord) {
     if (action !== 'open') return;
 
@@ -180,6 +359,27 @@ export default function ArquivosPage() {
               queryClient.invalidateQueries({ queryKey: ['folder-contents', currentFolderId] });
               queryClient.invalidateQueries({ queryKey: ['folder-tree'] });
             }}
+            selectedIds={selection.selectedIds}
+            selectionCount={selection.count}
+            onToggleSelect={selection.toggle}
+            onClearSelection={selection.clear}
+            onBulkMove={() => setPickerMode('move')}
+            onBulkCopy={() => setPickerMode('copy')}
+            onBulkZip={() => {
+              const fileIds = [...selection.selectedIds].filter((id) => data?.files.some((f) => f.id === id));
+              const folderIds = [...selection.selectedIds].filter((id) => data?.subfolders.some((f) => f.id === id));
+              if (folderIds.length === 1 && fileIds.length === 0) {
+                zipMutation.mutate({ folder_id: folderIds[0] });
+              } else {
+                zipMutation.mutate({ file_ids: fileIds });
+              }
+            }}
+            onBulkDelete={() => {
+              const fileIds = [...selection.selectedIds].filter((id) => data?.files.some((f) => f.id === id));
+              const folderIds = [...selection.selectedIds].filter((id) => data?.subfolders.some((f) => f.id === id));
+              setDeleteConfirm({ fileIds, folderIds, stage: 'confirm' });
+            }}
+            isBusy={bulkMoveMutation.isPending || bulkDeleteMutation.isPending || copyFileMutation.isPending || copyFolderMutation.isPending || zipMutation.isPending}
           />
         </FileUploader>
         <PostMediaLightbox
@@ -193,6 +393,100 @@ export default function ArquivosPage() {
           onOpenChange={(open) => { if (!open) setCreateFolderParent(undefined); }}
           onConfirm={(name) => createFolderMutation.mutate(name)}
         />
+        <FolderPickerModal
+          open={pickerMode === 'move'}
+          onOpenChange={(open) => { if (!open) setPickerMode(null); }}
+          title={`Mover ${selection.count} ${selection.count === 1 ? 'item' : 'itens'}`}
+          confirmLabel="Mover"
+          isLoading={bulkMoveMutation.isPending}
+          sourceFolderIds={[...selection.selectedIds].filter((id) =>
+            data?.subfolders.some((f) => f.id === id)
+          )}
+          currentFolderId={currentFolderId}
+          onConfirm={(destId) => {
+            const fileIds = [...selection.selectedIds].filter((id) =>
+              data?.files.some((f) => f.id === id)
+            );
+            const folderIds = [...selection.selectedIds].filter((id) =>
+              data?.subfolders.some((f) => f.id === id)
+            );
+            bulkMoveMutation.mutate({ fileIds, folderIds, destinationId: destId });
+            setPickerMode(null);
+          }}
+        />
+        <FolderPickerModal
+          open={pickerMode === 'copy'}
+          onOpenChange={(open) => { if (!open) setPickerMode(null); }}
+          title={`Copiar ${selection.count} ${selection.count === 1 ? 'item' : 'itens'}`}
+          confirmLabel="Copiar"
+          isLoading={copyFileMutation.isPending || copyFolderMutation.isPending}
+          sourceFolderIds={[]}
+          currentFolderId={null}
+          onConfirm={(destId) => {
+            const fileIds = [...selection.selectedIds].filter((id) =>
+              data?.files.some((f) => f.id === id)
+            );
+            const folderIds = [...selection.selectedIds].filter((id) =>
+              data?.subfolders.some((f) => f.id === id)
+            );
+            for (const fid of fileIds) {
+              copyFileMutation.mutate({ fileId: fid, destinationId: destId });
+            }
+            for (const fid of folderIds) {
+              copyFolderMutation.mutate({ folderId: fid, destinationId: destId });
+            }
+            setPickerMode(null);
+            selection.clear();
+          }}
+        />
+        <AlertDialog open={deleteConfirm !== null} onOpenChange={(open) => { if (!open) setDeleteConfirm(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {deleteConfirm?.stage === 'partial'
+                  ? 'Alguns itens não podem ser excluídos'
+                  : 'Excluir itens?'}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {deleteConfirm?.stage === 'partial' ? (
+                  <>
+                    {deleteConfirm.blocked?.length} {deleteConfirm.blocked?.length === 1 ? 'item está' : 'itens estão'} em uso e{' '}
+                    {deleteConfirm.blocked?.length === 1 ? 'não pode' : 'não podem'} ser {deleteConfirm.blocked?.length === 1 ? 'excluído' : 'excluídos'}.
+                    {(deleteConfirm.fileIds.length + deleteConfirm.folderIds.length) > 0
+                      ? ` Deseja excluir os outros ${deleteConfirm.fileIds.length + deleteConfirm.folderIds.length}?`
+                      : ' Nenhum item pode ser excluído.'}
+                  </>
+                ) : (
+                  `Tem certeza que deseja excluir ${
+                    (deleteConfirm?.fileIds.length ?? 0) + (deleteConfirm?.folderIds.length ?? 0)
+                  } ${
+                    ((deleteConfirm?.fileIds.length ?? 0) + (deleteConfirm?.folderIds.length ?? 0)) === 1
+                      ? 'item'
+                      : 'itens'
+                  }? Esta ação não pode ser desfeita.`
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              {((deleteConfirm?.fileIds.length ?? 0) + (deleteConfirm?.folderIds.length ?? 0)) > 0 && (
+                <AlertDialogAction
+                  onClick={() => {
+                    if (deleteConfirm) {
+                      bulkDeleteMutation.mutate({
+                        fileIds: deleteConfirm.fileIds,
+                        folderIds: deleteConfirm.folderIds,
+                      });
+                    }
+                  }}
+                  className="bg-[var(--danger)] hover:bg-[var(--danger)] text-white"
+                >
+                  Excluir
+                </AlertDialogAction>
+              )}
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     );
   }
@@ -216,6 +510,7 @@ export default function ArquivosPage() {
           selectedFolderId={currentFolderId}
           onSelectFolder={setCurrentFolderId}
           onRequestCreateFolder={setCreateFolderParent}
+          onDrop={handleDrop}
         />
 
         {/* Storage usage bar */}
@@ -278,6 +573,9 @@ export default function ArquivosPage() {
               Nova pasta
             </button>
 
+            {/* Filter popover */}
+            <FilterPopover filter={filter} onChange={setFilter} />
+
             {/* Sort dropdown */}
             <div className="flex items-center gap-1.5 border border-[var(--border-color)] rounded-sm px-2.5 py-1.5">
               <ArrowUpDown className="h-3.5 w-3.5 text-[var(--text-muted)]" />
@@ -334,7 +632,7 @@ export default function ArquivosPage() {
         >
           <div className="flex-1 overflow-y-auto p-5">
             <FileGrid
-              files={files}
+              files={filteredFiles}
               subfolders={subfolders}
               onOpenFolder={setCurrentFolderId}
               onFileAction={handleFileAction}
@@ -345,10 +643,64 @@ export default function ArquivosPage() {
               }}
               sortBy={sortBy}
               isLoading={isLoading}
+              currentFolderId={currentFolderId}
+              selectedIds={selection.selectedIds}
+              onToggleSelect={selection.toggle}
+              onToggleRangeSelect={(id) => selection.toggleRange(id, displayItems)}
+              selectionCount={selection.count}
+              onRequestMove={(id, _type) => {
+                selection.clear();
+                selection.toggle(id);
+                setPickerMode('move');
+              }}
+              onRequestCopy={(id, _type) => {
+                selection.clear();
+                selection.toggle(id);
+                setPickerMode('copy');
+              }}
+              onDrop={handleDrop}
+              classifySelection={classifySelection}
             />
+            {isFilterActive(filter) && filteredFiles.length === 0 && files.length > 0 && (
+              <div className="text-center py-4">
+                <p className="text-sm text-[var(--text-muted)] mb-2">Nenhum arquivo corresponde ao filtro</p>
+                <button
+                  onClick={() => setFilter(EMPTY_FILTER)}
+                  className="text-sm text-[var(--primary-color)] hover:underline"
+                >
+                  Limpar filtros
+                </button>
+              </div>
+            )}
           </div>
         </FileUploader>
       </main>
+
+      <BulkActionBar
+        count={selection.count}
+        onMove={() => setPickerMode('move')}
+        onCopy={() => setPickerMode('copy')}
+        onZip={() => {
+          const fileIds = [...selection.selectedIds].filter((id) => data?.files.some((f) => f.id === id));
+          const folderIds = [...selection.selectedIds].filter((id) => data?.subfolders.some((f) => f.id === id));
+
+          if (folderIds.length === 1 && fileIds.length === 0) {
+            zipMutation.mutate({ folder_id: folderIds[0] });
+          } else {
+            zipMutation.mutate({ file_ids: fileIds });
+          }
+        }}
+        isZipping={zipMutation.isPending}
+        onDelete={() => {
+          const fileIds = [...selection.selectedIds].filter((id) => data?.files.some((f) => f.id === id));
+          const folderIds = [...selection.selectedIds].filter((id) => data?.subfolders.some((f) => f.id === id));
+          setDeleteConfirm({ fileIds, folderIds, stage: 'confirm' });
+        }}
+        onClear={selection.clear}
+        isMoving={bulkMoveMutation.isPending}
+        isCopying={copyFileMutation.isPending || copyFolderMutation.isPending}
+        isDeleting={bulkDeleteMutation.isPending}
+      />
 
       <PostMediaLightbox
         media={lightboxMedia}
@@ -361,6 +713,100 @@ export default function ArquivosPage() {
         onOpenChange={(open) => { if (!open) setCreateFolderParent(undefined); }}
         onConfirm={(name) => createFolderMutation.mutate(name)}
       />
+      <FolderPickerModal
+        open={pickerMode === 'move'}
+        onOpenChange={(open) => { if (!open) setPickerMode(null); }}
+        title={`Mover ${selection.count} ${selection.count === 1 ? 'item' : 'itens'}`}
+        confirmLabel="Mover"
+        isLoading={bulkMoveMutation.isPending}
+        sourceFolderIds={[...selection.selectedIds].filter((id) =>
+          data?.subfolders.some((f) => f.id === id)
+        )}
+        currentFolderId={currentFolderId}
+        onConfirm={(destId) => {
+          const fileIds = [...selection.selectedIds].filter((id) =>
+            data?.files.some((f) => f.id === id)
+          );
+          const folderIds = [...selection.selectedIds].filter((id) =>
+            data?.subfolders.some((f) => f.id === id)
+          );
+          bulkMoveMutation.mutate({ fileIds, folderIds, destinationId: destId });
+          setPickerMode(null);
+        }}
+      />
+      <FolderPickerModal
+        open={pickerMode === 'copy'}
+        onOpenChange={(open) => { if (!open) setPickerMode(null); }}
+        title={`Copiar ${selection.count} ${selection.count === 1 ? 'item' : 'itens'}`}
+        confirmLabel="Copiar"
+        isLoading={copyFileMutation.isPending || copyFolderMutation.isPending}
+        sourceFolderIds={[]}
+        currentFolderId={null}
+        onConfirm={(destId) => {
+          const fileIds = [...selection.selectedIds].filter((id) =>
+            data?.files.some((f) => f.id === id)
+          );
+          const folderIds = [...selection.selectedIds].filter((id) =>
+            data?.subfolders.some((f) => f.id === id)
+          );
+          for (const fid of fileIds) {
+            copyFileMutation.mutate({ fileId: fid, destinationId: destId });
+          }
+          for (const fid of folderIds) {
+            copyFolderMutation.mutate({ folderId: fid, destinationId: destId });
+          }
+          setPickerMode(null);
+          selection.clear();
+        }}
+      />
+      <AlertDialog open={deleteConfirm !== null} onOpenChange={(open) => { if (!open) setDeleteConfirm(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {deleteConfirm?.stage === 'partial'
+                ? 'Alguns itens não podem ser excluídos'
+                : 'Excluir itens?'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteConfirm?.stage === 'partial' ? (
+                <>
+                  {deleteConfirm.blocked?.length} {deleteConfirm.blocked?.length === 1 ? 'item está' : 'itens estão'} em uso e{' '}
+                  {deleteConfirm.blocked?.length === 1 ? 'não pode' : 'não podem'} ser {deleteConfirm.blocked?.length === 1 ? 'excluído' : 'excluídos'}.
+                  {(deleteConfirm.fileIds.length + deleteConfirm.folderIds.length) > 0
+                    ? ` Deseja excluir os outros ${deleteConfirm.fileIds.length + deleteConfirm.folderIds.length}?`
+                    : ' Nenhum item pode ser excluído.'}
+                </>
+              ) : (
+                `Tem certeza que deseja excluir ${
+                  (deleteConfirm?.fileIds.length ?? 0) + (deleteConfirm?.folderIds.length ?? 0)
+                } ${
+                  ((deleteConfirm?.fileIds.length ?? 0) + (deleteConfirm?.folderIds.length ?? 0)) === 1
+                    ? 'item'
+                    : 'itens'
+                }? Esta ação não pode ser desfeita.`
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            {((deleteConfirm?.fileIds.length ?? 0) + (deleteConfirm?.folderIds.length ?? 0)) > 0 && (
+              <AlertDialogAction
+                onClick={() => {
+                  if (deleteConfirm) {
+                    bulkDeleteMutation.mutate({
+                      fileIds: deleteConfirm.fileIds,
+                      folderIds: deleteConfirm.folderIds,
+                    });
+                  }
+                }}
+                className="bg-[var(--danger)] hover:bg-[var(--danger)] text-white"
+              >
+                Excluir
+              </AlertDialogAction>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

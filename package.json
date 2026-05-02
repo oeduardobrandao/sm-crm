@@ -18,6 +18,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "dev:admin": "vite --config apps/admin/vite.config.ts --port 5177",
+    "build:admin": "tsc -p apps/admin/tsconfig.json && vite build --config apps/admin/vite.config.ts",
     "db:link:staging": "npx supabase link --project-ref skjzpekeqefvlojenfsw",
     "db:push:staging": "npx supabase db push --linked"
   },

@@ -22,10 +22,14 @@
       "destination": "/hub/index.html"
     },
     {
+      "source": "/admin/(.*)",
+      "destination": "/admin/index.html"
+    },
+    {
       "source": "/((?!hub/|crm/|assets/)(?!.*\\.[a-zA-Z0-9]+$).*)",
       "destination": "/index.html"
     }
   ],
-  "buildCommand": "npm run build && npm run build:hub",
+  "buildCommand": "npm run build && npm run build:hub && npm run build:admin",
   "outputDirectory": "dist"
 }

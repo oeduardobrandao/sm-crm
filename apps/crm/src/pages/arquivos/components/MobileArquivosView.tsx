@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   ChevronRight,
   ChevronLeft,
@@ -12,6 +12,7 @@ import {
   FileImage,
   ArrowUpRight,
   MoreVertical,
+  X,
 } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { formatBytes } from './FileGrid';
@@ -32,6 +33,15 @@ interface MobileArquivosViewProps {
   onUploadClick: () => void;
   onCreateFolder: () => void;
   onActionComplete: () => void;
+  selectedIds: Set<number>;
+  selectionCount: number;
+  onToggleSelect: (id: number) => void;
+  onClearSelection: () => void;
+  onBulkMove: () => void;
+  onBulkCopy: () => void;
+  onBulkZip: () => void;
+  onBulkDelete: () => void;
+  isBusy: boolean;
 }
 
 function FileIcon({ kind, className }: { kind: FileRecord['kind']; className?: string }) {
@@ -57,65 +67,171 @@ function filterFiles(files: FileRecord[], filter: FileFilter): FileRecord[] {
   return files.filter((f) => f.kind === 'document');
 }
 
-function FolderCards({ folders, onOpen }: { folders: FolderType[]; onOpen: (id: number) => void }) {
+function FolderCards({
+  folders,
+  onOpen,
+  selectedIds,
+  isInSelectionMode,
+  onToggleSelect,
+  longPressTimer,
+}: {
+  folders: FolderType[];
+  onOpen: (id: number) => void;
+  selectedIds: Set<number>;
+  isInSelectionMode: boolean;
+  onToggleSelect: (id: number) => void;
+  longPressTimer: { current: ReturnType<typeof setTimeout> | null };
+}) {
   return (
     <div className="grid grid-cols-2 gap-2.5 px-3">
-      {folders.map((f) => (
-        <button
-          key={f.id}
-          onClick={() => onOpen(f.id)}
-          className="flex flex-col gap-2.5 p-3 rounded-lg bg-[var(--card-bg)] border border-[var(--border-color)] text-left active:scale-[0.97] transition-transform"
-          style={{ boxShadow: '0 1px 0 rgba(0,0,0,.02), 0 1px 2px rgba(28,25,23,.04)' }}
-        >
-          <div className="flex items-center justify-between">
-            <div
-              className="w-9 h-9 rounded-sm flex items-center justify-center"
-              style={{ background: 'color-mix(in srgb, var(--primary-color) 15%, transparent)' }}
-            >
-              <Folder className="h-[18px] w-[18px] text-[var(--primary-color)]" />
+      {folders.map((f) => {
+        const isSelected = selectedIds.has(f.id);
+        return (
+          <button
+            key={f.id}
+            onClick={() => {
+              if (isInSelectionMode) {
+                onToggleSelect(f.id);
+              } else {
+                onOpen(f.id);
+              }
+            }}
+            onTouchStart={() => {
+              longPressTimer.current = setTimeout(() => {
+                onToggleSelect(f.id);
+              }, 400);
+            }}
+            onTouchMove={() => {
+              if (longPressTimer.current) {
+                clearTimeout(longPressTimer.current);
+                longPressTimer.current = null;
+              }
+            }}
+            onTouchEnd={() => {
+              if (longPressTimer.current) {
+                clearTimeout(longPressTimer.current);
+                longPressTimer.current = null;
+              }
+            }}
+            className={`relative flex flex-col gap-2.5 p-3 rounded-lg bg-[var(--card-bg)] border text-left active:scale-[0.97] transition-transform ${
+              isSelected ? 'border-[var(--primary-color)]' : 'border-[var(--border-color)]'
+            }`}
+            style={{ boxShadow: '0 1px 0 rgba(0,0,0,.02), 0 1px 2px rgba(28,25,23,.04)' }}
+          >
+            {isInSelectionMode && (
+              <div
+                className={`absolute top-1.5 left-1.5 w-5 h-5 rounded border-[1.5px] flex items-center justify-center text-[0.6rem] font-bold z-10 ${
+                  isSelected
+                    ? 'bg-[var(--primary-color)] border-[var(--primary-color)] text-[#12151a]'
+                    : 'border-white/60 bg-black/40'
+                }`}
+              >
+                {isSelected && '✓'}
+              </div>
+            )}
+            <div className="flex items-center justify-between">
+              <div
+                className="w-9 h-9 rounded-sm flex items-center justify-center"
+                style={{ background: 'color-mix(in srgb, var(--primary-color) 15%, transparent)' }}
+              >
+                <Folder className="h-[18px] w-[18px] text-[var(--primary-color)]" />
+              </div>
+              <ArrowUpRight className="h-3.5 w-3.5 text-[var(--text-muted)]" />
             </div>
-            <ArrowUpRight className="h-3.5 w-3.5 text-[var(--text-muted)]" />
-          </div>
-          <div>
-            <p className="text-[13px] font-semibold text-[var(--text-main)] leading-tight line-clamp-1">{f.name}</p>
-            <p className="font-mono text-[10px] text-[var(--text-muted)] mt-0.5 font-semibold tracking-wide uppercase">
-              {f.file_count ?? 0} arquivos
-            </p>
-          </div>
-        </button>
-      ))}
+            <div>
+              <p className="text-[13px] font-semibold text-[var(--text-main)] leading-tight line-clamp-1">{f.name}</p>
+              <p className="font-mono text-[10px] text-[var(--text-muted)] mt-0.5 font-semibold tracking-wide uppercase">
+                {f.file_count ?? 0} arquivos
+              </p>
+            </div>
+          </button>
+        );
+      })}
     </div>
   );
 }
 
-function FolderList({ folders, onOpen }: { folders: FolderType[]; onOpen: (id: number) => void }) {
+function FolderList({
+  folders,
+  onOpen,
+  selectedIds,
+  isInSelectionMode,
+  onToggleSelect,
+  longPressTimer,
+}: {
+  folders: FolderType[];
+  onOpen: (id: number) => void;
+  selectedIds: Set<number>;
+  isInSelectionMode: boolean;
+  onToggleSelect: (id: number) => void;
+  longPressTimer: { current: ReturnType<typeof setTimeout> | null };
+}) {
   return (
     <div
       className="mx-3 rounded-lg bg-[var(--card-bg)] border border-[var(--border-color)] overflow-hidden"
       style={{ boxShadow: '0 1px 0 rgba(0,0,0,.02), 0 1px 2px rgba(28,25,23,.04)' }}
     >
-      {folders.map((f, i) => (
-        <button
-          key={f.id}
-          onClick={() => onOpen(f.id)}
-          className="flex items-center gap-3 px-3.5 py-3 w-full text-left active:bg-[var(--surface-hover)]"
-          style={i > 0 ? { borderTop: '1px solid var(--border-color)' } : undefined}
-        >
-          <div
-            className="w-10 h-10 rounded-sm flex items-center justify-center flex-shrink-0"
-            style={{ background: 'color-mix(in srgb, var(--primary-color) 15%, transparent)' }}
+      {folders.map((f, i) => {
+        const isSelected = selectedIds.has(f.id);
+        return (
+          <button
+            key={f.id}
+            onClick={() => {
+              if (isInSelectionMode) {
+                onToggleSelect(f.id);
+              } else {
+                onOpen(f.id);
+              }
+            }}
+            onTouchStart={() => {
+              longPressTimer.current = setTimeout(() => {
+                onToggleSelect(f.id);
+              }, 400);
+            }}
+            onTouchMove={() => {
+              if (longPressTimer.current) {
+                clearTimeout(longPressTimer.current);
+                longPressTimer.current = null;
+              }
+            }}
+            onTouchEnd={() => {
+              if (longPressTimer.current) {
+                clearTimeout(longPressTimer.current);
+                longPressTimer.current = null;
+              }
+            }}
+            className={`flex items-center gap-3 px-3.5 py-3 w-full text-left active:bg-[var(--surface-hover)] ${
+              isSelected ? 'bg-[color-mix(in_srgb,var(--primary-color)_8%,transparent)]' : ''
+            }`}
+            style={i > 0 ? { borderTop: '1px solid var(--border-color)' } : undefined}
           >
-            <Folder className="h-[18px] w-[18px] text-[var(--primary-color)]" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-[var(--text-main)] truncate">{f.name}</p>
-            <p className="font-mono text-[11px] text-[var(--text-light)] mt-0.5">
-              {f.file_count ?? 0} arquivos
-            </p>
-          </div>
-          <ChevronRight className="h-4 w-4 text-[var(--text-muted)] flex-shrink-0" />
-        </button>
-      ))}
+            {isInSelectionMode && (
+              <div
+                className={`w-5 h-5 rounded border-[1.5px] flex items-center justify-center text-[0.6rem] font-bold flex-shrink-0 ${
+                  isSelected
+                    ? 'bg-[var(--primary-color)] border-[var(--primary-color)] text-[#12151a]'
+                    : 'border-[var(--border-color)] bg-[var(--surface-hover)]'
+                }`}
+              >
+                {isSelected && '✓'}
+              </div>
+            )}
+            <div
+              className="w-10 h-10 rounded-sm flex items-center justify-center flex-shrink-0"
+              style={{ background: 'color-mix(in srgb, var(--primary-color) 15%, transparent)' }}
+            >
+              <Folder className="h-[18px] w-[18px] text-[var(--primary-color)]" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-[var(--text-main)] truncate">{f.name}</p>
+              <p className="font-mono text-[11px] text-[var(--text-light)] mt-0.5">
+                {f.file_count ?? 0} arquivos
+              </p>
+            </div>
+            <ChevronRight className="h-4 w-4 text-[var(--text-muted)] flex-shrink-0" />
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -165,37 +281,85 @@ function MobileFileGrid({
   files,
   onFileAction,
   onActionComplete,
+  selectedIds,
+  isInSelectionMode,
+  onToggleSelect,
+  longPressTimer,
 }: {
   files: FileRecord[];
   onFileAction: (action: string, file: FileRecord) => void;
   onActionComplete: () => void;
+  selectedIds: Set<number>;
+  isInSelectionMode: boolean;
+  onToggleSelect: (id: number) => void;
+  longPressTimer: { current: ReturnType<typeof setTimeout> | null };
 }) {
   return (
     <div className="grid grid-cols-2 gap-2.5 px-3">
-      {files.map((f) => (
-        <FileContextMenu key={f.id} item={f} type="file" onActionComplete={onActionComplete}>
-          <button
-            onClick={() => onFileAction('open', f)}
-            className="flex flex-col rounded-lg bg-[var(--card-bg)] border border-[var(--border-color)] overflow-hidden text-left active:scale-[0.97] transition-transform"
-            style={{ boxShadow: '0 1px 0 rgba(0,0,0,.02), 0 1px 2px rgba(28,25,23,.04)' }}
-          >
-            <div className="relative w-full aspect-square bg-[var(--surface-hover)] flex items-center justify-center overflow-hidden">
-              {(f.kind === 'image' || f.kind === 'video') && (f.thumbnail_url ?? f.url) ? (
-                <img src={(f.thumbnail_url ?? f.url)!} alt={f.name} className="w-full h-full object-cover" loading="lazy" />
-              ) : (
-                <FileIcon kind={f.kind} className="h-8 w-8 text-[var(--text-muted)] opacity-40" />
-              )}
-              <span className="absolute top-1.5 left-1.5 px-1 py-0.5 bg-[rgba(18,21,26,.7)] text-white rounded-sm font-mono text-[9px] tracking-wider font-semibold">
-                {mimeExt(f.mime_type)}
-              </span>
-            </div>
-            <div className="px-2.5 py-1.5">
-              <p className="text-xs font-medium text-[var(--text-main)] truncate">{f.name}</p>
-              <p className="font-mono text-[10px] text-[var(--text-muted)] mt-0.5">{formatBytes(f.size_bytes)}</p>
-            </div>
-          </button>
-        </FileContextMenu>
-      ))}
+      {files.map((f) => {
+        const isSelected = selectedIds.has(f.id);
+        return (
+          <FileContextMenu key={f.id} item={f} type="file" onActionComplete={onActionComplete}>
+            <button
+              onClick={(e) => {
+                if (isInSelectionMode) {
+                  e.preventDefault();
+                  onToggleSelect(f.id);
+                } else {
+                  onFileAction('open', f);
+                }
+              }}
+              onTouchStart={() => {
+                longPressTimer.current = setTimeout(() => {
+                  onToggleSelect(f.id);
+                }, 400);
+              }}
+              onTouchMove={() => {
+                if (longPressTimer.current) {
+                  clearTimeout(longPressTimer.current);
+                  longPressTimer.current = null;
+                }
+              }}
+              onTouchEnd={() => {
+                if (longPressTimer.current) {
+                  clearTimeout(longPressTimer.current);
+                  longPressTimer.current = null;
+                }
+              }}
+              className={`relative flex flex-col rounded-lg bg-[var(--card-bg)] border overflow-hidden text-left active:scale-[0.97] transition-transform ${
+                isSelected ? 'border-[var(--primary-color)]' : 'border-[var(--border-color)]'
+              }`}
+              style={{ boxShadow: '0 1px 0 rgba(0,0,0,.02), 0 1px 2px rgba(28,25,23,.04)' }}
+            >
+              <div className="relative w-full aspect-square bg-[var(--surface-hover)] flex items-center justify-center overflow-hidden">
+                {(f.kind === 'image' || f.kind === 'video') && (f.thumbnail_url ?? f.url) ? (
+                  <img src={(f.thumbnail_url ?? f.url)!} alt={f.name} className="w-full h-full object-cover" loading="lazy" />
+                ) : (
+                  <FileIcon kind={f.kind} className="h-8 w-8 text-[var(--text-muted)] opacity-40" />
+                )}
+                <span className="absolute top-1.5 left-1.5 px-1 py-0.5 bg-[rgba(18,21,26,.7)] text-white rounded-sm font-mono text-[9px] tracking-wider font-semibold">
+                  {mimeExt(f.mime_type)}
+                </span>
+                {isInSelectionMode && (
+                  <div
+                    className={`absolute top-1.5 right-1.5 w-5 h-5 rounded border-[1.5px] flex items-center justify-center text-[0.6rem] font-bold z-10 ${
+                      isSelected
+                        ? 'bg-[var(--primary-color)] border-[var(--primary-color)] text-[#12151a]'
+                        : 'border-white/60 bg-black/40'
+                    }`}
+                  >
+                    {isSelected && '✓'}
+                  </div>
+                )}
+              </div>
+              <div className="px-2.5 py-1.5">
+                <p className="text-xs font-medium text-[var(--text-main)] truncate">{f.name}</p>
+                <p className="font-mono text-[10px] text-[var(--text-muted)] mt-0.5">{formatBytes(f.size_bytes)}</p>
+              </div>
+            </button>
+          </FileContextMenu>
+        );
+      })}
     </div>
   );
 }
@@ -204,42 +368,90 @@ function MobileFileList({
   files,
   onFileAction,
   onActionComplete,
+  selectedIds,
+  isInSelectionMode,
+  onToggleSelect,
+  longPressTimer,
 }: {
   files: FileRecord[];
   onFileAction: (action: string, file: FileRecord) => void;
   onActionComplete: () => void;
+  selectedIds: Set<number>;
+  isInSelectionMode: boolean;
+  onToggleSelect: (id: number) => void;
+  longPressTimer: { current: ReturnType<typeof setTimeout> | null };
 }) {
   return (
     <div
       className="mx-3 rounded-lg bg-[var(--card-bg)] border border-[var(--border-color)] overflow-hidden"
       style={{ boxShadow: '0 1px 0 rgba(0,0,0,.02), 0 1px 2px rgba(28,25,23,.04)' }}
     >
-      {files.map((f, i) => (
-        <FileContextMenu key={f.id} item={f} type="file" onActionComplete={onActionComplete}>
-          <div
-            onClick={() => onFileAction('open', f)}
-            className="flex items-center gap-3 px-3.5 py-3 cursor-pointer active:bg-[var(--surface-hover)]"
-            style={i > 0 ? { borderTop: '1px solid var(--border-color)' } : undefined}
-          >
-            <div className="w-10 h-10 rounded-sm bg-[var(--surface-hover)] flex items-center justify-center flex-shrink-0 overflow-hidden">
-              {(f.kind === 'image' || f.kind === 'video') && (f.thumbnail_url ?? f.url) ? (
-                <img src={(f.thumbnail_url ?? f.url)!} alt={f.name} className="w-full h-full object-cover" />
-              ) : (
-                <FileIcon kind={f.kind} className="h-[18px] w-[18px] text-[var(--text-muted)]" />
+      {files.map((f, i) => {
+        const isSelected = selectedIds.has(f.id);
+        return (
+          <FileContextMenu key={f.id} item={f} type="file" onActionComplete={onActionComplete}>
+            <div
+              onClick={(e) => {
+                if (isInSelectionMode) {
+                  e.preventDefault();
+                  onToggleSelect(f.id);
+                } else {
+                  onFileAction('open', f);
+                }
+              }}
+              onTouchStart={() => {
+                longPressTimer.current = setTimeout(() => {
+                  onToggleSelect(f.id);
+                }, 400);
+              }}
+              onTouchMove={() => {
+                if (longPressTimer.current) {
+                  clearTimeout(longPressTimer.current);
+                  longPressTimer.current = null;
+                }
+              }}
+              onTouchEnd={() => {
+                if (longPressTimer.current) {
+                  clearTimeout(longPressTimer.current);
+                  longPressTimer.current = null;
+                }
+              }}
+              className={`flex items-center gap-3 px-3.5 py-3 cursor-pointer active:bg-[var(--surface-hover)] ${
+                isSelected ? 'bg-[color-mix(in_srgb,var(--primary-color)_8%,transparent)]' : ''
+              }`}
+              style={i > 0 ? { borderTop: '1px solid var(--border-color)' } : undefined}
+            >
+              {isInSelectionMode && (
+                <div
+                  className={`w-5 h-5 rounded border-[1.5px] flex items-center justify-center text-[0.6rem] font-bold flex-shrink-0 ${
+                    isSelected
+                      ? 'bg-[var(--primary-color)] border-[var(--primary-color)] text-[#12151a]'
+                      : 'border-[var(--border-color)] bg-[var(--surface-hover)]'
+                  }`}
+                >
+                  {isSelected && '✓'}
+                </div>
               )}
+              <div className="w-10 h-10 rounded-sm bg-[var(--surface-hover)] flex items-center justify-center flex-shrink-0 overflow-hidden">
+                {(f.kind === 'image' || f.kind === 'video') && (f.thumbnail_url ?? f.url) ? (
+                  <img src={(f.thumbnail_url ?? f.url)!} alt={f.name} className="w-full h-full object-cover" />
+                ) : (
+                  <FileIcon kind={f.kind} className="h-[18px] w-[18px] text-[var(--text-muted)]" />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-[var(--text-main)] truncate">{f.name}</p>
+                <p className="font-mono text-[11px] text-[var(--text-light)] mt-0.5 flex gap-2">
+                  <span>{mimeExt(f.mime_type)}</span>
+                  <span>·</span>
+                  <span>{formatBytes(f.size_bytes)}</span>
+                </p>
+              </div>
+              <MoreVertical className="h-[18px] w-[18px] text-[var(--text-muted)] flex-shrink-0" />
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-[var(--text-main)] truncate">{f.name}</p>
-              <p className="font-mono text-[11px] text-[var(--text-light)] mt-0.5 flex gap-2">
-                <span>{mimeExt(f.mime_type)}</span>
-                <span>·</span>
-                <span>{formatBytes(f.size_bytes)}</span>
-              </p>
-            </div>
-            <MoreVertical className="h-[18px] w-[18px] text-[var(--text-muted)] flex-shrink-0" />
-          </div>
-        </FileContextMenu>
-      ))}
+          </FileContextMenu>
+        );
+      })}
     </div>
   );
 }
@@ -263,10 +475,21 @@ export function MobileArquivosView({
   onUploadClick,
   onCreateFolder,
   onActionComplete,
+  selectedIds,
+  selectionCount,
+  onToggleSelect,
+  onClearSelection,
+  onBulkMove,
+  onBulkCopy,
+  onBulkZip,
+  onBulkDelete,
+  isBusy,
 }: MobileArquivosViewProps) {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [filter, setFilter] = useState<FileFilter>('todos');
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const isInSelectionMode = selectionCount > 0;
   const isInsideFolder = currentFolderId !== null;
   const parentId = breadcrumbs.length >= 2 ? breadcrumbs[breadcrumbs.length - 2].id : null;
   const currentName = breadcrumbs.length > 0 ? breadcrumbs[breadcrumbs.length - 1].name : 'Arquivos';
@@ -284,9 +507,7 @@ export function MobileArquivosView({
 
   return (
     <div className="flex flex-col h-full bg-[var(--bg-color)]">
-      {/* Header */}
       <div className="bg-[var(--card-bg)] flex-shrink-0">
-        {/* Top row: back + actions */}
         <div className="flex items-center justify-between px-4 pt-2 pb-1">
           <div className="flex items-center gap-1 min-w-0 text-[13px]">
             {isInsideFolder ? (
@@ -320,7 +541,6 @@ export function MobileArquivosView({
           </div>
         </div>
 
-        {/* Title */}
         <div className="px-4 pb-1">
           <h1
             className="text-[28px] font-extrabold text-[var(--text-main)] leading-tight tracking-tight"
@@ -339,7 +559,6 @@ export function MobileArquivosView({
           </div>
         </div>
 
-        {/* Segment filters — only inside a folder with files */}
         {isInsideFolder && files.length > 0 && (
           <div className="flex gap-1.5 px-3.5 pt-2 pb-1 overflow-x-auto no-scrollbar">
             {FILTER_OPTIONS.map((opt) => {
@@ -362,7 +581,6 @@ export function MobileArquivosView({
           </div>
         )}
 
-        {/* View toggle row — only inside a folder */}
         {isInsideFolder && (
           <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--border-color)]">
             <span className="font-mono text-[10px] tracking-[.12em] uppercase text-[var(--text-muted)] font-semibold">
@@ -386,9 +604,19 @@ export function MobileArquivosView({
             </div>
           </div>
         )}
+
+        {isInSelectionMode && (
+          <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--primary-color)] bg-[var(--surface-main)]">
+            <span className="text-sm font-bold text-[var(--primary-color)]">
+              {selectionCount} selecionado{selectionCount !== 1 ? 's' : ''}
+            </span>
+            <button onClick={onClearSelection} className="ml-auto text-[var(--text-muted)]">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Content */}
       <div className="flex-1 overflow-y-auto pt-2.5 pb-28">
         {isLoading ? (
           <div className="flex items-center justify-center py-16">
@@ -399,7 +627,14 @@ export function MobileArquivosView({
             <p className="font-mono text-[11px] tracking-[.12em] uppercase text-[var(--text-muted)] font-semibold mb-2 px-4">
               Por cliente
             </p>
-            <FolderCards folders={subfolders} onOpen={onNavigate} />
+            <FolderCards
+              folders={subfolders}
+              onOpen={onNavigate}
+              selectedIds={selectedIds}
+              isInSelectionMode={isInSelectionMode}
+              onToggleSelect={onToggleSelect}
+              longPressTimer={longPressTimer}
+            />
             {storage && <StorageCard storage={storage} />}
           </>
         ) : filteredFiles.length === 0 && subfolders.length === 0 ? (
@@ -415,20 +650,61 @@ export function MobileArquivosView({
                   Pastas
                 </p>
                 {viewMode === 'grid'
-                  ? <FolderCards folders={subfolders} onOpen={onNavigate} />
-                  : <FolderList folders={subfolders} onOpen={onNavigate} />
+                  ? <FolderCards
+                      folders={subfolders}
+                      onOpen={onNavigate}
+                      selectedIds={selectedIds}
+                      isInSelectionMode={isInSelectionMode}
+                      onToggleSelect={onToggleSelect}
+                      longPressTimer={longPressTimer}
+                    />
+                  : <FolderList
+                      folders={subfolders}
+                      onOpen={onNavigate}
+                      selectedIds={selectedIds}
+                      isInSelectionMode={isInSelectionMode}
+                      onToggleSelect={onToggleSelect}
+                      longPressTimer={longPressTimer}
+                    />
                 }
               </div>
             )}
             {filteredFiles.length > 0 && viewMode === 'grid' && (
-              <MobileFileGrid files={filteredFiles} onFileAction={onFileAction} onActionComplete={onActionComplete} />
+              <MobileFileGrid
+                files={filteredFiles}
+                onFileAction={onFileAction}
+                onActionComplete={onActionComplete}
+                selectedIds={selectedIds}
+                isInSelectionMode={isInSelectionMode}
+                onToggleSelect={onToggleSelect}
+                longPressTimer={longPressTimer}
+              />
             )}
             {filteredFiles.length > 0 && viewMode === 'list' && (
-              <MobileFileList files={filteredFiles} onFileAction={onFileAction} onActionComplete={onActionComplete} />
+              <MobileFileList
+                files={filteredFiles}
+                onFileAction={onFileAction}
+                onActionComplete={onActionComplete}
+                selectedIds={selectedIds}
+                isInSelectionMode={isInSelectionMode}
+                onToggleSelect={onToggleSelect}
+                longPressTimer={longPressTimer}
+              />
             )}
           </>
         )}
       </div>
+
+      {isInSelectionMode && (
+        <div className="fixed bottom-[80px] left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-3 py-2 rounded-full bg-[var(--surface-main)] border border-[var(--border-color)] shadow-lg">
+          <span className="text-xs font-bold text-[var(--primary-color)]">{selectionCount}</span>
+          <button onClick={onBulkMove} disabled={isBusy} className="text-xs px-2.5 py-1 rounded-full bg-[var(--surface-hover)] disabled:opacity-50">Mover</button>
+          <button onClick={onBulkZip} disabled={isBusy} className="text-xs px-2.5 py-1 rounded-full bg-[var(--surface-hover)] disabled:opacity-50">ZIP</button>
+          <button onClick={onBulkCopy} disabled={isBusy} className="text-xs px-2.5 py-1 rounded-full bg-[var(--surface-hover)] disabled:opacity-50">Copiar</button>
+          <button onClick={onBulkDelete} disabled={isBusy} className="text-xs px-2.5 py-1 rounded-full bg-[rgba(245,90,66,0.15)] text-[var(--danger)] disabled:opacity-50">Excluir</button>
+          <button onClick={onClearSelection} className="text-[var(--text-muted)]"><X className="h-3.5 w-3.5" /></button>
+        </div>
+      )}
     </div>
   );
 }
