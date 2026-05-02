@@ -7,9 +7,9 @@ import { Spinner } from '@/components/ui/spinner';
 const AGENT_BLOCKED = ['/financeiro', '/contratos', '/leads', '/equipe'];
 
 const FEATURE_GATED: Record<string, string> = {
-  '/analytics': 'analytics',
-  '/post-express': 'post_express',
-  '/ideias': 'ideias',
+  '/analytics': 'feature_analytics_reports',
+  '/post-express': 'feature_post_scheduling',
+  '/ideias': 'feature_ideas',
 };
 
 export default function ProtectedRoute({ children }: { children: ReactNode }) {

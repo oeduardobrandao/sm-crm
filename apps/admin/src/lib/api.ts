@@ -26,7 +26,7 @@ export interface WorkspaceDetail {
     feature_overrides: Record<string, boolean> | null;
     notes: string | null;
   } | null;
-  resolved_limits: Record<string, number> | null;
+  resolved_limits: Record<string, number | null> | null;
   resolved_features: Record<string, boolean> | null;
   usage: { client_count: number; member_count: number; integration_count: number };
 }
@@ -42,8 +42,45 @@ export interface MemberInfo {
 export interface Plan {
   id: string;
   name: string;
-  resource_limits: Record<string, number>;
-  feature_flags: Record<string, boolean>;
+  price_brl: number | null;
+  price_brl_annual: number | null;
+  stripe_product_id: string | null;
+  stripe_price_id: string | null;
+  stripe_price_id_annual: string | null;
+  max_clients: number | null;
+  max_team_members: number | null;
+  max_workflow_templates: number | null;
+  max_active_workflows_per_client: number | null;
+  max_instagram_accounts: number | null;
+  max_leads: number | null;
+  max_hub_tokens: number | null;
+  storage_quota_bytes: number | null;
+  max_custom_properties_per_template: number | null;
+  max_posts_per_workflow: number | null;
+  max_workspaces_per_user: number | null;
+  feature_instagram: boolean;
+  feature_instagram_ai: boolean;
+  feature_analytics_reports: boolean;
+  feature_best_times: boolean;
+  feature_audience_demographics: boolean;
+  feature_hub_portal: boolean;
+  feature_leads: boolean;
+  feature_financial: boolean;
+  feature_contracts: boolean;
+  feature_ideas: boolean;
+  feature_workflow_gantt: boolean;
+  feature_workflow_recurrence: boolean;
+  feature_csv_import: boolean;
+  feature_custom_properties: boolean;
+  feature_post_scheduling: boolean;
+  feature_auto_sync_cron: boolean;
+  feature_post_tagging: boolean;
+  feature_brand_customization: boolean;
+  rate_instagram_syncs_per_day: number | null;
+  rate_ai_analyses_per_month: number | null;
+  rate_report_generations_per_month: number | null;
+  sort_order: number;
+  is_active: boolean;
   is_default: boolean;
   created_at: string;
   updated_at: string;
@@ -58,6 +95,70 @@ export interface PlatformAdmin {
   invited_by_email: string | null;
   created_at: string;
 }
+
+// ─── Column definitions ─────────────────────────────────────
+
+export const RESOURCE_LIMIT_KEYS = [
+  'max_clients', 'max_team_members', 'max_workflow_templates',
+  'max_active_workflows_per_client', 'max_instagram_accounts', 'max_leads',
+  'max_hub_tokens', 'storage_quota_bytes', 'max_custom_properties_per_template',
+  'max_posts_per_workflow', 'max_workspaces_per_user',
+] as const;
+
+export const RESOURCE_LIMIT_LABELS: Record<string, string> = {
+  max_clients: 'Max Clients',
+  max_team_members: 'Max Team Members',
+  max_workflow_templates: 'Max Workflow Templates',
+  max_active_workflows_per_client: 'Max Workflows/Client',
+  max_instagram_accounts: 'Max Instagram Accounts',
+  max_leads: 'Max Leads',
+  max_hub_tokens: 'Max Hub Tokens',
+  storage_quota_bytes: 'Storage (bytes)',
+  max_custom_properties_per_template: 'Max Custom Props/Template',
+  max_posts_per_workflow: 'Max Posts/Workflow',
+  max_workspaces_per_user: 'Max Workspaces/User',
+};
+
+export const FEATURE_FLAG_KEYS = [
+  'feature_instagram', 'feature_instagram_ai', 'feature_analytics_reports',
+  'feature_best_times', 'feature_audience_demographics', 'feature_hub_portal',
+  'feature_leads', 'feature_financial', 'feature_contracts', 'feature_ideas',
+  'feature_workflow_gantt', 'feature_workflow_recurrence', 'feature_csv_import',
+  'feature_custom_properties', 'feature_post_scheduling', 'feature_auto_sync_cron',
+  'feature_post_tagging', 'feature_brand_customization',
+] as const;
+
+export const FEATURE_FLAG_LABELS: Record<string, string> = {
+  feature_instagram: 'Instagram',
+  feature_instagram_ai: 'Instagram AI',
+  feature_analytics_reports: 'Analytics Reports',
+  feature_best_times: 'Best Times',
+  feature_audience_demographics: 'Audience Demographics',
+  feature_hub_portal: 'Hub Portal',
+  feature_leads: 'Leads',
+  feature_financial: 'Financial',
+  feature_contracts: 'Contracts',
+  feature_ideas: 'Ideas',
+  feature_workflow_gantt: 'Workflow Gantt',
+  feature_workflow_recurrence: 'Workflow Recurrence',
+  feature_csv_import: 'CSV Import',
+  feature_custom_properties: 'Custom Properties',
+  feature_post_scheduling: 'Post Scheduling',
+  feature_auto_sync_cron: 'Auto Sync Cron',
+  feature_post_tagging: 'Post Tagging',
+  feature_brand_customization: 'Brand Customization',
+};
+
+export const RATE_LIMIT_KEYS = [
+  'rate_instagram_syncs_per_day', 'rate_ai_analyses_per_month',
+  'rate_report_generations_per_month',
+] as const;
+
+export const RATE_LIMIT_LABELS: Record<string, string> = {
+  rate_instagram_syncs_per_day: 'Instagram Syncs/Day',
+  rate_ai_analyses_per_month: 'AI Analyses/Month',
+  rate_report_generations_per_month: 'Report Generations/Month',
+};
 
 // ─── API Call ─────────────────────────────────────────────────
 
@@ -100,11 +201,11 @@ export function listPlans() {
   return adminApi<{ plans: Plan[] }>('list-plans');
 }
 
-export function createPlan(params: { name: string; resource_limits: Record<string, number>; feature_flags: Record<string, boolean>; is_default?: boolean }) {
+export function createPlan(params: Record<string, unknown>) {
   return adminApi<{ plan: Plan }>('create-plan', params);
 }
 
-export function updatePlan(params: { plan_id: string; name?: string; resource_limits?: Record<string, number>; feature_flags?: Record<string, boolean>; is_default?: boolean }) {
+export function updatePlan(params: Record<string, unknown>) {
   return adminApi<{ plan: Plan }>('update-plan', params);
 }
 

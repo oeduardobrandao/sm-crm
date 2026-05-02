@@ -2,17 +2,41 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 
 export interface ResourceLimits {
-  max_clients: number;
-  max_members: number;
-  max_instagram_accounts: number;
-  max_storage_mb: number;
+  max_clients: number | null;
+  max_team_members: number | null;
+  max_workflow_templates: number | null;
+  max_active_workflows_per_client: number | null;
+  max_instagram_accounts: number | null;
+  max_leads: number | null;
+  max_hub_tokens: number | null;
+  storage_quota_bytes: number | null;
+  max_custom_properties_per_template: number | null;
+  max_posts_per_workflow: number | null;
+  max_workspaces_per_user: number | null;
+  rate_instagram_syncs_per_day: number | null;
+  rate_ai_analyses_per_month: number | null;
+  rate_report_generations_per_month: number | null;
 }
 
 export interface FeatureFlags {
-  analytics: boolean;
-  post_express: boolean;
-  briefing: boolean;
-  ideias: boolean;
+  feature_instagram: boolean;
+  feature_instagram_ai: boolean;
+  feature_analytics_reports: boolean;
+  feature_best_times: boolean;
+  feature_audience_demographics: boolean;
+  feature_hub_portal: boolean;
+  feature_leads: boolean;
+  feature_financial: boolean;
+  feature_contracts: boolean;
+  feature_ideas: boolean;
+  feature_workflow_gantt: boolean;
+  feature_workflow_recurrence: boolean;
+  feature_csv_import: boolean;
+  feature_custom_properties: boolean;
+  feature_post_scheduling: boolean;
+  feature_auto_sync_cron: boolean;
+  feature_post_tagging: boolean;
+  feature_brand_customization: boolean;
 }
 
 interface WorkspaceLimitsResponse {

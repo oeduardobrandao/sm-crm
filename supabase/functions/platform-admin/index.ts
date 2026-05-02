@@ -4,6 +4,45 @@ import { buildCorsHeaders } from "../_shared/cors.ts";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+const RESOURCE_COLUMNS = [
+  "max_clients", "max_team_members", "max_workflow_templates",
+  "max_active_workflows_per_client", "max_instagram_accounts", "max_leads",
+  "max_hub_tokens", "storage_quota_bytes", "max_custom_properties_per_template",
+  "max_posts_per_workflow", "max_workspaces_per_user",
+] as const;
+
+const FEATURE_COLUMNS = [
+  "feature_instagram", "feature_instagram_ai", "feature_analytics_reports",
+  "feature_best_times", "feature_audience_demographics", "feature_hub_portal",
+  "feature_leads", "feature_financial", "feature_contracts", "feature_ideas",
+  "feature_workflow_gantt", "feature_workflow_recurrence", "feature_csv_import",
+  "feature_custom_properties", "feature_post_scheduling", "feature_auto_sync_cron",
+  "feature_post_tagging", "feature_brand_customization",
+] as const;
+
+const RATE_COLUMNS = [
+  "rate_instagram_syncs_per_day", "rate_ai_analyses_per_month",
+  "rate_report_generations_per_month",
+] as const;
+
+type PlanRow = Record<string, unknown>;
+
+function extractLimits(plan: PlanRow): Record<string, number | null> {
+  const limits: Record<string, number | null> = {};
+  for (const col of [...RESOURCE_COLUMNS, ...RATE_COLUMNS]) {
+    limits[col] = (plan[col] as number | null) ?? null;
+  }
+  return limits;
+}
+
+function extractFeatures(plan: PlanRow): Record<string, boolean> {
+  const features: Record<string, boolean> = {};
+  for (const col of FEATURE_COLUMNS) {
+    features[col] = (plan[col] as boolean) ?? false;
+  }
+  return features;
+}
+
 Deno.serve(async (req: Request) => {
   const corsHeaders = buildCorsHeaders(req);
 
@@ -36,12 +75,10 @@ Deno.serve(async (req: Request) => {
     const body = await req.json();
     const { action } = body;
 
-    // verify-admin does not require admin membership (it's the check itself)
     if (action === "verify-admin") {
       return new Response(JSON.stringify({ is_admin: !!admin }), { status: 200, headers });
     }
 
-    // All other actions require admin membership
     if (!admin) {
       return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers });
     }
@@ -236,22 +273,22 @@ async function handleGetWorkspace(
     .maybeSingle();
 
   let plan = null;
-  let resolvedLimits = null;
-  let resolvedFeatures = null;
+  let resolvedLimits: Record<string, number | null> | null = null;
+  let resolvedFeatures: Record<string, boolean> | null = null;
 
   if (override) {
     const { data: planData } = await svc.from("plans").select("*").eq("id", override.plan_id).single();
     if (planData) {
       plan = planData;
-      resolvedLimits = { ...planData.resource_limits, ...(override.resource_overrides || {}) };
-      resolvedFeatures = { ...planData.feature_flags, ...(override.feature_overrides || {}) };
+      resolvedLimits = { ...extractLimits(planData), ...(override.resource_overrides || {}) };
+      resolvedFeatures = { ...extractFeatures(planData), ...(override.feature_overrides || {}) };
     }
   } else {
     const { data: defaultPlan } = await svc.from("plans").select("*").eq("is_default", true).maybeSingle();
     if (defaultPlan) {
       plan = defaultPlan;
-      resolvedLimits = defaultPlan.resource_limits;
-      resolvedFeatures = defaultPlan.feature_flags;
+      resolvedLimits = extractLimits(defaultPlan);
+      resolvedFeatures = extractFeatures(defaultPlan);
     }
   }
 
@@ -284,7 +321,7 @@ async function handleListPlans(
   const { data: plans, error } = await svc
     .from("plans")
     .select("*")
-    .order("created_at", { ascending: true });
+    .order("sort_order", { ascending: true });
   if (error) throw error;
 
   const enriched = await Promise.all(
@@ -302,21 +339,31 @@ async function handleListPlans(
 
 async function handleCreatePlan(
   svc: ReturnType<typeof createClient>,
-  body: { name: string; resource_limits: Record<string, number>; feature_flags: Record<string, boolean>; is_default?: boolean },
+  body: Record<string, unknown>,
   headers: Record<string, string>,
 ) {
-  const { name, resource_limits, feature_flags, is_default } = body;
-  if (!name || !resource_limits || !feature_flags) {
-    return new Response(JSON.stringify({ error: "name, resource_limits, and feature_flags are required" }), { status: 400, headers });
+  const { name, is_default, action: _, ...rest } = body;
+  if (!name) {
+    return new Response(JSON.stringify({ error: "name is required" }), { status: 400, headers });
   }
 
   if (is_default) {
     await svc.from("plans").update({ is_default: false }).eq("is_default", true);
   }
 
+  const insert: Record<string, unknown> = { name, is_default: is_default || false };
+  const allColumns = [...RESOURCE_COLUMNS, ...FEATURE_COLUMNS, ...RATE_COLUMNS];
+  for (const col of allColumns) {
+    if (rest[col] !== undefined) insert[col] = rest[col];
+  }
+  if (rest.price_brl !== undefined) insert.price_brl = rest.price_brl;
+  if (rest.price_brl_annual !== undefined) insert.price_brl_annual = rest.price_brl_annual;
+  if (rest.sort_order !== undefined) insert.sort_order = rest.sort_order;
+  if (rest.is_active !== undefined) insert.is_active = rest.is_active;
+
   const { data, error } = await svc
     .from("plans")
-    .insert({ name, resource_limits, feature_flags, is_default: is_default || false })
+    .insert(insert)
     .select()
     .single();
   if (error) throw error;
@@ -326,23 +373,29 @@ async function handleCreatePlan(
 
 async function handleUpdatePlan(
   svc: ReturnType<typeof createClient>,
-  body: { plan_id: string; name?: string; resource_limits?: Record<string, number>; feature_flags?: Record<string, boolean>; is_default?: boolean },
+  body: Record<string, unknown>,
   headers: Record<string, string>,
 ) {
-  const { plan_id, ...updates } = body;
+  const { plan_id, action: _, ...rest } = body;
   if (!plan_id) {
     return new Response(JSON.stringify({ error: "plan_id is required" }), { status: 400, headers });
   }
 
-  if (updates.is_default) {
+  if (rest.is_default) {
     await svc.from("plans").update({ is_default: false }).eq("is_default", true);
   }
 
   const updatePayload: Record<string, unknown> = { updated_at: new Date().toISOString() };
-  if (updates.name !== undefined) updatePayload.name = updates.name;
-  if (updates.resource_limits !== undefined) updatePayload.resource_limits = updates.resource_limits;
-  if (updates.feature_flags !== undefined) updatePayload.feature_flags = updates.feature_flags;
-  if (updates.is_default !== undefined) updatePayload.is_default = updates.is_default;
+
+  const allowedScalar = ["name", "is_default", "price_brl", "price_brl_annual", "sort_order", "is_active"];
+  for (const key of allowedScalar) {
+    if (rest[key] !== undefined) updatePayload[key] = rest[key];
+  }
+
+  const allColumns = [...RESOURCE_COLUMNS, ...FEATURE_COLUMNS, ...RATE_COLUMNS];
+  for (const col of allColumns) {
+    if (rest[col] !== undefined) updatePayload[col] = rest[col];
+  }
 
   const { data, error } = await svc
     .from("plans")
