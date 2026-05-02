@@ -180,7 +180,7 @@ export function createFileManageHandler(deps: FileManageDeps) {
       }
 
       // POST /folders → create folder
-      if (req.method === "POST") {
+      if (req.method === "POST" && !idStr) {
         const body = await req.json().catch(() => ({}));
         const { name, parent_id } = body as { name?: string; parent_id?: number | null };
         if (!name) return json({ error: "name required" }, 400);
