@@ -108,6 +108,14 @@ Deno.serve(async (req: Request) => {
         return await handleInviteAdmin(svc, body, admin.id, headers);
       case "remove-admin":
         return await handleRemoveAdmin(svc, body, admin.id, headers);
+      case "list-banners":
+        return await handleListBanners(svc, body, headers);
+      case "create-banner":
+        return await handleCreateBanner(svc, body, admin.id, headers);
+      case "update-banner":
+        return await handleUpdateBanner(svc, body, headers);
+      case "delete-banner":
+        return await handleDeleteBanner(svc, body, headers);
       default:
         return new Response(JSON.stringify({ error: "Invalid action" }), { status: 400, headers });
     }
@@ -648,4 +656,145 @@ async function handleRemoveAdmin(
   if (error) throw error;
 
   return new Response(JSON.stringify({ message: "Admin removed" }), { status: 200, headers });
+}
+
+// ─── Banners ──────────────────────────────────────────────────
+
+const BANNER_COLUMNS = [
+  "type", "content", "link", "custom_color", "target_mode",
+  "target_plan_ids", "target_workspace_ids", "dismissible",
+  "starts_at", "ends_at", "status",
+] as const;
+
+async function handleListBanners(
+  svc: ReturnType<typeof createClient>,
+  body: { status?: string },
+  headers: Record<string, string>,
+) {
+  let query = svc
+    .from("global_banners")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (body.status) {
+    query = query.eq("status", body.status);
+  }
+
+  const { data: banners, error } = await query;
+  if (error) throw error;
+
+  const enriched = await Promise.all(
+    (banners || []).map(async (b) => {
+      const { count } = await svc
+        .from("banner_dismissals")
+        .select("id", { count: "exact", head: true })
+        .eq("banner_id", b.id);
+      return { ...b, dismissal_count: count || 0 };
+    })
+  );
+
+  return new Response(JSON.stringify({ banners: enriched }), { status: 200, headers });
+}
+
+async function handleCreateBanner(
+  svc: ReturnType<typeof createClient>,
+  body: Record<string, unknown>,
+  adminId: string,
+  headers: Record<string, string>,
+) {
+  const { action: _, ...rest } = body;
+
+  if (!rest.type || !rest.content || !rest.target_mode) {
+    return new Response(
+      JSON.stringify({ error: "type, content, and target_mode are required" }),
+      { status: 400, headers },
+    );
+  }
+
+  const insert: Record<string, unknown> = { created_by: adminId };
+  for (const col of BANNER_COLUMNS) {
+    if (rest[col] !== undefined) insert[col] = rest[col];
+  }
+
+  const { data, error } = await svc
+    .from("global_banners")
+    .insert(insert)
+    .select()
+    .single();
+  if (error) throw error;
+
+  return new Response(JSON.stringify({ banner: data }), { status: 201, headers });
+}
+
+async function handleUpdateBanner(
+  svc: ReturnType<typeof createClient>,
+  body: Record<string, unknown>,
+  headers: Record<string, string>,
+) {
+  const { action: _, banner_id, ...rest } = body;
+
+  if (!banner_id) {
+    return new Response(
+      JSON.stringify({ error: "banner_id is required" }),
+      { status: 400, headers },
+    );
+  }
+
+  const update: Record<string, unknown> = {};
+  for (const col of BANNER_COLUMNS) {
+    if (rest[col] !== undefined) update[col] = rest[col];
+  }
+
+  if (Object.keys(update).length === 0) {
+    return new Response(
+      JSON.stringify({ error: "No fields to update" }),
+      { status: 400, headers },
+    );
+  }
+
+  const { data, error } = await svc
+    .from("global_banners")
+    .update(update)
+    .eq("id", banner_id)
+    .select()
+    .single();
+  if (error) throw error;
+
+  return new Response(JSON.stringify({ banner: data }), { status: 200, headers });
+}
+
+async function handleDeleteBanner(
+  svc: ReturnType<typeof createClient>,
+  body: { banner_id?: string },
+  headers: Record<string, string>,
+) {
+  const { banner_id } = body;
+
+  if (!banner_id) {
+    return new Response(
+      JSON.stringify({ error: "banner_id is required" }),
+      { status: 400, headers },
+    );
+  }
+
+  const { data: banner } = await svc
+    .from("global_banners")
+    .select("status")
+    .eq("id", banner_id)
+    .single();
+
+  if (banner && banner.status !== "draft") {
+    return new Response(
+      JSON.stringify({ error: "Only draft banners can be deleted" }),
+      { status: 400, headers },
+    );
+  }
+
+  const { error } = await svc
+    .from("global_banners")
+    .delete()
+    .eq("id", banner_id);
+  if (error) throw error;
+
+  return new Response(JSON.stringify({ message: "Banner deleted" }), { status: 200, headers });
 }
