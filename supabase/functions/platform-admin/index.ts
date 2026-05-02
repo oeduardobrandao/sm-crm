@@ -128,7 +128,7 @@ async function handleListWorkspaces(
 
   let query = svc
     .from("workspaces")
-    .select("id, name, logo_url, created_at", { count: "exact" })
+    .select("id, name, logo_url, created_at, plan_id", { count: "exact" })
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1);
 
@@ -176,16 +176,15 @@ async function handleListWorkspaces(
 
       const { data: planOverride } = await svc
         .from("workspace_plan_overrides")
-        .select("plan_id, resource_overrides, feature_overrides")
+        .select("resource_overrides, feature_overrides")
         .eq("workspace_id", ws.id)
         .maybeSingle();
 
       let planName = null;
-      let hasOverrides = false;
-      if (planOverride) {
-        const { data: plan } = await svc.from("plans").select("name").eq("id", planOverride.plan_id).single();
+      let hasOverrides = !!(planOverride?.resource_overrides || planOverride?.feature_overrides);
+      if (ws.plan_id) {
+        const { data: plan } = await svc.from("plans").select("name").eq("id", ws.plan_id).single();
         planName = plan?.name || null;
-        hasOverrides = !!(planOverride.resource_overrides || planOverride.feature_overrides);
       } else {
         const { data: defaultPlan } = await svc.from("plans").select("name").eq("is_default", true).maybeSingle();
         planName = defaultPlan?.name || null;
@@ -228,7 +227,7 @@ async function handleGetWorkspace(
 
   const { data: ws, error } = await svc
     .from("workspaces")
-    .select("id, name, logo_url, created_at")
+    .select("id, name, logo_url, created_at, plan_id")
     .eq("id", workspace_id)
     .single();
   if (error || !ws) {
@@ -268,7 +267,7 @@ async function handleGetWorkspace(
 
   const { data: override } = await svc
     .from("workspace_plan_overrides")
-    .select("plan_id, resource_overrides, feature_overrides, notes")
+    .select("resource_overrides, feature_overrides, notes")
     .eq("workspace_id", workspace_id)
     .maybeSingle();
 
@@ -276,12 +275,12 @@ async function handleGetWorkspace(
   let resolvedLimits: Record<string, number | null> | null = null;
   let resolvedFeatures: Record<string, boolean> | null = null;
 
-  if (override) {
-    const { data: planData } = await svc.from("plans").select("*").eq("id", override.plan_id).single();
+  if (ws.plan_id) {
+    const { data: planData } = await svc.from("plans").select("*").eq("id", ws.plan_id).single();
     if (planData) {
       plan = planData;
-      resolvedLimits = { ...extractLimits(planData), ...(override.resource_overrides || {}) };
-      resolvedFeatures = { ...extractFeatures(planData), ...(override.feature_overrides || {}) };
+      resolvedLimits = { ...extractLimits(planData), ...(override?.resource_overrides || {}) };
+      resolvedFeatures = { ...extractFeatures(planData), ...(override?.feature_overrides || {}) };
     }
   } else {
     const { data: defaultPlan } = await svc.from("plans").select("*").eq("is_default", true).maybeSingle();
@@ -447,6 +446,12 @@ async function handleSetWorkspacePlan(
   if (!workspace_id || !plan_id) {
     return new Response(JSON.stringify({ error: "workspace_id and plan_id are required" }), { status: 400, headers });
   }
+
+  const { error: wErr } = await svc
+    .from("workspaces")
+    .update({ plan_id })
+    .eq("id", workspace_id);
+  if (wErr) throw wErr;
 
   const { data: existing } = await svc
     .from("workspace_plan_overrides")

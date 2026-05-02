@@ -30,20 +30,20 @@ const DEFAULT_RATES: Record<string, number> = {
 
 interface FormState {
   name: string;
-  resources: Record<string, number>;
+  resources: Record<string, number | null>;
   features: Record<string, boolean>;
-  rates: Record<string, number>;
+  rates: Record<string, number | null>;
   is_default: boolean;
   is_active: boolean;
 }
 
 function planToForm(plan: Plan): FormState {
-  const resources: Record<string, number> = {};
-  for (const k of RESOURCE_LIMIT_KEYS) resources[k] = (plan[k] as number) ?? 0;
+  const resources: Record<string, number | null> = {};
+  for (const k of RESOURCE_LIMIT_KEYS) resources[k] = (plan[k] as number | null);
   const features: Record<string, boolean> = {};
   for (const k of FEATURE_FLAG_KEYS) features[k] = (plan[k] as boolean) ?? false;
-  const rates: Record<string, number> = {};
-  for (const k of RATE_LIMIT_KEYS) rates[k] = (plan[k] as number) ?? 0;
+  const rates: Record<string, number | null> = {};
+  for (const k of RATE_LIMIT_KEYS) rates[k] = (plan[k] as number | null);
   return { name: plan.name, resources, features, rates, is_default: plan.is_default, is_active: plan.is_active };
 }
 
@@ -155,7 +155,7 @@ export default function PlansPage() {
                 keys={RESOURCE_LIMIT_KEYS as unknown as string[]}
                 labels={RESOURCE_LIMIT_LABELS}
                 values={form.resources}
-                onChange={(key, val) => setForm((f) => ({ ...f, resources: { ...f.resources, [key]: val } }))}
+                onChange={(key, val: number | null) => setForm((f) => ({ ...f, resources: { ...f.resources, [key]: val } }))}
               />
 
               <div>
@@ -179,7 +179,7 @@ export default function PlansPage() {
                 keys={RATE_LIMIT_KEYS as unknown as string[]}
                 labels={RATE_LIMIT_LABELS}
                 values={form.rates}
-                onChange={(key, val) => setForm((f) => ({ ...f, rates: { ...f.rates, [key]: val } }))}
+                onChange={(key, val: number | null) => setForm((f) => ({ ...f, rates: { ...f.rates, [key]: val } }))}
               />
 
               <div className="flex gap-3 mt-2">
@@ -262,8 +262,8 @@ function NumberFieldGroup({ title, keys, labels, values, onChange }: {
   title: string;
   keys: string[];
   labels: Record<string, string>;
-  values: Record<string, number>;
-  onChange: (key: string, val: number) => void;
+  values: Record<string, number | null>;
+  onChange: (key: string, val: number | null) => void;
 }) {
   return (
     <div>
@@ -272,9 +272,13 @@ function NumberFieldGroup({ title, keys, labels, values, onChange }: {
         {keys.map((key) => (
           <div key={key}>
             <label className="block text-xs text-[#4b5563] mb-1">{labels[key]}</label>
-            <input type="number" value={values[key] ?? 0}
-              onChange={(e) => onChange(key, parseInt(e.target.value, 10) || 0)}
-              className="w-full px-3 py-2 rounded-lg bg-[#1e2430] border border-transparent text-sm font-['DM_Mono'] text-[#e8eaf0] focus:outline-none focus:border-[#eab308]" />
+            <input type="number" value={values[key] ?? ''}
+              placeholder="∞"
+              onChange={(e) => {
+                const v = e.target.value;
+                onChange(key, v === '' ? null : parseInt(v, 10));
+              }}
+              className="w-full px-3 py-2 rounded-lg bg-[#1e2430] border border-transparent text-sm font-['DM_Mono'] text-[#e8eaf0] placeholder-[#4b5563] focus:outline-none focus:border-[#eab308]" />
           </div>
         ))}
       </div>

@@ -82,19 +82,26 @@ Deno.serve(async (req: Request) => {
 
     const workspaceId = profile.conta_id;
 
+    const { data: workspace } = await svc
+      .from("workspaces")
+      .select("plan_id")
+      .eq("id", workspaceId)
+      .single();
+
     const { data: override } = await svc
       .from("workspace_plan_overrides")
-      .select("plan_id, resource_overrides, feature_overrides")
+      .select("resource_overrides, feature_overrides")
       .eq("workspace_id", workspaceId)
       .maybeSingle();
 
     let plan: PlanRow | null = null;
+    const planId = workspace?.plan_id;
 
-    if (override) {
+    if (planId) {
       const { data: planData } = await svc
         .from("plans")
         .select("*")
-        .eq("id", override.plan_id)
+        .eq("id", planId)
         .single();
       plan = planData;
     } else {
