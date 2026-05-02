@@ -7,6 +7,7 @@ import WorkspacesPage from './pages/WorkspacesPage';
 import WorkspaceDetailPage from './pages/WorkspaceDetailPage';
 import PlansPage from './pages/PlansPage';
 import AdminsPage from './pages/AdminsPage';
+import BannersPage from './pages/BannersPage';
 
 export const router = createBrowserRouter([
   {
@@ -26,6 +27,7 @@ export const router = createBrowserRouter([
       { path: 'workspaces/:id', element: <WorkspaceDetailPage /> },
       { path: 'plans', element: <PlansPage /> },
       { path: 'admins', element: <AdminsPage /> },
+      { path: 'banners', element: <BannersPage /> },
     ],
   },
   {

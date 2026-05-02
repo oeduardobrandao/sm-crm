@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Outlet, NavLink } from 'react-router-dom';
-import { LayoutDashboard, Building2, Package, Users, Menu, X, Sun, Moon } from 'lucide-react';
+import { LayoutDashboard, Building2, Package, Users, Menu, X, Sun, Moon, Megaphone } from 'lucide-react';
 import { useAdminAuth } from '../context/AdminAuthContext';
 
 const NAV_ITEMS = [
@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { to: '/admin/workspaces', icon: Building2, label: 'Workspaces' },
   { to: '/admin/plans', icon: Package, label: 'Plans' },
   { to: '/admin/admins', icon: Users, label: 'Admins' },
+  { to: '/admin/banners', icon: Megaphone, label: 'Banners' },
 ];
 
 export default function AdminLayout() {
