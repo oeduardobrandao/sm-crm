@@ -201,10 +201,10 @@ body {
 /* ===== Sidebar ===== */
 .sidebar {
   width: var(--sidebar-width);
-  height: calc(100dvh - var(--topbar-height));
+  height: calc(100dvh - var(--topbar-height) - var(--banner-height, 0px));
   position: fixed;
   left: 0;
-  top: var(--topbar-height);
+  top: calc(var(--topbar-height) + var(--banner-height, 0px));
   z-index: 100;
   display: flex;
   background: var(--surface-main);
@@ -507,7 +507,7 @@ body {
 /* ===== Top Bar ===== */
 .topbar {
   position: fixed;
-  top: 0;
+  top: var(--banner-height, 0px);
   left: 0;
   right: 0;
   height: var(--topbar-height);
@@ -673,10 +673,10 @@ body {
 /* ===== Global Banners ===== */
 .banner-container {
   position: fixed;
-  top: var(--topbar-height);
-  left: var(--sidebar-width);
+  top: 0;
+  left: 0;
   right: 0;
-  z-index: 105;
+  z-index: 115;
   display: flex;
   flex-direction: column;
 }
