@@ -13,9 +13,9 @@ const TARGET_MODES = ['all', 'plan', 'workspace'] as const;
 const STATUSES = ['draft', 'active', 'archived'] as const;
 
 const TYPE_COLORS: Record<string, { accent: string; bg: string }> = {
-  info: { accent: '#42c8f5', bg: 'rgba(66,200,245,0.08)' },
-  warning: { accent: '#f5a342', bg: 'rgba(245,163,66,0.10)' },
-  critical: { accent: '#f55a42', bg: 'rgba(245,90,66,0.12)' },
+  info: { accent: '#42c8f5', bg: 'rgba(66,200,245,0.18)' },
+  warning: { accent: '#f5a342', bg: 'rgba(245,163,66,0.22)' },
+  critical: { accent: '#f55a42', bg: 'rgba(245,90,66,0.25)' },
 };
 
 interface FormState {

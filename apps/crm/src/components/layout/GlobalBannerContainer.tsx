@@ -6,9 +6,9 @@ import { sanitizeUrl } from '../../utils/security';
 import type { GlobalBanner } from '../../store';
 
 const TYPE_STYLES: Record<string, { accent: string; bg: string; border: string }> = {
-  info: { accent: '#42c8f5', bg: 'rgba(66,200,245,0.08)', border: 'rgba(66,200,245,0.15)' },
-  warning: { accent: '#f5a342', bg: 'rgba(245,163,66,0.10)', border: 'rgba(245,163,66,0.20)' },
-  critical: { accent: '#f55a42', bg: 'rgba(245,90,66,0.12)', border: 'rgba(245,90,66,0.25)' },
+  info: { accent: '#42c8f5', bg: 'rgba(66,200,245,0.18)', border: 'rgba(66,200,245,0.30)' },
+  warning: { accent: '#f5a342', bg: 'rgba(245,163,66,0.22)', border: 'rgba(245,163,66,0.35)' },
+  critical: { accent: '#f55a42', bg: 'rgba(245,90,66,0.25)', border: 'rgba(245,90,66,0.40)' },
 };
 
 function getStyles(banner: GlobalBanner) {
