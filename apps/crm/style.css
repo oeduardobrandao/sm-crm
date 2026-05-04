@@ -4725,6 +4725,14 @@ body.role-agent input[name="valor_total"] {
   min-width: 0;
 }
 
+.drawer-post-media-badge {
+  display: inline-flex;
+  align-items: center;
+  color: var(--primary-color);
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
 .drawer-post-comment-badge {
   display: inline-flex;
   align-items: center;

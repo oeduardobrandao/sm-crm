@@ -1352,7 +1352,7 @@ export async function getAllWorkflowPosts(): Promise<WorkflowPost[]> {
   return data || [];
 }
 
-export async function getWorkflowPostsWithProperties(workflowId: number): Promise<(WorkflowPost & { property_values: PostPropertyValue[] })[]> {
+export async function getWorkflowPostsWithProperties(workflowId: number): Promise<(WorkflowPost & { property_values: PostPropertyValue[]; has_media: boolean })[]> {
   const { data, error } = await supabase
     .from('workflow_posts')
     .select(`
@@ -1364,15 +1364,17 @@ export async function getWorkflowPostsWithProperties(workflowId: number): Promis
         template_property_definitions (
           id, template_id, conta_id, name, type, config, portal_visible, display_order, created_at
         )
-      )
+      ),
+      post_file_links (id)
     `)
     .eq('workflow_id', workflowId)
     .order('ordem', { ascending: true });
   if (error) throw error;
   return (data || []).map((post: any) => {
-    const { post_property_values: rawPvs, ...rest } = post;
+    const { post_property_values: rawPvs, post_file_links: rawMedia, ...rest } = post;
     return {
       ...rest,
+      has_media: Array.isArray(rawMedia) && rawMedia.length > 0,
       property_values: (rawPvs || []).map((pv: any) => ({
         id: pv.id,
         post_id: post.id,

@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { X, Plus, Trash2, Send, ChevronDown, ChevronRight, MessageSquare, GripVertical } from 'lucide-react';
+import { X, Plus, Trash2, Send, ChevronDown, ChevronRight, MessageSquare, GripVertical, ImageIcon } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
@@ -471,6 +471,7 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
                       currentUserId={user?.id}
                       currentUserRole={role}
                       workspaceUsers={workspaceUsers}
+                      hasMedia={(post as any).has_media ?? false}
                       hasInstagramAccount={hasInstagramAccount}
                       igAccountStatus={igAccountStatus}
                       onToggle={() => setExpandedId(expandedId === post.id ? null : post.id!)}
@@ -561,6 +562,7 @@ interface SortablePostItemProps {
   currentUserId?: string;
   currentUserRole: 'owner' | 'admin' | 'agent';
   workspaceUsers: { id: string; nome: string; avatar_url: string }[];
+  hasMedia: boolean;
   hasInstagramAccount: boolean;
   igAccountStatus: { revoked: boolean; expired: boolean; canPublish: boolean } | null;
   onToggle: () => void;
@@ -583,6 +585,7 @@ function SortablePostItem({
   replyText, sendingReply,
   commentThreads, currentUserId, currentUserRole,
   workspaceUsers,
+  hasMedia,
   hasInstagramAccount,
   igAccountStatus,
   onToggle, onDelete, onFieldChange, onContentUpdate, onReplyChange, onReplySend,
@@ -647,6 +650,11 @@ function SortablePostItem({
           }
           <span className="post-tipo-badge">{TIPO_LABELS[post.tipo]}</span>
           <span className="drawer-post-titulo">{post.titulo || 'Post sem título'}</span>
+          {hasMedia && (
+            <span className="drawer-post-media-badge" title="Mídia anexada">
+              <ImageIcon className="h-3.5 w-3.5" />
+            </span>
+          )}
           {commentThreads.length > 0 && (
             <span className="drawer-post-comment-badge" title={`${commentThreads.length} comentário${commentThreads.length > 1 ? 's' : ''}`}>
               <MessageSquare className="h-3 w-3" />
