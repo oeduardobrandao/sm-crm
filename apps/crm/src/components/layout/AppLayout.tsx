@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback } from 'react';
 import Sidebar from './Sidebar';
 import MobileNav from './MobileNav';
 import TopBar from './TopBar';
+import GlobalBannerContainer from './GlobalBannerContainer';
 
 function useIsTablet() {
   const [isTablet, setIsTablet] = useState(() => {
@@ -63,6 +64,8 @@ export default function AppLayout() {
           onHamburgerClick={() => setDrawerOpen(v => !v)}
         />
       )}
+
+      <GlobalBannerContainer />
 
       <Sidebar
         isDrawer={isTablet}

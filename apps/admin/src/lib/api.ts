@@ -96,6 +96,25 @@ export interface PlatformAdmin {
   created_at: string;
 }
 
+export interface GlobalBanner {
+  id: string;
+  type: 'info' | 'warning' | 'critical';
+  content: string;
+  link: string | null;
+  custom_color: string | null;
+  target_mode: 'all' | 'plan' | 'workspace';
+  target_plan_ids: string[] | null;
+  target_workspace_ids: string[] | null;
+  dismissible: boolean;
+  starts_at: string | null;
+  ends_at: string | null;
+  status: 'draft' | 'active' | 'archived';
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  dismissal_count: number;
+}
+
 // ─── Column definitions ─────────────────────────────────────
 
 export const RESOURCE_LIMIT_KEYS = [
@@ -235,4 +254,20 @@ export function inviteAdmin(email: string) {
 
 export function removeAdmin(admin_id: string) {
   return adminApi<{ message: string }>('remove-admin', { admin_id });
+}
+
+export function listBanners(params?: { status?: string }) {
+  return adminApi<{ banners: GlobalBanner[] }>('list-banners', params || {});
+}
+
+export function createBanner(params: Record<string, unknown>) {
+  return adminApi<{ banner: GlobalBanner }>('create-banner', params);
+}
+
+export function updateBanner(params: Record<string, unknown>) {
+  return adminApi<{ banner: GlobalBanner }>('update-banner', params);
+}
+
+export function deleteBanner(banner_id: string) {
+  return adminApi<{ message: string }>('delete-banner', { banner_id });
 }

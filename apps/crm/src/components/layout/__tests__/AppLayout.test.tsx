@@ -38,6 +38,10 @@ vi.mock('../TopBar', () => ({
   ),
 }));
 
+vi.mock('../GlobalBannerContainer', () => ({
+  default: () => null,
+}));
+
 import AppLayout from '../AppLayout';
 
 function setViewport(width: number) {
