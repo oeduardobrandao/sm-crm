@@ -80,13 +80,13 @@ export default function WorkspacesPage() {
               {/* Mobile card layout */}
               <div className="md:hidden flex flex-col gap-1.5">
                 <div className="flex items-center gap-2">
-                  <span className="text-primary font-medium">{ws.name}</span>
+                  <span className="text-foreground font-medium">{ws.name}</span>
                   {ws.has_overrides && (
                     <span className="text-[0.6rem] font-semibold uppercase px-1.5 py-0.5 rounded-sm bg-warning/10 text-warning">
                       OVERRIDES
                     </span>
                   )}
-                  <ArrowRight size={14} className="ml-auto text-primary" />
+                  <ArrowRight size={14} className="ml-auto text-muted-foreground" />
                 </div>
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                   <span className="truncate max-w-[180px]">{ws.owner?.email || '—'}</span>
@@ -102,7 +102,7 @@ export default function WorkspacesPage() {
               </div>
               {/* Desktop row */}
               <span className="hidden md:inline">
-                <span className="text-primary font-medium">{ws.name}</span>
+                <span className="text-foreground font-medium">{ws.name}</span>
                 {ws.has_overrides && (
                   <span className="ml-2 text-[0.6rem] font-semibold uppercase px-1.5 py-0.5 rounded-sm bg-warning/10 text-warning">
                     OVERRIDES
@@ -125,7 +125,7 @@ export default function WorkspacesPage() {
               <span className="hidden md:inline text-muted-foreground text-sm">
                 {new Date(ws.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
               </span>
-              <span className="hidden md:inline text-primary"><ArrowRight size={16} /></span>
+              <span className="hidden md:inline text-muted-foreground"><ArrowRight size={16} /></span>
             </div>
           ))
         )}

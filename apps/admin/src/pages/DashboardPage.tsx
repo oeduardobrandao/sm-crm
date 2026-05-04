@@ -69,7 +69,7 @@ export default function DashboardPage() {
             >
               {/* Mobile card layout */}
               <div className="md:hidden flex flex-col gap-1">
-                <span className="text-primary font-medium">{ws.name}</span>
+                <span className="text-foreground font-medium">{ws.name}</span>
                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
                   <span>{ws.owner?.name || '—'}</span>
                   <span>·</span>
@@ -86,7 +86,7 @@ export default function DashboardPage() {
                 </div>
               </div>
               {/* Desktop row */}
-              <span className="hidden md:inline text-primary font-medium text-sm">{ws.name}</span>
+              <span className="hidden md:inline text-foreground font-medium text-sm">{ws.name}</span>
               <span className="hidden md:inline text-muted-foreground text-sm">{ws.owner?.name || '—'}</span>
               <span className="hidden md:inline text-sm">
                 {ws.plan_name ? (

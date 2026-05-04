@@ -131,7 +131,7 @@ export default function WorkspaceDetailPage() {
 
       <div className="flex min-w-0 flex-col gap-4 mb-8 sm:flex-row sm:items-center">
         <div className="flex min-w-0 flex-1 items-center gap-4">
-          <div className="w-12 h-12 bg-secondary rounded-xl flex items-center justify-center text-lg font-bold text-primary shrink-0">
+          <div className="w-12 h-12 bg-secondary rounded-xl flex items-center justify-center text-lg font-bold text-foreground shrink-0">
             {data.workspace.name.charAt(0).toUpperCase()}
           </div>
           <div className="min-w-0">
@@ -234,12 +234,12 @@ export default function WorkspaceDetailPage() {
                 <span className="truncate text-sm">{m.name}</span>
                 <span className="truncate text-xs text-muted-foreground">{m.email}</span>
               </div>
-              <span className={`shrink-0 text-xs font-medium ${m.role === 'owner' ? 'text-primary' : 'text-muted-foreground'}`}>{m.role}</span>
+              <span className={`shrink-0 text-xs font-medium ${m.role === 'owner' ? 'text-foreground font-semibold' : 'text-muted-foreground'}`}>{m.role}</span>
             </div>
             {/* Desktop row */}
             <span className="hidden truncate text-sm md:inline">{m.name}</span>
             <span className="hidden truncate text-sm text-muted-foreground md:inline">{m.email}</span>
-            <span className={`hidden md:inline text-sm ${m.role === 'owner' ? 'text-primary' : 'text-muted-foreground'}`}>{m.role}</span>
+            <span className={`hidden md:inline text-sm ${m.role === 'owner' ? 'text-foreground font-semibold' : 'text-muted-foreground'}`}>{m.role}</span>
             <span className="hidden md:inline text-sm text-muted-foreground">{new Date(m.joined_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}</span>
           </div>
         ))}
