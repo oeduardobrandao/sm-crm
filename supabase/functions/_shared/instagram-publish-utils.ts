@@ -66,7 +66,7 @@ const ALLOWED_VIDEO_MIMES = new Set(["video/mp4", "video/quicktime"]);
 const IMAGE_MAX_BYTES = 8 * 1024 * 1024;
 const VIDEO_MAX_BYTES = 250 * 1024 * 1024;
 const IMAGE_MIN_DIM = 320;
-const IMAGE_AR_MIN = 4 / 5;
+const IMAGE_AR_MIN = 3 / 4;
 const IMAGE_AR_MAX = 1.91;
 const VIDEO_AR_MIN = 9 / 16;
 const VIDEO_AR_MAX = 1.25;
@@ -90,7 +90,7 @@ export function validateMedia(files: MediaFile[]): ValidationError[] {
         }
         const ar = f.width / f.height;
         if (ar < IMAGE_AR_MIN || ar > IMAGE_AR_MAX) {
-          errors.push({ file_id: f.id, message: "Proporção da imagem fora do permitido (4:5 a 1.91:1)" });
+          errors.push({ file_id: f.id, message: "Proporção da imagem fora do permitido (3:4 a 1.91:1)" });
         }
       }
     } else if (f.kind === "video") {

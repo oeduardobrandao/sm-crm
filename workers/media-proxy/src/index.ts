@@ -77,10 +77,13 @@ export default {
       return new Response("Forbidden", { status: 403 });
     }
 
-    // Build cache key without signature params (content-addressable)
+    // Build cache key without signature params (content-addressable).
+    // Include Origin so CORS-bearing and non-CORS responses are cached separately.
     const cacheUrl = new URL(url.toString());
     cacheUrl.searchParams.delete("exp");
     cacheUrl.searchParams.delete("sig");
+    const origin = request.headers.get("Origin");
+    if (origin) cacheUrl.searchParams.set("_origin", origin);
     const cacheKey = new Request(cacheUrl.toString(), { method: request.method });
     const cache = caches.default;
 
