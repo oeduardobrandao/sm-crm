@@ -28,6 +28,9 @@ npm-debug.log*
 # Vite
 vite.config.ts.timestamp-*
 
+# Supabase CLI local state
+supabase/.temp/
+
 # Coverage reports (generated, never commit)
 coverage/
 
