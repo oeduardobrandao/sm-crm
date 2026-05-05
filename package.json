@@ -20,8 +20,10 @@
     "test:coverage": "vitest run --coverage",
     "dev:admin": "vite --config apps/admin/vite.config.ts --port 5177",
     "build:admin": "tsc -p apps/admin/tsconfig.json && vite build --config apps/admin/vite.config.ts",
-    "db:link:staging": "npx supabase link --project-ref skjzpekeqefvlojenfsw",
-    "db:push:staging": "npx supabase db push --linked"
+    "db:push:staging": "npx supabase db push --project-ref wlyzhyfondykzpsiqsce",
+    "db:push:prod": "npx supabase db push --project-ref skjzpekeqefvlojenfsw",
+    "functions:deploy:staging": "npx supabase functions deploy --project-ref wlyzhyfondykzpsiqsce",
+    "functions:deploy:prod": "npx supabase functions deploy --project-ref skjzpekeqefvlojenfsw"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
