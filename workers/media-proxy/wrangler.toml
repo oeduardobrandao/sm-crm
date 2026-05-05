@@ -10,4 +10,4 @@ bucket_name = "mesaas"  # ← Replace with your R2 bucket name
 # MEDIA_SIGNING_KEY must be set via `wrangler secret put MEDIA_SIGNING_KEY`
 # Use the same value in the Supabase edge function env as MEDIA_SIGNING_KEY
 # ALLOWED_ORIGINS is optional — comma-separated origins for CORS
-ALLOWED_ORIGINS = "https://mesaas.com.br,https://www.mesaas.com.br,https://hub.mesaas.com.br,https://www.hub.mesaas.com.br"
+ALLOWED_ORIGINS = "https://mesaas.com.br,https://www.mesaas.com.br,https://hub.mesaas.com.br,https://www.hub.mesaas.com.br,http://localhost:5173,http://localhost:5175"
