@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import * as Sentry from '@sentry/react';
 import { AuthProvider } from './context/AuthContext';
 import { Toaster } from '@/components/ui/sonner';
 import { Spinner } from '@/components/ui/spinner';
@@ -50,6 +51,9 @@ const PageFallback = (
 
 export default function App() {
   return (
+    <Sentry.ErrorBoundary fallback={<div className="flex items-center justify-center h-screen text-center p-8">
+      <div><h1 className="text-xl font-bold mb-2">Algo deu errado</h1><p className="text-muted">Recarregue a página para tentar novamente.</p></div>
+    </div>}>
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <Toaster />
@@ -93,5 +97,6 @@ export default function App() {
         </Suspense>
       </AuthProvider>
     </QueryClientProvider>
+    </Sentry.ErrorBoundary>
   );
 }

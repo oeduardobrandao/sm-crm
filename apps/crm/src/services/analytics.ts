@@ -440,7 +440,7 @@ export async function getPostsAnalytics(clientId: number, days = 30, sort = 'pos
 
   // Get tag assignments
   const postIds = allPosts.map(p => p.id);
-  let tagMap: Record<number, PostTag[]> = {};
+  const tagMap: Record<number, PostTag[]> = {};
 
   if (postIds.length > 0) {
     try {

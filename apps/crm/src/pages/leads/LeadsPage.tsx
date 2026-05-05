@@ -75,7 +75,7 @@ type SortDir = 'asc' | 'desc';
 
 function parseInstagram(raw: string): string {
   if (!raw) return '';
-  let val = raw.trim().replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/\/$/, '').replace(/^@/, '');
+  const val = raw.trim().replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/\/$/, '').replace(/^@/, '');
   return val ? `@${val}` : '';
 }
 

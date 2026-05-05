@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   telefone text,
   whatsapp text,
   whatsapp_opt_in boolean DEFAULT false,
+  active_workspace_id uuid,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
