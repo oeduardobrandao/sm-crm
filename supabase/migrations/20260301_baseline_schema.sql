@@ -5,6 +5,20 @@
 -- Migration: 2026-03-01
 -- =============================================
 
+-- 0a. USER_ROLE enum (used by profiles.role and signup trigger)
+DO $$ BEGIN
+  CREATE TYPE user_role AS ENUM ('owner', 'admin', 'agent');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+-- 0b. CONTAS (workspace legacy table, referenced by profiles.conta_id and signup trigger)
+CREATE TABLE IF NOT EXISTS contas (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  nome text NOT NULL,
+  slug text,
+  created_at timestamptz DEFAULT now()
+);
+
 -- 1. PROFILES (linked to Supabase Auth)
 CREATE TABLE IF NOT EXISTS profiles (
   id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,

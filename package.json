@@ -28,7 +28,11 @@
     "db:link:prod": "npx supabase link --project-ref skjzpekeqefvlojenfsw",
     "db:push": "npx supabase db push --linked",
     "functions:deploy:staging": "npx supabase functions deploy --project-ref wlyzhyfondykzpsiqsce",
-    "functions:deploy:prod": "npx supabase functions deploy --project-ref skjzpekeqefvlojenfsw"
+    "functions:deploy:prod": "npx supabase functions deploy --project-ref skjzpekeqefvlojenfsw",
+    "seed": "node scripts/seed-demo.mjs",
+    "seed:staging": "node scripts/seed-demo.mjs --staging",
+    "unseed": "node scripts/unseed-demo.mjs",
+    "unseed:staging": "node scripts/unseed-demo.mjs --staging"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

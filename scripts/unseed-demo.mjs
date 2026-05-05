@@ -1,11 +1,16 @@
-// Wipe all seeded data from the DK TESTE workspace.
-// Run: node scripts/unseed-demo.mjs
+// Wipe all seeded data from a workspace.
+// Usage:
+//   node scripts/unseed-demo.mjs              # uses .env (production)
+//   node scripts/unseed-demo.mjs --staging    # uses .env.staging
 // Relies on ON DELETE CASCADE (workflows → etapas, clientes → instagram_accounts → posts/history).
 import { createClient } from '@supabase/supabase-js';
 import { readFileSync } from 'fs';
 
+const isStaging = process.argv.includes('--staging');
+const envFile = isStaging ? '.env.staging' : '.env';
+
 const env = Object.fromEntries(
-  readFileSync('.env', 'utf8')
+  readFileSync(envFile, 'utf8')
     .split('\n')
     .filter((l) => l && !l.startsWith('#') && l.includes('='))
     .map((l) => {
@@ -18,9 +23,11 @@ const EMAIL = process.env.SEED_EMAIL ?? env.SEED_EMAIL;
 const PASSWORD = process.env.SEED_PASSWORD ?? env.SEED_PASSWORD;
 
 if (!EMAIL || !PASSWORD) {
-  console.error('✗ SEED_EMAIL and SEED_PASSWORD must be set in .env or as environment variables');
+  console.error('✗ SEED_EMAIL and SEED_PASSWORD must be set in', envFile, 'or as environment variables');
   process.exit(1);
 }
+
+console.log(`Using ${envFile} → ${env.VITE_SUPABASE_URL}`);
 
 const supabase = createClient(env.VITE_SUPABASE_URL, env.VITE_SUPABASE_ANON_KEY, {
   auth: { persistSession: false },
@@ -52,6 +59,14 @@ async function main() {
   log('  transacoes');
   await supabase.from('contratos').delete().eq('conta_id', contaId);
   log('  contratos');
+  await supabase.from('leads').delete().eq('conta_id', contaId);
+  log('  leads');
+  await supabase.from('ideias').delete().eq('workspace_id', contaId);
+  log('  ideias');
+  await supabase.from('hub_briefing_questions').delete().eq('conta_id', contaId);
+  log('  hub_briefing_questions');
+  await supabase.from('integracoes_status').delete().eq('conta_id', contaId);
+  log('  integracoes_status');
   await supabase.from('workflows').delete().eq('conta_id', contaId);
   log('  workflows (+etapas, +posts via cascade)');
   await supabase.from('workflow_templates').delete().eq('conta_id', contaId);
