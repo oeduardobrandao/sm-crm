@@ -14,4 +14,5 @@ export function initSentry() {
     tracesSampleRate: 0.2,
     replaysOnErrorSampleRate: 1.0,
   });
+
 }
