@@ -12,15 +12,23 @@ create extension if not exists pg_net with schema extensions;
 
 -- Store project URL and anon key in Vault (safe credential storage)
 -- These are used by pg_net to call edge functions securely.
-select vault.create_secret(
-  'https://skjzpekeqefvlojenfsw.supabase.co',
-  'project_url'
-);
-
-select vault.create_secret(
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNranpwZWtlcWVmdmxvamVuZnN3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1NjU3MDcsImV4cCI6MjA4ODE0MTcwN30.qveRy0wCYSM_bFHP11cRnewm0j4I01QsYMLRprhMcbo',
-  'anon_key'
-);
+-- Uses ON CONFLICT-safe approach: only insert if name doesn't already exist.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM vault.secrets WHERE name = 'project_url') THEN
+    PERFORM vault.create_secret(
+      'https://skjzpekeqefvlojenfsw.supabase.co',
+      'project_url'
+    );
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM vault.secrets WHERE name = 'anon_key') THEN
+    PERFORM vault.create_secret(
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNranpwZWtlcWVmdmxvamVuZnN3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1NjU3MDcsImV4cCI6MjA4ODE0MTcwN30.qveRy0wCYSM_bFHP11cRnewm0j4I01QsYMLRprhMcbo',
+      'anon_key'
+    );
+  END IF;
+END;
+$$;
 
 -- Schedule daily Instagram sync at 06:00 UTC (03:00 BRT)
 select cron.schedule(

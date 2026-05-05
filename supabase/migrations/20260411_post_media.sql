@@ -4,8 +4,9 @@
 ALTER TABLE workspaces
   ADD COLUMN IF NOT EXISTS storage_quota_bytes bigint NULL;
 
--- 2. Main table
-CREATE TABLE IF NOT EXISTS post_media (
+-- 2. Main table (replaces simplified version from 20260409)
+DROP TABLE IF EXISTS post_media CASCADE;
+CREATE TABLE post_media (
   id                  bigserial PRIMARY KEY,
   post_id             bigint   NOT NULL REFERENCES workflow_posts(id) ON DELETE CASCADE,
   conta_id            uuid     NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,

@@ -1,10 +1,20 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
 
 import LandingPage from '../LandingPage';
 
+vi.mock('@/context/AuthContext', () => ({
+  useAuth: () => ({ user: null, loading: false, profile: null, role: 'owner' }),
+  AuthProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+
 function renderLandingPage() {
-  return render(<LandingPage />);
+  return render(
+    <MemoryRouter>
+      <LandingPage />
+    </MemoryRouter>,
+  );
 }
 
 function mockSectionScroll(id: string) {

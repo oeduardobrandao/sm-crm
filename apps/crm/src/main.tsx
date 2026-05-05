@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
+import { initSentry } from '@/lib/sentry';
 import { initI18n } from '@mesaas/i18n';
 import ptCommon from '../../../packages/i18n/locales/pt/common.json';
 import enCommon from '../../../packages/i18n/locales/en/common.json';
@@ -16,6 +17,8 @@ import ptAuth from '../../../packages/i18n/locales/pt/auth.json';
 import enAuth from '../../../packages/i18n/locales/en/auth.json';
 import App from './App';
 import '../style.css';
+
+initSentry();
 
 initI18n({
   pt: { common: ptCommon, dashboard: ptDashboard, clients: ptClients, leads: ptLeads, posts: ptPosts, auth: ptAuth },

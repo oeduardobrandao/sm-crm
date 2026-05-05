@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { TooltipProvider } from '@radix-ui/react-tooltip';
 
 vi.mock('../../../hooks/useNotifications', () => ({
   useNotifications: vi.fn(),
@@ -15,7 +16,9 @@ function renderBell() {
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
-        <NotificationBell />
+        <TooltipProvider>
+          <NotificationBell />
+        </TooltipProvider>
       </MemoryRouter>
     </QueryClientProvider>
   );

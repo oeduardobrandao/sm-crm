@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, staging]
+  push:
+    branches: [main, staging]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck CRM
+        run: npx tsc -p apps/crm/tsconfig.json --noEmit
+
+      - name: Typecheck Hub
+        run: npx tsc -p apps/hub/tsconfig.json --noEmit
+
+      - name: Typecheck Admin
+        run: npx tsc -p apps/admin/tsconfig.json --noEmit
+
+      - name: Tests with coverage
+        run: npm run test:coverage
