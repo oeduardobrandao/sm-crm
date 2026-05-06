@@ -1,4 +1,4 @@
-import { assertEquals, readJson } from "./assert.ts";
+import { assert, assertEquals, readJson } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import { createHubApproveHandler } from "../hub-approve/handler.ts";
 import { createHubBootstrapHandler } from "../hub-bootstrap/handler.ts";
@@ -153,6 +153,35 @@ Deno.test("hub-approve stores an approval for a valid client post", async () => 
 
   assertEquals(response.status, 200);
   assertEquals((await readJson(response)).ok, true);
+
+  const rpcCall = db.calls.find((c: { table: string }) => c.table === "rpc:create_post_approval_notification");
+  assert(rpcCall, "notification RPC should be called");
+  assertEquals(rpcCall.payload, { p_post_id: 99, p_action: "aprovado", p_comentario: null });
+});
+
+Deno.test("hub-approve calls notification RPC with comentario for corrections", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, is_active: true }, error: null });
+  db.queue("workflow_posts", "select", { data: { id: 99, workflow_id: 7, status: "enviado_cliente" }, error: null });
+  db.queue("workflows", "select", { data: { cliente_id: 14 }, error: null });
+  db.queue("post_approvals", "insert", { data: null, error: null });
+  db.queue("workflow_posts", "update", { data: null, error: null });
+
+  const handler = createHubApproveHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+  });
+
+  const response = await handler(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "correcao", comentario: "Trocar imagem" }),
+  }));
+
+  assertEquals(response.status, 200);
+  const rpcCall = db.calls.find((c: { table: string }) => c.table === "rpc:create_post_approval_notification");
+  assert(rpcCall, "notification RPC should be called for corrections");
+  assertEquals(rpcCall.payload, { p_post_id: 99, p_action: "correcao", p_comentario: "Trocar imagem" });
 });
 
 Deno.test("hub-approve rejects invalid approval actions", async () => {

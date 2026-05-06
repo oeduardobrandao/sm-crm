@@ -3,6 +3,7 @@ import { validateForScheduling } from "../_shared/instagram-publish-utils.ts";
 
 type DbClient = {
   from: (table: string) => any;
+  rpc: (fn: string, params: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
 };
 
 interface HubApproveHandlerDeps {
@@ -76,6 +77,15 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
           scheduled = true;
         }
       }
+    }
+
+    const { error: notifErr } = await db.rpc("create_post_approval_notification", {
+      p_post_id: post_id,
+      p_action: action,
+      p_comentario: comentario ?? null,
+    });
+    if (notifErr) {
+      console.error("[hub-approve] notification creation failed:", notifErr);
     }
 
     return json({ ok: true, scheduled });
