@@ -4,6 +4,7 @@ import { submitApproval } from '../api';
 import type { HubPost, PostApproval, HubPostProperty, HubSelectOption } from '../types';
 import { PostMediaLightbox } from './PostMediaLightbox';
 import { OptimizedImage } from './OptimizedImage';
+import { RichTextContent } from './RichTextContent';
 
 export const TIPO_LABEL: Record<string, string> = {
   feed: 'Feed', reels: 'Reels', stories: 'Stories', carrossel: 'Carrossel',
@@ -227,9 +228,11 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
 
       {expanded && (
         <div className="border-t border-stone-200/80 px-5 pb-5 pt-4 space-y-5 bg-stone-50/30">
-          {post.conteudo_plain && (
+          {post.conteudo ? (
+            <RichTextContent content={post.conteudo} className="text-[13.5px] text-stone-600 leading-relaxed" />
+          ) : post.conteudo_plain ? (
             <p className="text-[13.5px] text-stone-600 leading-relaxed whitespace-pre-wrap">{post.conteudo_plain}</p>
-          )}
+          ) : null}
 
           {post.media && post.media.length > 1 && (
             <div className="flex gap-2 overflow-x-auto pb-1">

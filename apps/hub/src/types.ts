@@ -33,6 +33,7 @@ export interface HubPost {
   status: 'rascunho' | 'em_producao' | 'enviado_cliente'
     | 'aprovado_cliente' | 'correcao_cliente' | 'agendado' | 'postado' | 'falha_publicacao';
   ordem: number;
+  conteudo: Record<string, unknown> | null;
   conteudo_plain: string;
   scheduled_at: string | null;
   ig_caption: string | null;

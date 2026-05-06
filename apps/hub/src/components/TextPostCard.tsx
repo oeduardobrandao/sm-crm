@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { CheckCircle, AlertCircle, ChevronDown } from 'lucide-react';
 import { submitApproval } from '../api';
 import { TIPO_LABEL, STATUS_LABEL, formatDate } from './PostCard';
+import { RichTextContent } from './RichTextContent';
 import type { HubPost, PostApproval } from '../types';
 
 interface TextPostCardProps {
@@ -62,9 +63,11 @@ export function TextPostCard({ post, token, approvals, onApprovalSubmitted, read
 
       {expanded && (
         <div className="px-5 pb-5 pt-1 border-t border-stone-100 space-y-4">
-          {post.conteudo_plain && (
+          {post.conteudo ? (
+            <RichTextContent content={post.conteudo} className="text-[13px] text-stone-600 leading-relaxed" />
+          ) : post.conteudo_plain ? (
             <p className="text-[13px] text-stone-600 leading-relaxed whitespace-pre-wrap">{post.conteudo_plain}</p>
-          )}
+          ) : null}
           {post.ig_caption && (
             <div className="border-l-2 border-stone-200 pl-3">
               <p className="text-[11px] text-stone-400 font-medium mb-1">Legenda do Instagram</p>
