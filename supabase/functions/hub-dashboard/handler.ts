@@ -97,7 +97,13 @@ export function createHubDashboardHandler(deps: HubDashboardHandlerDeps) {
         impressions: p.impressions ?? 0,
         saved: p.saved ?? 0,
         shares: p.shares ?? 0,
-        engagementRate: computeEngagementRate(p),
+        engagementRate: computeEngagementRate({
+          likes: p.likes ?? 0,
+          comments: p.comments ?? 0,
+          saved: p.saved ?? 0,
+          shares: p.shares ?? 0,
+          reach: p.reach ?? 0,
+        }),
       }))
       .sort((a: { engagementRate: number }, b: { engagementRate: number }) =>
         b.engagementRate - a.engagementRate,

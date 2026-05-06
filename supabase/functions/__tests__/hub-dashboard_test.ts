@@ -126,7 +126,7 @@ Deno.test("hub-dashboard returns 404 for invalid tokens", async () => {
   assertEquals(response.status, 404);
 });
 
-Deno.test("hub-dashboard defaults period to 30 when not specified", async () => {
+Deno.test("hub-dashboard defaults period to 30 for an invalid value", async () => {
   const db = createSupabaseQueryMock();
   db.queue("client_hub_tokens", "select", {
     data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
