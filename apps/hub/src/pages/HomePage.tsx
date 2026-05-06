@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useHub } from '../HubContext';
 import { fetchPosts } from '../api';
 import { PostCalendar } from '../components/PostCalendar';
+import { DashboardSection } from '../components/dashboard/DashboardSection';
 
 const SECTIONS = [
   { label: 'Aprovações', icon: CheckSquare, path: '/aprovacoes', description: 'Posts aguardando sua aprovação' },
@@ -45,6 +46,9 @@ export function HomePage() {
           <span className="ml-2 inline-block">👋</span>
         </h1>
       </div>
+
+      {/* Dashboard */}
+      <DashboardSection />
 
       {/* Section cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-12">
