@@ -43,10 +43,10 @@ export function FollowerChart({ followerHistory }: FollowerChartProps) {
         data: dataPoints,
         borderColor: '#eab308',
         borderWidth: 2.5,
-        pointRadius: 3,
-        pointBackgroundColor: '#eab308',
-        pointBorderColor: '#1a1e26',
-        pointBorderWidth: 2,
+        pointRadius: 2,
+        pointBackgroundColor: 'transparent',
+        pointBorderColor: '#eab308',
+        pointBorderWidth: 1.5,
         fill: true,
         backgroundColor: (ctx: any) => {
           const chart = ctx.chart;
