@@ -176,3 +176,46 @@ export interface HubPostsResponse {
   instagramProfile: InstagramProfile | null;
   autoPublishOnApproval?: boolean;
 }
+
+export interface DashboardTopPost {
+  id: string;
+  thumbnailUrl: string | null;
+  mediaType: string;
+  permalink: string;
+  postedAt: string;
+  likes: number;
+  comments: number;
+  reach: number;
+  impressions: number;
+  saved: number;
+  shares: number;
+  engagementRate: number;
+}
+
+export interface DashboardFollowerEntry {
+  date: string;
+  followerCount: number;
+}
+
+export interface DashboardReachEntry {
+  date: string;
+  reach: number;
+  impressions: number;
+}
+
+export interface DashboardAccount {
+  followerCount: number;
+  followingCount: number;
+  mediaCount: number;
+  reach28d: number;
+  impressions28d: number;
+  lastSyncedAt: string | null;
+}
+
+export interface HubDashboardResponse {
+  topPosts: DashboardTopPost[];
+  followerHistory: DashboardFollowerEntry[];
+  reachHistory: DashboardReachEntry[];
+  account: DashboardAccount | null;
+  period: number;
+}
