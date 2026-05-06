@@ -1,4 +1,5 @@
 import { createJsonResponder } from "../_shared/http.ts";
+import { decryptText } from "../_shared/crypto.ts";
 
 type DbClient = {
   from: (table: string) => any;
@@ -8,6 +9,7 @@ interface HubDashboardHandlerDeps {
   buildCorsHeaders: (req: Request) => Record<string, string>;
   createDb: () => DbClient;
   now: () => string;
+  encryptionSecret: string;
 }
 
 const VALID_PERIODS = new Set([30, 60, 90]);
@@ -55,7 +57,7 @@ export function createHubDashboardHandler(deps: HubDashboardHandlerDeps) {
 
     const { data: igAccount } = await db
       .from("instagram_accounts")
-      .select("id, follower_count, following_count, media_count, reach_28d, impressions_28d, last_synced_at")
+      .select("id, encrypted_access_token, follower_count, following_count, media_count, reach_28d, impressions_28d, last_synced_at")
       .eq("client_id", hubToken.cliente_id)
       .maybeSingle();
 
@@ -84,10 +86,10 @@ export function createHubDashboardHandler(deps: HubDashboardHandlerDeps) {
       .order("reach", { ascending: false })
       .limit(20);
 
-    const postsWithRate = (topPostsRaw ?? [])
+    const topPosts = (topPostsRaw ?? [])
       .map((p: any) => ({
         id: p.instagram_post_id,
-        thumbnailUrl: p.thumbnail_url,
+        thumbnailUrl: p.thumbnail_url as string | null,
         mediaType: p.media_type,
         permalink: p.permalink,
         postedAt: p.posted_at,
@@ -109,6 +111,33 @@ export function createHubDashboardHandler(deps: HubDashboardHandlerDeps) {
         b.engagementRate - a.engagementRate,
       )
       .slice(0, 5);
+
+    if (topPosts.length > 0 && igAccount.encrypted_access_token) {
+      try {
+        const accessToken = await decryptText(
+          igAccount.encrypted_access_token,
+          deps.encryptionSecret,
+          "instagram-access-token",
+        );
+        const ids = topPosts.map((p: { id: string }) => p.id).join(",");
+        const res = await fetch(
+          `https://graph.instagram.com/?ids=${ids}&fields=thumbnail_url,media_url&access_token=${accessToken}`,
+        );
+        if (res.ok) {
+          const data = await res.json();
+          for (const post of topPosts) {
+            const media = data[post.id];
+            if (media) {
+              post.thumbnailUrl = media.thumbnail_url || media.media_url || post.thumbnailUrl;
+            }
+          }
+        }
+      } catch {
+        // keep existing (possibly expired) thumbnail URLs
+      }
+    }
+
+    const postsWithRate = topPosts;
 
     const { data: followerRows } = await db
       .from("instagram_follower_history")

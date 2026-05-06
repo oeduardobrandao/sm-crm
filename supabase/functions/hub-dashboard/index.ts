@@ -4,9 +4,11 @@ import { createHubDashboardHandler } from "./handler.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const TOKEN_ENCRYPTION_KEY = Deno.env.get("TOKEN_ENCRYPTION_KEY")!;
 
 Deno.serve(createHubDashboardHandler({
   buildCorsHeaders,
   createDb: () => createClient(SUPABASE_URL, SERVICE_ROLE_KEY),
   now: () => new Date().toISOString(),
+  encryptionSecret: TOKEN_ENCRYPTION_KEY,
 }));

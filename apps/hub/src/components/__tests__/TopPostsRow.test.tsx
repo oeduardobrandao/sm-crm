@@ -25,7 +25,7 @@ describe('TopPostsRow', () => {
   it('renders post cards with metrics', () => {
     render(<TopPostsRow posts={[makePost()]} />);
 
-    expect(screen.getByText('IMAGE')).toBeInTheDocument();
+    expect(screen.getByText('Imagem')).toBeInTheDocument();
     expect(screen.getByText('4.8%')).toBeInTheDocument();
     expect(screen.getByText('80')).toBeInTheDocument();
   });
