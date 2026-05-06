@@ -68,10 +68,7 @@ export function DashboardSection() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <FollowerChart
-          followerHistory={data.followerHistory}
-          reachHistory={data.reachHistory}
-        />
+        <FollowerChart followerHistory={data.followerHistory} />
         <ReachChart reachHistory={data.reachHistory} />
       </div>
     </div>

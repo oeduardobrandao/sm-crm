@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { useRef } from 'react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -9,7 +9,7 @@ import {
   Tooltip,
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
-import type { DashboardFollowerEntry, DashboardReachEntry } from '../../types';
+import type { DashboardFollowerEntry } from '../../types';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip);
 
@@ -20,16 +20,10 @@ function formatAbbrev(n: number): string {
 
 interface FollowerChartProps {
   followerHistory: DashboardFollowerEntry[];
-  reachHistory: DashboardReachEntry[];
 }
 
-export function FollowerChart({ followerHistory, reachHistory }: FollowerChartProps) {
+export function FollowerChart({ followerHistory }: FollowerChartProps) {
   const canvasRef = useRef<ChartJS<'line'>>(null);
-
-  const postDates = useMemo(
-    () => new Set(reachHistory.map((r) => r.date)),
-    [reachHistory],
-  );
 
   const labels = followerHistory.map((e) => {
     const [, m, d] = e.date.split('-');
@@ -37,10 +31,6 @@ export function FollowerChart({ followerHistory, reachHistory }: FollowerChartPr
   });
 
   const dataPoints = followerHistory.map((e) => e.followerCount);
-
-  const pointRadius = followerHistory.map((e) =>
-    postDates.has(e.date) ? 4 : 0,
-  );
 
   const earliest = followerHistory.length > 0 ? followerHistory[0].followerCount : 0;
   const latest = followerHistory.length > 0 ? followerHistory[followerHistory.length - 1].followerCount : 0;
@@ -53,7 +43,7 @@ export function FollowerChart({ followerHistory, reachHistory }: FollowerChartPr
         data: dataPoints,
         borderColor: '#eab308',
         borderWidth: 2.5,
-        pointRadius,
+        pointRadius: 3,
         pointBackgroundColor: '#eab308',
         pointBorderColor: '#1a1e26',
         pointBorderWidth: 2,
