@@ -37,8 +37,8 @@ export function ReachChart({ reachHistory }: ReachChartProps) {
         backgroundColor: reachHistory.map(
           (e) => `rgba(234, 179, 8, ${0.4 + 0.6 * (e.reach / maxReach)})`,
         ),
-        borderRadius: 4,
-        borderSkipped: false as const,
+        borderRadius: { topLeft: 3, topRight: 3, bottomLeft: 0, bottomRight: 0 },
+        borderSkipped: 'bottom' as const,
       },
     ],
   };
