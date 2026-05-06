@@ -1,9 +1,10 @@
 import { useNavigate, useParams } from 'react-router-dom';
-import { CheckSquare, Palette, FileText, BookOpen, Lightbulb, CalendarDays } from 'lucide-react';
+import { CheckSquare, Palette, FileText, BookOpen, Lightbulb, CalendarDays, ArrowRight } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useHub } from '../HubContext';
 import { fetchPosts } from '../api';
 import { PostCalendar } from '../components/PostCalendar';
+import { DashboardSection } from '../components/dashboard/DashboardSection';
 
 const SECTIONS = [
   { label: 'Aprovações', icon: CheckSquare, path: '/aprovacoes', description: 'Posts aguardando sua aprovação' },
@@ -45,6 +46,26 @@ export function HomePage() {
           <span className="ml-2 inline-block">👋</span>
         </h1>
       </div>
+
+      {pendingCount > 0 && (
+        <button
+          onClick={() => navigate(`${base}/aprovacoes`)}
+          className="hub-fade-up w-full flex items-center gap-3 px-5 py-3.5 mb-8 rounded-2xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-left group transition-colors hover:bg-amber-100 dark:hover:bg-amber-500/15"
+        >
+          <span className="flex items-center justify-center w-8 h-8 rounded-full bg-amber-400/20 text-amber-600 dark:text-amber-400 flex-shrink-0">
+            <CheckSquare size={16} strokeWidth={2} />
+          </span>
+          <span className="flex-1 text-sm font-medium text-stone-800 dark:text-stone-200">
+            {pendingCount === 1
+              ? 'Você tem 1 post aguardando aprovação'
+              : `Você tem ${pendingCount} posts aguardando aprovação`}
+          </span>
+          <ArrowRight size={16} className="text-stone-400 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors flex-shrink-0" />
+        </button>
+      )}
+
+      {/* Dashboard */}
+      <DashboardSection />
 
       {/* Section cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-12">

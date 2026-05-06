@@ -1,7 +1,7 @@
 import type {
   HubBootstrap, HubPost, PostApproval, HubPostProperty, HubSelectOption, HubBrand, HubBrandFile,
   HubPage, HubPageFull, BriefingQuestion, HubIdeia, IdeiaReaction,
-  InstagramFeedData, HubPostsResponse
+  InstagramFeedData, HubPostsResponse, HubDashboardResponse
 } from './types';
 
 const BASE = import.meta.env.VITE_SUPABASE_URL as string;
@@ -129,4 +129,8 @@ export function updateIdeia(token: string, id: string, payload: { titulo?: strin
 
 export function deleteIdeia(token: string, id: string) {
   return del<{ ok: boolean }>('hub-ideias', id, token);
+}
+
+export function fetchDashboard(token: string, period: number) {
+  return get<HubDashboardResponse>('hub-dashboard', { token, period: String(period) });
 }
