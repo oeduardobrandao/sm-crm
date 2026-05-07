@@ -16,6 +16,7 @@ import { RevertConfirmDialog, ClientApprovalChoiceDialog } from '../components/W
 interface KanbanViewProps {
   cards: BoardCard[];
   onCardClick: (card: BoardCard) => void;
+  onEditClick: (card: BoardCard) => void;
   onPostsClick: (card: BoardCard) => void;
   onRefresh: () => void;
   onRecurring: (workflowId: number) => void;
@@ -78,7 +79,7 @@ function DroppableColumnBody({ id, children }: { id: string; children: React.Rea
 }
 
 // Draggable card wrapper
-function SortableCard({ card, onCardClick, onPostsClick, membros, onRefresh, onRevertClick, onForwardClick, postsCount, approvedPostsCount, revisaoInternaCount }: { card: BoardCard; onCardClick: (c: BoardCard) => void; onPostsClick: (c: BoardCard) => void; membros: Membro[]; onRefresh: () => void; onRevertClick: () => void; onForwardClick: () => void; postsCount: number; approvedPostsCount: number; revisaoInternaCount: number }) {
+function SortableCard({ card, onCardClick, onPostsClick, onEditClick, membros, onRefresh, onRevertClick, onForwardClick, postsCount, approvedPostsCount, revisaoInternaCount }: { card: BoardCard; onCardClick: (c: BoardCard) => void; onPostsClick: (c: BoardCard) => void; onEditClick: (c: BoardCard) => void; membros: Membro[]; onRefresh: () => void; onRevertClick: () => void; onForwardClick: () => void; postsCount: number; approvedPostsCount: number; revisaoInternaCount: number }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: String(card.workflow.id),
   });
@@ -93,6 +94,7 @@ function SortableCard({ card, onCardClick, onPostsClick, membros, onRefresh, onR
       <WorkflowCard
         card={card}
         onClick={() => onCardClick(card)}
+        onEditClick={() => onEditClick(card)}
         onPostsClick={() => onPostsClick(card)}
         dragHandle={<GripVertical className="h-4 w-4" {...listeners} />}
         membros={membros}
@@ -110,7 +112,7 @@ function SortableCard({ card, onCardClick, onPostsClick, membros, onRefresh, onR
 // Column droppable ID prefix — distinguishes column IDs from card IDs in handleDragEnd
 const COL_PREFIX = 'col:';
 
-export function KanbanView({ cards, onCardClick, onPostsClick, onRefresh, onRecurring, membros, templates, postsCounts, approvedPostsCounts, revisaoInternaCounts }: KanbanViewProps) {
+export function KanbanView({ cards, onCardClick, onEditClick, onPostsClick, onRefresh, onRecurring, membros, templates, postsCounts, approvedPostsCounts, revisaoInternaCounts }: KanbanViewProps) {
   const [localCards, setLocalCards] = useState<BoardCard[]>(cards);
   const [activeCard, setActiveCard] = useState<BoardCard | null>(null);
   const [revertTarget, setRevertTarget] = useState<{ workflowId: number; title: string } | null>(null);
@@ -338,6 +340,7 @@ export function KanbanView({ cards, onCardClick, onPostsClick, onRefresh, onRecu
                               key={card.workflow.id}
                               card={card}
                               onCardClick={onCardClick}
+                              onEditClick={onEditClick}
                               onPostsClick={onPostsClick}
                               membros={membros}
                               onRefresh={onRefresh}

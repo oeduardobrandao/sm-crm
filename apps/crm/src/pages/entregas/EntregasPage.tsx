@@ -160,7 +160,8 @@ export default function EntregasPage() {
       {activeView === 'kanban' && (
         <KanbanView
           cards={filteredCards}
-          onCardClick={setEditCard}
+          onCardClick={setDrawerCard}
+          onEditClick={setEditCard}
           onPostsClick={setDrawerCard}
           onRefresh={refresh}
           onRecurring={setRecurringWfId}
@@ -172,13 +173,13 @@ export default function EntregasPage() {
         />
       )}
       {activeView === 'chart' && <ChartView cards={filteredCards} />}
-      {activeView === 'calendar' && <CalendarView cards={filteredCards} onCardClick={setEditCard} />}
+      {activeView === 'calendar' && <CalendarView cards={filteredCards} onCardClick={setDrawerCard} />}
       {activeView === 'list' && (
         <ListView
           cards={filteredCards}
           sort={listSort}
           onSortChange={setListSort}
-          onCardClick={setEditCard}
+          onCardClick={setDrawerCard}
         />
       )}
       {activeView === 'concluded' && <ConcludedView />}

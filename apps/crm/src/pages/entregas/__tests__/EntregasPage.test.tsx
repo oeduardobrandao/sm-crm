@@ -44,17 +44,20 @@ vi.mock('../views/KanbanView', () => ({
   KanbanView: ({
     cards,
     onCardClick,
+    onEditClick,
     onPostsClick,
     onRecurring,
   }: {
     cards: Array<{ workflow: { id: number; titulo: string } }>;
     onCardClick: (card: unknown) => void;
+    onEditClick: (card: unknown) => void;
     onPostsClick: (card: unknown) => void;
     onRecurring: (workflowId: number) => void;
   }) => (
     <div>
       <div>Kanban view: {cards.map((card) => card.workflow.titulo).join(', ')}</div>
-      <button onClick={() => onCardClick(cards[0])}>Open edit modal</button>
+      <button onClick={() => onEditClick(cards[0])}>Open edit modal</button>
+      <button onClick={() => onCardClick(cards[0])}>Open drawer from card</button>
       <button onClick={() => onPostsClick(cards[0])}>Open drawer modal</button>
       <button onClick={() => onRecurring(cards[0].workflow.id)}>Trigger recurring</button>
     </div>
@@ -77,7 +80,7 @@ vi.mock('../views/CalendarView', () => ({
   }) => (
     <div>
       <div>Calendar view: {cards.map((card) => card.workflow.titulo).join(', ')}</div>
-      <button onClick={() => onCardClick(cards[0])}>Open calendar edit</button>
+      <button onClick={() => onCardClick(cards[0])}>Open calendar drawer</button>
     </div>
   ),
 }));
