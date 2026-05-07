@@ -48,10 +48,9 @@ function InlineImageNodeView({ node }: NodeViewProps) {
               background: 'rgba(0,0,0,0.25)',
             }}
           >
-            <Loader2 size={28} style={{ animation: 'inline-img-spin 1s linear infinite', color: '#fff' }} />
+            <Loader2 size={28} className="animate-spin" style={{ color: '#fff' }} />
           </div>
         </div>
-        <style>{`@keyframes inline-img-spin { to { transform: rotate(360deg) } }`}</style>
       </NodeViewWrapper>
     );
   }
