@@ -110,13 +110,6 @@ export async function openPicker(): Promise<DriveFile[]> {
       .build();
 
     picker.setVisible(true);
-
-    // Google Picker renders at z-index 1000 by default, which is below the
-    // WorkflowDrawer (z-index 9000/9001). Bump it above.
-    requestAnimationFrame(() => {
-      document.querySelectorAll<HTMLElement>('.picker-dialog-bg').forEach(el => { el.style.zIndex = '10000'; });
-      document.querySelectorAll<HTMLElement>('.picker-dialog').forEach(el => { el.style.zIndex = '10001'; });
-    });
   });
 }
 
