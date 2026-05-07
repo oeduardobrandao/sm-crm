@@ -237,7 +237,7 @@ export function createInlineImageExtension(uploadFn: InlineImageUploadFn) {
     },
 
     addProseMirrorPlugins() {
-      const extension = this;
+      const nodeName = this.name;
 
       return [
         new Plugin({
@@ -253,7 +253,7 @@ export function createInlineImageExtension(uploadFn: InlineImageUploadFn) {
 
               event.preventDefault();
               for (const file of files) {
-                handleImageUpload(view, file, extension.name, uploadFn);
+                handleImageUpload(view, file, nodeName, uploadFn);
               }
               return true;
             },
@@ -267,7 +267,7 @@ export function createInlineImageExtension(uploadFn: InlineImageUploadFn) {
 
               event.preventDefault();
               for (const file of files) {
-                handleImageUpload(view, file, extension.name, uploadFn);
+                handleImageUpload(view, file, nodeName, uploadFn);
               }
               return true;
             },
