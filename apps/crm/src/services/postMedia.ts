@@ -224,6 +224,35 @@ export async function reorderPostMedia(id: number, sort_order: number): Promise<
   return callFn<PostMedia>(`post-media-manage`, 'PATCH', { sort_order }, undefined, `/${id}`);
 }
 
+export async function addDriveMedia(postId: number, driveFiles: {
+  id: string;
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+  thumbnailUrl: string | null;
+  viewUrl: string;
+  width: number | null;
+  height: number | null;
+}[]): Promise<void> {
+  await Promise.all(driveFiles.map((f) => {
+    const kind = f.mimeType.startsWith('image/') ? 'image'
+      : f.mimeType.startsWith('video/') ? 'video'
+      : 'document';
+    return callFn('file-manage', 'POST', {
+      name: f.name,
+      kind,
+      mime_type: f.mimeType,
+      size_bytes: f.sizeBytes,
+      width: f.width,
+      height: f.height,
+      google_drive_file_id: f.id,
+      google_drive_thumbnail_url: f.thumbnailUrl,
+      google_drive_view_url: f.viewUrl,
+      post_id: postId,
+    }, undefined, '/files/drive');
+  }));
+}
+
 // Parallelism cap helper for multi-file uploads
 export async function uploadMany<T>(items: T[], fn: (t: T) => Promise<void>, concurrency = MAX_CONCURRENT) {
   const queue = items.slice();
