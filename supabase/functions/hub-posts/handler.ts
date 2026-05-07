@@ -162,7 +162,7 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
     const { data: mediaLinks } = postIds.length > 0
       ? await db
           .from("post_file_links")
-          .select("id, post_id, is_cover, sort_order, files(id, kind, mime_type, r2_key, thumbnail_r2_key, width, height, duration_seconds, blur_data_url)")
+          .select("id, post_id, is_cover, sort_order, files(id, kind, mime_type, r2_key, thumbnail_r2_key, width, height, duration_seconds, blur_data_url, google_drive_file_id, google_drive_thumbnail_url, google_drive_view_url)")
           .in("post_id", postIds)
           .order("sort_order", { ascending: true })
           .order("id", { ascending: true })
@@ -170,6 +170,7 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
 
     const mediaWithUrls = await Promise.all((mediaLinks ?? []).map(async (link: any) => {
       const f = link.files;
+      const isDrive = !!f.google_drive_file_id;
       return {
         id: link.id,
         post_id: link.post_id,
@@ -181,8 +182,10 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
         is_cover: link.is_cover,
         sort_order: link.sort_order,
         blur_data_url: f.blur_data_url ?? null,
-        url: await deps.signGetUrl(f.r2_key, 3600),
-        thumbnail_url: f.thumbnail_r2_key ? await deps.signGetUrl(f.thumbnail_r2_key, 3600) : null,
+        url: isDrive ? f.google_drive_thumbnail_url : await deps.signGetUrl(f.r2_key, 3600),
+        thumbnail_url: isDrive ? f.google_drive_thumbnail_url : (f.thumbnail_r2_key ? await deps.signGetUrl(f.thumbnail_r2_key, 3600) : null),
+        google_drive_file_id: f.google_drive_file_id ?? null,
+        google_drive_view_url: f.google_drive_view_url ?? null,
       };
     }));
 

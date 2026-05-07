@@ -59,6 +59,9 @@
     "videoUploaded": "Video uploaded",
     "downloadDone": "Download complete",
     "selectThumbnail": "Select a thumbnail for the video",
-    "chooseThumbnail": "Choose thumbnail"
+    "chooseThumbnail": "Choose thumbnail",
+    "googleDrive": "Google Drive",
+    "driveLinked": "Drive file(s) linked",
+    "openInDrive": "Open in Drive"
   }
 }

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import JSZip from 'jszip';
-import { Upload, Star, Trash2, AlertTriangle, Download, FolderOpen } from 'lucide-react';
+import { Upload, Star, Trash2, AlertTriangle, Download, FolderOpen, ExternalLink, ImageIcon } from 'lucide-react';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
   type DragEndEvent,
@@ -13,8 +13,9 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import {
   listPostMedia, uploadPostMedia, deletePostMedia, setPostMediaCover,
-  reorderPostMedia, detectKind,
+  reorderPostMedia, detectKind, addDriveMedia,
 } from '../../../services/postMedia';
+import { openPicker } from '../../../services/googleDrive';
 import { useTranslation } from 'react-i18next';
 import type { PostMedia } from '../../../store';
 import { OptimizedImage } from '../../../components/OptimizedImage';
@@ -260,6 +261,18 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
     }
   }
 
+  async function handleDriveFiles() {
+    try {
+      const files = await openPicker();
+      if (files.length === 0) return;
+      await addDriveMedia(postId, files);
+      refresh();
+      toast.success(t('mediaGallery.driveLinked'));
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }
+
   if (mediaLoading) {
     return (
       <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
@@ -323,6 +336,23 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
               >
                 <FolderOpen className="h-4 w-4" />
                 <span className="text-[11px]">{t('mediaGallery.choose')}</span>
+              </button>
+            )}
+            {!disabled && !atLimit && (
+              <button
+                type="button"
+                onClick={handleDriveFiles}
+                className="flex flex-col items-center justify-center gap-1 aspect-square rounded-xl border border-dashed border-stone-300 bg-stone-50 text-stone-500 hover:border-stone-400 hover:bg-stone-100 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-400 dark:hover:border-stone-500 dark:hover:bg-stone-700 cursor-pointer transition-colors"
+              >
+                <svg className="h-4 w-4" viewBox="0 0 87.3 78" fill="none">
+                  <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H1.2c0 1.55.4 3.1 1.2 4.5l4.2 9.35Z" fill="#0066DA"/>
+                  <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3L1.2 48.2c-.8 1.4-1.2 2.95-1.2 4.5h27.5L43.65 25Z" fill="#00AC47"/>
+                  <path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5H59.8l6.85 12.5 6.9 11.3Z" fill="#EA4335"/>
+                  <path d="M43.65 25 57.4 1.2C56.05.4 54.5 0 52.9 0H34.4c-1.6 0-3.15.45-4.5 1.2L43.65 25Z" fill="#00832D"/>
+                  <path d="m59.8 53H27.5L13.75 76.8c1.35.8 2.9 1.2 4.5 1.2h36.8c1.6 0 3.15-.45 4.5-1.2L59.8 53Z" fill="#2684FC"/>
+                  <path d="M73.4 26.5 60.1 3.3c-.8-1.4-1.95-2.5-3.3-3.3L43.65 25l16.15 28h27.5c0-1.55-.4-3.1-1.2-4.5l-12.7-22Z" fill="#FFBA00"/>
+                </svg>
+                <span className="text-[11px]">{t('mediaGallery.googleDrive')}</span>
               </button>
             )}
           </div>
@@ -407,6 +437,7 @@ interface SortableMediaTileProps {
 }
 
 function SortableMediaTile({ media: m, disabled, onOpen, onSetCover, onDelete }: SortableMediaTileProps) {
+  const { t } = useTranslation('posts');
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: m.id, disabled });
   const style = {
@@ -424,14 +455,25 @@ function SortableMediaTile({ media: m, disabled, onOpen, onSetCover, onDelete }:
       className="relative aspect-square overflow-hidden rounded-xl bg-stone-100 ring-1 ring-stone-200/80 group cursor-grab active:cursor-grabbing touch-none"
     >
       {m.kind === 'image' ? (
-        <OptimizedImage
-          src={m.url ?? ''}
-          alt={m.original_filename}
-          width={m.width ?? undefined}
-          height={m.height ?? undefined}
-          blurDataURL={m.blur_data_url ?? undefined}
-          className="w-full h-full object-cover pointer-events-none"
-        />
+        m.google_drive_view_url ? (
+          <DriveImage src={m.url ?? ''} alt={m.original_filename} filename={m.original_filename} />
+        ) : (
+          <OptimizedImage
+            src={m.url ?? ''}
+            alt={m.original_filename}
+            width={m.width ?? undefined}
+            height={m.height ?? undefined}
+            blurDataURL={m.blur_data_url ?? undefined}
+            className="w-full h-full object-cover pointer-events-none"
+          />
+        )
+      ) : m.kind === 'document' ? (
+        <div className="w-full h-full flex flex-col items-center justify-center bg-stone-100 dark:bg-stone-800 text-stone-500">
+          <svg className="h-6 w-6 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+          </svg>
+          <span className="text-[9px] truncate max-w-full px-1">{m.original_filename}</span>
+        </div>
       ) : (
         <video src={m.url ?? undefined} poster={m.thumbnail_url ?? undefined} muted className="w-full h-full object-cover pointer-events-none" />
       )}
@@ -444,7 +486,20 @@ function SortableMediaTile({ media: m, disabled, onOpen, onSetCover, onDelete }:
         <div
           className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
           onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
         >
+          {m.google_drive_view_url && (
+            <a
+              href={m.google_drive_view_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              title={t('mediaGallery.openInDrive')}
+              className="flex items-center justify-center w-6 h-6 rounded-full bg-stone-900/85 text-white hover:bg-stone-900"
+            >
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          )}
           {!m.is_cover && (
             <button
               type="button"
@@ -466,6 +521,27 @@ function SortableMediaTile({ media: m, disabled, onOpen, onSetCover, onDelete }:
         </div>
       )}
     </div>
+  );
+}
+
+function DriveImage({ src, alt, filename }: { src: string; alt: string; filename: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <div className="w-full h-full flex flex-col items-center justify-center bg-stone-100 dark:bg-stone-800 text-stone-400">
+        <ImageIcon className="h-5 w-5 mb-1" />
+        <span className="text-[9px] truncate max-w-full px-1">{filename}</span>
+      </div>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt={alt}
+      referrerPolicy="no-referrer"
+      className="w-full h-full object-cover pointer-events-none"
+      onError={() => setFailed(true)}
+    />
   );
 }
 

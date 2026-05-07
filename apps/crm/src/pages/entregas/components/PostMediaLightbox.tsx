@@ -79,7 +79,20 @@ export function PostMediaLightbox({
           </DialogPrimitive.Title>
 
           <div className="flex items-center justify-center max-h-[85vh] max-w-[90vw] touch-none pointer-events-auto">
-            {current.kind === 'image' ? (
+            {current.google_drive_view_url ? (
+              <a href={current.google_drive_view_url} target="_blank" rel="noopener noreferrer" className="flex flex-col items-center gap-4">
+                <img
+                  src={current.url?.replace('sz=w400', 'sz=w1600') ?? ''}
+                  alt={current.original_filename}
+                  referrerPolicy="no-referrer"
+                  onPointerDown={handlePointerDown}
+                  onPointerUp={handlePointerUp}
+                  className="max-h-[75vh] max-w-[90vw] object-contain select-none rounded-lg"
+                  draggable={false}
+                />
+                <span className="text-white/70 text-sm">Clique para abrir no Google Drive</span>
+              </a>
+            ) : current.kind === 'image' ? (
               <img
                 src={current.url}
                 alt={current.original_filename}

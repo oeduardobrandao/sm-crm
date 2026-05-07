@@ -6348,3 +6348,7 @@ body.landing-page #root {
   height: auto;
   overflow: visible;
 }
+
+/* Google Picker renders at z-index ~1000, below the drawer (9000/9001) */
+.picker-dialog-bg { z-index: 10000 !important; }
+.picker-dialog { z-index: 10001 !important; }

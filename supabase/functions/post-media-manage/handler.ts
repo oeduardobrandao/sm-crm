@@ -20,7 +20,7 @@ function extFromMime(mime: string): string {
   return ({ "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" } as const)[mime as "image/jpeg"] ?? "bin";
 }
 
-function toLegacy(link: any, file: any, url: string, thumbnailUrl: string | null) {
+function toLegacy(link: any, file: any, url: string | null, thumbnailUrl: string | null) {
   return {
     id: link.id,
     post_id: link.post_id,
@@ -41,6 +41,8 @@ function toLegacy(link: any, file: any, url: string, thumbnailUrl: string | null
     blur_data_url: file.blur_data_url ?? null,
     url,
     thumbnail_url: thumbnailUrl,
+    google_drive_file_id: file.google_drive_file_id ?? null,
+    google_drive_view_url: file.google_drive_view_url ?? null,
   };
 }
 
@@ -107,8 +109,9 @@ export function createPostMediaManageHandler(deps: PostMediaManageDeps) {
           workflow_id,
           media: await Promise.all(links.map(async (l: any) => {
             const f = l.files;
-            const u = await deps.signUrl(f.r2_key);
-            const tu = f.thumbnail_r2_key ? await deps.signUrl(f.thumbnail_r2_key) : null;
+            const isDrive = !!f.google_drive_file_id;
+            const u = isDrive ? f.google_drive_thumbnail_url : await deps.signUrl(f.r2_key);
+            const tu = isDrive ? f.google_drive_thumbnail_url : (f.thumbnail_r2_key ? await deps.signUrl(f.thumbnail_r2_key) : null);
             return toLegacy(l, f, u, tu);
           })),
         })));
@@ -129,8 +132,9 @@ export function createPostMediaManageHandler(deps: PostMediaManageDeps) {
 
       const media = await Promise.all((links ?? []).map(async (l: any) => {
         const f = l.files;
-        const u = await deps.signUrl(f.r2_key);
-        const tu = f.thumbnail_r2_key ? await deps.signUrl(f.thumbnail_r2_key) : null;
+        const isDrive = !!f.google_drive_file_id;
+        const u = isDrive ? f.google_drive_thumbnail_url : await deps.signUrl(f.r2_key);
+        const tu = isDrive ? f.google_drive_thumbnail_url : (f.thumbnail_r2_key ? await deps.signUrl(f.thumbnail_r2_key) : null);
         return toLegacy(l, f, u, tu);
       }));
       return json({ media });
@@ -165,8 +169,9 @@ export function createPostMediaManageHandler(deps: PostMediaManageDeps) {
 
       const { data: updatedLink } = await svc.from("post_file_links").select("*, files(*)").eq("id", linkId).single();
       const uf = (updatedLink as any).files;
-      const u = await deps.signUrl(uf.r2_key);
-      const tu = uf.thumbnail_r2_key ? await deps.signUrl(uf.thumbnail_r2_key) : null;
+      const isDrive = !!uf.google_drive_file_id;
+      const u = isDrive ? uf.google_drive_thumbnail_url : await deps.signUrl(uf.r2_key);
+      const tu = isDrive ? uf.google_drive_thumbnail_url : (uf.thumbnail_r2_key ? await deps.signUrl(uf.thumbnail_r2_key) : null);
       return json(toLegacy(updatedLink, uf, u, tu));
     }
 
