@@ -26,6 +26,7 @@ import { PropertyPanel } from './PropertyPanel';
 import PostCommentSummary from './PostCommentSummary';
 import { useAuth } from '@/context/AuthContext';
 import { PostMediaGallery, hasVideoMissingThumbnail } from './PostMediaGallery';
+import { uploadInlineImage } from '@/services/inlineImage';
 import { listPostMedia } from '../../../services/postMedia';
 import { InstagramCaptionField } from './InstagramCaptionField';
 import { ScheduleButton } from './ScheduleButton';
@@ -763,6 +764,17 @@ function SortablePostItem({
             key={post.id}
             initialContent={post.conteudo}
             onUpdate={onContentUpdate}
+            postId={post.id}
+            onUploadInlineImage={post.id ? async (file) => {
+              try {
+                return await uploadInlineImage(file, post.id!);
+              } catch (err) {
+                toast.error(err instanceof Error && err.message === 'quota_exceeded'
+                  ? 'Limite de armazenamento atingido'
+                  : 'Falha ao enviar imagem');
+                throw err;
+              }
+            } : undefined}
             threads={commentThreads}
             membros={membros}
             workspaceUsers={workspaceUsers}

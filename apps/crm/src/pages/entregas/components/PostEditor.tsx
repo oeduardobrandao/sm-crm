@@ -15,6 +15,8 @@ import {
 } from 'lucide-react';
 import { CalloutExtension } from './CalloutExtension';
 import { CommentHighlight } from './CommentHighlight';
+import { createInlineImageExtension } from './InlineImageExtension';
+import type { InlineImageUploadFn } from './InlineImageExtension';
 import PostCommentPopover from './PostCommentPopover';
 import type { CommentThreadWithComments, Membro } from '@/store';
 
@@ -57,6 +59,8 @@ interface PostEditorProps {
   onReopenThread?: (threadId: number) => Promise<void>;
   onEditComment?: (commentId: number, content: string) => Promise<void>;
   onDeleteComment?: (commentId: number, threadId: number) => Promise<void>;
+  postId?: number;
+  onUploadInlineImage?: InlineImageUploadFn;
 }
 
 export function PostEditor({
@@ -74,6 +78,8 @@ export function PostEditor({
   onReopenThread,
   onEditComment,
   onDeleteComment,
+  postId,
+  onUploadInlineImage,
 }: PostEditorProps) {
   const [linkPopoverOpen, setLinkPopoverOpen] = useState(false);
   const [linkInputValue, setLinkInputValue] = useState('');
@@ -108,6 +114,7 @@ export function PostEditor({
       Placeholder.configure({ placeholder: 'Escreva o conteúdo do post...' }),
       CalloutExtension,
       CommentHighlight,
+      ...(onUploadInlineImage ? [createInlineImageExtension(onUploadInlineImage)] : []),
     ],
     content: initialContent ?? undefined,
     editable: !disabled,
