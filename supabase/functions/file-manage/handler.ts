@@ -142,11 +142,14 @@ export function createFileManageHandler(deps: FileManageDeps) {
           has_children: hasChildrenFlags[f.id] ?? false,
         }));
 
-        const signedFiles = await Promise.all((files ?? []).map(async (f: any) => ({
-          ...f,
-          url: f.kind !== "document" ? await deps.signUrl(f.r2_key) : null,
-          thumbnail_url: f.thumbnail_r2_key ? await deps.signUrl(f.thumbnail_r2_key) : null,
-        })));
+        const signedFiles = await Promise.all((files ?? []).map(async (f: any) => {
+          const isDrive = !!f.google_drive_file_id;
+          return {
+            ...f,
+            url: isDrive ? f.google_drive_thumbnail_url : (f.kind !== "document" ? await deps.signUrl(f.r2_key) : null),
+            thumbnail_url: isDrive ? f.google_drive_thumbnail_url : (f.thumbnail_r2_key ? await deps.signUrl(f.thumbnail_r2_key) : null),
+          };
+        }));
 
         // Build breadcrumbs via RPC (replaces while-loop of individual selects)
         let breadcrumbs: { id: number; name: string }[] = [];
@@ -346,11 +349,61 @@ export function createFileManageHandler(deps: FileManageDeps) {
       if (req.method === "GET" && idStr) {
         if (subResource === "url") {
           const fileId = Number(idStr);
-          const { data: file } = await svc.from("files").select("conta_id, r2_key").eq("id", fileId).single();
+          const { data: file } = await svc.from("files").select("conta_id, r2_key, google_drive_file_id, google_drive_view_url, google_drive_thumbnail_url").eq("id", fileId).single();
           if (!file || file.conta_id !== contaId) return json({ error: "File not found" }, 404);
+          if (file.google_drive_file_id) {
+            return json({ url: file.google_drive_view_url ?? file.google_drive_thumbnail_url });
+          }
           const signedUrl = await deps.signUrl(file.r2_key);
           return json({ url: signedUrl });
         }
+      }
+
+      // POST /files/drive → create a file record from Google Drive metadata
+      if (req.method === "POST" && idStr === "drive") {
+        const body = await req.json().catch(() => ({}));
+        const { name, kind, mime_type, size_bytes, width, height, google_drive_file_id,
+          google_drive_thumbnail_url, google_drive_view_url, folder_id, post_id } = body as {
+          name: string; kind: string; mime_type: string; size_bytes: number;
+          width?: number; height?: number;
+          google_drive_file_id: string; google_drive_thumbnail_url: string;
+          google_drive_view_url: string; folder_id?: number; post_id?: number;
+        };
+
+        if (!name || !kind || !mime_type || !google_drive_file_id) {
+          return json({ error: "name, kind, mime_type, and google_drive_file_id required" }, 400);
+        }
+        if (!["image", "video", "document"].includes(kind)) {
+          return json({ error: "kind must be image, video, or document" }, 400);
+        }
+
+        const { data: created, error: insertErr } = await svc.from("files").insert({
+          conta_id: contaId,
+          folder_id: folder_id ?? null,
+          name,
+          kind,
+          mime_type,
+          size_bytes: size_bytes ?? 0,
+          width: width ?? null,
+          height: height ?? null,
+          google_drive_file_id,
+          google_drive_thumbnail_url,
+          google_drive_view_url,
+          uploaded_by: user.id,
+        }).select().single();
+
+        if (insertErr) return json({ error: insertErr.message }, 500);
+
+        if (post_id) {
+          const { data: post } = await svc.from("workflow_posts").select("conta_id").eq("id", post_id).single();
+          if (post && post.conta_id === contaId) {
+            await svc.from("post_file_links").insert({
+              post_id, file_id: created.id, conta_id: contaId,
+            });
+          }
+        }
+
+        return json(created, 201);
       }
 
       // POST /files/:id/copy → copy a file to a destination folder
@@ -515,12 +568,13 @@ export function createFileManageHandler(deps: FileManageDeps) {
 
         const withUrls = await Promise.all((links ?? []).map(async (l: any) => {
           const f = l.files;
+          const isDrive = !!f.google_drive_file_id;
           return {
             ...l,
             files: {
               ...f,
-              url: f.kind !== "document" ? await deps.signUrl(f.r2_key) : null,
-              thumbnail_url: f.thumbnail_r2_key ? await deps.signUrl(f.thumbnail_r2_key) : null,
+              url: isDrive ? f.google_drive_thumbnail_url : (f.kind !== "document" ? await deps.signUrl(f.r2_key) : null),
+              thumbnail_url: isDrive ? f.google_drive_thumbnail_url : (f.thumbnail_r2_key ? await deps.signUrl(f.thumbnail_r2_key) : null),
             },
           };
         }));
