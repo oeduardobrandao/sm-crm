@@ -344,8 +344,13 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
                 onClick={handleDriveFiles}
                 className="flex flex-col items-center justify-center gap-1 aspect-square rounded-xl border border-dashed border-stone-300 bg-stone-50 text-stone-500 hover:border-stone-400 hover:bg-stone-100 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-400 dark:hover:border-stone-500 dark:hover:bg-stone-700 cursor-pointer transition-colors"
               >
-                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M7.71 3.5L1.15 15l2.79 4.84L10.5 8.34zm1.74 0l6.56 11.34H2.84L9.45 3.5zm8.27 7.16L22.85 15l-2.79 4.84-5.13-8.84v-.34zm-.58 1l-2.79 4.84H7.42l2.79-4.84z"/>
+                <svg className="h-4 w-4" viewBox="0 0 87.3 78" fill="none">
+                  <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H1.2c0 1.55.4 3.1 1.2 4.5l4.2 9.35Z" fill="#0066DA"/>
+                  <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3L1.2 48.2c-.8 1.4-1.2 2.95-1.2 4.5h27.5L43.65 25Z" fill="#00AC47"/>
+                  <path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5H59.8l6.85 12.5 6.9 11.3Z" fill="#EA4335"/>
+                  <path d="M43.65 25 57.4 1.2C56.05.4 54.5 0 52.9 0H34.4c-1.6 0-3.15.45-4.5 1.2L43.65 25Z" fill="#00832D"/>
+                  <path d="m59.8 53H27.5L13.75 76.8c1.35.8 2.9 1.2 4.5 1.2h36.8c1.6 0 3.15-.45 4.5-1.2L59.8 53Z" fill="#2684FC"/>
+                  <path d="M73.4 26.5 60.1 3.3c-.8-1.4-1.95-2.5-3.3-3.3L43.65 25l16.15 28h27.5c0-1.55-.4-3.1-1.2-4.5l-12.7-22Z" fill="#FFBA00"/>
                 </svg>
                 <span className="text-[11px]">{t('mediaGallery.googleDrive')}</span>
               </button>
