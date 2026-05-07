@@ -27,6 +27,8 @@ const deadlineAccent: Record<string, string> = {
 interface WorkflowCardProps {
   card: BoardCard;
   onClick?: () => void;
+  /** Opens the edit modal for this workflow (pencil button) */
+  onEditClick?: () => void;
   /** Set to true when rendering inside DragOverlay — disables pointer events */
   isDragOverlay?: boolean;
   /** Optional drag handle element rendered at the top-right */
@@ -45,7 +47,7 @@ interface WorkflowCardProps {
   revisaoInternaCount?: number;
 }
 
-export function WorkflowCard({ card, onClick, isDragOverlay, dragHandle, membros, onRefresh, onRevertClick, onForwardClick, onPostsClick, postsCount, approvedPostsCount, revisaoInternaCount }: WorkflowCardProps) {
+export function WorkflowCard({ card, onClick, onEditClick, isDragOverlay, dragHandle, membros, onRefresh, onRevertClick, onForwardClick, onPostsClick, postsCount, approvedPostsCount, revisaoInternaCount }: WorkflowCardProps) {
   const navigate = useNavigate();
   const [assignDropdownOpen, setAssignDropdownOpen] = useState(false);
   const [localMembro, setLocalMembro] = useState<Membro | undefined | null>(undefined);
@@ -457,7 +459,7 @@ export function WorkflowCard({ card, onClick, isDragOverlay, dragHandle, membros
           className="btn-edit-workflow"
           title="Editar fluxo"
           style={{ padding: '0.35rem 0.55rem', borderRadius: '10px', flexShrink: 0 }}
-          onClick={e => { e.stopPropagation(); onClick?.(); }}
+          onClick={e => { e.stopPropagation(); onEditClick?.(); }}
         >
           <Edit2 className="h-3.5 w-3.5" />
         </button>
