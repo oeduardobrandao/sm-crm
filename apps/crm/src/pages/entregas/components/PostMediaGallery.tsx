@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import JSZip from 'jszip';
-import { Upload, Star, Trash2, AlertTriangle, Download, FolderOpen } from 'lucide-react';
+import { Upload, Star, Trash2, AlertTriangle, Download, FolderOpen, ExternalLink } from 'lucide-react';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
   type DragEndEvent,
@@ -13,8 +13,9 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import {
   listPostMedia, uploadPostMedia, deletePostMedia, setPostMediaCover,
-  reorderPostMedia, detectKind,
+  reorderPostMedia, detectKind, addDriveMedia,
 } from '../../../services/postMedia';
+import { openPicker } from '../../../services/googleDrive';
 import { useTranslation } from 'react-i18next';
 import type { PostMedia } from '../../../store';
 import { OptimizedImage } from '../../../components/OptimizedImage';
@@ -260,6 +261,18 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
     }
   }
 
+  async function handleDriveFiles() {
+    try {
+      const files = await openPicker();
+      if (files.length === 0) return;
+      await addDriveMedia(postId, files);
+      refresh();
+      toast.success(t('mediaGallery.driveLinked'));
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }
+
   if (mediaLoading) {
     return (
       <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
@@ -323,6 +336,18 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
               >
                 <FolderOpen className="h-4 w-4" />
                 <span className="text-[11px]">{t('mediaGallery.choose')}</span>
+              </button>
+            )}
+            {!disabled && !atLimit && (
+              <button
+                type="button"
+                onClick={handleDriveFiles}
+                className="flex flex-col items-center justify-center gap-1 aspect-square rounded-xl border border-dashed border-stone-300 bg-stone-50 text-stone-500 hover:border-stone-400 hover:bg-stone-100 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-400 dark:hover:border-stone-500 dark:hover:bg-stone-700 cursor-pointer transition-colors"
+              >
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M7.71 3.5L1.15 15l2.79 4.84L10.5 8.34zm1.74 0l6.56 11.34H2.84L9.45 3.5zm8.27 7.16L22.85 15l-2.79 4.84-5.13-8.84v-.34zm-.58 1l-2.79 4.84H7.42l2.79-4.84z"/>
+                </svg>
+                <span className="text-[11px]">{t('mediaGallery.googleDrive')}</span>
               </button>
             )}
           </div>
@@ -407,6 +432,7 @@ interface SortableMediaTileProps {
 }
 
 function SortableMediaTile({ media: m, disabled, onOpen, onSetCover, onDelete }: SortableMediaTileProps) {
+  const { t } = useTranslation('posts');
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: m.id, disabled });
   const style = {
@@ -424,14 +450,30 @@ function SortableMediaTile({ media: m, disabled, onOpen, onSetCover, onDelete }:
       className="relative aspect-square overflow-hidden rounded-xl bg-stone-100 ring-1 ring-stone-200/80 group cursor-grab active:cursor-grabbing touch-none"
     >
       {m.kind === 'image' ? (
-        <OptimizedImage
-          src={m.url ?? ''}
-          alt={m.original_filename}
-          width={m.width ?? undefined}
-          height={m.height ?? undefined}
-          blurDataURL={m.blur_data_url ?? undefined}
-          className="w-full h-full object-cover pointer-events-none"
-        />
+        m.google_drive_view_url ? (
+          <img
+            src={m.url ?? ''}
+            alt={m.original_filename}
+            className="w-full h-full object-cover pointer-events-none"
+            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+          />
+        ) : (
+          <OptimizedImage
+            src={m.url ?? ''}
+            alt={m.original_filename}
+            width={m.width ?? undefined}
+            height={m.height ?? undefined}
+            blurDataURL={m.blur_data_url ?? undefined}
+            className="w-full h-full object-cover pointer-events-none"
+          />
+        )
+      ) : m.kind === 'document' ? (
+        <div className="w-full h-full flex flex-col items-center justify-center bg-stone-100 dark:bg-stone-800 text-stone-500">
+          <svg className="h-6 w-6 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+          </svg>
+          <span className="text-[9px] truncate max-w-full px-1">{m.original_filename}</span>
+        </div>
       ) : (
         <video src={m.url ?? undefined} poster={m.thumbnail_url ?? undefined} muted className="w-full h-full object-cover pointer-events-none" />
       )}
@@ -445,6 +487,18 @@ function SortableMediaTile({ media: m, disabled, onOpen, onSetCover, onDelete }:
           className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
           onPointerDown={(e) => e.stopPropagation()}
         >
+          {m.google_drive_view_url && (
+            <a
+              href={m.google_drive_view_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              title={t('mediaGallery.openInDrive')}
+              className="flex items-center justify-center w-6 h-6 rounded-full bg-stone-900/85 text-white hover:bg-stone-900"
+            >
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          )}
           {!m.is_cover && (
             <button
               type="button"
