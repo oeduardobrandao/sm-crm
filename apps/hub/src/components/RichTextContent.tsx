@@ -6,6 +6,7 @@ import Color from '@tiptap/extension-color';
 import Highlight from '@tiptap/extension-highlight';
 import Link from '@tiptap/extension-link';
 import { CalloutReadonly } from './CalloutReadonly';
+import { InlineImageReadonly } from './InlineImageReadonly';
 
 interface RichTextContentProps {
   content: Record<string, unknown>;
@@ -22,6 +23,7 @@ export function RichTextContent({ content, className }: RichTextContentProps) {
       Highlight.configure({ multicolor: true }),
       Link.configure({ openOnClick: true, autolink: false }),
       CalloutReadonly,
+      InlineImageReadonly,
     ],
     content,
     editable: false,
