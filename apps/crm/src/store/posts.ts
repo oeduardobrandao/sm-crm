@@ -40,9 +40,9 @@ export interface PostMedia {
   id: number;
   post_id: number;
   conta_id: string;
-  r2_key: string;
+  r2_key: string | null;
   thumbnail_r2_key: string | null;
-  kind: 'image' | 'video';
+  kind: 'image' | 'video' | 'document';
   mime_type: string;
   size_bytes: number;
   original_filename: string;
@@ -54,9 +54,10 @@ export interface PostMedia {
   uploaded_by: string | null;
   created_at: string;
   blur_data_url?: string | null;
-  // Populated only on hydrated responses
   url?: string;
   thumbnail_url?: string | null;
+  google_drive_file_id?: string | null;
+  google_drive_view_url?: string | null;
 }
 
 export interface PostApproval {
