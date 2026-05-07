@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import JSZip from 'jszip';
-import { Upload, Star, Trash2, AlertTriangle, Download, FolderOpen, ExternalLink } from 'lucide-react';
+import { Upload, Star, Trash2, AlertTriangle, Download, FolderOpen, ExternalLink, ImageIcon } from 'lucide-react';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
   type DragEndEvent,
@@ -456,12 +456,7 @@ function SortableMediaTile({ media: m, disabled, onOpen, onSetCover, onDelete }:
     >
       {m.kind === 'image' ? (
         m.google_drive_view_url ? (
-          <img
-            src={m.url ?? ''}
-            alt={m.original_filename}
-            className="w-full h-full object-cover pointer-events-none"
-            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-          />
+          <DriveImage src={m.url ?? ''} alt={m.original_filename} filename={m.original_filename} />
         ) : (
           <OptimizedImage
             src={m.url ?? ''}
@@ -525,6 +520,27 @@ function SortableMediaTile({ media: m, disabled, onOpen, onSetCover, onDelete }:
         </div>
       )}
     </div>
+  );
+}
+
+function DriveImage({ src, alt, filename }: { src: string; alt: string; filename: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <div className="w-full h-full flex flex-col items-center justify-center bg-stone-100 dark:bg-stone-800 text-stone-400">
+        <ImageIcon className="h-5 w-5 mb-1" />
+        <span className="text-[9px] truncate max-w-full px-1">{filename}</span>
+      </div>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt={alt}
+      referrerPolicy="no-referrer"
+      className="w-full h-full object-cover pointer-events-none"
+      onError={() => setFailed(true)}
+    />
   );
 }
 

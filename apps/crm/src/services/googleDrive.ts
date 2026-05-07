@@ -96,8 +96,7 @@ export async function openPicker(): Promise<DriveFile[]> {
             name: doc.name,
             mimeType: doc.mimeType,
             sizeBytes: doc.sizeBytes ?? 0,
-            thumbnailUrl: doc.thumbnails?.[0]?.url
-              ?? `https://lh3.googleusercontent.com/d/${doc.id}=s400`,
+            thumbnailUrl: `https://drive.google.com/thumbnail?id=${doc.id}&sz=w400`,
             viewUrl: doc.url,
             width: doc.mediaMetadata?.width ?? null,
             height: doc.mediaMetadata?.height ?? null,
