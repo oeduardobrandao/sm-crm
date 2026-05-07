@@ -486,6 +486,7 @@ function SortableMediaTile({ media: m, disabled, onOpen, onSetCover, onDelete }:
         <div
           className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
           onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
         >
           {m.google_drive_view_url && (
             <a
