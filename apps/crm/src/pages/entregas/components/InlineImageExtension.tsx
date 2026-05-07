@@ -1,3 +1,4 @@
+import { useState, useRef, useCallback } from 'react';
 import { Node, mergeAttributes } from '@tiptap/core';
 import { ReactNodeViewRenderer, NodeViewWrapper } from '@tiptap/react';
 import type { NodeViewProps } from '@tiptap/react';
@@ -6,6 +7,7 @@ import { Loader2, ImageIcon } from 'lucide-react';
 
 const INLINE_IMAGE_MAX_SIZE = 10 * 1024 * 1024;
 const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const MIN_WIDTH = 80;
 
 export type InlineImageUploadFn = (file: File) => Promise<{
   r2Key: string;
@@ -14,8 +16,78 @@ export type InlineImageUploadFn = (file: File) => Promise<{
   height: number;
 }>;
 
-function InlineImageNodeView({ node }: NodeViewProps) {
-  const { src, blurSrc, loading, width, height } = node.attrs;
+function ResizeHandle({ onResize }: { onResize: (delta: number) => void }) {
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      onResize(moveEvent.clientX - startX);
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    document.body.style.cursor = 'ew-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  }, [onResize]);
+
+  return (
+    <div
+      onMouseDown={handleMouseDown}
+      style={{
+        position: 'absolute',
+        right: -4,
+        top: 0,
+        bottom: 0,
+        width: 8,
+        cursor: 'ew-resize',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <div style={{
+        width: 4,
+        height: 32,
+        borderRadius: 2,
+        background: 'var(--primary-color)',
+        opacity: 0.7,
+      }} />
+    </div>
+  );
+}
+
+function InlineImageNodeView({ node, updateAttributes, editor }: NodeViewProps) {
+  const { src, blurSrc, loading, width, height, displayWidth } = node.attrs;
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [liveWidth, setLiveWidth] = useState<number | null>(null);
+  const baseWidthRef = useRef<number>(0);
+  const [selected, setSelected] = useState(false);
+
+  const handleResize = useCallback((delta: number) => {
+    if (!wrapperRef.current) return;
+    if (baseWidthRef.current === 0) {
+      baseWidthRef.current = wrapperRef.current.querySelector('img')?.offsetWidth ?? wrapperRef.current.offsetWidth;
+    }
+    const newWidth = Math.max(MIN_WIDTH, baseWidthRef.current + delta);
+    setLiveWidth(newWidth);
+  }, []);
+
+  const commitResize = useCallback(() => {
+    if (liveWidth !== null) {
+      updateAttributes({ displayWidth: liveWidth });
+      baseWidthRef.current = 0;
+      setLiveWidth(null);
+    }
+  }, [liveWidth, updateAttributes]);
 
   if (loading) {
     return (
@@ -55,18 +127,41 @@ function InlineImageNodeView({ node }: NodeViewProps) {
     );
   }
 
+  const imgWidth = liveWidth ?? displayWidth ?? undefined;
+  const isEditable = editor?.isEditable ?? false;
+
   return (
     <NodeViewWrapper as="figure" className="inline-image-wrapper">
-      <img
-        src={src}
-        alt={node.attrs.alt ?? ''}
+      <div
+        ref={wrapperRef}
+        onClick={() => setSelected(true)}
+        onBlur={() => { setSelected(false); commitResize(); }}
+        tabIndex={-1}
         style={{
+          position: 'relative',
+          display: 'inline-block',
           maxWidth: '100%',
-          borderRadius: '8px',
-          display: 'block',
           margin: '0.5rem 0',
+          outline: selected && isEditable ? '2px solid var(--primary-color)' : 'none',
+          outlineOffset: 2,
+          borderRadius: '8px',
         }}
-      />
+      >
+        <img
+          src={src}
+          alt={node.attrs.alt ?? ''}
+          style={{
+            width: imgWidth ? `${imgWidth}px` : undefined,
+            maxWidth: '100%',
+            borderRadius: '8px',
+            display: 'block',
+          }}
+          draggable={false}
+        />
+        {selected && isEditable && (
+          <ResizeHandle onResize={handleResize} />
+        )}
+      </div>
     </NodeViewWrapper>
   );
 }
@@ -115,6 +210,7 @@ export function createInlineImageExtension(uploadFn: InlineImageUploadFn) {
         alt: { default: '' },
         width: { default: null },
         height: { default: null },
+        displayWidth: { default: null },
         loading: { default: false },
       };
     },

@@ -12,6 +12,7 @@ export const InlineImageReadonly = Node.create({
       alt: { default: '' },
       width: { default: null },
       height: { default: null },
+      displayWidth: { default: null },
       loading: { default: false },
       blurSrc: { default: null },
     };
@@ -22,6 +23,10 @@ export const InlineImageReadonly = Node.create({
   },
 
   renderHTML({ HTMLAttributes }) {
+    const dw = HTMLAttributes.displayWidth;
+    const imgStyle = dw
+      ? `width: ${dw}px; max-width: 100%; border-radius: 8px; display: block`
+      : 'max-width: 100%; border-radius: 8px; display: block';
     return [
       'figure',
       mergeAttributes({ 'data-inline-image': '', style: 'margin: 0.5rem 0' }),
@@ -30,7 +35,7 @@ export const InlineImageReadonly = Node.create({
         {
           src: HTMLAttributes.src,
           alt: HTMLAttributes.alt ?? '',
-          style: 'max-width: 100%; border-radius: 8px; display: block',
+          style: imgStyle,
         },
       ],
     ];
