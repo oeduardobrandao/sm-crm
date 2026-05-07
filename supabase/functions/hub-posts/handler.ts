@@ -1,5 +1,30 @@
 import { createJsonResponder } from "../_shared/http.ts";
 
+function extractR2Keys(content: any): string[] {
+  const keys: string[] = [];
+  function walk(node: any) {
+    if (node?.type === "inlineImage" && node.attrs?.r2Key) {
+      keys.push(node.attrs.r2Key);
+    }
+    if (Array.isArray(node?.content)) node.content.forEach(walk);
+  }
+  walk(content);
+  return keys;
+}
+
+function injectSignedUrls(content: any, urlMap: Record<string, string>): any {
+  function walk(node: any): any {
+    if (node?.type === "inlineImage" && node.attrs?.r2Key && urlMap[node.attrs.r2Key]) {
+      return { ...node, attrs: { ...node.attrs, src: urlMap[node.attrs.r2Key] } };
+    }
+    if (Array.isArray(node?.content)) {
+      return { ...node, content: node.content.map(walk) };
+    }
+    return node;
+  }
+  return walk(content);
+}
+
 type DbClient = {
   from: (table: string) => any;
 };
@@ -197,6 +222,25 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
       return { ...post, media: mediaForPost, cover_media };
     });
 
+    const allContentKeys: string[] = [];
+    for (const post of flatPostsWithMedia) {
+      if (post.conteudo) allContentKeys.push(...extractR2Keys(post.conteudo));
+    }
+
+    const contentUrlMap: Record<string, string> = {};
+    if (allContentKeys.length > 0) {
+      await Promise.all(
+        allContentKeys.map(async (key) => {
+          contentUrlMap[key] = await deps.signGetUrl(key, 3600);
+        })
+      );
+    }
+
+    const postsWithResolvedContent = flatPostsWithMedia.map((post: any) => {
+      if (!post.conteudo || extractR2Keys(post.conteudo).length === 0) return post;
+      return { ...post, conteudo: injectSignedUrls(post.conteudo, contentUrlMap) };
+    });
+
     const { data: igAccount } = await db
       .from("instagram_accounts")
       .select("username, profile_picture_url")
@@ -210,7 +254,7 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
       .single();
 
     return json({
-      posts: flatPostsWithMedia,
+      posts: postsWithResolvedContent,
       postApprovals: postApprovals ?? [],
       propertyValues: propertyValues ?? [],
       workflowSelectOptions: workflowSelectOptions ?? [],

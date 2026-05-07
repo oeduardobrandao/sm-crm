@@ -26,6 +26,7 @@ import { PropertyPanel } from './PropertyPanel';
 import PostCommentSummary from './PostCommentSummary';
 import { useAuth } from '@/context/AuthContext';
 import { PostMediaGallery, hasVideoMissingThumbnail } from './PostMediaGallery';
+import { uploadInlineImage, extractR2Keys, injectSignedUrls, resolveInlineImageUrls } from '@/services/inlineImage';
 import { listPostMedia } from '../../../services/postMedia';
 import { InstagramCaptionField } from './InstagramCaptionField';
 import { ScheduleButton } from './ScheduleButton';
@@ -617,6 +618,21 @@ function SortablePostItem({
     return () => clearTimeout(t);
   }, [tituloLocal]);
 
+  const [resolvedContent, setResolvedContent] = useState<Record<string, unknown> | null>(post.conteudo);
+
+  useEffect(() => {
+    if (!post.conteudo) { setResolvedContent(null); return; }
+    const keys = extractR2Keys(post.conteudo);
+    if (keys.length === 0) { setResolvedContent(post.conteudo); return; }
+    let cancelled = false;
+    resolveInlineImageUrls(keys).then((urlMap) => {
+      if (!cancelled) setResolvedContent(injectSignedUrls(post.conteudo!, urlMap));
+    }).catch(() => {
+      if (!cancelled) setResolvedContent(post.conteudo);
+    });
+    return () => { cancelled = true; };
+  }, [post.conteudo]);
+
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -761,8 +777,18 @@ function SortablePostItem({
 
           <PostEditor
             key={post.id}
-            initialContent={post.conteudo}
+            initialContent={resolvedContent}
             onUpdate={onContentUpdate}
+            onUploadInlineImage={post.id ? async (file) => {
+              try {
+                return await uploadInlineImage(file);
+              } catch (err) {
+                toast.error(err instanceof Error && err.message === 'quota_exceeded'
+                  ? 'Limite de armazenamento atingido'
+                  : 'Falha ao enviar imagem');
+                throw err;
+              }
+            } : undefined}
             threads={commentThreads}
             membros={membros}
             workspaceUsers={workspaceUsers}
