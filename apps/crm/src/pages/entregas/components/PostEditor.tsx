@@ -59,7 +59,6 @@ interface PostEditorProps {
   onReopenThread?: (threadId: number) => Promise<void>;
   onEditComment?: (commentId: number, content: string) => Promise<void>;
   onDeleteComment?: (commentId: number, threadId: number) => Promise<void>;
-  postId?: number;
   onUploadInlineImage?: InlineImageUploadFn;
 }
 
@@ -78,7 +77,6 @@ export function PostEditor({
   onReopenThread,
   onEditComment,
   onDeleteComment,
-  postId,
   onUploadInlineImage,
 }: PostEditorProps) {
   const [linkPopoverOpen, setLinkPopoverOpen] = useState(false);

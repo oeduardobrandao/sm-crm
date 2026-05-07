@@ -52,7 +52,6 @@ export interface InlineImageResult {
 
 export async function uploadInlineImage(
   file: File,
-  postId: number,
 ): Promise<InlineImageResult> {
   validateInlineImage(file);
 
@@ -82,7 +81,6 @@ export async function uploadInlineImage(
     mime_type: file.type,
     size_bytes: file.size,
     name: file.name || 'pasted-image.png',
-    post_id: postId,
     width,
     height,
   });

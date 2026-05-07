@@ -779,10 +779,9 @@ function SortablePostItem({
             key={post.id}
             initialContent={resolvedContent}
             onUpdate={onContentUpdate}
-            postId={post.id}
             onUploadInlineImage={post.id ? async (file) => {
               try {
-                return await uploadInlineImage(file, post.id!);
+                return await uploadInlineImage(file);
               } catch (err) {
                 toast.error(err instanceof Error && err.message === 'quota_exceeded'
                   ? 'Limite de armazenamento atingido'

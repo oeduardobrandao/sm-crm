@@ -16,7 +16,7 @@ export type InlineImageUploadFn = (file: File) => Promise<{
   height: number;
 }>;
 
-function ResizeHandle({ onResize }: { onResize: (delta: number) => void }) {
+function ResizeHandle({ onResize, onResizeEnd }: { onResize: (delta: number) => void; onResizeEnd: () => void }) {
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -31,13 +31,14 @@ function ResizeHandle({ onResize }: { onResize: (delta: number) => void }) {
       document.removeEventListener('mouseup', handleMouseUp);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
+      onResizeEnd();
     };
 
     document.body.style.cursor = 'ew-resize';
     document.body.style.userSelect = 'none';
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-  }, [onResize]);
+  }, [onResize, onResizeEnd]);
 
   return (
     <div
@@ -65,12 +66,12 @@ function ResizeHandle({ onResize }: { onResize: (delta: number) => void }) {
   );
 }
 
-function InlineImageNodeView({ node, updateAttributes, editor }: NodeViewProps) {
+function InlineImageNodeView({ node, updateAttributes, editor, selected }: NodeViewProps) {
   const { src, blurSrc, loading, width, height, displayWidth } = node.attrs;
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [liveWidth, setLiveWidth] = useState<number | null>(null);
   const baseWidthRef = useRef<number>(0);
-  const [selected, setSelected] = useState(false);
+  const liveWidthRef = useRef<number | null>(null);
 
   const handleResize = useCallback((delta: number) => {
     if (!wrapperRef.current) return;
@@ -78,16 +79,19 @@ function InlineImageNodeView({ node, updateAttributes, editor }: NodeViewProps) 
       baseWidthRef.current = wrapperRef.current.querySelector('img')?.offsetWidth ?? wrapperRef.current.offsetWidth;
     }
     const newWidth = Math.max(MIN_WIDTH, baseWidthRef.current + delta);
+    liveWidthRef.current = newWidth;
     setLiveWidth(newWidth);
   }, []);
 
   const commitResize = useCallback(() => {
-    if (liveWidth !== null) {
-      updateAttributes({ displayWidth: liveWidth });
+    const w = liveWidthRef.current;
+    if (w !== null) {
+      updateAttributes({ displayWidth: w });
       baseWidthRef.current = 0;
+      liveWidthRef.current = null;
       setLiveWidth(null);
     }
-  }, [liveWidth, updateAttributes]);
+  }, [updateAttributes]);
 
   if (loading) {
     return (
@@ -134,9 +138,6 @@ function InlineImageNodeView({ node, updateAttributes, editor }: NodeViewProps) 
     <NodeViewWrapper as="figure" className="inline-image-wrapper">
       <div
         ref={wrapperRef}
-        onClick={() => setSelected(true)}
-        onBlur={() => { setSelected(false); commitResize(); }}
-        tabIndex={-1}
         style={{
           position: 'relative',
           display: 'inline-block',
@@ -159,7 +160,7 @@ function InlineImageNodeView({ node, updateAttributes, editor }: NodeViewProps) 
           draggable={false}
         />
         {selected && isEditable && (
-          <ResizeHandle onResize={handleResize} />
+          <ResizeHandle onResize={handleResize} onResizeEnd={commitResize} />
         )}
       </div>
     </NodeViewWrapper>
