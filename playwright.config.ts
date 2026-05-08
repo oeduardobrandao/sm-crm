@@ -1,9 +1,10 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
 import { defineConfig, devices } from '@playwright/test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.join(__dirname, '.env.e2e.local') });
 
 const CRM_BASE_URL = process.env.CRM_BASE_URL || 'http://localhost:5173';
 const HUB_BASE_URL = process.env.HUB_BASE_URL || 'http://localhost:5175';
@@ -58,7 +59,7 @@ export default defineConfig({
     ...(!process.env.CRM_BASE_URL
       ? [
           {
-            command: 'npm run dev',
+            command: process.env.CRM_DEV_COMMAND || 'npm run dev',
             url: 'http://localhost:5173',
             reuseExistingServer: !process.env.CI,
           },
