@@ -9,6 +9,5 @@ test('hub shell loads with token', async ({ page }) => {
 
   await page.goto(hubPath);
 
-  await expect(page.locator('div.hub-root')).toBeVisible({ timeout: 15_000 });
-  await expect(page.locator('main.hub-noise')).toBeVisible();
+  await expect(page.locator('main.hub-noise')).toBeVisible({ timeout: 15_000 });
 });

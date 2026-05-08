@@ -13,11 +13,13 @@ setup('authenticate crm user', async ({ page }) => {
 
   await page.goto('/login');
 
-  await page.locator('#login-email').fill(process.env.E2E_CRM_EMAIL!);
-  await page.locator('#login-password').fill(process.env.E2E_CRM_PASSWORD!);
-  await page.locator('button.auth-submit').click();
+  const loginForm = page.locator('form.auth-form');
+  await loginForm.locator('#login-email').fill(process.env.E2E_CRM_EMAIL!);
+  await loginForm.locator('#login-password').fill(process.env.E2E_CRM_PASSWORD!);
+  await loginForm.locator('button[type="submit"]').click();
 
-  await page.waitForURL('/dashboard', { timeout: 15_000 });
+  await page.waitForURL(/\/dashboard/, { timeout: 15_000 });
+  await expect(page).not.toHaveURL(/workspace-setup/);
   await expect(page.locator('nav#sidebar')).toBeVisible();
 
   await page.context().storageState({ path: authFile });
