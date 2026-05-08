@@ -68,7 +68,7 @@ export default defineConfig({
     ...(!process.env.HUB_BASE_URL
       ? [
           {
-            command: 'npx vite --config apps/hub/vite.config.ts --port 5175 --strictPort',
+            command: process.env.HUB_DEV_COMMAND || 'npx vite --config apps/hub/vite.config.ts --port 5175 --strictPort',
             url: 'http://localhost:5175',
             reuseExistingServer: !process.env.CI,
           },
