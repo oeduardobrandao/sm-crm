@@ -1,6 +1,23 @@
--- Fix: profiles.role is type user_role (enum), not text.
--- Add ::user_role casts that were missing from 20260421000001.
+-- Backfill: workspaces created after the hub_columns migration have slug = NULL
+-- because handle_new_user_workspace inserted into workspaces without the slug column.
+-- The trigger is now fixed; this backfills existing rows.
 
+-- 1. Copy slug from contas where available.
+UPDATE workspaces w
+  SET slug = c.slug
+  FROM contas c
+  WHERE c.id = w.id
+    AND w.slug IS NULL
+    AND c.slug IS NOT NULL;
+
+-- 2. Generate a slug for any remaining workspaces still missing one.
+UPDATE workspaces
+  SET slug = trim(both '-' from regexp_replace(lower(name), '[^a-z0-9]+', '-', 'g'))
+             || '-' || substr(replace(id::text, '-', ''), 1, 8)
+  WHERE slug IS NULL;
+
+-- 3. Re-create the trigger function with the slug fix so Supabase applies
+--    the corrected version even if the original migration file isn't re-run.
 CREATE OR REPLACE FUNCTION public.handle_new_user_workspace()
 RETURNS trigger
 LANGUAGE plpgsql
