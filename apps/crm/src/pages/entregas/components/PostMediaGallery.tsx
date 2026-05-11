@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import JSZip from 'jszip';
 import { Upload, Star, Trash2, AlertTriangle, Download, FolderOpen } from 'lucide-react';
+import { UploadHint } from '@/components/help/UploadHint';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
   type DragEndEvent,
@@ -341,6 +342,13 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
         </button>
       )}
 
+      {!disabled && !atLimit && (
+        <UploadHint
+          icon="🎬"
+          text="Vídeos precisam de uma imagem de thumbnail. Você poderá selecioná-la logo após o upload."
+        />
+      )}
+
       {uploadQueue.size > 0 && (
         <div className="space-y-1.5">
           {[...uploadQueue.entries()].map(([uid, item]) => (
@@ -363,20 +371,25 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
       )}
 
       {pendingVideo && (
-        <div className="flex flex-wrap items-center gap-2 rounded-xl bg-amber-50 ring-1 ring-amber-200/60 px-3 py-2 text-[12.5px] text-amber-900">
-          <AlertTriangle className="h-4 w-4 shrink-0" />
-          <span>{t('mediaGallery.selectThumbnail')} <strong>{pendingVideo.name}</strong></span>
-          <label className="ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-stone-900 text-white text-[11px] font-semibold cursor-pointer hover:bg-stone-700">
-            {t('mediaGallery.chooseThumbnail')}
-            <input type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) handleVideoThumbnail(f); }} />
-          </label>
-          <button
-            type="button"
-            onClick={() => setPendingVideo(null)}
-            className="text-[11px] text-stone-500 hover:text-stone-700"
-          >
-            {tc('actions.cancel')}
-          </button>
+        <div className="flex flex-col gap-2 rounded-xl bg-amber-50 ring-1 ring-amber-200/60 px-3 py-2.5 text-amber-900">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+            <span className="text-[12.5px] font-semibold">Thumbnail necessária</span>
+          </div>
+          <span className="text-[12px] text-stone-600">Selecione uma imagem de capa para <strong>{pendingVideo.name}</strong></span>
+          <div className="flex items-center gap-3">
+            <label className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-stone-900 text-white text-[11px] font-semibold cursor-pointer hover:bg-stone-700">
+              {t('mediaGallery.chooseThumbnail')}
+              <input type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) handleVideoThumbnail(f); }} />
+            </label>
+            <button
+              type="button"
+              onClick={() => setPendingVideo(null)}
+              className="text-[11px] text-stone-500 hover:text-stone-700"
+            >
+              {tc('actions.cancel')}
+            </button>
+          </div>
         </div>
       )}
 

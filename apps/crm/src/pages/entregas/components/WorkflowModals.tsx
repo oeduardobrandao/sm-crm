@@ -12,6 +12,9 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Spinner } from '@/components/ui/spinner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { EmptyStateGuide } from '@/components/help/EmptyStateGuide';
+import { PrerequisiteAlert } from '@/components/help/PrerequisiteAlert';
+import { HelpTooltip } from '@/components/help/HelpTooltip';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import {
   getDeadlineInfo,
@@ -111,22 +114,36 @@ function SortableEtapaRow(props: {
             onChange={e => onChange('prazo', Number(e.target.value))}
             placeholder="Prazo (dias)"
           />
-          <Select value={tipoPrazo} onValueChange={val => onChange('tipoPrazo', val)}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="corridos">Corridos</SelectItem>
-              <SelectItem value="uteis">Úteis</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-1">
+            <Select value={tipoPrazo} onValueChange={val => onChange('tipoPrazo', val)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="corridos">Corridos</SelectItem>
+                <SelectItem value="uteis">Úteis</SelectItem>
+              </SelectContent>
+            </Select>
+            <HelpTooltip content="Corridos = todos os dias do calendário, incluindo fins de semana. Úteis = apenas dias úteis (exceto sábados e domingos)." />
+          </div>
         </div>
       )}
-      <Select value={responsavelId != null ? String(responsavelId) : '__none__'} onValueChange={val => onChange('responsavelId', val === '__none__' ? null : Number(val))}>
-        <SelectTrigger><SelectValue placeholder="Sem responsável" /></SelectTrigger>
-        <SelectContent>
-          <SelectItem value="__none__">Sem responsável</SelectItem>
-          {[...membros].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')).map(m => <SelectItem key={m.id} value={String(m.id)}>{m.nome}</SelectItem>)}
-        </SelectContent>
-      </Select>
+      {membros.length === 0 ? (
+        <EmptyStateGuide
+          icon="👤"
+          title="Nenhum membro cadastrado"
+          description="Para atribuir responsáveis às etapas, adicione membros na página"
+          actionLabel="Equipe"
+          actionHref="/equipe"
+          hint="💡 Membros são pessoas da equipe (designers, redatores, etc). Para dar acesso ao CRM, vincule o membro a um usuário do workspace."
+        />
+      ) : (
+        <Select value={responsavelId != null ? String(responsavelId) : '__none__'} onValueChange={val => onChange('responsavelId', val === '__none__' ? null : Number(val))}>
+          <SelectTrigger><SelectValue placeholder="Sem responsável" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__none__">Sem responsável</SelectItem>
+            {[...membros].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')).map(m => <SelectItem key={m.id} value={String(m.id)}>{m.nome}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      )}
       <div className="flex items-center gap-2">
         <Checkbox
           id={`aprovacao-${id}`}
@@ -350,6 +367,14 @@ export function NewWorkflowModal({
       <DialogContent style={{ maxWidth: 700, width: 'calc(100vw - 2rem)' }} onConfirmClose={() => { setEtapas([defaultEtapa()]); onClose(); }}>
         <DialogHeader><DialogTitle>Novo Fluxo de Entrega</DialogTitle></DialogHeader>
         <div className="space-y-3">
+          {membros.length === 0 && (
+            <PrerequisiteAlert
+              title="Dica: adicione membros à equipe primeiro"
+              description="Sem membros cadastrados, as etapas ficarão sem responsável."
+              actionLabel="Ir para Equipe →"
+              actionHref="/equipe"
+            />
+          )}
           <div className="space-y-1"><Label>Título *</Label><Input placeholder="Ex: Posts Instagram — Março 2026" value={fTitulo} onChange={e => setFTitulo(e.target.value)} /></div>
           <div className="space-y-1">
             <Label>Cliente *</Label>

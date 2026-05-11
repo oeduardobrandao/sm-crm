@@ -1,5 +1,6 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { toastSuccessMock, toastErrorMock } = vi.hoisted(() => ({
@@ -275,14 +276,14 @@ describe('WorkflowModals', () => {
 
   it('validates required fields before trying to create a workflow', async () => {
     render(
-      <NewWorkflowModal
+      <MemoryRouter><NewWorkflowModal
         open={true}
         onClose={vi.fn()}
         clientes={[{ id: 1, nome: 'Aurora', status: 'ativo' } as any]}
         membros={[]}
         templates={[]}
         onCreated={vi.fn()}
-      />,
+      /></MemoryRouter>,
     );
 
     fireEvent.click(screen.getByRole('button', { name: /Criar Fluxo/i }));
@@ -301,7 +302,7 @@ describe('WorkflowModals', () => {
     mockedAddWorkflowEtapa.mockResolvedValue({} as never);
 
     render(
-      <NewWorkflowModal
+      <MemoryRouter><NewWorkflowModal
         open={true}
         onClose={onClose}
         onCreated={onCreated}
@@ -320,7 +321,7 @@ describe('WorkflowModals', () => {
             ],
           },
         ] as any}
-      />,
+      /></MemoryRouter>,
     );
 
     fireEvent.change(screen.getByPlaceholderText('Ex: Posts Instagram — Março 2026'), {
@@ -364,7 +365,7 @@ describe('WorkflowModals', () => {
 
   it('shows error when etapas are missing a responsible', async () => {
     render(
-      <NewWorkflowModal
+      <MemoryRouter><NewWorkflowModal
         open={true}
         onClose={vi.fn()}
         onCreated={vi.fn()}
@@ -380,7 +381,7 @@ describe('WorkflowModals', () => {
             ],
           },
         ] as any}
-      />,
+      /></MemoryRouter>,
     );
 
     fireEvent.change(screen.getByPlaceholderText('Ex: Posts Instagram — Março 2026'), {
@@ -402,14 +403,14 @@ describe('WorkflowModals', () => {
     mockedAddWorkflowEtapa.mockRejectedValue(new Error('Falha ao criar etapa'));
 
     render(
-      <NewWorkflowModal
+      <MemoryRouter><NewWorkflowModal
         open={true}
         onClose={vi.fn()}
         onCreated={vi.fn()}
         clientes={[{ id: 1, nome: 'Aurora', status: 'ativo' } as any]}
         membros={[{ id: 5, nome: 'João' } as any]}
         templates={[]}
-      />,
+      /></MemoryRouter>,
     );
 
     fireEvent.change(screen.getByPlaceholderText('Ex: Posts Instagram — Março 2026'), {

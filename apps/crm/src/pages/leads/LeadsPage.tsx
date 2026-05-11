@@ -26,7 +26,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import {
   getLeads, addLead, updateLead, removeLead, addCliente, getInitials,
   type Lead,
@@ -602,6 +602,9 @@ export default function LeadsPage() {
           <DialogHeader>
             <DialogTitle>{t('convertDialog.title')}</DialogTitle>
           </DialogHeader>
+          <p className="text-xs text-muted-foreground mb-1">
+            Os dados do lead foram preenchidos automaticamente. Revise e complete os campos abaixo.
+          </p>
           <Form {...convertForm}>
             <form onSubmit={convertForm.handleSubmit(onConvertSubmit)} className="space-y-3">
               <FormField
@@ -620,7 +623,7 @@ export default function LeadsPage() {
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('form.email')}</FormLabel>
+                    <FormLabel>{t('form.email')} (opcional)</FormLabel>
                     <FormControl><Input type="email" {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
