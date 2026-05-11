@@ -43,3 +43,8 @@ download_assets.*
 /main.ts
 .worktrees/
 markdowns/cybersecurity_analysis.md
+
+# Playwright E2E
+e2e/.auth/
+test-results/
+playwright-report/
