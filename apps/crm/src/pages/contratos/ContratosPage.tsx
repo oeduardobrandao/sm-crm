@@ -279,7 +279,7 @@ export default function ContratosPage() {
               )} />
               <FormField control={form.control} name="clienteId" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Cliente</FormLabel>
+                  <FormLabel>Cliente (opcional)</FormLabel>
                   <Select
                     value={field.value || '__none__'}
                     onValueChange={(v) => field.onChange(v === '__none__' ? '' : v)}

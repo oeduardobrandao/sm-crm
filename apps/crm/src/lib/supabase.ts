@@ -150,6 +150,40 @@ async function populateWorkspaceSwitcher(activeWorkspaceId: string | null) {
   }
 }
 
+const INVITE_HEAL_KEY = 'mesaas_invite_heal';
+
+export async function healPendingInvite() {
+  if (sessionStorage.getItem(INVITE_HEAL_KEY)) return;
+  sessionStorage.setItem(INVITE_HEAL_KEY, '1');
+
+  try {
+    const user = await getCurrentUser();
+    if (!user?.email) return;
+    const profile = await getCurrentProfile();
+    if (!profile?.conta_id) return;
+
+    const { data: membership } = await supabase
+      .from('workspace_members')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('workspace_id', profile.conta_id)
+      .maybeSingle();
+
+    if (membership) return;
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+
+    await fetch(`${SUPABASE_URL}/functions/v1/manage-workspace-user`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      body: JSON.stringify({ action: 'accept-invite', email: user.email.toLowerCase() }),
+    });
+
+    cachedProfile = null;
+  } catch { /* best-effort */ }
+}
+
 export async function signIn(email: string, password: string) {
   cachedProfile = null; // clear cache on new login
   return supabase.auth.signInWithPassword({ email, password });

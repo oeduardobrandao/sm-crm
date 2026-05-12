@@ -8,6 +8,8 @@ import { toast } from 'sonner';
 import { Plus, Edit2, Trash2, Upload, Info, HelpCircle, Search } from 'lucide-react';
 import { openCSVSelector } from '../../lib/csv';
 import { Button } from '@/components/ui/button';
+import { HelpTooltip } from '@/components/help/HelpTooltip';
+import { RoleRestrictionNotice } from '@/components/help/RoleRestrictionNotice';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
@@ -22,7 +24,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { ChevronDown } from 'lucide-react';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import {
   getMembros, addMembro, updateMembro, removeMembro,
   getWorkspaceUsers, setMembroCrmUser,
@@ -186,15 +188,19 @@ export default function EquipePage() {
       <div className="header">
         <div className="header-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <h1>Equipe</h1>
-          <span data-tooltip="Gerencie os membros da equipe e seus custos." data-tooltip-dir="right" style={{ display: 'flex' }}>
-            <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
-          </span>
+          <HelpTooltip content={<div className="space-y-2"><p><strong>Membros</strong> = pessoas da equipe (designers, redatores, etc). Servem para custos e atribuição de tarefas em fluxos.</p><p><strong>Usuários do workspace</strong> = contas com acesso ao CRM. Gerencie em Configurações → Workspace.</p><p>Para que um membro acesse o CRM, vincule-o a um usuário do workspace no formulário de edição.</p></div>}>
+            <span style={{ display: 'flex' }}>
+              <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
+            </span>
+          </HelpTooltip>
         </div>
         <div className="header-actions">
           {!isAgent && (
-            <span data-tooltip="Colunas: nome*, cargo*, tipo (clt|freelancer_mensal|freelancer_demanda), custo_mensal, data_pagamento" data-tooltip-dir="bottom" style={{ display: 'flex' }}>
-              <HelpCircle className="h-4 w-4" style={{ color: 'var(--text-muted)', cursor: 'pointer' }} />
-            </span>
+            <HelpTooltip content="Colunas CSV: nome*, cargo*, tipo (clt|freelancer_mensal|freelancer_demanda), custo_mensal, data_pagamento">
+              <span style={{ display: 'flex' }}>
+                <HelpCircle className="h-4 w-4" style={{ color: 'var(--text-muted)', cursor: 'pointer' }} />
+              </span>
+            </HelpTooltip>
           )}
           {!isAgent && (
             <Button variant="outline" onClick={handleCSVImport}><Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Importar CSV</Button>
@@ -204,6 +210,15 @@ export default function EquipePage() {
           )}
         </div>
       </div>
+
+      {isAgent && (
+        <div style={{ marginBottom: '1rem' }}>
+          <RoleRestrictionNotice
+            title="Visualização limitada"
+            description="Apenas administradores e proprietários podem adicionar, editar ou remover membros da equipe."
+          />
+        </div>
+      )}
 
       <div className="kpi-grid" style={{ marginBottom: '1.5rem' }}>
         <div className="kpi-card">
@@ -359,6 +374,9 @@ export default function EquipePage() {
                           ))}
                         </SelectContent>
                       </Select>
+                      <FormDescription>
+                        Vincular um membro a um usuário do workspace permite que ele acesse o CRM e veja suas atribuições.
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}

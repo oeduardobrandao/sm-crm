@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { Plus, Edit2, Trash2, Check, Upload, Info, HelpCircle, Search, SlidersHorizontal, MoreVertical } from 'lucide-react';
 import { openCSVSelector } from '../../lib/csv';
 import { Button } from '@/components/ui/button';
+import { HelpTooltip } from '@/components/help/HelpTooltip';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
@@ -215,9 +216,11 @@ export default function FinanceiroPage() {
           </span>
         </div>
         <div className="header-actions">
-          <span data-tooltip="Colunas: descricao*, valor*, data* (AAAA-MM-DD), tipo (entrada|saida), categoria, detalhe" data-tooltip-dir="bottom" style={{ display: 'flex' }}>
-            <HelpCircle className="h-4 w-4" style={{ color: 'var(--text-muted)', cursor: 'pointer' }} />
-          </span>
+          <HelpTooltip content={<div className="space-y-1.5"><p><strong>Colunas CSV:</strong> descricao*, valor*, data* (AAAA-MM-DD), tipo (entrada|saida), categoria, detalhe</p><p><strong>Categorias válidas:</strong> Mensalidade, Produção, Tráfego, Salário, Imposto, Ferramenta, Outro</p></div>}>
+            <span style={{ display: 'flex' }}>
+              <HelpCircle className="h-4 w-4" style={{ color: 'var(--text-muted)', cursor: 'pointer' }} />
+            </span>
+          </HelpTooltip>
           <Button variant="outline" size="icon" onClick={handleCSVImport} className="header-actions-icon-only">
             <Upload className="h-4 w-4" />
           </Button>

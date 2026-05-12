@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Spinner } from '@/components/ui/spinner';
+import { EmptyStateGuide } from '@/components/help/EmptyStateGuide';
 import {
   getDashboardStats,
   getLeads,
@@ -217,9 +218,13 @@ export default function DashboardPage() {
               {t('date.todayFormat', { weekday: tc(`weekdays.${now.getDay()}`), day: todayDay, month: tc(`months.${todayMonth}`) })}
             </p>
             {todayEventCount === 0 ? (
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center', padding: '0.5rem 0' }}>
-                {t('empty.noEventsToday')}
-              </p>
+              <EmptyStateGuide
+                icon="📅"
+                title={t('empty.noEventsToday')}
+                description="Eventos aparecem quando você define datas de pagamento em clientes e membros, ou cria fluxos com prazos."
+                actionLabel="Clientes"
+                actionHref="/clientes"
+              />
             ) : (
               <div className="dashboard-hub-list">
                 {todayIncomes.map(c => (

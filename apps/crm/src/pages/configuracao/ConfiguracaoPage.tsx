@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Plus, LogOut, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { RoleRestrictionNotice } from '@/components/help/RoleRestrictionNotice';
 import { Input } from '@/components/ui/input';
 import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
@@ -346,7 +347,8 @@ export default function ConfiguracaoPage() {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
         body: JSON.stringify({ email: invite.email, role: invite.role }),
       });
-      if (!res.ok) throw new Error(`Erro ${res.status}`);
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || `Erro ${res.status}`);
       refetchInvites();
       toast.success('Convite reenviado!');
     } catch (err: unknown) {
@@ -395,6 +397,16 @@ export default function ConfiguracaoPage() {
           <Button onClick={handlePasswordSave} disabled={pwLoading}>{pwLoading && <Spinner size="sm" />} Atualizar Senha</Button>
         </div>
       </div>
+
+      {/* Role restriction notice for agents */}
+      {!isOwnerOrAdmin && (
+        <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
+          <RoleRestrictionNotice
+            title="Configurações do workspace"
+            description="As configurações de workspace, sincronização do Instagram e gerenciamento de membros estão disponíveis apenas para proprietários e administradores."
+          />
+        </div>
+      )}
 
       {/* Workspace Branding */}
       {isOwnerOrAdmin && workspace && (
@@ -495,7 +507,7 @@ export default function ConfiguracaoPage() {
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
-                    {inv.status === 'expired' && (
+                    {(inv.status === 'expired' || inv.status === 'pending') && (
                       <Button size="sm" variant="outline" onClick={() => handleResendInvite(inv)}>Reenviar</Button>
                     )}
                     <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setCancelInviteId(inv.id)}>Cancelar</Button>

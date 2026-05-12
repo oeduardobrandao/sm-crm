@@ -5,6 +5,8 @@ import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { Send, AlertCircle, Image, Film, Images } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { PrerequisiteAlert } from '@/components/help/PrerequisiteAlert';
+import { EmptyStateGuide } from '@/components/help/EmptyStateGuide';
 import {
   AlertDialog, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -274,12 +276,26 @@ export default function ExpressPostPage() {
         </p>
       </div>
 
+      {eligibleClients.length === 0 && (
+        <div className="mb-4">
+          <PrerequisiteAlert
+            title="Nenhum cliente com Instagram configurado"
+            description="Para usar o Post Express, conecte uma conta Instagram em pelo menos um cliente."
+            actionLabel="Ir para Clientes →"
+            actionHref="/clientes"
+          />
+        </div>
+      )}
+
       {/* Warning banner */}
       {warningMessage && selectedClientId && (
         <div className="flex items-center gap-2 rounded-lg px-4 py-3 text-xs mb-4"
           style={{ color: '#f55a42', background: 'rgba(245, 90, 66, 0.08)' }}>
           <AlertCircle className="h-4 w-4 flex-shrink-0" />
-          {warningMessage}
+          <span>{warningMessage}</span>
+          <a href={`/clientes/${selectedClientId}`} className="ml-auto underline font-medium whitespace-nowrap" style={{ color: '#f55a42' }}>
+            Reconectar →
+          </a>
         </div>
       )}
 
@@ -307,10 +323,15 @@ export default function ExpressPostPage() {
               ))}
             </select>
             {eligibleClients.length === 0 && (
-              <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
-                {t('empty.noClientsWithIg')}{' '}
-                <a href="/clientes" style={{ color: '#eab308' }}>{t('empty.connectAccount')}</a>
-              </p>
+              <div className="mt-2">
+                <EmptyStateGuide
+                  icon="📸"
+                  title={t('empty.noClientsWithIg')}
+                  description="Conecte uma conta Instagram em um cliente para começar a publicar."
+                  actionLabel={t('empty.connectAccount')}
+                  actionHref="/clientes"
+                />
+              </div>
             )}
             {igAccount && (
               <div className="flex items-center gap-2 mt-2">

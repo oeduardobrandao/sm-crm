@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ArrowLeft, Edit2, MapPin, Plus, Pencil, Trash2, Building2, Home, Loader2, Cake, CalendarDays, FolderOpen, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { RoleRestrictionNotice } from '@/components/help/RoleRestrictionNotice';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
@@ -866,6 +867,15 @@ export default function ClienteDetalhePage() {
             clienteId={cliente.id!}
             contaId={cliente.conta_id!}
             workspaceSlug={workspaceSlug}
+          />
+        </div>
+      )}
+      {isAgent && (
+        <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
+          <h3 className="text-xl font-bold tracking-tight text-foreground mb-3">{t('detail.clientHub')}</h3>
+          <RoleRestrictionNotice
+            title="Hub do Cliente"
+            description="O gerenciamento do Hub do Cliente está disponível apenas para proprietários e administradores do workspace."
           />
         </div>
       )}

@@ -116,6 +116,8 @@ export function __setCurrentSession(session: { access_token: string; user: { id:
   currentSession = session;
 }
 
+export async function healPendingInvite() {}
+
 export function __emitAuthChange(event: string, session: { user: { id: string } | null } | null) {
   authChangeCallback?.(event, session);
 }
