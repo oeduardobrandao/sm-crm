@@ -193,6 +193,9 @@ function makeSummary(accounts: PortfolioAccount[]): PortfolioSummary {
 
   return {
     accounts,
+    topPosts: [],
+    worstPosts: [],
+    allRankedPosts: [],
     summary: {
       total: accounts.length,
       connected: accounts.length,
@@ -444,7 +447,7 @@ describe('AnalyticsPage', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText('2 sincronizadas, 1 falhou')).toBeInTheDocument();
+      expect(screen.getByText('2 sincronizadas, 1 falhou: Zeta Labs')).toBeInTheDocument();
     });
 
     expect(mockedSyncInstagramData).toHaveBeenCalledWith(1);

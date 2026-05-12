@@ -98,6 +98,13 @@ describe('analytics service', () => {
         ],
         error: null,
       },
+      {
+        data: [
+          { id: 1, instagram_account_id: 10, thumbnail_url: null, media_type: 'IMAGE', permalink: 'https://instagram.com/p/1', posted_at: '2026-04-12T10:00:00.000Z', likes: 140, comments: 20, reach: 1300, saved: 18, shares: 10 },
+          { id: 2, instagram_account_id: 20, thumbnail_url: null, media_type: 'IMAGE', permalink: 'https://instagram.com/p/2', posted_at: '2026-04-11T10:00:00.000Z', likes: 70, comments: 9, reach: 900, saved: 7, shares: 3 },
+        ],
+        error: null,
+      },
     );
     mockedSupabase.__queueSupabaseResult('instagram_follower_history', 'select', {
       data: [
@@ -265,6 +272,9 @@ describe('analytics service', () => {
 
     expect(summary).toEqual({
       accounts: [],
+      topPosts: [],
+      worstPosts: [],
+      allRankedPosts: [],
       summary: { total: 0, connected: 0, growing: 0, stagnant: 0, declining: 0, bestByEngagement: null, mostImproved: null },
     });
   });

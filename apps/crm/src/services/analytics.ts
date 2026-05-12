@@ -147,8 +147,27 @@ export interface PortfolioAccount {
   engagement_rate_avg: number;
 }
 
+export interface PortfolioTopPost {
+  id: number;
+  thumbnail_url: string | null;
+  media_type: string;
+  permalink: string;
+  posted_at: string;
+  likes: number;
+  comments: number;
+  reach: number;
+  saved: number;
+  shares: number;
+  engagement_rate: number;
+  client_name: string;
+  client_id: number;
+}
+
 export interface PortfolioSummary {
   accounts: PortfolioAccount[];
+  topPosts: PortfolioTopPost[];
+  worstPosts: PortfolioTopPost[];
+  allRankedPosts: PortfolioTopPost[];
   summary: {
     total: number;
     connected: number;
@@ -191,13 +210,13 @@ export async function getPortfolioSummary(days = 28): Promise<PortfolioSummary> 
 
   if (clientsError) {
     console.error('Analytics: Error fetching clients:', clientsError);
-    return { accounts: [], summary: { total: 0, connected: 0, growing: 0, stagnant: 0, declining: 0, bestByEngagement: null, mostImproved: null } };
+    return { accounts: [], topPosts: [], worstPosts: [], allRankedPosts: [], summary: { total: 0, connected: 0, growing: 0, stagnant: 0, declining: 0, bestByEngagement: null, mostImproved: null } };
   }
 
   const clients = (allClients || []).filter(c => c.status === 'ativo');
 
   if (clients.length === 0) {
-    return { accounts: [], summary: { total: 0, connected: 0, growing: 0, stagnant: 0, declining: 0, bestByEngagement: null, mostImproved: null } };
+    return { accounts: [], topPosts: [], worstPosts: [], allRankedPosts: [], summary: { total: 0, connected: 0, growing: 0, stagnant: 0, declining: 0, bestByEngagement: null, mostImproved: null } };
   }
 
   const clientIds = clients.map(c => c.id);
@@ -211,7 +230,7 @@ export async function getPortfolioSummary(days = 28): Promise<PortfolioSummary> 
   if (igError) console.error('Analytics: Error fetching IG accounts:', igError);
 
   if (!igAccounts || igAccounts.length === 0) {
-    return { accounts: [], summary: { total: clients.length, connected: 0, growing: 0, stagnant: 0, declining: 0, bestByEngagement: null, mostImproved: null } };
+    return { accounts: [], topPosts: [], worstPosts: [], allRankedPosts: [], summary: { total: clients.length, connected: 0, growing: 0, stagnant: 0, declining: 0, bestByEngagement: null, mostImproved: null } };
   }
 
   const accountIds = igAccounts.map(a => a.id);
@@ -309,8 +328,38 @@ export async function getPortfolioSummary(days = 28): Promise<PortfolioSummary> 
   const bestByEngagement = [...accounts].sort((a, b) => b.engagement_rate_avg - a.engagement_rate_avg)[0] || null;
   const mostImproved = [...accounts].sort((a, b) => b.follower_delta - a.follower_delta)[0] || null;
 
+  const { data: topPostsRaw } = await supabase
+    .from('instagram_posts')
+    .select('id, instagram_account_id, thumbnail_url, media_type, permalink, posted_at, likes, comments, reach, saved, shares')
+    .in('instagram_account_id', accountIds)
+    .gte('posted_at', periodAgo)
+    .gt('reach', 0)
+    .order('reach', { ascending: false })
+    .limit(200);
+
+  const accountToClient: Record<number, { client_name: string; client_id: number }> = {};
+  for (const a of igAccounts) {
+    const c = clientMap[a.client_id];
+    if (c) accountToClient[a.id] = { client_name: c.nome || '', client_id: a.client_id };
+  }
+
+  const allRankedPosts: PortfolioTopPost[] = (topPostsRaw || [])
+    .map(p => {
+      const interactions = (p.likes || 0) + (p.comments || 0) + (p.saved || 0) + (p.shares || 0);
+      const engagement_rate = p.reach > 0 ? Math.round((interactions / p.reach) * 10000) / 100 : 0;
+      const info = accountToClient[p.instagram_account_id];
+      return { ...p, engagement_rate, client_name: info?.client_name || '', client_id: info?.client_id || 0 };
+    })
+    .sort((a, b) => b.engagement_rate - a.engagement_rate);
+
+  const topPosts = allRankedPosts.slice(0, 5);
+  const worstPosts = allRankedPosts.length > 5 ? allRankedPosts.slice(-5).reverse() : [];
+
   return {
     accounts,
+    topPosts,
+    worstPosts,
+    allRankedPosts,
     summary: {
       total: clients.length,
       connected: igAccounts.length,
