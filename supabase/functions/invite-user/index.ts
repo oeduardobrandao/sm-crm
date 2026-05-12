@@ -1,6 +1,31 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 
+async function findAuthUserByEmail(adminClient: any, email: string) {
+  let page = 1;
+  while (true) {
+    const result = await adminClient.auth.admin.listUsers({ page, perPage: 100 });
+    if (result.error) throw result.error;
+    const users = result.data?.users;
+    if (!users || users.length === 0) return null;
+    const found = users.find(
+      (u: any) => u.email?.toLowerCase() === email.toLowerCase()
+    );
+    if (found) return found;
+    page++;
+  }
+}
+
+async function deleteUnconfirmedInvitedUser(adminClient: any, email: string) {
+  const authUser = await findAuthUserByEmail(adminClient, email);
+  if (!authUser) return;
+  if (authUser.email_confirmed_at) return;
+
+  await adminClient.from('profiles').delete().eq('id', authUser.id);
+  await adminClient.from('workspace_members').delete().eq('user_id', authUser.id);
+  await adminClient.auth.admin.deleteUser(authUser.id);
+}
+
 Deno.serve(async (req) => {
   const corsHeaders = buildCorsHeaders(req);
   if (req.method === 'OPTIONS') {
@@ -58,7 +83,7 @@ Deno.serve(async (req) => {
 
       const { data: invite, error: findErr } = await adminClient
         .from('invites')
-        .select('id, conta_id')
+        .select('id, conta_id, email')
         .eq('id', inviteId)
         .eq('conta_id', profile.conta_id)
         .maybeSingle();
@@ -68,6 +93,8 @@ Deno.serve(async (req) => {
 
       const { error: delErr } = await adminClient.from('invites').delete().eq('id', inviteId);
       if (delErr) throw delErr;
+
+      await deleteUnconfirmedInvitedUser(adminClient, invite.email);
 
       return new Response(JSON.stringify({ success: true }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -89,106 +116,82 @@ Deno.serve(async (req) => {
       throw new Error('Administradores não podem convidar novos donos.');
     }
 
-    // Check for existing pending invite (not expired)
-    const { data: existingInvite } = await adminClient
-      .from('invites')
-      .select('id, expires_at')
-      .eq('email', email.toLowerCase())
-      .eq('conta_id', profile.conta_id)
-      .eq('status', 'pending')
-      .maybeSingle();
-
-    if (existingInvite && new Date(existingInvite.expires_at) > new Date()) {
-      return new Response(JSON.stringify({ error: 'Já existe um convite pendente para este e-mail.' }), {
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    // If there was an expired pending invite, mark it as expired
-    if (existingInvite) {
-      await adminClient.from('invites').update({ status: 'expired' }).eq('id', existingInvite.id);
-    }
-
-    // Clean up any previously expired invites for this email + workspace
+    // Clean up any existing pending/expired invites for this email + workspace
     await adminClient.from('invites').delete()
       .eq('email', email.toLowerCase())
       .eq('conta_id', profile.conta_id)
-      .eq('status', 'expired');
+      .in('status', ['pending', 'expired']);
 
-    // Check if user already exists in auth before attempting invite
-    let existingUser = null;
-    let page = 1;
-    while (true) {
-      const result = await adminClient.auth.admin.listUsers({ page, perPage: 100 });
-      if (result.error) throw result.error;
-      const users = result.data?.users;
-      if (!users || users.length === 0) break;
-      existingUser = users.find(
-        (u: any) => u.email?.toLowerCase() === email.toLowerCase()
-      ) || null;
-      if (existingUser) break;
-      page++;
-    }
+    // Check if user already exists in auth
+    const existingUser = await findAuthUserByEmail(adminClient, email);
 
     if (existingUser) {
-      // --- Existing user: re-associate with this workspace ---
-      const { data: existingMembership } = await adminClient
-        .from('workspace_members')
-        .select('id')
-        .eq('user_id', existingUser.id)
-        .eq('workspace_id', profile.conta_id)
-        .maybeSingle();
+      if (!existingUser.email_confirmed_at) {
+        // Stale invited user who never confirmed — delete and re-invite fresh
+        await adminClient.from('profiles').delete().eq('id', existingUser.id);
+        await adminClient.from('workspace_members').delete().eq('user_id', existingUser.id);
+        await adminClient.auth.admin.deleteUser(existingUser.id);
+        // Fall through to "new user" path below
+      } else {
+        // --- Confirmed user: add to this workspace directly ---
+        const { data: existingMembership } = await adminClient
+          .from('workspace_members')
+          .select('id')
+          .eq('user_id', existingUser.id)
+          .eq('workspace_id', profile.conta_id)
+          .maybeSingle();
 
-      if (existingMembership) {
-        return new Response(JSON.stringify({ error: 'Este usuário já pertence a este workspace.' }), {
-          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-
-      const { error: memberErr } = await adminClient
-        .from('workspace_members')
-        .insert({
-          user_id: existingUser.id,
-          workspace_id: profile.conta_id,
-          role,
-        });
-      if (memberErr) throw memberErr;
-
-      const { data: existingProfile } = await adminClient
-        .from('profiles')
-        .select('id')
-        .eq('id', existingUser.id)
-        .maybeSingle();
-
-      if (!existingProfile) {
-        const { error: insertErr } = await adminClient
-          .from('profiles')
-          .insert({
-            id: existingUser.id,
-            conta_id: profile.conta_id,
-            role,
-            nome: existingUser.user_metadata?.nome || email.split('@')[0],
-            active_workspace_id: profile.conta_id,
+        if (existingMembership) {
+          return new Response(JSON.stringify({ error: 'Este usuário já pertence a este workspace.' }), {
+            status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
-        if (insertErr) throw insertErr;
+        }
+
+        const { error: memberErr } = await adminClient
+          .from('workspace_members')
+          .insert({
+            user_id: existingUser.id,
+            workspace_id: profile.conta_id,
+            role,
+          });
+        if (memberErr) throw memberErr;
+
+        const { data: existingProfile } = await adminClient
+          .from('profiles')
+          .select('id')
+          .eq('id', existingUser.id)
+          .maybeSingle();
+
+        if (!existingProfile) {
+          const { error: insertErr } = await adminClient
+            .from('profiles')
+            .insert({
+              id: existingUser.id,
+              conta_id: profile.conta_id,
+              role,
+              nome: existingUser.user_metadata?.nome || email.split('@')[0],
+              active_workspace_id: profile.conta_id,
+            });
+          if (insertErr) throw insertErr;
+        }
+
+        await adminClient.from('invites').insert({
+          conta_id: profile.conta_id,
+          email: email.toLowerCase(),
+          role,
+          invited_by: user.id,
+          status: 'accepted',
+          accepted_at: new Date().toISOString(),
+        });
+
+        return new Response(JSON.stringify({ success: true, message: `${email} foi adicionado ao workspace como ${role}.` }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
+        });
       }
-
-      await adminClient.from('invites').insert({
-        conta_id: profile.conta_id,
-        email: email.toLowerCase(),
-        role,
-        invited_by: user.id,
-        status: 'accepted',
-        accepted_at: new Date().toISOString(),
-      });
-
-      return new Response(JSON.stringify({ success: true, message: `${email} foi adicionado ao workspace como ${role}.` }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200,
-      });
     }
 
-    // --- New user: send invite email ---
+    // --- New user (or stale user cleaned up above): send invite email ---
     const redirectBase = Deno.env.get('OAUTH_REDIRECT_BASE') || 'http://localhost:5173';
     const { error } = await adminClient.auth.admin.inviteUserByEmail(email, {
        data: { conta_id: profile.conta_id, role, nome: email.split('@')[0] },

@@ -135,14 +135,29 @@ export default function ConfigurarSenhaPage() {
     }
 
     if (isInvite && email) {
-      try {
-        const token = session.access_token;
-        await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-workspace-user`, {
+      const acceptInvite = async () => {
+        const { data: { session: freshSession } } = await supabase.auth.getSession();
+        const token = freshSession?.access_token ?? session.access_token;
+        const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-workspace-user`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
           body: JSON.stringify({ action: 'accept-invite', email: email.toLowerCase() }),
         });
-      } catch { /* non-critical */ }
+        if (!res.ok) throw new Error(`accept-invite failed: ${res.status}`);
+      };
+
+      let accepted = false;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          if (attempt > 0) await new Promise(r => setTimeout(r, 1000 * attempt));
+          await acceptInvite();
+          accepted = true;
+          break;
+        } catch { /* retry */ }
+      }
+      if (!accepted) {
+        toast.error('Não foi possível finalizar o convite. Entre em contato com o administrador.');
+      }
     }
 
     setLoading(false);

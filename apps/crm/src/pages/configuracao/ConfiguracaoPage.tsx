@@ -347,7 +347,8 @@ export default function ConfiguracaoPage() {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
         body: JSON.stringify({ email: invite.email, role: invite.role }),
       });
-      if (!res.ok) throw new Error(`Erro ${res.status}`);
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || `Erro ${res.status}`);
       refetchInvites();
       toast.success('Convite reenviado!');
     } catch (err: unknown) {
@@ -506,7 +507,7 @@ export default function ConfiguracaoPage() {
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
-                    {inv.status === 'expired' && (
+                    {(inv.status === 'expired' || inv.status === 'pending') && (
                       <Button size="sm" variant="outline" onClick={() => handleResendInvite(inv)}>Reenviar</Button>
                     )}
                     <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setCancelInviteId(inv.id)}>Cancelar</Button>
