@@ -1,6 +1,6 @@
 import React from "react"
 import { Info } from "lucide-react"
-import { Link } from "react-router"
+import { Link } from "react-router-dom"
 
 interface PrerequisiteAlertProps {
   title: string
