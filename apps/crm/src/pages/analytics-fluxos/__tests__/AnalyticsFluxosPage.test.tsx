@@ -133,6 +133,10 @@ function resetQueryState() {
   for (const key of Object.keys(queryState)) delete queryState[key];
 }
 
+function daysAgo(n: number) {
+  return new Date(Date.now() - n * 86400000).toISOString();
+}
+
 function seedFluxosData() {
   queryState['all-etapas-workflow'] = {
     data: [
@@ -140,8 +144,8 @@ function seedFluxosData() {
         workflow_id: 1,
         nome: 'Roteiro',
         status: 'concluido',
-        iniciado_em: '2026-04-10T00:00:00Z',
-        concluido_em: '2026-04-12T00:00:00Z',
+        iniciado_em: daysAgo(10),
+        concluido_em: daysAgo(8),
         prazo_dias: 3,
         tipo_prazo: 'corridos',
         responsavel_id: 7,
@@ -150,8 +154,8 @@ function seedFluxosData() {
         workflow_id: 1,
         nome: 'Revisão',
         status: 'concluido',
-        iniciado_em: '2026-04-12T00:00:00Z',
-        concluido_em: '2026-04-15T00:00:00Z',
+        iniciado_em: daysAgo(8),
+        concluido_em: daysAgo(5),
         prazo_dias: 2,
         tipo_prazo: 'corridos',
         responsavel_id: 7,
@@ -164,14 +168,14 @@ function seedFluxosData() {
         id: 1,
         cliente_id: 1,
         template_id: 10,
-        created_at: '2026-04-10T00:00:00Z',
+        created_at: daysAgo(10),
         status: 'concluido',
       },
       {
         id: 2,
         cliente_id: 2,
         template_id: 20,
-        created_at: '2026-04-17T00:00:00Z',
+        created_at: daysAgo(3),
         status: 'ativo',
       },
     ],
@@ -210,6 +214,7 @@ beforeEach(() => {
   mockedGetWorkflowTemplates.mockResolvedValue([]);
   mockedGetMembros.mockResolvedValue([]);
 });
+
 
 describe('AnalyticsFluxosPage', () => {
   it('shows the loading spinner while the workflow data is still loading', () => {
