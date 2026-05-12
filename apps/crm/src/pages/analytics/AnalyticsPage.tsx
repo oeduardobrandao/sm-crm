@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Zap, RefreshCw, ArrowUpDown, SlidersHorizontal } from 'lucide-react';
+import { Zap, RefreshCw, ArrowUpDown, SlidersHorizontal, Trophy, AlertTriangle, ChevronRight } from 'lucide-react';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -17,8 +19,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Chart, registerables } from 'chart.js';
-import { getPortfolioSummary, getPortfolioAIAnalysis, type PortfolioAccount } from '../../services/analytics';
+import { getPortfolioSummary, getPortfolioAIAnalysis, type PortfolioAccount, type PortfolioTopPost } from '../../services/analytics';
+import { sanitizeUrl } from '../../utils/security';
 import { syncInstagramData } from '../../services/instagram';
 
 Chart.register(...registerables);
@@ -227,11 +231,12 @@ type SortCol = 'client_name' | 'follower_count' | 'engagement_rate_avg' | 'reach
 
 export default function AnalyticsPage() {
   const [syncing, setSyncing] = useState(false);
-  const [syncResult, setSyncResult] = useState<{ success: number; failed: number } | null>(null);
+  const [syncResult, setSyncResult] = useState<{ success: number; failed: number; failedNames: string[] } | null>(null);
   const [sortColumn, setSortColumn] = useState<SortCol>('engagement_rate_avg');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [days, setDays] = useState<number>(28);
   const [clienteFilter, setClienteFilter] = useState<string>('all');
+  const [drawerSort, setDrawerSort] = useState<'best' | 'worst' | null>(null);
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['portfolio-summary', days],
@@ -244,13 +249,14 @@ export default function AnalyticsPage() {
     setSyncResult(null);
     let success = 0;
     let failed = 0;
+    const failedNames: string[] = [];
     await Promise.allSettled(
       data.accounts.map(a =>
-        syncInstagramData(a.client_id).then(() => success++).catch(() => failed++)
+        syncInstagramData(a.client_id).then(() => success++).catch(() => { failed++; failedNames.push(a.client_name); })
       )
     );
     setSyncing(false);
-    setSyncResult({ success, failed });
+    setSyncResult({ success, failed, failedNames });
     refetch();
   };
 
@@ -288,6 +294,9 @@ export default function AnalyticsPage() {
   const totalReach = filteredAccounts.reduce((s, a) => s + a.reach_28d, 0);
   const avgEngagement = filteredAccounts.length > 0
     ? filteredAccounts.reduce((s, a) => s + a.engagement_rate_avg, 0) / filteredAccounts.length
+    : 0;
+  const avgWebsiteClicks = filteredAccounts.length > 0
+    ? Math.round(filteredAccounts.reduce((s, a) => s + (a.website_clicks_28d ?? 0), 0) / filteredAccounts.length)
     : 0;
 
   const specialtyMap: Record<string, PortfolioAccount[]> = {};
@@ -355,7 +364,7 @@ export default function AnalyticsPage() {
           {syncResult && (
             <span style={{ fontSize: '0.8rem', color: syncResult.failed > 0 ? 'var(--warning)' : 'var(--success)' }}>
               {syncResult.success} sincronizada{syncResult.success !== 1 ? 's' : ''}
-              {syncResult.failed > 0 && `, ${syncResult.failed} falhou`}
+              {syncResult.failed > 0 && `, ${syncResult.failed} falhou: ${syncResult.failedNames.join(', ')}`}
             </span>
           )}
           <Button onClick={handleSyncAll} disabled={syncing || !data?.accounts.length} size="sm" variant="outline">
@@ -367,7 +376,7 @@ export default function AnalyticsPage() {
 
       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
         <Select value={clienteFilter} onValueChange={setClienteFilter}>
-          <SelectTrigger className="!rounded-full !text-xs h-9 px-4 mb-0" style={{ flex: 1 }}>
+          <SelectTrigger className="!rounded-full !text-xs h-9 px-4 mb-0 w-auto">
             <SelectValue placeholder="Todos os clientes" />
           </SelectTrigger>
           <SelectContent>
@@ -394,10 +403,8 @@ export default function AnalyticsPage() {
 
       {silentAccounts.length > 0 && (
         <div className="analytics-callout animate-up">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.75rem' }}>
             <strong style={{ color: 'var(--warning)' }}>Contas Silenciosas</strong>
-          </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
             {silentAccounts.map(a => {
               const daysSince = a.last_post_at
                 ? Math.floor((Date.now() - new Date(a.last_post_at).getTime()) / 86400000)
@@ -438,6 +445,11 @@ export default function AnalyticsPage() {
           <span className="kpi-label" style={{ color: 'rgba(0,0,0,0.6)' }}>ENGAJAMENTO MÉDIO</span>
           <span className="kpi-value" style={{ color: 'var(--dark)' }}>{avgEngagement.toFixed(2)}%</span>
           <span className="kpi-sub" style={{ color: 'rgba(0,0,0,0.7)' }}>Média de todas as contas</span>
+        </div>
+        <div className="kpi-card">
+          <span className="kpi-label">CLIQUES NO LINK (28D)</span>
+          <span className="kpi-value">{formatNumber(avgWebsiteClicks)}</span>
+          <span className="kpi-sub" style={{ color: 'var(--text-muted)' }}>Média por conta</span>
         </div>
       </div>
 
@@ -486,6 +498,129 @@ export default function AnalyticsPage() {
         );
       })()}
 
+      {/* Top posts */}
+      {data?.topPosts && data.topPosts.length > 0 && (
+        <div className="card animate-up">
+          <div className="dashboard-hub-card-header" style={{ marginBottom: '1rem' }}>
+            <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Trophy className="h-5 w-5" style={{ color: 'var(--success)' }} />
+              Melhores Posts
+            </h3>
+            {(data.allRankedPosts?.length ?? 0) > 5 && (
+              <Button variant="ghost" size="sm" onClick={() => setDrawerSort('best')} style={{ fontSize: '0.75rem', gap: '0.25rem' }}>
+                Ver mais <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+            )}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem' }}>
+            {data.topPosts.map(post => (
+              <a
+                key={post.id}
+                href={sanitizeUrl(post.permalink)}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ borderRadius: 16, overflow: 'hidden', border: '1px solid var(--border-color)', background: 'var(--card-bg)', transition: 'transform 0.2s', textDecoration: 'none', color: 'inherit' }}
+                onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.02)')}
+                onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
+              >
+                <div style={{ aspectRatio: '3/4', position: 'relative', overflow: 'hidden', background: post.media_type === 'VIDEO' ? 'linear-gradient(135deg, #8b5cf6, #8b5cf6dd)' : post.media_type === 'CAROUSEL_ALBUM' ? 'linear-gradient(135deg, #10b981, #10b981dd)' : 'linear-gradient(135deg, #3b82f6, #3b82f6dd)' }}>
+                  {post.thumbnail_url ? (
+                    <img src={post.thumbnail_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                  ) : (
+                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <div style={{ width: 60, height: 60, borderRadius: 8, background: 'rgba(255,255,255,0.15)' }} />
+                    </div>
+                  )}
+                  <span style={{ position: 'absolute', top: 8, left: 8, background: 'rgba(0,0,0,0.5)', color: '#fff', fontSize: '0.6rem', padding: '2px 6px', borderRadius: 4, fontWeight: 600 }}>
+                    {{ CAROUSEL_ALBUM: 'Carrossel', VIDEO: 'Reels', IMAGE: 'Imagem' }[post.media_type] ?? post.media_type}
+                  </span>
+                </div>
+                <div style={{ padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{post.client_name}</span>
+                  <span style={{ fontSize: '0.65rem', color: 'var(--text-light)' }}>{format(new Date(post.posted_at), "d 'de' MMM", { locale: ptBR })}</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Alcance</span>
+                    <span style={{ fontSize: '0.7rem', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{formatNumber(post.reach)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Engajamento</span>
+                    <span style={{ fontSize: '0.7rem', fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--success)' }}>{post.engagement_rate.toFixed(2)}%</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Salvos</span>
+                    <span style={{ fontSize: '0.7rem', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{post.saved}</span>
+                  </div>
+                </div>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Worst posts */}
+      {(() => {
+        const cutoff48h = Date.now() - 48 * 60 * 60 * 1000;
+        const mature = data?.worstPosts?.filter(p => new Date(p.posted_at).getTime() < cutoff48h) ?? [];
+        if (mature.length === 0) return null;
+        return (
+          <div className="card animate-up">
+            <div className="dashboard-hub-card-header" style={{ marginBottom: '1rem' }}>
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <AlertTriangle className="h-5 w-5" style={{ color: 'var(--warning)' }} />
+                Precisam de Atenção
+              </h3>
+              {(data?.allRankedPosts?.length ?? 0) > 5 && (
+                <Button variant="ghost" size="sm" onClick={() => setDrawerSort('worst')} style={{ fontSize: '0.75rem', gap: '0.25rem' }}>
+                  Ver mais <ChevronRight className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(mature.length, 5)}, 1fr)`, gap: '1rem' }}>
+              {mature.slice(0, 5).map(post => (
+                <a
+                  key={post.id}
+                  href={sanitizeUrl(post.permalink)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ borderRadius: 16, overflow: 'hidden', border: '1px solid var(--border-color)', background: 'var(--card-bg)', transition: 'transform 0.2s', textDecoration: 'none', color: 'inherit' }}
+                  onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.02)')}
+                  onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
+                >
+                  <div style={{ aspectRatio: '3/4', position: 'relative', overflow: 'hidden', background: post.media_type === 'VIDEO' ? 'linear-gradient(135deg, #8b5cf6, #8b5cf6dd)' : post.media_type === 'CAROUSEL_ALBUM' ? 'linear-gradient(135deg, #10b981, #10b981dd)' : 'linear-gradient(135deg, #3b82f6, #3b82f6dd)' }}>
+                    {post.thumbnail_url ? (
+                      <img src={post.thumbnail_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                    ) : (
+                      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <div style={{ width: 60, height: 60, borderRadius: 8, background: 'rgba(255,255,255,0.15)' }} />
+                      </div>
+                    )}
+                    <span style={{ position: 'absolute', top: 8, left: 8, background: 'rgba(0,0,0,0.5)', color: '#fff', fontSize: '0.6rem', padding: '2px 6px', borderRadius: 4, fontWeight: 600 }}>
+                      {{ CAROUSEL_ALBUM: 'Carrossel', VIDEO: 'Reels', IMAGE: 'Imagem' }[post.media_type] ?? post.media_type}
+                    </span>
+                  </div>
+                  <div style={{ padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    <span style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{post.client_name}</span>
+                    <span style={{ fontSize: '0.65rem', color: 'var(--text-light)' }}>{format(new Date(post.posted_at), "d 'de' MMM", { locale: ptBR })}</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Alcance</span>
+                      <span style={{ fontSize: '0.7rem', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{formatNumber(post.reach)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Engajamento</span>
+                      <span style={{ fontSize: '0.7rem', fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--danger)' }}>{post.engagement_rate.toFixed(2)}%</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Salvos</span>
+                      <span style={{ fontSize: '0.7rem', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{post.saved}</span>
+                    </div>
+                  </div>
+                </a>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Desktop table */}
       <div className="card animate-up analytics-desktop-table">
         <div className="dashboard-hub-card-header" style={{ marginBottom: '1rem' }}>
@@ -506,7 +641,6 @@ export default function AnalyticsPage() {
                     {renderSortableHead('posts_last_30d', 'Posts (30d)')}
                     {renderSortableHead('website_clicks_28d', 'Cliques no link')}
                     {renderSortableHead('last_post_at', 'Último Post')}
-                    <TableHead></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -526,7 +660,9 @@ export default function AnalyticsPage() {
                               : <span className="avatar" style={{ width: 32, height: 32, fontSize: '0.65rem', background: a.client_cor }}>{a.client_sigla}</span>
                             }
                             <div>
-                              <strong>{a.client_name}</strong>
+                              <Link to={`/analytics/${a.client_id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
+                                <strong style={{ cursor: 'pointer' }}>{a.client_name}</strong>
+                              </Link>
                               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>@{a.username}</div>
                             </div>
                           </div>
@@ -557,11 +693,6 @@ export default function AnalyticsPage() {
                             ? <span style={{ color: isSilent ? 'var(--danger)' : 'var(--text-main)' }}>{daysSince}d atrás</span>
                             : <span style={{ color: 'var(--danger)' }}>Sem posts</span>
                           }
-                        </TableCell>
-                        <TableCell>
-                          <Link to={`/analytics/${a.client_id}`} className="btn-primary" style={{ fontSize: '0.75rem', padding: '0.35rem 0.75rem', whiteSpace: 'nowrap' }}>
-                            Ver Analytics
-                          </Link>
                         </TableCell>
                       </TableRow>
                     );
@@ -679,6 +810,54 @@ export default function AnalyticsPage() {
       )}
 
       <AIPortfolioSection accounts={filteredAccounts} />
+
+      <Sheet open={drawerSort !== null} onOpenChange={open => { if (!open) setDrawerSort(null); }}>
+        <SheetContent side="right" className="!w-full !max-w-xl overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              {drawerSort === 'best'
+                ? <><Trophy className="h-5 w-5" style={{ color: 'var(--success)' }} /> Todos os Posts — Melhor para Pior</>
+                : <><AlertTriangle className="h-5 w-5" style={{ color: 'var(--warning)' }} /> Todos os Posts — Pior para Melhor</>
+              }
+            </SheetTitle>
+            <SheetDescription>{data?.allRankedPosts?.length ?? 0} posts no período</SheetDescription>
+          </SheetHeader>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '1rem' }}>
+            {(drawerSort === 'best'
+              ? (data?.allRankedPosts ?? [])
+              : [...(data?.allRankedPosts ?? [])].reverse()
+            ).map((post, i) => (
+              <a
+                key={post.id}
+                href={sanitizeUrl(post.permalink)}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.6rem 0.75rem', borderRadius: 12, border: '1px solid var(--border-color)', background: 'var(--card-bg)', textDecoration: 'none', color: 'inherit', transition: 'background 0.15s' }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-hover)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'var(--card-bg)')}
+              >
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', minWidth: 24, textAlign: 'center' }}>{i + 1}</span>
+                {post.thumbnail_url ? (
+                  <img src={post.thumbnail_url} alt="" style={{ width: 48, height: 48, borderRadius: 8, objectFit: 'cover', flexShrink: 0, background: 'var(--surface-darker)' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                ) : (
+                  <div style={{ width: 48, height: 48, borderRadius: 8, flexShrink: 0, background: post.media_type === 'VIDEO' ? '#8b5cf6' : post.media_type === 'CAROUSEL_ALBUM' ? '#10b981' : '#3b82f6' }} />
+                )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{post.client_name}</span>
+                    <span style={{ fontSize: '0.65rem', color: 'var(--text-light)', flexShrink: 0 }}>{format(new Date(post.posted_at), "d 'de' MMM", { locale: ptBR })}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '1rem', fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                    <span>Alcance <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>{formatNumber(post.reach)}</strong></span>
+                    <span>Eng. <strong style={{ fontFamily: 'var(--font-mono)', color: post.engagement_rate >= 3 ? 'var(--success)' : post.engagement_rate < 1 ? 'var(--danger)' : 'var(--text-main)' }}>{post.engagement_rate.toFixed(2)}%</strong></span>
+                    <span>Salvos <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>{post.saved}</strong></span>
+                  </div>
+                </div>
+              </a>
+            ))}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
