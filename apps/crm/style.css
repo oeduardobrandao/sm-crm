@@ -3337,6 +3337,45 @@ body.role-agent input[name="valor_total"] {
   }
 }
 
+.analytics-posts-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 1rem;
+}
+
+.analytics-post-card {
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  background: var(--card-bg);
+  transition: transform 0.2s;
+  text-decoration: none;
+  color: inherit;
+}
+
+.analytics-post-card:hover {
+  transform: scale(1.02);
+}
+
+@media (max-width: 900px) {
+  .analytics-posts-row {
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 0.5rem;
+  }
+
+  .analytics-posts-row::-webkit-scrollbar {
+    display: none;
+  }
+
+  .analytics-post-card {
+    flex: 0 0 75vw;
+    scroll-snap-align: start;
+  }
+}
+
 .tag-pill {
   display: inline-flex;
   align-items: center;

@@ -512,16 +512,14 @@ export default function AnalyticsPage() {
               </Button>
             )}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem' }}>
+          <div className="analytics-posts-row">
             {data.topPosts.map(post => (
               <a
                 key={post.id}
                 href={sanitizeUrl(post.permalink)}
                 target="_blank"
                 rel="noopener noreferrer"
-                style={{ borderRadius: 16, overflow: 'hidden', border: '1px solid var(--border-color)', background: 'var(--card-bg)', transition: 'transform 0.2s', textDecoration: 'none', color: 'inherit' }}
-                onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.02)')}
-                onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
+                className="analytics-post-card"
               >
                 <div style={{ aspectRatio: '3/4', position: 'relative', overflow: 'hidden', background: post.media_type === 'VIDEO' ? 'linear-gradient(135deg, #8b5cf6, #8b5cf6dd)' : post.media_type === 'CAROUSEL_ALBUM' ? 'linear-gradient(135deg, #10b981, #10b981dd)' : 'linear-gradient(135deg, #3b82f6, #3b82f6dd)' }}>
                   {post.thumbnail_url ? (
@@ -575,16 +573,14 @@ export default function AnalyticsPage() {
                 </Button>
               )}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(mature.length, 5)}, 1fr)`, gap: '1rem' }}>
+            <div className="analytics-posts-row">
               {mature.slice(0, 5).map(post => (
                 <a
                   key={post.id}
                   href={sanitizeUrl(post.permalink)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  style={{ borderRadius: 16, overflow: 'hidden', border: '1px solid var(--border-color)', background: 'var(--card-bg)', transition: 'transform 0.2s', textDecoration: 'none', color: 'inherit' }}
-                  onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.02)')}
-                  onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
+                  className="analytics-post-card"
                 >
                   <div style={{ aspectRatio: '3/4', position: 'relative', overflow: 'hidden', background: post.media_type === 'VIDEO' ? 'linear-gradient(135deg, #8b5cf6, #8b5cf6dd)' : post.media_type === 'CAROUSEL_ALBUM' ? 'linear-gradient(135deg, #10b981, #10b981dd)' : 'linear-gradient(135deg, #3b82f6, #3b82f6dd)' }}>
                     {post.thumbnail_url ? (
