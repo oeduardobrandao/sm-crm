@@ -3313,6 +3313,30 @@ body.role-agent input[name="valor_total"] {
   background: rgba(245, 163, 66, 0.06);
 }
 
+@media (max-width: 900px) {
+  .analytics-kpi-scroll {
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    gap: 0.75rem;
+    padding-bottom: 0.5rem;
+  }
+
+  .analytics-kpi-scroll::-webkit-scrollbar {
+    display: none;
+  }
+
+  .analytics-kpi-scroll > .kpi-card,
+  .analytics-kpi-scroll > .kpi-card:last-child:nth-child(odd) {
+    flex: 0 0 70vw;
+    scroll-snap-align: start;
+    max-width: none;
+    grid-column: auto;
+    justify-self: auto;
+  }
+}
+
 .tag-pill {
   display: inline-flex;
   align-items: center;

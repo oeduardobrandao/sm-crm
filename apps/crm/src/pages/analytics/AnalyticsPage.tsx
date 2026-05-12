@@ -423,7 +423,7 @@ export default function AnalyticsPage() {
         </div>
       )}
 
-      <div className="kpi-grid animate-up">
+      <div className="kpi-grid analytics-kpi-scroll animate-up">
         <div className="kpi-card card-dark">
           <span className="kpi-label" style={{ color: 'rgba(255,255,255,0.7)' }}>CONTAS CONECTADAS</span>
           <span className="kpi-value" style={{ color: '#ffffff' }}>
@@ -458,7 +458,7 @@ export default function AnalyticsPage() {
         const mostPosts = [...filteredAccounts].sort((a, b) => b.posts_last_30d - a.posts_last_30d)[0];
         const mostFollowers = [...filteredAccounts].sort((a, b) => b.follower_count - a.follower_count)[0];
         return (
-          <div className="kpi-grid animate-up" style={{ marginTop: 0 }}>
+          <div className="kpi-grid analytics-kpi-scroll animate-up" style={{ marginTop: 0 }}>
             {summary.bestByEngagement && (
               <div className="kpi-card" style={{ borderLeft: '3px solid var(--success)' }}>
                 <span className="kpi-label">MELHOR ENGAJAMENTO</span>
