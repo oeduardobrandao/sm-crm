@@ -1,11 +1,13 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
+import { checkRateLimit } from "../_shared/rate-limit.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const TOKEN_ENCRYPTION_KEY = Deno.env.get("TOKEN_ENCRYPTION_KEY") ?? (() => { throw new Error("TOKEN_ENCRYPTION_KEY environment variable is required"); })();
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") || '';
 const INTERNAL_FUNCTION_SECRET = Deno.env.get('INTERNAL_FUNCTION_SECRET') ?? (() => { throw new Error('INTERNAL_FUNCTION_SECRET is required'); })();
+import { UUID_RE } from "./utils.ts";
 
 // --- Token Decryption ---
 async function getEncryptionKey(purpose: string, usage: KeyUsage[]): Promise<CryptoKey> {
@@ -149,7 +151,7 @@ async function verifyPostOwnership(serviceClient: any, postId: string, contaId: 
   const { data: post } = await serviceClient
     .from('instagram_posts')
     .select('instagram_account_id, instagram_accounts!inner(client_id, clientes!inner(conta_id))')
-    .eq('id', parseInt(postId))
+    .eq('id', postId)
     .single();
   const postContaId = (post as any)?.instagram_accounts?.clientes?.conta_id;
   if (!post || postContaId !== contaId) {
@@ -758,6 +760,9 @@ Deno.serve(async (req) => {
     // ==========================================
     if (req.method === 'DELETE' && path.match(/^\/tags\/\d+$/)) {
       const tagId = path.split('/')[2];
+      const { data: tag } = await serviceClient.from('instagram_post_tags')
+        .select('id').eq('id', tagId).eq('conta_id', contaId).single();
+      if (!tag) return json({ error: 'Tag not found' }, 404);
       await serviceClient.from('instagram_post_tag_assignments').delete().eq('tag_id', tagId);
       await serviceClient.from('instagram_post_tags').delete().eq('id', tagId).eq('conta_id', contaId);
       return json({ success: true });
@@ -766,21 +771,25 @@ Deno.serve(async (req) => {
     // ==========================================
     // POST /posts/:postId/tags
     // ==========================================
-    if (req.method === 'POST' && path.match(/^\/posts\/\d+\/tags$/)) {
+    if (req.method === 'POST' && path.match(/^\/posts\/[^/]+\/tags$/)) {
       const postId = path.split('/')[2];
+      if (!UUID_RE.test(postId)) return json({ error: 'Invalid post ID' }, 400);
       const body = await req.json();
       const { tag_id } = body;
       if (!tag_id) throw new Error("tag_id is required");
 
       await verifyPostOwnership(serviceClient, postId, contaId);
+      const { data: tagRow } = await serviceClient.from('instagram_post_tags')
+        .select('id').eq('id', tag_id).eq('conta_id', contaId).single();
+      if (!tagRow) return json({ error: 'Tag not found' }, 404);
       const { error } = await serviceClient
         .from('instagram_post_tag_assignments')
-        .insert({ post_id: parseInt(postId), tag_id })
+        .insert({ post_id: postId, tag_id })
         .select()
         .single();
 
       if (error) {
-        if (error.code === '23505') return json({ success: true }); // Already assigned
+        if (error.code === '23505') return json({ success: true });
         throw error;
       }
       return json({ success: true }, 201);
@@ -789,11 +798,15 @@ Deno.serve(async (req) => {
     // ==========================================
     // DELETE /posts/:postId/tags/:tagId
     // ==========================================
-    if (req.method === 'DELETE' && path.match(/^\/posts\/\d+\/tags\/\d+$/)) {
+    if (req.method === 'DELETE' && path.match(/^\/posts\/[^/]+\/tags\/\d+$/)) {
       const parts = path.split('/');
       const postId = parts[2];
       const tagId = parts[4];
+      if (!UUID_RE.test(postId)) return json({ error: 'Invalid post ID' }, 400);
       await verifyPostOwnership(serviceClient, postId, contaId);
+      const { data: tagRow } = await serviceClient.from('instagram_post_tags')
+        .select('id').eq('id', tagId).eq('conta_id', contaId).single();
+      if (!tagRow) return json({ error: 'Tag not found' }, 404);
       await serviceClient
         .from('instagram_post_tag_assignments')
         .delete()
@@ -831,6 +844,10 @@ Deno.serve(async (req) => {
       const force = body.force === true;
 
       await verifyClientOwnership(serviceClient, clientId, contaId);
+
+      const reportAllowed = await checkRateLimit(serviceClient, `ig-report:${contaId}`, 3, 3600);
+      if (!reportAllowed) return json({ error: "Rate limit exceeded" }, 429);
+
       const account = await getAccount(serviceClient, clientId);
 
       // Check if already exists (skip cache when force=true)
@@ -896,6 +913,10 @@ Deno.serve(async (req) => {
 
       // Verify account belongs to user's conta before fetching any data
       await verifyClientOwnership(serviceClient, clientId, contaId);
+
+      const aiAllowed = await checkRateLimit(serviceClient, `ig-ai:${contaId}`, 10, 3600);
+      if (!aiAllowed) return json({ error: "Rate limit exceeded" }, 429);
+
       const account = await getAccount(serviceClient, clientId);
       const { data: client } = await serviceClient
         .from('clientes')
@@ -1071,6 +1092,9 @@ O campo actionPlan deve ter entre 3 e 5 ações. Pelo menos 1 deve ser uma açã
     // POST /ai-analysis-portfolio
     // ==========================================
     if (req.method === 'POST' && path === '/ai-analysis-portfolio') {
+      const aiPortfolioAllowed = await checkRateLimit(serviceClient, `ig-ai:${contaId}`, 10, 3600);
+      if (!aiPortfolioAllowed) return json({ error: "Rate limit exceeded" }, 429);
+
       // Get all accounts for this conta
       const { data: clients } = await serviceClient
         .from('clientes')

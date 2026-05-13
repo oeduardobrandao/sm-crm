@@ -8,6 +8,7 @@ type DbClient = {
 
 interface HeadResult {
   contentLength: number;
+  contentType?: string;
 }
 
 interface FileUploadFinalizeDeps {
@@ -59,9 +60,21 @@ export function createFileUploadFinalizeHandler(deps: FileUploadFinalizeDeps) {
       return json({ error: "invalid thumbnail_r2_key" }, 400);
     }
 
+    const MIME_ALLOWLIST: Record<string, string[]> = {
+      image: ["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"],
+      video: ["video/mp4", "video/quicktime", "video/webm"],
+      document: ["application/pdf", "application/zip"],
+    };
+    if (!MIME_ALLOWLIST[body.kind]?.includes(body.mime_type)) {
+      return json({ error: "unsupported file type" }, 415);
+    }
+
     const head = await deps.headObject(body.r2_key);
     if (!head) return json({ error: "object not found" }, 400);
     if (head.contentLength !== body.size_bytes) return json({ error: "size mismatch" }, 400);
+    if (head.contentType && head.contentType !== body.mime_type) {
+      return json({ error: "content-type mismatch" }, 400);
+    }
 
     if (body.kind === "video") {
       if (!body.thumbnail_r2_key) return json({ error: "video requires thumbnail_r2_key" }, 400);
@@ -87,6 +100,11 @@ export function createFileUploadFinalizeHandler(deps: FileUploadFinalizeDeps) {
         .eq("source_id", body.post_id)
         .maybeSingle();
       if (postFolder) folderId = postFolder.id;
+    }
+
+    if (body.post_id) {
+      const { data: post } = await svc.from("workflow_posts").select("conta_id").eq("id", body.post_id).single();
+      if (!post || post.conta_id !== profile.conta_id) return json({ error: "Post not found" }, 404);
     }
 
     const { data: inserted, error: insErr } = await svc.rpc("file_insert_with_quota", {
@@ -116,9 +134,6 @@ export function createFileUploadFinalizeHandler(deps: FileUploadFinalizeDeps) {
     }
 
     if (body.post_id) {
-      const { data: post } = await svc.from("workflow_posts").select("conta_id").eq("id", body.post_id).single();
-      if (!post || post.conta_id !== profile.conta_id) return json({ error: "Post not found" }, 404);
-
       const { error: linkErr } = await svc.from("post_file_links").insert({
         post_id: body.post_id,
         file_id: (inserted as any).id,

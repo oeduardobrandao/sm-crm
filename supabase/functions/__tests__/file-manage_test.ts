@@ -112,6 +112,8 @@ Deno.test("file-manage: GET /folders?parent_id builds breadcrumbs", async () => 
   db.queue("folders", "select", { data: [], error: null });
   // files query
   db.queue("files", "select", { data: [], error: null });
+  // parent ownership check
+  db.queue("folders", "select", { data: { id: 5, conta_id: "conta-1" }, error: null });
   // folder_breadcrumbs RPC (replaces while-loop selects)
   db.queueRpc("folder_breadcrumbs", { data: [{ id: 1, name: "Root" }, { id: 5, name: "Sub" }], error: null });
   // folder detail
@@ -567,6 +569,7 @@ Deno.test("file-manage: GET /folders?parent_id=5 uses folder_breadcrumbs RPC", a
   setupAuth(db);
   db.queue("folders", "select", { data: [], error: null });
   db.queue("files", "select", { data: [], error: null });
+  db.queue("folders", "select", { data: { id: 5, conta_id: "conta-1" }, error: null });
   db.queueRpc("folder_breadcrumbs", {
     data: [{ id: 1, name: "Root" }, { id: 5, name: "Sub" }],
     error: null,
@@ -635,4 +638,112 @@ Deno.test("file-manage: GET /files/:id/url wrong workspace returns 404", async (
   assertEquals(res.status, 404);
   const body = await readJson(res);
   assertEquals(body.error, "File not found");
+});
+
+// ─── Security regression tests ────────────────────────────────
+
+Deno.test("file-manage: GET /folders?parent_id from other workspace returns 404", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("folders", "select", { data: [], error: null }); // subfolders
+  db.queue("files", "select", { data: [], error: null }); // files
+  db.queue("folders", "select", { data: { id: 5, conta_id: "other-ws" }, error: null }); // parent ownership
+  const handler = makeHandler(db);
+  const res = await handler(req("GET", "/folders?parent_id=5"));
+  assertEquals(res.status, 404);
+});
+
+Deno.test("file-manage: PATCH /folders/:id rejects parent_id from other workspace", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("folders", "select", { data: { id: 1, conta_id: "conta-1", source: "user" }, error: null }); // folder lookup
+  db.queue("folders", "select", { data: { id: 99, conta_id: "other-ws" }, error: null }); // parent ownership
+  const handler = makeHandler(db);
+  const res = await handler(req("PATCH", "/folders/1", { parent_id: 99 }));
+  assertEquals(res.status, 404);
+  const body = await readJson(res);
+  assertEquals(body.error, "Parent folder not found");
+});
+
+Deno.test("file-manage: PATCH /folders/:id rejects moving folder into itself", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("folders", "select", { data: { id: 1, conta_id: "conta-1", source: "user" }, error: null });
+  db.queue("folders", "select", { data: { id: 1, conta_id: "conta-1" }, error: null }); // parent ownership passes
+  const handler = makeHandler(db);
+  const res = await handler(req("PATCH", "/folders/1", { parent_id: 1 }));
+  assertEquals(res.status, 400);
+  const body = await readJson(res);
+  assertEquals(body.error, "Cannot move folder into itself");
+});
+
+Deno.test("file-manage: PATCH /folders/:id rejects moving folder into descendant", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("folders", "select", { data: { id: 1, conta_id: "conta-1", source: "user" }, error: null });
+  db.queue("folders", "select", { data: { id: 3, conta_id: "conta-1" }, error: null }); // parent ownership
+  db.queueRpc("folder_breadcrumbs", { data: [{ id: 1, name: "Root" }, { id: 3, name: "Child" }], error: null }); // ancestors include folder 1
+  const handler = makeHandler(db);
+  const res = await handler(req("PATCH", "/folders/1", { parent_id: 3 }));
+  assertEquals(res.status, 400);
+  const body = await readJson(res);
+  assertEquals(body.error, "Cannot move folder into a descendant");
+});
+
+Deno.test("file-manage: PATCH /folders/:id accepts valid parent_id from same workspace", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("folders", "select", { data: { id: 1, conta_id: "conta-1", source: "user" }, error: null });
+  db.queue("folders", "select", { data: { id: 5, conta_id: "conta-1" }, error: null }); // parent ownership
+  db.queueRpc("folder_breadcrumbs", { data: [{ id: 5, name: "Target" }], error: null }); // no cycle
+  db.queue("folders", "update", { data: { id: 1, parent_id: 5 }, error: null });
+  const handler = makeHandler(db);
+  const res = await handler(req("PATCH", "/folders/1", { parent_id: 5 }));
+  assertEquals(res.status, 200);
+});
+
+Deno.test("file-manage: PATCH /files/:id rejects folder_id from other workspace", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("files", "select", { data: { id: 10, conta_id: "conta-1" }, error: null }); // file lookup
+  db.queue("folders", "select", { data: { id: 99, conta_id: "other-ws" }, error: null }); // folder ownership
+  const handler = makeHandler(db);
+  const res = await handler(req("PATCH", "/files/10", { folder_id: 99 }));
+  assertEquals(res.status, 404);
+  const body = await readJson(res);
+  assertEquals(body.error, "Folder not found");
+});
+
+Deno.test("file-manage: PATCH /files/:id accepts valid folder_id from same workspace", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("files", "select", { data: { id: 10, conta_id: "conta-1" }, error: null });
+  db.queue("folders", "select", { data: { id: 5, conta_id: "conta-1" }, error: null }); // folder ownership
+  db.queue("files", "update", { data: { id: 10, folder_id: 5 }, error: null });
+  const handler = makeHandler(db);
+  const res = await handler(req("PATCH", "/files/10", { folder_id: 5 }));
+  assertEquals(res.status, 200);
+});
+
+Deno.test("file-manage: POST /folders/:id/copy rejects destination from other workspace", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("folders", "select", { data: { id: 1, conta_id: "conta-1", name: "Source" }, error: null }); // source folder
+  db.queue("folders", "select", { data: { id: 99, conta_id: "other-ws" }, error: null }); // destination ownership
+  const handler = makeHandler(db);
+  const res = await handler(req("POST", "/folders/1/copy", { destination_folder_id: 99 }));
+  assertEquals(res.status, 404);
+  const body = await readJson(res);
+  assertEquals(body.error, "Destination not found");
+});
+
+Deno.test("file-manage: POST /zip-token returns 429 when rate limited", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queueRpc("check_rate_limit", { data: false, error: null }); // rate limited
+  const handler = makeHandler(db);
+  const res = await handler(req("POST", "/zip-token", { folder_id: 1 }));
+  assertEquals(res.status, 429);
+  const body = await readJson(res);
+  assertEquals(body.error, "Rate limit exceeded");
 });

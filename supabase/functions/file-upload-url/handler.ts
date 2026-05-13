@@ -64,6 +64,15 @@ export function createFileUploadUrlHandler(deps: FileUploadUrlDeps) {
 
     const kind = classifyKind(mime_type);
 
+    const MIME_ALLOWLIST: Record<string, string[]> = {
+      image: ["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"],
+      video: ["video/mp4", "video/quicktime", "video/webm"],
+      document: ["application/pdf", "application/zip"],
+    };
+    if (!MIME_ALLOWLIST[kind]?.includes(mime_type)) {
+      return json({ error: "unsupported file type" }, 415);
+    }
+
     if (kind === "video" && !thumbnail) return json({ error: "video requires thumbnail" }, 400);
     if (thumbnail) {
       if (!thumbnail.mime_type.startsWith("image/")) return json({ error: "thumbnail must be an image" }, 400);

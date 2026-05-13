@@ -222,6 +222,7 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
       return { ...post, media: mediaForPost, cover_media };
     });
 
+    const expectedKeyPrefix = `contas/${hubToken.conta_id}/`;
     const allContentKeys: string[] = [];
     for (const post of flatPostsWithMedia) {
       if (post.conteudo) allContentKeys.push(...extractR2Keys(post.conteudo));
@@ -229,11 +230,19 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
 
     const contentUrlMap: Record<string, string> = {};
     if (allContentKeys.length > 0) {
-      await Promise.all(
-        allContentKeys.map(async (key) => {
-          contentUrlMap[key] = await deps.signGetUrl(key, 3600);
-        })
-      );
+      const safeKeys = allContentKeys.filter((key) => key.startsWith(expectedKeyPrefix));
+      if (safeKeys.length > 0) {
+        const { data: validFiles } = await db.from("files")
+          .select("r2_key")
+          .eq("conta_id", hubToken.conta_id)
+          .in("r2_key", safeKeys);
+        const validKeySet = new Set((validFiles ?? []).map((f: any) => f.r2_key));
+        await Promise.all(
+          safeKeys.filter((key) => validKeySet.has(key)).map(async (key) => {
+            contentUrlMap[key] = await deps.signGetUrl(key, 3600);
+          })
+        );
+      }
     }
 
     const postsWithResolvedContent = flatPostsWithMedia.map((post: any) => {

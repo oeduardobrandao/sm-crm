@@ -1,6 +1,8 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { insertAuditLog } from "../_shared/audit.ts";
+import { checkRateLimit } from "../_shared/rate-limit.ts";
+import { createSignedState, verifySignedState } from "./oauth-state.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const META_APP_ID = Deno.env.get("META_APP_ID")!;
@@ -62,55 +64,6 @@ async function decryptToken(encryptedBase64: string): Promise<string> {
     const decryptedBuf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, legacyKey, data);
     return new TextDecoder().decode(decryptedBuf);
   }
-}
-
-// --- Signed OAuth State ---
-async function getHmacKey(): Promise<CryptoKey> {
-  const enc = new TextEncoder();
-  return crypto.subtle.importKey(
-    'raw',
-    enc.encode(TOKEN_ENCRYPTION_KEY.slice(0, 32).padEnd(32, '0')),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign', 'verify']
-  );
-}
-
-function toUrlSafeBase64(b64: string): string {
-  return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
-function fromUrlSafeBase64(b64: string): string {
-  const padded = b64.replace(/-/g, '+').replace(/_/g, '/');
-  const pad = padded.length % 4;
-  return pad ? padded + '='.repeat(4 - pad) : padded;
-}
-
-async function createSignedState(clientId: string): Promise<string> {
-  const payload = JSON.stringify({ clientId, nonce: crypto.randomUUID(), iat: Date.now() });
-  const key = await getHmacKey();
-  const enc = new TextEncoder();
-  const sigBuf = await crypto.subtle.sign('HMAC', key, enc.encode(payload));
-  const payloadB64 = toUrlSafeBase64(btoa(payload));
-  const sigB64 = toUrlSafeBase64(btoa(String.fromCharCode(...new Uint8Array(sigBuf))));
-  return payloadB64 + '.' + sigB64;
-}
-
-async function verifySignedState(state: string): Promise<{ clientId: string }> {
-  const s = decodeURIComponent(state);
-  const dotIdx = s.indexOf('.');
-  if (dotIdx === -1) throw new Error('Invalid state format');
-  const payloadB64 = s.slice(0, dotIdx);
-  const sigB64 = s.slice(dotIdx + 1);
-  const payload = atob(fromUrlSafeBase64(payloadB64));
-  const key = await getHmacKey();
-  const enc = new TextEncoder();
-  const sigBytes = Uint8Array.from(atob(fromUrlSafeBase64(sigB64)), c => c.charCodeAt(0));
-  const valid = await crypto.subtle.verify('HMAC', key, sigBytes, enc.encode(payload));
-  if (!valid) throw new Error('State signature invalid');
-  const parsed = JSON.parse(payload);
-  if (Date.now() - parsed.iat > 10 * 60 * 1000) throw new Error('State expired');
-  return { clientId: parsed.clientId };
 }
 
 // --- Workspace Ownership Verification ---
@@ -177,8 +130,7 @@ Deno.serve(async (req) => {
             return new Response(JSON.stringify({ error: true, message: 'Unauthorized' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 });
         }
 
-        // Pass clientId in signed state (HMAC-SHA256)
-        const state = await createSignedState(clientId);
+        const state = await createSignedState(clientId, user!.id, authCallerProfile.conta_id, authServiceClient);
         
         const oauthUrl = `https://www.instagram.com/oauth/authorize?client_id=${META_APP_ID}&redirect_uri=${encodeURIComponent(functionBaseUrl)}&response_type=code&scope=instagram_business_basic,instagram_business_manage_insights,instagram_business_content_publish&state=${state}`;
 
@@ -194,8 +146,21 @@ Deno.serve(async (req) => {
 
         if (!code) throw new Error("Missing auth code");
 
-        const { clientId } = await verifySignedState(state || '');
+        const { clientId, nonce } = await verifySignedState(state || '');
         if (!clientId || !/^\d+$/.test(String(clientId))) throw new Error("Invalid client ID in state parameter");
+
+        const nonceServiceClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+        const { data: oauthState, error: nonceErr } = await nonceServiceClient
+          .from('oauth_states')
+          .update({ consumed_at: new Date().toISOString() })
+          .eq('nonce', nonce)
+          .is('consumed_at', null)
+          .gt('expires_at', new Date().toISOString())
+          .select()
+          .single();
+        if (nonceErr || !oauthState) {
+          throw new Error('OAuth state expired or already used');
+        }
 
         // Exchange code for short-lived token (Instagram Business Login)
         const exchangeRes = await fetch('https://api.instagram.com/oauth/access_token', {
@@ -428,6 +393,11 @@ Deno.serve(async (req) => {
         const { data: callerProfile } = await serviceClient.from('profiles').select('conta_id').eq('id', user!.id).single();
         if (!callerProfile?.conta_id || !await verifyClientOwnership(serviceClient, clientId, callerProfile.conta_id)) {
             return new Response(JSON.stringify({ error: true, message: 'Unauthorized' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 });
+        }
+
+        const syncAllowed = await checkRateLimit(serviceClient, `ig-sync:${callerProfile.conta_id}:${clientId}`, 5, 300);
+        if (!syncAllowed) {
+            return new Response(JSON.stringify({ error: "Rate limit exceeded" }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 429 });
         }
 
         const { data: accounts, error: accountError } = await serviceClient

@@ -264,3 +264,33 @@ Deno.test("file-upload-url: quota check passes when under limit", async () => {
   const res = await handler(authedRequest({ filename: "f.png", mime_type: "image/png", size_bytes: 3000 }));
   assertEquals(res.status, 200);
 });
+
+// ─── Security regression tests ────────────────────────────────
+
+Deno.test("file-upload-url: rejects executable MIME type", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuthAndProfile(db);
+  const handler = makeHandler(db);
+  const res = await handler(authedRequest({
+    filename: "malware.exe",
+    mime_type: "application/x-msdownload",
+    size_bytes: 1000,
+  }));
+  assertEquals(res.status, 415);
+  const body = await readJson(res);
+  assertEquals(body.error, "unsupported file type");
+});
+
+Deno.test("file-upload-url: accepts valid video MIME type", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuthAndProfile(db);
+  db.queue("workspaces", "select", { data: { storage_used_bytes: 0, storage_quota_bytes: 1000000 }, error: null });
+  const handler = makeHandler(db);
+  const res = await handler(authedRequest({
+    filename: "video.mp4",
+    mime_type: "video/mp4",
+    size_bytes: 50000,
+    thumbnail: { mime_type: "image/jpeg", size_bytes: 1000 },
+  }));
+  assertEquals(res.status, 200);
+});

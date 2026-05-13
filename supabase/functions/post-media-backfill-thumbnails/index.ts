@@ -1,6 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { PutObjectCommand } from "npm:@aws-sdk/client-s3@3.637.0";
-import { r2, R2_BUCKET, signGetUrl } from "../_shared/r2.ts";
+import { getR2, getBucket, signGetUrl } from "../_shared/r2.ts";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { timingSafeEqual } from "../_shared/crypto.ts";
 import { Jimp } from "npm:jimp@^1";
@@ -54,8 +54,8 @@ Deno.serve(async (req) => {
       const thumbBuffer = await image.getBuffer("image/jpeg", { quality: 70 });
 
       const thumbKey = row.r2_key.replace(/\.[^.]+$/, ".thumb.jpg");
-      await r2.send(new PutObjectCommand({
-        Bucket: R2_BUCKET,
+      await getR2().send(new PutObjectCommand({
+        Bucket: getBucket(),
         Key: thumbKey,
         Body: thumbBuffer,
         ContentType: "image/jpeg",

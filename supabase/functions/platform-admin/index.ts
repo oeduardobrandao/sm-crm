@@ -430,9 +430,16 @@ async function handleDeletePlan(
     .select("id", { count: "exact", head: true })
     .eq("plan_id", plan_id);
 
-  if (count && count > 0) {
+  const { count: directCount } = await svc
+    .from("workspaces")
+    .select("id", { count: "exact", head: true })
+    .eq("plan_id", plan_id);
+
+  const totalUsage = (count ?? 0) + (directCount ?? 0);
+
+  if (totalUsage > 0) {
     return new Response(JSON.stringify({
-      error: `Cannot delete plan: ${count} workspace(s) are assigned to it`,
+      error: `Cannot delete plan: ${totalUsage} workspace(s) are assigned to it`,
     }), { status: 400, headers });
   }
 

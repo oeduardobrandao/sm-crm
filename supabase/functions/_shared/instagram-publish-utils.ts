@@ -2,13 +2,16 @@ import { signGetUrl } from "./r2.ts";
 
 // --- Token Decryption (duplicated across functions; centralized here) ---
 
-const TOKEN_ENCRYPTION_KEY = Deno.env.get("TOKEN_ENCRYPTION_KEY") ??
-  (() => { throw new Error("TOKEN_ENCRYPTION_KEY required"); })();
+function getTokenEncryptionKey(): string {
+  const key = Deno.env.get("TOKEN_ENCRYPTION_KEY");
+  if (!key) throw new Error("TOKEN_ENCRYPTION_KEY required");
+  return key;
+}
 
 async function getEncryptionKey(purpose: string, usage: KeyUsage[]): Promise<CryptoKey> {
   const enc = new TextEncoder();
   const baseKey = await crypto.subtle.importKey(
-    "raw", enc.encode(TOKEN_ENCRYPTION_KEY), { name: "HKDF" }, false, ["deriveKey"]
+    "raw", enc.encode(getTokenEncryptionKey()), { name: "HKDF" }, false, ["deriveKey"]
   );
   return crypto.subtle.deriveKey(
     { name: "HKDF", hash: "SHA-256", salt: new Uint8Array(0), info: enc.encode(purpose) },
@@ -20,7 +23,7 @@ async function getLegacyKey(usage: KeyUsage[]): Promise<CryptoKey> {
   const enc = new TextEncoder();
   return crypto.subtle.importKey(
     "raw",
-    enc.encode(TOKEN_ENCRYPTION_KEY.padEnd(32, "0").slice(0, 32)),
+    enc.encode(getTokenEncryptionKey().padEnd(32, "0").slice(0, 32)),
     { name: "AES-GCM" }, false, usage
   );
 }
