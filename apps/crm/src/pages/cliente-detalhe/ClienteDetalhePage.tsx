@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { isSameDay } from 'date-fns';
+import { MonthGrid } from '@/components/ui/month-grid';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -234,15 +236,11 @@ export default function ClienteDetalhePage() {
         const events: PostCalendarEvent[] = [];
         for (const posts of results) {
           for (const post of posts) {
-            const dateProp = post.property_values.find(
-              pv => pv.definition?.name?.toLowerCase() === 'data de postagem' && pv.definition?.type === 'date'
-            );
-            if (dateProp?.value) {
-              const dateStr = typeof dateProp.value === 'string' ? dateProp.value : String(dateProp.value);
-              const m = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+            if (post.scheduled_at) {
+              const m = post.scheduled_at.match(/^(\d{4})-(\d{2})-(\d{2})/);
               const parsed = m
                 ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
-                : new Date(dateStr);
+                : new Date(post.scheduled_at);
               if (!isNaN(parsed.getTime())) {
                 events.push({
                   postId: post.id!,
@@ -274,15 +272,11 @@ export default function ClienteDetalhePage() {
         const events: PostCalendarEvent[] = [];
         for (const posts of results) {
           for (const post of posts) {
-            const dateProp = post.property_values.find(
-              pv => pv.definition?.name?.toLowerCase() === 'data de postagem' && pv.definition?.type === 'date'
-            );
-            if (dateProp?.value) {
-              const dateStr = typeof dateProp.value === 'string' ? dateProp.value : String(dateProp.value);
-              const m = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+            if (post.scheduled_at) {
+              const m = post.scheduled_at.match(/^(\d{4})-(\d{2})-(\d{2})/);
               const parsed = m
                 ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
-                : new Date(dateStr);
+                : new Date(post.scheduled_at);
               if (!isNaN(parsed.getTime())) {
                 events.push({
                   postId: post.id!,
@@ -638,12 +632,7 @@ export default function ClienteDetalhePage() {
           {postCalendarEvents.length > 0 && (() => {
             const calYear = calendarMonth.getFullYear();
             const calMonth = calendarMonth.getMonth();
-            const firstDay = new Date(calYear, calMonth, 1).getDay();
-            const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
-            const today = new Date();
-            const isSameCalMonth = calMonth === today.getMonth() && calYear === today.getFullYear();
             const monthNamesLocal = Array.from({ length: 12 }, (_, i) => tc(`months.${i}`));
-            const weekDaysLocal = Array.from({ length: 7 }, (_, i) => tc(`weekdaysShort.${i}`));
 
             const tipoColors: Record<string, string> = {
               feed: '#3b82f6',
@@ -666,36 +655,21 @@ export default function ClienteDetalhePage() {
               <div style={{ marginTop: '1rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
                 <div className="calendar-layout">
                   <div className="calendar-main">
-                    <div className="calendar-header">
-                      <div className="calendar-title-group">
-                        <h2 style={{ fontSize: '1.2rem' }}>{t('detail.posts')}</h2>
-                        <span>{monthNamesLocal[calMonth]} {calYear}</span>
-                      </div>
-                      <div className="calendar-nav">
-                        <button onClick={() => { setCalendarMonth(new Date(calYear, calMonth - 1, 1)); setSelectedPostDay(null); }}>‹</button>
-                        <button onClick={() => { setCalendarMonth(new Date(calYear, calMonth + 1, 1)); setSelectedPostDay(null); }}>›</button>
-                      </div>
-                    </div>
-                    <div className="calendar-weekdays">
-                      {weekDaysLocal.map(wd => <div key={wd}>{wd}</div>)}
-                    </div>
-                    <div className="calendar-grid">
-                      {Array.from({ length: firstDay }, (_, i) => (
-                        <div key={`e${i}`} className="calendar-day empty" />
-                      ))}
-                      {Array.from({ length: daysInMonth }, (_, i) => {
-                        const d = i + 1;
-                        const dayEvents = postCalendarEvents.filter(e => e.date.getFullYear() === calYear && e.date.getMonth() === calMonth && e.date.getDate() === d);
+                    <MonthGrid
+                      currentMonth={calendarMonth}
+                      onMonthChange={(d) => { setCalendarMonth(d); setSelectedPostDay(null); }}
+                      renderCell={(date, isCurrentMonth) => {
+                        if (!isCurrentMonth) return <div className="calendar-day empty" />;
+                        const d = date.getDate();
+                        const dayEvents = postCalendarEvents.filter(e => isSameDay(e.date, date));
                         const hasEvents = dayEvents.length > 0;
-                        const isDayToday = d === today.getDate() && isSameCalMonth;
-                        // Group by tipo
+                        const isDayToday = isSameDay(date, new Date());
                         const byTipo: Record<string, number> = {};
                         for (const ev of dayEvents) {
                           byTipo[ev.tipo] = (byTipo[ev.tipo] || 0) + 1;
                         }
                         return (
                           <div
-                            key={d}
                             className={`calendar-day ${isDayToday ? 'today' : ''} ${selectedPostDay === d ? 'selected' : ''} ${hasEvents ? 'has-events' : ''}`}
                             onClick={() => setSelectedPostDay(d)}
                           >
@@ -713,8 +687,8 @@ export default function ClienteDetalhePage() {
                             </div>
                           </div>
                         );
-                      })}
-                    </div>
+                      }}
+                    />
                   </div>
 
                   <div className="scheduled-panel">
