@@ -177,7 +177,7 @@ Deno.test("file-upload-finalize: document with post_id returns 400", async () =>
   const db = createSupabaseQueryMock();
   setupAuth(db);
   const handler = makeHandler(db);
-  const res = await handler(authedRequest({ ...baseBody, kind: "document", post_id: 10 }));
+  const res = await handler(authedRequest({ ...baseBody, kind: "document", mime_type: "application/pdf", post_id: 10 }));
   assertEquals(res.status, 400);
   const body = await readJson(res);
   assertEquals(body.error, "documents cannot be linked to posts");

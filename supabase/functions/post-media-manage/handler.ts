@@ -87,7 +87,7 @@ export function createPostMediaManageHandler(deps: PostMediaManageDeps) {
           .in("post_id", postIds)
           .eq("is_cover", true);
 
-        const postById = new Map(posts.map((p: any) => [p.id, p]));
+        const postById = new Map<number, any>(posts.map((p: any) => [p.id, p] as [number, any]));
         const sorted = (coverLinks ?? []).slice().sort((a: any, b: any) => {
           const pa = postById.get(a.post_id);
           const pb = postById.get(b.post_id);
@@ -157,6 +157,10 @@ export function createPostMediaManageHandler(deps: PostMediaManageDeps) {
       }
 
       if (body.thumbnail_r2_key && typeof body.thumbnail_r2_key === "string") {
+        const expectedPrefix = `contas/${profile.conta_id}/`;
+        if (!body.thumbnail_r2_key.startsWith(expectedPrefix)) {
+          return json({ error: "invalid thumbnail_r2_key" }, 400);
+        }
         if (file.thumbnail_r2_key && file.thumbnail_r2_key !== body.thumbnail_r2_key) {
           await svc.from("file_deletions").insert({ r2_key: file.thumbnail_r2_key });
         }

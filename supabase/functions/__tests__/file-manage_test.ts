@@ -112,6 +112,8 @@ Deno.test("file-manage: GET /folders?parent_id builds breadcrumbs", async () => 
   db.queue("folders", "select", { data: [], error: null });
   // files query
   db.queue("files", "select", { data: [], error: null });
+  // parent ownership check
+  db.queue("folders", "select", { data: { id: 5, conta_id: "conta-1" }, error: null });
   // folder_breadcrumbs RPC (replaces while-loop selects)
   db.queueRpc("folder_breadcrumbs", { data: [{ id: 1, name: "Root" }, { id: 5, name: "Sub" }], error: null });
   // folder detail
@@ -567,6 +569,7 @@ Deno.test("file-manage: GET /folders?parent_id=5 uses folder_breadcrumbs RPC", a
   setupAuth(db);
   db.queue("folders", "select", { data: [], error: null });
   db.queue("files", "select", { data: [], error: null });
+  db.queue("folders", "select", { data: { id: 5, conta_id: "conta-1" }, error: null });
   db.queueRpc("folder_breadcrumbs", {
     data: [{ id: 1, name: "Root" }, { id: 5, name: "Sub" }],
     error: null,

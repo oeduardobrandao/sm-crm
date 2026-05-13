@@ -73,6 +73,9 @@ Deno.serve(createInstagramRefreshCronHandler({
       const { data: accounts, error } = await supabase
         .from('instagram_accounts')
         .select('id, encrypted_access_token')
+        .eq('authorization_status', 'active')
+        .not('encrypted_access_token', 'is', null)
+        .neq('encrypted_access_token', '')
         .lte('token_expires_at', thirtyDaysFromNow);
 
       if (error) throw error;
@@ -93,12 +96,14 @@ Deno.serve(createInstagramRefreshCronHandler({
         const data = await res.json();
 
         if (data.error) {
+            const errorCode = data.error.code;
             console.error(`Error refreshing token for account ${account.id}:`, data.error);
-            // Mark as revoked so the UI reflects the real authorization state
-            await supabase
-              .from('instagram_accounts')
-              .update({ authorization_status: 'revoked' })
-              .eq('id', account.id);
+            if (errorCode === 190 || errorCode === 10) {
+              await supabase
+                .from('instagram_accounts')
+                .update({ authorization_status: 'revoked' })
+                .eq('id', account.id);
+            }
             failedCount++;
             continue;
         }
@@ -150,10 +155,6 @@ Deno.serve(createInstagramRefreshCronHandler({
           refreshedCount++;
         } catch (err) {
            console.error(`Failed to process account ${account.id}`, err);
-           await supabase
-             .from('instagram_accounts')
-             .update({ authorization_status: 'revoked' })
-             .eq('id', account.id);
            failedCount++;
         }
       }

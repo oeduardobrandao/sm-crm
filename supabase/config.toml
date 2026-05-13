@@ -48,3 +48,60 @@ verify_jwt = false
 
 [functions.workspace-limits]
 verify_jwt = false
+
+[functions.instagram-sync-cron]
+verify_jwt = false
+
+[functions.instagram-refresh-cron]
+verify_jwt = false
+
+[functions.instagram-publish-cron]
+verify_jwt = false
+
+[functions.notification-deadline-cron]
+verify_jwt = false
+
+[functions.notification-cleanup-cron]
+verify_jwt = false
+
+[functions.express-post-cleanup-cron]
+verify_jwt = false
+
+[functions.post-media-backfill-thumbnails]
+verify_jwt = false
+
+[functions.file-manage]
+verify_jwt = false
+
+[functions.file-upload-finalize]
+verify_jwt = false
+
+[functions.file-upload-url]
+verify_jwt = false
+
+[functions.file-zip]
+verify_jwt = false
+
+[functions.hub-dashboard]
+verify_jwt = false
+
+[functions.instagram-analytics]
+verify_jwt = false
+
+[functions.instagram-report-generator]
+verify_jwt = false
+
+[functions.invite-user]
+verify_jwt = false
+
+[functions.manage-workspace-user]
+verify_jwt = false
+
+[functions.portal-approve]
+verify_jwt = false
+
+[functions.portal-data]
+verify_jwt = false
+
+[functions.sign-r2-urls]
+verify_jwt = false

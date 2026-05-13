@@ -9,6 +9,16 @@ const ZIP_TOKEN_SECRET = Deno.env.get("ZIP_TOKEN_SECRET");
 
 if (!ZIP_TOKEN_SECRET) throw new Error("ZIP_TOKEN_SECRET is required");
 
+const MAX_FILE_SIZE_BYTES = 200 * 1024 * 1024;
+
+function sanitizeZipPath(name: string): string {
+  return name
+    .replace(/\0/g, "")
+    .replace(/\.\./g, "_")
+    .replace(/^\/+/, "")
+    .replace(/\\/g, "/");
+}
+
 async function verifyZipToken(token: string): Promise<Record<string, unknown> | null> {
   try {
     const { payload: payloadStr, sig: sigHex } = JSON.parse(atob(token));
@@ -59,6 +69,7 @@ Deno.serve(async (req: Request) => {
     name: string;
     r2Key: string;
     path: string;
+    size_bytes?: number;
   }
   const entries: ZipEntry[] = [];
 
@@ -79,11 +90,11 @@ Deno.serve(async (req: Request) => {
     async function walkFolder(fId: number, pathPrefix: string) {
       const { data: files } = await svc
         .from("files")
-        .select("name, r2_key")
+        .select("name, r2_key, size_bytes")
         .eq("folder_id", fId)
         .eq("conta_id", contaId);
       for (const f of files ?? []) {
-        entries.push({ name: f.name, r2Key: f.r2_key, path: pathPrefix + f.name });
+        entries.push({ name: f.name, r2Key: f.r2_key, path: pathPrefix + sanitizeZipPath(f.name), size_bytes: f.size_bytes });
       }
       const { data: subs } = await svc
         .from("folders")
@@ -91,7 +102,7 @@ Deno.serve(async (req: Request) => {
         .eq("parent_id", fId)
         .eq("conta_id", contaId);
       for (const sub of subs ?? []) {
-        await walkFolder(sub.id, pathPrefix + sub.name + "/");
+        await walkFolder(sub.id, pathPrefix + sanitizeZipPath(sub.name) + "/");
       }
     }
     await walkFolder(folderId, "");
@@ -102,6 +113,7 @@ Deno.serve(async (req: Request) => {
 
     (async () => {
       for (const entry of entries) {
+        if (entry.size_bytes && entry.size_bytes > MAX_FILE_SIZE_BYTES) continue;
         try {
           const stream = await getObject(entry.r2Key);
           if (!stream) {
@@ -129,7 +141,7 @@ Deno.serve(async (req: Request) => {
     const fileIds = payload.file_ids as number[];
     const { data: files } = await svc
       .from("files")
-      .select("name, r2_key, conta_id")
+      .select("name, r2_key, conta_id, size_bytes")
       .eq("conta_id", contaId)
       .in("id", fileIds);
 
@@ -138,11 +150,12 @@ Deno.serve(async (req: Request) => {
 
     (async () => {
       for (const f of files ?? []) {
+        if (f.size_bytes && f.size_bytes > MAX_FILE_SIZE_BYTES) continue;
         try {
           const stream = await getObject(f.r2_key);
           if (!stream) continue;
           const blob = await new Response(stream).blob();
-          await zipWriter.add(f.name, new BlobReader(blob));
+          await zipWriter.add(sanitizeZipPath(f.name), new BlobReader(blob));
         } catch (err) {
           console.error(`[file-zip] Skipped: ${f.r2_key}`, err);
         }

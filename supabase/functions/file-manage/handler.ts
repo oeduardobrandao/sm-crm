@@ -1,6 +1,7 @@
 import { createJsonResponder } from "../_shared/http.ts";
 import { insertAuditLog } from "../_shared/audit.ts";
 import { copyObject } from "../_shared/r2.ts";
+import { checkRateLimit } from "../_shared/rate-limit.ts";
 
 async function signZipToken(payload: Record<string, unknown>, secret: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -89,10 +90,12 @@ export function createFileManageHandler(deps: FileManageDeps) {
 
         const { count: subfolderCount } = await svc.from("folders")
           .select("id", { count: "exact", head: true })
-          .eq("parent_id", folderId);
+          .eq("parent_id", folderId)
+          .eq("conta_id", contaId);
         const { count: directFileCount } = await svc.from("files")
           .select("id", { count: "exact", head: true })
-          .eq("folder_id", folderId);
+          .eq("folder_id", folderId)
+          .eq("conta_id", contaId);
 
         return json({
           ...folder,
@@ -151,6 +154,8 @@ export function createFileManageHandler(deps: FileManageDeps) {
         // Build breadcrumbs via RPC (replaces while-loop of individual selects)
         let breadcrumbs: { id: number; name: string }[] = [];
         if (parentFilter) {
+          const { data: parentFolder } = await svc.from("folders").select("conta_id").eq("id", parentFilter).single();
+          if (!parentFolder || parentFolder.conta_id !== contaId) return json({ error: "Folder not found" }, 404);
           const { data: crumbs } = await svc.rpc("folder_breadcrumbs", { p_folder_id: parentFilter });
           breadcrumbs = (crumbs ?? []).map((c: any) => ({ id: c.id, name: c.name }));
         }
@@ -215,6 +220,15 @@ export function createFileManageHandler(deps: FileManageDeps) {
           if (folder.source === "system") patch.name_overridden = true;
         }
         if (body.parent_id !== undefined) {
+          if (body.parent_id !== null) {
+            const { data: parent } = await svc.from("folders").select("conta_id").eq("id", body.parent_id).single();
+            if (!parent || parent.conta_id !== contaId) return json({ error: "Parent folder not found" }, 404);
+            if (body.parent_id === folderId) return json({ error: "Cannot move folder into itself" }, 400);
+            const { data: ancestors } = await svc.rpc("folder_breadcrumbs", { p_folder_id: body.parent_id });
+            if (ancestors?.some((a: any) => a.id === folderId)) {
+              return json({ error: "Cannot move folder into a descendant" }, 400);
+            }
+          }
           patch.parent_id = body.parent_id;
         }
 
@@ -246,6 +260,11 @@ export function createFileManageHandler(deps: FileManageDeps) {
 
         const { data: source } = await svc.from("folders").select("*").eq("id", folderId).single();
         if (!source || source.conta_id !== contaId) return json({ error: "Folder not found" }, 404);
+
+        if (destination_folder_id !== null && destination_folder_id !== undefined) {
+          const { data: destFolder } = await svc.from("folders").select("conta_id").eq("id", destination_folder_id).single();
+          if (!destFolder || destFolder.conta_id !== contaId) return json({ error: "Destination not found" }, 404);
+        }
 
         const { data: sizeInfo } = await svc.rpc("folder_sizes_batch", { p_folder_ids: [folderId] });
         const totalFiles = sizeInfo?.[0]?.file_count ?? 0;
@@ -427,7 +446,13 @@ export function createFileManageHandler(deps: FileManageDeps) {
         const body = await req.json().catch(() => ({}));
         const patch: Record<string, unknown> = {};
         if (typeof body.name === "string") patch.name = body.name;
-        if (body.folder_id !== undefined) patch.folder_id = body.folder_id;
+        if (body.folder_id !== undefined) {
+          if (body.folder_id !== null) {
+            const { data: destFolder } = await svc.from("folders").select("conta_id").eq("id", body.folder_id).single();
+            if (!destFolder || destFolder.conta_id !== contaId) return json({ error: "Folder not found" }, 404);
+          }
+          patch.folder_id = body.folder_id;
+        }
         if (typeof body.blur_data_url === "string") patch.blur_data_url = body.blur_data_url;
 
         if (Object.keys(patch).length === 0) return json({ error: "Nothing to update" }, 400);
@@ -682,6 +707,9 @@ export function createFileManageHandler(deps: FileManageDeps) {
 
     // ─── ZIP-TOKEN ────────────────────────────────────────────────
     if (resource === "zip-token" && req.method === "POST") {
+      const zipAllowed = await checkRateLimit(svc as any, `zip-gen:${contaId}`, 10, 600);
+      if (!zipAllowed) return json({ error: "Rate limit exceeded" }, 429);
+
       const ZIP_TOKEN_SECRET = Deno.env.get("ZIP_TOKEN_SECRET");
       if (!ZIP_TOKEN_SECRET) throw new Error("ZIP_TOKEN_SECRET is required");
 
