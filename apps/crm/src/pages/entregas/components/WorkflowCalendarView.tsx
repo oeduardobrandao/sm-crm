@@ -3,7 +3,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   DndContext, DragOverlay, PointerSensor, KeyboardSensor,
-  useSensor, useSensors, type DragEndEvent, type DragStartEvent,
+  useSensor, useSensors, closestCenter,
+  type DragEndEvent, type DragStartEvent,
 } from '@dnd-kit/core';
 import { parseISO } from 'date-fns';
 import { X } from 'lucide-react';
@@ -149,7 +150,7 @@ export function WorkflowCalendarView({
       )}
 
       {/* Main content */}
-      <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         <div className="calendar-content">
           <UnscheduledPostsSidebar
             posts={unscheduledPosts}

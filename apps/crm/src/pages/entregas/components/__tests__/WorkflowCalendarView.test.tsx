@@ -9,6 +9,7 @@ vi.mock('@dnd-kit/core', () => ({
   DragOverlay: ({ children }: { children?: React.ReactNode }) => <>{children ?? null}</>,
   PointerSensor: class {},
   KeyboardSensor: class {},
+  closestCenter: () => null,
   useSensor: () => ({}),
   useSensors: (...sensors: unknown[]) => sensors,
   useDraggable: () => ({

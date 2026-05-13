@@ -4565,10 +4565,10 @@ body.role-agent input[name="valor_total"] {
 
 .drawer-panel {
   position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  inset: 0;
+  margin: auto;
   width: min(1280px, 94vw);
+  height: fit-content;
   max-height: 92vh;
   background: var(--card-bg, #fff);
   border: 1px solid var(--border-color, #e5e7eb);
@@ -4587,8 +4587,8 @@ body.role-agent input[name="valor_total"] {
 }
 
 @keyframes drawerPopIn {
-  from { transform: translate(-50%, -50%) scale(0.95); opacity: 0; }
-  to   { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
 .drawer-header {
@@ -5024,9 +5024,6 @@ body.role-agent input[name="valor_total"] {
     width: 100vw;
     max-height: 100vh;
     border-radius: 0;
-    top: 0;
-    left: 0;
-    transform: none;
     animation: none;
   }
 }
@@ -6440,15 +6437,16 @@ body.role-agent input[name="valor_total"] {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 20px;
-  background: rgba(234, 179, 8, 0.06);
-  border-bottom: 1px solid var(--border-color);
+  padding: 10px 20px;
+  background: rgba(234, 179, 8, 0.15);
+  border-bottom: 1px solid rgba(234, 179, 8, 0.25);
 }
 
 .calendar-hint-text {
   flex: 1;
-  font-size: 0.7rem;
-  color: var(--primary-color);
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-main);
 }
 
 .calendar-hint-close {
