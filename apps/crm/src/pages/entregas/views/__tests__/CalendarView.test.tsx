@@ -107,7 +107,8 @@ describe('CalendarView', () => {
       <CalendarView cards={[cardToday, cardLater]} onCardClick={onCardClick} />,
     );
 
-    expect(screen.getByRole('heading', { name: 'Abril' })).toBeInTheDocument();
+    // MonthGrid renders month name via date-fns format (lowercase Portuguese) in a span.month-grid-title
+    expect(document.querySelector('.month-grid-title')).toHaveTextContent(/abril/i);
     expect(screen.getByText('Fluxo Editorial')).toBeInTheDocument();
     expect(screen.getByText('⚑ PRAZO DA ETAPA')).toBeInTheDocument();
 
@@ -125,9 +126,10 @@ describe('CalendarView', () => {
       <CalendarView cards={[makeCard()]} onCardClick={vi.fn()} />,
     );
 
-    fireEvent.click(screen.getByText('›'));
+    // MonthGrid uses aria-label for navigation
+    fireEvent.click(screen.getByLabelText('Próximo mês'));
 
-    expect(screen.getByRole('heading', { name: 'Maio' })).toBeInTheDocument();
+    expect(document.querySelector('.month-grid-title')).toHaveTextContent(/maio/i);
     expect(screen.getByText('Selecione um dia.')).toBeInTheDocument();
 
     fireEvent.click(getDayCell(container, 1)!);
