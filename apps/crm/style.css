@@ -4565,10 +4565,10 @@ body.role-agent input[name="valor_total"] {
 
 .drawer-panel {
   position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  inset: 0;
+  margin: auto;
   width: min(1280px, 94vw);
+  height: fit-content;
   max-height: 92vh;
   background: var(--card-bg, #fff);
   border: 1px solid var(--border-color, #e5e7eb);
@@ -4587,8 +4587,8 @@ body.role-agent input[name="valor_total"] {
 }
 
 @keyframes drawerPopIn {
-  from { transform: translate(-50%, -50%) scale(0.95); opacity: 0; }
-  to   { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
 .drawer-header {
@@ -5024,9 +5024,6 @@ body.role-agent input[name="valor_total"] {
     width: 100vw;
     max-height: 100vh;
     border-radius: 0;
-    top: 0;
-    left: 0;
-    transform: none;
     animation: none;
   }
 }
@@ -6425,6 +6422,375 @@ body.role-agent input[name="valor_total"] {
   font-size: 0.75rem;
   color: var(--text-muted, #718096);
   flex-shrink: 0;
+}
+
+/* ── Workflow Calendar View ─────────────────────────────────────── */
+
+.workflow-calendar-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.calendar-hint-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: rgba(234, 179, 8, 0.15);
+  border-bottom: 1px solid rgba(234, 179, 8, 0.25);
+}
+
+.calendar-hint-text {
+  flex: 1;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-main);
+}
+
+.calendar-hint-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+}
+
+.calendar-content {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ── Sidebar ──────────────────────────────────────────────────── */
+
+.calendar-sidebar {
+  width: 200px;
+  flex-shrink: 0;
+  background: var(--surface-darker);
+  border-right: 1px solid var(--border-color);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.sidebar-header { margin-bottom: 14px; }
+.sidebar-title { font-weight: 700; font-size: 0.75rem; color: var(--text-main); }
+.sidebar-subtitle { font-size: 0.6rem; color: var(--text-muted); margin-top: 2px; }
+
+.sidebar-posts-list { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+
+.sidebar-post-card {
+  background: var(--surface-main);
+  border-radius: 8px;
+  padding: 10px;
+  border-left: 3px solid;
+  transition: opacity 0.15s;
+}
+
+.sidebar-post-title {
+  font-weight: 600;
+  font-size: 0.7rem;
+  color: var(--text-main);
+  margin-bottom: 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-post-meta { display: flex; gap: 5px; align-items: center; }
+
+.sidebar-tipo-badge {
+  font-size: 0.5rem;
+  padding: 2px 6px;
+  border-radius: 2px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.sidebar-workflow-label {
+  font-size: 0.55rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.sidebar-empty {
+  text-align: center;
+  padding: 2rem 0;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.sidebar-legend {
+  border-top: 1px solid var(--border-color);
+  padding-top: 12px;
+  margin-top: 12px;
+}
+
+.sidebar-legend-title {
+  font-size: 0.55rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+.sidebar-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.6rem;
+  color: var(--text-light);
+  margin-bottom: 4px;
+}
+
+.sidebar-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+/* ── Calendar Grid ────────────────────────────────────────────── */
+
+.calendar-grid-container {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.month-grid-nav-btn {
+  background: var(--surface-main);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px 8px;
+  transition: background 0.15s;
+}
+
+.month-grid-nav-btn:hover { background: var(--surface-hover); }
+
+.calendar-cell {
+  min-height: 64px;
+  background: var(--surface-main);
+  border-radius: 8px;
+  padding: 6px;
+  position: relative;
+  transition: border 0.15s, box-shadow 0.15s;
+  border: 2px solid transparent;
+}
+
+.calendar-cell.out-of-month { background: var(--surface-darker); }
+.calendar-cell.out-of-month .cell-day-number { color: var(--text-muted); opacity: 0.5; }
+.calendar-cell.weekend { background: color-mix(in srgb, var(--surface-main), var(--surface-darker) 50%); }
+.calendar-cell.today { border-color: var(--primary-color); }
+
+.cell-day-number { color: var(--text-main); }
+.cell-posts { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
+
+.calendar-post-pill {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--dark);
+  font-size: 0.625rem;
+  font-weight: 600;
+  padding: 2px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.pill-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cell-overflow {
+  font-size: 0.625rem;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 1px 0;
+  cursor: default;
+}
+
+.cell-drop-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.5rem;
+  color: var(--primary-color);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* ── Drag Overlay ─────────────────────────────────────────────── */
+
+.drag-overlay-card {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  background: var(--surface-main);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 8px 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+.drag-overlay-tipo {
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--primary-color);
+}
+
+.drag-overlay-title {
+  font-size: 0.7rem;
+  color: var(--text-main);
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Time Picker Popover ──────────────────────────────────────── */
+
+.time-picker-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.time-picker-popover {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 16px;
+  min-width: 240px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+}
+
+.time-picker-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.time-picker-date {
+  flex: 1;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-main);
+  text-transform: capitalize;
+}
+
+.time-picker-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+}
+
+.time-picker-selectors {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.time-picker-select {
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--surface-main);
+  color: var(--text-main);
+  padding: 0 8px;
+  font-size: 0.85rem;
+  font-family: var(--font-mono);
+}
+
+.time-picker-separator {
+  font-size: 1rem;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.time-picker-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.time-picker-cancel {
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.time-picker-cancel:hover { background: var(--surface-hover); }
+
+.time-picker-confirm {
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: none;
+  background: var(--primary-color);
+  color: var(--dark);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.time-picker-confirm:hover { background: var(--primary-hover); }
+
+/* ── Calendar header button ───────────────────────────────────── */
+
+.drawer-calendar-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--surface-main);
+  color: var(--text-main);
+  font-size: 0.7rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.drawer-calendar-btn:hover {
+  background: var(--surface-hover);
+  border-color: var(--primary-color);
+}
+
+.drawer-calendar-btn.active {
+  background: var(--primary-color);
+  color: var(--dark);
+  border-color: var(--primary-color);
 }
 
 /* Landing page — #root must not clip page scroll */

@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { X, Plus, Trash2, Send, ChevronDown, ChevronRight, MessageSquare, GripVertical, ImageIcon } from 'lucide-react';
+import { X, Plus, Trash2, Send, ChevronDown, ChevronRight, MessageSquare, GripVertical, ImageIcon, Calendar as CalendarIcon } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
@@ -32,6 +32,7 @@ import { InstagramCaptionField } from './InstagramCaptionField';
 import { ScheduleButton } from './ScheduleButton';
 import { DateTimePicker } from '@/components/ui/date-time-picker';
 import { supabase } from '@/lib/supabase';
+import { WorkflowCalendarView } from './WorkflowCalendarView';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -94,6 +95,7 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
   const [pendingEditData, setPendingEditData] = useState<{ json: Record<string, unknown>; plain: string } | null>(null);
   const confirmedEditIds = useRef<Set<number>>(new Set());
   const [pendingStatusChange, setPendingStatusChange] = useState<{ id: number; newStatus: string } | null>(null);
+  const [showCalendar, setShowCalendar] = useState(false);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -424,6 +426,14 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
                 Enviar ao cliente ({readyToSend})
               </button>
             )}
+            <button
+              className={`drawer-calendar-btn${showCalendar ? ' active' : ''}`}
+              onClick={() => setShowCalendar(v => !v)}
+              title={showCalendar ? 'Voltar aos posts' : 'Ver calendário do cliente'}
+            >
+              <CalendarIcon className="h-3.5 w-3.5" />
+              {showCalendar ? 'Posts' : 'Calendário'}
+            </button>
             <button className="drawer-close-btn" onClick={onClose} title="Fechar">
               <X className="h-5 w-5" />
             </button>
@@ -432,67 +442,79 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
 
         {/* Posts section */}
         <div className="drawer-body">
-          <div className="drawer-section-header">
-            <span className="drawer-section-title">
-              Posts
-              {posts.length > 0 && (
-                <span className="drawer-post-count">
-                  {approvedCount}/{posts.length} aprovados
-                </span>
-              )}
-            </span>
-            <button className="drawer-add-post-btn" onClick={handleAddPost}>
-              <Plus className="h-3.5 w-3.5" /> Novo Post
-            </button>
-          </div>
-
-          {isLoading ? (
-            <div className="drawer-empty">Carregando...</div>
-          ) : posts.length === 0 ? (
-            <div className="drawer-empty">
-              Nenhum post ainda. Clique em "Novo Post" para começar.
-            </div>
+          {showCalendar ? (
+            <WorkflowCalendarView
+              clienteId={clienteId}
+              clienteNome={card.cliente?.nome || '—'}
+              currentWorkflowId={workflowId}
+              currentWorkflowTitulo={card.workflow.titulo}
+              onBack={() => setShowCalendar(false)}
+            />
           ) : (
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-              <SortableContext items={orderedPosts.map(p => p.id!)} strategy={verticalListSortingStrategy}>
-                <div className="drawer-posts-list">
-                  {orderedPosts.map(post => (
-                    <SortablePostItem
-                      key={post.id}
-                      post={post}
-                      templateId={card.workflow.template_id}
-                      workflowId={workflowId}
-                      isExpanded={expandedId === post.id}
-                      isSaving={savingIds.has(post.id!)}
-                      approvals={approvals.filter(a => a.post_id === post.id)}
-                      membros={membros}
-                      replyText={replyText[post.id!] || ''}
-                      sendingReply={sendingReply === post.id}
-                      commentThreads={commentThreads.filter(t => t.post_id === post.id)}
-                      currentUserId={user?.id}
-                      currentUserRole={role}
-                      workspaceUsers={workspaceUsers}
-                      hasMedia={(post as any).has_media ?? false}
-                      hasInstagramAccount={hasInstagramAccount}
-                      igAccountStatus={igAccountStatus}
-                      onToggle={() => setExpandedId(expandedId === post.id ? null : post.id!)}
-                      onDelete={() => handleDeletePost(post.id!)}
-                      onFieldChange={(field, value) => handleFieldChange(post.id!, field, value)}
-                      onContentUpdate={(json, plain) => scheduleContentSave(post, json, plain)}
-                      onReplyChange={text => setReplyText(prev => ({ ...prev, [post.id!]: text }))}
-                      onReplySend={() => handleReply(post.id!)}
-                      onRefresh={refresh}
-                      onCreateComment={handleCreateComment}
-                      onReplyToComment={handleReplyToComment}
-                      onResolveThread={handleResolveThread}
-                      onReopenThread={handleReopenThread}
-                      onEditComment={handleEditComment}
-                      onDeleteComment={handleDeleteComment}
-                    />
-                  ))}
+            <>
+              <div className="drawer-section-header">
+                <span className="drawer-section-title">
+                  Posts
+                  {posts.length > 0 && (
+                    <span className="drawer-post-count">
+                      {approvedCount}/{posts.length} aprovados
+                    </span>
+                  )}
+                </span>
+                <button className="drawer-add-post-btn" onClick={handleAddPost}>
+                  <Plus className="h-3.5 w-3.5" /> Novo Post
+                </button>
+              </div>
+
+              {isLoading ? (
+                <div className="drawer-empty">Carregando...</div>
+              ) : posts.length === 0 ? (
+                <div className="drawer-empty">
+                  Nenhum post ainda. Clique em "Novo Post" para começar.
                 </div>
-              </SortableContext>
-            </DndContext>
+              ) : (
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                  <SortableContext items={orderedPosts.map(p => p.id!)} strategy={verticalListSortingStrategy}>
+                    <div className="drawer-posts-list">
+                      {orderedPosts.map(post => (
+                        <SortablePostItem
+                          key={post.id}
+                          post={post}
+                          templateId={card.workflow.template_id}
+                          workflowId={workflowId}
+                          isExpanded={expandedId === post.id}
+                          isSaving={savingIds.has(post.id!)}
+                          approvals={approvals.filter(a => a.post_id === post.id)}
+                          membros={membros}
+                          replyText={replyText[post.id!] || ''}
+                          sendingReply={sendingReply === post.id}
+                          commentThreads={commentThreads.filter(t => t.post_id === post.id)}
+                          currentUserId={user?.id}
+                          currentUserRole={role}
+                          workspaceUsers={workspaceUsers}
+                          hasMedia={(post as any).has_media ?? false}
+                          hasInstagramAccount={hasInstagramAccount}
+                          igAccountStatus={igAccountStatus}
+                          onToggle={() => setExpandedId(expandedId === post.id ? null : post.id!)}
+                          onDelete={() => handleDeletePost(post.id!)}
+                          onFieldChange={(field, value) => handleFieldChange(post.id!, field, value)}
+                          onContentUpdate={(json, plain) => scheduleContentSave(post, json, plain)}
+                          onReplyChange={text => setReplyText(prev => ({ ...prev, [post.id!]: text }))}
+                          onReplySend={() => handleReply(post.id!)}
+                          onRefresh={refresh}
+                          onCreateComment={handleCreateComment}
+                          onReplyToComment={handleReplyToComment}
+                          onResolveThread={handleResolveThread}
+                          onReopenThread={handleReopenThread}
+                          onEditComment={handleEditComment}
+                          onDeleteComment={handleDeleteComment}
+                        />
+                      ))}
+                    </div>
+                  </SortableContext>
+                </DndContext>
+              )}
+            </>
           )}
         </div>
       </div>

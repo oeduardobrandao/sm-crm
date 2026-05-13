@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { computeDeadlineDate, computeWorkflowDeadlineDate } from '../hooks/useEntregasData';
+import { MonthGrid } from '@/components/ui/month-grid';
+import { isSameDay } from 'date-fns';
 
 interface CalendarViewProps {
   cards: BoardCard[];
@@ -13,14 +15,7 @@ interface CalendarEvent {
   date: Date;
 }
 
-function isSameDay(a: Date, b: Date): boolean {
-  return a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate();
-}
-
 const monthNames = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
-const weekDays = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
 export function CalendarView({ cards, onCardClick }: CalendarViewProps) {
   const today = new Date();
@@ -29,11 +24,6 @@ export function CalendarView({ cards, onCardClick }: CalendarViewProps) {
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
-  const isSameMonth = month === today.getMonth() && year === today.getFullYear();
-  const isToday = (d: number) => today.getDate() === d && isSameMonth;
-
-  const prevMonth = () => { setCurrentDate(new Date(year, month - 1, 1)); setSelectedDay(null); };
-  const nextMonth = () => { setCurrentDate(new Date(year, month + 1, 1)); setSelectedDay(null); };
 
   // Build events for this month
   const events: CalendarEvent[] = [];
@@ -52,13 +42,8 @@ export function CalendarView({ cards, onCardClick }: CalendarViewProps) {
     }
   }
 
-  // Build grid
-  const firstDay = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-  // Selected day details
   const selectedEvents = selectedDay
-    ? events.filter(e => e.date.getDate() === selectedDay)
+    ? events.filter(e => e.date.getDate() === selectedDay && e.date.getMonth() === month && e.date.getFullYear() === year)
     : [];
 
   if (cards.length === 0) {
@@ -73,33 +58,20 @@ export function CalendarView({ cards, onCardClick }: CalendarViewProps) {
     <div className="animate-up">
       <div className="calendar-layout">
         <div className="calendar-main">
-          <div className="calendar-header">
-            <div className="calendar-title-group">
-              <h2>{monthNames[month]}</h2>
-              <span>{year}</span>
-            </div>
-            <div className="calendar-nav">
-              <button onClick={prevMonth}>‹</button>
-              <button onClick={nextMonth}>›</button>
-            </div>
-          </div>
-          <div className="calendar-weekdays">
-            {weekDays.map(wd => <div key={wd}>{wd}</div>)}
-          </div>
-          <div className="calendar-grid">
-            {Array.from({ length: firstDay }, (_, i) => (
-              <div key={`e${i}`} className="calendar-day empty" />
-            ))}
-            {Array.from({ length: daysInMonth }, (_, i) => {
-              const d = i + 1;
-              const dayEvents = events.filter(e => e.date.getDate() === d);
+          <MonthGrid
+            currentMonth={currentDate}
+            onMonthChange={(d) => { setCurrentDate(d); setSelectedDay(null); }}
+            renderCell={(date, isCurrentMonth) => {
+              if (!isCurrentMonth) return <div className="calendar-day empty" />;
+              const d = date.getDate();
+              const dayEvents = events.filter(e => isSameDay(e.date, date));
               const hasEvents = dayEvents.length > 0;
               const etapaCount = dayEvents.filter(e => e.type === 'etapa').length;
               const wfCount = dayEvents.filter(e => e.type === 'workflow').length;
+              const isToday = isSameDay(date, today);
               return (
                 <div
-                  key={d}
-                  className={`calendar-day ${isToday(d) ? 'today' : ''} ${selectedDay === d ? 'selected' : ''} ${hasEvents ? 'has-events' : ''}`}
+                  className={`calendar-day ${isToday ? 'today' : ''} ${selectedDay === d ? 'selected' : ''} ${hasEvents ? 'has-events' : ''}`}
                   onClick={() => setSelectedDay(d)}
                 >
                   <span className="day-number">{d}</span>
@@ -117,8 +89,8 @@ export function CalendarView({ cards, onCardClick }: CalendarViewProps) {
                   </div>
                 </div>
               );
-            })}
-          </div>
+            }}
+          />
         </div>
 
         <div className="scheduled-panel">
@@ -133,12 +105,7 @@ export function CalendarView({ cards, onCardClick }: CalendarViewProps) {
               </div>
             ) : (
               selectedEvents.map((ev, i) => (
-                <div
-                  key={i}
-                  className="scheduled-item"
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => onCardClick(ev.card)}
-                >
+                <div key={i} className="scheduled-item" style={{ cursor: 'pointer' }} onClick={() => onCardClick(ev.card)}>
                   <div className="item-top">
                     <div className="item-badge" style={{ background: ev.type === 'etapa' ? '#a855f7' : '#f97316' }} />
                     <span className="badge" style={{ fontSize: '0.65rem' }}>
@@ -146,13 +113,9 @@ export function CalendarView({ cards, onCardClick }: CalendarViewProps) {
                     </span>
                   </div>
                   <div className="item-title">{ev.card.workflow.titulo}</div>
-                  <div className="item-subtitle">
-                    {ev.card.cliente?.nome || '—'} · ETAPA: {ev.card.etapa.nome}
-                  </div>
+                  <div className="item-subtitle">{ev.card.cliente?.nome || '—'} · ETAPA: {ev.card.etapa.nome}</div>
                   <div className="item-divider" />
-                  <div className="item-meta">
-                    {ev.date.toLocaleDateString('pt-BR')}
-                  </div>
+                  <div className="item-meta">{ev.date.toLocaleDateString('pt-BR')}</div>
                 </div>
               ))
             )}
@@ -160,7 +123,6 @@ export function CalendarView({ cards, onCardClick }: CalendarViewProps) {
         </div>
       </div>
 
-      {/* Legend */}
       <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '1rem' }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#a855f7', display: 'inline-block' }} /> Prazo da etapa</span>
         <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><span style={{ width: 10, height: 10, borderRadius: '50%', background: '#f97316', display: 'inline-block' }} /> Conclusão prevista</span>
