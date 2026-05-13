@@ -6389,6 +6389,27 @@ body.role-agent input[name="valor_total"] {
   background: var(--surface-hover, #f1f5f9);
 }
 
+.concluded-reopen-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #e2e8f0);
+  background: transparent;
+  color: var(--text-muted, #718096);
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.concluded-reopen-btn:hover {
+  background: rgba(234, 179, 8, 0.1);
+  color: var(--primary-color, #eab308);
+  border-color: var(--primary-color, #eab308);
+}
+
 .concluded-wf-title {
   font-weight: 500;
   font-size: 0.875rem;

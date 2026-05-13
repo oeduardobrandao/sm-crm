@@ -338,6 +338,19 @@ export async function revertEtapa(workflowId: number): Promise<{ workflow: Workf
   return { workflow, etapas: updatedEtapas };
 }
 
+export async function reopenWorkflow(workflowId: number): Promise<{ workflow: Workflow; etapas: WorkflowEtapa[] }> {
+  const etapas = await getWorkflowEtapas(workflowId);
+  if (etapas.length === 0) throw new Error('Fluxo sem etapas.');
+
+  const lastEtapa = etapas[etapas.length - 1];
+  const now = new Date().toISOString();
+
+  await updateWorkflowEtapa(lastEtapa.id!, { status: 'ativo', concluido_em: null, iniciado_em: now });
+  const workflow = await updateWorkflow(workflowId, { status: 'ativo', etapa_atual: etapas.length - 1 });
+  const updatedEtapas = await getWorkflowEtapas(workflowId);
+  return { workflow, etapas: updatedEtapas };
+}
+
 /** Clone a workflow for recurrence (creates a fresh copy with all steps reset). */
 export async function duplicateWorkflow(workflowId: number): Promise<Workflow> {
   const [workflow, etapas] = await Promise.all([

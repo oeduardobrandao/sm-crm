@@ -1,7 +1,10 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { getConcludedWorkflows, getWorkflowEtapas, getWorkflowPosts, getClientes, type Workflow, type Cliente } from '../../../store';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { RotateCcw } from 'lucide-react';
+import { getConcludedWorkflows, getWorkflowEtapas, getWorkflowPosts, getClientes, reopenWorkflow, type Workflow, type Cliente } from '../../../store';
 import { HistoryDrawer } from '../components/HistoryDrawer';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
 interface ConcludedWorkflowSummary {
   workflow: Workflow;
@@ -22,6 +25,8 @@ function formatDateShort(iso: string): string {
 export function ConcludedView() {
   const [expandedClients, setExpandedClients] = useState<Set<number>>(new Set());
   const [selectedWorkflow, setSelectedWorkflow] = useState<{ workflow: Workflow; clienteName: string } | null>(null);
+  const [reopenTarget, setReopenTarget] = useState<{ id: number; titulo: string } | null>(null);
+  const qc = useQueryClient();
 
   const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: getClientes });
 
@@ -62,6 +67,21 @@ export function ConcludedView() {
     if (cliente) groups.push({ cliente, workflows });
   }
   groups.sort((a, b) => a.cliente.nome.localeCompare(b.cliente.nome));
+
+  const handleReopenConfirm = async () => {
+    if (!reopenTarget) return;
+    try {
+      await reopenWorkflow(reopenTarget.id);
+      toast.success('Fluxo reaberto com sucesso!');
+      qc.invalidateQueries({ queryKey: ['concluded-workflows'] });
+      qc.invalidateQueries({ queryKey: ['concluded-summaries'] });
+      qc.invalidateQueries({ queryKey: ['workflows'] });
+      qc.invalidateQueries({ queryKey: ['all-active-etapas'] });
+    } catch {
+      toast.error('Erro ao reabrir fluxo.');
+    }
+    setReopenTarget(null);
+  };
 
   const toggleClient = (id: number) => {
     setExpandedClients(prev => {
@@ -109,7 +129,19 @@ export function ConcludedView() {
                           {s.completedAt && <> &bull; Concluído {formatDateShort(s.completedAt)}</>}
                         </div>
                       </div>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>→</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <button
+                          className="concluded-reopen-btn"
+                          title="Reabrir fluxo"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setReopenTarget({ id: s.workflow.id!, titulo: s.workflow.titulo });
+                          }}
+                        >
+                          <RotateCcw size={14} />
+                        </button>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>→</span>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -126,6 +158,21 @@ export function ConcludedView() {
           onClose={() => setSelectedWorkflow(null)}
         />
       )}
+
+      <AlertDialog open={!!reopenTarget} onOpenChange={open => { if (!open) setReopenTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reabrir fluxo?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O fluxo "{reopenTarget?.titulo}" será reaberto e voltará para a última etapa no Kanban.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleReopenConfirm}>Reabrir</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
