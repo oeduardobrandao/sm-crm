@@ -36,6 +36,37 @@ export interface WorkflowPost {
   updated_at?: string;
 }
 
+export interface ClientePost {
+  id: number;
+  workflow_id: number;
+  titulo: string;
+  tipo: WorkflowPost['tipo'];
+  status: WorkflowPost['status'];
+  scheduled_at: string | null;
+  ordem: number;
+  workflow_titulo: string;
+}
+
+export async function getClientePosts(clienteId: number): Promise<ClientePost[]> {
+  const { data, error } = await supabase
+    .from('workflow_posts')
+    .select('id, workflow_id, titulo, tipo, status, scheduled_at, ordem, workflows!inner(titulo, status)')
+    .eq('workflows.cliente_id', clienteId)
+    .eq('workflows.status', 'ativo')
+    .order('scheduled_at', { ascending: true, nullsFirst: false });
+  if (error) throw error;
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    workflow_id: row.workflow_id,
+    titulo: row.titulo,
+    tipo: row.tipo,
+    status: row.status,
+    scheduled_at: row.scheduled_at,
+    ordem: row.ordem,
+    workflow_titulo: row.workflows.titulo,
+  }));
+}
+
 export interface PostMedia {
   id: number;
   post_id: number;
