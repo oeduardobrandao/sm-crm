@@ -1,7 +1,6 @@
-import { createClient } from "npm:@supabase/supabase-js@2";
-
+// deno-lint-ignore-file no-explicit-any
 export async function insertAuditLog(
-  svc: ReturnType<typeof createClient>,
+  svc: { from: (table: string) => any },
   entry: {
     conta_id?: string;
     actor_user_id?: string;

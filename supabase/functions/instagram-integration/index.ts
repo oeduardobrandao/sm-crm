@@ -3,7 +3,6 @@ import { buildCorsHeaders } from "../_shared/cors.ts";
 import { insertAuditLog } from "../_shared/audit.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const META_APP_ID = Deno.env.get("META_APP_ID")!;
 const META_APP_SECRET = Deno.env.get("META_APP_SECRET")!;
 const META_REDIRECT_URI = Deno.env.get("META_REDIRECT_URI");
@@ -116,7 +115,8 @@ async function verifySignedState(state: string): Promise<{ clientId: string }> {
 
 // --- Workspace Ownership Verification ---
 async function verifyClientOwnership(
-  svc: ReturnType<typeof createClient>,
+  // deno-lint-ignore no-explicit-any
+  svc: { from: (table: string) => any },
   clientId: string,
   contaId: string
 ): Promise<boolean> {
@@ -137,11 +137,7 @@ Deno.serve(async (req) => {
   const origin = url.origin.replace(/^http:\/\//, 'https://');
   const functionBaseUrl = META_REDIRECT_URI || `${origin}/functions/v1/instagram-integration`;
 
-  // Setup Supabase Client
   const authHeader = req.headers.get('Authorization');
-  const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    global: { headers: { Authorization: authHeader || '' } },
-  });
 
   const corsHeaders = buildCorsHeaders(req);
 
@@ -150,8 +146,6 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // ---- VERIFY AUTHENTICATION ----
-    // We only enforce auth for the endpoints that modify internal data (which is everything except callback)
     let user;
     if (path !== '/callback' && !(path === '' && url.searchParams.has('code'))) {
        const token = authHeader?.replace(/^Bearer\s+/i, '');
@@ -160,12 +154,15 @@ Deno.serve(async (req) => {
            throw new Error("Unauthorized: No valid token provided in Authorization header");
        }
 
-       const userRes = await supabaseClient.auth.getUser();
-       user = userRes.data?.user;
+       const svc = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, {
+         auth: { autoRefreshToken: false, persistSession: false },
+       });
+       const { data: { user: verifiedUser }, error: authError } = await svc.auth.getUser(token);
 
-       if (userRes.error || !user) {
+       if (authError || !verifiedUser) {
            throw new Error("Unauthorized: Token verification failed");
        }
+       user = verifiedUser;
     }
 
     // 1. GET /auth/:clientId
@@ -245,8 +242,8 @@ Deno.serve(async (req) => {
         console.error('[IG-CALLBACK] Token exchange OK. user_id (from /me):', igBusinessId, 'token_type:', slTokenData.token_type, 'permissions:', JSON.stringify(slTokenData.permissions));
 
         // Exchange short-lived token for long-lived token (retry on transient 500s)
-        let longLivedToken = shortLivedToken;
-        let expiresInSeconds = 3600;
+        let longLivedToken: string | null = null;
+        let expiresInSeconds = 60 * 60 * 24 * 60;
         for (let attempt = 0; attempt < 3; attempt++) {
             if (attempt > 0) await new Promise(r => setTimeout(r, 1000 * attempt));
             const llRes = await fetch(`https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${META_APP_SECRET}&access_token=${shortLivedToken}`);
@@ -258,6 +255,11 @@ Deno.serve(async (req) => {
             }
             console.error(`[IG-CALLBACK] LL token attempt ${attempt + 1} failed:`, llRes.status, JSON.stringify(llData));
             if (!llData.error?.is_transient) break;
+        }
+        if (!longLivedToken) {
+            console.error('[IG-CALLBACK] All LL token attempts failed, falling back to short-lived token (~1h expiry)');
+            longLivedToken = shortLivedToken;
+            expiresInSeconds = 3600;
         }
         const expiresAt = new Date(Date.now() + expiresInSeconds * 1000).toISOString();
 
@@ -278,7 +280,7 @@ Deno.serve(async (req) => {
         console.error('[IG-CALLBACK] Permissions:', JSON.stringify(grantedPermissions), Array.isArray(slTokenData.permissions) ? '(from token response)' : '(from requested scopes)');
 
         // Encrypt Long Lived Token
-        const encryptedToken = await encryptToken(longLivedToken);
+        const encryptedToken = await encryptToken(longLivedToken!);
 
         // Fetch 28-day account insights
         let reach_28d = 0, impressions_28d = 0, profile_views_28d = 0, website_clicks_28d = 0;
@@ -371,7 +373,7 @@ Deno.serve(async (req) => {
             }
 
             // Fetch posts
-            const mediaRes = await fetch(`https://graph.instagram.com/me/media?fields=id,caption,media_type,permalink,timestamp,comments_count,like_count&limit=50&access_token=${longLivedToken}`);
+            const mediaRes = await fetch(`https://graph.instagram.com/me/media?fields=id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,comments_count,like_count&limit=50&access_token=${longLivedToken}`);
             const mediaData = await mediaRes.json();
 
             if (mediaData.data) {
@@ -398,6 +400,7 @@ Deno.serve(async (req) => {
                         instagram_post_id: post.id,
                         caption: post.caption || '',
                         media_type: post.media_type,
+                        thumbnail_url: post.thumbnail_url || post.media_url || null,
                         permalink: post.permalink,
                         posted_at: post.timestamp,
                         likes: post.like_count || 0,
@@ -431,11 +434,14 @@ Deno.serve(async (req) => {
             .from('instagram_accounts')
             .select('*')
             .eq('client_id', clientId);
-        
+
         if (accountError || !accounts || accounts.length === 0) throw new Error("Account not found");
         const account = accounts[0];
 
-        // Decrypt Token
+        if (account.authorization_status !== 'active') {
+            return new Response(JSON.stringify({ error: true, code: 'ACCOUNT_DISCONNECTED', message: 'Instagram account is not active' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 });
+        }
+
         const accessToken = await decryptToken(account.encrypted_access_token);
 
         try {
@@ -455,37 +461,40 @@ Deno.serve(async (req) => {
                 reachRes.json(), viewsRes.json(), profileTapsRes.json(), websiteClicksRes.json(), igProfileRes.json(), mediaRes.json()
             ]);
 
-            // Check if token expired
-            if (reachData.error?.code === 190) {
-               return new Response(JSON.stringify({ error: true, code: "TOKEN_EXPIRED", message: "Instagram token expired" }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 });
-            }
-
-            let totalReach = 0; let totalImpressions = 0; let totalViews = 0; let totalWebsiteClicks = 0;
-            if (reachData.data) {
-                for (const insight of reachData.data) {
-                    if (insight.name === 'reach') totalReach = insight.total_value?.value || 0;
+            // Check if token expired (any Graph response with code 190)
+            const allGraphResponses = [reachData, viewsData, profileTapsData, websiteClicksData, igProfile];
+            for (const resp of allGraphResponses) {
+                if (resp.error?.code === 190) {
+                    return new Response(JSON.stringify({ error: true, code: "TOKEN_EXPIRED", message: "Instagram token expired" }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 });
                 }
             }
 
+            // Only overwrite metrics when Graph returned valid data (not errors)
+            const insightsUpdate: Record<string, number> = {};
+
+            if (reachData.data) {
+                for (const insight of reachData.data) {
+                    if (insight.name === 'reach') insightsUpdate.reach_28d = insight.total_value?.value || 0;
+                }
+            }
             if (viewsData.data) {
                 for (const insight of viewsData.data) {
-                    if (insight.name === 'views') totalImpressions = insight.total_value?.value || 0;
+                    if (insight.name === 'views') insightsUpdate.impressions_28d = insight.total_value?.value || 0;
                 }
             }
             if (profileTapsData.data) {
                 for (const insight of profileTapsData.data) {
-                    if (insight.name === 'accounts_engaged') totalViews = insight.total_value?.value || 0;
+                    if (insight.name === 'accounts_engaged') insightsUpdate.profile_views_28d = insight.total_value?.value || 0;
                 }
             }
             if (websiteClicksData.data) {
                 for (const insight of websiteClicksData.data) {
-                    if (insight.name === 'website_clicks') totalWebsiteClicks = insight.total_value?.value || 0;
+                    if (insight.name === 'website_clicks') insightsUpdate.website_clicks_28d = insight.total_value?.value || 0;
                 }
-            }
-            if (websiteClicksData.error) {
+            } else if (websiteClicksData.error) {
                 console.error('[IG-SYNC] website_clicks error:', JSON.stringify(websiteClicksData));
             }
-            console.error('[IG-SYNC] Insights results — reach:', totalReach, 'views:', totalImpressions, 'engaged:', totalViews, 'link_taps:', totalWebsiteClicks);
+            console.error('[IG-SYNC] Insights results —', JSON.stringify(insightsUpdate));
 
             // Cache profile picture in Supabase Storage to avoid CDN hotlink issues
             let storedAvatarUrl: string | undefined;
@@ -531,10 +540,7 @@ Deno.serve(async (req) => {
                     following_count: igProfile.follows_count || account.following_count,
                     media_count: igProfile.media_count || account.media_count,
                     ...(storedAvatarUrl ? { profile_picture_url: storedAvatarUrl } : igProfile.profile_picture_url ? { profile_picture_url: igProfile.profile_picture_url } : {}),
-                    reach_28d: totalReach,
-                    impressions_28d: totalImpressions,
-                    profile_views_28d: totalViews,
-                    website_clicks_28d: totalWebsiteClicks,
+                    ...insightsUpdate,
                     last_synced_at: new Date().toISOString()
                 }).eq('id', account.id),
                 ...(shouldUpsertHistory ? [
@@ -626,8 +632,8 @@ Deno.serve(async (req) => {
          if (account) {
            await serviceClient.from('instagram_posts').delete().eq('instagram_account_id', account.id);
            const { error: updateErr } = await serviceClient.from('instagram_accounts').update({
-             encrypted_access_token: null,
-             token_expires_at: null,
+             encrypted_access_token: '',
+             token_expires_at: new Date(0).toISOString(),
              authorization_status: 'disconnected',
              last_synced_at: null,
            }).eq('id', account.id);
@@ -650,13 +656,13 @@ Deno.serve(async (req) => {
              return new Response(JSON.stringify({ error: true, message: 'Unauthorized' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 });
          }
 
-         const { data, error } = await serviceClient.from('instagram_accounts').select('*').eq('client_id', clientId).single();
+         const SUMMARY_FIELDS = 'id,client_id,instagram_user_id,username,profile_picture_url,follower_count,following_count,media_count,token_expires_at,reach_28d,impressions_28d,profile_views_28d,website_clicks_28d,last_synced_at,created_at,authorization_status,permissions,auto_sync_enabled';
+         const { data, error } = await serviceClient.from('instagram_accounts').select(SUMMARY_FIELDS).eq('client_id', clientId).single();
          if (error || !data || data.authorization_status === 'disconnected') return new Response(JSON.stringify({ exists: false }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
-         // Fetch recent 30 day history
-         const { data: history } = await serviceClient.from('instagram_follower_history').select('*').eq('instagram_account_id', data.id).order('date', { ascending: true }).limit(30);
+         const { data: history } = await serviceClient.from('instagram_follower_history').select('*').eq('instagram_account_id', data.id).order('date', { ascending: false }).limit(30);
 
-         return new Response(JSON.stringify({ account: data, history: history || [] }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+         return new Response(JSON.stringify({ account: data, history: (history || []).reverse() }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     // 6. GET /posts/:clientId
