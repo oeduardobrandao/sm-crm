@@ -208,7 +208,7 @@ export default function ClienteDetalhePage() {
       .catch(() => setWorkflowsWithEtapas([]));
   }, [clienteWorkflowsRaw]);
 
-  // Post calendar: fetch posts with "Data de postagem" for all active workflows
+  // Post calendar: fetch posts with scheduled_at for all active workflows
   interface PostCalendarEvent {
     postId: number;
     postTitle: string;

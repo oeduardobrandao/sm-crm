@@ -140,7 +140,7 @@ export function WorkflowCalendarView({
       {!hintDismissed && (
         <div className="calendar-hint-banner">
           <span className="calendar-hint-text">
-            Arraste posts da lista lateral para agendar, ou entre datas para reagendar. Arraste de volta para remover a data.
+            💡 Arraste posts da lista lateral para agendar, ou entre datas para reagendar. Arraste de volta para remover a data.
           </span>
           <button onClick={dismissHint} className="calendar-hint-close" aria-label="Fechar dica">
             <X className="h-3.5 w-3.5" />
