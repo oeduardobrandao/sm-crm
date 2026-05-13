@@ -340,3 +340,27 @@ Deno.test("post-media-manage: PUT returns 405", async () => {
   const res = await handler(req("PUT", "/1", {}));
   assertEquals(res.status, 405);
 });
+
+// ─── Security regression tests ────────────────────────────────
+
+Deno.test("post-media-manage: rejects thumbnail_r2_key from other workspace", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("post_file_links", "select", { data: { ...sampleLink, file_id: 10 }, error: null }); // link lookup
+  const handler = makeHandler(db);
+  const res = await handler(req("PATCH", "/1", { thumbnail_r2_key: "contas/other-ws/files/thumb.jpg" }));
+  assertEquals(res.status, 400);
+  const body = await readJson(res);
+  assertEquals(body.error, "invalid thumbnail_r2_key");
+});
+
+Deno.test("post-media-manage: accepts thumbnail_r2_key from same workspace", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("post_file_links", "select", { data: { ...sampleLink, file_id: 10 }, error: null });
+  db.queue("files", "update", { data: null, error: null }); // thumbnail update
+  db.queue("post_file_links", "select", { data: { ...sampleLink, files: sampleFile }, error: null }); // refresh
+  const handler = makeHandler(db);
+  const res = await handler(req("PATCH", "/1", { thumbnail_r2_key: "contas/conta-1/files/thumb.jpg" }));
+  assertEquals(res.status, 200);
+});

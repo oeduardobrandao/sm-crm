@@ -2,22 +2,13 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { getObject } from "../_shared/r2.ts";
 import { ZipWriter, BlobReader } from "npm:@zip.js/zip.js@2";
+import { sanitizeZipPath, MAX_FILE_SIZE_BYTES } from "./utils.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ZIP_TOKEN_SECRET = Deno.env.get("ZIP_TOKEN_SECRET");
 
 if (!ZIP_TOKEN_SECRET) throw new Error("ZIP_TOKEN_SECRET is required");
-
-const MAX_FILE_SIZE_BYTES = 200 * 1024 * 1024;
-
-function sanitizeZipPath(name: string): string {
-  return name
-    .replace(/\0/g, "")
-    .replace(/\.\./g, "_")
-    .replace(/^\/+/, "")
-    .replace(/\\/g, "/");
-}
 
 async function verifyZipToken(token: string): Promise<Record<string, unknown> | null> {
   try {

@@ -956,3 +956,168 @@ Deno.test("hub-instagram-feed returns 404 for invalid tokens", async () => {
   const response = await handler(new Request("https://example.test/hub-instagram-feed?token=expired"));
   assertEquals(response.status, 404);
 });
+
+// ---------------------------------------------------------------------------
+// R2 key filtering (security regression)
+// ---------------------------------------------------------------------------
+
+Deno.test("hub-posts: filters out R2 keys from other workspaces", async () => {
+  const db = createSupabaseQueryMock();
+
+  // Token validation
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+
+  // Workflows
+  db.queue("workflows", "select", { data: [{ id: 7 }], error: null });
+
+  // Posts — content with two R2 keys: one safe (same workspace), one cross-tenant
+  const contentWithMixedKeys = {
+    type: "doc",
+    content: [
+      { type: "inlineImage", attrs: { r2Key: "contas/conta-1/files/safe.png" } },
+      { type: "inlineImage", attrs: { r2Key: "contas/other-ws/files/stolen.png" } },
+    ],
+  };
+  db.queue("workflow_posts", "select", {
+    data: [
+      {
+        id: 1,
+        titulo: "Post com R2",
+        tipo: "feed",
+        status: "enviado_cliente",
+        ordem: 0,
+        conteudo: contentWithMixedKeys,
+        conteudo_plain: "",
+        scheduled_at: null,
+        ig_caption: null,
+        instagram_permalink: null,
+        published_at: null,
+        publish_error: null,
+        workflow_id: 7,
+        workflows: { titulo: "Cal", created_at: "2026-04-01" },
+      },
+    ],
+    error: null,
+  });
+
+  // Post approvals
+  db.queue("post_approvals", "select", { data: [], error: null });
+
+  // Property values
+  db.queue("post_property_values", "select", { data: [], error: null });
+
+  // Workflow select options
+  db.queue("workflow_select_options", "select", { data: [], error: null });
+
+  // Post file links (no media files for simplicity)
+  db.queue("post_file_links", "select", { data: [], error: null });
+
+  // Files table validation — only the safe key exists
+  db.queue("files", "select", {
+    data: [{ r2_key: "contas/conta-1/files/safe.png" }],
+    error: null,
+  });
+
+  // Instagram account
+  db.queue("instagram_accounts", "select", { data: null, error: null });
+
+  // Client auto_publish_on_approval
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: false }, error: null });
+
+  const signedKeys: string[] = [];
+  const handler = createHubPostsHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    signGetUrl: async (key) => {
+      signedKeys.push(key);
+      return `https://signed/${key}`;
+    },
+  });
+
+  const res = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
+  assertEquals(res.status, 200);
+  assertEquals(signedKeys.length, 1);
+  assertEquals(signedKeys[0], "contas/conta-1/files/safe.png");
+});
+
+Deno.test("hub-posts: skips R2 keys not found in files table", async () => {
+  const db = createSupabaseQueryMock();
+
+  // Token validation
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+
+  // Workflows
+  db.queue("workflows", "select", { data: [{ id: 7 }], error: null });
+
+  // Posts — content with one R2 key that matches prefix but is not in files table
+  const content = {
+    type: "doc",
+    content: [
+      { type: "inlineImage", attrs: { r2Key: "contas/conta-1/files/nonexistent.png" } },
+    ],
+  };
+  db.queue("workflow_posts", "select", {
+    data: [
+      {
+        id: 1,
+        titulo: "Post fantasma",
+        tipo: "feed",
+        status: "enviado_cliente",
+        ordem: 0,
+        conteudo: content,
+        conteudo_plain: "",
+        scheduled_at: null,
+        ig_caption: null,
+        instagram_permalink: null,
+        published_at: null,
+        publish_error: null,
+        workflow_id: 7,
+        workflows: { titulo: "Cal", created_at: "2026-04-01" },
+      },
+    ],
+    error: null,
+  });
+
+  // Post approvals
+  db.queue("post_approvals", "select", { data: [], error: null });
+
+  // Property values
+  db.queue("post_property_values", "select", { data: [], error: null });
+
+  // Workflow select options
+  db.queue("workflow_select_options", "select", { data: [], error: null });
+
+  // Post file links (no media files)
+  db.queue("post_file_links", "select", { data: [], error: null });
+
+  // Files table validation — key not in files table
+  db.queue("files", "select", { data: [], error: null });
+
+  // Instagram account
+  db.queue("instagram_accounts", "select", { data: null, error: null });
+
+  // Client auto_publish_on_approval
+  db.queue("clientes", "select", { data: { auto_publish_on_approval: false }, error: null });
+
+  const signedKeys: string[] = [];
+  const handler = createHubPostsHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    signGetUrl: async (key) => {
+      signedKeys.push(key);
+      return `https://signed/${key}`;
+    },
+  });
+
+  const res = await handler(new Request("https://example.test/hub-posts?token=hub-123"));
+  assertEquals(res.status, 200);
+  assertEquals(signedKeys.length, 0);
+});

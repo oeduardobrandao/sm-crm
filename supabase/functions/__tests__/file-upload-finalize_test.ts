@@ -308,3 +308,65 @@ Deno.test("file-upload-finalize: video finalize with thumbnail returns both sign
   assertEquals(body.url, `https://signed.example.com/${videoBody.r2_key}`);
   assertEquals(body.thumbnail_url, `https://signed.example.com/${videoBody.thumbnail_r2_key}`);
 });
+
+// ─── Security regression tests ────────────────────────────────
+
+Deno.test("file-upload-finalize: rejects image kind with wrong MIME type", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  const handler = makeHandler(db);
+  const res = await handler(authedRequest({ ...baseBody, kind: "image", mime_type: "application/pdf" }));
+  assertEquals(res.status, 415);
+  const body = await readJson(res);
+  assertEquals(body.error, "unsupported file type");
+});
+
+Deno.test("file-upload-finalize: rejects executable MIME type", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  const handler = makeHandler(db);
+  const res = await handler(authedRequest({ ...baseBody, kind: "image", mime_type: "application/x-elf" }));
+  assertEquals(res.status, 415);
+});
+
+Deno.test("file-upload-finalize: rejects content-type mismatch from R2", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  const handler = makeHandler(db, {
+    headObject: async () => ({ contentLength: 5000, contentType: "image/gif" }),
+  });
+  const res = await handler(authedRequest(baseBody)); // baseBody has mime_type: "image/png"
+  assertEquals(res.status, 400);
+  const body = await readJson(res);
+  assertEquals(body.error, "content-type mismatch");
+});
+
+Deno.test("file-upload-finalize: cross-tenant post_id returns 404 without consuming quota", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("folders", "select", { data: null, error: null }); // no post folder
+  db.queue("workflow_posts", "select", { data: { conta_id: "other-ws" }, error: null }); // wrong workspace
+  const handler = makeHandler(db);
+  const res = await handler(authedRequest({ ...baseBody, post_id: 99 }));
+  assertEquals(res.status, 404);
+  const body = await readJson(res);
+  assertEquals(body.error, "Post not found");
+  const rpcCalls = db.calls.filter((c) => c.table === "rpc:file_insert_with_quota");
+  assertEquals(rpcCalls.length, 0);
+});
+
+Deno.test("file-upload-finalize: valid post_id triggers insert and link creation", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("folders", "select", { data: { id: 7 }, error: null }); // post folder found
+  db.queue("workflow_posts", "select", { data: { conta_id: "conta-1" }, error: null }); // same workspace
+  db.queueRpc("file_insert_with_quota", { data: { id: 42 }, error: null });
+  db.queue("post_file_links", "insert", { data: null, error: null });
+  const handler = makeHandler(db);
+  const res = await handler(authedRequest({ ...baseBody, post_id: 10 }));
+  assertEquals(res.status, 200);
+  const rpcCalls = db.calls.filter((c) => c.table === "rpc:file_insert_with_quota");
+  assertEquals(rpcCalls.length, 1);
+  const linkCalls = db.calls.filter((c) => c.table === "post_file_links" && c.operation === "insert");
+  assertEquals(linkCalls.length, 1);
+});

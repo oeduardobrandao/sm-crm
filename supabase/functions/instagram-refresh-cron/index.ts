@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { timingSafeEqual } from "../_shared/crypto.ts";
 import { createInstagramRefreshCronHandler } from "./handler.ts";
+import { shouldRevokeOnError } from "./utils.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -98,7 +99,7 @@ Deno.serve(createInstagramRefreshCronHandler({
         if (data.error) {
             const errorCode = data.error.code;
             console.error(`Error refreshing token for account ${account.id}:`, data.error);
-            if (errorCode === 190 || errorCode === 10) {
+            if (shouldRevokeOnError(errorCode)) {
               await supabase
                 .from('instagram_accounts')
                 .update({ authorization_status: 'revoked' })
