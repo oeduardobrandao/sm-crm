@@ -1,12 +1,13 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { Zap, RefreshCw, ArrowUpDown, SlidersHorizontal, Trophy, AlertTriangle, ChevronRight } from 'lucide-react';
+import { Zap, RefreshCw, ArrowUpDown, SlidersHorizontal, Trophy, AlertTriangle, ChevronRight, Heart, MessageCircle, Bookmark } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
@@ -24,6 +25,7 @@ import { Chart, registerables } from 'chart.js';
 import { getPortfolioSummary, getPortfolioAIAnalysis, type PortfolioAccount, type PortfolioTopPost } from '../../services/analytics';
 import { sanitizeUrl } from '../../utils/security';
 import { syncInstagramData } from '../../services/instagram';
+import { HelpTooltip } from '../../components/help/HelpTooltip';
 
 Chart.register(...registerables);
 
@@ -237,11 +239,53 @@ export default function AnalyticsPage() {
   const [days, setDays] = useState<number>(28);
   const [clienteFilter, setClienteFilter] = useState<string>('all');
   const [drawerSort, setDrawerSort] = useState<'best' | 'worst' | null>(null);
+  const [drawerOrderBy, setDrawerOrderBy] = useState<string>('engagement');
+  const [drawerAsc, setDrawerAsc] = useState(false);
+  const [drawerClientFilter, setDrawerClientFilter] = useState<string>('all');
+  const [drawerFormatFilter, setDrawerFormatFilter] = useState<string>('all');
+  const [drawerDateFrom, setDrawerDateFrom] = useState<string>('');
+  const [drawerDateTo, setDrawerDateTo] = useState<string>('');
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['portfolio-summary', days],
     queryFn: () => getPortfolioSummary(days),
   });
+
+  const drawerClients = useMemo(() => {
+    const names = new Set((data?.allRankedPosts ?? []).map(p => p.client_name));
+    return [...names].sort();
+  }, [data?.allRankedPosts]);
+
+  const drawerPosts = useMemo(() => {
+    let posts = [...(data?.allRankedPosts ?? [])];
+
+    if (drawerClientFilter !== 'all') {
+      posts = posts.filter(p => p.client_name === drawerClientFilter);
+    }
+    if (drawerFormatFilter !== 'all') {
+      posts = posts.filter(p => p.media_type === drawerFormatFilter);
+    }
+    if (drawerDateFrom) {
+      const from = new Date(drawerDateFrom).getTime();
+      posts = posts.filter(p => new Date(p.posted_at).getTime() >= from);
+    }
+    if (drawerDateTo) {
+      const to = new Date(drawerDateTo + 'T23:59:59').getTime();
+      posts = posts.filter(p => new Date(p.posted_at).getTime() <= to);
+    }
+
+    const dir = drawerAsc ? 1 : -1;
+    switch (drawerOrderBy) {
+      case 'engagement': posts.sort((a, b) => (a.engagement_rate - b.engagement_rate) * dir); break;
+      case 'likes': posts.sort((a, b) => (a.likes - b.likes) * dir); break;
+      case 'comments': posts.sort((a, b) => (a.comments - b.comments) * dir); break;
+      case 'saved': posts.sort((a, b) => (a.saved - b.saved) * dir); break;
+      case 'reach': posts.sort((a, b) => (a.reach - b.reach) * dir); break;
+      case 'date': posts.sort((a, b) => (new Date(a.posted_at).getTime() - new Date(b.posted_at).getTime()) * dir); break;
+    }
+
+    return posts;
+  }, [data?.allRankedPosts, drawerAsc, drawerOrderBy, drawerClientFilter, drawerFormatFilter, drawerDateFrom, drawerDateTo]);
 
   const handleSyncAll = async () => {
     if (!data?.accounts.length) return;
@@ -505,9 +549,10 @@ export default function AnalyticsPage() {
             <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Trophy className="h-5 w-5" style={{ color: 'var(--success)' }} />
               Melhores Posts
+              <HelpTooltip content="Top 5 posts com maior engajamento no período selecionado." />
             </h3>
             {(data.allRankedPosts?.length ?? 0) > 5 && (
-              <Button variant="ghost" size="sm" onClick={() => setDrawerSort('best')} style={{ fontSize: '0.75rem', gap: '0.25rem' }}>
+              <Button variant="ghost" size="sm" onClick={() => { setDrawerSort('best'); setDrawerAsc(false); }} style={{ fontSize: '0.75rem', gap: '0.25rem' }}>
                 Ver mais <ChevronRight className="h-3.5 w-3.5" />
               </Button>
             )}
@@ -544,9 +589,10 @@ export default function AnalyticsPage() {
                     <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Engajamento</span>
                     <span style={{ fontSize: '0.7rem', fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--success)' }}>{post.engagement_rate.toFixed(2)}%</span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Salvos</span>
-                    <span style={{ fontSize: '0.7rem', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{post.saved}</span>
+                  <div style={{ display: 'flex', justifyContent: 'flex-start', gap: '0.5rem', marginTop: 2 }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: '0.65rem', color: 'var(--text-muted)' }}><Heart className="h-3 w-3" /> <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>{formatNumber(post.likes)}</strong></span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: '0.65rem', color: 'var(--text-muted)' }}><MessageCircle className="h-3 w-3" /> <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>{formatNumber(post.comments)}</strong></span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: '0.65rem', color: 'var(--text-muted)' }}><Bookmark className="h-3 w-3" /> <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>{formatNumber(post.saved)}</strong></span>
                   </div>
                 </div>
               </a>
@@ -558,7 +604,7 @@ export default function AnalyticsPage() {
       {/* Worst posts */}
       {(() => {
         const cutoff48h = Date.now() - 48 * 60 * 60 * 1000;
-        const mature = data?.worstPosts?.filter(p => new Date(p.posted_at).getTime() < cutoff48h) ?? [];
+        const mature = [...(data?.allRankedPosts ?? [])].reverse().filter(p => new Date(p.posted_at).getTime() < cutoff48h);
         if (mature.length === 0) return null;
         return (
           <div className="card animate-up">
@@ -566,9 +612,10 @@ export default function AnalyticsPage() {
               <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <AlertTriangle className="h-5 w-5" style={{ color: 'var(--warning)' }} />
                 Precisam de Atenção
+                <HelpTooltip content="Posts com pelo menos 48h desde a publicação e menor engajamento no período." />
               </h3>
               {(data?.allRankedPosts?.length ?? 0) > 5 && (
-                <Button variant="ghost" size="sm" onClick={() => setDrawerSort('worst')} style={{ fontSize: '0.75rem', gap: '0.25rem' }}>
+                <Button variant="ghost" size="sm" onClick={() => { setDrawerSort('worst'); setDrawerAsc(true); }} style={{ fontSize: '0.75rem', gap: '0.25rem' }}>
                   Ver mais <ChevronRight className="h-3.5 w-3.5" />
                 </Button>
               )}
@@ -605,9 +652,10 @@ export default function AnalyticsPage() {
                       <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Engajamento</span>
                       <span style={{ fontSize: '0.7rem', fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--danger)' }}>{post.engagement_rate.toFixed(2)}%</span>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Salvos</span>
-                      <span style={{ fontSize: '0.7rem', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{post.saved}</span>
+                    <div style={{ display: 'flex', justifyContent: 'flex-start', gap: '0.5rem', marginTop: 2 }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: '0.65rem', color: 'var(--text-muted)' }}><Heart className="h-3 w-3" /> <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>{formatNumber(post.likes)}</strong></span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: '0.65rem', color: 'var(--text-muted)' }}><MessageCircle className="h-3 w-3" /> <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>{formatNumber(post.comments)}</strong></span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: '0.65rem', color: 'var(--text-muted)' }}><Bookmark className="h-3 w-3" /> <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>{formatNumber(post.saved)}</strong></span>
                     </div>
                   </div>
                 </a>
@@ -807,22 +855,85 @@ export default function AnalyticsPage() {
 
       <AIPortfolioSection accounts={filteredAccounts} />
 
-      <Sheet open={drawerSort !== null} onOpenChange={open => { if (!open) setDrawerSort(null); }}>
+      <Sheet open={drawerSort !== null} onOpenChange={open => { if (!open) { setDrawerSort(null); setDrawerOrderBy('engagement'); setDrawerAsc(false); setDrawerClientFilter('all'); setDrawerFormatFilter('all'); setDrawerDateFrom(''); setDrawerDateTo(''); } }}>
         <SheetContent side="right" className="!w-full !max-w-xl overflow-y-auto">
           <SheetHeader>
             <SheetTitle style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               {drawerSort === 'best'
-                ? <><Trophy className="h-5 w-5" style={{ color: 'var(--success)' }} /> Todos os Posts — Melhor para Pior</>
-                : <><AlertTriangle className="h-5 w-5" style={{ color: 'var(--warning)' }} /> Todos os Posts — Pior para Melhor</>
+                ? <><Trophy className="h-5 w-5" style={{ color: 'var(--success)' }} /> Todos os Posts</>
+                : <><AlertTriangle className="h-5 w-5" style={{ color: 'var(--warning)' }} /> Todos os Posts</>
               }
             </SheetTitle>
-            <SheetDescription>{data?.allRankedPosts?.length ?? 0} posts no período</SheetDescription>
+            <SheetDescription>{drawerPosts.length} de {data?.allRankedPosts?.length ?? 0} posts</SheetDescription>
           </SheetHeader>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '1rem' }}>
-            {(drawerSort === 'best'
-              ? (data?.allRankedPosts ?? [])
-              : [...(data?.allRankedPosts ?? [])].reverse()
-            ).map((post, i) => (
+
+          <div className="mt-3 grid gap-2 border-b border-border pb-3">
+            <div className="grid grid-cols-[minmax(0,1fr)_2.25rem_minmax(0,1fr)] items-center gap-2">
+              <Select value={drawerOrderBy} onValueChange={setDrawerOrderBy}>
+                <SelectTrigger className="h-9 rounded-lg text-sm">
+                  <SelectValue placeholder="Ordenar por" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="engagement">Engajamento</SelectItem>
+                  <SelectItem value="likes">Curtidas</SelectItem>
+                  <SelectItem value="comments">Comentários</SelectItem>
+                  <SelectItem value="saved">Salvos</SelectItem>
+                  <SelectItem value="reach">Alcance</SelectItem>
+                  <SelectItem value="date">Data</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button variant="outline" size="icon" onClick={() => setDrawerAsc(v => !v)} className="mb-0 h-9 w-9 shrink-0 rounded-lg" title={drawerAsc ? 'Crescente' : 'Decrescente'}>
+                <ArrowUpDown className="h-3.5 w-3.5" />
+              </Button>
+              <Select value={drawerFormatFilter} onValueChange={setDrawerFormatFilter}>
+                <SelectTrigger className="h-9 rounded-lg text-sm">
+                  <SelectValue placeholder="Formato" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os formatos</SelectItem>
+                  <SelectItem value="IMAGE">Imagem</SelectItem>
+                  <SelectItem value="VIDEO">Reels</SelectItem>
+                  <SelectItem value="CAROUSEL_ALBUM">Carrossel</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Select value={drawerClientFilter} onValueChange={setDrawerClientFilter}>
+                <SelectTrigger className="h-9 rounded-lg text-sm">
+                  <SelectValue placeholder="Cliente" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os clientes</SelectItem>
+                  {drawerClients.map(name => (
+                    <SelectItem key={name} value={name}>{name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
+              <Input
+                type="date"
+                value={drawerDateFrom}
+                onChange={e => setDrawerDateFrom(e.target.value)}
+                className="h-9 rounded-lg font-mono text-sm"
+              />
+              <span className="text-sm text-muted-foreground">até</span>
+              <Input
+                type="date"
+                value={drawerDateTo}
+                onChange={e => setDrawerDateTo(e.target.value)}
+                className="h-9 rounded-lg font-mono text-sm"
+              />
+            </div>
+            {(drawerDateFrom || drawerDateTo) && (
+              <div className="flex justify-end">
+                <button type="button" onClick={() => { setDrawerDateFrom(''); setDrawerDateTo(''); }} className="text-xs font-medium text-destructive">Limpar datas</button>
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.75rem' }}>
+            {drawerPosts.map((post, i) => (
               <a
                 key={post.id}
                 href={sanitizeUrl(post.permalink)}
@@ -843,10 +954,12 @@ export default function AnalyticsPage() {
                     <span style={{ fontSize: '0.8rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{post.client_name}</span>
                     <span style={{ fontSize: '0.65rem', color: 'var(--text-light)', flexShrink: 0 }}>{format(new Date(post.posted_at), "d 'de' MMM", { locale: ptBR })}</span>
                   </div>
-                  <div style={{ display: 'flex', gap: '1rem', fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                  <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 2, flexWrap: 'wrap' }}>
                     <span>Alcance <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>{formatNumber(post.reach)}</strong></span>
                     <span>Eng. <strong style={{ fontFamily: 'var(--font-mono)', color: post.engagement_rate >= 3 ? 'var(--success)' : post.engagement_rate < 1 ? 'var(--danger)' : 'var(--text-main)' }}>{post.engagement_rate.toFixed(2)}%</strong></span>
-                    <span>Salvos <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>{post.saved}</strong></span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}><Heart className="h-3 w-3" /> <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>{formatNumber(post.likes)}</strong></span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}><MessageCircle className="h-3 w-3" /> <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>{formatNumber(post.comments)}</strong></span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}><Bookmark className="h-3 w-3" /> <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>{formatNumber(post.saved)}</strong></span>
                   </div>
                 </div>
               </a>
