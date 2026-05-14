@@ -5022,6 +5022,7 @@ body.role-agent input[name="valor_total"] {
 @media (max-width: 900px) {
   .drawer-panel {
     width: 100vw;
+    height: 100vh;
     max-height: 100vh;
     border-radius: 0;
     animation: none;
