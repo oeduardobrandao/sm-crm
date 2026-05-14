@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
@@ -165,6 +165,56 @@ vi.mock('@/components/ui/dialog', async () => {
     DialogHeader,
     DialogFooter,
     DialogTitle,
+  };
+});
+
+vi.mock('@/components/ui/sheet', async () => {
+  const ReactModule = await vi.importActual<typeof import('react')>('react');
+
+  interface SheetContextValue {
+    open: boolean;
+  }
+
+  const SheetContext = ReactModule.createContext<SheetContextValue>({ open: false });
+
+  function Sheet({
+    open = false,
+    children,
+  }: {
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
+    children: React.ReactNode;
+  }) {
+    return (
+      <SheetContext.Provider value={{ open }}>
+        <div>{children}</div>
+      </SheetContext.Provider>
+    );
+  }
+
+  function SheetContent({ children }: { children: React.ReactNode }) {
+    const { open } = ReactModule.useContext(SheetContext);
+    return open ? <aside>{children}</aside> : null;
+  }
+
+  function SheetHeader({ children }: { children: React.ReactNode }) {
+    return <div>{children}</div>;
+  }
+
+  function SheetTitle({ children }: { children: React.ReactNode }) {
+    return <h2>{children}</h2>;
+  }
+
+  function SheetDescription({ children }: { children: React.ReactNode }) {
+    return <p>{children}</p>;
+  }
+
+  return {
+    Sheet,
+    SheetContent,
+    SheetHeader,
+    SheetTitle,
+    SheetDescription,
   };
 });
 
@@ -427,6 +477,9 @@ describe('AnalyticsContaPage', () => {
     expect(screen.getByText('1.234')).toBeTruthy();
     expect(screen.getByText('12.34%')).toBeTruthy();
     expect(screen.getByText('Taxa de Salvamentos')).toBeTruthy();
+    expect(screen.getByText('Melhores Posts')).toBeTruthy();
+    expect(screen.getByText('Precisam de Atenção')).toBeTruthy();
+    expect(screen.getByText(/Top posts por alcance/i)).toBeTruthy();
     expect(screen.getByText('Relatórios Gerados')).toBeTruthy();
     expect(screen.getByText('Abr 2026')).toBeTruthy();
     await waitFor(() => {
@@ -442,5 +495,43 @@ describe('AnalyticsContaPage', () => {
     expect(await screen.findByText('82')).toBeTruthy();
     expect(screen.getByText('Conta saudável e consistente.')).toBeTruthy();
     expect(screen.getByText('Publicar mais reels')).toBeTruthy();
+  });
+
+  it('opens the reach-ranked posts drawer using only this client account posts', () => {
+    seedCommonAnalyticsData();
+    queryState['analytics-posts'] = {
+      data: {
+        posts: Array.from({ length: 6 }, (_, index) => ({
+          id: index + 1,
+          posted_at: `2020-01-${String(index + 1).padStart(2, '0')}T12:00:00Z`,
+          media_type: index % 2 === 0 ? 'VIDEO' : 'IMAGE',
+          reach: 1000 + index * 100,
+          impressions: 1400 + index * 120,
+          engagement_rate: 6 - index,
+          likes: 100 - index,
+          saved: 20 + index,
+          saves_rate: 3 + index,
+          comments: 8 + index,
+          shares: 2 + index,
+          caption: `Post ranqueado ${index + 1}`,
+          thumbnail_url: `https://example.com/ranked-${index + 1}.jpg`,
+          permalink: `https://instagram.com/p/ranked-${index + 1}`,
+          tags: [],
+        })),
+      },
+    };
+
+    render(<AnalyticsContaPage />);
+
+    const seeMoreButtons = screen.getAllByText('Ver mais');
+    expect(seeMoreButtons.length).toBeGreaterThanOrEqual(2);
+
+    fireEvent.click(seeMoreButtons[0]);
+
+    expect(screen.getByText('Melhores posts')).toBeTruthy();
+    expect(screen.getByText('6 de 6 posts de @clinicaaurora')).toBeTruthy();
+    const drawer = screen.getByText('6 de 6 posts de @clinicaaurora').closest('aside');
+    expect(drawer).toBeTruthy();
+    expect(within(drawer!).getAllByText(/Post ranqueado/)[0]).toHaveTextContent('Post ranqueado 6');
   });
 });
