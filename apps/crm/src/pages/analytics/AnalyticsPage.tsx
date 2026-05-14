@@ -239,7 +239,7 @@ export default function AnalyticsPage() {
   const [days, setDays] = useState<number>(28);
   const [clienteFilter, setClienteFilter] = useState<string>('all');
   const [drawerSort, setDrawerSort] = useState<'best' | 'worst' | null>(null);
-  const [drawerOrderBy, setDrawerOrderBy] = useState<string>('engagement');
+  const [drawerOrderBy, setDrawerOrderBy] = useState<string>('reach');
   const [drawerAsc, setDrawerAsc] = useState(false);
   const [drawerClientFilter, setDrawerClientFilter] = useState<string>('all');
   const [drawerFormatFilter, setDrawerFormatFilter] = useState<string>('all');
@@ -256,8 +256,21 @@ export default function AnalyticsPage() {
     return [...names].sort();
   }, [data?.allRankedPosts]);
 
+  const reachRankedPosts = useMemo(() => {
+    return [...(data?.allRankedPosts ?? [])].sort((a, b) => b.reach - a.reach);
+  }, [data?.allRankedPosts]);
+
+  const matureReachRankedPosts = useMemo(() => {
+    const cutoff48h = Date.now() - 48 * 60 * 60 * 1000;
+    return [...(data?.allRankedPosts ?? [])]
+      .filter(p => new Date(p.posted_at).getTime() < cutoff48h)
+      .sort((a, b) => a.reach - b.reach);
+  }, [data?.allRankedPosts]);
+
   const drawerPosts = useMemo(() => {
-    let posts = [...(data?.allRankedPosts ?? [])];
+    let posts = drawerSort === 'worst'
+      ? [...matureReachRankedPosts]
+      : [...(data?.allRankedPosts ?? [])];
 
     if (drawerClientFilter !== 'all') {
       posts = posts.filter(p => p.client_name === drawerClientFilter);
@@ -285,7 +298,7 @@ export default function AnalyticsPage() {
     }
 
     return posts;
-  }, [data?.allRankedPosts, drawerAsc, drawerOrderBy, drawerClientFilter, drawerFormatFilter, drawerDateFrom, drawerDateTo]);
+  }, [data?.allRankedPosts, drawerAsc, drawerOrderBy, drawerClientFilter, drawerFormatFilter, drawerDateFrom, drawerDateTo, drawerSort, matureReachRankedPosts]);
 
   const handleSyncAll = async () => {
     if (!data?.accounts.length) return;
@@ -543,22 +556,22 @@ export default function AnalyticsPage() {
       })()}
 
       {/* Top posts */}
-      {data?.topPosts && data.topPosts.length > 0 && (
+      {reachRankedPosts.length > 0 && (
         <div className="card animate-up">
           <div className="dashboard-hub-card-header" style={{ marginBottom: '1rem' }}>
             <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Trophy className="h-5 w-5" style={{ color: 'var(--success)' }} />
               Melhores Posts
-              <HelpTooltip content="Top 5 posts com maior engajamento no período selecionado." />
+              <HelpTooltip content="Top 5 posts com maior alcance no período selecionado." />
             </h3>
-            {(data.allRankedPosts?.length ?? 0) > 5 && (
+            {reachRankedPosts.length > 5 && (
               <Button variant="ghost" size="sm" onClick={() => { setDrawerSort('best'); setDrawerAsc(false); }} style={{ fontSize: '0.75rem', gap: '0.25rem' }}>
                 Ver mais <ChevronRight className="h-3.5 w-3.5" />
               </Button>
             )}
           </div>
           <div className="analytics-posts-row">
-            {data.topPosts.map(post => (
+            {reachRankedPosts.slice(0, 5).map(post => (
               <a
                 key={post.id}
                 href={sanitizeUrl(post.permalink)}
@@ -583,11 +596,11 @@ export default function AnalyticsPage() {
                   <span style={{ fontSize: '0.65rem', color: 'var(--text-light)' }}>{format(new Date(post.posted_at), "d 'de' MMM", { locale: ptBR })}</span>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Alcance</span>
-                    <span style={{ fontSize: '0.7rem', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{formatNumber(post.reach)}</span>
+                    <span style={{ fontSize: '0.7rem', fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--success)' }}>{formatNumber(post.reach)}</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Engajamento</span>
-                    <span style={{ fontSize: '0.7rem', fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--success)' }}>{post.engagement_rate.toFixed(2)}%</span>
+                    <span style={{ fontSize: '0.7rem', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{post.engagement_rate.toFixed(2)}%</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'flex-start', gap: '0.5rem', marginTop: 2 }}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: '0.65rem', color: 'var(--text-muted)' }}><Heart className="h-3 w-3" /> <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>{formatNumber(post.likes)}</strong></span>
@@ -603,25 +616,23 @@ export default function AnalyticsPage() {
 
       {/* Worst posts */}
       {(() => {
-        const cutoff48h = Date.now() - 48 * 60 * 60 * 1000;
-        const mature = [...(data?.allRankedPosts ?? [])].reverse().filter(p => new Date(p.posted_at).getTime() < cutoff48h);
-        if (mature.length === 0) return null;
+        if (matureReachRankedPosts.length === 0) return null;
         return (
           <div className="card animate-up">
             <div className="dashboard-hub-card-header" style={{ marginBottom: '1rem' }}>
               <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <AlertTriangle className="h-5 w-5" style={{ color: 'var(--warning)' }} />
                 Precisam de Atenção
-                <HelpTooltip content="Posts com pelo menos 48h desde a publicação e menor engajamento no período." />
+                <HelpTooltip content="Posts com pelo menos 48h desde a publicação e menor alcance no período." />
               </h3>
-              {(data?.allRankedPosts?.length ?? 0) > 5 && (
+              {matureReachRankedPosts.length > 5 && (
                 <Button variant="ghost" size="sm" onClick={() => { setDrawerSort('worst'); setDrawerAsc(true); }} style={{ fontSize: '0.75rem', gap: '0.25rem' }}>
                   Ver mais <ChevronRight className="h-3.5 w-3.5" />
                 </Button>
               )}
             </div>
             <div className="analytics-posts-row">
-              {mature.slice(0, 5).map(post => (
+              {matureReachRankedPosts.slice(0, 5).map(post => (
                 <a
                   key={post.id}
                   href={sanitizeUrl(post.permalink)}
@@ -646,11 +657,11 @@ export default function AnalyticsPage() {
                     <span style={{ fontSize: '0.65rem', color: 'var(--text-light)' }}>{format(new Date(post.posted_at), "d 'de' MMM", { locale: ptBR })}</span>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Alcance</span>
-                      <span style={{ fontSize: '0.7rem', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{formatNumber(post.reach)}</span>
+                      <span style={{ fontSize: '0.7rem', fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--danger)' }}>{formatNumber(post.reach)}</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Engajamento</span>
-                      <span style={{ fontSize: '0.7rem', fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--danger)' }}>{post.engagement_rate.toFixed(2)}%</span>
+                      <span style={{ fontSize: '0.7rem', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{post.engagement_rate.toFixed(2)}%</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'flex-start', gap: '0.5rem', marginTop: 2 }}>
                       <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: '0.65rem', color: 'var(--text-muted)' }}><Heart className="h-3 w-3" /> <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>{formatNumber(post.likes)}</strong></span>
@@ -855,7 +866,7 @@ export default function AnalyticsPage() {
 
       <AIPortfolioSection accounts={filteredAccounts} />
 
-      <Sheet open={drawerSort !== null} onOpenChange={open => { if (!open) { setDrawerSort(null); setDrawerOrderBy('engagement'); setDrawerAsc(false); setDrawerClientFilter('all'); setDrawerFormatFilter('all'); setDrawerDateFrom(''); setDrawerDateTo(''); } }}>
+      <Sheet open={drawerSort !== null} onOpenChange={open => { if (!open) { setDrawerSort(null); setDrawerOrderBy('reach'); setDrawerAsc(false); setDrawerClientFilter('all'); setDrawerFormatFilter('all'); setDrawerDateFrom(''); setDrawerDateTo(''); } }}>
         <SheetContent side="right" className="!w-full !max-w-xl overflow-y-auto">
           <SheetHeader>
             <SheetTitle style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -864,7 +875,7 @@ export default function AnalyticsPage() {
                 : <><AlertTriangle className="h-5 w-5" style={{ color: 'var(--warning)' }} /> Todos os Posts</>
               }
             </SheetTitle>
-            <SheetDescription>{drawerPosts.length} de {data?.allRankedPosts?.length ?? 0} posts</SheetDescription>
+            <SheetDescription>{drawerPosts.length} de {drawerSort === 'worst' ? matureReachRankedPosts.length : data?.allRankedPosts?.length ?? 0} posts</SheetDescription>
           </SheetHeader>
 
           <div className="mt-3 grid gap-2 border-b border-border pb-3">
@@ -874,11 +885,11 @@ export default function AnalyticsPage() {
                   <SelectValue placeholder="Ordenar por" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="reach">Alcance</SelectItem>
                   <SelectItem value="engagement">Engajamento</SelectItem>
                   <SelectItem value="likes">Curtidas</SelectItem>
                   <SelectItem value="comments">Comentários</SelectItem>
                   <SelectItem value="saved">Salvos</SelectItem>
-                  <SelectItem value="reach">Alcance</SelectItem>
                   <SelectItem value="date">Data</SelectItem>
                 </SelectContent>
               </Select>

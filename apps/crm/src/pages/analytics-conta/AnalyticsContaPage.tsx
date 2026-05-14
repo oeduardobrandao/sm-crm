@@ -1,19 +1,20 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { Fragment, type ReactNode, useMemo, useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ArrowLeft, RefreshCw, FileText, Zap, Plus, ArrowUpDown } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowUpDown, Bookmark, ChevronRight, FileText, Heart, MessageCircle, Plus, RefreshCw, Trophy, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Chart, registerables } from 'chart.js';
 import { getClientes, getCurrentWorkspace } from '../../store';
 import {
   getAnalyticsOverview, getPostsAnalytics, getFollowerHistory,
   getAudienceDemographics, getBestPostingTimes, getTags, createTag, deleteTag,
-  assignTagToPost, removeTagFromPost, getClientReports, getAccountAIAnalysis,
+  assignTagToPost, getClientReports, getAccountAIAnalysis,
   upsertManualFollowerCount,
   type KpiDelta, type PostAnalytics, type PostTag, type AudienceDemographics,
   type BestPostingTimes, type AnalyticsReport,
@@ -54,6 +55,139 @@ function formatReportMonth(month: string): string {
   const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
   return `${months[parseInt(m) - 1]} ${y}`;
 }
+
+function formatNumber(n: number): string {
+  return (n || 0).toLocaleString('pt-BR');
+}
+
+function formatPostDate(date: string): string {
+  return new Date(date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+}
+
+function mediaAccentColor(type: string): string {
+  switch (type) {
+    case 'VIDEO': return '#8b5cf6';
+    case 'CAROUSEL_ALBUM': return '#10b981';
+    case 'IMAGE': return '#3b82f6';
+    default: return '#64748b';
+  }
+}
+
+function PostThumbnail({ post, size = 'card' }: { post: PostAnalytics; size?: 'card' | 'list' }) {
+  const accent = mediaAccentColor(post.media_type);
+  const dimensions = size === 'card'
+    ? { width: '100%', height: '100%' }
+    : { width: 52, height: 52 };
+
+  if (post.thumbnail_url) {
+    return (
+      <img
+        src={sanitizeUrl(post.thumbnail_url)}
+        alt=""
+        style={{ ...dimensions, objectFit: 'cover', flexShrink: 0, background: 'var(--surface-darker)' }}
+        onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+      />
+    );
+  }
+
+  return (
+    <div style={{
+      ...dimensions,
+      flexShrink: 0,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: `linear-gradient(135deg, ${accent}, ${accent}cc)`,
+    }}>
+      <span style={{ width: 42, height: 42, borderRadius: 8, background: 'rgba(255,255,255,0.18)' }} />
+    </div>
+  );
+}
+
+function RankedPostCard({ post, tone }: { post: PostAnalytics; tone: 'best' | 'worst' }) {
+  const reachColor = tone === 'best' ? 'var(--success)' : 'var(--danger)';
+
+  return (
+    <a
+      href={sanitizeUrl(post.permalink)}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="analytics-post-card"
+      style={{ minWidth: 180, textDecoration: 'none', color: 'inherit' }}
+    >
+      <div style={{ aspectRatio: '3/4', position: 'relative', overflow: 'hidden', background: 'var(--surface-darker)' }}>
+        <PostThumbnail post={post} />
+        <span style={{ position: 'absolute', top: 8, left: 8, background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: '0.6rem', padding: '2px 6px', borderRadius: 4, fontWeight: 600 }}>
+          {formatMediaType(post.media_type)}
+        </span>
+      </div>
+      <div style={{ padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+        <span style={{ minHeight: 34, fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', lineHeight: 1.35, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+          {post.caption || 'Sem legenda'}
+        </span>
+        <span style={{ fontSize: '0.65rem', color: 'var(--text-light)' }}>{formatPostDate(post.posted_at)}</span>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Alcance</span>
+          <span style={{ fontSize: '0.7rem', fontWeight: 700, fontFamily: 'var(--font-mono)', color: reachColor }}>{formatNumber(post.reach)}</span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Engajamento</span>
+          <span style={{ fontSize: '0.7rem', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{post.engagement_rate.toFixed(2)}%</span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-start', gap: '0.5rem', marginTop: 2, flexWrap: 'wrap' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: '0.65rem', color: 'var(--text-muted)' }}><Heart className="h-3 w-3" /> <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>{formatNumber(post.likes)}</strong></span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: '0.65rem', color: 'var(--text-muted)' }}><MessageCircle className="h-3 w-3" /> <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>{formatNumber(post.comments)}</strong></span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: '0.65rem', color: 'var(--text-muted)' }}><Bookmark className="h-3 w-3" /> <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>{formatNumber(post.saved)}</strong></span>
+        </div>
+      </div>
+    </a>
+  );
+}
+
+function RankedPostsSection({
+  title,
+  description,
+  icon,
+  posts,
+  tone,
+  onSeeMore,
+  canSeeMore,
+}: {
+  title: string;
+  description: string;
+  icon: ReactNode;
+  posts: PostAnalytics[];
+  tone: 'best' | 'worst';
+  onSeeMore: () => void;
+  canSeeMore: boolean;
+}) {
+  if (posts.length === 0) return null;
+
+  return (
+    <div className="card animate-up">
+      <div className="dashboard-hub-card-header" style={{ marginBottom: '1rem', alignItems: 'flex-start' }}>
+        <div>
+          <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: 2 }}>
+            {icon}
+            {title}
+          </h3>
+          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: 0 }}>{description}</p>
+        </div>
+        {canSeeMore && (
+          <Button variant="ghost" size="sm" onClick={onSeeMore} style={{ fontSize: '0.75rem', gap: '0.25rem', flexShrink: 0 }}>
+            Ver mais <ChevronRight className="h-3.5 w-3.5" />
+          </Button>
+        )}
+      </div>
+      <div className="analytics-posts-row" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))' }}>
+        {posts.map(post => <RankedPostCard key={post.id} post={post} tone={tone} />)}
+      </div>
+    </div>
+  );
+}
+
+type RankedDrawerMode = 'best' | 'worst';
+type RankedPostOrderBy = 'engagement' | 'reach' | 'likes' | 'comments' | 'saved' | 'shares' | 'date';
 
 // ---- KPI Card ----
 function KpiCard({ label, value, delta, period, prevFormatted }: {
@@ -413,9 +547,14 @@ function AnalyticsContent({
   const [manualFollowerOpen, setManualFollowerOpen] = useState(false);
   const [manualDate, setManualDate] = useState(new Date().toISOString().split('T')[0]);
   const [manualCount, setManualCount] = useState('');
+  const [rankedDrawer, setRankedDrawer] = useState<RankedDrawerMode | null>(null);
+  const [rankedOrderBy, setRankedOrderBy] = useState<RankedPostOrderBy>('reach');
+  const [rankedAsc, setRankedAsc] = useState(false);
+  const [rankedFormatFilter, setRankedFormatFilter] = useState('all');
+  const [rankedDateFrom, setRankedDateFrom] = useState('');
+  const [rankedDateTo, setRankedDateTo] = useState('');
 
   const dateRange = periodStart && periodEnd ? { start: periodStart, end: periodEnd } : undefined;
-  const queryKey = [clientId, overviewDays, days, sort.col, sort.dir, periodStart, periodEnd];
 
   const { data: overviewRes, isLoading: loadingOv } = useQuery({
     queryKey: ['analytics-overview', clientId, overviewDays, periodStart, periodEnd],
@@ -443,6 +582,63 @@ function AnalyticsContent({
   const bestTimesData: BestPostingTimes | null = onlineRes?.data || null;
 
   const topSaved = [...posts].sort((a, b) => b.saved - a.saved).slice(0, 5);
+  const rankedPosts = useMemo(
+    () => [...posts].sort((a, b) => b.reach - a.reach),
+    [posts],
+  );
+  const matureRankedPosts = useMemo(() => {
+    const cutoff48h = Date.now() - 48 * 60 * 60 * 1000;
+    return [...posts]
+      .filter(p => new Date(p.posted_at).getTime() < cutoff48h)
+      .sort((a, b) => a.reach - b.reach);
+  }, [posts]);
+  const rankedPostFormats = useMemo(
+    () => Array.from(new Set(posts.map(p => p.media_type))).sort(),
+    [posts],
+  );
+  const rankedDrawerPosts = useMemo(() => {
+    const basePosts = rankedDrawer === 'worst' ? matureRankedPosts : posts;
+    let next = [...basePosts];
+
+    if (rankedFormatFilter !== 'all') {
+      next = next.filter(p => p.media_type === rankedFormatFilter);
+    }
+    if (rankedDateFrom) {
+      const from = new Date(rankedDateFrom).getTime();
+      next = next.filter(p => new Date(p.posted_at).getTime() >= from);
+    }
+    if (rankedDateTo) {
+      const to = new Date(`${rankedDateTo}T23:59:59`).getTime();
+      next = next.filter(p => new Date(p.posted_at).getTime() <= to);
+    }
+
+    const dir = rankedAsc ? 1 : -1;
+    switch (rankedOrderBy) {
+      case 'engagement':
+        next.sort((a, b) => (a.engagement_rate - b.engagement_rate) * dir);
+        break;
+      case 'reach':
+        next.sort((a, b) => (a.reach - b.reach) * dir);
+        break;
+      case 'likes':
+        next.sort((a, b) => (a.likes - b.likes) * dir);
+        break;
+      case 'comments':
+        next.sort((a, b) => (a.comments - b.comments) * dir);
+        break;
+      case 'saved':
+        next.sort((a, b) => (a.saved - b.saved) * dir);
+        break;
+      case 'shares':
+        next.sort((a, b) => (a.shares - b.shares) * dir);
+        break;
+      case 'date':
+        next.sort((a, b) => (new Date(a.posted_at).getTime() - new Date(b.posted_at).getTime()) * dir);
+        break;
+    }
+
+    return next;
+  }, [matureRankedPosts, posts, rankedAsc, rankedDateFrom, rankedDateTo, rankedDrawer, rankedFormatFilter, rankedOrderBy]);
 
   // Content type breakdown
   const typeMap: Record<string, { count: number; totalEng: number }> = {};
@@ -492,6 +688,7 @@ function AnalyticsContent({
     setDays(newDays); setOverviewDays(newDays);
     setPeriodStart(undefined); setPeriodEnd(undefined); setPeriodLabel(undefined);
     setShowAllPosts(false);
+    resetRankedDrawer();
   };
 
   const handleLastMonth = () => {
@@ -506,10 +703,29 @@ function AnalyticsContent({
     setPeriodEnd(fmt(lastOfLastMonth));
     setPeriodLabel(firstOfLastMonth.toLocaleString('pt-BR', { month: 'short', year: 'numeric' }));
     setShowAllPosts(false);
+    resetRankedDrawer();
   };
 
   const handleSortChange = (col: string) => {
     setSort(s => ({ col, dir: s.col === col ? (s.dir === 'asc' ? 'desc' : 'asc') : 'desc' }));
+  };
+
+  const resetRankedDrawer = () => {
+    setRankedDrawer(null);
+    setRankedOrderBy('reach');
+    setRankedAsc(false);
+    setRankedFormatFilter('all');
+    setRankedDateFrom('');
+    setRankedDateTo('');
+  };
+
+  const openRankedDrawer = (mode: RankedDrawerMode) => {
+    setRankedDrawer(mode);
+    setRankedOrderBy('reach');
+    setRankedAsc(mode === 'worst');
+    setRankedFormatFilter('all');
+    setRankedDateFrom('');
+    setRankedDateTo('');
   };
 
   const handleSaveManualFollower = async () => {
@@ -700,6 +916,26 @@ function AnalyticsContent({
         </div>
       )}
 
+      <RankedPostsSection
+        title="Melhores Posts"
+        description={`Top posts por alcance neste período (${periodTag}).`}
+        icon={<Trophy className="h-5 w-5" style={{ color: 'var(--success)' }} />}
+        posts={rankedPosts.slice(0, 5)}
+        tone="best"
+        canSeeMore={rankedPosts.length > 5}
+        onSeeMore={() => openRankedDrawer('best')}
+      />
+
+      <RankedPostsSection
+        title="Precisam de Atenção"
+        description="Posts com pelo menos 48h de publicação e menor alcance no período."
+        icon={<AlertTriangle className="h-5 w-5" style={{ color: 'var(--warning)' }} />}
+        posts={matureRankedPosts.slice(0, 5)}
+        tone="worst"
+        canSeeMore={matureRankedPosts.length > 5}
+        onSeeMore={() => openRankedDrawer('worst')}
+      />
+
       {/* Follower Growth Chart */}
       <div className="card animate-up">
         <div className="dashboard-hub-card-header">
@@ -744,9 +980,8 @@ function AnalyticsContent({
                 </thead>
                 <tbody>
                   {visiblePosts.map(p => (
-                    <>
+                    <Fragment key={p.id}>
                       <tr
-                        key={p.id}
                         style={{ cursor: 'pointer' }}
                         onClick={() => setExpandedPostId(expandedPostId === p.id ? null : p.id)}
                       >
@@ -795,7 +1030,7 @@ function AnalyticsContent({
                       </tr>
                       {expandedPostId === p.id && (
                         <tr key={`detail-${p.id}`}>
-                          <td colSpan={8} style={{ padding: '1rem', background: 'var(--card-bg)' }}>
+                          <td colSpan={10} style={{ padding: '1rem', background: 'var(--card-bg)' }}>
                             <p style={{ fontSize: '0.85rem', whiteSpace: 'pre-wrap', marginBottom: '0.5rem' }}>{p.caption || 'Sem legenda'}</p>
                             <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', fontSize: '0.8rem' }}>
                               <a href={sanitizeUrl(p.permalink)} target="_blank" rel="noopener" style={{ color: 'var(--primary-color)' }}>
@@ -807,7 +1042,7 @@ function AnalyticsContent({
                           </td>
                         </tr>
                       )}
-                    </>
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
@@ -963,6 +1198,120 @@ function AnalyticsContent({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Sheet open={rankedDrawer !== null} onOpenChange={open => { if (!open) resetRankedDrawer(); }}>
+        <SheetContent side="right" className="!w-full !max-w-xl overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              {rankedDrawer === 'worst'
+                ? <><AlertTriangle className="h-5 w-5" style={{ color: 'var(--warning)' }} /> Posts que precisam de atenção</>
+                : <><Trophy className="h-5 w-5" style={{ color: 'var(--success)' }} /> Melhores posts</>
+              }
+            </SheetTitle>
+            <SheetDescription>
+              {rankedDrawerPosts.length} de {rankedDrawer === 'worst' ? matureRankedPosts.length : posts.length} posts de @{account.username}
+            </SheetDescription>
+          </SheetHeader>
+
+          <div style={{ display: 'grid', gap: '0.5rem', paddingBottom: '0.75rem', marginTop: '0.75rem', borderBottom: '1px solid var(--border-color)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 2.25rem minmax(0,1fr)', gap: '0.5rem', alignItems: 'center' }}>
+              <select
+                value={rankedOrderBy}
+                onChange={e => setRankedOrderBy(e.target.value as RankedPostOrderBy)}
+                aria-label="Ordenar posts"
+                className="drawer-select"
+                style={{ height: 36, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--card-bg)', color: 'var(--text-main)', padding: '0 0.6rem', fontSize: '0.85rem' }}
+              >
+                <option value="reach">Alcance</option>
+                <option value="engagement">Engajamento</option>
+                <option value="likes">Curtidas</option>
+                <option value="comments">Comentários</option>
+                <option value="saved">Salvos</option>
+                <option value="shares">Compart.</option>
+                <option value="date">Data</option>
+              </select>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setRankedAsc(v => !v)}
+                className="mb-0 h-9 w-9 shrink-0 rounded-lg"
+                title={rankedAsc ? 'Crescente' : 'Decrescente'}
+              >
+                <ArrowUpDown className="h-3.5 w-3.5" />
+              </Button>
+              <select
+                value={rankedFormatFilter}
+                onChange={e => setRankedFormatFilter(e.target.value)}
+                aria-label="Filtrar formato"
+                className="drawer-select"
+                style={{ height: 36, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--card-bg)', color: 'var(--text-main)', padding: '0 0.6rem', fontSize: '0.85rem' }}
+              >
+                <option value="all">Todos os formatos</option>
+                {rankedPostFormats.map(type => (
+                  <option key={type} value={type}>{formatMediaType(type)}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto minmax(0,1fr)', gap: '0.5rem', alignItems: 'center' }}>
+              <Input
+                type="date"
+                value={rankedDateFrom}
+                onChange={e => setRankedDateFrom(e.target.value)}
+                className="h-9 rounded-lg font-mono text-sm"
+              />
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>até</span>
+              <Input
+                type="date"
+                value={rankedDateTo}
+                onChange={e => setRankedDateTo(e.target.value)}
+                className="h-9 rounded-lg font-mono text-sm"
+              />
+            </div>
+            {(rankedDateFrom || rankedDateTo) && (
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button type="button" onClick={() => { setRankedDateFrom(''); setRankedDateTo(''); }} style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--danger)', background: 'none', border: 0, cursor: 'pointer' }}>
+                  Limpar datas
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.75rem' }}>
+            {rankedDrawerPosts.length === 0 ? (
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', padding: '1rem 0' }}>
+                Nenhum post encontrado com estes filtros.
+              </p>
+            ) : rankedDrawerPosts.map((post, i) => (
+              <a
+                key={post.id}
+                href={sanitizeUrl(post.permalink)}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.65rem 0.75rem', borderRadius: 10, border: '1px solid var(--border-color)', background: 'var(--card-bg)', textDecoration: 'none', color: 'inherit' }}
+              >
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', minWidth: 24, textAlign: 'center' }}>{i + 1}</span>
+                <div style={{ width: 52, height: 52, borderRadius: 8, overflow: 'hidden', flexShrink: 0 }}>
+                  <PostThumbnail post={post} size="list" />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{post.caption || 'Sem legenda'}</span>
+                    <span style={{ fontSize: '0.65rem', color: 'var(--text-light)', flexShrink: 0 }}>{formatPostDate(post.posted_at)}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.7rem', fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 3, flexWrap: 'wrap' }}>
+                    <span>{formatMediaType(post.media_type)}</span>
+                    <span>Alcance <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>{formatNumber(post.reach)}</strong></span>
+                    <span>Eng. <strong style={{ fontFamily: 'var(--font-mono)', color: post.engagement_rate >= 3 ? 'var(--success)' : post.engagement_rate < 1 ? 'var(--danger)' : 'var(--text-main)' }}>{post.engagement_rate.toFixed(2)}%</strong></span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}><Heart className="h-3 w-3" /> <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>{formatNumber(post.likes)}</strong></span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}><MessageCircle className="h-3 w-3" /> <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>{formatNumber(post.comments)}</strong></span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}><Bookmark className="h-3 w-3" /> <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>{formatNumber(post.saved)}</strong></span>
+                  </div>
+                </div>
+              </a>
+            ))}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

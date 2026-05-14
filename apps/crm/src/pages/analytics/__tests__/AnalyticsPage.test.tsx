@@ -158,6 +158,43 @@ vi.mock('@/components/ui/select', () => {
   };
 });
 
+vi.mock('@/components/ui/sheet', () => {
+  function Sheet({
+    open = false,
+    children,
+  }: {
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
+    children: ReactNode;
+  }) {
+    return <div>{open ? children : null}</div>;
+  }
+
+  function SheetContent({ children }: { children: ReactNode }) {
+    return <aside>{children}</aside>;
+  }
+
+  function SheetHeader({ children }: { children: ReactNode }) {
+    return <div>{children}</div>;
+  }
+
+  function SheetTitle({ children }: { children: ReactNode }) {
+    return <h2>{children}</h2>;
+  }
+
+  function SheetDescription({ children }: { children: ReactNode }) {
+    return <p>{children}</p>;
+  }
+
+  return {
+    Sheet,
+    SheetContent,
+    SheetHeader,
+    SheetTitle,
+    SheetDescription,
+  };
+});
+
 vi.mock('../../../services/analytics', () => ({
   getPortfolioAIAnalysis: vi.fn(),
   getPortfolioSummary: vi.fn(),
@@ -171,7 +208,7 @@ import { useQuery } from '@tanstack/react-query';
 import { getPortfolioAIAnalysis } from '../../../services/analytics';
 import { syncInstagramData } from '../../../services/instagram';
 import AnalyticsPage from '../AnalyticsPage';
-import type { PortfolioAccount, PortfolioSummary } from '../../../services/analytics';
+import type { PortfolioAccount, PortfolioSummary, PortfolioTopPost } from '../../../services/analytics';
 
 const mockedUseQuery = vi.mocked(useQuery);
 const mockedGetPortfolioAIAnalysis = vi.mocked(getPortfolioAIAnalysis);
@@ -181,7 +218,7 @@ function makeAccount(overrides: Partial<PortfolioAccount> & Pick<PortfolioAccoun
   return overrides;
 }
 
-function makeSummary(accounts: PortfolioAccount[]): PortfolioSummary {
+function makeSummary(accounts: PortfolioAccount[], rankedPosts: PortfolioTopPost[] = []): PortfolioSummary {
   const bestByEngagement = accounts.reduce<PortfolioAccount | null>((best, account) => {
     if (!best || account.engagement_rate_avg > best.engagement_rate_avg) return account;
     return best;
@@ -193,9 +230,9 @@ function makeSummary(accounts: PortfolioAccount[]): PortfolioSummary {
 
   return {
     accounts,
-    topPosts: [],
-    worstPosts: [],
-    allRankedPosts: [],
+    topPosts: rankedPosts.slice(0, 5),
+    worstPosts: rankedPosts.length > 5 ? rankedPosts.slice(-5).reverse() : [],
+    allRankedPosts: rankedPosts,
     summary: {
       total: accounts.length,
       connected: accounts.length,
@@ -215,6 +252,20 @@ function makeSummary(accounts: PortfolioAccount[]): PortfolioSummary {
           }
         : null,
     },
+  };
+}
+
+function makeRankedPost(overrides: Partial<PortfolioTopPost> & Pick<PortfolioTopPost, 'id' | 'client_name' | 'client_id' | 'reach' | 'engagement_rate'>): PortfolioTopPost {
+  return {
+    thumbnail_url: null,
+    media_type: 'IMAGE',
+    permalink: `https://instagram.com/p/${overrides.id}`,
+    posted_at: '2020-01-01T12:00:00.000Z',
+    likes: 0,
+    comments: 0,
+    saved: 0,
+    shares: 0,
+    ...overrides,
   };
 }
 
@@ -363,6 +414,40 @@ describe('AnalyticsPage', () => {
     expect(within(rows[1]).getByText('4.50%')).toBeInTheDocument();
     expect(within(rows[2]).getByText('Zeta Labs')).toBeInTheDocument();
     expect(within(rows[3]).getByText('Alpha Studio')).toBeInTheDocument();
+  });
+
+  it('ranks best and attention posts by reach while keeping engagement visible', () => {
+    const accounts = buildBaseAccounts();
+    const posts = Array.from({ length: 6 }, (_, index) => makeRankedPost({
+      id: index + 1,
+      client_id: index + 1,
+      client_name: `Reach Client ${index + 1}`,
+      reach: 1000 + index * 100,
+      engagement_rate: 6 - index,
+      likes: 20 + index,
+      comments: 3 + index,
+      saved: 5 + index,
+      shares: 1 + index,
+    }));
+    setQueryFixture(28, makeSummary(accounts, posts));
+
+    renderPage();
+
+    const bestSection = screen.getByText('Melhores Posts').closest('.card') as HTMLElement;
+    expect(within(bestSection).getAllByText(/Reach Client/)[0]).toHaveTextContent('Reach Client 6');
+    expect(within(bestSection).getByText('1.500')).toBeInTheDocument();
+    expect(within(bestSection).getByText('1.00%')).toBeInTheDocument();
+
+    const attentionSection = screen.getByText('Precisam de Atenção').closest('.card') as HTMLElement;
+    expect(within(attentionSection).getAllByText(/Reach Client/)[0]).toHaveTextContent('Reach Client 1');
+    expect(within(attentionSection).getByText('1.000')).toBeInTheDocument();
+    expect(within(attentionSection).getByText('6.00%')).toBeInTheDocument();
+
+    fireEvent.click(within(bestSection).getByText('Ver mais'));
+
+    const drawer = screen.getByText('6 de 6 posts').closest('aside');
+    expect(drawer).toBeTruthy();
+    expect(within(drawer!).getAllByRole('link')[0]).toHaveTextContent('Reach Client 6');
   });
 
   it('supports sorting, filtering, and day-range changes', async () => {
