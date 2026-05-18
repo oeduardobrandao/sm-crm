@@ -350,7 +350,7 @@ export async function getPortfolioSummary(days = 28): Promise<PortfolioSummary> 
       const info = accountToClient[p.instagram_account_id];
       return { ...p, engagement_rate, client_name: info?.client_name || '', client_id: info?.client_id || 0 };
     })
-    .sort((a, b) => b.engagement_rate - a.engagement_rate);
+    .sort((a, b) => b.reach - a.reach);
 
   const topPosts = allRankedPosts.slice(0, 5);
   const worstPosts = allRankedPosts.length > 5 ? allRankedPosts.slice(-5).reverse() : [];
