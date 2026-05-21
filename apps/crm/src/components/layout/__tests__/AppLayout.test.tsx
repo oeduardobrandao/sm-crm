@@ -42,6 +42,10 @@ vi.mock('../GlobalBannerContainer', () => ({
   default: () => null,
 }));
 
+vi.mock('../../help/ContextHelpLinks', () => ({
+  ContextHelpLinks: () => null,
+}));
+
 import AppLayout from '../AppLayout';
 
 function setViewport(width: number) {

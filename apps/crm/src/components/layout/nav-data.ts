@@ -32,6 +32,11 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
     ]
   },
   {
+    id: 'ajuda-group', label: 'Suporte', labelKey: 'nav.suporte', icon: 'ph-lifebuoy', items: [
+      { id: 'ajuda', route: '/ajuda', label: 'Ajuda', labelKey: 'nav.ajuda', icon: 'ph-question' },
+    ]
+  },
+  {
     id: 'config', label: 'Configuracoes', labelKey: 'nav.configuracoes', icon: 'ph-gear', isBottom: true, items: [
       { id: 'configuracao', route: '/configuracao', label: 'Configuracoes', labelKey: 'nav.configuracoes', icon: 'ph-gear' },
       { id: 'politica-de-privacidade', route: '/politica-de-privacidade', label: 'Privacidade', labelKey: 'nav.privacidade', icon: 'ph-shield-check' },

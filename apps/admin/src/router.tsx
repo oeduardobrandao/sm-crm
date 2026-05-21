@@ -8,6 +8,8 @@ import WorkspaceDetailPage from './pages/WorkspaceDetailPage';
 import PlansPage from './pages/PlansPage';
 import AdminsPage from './pages/AdminsPage';
 import BannersPage from './pages/BannersPage';
+import KbArticlesPage from './pages/KbArticlesPage';
+import KbArticleEditorPage from './pages/KbArticleEditorPage';
 
 export const router = createBrowserRouter([
   {
@@ -28,6 +30,9 @@ export const router = createBrowserRouter([
       { path: 'plans', element: <PlansPage /> },
       { path: 'admins', element: <AdminsPage /> },
       { path: 'banners', element: <BannersPage /> },
+      { path: 'kb-articles', element: <KbArticlesPage /> },
+      { path: 'kb-articles/new', element: <KbArticleEditorPage /> },
+      { path: 'kb-articles/:id/edit', element: <KbArticleEditorPage /> },
     ],
   },
   {

@@ -36,8 +36,20 @@ export function createSignR2UrlsHandler(deps: SignR2UrlsDeps) {
     if (!Array.isArray(body.keys)) return json({ error: "keys must be an array" }, 400);
 
     const prefix = `contas/${profile.conta_id}/`;
-    const validKeys = body.keys.filter((k) => typeof k === "string" && k.startsWith(prefix));
+    const ownKeys = body.keys.filter((k) => typeof k === "string" && k.startsWith(prefix));
+    const otherKeys = body.keys.filter((k) => typeof k === "string" && !k.startsWith(prefix));
 
+    let kbKeys: string[] = [];
+    if (otherKeys.length > 0) {
+      const { data: kbRows } = await svc
+        .from("kb_articles")
+        .select("cover_image_url")
+        .eq("status", "published")
+        .in("cover_image_url", otherKeys);
+      if (kbRows) kbKeys = kbRows.map((r: { cover_image_url: string }) => r.cover_image_url);
+    }
+
+    const validKeys = [...ownKeys, ...kbKeys];
     const urls: Record<string, string> = {};
     await Promise.all(validKeys.map(async (key) => {
       urls[key] = await deps.signGetUrl(key, 3600);

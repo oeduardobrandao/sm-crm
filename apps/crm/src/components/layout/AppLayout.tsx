@@ -1,4 +1,5 @@
 import { Outlet, useLocation } from 'react-router-dom';
+import { ContextHelpLinks } from '../help/ContextHelpLinks';
 import { useEffect, useState, useCallback } from 'react';
 import Sidebar from './Sidebar';
 import MobileNav from './MobileNav';
@@ -81,6 +82,7 @@ export default function AppLayout() {
       )}
 
       <main className="main-content" id="app">
+        <ContextHelpLinks />
         <Outlet />
       </main>
 

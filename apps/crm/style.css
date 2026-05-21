@@ -758,7 +758,8 @@ body {
   margin-bottom: 2.5rem;
 }
 
-.header-title h1, h2 {
+.header-title h1,
+.header-title h2 {
   font-family: var(--font-heading);
   font-size: clamp(2rem, 4vw, 3.2rem);
   font-weight: 900;
@@ -5158,6 +5159,24 @@ body.role-agent input[name="valor_total"] {
 .post-editor-content .ProseMirror em { font-style: italic; }
 .post-editor-content .ProseMirror u { text-decoration: underline; }
 .post-editor-content .ProseMirror a { color: var(--primary-color); text-decoration: underline; cursor: pointer; }
+
+.article-reader-content .ProseMirror { font-size: 0.95rem; line-height: 1.75; }
+.article-reader-content .ProseMirror h2 {
+  font-family: var(--font-heading);
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--text-main);
+  margin: 2rem 0 0.75rem;
+  letter-spacing: -0.01em;
+}
+.article-reader-content .ProseMirror h3 {
+  font-family: var(--font-heading);
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin: 1.5rem 0 0.5rem;
+}
+.article-reader-content .ProseMirror p { margin: 0 0 0.75em; }
 
 .post-editor-link-wrapper { position: relative; }
 .post-editor-link-popover {
