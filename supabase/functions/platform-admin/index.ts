@@ -116,6 +116,22 @@ Deno.serve(async (req: Request) => {
         return await handleUpdateBanner(svc, body, headers);
       case "delete-banner":
         return await handleDeleteBanner(svc, body, headers);
+      case "list-kb-articles":
+        return await handleListKbArticles(svc, body, headers);
+      case "get-kb-article":
+        return await handleGetKbArticle(svc, body, headers);
+      case "create-kb-article":
+        return await handleCreateKbArticle(svc, body, admin.id, headers);
+      case "update-kb-article":
+        return await handleUpdateKbArticle(svc, body, headers);
+      case "delete-kb-article":
+        return await handleDeleteKbArticle(svc, body, headers);
+      case "list-kb-context-links":
+        return await handleListKbContextLinks(svc, body, headers);
+      case "upsert-kb-context-link":
+        return await handleUpsertKbContextLink(svc, body, headers);
+      case "delete-kb-context-link":
+        return await handleDeleteKbContextLink(svc, body, headers);
       default:
         return new Response(JSON.stringify({ error: "Invalid action" }), { status: 400, headers });
     }
@@ -804,4 +820,251 @@ async function handleDeleteBanner(
   if (error) throw error;
 
   return new Response(JSON.stringify({ message: "Banner deleted" }), { status: 200, headers });
+}
+
+// ─── Knowledge Base ──────────────────────────────────────────
+
+const KB_ARTICLE_COLUMNS = [
+  "title", "slug", "excerpt", "content", "content_plain",
+  "cover_image_url", "category", "tags", "status", "display_order",
+] as const;
+
+const RESERVED_SLUGS = ["novo", "editar"];
+
+async function handleListKbArticles(
+  svc: ReturnType<typeof createClient>,
+  body: { category?: string; status?: string },
+  headers: Record<string, string>,
+) {
+  let query = svc
+    .from("kb_articles")
+    .select("*")
+    .order("display_order", { ascending: true });
+
+  if (body.category) {
+    query = query.eq("category", body.category);
+  }
+  if (body.status) {
+    query = query.eq("status", body.status);
+  }
+
+  const { data: articles, error } = await query;
+  if (error) throw error;
+
+  return new Response(JSON.stringify({ articles: articles || [] }), { status: 200, headers });
+}
+
+async function handleGetKbArticle(
+  svc: ReturnType<typeof createClient>,
+  body: { article_id?: string },
+  headers: Record<string, string>,
+) {
+  if (!body.article_id) {
+    return new Response(JSON.stringify({ error: "article_id required" }), { status: 400, headers });
+  }
+  const { data: article, error } = await svc
+    .from("kb_articles")
+    .select("*")
+    .eq("id", body.article_id)
+    .single();
+  if (error) throw error;
+  return new Response(JSON.stringify({ article }), { status: 200, headers });
+}
+
+async function handleCreateKbArticle(
+  svc: ReturnType<typeof createClient>,
+  body: Record<string, unknown>,
+  adminId: string,
+  headers: Record<string, string>,
+) {
+  const { action: _, ...rest } = body;
+
+  if (!rest.title || !rest.slug || !rest.category) {
+    return new Response(
+      JSON.stringify({ error: "title, slug, and category are required" }),
+      { status: 400, headers },
+    );
+  }
+
+  if (RESERVED_SLUGS.includes(rest.slug as string)) {
+    return new Response(
+      JSON.stringify({ error: `Slug "${rest.slug}" is reserved` }),
+      { status: 400, headers },
+    );
+  }
+
+  const insert: Record<string, unknown> = { author_id: adminId };
+  for (const col of KB_ARTICLE_COLUMNS) {
+    if (rest[col] !== undefined) insert[col] = rest[col];
+  }
+
+  const { data, error } = await svc
+    .from("kb_articles")
+    .insert(insert)
+    .select()
+    .single();
+  if (error) throw error;
+
+  return new Response(JSON.stringify({ article: data }), { status: 201, headers });
+}
+
+async function handleUpdateKbArticle(
+  svc: ReturnType<typeof createClient>,
+  body: Record<string, unknown>,
+  headers: Record<string, string>,
+) {
+  const { action: _, article_id, ...rest } = body;
+
+  if (!article_id) {
+    return new Response(
+      JSON.stringify({ error: "article_id is required" }),
+      { status: 400, headers },
+    );
+  }
+
+  if (rest.slug && RESERVED_SLUGS.includes(rest.slug as string)) {
+    return new Response(
+      JSON.stringify({ error: `Slug "${rest.slug}" is reserved` }),
+      { status: 400, headers },
+    );
+  }
+
+  const update: Record<string, unknown> = {};
+  for (const col of KB_ARTICLE_COLUMNS) {
+    if (rest[col] !== undefined) update[col] = rest[col];
+  }
+
+  if (Object.keys(update).length === 0) {
+    return new Response(
+      JSON.stringify({ error: "No fields to update" }),
+      { status: 400, headers },
+    );
+  }
+
+  const { data, error } = await svc
+    .from("kb_articles")
+    .update(update)
+    .eq("id", article_id)
+    .select()
+    .single();
+  if (error) throw error;
+
+  return new Response(JSON.stringify({ article: data }), { status: 200, headers });
+}
+
+async function handleDeleteKbArticle(
+  svc: ReturnType<typeof createClient>,
+  body: { article_id?: string },
+  headers: Record<string, string>,
+) {
+  const { article_id } = body;
+
+  if (!article_id) {
+    return new Response(
+      JSON.stringify({ error: "article_id is required" }),
+      { status: 400, headers },
+    );
+  }
+
+  const { error } = await svc
+    .from("kb_articles")
+    .delete()
+    .eq("id", article_id);
+  if (error) throw error;
+
+  return new Response(JSON.stringify({ message: "Article deleted" }), { status: 200, headers });
+}
+
+async function handleListKbContextLinks(
+  svc: ReturnType<typeof createClient>,
+  body: { article_id?: string },
+  headers: Record<string, string>,
+) {
+  if (!body.article_id) {
+    return new Response(JSON.stringify({ error: "article_id required" }), { status: 400, headers });
+  }
+  const { data: links, error } = await svc
+    .from("kb_context_links")
+    .select("*")
+    .eq("article_id", body.article_id)
+    .order("display_order");
+  if (error) throw error;
+  return new Response(JSON.stringify({ links: links || [] }), { status: 200, headers });
+}
+
+async function handleUpsertKbContextLink(
+  svc: ReturnType<typeof createClient>,
+  body: Record<string, unknown>,
+  headers: Record<string, string>,
+) {
+  const { action: _, route_pattern, article_id, label, display_order } = body as {
+    action: string;
+    route_pattern?: string;
+    article_id?: string;
+    label?: string;
+    display_order?: number;
+  };
+
+  if (!route_pattern || !article_id) {
+    return new Response(
+      JSON.stringify({ error: "route_pattern and article_id are required" }),
+      { status: 400, headers },
+    );
+  }
+
+  const { data: existing } = await svc
+    .from("kb_context_links")
+    .select("id")
+    .eq("route_pattern", route_pattern)
+    .eq("article_id", article_id)
+    .maybeSingle();
+
+  if (existing) {
+    const update: Record<string, unknown> = {};
+    if (label !== undefined) update.label = label;
+    if (display_order !== undefined) update.display_order = display_order;
+
+    if (Object.keys(update).length > 0) {
+      await svc.from("kb_context_links").update(update).eq("id", existing.id);
+    }
+
+    return new Response(JSON.stringify({ link_id: existing.id }), { status: 200, headers });
+  }
+
+  const { data, error } = await svc
+    .from("kb_context_links")
+    .insert({
+      route_pattern,
+      article_id,
+      label: label ?? null,
+      display_order: display_order ?? 0,
+    })
+    .select("id")
+    .single();
+  if (error) throw error;
+
+  return new Response(JSON.stringify({ link_id: data.id }), { status: 201, headers });
+}
+
+async function handleDeleteKbContextLink(
+  svc: ReturnType<typeof createClient>,
+  body: { link_id?: string },
+  headers: Record<string, string>,
+) {
+  const { link_id } = body;
+
+  if (!link_id) {
+    return new Response(
+      JSON.stringify({ error: "link_id is required" }),
+      { status: 400, headers },
+    );
+  }
+
+  const { error } = await svc
+    .from("kb_context_links")
+    .delete()
+    .eq("id", link_id);
+  if (error) throw error;
+
+  return new Response(JSON.stringify({ message: "Context link deleted" }), { status: 200, headers });
 }

@@ -14,3 +14,4 @@ export * from './ideias';
 export * from './notifications';
 export * from './banners';
 export * from './computed';
+export * from './kb';

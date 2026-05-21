@@ -271,3 +271,62 @@ export function updateBanner(params: Record<string, unknown>) {
 export function deleteBanner(banner_id: string) {
   return adminApi<{ message: string }>('delete-banner', { banner_id });
 }
+
+// ─── KB Articles ─────────────────────────────────────────────
+
+export interface KbArticle {
+  id: string;
+  title: string;
+  slug: string;
+  excerpt: string | null;
+  content: Record<string, unknown> | null;
+  content_plain: string;
+  cover_image_url: string | null;
+  category: string;
+  tags: string[];
+  status: 'draft' | 'published';
+  display_order: number;
+  author_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KbContextLink {
+  id: string;
+  route_pattern: string;
+  article_id: string;
+  label: string | null;
+  display_order: number;
+}
+
+export function listKbArticles(params?: { category?: string; status?: string }) {
+  return adminApi<{ articles: KbArticle[] }>('list-kb-articles', params || {});
+}
+
+export function getKbArticle(article_id: string) {
+  return adminApi<{ article: KbArticle }>('get-kb-article', { article_id });
+}
+
+export function createKbArticle(params: Record<string, unknown>) {
+  return adminApi<{ article: KbArticle }>('create-kb-article', params);
+}
+
+export function updateKbArticle(params: Record<string, unknown>) {
+  return adminApi<{ article: KbArticle }>('update-kb-article', params);
+}
+
+export function deleteKbArticle(article_id: string) {
+  return adminApi<{ message: string }>('delete-kb-article', { article_id });
+}
+
+export function listKbContextLinks(article_id: string) {
+  return adminApi<{ links: KbContextLink[] }>('list-kb-context-links', { article_id });
+}
+
+export function upsertKbContextLink(params: Record<string, unknown>) {
+  return adminApi<{ link_id: string }>('upsert-kb-context-link', params);
+}
+
+export function deleteKbContextLink(link_id: string) {
+  return adminApi<{ message: string }>('delete-kb-context-link', { link_id });
+}
