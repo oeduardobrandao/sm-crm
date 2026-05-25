@@ -107,8 +107,8 @@ export function createHubDashboardHandler(deps: HubDashboardHandlerDeps) {
           reach: p.reach ?? 0,
         }),
       }))
-      .sort((a: { engagementRate: number }, b: { engagementRate: number }) =>
-        b.engagementRate - a.engagementRate,
+      .sort((a: { reach: number }, b: { reach: number }) =>
+        b.reach - a.reach,
       )
       .slice(0, 5);
 
