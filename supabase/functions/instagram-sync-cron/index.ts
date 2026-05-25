@@ -273,18 +273,20 @@ Deno.serve(createInstagramSyncCronHandler({
 
     // Fetch all accounts with auto-sync enabled and active status
     // (proactive refresh inside syncAccount handles near-expiry tokens)
+    const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
     const { data: accounts, error } = await supabase
       .from('instagram_accounts')
       .select('id, instagram_user_id, encrypted_access_token, token_expires_at, follower_count, following_count, media_count')
       .eq('authorization_status', 'active')
-      .eq('auto_sync_enabled', true);
+      .eq('auto_sync_enabled', true)
+      .or(`last_synced_at.is.null,last_synced_at.lt.${sixHoursAgo}`);
 
     if (error) throw error;
     if (!accounts || accounts.length === 0) {
       return new Response("No accounts to sync", { status: 200 });
     }
 
-    console.log(`[IG-SYNC-CRON] Starting sync for ${accounts.length} account(s)`);
+    console.log(`[IG-SYNC-CRON] Starting sync for ${accounts.length} account(s) (skipped recently synced)`);
 
     let syncedCount = 0;
     let failedCount = 0;
