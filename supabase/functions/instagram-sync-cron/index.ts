@@ -290,7 +290,7 @@ Deno.serve(createInstagramSyncCronHandler({
     let failedCount = 0;
     const errors: Array<{ accountId: string; error: string }> = [];
 
-    const CONCURRENCY = parseInt(Deno.env.get("SYNC_CONCURRENCY") || "5", 10);
+    const CONCURRENCY = Math.max(1, parseInt(Deno.env.get("SYNC_CONCURRENCY") || "5", 10) || 5);
     await runPool(accounts, CONCURRENCY, async (account) => {
       try {
         const result = await syncAccount(supabase, account);
