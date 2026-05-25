@@ -408,11 +408,37 @@ Deno.serve(async (req) => {
         if (accountError || !accounts || accounts.length === 0) throw new Error("Account not found");
         const account = accounts[0];
 
-        if (account.authorization_status !== 'active') {
-            return new Response(JSON.stringify({ error: true, code: 'ACCOUNT_DISCONNECTED', message: 'Instagram account is not active' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 });
+        if (account.authorization_status === 'disconnected' || account.authorization_status === 'revoked') {
+            const code = account.authorization_status === 'revoked' ? 'ACCOUNT_REVOKED' : 'ACCOUNT_DISCONNECTED';
+            return new Response(JSON.stringify({ error: true, code, message: 'Instagram account is not active' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 });
         }
 
-        const accessToken = await decryptToken(account.encrypted_access_token);
+        let accessToken = await decryptToken(account.encrypted_access_token);
+
+        // Proactive token refresh: if token expires within 7 days, refresh before syncing
+        const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+        const tokenExpiresAt = account.token_expires_at ? new Date(account.token_expires_at).getTime() : 0;
+        if (tokenExpiresAt > 0 && tokenExpiresAt - Date.now() < sevenDaysMs) {
+            try {
+                const refreshRes = await fetch(`https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=${accessToken}`);
+                const refreshData = await refreshRes.json();
+                if (refreshData.access_token) {
+                    accessToken = refreshData.access_token;
+                    const expiresIn = refreshData.expires_in || (60 * 60 * 24 * 60);
+                    const newExpiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
+                    const newEncrypted = await encryptToken(accessToken);
+                    await serviceClient.from('instagram_accounts').update({
+                        encrypted_access_token: newEncrypted,
+                        token_expires_at: newExpiresAt,
+                        authorization_status: 'active',
+                    }).eq('id', account.id);
+                    console.error(`[IG-SYNC] Proactively refreshed token for account ${account.id}, new expiry: ${newExpiresAt}`);
+                } else if (refreshData.error?.code === 190) {
+                    await serviceClient.from('instagram_accounts').update({ authorization_status: 'expired' }).eq('id', account.id);
+                    return new Response(JSON.stringify({ error: true, code: 'TOKEN_EXPIRED', message: 'Instagram token expired' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 });
+                }
+            } catch (e) { console.error('[IG-SYNC] Proactive refresh failed (non-fatal):', e); }
+        }
 
         try {
             // 3.1 Fetch Account Insights (28 day window) — all calls in parallel
@@ -435,6 +461,7 @@ Deno.serve(async (req) => {
             const allGraphResponses = [reachData, viewsData, profileTapsData, websiteClicksData, igProfile];
             for (const resp of allGraphResponses) {
                 if (resp.error?.code === 190) {
+                    await serviceClient.from('instagram_accounts').update({ authorization_status: 'expired' }).eq('id', account.id);
                     return new Response(JSON.stringify({ error: true, code: "TOKEN_EXPIRED", message: "Instagram token expired" }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 });
                 }
             }
@@ -584,7 +611,63 @@ Deno.serve(async (req) => {
         }
     }
 
-     // 4. DELETE /disconnect/:clientId
+    // 4. POST /refresh/:clientId — attempt to refresh the Instagram token without full OAuth
+    if (req.method === 'POST' && path.startsWith('/refresh/')) {
+        const clientId = path.split('/')[2];
+        if (!clientId || !/^\d+$/.test(clientId)) {
+            return new Response(JSON.stringify({ error: true, message: 'Invalid client ID' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 });
+        }
+        const serviceClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+
+        const { data: callerProfile } = await serviceClient.from('profiles').select('conta_id').eq('id', user!.id).single();
+        if (!callerProfile?.conta_id || !await verifyClientOwnership(serviceClient, clientId, callerProfile.conta_id)) {
+            return new Response(JSON.stringify({ error: true, message: 'Unauthorized' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 });
+        }
+
+        const { data: account, error: accountError } = await serviceClient
+            .from('instagram_accounts')
+            .select('id, encrypted_access_token, token_expires_at, authorization_status')
+            .eq('client_id', clientId)
+            .single();
+
+        if (accountError || !account || !account.encrypted_access_token) {
+            return new Response(JSON.stringify({ error: true, message: 'Account not found' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 });
+        }
+
+        const currentToken = await decryptToken(account.encrypted_access_token);
+
+        const refreshRes = await fetch(`https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=${currentToken}`);
+        const refreshData = await refreshRes.json();
+
+        if (refreshData.error) {
+            const code = refreshData.error.code;
+            if (code === 190) {
+                await serviceClient.from('instagram_accounts').update({ authorization_status: 'expired' }).eq('id', account.id);
+            } else if (code === 10) {
+                await serviceClient.from('instagram_accounts').update({ authorization_status: 'revoked' }).eq('id', account.id);
+            }
+            return new Response(JSON.stringify({
+                error: true,
+                code: code === 190 ? 'TOKEN_EXPIRED' : 'REFRESH_FAILED',
+                message: code === 190 ? 'Token expirado — necessário reconectar' : 'Falha ao atualizar token',
+            }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: code === 190 ? 401 : 400 });
+        }
+
+        const newToken = refreshData.access_token;
+        const expiresInSeconds = refreshData.expires_in || (60 * 60 * 24 * 60);
+        const newExpiresAt = new Date(Date.now() + expiresInSeconds * 1000).toISOString();
+        const newEncryptedToken = await encryptToken(newToken);
+
+        await serviceClient.from('instagram_accounts').update({
+            encrypted_access_token: newEncryptedToken,
+            token_expires_at: newExpiresAt,
+            authorization_status: 'active',
+        }).eq('id', account.id);
+
+        return new Response(JSON.stringify({ success: true, token_expires_at: newExpiresAt }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+     // 5. DELETE /disconnect/:clientId
     if ((req.method === 'POST' || req.method === 'DELETE') && path.startsWith('/disconnect/')) {
          const clientId = path.split('/')[2];
          if (!clientId || !/^\d+$/.test(clientId)) {

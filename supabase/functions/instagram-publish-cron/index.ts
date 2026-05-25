@@ -3,6 +3,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { timingSafeEqual } from "../_shared/crypto.ts";
 import { createPublishCronHandler } from "./handler.ts";
+import { notifyCronFailure } from "../_shared/notify.ts";
 import {
   decryptToken,
   createSingleImageContainer,
@@ -76,6 +77,8 @@ async function markFailed(
   postId: number,
   retryCount: number,
   errorMessage: string,
+  clientId?: number,
+  errorCode?: string,
 ) {
   await db.from("workflow_posts").update({
     status: "falha_publicacao",
@@ -83,6 +86,10 @@ async function markFailed(
     publish_error: errorMessage.slice(0, 500),
     publish_processing_at: null,
   }).eq("id", postId);
+
+  if (errorCode === 'TOKEN_EXPIRED' && clientId) {
+    await db.from("instagram_accounts").update({ authorization_status: "expired" }).eq("client_id", clientId);
+  }
 }
 
 // deno-lint-ignore no-explicit-any
@@ -208,7 +215,7 @@ Deno.serve(createPublishCronHandler({
           try {
             await processContainerCreation(db, post);
           } catch (err: any) {
-            await markFailed(db, post.post_id, post.publish_retry_count, err.message);
+            await markFailed(db, post.post_id, post.publish_retry_count, err.message, post.client_id, err.code);
             throw err;
           }
         });
@@ -223,7 +230,7 @@ Deno.serve(createPublishCronHandler({
           try {
             await processPublish(db, post);
           } catch (err: any) {
-            await markFailed(db, post.post_id, post.publish_retry_count, err.message);
+            await markFailed(db, post.post_id, post.publish_retry_count, err.message, post.client_id, err.code);
             throw err;
           }
         });
@@ -238,7 +245,7 @@ Deno.serve(createPublishCronHandler({
           try {
             await processRetry(db, post);
           } catch (err: any) {
-            await markFailed(db, post.post_id, post.publish_retry_count, err.message);
+            await markFailed(db, post.post_id, post.publish_retry_count, err.message, post.client_id, err.code);
             throw err;
           }
         });
@@ -246,11 +253,22 @@ Deno.serve(createPublishCronHandler({
       }
 
       console.log("[IG-PUBLISH] Cron complete:", JSON.stringify(summary));
+
+      const totalFailed = summary.phase1.failed + summary.phase2.failed + summary.phase3.failed;
+      if (totalFailed > 0) {
+        await notifyCronFailure('instagram-publish-cron', {
+          total: summary.phase1.succeeded + summary.phase1.failed + summary.phase2.succeeded + summary.phase2.failed + summary.phase3.succeeded + summary.phase3.failed,
+          failed: totalFailed,
+          errors: [{ error: `Phase1: ${summary.phase1.failed}, Phase2: ${summary.phase2.failed}, Phase3: ${summary.phase3.failed}` }],
+        });
+      }
+
       return new Response(JSON.stringify({ success: true, ...summary }), {
         headers: { "Content-Type": "application/json" },
       });
     } catch (err: any) {
       console.error("[IG-PUBLISH] Cron failed:", err);
+      await notifyCronFailure('instagram-publish-cron', { total: 0, failed: 1, errors: [{ error: err.message }] });
       return new Response(JSON.stringify({ error: err.message }), {
         status: 500,
         headers: { "Content-Type": "application/json" },

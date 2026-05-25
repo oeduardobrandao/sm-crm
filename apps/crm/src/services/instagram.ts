@@ -62,6 +62,24 @@ export async function disconnectInstagram(clientId: number): Promise<void> {
   invalidateCache(clientId);
 }
 
+export async function refreshInstagramToken(clientId: number): Promise<{ success: boolean; token_expires_at?: string; code?: string }> {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${EDGE_FUNCTION_URL}/refresh/${clientId}`, {
+      method: 'POST',
+      headers
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+     if (data.code === 'TOKEN_EXPIRED') {
+         throw new Error('TOKEN_EXPIRED');
+     }
+     throw new Error(data.message || 'Error refreshing token');
+  }
+  invalidateCache(clientId);
+  return data;
+}
+
 export async function syncInstagramData(clientId: number): Promise<void> {
   const headers = await getAuthHeaders();
   const res = await fetch(`${EDGE_FUNCTION_URL}/sync/${clientId}`, {

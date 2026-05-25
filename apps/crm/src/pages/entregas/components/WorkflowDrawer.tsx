@@ -161,7 +161,7 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
   const hasInstagramAccount = !!igAccount;
   const igAccountStatus = igAccount ? {
     revoked: igAccount.authorization_status === 'revoked',
-    expired: igAccount.token_expires_at ? new Date(igAccount.token_expires_at) < new Date() : false,
+    expired: igAccount.authorization_status === 'expired' || (igAccount.token_expires_at ? new Date(igAccount.token_expires_at) < new Date() : false),
     canPublish: Array.isArray(igAccount.permissions) && igAccount.permissions.includes('instagram_business_content_publish'),
   } : null;
 

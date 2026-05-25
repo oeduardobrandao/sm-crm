@@ -2,6 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { timingSafeEqual } from "../_shared/crypto.ts";
 import { createInstagramRefreshCronHandler } from "./handler.ts";
 import { shouldRevokeOnError } from "./utils.ts";
+import { notifyCronFailure } from "../_shared/notify.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -86,11 +87,12 @@ Deno.serve(createInstagramRefreshCronHandler({
 
       let refreshedCount = 0;
       let failedCount = 0;
+      const errors: Array<{ accountId: string; error: string }> = [];
 
       for (const account of accounts) {
         try {
           const currentToken = await decryptToken(account.encrypted_access_token);
-        
+
         // Refresh token via Instagram API (new Instagram Login flow)
         const refreshUrl = `https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=${currentToken}`;
         const res = await fetch(refreshUrl);
@@ -100,12 +102,14 @@ Deno.serve(createInstagramRefreshCronHandler({
             const errorCode = data.error.code;
             console.error(`Error refreshing token for account ${account.id}:`, data.error);
             if (shouldRevokeOnError(errorCode)) {
+              const newStatus = errorCode === 190 ? 'expired' : 'revoked';
               await supabase
                 .from('instagram_accounts')
-                .update({ authorization_status: 'revoked' })
+                .update({ authorization_status: newStatus })
                 .eq('id', account.id);
             }
             failedCount++;
+            errors.push({ accountId: account.id, error: `Code ${errorCode}: ${data.error.message || 'Unknown'}` });
             continue;
         }
 
@@ -154,10 +158,15 @@ Deno.serve(createInstagramRefreshCronHandler({
 
         if (updateError) throw updateError;
           refreshedCount++;
-        } catch (err) {
+        } catch (err: any) {
            console.error(`Failed to process account ${account.id}`, err);
            failedCount++;
+           errors.push({ accountId: account.id, error: err.message || 'Unknown' });
         }
+      }
+
+      if (failedCount > 0) {
+        await notifyCronFailure('instagram-refresh-cron', { total: accounts.length, failed: failedCount, errors });
       }
 
       return new Response(JSON.stringify({

@@ -1252,6 +1252,17 @@ O campo priorityActions deve ter entre 3 e 5 ações distribuídas entre as cont
     const isTokenExpired = err.code === 'TOKEN_EXPIRED' || err.message?.includes("expired");
     const statusCode = (isAuthError || isTokenExpired) ? 401 : 400;
 
+    if (isTokenExpired) {
+      try {
+        const clientIdMatch = path.match(/\/(\d+)(?:$|\/|\?)/);
+        if (clientIdMatch) {
+          await serviceClient.from('instagram_accounts')
+            .update({ authorization_status: 'expired' })
+            .eq('client_id', clientIdMatch[1]);
+        }
+      } catch (_) { /* best-effort DB update */ }
+    }
+
     return json({
       error: true,
       message: err.message || 'Unknown error',

@@ -213,6 +213,16 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
           publish_error: (err.message ?? "Unknown error").slice(0, 500),
           publish_processing_at: null,
         }).eq("id", postId);
+
+        if (err.code === 'TOKEN_EXPIRED') {
+          try {
+            const { data: wf } = await svcDb.from("workflows").select("cliente_id").eq("id", post.workflow_id).single();
+            if (wf?.cliente_id) {
+              await svcDb.from("instagram_accounts").update({ authorization_status: "expired" }).eq("client_id", wf.cliente_id);
+            }
+          } catch (_) { /* best-effort */ }
+        }
+
         return json({ error: err.message ?? "Erro ao publicar" }, 500);
       }
     }
