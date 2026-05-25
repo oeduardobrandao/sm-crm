@@ -5,6 +5,7 @@ import { formatDate } from './PostCard';
 import { PostMediaLightbox } from './PostMediaLightbox';
 import { OptimizedImage } from './OptimizedImage';
 import type { HubPost, PostApproval, InstagramProfile } from '../types';
+import { useEditSuggestion } from '../hooks/useEditSuggestion';
 
 interface InstagramPostCardProps {
   post: HubPost;
@@ -39,6 +40,13 @@ export function InstagramPostCard({
   const media = post.media ?? [];
   const isCarousel = media.length > 1;
 
+  const { isEditable: canEdit, hasPendingSuggestion, wasRejected, saveSuggestion, saveState, approvalBlocked, draftConteudo, draftIgCaption } = useEditSuggestion({
+    token,
+    post,
+    onSaved: () => onApprovalSubmitted?.(),
+  });
+  const isEditable = canEdit && !readOnly;
+
   const onTouchStart = useCallback((e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX;
     touchDelta.current = 0;
@@ -53,8 +61,9 @@ export function InstagramPostCard({
   }, []);
   const displayName = instagramProfile?.username ?? workspaceName ?? '';
   const profilePic = instagramProfile?.profilePictureUrl;
-  const caption = post.ig_caption
-    ? post.ig_caption
+  const effectiveIgCaption = isEditable ? draftIgCaption : post.ig_caption;
+  const caption = effectiveIgCaption
+    ? effectiveIgCaption
     : (() => {
         const rawText = post.conteudo_plain || '';
         const legendaIdx = rawText.toUpperCase().indexOf('LEGENDA');
@@ -184,12 +193,38 @@ export function InstagramPostCard({
 
       {/* Caption */}
       <div className="flex-1 flex flex-col px-2.5 py-1">
-        <div className="flex-1 max-h-[72px] overflow-y-auto overscroll-contain" style={{ scrollbarWidth: 'thin' }}>
-          <p className="text-[11px] text-[#262626] dark:text-[#f5f5f5] leading-[1.4]">
-            <span className="font-semibold">{displayName}</span>{' '}
-            {caption}
-          </p>
-        </div>
+        {isEditable ? (
+          <div className="flex-1">
+            <p className={`text-[10px] mb-0.5 ${wasRejected ? 'text-amber-600' : 'text-stone-400'}`}>
+              {wasRejected ? '⚠️ Sugestão rejeitada — edite novamente' : '✏️ Edite a legenda abaixo'}
+            </p>
+            <textarea
+              defaultValue={caption}
+              onChange={e => {
+                saveSuggestion(draftConteudo, post.conteudo_plain, e.target.value);
+              }}
+              className="w-full text-[11px] text-[#262626] dark:text-[#f5f5f5] leading-[1.4] border border-dashed border-stone-300 dark:border-stone-600 rounded px-2 py-1.5 resize-none min-h-[48px] max-h-[96px] bg-transparent focus:outline-none focus:border-stone-400 focus:border-solid transition-colors"
+            />
+            {saveState !== 'idle' && (
+              <div className="flex items-center gap-1 mt-0.5">
+                {saveState === 'saving' && <span className="text-[10px] text-stone-400">Salvando...</span>}
+                {saveState === 'saved' && (
+                  <>
+                    <span className="w-1 h-1 rounded-full bg-emerald-500" />
+                    <span className="text-[10px] text-emerald-600 font-medium">Sugestão salva</span>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="flex-1 max-h-[72px] overflow-y-auto overscroll-contain" style={{ scrollbarWidth: 'thin' }}>
+            <p className="text-[11px] text-[#262626] dark:text-[#f5f5f5] leading-[1.4]">
+              <span className="font-semibold">{displayName}</span>{' '}
+              {caption}
+            </p>
+          </div>
+        )}
         <p className="text-[10px] text-[#737373] dark:text-[#a8a8a8] mt-1">Agendado: {formatDate(post.scheduled_at)}</p>
       </div>
 
@@ -250,29 +285,37 @@ export function InstagramPostCard({
       {/* Approval buttons */}
       {isPending && !result && (
         <div className="border-t border-[#efefef] dark:border-[#262626] px-2.5 py-2 space-y-1.5">
-          <textarea
-            value={comentario}
-            onChange={e => setComentario(e.target.value)}
-            placeholder="Comentário (necessário para correção)…"
-            className="w-full rounded border border-stone-200 dark:border-[#333] px-2.5 py-1.5 text-[11px] resize-none min-h-[48px] bg-white dark:bg-[#0a0a0a] text-stone-900 dark:text-[#f5f5f5] placeholder:text-stone-400 dark:placeholder:text-[#666] focus:outline-none focus:border-stone-300 dark:focus:border-[#555] transition-all"
-          />
-          <div className="flex gap-1.5">
-            <button
-              onClick={() => handleAction('aprovado')}
-              disabled={submitting}
-              className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-[4px] bg-stone-900 text-white text-[11px] font-semibold hover:bg-stone-800 disabled:opacity-50 transition-colors"
-            >
-              <CheckCircle size={12} /> Aprovar
-            </button>
-            <button
-              onClick={() => handleAction('correcao')}
-              disabled={submitting || !comentario.trim()}
-              title={!comentario.trim() ? 'Deixe um comentário para solicitar correção' : undefined}
-              className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-[4px] border border-stone-200 dark:border-stone-700 bg-white dark:bg-transparent text-stone-700 dark:text-stone-300 text-[11px] font-medium hover:bg-stone-50 dark:hover:bg-stone-800 disabled:opacity-50 transition-colors"
-            >
-              <AlertCircle size={12} /> Correção
-            </button>
-          </div>
+          {hasPendingSuggestion ? (
+            <div className="rounded px-3 py-2 text-[11px] font-medium bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 ring-1 ring-amber-200/60 text-center">
+              Sugestão enviada para revisão
+            </div>
+          ) : (
+            <>
+              <textarea
+                value={comentario}
+                onChange={e => setComentario(e.target.value)}
+                placeholder="Comentário (necessário para correção)…"
+                className="w-full rounded border border-stone-200 dark:border-[#333] px-2.5 py-1.5 text-[11px] resize-none min-h-[48px] bg-white dark:bg-[#0a0a0a] text-stone-900 dark:text-[#f5f5f5] placeholder:text-stone-400 dark:placeholder:text-[#666] focus:outline-none focus:border-stone-300 dark:focus:border-[#555] transition-all"
+              />
+              <div className="flex gap-1.5">
+                <button
+                  onClick={() => handleAction('aprovado')}
+                  disabled={submitting || approvalBlocked}
+                  className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-[4px] bg-stone-900 text-white text-[11px] font-semibold hover:bg-stone-800 disabled:opacity-50 transition-colors"
+                >
+                  <CheckCircle size={12} /> {saveState === 'saving' ? 'Salvando...' : 'Aprovar'}
+                </button>
+                <button
+                  onClick={() => handleAction('correcao')}
+                  disabled={submitting || approvalBlocked || !comentario.trim()}
+                  title={!comentario.trim() ? 'Deixe um comentário para solicitar correção' : undefined}
+                  className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-[4px] border border-stone-200 dark:border-stone-700 bg-white dark:bg-transparent text-stone-700 dark:text-stone-300 text-[11px] font-medium hover:bg-stone-50 dark:hover:bg-stone-800 disabled:opacity-50 transition-colors"
+                >
+                  <AlertCircle size={12} /> Correção
+                </button>
+              </div>
+            </>
+          )}
           {autoPublishOnApproval && isPending && (
             <div style={{
               marginTop: '0.75rem',

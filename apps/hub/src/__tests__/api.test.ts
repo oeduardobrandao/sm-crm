@@ -9,6 +9,7 @@ import {
   fetchPosts,
   submitApproval,
   submitBriefingAnswer,
+  submitEditSuggestion,
   updateIdeia,
 } from '../api';
 
@@ -121,5 +122,56 @@ describe('hub api client', () => {
       answer: 'Queremos mais agendamentos pelo WhatsApp.',
     });
     expect(briefing.questions).toHaveLength(1);
+  });
+
+  it('sends edit suggestion payload to hub-edit-suggestion endpoint', async () => {
+    fetchHarness.queueResponse({
+      json: {
+        ok: true,
+        pending_suggestion: {
+          id: 5,
+          post_id: 42,
+          suggested_conteudo: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Texto editado' }] }] },
+          suggested_conteudo_plain: 'Texto editado',
+          suggested_ig_caption: null,
+          changed_fields: ['conteudo'],
+          status: 'pending',
+          updated_at: '2026-05-25T10:00:00Z',
+        },
+      },
+    });
+
+    const result = await submitEditSuggestion(
+      'token-hub',
+      42,
+      { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Texto editado' }] }] },
+      'Texto editado',
+      null,
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.pending_suggestion?.post_id).toBe(42);
+    expect(fetchHarness.calls).toHaveLength(1);
+    expect(String(fetchHarness.calls[0].input)).toContain('/hub-edit-suggestion');
+    expect(fetchHarness.calls[0].init?.method).toBe('POST');
+    const body = JSON.parse(String(fetchHarness.calls[0].init?.body));
+    expect(body).toMatchObject({
+      token: 'token-hub',
+      post_id: 42,
+      suggested_conteudo_plain: 'Texto editado',
+      suggested_ig_caption: null,
+    });
+  });
+
+  it('throws on edit suggestion error', async () => {
+    fetchHarness.queueResponse({
+      ok: false,
+      status: 400,
+      json: { error: 'Post não está em revisão' },
+    });
+
+    await expect(
+      submitEditSuggestion('token-hub', 99, null, 'texto', null),
+    ).rejects.toThrow('Post não está em revisão');
   });
 });

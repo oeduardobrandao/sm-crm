@@ -168,6 +168,33 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
           .order("created_at", { ascending: true })
       : { data: [] };
 
+    const { data: pendingSuggestions } = postIds.length > 0
+      ? await db
+          .from("post_edit_suggestions")
+          .select("id, post_id, suggested_conteudo, suggested_conteudo_plain, suggested_ig_caption, changed_fields, updated_at")
+          .in("post_id", postIds)
+          .eq("status", "pending")
+      : { data: [] };
+
+    const suggestionByPost: Record<number, any> = {};
+    for (const s of (pendingSuggestions ?? [])) {
+      suggestionByPost[s.post_id] = s;
+    }
+
+    const { data: rejectedSuggestions } = postIds.length > 0
+      ? await db
+          .from("post_edit_suggestions")
+          .select("post_id, updated_at")
+          .in("post_id", postIds)
+          .eq("status", "rejected")
+          .order("updated_at", { ascending: false })
+      : { data: [] };
+
+    const rejectedAtByPost: Record<number, string> = {};
+    for (const r of (rejectedSuggestions ?? [])) {
+      if (!rejectedAtByPost[r.post_id]) rejectedAtByPost[r.post_id] = r.updated_at;
+    }
+
     const { data: propertyValues } = postIds.length > 0
       ? await db
           .from("post_property_values")
@@ -245,9 +272,51 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
       }
     }
 
+    // Also collect R2 keys from pending suggestions for URL signing
+    const suggestionContentKeys: string[] = [];
+    for (const s of Object.values(suggestionByPost)) {
+      if ((s as any).suggested_conteudo) {
+        suggestionContentKeys.push(...extractR2Keys((s as any).suggested_conteudo));
+      }
+    }
+    if (suggestionContentKeys.length > 0) {
+      const safeKeys = suggestionContentKeys.filter((key) => key.startsWith(expectedKeyPrefix));
+      const unseenKeys = safeKeys.filter((key) => !(key in contentUrlMap));
+      if (unseenKeys.length > 0) {
+        const { data: validFiles } = await db.from("files")
+          .select("r2_key")
+          .eq("conta_id", hubToken.conta_id)
+          .in("r2_key", unseenKeys);
+        const validKeySet = new Set((validFiles ?? []).map((f: any) => f.r2_key));
+        await Promise.all(
+          unseenKeys.filter((key) => validKeySet.has(key)).map(async (key) => {
+            contentUrlMap[key] = await deps.signGetUrl(key, 3600);
+          })
+        );
+      }
+    }
+
     const postsWithResolvedContent = flatPostsWithMedia.map((post: any) => {
-      if (!post.conteudo || extractR2Keys(post.conteudo).length === 0) return post;
-      return { ...post, conteudo: injectSignedUrls(post.conteudo, contentUrlMap) };
+      const suggestion = suggestionByPost[post.id] ?? null;
+      let resolvedPost = post;
+
+      if (post.conteudo && extractR2Keys(post.conteudo).length > 0) {
+        resolvedPost = { ...resolvedPost, conteudo: injectSignedUrls(post.conteudo, contentUrlMap) };
+      }
+
+      let resolvedSuggestion = suggestion;
+      if (suggestion?.suggested_conteudo && extractR2Keys(suggestion.suggested_conteudo).length > 0) {
+        resolvedSuggestion = {
+          ...suggestion,
+          suggested_conteudo: injectSignedUrls(suggestion.suggested_conteudo, contentUrlMap),
+        };
+      }
+
+      return {
+        ...resolvedPost,
+        pending_suggestion: resolvedSuggestion,
+        suggestion_rejected_at: !resolvedSuggestion ? (rejectedAtByPost[post.id] ?? null) : null,
+      };
     });
 
     const { data: igAccount } = await db

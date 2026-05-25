@@ -1,7 +1,7 @@
 import type {
   HubBootstrap, HubPost, PostApproval, HubPostProperty, HubSelectOption, HubBrand, HubBrandFile,
   HubPage, HubPageFull, BriefingQuestion, HubIdeia, IdeiaReaction,
-  InstagramFeedData, HubPostsResponse, HubDashboardResponse
+  InstagramFeedData, HubPostsResponse, HubDashboardResponse, PendingEditSuggestion
 } from './types';
 
 const BASE = import.meta.env.VITE_SUPABASE_URL as string;
@@ -60,6 +60,19 @@ export async function reorderPostSchedules(token: string, updates: { post_id: nu
     throw new Error((b as { error?: string }).error ?? `HTTP ${res.status}`);
   }
   return res.json() as Promise<{ ok: boolean; updated: number }>;
+}
+
+export function submitEditSuggestion(
+  token: string,
+  post_id: number,
+  suggested_conteudo: Record<string, unknown> | null,
+  suggested_conteudo_plain: string,
+  suggested_ig_caption: string | null,
+) {
+  return post<{ ok: boolean; pending_suggestion: PendingEditSuggestion | null }>(
+    'hub-edit-suggestion',
+    { token, post_id, suggested_conteudo, suggested_conteudo_plain, suggested_ig_caption },
+  );
 }
 
 export function fetchInstagramFeed(token: string) {
