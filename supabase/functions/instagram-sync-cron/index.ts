@@ -2,6 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { timingSafeEqual } from "../_shared/crypto.ts";
 import { createInstagramSyncCronHandler } from "./handler.ts";
 import { notifyCronFailure } from "../_shared/notify.ts";
+import { runPool } from "./pool.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -289,8 +290,8 @@ Deno.serve(createInstagramSyncCronHandler({
     let failedCount = 0;
     const errors: Array<{ accountId: string; error: string }> = [];
 
-    for (let i = 0; i < accounts.length; i++) {
-      const account = accounts[i];
+    const CONCURRENCY = parseInt(Deno.env.get("SYNC_CONCURRENCY") || "5", 10);
+    await runPool(accounts, CONCURRENCY, async (account) => {
       try {
         const result = await syncAccount(supabase, account);
         if (result.success) {
@@ -306,12 +307,7 @@ Deno.serve(createInstagramSyncCronHandler({
         failedCount++;
         errors.push({ accountId: account.id, error: err.message });
       }
-
-      // Rate limit: 2s delay between accounts
-      if (i < accounts.length - 1) {
-        await new Promise(r => setTimeout(r, 2000));
-      }
-    }
+    });
 
       console.log(`[IG-SYNC-CRON] Done. Synced: ${syncedCount}, Failed: ${failedCount}`);
 
