@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { timingSafeEqual } from "../_shared/crypto.ts";
 import { createInstagramSyncCronHandler } from "./handler.ts";
+import { notifyCronFailure } from "../_shared/notify.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -33,6 +34,18 @@ async function getLegacyKey(usage: KeyUsage[]): Promise<CryptoKey> {
   );
 }
 
+async function encryptToken(token: string): Promise<string> {
+  const key = await getEncryptionKey('instagram-access-token', ['encrypt']);
+  const enc = new TextEncoder();
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encryptedBuf = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(token));
+  const encryptedArray = new Uint8Array(encryptedBuf);
+  const combined = new Uint8Array(iv.length + encryptedArray.length);
+  combined.set(iv);
+  combined.set(encryptedArray, iv.length);
+  return btoa(String.fromCharCode.apply(null, Array.from(combined)));
+}
+
 async function decryptToken(encryptedBase64: string): Promise<string> {
   const combined = Uint8Array.from(atob(encryptedBase64), c => c.charCodeAt(0));
   const iv = combined.slice(0, 12);
@@ -55,12 +68,38 @@ async function syncAccount(
     id: string;
     instagram_user_id: string;
     encrypted_access_token: string;
+    token_expires_at: string;
     follower_count: number;
     following_count: number;
     media_count: number;
   }
 ): Promise<{ success: boolean; error?: string }> {
-  const accessToken = await decryptToken(account.encrypted_access_token);
+  let accessToken = await decryptToken(account.encrypted_access_token);
+
+  // Proactive refresh: if token expires within 7 days, refresh before syncing
+  const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+  const expiresAt = account.token_expires_at ? new Date(account.token_expires_at).getTime() : 0;
+  if (expiresAt > 0 && expiresAt - Date.now() < sevenDaysMs) {
+    try {
+      const refreshRes = await fetch(`https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=${accessToken}`);
+      const refreshData = await refreshRes.json();
+      if (refreshData.access_token) {
+        accessToken = refreshData.access_token;
+        const expiresIn = refreshData.expires_in || (60 * 60 * 24 * 60);
+        const newExpiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
+        const newEncrypted = await encryptToken(accessToken);
+        await supabase.from('instagram_accounts').update({
+          encrypted_access_token: newEncrypted,
+          token_expires_at: newExpiresAt,
+          authorization_status: 'active',
+        }).eq('id', account.id);
+        console.log(`[IG-SYNC-CRON] Proactively refreshed token for account ${account.id}`);
+      } else if (refreshData.error?.code === 190) {
+        await supabase.from('instagram_accounts').update({ authorization_status: 'expired' }).eq('id', account.id);
+        return { success: false, error: 'TOKEN_EXPIRED' };
+      }
+    } catch (e) { console.log('[IG-SYNC-CRON] Proactive refresh failed (non-fatal):', e); }
+  }
 
   // Fetch account insights (28-day window), profile, and media in parallel
   const nowTimestamp = Math.floor(Date.now() / 1000);
@@ -79,8 +118,9 @@ async function syncAccount(
     reachRes.json(), viewsRes.json(), engagedRes.json(), websiteClicksRes.json(), igProfileRes.json(), mediaRes.json()
   ]);
 
-  // Check for expired token
+  // Check for expired token — mark in DB so UI shows correct status
   if (reachData.error?.code === 190) {
+    await supabase.from('instagram_accounts').update({ authorization_status: 'expired' }).eq('id', account.id);
     return { success: false, error: 'TOKEN_EXPIRED' };
   }
 
@@ -230,11 +270,12 @@ Deno.serve(createInstagramSyncCronHandler({
     try {
       const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Fetch all accounts with valid tokens and auto-sync enabled
+    // Fetch all accounts with auto-sync enabled and active status
+    // (proactive refresh inside syncAccount handles near-expiry tokens)
     const { data: accounts, error } = await supabase
       .from('instagram_accounts')
-      .select('id, instagram_user_id, encrypted_access_token, follower_count, following_count, media_count')
-      .gt('token_expires_at', new Date().toISOString())
+      .select('id, instagram_user_id, encrypted_access_token, token_expires_at, follower_count, following_count, media_count')
+      .eq('authorization_status', 'active')
       .eq('auto_sync_enabled', true);
 
     if (error) throw error;
@@ -274,6 +315,10 @@ Deno.serve(createInstagramSyncCronHandler({
 
       console.log(`[IG-SYNC-CRON] Done. Synced: ${syncedCount}, Failed: ${failedCount}`);
 
+      if (failedCount > 0) {
+        await notifyCronFailure('instagram-sync-cron', { total: accounts.length, failed: failedCount, errors });
+      }
+
       return new Response(JSON.stringify({
         success: true,
         synced: syncedCount,
@@ -285,6 +330,7 @@ Deno.serve(createInstagramSyncCronHandler({
       });
     } catch (err: any) {
       console.error("[IG-SYNC-CRON] Cron Job Failed", err);
+      await notifyCronFailure('instagram-sync-cron', { total: 0, failed: 1, errors: [{ error: err.message }] });
       return new Response(JSON.stringify({ error: err.message }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' }

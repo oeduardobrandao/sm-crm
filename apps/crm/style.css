@@ -478,6 +478,14 @@ body {
   visibility: visible;
 }
 
+.token-badge[data-tooltip]::before {
+  white-space: normal;
+  max-width: 260px;
+  text-align: left;
+  line-height: 1.4;
+  font-weight: 500;
+}
+
 /* Upgrade Card */
 .upgrade-card {
   background: var(--surface-main);

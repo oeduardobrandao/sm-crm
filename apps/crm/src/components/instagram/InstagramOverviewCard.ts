@@ -1,7 +1,7 @@
 // =============================================
 // Mesaas - Instagram Overview Card Component
 // =============================================
-import { syncInstagramData, disconnectInstagram } from '../../services/instagram';
+import { syncInstagramData, disconnectInstagram, getInstagramAuthUrl } from '../../services/instagram';
 import { showToast, openModal, closeModal, escapeHTML, sanitizeUrl } from '../../router';
 import { formatDate } from '../../store';
 import { i18n } from '@mesaas/i18n';
@@ -17,37 +17,58 @@ function numFmt(n: number | undefined) {
 
 export function renderInstagramOverviewCard(container: HTMLElement, clientId: number, account: any, onRefresh: () => void) {
   const isRevoked = account.authorization_status === 'revoked';
-  const isExpired = account.token_expires_at && new Date(account.token_expires_at) < new Date();
+  const isExpired = account.authorization_status === 'expired' || (account.token_expires_at && new Date(account.token_expires_at) < new Date());
 
   let statusBanner = '';
   if (isRevoked) {
     statusBanner = `<div style="background: rgba(245, 90, 66, 0.08); color: var(--danger); padding: 0.5rem 0.75rem; border-radius: 8px; font-size: 0.8rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;"><i class="ph ph-warning"></i> ${escapeHTML(t('instagram.revokedBanner'))}</div>`;
   } else if (isExpired) {
-    statusBanner = `<div style="background: rgba(245, 163, 66, 0.08); color: var(--warning); padding: 0.5rem 0.75rem; border-radius: 8px; font-size: 0.8rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;"><i class="ph ph-warning"></i> ${escapeHTML(t('instagram.expiredBanner'))}</div>`;
+    statusBanner = `<div style="background: rgba(245, 163, 66, 0.08); color: var(--warning); padding: 0.5rem 0.75rem; border-radius: 8px; font-size: 0.8rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
+      <i class="ph ph-warning"></i> ${escapeHTML(t('instagram.expiredBanner'))}
+      <button id="btn-ig-reconnect" style="margin-left: auto; background: var(--warning); color: #fff; border: none; padding: 0.25rem 0.75rem; border-radius: 6px; font-size: 0.75rem; font-weight: 600; cursor: pointer; white-space: nowrap;">${escapeHTML(t('instagram.reconnectButton'))}</button>
+    </div>`;
   }
 
   const updatedDate = (account.last_synced_at || account.updated_at)
     ? t('instagram.updatedAt', { date: formatDate((account.last_synced_at || account.updated_at).split('T')[0]) })
     : t('instagram.updatedNow');
 
+  let tokenBadge = '';
+  if (account.token_expires_at && !isRevoked) {
+    const daysLeft = Math.ceil((new Date(account.token_expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    const tooltip = escapeHTML(t('instagram.tokenTooltip'));
+    const badgeBase = `cursor: help; display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.7rem; font-weight: 600; font-family: var(--font-mono);`;
+    if (daysLeft <= 0) {
+      tokenBadge = `<span class="token-badge" data-tooltip="${tooltip}" data-tooltip-dir="bottom" style="${badgeBase} background: rgba(245, 90, 66, 0.1); color: var(--danger);"><i class="ph ph-warning" style="font-size: 0.75rem;"></i> ${escapeHTML(t('instagram.tokenExpired'))}</span>`;
+    } else if (daysLeft <= 7) {
+      tokenBadge = `<span class="token-badge" data-tooltip="${tooltip}" data-tooltip-dir="bottom" style="${badgeBase} background: rgba(245, 163, 66, 0.1); color: var(--warning);"><i class="ph ph-clock" style="font-size: 0.75rem;"></i> ${escapeHTML(t('instagram.tokenDaysLeft', { count: daysLeft }))}</span>`;
+    } else {
+      tokenBadge = `<span class="token-badge" data-tooltip="${tooltip}" data-tooltip-dir="bottom" style="${badgeBase} background: rgba(62, 207, 142, 0.1); color: var(--success);"><i class="ph ph-clock" style="font-size: 0.75rem;"></i> ${escapeHTML(t('instagram.tokenDaysLeft', { count: daysLeft }))}</span>`;
+    }
+  }
+
   // Translation values from static JSON, user data escaped via escapeHTML/sanitizeUrl
+  // All dynamic values are either escaped (escapeHTML/sanitizeUrl) or computed numbers (daysLeft)
   container.innerHTML = `
-    <div class="card animate-up" style="position: relative; margin-bottom: 1.5rem; overflow: visible;">
-      <div style="position: absolute; top: 1rem; right: 1rem; display: flex; gap: 0.5rem;">
-         <button id="btn-ig-sync" class="btn-icon" data-tooltip="${escapeHTML(t('instagram.syncTooltip'))}" data-tooltip-dir="bottom" style="color: var(--text-muted);"><i class="ph ph-arrows-clockwise"></i></button>
-         <button id="btn-ig-disconnect" class="btn-icon" data-tooltip="${escapeHTML(t('instagram.disconnectTooltip'))}" data-tooltip-dir="bottom" style="color: var(--danger);"><i class="ph ph-plugs"></i></button>
-      </div>
+    <div class="card animate-up" style="position: relative; margin-bottom: 1.5rem;">
 
       ${statusBanner}
 
       <div style="display: flex; align-items: center; gap: 1.5rem; margin-bottom: 1.5rem;">
          <img src="${account.profile_picture_url ? sanitizeUrl(account.profile_picture_url) : 'https://ui-avatars.com/api/?name=IG&background=random'}" alt="IG Profile" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 3px solid #E1306C;" />
-         <div>
+         <div style="flex: 1; min-width: 0;">
             <h3 class="text-xl font-bold tracking-tight text-foreground flex items-center gap-2 mb-1">
                 ${escapeHTML(account.username || t('instagram.account'))}
                 <i class="fa-brands fa-instagram" style="color: #E1306C; font-size: 1.2rem;"></i>
             </h3>
-            <p style="color: var(--text-muted); font-size: 0.85rem;">${escapeHTML(updatedDate)}</p>
+            <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+              <p style="color: var(--text-muted); font-size: 0.85rem; margin: 0;">${escapeHTML(updatedDate)}</p>
+              ${tokenBadge}
+            </div>
+         </div>
+         <div style="display: flex; gap: 0.5rem; flex-shrink: 0;">
+            <button id="btn-ig-sync" class="btn-icon" data-tooltip="${escapeHTML(t('instagram.syncTooltip'))}" data-tooltip-dir="bottom" style="color: var(--text-muted);"><i class="ph ph-arrows-clockwise"></i></button>
+            <button id="btn-ig-disconnect" class="btn-icon" data-tooltip="${escapeHTML(t('instagram.disconnectTooltip'))}" data-tooltip-dir="bottom" style="color: var(--danger);"><i class="ph ph-plugs"></i></button>
          </div>
       </div>
 
@@ -106,6 +127,23 @@ export function renderInstagramOverviewCard(container: HTMLElement, clientId: nu
              } else {
                  showToast(t('instagram.syncError', { error: err.message }), 'error');
              }
+          }
+      });
+  }
+
+  // Bind Reconnect
+  const btnReconnect = container.querySelector('#btn-ig-reconnect') as HTMLButtonElement;
+  if (btnReconnect) {
+      btnReconnect.addEventListener('click', async () => {
+          try {
+             btnReconnect.innerHTML = `<i class="ph ph-spinner ph-spin"></i> ${escapeHTML(t('instagram.connecting'))}`;
+             btnReconnect.disabled = true;
+             const url = await getInstagramAuthUrl(clientId);
+             window.location.href = url;
+          } catch (err: any) {
+             btnReconnect.textContent = escapeHTML(t('instagram.reconnectButton'));
+             btnReconnect.disabled = false;
+             showToast(t('instagram.connectError', { error: err.message }), 'error');
           }
       });
   }

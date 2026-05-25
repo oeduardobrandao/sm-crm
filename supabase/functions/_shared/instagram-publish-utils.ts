@@ -189,8 +189,8 @@ export async function validateForScheduling(
   if (!account) {
     errors.push("Cliente não tem conta Instagram conectada.");
   } else {
-    if (account.authorization_status === "revoked" || account.authorization_status === "disconnected") {
-      errors.push("Token do Instagram foi revogado. Reconecte a conta.");
+    if (account.authorization_status === "revoked" || account.authorization_status === "disconnected" || account.authorization_status === "expired") {
+      errors.push("Token do Instagram foi revogado ou expirou. Reconecte a conta.");
     }
     if (account.token_expires_at && new Date(account.token_expires_at) < new Date()) {
       errors.push("Token do Instagram expirou. Reconecte a conta.");
@@ -219,6 +219,12 @@ export async function validateForScheduling(
 
 const GRAPH_BASE = "https://graph.instagram.com/v22.0";
 
+function throwGraphError(data: any): never {
+  const err: any = new Error(data.error.message);
+  if (data.error.code === 190) err.code = 'TOKEN_EXPIRED';
+  throw err;
+}
+
 export async function createSingleImageContainer(
   igUserId: string,
   token: string,
@@ -233,7 +239,7 @@ export async function createSingleImageContainer(
   const data = await res.json();
   if (data.error) {
     console.error(`[IG-PUBLISH] Graph API error (HTTP ${res.status}):`, JSON.stringify(data.error));
-    throw new Error(data.error.message);
+    throwGraphError(data);
   }
   console.log(`[IG-PUBLISH] Container created: ${data.id}`);
   return { id: data.id };
@@ -253,7 +259,7 @@ export async function createVideoContainer(
     }),
   });
   const data = await res.json();
-  if (data.error) throw new Error(data.error.message);
+  if (data.error) throwGraphError(data);
   return { id: data.id };
 }
 
@@ -279,7 +285,7 @@ export async function createCarouselChildContainer(
     body: JSON.stringify(body),
   });
   const data = await res.json();
-  if (data.error) throw new Error(data.error.message);
+  if (data.error) throwGraphError(data);
   return { id: data.id };
 }
 
@@ -300,7 +306,7 @@ export async function createCarouselParentContainer(
     }),
   });
   const data = await res.json();
-  if (data.error) throw new Error(data.error.message);
+  if (data.error) throwGraphError(data);
   return { id: data.id };
 }
 
@@ -312,7 +318,7 @@ export async function checkContainerStatus(
     `${GRAPH_BASE}/${containerId}?fields=status_code&access_token=${token}`,
   );
   const data = await res.json();
-  if (data.error) throw new Error(data.error.message);
+  if (data.error) throwGraphError(data);
   return data.status_code ?? "FINISHED";
 }
 
@@ -341,7 +347,7 @@ export async function publishContainer(
     body: JSON.stringify({ creation_id: containerId, access_token: token }),
   });
   const data = await res.json();
-  if (data.error) throw new Error(data.error.message);
+  if (data.error) throwGraphError(data);
   return { id: data.id };
 }
 
