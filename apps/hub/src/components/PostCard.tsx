@@ -5,6 +5,7 @@ import type { HubPost, PostApproval, HubPostProperty, HubSelectOption } from '..
 import { PostMediaLightbox } from './PostMediaLightbox';
 import { OptimizedImage } from './OptimizedImage';
 import { RichTextContent } from './RichTextContent';
+import { useEditSuggestion } from '../hooks/useEditSuggestion';
 
 export const TIPO_LABEL: Record<string, string> = {
   feed: 'Feed', reels: 'Reels', stories: 'Stories', carrossel: 'Carrossel',
@@ -126,6 +127,13 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
   const [result, setResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const isPending = post.status === 'enviado_cliente';
+
+  const { isEditable, hasPendingSuggestion, wasRejected, saveSuggestion, saveState, approvalBlocked, draftConteudo, draftIgCaption } = useEditSuggestion({
+    token,
+    post,
+    onSaved: onApprovalSubmitted,
+  });
+  const igCaptionRef = useRef(draftIgCaption ?? '');
   const postApprovals = approvals.filter(a => a.post_id === post.id);
   const postProperties = propertyValues.filter(p => p.post_id === post.id);
   const displayCover = post.cover_media ?? (post.media && post.media.length > 0 ? post.media[0] : null);
@@ -228,11 +236,40 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
 
       {expanded && (
         <div className="border-t border-stone-200/80 px-5 pb-5 pt-4 space-y-5 bg-stone-50/30">
-          {post.conteudo ? (
-            <RichTextContent content={post.conteudo} className="text-[13.5px] text-stone-600 leading-relaxed" />
+          {draftConteudo ? (
+            <RichTextContent
+              content={draftConteudo}
+              className="text-[13.5px] text-stone-600 leading-relaxed"
+              editable={isEditable}
+              onUpdate={isEditable ? (json, plain) => {
+                saveSuggestion(json, plain, igCaptionRef.current);
+              } : undefined}
+            />
           ) : post.conteudo_plain ? (
             <p className="text-[13.5px] text-stone-600 leading-relaxed whitespace-pre-wrap">{post.conteudo_plain}</p>
           ) : null}
+
+          {isEditable && saveState !== 'idle' && (
+            <div className="flex items-center gap-1.5">
+              {saveState === 'saving' && <span className="text-[11px] text-stone-400">Salvando sugestão...</span>}
+              {saveState === 'saved' && (
+                <>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  <span className="text-[11px] text-emerald-600 font-medium">Sugestão salva</span>
+                </>
+              )}
+            </div>
+          )}
+
+          {isEditable && (
+            <div className={`flex items-center gap-1.5 px-3 py-2 rounded-lg ring-1 ${wasRejected ? 'bg-amber-50 ring-amber-200/40' : 'bg-emerald-50 ring-emerald-200/40'}`}>
+              <span className={`text-[11px] ${wasRejected ? 'text-amber-800' : 'text-emerald-800'}`}>
+                {wasRejected
+                  ? '⚠️ Sua sugestão anterior foi rejeitada pela equipe. Edite novamente para enviar uma nova.'
+                  : 'ℹ️ Suas edições serão enviadas como sugestão para a equipe revisar'}
+              </span>
+            </div>
+          )}
 
           {post.media && post.media.length > 1 && (
             <div className="flex gap-2 overflow-x-auto pb-1">
@@ -321,28 +358,36 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
 
           {isPending && !result && (
             <div className="space-y-3">
-              <textarea
-                value={comentario}
-                onChange={e => setComentario(e.target.value)}
-                placeholder="Comentário (opcional)…"
-                className="w-full rounded-xl border border-stone-200/80 px-4 py-3 text-[13.5px] resize-none min-h-[80px] bg-white text-stone-900 placeholder:text-stone-400 focus:outline-none focus:border-stone-300 focus:ring-4 focus:ring-[#FFBF30]/15 transition-all"
-              />
-              <div className="flex gap-2.5">
-                <button
-                  onClick={() => handleAction('aprovado')}
-                  disabled={submitting}
-                  className="flex-1 flex items-center justify-center gap-2 bg-stone-900 text-white rounded-full py-3 text-[13.5px] font-semibold hover:bg-stone-800 disabled:opacity-50 transition-colors shadow-sm"
-                >
-                  <CheckCircle size={15} /> Aprovar
-                </button>
-                <button
-                  onClick={() => handleAction('correcao')}
-                  disabled={submitting}
-                  className="flex-1 flex items-center justify-center gap-2 border border-stone-200/80 bg-white text-stone-800 rounded-full py-3 text-[13.5px] font-semibold hover:border-stone-300 hover:bg-stone-50 disabled:opacity-50 transition-colors"
-                >
-                  <AlertCircle size={15} /> Solicitar correção
-                </button>
-              </div>
+              {hasPendingSuggestion ? (
+                <div className="rounded-xl px-4 py-3 text-[13px] font-medium bg-amber-50 text-amber-800 ring-1 ring-amber-200/60 text-center">
+                  Sugestão enviada para revisão da equipe
+                </div>
+              ) : (
+                <>
+                  <textarea
+                    value={comentario}
+                    onChange={e => setComentario(e.target.value)}
+                    placeholder="Comentário (opcional)…"
+                    className="w-full rounded-xl border border-stone-200/80 px-4 py-3 text-[13.5px] resize-none min-h-[80px] bg-white text-stone-900 placeholder:text-stone-400 focus:outline-none focus:border-stone-300 focus:ring-4 focus:ring-[#FFBF30]/15 transition-all"
+                  />
+                  <div className="flex gap-2.5">
+                    <button
+                      onClick={() => handleAction('aprovado')}
+                      disabled={submitting || approvalBlocked}
+                      className="flex-1 flex items-center justify-center gap-2 bg-stone-900 text-white rounded-full py-3 text-[13.5px] font-semibold hover:bg-stone-800 disabled:opacity-50 transition-colors shadow-sm"
+                    >
+                      <CheckCircle size={15} /> {saveState === 'saving' ? 'Salvando sugestão...' : 'Aprovar'}
+                    </button>
+                    <button
+                      onClick={() => handleAction('correcao')}
+                      disabled={submitting || approvalBlocked}
+                      className="flex-1 flex items-center justify-center gap-2 border border-stone-200/80 bg-white text-stone-800 rounded-full py-3 text-[13.5px] font-semibold hover:border-stone-300 hover:bg-stone-50 disabled:opacity-50 transition-colors"
+                    >
+                      <AlertCircle size={15} /> Solicitar correção
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           )}
 

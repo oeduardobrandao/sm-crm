@@ -17,8 +17,9 @@ import {
   getPostCommentThreads, createCommentThread, addPostComment, updatePostComment,
   deletePostComment, resolveCommentThread, reopenCommentThread, deleteCommentThread,
   getWorkspaceUsers,
+  getPostEditSuggestions, acceptEditSuggestion, rejectEditSuggestion,
   type WorkflowPost, type PostApproval, type Membro, type PostPropertyValue,
-  type CommentThreadWithComments,
+  type CommentThreadWithComments, type PostEditSuggestion,
 } from '../../../store';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { PostEditor } from './PostEditor';
@@ -33,6 +34,10 @@ import { ScheduleButton } from './ScheduleButton';
 import { DateTimePicker } from '@/components/ui/date-time-picker';
 import { supabase } from '@/lib/supabase';
 import { WorkflowCalendarView } from './WorkflowCalendarView';
+import { DiffView } from './DiffView';
+import { ReadOnlyTipTap } from './ReadOnlyTipTap';
+import { computeWordDiff } from '@/utils/textDiff';
+import { computeTipTapDiff } from '@/utils/tiptapDiff';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -95,6 +100,8 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
   const [pendingEditData, setPendingEditData] = useState<{ json: Record<string, unknown>; plain: string } | null>(null);
   const confirmedEditIds = useRef<Set<number>>(new Set());
   const [pendingStatusChange, setPendingStatusChange] = useState<{ id: number; newStatus: string } | null>(null);
+  const [pendingRejectSuggestionId, setPendingRejectSuggestionId] = useState<number | null>(null);
+  const [editorVersions, setEditorVersions] = useState<Record<number, number>>({});
   const [showCalendar, setShowCalendar] = useState(false);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -116,6 +123,12 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
   const { data: approvals = [] } = useQuery({
     queryKey: ['post-approvals', postIds.join(',')],
     queryFn: () => getPostApprovals(postIds),
+    enabled: postIds.length > 0,
+  });
+
+  const { data: editSuggestions = [] } = useQuery({
+    queryKey: ['post-edit-suggestions', postIds.join(',')],
+    queryFn: () => getPostEditSuggestions(postIds),
     enabled: postIds.length > 0,
   });
 
@@ -158,6 +171,7 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
     qc.invalidateQueries({ queryKey: ['post-approvals'] });
     qc.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
     qc.invalidateQueries({ queryKey: ['post-comment-threads'] });
+    qc.invalidateQueries({ queryKey: ['post-edit-suggestions'] });
   }, [qc, workflowId]);
 
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
@@ -354,6 +368,33 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
     }
   };
 
+  // ── Edit suggestion handlers ──────────────────────────────────────────────
+
+  const handleAcceptSuggestion = useCallback(async (suggestionId: number, postId: number) => {
+    try {
+      await acceptEditSuggestion(suggestionId);
+      setEditorVersions(prev => ({ ...prev, [postId]: (prev[postId] ?? 0) + 1 }));
+      toast.success('Sugestão aceita!');
+      refresh();
+      onRefresh();
+    } catch { toast.error('Erro ao aceitar sugestão'); }
+  }, [refresh, onRefresh]);
+
+  const handleRejectSuggestion = useCallback((id: number) => {
+    setPendingRejectSuggestionId(id);
+  }, []);
+
+  const confirmRejectSuggestion = useCallback(async () => {
+    if (!pendingRejectSuggestionId) return;
+    const id = pendingRejectSuggestionId;
+    setPendingRejectSuggestionId(null);
+    try {
+      await rejectEditSuggestion(id);
+      toast.success('Sugestão rejeitada');
+      refresh();
+    } catch { toast.error('Erro ao rejeitar sugestão'); }
+  }, [pendingRejectSuggestionId, refresh]);
+
   // ── Comment thread handlers ───────────────────────────────────────────────
 
   const handleCreateComment = useCallback(async (postId: number, quotedText: string, comment: string) => {
@@ -485,6 +526,7 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
                           isExpanded={expandedId === post.id}
                           isSaving={savingIds.has(post.id!)}
                           approvals={approvals.filter(a => a.post_id === post.id)}
+                          editSuggestion={editSuggestions.find(s => s.post_id === post.id) ?? null}
                           membros={membros}
                           replyText={replyText[post.id!] || ''}
                           sendingReply={sendingReply === post.id}
@@ -508,6 +550,9 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
                           onReopenThread={handleReopenThread}
                           onEditComment={handleEditComment}
                           onDeleteComment={handleDeleteComment}
+                          editorVersion={editorVersions[post.id!] ?? 0}
+                          onAcceptSuggestion={handleAcceptSuggestion}
+                          onRejectSuggestion={handleRejectSuggestion}
                         />
                       ))}
                     </div>
@@ -565,6 +610,21 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AlertDialog open={!!pendingRejectSuggestionId} onOpenChange={open => { if (!open) setPendingRejectSuggestionId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Rejeitar sugestão?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A sugestão do cliente será rejeitada e ele será notificado. O conteúdo original do post será mantido.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPendingRejectSuggestionId(null)}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmRejectSuggestion}>Rejeitar</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
@@ -578,6 +638,7 @@ interface SortablePostItemProps {
   isExpanded: boolean;
   isSaving: boolean;
   approvals: PostApproval[];
+  editSuggestion: PostEditSuggestion | null;
   membros: Membro[];
   replyText: string;
   sendingReply: boolean;
@@ -601,10 +662,13 @@ interface SortablePostItemProps {
   onReopenThread: (threadId: number) => Promise<void>;
   onEditComment: (commentId: number, content: string) => Promise<void>;
   onDeleteComment: (commentId: number, threadId: number) => Promise<void>;
+  editorVersion: number;
+  onAcceptSuggestion: (suggestionId: number, postId: number) => void;
+  onRejectSuggestion: (id: number) => void;
 }
 
 function SortablePostItem({
-  post, templateId, workflowId, isExpanded, isSaving, approvals, membros,
+  post, templateId, workflowId, isExpanded, isSaving, approvals, editSuggestion, membros,
   replyText, sendingReply,
   commentThreads, currentUserId, currentUserRole,
   workspaceUsers,
@@ -614,6 +678,7 @@ function SortablePostItem({
   onToggle, onDelete, onFieldChange, onContentUpdate, onReplyChange, onReplySend,
   onRefresh,
   onCreateComment, onReplyToComment, onResolveThread, onReopenThread, onEditComment, onDeleteComment,
+  editorVersion, onAcceptSuggestion, onRejectSuggestion,
 }: SortablePostItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: post.id! });
@@ -655,6 +720,21 @@ function SortablePostItem({
     return () => { cancelled = true; };
   }, [post.conteudo]);
 
+  const [resolvedSuggestion, setResolvedSuggestion] = useState<Record<string, unknown> | null>(editSuggestion?.suggested_conteudo ?? null);
+
+  useEffect(() => {
+    if (!editSuggestion?.suggested_conteudo) { setResolvedSuggestion(null); return; }
+    const keys = extractR2Keys(editSuggestion.suggested_conteudo);
+    if (keys.length === 0) { setResolvedSuggestion(editSuggestion.suggested_conteudo); return; }
+    let cancelled = false;
+    resolveInlineImageUrls(keys).then((urlMap) => {
+      if (!cancelled) setResolvedSuggestion(injectSignedUrls(editSuggestion.suggested_conteudo!, urlMap));
+    }).catch(() => {
+      if (!cancelled) setResolvedSuggestion(editSuggestion.suggested_conteudo);
+    });
+    return () => { cancelled = true; };
+  }, [editSuggestion?.suggested_conteudo]);
+
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -691,6 +771,11 @@ function SortablePostItem({
           {hasMedia && (
             <span className="drawer-post-media-badge" title="Mídia anexada">
               <ImageIcon className="h-3.5 w-3.5" />
+            </span>
+          )}
+          {editSuggestion && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-semibold rounded bg-amber-100 text-amber-800">
+              Sugestão pendente
             </span>
           )}
           {commentThreads.length > 0 && (
@@ -797,32 +882,71 @@ function SortablePostItem({
 
           <PostMediaGallery postId={post.id!} />
 
-          <PostEditor
-            key={post.id}
-            initialContent={resolvedContent}
-            onUpdate={onContentUpdate}
-            onUploadInlineImage={post.id ? async (file) => {
-              try {
-                return await uploadInlineImage(file);
-              } catch (err) {
-                toast.error(err instanceof Error && err.message === 'quota_exceeded'
-                  ? 'Limite de armazenamento atingido'
-                  : 'Falha ao enviar imagem');
-                throw err;
-              }
-            } : undefined}
-            threads={commentThreads}
-            membros={membros}
-            workspaceUsers={workspaceUsers}
-            currentUserId={currentUserId}
-            currentUserRole={currentUserRole}
-            onCreateComment={(qt, c) => onCreateComment(post.id!, qt, c)}
-            onReplyToComment={onReplyToComment}
-            onResolveThread={onResolveThread}
-            onReopenThread={onReopenThread}
-            onEditComment={onEditComment}
-            onDeleteComment={onDeleteComment}
-          />
+          {editSuggestion ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50/50 overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-2.5 border-b border-amber-200/60 bg-amber-50">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-amber-400" />
+                  <span className="text-[13px] font-semibold text-amber-900">Sugestão do cliente</span>
+                  <span className="text-[11px] text-amber-600">
+                    {new Date(editSuggestion.updated_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => onRejectSuggestion(editSuggestion.id)}
+                    className="px-3 py-1 text-[12px] font-medium rounded border border-stone-300 bg-white text-stone-700 hover:bg-stone-50 transition-colors"
+                  >
+                    Rejeitar
+                  </button>
+                  <button
+                    onClick={() => onAcceptSuggestion(editSuggestion.id, post.id!)}
+                    className="px-3 py-1 text-[12px] font-medium rounded bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
+                  >
+                    Aceitar
+                  </button>
+                </div>
+              </div>
+              <div className="px-4 py-3 space-y-3">
+                {editSuggestion.changed_fields.includes('conteudo') && resolvedContent && resolvedSuggestion && (
+                  <ReadOnlyTipTap content={computeTipTapDiff(resolvedContent, resolvedSuggestion)} />
+                )}
+                {editSuggestion.changed_fields.includes('ig_caption') && (
+                  <div className="border-t border-amber-200/60 pt-3">
+                    <p className="text-[11px] font-medium text-stone-500 mb-1.5">Legenda do Instagram</p>
+                    <DiffView segments={computeWordDiff(post.ig_caption ?? '', editSuggestion.suggested_ig_caption ?? '')} />
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <PostEditor
+              key={`${post.id}-v${editorVersion}`}
+              initialContent={resolvedContent}
+              onUpdate={onContentUpdate}
+              onUploadInlineImage={post.id ? async (file) => {
+                try {
+                  return await uploadInlineImage(file);
+                } catch (err) {
+                  toast.error(err instanceof Error && err.message === 'quota_exceeded'
+                    ? 'Limite de armazenamento atingido'
+                    : 'Falha ao enviar imagem');
+                  throw err;
+                }
+              } : undefined}
+              threads={commentThreads}
+              membros={membros}
+              workspaceUsers={workspaceUsers}
+              currentUserId={currentUserId}
+              currentUserRole={currentUserRole}
+              onCreateComment={(qt, c) => onCreateComment(post.id!, qt, c)}
+              onReplyToComment={onReplyToComment}
+              onResolveThread={onResolveThread}
+              onReopenThread={onReopenThread}
+              onEditComment={onEditComment}
+              onDeleteComment={onDeleteComment}
+            />
+          )}
 
           {hasInstagramAccount && (
             <InstagramCaptionField

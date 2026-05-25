@@ -445,3 +445,39 @@ export async function replyToPostApproval(
   });
   if (error) throw error;
 }
+
+// =============================================
+// POST EDIT SUGGESTIONS
+// =============================================
+
+export interface PostEditSuggestion {
+  id: number;
+  post_id: number;
+  suggested_conteudo: Record<string, unknown> | null;
+  suggested_conteudo_plain: string;
+  suggested_ig_caption: string | null;
+  changed_fields: string[];
+  status: 'pending' | 'accepted' | 'rejected';
+  updated_at: string;
+}
+
+export async function getPostEditSuggestions(postIds: number[]): Promise<PostEditSuggestion[]> {
+  if (postIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from('post_edit_suggestions')
+    .select('id, post_id, suggested_conteudo, suggested_conteudo_plain, suggested_ig_caption, changed_fields, status, updated_at')
+    .in('post_id', postIds)
+    .eq('status', 'pending');
+  if (error) throw error;
+  return data || [];
+}
+
+export async function acceptEditSuggestion(id: number): Promise<void> {
+  const { error } = await supabase.rpc('accept_edit_suggestion', { p_suggestion_id: id });
+  if (error) throw error;
+}
+
+export async function rejectEditSuggestion(id: number): Promise<void> {
+  const { error } = await supabase.rpc('reject_edit_suggestion', { p_suggestion_id: id });
+  if (error) throw error;
+}

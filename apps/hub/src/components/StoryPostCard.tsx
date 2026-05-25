@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { CheckCircle, AlertCircle } from 'lucide-react';
 import { submitApproval } from '../api';
 import { formatDate } from './PostCard';
 import { PostMediaLightbox } from './PostMediaLightbox';
 import { OptimizedImage } from './OptimizedImage';
 import type { HubPost, PostApproval, InstagramProfile } from '../types';
+import { useEditSuggestion } from '../hooks/useEditSuggestion';
 
 interface StoryPostCardProps {
   post: HubPost;
@@ -30,8 +31,18 @@ export function StoryPostCard({
   const media = post.media ?? [];
   const displayName = instagramProfile?.username ?? workspaceName ?? '';
   const profilePic = instagramProfile?.profilePictureUrl;
-  const caption = post.ig_caption
-    ? post.ig_caption
+
+  const { isEditable: canEdit, hasPendingSuggestion, wasRejected, saveSuggestion, saveState, approvalBlocked, draftIgCaption } = useEditSuggestion({
+    token,
+    post,
+    onSaved: () => onApprovalSubmitted?.(),
+  });
+  const isEditable = canEdit && !readOnly;
+  const igCaptionRef = useRef(draftIgCaption ?? '');
+
+  const effectiveIgCaption = isEditable ? (draftIgCaption ?? post.ig_caption) : post.ig_caption;
+  const caption = effectiveIgCaption
+    ? effectiveIgCaption
     : (() => {
         const rawText = post.conteudo_plain ?? '';
         const legendaIdx = rawText.toUpperCase().indexOf('LEGENDA');
@@ -153,9 +164,20 @@ export function StoryPostCard({
         {/* Caption overlay */}
         {caption && (
           <div className="absolute bottom-14 left-3 right-3 z-20">
-            <p className="text-white text-[13px] leading-[1.4] bg-black/50 backdrop-blur-sm rounded-2xl px-4 py-2.5 break-words">
-              {caption.length > 200 ? caption.slice(0, 200) + '...' : caption}
-            </p>
+            {isEditable ? (
+              <textarea
+                defaultValue={draftIgCaption ?? ''}
+                onChange={e => {
+                  igCaptionRef.current = e.target.value;
+                  saveSuggestion(null, post.conteudo_plain ?? '', e.target.value);
+                }}
+                className="w-full text-white text-[13px] leading-[1.4] bg-black/50 backdrop-blur-sm rounded-2xl px-4 py-2.5 break-words border border-dashed border-white/40 focus:border-white/70 focus:border-solid focus:outline-none resize-none min-h-[60px] placeholder:text-white/50 transition-colors"
+              />
+            ) : (
+              <p className="text-white text-[13px] leading-[1.4] bg-black/50 backdrop-blur-sm rounded-2xl px-4 py-2.5 break-words">
+                {caption.length > 200 ? caption.slice(0, 200) + '...' : caption}
+              </p>
+            )}
           </div>
         )}
 
@@ -175,32 +197,64 @@ export function StoryPostCard({
         </div>
       </div>
 
+      {/* Save indicator + info banner */}
+      {isEditable && (saveState !== 'idle' || true) && (
+        <div className="bg-white dark:bg-[#1a1a1a] px-3 py-2 -mt-2 pt-4 space-y-1.5">
+          {saveState !== 'idle' && (
+            <div className="flex items-center gap-1.5">
+              {saveState === 'saving' && <span className="text-[10px] text-stone-400">Salvando sugestão...</span>}
+              {saveState === 'saved' && (
+                <>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  <span className="text-[10px] text-emerald-600 font-medium">Sugestão salva</span>
+                </>
+              )}
+            </div>
+          )}
+          <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg ring-1 ${wasRejected ? 'bg-amber-50 ring-amber-200/40' : 'bg-emerald-50 ring-emerald-200/40'}`}>
+            <span className={`text-[10px] ${wasRejected ? 'text-amber-800' : 'text-emerald-800'}`}>
+              {wasRejected
+                ? '⚠️ Sua sugestão anterior foi rejeitada pela equipe. Edite novamente para enviar uma nova.'
+                : 'ℹ️ Suas edições serão enviadas como sugestão para a equipe revisar'}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Approval section */}
       {isPending && !result && (
         <div className="bg-white dark:bg-[#1a1a1a] rounded-b-2xl px-3 py-2.5 space-y-1.5 -mt-2 pt-4 shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]">
-          <textarea
-            value={comentario}
-            onChange={e => setComentario(e.target.value)}
-            placeholder="Comentário (necessário para correção)…"
-            className="w-full rounded border border-stone-200 dark:border-[#333] px-2.5 py-1.5 text-[11px] resize-none min-h-[48px] bg-white dark:bg-[#0a0a0a] text-stone-900 dark:text-[#f5f5f5] placeholder:text-stone-400 dark:placeholder:text-[#666] focus:outline-none focus:border-stone-300 dark:focus:border-[#555] transition-all"
-          />
-          <div className="flex gap-1.5">
-            <button
-              onClick={() => handleAction('aprovado')}
-              disabled={submitting}
-              className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-[4px] bg-stone-900 text-white text-[11px] font-semibold hover:bg-stone-800 disabled:opacity-50 transition-colors"
-            >
-              <CheckCircle size={12} /> Aprovar
-            </button>
-            <button
-              onClick={() => handleAction('correcao')}
-              disabled={submitting || !comentario.trim()}
-              title={!comentario.trim() ? 'Deixe um comentário para solicitar correção' : undefined}
-              className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-[4px] border border-stone-200 dark:border-stone-700 bg-white dark:bg-transparent text-stone-700 dark:text-stone-300 text-[11px] font-medium hover:bg-stone-50 dark:hover:bg-stone-800 disabled:opacity-50 transition-colors"
-            >
-              <AlertCircle size={12} /> Correção
-            </button>
-          </div>
+          {hasPendingSuggestion ? (
+            <div className="rounded-lg px-3 py-2 text-[11px] font-medium bg-amber-50 text-amber-800 ring-1 ring-amber-200/60 text-center">
+              Sugestão enviada para revisão da equipe
+            </div>
+          ) : (
+            <>
+              <textarea
+                value={comentario}
+                onChange={e => setComentario(e.target.value)}
+                placeholder="Comentário (necessário para correção)…"
+                className="w-full rounded border border-stone-200 dark:border-[#333] px-2.5 py-1.5 text-[11px] resize-none min-h-[48px] bg-white dark:bg-[#0a0a0a] text-stone-900 dark:text-[#f5f5f5] placeholder:text-stone-400 dark:placeholder:text-[#666] focus:outline-none focus:border-stone-300 dark:focus:border-[#555] transition-all"
+              />
+              <div className="flex gap-1.5">
+                <button
+                  onClick={() => handleAction('aprovado')}
+                  disabled={submitting || approvalBlocked}
+                  className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-[4px] bg-stone-900 text-white text-[11px] font-semibold hover:bg-stone-800 disabled:opacity-50 transition-colors"
+                >
+                  <CheckCircle size={12} /> {saveState === 'saving' ? 'Salvando...' : 'Aprovar'}
+                </button>
+                <button
+                  onClick={() => handleAction('correcao')}
+                  disabled={submitting || approvalBlocked || !comentario.trim()}
+                  title={!comentario.trim() ? 'Deixe um comentário para solicitar correção' : undefined}
+                  className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-[4px] border border-stone-200 dark:border-stone-700 bg-white dark:bg-transparent text-stone-700 dark:text-stone-300 text-[11px] font-medium hover:bg-stone-50 dark:hover:bg-stone-800 disabled:opacity-50 transition-colors"
+                >
+                  <AlertCircle size={12} /> Correção
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
 

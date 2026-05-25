@@ -45,6 +45,8 @@ export interface HubPost {
   workflow_created_at: string;
   media: HubPostMedia[];
   cover_media: HubPostMedia | null;
+  pending_suggestion: PendingEditSuggestion | null;
+  suggestion_rejected_at: string | null;
 }
 
 export interface HubPostProperty {
@@ -65,6 +67,15 @@ export interface HubSelectOption {
   option_id: string;
   label: string;
   color: string;
+}
+
+export interface PendingEditSuggestion {
+  id: number;
+  suggested_conteudo: Record<string, unknown> | null;
+  suggested_conteudo_plain: string;
+  suggested_ig_caption: string | null;
+  changed_fields: string[];
+  updated_at: string;
 }
 
 export interface PostApproval {
