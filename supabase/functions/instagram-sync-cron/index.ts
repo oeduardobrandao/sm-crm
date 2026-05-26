@@ -2,6 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { timingSafeEqual } from "../_shared/crypto.ts";
 import { createInstagramSyncCronHandler } from "./handler.ts";
 import { notifyCronFailure } from "../_shared/notify.ts";
+import { runPool } from "./pool.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -206,57 +207,63 @@ async function syncAccount(
     ] : []),
   ]);
 
-  // Fetch and upsert posts with insights (batched at 10)
   if (mediaData.data && mediaData.data.length > 0) {
-    const allPostData: any[] = [];
-    const BATCH_SIZE = 10;
-    for (let i = 0; i < mediaData.data.length; i += BATCH_SIZE) {
-      const batch = mediaData.data.slice(i, i + BATCH_SIZE);
-      const batchResults = await Promise.all(batch.map(async (post: any) => {
-        let reach = 0, impressions = 0, saved = 0, shares = 0;
-        try {
-          let metrics = 'reach,views,saved';
-          if (post.media_type === 'VIDEO') metrics += ',shares';
-          const postInsightsRes = await fetch(`https://graph.instagram.com/${post.id}/insights?metric=${metrics}&access_token=${accessToken}`);
-          const postInsightsData = await postInsightsRes.json();
-          if (postInsightsData.data) {
-            for (const insight of postInsightsData.data) {
-              if (insight.name === 'reach') reach = insight.values[0].value;
-              if (insight.name === 'views') impressions = insight.values[0].value;
-              if (insight.name === 'saved') saved = insight.values[0].value;
-              if (insight.name === 'shares') shares = insight.values[0].value;
-            }
-          }
-        } catch (_) { /* ignore per-post insight errors */ }
+    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const recentPosts = mediaData.data.filter(
+      (post: any) => new Date(post.timestamp).getTime() > thirtyDaysAgo
+    );
 
-        // Get thumbnail: VIDEO has thumbnail_url, IMAGE has media_url, CAROUSEL needs first child
-        let thumbUrl = post.thumbnail_url || post.media_url || null;
-        if (!thumbUrl && post.media_type === 'CAROUSEL_ALBUM') {
+    if (recentPosts.length > 0) {
+      const allPostData: any[] = [];
+      const BATCH_SIZE = 10;
+
+      for (let i = 0; i < recentPosts.length; i += BATCH_SIZE) {
+        const batch = recentPosts.slice(i, i + BATCH_SIZE);
+        const batchResults = await Promise.all(batch.map(async (post: any) => {
+          let reach = 0, impressions = 0, saved = 0, shares = 0;
           try {
-            const childRes = await fetch(`https://graph.instagram.com/${post.id}/children?fields=media_url,media_type&limit=1&access_token=${accessToken}`);
-            const childData = await childRes.json();
-            if (childData.data?.[0]?.media_url) thumbUrl = childData.data[0].media_url;
-          } catch (_) { /* ignore */ }
-        }
+            let metrics = 'reach,views,saved';
+            if (post.media_type === 'VIDEO') metrics += ',shares';
+            const postInsightsRes = await fetch(`https://graph.instagram.com/${post.id}/insights?metric=${metrics}&access_token=${accessToken}`);
+            const postInsightsData = await postInsightsRes.json();
+            if (postInsightsData.data) {
+              for (const insight of postInsightsData.data) {
+                if (insight.name === 'reach') reach = insight.values[0].value;
+                if (insight.name === 'views') impressions = insight.values[0].value;
+                if (insight.name === 'saved') saved = insight.values[0].value;
+                if (insight.name === 'shares') shares = insight.values[0].value;
+              }
+            }
+          } catch (_) { /* ignore per-post insight errors */ }
 
-        return {
-          instagram_account_id: account.id,
-          instagram_post_id: post.id,
-          caption: post.caption || '',
-          media_type: post.media_type,
-          thumbnail_url: thumbUrl,
-          permalink: post.permalink,
-          posted_at: post.timestamp,
-          likes: post.like_count || 0,
-          comments: post.comments_count || 0,
-          reach, impressions, saved, shares,
-          synced_at: new Date().toISOString()
-        };
-      }));
-      allPostData.push(...batchResults);
+          let thumbUrl = post.thumbnail_url || post.media_url || null;
+          if (!thumbUrl && post.media_type === 'CAROUSEL_ALBUM') {
+            try {
+              const childRes = await fetch(`https://graph.instagram.com/${post.id}/children?fields=media_url,media_type&limit=1&access_token=${accessToken}`);
+              const childData = await childRes.json();
+              if (childData.data?.[0]?.media_url) thumbUrl = childData.data[0].media_url;
+            } catch (_) { /* ignore */ }
+          }
+
+          return {
+            instagram_account_id: account.id,
+            instagram_post_id: post.id,
+            caption: post.caption || '',
+            media_type: post.media_type,
+            thumbnail_url: thumbUrl,
+            permalink: post.permalink,
+            posted_at: post.timestamp,
+            likes: post.like_count || 0,
+            comments: post.comments_count || 0,
+            reach, impressions, saved, shares,
+            synced_at: new Date().toISOString()
+          };
+        }));
+        allPostData.push(...batchResults);
+      }
+
+      await supabase.from('instagram_posts').upsert(allPostData, { onConflict: 'instagram_post_id' });
     }
-    // Single bulk upsert
-    await supabase.from('instagram_posts').upsert(allPostData, { onConflict: 'instagram_post_id' });
   }
 
   return { success: true };
@@ -272,25 +279,27 @@ Deno.serve(createInstagramSyncCronHandler({
 
     // Fetch all accounts with auto-sync enabled and active status
     // (proactive refresh inside syncAccount handles near-expiry tokens)
+    const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
     const { data: accounts, error } = await supabase
       .from('instagram_accounts')
       .select('id, instagram_user_id, encrypted_access_token, token_expires_at, follower_count, following_count, media_count')
       .eq('authorization_status', 'active')
-      .eq('auto_sync_enabled', true);
+      .eq('auto_sync_enabled', true)
+      .or(`last_synced_at.is.null,last_synced_at.lt.${sixHoursAgo}`);
 
     if (error) throw error;
     if (!accounts || accounts.length === 0) {
       return new Response("No accounts to sync", { status: 200 });
     }
 
-    console.log(`[IG-SYNC-CRON] Starting sync for ${accounts.length} account(s)`);
+    console.log(`[IG-SYNC-CRON] Starting sync for ${accounts.length} account(s) (skipped recently synced)`);
 
     let syncedCount = 0;
     let failedCount = 0;
     const errors: Array<{ accountId: string; error: string }> = [];
 
-    for (let i = 0; i < accounts.length; i++) {
-      const account = accounts[i];
+    const CONCURRENCY = Math.max(1, parseInt(Deno.env.get("SYNC_CONCURRENCY") || "5", 10) || 5);
+    await runPool(accounts, CONCURRENCY, async (account) => {
       try {
         const result = await syncAccount(supabase, account);
         if (result.success) {
@@ -306,12 +315,7 @@ Deno.serve(createInstagramSyncCronHandler({
         failedCount++;
         errors.push({ accountId: account.id, error: err.message });
       }
-
-      // Rate limit: 2s delay between accounts
-      if (i < accounts.length - 1) {
-        await new Promise(r => setTimeout(r, 2000));
-      }
-    }
+    });
 
       console.log(`[IG-SYNC-CRON] Done. Synced: ${syncedCount}, Failed: ${failedCount}`);
 
