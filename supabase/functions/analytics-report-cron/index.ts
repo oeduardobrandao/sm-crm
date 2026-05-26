@@ -23,34 +23,23 @@ Deno.serve(createAnalyticsReportCronHandler({
 
       const { data: accounts, error } = await supabase
         .from('instagram_accounts')
-        .select('id, client_id');
+        .select('id, client_id')
+        .not('access_token_enc', 'is', null);
 
       if (error) throw error;
       if (!accounts || accounts.length === 0) {
         return json({ message: "No accounts to process" });
       }
 
-      let generated = 0;
+      let queued = 0;
       let skipped = 0;
       let failed = 0;
 
       for (const account of accounts) {
         try {
-          const { data: existing } = await supabase
-            .from('analytics_reports')
-            .select('id')
-            .eq('instagram_account_id', account.id)
-            .eq('report_month', month)
-            .single();
-
-          if (existing) {
-            skipped++;
-            continue;
-          }
-
           const { data: cliente } = await supabase
             .from('clientes')
-            .select('conta_id')
+            .select('conta_id, include_ai_analysis')
             .eq('id', account.client_id)
             .single();
 
@@ -59,47 +48,54 @@ Deno.serve(createAnalyticsReportCronHandler({
             continue;
           }
 
-          const { data: report } = await supabase
+          const { error: upsertError } = await supabase
             .from('analytics_reports')
-            .insert({
-              conta_id: cliente.conta_id,
-              client_id: account.client_id,
-              instagram_account_id: account.id,
-              report_month: month,
-              status: 'generating',
-            })
-            .select()
-            .single();
+            .upsert(
+              {
+                conta_id: cliente.conta_id,
+                client_id: account.client_id,
+                instagram_account_id: account.id,
+                report_month: month,
+                status: 'pending',
+                include_ai: cliente.include_ai_analysis,
+              },
+              { onConflict: 'instagram_account_id,report_month', ignoreDuplicates: true }
+            );
 
-          if (!report) {
+          if (upsertError) {
+            console.error(`Failed to upsert report for account ${account.id}:`, upsertError);
             failed++;
-            continue;
+          } else {
+            queued++;
           }
+        } catch (err) {
+          console.error(`Failed to queue report for account ${account.id}:`, err);
+          failed++;
+        }
+      }
 
-          const genUrl = `${SUPABASE_URL}/functions/v1/instagram-report-generator/generate/${account.client_id}?month=${month}`;
-          const genRes = await fetch(genUrl, {
+      // Kick off the report worker to start processing pending reports
+      if (queued > 0) {
+        try {
+          const workerUrl = `${SUPABASE_URL}/functions/v1/report-worker`;
+          const workerRes = await fetch(workerUrl, {
             method: 'POST',
             headers: {
               'X-Internal-Token': INTERNAL_FUNCTION_SECRET,
               'apikey': SUPABASE_ANON_KEY,
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ reportId: report.id }),
           });
 
-          if (genRes.ok) {
-            generated++;
-          } else {
-            await supabase.from('analytics_reports').update({ status: 'failed' }).eq('id', report.id);
-            failed++;
+          if (!workerRes.ok) {
+            console.error(`Failed to invoke report-worker: ${workerRes.status}`);
           }
         } catch (err) {
-          console.error(`Failed to generate report for account ${account.id}:`, err);
-          failed++;
+          console.error('Failed to invoke report-worker:', err);
         }
       }
 
-      return json({ success: true, month, generated, skipped, failed, total: accounts.length });
+      return json({ success: true, month, queued, skipped, failed, total: accounts.length });
     } catch (err: any) {
       console.error("Report Cron Job Failed:", err);
       return json({ error: err.message }, 500);
