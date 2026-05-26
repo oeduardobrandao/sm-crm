@@ -143,8 +143,87 @@ Deno.serve(async (req) => {
   // 3. Handle generator response
   // ---------------------------------------------------------------------------
   if (genRes.ok) {
-    // Generator sets status to 'ready' — nothing more to do
     console.log(`[report-worker] Report ${claimed.id} generated successfully`);
+
+    // --- Auto-email if both workspace and client flags are enabled ---
+    try {
+      const { data: reportRow } = await supabase
+        .from('analytics_reports')
+        .select('client_id, conta_id, report_month, storage_path, ai_content')
+        .eq('id', claimed.id)
+        .single();
+
+      if (reportRow) {
+        const { data: wsFlags } = await supabase
+          .from('workspaces')
+          .select('send_report_email, name, brand_color, logo_url')
+          .eq('id', reportRow.conta_id)
+          .single();
+
+        const { data: clientFlags } = await supabase
+          .from('clientes')
+          .select('send_report_email, nome, email')
+          .eq('id', reportRow.client_id)
+          .single();
+
+        if (wsFlags?.send_report_email && clientFlags?.send_report_email && clientFlags?.email) {
+          const { buildReportEmail } = await import("../_shared/report-template/email.ts");
+
+          let pdfUrl = '';
+          if (reportRow.storage_path) {
+            const { data: signedUrl } = await supabase.storage
+              .from('analytics-reports')
+              .createSignedUrl(reportRow.storage_path, 7 * 24 * 60 * 60);
+            pdfUrl = signedUrl?.signedUrl ?? '';
+          }
+
+          const emailHtml = buildReportEmail({
+            clientName: clientFlags.nome,
+            month: reportRow.report_month,
+            workspaceName: wsFlags.name ?? 'Mesaas',
+            brandColor: wsFlags.brand_color ?? '#eab308',
+            logoUrl: wsFlags.logo_url ?? null,
+            aiSummary: reportRow.ai_content?.executive_summary ?? null,
+            pdfUrl,
+            hubUrl: '',
+          });
+
+          const [year, mm] = reportRow.report_month.split('-');
+          const monthLabel = new Date(parseInt(year), parseInt(mm) - 1, 1)
+            .toLocaleDateString('pt-BR', { month: 'long' });
+
+          const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
+          if (RESEND_API_KEY) {
+            const emailRes = await fetch('https://api.resend.com/emails', {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${RESEND_API_KEY}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                from: `${wsFlags.name ?? 'Mesaas'} <relatorios@mesaas.com.br>`,
+                to: [clientFlags.email],
+                subject: `Seu relatório de ${monthLabel} está pronto!`,
+                html: emailHtml,
+              }),
+            });
+
+            if (emailRes.ok) {
+              await supabase.from('analytics_reports')
+                .update({ last_emailed_at: new Date().toISOString() })
+                .eq('id', claimed.id);
+              console.log(`[report-worker] Auto-email sent for report ${claimed.id}`);
+            } else {
+              console.error(`[report-worker] Auto-email failed: ${emailRes.status}`);
+            }
+          }
+        }
+      }
+    } catch (emailErr: unknown) {
+      const msg = emailErr instanceof Error ? emailErr.message : String(emailErr);
+      console.error(`[report-worker] Auto-email error (non-fatal): ${msg}`);
+    }
+
     return json({ processed: true, reportId: claimed.id, workerId });
   }
 
