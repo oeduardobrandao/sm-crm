@@ -59,6 +59,48 @@ function markAllText(node: TipTapNode, mode: 'insert' | 'delete'): TipTapNode {
   return { ...node };
 }
 
+function alignChildren(
+  orig: TipTapNode[],
+  sugg: TipTapNode[],
+): Array<{ orig: TipTapNode | null; sugg: TipTapNode | null }> {
+  const m = orig.length;
+  const n = sugg.length;
+
+  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (orig[i - 1].type === sugg[j - 1].type) {
+        const textSame = extractText(orig[i - 1]) === extractText(sugg[j - 1]);
+        dp[i][j] = Math.max(dp[i - 1][j - 1] + (textSame ? 3 : 1), dp[i - 1][j], dp[i][j - 1]);
+      } else {
+        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+      }
+    }
+  }
+
+  const aligned: Array<{ orig: TipTapNode | null; sugg: TipTapNode | null }> = [];
+  let i = m, j = n;
+  while (i > 0 || j > 0) {
+    if (
+      i > 0 && j > 0 &&
+      orig[i - 1].type === sugg[j - 1].type &&
+      dp[i][j] === dp[i - 1][j - 1] + (extractText(orig[i - 1]) === extractText(sugg[j - 1]) ? 3 : 1)
+    ) {
+      aligned.unshift({ orig: orig[i - 1], sugg: sugg[j - 1] });
+      i--; j--;
+    } else if (i > 0 && dp[i][j] === dp[i - 1][j]) {
+      aligned.unshift({ orig: orig[i - 1], sugg: null });
+      i--;
+    } else {
+      aligned.unshift({ orig: null, sugg: sugg[j - 1] });
+      j--;
+    }
+  }
+
+  return aligned;
+}
+
 function diffNodes(orig: TipTapNode, sugg: TipTapNode): TipTapNode[] {
   if (orig.type !== sugg.type) {
     return [markAllText(orig, 'delete'), markAllText(sugg, 'insert')];
@@ -77,16 +119,16 @@ function diffNodes(orig: TipTapNode, sugg: TipTapNode): TipTapNode[] {
   }
 
   if (orig.content && sugg.content) {
+    const aligned = alignChildren(orig.content, sugg.content);
     const result: TipTapNode[] = [];
-    const maxLen = Math.max(orig.content.length, sugg.content.length);
 
-    for (let i = 0; i < maxLen; i++) {
-      if (i >= sugg.content.length) {
-        result.push(markAllText(orig.content[i], 'delete'));
-      } else if (i >= orig.content.length) {
-        result.push(markAllText(sugg.content[i], 'insert'));
+    for (const pair of aligned) {
+      if (!pair.orig) {
+        result.push(markAllText(pair.sugg!, 'insert'));
+      } else if (!pair.sugg) {
+        result.push(markAllText(pair.orig, 'delete'));
       } else {
-        result.push(...diffNodes(orig.content[i], sugg.content[i]));
+        result.push(...diffNodes(pair.orig, pair.sugg));
       }
     }
 

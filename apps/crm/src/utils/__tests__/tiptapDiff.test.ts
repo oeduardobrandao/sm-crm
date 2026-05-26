@@ -150,4 +150,88 @@ describe('computeTipTapDiff', () => {
     const highlightMark = inserted.marks.find((m: any) => m.type === 'highlight');
     expect(highlightMark?.attrs?.color).toBe('#bbf7d0');
   });
+
+  it('handles trailing empty paragraph added by TipTap normalization', () => {
+    const original = doc(
+      heading('EVITE'),
+      bulletList('Iogurte integral', 'Granola com açúca'),
+      heading('PREFIRA'),
+      bulletList('Iogurte desnatado', 'Farelo de aveia'),
+    );
+    const suggested = doc(
+      heading('EVITE'),
+      bulletList('Iogurte integral', 'Granola com açúca'),
+      heading('PREFIRA'),
+      bulletList('Iogurte desnatado', 'Farelo de aveia e mel'),
+      { type: 'paragraph' },
+    );
+    const result = computeTipTapDiff(original, suggested) as any;
+
+    // The heading blocks should be unchanged
+    expect(result.content[0].content[0].text).toBe('EVITE');
+    expect(result.content[0].content[0].marks).toBeUndefined();
+    expect(result.content[2].content[0].text).toBe('PREFIRA');
+    expect(result.content[2].content[0].marks).toBeUndefined();
+
+    // First bullet list unchanged
+    const firstBulletItems = result.content[1].content;
+    const firstItemText = firstBulletItems[0].content[0].content;
+    expect(firstItemText).toHaveLength(1);
+    expect(firstItemText[0].marks).toBeUndefined();
+
+    // Second bullet list: only "Farelo de aveia" → "Farelo de aveia e mel" should show diff
+    const secondBulletItems = result.content[3].content;
+    const changedItemText = secondBulletItems[1].content[0].content;
+    const hasInsert = changedItemText.some((n: any) =>
+      n.marks?.some((m: any) => m.type === 'highlight')
+    );
+    expect(hasInsert).toBe(true);
+  });
+
+  it('aligns blocks correctly when middle block is removed in suggestion', () => {
+    const original = doc(p('A'), p('B'), p('C'), p('D'));
+    const suggested = doc(p('A'), p('C'), p('D changed'));
+    const result = computeTipTapDiff(original, suggested) as any;
+
+    // A should be unchanged
+    expect(result.content[0].content[0].text).toBe('A');
+    expect(result.content[0].content[0].marks).toBeUndefined();
+    // B should appear as deleted
+    const deletedB = result.content.find((n: any) => {
+      if (!n.content) return false;
+      return n.content.some((c: any) => c.text === 'B' && c.marks?.some((m: any) => m.type === 'strike'));
+    });
+    expect(deletedB).toBeDefined();
+    // C should be unchanged
+    const unchangedC = result.content.find((n: any) => {
+      if (!n.content) return false;
+      return n.content.some((c: any) => c.text === 'C' && !c.marks);
+    });
+    expect(unchangedC).toBeDefined();
+  });
+
+  it('aligns blocks when new block is inserted in the middle', () => {
+    const original = doc(p('First'), p('Last'));
+    const suggested = doc(p('First'), p('Middle'), p('Last'));
+    const result = computeTipTapDiff(original, suggested) as any;
+
+    // First should be unchanged
+    expect(result.content[0].content[0].text).toBe('First');
+    expect(result.content[0].content[0].marks).toBeUndefined();
+    // Middle should be marked as inserted
+    const middleBlock = result.content.find((n: any) => {
+      if (!n.content) return false;
+      return n.content.some((c: any) => c.text === 'Middle');
+    });
+    expect(middleBlock).toBeDefined();
+    const middleHasInsert = middleBlock.content.some((c: any) =>
+      c.marks?.some((m: any) => m.type === 'highlight')
+    );
+    expect(middleHasInsert).toBe(true);
+    // Last should be unchanged
+    const lastIdx = result.content.length - 1;
+    const lastBlock = result.content[lastIdx];
+    expect(lastBlock.content[0].text).toBe('Last');
+    expect(lastBlock.content[0].marks).toBeUndefined();
+  });
 });
