@@ -975,6 +975,33 @@ export function RevertConfirmDialog({ open, workflowTitle, onConfirm, onCancel }
   );
 }
 
+// ForwardConfirmDialog — shown when advancing a card to the next etapa
+interface ForwardConfirmDialogProps {
+  open: boolean;
+  workflowTitle: string;
+  nextEtapaName: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+export function ForwardConfirmDialog({ open, workflowTitle, nextEtapaName, onConfirm, onCancel }: ForwardConfirmDialogProps) {
+  return (
+    <AlertDialog open={open} onOpenChange={open => { if (!open) onCancel(); }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Avançar etapa?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Isso vai mover "{workflowTitle}" para a etapa "{nextEtapaName}". Deseja continuar?
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel onClick={onCancel}>Cancelar</AlertDialogCancel>
+          <AlertDialogAction onClick={onConfirm}>Avançar</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
 // ClientApprovalChoiceDialog — shown when completing an aprovacao_cliente step
 interface ClientApprovalChoiceDialogProps {
   open: boolean;
