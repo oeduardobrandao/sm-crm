@@ -158,18 +158,19 @@ describe('store workflow and portal functions', () => {
     ]);
   });
 
-  it('reverts the active step back to the previous stage', async () => {
+  it('reverts the active step back to the previous stage preserving iniciado_em', async () => {
+    const originalStart = '2026-04-01T10:00:00.000Z';
     mockedSupabase.__queueSupabaseResult('workflow_etapas', 'select',
       {
         data: [
-          { id: 601, ordem: 0, status: 'concluido' },
+          { id: 601, ordem: 0, status: 'concluido', iniciado_em: originalStart },
           { id: 602, ordem: 1, status: 'ativo' },
         ],
         error: null,
       },
       {
         data: [
-          { id: 601, ordem: 0, status: 'ativo' },
+          { id: 601, ordem: 0, status: 'ativo', iniciado_em: originalStart },
           { id: 602, ordem: 1, status: 'pendente' },
         ],
         error: null,
@@ -189,6 +190,48 @@ describe('store workflow and portal functions', () => {
     expect(result.workflow).toMatchObject({ etapa_atual: 0 });
     expect(result.etapas[0].status).toBe('ativo');
     expect(result.etapas[1].status).toBe('pendente');
+
+    const updates = getCalls('workflow_etapas', 'update');
+    expect(updates[1].payload).toMatchObject({ status: 'ativo', concluido_em: null, iniciado_em: originalStart });
+    expect(updates[1].modifiers).toContainEqual({ method: 'eq', args: ['id', 601] });
+  });
+
+  it('reverts using now as fallback when previous etapa has null iniciado_em', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-26T12:00:00.000Z'));
+
+    mockedSupabase.__queueSupabaseResult('workflow_etapas', 'select',
+      {
+        data: [
+          { id: 701, ordem: 0, status: 'concluido', iniciado_em: null },
+          { id: 702, ordem: 1, status: 'ativo' },
+        ],
+        error: null,
+      },
+      {
+        data: [
+          { id: 701, ordem: 0, status: 'ativo' },
+          { id: 702, ordem: 1, status: 'pendente' },
+        ],
+        error: null,
+      },
+    );
+    mockedSupabase.__queueSupabaseResult('workflow_etapas', 'update',
+      { data: { id: 702, status: 'pendente' }, error: null },
+      { data: { id: 701, status: 'ativo' }, error: null },
+    );
+    mockedSupabase.__queueSupabaseResult('workflows', 'update', {
+      data: { id: 60, etapa_atual: 0, status: 'ativo' },
+      error: null,
+    });
+
+    await store.revertEtapa(60);
+
+    const updates = getCalls('workflow_etapas', 'update');
+    expect(updates[1].payload).toMatchObject({ status: 'ativo', concluido_em: null, iniciado_em: '2026-05-26T12:00:00.000Z' });
+    expect(updates[1].modifiers).toContainEqual({ method: 'eq', args: ['id', 701] });
+
+    vi.useRealTimers();
   });
 
   it('creates a portal token only once and reuses existing shares', async () => {

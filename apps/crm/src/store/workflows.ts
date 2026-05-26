@@ -329,8 +329,8 @@ export async function revertEtapa(workflowId: number): Promise<{ workflow: Workf
   // Deactivate current step → pendente
   await updateWorkflowEtapa(currentEtapa.id!, { status: 'pendente', iniciado_em: null });
 
-  // Re-activate previous step
-  await updateWorkflowEtapa(prevEtapa.id!, { status: 'ativo', concluido_em: null, iniciado_em: now });
+  // Re-activate previous step (preserve original start time)
+  await updateWorkflowEtapa(prevEtapa.id!, { status: 'ativo', concluido_em: null, iniciado_em: prevEtapa.iniciado_em ?? now });
 
   // Update workflow pointer
   const workflow = await updateWorkflow(workflowId, { etapa_atual: activeIdx - 1 });
