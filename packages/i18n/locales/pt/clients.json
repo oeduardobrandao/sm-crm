@@ -104,6 +104,8 @@
     "postStatusError": "Erro ao atualizar status do post.",
     "stepCompleted": "Etapa concluída!",
     "stepError": "Erro ao concluir etapa: {{error}}",
+    "stepReverted": "Etapa revertida!",
+    "sentToPortal": "Posts enviados ao portal do cliente!",
     "newCycleCreated": "Novo ciclo criado!",
     "newCycleError": "Erro ao criar ciclo",
     "nameRequired": "Nome é obrigatório.",

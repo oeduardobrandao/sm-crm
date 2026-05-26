@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { isSameDay } from 'date-fns';
 import { MonthGrid } from '@/components/ui/month-grid';
 import { useParams, useNavigate, Link } from 'react-router-dom';
@@ -28,7 +28,13 @@ import {
   getDeadlineInfo,
   getMembros,
   completeEtapa,
+  revertEtapa,
+  approvePostsInternally,
+  sendPostsToCliente,
   duplicateWorkflow,
+  getWorkflowPostsCounts,
+  getWorkflowApprovedPostsCounts,
+  getWorkflowRevisaoInternaCounts,
   getClienteEnderecos,
   addClienteEndereco,
   updateClienteEndereco,
@@ -42,6 +48,7 @@ import {
   type ClienteData,
   type Workflow,
   type WorkflowEtapa,
+  type Membro,
   type Contrato,
   type Transacao,
   getWorkflowPostsWithProperties,
@@ -52,6 +59,11 @@ import {
   getWorkspaceSlug,
 } from '../../store';
 import { HistoryDrawer } from '../entregas/components/HistoryDrawer';
+import { WorkflowCard } from '../entregas/components/WorkflowCard';
+import { WorkflowDrawer } from '../entregas/components/WorkflowDrawer';
+import { EditWorkflowModal, ForwardConfirmDialog, RevertConfirmDialog, ClientApprovalChoiceDialog } from '../entregas/components/WorkflowModals';
+import type { BoardCard } from '../entregas/hooks/useEntregasData';
+import { getWorkflowCovers } from '../../services/postMedia';
 import { HubTab } from './HubTab';
 import { getFolderContents } from '../../services/fileService';
 import { FileGrid } from '../arquivos/components/FileGrid';
@@ -89,6 +101,11 @@ export default function ClienteDetalhePage() {
   const [editLoading, setEditLoading] = useState(false);
   const [recurringWfId, setRecurringWfId] = useState<number | null>(null);
   const [historyWorkflow, setHistoryWorkflow] = useState<Workflow | null>(null);
+  const [drawerCard, setDrawerCard] = useState<BoardCard | null>(null);
+  const [editCardModal, setEditCardModal] = useState<BoardCard | null>(null);
+  const [forwardTarget, setForwardTarget] = useState<BoardCard | null>(null);
+  const [revertTarget, setRevertTarget] = useState<BoardCard | null>(null);
+  const [approvalChoiceCard, setApprovalChoiceCard] = useState<BoardCard | null>(null);
 
   // Address modal state
   const [addrModalOpen, setAddrModalOpen] = useState(false);
@@ -162,7 +179,7 @@ export default function ClienteDetalhePage() {
     queryFn: () => getClienteDatas(clienteId),
     enabled: !isNaN(clienteId),
   });
-  useQuery({ queryKey: ['membros'], queryFn: getMembros });
+  const { data: membros = [] as Membro[] } = useQuery({ queryKey: ['membros'], queryFn: getMembros });
 
   const { data: workspaceSlug } = useQuery({
     queryKey: ['workspace-slug'],
@@ -207,6 +224,73 @@ export default function ClienteDetalhePage() {
       .then(setWorkflowsWithEtapas)
       .catch(() => setWorkflowsWithEtapas([]));
   }, [clienteWorkflowsRaw]);
+
+  const activeWorkflowIds = useMemo(
+    () => workflowsWithEtapas.map(w => w.workflow.id!),
+    [workflowsWithEtapas],
+  );
+
+  const { data: postsCounts = new Map<number, number>() } = useQuery({
+    queryKey: ['workflow-posts-counts', activeWorkflowIds.join(',')],
+    queryFn: () => getWorkflowPostsCounts(activeWorkflowIds),
+    enabled: activeWorkflowIds.length > 0,
+  });
+  const { data: approvedPostsCounts = new Map<number, number>() } = useQuery({
+    queryKey: ['workflow-approved-posts-counts', activeWorkflowIds.join(',')],
+    queryFn: () => getWorkflowApprovedPostsCounts(activeWorkflowIds),
+    enabled: activeWorkflowIds.length > 0,
+  });
+  const { data: revisaoInternaCounts = new Map<number, number>() } = useQuery({
+    queryKey: ['workflow-revisao-interna-counts', activeWorkflowIds.join(',')],
+    queryFn: () => getWorkflowRevisaoInternaCounts(activeWorkflowIds),
+    enabled: activeWorkflowIds.length > 0,
+  });
+  const { data: workflowCovers } = useQuery({
+    queryKey: ['workflow-covers', activeWorkflowIds.join(',')],
+    queryFn: () => getWorkflowCovers(activeWorkflowIds),
+    enabled: activeWorkflowIds.length > 0,
+  });
+
+  const { data: hubToken } = useQuery({
+    queryKey: ['hub-token', clienteId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('client_hub_tokens')
+        .select('token')
+        .eq('cliente_id', clienteId)
+        .eq('is_active', true)
+        .maybeSingle();
+      return data?.token ?? undefined;
+    },
+    enabled: !isNaN(clienteId),
+  });
+
+  const boardCards: BoardCard[] = useMemo(() => {
+    if (!cliente) return [];
+    return workflowsWithEtapas.map(({ workflow, etapas }) => {
+      const activeEtapa = etapas.find(e => e.status === 'ativo');
+      if (!activeEtapa) return null;
+      const membro = activeEtapa.responsavel_id
+        ? membros.find((m: Membro) => m.id === activeEtapa.responsavel_id)
+        : undefined;
+      const hubUrl = hubToken && workspaceSlug
+        ? `${window.location.origin}/${workspaceSlug}/hub/${hubToken}`
+        : undefined;
+      return {
+        workflow,
+        etapa: activeEtapa,
+        cliente,
+        membro,
+        deadline: getDeadlineInfo(activeEtapa),
+        totalEtapas: etapas.length,
+        etapaIdx: activeEtapa.ordem,
+        allEtapas: etapas,
+        postCovers: workflowCovers?.get(workflow.id!),
+        clienteAvatarUrl: igSummary?.account?.profile_picture_url,
+        hubUrl,
+      } satisfies BoardCard;
+    }).filter(Boolean) as BoardCard[];
+  }, [workflowsWithEtapas, cliente, membros, workflowCovers, igSummary, hubToken, workspaceSlug]);
 
   // Post calendar: fetch posts with scheduled_at for all active workflows
   interface PostCalendarEvent {
@@ -319,17 +403,101 @@ export default function ClienteDetalhePage() {
   }, [igSummary, clienteId, refetchIg]);
 
 
-  const handleCompleteEtapa = async (workflow: Workflow, etapa: WorkflowEtapa) => {
+  const refreshCards = () => {
+    queryClient.invalidateQueries({ queryKey: ['workflowsByCliente', clienteId] });
+    queryClient.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
+    queryClient.invalidateQueries({ queryKey: ['workflow-approved-posts-counts'] });
+    queryClient.invalidateQueries({ queryKey: ['workflow-revisao-interna-counts'] });
+    queryClient.invalidateQueries({ queryKey: ['workflow-covers'] });
+    queryClient.invalidateQueries({ queryKey: ['concluded-by-cliente', clienteId] });
+    queryClient.invalidateQueries({ queryKey: ['concluded-summaries-cliente'] });
+    refreshPostCalendar();
+  };
+
+  useEffect(() => {
+    if (drawerCard) {
+      const updated = boardCards.find(c => c.workflow.id === drawerCard.workflow.id);
+      if (updated) setDrawerCard(updated);
+      else setDrawerCard(null);
+    }
+    if (editCardModal) {
+      const updated = boardCards.find(c => c.workflow.id === editCardModal.workflow.id);
+      if (!updated) setEditCardModal(null);
+    }
+  }, [boardCards]);
+
+  const handleForwardClick = (card: BoardCard) => setForwardTarget(card);
+
+  const handleForwardConfirm = async () => {
+    const card = forwardTarget;
+    setForwardTarget(null);
+    if (!card) return;
+
+    const total = postsCounts.get(card.workflow.id!) ?? 0;
+    const approved = approvedPostsCounts.get(card.workflow.id!) ?? 0;
+    const allApproved = total > 0 && approved === total;
+
+    if (card.etapa.tipo === 'aprovacao_cliente' && !allApproved) {
+      setApprovalChoiceCard(card);
+      return;
+    }
+
     try {
-      const { workflow: updatedWf } = await completeEtapa(workflow.id!, etapa.id!);
-      if (updatedWf.status === 'concluido' && workflow.recorrente) {
-        setRecurringWfId(workflow.id!);
+      const { workflow: updatedWf } = await completeEtapa(card.workflow.id!, card.etapa.id!);
+      if (updatedWf.status === 'concluido' && card.workflow.recorrente) {
+        setRecurringWfId(card.workflow.id!);
       } else {
-        queryClient.invalidateQueries({ queryKey: ['workflowsByCliente', clienteId] });
+        refreshCards();
         toast.success(t('detail.stepCompleted'));
       }
     } catch (err: unknown) {
       toast.error(t('detail.stepError', { error: (err as Error).message }));
+    }
+  };
+
+  const handleApproveInternally = async () => {
+    const card = approvalChoiceCard;
+    setApprovalChoiceCard(null);
+    if (!card) return;
+    try {
+      await approvePostsInternally(card.workflow.id!);
+      const { workflow: updatedWf } = await completeEtapa(card.workflow.id!, card.etapa.id!);
+      if (updatedWf.status === 'concluido' && card.workflow.recorrente) {
+        setRecurringWfId(card.workflow.id!);
+      } else {
+        refreshCards();
+        toast.success(t('detail.stepCompleted'));
+      }
+    } catch (err: unknown) {
+      toast.error(t('detail.stepError', { error: (err as Error).message }));
+    }
+  };
+
+  const handleSendToPortal = async () => {
+    const card = approvalChoiceCard;
+    setApprovalChoiceCard(null);
+    if (!card) return;
+    try {
+      await sendPostsToCliente(card.workflow.id!);
+      toast.success(t('detail.sentToPortal'));
+      refreshCards();
+    } catch (err: unknown) {
+      toast.error((err as Error).message);
+    }
+  };
+
+  const handleRevertClick = (card: BoardCard) => setRevertTarget(card);
+
+  const handleRevertConfirm = async () => {
+    const card = revertTarget;
+    setRevertTarget(null);
+    if (!card) return;
+    try {
+      await revertEtapa(card.workflow.id!);
+      refreshCards();
+      toast.success(t('detail.stepReverted'));
+    } catch (err: unknown) {
+      toast.error((err as Error).message);
     }
   };
 
@@ -605,36 +773,27 @@ export default function ClienteDetalhePage() {
       </div>
 
       {/* Entregas Ativas + Post Calendar */}
-      {workflowsWithEtapas.length > 0 && (
+      {boardCards.length > 0 && (
         <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
           <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">{t('detail.activeDeliveries')}</h3>
-          {workflowsWithEtapas.map(({ workflow, etapas }) => {
-            const activeEtapa = etapas.find(e => e.status === 'ativo');
-            const deadline = activeEtapa ? getDeadlineInfo(activeEtapa) : null;
-            return (
-              <div key={workflow.id} className="card wf-flow-card" style={{ marginBottom: '1rem' }}>
-                <div className="wf-flow-header">
-                  <span className="wf-flow-title">{workflow.titulo}</span>
-                  {activeEtapa && (
-                    <Button size="sm" onClick={() => handleCompleteEtapa(workflow, activeEtapa)}>{t('detail.complete')}</Button>
-                  )}
-                </div>
-                <div className="wf-steps-row">
-                  {etapas.map(e => (
-                    <div key={e.id} className="wf-step-col">
-                      <div className={`wf-step-pill ${e.status === 'concluido' ? 'done' : e.status === 'ativo' ? 'active' : ''}`} />
-                      <span className={`wf-step-label ${e.status === 'ativo' ? 'active' : ''}`}>{e.nome}</span>
-                    </div>
-                  ))}
-                </div>
-                {activeEtapa && deadline && (
-                  <div className="wf-step-info" style={{ marginTop: 8, fontSize: '0.8rem', color: deadline.estourado ? 'var(--danger)' : deadline.urgente ? 'var(--warning)' : 'var(--text-muted)' }}>
-                    {deadline.estourado ? t('detail.overdueBy', { days: Math.abs(deadline.diasRestantes) }) : t('detail.daysRemaining', { days: deadline.diasRestantes })} — {activeEtapa.nome}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {boardCards.map(card => (
+              <WorkflowCard
+                key={card.workflow.id}
+                card={card}
+                onClick={() => setDrawerCard(card)}
+                onEditClick={() => setEditCardModal(card)}
+                onPostsClick={() => setDrawerCard(card)}
+                onForwardClick={() => handleForwardClick(card)}
+                onRevertClick={() => handleRevertClick(card)}
+                onRefresh={refreshCards}
+                membros={membros}
+                postsCount={postsCounts.get(card.workflow.id!) ?? 0}
+                approvedPostsCount={approvedPostsCounts.get(card.workflow.id!) ?? 0}
+                revisaoInternaCount={revisaoInternaCounts.get(card.workflow.id!) ?? 0}
+              />
+            ))}
+          </div>
 
           {/* Post Calendar */}
           {postCalendarEvents.length > 0 && (() => {
@@ -715,7 +874,10 @@ export default function ClienteDetalhePage() {
                             key={i}
                             className="scheduled-item"
                             style={{ cursor: 'pointer' }}
-                            onClick={() => navigate(`/entregas?drawer=${ev.workflowId}`)}
+                            onClick={() => {
+                              const card = boardCards.find(c => c.workflow.id === ev.workflowId);
+                              if (card) setDrawerCard(card);
+                            }}
                           >
                             <div className="item-top">
                               <div className="item-badge" style={{ background: tipoColors[ev.tipo] || '#6b7280' }} />
@@ -1244,6 +1406,50 @@ export default function ClienteDetalhePage() {
           onClose={() => setHistoryWorkflow(null)}
         />
       )}
+
+      {drawerCard && (
+        <WorkflowDrawer
+          card={drawerCard}
+          membros={membros}
+          onClose={() => setDrawerCard(null)}
+          onRefresh={refreshCards}
+        />
+      )}
+
+      {editCardModal && (
+        <EditWorkflowModal
+          card={editCardModal}
+          membros={membros}
+          clientes={clientes ?? []}
+          onClose={() => setEditCardModal(null)}
+          onSaved={refreshCards}
+          onDeleted={() => { setEditCardModal(null); refreshCards(); }}
+          onOpenPosts={() => { setDrawerCard(editCardModal); setEditCardModal(null); }}
+        />
+      )}
+
+      <ForwardConfirmDialog
+        open={!!forwardTarget}
+        workflowTitle={forwardTarget?.workflow.titulo ?? ''}
+        nextEtapaName={forwardTarget
+          ? (forwardTarget.allEtapas.find(e => e.ordem === forwardTarget.etapaIdx + 1)?.nome ?? '')
+          : ''}
+        onConfirm={handleForwardConfirm}
+        onCancel={() => setForwardTarget(null)}
+      />
+      <RevertConfirmDialog
+        open={!!revertTarget}
+        workflowTitle={revertTarget?.workflow.titulo ?? ''}
+        onConfirm={handleRevertConfirm}
+        onCancel={() => setRevertTarget(null)}
+      />
+      <ClientApprovalChoiceDialog
+        open={!!approvalChoiceCard}
+        workflowTitle={approvalChoiceCard?.workflow.titulo ?? ''}
+        onApproveInternally={handleApproveInternally}
+        onSendToPortal={handleSendToPortal}
+        onCancel={() => setApprovalChoiceCard(null)}
+      />
     </div>
   );
 }
