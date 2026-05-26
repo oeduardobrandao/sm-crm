@@ -100,11 +100,28 @@ function buildCoverHtml(data: ReportData, branding: WorkspaceBranding): string {
     <div class="cover-period">${escapeHtml(data.period)}</div>`;
 }
 
+const CSS_COLOR_RE = /^#[0-9a-fA-F]{3,8}$/;
+const ALLOWED_FONTS = new Set([
+  "DM Sans", "Inter", "Poppins", "Montserrat", "Plus Jakarta Sans",
+]);
+
+function safeCssColor(val: string, fallback: string): string {
+  return CSS_COLOR_RE.test(val.trim()) ? val.trim() : fallback;
+}
+
+function safeCssFont(val: string): string {
+  return ALLOWED_FONTS.has(val) ? val : "DM Sans";
+}
+
 function buildBrandingCss(branding: WorkspaceBranding): string {
-  return `--primary: ${escapeHtml(branding.primary_color)};
-    --secondary: ${escapeHtml(branding.secondary_color)};
-    --accent: ${escapeHtml(branding.accent_color)};
-    --font-main: '${escapeHtml(branding.font_family)}';`;
+  const primary = safeCssColor(branding.primary_color, "#eab308");
+  const secondary = safeCssColor(branding.secondary_color, "#1e2430");
+  const accent = safeCssColor(branding.accent_color, "#3ecf8e");
+  const font = safeCssFont(branding.font_family);
+  return `--primary: ${primary};
+    --secondary: ${secondary};
+    --accent: ${accent};
+    --font-main: '${font}';`;
 }
 
 function buildKpiCards(data: ReportData): string {
@@ -422,7 +439,15 @@ export function renderReport(opts: {
   branding: WorkspaceBranding;
   aiOutput: AIOutput | null;
 }): string {
-  const { data, branding, aiOutput } = opts;
+  const { data, aiOutput } = opts;
+  const branding: WorkspaceBranding = {
+    ...opts.branding,
+    primary_color: safeCssColor(opts.branding.primary_color, "#eab308"),
+    secondary_color: safeCssColor(opts.branding.secondary_color, "#1e2430"),
+    accent_color: safeCssColor(opts.branding.accent_color, "#3ecf8e"),
+    font_family: safeCssFont(opts.branding.font_family),
+    theme: opts.branding.theme === "dark" ? "dark" : "light",
+  };
 
   let html = loadTemplate();
 

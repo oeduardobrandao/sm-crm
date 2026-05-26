@@ -89,7 +89,7 @@ export function RelatorioViewPage() {
       {html && !isLoading && (
         <iframe
           srcDoc={html}
-          sandbox="allow-same-origin"
+          sandbox=""
           style={{ width: '100%', flex: 1, minHeight: '80vh', border: 'none', borderRadius: '12px' }}
           title={month ? `Relatório ${formatMonth(month)}` : 'Relatório'}
         />

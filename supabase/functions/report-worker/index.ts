@@ -164,6 +164,7 @@ Deno.serve(async (req) => {
           .from('clientes')
           .select('send_report_email, nome, email')
           .eq('id', reportRow.client_id)
+          .eq('conta_id', reportRow.conta_id)
           .single();
 
         if (wsFlags?.send_report_email && clientFlags?.send_report_email && clientFlags?.email) {

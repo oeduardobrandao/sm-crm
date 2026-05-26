@@ -225,6 +225,7 @@ Deno.serve(async (req) => {
 
     const cliente = clienteRes.data;
     if (!cliente) throw new Error("Cliente não encontrado");
+    if (cliente.conta_id !== contaId) throw new Error("Client does not belong to workspace");
 
     const account = accountRes.data;
     if (!account) throw new Error("Conta Instagram não encontrada");
@@ -255,7 +256,7 @@ Deno.serve(async (req) => {
       serviceClient
         .from("instagram_account_metrics_daily")
         .select("*")
-        .eq("date", `${currMonthPrefix}%`)
+        .like("date", `${currMonthPrefix}%`)
         .eq("instagram_account_id", igAccountId)
         .order("date", { ascending: false })
         .limit(1),
