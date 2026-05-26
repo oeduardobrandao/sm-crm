@@ -97,6 +97,7 @@ export function OptimizedImage({
     link.rel = 'preload';
     link.as = 'image';
     link.href = src;
+    link.crossOrigin = 'anonymous';
     link.setAttribute('fetchpriority', 'high');
     const srcSet = buildSrcSet(src, DEFAULT_WIDTHS, width ?? undefined);
     if (srcSet) link.setAttribute('imagesrcset', srcSet);
@@ -147,6 +148,7 @@ export function OptimizedImage({
     ...(height != null ? { height } : {}),
     ...(sizes ? { sizes } : {}),
     ...(srcSet ? { srcSet } : {}),
+    ...(useProxy ? { crossOrigin: 'anonymous' as const } : {}),
     ...rest,
   };
 

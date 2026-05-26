@@ -90,7 +90,15 @@ export default {
     const cached = await cache.match(cacheKey);
     if (cached) return cached;
 
-    const object = await env.MEDIA_BUCKET.get(r2Key);
+    let object: R2ObjectBody | null;
+    try {
+      object = await env.MEDIA_BUCKET.get(r2Key);
+    } catch {
+      return new Response("Storage unavailable", {
+        status: 503,
+        headers: { ...corsHeaders(request, env), "Retry-After": "2" },
+      });
+    }
     if (!object) return new Response("Not found", { status: 404 });
 
     const contentType = inferContentType(r2Key, object.httpMetadata?.contentType);

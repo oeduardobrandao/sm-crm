@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import JSZip from 'jszip';
 import { Upload, Star, Trash2, AlertTriangle, Download, FolderOpen } from 'lucide-react';
+import { fetchWithRetry } from '@/utils/fetchWithRetry';
 import { UploadHint } from '@/components/help/UploadHint';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
@@ -88,6 +89,7 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
       .filter((m) => m.kind === 'image' && m.url)
       .map((m) => {
         const img = new Image();
+        img.crossOrigin = 'anonymous';
         img.src = m.url!;
         return img;
       });
@@ -203,9 +205,13 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
         media
           .filter((m) => m.url)
           .map(async (m) => {
-            const res = await fetch(m.url!);
-            const blob = await res.blob();
-            return { filename: m.original_filename, blob };
+            try {
+              const res = await fetchWithRetry(m.url!, { cache: 'no-store' });
+              const blob = await res.blob();
+              return { filename: m.original_filename, blob };
+            } catch (err) {
+              throw new Error(`Falha ao baixar ${m.original_filename}: ${(err as Error).message}`);
+            }
           }),
       );
 
@@ -446,7 +452,7 @@ function SortableMediaTile({ media: m, disabled, onOpen, onSetCover, onDelete }:
           className="w-full h-full object-cover pointer-events-none"
         />
       ) : (
-        <video src={m.url ?? undefined} poster={m.thumbnail_url ?? undefined} muted className="w-full h-full object-cover pointer-events-none" />
+        <video src={m.url ?? undefined} poster={m.thumbnail_url ?? undefined} crossOrigin="anonymous" muted className="w-full h-full object-cover pointer-events-none" />
       )}
       {m.is_cover && (
         <span className="absolute top-1.5 left-1.5 inline-flex items-center gap-1 text-[10px] font-semibold bg-stone-900/85 text-white px-1.5 py-0.5 rounded-full">
