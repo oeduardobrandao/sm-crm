@@ -83,6 +83,7 @@ export function PostMediaLightbox({
               <img
                 src={current.url}
                 alt={current.original_filename}
+                crossOrigin="anonymous"
                 onPointerDown={handlePointerDown}
                 onPointerUp={handlePointerUp}
                 className="max-h-[85vh] max-w-[90vw] object-contain select-none"
@@ -93,6 +94,7 @@ export function PostMediaLightbox({
                 key={current.id}
                 src={current.url ?? undefined}
                 poster={current.thumbnail_url ?? undefined}
+                crossOrigin="anonymous"
                 controls
                 className="max-h-[85vh] max-w-[90vw] object-contain"
               />
