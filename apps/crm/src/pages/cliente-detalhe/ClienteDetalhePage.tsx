@@ -549,12 +549,20 @@ export default function ClienteDetalhePage() {
       <div className="header" style={{ marginBottom: '1.5rem', alignContent: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <Button variant="outline" size="icon" style={{ borderRadius: '50%' }} onClick={() => navigate('/clientes')}><ArrowLeft className="h-4 w-4" /></Button>
-          <div className="avatar" style={{ background: cliente.cor, width: 48, height: 48, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: '1.1rem', flexShrink: 0 }}>
-            {getInitials(cliente.nome)}
-          </div>
-          <div style={{ display: 'flex', gap: 24 }}>
-            <h2 className="header-title" style={{ margin: 0 }}>{cliente.nome}</h2>
-            <div style={{ display: 'flex', gap: 8, marginTop: 4, alignItems: 'center' }}>
+          {igSummary?.account?.profile_picture_url ? (
+            <img
+              src={igSummary.account.profile_picture_url}
+              alt={cliente.nome}
+              style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+            />
+          ) : (
+            <div style={{ background: cliente.cor, width: 48, height: 48, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: '1.1rem', flexShrink: 0 }}>
+              {getInitials(cliente.nome)}
+            </div>
+          )}
+          <div className="header-title" style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
+            <h2 style={{ margin: 0 }}>{cliente.nome}</h2>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <span className="badge badge-neutral">{cliente.plano}</span>
               <StatusBadge status={cliente.status} />
             </div>
