@@ -11,7 +11,7 @@ import { completeEtapa, revertEtapa, updateWorkflowPositions, approvePostsIntern
 import type { BoardCard } from '../hooks/useEntregasData';
 import type { Membro, WorkflowTemplate } from '../../../store';
 import { WorkflowCard } from '../components/WorkflowCard';
-import { RevertConfirmDialog, ClientApprovalChoiceDialog } from '../components/WorkflowModals';
+import { RevertConfirmDialog, ForwardConfirmDialog, ClientApprovalChoiceDialog } from '../components/WorkflowModals';
 
 interface KanbanViewProps {
   cards: BoardCard[];
@@ -117,6 +117,7 @@ export function KanbanView({ cards, onCardClick, onEditClick, onPostsClick, onRe
   const [activeCard, setActiveCard] = useState<BoardCard | null>(null);
   const [revertTarget, setRevertTarget] = useState<{ workflowId: number; title: string } | null>(null);
   const [approvalChoiceCard, setApprovalChoiceCard] = useState<BoardCard | null>(null);
+  const [forwardTarget, setForwardTarget] = useState<BoardCard | null>(null);
 
   // Sync local state when prop cards change (after refresh — detects workflow list, etapa, and cover changes)
   const cardsFingerprint = cards.map(c => `${c.workflow.id}:${c.etapa.id}:${c.postCovers?.length ?? 0}:${c.clienteAvatarUrl ? 1 : 0}`).join(',');
@@ -238,6 +239,10 @@ export function KanbanView({ cards, onCardClick, onEditClick, onPostsClick, onRe
   }, [localCards, onRefresh, onRecurring, templates]);
 
   const handleForwardCard = useCallback((card: BoardCard) => {
+    setForwardTarget(card);
+  }, []);
+
+  const executeForward = useCallback((card: BoardCard) => {
     const wfId = card.workflow.id!;
     const total = postsCounts.get(wfId) ?? 0;
     const approved = approvedPostsCounts.get(wfId) ?? 0;
@@ -261,6 +266,13 @@ export function KanbanView({ cards, onCardClick, onEditClick, onPostsClick, onRe
       })();
     }
   }, [onRefresh, onRecurring, postsCounts, approvedPostsCounts]);
+
+  const handleForwardConfirm = () => {
+    if (!forwardTarget) return;
+    const card = forwardTarget;
+    setForwardTarget(null);
+    executeForward(card);
+  };
 
   const handleApproveInternally = async () => {
     if (!approvalChoiceCard) return;
@@ -364,6 +376,19 @@ export function KanbanView({ cards, onCardClick, onEditClick, onPostsClick, onRe
           {activeCard && <WorkflowCard card={activeCard} isDragOverlay postsCount={postsCounts.get(activeCard.workflow.id!) ?? 0} approvedPostsCount={approvedPostsCounts.get(activeCard.workflow.id!) ?? 0} revisaoInternaCount={revisaoInternaCounts.get(activeCard.workflow.id!) ?? 0} />}
         </DragOverlay>
       </DndContext>
+      <ForwardConfirmDialog
+        open={!!forwardTarget}
+        workflowTitle={forwardTarget?.workflow.titulo || ''}
+        nextEtapaName={
+          forwardTarget
+            ? [...forwardTarget.allEtapas]
+                .sort((a, b) => a.ordem - b.ordem)
+                .find(e => e.ordem > forwardTarget.etapa.ordem)?.nome ?? ''
+            : ''
+        }
+        onConfirm={handleForwardConfirm}
+        onCancel={() => setForwardTarget(null)}
+      />
       <RevertConfirmDialog
         open={!!revertTarget}
         workflowTitle={revertTarget?.title || ''}
