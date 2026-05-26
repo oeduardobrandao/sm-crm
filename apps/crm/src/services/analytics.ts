@@ -195,8 +195,14 @@ export interface AnalyticsReport {
   report_month: string;
   report_url: string | null;
   storage_path: string | null;
-  status: string;
-  generated_at: string;
+  html_storage_path: string | null;
+  status: 'pending' | 'generating' | 'ready' | 'failed';
+  generated_at: string | null;
+  include_ai: boolean;
+  ai_status: string;
+  generation_error: string | null;
+  retry_count: number;
+  last_emailed_at: string | null;
 }
 
 // ---- Service Functions (Direct Supabase Queries) ----
@@ -682,12 +688,12 @@ export async function removeTagFromPost(postId: number, tagId: number): Promise<
 
 // ---- Reports ----
 
-export async function generateReport(clientId: number, month?: string): Promise<{ reportId: number; status: string; report_url?: string }> {
+export async function generateReport(clientId: number, month?: string, includeAI = true): Promise<{ reportId: number; status: string }> {
   const headers = await getAuthHeaders();
   const res = await fetch(`${EDGE_URL}/generate-report/${clientId}`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ month, force: true }),
+    body: JSON.stringify({ month, force: true, includeAI }),
   });
 
   const data = await res.json().catch(() => null);
@@ -699,6 +705,27 @@ export async function generateReport(clientId: number, month?: string): Promise<
     throw new Error('Resposta inválida do servidor');
   }
   return data;
+}
+
+export async function sendReportEmail(reportId: number): Promise<{ success: boolean; warning?: string }> {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${EDGE_URL}/send-report-email?reportId=${reportId}`, {
+    method: 'POST',
+    headers,
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new Error(data?.message || `Erro ao enviar e-mail (${res.status})`);
+  }
+  return data || { success: true };
+}
+
+export async function getReportDownloadUrl(storagePath: string): Promise<string> {
+  const { data, error } = await supabase.storage
+    .from('analytics-reports')
+    .createSignedUrl(storagePath, 3600); // 1 hour
+  if (error || !data?.signedUrl) throw new Error('Erro ao gerar URL de download');
+  return data.signedUrl;
 }
 
 export async function upsertManualFollowerCount(clientId: number, date: string, followerCount: number): Promise<void> {
