@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { checkRateLimit } from "../_shared/rate-limit.ts";
+import { insertAuditLog } from "../_shared/audit.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -1242,6 +1243,120 @@ O campo priorityActions deve ter entre 3 e 5 ações distribuídas entre as cont
       }
 
       return json({ analysis, generatedAt: new Date().toISOString() });
+    }
+
+    // POST /send-report-email
+    if (req.method === 'POST' && path === '/send-report-email') {
+      const reportId = url.searchParams.get('reportId');
+      if (!reportId) return json({ error: 'reportId required' }, 400);
+
+      // 1. Fetch report — verify belongs to user's workspace and is ready
+      const { data: report } = await serviceClient
+        .from('analytics_reports')
+        .select('id, report_month, status, storage_path, ai_content, last_emailed_at, client_id, conta_id')
+        .eq('id', reportId)
+        .eq('conta_id', contaId)
+        .single();
+
+      if (!report) return json({ error: 'Report not found' }, 404);
+      if (report.status !== 'ready') return json({ error: 'Report not ready' }, 400);
+
+      // 2. Throttle: 24-hour cooldown
+      if (report.last_emailed_at) {
+        const elapsed = Date.now() - new Date(report.last_emailed_at).getTime();
+        if (elapsed < 24 * 60 * 60 * 1000) {
+          return json({ error: 'Email sent recently. Try again later.' }, 429);
+        }
+      }
+
+      // 3. Fetch client
+      const { data: cliente } = await serviceClient
+        .from('clientes')
+        .select('nome, email, send_report_email')
+        .eq('id', report.client_id)
+        .single();
+
+      if (!cliente?.email) return json({ error: 'Client has no email' }, 400);
+
+      // 4. Opt-out check
+      if (!cliente.send_report_email) {
+        return json({ warning: 'client_opted_out' });
+      }
+
+      // 5. Fetch workspace for branding
+      const { data: workspace } = await serviceClient
+        .from('workspaces')
+        .select('name, brand_color, logo_url')
+        .eq('id', contaId)
+        .single();
+
+      // 6. Generate 7-day signed URL for PDF
+      let pdfUrl = '';
+      if (report.storage_path) {
+        const { data: signedUrl } = await serviceClient.storage
+          .from('analytics-reports')
+          .createSignedUrl(report.storage_path, 7 * 24 * 60 * 60);
+        pdfUrl = signedUrl?.signedUrl ?? '';
+      }
+
+      // 7. Build and send email
+      const { buildReportEmail } = await import("../_shared/report-template/email.ts");
+
+      const hubUrl = ''; // Hub link would need client_hub_tokens lookup — keep simple for now
+      const emailHtml = buildReportEmail({
+        clientName: cliente.nome,
+        month: report.report_month,
+        workspaceName: workspace?.name ?? 'Mesaas',
+        brandColor: workspace?.brand_color ?? '#eab308',
+        logoUrl: workspace?.logo_url ?? null,
+        aiSummary: report.ai_content?.executive_summary ?? null,
+        pdfUrl,
+        hubUrl,
+      });
+
+      // Format month for subject
+      const [year, mm] = report.report_month.split('-');
+      const monthLabel = new Date(parseInt(year), parseInt(mm) - 1, 1)
+        .toLocaleDateString('pt-BR', { month: 'long' });
+
+      const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
+      if (!RESEND_API_KEY) return json({ error: 'Email service not configured' }, 500);
+
+      const emailRes = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${RESEND_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: `${workspace?.name ?? 'Mesaas'} <relatorios@mesaas.com.br>`,
+          to: [cliente.email],
+          subject: `Seu relatório de ${monthLabel} está pronto!`,
+          html: emailHtml,
+        }),
+      });
+
+      if (!emailRes.ok) {
+        console.error('[send-report-email] Resend error:', emailRes.status, await emailRes.text());
+        return json({ error: 'Failed to send email' }, 500);
+      }
+
+      // 8. Update last_emailed_at
+      await serviceClient.from('analytics_reports')
+        .update({ last_emailed_at: new Date().toISOString() })
+        .eq('id', report.id);
+
+      // 9. Audit log
+      await insertAuditLog(serviceClient, {
+        conta_id: contaId,
+        actor_user_id: user.id,
+        action: 'report_email_sent',
+        resource_type: 'analytics_report',
+        resource_id: String(report.id),
+        metadata: { client_id: report.client_id, month: report.report_month },
+      });
+
+      return json({ ok: true, sent_to: cliente.email });
     }
 
     return new Response('Not Found', { status: 404, headers: corsHeaders });
