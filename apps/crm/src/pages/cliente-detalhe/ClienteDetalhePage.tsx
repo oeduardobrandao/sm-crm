@@ -1002,6 +1002,66 @@ export default function ClienteDetalhePage() {
         onNavigateAnalytics={() => navigate(`/analytics/${clienteId}`)}
       />
 
+      {/* Relatório Mensal Settings */}
+      {!isAgent && cliente && (
+        <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
+          <h3 className="text-xl font-bold tracking-tight text-foreground mb-1">Relatório Mensal</h3>
+          <p className="text-sm text-muted-foreground mb-4">Configure as opções de envio e análise do relatório mensal.</p>
+
+          {/* Toggle: Send report email */}
+          <div className="card" style={{ padding: '1.25rem', marginBottom: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ color: 'var(--text-main)', fontSize: '0.85rem', fontWeight: 500 }}>
+                  Enviar relatório por e-mail
+                </div>
+                <div style={{ color: 'var(--text-light)', fontSize: '0.75rem', marginTop: '0.25rem' }}>
+                  Envia automaticamente o relatório mensal para o e-mail do cliente
+                </div>
+              </div>
+              <Switch
+                checked={cliente.send_report_email ?? false}
+                onCheckedChange={async (checked) => {
+                  try {
+                    await updateCliente(clienteId, { send_report_email: checked });
+                    queryClient.invalidateQueries({ queryKey: ['cliente', clienteId] });
+                    toast.success(checked ? 'Envio por e-mail ativado' : 'Envio por e-mail desativado');
+                  } catch {
+                    toast.error('Erro ao atualizar configuração');
+                  }
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Toggle: Include AI analysis */}
+          <div className="card" style={{ padding: '1.25rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ color: 'var(--text-main)', fontSize: '0.85rem', fontWeight: 500 }}>
+                  Incluir análise AI
+                </div>
+                <div style={{ color: 'var(--text-light)', fontSize: '0.75rem', marginTop: '0.25rem' }}>
+                  Adiciona resumo e recomendações geradas por inteligência artificial
+                </div>
+              </div>
+              <Switch
+                checked={cliente.include_ai_analysis ?? true}
+                onCheckedChange={async (checked) => {
+                  try {
+                    await updateCliente(clienteId, { include_ai_analysis: checked });
+                    queryClient.invalidateQueries({ queryKey: ['cliente', clienteId] });
+                    toast.success(checked ? 'Análise AI ativada' : 'Análise AI desativada');
+                  } catch {
+                    toast.error('Erro ao atualizar configuração');
+                  }
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Hub do Cliente */}
       {!isAgent && cliente && cliente.id != null && cliente.conta_id && workspaceSlug && (
         <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
