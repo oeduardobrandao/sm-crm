@@ -350,31 +350,38 @@ export function WorkflowCard({ card, onClick, onEditClick, isDragOverlay, dragHa
         </div>
       )}
 
-      {/* Progress bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        <div
-          style={{
-            flex: 1,
-            height: '5px',
-            background: 'var(--surface-hover)',
-            borderRadius: '999px',
-            overflow: 'hidden',
-          }}
-        >
+      {/* Current etapa + Progress bar */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: '0.68rem', fontWeight: 600, color: accent, letterSpacing: '0.02em' }}>
+            {card.etapa.nome}
+          </span>
+          <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 600, whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)' }}>
+            {card.etapaIdx + 1}/{card.totalEtapas}
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <div
             style={{
-              height: '100%',
-              width: `${progressPct}%`,
-              background: accent,
+              flex: 1,
+              height: '5px',
+              background: 'var(--surface-hover)',
               borderRadius: '999px',
-              transition: 'width 0.4s ease',
-              opacity: 0.85,
+              overflow: 'hidden',
             }}
-          />
+          >
+            <div
+              style={{
+                height: '100%',
+                width: `${progressPct}%`,
+                background: accent,
+                borderRadius: '999px',
+                transition: 'width 0.4s ease',
+                opacity: 0.85,
+              }}
+            />
+          </div>
         </div>
-        <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 600, whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)' }}>
-          {card.etapaIdx + 1}/{card.totalEtapas}
-        </span>
       </div>
 
       {/* Initiated date */}
