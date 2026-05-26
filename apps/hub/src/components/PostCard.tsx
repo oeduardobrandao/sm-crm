@@ -244,6 +244,7 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
               onUpdate={isEditable ? (json, plain) => {
                 saveSuggestion(json, plain, igCaptionRef.current);
               } : undefined}
+              fallbackText={post.conteudo_plain}
             />
           ) : post.conteudo_plain ? (
             <p className="text-[13.5px] text-stone-600 leading-relaxed whitespace-pre-wrap">{post.conteudo_plain}</p>

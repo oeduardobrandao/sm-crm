@@ -80,6 +80,7 @@ export function TextPostCard({ post, token, approvals, onApprovalSubmitted, read
               onUpdate={isEditable ? (json, plain) => {
                 saveSuggestion(json, plain, igCaptionRef.current);
               } : undefined}
+              fallbackText={post.conteudo_plain}
             />
           ) : post.conteudo_plain ? (
             <p className="text-[13px] text-stone-600 leading-relaxed whitespace-pre-wrap">{post.conteudo_plain}</p>
