@@ -874,7 +874,7 @@ Deno.serve(async (req) => {
 
       await verifyClientOwnership(serviceClient, clientId, contaId);
 
-      const reportAllowed = await checkRateLimit(serviceClient, `ig-report:${contaId}`, 3, 3600);
+      const reportAllowed = await checkRateLimit(serviceClient, `ig-report:${contaId}`, 20, 3600);
       if (!reportAllowed) return json({ error: "Rate limit exceeded" }, 429);
 
       const account = await getAccount(serviceClient, clientId);
