@@ -883,7 +883,7 @@ function AnalyticsContent({
         <div className="header-actions">
           <Button variant="outline" onClick={() => navigate(-1)}><ArrowLeft className="h-4 w-4" /> Voltar</Button>
           <Button variant="outline" size="icon" disabled={syncing} onClick={handleSync} title="Sincronizar Dados">{syncing ? <Spinner size="sm" /> : <RefreshCw className="h-4 w-4" />}</Button>
-          <Button onClick={handleGenerateReport}><FileText className="h-4 w-4" /> Gerar Relatório</Button>
+          <Button onClick={() => handleGenerateScheduledReport()}><FileText className="h-4 w-4" /> Gerar Relatório</Button>
         </div>
       </header>
 
@@ -1194,27 +1194,29 @@ function AnalyticsContent({
       </div>
 
       {/* Reports */}
-      {reportsData.length > 0 && (
-        <div className="card animate-up">
-          <div className="dashboard-hub-card-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <h3>Relatórios Gerados</h3>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', color: 'var(--text-muted)', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={generateIncludeAI}
-                  onChange={e => setGenerateIncludeAI(e.target.checked)}
-                  style={{ accentColor: 'var(--primary-color)' }}
-                />
-                Incluir IA
-              </label>
-              <Button variant="outline" size="sm" onClick={() => handleGenerateScheduledReport()}>
-                <Plus className="h-3.5 w-3.5" /> Gerar
-              </Button>
-            </div>
+      <div className="card animate-up">
+        <div className="dashboard-hub-card-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <h3>Relatórios Gerados</h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', color: 'var(--text-muted)', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={generateIncludeAI}
+                onChange={e => setGenerateIncludeAI(e.target.checked)}
+                style={{ accentColor: 'var(--primary-color)' }}
+              />
+              Incluir IA
+            </label>
+            <Button variant="outline" size="sm" onClick={() => handleGenerateScheduledReport()}>
+              <Plus className="h-3.5 w-3.5" /> Gerar
+            </Button>
           </div>
-          <div style={{ marginTop: '1rem' }}>
-            {reportsData.map(r => (
+        </div>
+        <div style={{ marginTop: '1rem' }}>
+          {reportsData.length === 0 && (
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Nenhum relatório gerado ainda. Clique em "Gerar" para criar o primeiro.</p>
+          )}
+          {reportsData.map(r => (
               <div key={r.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid var(--border-color,rgba(0,0,0,0.06))' }}>
                 <div>
                   <strong>{formatReportMonth(r.report_month)}</strong>
@@ -1266,9 +1268,8 @@ function AnalyticsContent({
                 </div>
               </div>
             ))}
-          </div>
         </div>
-      )}
+      </div>
 
       {/* Send report email confirmation dialog */}
       <AlertDialog open={emailReportTarget !== null} onOpenChange={open => { if (!open) setEmailReportTarget(null); }}>
