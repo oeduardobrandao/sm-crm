@@ -573,14 +573,13 @@ function AnalyticsContent({
     queryFn: () => getFollowerHistory(clientId, days, dateRange),
   });
   const { data: tagsData = [] } = useQuery({ queryKey: ['analytics-tags'], queryFn: getTags });
-  const [hasActiveReports, setHasActiveReports] = useState(false);
   const { data: reportsData = [] } = useQuery({
     queryKey: ['analytics-reports', clientId],
     queryFn: () => getClientReports(clientId),
-    refetchInterval: hasActiveReports ? 10000 : false,
-    select: (data: AnalyticsReport[]) => {
-      setHasActiveReports(data.some(r => r.status === 'pending' || r.status === 'generating'));
-      return data;
+    refetchInterval: (query) => {
+      const reports = query.state.data;
+      if (reports?.some(r => r.status === 'pending' || r.status === 'generating')) return 10000;
+      return false;
     },
   });
   const { data: demoRes } = useQuery({ queryKey: ['analytics-demo', clientId], queryFn: () => getAudienceDemographics(clientId).catch(() => null) });
