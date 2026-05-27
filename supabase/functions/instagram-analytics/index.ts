@@ -833,6 +833,33 @@ Deno.serve(async (req) => {
     }
 
     // ==========================================
+    // GET /report-download/:reportId
+    // ==========================================
+    if (req.method === 'GET' && path.match(/^\/report-download\/\d+$/)) {
+      const reportId = path.split('/')[2];
+      const { data: report } = await serviceClient
+        .from('analytics_reports')
+        .select('storage_path, html_storage_path, conta_id')
+        .eq('id', reportId)
+        .eq('conta_id', contaId)
+        .single();
+
+      if (!report || !report.storage_path) {
+        return json({ error: 'Report not found' }, 404);
+      }
+
+      const { data: signedUrl } = await serviceClient.storage
+        .from('analytics-reports')
+        .createSignedUrl(report.storage_path, 3600);
+
+      if (!signedUrl?.signedUrl) {
+        return json({ error: 'Failed to generate download URL' }, 500);
+      }
+
+      return json({ url: signedUrl.signedUrl });
+    }
+
+    // ==========================================
     // POST /generate-report/:clientId
     // ==========================================
     if (req.method === 'POST' && path.match(/^\/generate-report\/\d+$/)) {

@@ -720,12 +720,12 @@ export async function sendReportEmail(reportId: number): Promise<{ success: bool
   return data || { success: true };
 }
 
-export async function getReportDownloadUrl(storagePath: string): Promise<string> {
-  const { data, error } = await supabase.storage
-    .from('analytics-reports')
-    .createSignedUrl(storagePath, 3600); // 1 hour
-  if (error || !data?.signedUrl) throw new Error('Erro ao gerar URL de download');
-  return data.signedUrl;
+export async function getReportDownloadUrl(reportId: number): Promise<string> {
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${EDGE_URL}/report-download/${reportId}`, { headers });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data?.url) throw new Error('Erro ao gerar URL de download');
+  return data.url;
 }
 
 export async function upsertManualFollowerCount(clientId: number, date: string, followerCount: number): Promise<void> {

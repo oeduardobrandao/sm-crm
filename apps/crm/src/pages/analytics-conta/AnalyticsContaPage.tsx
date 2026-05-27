@@ -1253,7 +1253,7 @@ function AnalyticsContent({
                       {r.storage_path && (
                         <Button variant="outline" size="sm" onClick={async () => {
                           try {
-                            const url = await getReportDownloadUrl(r.storage_path!);
+                            const url = await getReportDownloadUrl(r.id);
                             window.open(url, '_blank');
                           } catch { toast.error('Erro ao baixar relatório'); }
                         }}>
