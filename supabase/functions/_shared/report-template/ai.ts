@@ -70,7 +70,7 @@ ${JSON.stringify(data, null, 2)}`;
 // validateAIOutput
 // ---------------------------------------------------------------------------
 
-export function validateAIOutput(raw: unknown, validMetricIds: string[]): ValidateResult {
+export function validateAIOutput(raw: unknown): ValidateResult {
   if (typeof raw !== "object" || raw === null) {
     return { valid: false, error: "Output is not an object" };
   }
@@ -131,16 +131,8 @@ export function validateAIOutput(raw: unknown, validMetricIds: string[]): Valida
     if (!["high", "medium", "low"].includes(rec.priority as string)) {
       return { valid: false, error: `recommendations[${i}].priority must be high, medium, or low` };
     }
-    if (rec.based_on_metric !== undefined) {
-      if (typeof rec.based_on_metric !== "string") {
-        return { valid: false, error: `recommendations[${i}].based_on_metric must be a string` };
-      }
-      if (!validMetricIds.includes(rec.based_on_metric)) {
-        return {
-          valid: false,
-          error: `recommendations[${i}].based_on_metric "${rec.based_on_metric}" is not a valid metric id`,
-        };
-      }
+    if (rec.based_on_metric !== undefined && typeof rec.based_on_metric !== "string") {
+      return { valid: false, error: `recommendations[${i}].based_on_metric must be a string` };
     }
   }
 
@@ -161,12 +153,6 @@ export function validateAIOutput(raw: unknown, validMetricIds: string[]): Valida
     }
     if (typeof goal.metric !== "string" || goal.metric.length === 0) {
       return { valid: false, error: `suggested_goals[${i}].metric must be a non-empty string` };
-    }
-    if (!validMetricIds.includes(goal.metric)) {
-      return {
-        valid: false,
-        error: `suggested_goals[${i}].metric "${goal.metric}" is not a valid metric id`,
-      };
     }
     if (typeof goal.target !== "string" || goal.target.length === 0) {
       return { valid: false, error: `suggested_goals[${i}].target must be a non-empty string` };
@@ -196,39 +182,52 @@ export async function generateAINarrative(
   apiKey: string,
 ): Promise<GenerateResult> {
   const { systemPrompt, userPrompt } = buildAIPrompt(data);
-  const validMetricIds = Object.keys(data.kpis);
 
-  let response: Response;
-  try {
-    response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-          systemInstruction: { parts: [{ text: systemPrompt }] },
-          generationConfig: {
-            responseMimeType: "application/json",
-            temperature: 0.3,
-          },
-        }),
-      },
-    );
-  } catch (err) {
-    return {
-      output: null,
-      status: "generation_failed",
-      error: `Network error calling Gemini API: ${err instanceof Error ? err.message : String(err)}`,
-    };
+  const MAX_RETRIES = 2;
+  let response: Response | null = null;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+            systemInstruction: { parts: [{ text: systemPrompt }] },
+            generationConfig: {
+              responseMimeType: "application/json",
+              temperature: 0.3,
+            },
+          }),
+        },
+      );
+    } catch (err) {
+      if (attempt === MAX_RETRIES) {
+        return {
+          output: null,
+          status: "generation_failed",
+          error: `Network error calling Gemini API: ${err instanceof Error ? err.message : String(err)}`,
+        };
+      }
+      await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+      continue;
+    }
+
+    if (response.status === 429 && attempt < MAX_RETRIES) {
+      await new Promise((r) => setTimeout(r, 3000 * (attempt + 1)));
+      continue;
+    }
+    break;
   }
 
-  if (!response.ok) {
-    const body = await response.text().catch(() => "(unreadable)");
+  if (!response!.ok) {
+    const body = await response!.text().catch(() => "(unreadable)");
     return {
       output: null,
       status: "generation_failed",
-      error: `Gemini API returned HTTP ${response.status}: ${body.slice(0, 200)}`,
+      error: `Gemini API returned HTTP ${response!.status}: ${body.slice(0, 200)}`,
     };
   }
 
@@ -271,7 +270,7 @@ export async function generateAINarrative(
   }
 
   // Validate the parsed output
-  const validation = validateAIOutput(parsed, validMetricIds);
+  const validation = validateAIOutput(parsed);
   if (!validation.valid) {
     return {
       output: null,
