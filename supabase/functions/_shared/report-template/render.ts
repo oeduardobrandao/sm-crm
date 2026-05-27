@@ -18,19 +18,7 @@ import {
   buildFallbackSummary,
   buildFallbackRecommendations,
 } from "./fallback.ts";
-
-// ---------------------------------------------------------------------------
-// Template (embedded to avoid file-system reads at runtime in Deno Deploy)
-// ---------------------------------------------------------------------------
-
-const TEMPLATE_URL = new URL("./template.html", import.meta.url);
-let _cachedTemplate: string | null = null;
-
-function loadTemplate(): string {
-  if (_cachedTemplate) return _cachedTemplate;
-  _cachedTemplate = Deno.readTextFileSync(TEMPLATE_URL);
-  return _cachedTemplate;
-}
+import { REPORT_TEMPLATE } from "./template-string.ts";
 
 // ---------------------------------------------------------------------------
 // Number formatting helpers (pt-BR locale)
@@ -449,7 +437,7 @@ export function renderReport(opts: {
     theme: opts.branding.theme === "dark" ? "dark" : "light",
   };
 
-  let html = loadTemplate();
+  let html = REPORT_TEMPLATE;
 
   // 1. Theme
   html = html.replace("{{THEME}}", escapeHtml(branding.theme));
