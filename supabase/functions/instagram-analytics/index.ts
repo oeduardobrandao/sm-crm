@@ -8,6 +8,7 @@ const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const TOKEN_ENCRYPTION_KEY = Deno.env.get("TOKEN_ENCRYPTION_KEY") ?? (() => { throw new Error("TOKEN_ENCRYPTION_KEY environment variable is required"); })();
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") || '';
 const INTERNAL_FUNCTION_SECRET = Deno.env.get('INTERNAL_FUNCTION_SECRET') ?? (() => { throw new Error('INTERNAL_FUNCTION_SECRET is required'); })();
+const CRON_SECRET = Deno.env.get('CRON_SECRET') ?? '';
 import { UUID_RE } from "./utils.ts";
 
 // --- Token Decryption ---
@@ -863,7 +864,9 @@ Deno.serve(async (req) => {
         return json({ reportId: existing.id, status: 'ready', report_url: existing.report_url });
       }
 
-      // Create or update report record
+      const includeAi = body.includeAI !== false;
+
+      // Create or update report record as pending for the worker
       const { data: report, error: reportError } = await serviceClient
         .from('analytics_reports')
         .upsert({
@@ -871,38 +874,28 @@ Deno.serve(async (req) => {
           client_id: parseInt(clientId),
           instagram_account_id: account.id,
           report_month: month,
-          status: 'generating',
-          generated_at: new Date().toISOString(),
+          status: 'pending',
+          include_ai: includeAi,
+          generation_error: null,
+          locked_at: null,
+          locked_by: null,
         }, { onConflict: 'instagram_account_id,report_month' })
         .select()
         .single();
 
       if (reportError) throw reportError;
 
-      // Trigger report generation via the dedicated function
-      const reportGenUrl = `${SUPABASE_URL}/functions/v1/instagram-report-generator/generate/${clientId}?month=${month}`;
-      const genRes = await fetch(reportGenUrl, {
+      // Trigger report-worker to pick up the pending report
+      const workerUrl = `${SUPABASE_URL}/functions/v1/report-worker`;
+      fetch(workerUrl, {
         method: 'POST',
         headers: {
-          'X-Internal-Token': INTERNAL_FUNCTION_SECRET,
+          'x-cron-secret': CRON_SECRET,
           'apikey': SUPABASE_ANON_KEY,
-          'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ reportId: report.id }),
-      });
-      const genData = await genRes.json();
+      }).catch(err => console.error('[generate-report] Worker trigger failed:', err));
 
-      if (!genRes.ok || genData.error) {
-        // Mark as failed so it doesn't stay stuck
-        await serviceClient.from('analytics_reports').update({ status: 'failed' }).eq('id', report.id);
-        throw new Error(genData.message || 'Falha ao gerar relatório PDF');
-      }
-
-      if (genData.report_url) {
-        return json({ reportId: report.id, status: 'ready', report_url: genData.report_url });
-      }
-
-      return json({ reportId: report.id, status: 'generating' });
+      return json({ reportId: report.id, status: 'pending' });
     }
 
     // ==========================================
