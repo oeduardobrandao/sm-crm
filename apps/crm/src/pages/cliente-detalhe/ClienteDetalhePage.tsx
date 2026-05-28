@@ -57,6 +57,7 @@ import {
   updateWorkflowPost,
   type WorkflowPost,
   getWorkspaceSlug,
+  getHubToken,
 } from '../../store';
 import { HistoryDrawer } from '../entregas/components/HistoryDrawer';
 import { WorkflowCard } from '../entregas/components/WorkflowCard';
@@ -251,19 +252,12 @@ export default function ClienteDetalhePage() {
     enabled: activeWorkflowIds.length > 0,
   });
 
-  const { data: hubToken } = useQuery({
+  const { data: hubTokenData } = useQuery({
     queryKey: ['hub-token', clienteId],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from('client_hub_tokens')
-        .select('token')
-        .eq('cliente_id', clienteId)
-        .eq('is_active', true)
-        .maybeSingle();
-      return data?.token ?? undefined;
-    },
+    queryFn: () => getHubToken(clienteId),
     enabled: !isNaN(clienteId),
   });
+  const hubToken = hubTokenData?.is_active ? hubTokenData.token : undefined;
 
   const boardCards: BoardCard[] = useMemo(() => {
     if (!cliente) return [];
