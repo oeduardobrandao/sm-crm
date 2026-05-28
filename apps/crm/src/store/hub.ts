@@ -115,8 +115,10 @@ export async function removeHubPage(pageId: string) {
 
 export async function getWorkspaceSlug(): Promise<string | null> {
   const conta_id = await getContaId();
-  const { data } = await supabase.from('workspaces').select('slug').eq('id', conta_id).maybeSingle();
-  return (data as { slug: string | null } | null)?.slug ?? null;
+  const { data: ws } = await supabase.from('workspaces').select('slug').eq('id', conta_id).maybeSingle();
+  if ((ws as { slug: string | null } | null)?.slug) return ws!.slug;
+  const { data: conta } = await supabase.from('contas').select('slug').eq('id', conta_id).maybeSingle();
+  return (conta as { slug: string | null } | null)?.slug ?? null;
 }
 
 export async function getHubBriefingQuestions(clienteId: number): Promise<HubBriefingQuestionRow[]> {
