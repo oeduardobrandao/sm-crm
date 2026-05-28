@@ -54,6 +54,40 @@ export async function updateWorkspace(workspaceId: string, updates: { name?: str
   if (error) throw error;
 }
 
+export async function getWorkspaceBranding(): Promise<{
+  brand_color: string;
+  report_secondary_color: string;
+  report_accent_color: string;
+  report_font_family: string;
+  report_theme: string;
+  send_report_email: boolean;
+} | null> {
+  const contaId = await getContaId();
+  const { data, error } = await supabase
+    .from('workspaces')
+    .select('brand_color, report_secondary_color, report_accent_color, report_font_family, report_theme, send_report_email')
+    .eq('id', contaId)
+    .single();
+  if (error) return null;
+  return data;
+}
+
+export async function updateWorkspaceBranding(fields: {
+  brand_color?: string;
+  report_secondary_color?: string;
+  report_accent_color?: string;
+  report_font_family?: string;
+  report_theme?: string;
+  send_report_email?: boolean;
+}) {
+  const contaId = await getContaId();
+  const { error } = await supabase
+    .from('workspaces')
+    .update(fields)
+    .eq('id', contaId);
+  if (error) throw error;
+}
+
 export async function switchWorkspace(workspaceId: string): Promise<void> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Não autenticado');

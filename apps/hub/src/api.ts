@@ -147,3 +147,26 @@ export function deleteIdeia(token: string, id: string) {
 export function fetchDashboard(token: string, period: number) {
   return get<HubDashboardResponse>('hub-dashboard', { token, period: String(period) });
 }
+
+export interface HubReport {
+  month: string;
+  status: string;
+  generated_at: string | null;
+  has_pdf: boolean;
+  has_html: boolean;
+}
+
+export function fetchReports(token: string) {
+  return get<{ reports: HubReport[] }>('hub-reports/list', { token });
+}
+
+export async function fetchReportHtml(token: string, month: string): Promise<string> {
+  const url = edgeUrl('hub-reports/html/' + month, { token });
+  const res = await fetch(url, { headers: { apikey: ANON } });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.text();
+}
+
+export function fetchReportPdfUrl(token: string, month: string) {
+  return get<{ url: string }>('hub-reports/pdf-url/' + month, { token });
+}

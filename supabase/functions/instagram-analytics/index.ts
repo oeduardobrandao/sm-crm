@@ -1,12 +1,14 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { checkRateLimit } from "../_shared/rate-limit.ts";
+import { insertAuditLog } from "../_shared/audit.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const TOKEN_ENCRYPTION_KEY = Deno.env.get("TOKEN_ENCRYPTION_KEY") ?? (() => { throw new Error("TOKEN_ENCRYPTION_KEY environment variable is required"); })();
 const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") || '';
 const INTERNAL_FUNCTION_SECRET = Deno.env.get('INTERNAL_FUNCTION_SECRET') ?? (() => { throw new Error('INTERNAL_FUNCTION_SECRET is required'); })();
+const CRON_SECRET = Deno.env.get('CRON_SECRET') ?? '';
 import { UUID_RE } from "./utils.ts";
 
 // --- Token Decryption ---
@@ -831,6 +833,33 @@ Deno.serve(async (req) => {
     }
 
     // ==========================================
+    // GET /report-download/:reportId
+    // ==========================================
+    if (req.method === 'GET' && path.match(/^\/report-download\/\d+$/)) {
+      const reportId = path.split('/')[2];
+      const { data: report } = await serviceClient
+        .from('analytics_reports')
+        .select('storage_path, html_storage_path, conta_id')
+        .eq('id', reportId)
+        .eq('conta_id', contaId)
+        .single();
+
+      if (!report || !report.storage_path) {
+        return json({ error: 'Report not found' }, 404);
+      }
+
+      const { data: signedUrl } = await serviceClient.storage
+        .from('analytics-reports')
+        .createSignedUrl(report.storage_path, 3600);
+
+      if (!signedUrl?.signedUrl) {
+        return json({ error: 'Failed to generate download URL' }, 500);
+      }
+
+      return json({ url: signedUrl.signedUrl });
+    }
+
+    // ==========================================
     // POST /generate-report/:clientId
     // ==========================================
     if (req.method === 'POST' && path.match(/^\/generate-report\/\d+$/)) {
@@ -845,7 +874,7 @@ Deno.serve(async (req) => {
 
       await verifyClientOwnership(serviceClient, clientId, contaId);
 
-      const reportAllowed = await checkRateLimit(serviceClient, `ig-report:${contaId}`, 3, 3600);
+      const reportAllowed = await checkRateLimit(serviceClient, `ig-report:${contaId}`, 20, 3600);
       if (!reportAllowed) return json({ error: "Rate limit exceeded" }, 429);
 
       const account = await getAccount(serviceClient, clientId);
@@ -862,7 +891,9 @@ Deno.serve(async (req) => {
         return json({ reportId: existing.id, status: 'ready', report_url: existing.report_url });
       }
 
-      // Create or update report record
+      const includeAi = body.includeAI !== false;
+
+      // Create or update report record as pending for the worker
       const { data: report, error: reportError } = await serviceClient
         .from('analytics_reports')
         .upsert({
@@ -870,38 +901,28 @@ Deno.serve(async (req) => {
           client_id: parseInt(clientId),
           instagram_account_id: account.id,
           report_month: month,
-          status: 'generating',
-          generated_at: new Date().toISOString(),
+          status: 'pending',
+          include_ai: includeAi,
+          generation_error: null,
+          locked_at: null,
+          locked_by: null,
         }, { onConflict: 'instagram_account_id,report_month' })
         .select()
         .single();
 
       if (reportError) throw reportError;
 
-      // Trigger report generation via the dedicated function
-      const reportGenUrl = `${SUPABASE_URL}/functions/v1/instagram-report-generator/generate/${clientId}?month=${month}`;
-      const genRes = await fetch(reportGenUrl, {
+      // Trigger report-worker to pick up the pending report
+      const workerUrl = `${SUPABASE_URL}/functions/v1/report-worker`;
+      fetch(workerUrl, {
         method: 'POST',
         headers: {
-          'X-Internal-Token': INTERNAL_FUNCTION_SECRET,
+          'x-cron-secret': CRON_SECRET,
           'apikey': SUPABASE_ANON_KEY,
-          'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ reportId: report.id }),
-      });
-      const genData = await genRes.json();
+      }).catch(err => console.error('[generate-report] Worker trigger failed:', err));
 
-      if (!genRes.ok || genData.error) {
-        // Mark as failed so it doesn't stay stuck
-        await serviceClient.from('analytics_reports').update({ status: 'failed' }).eq('id', report.id);
-        throw new Error(genData.message || 'Falha ao gerar relatório PDF');
-      }
-
-      if (genData.report_url) {
-        return json({ reportId: report.id, status: 'ready', report_url: genData.report_url });
-      }
-
-      return json({ reportId: report.id, status: 'generating' });
+      return json({ reportId: report.id, status: 'pending' });
     }
 
     // ==========================================
@@ -1242,6 +1263,120 @@ O campo priorityActions deve ter entre 3 e 5 ações distribuídas entre as cont
       }
 
       return json({ analysis, generatedAt: new Date().toISOString() });
+    }
+
+    // POST /send-report-email
+    if (req.method === 'POST' && path === '/send-report-email') {
+      const reportId = url.searchParams.get('reportId');
+      if (!reportId) return json({ error: 'reportId required' }, 400);
+
+      // 1. Fetch report — verify belongs to user's workspace and is ready
+      const { data: report } = await serviceClient
+        .from('analytics_reports')
+        .select('id, report_month, status, storage_path, ai_content, last_emailed_at, client_id, conta_id')
+        .eq('id', reportId)
+        .eq('conta_id', contaId)
+        .single();
+
+      if (!report) return json({ error: 'Report not found' }, 404);
+      if (report.status !== 'ready') return json({ error: 'Report not ready' }, 400);
+
+      // 2. Throttle: 24-hour cooldown
+      if (report.last_emailed_at) {
+        const elapsed = Date.now() - new Date(report.last_emailed_at).getTime();
+        if (elapsed < 24 * 60 * 60 * 1000) {
+          return json({ error: 'Email sent recently. Try again later.' }, 429);
+        }
+      }
+
+      // 3. Fetch client
+      const { data: cliente } = await serviceClient
+        .from('clientes')
+        .select('nome, email, send_report_email')
+        .eq('id', report.client_id)
+        .single();
+
+      if (!cliente?.email) return json({ error: 'Client has no email' }, 400);
+
+      // 4. Opt-out check
+      if (!cliente.send_report_email) {
+        return json({ warning: 'client_opted_out' });
+      }
+
+      // 5. Fetch workspace for branding
+      const { data: workspace } = await serviceClient
+        .from('workspaces')
+        .select('name, brand_color, logo_url')
+        .eq('id', contaId)
+        .single();
+
+      // 6. Generate 7-day signed URL for PDF
+      let pdfUrl = '';
+      if (report.storage_path) {
+        const { data: signedUrl } = await serviceClient.storage
+          .from('analytics-reports')
+          .createSignedUrl(report.storage_path, 7 * 24 * 60 * 60);
+        pdfUrl = signedUrl?.signedUrl ?? '';
+      }
+
+      // 7. Build and send email
+      const { buildReportEmail } = await import("../_shared/report-template/email.ts");
+
+      const hubUrl = ''; // Hub link would need client_hub_tokens lookup — keep simple for now
+      const emailHtml = buildReportEmail({
+        clientName: cliente.nome,
+        month: report.report_month,
+        workspaceName: workspace?.name ?? 'Mesaas',
+        brandColor: workspace?.brand_color ?? '#eab308',
+        logoUrl: workspace?.logo_url ?? null,
+        aiSummary: report.ai_content?.executive_summary ?? null,
+        pdfUrl,
+        hubUrl,
+      });
+
+      // Format month for subject
+      const [year, mm] = report.report_month.split('-');
+      const monthLabel = new Date(parseInt(year), parseInt(mm) - 1, 1)
+        .toLocaleDateString('pt-BR', { month: 'long' });
+
+      const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
+      if (!RESEND_API_KEY) return json({ error: 'Email service not configured' }, 500);
+
+      const emailRes = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${RESEND_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: `${workspace?.name ?? 'Mesaas'} <relatorios@mesaas.com.br>`,
+          to: [cliente.email],
+          subject: `Seu relatório de ${monthLabel} está pronto!`,
+          html: emailHtml,
+        }),
+      });
+
+      if (!emailRes.ok) {
+        console.error('[send-report-email] Resend error:', emailRes.status, await emailRes.text());
+        return json({ error: 'Failed to send email' }, 500);
+      }
+
+      // 8. Update last_emailed_at
+      await serviceClient.from('analytics_reports')
+        .update({ last_emailed_at: new Date().toISOString() })
+        .eq('id', report.id);
+
+      // 9. Audit log
+      await insertAuditLog(serviceClient, {
+        conta_id: contaId,
+        actor_user_id: user.id,
+        action: 'report_email_sent',
+        resource_type: 'analytics_report',
+        resource_id: String(report.id),
+        metadata: { client_id: report.client_id, month: report.report_month },
+      });
+
+      return json({ ok: true, sent_to: cliente.email });
     }
 
     return new Response('Not Found', { status: 404, headers: corsHeaders });

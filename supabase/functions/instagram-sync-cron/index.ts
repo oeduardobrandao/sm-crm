@@ -3,6 +3,7 @@ import { timingSafeEqual } from "../_shared/crypto.ts";
 import { createInstagramSyncCronHandler } from "./handler.ts";
 import { notifyCronFailure } from "../_shared/notify.ts";
 import { runPool } from "./pool.ts";
+import { buildSnapshotRow } from "./snapshot.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -205,6 +206,16 @@ async function syncAccount(
         source: 'api',
       }, { onConflict: 'instagram_account_id,date' })
     ] : []),
+    supabase.from('instagram_account_metrics_daily').upsert(
+      buildSnapshotRow(account.id, {
+        followers_count: igProfile.followers_count || account.follower_count,
+        reach_28d: totalReach,
+        impressions_28d: totalImpressions,
+        profile_views_28d: totalViews,
+        website_clicks_28d: totalWebsiteClicks,
+      }),
+      { onConflict: 'instagram_account_id,snapshot_date' }
+    ),
   ]);
 
   if (mediaData.data && mediaData.data.length > 0) {

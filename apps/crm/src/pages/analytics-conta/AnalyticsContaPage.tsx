@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Chart, registerables } from 'chart.js';
 import { getClientes, getCurrentWorkspace } from '../../store';
@@ -15,7 +16,7 @@ import {
   getAnalyticsOverview, getPostsAnalytics, getFollowerHistory,
   getAudienceDemographics, getBestPostingTimes, getTags, createTag, deleteTag,
   assignTagToPost, getClientReports, getAccountAIAnalysis,
-  upsertManualFollowerCount,
+  upsertManualFollowerCount, generateReport, sendReportEmail, getReportDownloadUrl,
   type KpiDelta, type PostAnalytics, type PostTag, type AudienceDemographics,
   type BestPostingTimes, type AnalyticsReport,
 } from '../../services/analytics';
@@ -553,6 +554,9 @@ function AnalyticsContent({
   const [rankedFormatFilter, setRankedFormatFilter] = useState('all');
   const [rankedDateFrom, setRankedDateFrom] = useState('');
   const [rankedDateTo, setRankedDateTo] = useState('');
+  const [emailReportTarget, setEmailReportTarget] = useState<AnalyticsReport | null>(null);
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [generateIncludeAI, setGenerateIncludeAI] = useState(true);
 
   const dateRange = periodStart && periodEnd ? { start: periodStart, end: periodEnd } : undefined;
 
@@ -569,7 +573,15 @@ function AnalyticsContent({
     queryFn: () => getFollowerHistory(clientId, days, dateRange),
   });
   const { data: tagsData = [] } = useQuery({ queryKey: ['analytics-tags'], queryFn: getTags });
-  const { data: reportsData = [] } = useQuery({ queryKey: ['analytics-reports', clientId], queryFn: () => getClientReports(clientId) });
+  const { data: reportsData = [] } = useQuery({
+    queryKey: ['analytics-reports', clientId],
+    queryFn: () => getClientReports(clientId),
+    refetchInterval: (query) => {
+      const reports = query.state.data;
+      if (reports?.some(r => r.status === 'pending' || r.status === 'generating')) return 10000;
+      return false;
+    },
+  });
   const { data: demoRes } = useQuery({ queryKey: ['analytics-demo', clientId], queryFn: () => getAudienceDemographics(clientId).catch(() => null) });
   const { data: onlineRes } = useQuery({ queryKey: ['analytics-times', clientId], queryFn: () => getBestPostingTimes(clientId).catch(() => null) });
 
@@ -812,6 +824,35 @@ function AnalyticsContent({
     toast.success('Relatório aberto em nova aba. Use "Salvar como PDF" para baixar.', { duration: 4000 });
   };
 
+  const handleConfirmSendEmail = async () => {
+    if (!emailReportTarget) return;
+    setSendingEmail(true);
+    try {
+      const result = await sendReportEmail(emailReportTarget.id);
+      if (result.warning) {
+        toast.warning(result.warning);
+      } else {
+        toast.success('E-mail enviado com sucesso!');
+      }
+      qc.invalidateQueries({ queryKey: ['analytics-reports', clientId] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao enviar e-mail');
+    } finally {
+      setSendingEmail(false);
+      setEmailReportTarget(null);
+    }
+  };
+
+  const handleGenerateScheduledReport = async (month?: string) => {
+    try {
+      await generateReport(clientId, month, generateIncludeAI);
+      toast.success('Geração de relatório iniciada!');
+      qc.invalidateQueries({ queryKey: ['analytics-reports', clientId] });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao gerar relatório');
+    }
+  };
+
   const periodTag = periodLabel || `${overviewDays}d`;
   const visiblePosts = showAllPosts ? posts : posts.slice(0, 5);
 
@@ -842,7 +883,7 @@ function AnalyticsContent({
         <div className="header-actions">
           <Button variant="outline" onClick={() => navigate(-1)}><ArrowLeft className="h-4 w-4" /> Voltar</Button>
           <Button variant="outline" size="icon" disabled={syncing} onClick={handleSync} title="Sincronizar Dados">{syncing ? <Spinner size="sm" /> : <RefreshCw className="h-4 w-4" />}</Button>
-          <Button onClick={handleGenerateReport}><FileText className="h-4 w-4" /> Gerar Relatório</Button>
+          <Button onClick={() => handleGenerateScheduledReport()}><FileText className="h-4 w-4" /> Gerar Relatório</Button>
         </div>
       </header>
 
@@ -1153,27 +1194,114 @@ function AnalyticsContent({
       </div>
 
       {/* Reports */}
-      {reportsData.length > 0 && (
-        <div className="card animate-up">
-          <div className="dashboard-hub-card-header"><h3>Relatórios Gerados</h3></div>
-          <div style={{ marginTop: '1rem' }}>
-            {reportsData.map(r => (
+      <div className="card animate-up">
+        <div className="dashboard-hub-card-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <h3>Relatórios Gerados</h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', color: 'var(--text-muted)', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={generateIncludeAI}
+                onChange={e => setGenerateIncludeAI(e.target.checked)}
+                style={{ accentColor: 'var(--primary-color)' }}
+              />
+              Incluir IA
+            </label>
+            <Button variant="outline" size="sm" onClick={() => handleGenerateScheduledReport()}>
+              <Plus className="h-3.5 w-3.5" /> Gerar
+            </Button>
+          </div>
+        </div>
+        <div style={{ marginTop: '1rem' }}>
+          {reportsData.length === 0 && (
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Nenhum relatório gerado ainda. Clique em "Gerar" para criar o primeiro.</p>
+          )}
+          {reportsData.map(r => (
               <div key={r.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid var(--border-color,rgba(0,0,0,0.06))' }}>
                 <div>
                   <strong>{formatReportMonth(r.report_month)}</strong>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>
-                    {new Date(r.generated_at).toLocaleDateString('pt-BR')}
-                  </span>
+                  {r.generated_at && (
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>
+                      {new Date(r.generated_at).toLocaleDateString('pt-BR')}
+                    </span>
+                  )}
+                  {r.include_ai && (
+                    <span className="badge badge-neutral" style={{ marginLeft: '0.5rem', fontSize: '0.6rem' }}>IA</span>
+                  )}
                 </div>
-                {r.status === 'ready' && r.report_url
-                  ? <a href={sanitizeUrl(r.report_url)} target="_blank" rel="noopener" className="btn-secondary" style={{ fontSize: '0.75rem' }}>↓ Baixar PDF</a>
-                  : <span className="badge badge-warning">{r.status === 'generating' ? 'Gerando...' : r.status}</span>
-                }
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  {r.status === 'pending' && (
+                    <span className="badge badge-warning">Pendente</span>
+                  )}
+                  {r.status === 'generating' && (
+                    <span className="badge badge-neutral" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: '#3b82f6' }}>
+                      <Spinner size="sm" /> Gerando...
+                    </span>
+                  )}
+                  {r.status === 'failed' && (
+                    <span
+                      className="badge badge-danger"
+                      title={r.generation_error || 'Erro desconhecido'}
+                      style={{ cursor: 'help' }}
+                    >
+                      Falha
+                    </span>
+                  )}
+                  {r.status === 'ready' && (
+                    <>
+                      <span className="badge badge-success">Pronto</span>
+                      {r.storage_path && (
+                        <Button variant="outline" size="sm" onClick={async () => {
+                          try {
+                            const url = await getReportDownloadUrl(r.id);
+                            window.open(url, '_blank');
+                          } catch { toast.error('Erro ao baixar relatório'); }
+                        }}>
+                          ↓ Baixar PDF
+                        </Button>
+                      )}
+                      <Button variant="outline" size="sm" onClick={() => setEmailReportTarget(r)}>
+                        Enviar
+                      </Button>
+                    </>
+                  )}
+                </div>
               </div>
             ))}
-          </div>
         </div>
-      )}
+      </div>
+
+      {/* Send report email confirmation dialog */}
+      <AlertDialog open={emailReportTarget !== null} onOpenChange={open => { if (!open) setEmailReportTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Enviar relatório por e-mail</AlertDialogTitle>
+            <AlertDialogDescription>
+              {emailReportTarget && (
+                <>
+                  Enviar o relatório de <strong>{formatReportMonth(emailReportTarget.report_month)}</strong> por e-mail para o cliente <strong>{cliente.nome}</strong>?
+                  {cliente.send_report_email === false && (
+                    <span style={{ display: 'block', marginTop: '0.5rem', color: 'var(--warning)', fontWeight: 600 }}>
+                      Atenção: este cliente tem o envio de relatórios por e-mail desativado.
+                    </span>
+                  )}
+                  {emailReportTarget.last_emailed_at && (
+                    <span style={{ display: 'block', marginTop: '0.25rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                      Último envio: {new Date(emailReportTarget.last_emailed_at).toLocaleString('pt-BR')}
+                    </span>
+                  )}
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={sendingEmail}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction disabled={sendingEmail} onClick={handleConfirmSendEmail}>
+              {sendingEmail ? 'Enviando...' : 'Enviar'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Manual follower modal */}
       <Dialog open={manualFollowerOpen} onOpenChange={open => { if (!open) { setManualFollowerOpen(false); setManualCount(''); } }}>

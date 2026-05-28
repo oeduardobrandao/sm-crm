@@ -17,6 +17,8 @@ export interface Cliente {
   dia_entrega?: number;
   especialidade?: string;
   data_aniversario?: string | null;
+  send_report_email?: boolean;
+  include_ai_analysis?: boolean;
 }
 
 export interface ClienteEndereco {
