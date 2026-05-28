@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Spinner } from '@/components/ui/spinner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ReportPreview } from './ReportPreview';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useAuth } from '../../context/AuthContext';
@@ -501,86 +502,99 @@ export default function ConfiguracaoPage() {
             Personalize as cores, fonte e tema dos relatórios mensais enviados para seus clientes.
           </p>
 
-          {/* Color pickers */}
-          <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', marginBottom: '1.25rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: '1.5rem', alignItems: 'start' }}>
             <div>
-              <Label style={{ display: 'block', marginBottom: 6 }}>Cor primária</Label>
-              <input
-                type="color"
-                value={brandColor}
-                onChange={e => setBrandColor(e.target.value)}
-                style={{ width: 48, height: 36, padding: 2, borderRadius: 6, border: '1px solid var(--border-color)', cursor: 'pointer', background: 'none' }}
-              />
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4, fontFamily: 'var(--font-mono)' }}>{brandColor}</div>
-            </div>
-            <div>
-              <Label style={{ display: 'block', marginBottom: 6 }}>Cor secundária</Label>
-              <input
-                type="color"
-                value={secondaryColor}
-                onChange={e => setSecondaryColor(e.target.value)}
-                style={{ width: 48, height: 36, padding: 2, borderRadius: 6, border: '1px solid var(--border-color)', cursor: 'pointer', background: 'none' }}
-              />
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4, fontFamily: 'var(--font-mono)' }}>{secondaryColor}</div>
-            </div>
-            <div>
-              <Label style={{ display: 'block', marginBottom: 6 }}>Cor de destaque</Label>
-              <input
-                type="color"
-                value={accentColor}
-                onChange={e => setAccentColor(e.target.value)}
-                style={{ width: 48, height: 36, padding: 2, borderRadius: 6, border: '1px solid var(--border-color)', cursor: 'pointer', background: 'none' }}
-              />
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4, fontFamily: 'var(--font-mono)' }}>{accentColor}</div>
-            </div>
-          </div>
-
-          {/* Font selector */}
-          <div style={{ marginBottom: '1.25rem' }}>
-            <Label style={{ display: 'block', marginBottom: 6 }}>Fonte do relatório</Label>
-            <Select value={reportFont} onValueChange={setReportFont}>
-              <SelectTrigger style={{ maxWidth: 260 }}><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="DM Sans">DM Sans</SelectItem>
-                <SelectItem value="Inter">Inter</SelectItem>
-                <SelectItem value="Poppins">Poppins</SelectItem>
-                <SelectItem value="Montserrat">Montserrat</SelectItem>
-                <SelectItem value="Plus Jakarta Sans">Plus Jakarta Sans</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Theme toggle */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.25rem' }}>
-            <Switch
-              checked={reportTheme === 'dark'}
-              onCheckedChange={checked => setReportTheme(checked ? 'dark' : 'light')}
-            />
-            <div>
-              <div style={{ fontWeight: 500 }}>Tema do relatório</div>
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                {reportTheme === 'dark' ? 'Escuro' : 'Claro'}
+              {/* Color pickers */}
+              <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', marginBottom: '1.25rem' }}>
+                <div>
+                  <Label style={{ display: 'block', marginBottom: 6 }}>Cor primária</Label>
+                  <input
+                    type="color"
+                    value={brandColor}
+                    onChange={e => setBrandColor(e.target.value)}
+                    style={{ width: 48, height: 36, padding: 2, borderRadius: 6, border: '1px solid var(--border-color)', cursor: 'pointer', background: 'none' }}
+                  />
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4, fontFamily: 'var(--font-mono)' }}>{brandColor}</div>
+                </div>
+                <div>
+                  <Label style={{ display: 'block', marginBottom: 6 }}>Cor secundária</Label>
+                  <input
+                    type="color"
+                    value={secondaryColor}
+                    onChange={e => setSecondaryColor(e.target.value)}
+                    style={{ width: 48, height: 36, padding: 2, borderRadius: 6, border: '1px solid var(--border-color)', cursor: 'pointer', background: 'none' }}
+                  />
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4, fontFamily: 'var(--font-mono)' }}>{secondaryColor}</div>
+                </div>
+                <div>
+                  <Label style={{ display: 'block', marginBottom: 6 }}>Cor de destaque</Label>
+                  <input
+                    type="color"
+                    value={accentColor}
+                    onChange={e => setAccentColor(e.target.value)}
+                    style={{ width: 48, height: 36, padding: 2, borderRadius: 6, border: '1px solid var(--border-color)', cursor: 'pointer', background: 'none' }}
+                  />
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4, fontFamily: 'var(--font-mono)' }}>{accentColor}</div>
+                </div>
               </div>
-            </div>
-          </div>
 
-          {/* Email delivery toggle */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
-            <Switch
-              checked={sendReportEmail}
-              onCheckedChange={setSendReportEmail}
-            />
-            <div>
-              <div style={{ fontWeight: 500 }}>Enviar relatórios por e-mail</div>
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                Quando ativado, relatórios mensais serão enviados automaticamente para clientes habilitados.
+              {/* Font selector */}
+              <div style={{ marginBottom: '1.25rem' }}>
+                <Label style={{ display: 'block', marginBottom: 6 }}>Fonte do relatório</Label>
+                <Select value={reportFont} onValueChange={setReportFont}>
+                  <SelectTrigger style={{ maxWidth: 260 }}><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="DM Sans">DM Sans</SelectItem>
+                    <SelectItem value="Inter">Inter</SelectItem>
+                    <SelectItem value="Poppins">Poppins</SelectItem>
+                    <SelectItem value="Montserrat">Montserrat</SelectItem>
+                    <SelectItem value="Plus Jakarta Sans">Plus Jakarta Sans</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-            </div>
-          </div>
 
-          <Button onClick={() => brandingMutation.mutate()} disabled={brandingMutation.isPending}>
-            {brandingMutation.isPending && <Spinner size="sm" />} Salvar
-          </Button>
+              {/* Theme toggle */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.25rem' }}>
+                <Switch
+                  checked={reportTheme === 'dark'}
+                  onCheckedChange={checked => setReportTheme(checked ? 'dark' : 'light')}
+                />
+                <div>
+                  <div style={{ fontWeight: 500 }}>Tema do relatório</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                    {reportTheme === 'dark' ? 'Escuro' : 'Claro'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Email delivery toggle */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+                <Switch
+                  checked={sendReportEmail}
+                  onCheckedChange={setSendReportEmail}
+                />
+                <div>
+                  <div style={{ fontWeight: 500 }}>Enviar relatórios por e-mail</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                    Quando ativado, relatórios mensais serão enviados automaticamente para clientes habilitados.
+                  </div>
+                </div>
+              </div>
+
+              <Button onClick={() => brandingMutation.mutate()} disabled={brandingMutation.isPending}>
+                {brandingMutation.isPending && <Spinner size="sm" />} Salvar
+              </Button>
+            </div>
+
+            {/* Live preview */}
+            <ReportPreview
+              primaryColor={brandColor}
+              secondaryColor={secondaryColor}
+              accentColor={accentColor}
+              fontFamily={reportFont}
+              theme={reportTheme}
+            />
+          </div>
         </div>
       )}
 

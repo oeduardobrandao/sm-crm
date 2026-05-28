@@ -136,8 +136,7 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
     font-weight: 600;
     padding: 5px 16px;
     border-radius: 20px;
-    background: rgba(255,255,255,0.2);
-    backdrop-filter: blur(4px);
+    background: rgba(255,255,255,0.25);
     margin-top: 10px;
   }
 
@@ -356,87 +355,101 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
     font-size: 20px;
   }
 
-  /* ── Top posts ── */
-  .post-list {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+  /* ── Posts card grid ── */
+  .post-card-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    max-width: 154mm;
+    margin: 0 auto;
+    gap: 8px;
+    overflow: hidden;
   }
 
-  .post-item {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    padding: 12px;
+  .post-card {
     background: var(--card-bg);
     border: 1px solid var(--card-border);
-    border-radius: 10px;
+    border-radius: 8px;
+    overflow: hidden;
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 
-  .post-rank {
-    width: 28px;
-    height: 28px;
-    border-radius: 8px;
-    background: var(--primary);
-    color: var(--secondary);
-    font-weight: 800;
-    font-size: 13px;
+  .post-card-thumb {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 3/4;
+    background: var(--badge-bg);
     display: flex;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0;
   }
 
-  .post-thumb {
-    width: 52px;
-    height: 52px;
-    border-radius: 8px;
+  .post-card-thumb img {
+    width: 100%;
+    height: 100%;
     object-fit: cover;
-    background: var(--badge-bg);
-    flex-shrink: 0;
   }
 
-  .post-info {
-    flex: 1;
-    min-width: 0;
+  .post-card-rank {
+    position: absolute;
+    top: 5px;
+    left: 5px;
+    width: 18px;
+    height: 18px;
+    border-radius: 5px;
+    background: var(--primary);
+    color: var(--secondary);
+    font-weight: 800;
+    font-size: 8.5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
-  .post-caption {
-    font-size: 11px;
-    font-weight: 600;
+  .post-card-type {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    font-size: 6.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: rgba(0,0,0,0.55);
+    color: #fff;
+  }
+
+  .post-card-body {
+    padding: 6px 7px;
+  }
+
+  .post-card-caption {
+    font-size: 7.5px;
+    font-weight: 500;
     color: var(--text-color);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     margin-bottom: 4px;
+    line-height: 1.3;
   }
 
-  .post-badge {
-    display: inline-block;
-    font-size: 8px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    padding: 2px 8px;
-    border-radius: 4px;
-    background: var(--badge-bg);
-    color: var(--primary);
-    margin-right: 6px;
-  }
-
-  .post-stats {
+  .post-card-stats {
     display: flex;
-    gap: 14px;
-    margin-top: 4px;
+    gap: 6px;
+    flex-wrap: nowrap;
+    overflow: hidden;
   }
 
-  .post-stat {
-    font-size: 10px;
+  .post-card-stat {
+    font-size: 7.5px;
     color: var(--text-muted);
     font-family: 'DM Mono', monospace;
+    white-space: nowrap;
   }
 
-  .post-stat strong {
+  .post-card-stat strong {
     color: var(--text-color);
     font-weight: 700;
   }
@@ -498,9 +511,12 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
   .demo-bar-label {
     font-size: 10px;
     color: var(--text-muted);
-    width: 50px;
+    width: 80px;
     text-align: right;
     flex-shrink: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .demo-bar-track {
@@ -536,97 +552,6 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
   .heatmap-container svg {
     width: 100%;
     height: auto;
-  }
-
-  /* ── AI analysis ── */
-  .ai-text {
-    font-size: 11.5px;
-    line-height: 1.75;
-    color: var(--text-color);
-  }
-
-  .ai-text p {
-    margin-bottom: 10px;
-  }
-
-  /* ── Recommendations ── */
-  .rec-list {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-
-  .rec-item {
-    display: flex;
-    gap: 12px;
-    padding: 12px;
-    background: var(--card-bg);
-    border: 1px solid var(--card-border);
-    border-radius: 10px;
-  }
-
-  .rec-priority {
-    width: 6px;
-    border-radius: 3px;
-    flex-shrink: 0;
-  }
-
-  .rec-priority--high { background: #ef4444; }
-  .rec-priority--medium { background: var(--primary); }
-  .rec-priority--low { background: var(--accent); }
-
-  .rec-content {
-    flex: 1;
-  }
-
-  .rec-title {
-    font-size: 12px;
-    font-weight: 700;
-    color: var(--text-color);
-    margin-bottom: 3px;
-  }
-
-  .rec-desc {
-    font-size: 10.5px;
-    line-height: 1.6;
-    color: var(--text-muted);
-  }
-
-  /* ── Goals ── */
-  .goals-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-    gap: 10px;
-  }
-
-  .goal-card {
-    padding: 14px;
-    background: var(--card-bg);
-    border: 1px solid var(--card-border);
-    border-radius: 10px;
-    text-align: center;
-  }
-
-  .goal-metric {
-    font-size: 9px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: var(--text-muted);
-    margin-bottom: 4px;
-  }
-
-  .goal-target {
-    font-size: 20px;
-    font-weight: 800;
-    color: var(--primary);
-    font-family: 'DM Mono', monospace;
-  }
-
-  .goal-rationale {
-    font-size: 10px;
-    color: var(--text-muted);
-    margin-top: 4px;
   }
 
   /* ── Footer ── */
@@ -666,7 +591,7 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
   </div>
   <div class="cover-body">
     <div>
-      <div class="section-title">Resumo Executivo</div>
+      <div class="section-title">Resumo</div>
       <div class="card card--highlight">
         <div class="summary-text">
           {{EXECUTIVE_SUMMARY}}
@@ -718,12 +643,10 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
   {{FOOTER}}
 </div>
 
-<!-- PAGE 3: Top Posts + Tags Performance -->
+<!-- PAGE 3: All Posts + Tags Performance -->
 <div class="page">
-  <div class="section-title">Top Publicações</div>
-  <div class="post-list">
-    {{TOP_POSTS}}
-  </div>
+  <div class="section-title">Publicações</div>
+  {{TOP_POSTS}}
 
   {{#IF_HAS_TAGS}}
   <div class="mt-lg">
@@ -764,6 +687,7 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
     </div>
   </div>
 
+  {{#IF_HAS_HEATMAP}}
   <div class="mt-lg">
     <div class="section-title">Melhores Horários</div>
     <div class="card">
@@ -772,34 +696,11 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
       </div>
     </div>
   </div>
+  {{/IF_HAS_HEATMAP}}
+
   {{FOOTER}}
 </div>
 {{/IF_HAS_AUDIENCE}}
-
-<!-- PAGE 5: AI Analysis + Recommendations + Goals -->
-<div class="page">
-  <div class="section-title">Análise</div>
-  <div class="card">
-    <div class="ai-text">
-      {{AI_ANALYSIS}}
-    </div>
-  </div>
-
-  <div class="mt-lg">
-    <div class="section-title">Recomendações</div>
-    <div class="rec-list">
-      {{RECOMMENDATIONS}}
-    </div>
-  </div>
-
-  <div class="mt-lg">
-    <div class="section-title">Metas Sugeridas</div>
-    <div class="goals-grid">
-      {{GOALS}}
-    </div>
-  </div>
-  {{FOOTER}}
-</div>
 
 </body>
 </html>`;

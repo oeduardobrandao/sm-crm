@@ -18,6 +18,8 @@ export interface TopPost {
   reach: number;
   engagement: number;
   saves: number;
+  likes: number;
+  comments: number;
   caption_preview: string;
   date?: string;
   thumbnail_base64?: string | null;

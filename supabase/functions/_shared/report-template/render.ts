@@ -4,20 +4,15 @@ import type {
   AIOutput,
   TopPost,
   KpiValue,
-  Recommendation,
-  SuggestedGoal,
 } from "./types.ts";
 import { escapeHtml } from "./escape.ts";
 import {
   lineChart,
-  barChart,
+  comboChart,
   heatmapChart,
   donutChart,
 } from "./charts.ts";
-import {
-  buildFallbackSummary,
-  buildFallbackRecommendations,
-} from "./fallback.ts";
+import { buildFallbackSummary } from "./fallback.ts";
 import { REPORT_TEMPLATE } from "./template-string.ts";
 
 // ---------------------------------------------------------------------------
@@ -189,24 +184,30 @@ function buildContentChart(data: ReportData, branding: WorkspaceBranding): strin
     { key: "images", label: "Imagens", color: "#6366f1" },
   ];
 
-  const groups = types
+  const items = types
     .filter((t) => breakdown[t.key] != null)
     .map((t) => {
       const b = breakdown[t.key]!;
       return {
         label: t.label,
-        values: [
-          { value: b.avg_reach, color: t.color, label: "Alcance" },
-          { value: b.avg_engagement * 100, color: t.color + "99", label: "Eng." },
-        ],
+        barValue: b.avg_reach,
+        lineValue: b.avg_engagement * 100,
+        barColor: t.color,
       };
     });
 
-  if (groups.length === 0) {
+  if (items.length === 0) {
     return `<div style="text-align:center;color:var(--text-muted);font-size:11px;padding:20px 0;">Sem dados de formatos para este período.</div>`;
   }
 
-  return barChart({ groups, width: 660, height: 200 });
+  return comboChart({
+    items,
+    width: 660,
+    height: 220,
+    lineColor: "#8b5cf6",
+    barLabel: "Alcance Médio",
+    lineLabel: "Engajamento %",
+  });
 }
 
 function buildDetailedKpis(data: ReportData): string {
@@ -226,36 +227,58 @@ function buildDetailedKpis(data: ReportData): string {
     .join("\n        ");
 }
 
+const ICON_HEART = `<svg width="8" height="8" viewBox="0 0 24 24" fill="var(--text-muted)" stroke="none" style="vertical-align:middle"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>`;
+const ICON_COMMENT = `<svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
+const ICON_BOOKMARK = `<svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`;
+const ICON_PLACEHOLDER = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>`;
+
+function buildPostCard(post: TopPost, rank: number): string {
+  const typeLabel =
+    post.type === "reel" ? "Reel" : post.type === "carousel" ? "Carrossel" : "Imagem";
+
+  const thumbContent = post.thumbnail_base64
+    ? `<img src="${escapeHtml(post.thumbnail_base64)}" alt="">`
+    : ICON_PLACEHOLDER;
+
+  return `<div class="post-card">
+      <div class="post-card-thumb">
+        <div class="post-card-rank">${rank}</div>
+        <div class="post-card-type">${escapeHtml(typeLabel)}</div>
+        ${thumbContent}
+      </div>
+      <div class="post-card-body">
+        <div class="post-card-caption">${escapeHtml(post.caption_preview)}</div>
+        <div class="post-card-stats">
+          <span class="post-card-stat"><strong>${escapeHtml(fmtCompact(post.reach))}</strong> alc.</span>
+          <span class="post-card-stat"><strong>${escapeHtml(fmtCompact(post.likes))}</strong> ${ICON_HEART}</span>
+          <span class="post-card-stat"><strong>${escapeHtml(fmtCompact(post.comments))}</strong> ${ICON_COMMENT}</span>
+          <span class="post-card-stat"><strong>${escapeHtml(fmtCompact(post.saves))}</strong> ${ICON_BOOKMARK}</span>
+        </div>
+      </div>
+    </div>`;
+}
+
+const POSTS_PER_PAGE = 9;
+
 function buildTopPosts(data: ReportData): string {
   if (data.top_posts.length === 0) {
     return `<div style="text-align:center;color:var(--text-muted);font-size:11px;padding:20px 0;">Nenhuma publicação neste período.</div>`;
   }
 
-  return data.top_posts
-    .slice(0, 5)
-    .map((post: TopPost, i: number) => {
-      const typeLabel =
-        post.type === "reel" ? "Reel" : post.type === "carousel" ? "Carrossel" : "Imagem";
+  const chunks: TopPost[][] = [];
+  for (let i = 0; i < data.top_posts.length; i += POSTS_PER_PAGE) {
+    chunks.push(data.top_posts.slice(i, i + POSTS_PER_PAGE));
+  }
 
-      const thumb = post.thumbnail_base64
-        ? `<img class="post-thumb" src="${escapeHtml(post.thumbnail_base64)}" alt="">`
-        : `<div class="post-thumb" style="display:flex;align-items:center;justify-content:center;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></div>`;
-
-      return `<div class="post-item">
-          <div class="post-rank">${i + 1}</div>
-          ${thumb}
-          <div class="post-info">
-            <div class="post-caption">${escapeHtml(post.caption_preview)}</div>
-            <span class="post-badge">${escapeHtml(typeLabel)}</span>
-            <div class="post-stats">
-              <span class="post-stat"><strong>${escapeHtml(fmtCompact(post.reach))}</strong> alcance</span>
-              <span class="post-stat"><strong>${escapeHtml(fmtNum(post.engagement, 1))}%</strong> eng.</span>
-              <span class="post-stat"><strong>${escapeHtml(fmtCompact(post.saves))}</strong> salvos</span>
-            </div>
-          </div>
-        </div>`;
+  let globalIndex = 0;
+  return chunks
+    .map((chunk, chunkIdx) => {
+      const cards = chunk.map((post) => buildPostCard(post, ++globalIndex)).join("\n      ");
+      const grid = `<div class="post-card-grid">\n      ${cards}\n    </div>`;
+      if (chunkIdx === 0) return grid;
+      return `{{FOOTER}}\n</div>\n\n<div class="page">\n  ${grid}`;
     })
-    .join("\n      ");
+    .join("\n  ");
 }
 
 function buildTagsTable(data: ReportData): string {
@@ -372,45 +395,6 @@ function buildHeatmap(data: ReportData, branding: WorkspaceBranding): string {
   });
 }
 
-function buildAiAnalysis(aiOutput: AIOutput | null): string {
-  if (!aiOutput) return "";
-  const paragraphs = aiOutput.detailed_analysis
-    .split("\n")
-    .filter((p) => p.trim())
-    .map((p) => `<p>${escapeHtml(p)}</p>`)
-    .join("\n      ");
-  return paragraphs;
-}
-
-function buildRecommendations(
-  recs: Recommendation[],
-): string {
-  return recs
-    .map(
-      (rec) => `<div class="rec-item">
-          <div class="rec-priority rec-priority--${escapeHtml(rec.priority)}"></div>
-          <div class="rec-content">
-            <div class="rec-title">${escapeHtml(rec.title)}</div>
-            <div class="rec-desc">${escapeHtml(rec.description)}</div>
-          </div>
-        </div>`,
-    )
-    .join("\n      ");
-}
-
-function buildGoals(goals: SuggestedGoal[]): string {
-  if (goals.length === 0) return "";
-  return goals
-    .map(
-      (g) => `<div class="goal-card">
-          <div class="goal-metric">${escapeHtml(g.metric)}</div>
-          <div class="goal-target">${escapeHtml(g.target)}</div>
-          <div class="goal-rationale">${escapeHtml(g.rationale)}</div>
-        </div>`,
-    )
-    .join("\n      ");
-}
-
 function buildFooter(data: ReportData, branding: WorkspaceBranding): string {
   return `<div class="page-footer">
       <span class="page-footer-brand">${escapeHtml(branding.workspace_name)}</span>
@@ -482,23 +466,7 @@ export function renderReport(opts: {
   html = html.replace("{{LOCATION}}", buildLocation(data, branding));
   html = html.replace("{{HEATMAP}}", buildHeatmap(data, branding));
 
-  // 13. AI analysis
-  const analysisHtml = aiOutput
-    ? buildAiAnalysis(aiOutput)
-    : `<p>${escapeHtml(buildFallbackSummary(data))}</p>`;
-  html = html.replace("{{AI_ANALYSIS}}", analysisHtml);
-
-  // 14. Recommendations
-  const recs = aiOutput
-    ? aiOutput.recommendations
-    : buildFallbackRecommendations(data);
-  html = html.replace("{{RECOMMENDATIONS}}", buildRecommendations(recs));
-
-  // 15. Goals
-  const goals = aiOutput ? aiOutput.suggested_goals : [];
-  html = html.replace("{{GOALS}}", buildGoals(goals));
-
-  // 16. Footer (replace all instances)
+  // 13. Footer (replace all instances)
   const footerHtml = buildFooter(data, branding);
   html = html.replaceAll("{{FOOTER}}", footerHtml);
 
@@ -511,6 +479,17 @@ export function renderReport(opts: {
   } else {
     html = html.replace(/\{\{#IF_HAS_AUDIENCE\}\}/g, "");
     html = html.replace(/\{\{\/IF_HAS_AUDIENCE\}\}/g, "");
+  }
+
+  // Strip heatmap block when best_times is empty
+  if (data.best_times.length === 0) {
+    html = html.replace(
+      /\{\{#IF_HAS_HEATMAP\}\}[\s\S]*?\{\{\/IF_HAS_HEATMAP\}\}/g,
+      "",
+    );
+  } else {
+    html = html.replace(/\{\{#IF_HAS_HEATMAP\}\}/g, "");
+    html = html.replace(/\{\{\/IF_HAS_HEATMAP\}\}/g, "");
   }
 
   // Strip tags block when tags_performance is empty

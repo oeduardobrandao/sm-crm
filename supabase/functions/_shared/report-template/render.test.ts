@@ -1,9 +1,9 @@
 import {
-  assertStringIncludes,
   assertEquals,
+  assertStringIncludes,
 } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { renderReport } from "./render.ts";
-import type { ReportData, WorkspaceBranding, AIOutput } from "./types.ts";
+import type { AIOutput, ReportData, WorkspaceBranding } from "./types.ts";
 
 const branding: WorkspaceBranding = {
   logo_base64: null,
@@ -39,6 +39,8 @@ const data: ReportData = {
       reach: 12400,
       engagement: 6.8,
       saves: 340,
+      likes: 980,
+      comments: 42,
       caption_preview: "5 dicas para...",
     },
   ],

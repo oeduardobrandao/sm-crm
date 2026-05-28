@@ -233,7 +233,7 @@ export async function generateAINarrative(
 
   let responseBody: unknown;
   try {
-    responseBody = await response.json();
+    responseBody = await response!.json();
   } catch (err) {
     return {
       output: null,

@@ -39,55 +39,82 @@ export function lineChart(opts: LineChartOptions): string {
 
   const PAD_TOP = 16;
   const PAD_BOTTOM = 32;
-  const PAD_LEFT = 40;
+  const PAD_LEFT = 48;
   const PAD_RIGHT = 16;
   const plotW = width - PAD_LEFT - PAD_RIGHT;
   const plotH = height - PAD_TOP - PAD_BOTTOM;
 
-  // Handle empty or single-point data gracefully
   if (data.length === 0) {
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"></svg>`;
   }
 
   const values = data.map((d) => d.value);
-  const maxVal = Math.max(...values);
-  const minVal = Math.min(...values);
-  const range = maxVal - minVal || 1; // avoid div-by-zero for flat lines
+  const rawMax = Math.max(...values);
+  const rawMin = Math.min(...values);
+  const rawRange = rawMax - rawMin || 1;
 
-  /** Map a data value to SVG y coordinate (higher value → lower y). */
+  // Add 10% padding below and 5% above so the line doesn't sit on the baseline
+  const paddedMin = Math.max(0, rawMin - rawRange * 0.1);
+  const paddedMax = rawMax + rawRange * 0.05;
+  const range = paddedMax - paddedMin || 1;
+
   const toY = (v: number) =>
-    r(PAD_TOP + plotH - ((v - minVal) / range) * plotH);
+    r(PAD_TOP + plotH - ((v - paddedMin) / range) * plotH);
 
-  /** Map a data index to SVG x coordinate. */
   const toX = (i: number) =>
     r(PAD_LEFT + (data.length === 1 ? plotW / 2 : (i / (data.length - 1)) * plotW));
 
-  // Build polyline points
   const points = data.map((d, i) => `${toX(i)},${toY(d.value)}`).join(" ");
 
-  // Build filled area polygon (close back along baseline)
+  // Area fills from data line down to the lowest data value, not to the axis baseline
+  const areaBottom = toY(paddedMin);
   const areaPoints = [
-    `${toX(0)},${r(PAD_TOP + plotH)}`,
+    `${toX(0)},${areaBottom}`,
     ...data.map((d, i) => `${toX(i)},${toY(d.value)}`),
-    `${toX(data.length - 1)},${r(PAD_TOP + plotH)}`,
+    `${toX(data.length - 1)},${areaBottom}`,
   ].join(" ");
 
-  // X-axis labels (show first, last, and evenly spaced up to ~6)
+  // X-axis labels
   const labelStep = Math.max(1, Math.ceil(data.length / 6));
+  const lastStepIdx = Math.floor((data.length - 1) / labelStep) * labelStep;
   const xLabels = data
     .map((d, i) => {
-      if (i % labelStep !== 0 && i !== data.length - 1) return "";
-      return `<text x="${toX(i)}" y="${height - 6}" text-anchor="middle" font-size="9" fill="#9ca3af" font-family="DM Mono, monospace">${d.label}</text>`;
+      const isLast = i === data.length - 1;
+      const isStep = i % labelStep === 0;
+      if (!isStep && !isLast) return "";
+      if (isLast && !isStep && (data.length - 1 - lastStepIdx) < labelStep * 0.6) return "";
+      return `<text x="${toX(i)}" y="${height - 6}" text-anchor="${isLast ? "end" : "middle"}" font-size="9" fill="#9ca3af" font-family="DM Mono, monospace">${d.label}</text>`;
     })
     .filter(Boolean)
     .join("");
 
-  // Y-axis labels (min and max)
-  const yAxisLabels = `
-    <text x="${PAD_LEFT - 4}" y="${r(PAD_TOP + plotH)}" text-anchor="end" font-size="9" fill="#9ca3af" font-family="DM Mono, monospace" dominant-baseline="middle">${r(minVal, 0)}</text>
-    <text x="${PAD_LEFT - 4}" y="${PAD_TOP}" text-anchor="end" font-size="9" fill="#9ca3af" font-family="DM Mono, monospace" dominant-baseline="middle">${r(maxVal, 0)}</text>`;
+  // Y-axis: compute 4 nice tick values spanning the padded range
+  const tickCount = 4;
+  const rawStep = range / tickCount;
+  const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep)));
+  const niceStep = Math.ceil(rawStep / magnitude) * magnitude;
+  const tickStart = Math.floor(paddedMin / niceStep) * niceStep;
 
-  // Marker lines (vertical dashed lines at matching labels)
+  const yTicks: number[] = [];
+  for (let v = tickStart; v <= paddedMax + niceStep * 0.5; v += niceStep) {
+    if (v >= paddedMin && v <= paddedMax) yTicks.push(v);
+  }
+  if (yTicks.length < 2) {
+    yTicks.length = 0;
+    for (let i = 0; i <= tickCount; i++) {
+      yTicks.push(Math.round(paddedMin + (range * i) / tickCount));
+    }
+  }
+
+  const gridLines = yTicks
+    .map((v) => {
+      const y = toY(v);
+      const label = v >= 10000 ? `${r(v / 1000, 1)}k` : String(Math.round(v));
+      return `<line x1="${PAD_LEFT}" y1="${y}" x2="${r(PAD_LEFT + plotW)}" y2="${y}" stroke="#9ca3af" stroke-width="0.5" opacity="0.3"/>
+    <text x="${PAD_LEFT - 4}" y="${y}" text-anchor="end" font-size="9" fill="#9ca3af" font-family="DM Mono, monospace" dominant-baseline="middle">${label}</text>`;
+    })
+    .join("\n    ");
+
   const markerLines = markers
     .map((m) => {
       const idx = data.findIndex((d) => d.label === m.label);
@@ -98,7 +125,9 @@ export function lineChart(opts: LineChartOptions): string {
     .join("");
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
-  <!-- grid line -->
+  <!-- grid lines & y-axis labels -->
+  ${gridLines}
+  <!-- axes -->
   <line x1="${PAD_LEFT}" y1="${PAD_TOP}" x2="${PAD_LEFT}" y2="${r(PAD_TOP + plotH)}" stroke="#374151" stroke-width="1"/>
   <line x1="${PAD_LEFT}" y1="${r(PAD_TOP + plotH)}" x2="${r(PAD_LEFT + plotW)}" y2="${r(PAD_TOP + plotH)}" stroke="#374151" stroke-width="1"/>
   <!-- filled area -->
@@ -109,9 +138,151 @@ export function lineChart(opts: LineChartOptions): string {
   <polyline points="${points}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
   <!-- data dots -->
   ${data.length <= 31 ? data.map((d, i) => `<circle cx="${toX(i)}" cy="${toY(d.value)}" r="2.5" fill="${color}"/>`).join("") : ""}
-  <!-- axis labels -->
-  ${yAxisLabels}
   ${xLabels}
+</svg>`;
+}
+
+// ---------------------------------------------------------------------------
+// comboChart — bars (left Y-axis) + line (right Y-axis, %)
+// ---------------------------------------------------------------------------
+
+interface ComboItem {
+  label: string;
+  barValue: number;
+  lineValue: number;
+  barColor: string;
+}
+
+interface ComboChartOptions {
+  items: ComboItem[];
+  width: number;
+  height: number;
+  lineColor: string;
+  barLabel: string;
+  lineLabel: string;
+}
+
+export function comboChart(opts: ComboChartOptions): string {
+  const { items, width, height, lineColor, barLabel, lineLabel } = opts;
+
+  const PAD_TOP = 36;
+  const PAD_BOTTOM = 36;
+  const PAD_LEFT = 48;
+  const PAD_RIGHT = 48;
+  const plotW = width - PAD_LEFT - PAD_RIGHT;
+  const plotH = height - PAD_TOP - PAD_BOTTOM;
+
+  if (items.length === 0) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"></svg>`;
+  }
+
+  // Left Y-axis: bar values (reach)
+  let barMax = Math.max(...items.map((d) => d.barValue));
+  if (barMax === 0) barMax = 1;
+
+  // Right Y-axis: line values (engagement %)
+  let lineMax = Math.max(...items.map((d) => d.lineValue));
+  if (lineMax === 0) lineMax = 1;
+  lineMax = Math.ceil(lineMax / 5) * 5; // round up to nearest 5%
+
+  const baseY = r(PAD_TOP + plotH);
+  const barGap = 24;
+  const barCount = items.length;
+  const barWidth = Math.min(80, (plotW - barGap * (barCount + 1)) / barCount);
+  const totalBarsWidth = barCount * barWidth + (barCount - 1) * barGap;
+  const startX = PAD_LEFT + (plotW - totalBarsWidth) / 2;
+
+  const toBarH = (v: number) => r((v / barMax) * plotH);
+  const toLineY = (v: number) => r(PAD_TOP + plotH - (v / lineMax) * plotH);
+
+  // Legend
+  const legend = `<rect x="${PAD_LEFT}" y="8" width="10" height="10" rx="2" fill="${items[0]?.barColor ?? "#888"}"/>
+    <text x="${PAD_LEFT + 14}" y="17" font-size="9" fill="#9ca3af" font-family="DM Sans, sans-serif">${barLabel}</text>
+    <line x1="${PAD_LEFT + 130}" y1="13" x2="${PAD_LEFT + 148}" y2="13" stroke="${lineColor}" stroke-width="2"/>
+    <circle cx="${PAD_LEFT + 139}" cy="13" r="3" fill="${lineColor}"/>
+    <text x="${PAD_LEFT + 152}" y="17" font-size="9" fill="#9ca3af" font-family="DM Sans, sans-serif">${lineLabel}</text>`;
+
+  // Left Y-axis ticks (reach)
+  const leftTicks = [0, 0.25, 0.5, 0.75, 1].map((pct) => {
+    const val = Math.round(barMax * pct);
+    const y = r(baseY - toBarH(val));
+    const label = val >= 1000 ? `${r(val / 1000, 1)}k` : String(val);
+    return `<line x1="${PAD_LEFT}" y1="${y}" x2="${r(PAD_LEFT + plotW)}" y2="${y}" stroke="#9ca3af" stroke-width="0.5" opacity="0.3"/>
+    <text x="${PAD_LEFT - 4}" y="${y}" text-anchor="end" font-size="9" fill="#9ca3af" font-family="DM Mono, monospace" dominant-baseline="middle">${label}</text>`;
+  }).join("\n    ");
+
+  // Right Y-axis ticks (engagement %)
+  const rightTicks = [0, 0.25, 0.5, 0.75, 1].map((pct) => {
+    const val = r(lineMax * pct, 1);
+    const y = r(baseY - (pct * plotH));
+    return `<text x="${r(PAD_LEFT + plotW + 4)}" y="${y}" text-anchor="start" font-size="9" fill="${lineColor}" font-family="DM Mono, monospace" dominant-baseline="middle">${val}%</text>`;
+  }).join("\n    ");
+
+  // Line points (computed first for collision detection)
+  const linePoints = items.map((item, i) => {
+    const cx = r(startX + i * (barWidth + barGap) + barWidth / 2);
+    const cy = toLineY(item.lineValue);
+    const barTopY = r(baseY - toBarH(item.barValue));
+    return { cx, cy, value: item.lineValue, barTopY };
+  });
+
+  const polyline = linePoints.map((p) => `${p.cx},${p.cy}`).join(" ");
+
+  // Bars (rects + category labels only)
+  const bars = items.map((item, i) => {
+    const bx = r(startX + i * (barWidth + barGap));
+    const bh = toBarH(item.barValue);
+    const by = r(baseY - bh);
+    return `<rect x="${bx}" y="${by}" width="${r(barWidth)}" height="${bh}" fill="${item.barColor}" rx="3"/>
+    <text x="${r(bx + barWidth / 2)}" y="${r(baseY + 14)}" text-anchor="middle" font-size="10" fill="#9ca3af" font-family="DM Sans, sans-serif">${item.label}</text>`;
+  }).join("\n    ");
+
+  // Bar value labels (separate layer, with collision avoidance against line dots)
+  const barValueLabels = items.map((item, i) => {
+    const p = linePoints[i];
+    const label = item.barValue >= 1000
+      ? `${r(item.barValue / 1000, 1)}k`
+      : String(Math.round(item.barValue));
+    let labelY = r(p.barTopY + 14);
+    if (Math.abs(labelY - p.cy) < 18) {
+      const belowLine = p.cy + 22;
+      const aboveLine = p.cy - 14;
+      labelY = belowLine < baseY - 8
+        ? r(belowLine)
+        : r(Math.max(p.barTopY + 14, aboveLine));
+    }
+    return `<text x="${p.cx}" y="${labelY}" text-anchor="middle" font-size="9" font-weight="600" fill="#fff" font-family="DM Mono, monospace">${label}</text>`;
+  }).join("\n    ");
+
+  // Line dot circles (rendered between bars and labels)
+  const dotCircles = linePoints.map((p) => {
+    return `<circle cx="${p.cx}" cy="${p.cy}" r="4" fill="${lineColor}" stroke="#fff" stroke-width="2"/>`;
+  }).join("\n    ");
+
+  // Engagement % pills (topmost layer, with collision avoidance)
+  const dotPills = linePoints.map((p) => {
+    const label = `${r(p.value, 1)}%`;
+    const pillW = label.length * 6.5 + 8;
+    const pillH = 16;
+    let labelY = r(p.cy - 12);
+    const barLabelY = p.barTopY + 14;
+    if (Math.abs(labelY - barLabelY) < 18) {
+      labelY = r(p.barTopY - 8);
+    }
+    return `<rect x="${r(p.cx - pillW / 2)}" y="${r(labelY - pillH / 2)}" width="${pillW}" height="${pillH}" rx="8" fill="${lineColor}"/>
+    <text x="${p.cx}" y="${r(labelY + 1)}" text-anchor="middle" font-size="8.5" font-weight="700" fill="#fff" font-family="DM Mono, monospace" dominant-baseline="middle">${label}</text>`;
+  }).join("\n    ");
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+  ${legend}
+  ${leftTicks}
+  ${rightTicks}
+  <line x1="${PAD_LEFT}" y1="${baseY}" x2="${r(PAD_LEFT + plotW)}" y2="${baseY}" stroke="#374151" stroke-width="1"/>
+  ${bars}
+  <polyline points="${polyline}" fill="none" stroke="${lineColor}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+  ${dotCircles}
+  ${barValueLabels}
+  ${dotPills}
 </svg>`;
 }
 
@@ -121,19 +292,25 @@ export function lineChart(opts: LineChartOptions): string {
 
 interface BarGroup {
   label: string;
-  values: { value: number; color: string; label: string }[];
+  values: { value: number; color: string; label: string; suffix?: string }[];
+}
+
+interface LegendItem {
+  label: string;
+  color: string;
 }
 
 interface BarChartOptions {
   groups: BarGroup[];
   width: number;
   height: number;
+  legend?: LegendItem[];
 }
 
 export function barChart(opts: BarChartOptions): string {
-  const { groups, width, height } = opts;
+  const { groups, width, height, legend } = opts;
 
-  const PAD_TOP = 24;
+  const PAD_TOP = legend ? 36 : 24;
   const PAD_BOTTOM = 36;
   const PAD_LEFT = 48;
   const PAD_RIGHT = 16;
@@ -173,10 +350,10 @@ export function barChart(opts: BarChartOptions): string {
           const bx = r(groupX + vi * (barWidth + barGap));
           const bh = toBarH(v.value);
           const by = r(baseY - bh);
-          // Format label above bar
+          const suffix = v.suffix ?? "";
           const labelText = v.value >= 1000
-            ? `${r(v.value / 1000, 1)}k`
-            : String(v.value);
+            ? `${r(v.value / 1000, 1)}k${suffix}`
+            : `${r(v.value, 1)}${suffix}`;
           return `<rect x="${bx}" y="${by}" width="${r(barWidth)}" height="${bh}" fill="${v.color}" rx="3"/>
       <text x="${r(bx + barWidth / 2)}" y="${r(by - 4)}" text-anchor="middle" font-size="9" fill="#9ca3af" font-family="DM Mono, monospace">${labelText}</text>`;
         })
@@ -195,12 +372,22 @@ export function barChart(opts: BarChartOptions): string {
       const val = Math.round(maxVal * pct);
       const y = r(baseY - toBarH(val));
       const labelText = val >= 1000 ? `${r(val / 1000, 1)}k` : String(val);
-      return `<line x1="${PAD_LEFT}" y1="${y}" x2="${r(PAD_LEFT + plotW)}" y2="${y}" stroke="#1e2430" stroke-width="1"/>
+      return `<line x1="${PAD_LEFT}" y1="${y}" x2="${r(PAD_LEFT + plotW)}" y2="${y}" stroke="#9ca3af" stroke-width="0.5" opacity="0.3"/>
     <text x="${PAD_LEFT - 4}" y="${y}" text-anchor="end" font-size="9" fill="#9ca3af" font-family="DM Mono, monospace" dominant-baseline="middle">${labelText}</text>`;
     })
     .join("\n    ");
 
+  const legendSvg = legend
+    ? legend.map((item, i) => {
+        const lx = PAD_LEFT + i * 140;
+        return `<rect x="${lx}" y="8" width="10" height="10" rx="2" fill="${item.color}"/>
+    <text x="${lx + 14}" y="17" font-size="9" fill="#9ca3af" font-family="DM Sans, sans-serif">${item.label}</text>`;
+      }).join("\n    ")
+    : "";
+
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+  <!-- legend -->
+  ${legendSvg}
   <!-- grid lines & y-axis labels -->
   ${ticks}
   <!-- bars -->
@@ -302,15 +489,20 @@ interface DonutChartOptions {
 export function donutChart(opts: DonutChartOptions): string {
   const { segments, size } = opts;
 
+  // Add padding for labels outside the donut
+  const pad = 50;
+  const svgW = size + pad * 2;
+  const svgH = size + pad;
+
   if (segments.length === 0) {
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"></svg>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}"></svg>`;
   }
 
-  const cx = size / 2;
-  const cy = size / 2;
+  const cx = svgW / 2;
+  const cy = size / 2 + 4;
   const outerR = size * 0.4;
-  const innerR = size * 0.24; // ~40% of outer for donut hole
-  const labelR = outerR + 14; // radius for label anchors
+  const innerR = size * 0.24;
+  const labelR = outerR + 18;
 
   const total = segments.reduce((sum, s) => sum + s.value, 0) || 1;
 
@@ -339,7 +531,6 @@ export function donutChart(opts: DonutChartOptions): string {
 
     paths.push(`<path d="${d}" fill="${seg.color}"/>`);
 
-    // Label at midpoint angle
     const midAngle = startAngle + sweep / 2;
     const lp = polarToCartesian(cx, cy, labelR, midAngle);
     const anchor = lp.x > cx + 2 ? "start" : lp.x < cx - 2 ? "end" : "middle";
@@ -352,7 +543,7 @@ export function donutChart(opts: DonutChartOptions): string {
     startAngle = endAngle;
   }
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}">
   ${paths.join("\n  ")}
   ${labels.join("\n  ")}
 </svg>`;

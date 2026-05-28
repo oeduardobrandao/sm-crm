@@ -51,13 +51,13 @@ Deno.test("validateAIOutput accepts valid output", () => {
       { metric: "reach", target: "50.000 alcance", rationale: "Tendência de alta de 8%" },
     ],
   };
-  const result = validateAIOutput(valid, Object.keys(fixture.kpis));
+  const result = validateAIOutput(valid);
   assertEquals(result.valid, true);
 });
 
 Deno.test("validateAIOutput rejects missing fields", () => {
   const invalid = { executive_summary: "text" };
-  const result = validateAIOutput(invalid, Object.keys(fixture.kpis));
+  const result = validateAIOutput(invalid);
   assertEquals(result.valid, false);
 });
 
@@ -75,6 +75,6 @@ Deno.test("validateAIOutput rejects too-short executive_summary", () => {
       { metric: "saves", target: "2k", rationale: "reason" },
     ],
   };
-  const result = validateAIOutput(invalid, Object.keys(fixture.kpis));
+  const result = validateAIOutput(invalid);
   assertEquals(result.valid, false);
 });
