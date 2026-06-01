@@ -72,6 +72,30 @@ const STATUS_CLASS: Record<WorkflowPost['status'], string> = {
   falha_publicacao: 'status-danger',
 };
 
+const MESES_ABREV = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+
+// Compact pt-BR publish-date label for the collapsed post row, e.g. "8 jun · 14h"
+// or "18 jul · 18h30". Minutes show only when non-zero; the year is appended only
+// when it differs from the current year, so an off-year date never reads ambiguously.
+function formatPostDate(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const ano = d.getFullYear() !== new Date().getFullYear() ? ` ${d.getFullYear()}` : '';
+  const hh = String(d.getHours()).padStart(2, '0');
+  const min = d.getMinutes();
+  const hora = min === 0 ? `${hh}h` : `${hh}h${String(min).padStart(2, '0')}`;
+  return `${d.getDate()} ${MESES_ABREV[d.getMonth()]}${ano} · ${hora}`;
+}
+
+// Full, readable form for the row's tooltip, e.g. "8 de junho de 2026, 14:00".
+function formatPostDateFull(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleString('pt-BR', {
+    day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+}
+
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 interface WorkflowDrawerProps {
@@ -745,6 +769,11 @@ function SortablePostItem({
     || post.status === 'correcao_cliente' || post.status === 'agendado' || post.status === 'postado' || post.status === 'falha_publicacao';
   const isScheduleLocked = post.status === 'agendado';
 
+  // Publish date shown in the collapsed row: once a post is actually live the real
+  // published_at wins, otherwise fall back to the scheduled "Data de postagem".
+  const publishIso = post.published_at || post.scheduled_at || null;
+  const isPublished = post.published_at != null;
+
   return (
     <div
       ref={setNodeRef}
@@ -787,6 +816,16 @@ function SortablePostItem({
         </div>
         <div className="drawer-post-trigger-right" onClick={e => e.stopPropagation()}>
           {isSaving && <span className="drawer-saving-indicator">Salvando…</span>}
+          {publishIso ? (
+            <span
+              className="drawer-post-date"
+              title={`${isPublished ? 'Publicado em' : 'Agendado para'} ${formatPostDateFull(publishIso)}`}
+            >
+              {formatPostDate(publishIso)}
+            </span>
+          ) : (
+            <span className="drawer-post-date drawer-post-date--empty">A definir</span>
+          )}
           <span className={`post-status-chip ${STATUS_CLASS[post.status]}`}>
             {STATUS_LABELS[post.status]}
           </span>

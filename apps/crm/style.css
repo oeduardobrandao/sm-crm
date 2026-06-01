@@ -4835,6 +4835,21 @@ body.role-agent input[name="valor_total"] {
   color: var(--text-muted);
 }
 
+.drawer-post-date {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
+.drawer-post-date--empty {
+  font-style: italic;
+  opacity: 0.75;
+}
+
 .drawer-delete-btn {
   display: flex;
   align-items: center;
