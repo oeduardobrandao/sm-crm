@@ -1,5 +1,5 @@
 import {
-  AlertTriangle, Bell, CheckCircle, CheckSquare, ClipboardCheck, Clock,
+  AlertTriangle, Bell, CheckCircle, CheckSquare, ClipboardCheck, Clock, FilePen,
   Lightbulb, MessageSquare, Play, Shield, Trophy, UserCheck, UserMinus, UserPlus,
   type LucideIcon,
 } from 'lucide-react';
@@ -49,6 +49,8 @@ export function getNotificationDisplay(
       return { icon: AlertTriangle, tone: 'warning', title: 'Correção solicitada', body: `${client} — ${post}` };
     case 'post_message':
       return { icon: MessageSquare, tone: 'teal', title: 'Nova mensagem do cliente', body: `${client} — ${post}` };
+    case 'post_edit_suggestion':
+      return { icon: FilePen, tone: 'warning', title: 'Sugestão de edição do cliente', body: `${client} — ${post}` };
     case 'idea_submitted':
       return { icon: Lightbulb, tone: 'primary', title: 'Nova ideia do cliente', body: `${client} — ${idea}` };
     case 'briefing_answered':
@@ -69,5 +71,9 @@ export function getNotificationDisplay(
       return { icon: Shield, tone: 'warning', title: 'Cargo alterado', body: `${userName}: ${oldRole} → ${newRole}` };
     case 'member_removed':
       return { icon: UserMinus, tone: 'danger', title: 'Membro removido', body: userName };
+    default:
+      // Resilience: a notification type the DB allows but the UI doesn't know yet
+      // (e.g. added by a migration ahead of the frontend) must never crash the list.
+      return { icon: NOTIFICATION_FALLBACK_ICON, tone: 'primary', title: 'Notificação', body: '' };
   }
 }
