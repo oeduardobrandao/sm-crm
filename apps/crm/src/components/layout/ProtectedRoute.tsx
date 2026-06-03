@@ -19,7 +19,9 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
 
   if (loading || limitsLoading) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
+      <div
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}
+      >
         <Spinner size="lg" />
       </div>
     );
@@ -29,7 +31,7 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  if (role === 'agent' && AGENT_BLOCKED.some(p => location.pathname.startsWith(p))) {
+  if (role === 'agent' && AGENT_BLOCKED.some((p) => location.pathname.startsWith(p))) {
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -41,10 +43,11 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
     }
   }
 
-  const needsSetup = role === 'owner'
-    && profile !== null
-    && !(profile as any).empresa
-    && location.pathname !== '/workspace-setup';
+  const needsSetup =
+    role === 'owner' &&
+    profile !== null &&
+    !(profile as any).empresa &&
+    location.pathname !== '/workspace-setup';
 
   if (needsSetup) {
     return <Navigate to="/workspace-setup" replace />;

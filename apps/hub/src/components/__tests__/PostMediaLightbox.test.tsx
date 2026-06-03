@@ -29,26 +29,36 @@ describe('PostMediaLightbox', () => {
       makeMedia({ id: 3, url: 'https://cdn.example.com/image-3.jpg' }),
     ];
 
-    render(
-      <PostMediaLightbox media={media} initialIndex={1} onClose={onClose} />,
-    );
+    render(<PostMediaLightbox media={media} initialIndex={1} onClose={onClose} />);
 
-    expect(document.body.querySelector('img')).toHaveAttribute('src', 'https://cdn.example.com/image-2.jpg');
+    expect(document.body.querySelector('img')).toHaveAttribute(
+      'src',
+      'https://cdn.example.com/image-2.jpg',
+    );
     expect(screen.getByText('2 / 3')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Próxima' }));
 
-    expect(document.body.querySelector('img')).toHaveAttribute('src', 'https://cdn.example.com/image-3.jpg');
+    expect(document.body.querySelector('img')).toHaveAttribute(
+      'src',
+      'https://cdn.example.com/image-3.jpg',
+    );
     expect(screen.getByText('3 / 3')).toBeInTheDocument();
 
     fireEvent.keyDown(window, { key: 'ArrowRight' });
 
-    expect(document.body.querySelector('img')).toHaveAttribute('src', 'https://cdn.example.com/image-1.jpg');
+    expect(document.body.querySelector('img')).toHaveAttribute(
+      'src',
+      'https://cdn.example.com/image-1.jpg',
+    );
     expect(screen.getByText('1 / 3')).toBeInTheDocument();
 
     fireEvent.keyDown(window, { key: 'ArrowLeft' });
 
-    expect(document.body.querySelector('img')).toHaveAttribute('src', 'https://cdn.example.com/image-3.jpg');
+    expect(document.body.querySelector('img')).toHaveAttribute(
+      'src',
+      'https://cdn.example.com/image-3.jpg',
+    );
     expect(screen.getByText('3 / 3')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('dialog'));
@@ -64,13 +74,14 @@ describe('PostMediaLightbox', () => {
       makeMedia({ id: 2, url: 'https://cdn.example.com/image-2.jpg' }),
     ];
 
-    render(
-      <PostMediaLightbox media={media} initialIndex={0} onClose={vi.fn()} />,
-    );
+    render(<PostMediaLightbox media={media} initialIndex={0} onClose={vi.fn()} />);
 
     const dialog = screen.getByRole('dialog');
 
-    expect(document.body.querySelector('img')).toHaveAttribute('src', 'https://cdn.example.com/image-1.jpg');
+    expect(document.body.querySelector('img')).toHaveAttribute(
+      'src',
+      'https://cdn.example.com/image-1.jpg',
+    );
 
     fireEvent.touchStart(dialog, {
       touches: [{ clientX: 220, clientY: 120 }],
@@ -79,7 +90,10 @@ describe('PostMediaLightbox', () => {
       changedTouches: [{ clientX: 120, clientY: 110 }],
     });
 
-    expect(document.body.querySelector('img')).toHaveAttribute('src', 'https://cdn.example.com/image-2.jpg');
+    expect(document.body.querySelector('img')).toHaveAttribute(
+      'src',
+      'https://cdn.example.com/image-2.jpg',
+    );
 
     fireEvent.touchStart(dialog, {
       touches: [{ clientX: 220, clientY: 120 }],
@@ -88,7 +102,10 @@ describe('PostMediaLightbox', () => {
       changedTouches: [{ clientX: 140, clientY: 260 }],
     });
 
-    expect(document.body.querySelector('img')).toHaveAttribute('src', 'https://cdn.example.com/image-2.jpg');
+    expect(document.body.querySelector('img')).toHaveAttribute(
+      'src',
+      'https://cdn.example.com/image-2.jpg',
+    );
 
     fireEvent.touchStart(dialog, {
       touches: [{ clientX: 120, clientY: 120 }],
@@ -97,7 +114,10 @@ describe('PostMediaLightbox', () => {
       changedTouches: [{ clientX: 210, clientY: 130 }],
     });
 
-    expect(document.body.querySelector('img')).toHaveAttribute('src', 'https://cdn.example.com/image-1.jpg');
+    expect(document.body.querySelector('img')).toHaveAttribute(
+      'src',
+      'https://cdn.example.com/image-1.jpg',
+    );
   });
 
   it('calls the stale URL callback when image and video media fail to load', () => {

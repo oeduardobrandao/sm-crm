@@ -8,7 +8,7 @@ function doc(...content: Record<string, unknown>[]): Record<string, unknown> {
 function p(...text: string[]): Record<string, unknown> {
   return {
     type: 'paragraph',
-    content: text.map(t => ({ type: 'text', text: t })),
+    content: text.map((t) => ({ type: 'text', text: t })),
   };
 }
 
@@ -23,7 +23,7 @@ function heading(text: string, level = 2): Record<string, unknown> {
 function bulletList(...items: string[]): Record<string, unknown> {
   return {
     type: 'bulletList',
-    content: items.map(text => ({
+    content: items.map((text) => ({
       type: 'listItem',
       content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
     })),
@@ -43,12 +43,8 @@ describe('computeTipTapDiff', () => {
     const result = computeTipTapDiff(original, suggested) as any;
 
     const content = result.content[0].content;
-    const hasDelete = content.some((n: any) =>
-      n.marks?.some((m: any) => m.type === 'strike')
-    );
-    const hasInsert = content.some((n: any) =>
-      n.marks?.some((m: any) => m.type === 'highlight')
-    );
+    const hasDelete = content.some((n: any) => n.marks?.some((m: any) => m.type === 'strike'));
+    const hasInsert = content.some((n: any) => n.marks?.some((m: any) => m.type === 'highlight'));
     expect(hasDelete).toBe(true);
     expect(hasInsert).toBe(true);
   });
@@ -75,7 +71,7 @@ describe('computeTipTapDiff', () => {
     expect(firstItem.type).toBe('listItem');
     const firstItemText = firstItem.content[0].content;
     const hasDelete = firstItemText.some((n: any) =>
-      n.marks?.some((m: any) => m.type === 'strike')
+      n.marks?.some((m: any) => m.type === 'strike'),
     );
     expect(hasDelete).toBe(true);
 
@@ -95,7 +91,7 @@ describe('computeTipTapDiff', () => {
     expect(result.content).toHaveLength(2);
     const addedBlock = result.content[1];
     const hasInsertMark = addedBlock.content.some((n: any) =>
-      n.marks?.some((m: any) => m.type === 'highlight')
+      n.marks?.some((m: any) => m.type === 'highlight'),
     );
     expect(hasInsertMark).toBe(true);
   });
@@ -108,7 +104,7 @@ describe('computeTipTapDiff', () => {
     expect(result.content).toHaveLength(2);
     const deletedBlock = result.content[1];
     const hasStrike = deletedBlock.content.some((n: any) =>
-      n.marks?.some((m: any) => m.type === 'strike')
+      n.marks?.some((m: any) => m.type === 'strike'),
     );
     expect(hasStrike).toBe(true);
   });
@@ -120,7 +116,7 @@ describe('computeTipTapDiff', () => {
 
     expect(result.content[0].type).toBe('paragraph');
     const hasInsert = result.content[0].content.some((n: any) =>
-      n.marks?.some((m: any) => m.type === 'highlight')
+      n.marks?.some((m: any) => m.type === 'highlight'),
     );
     expect(hasInsert).toBe(true);
   });
@@ -131,7 +127,7 @@ describe('computeTipTapDiff', () => {
     const result = computeTipTapDiff(original, suggested) as any;
 
     const deleted = result.content[0].content.find((n: any) =>
-      n.marks?.some((m: any) => m.type === 'strike')
+      n.marks?.some((m: any) => m.type === 'strike'),
     );
     expect(deleted).toBeDefined();
     const colorMark = deleted.marks.find((m: any) => m.type === 'textStyle');
@@ -144,7 +140,7 @@ describe('computeTipTapDiff', () => {
     const result = computeTipTapDiff(original, suggested) as any;
 
     const inserted = result.content[0].content.find((n: any) =>
-      n.marks?.some((m: any) => m.type === 'highlight')
+      n.marks?.some((m: any) => m.type === 'highlight'),
     );
     expect(inserted).toBeDefined();
     const highlightMark = inserted.marks.find((m: any) => m.type === 'highlight');
@@ -183,7 +179,7 @@ describe('computeTipTapDiff', () => {
     const secondBulletItems = result.content[3].content;
     const changedItemText = secondBulletItems[1].content[0].content;
     const hasInsert = changedItemText.some((n: any) =>
-      n.marks?.some((m: any) => m.type === 'highlight')
+      n.marks?.some((m: any) => m.type === 'highlight'),
     );
     expect(hasInsert).toBe(true);
   });
@@ -199,7 +195,9 @@ describe('computeTipTapDiff', () => {
     // B should appear as deleted
     const deletedB = result.content.find((n: any) => {
       if (!n.content) return false;
-      return n.content.some((c: any) => c.text === 'B' && c.marks?.some((m: any) => m.type === 'strike'));
+      return n.content.some(
+        (c: any) => c.text === 'B' && c.marks?.some((m: any) => m.type === 'strike'),
+      );
     });
     expect(deletedB).toBeDefined();
     // C should be unchanged
@@ -225,7 +223,7 @@ describe('computeTipTapDiff', () => {
     });
     expect(middleBlock).toBeDefined();
     const middleHasInsert = middleBlock.content.some((c: any) =>
-      c.marks?.some((m: any) => m.type === 'highlight')
+      c.marks?.some((m: any) => m.type === 'highlight'),
     );
     expect(middleHasInsert).toBe(true);
     // Last should be unchanged

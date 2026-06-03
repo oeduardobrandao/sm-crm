@@ -4,12 +4,15 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const analyticsTestState = vi.hoisted(() => ({
-  queryFixtures: new Map<number, {
-    data?: unknown;
-    isLoading: boolean;
-    error: Error | null;
-    refetch: ReturnType<typeof vi.fn>;
-  }>(),
+  queryFixtures: new Map<
+    number,
+    {
+      data?: unknown;
+      isLoading: boolean;
+      error: Error | null;
+      refetch: ReturnType<typeof vi.fn>;
+    }
+  >(),
   defaultQueryResult: {
     data: undefined,
     isLoading: false,
@@ -52,7 +55,13 @@ vi.mock('@/components/ui/button', () => ({
     size?: string;
     variant?: string;
   }) => (
-    <button type="button" onClick={onClick} disabled={disabled} data-size={size} data-variant={variant}>
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      data-size={size}
+      data-variant={variant}
+    >
       {children}
     </button>
   ),
@@ -65,14 +74,22 @@ vi.mock('@/components/ui/badge', () => ({
 }));
 
 vi.mock('@/components/ui/spinner', () => ({
-  Spinner: ({ size }: { size?: string }) => <div role="status" data-size={size}>Loading</div>,
+  Spinner: ({ size }: { size?: string }) => (
+    <div role="status" data-size={size}>
+      Loading
+    </div>
+  ),
 }));
 
 vi.mock('@/components/ui/table', () => ({
   Table: ({ children }: { children: ReactNode }) => <table>{children}</table>,
   TableBody: ({ children }: { children: ReactNode }) => <tbody>{children}</tbody>,
   TableCell: ({ children, ...props }: { children: ReactNode }) => <td {...props}>{children}</td>,
-  TableHead: ({ children, ...props }: { children: ReactNode }) => <th scope="col" {...props}>{children}</th>,
+  TableHead: ({ children, ...props }: { children: ReactNode }) => (
+    <th scope="col" {...props}>
+      {children}
+    </th>
+  ),
   TableHeader: ({ children }: { children: ReactNode }) => <thead>{children}</thead>,
   TableRow: ({ children, ...props }: { children: ReactNode }) => <tr {...props}>{children}</tr>,
 }));
@@ -139,7 +156,11 @@ vi.mock('@/components/ui/select', () => {
     const items = collectItems(children);
 
     return (
-      <select aria-label="select" value={value} onChange={(event) => onValueChange(event.target.value)}>
+      <select
+        aria-label="select"
+        value={value}
+        onChange={(event) => onValueChange(event.target.value)}
+      >
         {items.map((item) => (
           <option key={item.value} value={item.value}>
             {item.label}
@@ -208,17 +229,48 @@ import { useQuery } from '@tanstack/react-query';
 import { getPortfolioAIAnalysis } from '../../../services/analytics';
 import { syncInstagramData } from '../../../services/instagram';
 import AnalyticsPage from '../AnalyticsPage';
-import type { PortfolioAccount, PortfolioSummary, PortfolioTopPost } from '../../../services/analytics';
+import type {
+  PortfolioAccount,
+  PortfolioSummary,
+  PortfolioTopPost,
+} from '../../../services/analytics';
 
 const mockedUseQuery = vi.mocked(useQuery);
 const mockedGetPortfolioAIAnalysis = vi.mocked(getPortfolioAIAnalysis);
 const mockedSyncInstagramData = vi.mocked(syncInstagramData);
 
-function makeAccount(overrides: Partial<PortfolioAccount> & Pick<PortfolioAccount, 'client_id' | 'client_name' | 'client_sigla' | 'client_cor' | 'client_especialidade' | 'instagram_account_id' | 'username' | 'profile_picture_url' | 'follower_count' | 'follower_delta' | 'reach_28d' | 'impressions_28d' | 'profile_views_28d' | 'website_clicks_28d' | 'media_count' | 'last_synced_at' | 'last_post_at' | 'posts_last_30d' | 'engagement_rate_avg'>): PortfolioAccount {
+function makeAccount(
+  overrides: Partial<PortfolioAccount> &
+    Pick<
+      PortfolioAccount,
+      | 'client_id'
+      | 'client_name'
+      | 'client_sigla'
+      | 'client_cor'
+      | 'client_especialidade'
+      | 'instagram_account_id'
+      | 'username'
+      | 'profile_picture_url'
+      | 'follower_count'
+      | 'follower_delta'
+      | 'reach_28d'
+      | 'impressions_28d'
+      | 'profile_views_28d'
+      | 'website_clicks_28d'
+      | 'media_count'
+      | 'last_synced_at'
+      | 'last_post_at'
+      | 'posts_last_30d'
+      | 'engagement_rate_avg'
+    >,
+): PortfolioAccount {
   return overrides;
 }
 
-function makeSummary(accounts: PortfolioAccount[], rankedPosts: PortfolioTopPost[] = []): PortfolioSummary {
+function makeSummary(
+  accounts: PortfolioAccount[],
+  rankedPosts: PortfolioTopPost[] = [],
+): PortfolioSummary {
   const bestByEngagement = accounts.reduce<PortfolioAccount | null>((best, account) => {
     if (!best || account.engagement_rate_avg > best.engagement_rate_avg) return account;
     return best;
@@ -255,7 +307,10 @@ function makeSummary(accounts: PortfolioAccount[], rankedPosts: PortfolioTopPost
   };
 }
 
-function makeRankedPost(overrides: Partial<PortfolioTopPost> & Pick<PortfolioTopPost, 'id' | 'client_name' | 'client_id' | 'reach' | 'engagement_rate'>): PortfolioTopPost {
+function makeRankedPost(
+  overrides: Partial<PortfolioTopPost> &
+    Pick<PortfolioTopPost, 'id' | 'client_name' | 'client_id' | 'reach' | 'engagement_rate'>,
+): PortfolioTopPost {
   return {
     thumbnail_url: null,
     media_type: 'IMAGE',
@@ -269,7 +324,10 @@ function makeRankedPost(overrides: Partial<PortfolioTopPost> & Pick<PortfolioTop
   };
 }
 
-function makeQueryResult(data: PortfolioSummary, overrides: Partial<{ isLoading: boolean; error: Error | null }> = {}) {
+function makeQueryResult(
+  data: PortfolioSummary,
+  overrides: Partial<{ isLoading: boolean; error: Error | null }> = {},
+) {
   return {
     data,
     isLoading: false,
@@ -279,7 +337,11 @@ function makeQueryResult(data: PortfolioSummary, overrides: Partial<{ isLoading:
   };
 }
 
-function setQueryFixture(days: number, data: PortfolioSummary, overrides: Partial<{ isLoading: boolean; error: Error | null }> = {}) {
+function setQueryFixture(
+  days: number,
+  data: PortfolioSummary,
+  overrides: Partial<{ isLoading: boolean; error: Error | null }> = {},
+) {
   const result = makeQueryResult(data, overrides);
   analyticsTestState.queryFixtures.set(days, result);
   return result;
@@ -418,17 +480,19 @@ describe('AnalyticsPage', () => {
 
   it('ranks best and attention posts by reach while keeping engagement visible', () => {
     const accounts = buildBaseAccounts();
-    const posts = Array.from({ length: 6 }, (_, index) => makeRankedPost({
-      id: index + 1,
-      client_id: index + 1,
-      client_name: `Reach Client ${index + 1}`,
-      reach: 1000 + index * 100,
-      engagement_rate: 6 - index,
-      likes: 20 + index,
-      comments: 3 + index,
-      saved: 5 + index,
-      shares: 1 + index,
-    }));
+    const posts = Array.from({ length: 6 }, (_, index) =>
+      makeRankedPost({
+        id: index + 1,
+        client_id: index + 1,
+        client_name: `Reach Client ${index + 1}`,
+        reach: 1000 + index * 100,
+        engagement_rate: 6 - index,
+        likes: 20 + index,
+        comments: 3 + index,
+        saved: 5 + index,
+        shares: 1 + index,
+      }),
+    );
     setQueryFixture(28, makeSummary(accounts, posts));
 
     renderPage();
@@ -438,8 +502,12 @@ describe('AnalyticsPage', () => {
     expect(within(bestSection).getByText('1.500')).toBeInTheDocument();
     expect(within(bestSection).getByText('1.00%')).toBeInTheDocument();
 
-    const attentionSection = screen.getByText('Precisam de Atenção').closest('.card') as HTMLElement;
-    expect(within(attentionSection).getAllByText(/Reach Client/)[0]).toHaveTextContent('Reach Client 1');
+    const attentionSection = screen
+      .getByText('Precisam de Atenção')
+      .closest('.card') as HTMLElement;
+    expect(within(attentionSection).getAllByText(/Reach Client/)[0]).toHaveTextContent(
+      'Reach Client 1',
+    );
     expect(within(attentionSection).getByText('1.000')).toBeInTheDocument();
     expect(within(attentionSection).getByText('6.00%')).toBeInTheDocument();
 
@@ -502,7 +570,9 @@ describe('AnalyticsPage', () => {
     fireEvent.change(selects[1], { target: { value: '7' } });
 
     await waitFor(() => {
-      expect(mockedUseQuery).toHaveBeenCalledWith(expect.objectContaining({ queryKey: ['portfolio-summary', 7] }));
+      expect(mockedUseQuery).toHaveBeenCalledWith(
+        expect.objectContaining({ queryKey: ['portfolio-summary', 7] }),
+      );
     });
     expect(getKpiCard('SEGUIDORES TOTAIS')).toHaveTextContent('2.550');
     expect(getKpiCard('CONTAS CONECTADAS')).toHaveTextContent('1 / 1');
@@ -558,7 +628,8 @@ describe('AnalyticsPage', () => {
             keyMetric: '4.9% de engajamento',
           },
         ],
-        crossAccountInsights: 'Foque em consistência semanal • Aproveite o bom desempenho dos reels',
+        crossAccountInsights:
+          'Foque em consistência semanal • Aproveite o bom desempenho dos reels',
         resourceAllocation: 'Priorize 70% da rotina em conteúdos de alto alcance',
         monthlyDigest: 'Mês fechado com crescimento contínuo.',
         priorityActions: [
@@ -585,9 +656,15 @@ describe('AnalyticsPage', () => {
     expect(screen.getByText('bravo.health')).toBeInTheDocument();
     expect(screen.getByText('Foque em consistência semanal')).toBeInTheDocument();
     expect(screen.getByText('Aproveite o bom desempenho dos reels')).toBeInTheDocument();
-    expect(screen.getByText('Priorize 70% da rotina em conteúdos de alto alcance')).toBeInTheDocument();
+    expect(
+      screen.getByText('Priorize 70% da rotina em conteúdos de alto alcance'),
+    ).toBeInTheDocument();
     expect(screen.getByText('Dobrar a frequência de reels')).toBeInTheDocument();
-    expect(screen.getByText((_content, element) => element?.textContent?.startsWith('Gerado em') ?? false)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        (_content, element) => element?.textContent?.startsWith('Gerado em') ?? false,
+      ),
+    ).toBeInTheDocument();
   });
 
   it('shows a friendly AI error when the service returns an error payload', async () => {
@@ -605,7 +682,9 @@ describe('AnalyticsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Gerar Análise IA' }));
 
     await waitFor(() => {
-      expect(screen.getByText('Não foi possível gerar a análise. Tente novamente.')).toBeInTheDocument();
+      expect(
+        screen.getByText('Não foi possível gerar a análise. Tente novamente.'),
+      ).toBeInTheDocument();
     });
   });
 

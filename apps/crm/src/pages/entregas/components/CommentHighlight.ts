@@ -29,7 +29,9 @@ export const CommentHighlight = Mark.create({
       resolved: {
         default: false,
         parseHTML: (el: HTMLElement) => el.getAttribute('data-resolved') === 'true',
-        renderHTML: (attrs: Record<string, unknown>) => ({ 'data-resolved': String(attrs.resolved) }),
+        renderHTML: (attrs: Record<string, unknown>) => ({
+          'data-resolved': String(attrs.resolved),
+        }),
       },
     };
   },

@@ -10,7 +10,12 @@ interface TimePickerPopoverProps {
   previousTime?: { hour: number; minute: number };
 }
 
-export function TimePickerPopover({ date, onConfirm, onCancel, previousTime }: TimePickerPopoverProps) {
+export function TimePickerPopover({
+  date,
+  onConfirm,
+  onCancel,
+  previousTime,
+}: TimePickerPopoverProps) {
   const [hour, setHour] = useState(previousTime?.hour ?? 10);
   const [minute, setMinute] = useState(previousTime?.minute ?? 0);
   const ref = useRef<HTMLDivElement>(null);
@@ -46,11 +51,13 @@ export function TimePickerPopover({ date, onConfirm, onCancel, previousTime }: T
           <select
             aria-label="Hora"
             value={hour}
-            onChange={e => setHour(parseInt(e.target.value, 10))}
+            onChange={(e) => setHour(parseInt(e.target.value, 10))}
             className="time-picker-select"
           >
             {Array.from({ length: 24 }, (_, i) => (
-              <option key={i} value={i}>{String(i).padStart(2, '0')}</option>
+              <option key={i} value={i}>
+                {String(i).padStart(2, '0')}
+              </option>
             ))}
           </select>
         </div>
@@ -59,18 +66,24 @@ export function TimePickerPopover({ date, onConfirm, onCancel, previousTime }: T
           <select
             aria-label="Minuto"
             value={minute}
-            onChange={e => setMinute(parseInt(e.target.value, 10))}
+            onChange={(e) => setMinute(parseInt(e.target.value, 10))}
             className="time-picker-select"
           >
-            {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map(m => (
-              <option key={m} value={m}>{String(m).padStart(2, '0')}</option>
+            {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map((m) => (
+              <option key={m} value={m}>
+                {String(m).padStart(2, '0')}
+              </option>
             ))}
           </select>
         </div>
       </div>
       <div className="time-picker-actions">
-        <button onClick={onCancel} className="time-picker-cancel">Cancelar</button>
-        <button onClick={handleConfirm} className="time-picker-confirm">Confirmar</button>
+        <button onClick={onCancel} className="time-picker-cancel">
+          Cancelar
+        </button>
+        <button onClick={handleConfirm} className="time-picker-confirm">
+          Confirmar
+        </button>
       </div>
     </div>
   );

@@ -46,7 +46,9 @@ interface WorkspaceLimitsResponse {
 }
 
 async function fetchWorkspaceLimits(): Promise<WorkspaceLimitsResponse> {
-  const { data: { session } } = await supabase.auth.getSession();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
   if (!session) throw new Error('Not authenticated');
 
   const url = import.meta.env.VITE_SUPABASE_URL as string;

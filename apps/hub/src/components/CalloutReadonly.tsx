@@ -33,7 +33,17 @@ export const CalloutReadonly = Node.create({
   },
 
   renderHTML({ HTMLAttributes }) {
-    return ['div', mergeAttributes({ 'data-callout': '', class: `callout-block callout-block--${HTMLAttributes.color || 'brown'}` }, HTMLAttributes), 0];
+    return [
+      'div',
+      mergeAttributes(
+        {
+          'data-callout': '',
+          class: `callout-block callout-block--${HTMLAttributes.color || 'brown'}`,
+        },
+        HTMLAttributes,
+      ),
+      0,
+    ];
   },
 
   addNodeView() {

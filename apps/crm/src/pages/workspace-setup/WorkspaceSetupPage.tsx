@@ -34,10 +34,7 @@ export default function WorkspaceSetupPage() {
       if (wsErr) throw wsErr;
 
       // Update contas name
-      await supabase
-        .from('contas')
-        .update({ nome: workspaceName.trim() })
-        .eq('id', wsId);
+      await supabase.from('contas').update({ nome: workspaceName.trim() }).eq('id', wsId);
 
       // Update profile name + empresa
       const { error: profileErr } = await supabase
@@ -59,34 +56,47 @@ export default function WorkspaceSetupPage() {
   };
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '2rem 1rem',
-      background: '#f5f3ee',
-    }}>
-      <div style={{
-        background: '#fff',
-        borderRadius: 16,
-        width: '100%',
-        maxWidth: 440,
-        overflow: 'hidden',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.06)',
-      }}>
+    <div
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '2rem 1rem',
+        background: '#f5f3ee',
+      }}
+    >
+      <div
+        style={{
+          background: '#fff',
+          borderRadius: 16,
+          width: '100%',
+          maxWidth: 440,
+          overflow: 'hidden',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.06)',
+        }}
+      >
         {/* Header */}
         <div style={{ background: '#1a3d2b', padding: '2rem 2rem 1.75rem', textAlign: 'center' }}>
-          <img src="/logo-white.svg" alt="Mesaas" style={{ display: 'block', margin: '0 auto 1.5rem', height: 24, width: 'auto' }} />
-          <div style={{
-            width: 52, height: 52,
-            background: '#f0a832',
-            borderRadius: '50%',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 24,
-            margin: '0 auto 1rem',
-          }}>
+          <img
+            src="/logo-white.svg"
+            alt="Mesaas"
+            style={{ display: 'block', margin: '0 auto 1.5rem', height: 24, width: 'auto' }}
+          />
+          <div
+            style={{
+              width: 52,
+              height: 52,
+              background: '#f0a832',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 24,
+              margin: '0 auto 1rem',
+            }}
+          >
             🏢
           </div>
           <h1 style={{ color: '#fff', fontSize: 20, fontWeight: 600, margin: '0 0 0.35rem' }}>
@@ -106,7 +116,7 @@ export default function WorkspaceSetupPage() {
                   id="setup-nome"
                   placeholder="Ana dos Santos"
                   value={nome}
-                  onChange={e => setNome(e.target.value)}
+                  onChange={(e) => setNome(e.target.value)}
                   required
                   autoFocus
                 />
@@ -118,7 +128,7 @@ export default function WorkspaceSetupPage() {
                   id="setup-workspace"
                   placeholder="Agência Digital"
                   value={workspaceName}
-                  onChange={e => setWorkspaceName(e.target.value)}
+                  onChange={(e) => setWorkspaceName(e.target.value)}
                   required
                 />
               </div>
@@ -127,7 +137,13 @@ export default function WorkspaceSetupPage() {
                 type="submit"
                 disabled={loading || !nome.trim() || !workspaceName.trim()}
                 className="w-full"
-                style={{ height: 46, background: '#1a3d2b', borderColor: '#1a3d2b', fontSize: 15, fontWeight: 600 }}
+                style={{
+                  height: 46,
+                  background: '#1a3d2b',
+                  borderColor: '#1a3d2b',
+                  fontSize: 15,
+                  fontWeight: 600,
+                }}
               >
                 {loading && <Spinner size="sm" />}
                 Entrar na plataforma
@@ -136,36 +152,65 @@ export default function WorkspaceSetupPage() {
           </div>
         ) : (
           <div style={{ textAlign: 'center', padding: '2rem 2rem 2.5rem' }}>
-            <div style={{
-              width: 60, height: 60,
-              background: '#eaf3de',
-              borderRadius: '50%',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              margin: '0 auto 1.25rem',
-            }}>
+            <div
+              style={{
+                width: 60,
+                height: 60,
+                background: '#eaf3de',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 1.25rem',
+              }}
+            >
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-                <path d="M20 6L9 17L4 12" stroke="#3b6d11" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                <path
+                  d="M20 6L9 17L4 12"
+                  stroke="#3b6d11"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
               </svg>
             </div>
             <h2 style={{ fontSize: 18, fontWeight: 600, color: '#1a3d2b', margin: '0 0 0.5rem' }}>
               Tudo pronto, {nome.split(' ')[0]}!
             </h2>
             <p style={{ fontSize: 14, color: '#888780', lineHeight: 1.6, margin: '0 0 1.5rem' }}>
-              Bem-vindo ao <strong style={{ color: '#444441' }}>{workspaceName}</strong>. Redirecionando você agora...
+              Bem-vindo ao <strong style={{ color: '#444441' }}>{workspaceName}</strong>.
+              Redirecionando você agora...
             </p>
-            <div style={{ width: '100%', height: 4, background: '#f1efe8', borderRadius: 4, overflow: 'hidden' }}>
-              <div style={{
-                height: '100%',
-                background: '#1a3d2b',
-                width: `${progressWidth}%`,
+            <div
+              style={{
+                width: '100%',
+                height: 4,
+                background: '#f1efe8',
                 borderRadius: 4,
-                transition: 'width 2.5s ease',
-              }} />
+                overflow: 'hidden',
+              }}
+            >
+              <div
+                style={{
+                  height: '100%',
+                  background: '#1a3d2b',
+                  width: `${progressWidth}%`,
+                  borderRadius: 4,
+                  transition: 'width 2.5s ease',
+                }}
+              />
             </div>
           </div>
         )}
 
-        <div style={{ padding: '1rem 2rem', background: '#f8f7f3', borderTop: '1px solid #ece9e2', textAlign: 'center' }}>
+        <div
+          style={{
+            padding: '1rem 2rem',
+            background: '#f8f7f3',
+            borderTop: '1px solid #ece9e2',
+            textAlign: 'center',
+          }}
+        >
           <p style={{ fontSize: 12, color: '#888780', margin: 0 }}>
             Você pode alterar essas informações depois em Configurações.
           </p>

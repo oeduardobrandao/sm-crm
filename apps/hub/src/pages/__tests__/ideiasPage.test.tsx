@@ -80,7 +80,12 @@ function makeIdeia(
     comentario_autor: { nome: string } | null;
     created_at: string;
     updated_at: string;
-    ideia_reactions: Array<{ id: string; membro_id: number; emoji: string; membros: { nome: string } }>;
+    ideia_reactions: Array<{
+      id: string;
+      membro_id: number;
+      emoji: string;
+      membros: { nome: string };
+    }>;
   }> = {},
 ) {
   return {
@@ -125,11 +130,9 @@ describe('IdeiasPage', () => {
   });
 
   it('does not retry 4xx failures and lets the user retry manually', async () => {
-    mockedFetchIdeias
-      .mockRejectedValueOnce(new Error('HTTP 400'))
-      .mockResolvedValueOnce({
-        ideias: [makeIdeia({ id: 'idea-4xx', titulo: 'Ideia recuperada' })],
-      } as never);
+    mockedFetchIdeias.mockRejectedValueOnce(new Error('HTTP 400')).mockResolvedValueOnce({
+      ideias: [makeIdeia({ id: 'idea-4xx', titulo: 'Ideia recuperada' })],
+    } as never);
 
     const queryClient = createQueryClient();
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');

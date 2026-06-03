@@ -20,15 +20,19 @@ function renderBell() {
           <NotificationBell />
         </TooltipProvider>
       </MemoryRouter>
-    </QueryClientProvider>
+    </QueryClientProvider>,
   );
 }
 
 describe('NotificationBell', () => {
   it('shows a numeric badge when unreadCount > 0', () => {
     vi.mocked(useNotifications).mockReturnValue({
-      notifications: [], unreadCount: 3, isLoading: false,
-      markAsRead: vi.fn(), markAllAsRead: vi.fn(), dismiss: vi.fn(),
+      notifications: [],
+      unreadCount: 3,
+      isLoading: false,
+      markAsRead: vi.fn(),
+      markAllAsRead: vi.fn(),
+      dismiss: vi.fn(),
     });
     renderBell();
     expect(screen.getByText('3')).toBeInTheDocument();
@@ -36,8 +40,12 @@ describe('NotificationBell', () => {
 
   it('caps the badge at 99+', () => {
     vi.mocked(useNotifications).mockReturnValue({
-      notifications: [], unreadCount: 250, isLoading: false,
-      markAsRead: vi.fn(), markAllAsRead: vi.fn(), dismiss: vi.fn(),
+      notifications: [],
+      unreadCount: 250,
+      isLoading: false,
+      markAsRead: vi.fn(),
+      markAllAsRead: vi.fn(),
+      dismiss: vi.fn(),
     });
     renderBell();
     expect(screen.getByText('99+')).toBeInTheDocument();
@@ -45,8 +53,12 @@ describe('NotificationBell', () => {
 
   it('does not show a badge when unreadCount is 0', () => {
     vi.mocked(useNotifications).mockReturnValue({
-      notifications: [], unreadCount: 0, isLoading: false,
-      markAsRead: vi.fn(), markAllAsRead: vi.fn(), dismiss: vi.fn(),
+      notifications: [],
+      unreadCount: 0,
+      isLoading: false,
+      markAsRead: vi.fn(),
+      markAllAsRead: vi.fn(),
+      dismiss: vi.fn(),
     });
     renderBell();
     expect(screen.queryByTestId('notification-badge')).toBeNull();
@@ -54,8 +66,12 @@ describe('NotificationBell', () => {
 
   it('opens the popover on click', () => {
     vi.mocked(useNotifications).mockReturnValue({
-      notifications: [], unreadCount: 0, isLoading: false,
-      markAsRead: vi.fn(), markAllAsRead: vi.fn(), dismiss: vi.fn(),
+      notifications: [],
+      unreadCount: 0,
+      isLoading: false,
+      markAsRead: vi.fn(),
+      markAllAsRead: vi.fn(),
+      dismiss: vi.fn(),
     });
     renderBell();
     fireEvent.click(screen.getByRole('button', { name: 'Notificações' }));

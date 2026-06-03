@@ -10,9 +10,20 @@ import { TextStyle } from '@tiptap/extension-text-style';
 import Highlight from '@tiptap/extension-highlight';
 import Youtube from '@tiptap/extension-youtube';
 import {
-  Bold, Italic, Underline as UnderlineIcon, Link as LinkIcon,
-  List, ListOrdered, Baseline, Highlighter, Check, Lightbulb,
-  Youtube as YoutubeIcon, Code2, Heading2, Heading3,
+  Bold,
+  Italic,
+  Underline as UnderlineIcon,
+  Link as LinkIcon,
+  List,
+  ListOrdered,
+  Baseline,
+  Highlighter,
+  Check,
+  Lightbulb,
+  Youtube as YoutubeIcon,
+  Code2,
+  Heading2,
+  Heading3,
 } from 'lucide-react';
 import { CalloutExtension } from './CalloutExtension';
 import { createInlineImageExtension } from './InlineImageExtension';
@@ -89,7 +100,9 @@ export function ArticleEditor({
     ],
     content: initialContent ?? undefined,
     editable: !disabled,
-    onCreate: () => { isInitialized.current = true; },
+    onCreate: () => {
+      isInitialized.current = true;
+    },
     onUpdate: ({ editor: ed }) => {
       if (!isInitialized.current) return;
       onUpdate(ed.getJSON() as Record<string, unknown>, ed.getText());
@@ -108,10 +121,18 @@ export function ArticleEditor({
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
-      if (textColorOpen && textColorRef.current && !textColorRef.current.contains(e.target as Node)) {
+      if (
+        textColorOpen &&
+        textColorRef.current &&
+        !textColorRef.current.contains(e.target as Node)
+      ) {
         setTextColorOpen(false);
       }
-      if (highlightOpen && highlightRef.current && !highlightRef.current.contains(e.target as Node)) {
+      if (
+        highlightOpen &&
+        highlightRef.current &&
+        !highlightRef.current.contains(e.target as Node)
+      ) {
         setHighlightOpen(false);
       }
     };
@@ -145,25 +166,31 @@ export function ArticleEditor({
     setLinkPopoverOpen(false);
   }, [editor]);
 
-  const applyTextColor = useCallback((color: string | null) => {
-    if (!editor) return;
-    if (color) {
-      editor.chain().focus().setColor(color).run();
-    } else {
-      editor.chain().focus().unsetColor().run();
-    }
-    setTextColorOpen(false);
-  }, [editor]);
+  const applyTextColor = useCallback(
+    (color: string | null) => {
+      if (!editor) return;
+      if (color) {
+        editor.chain().focus().setColor(color).run();
+      } else {
+        editor.chain().focus().unsetColor().run();
+      }
+      setTextColorOpen(false);
+    },
+    [editor],
+  );
 
-  const applyHighlight = useCallback((color: string | null) => {
-    if (!editor) return;
-    if (color) {
-      editor.chain().focus().setHighlight({ color }).run();
-    } else {
-      editor.chain().focus().unsetHighlight().run();
-    }
-    setHighlightOpen(false);
-  }, [editor]);
+  const applyHighlight = useCallback(
+    (color: string | null) => {
+      if (!editor) return;
+      if (color) {
+        editor.chain().focus().setHighlight({ color }).run();
+      } else {
+        editor.chain().focus().unsetHighlight().run();
+      }
+      setHighlightOpen(false);
+    },
+    [editor],
+  );
 
   const addYoutube = useCallback(() => {
     if (!editor || !youtubeUrl.trim()) return;
@@ -186,55 +213,136 @@ export function ArticleEditor({
     <div className={`post-editor article-editor${disabled ? ' post-editor--readonly' : ''}`}>
       {!disabled && (
         <div className="post-editor-toolbar">
-          <button type="button" className={`post-editor-btn${editor?.isActive('heading', { level: 2 }) ? ' active' : ''}`}
-            onMouseDown={e => { e.preventDefault(); editor?.chain().focus().toggleHeading({ level: 2 }).run(); }} title="Heading 2">
+          <button
+            type="button"
+            className={`post-editor-btn${editor?.isActive('heading', { level: 2 }) ? ' active' : ''}`}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              editor?.chain().focus().toggleHeading({ level: 2 }).run();
+            }}
+            title="Heading 2"
+          >
             <Heading2 className="h-3.5 w-3.5" />
           </button>
-          <button type="button" className={`post-editor-btn${editor?.isActive('heading', { level: 3 }) ? ' active' : ''}`}
-            onMouseDown={e => { e.preventDefault(); editor?.chain().focus().toggleHeading({ level: 3 }).run(); }} title="Heading 3">
+          <button
+            type="button"
+            className={`post-editor-btn${editor?.isActive('heading', { level: 3 }) ? ' active' : ''}`}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              editor?.chain().focus().toggleHeading({ level: 3 }).run();
+            }}
+            title="Heading 3"
+          >
             <Heading3 className="h-3.5 w-3.5" />
           </button>
           <div className="post-editor-divider" />
-          <button type="button" className={`post-editor-btn${editor?.isActive('bulletList') ? ' active' : ''}`}
-            onMouseDown={e => { e.preventDefault(); editor?.chain().focus().toggleBulletList().run(); }} title="Bullet list">
+          <button
+            type="button"
+            className={`post-editor-btn${editor?.isActive('bulletList') ? ' active' : ''}`}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              editor?.chain().focus().toggleBulletList().run();
+            }}
+            title="Bullet list"
+          >
             <List className="h-3.5 w-3.5" />
           </button>
-          <button type="button" className={`post-editor-btn${editor?.isActive('orderedList') ? ' active' : ''}`}
-            onMouseDown={e => { e.preventDefault(); editor?.chain().focus().toggleOrderedList().run(); }} title="Ordered list">
+          <button
+            type="button"
+            className={`post-editor-btn${editor?.isActive('orderedList') ? ' active' : ''}`}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              editor?.chain().focus().toggleOrderedList().run();
+            }}
+            title="Ordered list"
+          >
             <ListOrdered className="h-3.5 w-3.5" />
           </button>
           <div className="post-editor-divider" />
-          <button type="button" className={`post-editor-btn${editor?.isActive('callout') ? ' active' : ''}`}
-            onMouseDown={e => { e.preventDefault(); editor?.chain().focus().insertCallout().run(); }} title="Callout">
+          <button
+            type="button"
+            className={`post-editor-btn${editor?.isActive('callout') ? ' active' : ''}`}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              editor?.chain().focus().insertCallout().run();
+            }}
+            title="Callout"
+          >
             <Lightbulb className="h-3.5 w-3.5" />
           </button>
 
           <div className="post-editor-link-wrapper" style={{ position: 'relative' }}>
-            <button type="button" className="post-editor-btn" title="YouTube"
-              onMouseDown={e => { e.preventDefault(); setYoutubePopoverOpen(v => !v); setIframePopoverOpen(false); setTimeout(() => youtubeInputRef.current?.focus(), 0); }}>
+            <button
+              type="button"
+              className="post-editor-btn"
+              title="YouTube"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setYoutubePopoverOpen((v) => !v);
+                setIframePopoverOpen(false);
+                setTimeout(() => youtubeInputRef.current?.focus(), 0);
+              }}
+            >
               <YoutubeIcon className="h-3.5 w-3.5" />
             </button>
             {youtubePopoverOpen && (
-              <div className="post-editor-link-popover" onMouseDown={e => e.stopPropagation()}>
-                <input ref={youtubeInputRef} className="post-editor-link-input" type="url" placeholder="https://youtube.com/watch?v=..."
-                  value={youtubeUrl} onChange={e => setYoutubeUrl(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addYoutube(); } if (e.key === 'Escape') setYoutubePopoverOpen(false); }} />
-                <button type="button" className="post-editor-link-apply" onClick={addYoutube}>OK</button>
+              <div className="post-editor-link-popover" onMouseDown={(e) => e.stopPropagation()}>
+                <input
+                  ref={youtubeInputRef}
+                  className="post-editor-link-input"
+                  type="url"
+                  placeholder="https://youtube.com/watch?v=..."
+                  value={youtubeUrl}
+                  onChange={(e) => setYoutubeUrl(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addYoutube();
+                    }
+                    if (e.key === 'Escape') setYoutubePopoverOpen(false);
+                  }}
+                />
+                <button type="button" className="post-editor-link-apply" onClick={addYoutube}>
+                  OK
+                </button>
               </div>
             )}
           </div>
 
           <div className="post-editor-link-wrapper" style={{ position: 'relative' }}>
-            <button type="button" className="post-editor-btn" title="Embed (Loom, Arcade)"
-              onMouseDown={e => { e.preventDefault(); setIframePopoverOpen(v => !v); setYoutubePopoverOpen(false); setTimeout(() => iframeInputRef.current?.focus(), 0); }}>
+            <button
+              type="button"
+              className="post-editor-btn"
+              title="Embed (Loom, Arcade)"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setIframePopoverOpen((v) => !v);
+                setYoutubePopoverOpen(false);
+                setTimeout(() => iframeInputRef.current?.focus(), 0);
+              }}
+            >
               <Code2 className="h-3.5 w-3.5" />
             </button>
             {iframePopoverOpen && (
-              <div className="post-editor-link-popover" onMouseDown={e => e.stopPropagation()}>
-                <input ref={iframeInputRef} className="post-editor-link-input" type="url" placeholder="https://www.loom.com/share/..."
-                  value={iframeUrl} onChange={e => setIframeUrl(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addIframe(); } if (e.key === 'Escape') setIframePopoverOpen(false); }} />
-                <button type="button" className="post-editor-link-apply" onClick={addIframe}>OK</button>
+              <div className="post-editor-link-popover" onMouseDown={(e) => e.stopPropagation()}>
+                <input
+                  ref={iframeInputRef}
+                  className="post-editor-link-input"
+                  type="url"
+                  placeholder="https://www.loom.com/share/..."
+                  value={iframeUrl}
+                  onChange={(e) => setIframeUrl(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addIframe();
+                    }
+                    if (e.key === 'Escape') setIframePopoverOpen(false);
+                  }}
+                />
+                <button type="button" className="post-editor-link-apply" onClick={addIframe}>
+                  OK
+                </button>
               </div>
             )}
           </div>
@@ -243,24 +351,72 @@ export function ArticleEditor({
 
       {editor && !disabled && (
         <BubbleMenu editor={editor} className="bubble-menu">
-          <button type="button" className={`post-editor-btn${editor.isActive('bold') ? ' active' : ''}`}
-            onMouseDown={e => { e.preventDefault(); editor.chain().focus().toggleBold().run(); }}><Bold className="h-3.5 w-3.5" /></button>
-          <button type="button" className={`post-editor-btn${editor.isActive('italic') ? ' active' : ''}`}
-            onMouseDown={e => { e.preventDefault(); editor.chain().focus().toggleItalic().run(); }}><Italic className="h-3.5 w-3.5" /></button>
-          <button type="button" className={`post-editor-btn${editor.isActive('underline') ? ' active' : ''}`}
-            onMouseDown={e => { e.preventDefault(); editor.chain().focus().toggleUnderline().run(); }}><UnderlineIcon className="h-3.5 w-3.5" /></button>
+          <button
+            type="button"
+            className={`post-editor-btn${editor.isActive('bold') ? ' active' : ''}`}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              editor.chain().focus().toggleBold().run();
+            }}
+          >
+            <Bold className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            className={`post-editor-btn${editor.isActive('italic') ? ' active' : ''}`}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              editor.chain().focus().toggleItalic().run();
+            }}
+          >
+            <Italic className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            className={`post-editor-btn${editor.isActive('underline') ? ' active' : ''}`}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              editor.chain().focus().toggleUnderline().run();
+            }}
+          >
+            <UnderlineIcon className="h-3.5 w-3.5" />
+          </button>
 
           <div className="post-editor-link-wrapper">
-            <button type="button" className={`post-editor-btn${editor.isActive('link') ? ' active' : ''}`}
-              onMouseDown={e => { e.preventDefault(); openLinkPopover(); }}><LinkIcon className="h-3.5 w-3.5" /></button>
+            <button
+              type="button"
+              className={`post-editor-btn${editor.isActive('link') ? ' active' : ''}`}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                openLinkPopover();
+              }}
+            >
+              <LinkIcon className="h-3.5 w-3.5" />
+            </button>
             {linkPopoverOpen && (
-              <div className="post-editor-link-popover" onMouseDown={e => e.stopPropagation()}>
-                <input ref={linkInputRef} className="post-editor-link-input" type="url" placeholder="https://..."
-                  value={linkInputValue} onChange={e => setLinkInputValue(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); applyLink(); } if (e.key === 'Escape') setLinkPopoverOpen(false); }} />
-                <button type="button" className="post-editor-link-apply" onClick={applyLink}>OK</button>
+              <div className="post-editor-link-popover" onMouseDown={(e) => e.stopPropagation()}>
+                <input
+                  ref={linkInputRef}
+                  className="post-editor-link-input"
+                  type="url"
+                  placeholder="https://..."
+                  value={linkInputValue}
+                  onChange={(e) => setLinkInputValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      applyLink();
+                    }
+                    if (e.key === 'Escape') setLinkPopoverOpen(false);
+                  }}
+                />
+                <button type="button" className="post-editor-link-apply" onClick={applyLink}>
+                  OK
+                </button>
                 {editor.isActive('link') && (
-                  <button type="button" className="post-editor-link-remove" onClick={removeLink}>Remove</button>
+                  <button type="button" className="post-editor-link-remove" onClick={removeLink}>
+                    Remove
+                  </button>
                 )}
               </div>
             )}
@@ -269,21 +425,42 @@ export function ArticleEditor({
           <div className="post-editor-divider" />
 
           <div className="color-dropdown-wrapper" ref={textColorRef}>
-            <button type="button" className={`post-editor-btn${currentTextColor ? ' active' : ''}`} style={{ position: 'relative' }}
-              onMouseDown={e => { e.preventDefault(); setTextColorOpen(v => !v); setHighlightOpen(false); setLinkPopoverOpen(false); }}>
+            <button
+              type="button"
+              className={`post-editor-btn${currentTextColor ? ' active' : ''}`}
+              style={{ position: 'relative' }}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setTextColorOpen((v) => !v);
+                setHighlightOpen(false);
+                setLinkPopoverOpen(false);
+              }}
+            >
               <Baseline className="h-3.5 w-3.5" />
-              <span className="color-indicator" style={{ background: currentTextColor ?? 'hsl(var(--muted-foreground))' }} />
+              <span
+                className="color-indicator"
+                style={{ background: currentTextColor ?? 'hsl(var(--muted-foreground))' }}
+              />
             </button>
             {textColorOpen && (
-              <div className="color-dropdown" onMouseDown={e => e.stopPropagation()}>
+              <div className="color-dropdown" onMouseDown={(e) => e.stopPropagation()}>
                 <div className="color-dropdown-label">Text color</div>
                 <div className="color-dropdown-grid">
-                  {TEXT_COLORS.map(tc => (
-                    <button key={tc.name} type="button"
+                  {TEXT_COLORS.map((tc) => (
+                    <button
+                      key={tc.name}
+                      type="button"
                       className={`color-swatch${currentTextColor === tc.color || (!currentTextColor && !tc.color) ? ' active' : ''}${!tc.color ? ' color-swatch--default' : ''}`}
-                      style={tc.color ? { background: tc.color } : undefined} title={tc.name}
-                      onMouseDown={e => { e.preventDefault(); applyTextColor(tc.color); }}>
-                      {(currentTextColor === tc.color || (!currentTextColor && !tc.color)) && <Check className="swatch-check" />}
+                      style={tc.color ? { background: tc.color } : undefined}
+                      title={tc.name}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        applyTextColor(tc.color);
+                      }}
+                    >
+                      {(currentTextColor === tc.color || (!currentTextColor && !tc.color)) && (
+                        <Check className="swatch-check" />
+                      )}
                       {!tc.color && !(currentTextColor === tc.color) && 'A'}
                     </button>
                   ))}
@@ -293,23 +470,49 @@ export function ArticleEditor({
           </div>
 
           <div className="color-dropdown-wrapper" ref={highlightRef}>
-            <button type="button" className={`post-editor-btn${currentHighlight ? ' active' : ''}`} style={{ position: 'relative' }}
-              onMouseDown={e => { e.preventDefault(); setHighlightOpen(v => !v); setTextColorOpen(false); setLinkPopoverOpen(false); }}>
+            <button
+              type="button"
+              className={`post-editor-btn${currentHighlight ? ' active' : ''}`}
+              style={{ position: 'relative' }}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setHighlightOpen((v) => !v);
+                setTextColorOpen(false);
+                setLinkPopoverOpen(false);
+              }}
+            >
               <Highlighter className="h-3.5 w-3.5" />
               {currentHighlight && (
-                <span className="color-indicator" style={{ background: HIGHLIGHT_COLORS.find(h => h.color === currentHighlight)?.cssColor ?? currentHighlight }} />
+                <span
+                  className="color-indicator"
+                  style={{
+                    background:
+                      HIGHLIGHT_COLORS.find((h) => h.color === currentHighlight)?.cssColor ??
+                      currentHighlight,
+                  }}
+                />
               )}
             </button>
             {highlightOpen && (
-              <div className="color-dropdown" onMouseDown={e => e.stopPropagation()}>
+              <div className="color-dropdown" onMouseDown={(e) => e.stopPropagation()}>
                 <div className="color-dropdown-label">Highlight</div>
                 <div className="color-dropdown-grid">
-                  {HIGHLIGHT_COLORS.map(hc => (
-                    <button key={hc.name} type="button"
+                  {HIGHLIGHT_COLORS.map((hc) => (
+                    <button
+                      key={hc.name}
+                      type="button"
                       className={`color-swatch${currentHighlight === hc.color || (!currentHighlight && !hc.color) ? ' active' : ''}${!hc.color ? ' color-swatch--default' : ''}`}
-                      style={hc.color ? { background: hc.cssColor } : undefined} data-highlight={hc.color ?? undefined} title={hc.name}
-                      onMouseDown={e => { e.preventDefault(); applyHighlight(hc.color); }}>
-                      {(currentHighlight === hc.color || (!currentHighlight && !hc.color)) && <Check className="swatch-check" />}
+                      style={hc.color ? { background: hc.cssColor } : undefined}
+                      data-highlight={hc.color ?? undefined}
+                      title={hc.name}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        applyHighlight(hc.color);
+                      }}
+                    >
+                      {(currentHighlight === hc.color || (!currentHighlight && !hc.color)) && (
+                        <Check className="swatch-check" />
+                      )}
                       {!hc.color && !(currentHighlight === hc.color) && '⊘'}
                     </button>
                   ))}

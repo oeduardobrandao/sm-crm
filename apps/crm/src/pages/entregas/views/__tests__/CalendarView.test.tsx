@@ -57,8 +57,8 @@ function makeCard(overrides: Record<string, unknown> = {}) {
 }
 
 function getDayCell(container: HTMLElement, day: number) {
-  return Array.from(container.querySelectorAll('.calendar-day')).find(node =>
-    node.querySelector('.day-number')?.textContent === String(day),
+  return Array.from(container.querySelectorAll('.calendar-day')).find(
+    (node) => node.querySelector('.day-number')?.textContent === String(day),
   ) as HTMLElement | undefined;
 }
 
@@ -122,9 +122,7 @@ describe('CalendarView', () => {
   });
 
   it('changes month, clears the selected day, and waits for a new day selection', () => {
-    const { container } = render(
-      <CalendarView cards={[makeCard()]} onCardClick={vi.fn()} />,
-    );
+    const { container } = render(<CalendarView cards={[makeCard()]} onCardClick={vi.fn()} />);
 
     // MonthGrid uses aria-label for navigation
     fireEvent.click(screen.getByLabelText('Próximo mês'));

@@ -12,7 +12,11 @@ type MockedSupabaseModule = typeof supabaseModule & {
     payload?: unknown;
     modifiers: Array<{ method: string; args: unknown[] }>;
   }>;
-  __queueSupabaseResult: (table: string, operation: 'select' | 'insert' | 'update' | 'delete' | 'upsert', ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>) => void;
+  __queueSupabaseResult: (
+    table: string,
+    operation: 'select' | 'insert' | 'update' | 'delete' | 'upsert',
+    ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>
+  ) => void;
   __resetSupabaseMock: () => void;
   __setCurrentProfile: (profile: Record<string, unknown> | null) => void;
 };
@@ -20,7 +24,9 @@ type MockedSupabaseModule = typeof supabaseModule & {
 const mockedSupabase = supabaseModule as MockedSupabaseModule;
 
 function getCalls(table: string, operation?: string) {
-  return mockedSupabase.__getSupabaseCalls().filter((entry) => entry.table === table && (!operation || entry.operation === operation));
+  return mockedSupabase
+    .__getSupabaseCalls()
+    .filter((entry) => entry.table === table && (!operation || entry.operation === operation));
 }
 
 describe('store hub and ideias helpers', () => {
@@ -116,7 +122,9 @@ describe('store hub and ideias helpers', () => {
       error: null,
     });
 
-    await expect(store.getHubPages(14)).resolves.toEqual([{ id: 'page-1', title: 'Boas-vindas', display_order: 0 }]);
+    await expect(store.getHubPages(14)).resolves.toEqual([
+      { id: 'page-1', title: 'Boas-vindas', display_order: 0 },
+    ]);
     await store.upsertHubPage({
       id: 'page-1',
       cliente_id: 14,
@@ -150,7 +158,9 @@ describe('store hub and ideias helpers', () => {
   });
 
   it('handles hub briefing CRUD with display-order sequencing', async () => {
-    mockedSupabase.__queueSupabaseResult('hub_briefing_questions', 'select',
+    mockedSupabase.__queueSupabaseResult(
+      'hub_briefing_questions',
+      'select',
       {
         data: [{ id: 'q1', question: 'Quais metas vocês têm?', display_order: 0 }],
         error: null,
@@ -160,12 +170,20 @@ describe('store hub and ideias helpers', () => {
         error: null,
       },
     );
-    mockedSupabase.__queueSupabaseResult('hub_briefing_questions', 'insert', { data: null, error: null });
-    mockedSupabase.__queueSupabaseResult('hub_briefing_questions', 'update',
+    mockedSupabase.__queueSupabaseResult('hub_briefing_questions', 'insert', {
+      data: null,
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseResult(
+      'hub_briefing_questions',
+      'update',
       { data: null, error: null },
       { data: null, error: null },
     );
-    mockedSupabase.__queueSupabaseResult('hub_briefing_questions', 'delete', { data: null, error: null });
+    mockedSupabase.__queueSupabaseResult('hub_briefing_questions', 'delete', {
+      data: null,
+      error: null,
+    });
 
     await expect(store.getHubBriefingQuestions(14)).resolves.toEqual([
       { id: 'q1', question: 'Quais metas vocês têm?', display_order: 0 },
@@ -183,8 +201,12 @@ describe('store hub and ideias helpers', () => {
       section: 'Estratégia',
       answer: null,
     });
-    expect(getCalls('hub_briefing_questions', 'update')[0].payload).toEqual({ section: 'Mídia paga' });
-    expect(getCalls('hub_briefing_questions', 'update')[1].payload).toEqual({ question: 'Qual é o orçamento mensal?' });
+    expect(getCalls('hub_briefing_questions', 'update')[0].payload).toEqual({
+      section: 'Mídia paga',
+    });
+    expect(getCalls('hub_briefing_questions', 'update')[1].payload).toEqual({
+      question: 'Qual é o orçamento mensal?',
+    });
   });
 
   it('filters ideias, updates comments, and toggles reactions on and off', async () => {
@@ -192,11 +214,15 @@ describe('store hub and ideias helpers', () => {
       data: [{ id: 'ideia-1', titulo: 'Campanha de Inverno' }],
       error: null,
     });
-    mockedSupabase.__queueSupabaseResult('ideias', 'update',
+    mockedSupabase.__queueSupabaseResult(
+      'ideias',
+      'update',
       { data: null, error: null },
       { data: null, error: null },
     );
-    mockedSupabase.__queueSupabaseResult('ideia_reactions', 'select',
+    mockedSupabase.__queueSupabaseResult(
+      'ideia_reactions',
+      'select',
       { data: null, error: null },
       { data: { id: 'react-1' }, error: null },
     );

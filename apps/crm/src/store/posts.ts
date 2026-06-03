@@ -50,7 +50,9 @@ export interface ClientePost {
 export async function getClientePosts(clienteId: number): Promise<ClientePost[]> {
   const { data, error } = await supabase
     .from('workflow_posts')
-    .select('id, workflow_id, titulo, tipo, status, scheduled_at, ordem, workflows!inner(titulo, status)')
+    .select(
+      'id, workflow_id, titulo, tipo, status, scheduled_at, ordem, workflows!inner(titulo, status)',
+    )
     .eq('workflows.cliente_id', clienteId)
     .eq('workflows.status', 'ativo')
     .order('scheduled_at', { ascending: true, nullsFirst: false });
@@ -105,13 +107,23 @@ export interface PostApproval {
 // =============================================
 
 export type PropertyType =
-  | 'text' | 'number' | 'select' | 'multiselect' | 'status'
-  | 'date' | 'person' | 'checkbox' | 'url' | 'email' | 'phone' | 'created_time';
+  | 'text'
+  | 'number'
+  | 'select'
+  | 'multiselect'
+  | 'status'
+  | 'date'
+  | 'person'
+  | 'checkbox'
+  | 'url'
+  | 'email'
+  | 'phone'
+  | 'created_time';
 
 export interface SelectOption {
-  id: string;      // stable uuid string
+  id: string; // stable uuid string
   label: string;
-  color: string;   // hex color e.g. '#E1306C'
+  color: string; // hex color e.g. '#E1306C'
 }
 
 export interface TemplatePropertyDefinition {
@@ -139,13 +151,15 @@ export interface WorkflowSelectOption {
   workflow_id: number;
   property_definition_id: number;
   conta_id?: string;
-  option_id: string;   // uuid string
+  option_id: string; // uuid string
   label: string;
   color: string;
   created_at?: string;
 }
 
-export async function getPropertyDefinitions(templateId: number): Promise<TemplatePropertyDefinition[]> {
+export async function getPropertyDefinitions(
+  templateId: number,
+): Promise<TemplatePropertyDefinition[]> {
   const { data, error } = await supabase
     .from('template_property_definitions')
     .select('*')
@@ -174,10 +188,13 @@ export async function getAllWorkflowPosts(): Promise<WorkflowPost[]> {
   return data || [];
 }
 
-export async function getWorkflowPostsWithProperties(workflowId: number): Promise<(WorkflowPost & { property_values: PostPropertyValue[]; has_media: boolean })[]> {
+export async function getWorkflowPostsWithProperties(
+  workflowId: number,
+): Promise<(WorkflowPost & { property_values: PostPropertyValue[]; has_media: boolean })[]> {
   const { data, error } = await supabase
     .from('workflow_posts')
-    .select(`
+    .select(
+      `
       *,
       post_property_values (
         id,
@@ -188,7 +205,8 @@ export async function getWorkflowPostsWithProperties(workflowId: number): Promis
         )
       ),
       post_file_links (id)
-    `)
+    `,
+    )
     .eq('workflow_id', workflowId)
     .order('ordem', { ascending: true });
   if (error) throw error;
@@ -208,9 +226,7 @@ export async function getWorkflowPostsWithProperties(workflowId: number): Promis
   });
 }
 
-export async function getWorkflowPostsCounts(
-  workflowIds: number[]
-): Promise<Map<number, number>> {
+export async function getWorkflowPostsCounts(workflowIds: number[]): Promise<Map<number, number>> {
   const counts = new Map<number, number>();
   if (workflowIds.length === 0) return counts;
   const { data, error } = await supabase
@@ -225,7 +241,7 @@ export async function getWorkflowPostsCounts(
 }
 
 export async function getWorkflowApprovedPostsCounts(
-  workflowIds: number[]
+  workflowIds: number[],
 ): Promise<Map<number, number>> {
   const counts = new Map<number, number>();
   if (workflowIds.length === 0) return counts;
@@ -242,7 +258,7 @@ export async function getWorkflowApprovedPostsCounts(
 }
 
 export async function getWorkflowRevisaoInternaCounts(
-  workflowIds: number[]
+  workflowIds: number[],
 ): Promise<Map<number, number>> {
   const counts = new Map<number, number>();
   if (workflowIds.length === 0) return counts;
@@ -259,7 +275,7 @@ export async function getWorkflowRevisaoInternaCounts(
 }
 
 export async function getWorkflowPostResponsaveis(
-  workflowIds: number[]
+  workflowIds: number[],
 ): Promise<Map<number, number[]>> {
   const map = new Map<number, number[]>();
   if (workflowIds.length === 0) return map;
@@ -278,7 +294,7 @@ export async function getWorkflowPostResponsaveis(
 }
 
 export async function addWorkflowPost(
-  p: Omit<WorkflowPost, 'id' | 'conta_id' | 'created_at' | 'updated_at'>
+  p: Omit<WorkflowPost, 'id' | 'conta_id' | 'created_at' | 'updated_at'>,
 ): Promise<WorkflowPost> {
   const conta_id = await getContaId();
   const { data, error } = await supabase
@@ -292,7 +308,7 @@ export async function addWorkflowPost(
 
 export async function updateWorkflowPost(
   id: number,
-  p: Partial<Omit<WorkflowPost, 'id' | 'conta_id' | 'workflow_id' | 'created_at' | 'updated_at'>>
+  p: Partial<Omit<WorkflowPost, 'id' | 'conta_id' | 'workflow_id' | 'created_at' | 'updated_at'>>,
 ): Promise<WorkflowPost> {
   const { data, error } = await supabase
     .from('workflow_posts')
@@ -309,19 +325,25 @@ export async function removeWorkflowPost(id: number): Promise<void> {
   if (error) throw error;
 }
 
-export async function reorderWorkflowPosts(updates: { id: number; ordem: number }[]): Promise<void> {
+export async function reorderWorkflowPosts(
+  updates: { id: number; ordem: number }[],
+): Promise<void> {
   await Promise.all(
     updates.map(({ id, ordem }) =>
-      supabase.from('workflow_posts').update({ ordem }).eq('id', id).then(({ error }) => {
-        if (error) throw error;
-      })
-    )
+      supabase
+        .from('workflow_posts')
+        .update({ ordem })
+        .eq('id', id)
+        .then(({ error }) => {
+          if (error) throw error;
+        }),
+    ),
   );
 }
 
 export async function createPropertyDefinition(
   templateId: number,
-  payload: Omit<TemplatePropertyDefinition, 'id' | 'template_id' | 'conta_id' | 'created_at'>
+  payload: Omit<TemplatePropertyDefinition, 'id' | 'template_id' | 'conta_id' | 'created_at'>,
 ): Promise<TemplatePropertyDefinition> {
   const conta_id = await getContaId();
   const { data, error } = await supabase
@@ -335,7 +357,9 @@ export async function createPropertyDefinition(
 
 export async function updatePropertyDefinition(
   id: number,
-  payload: Partial<Omit<TemplatePropertyDefinition, 'id' | 'template_id' | 'conta_id' | 'created_at'>>
+  payload: Partial<
+    Omit<TemplatePropertyDefinition, 'id' | 'template_id' | 'conta_id' | 'created_at'>
+  >,
 ): Promise<TemplatePropertyDefinition> {
   const conta_id = await getContaId();
   const { data, error } = await supabase
@@ -363,14 +387,17 @@ export async function deletePropertyDefinition(id: number): Promise<void> {
 export async function upsertPostPropertyValue(
   postId: number,
   definitionId: number,
-  value: unknown
+  value: unknown,
 ): Promise<void> {
-  const { error } = await supabase
-    .from('post_property_values')
-    .upsert(
-      { post_id: postId, property_definition_id: definitionId, value, updated_at: new Date().toISOString() },
-      { onConflict: 'post_id,property_definition_id' }
-    );
+  const { error } = await supabase.from('post_property_values').upsert(
+    {
+      post_id: postId,
+      property_definition_id: definitionId,
+      value,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'post_id,property_definition_id' },
+  );
   if (error) throw error;
 }
 
@@ -378,19 +405,28 @@ export async function createWorkflowSelectOption(
   workflowId: number,
   definitionId: number,
   label: string,
-  color: string
+  color: string,
 ): Promise<WorkflowSelectOption> {
   const conta_id = await getContaId();
   const { data, error } = await supabase
     .from('workflow_select_options')
-    .insert({ workflow_id: workflowId, property_definition_id: definitionId, label, color, conta_id })
+    .insert({
+      workflow_id: workflowId,
+      property_definition_id: definitionId,
+      label,
+      color,
+      conta_id,
+    })
     .select()
     .single();
   if (error) throw error;
   return data;
 }
 
-export async function getWorkflowSelectOptions(workflowId: number, definitionId: number): Promise<WorkflowSelectOption[]> {
+export async function getWorkflowSelectOptions(
+  workflowId: number,
+  definitionId: number,
+): Promise<WorkflowSelectOption[]> {
   const { data, error } = await supabase
     .from('workflow_select_options')
     .select('*')
@@ -433,7 +469,7 @@ export async function getPostApprovals(postIds: number[]): Promise<PostApproval[
 export async function replyToPostApproval(
   postId: number,
   workflowId: number,
-  comentario: string
+  comentario: string,
 ): Promise<void> {
   const token = await getPortalToken(workflowId);
   const { error } = await supabase.from('post_approvals').insert({
@@ -465,7 +501,9 @@ export async function getPostEditSuggestions(postIds: number[]): Promise<PostEdi
   if (postIds.length === 0) return [];
   const { data, error } = await supabase
     .from('post_edit_suggestions')
-    .select('id, post_id, suggested_conteudo, suggested_conteudo_plain, suggested_ig_caption, changed_fields, status, updated_at')
+    .select(
+      'id, post_id, suggested_conteudo, suggested_conteudo_plain, suggested_ig_caption, changed_fields, status, updated_at',
+    )
     .in('post_id', postIds)
     .eq('status', 'pending');
   if (error) throw error;

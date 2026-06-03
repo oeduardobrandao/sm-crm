@@ -1,25 +1,71 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { X, Plus, Trash2, Send, ChevronDown, ChevronRight, MessageSquare, GripVertical, ImageIcon, Calendar as CalendarIcon } from 'lucide-react';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import {
-  DndContext, closestCenter, PointerSensor, useSensor, useSensors,
+  X,
+  Plus,
+  Trash2,
+  Send,
+  ChevronDown,
+  ChevronRight,
+  MessageSquare,
+  GripVertical,
+  ImageIcon,
+  Calendar as CalendarIcon,
+} from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core';
-import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
   getWorkflowPostsWithProperties,
-  addWorkflowPost, updateWorkflowPost, removeWorkflowPost,
-  reorderWorkflowPosts, sendPostsToCliente, getPostApprovals, replyToPostApproval,
+  addWorkflowPost,
+  updateWorkflowPost,
+  removeWorkflowPost,
+  reorderWorkflowPosts,
+  sendPostsToCliente,
+  getPostApprovals,
+  replyToPostApproval,
   completeEtapa,
-  getPostCommentThreads, createCommentThread, addPostComment, updatePostComment,
-  deletePostComment, resolveCommentThread, reopenCommentThread, deleteCommentThread,
+  getPostCommentThreads,
+  createCommentThread,
+  addPostComment,
+  updatePostComment,
+  deletePostComment,
+  resolveCommentThread,
+  reopenCommentThread,
+  deleteCommentThread,
   getWorkspaceUsers,
-  getPostEditSuggestions, acceptEditSuggestion, rejectEditSuggestion,
-  type WorkflowPost, type PostApproval, type Membro, type PostPropertyValue,
-  type CommentThreadWithComments, type PostEditSuggestion,
+  getPostEditSuggestions,
+  acceptEditSuggestion,
+  rejectEditSuggestion,
+  type WorkflowPost,
+  type PostApproval,
+  type Membro,
+  type PostPropertyValue,
+  type CommentThreadWithComments,
+  type PostEditSuggestion,
 } from '../../../store';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { PostEditor } from './PostEditor';
@@ -27,7 +73,12 @@ import { PropertyPanel } from './PropertyPanel';
 import PostCommentSummary from './PostCommentSummary';
 import { useAuth } from '@/context/AuthContext';
 import { PostMediaGallery, hasVideoMissingThumbnail } from './PostMediaGallery';
-import { uploadInlineImage, extractR2Keys, injectSignedUrls, resolveInlineImageUrls } from '@/services/inlineImage';
+import {
+  uploadInlineImage,
+  extractR2Keys,
+  injectSignedUrls,
+  resolveInlineImageUrls,
+} from '@/services/inlineImage';
 import { listPostMedia } from '../../../services/postMedia';
 import { InstagramCaptionField } from './InstagramCaptionField';
 import { ScheduleButton } from './ScheduleButton';
@@ -72,7 +123,20 @@ const STATUS_CLASS: Record<WorkflowPost['status'], string> = {
   falha_publicacao: 'status-danger',
 };
 
-const MESES_ABREV = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+const MESES_ABREV = [
+  'jan',
+  'fev',
+  'mar',
+  'abr',
+  'mai',
+  'jun',
+  'jul',
+  'ago',
+  'set',
+  'out',
+  'nov',
+  'dez',
+];
 
 // Compact pt-BR publish-date label for the collapsed post row, e.g. "8 jun · 14h"
 // or "18 jul · 18h30". Minutes show only when non-zero; the year is appended only
@@ -92,7 +156,11 @@ function formatPostDateFull(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '';
   return d.toLocaleString('pt-BR', {
-    day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
   });
 }
 
@@ -121,9 +189,15 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
   const saveTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
   const [savingIds, setSavingIds] = useState<Set<number>>(new Set());
   const [pendingEditPost, setPendingEditPost] = useState<WorkflowPost | null>(null);
-  const [pendingEditData, setPendingEditData] = useState<{ json: Record<string, unknown>; plain: string } | null>(null);
+  const [pendingEditData, setPendingEditData] = useState<{
+    json: Record<string, unknown>;
+    plain: string;
+  } | null>(null);
   const confirmedEditIds = useRef<Set<number>>(new Set());
-  const [pendingStatusChange, setPendingStatusChange] = useState<{ id: number; newStatus: string } | null>(null);
+  const [pendingStatusChange, setPendingStatusChange] = useState<{
+    id: number;
+    newStatus: string;
+  } | null>(null);
   const [pendingRejectSuggestionId, setPendingRejectSuggestionId] = useState<number | null>(null);
   const [editorVersions, setEditorVersions] = useState<Record<number, number>>({});
   const [showCalendar, setShowCalendar] = useState(false);
@@ -140,10 +214,10 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
   // Local ordered list for optimistic DnD reordering
   const [localOrder, setLocalOrder] = useState<number[] | null>(null);
   const orderedPosts = localOrder
-    ? localOrder.map(id => posts.find(p => p.id === id)).filter(Boolean) as WorkflowPost[]
+    ? (localOrder.map((id) => posts.find((p) => p.id === id)).filter(Boolean) as WorkflowPost[])
     : posts;
 
-  const postIds = posts.map(p => p.id).filter(Boolean) as number[];
+  const postIds = posts.map((p) => p.id).filter(Boolean) as number[];
   const { data: approvals = [] } = useQuery({
     queryKey: ['post-approvals', postIds.join(',')],
     queryFn: () => getPostApprovals(postIds),
@@ -183,11 +257,17 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
     enabled: !!clienteId,
   });
   const hasInstagramAccount = !!igAccount;
-  const igAccountStatus = igAccount ? {
-    revoked: igAccount.authorization_status === 'revoked',
-    expired: igAccount.authorization_status === 'expired' || (igAccount.token_expires_at ? new Date(igAccount.token_expires_at) < new Date() : false),
-    canPublish: Array.isArray(igAccount.permissions) && igAccount.permissions.includes('instagram_business_content_publish'),
-  } : null;
+  const igAccountStatus = igAccount
+    ? {
+        revoked: igAccount.authorization_status === 'revoked',
+        expired:
+          igAccount.authorization_status === 'expired' ||
+          (igAccount.token_expires_at ? new Date(igAccount.token_expires_at) < new Date() : false),
+        canPublish:
+          Array.isArray(igAccount.permissions) &&
+          igAccount.permissions.includes('instagram_business_content_publish'),
+      }
+    : null;
 
   const refresh = useCallback(() => {
     setLocalOrder(null);
@@ -198,26 +278,29 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
     qc.invalidateQueries({ queryKey: ['post-edit-suggestions'] });
   }, [qc, workflowId]);
 
-  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
+  const handleDragEnd = useCallback(
+    async (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
 
-    const ids = orderedPosts.map(p => p.id!);
-    const oldIndex = ids.indexOf(active.id as number);
-    const newIndex = ids.indexOf(over.id as number);
-    const newIds = arrayMove(ids, oldIndex, newIndex);
+      const ids = orderedPosts.map((p) => p.id!);
+      const oldIndex = ids.indexOf(active.id as number);
+      const newIndex = ids.indexOf(over.id as number);
+      const newIds = arrayMove(ids, oldIndex, newIndex);
 
-    // Optimistic update
-    setLocalOrder(newIds);
+      // Optimistic update
+      setLocalOrder(newIds);
 
-    try {
-      await reorderWorkflowPosts(newIds.map((id, ordem) => ({ id, ordem })));
-      qc.invalidateQueries({ queryKey: ['workflow-posts-with-props', workflowId] });
-    } catch {
-      toast.error('Erro ao reordenar posts');
-      setLocalOrder(null);
-    }
-  }, [orderedPosts, qc, workflowId]);
+      try {
+        await reorderWorkflowPosts(newIds.map((id, ordem) => ({ id, ordem })));
+        qc.invalidateQueries({ queryKey: ['workflow-posts-with-props', workflowId] });
+      } catch {
+        toast.error('Erro ao reordenar posts');
+        setLocalOrder(null);
+      }
+    },
+    [orderedPosts, qc, workflowId],
+  );
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
@@ -235,7 +318,9 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
       });
       refresh();
       setExpandedId(newPost.id!);
-    } catch { toast.error('Erro ao criar post'); }
+    } catch {
+      toast.error('Erro ao criar post');
+    }
   };
 
   const handleDeletePost = (id: number) => setPendingDeleteId(id);
@@ -248,12 +333,14 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
       await removeWorkflowPost(id);
       if (expandedId === id) setExpandedId(null);
       refresh();
-    } catch { toast.error('Erro ao remover post'); }
+    } catch {
+      toast.error('Erro ao remover post');
+    }
   };
 
   const handleFieldChange = async (id: number, field: keyof WorkflowPost, value: unknown) => {
     if (field === 'status') {
-      const post = posts.find(p => p.id === id);
+      const post = posts.find((p) => p.id === id);
       const isApproved = post?.status === 'aprovado_interno' || post?.status === 'aprovado_cliente';
       if (isApproved) {
         setPendingStatusChange({ id, newStatus: value as string });
@@ -263,7 +350,9 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
     try {
       await updateWorkflowPost(id, { [field]: value } as Partial<WorkflowPost>);
       refresh();
-    } catch { toast.error('Erro ao atualizar post'); }
+    } catch {
+      toast.error('Erro ao atualizar post');
+    }
   };
 
   const handleConfirmStatusChange = async () => {
@@ -273,13 +362,15 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
     try {
       await updateWorkflowPost(id, { status: newStatus as WorkflowPost['status'] });
       refresh();
-    } catch { toast.error('Erro ao atualizar status'); }
+    } catch {
+      toast.error('Erro ao atualizar status');
+    }
   };
 
   const scheduleContentSave = (
     post: WorkflowPost,
     json: Record<string, unknown>,
-    plain: string
+    plain: string,
   ) => {
     const id = post.id!;
     const isApproved = post.status === 'aprovado_interno' || post.status === 'aprovado_cliente';
@@ -291,15 +382,20 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
       return;
     }
 
-    setSavingIds(prev => new Set(prev).add(id));
+    setSavingIds((prev) => new Set(prev).add(id));
     if (saveTimers.current[id]) clearTimeout(saveTimers.current[id]);
     saveTimers.current[id] = setTimeout(async () => {
       try {
         await updateWorkflowPost(id, { conteudo: json, conteudo_plain: plain });
         refresh();
-      } catch { toast.error('Erro ao salvar conteúdo'); }
-      finally {
-        setSavingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+      } catch {
+        toast.error('Erro ao salvar conteúdo');
+      } finally {
+        setSavingIds((prev) => {
+          const s = new Set(prev);
+          s.delete(id);
+          return s;
+        });
       }
     }, 1500);
   };
@@ -309,15 +405,23 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
     const id = pendingEditPost.id!;
     confirmedEditIds.current.add(id);
     updateWorkflowPost(id, { status: 'revisao_interna' }).then(() => refresh());
-    setSavingIds(prev => new Set(prev).add(id));
+    setSavingIds((prev) => new Set(prev).add(id));
     if (saveTimers.current[id]) clearTimeout(saveTimers.current[id]);
     saveTimers.current[id] = setTimeout(async () => {
       try {
-        await updateWorkflowPost(id, { conteudo: pendingEditData.json, conteudo_plain: pendingEditData.plain });
+        await updateWorkflowPost(id, {
+          conteudo: pendingEditData.json,
+          conteudo_plain: pendingEditData.plain,
+        });
         refresh();
-      } catch { toast.error('Erro ao salvar conteúdo'); }
-      finally {
-        setSavingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+      } catch {
+        toast.error('Erro ao salvar conteúdo');
+      } finally {
+        setSavingIds((prev) => {
+          const s = new Set(prev);
+          s.delete(id);
+          return s;
+        });
       }
     }, 1500);
     setPendingEditPost(null);
@@ -331,7 +435,7 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
   };
 
   const handleSendToCliente = async () => {
-    const readyPosts = posts.filter(p => p.status === 'aprovado_interno');
+    const readyPosts = posts.filter((p) => p.status === 'aprovado_interno');
     if (readyPosts.length === 0) {
       toast.error('Nenhum post aprovado internamente para enviar.');
       return;
@@ -339,34 +443,41 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
 
     // Block sending if any ready post has a video without a thumbnail.
     const mediaByPost = await Promise.all(
-      readyPosts.map(async (p) => ({ post: p, media: await listPostMedia(p.id!) }))
+      readyPosts.map(async (p) => ({ post: p, media: await listPostMedia(p.id!) })),
     );
     const blocked = mediaByPost.filter((m) => hasVideoMissingThumbnail(m.media));
     if (blocked.length > 0) {
-      toast.error(`Há ${blocked.length} post(s) com vídeos sem thumbnail. Adicione uma thumbnail antes de enviar.`);
+      toast.error(
+        `Há ${blocked.length} post(s) com vídeos sem thumbnail. Adicione uma thumbnail antes de enviar.`,
+      );
       return;
     }
 
     setIsSending(true);
     try {
       await sendPostsToCliente(workflowId);
-      toast.success(`${readyPosts.length} post${readyPosts.length > 1 ? 's' : ''} enviado${readyPosts.length > 1 ? 's' : ''} ao cliente!`);
+      toast.success(
+        `${readyPosts.length} post${readyPosts.length > 1 ? 's' : ''} enviado${readyPosts.length > 1 ? 's' : ''} ao cliente!`,
+      );
       refresh();
       onRefresh();
-    } catch { toast.error('Erro ao enviar posts ao cliente'); }
-    finally { setIsSending(false); }
+    } catch {
+      toast.error('Erro ao enviar posts ao cliente');
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const checkAutoComplete = async (freshPosts: WorkflowPost[]) => {
-    const sent = freshPosts.filter(p =>
-      p.status === 'enviado_cliente' || p.status === 'correcao_cliente'
+    const sent = freshPosts.filter(
+      (p) => p.status === 'enviado_cliente' || p.status === 'correcao_cliente',
     );
     if (sent.length === 0) return;
-    const allApproved = sent.every(p => p.status === 'aprovado_cliente');
+    const allApproved = sent.every((p) => p.status === 'aprovado_cliente');
     if (!allApproved) return;
 
     const approvalEtapa = card.allEtapas.find(
-      e => e.tipo === 'aprovacao_cliente' && e.status === 'ativo'
+      (e) => e.tipo === 'aprovacao_cliente' && e.status === 'ativo',
     );
     if (!approvalEtapa) return;
 
@@ -374,7 +485,9 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
       await completeEtapa(workflowId, approvalEtapa.id!);
       toast.success('Todos os posts aprovados — etapa concluída!');
       onRefresh();
-    } catch { /* silent, etapa completion is a bonus */ }
+    } catch {
+      /* silent, etapa completion is a bonus */
+    }
   };
 
   const handleReply = async (postId: number) => {
@@ -383,7 +496,7 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
     setSendingReply(postId);
     try {
       await replyToPostApproval(postId, workflowId, text);
-      setReplyText(prev => ({ ...prev, [postId]: '' }));
+      setReplyText((prev) => ({ ...prev, [postId]: '' }));
       refresh();
     } catch (err: any) {
       toast.error(err.message || 'Erro ao enviar resposta');
@@ -394,15 +507,20 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
 
   // ── Edit suggestion handlers ──────────────────────────────────────────────
 
-  const handleAcceptSuggestion = useCallback(async (suggestionId: number, postId: number) => {
-    try {
-      await acceptEditSuggestion(suggestionId);
-      setEditorVersions(prev => ({ ...prev, [postId]: (prev[postId] ?? 0) + 1 }));
-      toast.success('Sugestão aceita!');
-      refresh();
-      onRefresh();
-    } catch { toast.error('Erro ao aceitar sugestão'); }
-  }, [refresh, onRefresh]);
+  const handleAcceptSuggestion = useCallback(
+    async (suggestionId: number, postId: number) => {
+      try {
+        await acceptEditSuggestion(suggestionId);
+        setEditorVersions((prev) => ({ ...prev, [postId]: (prev[postId] ?? 0) + 1 }));
+        toast.success('Sugestão aceita!');
+        refresh();
+        onRefresh();
+      } catch {
+        toast.error('Erro ao aceitar sugestão');
+      }
+    },
+    [refresh, onRefresh],
+  );
 
   const handleRejectSuggestion = useCallback((id: number) => {
     setPendingRejectSuggestionId(id);
@@ -416,51 +534,71 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
       await rejectEditSuggestion(id);
       toast.success('Sugestão rejeitada');
       refresh();
-    } catch { toast.error('Erro ao rejeitar sugestão'); }
+    } catch {
+      toast.error('Erro ao rejeitar sugestão');
+    }
   }, [pendingRejectSuggestionId, refresh]);
 
   // ── Comment thread handlers ───────────────────────────────────────────────
 
-  const handleCreateComment = useCallback(async (postId: number, quotedText: string, comment: string) => {
-    const thread = await createCommentThread(postId, quotedText, comment);
-    await refetchComments();
-    return thread.id;
-  }, [refetchComments]);
+  const handleCreateComment = useCallback(
+    async (postId: number, quotedText: string, comment: string) => {
+      const thread = await createCommentThread(postId, quotedText, comment);
+      await refetchComments();
+      return thread.id;
+    },
+    [refetchComments],
+  );
 
-  const handleReplyToComment = useCallback(async (threadId: number, content: string) => {
-    await addPostComment(threadId, content);
-    await refetchComments();
-  }, [refetchComments]);
+  const handleReplyToComment = useCallback(
+    async (threadId: number, content: string) => {
+      await addPostComment(threadId, content);
+      await refetchComments();
+    },
+    [refetchComments],
+  );
 
-  const handleResolveThread = useCallback(async (threadId: number) => {
-    await resolveCommentThread(threadId);
-    await refetchComments();
-  }, [refetchComments]);
+  const handleResolveThread = useCallback(
+    async (threadId: number) => {
+      await resolveCommentThread(threadId);
+      await refetchComments();
+    },
+    [refetchComments],
+  );
 
-  const handleReopenThread = useCallback(async (threadId: number) => {
-    await reopenCommentThread(threadId);
-    await refetchComments();
-  }, [refetchComments]);
+  const handleReopenThread = useCallback(
+    async (threadId: number) => {
+      await reopenCommentThread(threadId);
+      await refetchComments();
+    },
+    [refetchComments],
+  );
 
-  const handleEditComment = useCallback(async (commentId: number, content: string) => {
-    await updatePostComment(commentId, content);
-    await refetchComments();
-  }, [refetchComments]);
+  const handleEditComment = useCallback(
+    async (commentId: number, content: string) => {
+      await updatePostComment(commentId, content);
+      await refetchComments();
+    },
+    [refetchComments],
+  );
 
-  const handleDeleteComment = useCallback(async (commentId: number, threadId: number) => {
-    const thread = commentThreads.find(t => t.id === threadId);
-    if (thread && thread.post_comments.length <= 1) {
-      await deleteCommentThread(threadId);
-    } else {
-      await deletePostComment(commentId);
-    }
-    await refetchComments();
-  }, [refetchComments, commentThreads]);
+  const handleDeleteComment = useCallback(
+    async (commentId: number, threadId: number) => {
+      const thread = commentThreads.find((t) => t.id === threadId);
+      if (thread && thread.post_comments.length <= 1) {
+        await deleteCommentThread(threadId);
+      } else {
+        await deletePostComment(commentId);
+      }
+      await refetchComments();
+    },
+    [refetchComments, commentThreads],
+  );
 
   // ── Stats ─────────────────────────────────────────────────────────────────
 
-  const approvedCount = orderedPosts.filter(p => p.status === 'aprovado_cliente').length;
-  const readyToSend = orderedPosts.filter(p => p.status === 'aprovado_interno').length;
+  const approvedCount = orderedPosts.filter((p) => p.status === 'aprovado_cliente').length;
+  const readyToSend = orderedPosts.filter((p) => p.status === 'aprovado_interno').length;
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -493,7 +631,7 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
             )}
             <button
               className={`drawer-calendar-btn${showCalendar ? ' active' : ''}`}
-              onClick={() => setShowCalendar(v => !v)}
+              onClick={() => setShowCalendar((v) => !v)}
               title={showCalendar ? 'Voltar aos posts' : 'Ver calendário do cliente'}
             >
               <CalendarIcon className="h-3.5 w-3.5" />
@@ -538,10 +676,17 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
                   Nenhum post ainda. Clique em "Novo Post" para começar.
                 </div>
               ) : (
-                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                  <SortableContext items={orderedPosts.map(p => p.id!)} strategy={verticalListSortingStrategy}>
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleDragEnd}
+                >
+                  <SortableContext
+                    items={orderedPosts.map((p) => p.id!)}
+                    strategy={verticalListSortingStrategy}
+                  >
                     <div className="drawer-posts-list">
-                      {orderedPosts.map(post => (
+                      {orderedPosts.map((post) => (
                         <SortablePostItem
                           key={post.id}
                           post={post}
@@ -549,12 +694,14 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
                           workflowId={workflowId}
                           isExpanded={expandedId === post.id}
                           isSaving={savingIds.has(post.id!)}
-                          approvals={approvals.filter(a => a.post_id === post.id)}
-                          editSuggestion={editSuggestions.find(s => s.post_id === post.id) ?? null}
+                          approvals={approvals.filter((a) => a.post_id === post.id)}
+                          editSuggestion={
+                            editSuggestions.find((s) => s.post_id === post.id) ?? null
+                          }
                           membros={membros}
                           replyText={replyText[post.id!] || ''}
                           sendingReply={sendingReply === post.id}
-                          commentThreads={commentThreads.filter(t => t.post_id === post.id)}
+                          commentThreads={commentThreads.filter((t) => t.post_id === post.id)}
                           currentUserId={user?.id}
                           currentUserRole={role}
                           workspaceUsers={workspaceUsers}
@@ -563,9 +710,13 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
                           igAccountStatus={igAccountStatus}
                           onToggle={() => setExpandedId(expandedId === post.id ? null : post.id!)}
                           onDelete={() => handleDeletePost(post.id!)}
-                          onFieldChange={(field, value) => handleFieldChange(post.id!, field, value)}
+                          onFieldChange={(field, value) =>
+                            handleFieldChange(post.id!, field, value)
+                          }
                           onContentUpdate={(json, plain) => scheduleContentSave(post, json, plain)}
-                          onReplyChange={text => setReplyText(prev => ({ ...prev, [post.id!]: text }))}
+                          onReplyChange={(text) =>
+                            setReplyText((prev) => ({ ...prev, [post.id!]: text }))
+                          }
                           onReplySend={() => handleReply(post.id!)}
                           onRefresh={refresh}
                           onCreateComment={handleCreateComment}
@@ -588,12 +739,18 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
         </div>
       </div>
 
-      <AlertDialog open={!!pendingDeleteId} onOpenChange={open => { if (!open) setPendingDeleteId(null); }}>
+      <AlertDialog
+        open={!!pendingDeleteId}
+        onOpenChange={(open) => {
+          if (!open) setPendingDeleteId(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Remover post?</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta ação não pode ser desfeita. O post e seu conteúdo serão excluídos permanentemente.
+              Esta ação não pode ser desfeita. O post e seu conteúdo serão excluídos
+              permanentemente.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -604,12 +761,18 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
       </AlertDialog>
 
       {/* Confirmation dialog for editing approved posts */}
-      <AlertDialog open={!!pendingEditPost} onOpenChange={open => { if (!open) handleCancelEdit(); }}>
+      <AlertDialog
+        open={!!pendingEditPost}
+        onOpenChange={(open) => {
+          if (!open) handleCancelEdit();
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Post aprovado</AlertDialogTitle>
             <AlertDialogDescription>
-              Este post foi aprovado. Editá-lo vai invalidar a aprovação e resetar o status para "Em revisão". Deseja continuar?
+              Este post foi aprovado. Editá-lo vai invalidar a aprovação e resetar o status para "Em
+              revisão". Deseja continuar?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -620,7 +783,12 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
       </AlertDialog>
 
       {/* Confirmation dialog for changing status of approved posts */}
-      <AlertDialog open={!!pendingStatusChange} onOpenChange={open => { if (!open) setPendingStatusChange(null); }}>
+      <AlertDialog
+        open={!!pendingStatusChange}
+        onOpenChange={(open) => {
+          if (!open) setPendingStatusChange(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Post aprovado</AlertDialogTitle>
@@ -629,22 +797,32 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setPendingStatusChange(null)}>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel onClick={() => setPendingStatusChange(null)}>
+              Cancelar
+            </AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmStatusChange}>Confirmar</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={!!pendingRejectSuggestionId} onOpenChange={open => { if (!open) setPendingRejectSuggestionId(null); }}>
+      <AlertDialog
+        open={!!pendingRejectSuggestionId}
+        onOpenChange={(open) => {
+          if (!open) setPendingRejectSuggestionId(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Rejeitar sugestão?</AlertDialogTitle>
             <AlertDialogDescription>
-              A sugestão do cliente será rejeitada e ele será notificado. O conteúdo original do post será mantido.
+              A sugestão do cliente será rejeitada e ele será notificado. O conteúdo original do
+              post será mantido.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setPendingRejectSuggestionId(null)}>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel onClick={() => setPendingRejectSuggestionId(null)}>
+              Cancelar
+            </AlertDialogCancel>
             <AlertDialogAction onClick={confirmRejectSuggestion}>Rejeitar</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -692,20 +870,43 @@ interface SortablePostItemProps {
 }
 
 function SortablePostItem({
-  post, templateId, workflowId, isExpanded, isSaving, approvals, editSuggestion, membros,
-  replyText, sendingReply,
-  commentThreads, currentUserId, currentUserRole,
+  post,
+  templateId,
+  workflowId,
+  isExpanded,
+  isSaving,
+  approvals,
+  editSuggestion,
+  membros,
+  replyText,
+  sendingReply,
+  commentThreads,
+  currentUserId,
+  currentUserRole,
   workspaceUsers,
   hasMedia,
   hasInstagramAccount,
   igAccountStatus,
-  onToggle, onDelete, onFieldChange, onContentUpdate, onReplyChange, onReplySend,
+  onToggle,
+  onDelete,
+  onFieldChange,
+  onContentUpdate,
+  onReplyChange,
+  onReplySend,
   onRefresh,
-  onCreateComment, onReplyToComment, onResolveThread, onReopenThread, onEditComment, onDeleteComment,
-  editorVersion, onAcceptSuggestion, onRejectSuggestion,
+  onCreateComment,
+  onReplyToComment,
+  onResolveThread,
+  onReopenThread,
+  onEditComment,
+  onDeleteComment,
+  editorVersion,
+  onAcceptSuggestion,
+  onRejectSuggestion,
 }: SortablePostItemProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: post.id! });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: post.id!,
+  });
 
   // Local state for title to avoid input lag / letter-replacement from the
   // round-trip through updateWorkflowPost + refresh on every keystroke.
@@ -716,7 +917,9 @@ function SortablePostItem({
   // fresh inline callback — which would otherwise drop the save if the parent
   // re-renders within 400 ms of the last keystroke.
   const onFieldChangeRef = useRef(onFieldChange);
-  useEffect(() => { onFieldChangeRef.current = onFieldChange; }, [onFieldChange]);
+  useEffect(() => {
+    onFieldChangeRef.current = onFieldChange;
+  }, [onFieldChange]);
   useEffect(() => {
     if (!tituloDirty.current) setTituloLocal(post.titulo ?? '');
   }, [post.titulo]);
@@ -729,34 +932,59 @@ function SortablePostItem({
     return () => clearTimeout(t);
   }, [tituloLocal]);
 
-  const [resolvedContent, setResolvedContent] = useState<Record<string, unknown> | null>(post.conteudo);
+  const [resolvedContent, setResolvedContent] = useState<Record<string, unknown> | null>(
+    post.conteudo,
+  );
 
   useEffect(() => {
-    if (!post.conteudo) { setResolvedContent(null); return; }
+    if (!post.conteudo) {
+      setResolvedContent(null);
+      return;
+    }
     const keys = extractR2Keys(post.conteudo);
-    if (keys.length === 0) { setResolvedContent(post.conteudo); return; }
+    if (keys.length === 0) {
+      setResolvedContent(post.conteudo);
+      return;
+    }
     let cancelled = false;
-    resolveInlineImageUrls(keys).then((urlMap) => {
-      if (!cancelled) setResolvedContent(injectSignedUrls(post.conteudo!, urlMap));
-    }).catch(() => {
-      if (!cancelled) setResolvedContent(post.conteudo);
-    });
-    return () => { cancelled = true; };
+    resolveInlineImageUrls(keys)
+      .then((urlMap) => {
+        if (!cancelled) setResolvedContent(injectSignedUrls(post.conteudo!, urlMap));
+      })
+      .catch(() => {
+        if (!cancelled) setResolvedContent(post.conteudo);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [post.conteudo]);
 
-  const [resolvedSuggestion, setResolvedSuggestion] = useState<Record<string, unknown> | null>(editSuggestion?.suggested_conteudo ?? null);
+  const [resolvedSuggestion, setResolvedSuggestion] = useState<Record<string, unknown> | null>(
+    editSuggestion?.suggested_conteudo ?? null,
+  );
 
   useEffect(() => {
-    if (!editSuggestion?.suggested_conteudo) { setResolvedSuggestion(null); return; }
+    if (!editSuggestion?.suggested_conteudo) {
+      setResolvedSuggestion(null);
+      return;
+    }
     const keys = extractR2Keys(editSuggestion.suggested_conteudo);
-    if (keys.length === 0) { setResolvedSuggestion(editSuggestion.suggested_conteudo); return; }
+    if (keys.length === 0) {
+      setResolvedSuggestion(editSuggestion.suggested_conteudo);
+      return;
+    }
     let cancelled = false;
-    resolveInlineImageUrls(keys).then((urlMap) => {
-      if (!cancelled) setResolvedSuggestion(injectSignedUrls(editSuggestion.suggested_conteudo!, urlMap));
-    }).catch(() => {
-      if (!cancelled) setResolvedSuggestion(editSuggestion.suggested_conteudo);
-    });
-    return () => { cancelled = true; };
+    resolveInlineImageUrls(keys)
+      .then((urlMap) => {
+        if (!cancelled)
+          setResolvedSuggestion(injectSignedUrls(editSuggestion.suggested_conteudo!, urlMap));
+      })
+      .catch(() => {
+        if (!cancelled) setResolvedSuggestion(editSuggestion.suggested_conteudo);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [editSuggestion?.suggested_conteudo]);
 
   const style = {
@@ -765,8 +993,13 @@ function SortablePostItem({
     opacity: isDragging ? 0.5 : 1,
   };
 
-  const isExternallyVisible = post.status === 'enviado_cliente' || post.status === 'aprovado_cliente'
-    || post.status === 'correcao_cliente' || post.status === 'agendado' || post.status === 'postado' || post.status === 'falha_publicacao';
+  const isExternallyVisible =
+    post.status === 'enviado_cliente' ||
+    post.status === 'aprovado_cliente' ||
+    post.status === 'correcao_cliente' ||
+    post.status === 'agendado' ||
+    post.status === 'postado' ||
+    post.status === 'falha_publicacao';
   const isScheduleLocked = post.status === 'agendado';
 
   // Publish date shown in the collapsed row: once a post is actually live the real
@@ -787,14 +1020,15 @@ function SortablePostItem({
             className="drawer-drag-handle"
             {...attributes}
             {...listeners}
-            onClick={e => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
           >
             <GripVertical className="h-4 w-4" />
           </span>
-          {isExpanded
-            ? <ChevronDown className="h-4 w-4 drawer-post-chevron" />
-            : <ChevronRight className="h-4 w-4 drawer-post-chevron" />
-          }
+          {isExpanded ? (
+            <ChevronDown className="h-4 w-4 drawer-post-chevron" />
+          ) : (
+            <ChevronRight className="h-4 w-4 drawer-post-chevron" />
+          )}
           <span className="post-tipo-badge">{TIPO_LABELS[post.tipo]}</span>
           <span className="drawer-post-titulo">{post.titulo || 'Post sem título'}</span>
           {hasMedia && (
@@ -808,13 +1042,16 @@ function SortablePostItem({
             </span>
           )}
           {commentThreads.length > 0 && (
-            <span className="drawer-post-comment-badge" title={`${commentThreads.length} comentário${commentThreads.length > 1 ? 's' : ''}`}>
+            <span
+              className="drawer-post-comment-badge"
+              title={`${commentThreads.length} comentário${commentThreads.length > 1 ? 's' : ''}`}
+            >
               <MessageSquare className="h-3 w-3" />
               {commentThreads.length}
             </span>
           )}
         </div>
-        <div className="drawer-post-trigger-right" onClick={e => e.stopPropagation()}>
+        <div className="drawer-post-trigger-right" onClick={(e) => e.stopPropagation()}>
           {isSaving && <span className="drawer-saving-indicator">Salvando…</span>}
           {publishIso ? (
             <span
@@ -844,8 +1081,16 @@ function SortablePostItem({
               <input
                 className="drawer-input"
                 value={tituloLocal}
-                onChange={e => { tituloDirty.current = true; setTituloLocal(e.target.value); }}
-                onBlur={() => { if (tituloDirty.current) { onFieldChange('titulo', tituloLocal); tituloDirty.current = false; } }}
+                onChange={(e) => {
+                  tituloDirty.current = true;
+                  setTituloLocal(e.target.value);
+                }}
+                onBlur={() => {
+                  if (tituloDirty.current) {
+                    onFieldChange('titulo', tituloLocal);
+                    tituloDirty.current = false;
+                  }
+                }}
                 placeholder="Título do post"
               />
             </div>
@@ -854,10 +1099,12 @@ function SortablePostItem({
               <select
                 className="drawer-select"
                 value={post.tipo}
-                onChange={e => onFieldChange('tipo', e.target.value)}
+                onChange={(e) => onFieldChange('tipo', e.target.value)}
               >
-                {(['feed', 'reels', 'stories', 'carrossel'] as const).map(t => (
-                  <option key={t} value={t}>{TIPO_LABELS[t]}</option>
+                {(['feed', 'reels', 'stories', 'carrossel'] as const).map((t) => (
+                  <option key={t} value={t}>
+                    {TIPO_LABELS[t]}
+                  </option>
                 ))}
               </select>
             </div>
@@ -866,10 +1113,12 @@ function SortablePostItem({
               <select
                 className="drawer-select"
                 value={post.status}
-                onChange={e => onFieldChange('status', e.target.value)}
+                onChange={(e) => onFieldChange('status', e.target.value)}
               >
-                {(Object.keys(STATUS_LABELS) as WorkflowPost['status'][]).map(s => (
-                  <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+                {(Object.keys(STATUS_LABELS) as WorkflowPost['status'][]).map((s) => (
+                  <option key={s} value={s}>
+                    {STATUS_LABELS[s]}
+                  </option>
                 ))}
               </select>
             </div>
@@ -879,11 +1128,15 @@ function SortablePostItem({
                 <select
                   className="drawer-select"
                   value={post.responsavel_id ?? ''}
-                  onChange={e => onFieldChange('responsavel_id', e.target.value ? Number(e.target.value) : null)}
+                  onChange={(e) =>
+                    onFieldChange('responsavel_id', e.target.value ? Number(e.target.value) : null)
+                  }
                 >
                   <option value="">Sem responsável</option>
-                  {membros.map(m => (
-                    <option key={m.id} value={m.id}>{m.nome}</option>
+                  {membros.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.nome}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -904,8 +1157,7 @@ function SortablePostItem({
             <div className="drawer-external-warning">
               {isScheduleLocked
                 ? '⚠ Este post está agendado para publicação. Data e legenda do Instagram estão travadas — cancele o agendamento para editá-las.'
-                : '⚠ Este post já está visível no portal do cliente. Alterações serão refletidas imediatamente.'
-              }
+                : '⚠ Este post já está visível no portal do cliente. Alterações serão refletidas imediatamente.'}
             </div>
           )}
           {/* Custom properties — shown when template has properties defined */}
@@ -926,9 +1178,16 @@ function SortablePostItem({
               <div className="flex items-center justify-between px-4 py-2.5 border-b border-amber-200/60 bg-amber-50">
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-amber-400" />
-                  <span className="text-[13px] font-semibold text-amber-900">Sugestão do cliente</span>
+                  <span className="text-[13px] font-semibold text-amber-900">
+                    Sugestão do cliente
+                  </span>
                   <span className="text-[11px] text-amber-600">
-                    {new Date(editSuggestion.updated_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    {new Date(editSuggestion.updated_at).toLocaleDateString('pt-BR', {
+                      day: '2-digit',
+                      month: 'short',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -947,13 +1206,24 @@ function SortablePostItem({
                 </div>
               </div>
               <div className="px-4 py-3 space-y-3">
-                {editSuggestion.changed_fields.includes('conteudo') && resolvedContent && resolvedSuggestion && (
-                  <ReadOnlyTipTap content={computeTipTapDiff(resolvedContent, resolvedSuggestion)} />
-                )}
+                {editSuggestion.changed_fields.includes('conteudo') &&
+                  resolvedContent &&
+                  resolvedSuggestion && (
+                    <ReadOnlyTipTap
+                      content={computeTipTapDiff(resolvedContent, resolvedSuggestion)}
+                    />
+                  )}
                 {editSuggestion.changed_fields.includes('ig_caption') && (
                   <div className="border-t border-amber-200/60 pt-3">
-                    <p className="text-[11px] font-medium text-stone-500 mb-1.5">Legenda do Instagram</p>
-                    <DiffView segments={computeWordDiff(post.ig_caption ?? '', editSuggestion.suggested_ig_caption ?? '')} />
+                    <p className="text-[11px] font-medium text-stone-500 mb-1.5">
+                      Legenda do Instagram
+                    </p>
+                    <DiffView
+                      segments={computeWordDiff(
+                        post.ig_caption ?? '',
+                        editSuggestion.suggested_ig_caption ?? '',
+                      )}
+                    />
                   </div>
                 )}
               </div>
@@ -963,16 +1233,22 @@ function SortablePostItem({
               key={`${post.id}-v${editorVersion}`}
               initialContent={resolvedContent}
               onUpdate={onContentUpdate}
-              onUploadInlineImage={post.id ? async (file) => {
-                try {
-                  return await uploadInlineImage(file);
-                } catch (err) {
-                  toast.error(err instanceof Error && err.message === 'quota_exceeded'
-                    ? 'Limite de armazenamento atingido'
-                    : 'Falha ao enviar imagem');
-                  throw err;
-                }
-              } : undefined}
+              onUploadInlineImage={
+                post.id
+                  ? async (file) => {
+                      try {
+                        return await uploadInlineImage(file);
+                      } catch (err) {
+                        toast.error(
+                          err instanceof Error && err.message === 'quota_exceeded'
+                            ? 'Limite de armazenamento atingido'
+                            : 'Falha ao enviar imagem',
+                        );
+                        throw err;
+                      }
+                    }
+                  : undefined
+              }
               threads={commentThreads}
               membros={membros}
               workspaceUsers={workspaceUsers}
@@ -1015,7 +1291,7 @@ function SortablePostItem({
               <div className="drawer-thread-label">
                 <MessageSquare className="h-3.5 w-3.5" /> Comentários
               </div>
-              {approvals.map(a => (
+              {approvals.map((a) => (
                 <PostApprovalBubble key={a.id} approval={a} />
               ))}
             </div>
@@ -1026,9 +1302,12 @@ function SortablePostItem({
               className="drawer-input"
               placeholder="Responder ao cliente…"
               value={replyText}
-              onChange={e => onReplyChange(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onReplySend(); }
+              onChange={(e) => onReplyChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  onReplySend();
+                }
               }}
             />
             <button
@@ -1052,24 +1331,27 @@ function PostApprovalBubble({ approval }: { approval: PostApproval }) {
   const actionLabel = isTeam
     ? 'Equipe'
     : approval.action === 'correcao'
-    ? 'Correção solicitada'
-    : approval.action === 'aprovado'
-    ? 'Aprovado'
-    : 'Cliente';
+      ? 'Correção solicitada'
+      : approval.action === 'aprovado'
+        ? 'Aprovado'
+        : 'Cliente';
 
   return (
-    <div className={`approval-bubble${isTeam ? ' approval-bubble--team' : ' approval-bubble--client'}`}>
+    <div
+      className={`approval-bubble${isTeam ? ' approval-bubble--team' : ' approval-bubble--client'}`}
+    >
       <div className="approval-bubble-meta">
         <span className="approval-bubble-author">{actionLabel}</span>
         <span className="approval-bubble-date">
           {new Date(approval.created_at).toLocaleDateString('pt-BR', {
-            day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+            day: '2-digit',
+            month: 'short',
+            hour: '2-digit',
+            minute: '2-digit',
           })}
         </span>
       </div>
-      {approval.comentario && (
-        <p className="approval-bubble-text">{approval.comentario}</p>
-      )}
+      {approval.comentario && <p className="approval-bubble-text">{approval.comentario}</p>}
     </div>
   );
 }

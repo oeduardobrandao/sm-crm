@@ -43,9 +43,10 @@ export default function ArtigoPage() {
   });
 
   const relatedArticles = useMemo(
-    () => allArticles
-      .filter(a => a.category === article?.category && a.id !== article?.id)
-      .slice(0, 3),
+    () =>
+      allArticles
+        .filter((a) => a.category === article?.category && a.id !== article?.id)
+        .slice(0, 3),
     [allArticles, article],
   );
 
@@ -82,7 +83,9 @@ export default function ArtigoPage() {
       }
     })();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [editor, article]);
 
   // Add IDs to rendered headings for TOC anchor navigation
@@ -91,26 +94,33 @@ export default function ArtigoPage() {
     const update = () => {
       try {
         const editorEl = editor.view.dom;
-        editorEl.querySelectorAll('h2, h3').forEach(h => {
+        editorEl.querySelectorAll('h2, h3').forEach((h) => {
           const text = h.textContent ?? '';
-          h.id = text.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
+          h.id = text
+            .toLowerCase()
+            .replace(/\s+/g, '-')
+            .replace(/[^\w-]/g, '');
         });
-      } catch { /* editor not mounted yet */ }
+      } catch {
+        /* editor not mounted yet */
+      }
     };
     editor.on('update', update);
     update();
-    return () => { editor.off('update', update); };
+    return () => {
+      editor.off('update', update);
+    };
   }, [editor, article]);
 
   const rawCover = article?.cover_image_url ?? null;
   const coverIsR2 = !!rawCover && !rawCover.startsWith('http');
   const { data: resolvedCover } = useQuery({
     queryKey: ['cover-url', rawCover],
-    queryFn: () => resolveInlineImageUrls([rawCover!]).then(m => m[rawCover!] ?? ''),
+    queryFn: () => resolveInlineImageUrls([rawCover!]).then((m) => m[rawCover!] ?? ''),
     enabled: coverIsR2,
     staleTime: 10 * 60 * 1000,
   });
-  const coverSrc = coverIsR2 ? (resolvedCover || null) : rawCover;
+  const coverSrc = coverIsR2 ? resolvedCover || null : rawCover;
 
   if (isLoading) {
     return (
@@ -125,7 +135,9 @@ export default function ArtigoPage() {
       <div className="flex flex-col items-center justify-center py-20 gap-4">
         <p className="text-[var(--text-light)]">Artigo não encontrado.</p>
         <Link to="/ajuda">
-          <Button variant="outline" size="sm">Voltar</Button>
+          <Button variant="outline" size="sm">
+            Voltar
+          </Button>
         </Link>
       </div>
     );
@@ -159,11 +171,7 @@ export default function ArtigoPage() {
 
       {coverSrc && (
         <div className="mb-6 overflow-hidden rounded-2xl">
-          <img
-            src={coverSrc}
-            alt={article.title}
-            className="w-full max-h-80 object-cover"
-          />
+          <img src={coverSrc} alt={article.title} className="w-full max-h-80 object-cover" />
         </div>
       )}
 
@@ -187,7 +195,10 @@ export default function ArtigoPage() {
 
       <div className="flex gap-8">
         <article className="min-w-0 flex-1">
-          <EditorContent editor={editor} className="post-editor-content article-reader-content prose-article" />
+          <EditorContent
+            editor={editor}
+            className="post-editor-content article-reader-content prose-article"
+          />
         </article>
         <TableOfContents content={article.content} />
       </div>
@@ -197,8 +208,11 @@ export default function ArtigoPage() {
           <h2 className="mb-4 text-[1.1rem] font-bold text-[var(--text-main)]">
             Artigos relacionados
           </h2>
-          <div className="grid gap-5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
-            {relatedArticles.map(a => (
+          <div
+            className="grid gap-5"
+            style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}
+          >
+            {relatedArticles.map((a) => (
               <ArticleCard key={a.id} article={a} />
             ))}
           </div>

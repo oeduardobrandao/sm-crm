@@ -1,6 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { Folder, FolderOpen, ChevronRight, ChevronDown, Home } from 'lucide-react';
 import { getTreeChildren } from '@/services/fileService';
 import type { Folder as FolderType } from '../types';
@@ -74,7 +80,11 @@ function PickerNode({
             }}
             className="cursor-pointer"
           >
-            {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+            {expanded ? (
+              <ChevronDown className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5" />
+            )}
           </span>
         ) : (
           <span className="w-3.5" />

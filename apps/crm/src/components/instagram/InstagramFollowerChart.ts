@@ -36,28 +36,31 @@ export function renderInstagramFollowerChart(container: HTMLElement, history: an
   const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
   const textColor = isDark ? '#94a3b8' : '#4a5468';
   const gridColor = isDark ? '#1e2430' : 'rgba(30,36,48,0.05)';
-  const primaryColor = document.documentElement.style.getPropertyValue('--primary-color') || '#eab308';
+  const primaryColor =
+    document.documentElement.style.getPropertyValue('--primary-color') || '#eab308';
 
-  const labels = history.map(h => formatDate(h.date).substring(0,5)); // Ex: 10/05
-  const data = history.map(h => h.follower_count);
+  const labels = history.map((h) => formatDate(h.date).substring(0, 5)); // Ex: 10/05
+  const data = history.map((h) => h.follower_count);
 
   new Chart(canvas, {
     type: 'line',
     data: {
       labels: labels,
-      datasets: [{
-        label: t('instagram.followers'),
-        data: data,
-        borderColor: '#E1306C',
-        backgroundColor: 'rgba(225, 48, 108, 0.1)',
-        borderWidth: 2,
-        tension: 0.4,
-        fill: true,
-        pointBackgroundColor: '#E1306C',
-        pointBorderColor: '#fff',
-        pointHoverBackgroundColor: '#fff',
-        pointHoverBorderColor: '#E1306C',
-      }]
+      datasets: [
+        {
+          label: t('instagram.followers'),
+          data: data,
+          borderColor: '#E1306C',
+          backgroundColor: 'rgba(225, 48, 108, 0.1)',
+          borderWidth: 2,
+          tension: 0.4,
+          fill: true,
+          pointBackgroundColor: '#E1306C',
+          pointBorderColor: '#fff',
+          pointHoverBackgroundColor: '#fff',
+          pointHoverBorderColor: '#E1306C',
+        },
+      ],
     },
     options: {
       responsive: true,
@@ -73,25 +76,31 @@ export function renderInstagramFollowerChart(container: HTMLElement, history: an
           padding: 10,
           displayColors: false,
           callbacks: {
-            label: function(context: any) {
+            label: function (context: any) {
               const locale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
-              return t('instagram.followerTooltip', { count: context.parsed.y.toLocaleString(locale) });
-            }
-          }
-        }
+              return t('instagram.followerTooltip', {
+                count: context.parsed.y.toLocaleString(locale),
+              });
+            },
+          },
+        },
       },
       scales: {
         x: {
           grid: { display: false, color: gridColor },
-          ticks: { color: textColor, font: { family: "'DM Mono', monospace", size: 10 } }
+          ticks: { color: textColor, font: { family: "'DM Mono', monospace", size: 10 } },
         },
         y: {
           // @ts-ignore
           grid: { color: gridColor, borderDash: [5, 5] },
-          ticks: { color: textColor, font: { family: "'DM Mono', monospace", size: 10 }, precision: 0 },
-          beginAtZero: false // Let it zoom on the deltas
-        }
-      }
-    }
+          ticks: {
+            color: textColor,
+            font: { family: "'DM Mono', monospace", size: 10 },
+            precision: 0,
+          },
+          beginAtZero: false, // Let it zoom on the deltas
+        },
+      },
+    },
   });
 }

@@ -47,7 +47,9 @@ export default function ConfigurarSenhaPage() {
       if (!sessionReceived.current) setTokenError(true);
     }, 8000);
 
-    const processSession = async (session: { user: { email?: string; user_metadata?: Record<string, unknown> } }) => {
+    const processSession = async (session: {
+      user: { email?: string; user_metadata?: Record<string, unknown> };
+    }) => {
       if (!mounted.current) return;
       sessionReceived.current = true;
       clearTimeout(timeout);
@@ -93,11 +95,14 @@ export default function ConfigurarSenhaPage() {
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!session || sessionReceived.current) return;
       const hasConta = !!session.user.user_metadata?.conta_id;
       const isInviteEvent = (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && hasConta;
-      const isRecoveryEvent = event === 'PASSWORD_RECOVERY' || (event === 'INITIAL_SESSION' && !hasConta);
+      const isRecoveryEvent =
+        event === 'PASSWORD_RECOVERY' || (event === 'INITIAL_SESSION' && !hasConta);
       if (isRecoveryEvent || isInviteEvent) {
         processSession(session);
       }
@@ -113,7 +118,9 @@ export default function ConfigurarSenhaPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const { data: { session } } = await supabase.auth.getSession();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
     if (!session) {
       toast.error('Sessão expirada. Solicite um novo link.');
       return;
@@ -136,24 +143,31 @@ export default function ConfigurarSenhaPage() {
 
     if (isInvite && email) {
       const acceptInvite = async () => {
-        const { data: { session: freshSession } } = await supabase.auth.getSession();
+        const {
+          data: { session: freshSession },
+        } = await supabase.auth.getSession();
         const token = freshSession?.access_token ?? session.access_token;
-        const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-workspace-user`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ action: 'accept-invite', email: email.toLowerCase() }),
-        });
+        const res = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-workspace-user`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ action: 'accept-invite', email: email.toLowerCase() }),
+          },
+        );
         if (!res.ok) throw new Error(`accept-invite failed: ${res.status}`);
       };
 
       let accepted = false;
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
-          if (attempt > 0) await new Promise(r => setTimeout(r, 1000 * attempt));
+          if (attempt > 0) await new Promise((r) => setTimeout(r, 1000 * attempt));
           await acceptInvite();
           accepted = true;
           break;
-        } catch { /* retry */ }
+        } catch {
+          /* retry */
+        }
       }
       if (!accepted) {
         toast.error('Não foi possível finalizar o convite. Entre em contato com o administrador.');
@@ -163,19 +177,60 @@ export default function ConfigurarSenhaPage() {
     setLoading(false);
     setSuccess(true);
     redirectTimers.current.push(setTimeout(() => setProgressWidth(100), 100));
-    redirectTimers.current.push(setTimeout(() => { window.location.replace('/dashboard'); }, 2800));
+    redirectTimers.current.push(
+      setTimeout(() => {
+        window.location.replace('/dashboard');
+      }, 2800),
+    );
   };
 
   const strength = getPasswordStrength(password);
 
   return (
-    <div className="invite-page" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem 1rem', background: '#f5f3ee' }}>
-      <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 440, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.06)' }}>
-
+    <div
+      className="invite-page"
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '2rem 1rem',
+        background: '#f5f3ee',
+      }}
+    >
+      <div
+        style={{
+          background: '#fff',
+          borderRadius: 16,
+          width: '100%',
+          maxWidth: 440,
+          overflow: 'hidden',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.06)',
+        }}
+      >
         <div style={{ background: '#1a3d2b', padding: '2rem 2rem 1.75rem', textAlign: 'center' }}>
-          <img src="/logo-white.svg" alt="Mesaas" style={{ display: 'block', margin: '0 auto 1.5rem', height: 24, width: 'auto' }} />
+          <img
+            src="/logo-white.svg"
+            alt="Mesaas"
+            style={{ display: 'block', margin: '0 auto 1.5rem', height: 24, width: 'auto' }}
+          />
           {isInvite && inviterInitials && (
-            <div style={{ width: 52, height: 52, background: '#f0a832', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 700, color: '#1a3d2b', margin: '0 auto 1rem' }}>
+            <div
+              style={{
+                width: 52,
+                height: 52,
+                background: '#f0a832',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 18,
+                fontWeight: 700,
+                color: '#1a3d2b',
+                margin: '0 auto 1rem',
+              }}
+            >
               {inviterInitials}
             </div>
           )}
@@ -188,10 +243,26 @@ export default function ConfigurarSenhaPage() {
             </p>
           )}
           {!isInvite && (
-            <p style={{ color: '#9dbfa9', fontSize: 14, margin: 0 }}>Defina sua nova senha para acessar a plataforma.</p>
+            <p style={{ color: '#9dbfa9', fontSize: 14, margin: 0 }}>
+              Defina sua nova senha para acessar a plataforma.
+            </p>
           )}
           {isInvite && workspaceName && (
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(240,168,50,0.15)', border: '1px solid rgba(240,168,50,0.3)', borderRadius: 20, padding: '4px 12px', marginTop: '0.75rem', fontSize: 13, fontWeight: 500, color: '#f0a832' }}>
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                background: 'rgba(240,168,50,0.15)',
+                border: '1px solid rgba(240,168,50,0.3)',
+                borderRadius: 20,
+                padding: '4px 12px',
+                marginTop: '0.75rem',
+                fontSize: 13,
+                fontWeight: 500,
+                color: '#f0a832',
+              }}
+            >
               {workspaceName}
             </div>
           )}
@@ -199,17 +270,45 @@ export default function ConfigurarSenhaPage() {
 
         {tokenError ? (
           <div style={{ padding: '2rem', textAlign: 'center' }}>
-            <div style={{ width: 60, height: 60, background: '#fdecea', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.25rem' }}>
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke="#c0392b" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            <div
+              style={{
+                width: 60,
+                height: 60,
+                background: '#fdecea',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 1.25rem',
+              }}
+            >
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                <path
+                  d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  stroke="#c0392b"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
             </div>
-            <h2 style={{ fontSize: 18, fontWeight: 600, color: '#1a3d2b', margin: '0 0 0.5rem' }}>Link inválido ou expirado</h2>
+            <h2 style={{ fontSize: 18, fontWeight: 600, color: '#1a3d2b', margin: '0 0 0.5rem' }}>
+              Link inválido ou expirado
+            </h2>
             <p style={{ fontSize: 14, color: '#888780', lineHeight: 1.6, margin: '0 0 1.5rem' }}>
               Este link é inválido ou já expirou. Solicite um novo link de redefinição de senha.
             </p>
             <Button
               onClick={() => navigate('/login')}
               className="w-full"
-              style={{ height: 46, background: '#1a3d2b', borderColor: '#1a3d2b', color: '#fff', fontSize: 15, fontWeight: 600 }}
+              style={{
+                height: 46,
+                background: '#1a3d2b',
+                borderColor: '#1a3d2b',
+                color: '#fff',
+                fontSize: 15,
+                fontWeight: 600,
+              }}
             >
               Solicitar novo link
             </Button>
@@ -219,13 +318,23 @@ export default function ConfigurarSenhaPage() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-1">
                 <Label>Seu e-mail</Label>
-                <Input value={email} readOnly style={{ background: '#f8f7f3', color: '#888780', cursor: 'not-allowed' }} />
+                <Input
+                  value={email}
+                  readOnly
+                  style={{ background: '#f8f7f3', color: '#888780', cursor: 'not-allowed' }}
+                />
               </div>
 
               {isInvite && (
                 <div className="space-y-1">
                   <Label htmlFor="conf-nome">Seu nome completo</Label>
-                  <Input id="conf-nome" placeholder="Como prefere ser chamado?" value={nome} onChange={e => setNome(e.target.value)} required />
+                  <Input
+                    id="conf-nome"
+                    placeholder="Como prefere ser chamado?"
+                    value={nome}
+                    onChange={(e) => setNome(e.target.value)}
+                    required
+                  />
                 </div>
               )}
 
@@ -235,7 +344,7 @@ export default function ConfigurarSenhaPage() {
                   id="conf-password"
                   placeholder="Mínimo 8 caracteres"
                   value={password}
-                  onChange={e => setPassword(e.target.value)}
+                  onChange={(e) => setPassword(e.target.value)}
                   required
                   minLength={8}
                 />
@@ -252,7 +361,14 @@ export default function ConfigurarSenhaPage() {
                 type="submit"
                 disabled={loading}
                 className="w-full"
-                style={{ height: 46, background: '#1a3d2b', borderColor: '#1a3d2b', color: '#fff', fontSize: 15, fontWeight: 600 }}
+                style={{
+                  height: 46,
+                  background: '#1a3d2b',
+                  borderColor: '#1a3d2b',
+                  color: '#fff',
+                  fontSize: 15,
+                  fontWeight: 600,
+                }}
               >
                 {loading && <Spinner size="sm" />}
                 {isInvite ? 'Aceitar convite e entrar' : 'Salvar senha'}
@@ -260,32 +376,91 @@ export default function ConfigurarSenhaPage() {
 
               {isInvite && (
                 <p style={{ textAlign: 'center', fontSize: 12, color: '#888780', lineHeight: 1.6 }}>
-                  Ao aceitar, você concorda com os <a href="/politica-de-privacidade" style={{ color: '#1a3d2b' }}>Termos de Uso</a> e a{' '}
-                  <a href="/politica-de-privacidade" style={{ color: '#1a3d2b' }}>Política de Privacidade</a> do Mesaas.
+                  Ao aceitar, você concorda com os{' '}
+                  <a href="/politica-de-privacidade" style={{ color: '#1a3d2b' }}>
+                    Termos de Uso
+                  </a>{' '}
+                  e a{' '}
+                  <a href="/politica-de-privacidade" style={{ color: '#1a3d2b' }}>
+                    Política de Privacidade
+                  </a>{' '}
+                  do Mesaas.
                 </p>
               )}
             </form>
           </div>
         ) : (
           <div style={{ textAlign: 'center', padding: '2rem 2rem 2.5rem' }}>
-            <div style={{ width: 60, height: 60, background: '#eaf3de', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.25rem' }}>
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M20 6L9 17L4 12" stroke="#3b6d11" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            <div
+              style={{
+                width: 60,
+                height: 60,
+                background: '#eaf3de',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 1.25rem',
+              }}
+            >
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                <path
+                  d="M20 6L9 17L4 12"
+                  stroke="#3b6d11"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
             </div>
-            <h2 style={{ fontSize: 18, fontWeight: 600, color: '#1a3d2b', margin: '0 0 0.5rem' }}>Conta criada com sucesso!</h2>
+            <h2 style={{ fontSize: 18, fontWeight: 600, color: '#1a3d2b', margin: '0 0 0.5rem' }}>
+              Conta criada com sucesso!
+            </h2>
             <p style={{ fontSize: 14, color: '#888780', lineHeight: 1.6, margin: '0 0 1.5rem' }}>
-              {isInvite && workspaceName
-                ? <>Bem-vindo ao workspace <strong style={{ color: '#444441' }}>{workspaceName}</strong>. Redirecionando você agora...</>
-                : 'Senha atualizada. Redirecionando você agora...'}
+              {isInvite && workspaceName ? (
+                <>
+                  Bem-vindo ao workspace{' '}
+                  <strong style={{ color: '#444441' }}>{workspaceName}</strong>. Redirecionando você
+                  agora...
+                </>
+              ) : (
+                'Senha atualizada. Redirecionando você agora...'
+              )}
             </p>
-            <div style={{ width: '100%', height: 4, background: '#f1efe8', borderRadius: 4, overflow: 'hidden' }}>
-              <div style={{ height: '100%', background: '#1a3d2b', width: `${progressWidth}%`, borderRadius: 4, transition: 'width 2.5s ease' }} />
+            <div
+              style={{
+                width: '100%',
+                height: 4,
+                background: '#f1efe8',
+                borderRadius: 4,
+                overflow: 'hidden',
+              }}
+            >
+              <div
+                style={{
+                  height: '100%',
+                  background: '#1a3d2b',
+                  width: `${progressWidth}%`,
+                  borderRadius: 4,
+                  transition: 'width 2.5s ease',
+                }}
+              />
             </div>
           </div>
         )}
 
-        <div style={{ padding: '1rem 2rem', background: '#f8f7f3', borderTop: '1px solid #ece9e2', textAlign: 'center' }}>
+        <div
+          style={{
+            padding: '1rem 2rem',
+            background: '#f8f7f3',
+            borderTop: '1px solid #ece9e2',
+            textAlign: 'center',
+          }}
+        >
           <p style={{ fontSize: 12, color: '#888780', margin: 0 }}>
-            {isInvite ? 'Não esperava este convite? Ignore este e-mail — nenhuma conta será criada.' : ''}
+            {isInvite
+              ? 'Não esperava este convite? Ignore este e-mail — nenhuma conta será criada.'
+              : ''}
           </p>
         </div>
       </div>

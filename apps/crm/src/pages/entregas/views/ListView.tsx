@@ -29,16 +29,22 @@ function sortCards(cards: BoardCard[], column: string, direction: 'asc' | 'desc'
   const dir = direction === 'asc' ? 1 : -1;
   return [...cards].sort((a, b) => {
     switch (column) {
-      case 'titulo': return dir * a.workflow.titulo.localeCompare(b.workflow.titulo);
-      case 'cliente': return dir * ((a.cliente?.nome || '').localeCompare(b.cliente?.nome || ''));
-      case 'etapa': return dir * a.etapa.nome.localeCompare(b.etapa.nome);
-      case 'responsavel': return dir * ((a.membro?.nome || '').localeCompare(b.membro?.nome || ''));
-      case 'prazo': return dir * (a.deadline.diasRestantes - b.deadline.diasRestantes);
+      case 'titulo':
+        return dir * a.workflow.titulo.localeCompare(b.workflow.titulo);
+      case 'cliente':
+        return dir * (a.cliente?.nome || '').localeCompare(b.cliente?.nome || '');
+      case 'etapa':
+        return dir * a.etapa.nome.localeCompare(b.etapa.nome);
+      case 'responsavel':
+        return dir * (a.membro?.nome || '').localeCompare(b.membro?.nome || '');
+      case 'prazo':
+        return dir * (a.deadline.diasRestantes - b.deadline.diasRestantes);
       case 'status': {
-        const order = (c: BoardCard) => c.deadline.estourado ? 0 : c.deadline.urgente ? 1 : 2;
+        const order = (c: BoardCard) => (c.deadline.estourado ? 0 : c.deadline.urgente ? 1 : 2);
         return dir * (order(a) - order(b));
       }
-      default: return 0;
+      default:
+        return 0;
     }
   });
 }
@@ -53,7 +59,10 @@ function formatPrazo(card: BoardCard): string {
 export function ListView({ cards, sort, onSortChange, onCardClick }: ListViewProps) {
   if (cards.length === 0) {
     return (
-      <div className="card animate-up" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+      <div
+        className="card animate-up"
+        style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}
+      >
         <p>Nenhuma entrega encontrada. Ajuste os filtros.</p>
       </div>
     );
@@ -74,7 +83,7 @@ export function ListView({ cards, sort, onSortChange, onCardClick }: ListViewPro
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
         <thead>
           <tr>
-            {COLUMNS.map(col => (
+            {COLUMNS.map((col) => (
               <th
                 key={col.key}
                 onClick={() => handleSort(col.key)}
@@ -91,29 +100,37 @@ export function ListView({ cards, sort, onSortChange, onCardClick }: ListViewPro
               >
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
                   {col.label}
-                  {sort.column === col.key
-                    ? sort.direction === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
-                    : null
-                  }
+                  {sort.column === col.key ? (
+                    sort.direction === 'asc' ? (
+                      <ChevronUp className="h-3 w-3" />
+                    ) : (
+                      <ChevronDown className="h-3 w-3" />
+                    )
+                  ) : null}
                 </span>
               </th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {sorted.map(card => {
+          {sorted.map((card) => {
             const badge = getStatusBadge(card);
             return (
               <tr
                 key={card.workflow.id}
                 onClick={() => onCardClick(card)}
                 style={{ cursor: 'pointer', borderBottom: '1px solid var(--border-color)' }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-2)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
               >
                 <td style={{ padding: '0.75rem 1rem' }}>{card.workflow.titulo}</td>
                 <td style={{ padding: '0.75rem 1rem' }}>
-                  <span style={{ borderLeft: `3px solid ${card.cliente?.cor || '#888'}`, paddingLeft: '0.5rem' }}>
+                  <span
+                    style={{
+                      borderLeft: `3px solid ${card.cliente?.cor || '#888'}`,
+                      paddingLeft: '0.5rem',
+                    }}
+                  >
                     {card.cliente?.nome || '—'}
                   </span>
                 </td>
@@ -121,7 +138,16 @@ export function ListView({ cards, sort, onSortChange, onCardClick }: ListViewPro
                 <td style={{ padding: '0.75rem 1rem' }}>{card.membro?.nome || '—'}</td>
                 <td style={{ padding: '0.75rem 1rem' }}>{formatPrazo(card)}</td>
                 <td style={{ padding: '0.75rem 1rem' }}>
-                  <span style={{ padding: '0.2rem 0.6rem', borderRadius: 12, background: badge.color + '22', color: badge.color, fontSize: '0.75rem', fontWeight: 600 }}>
+                  <span
+                    style={{
+                      padding: '0.2rem 0.6rem',
+                      borderRadius: 12,
+                      background: badge.color + '22',
+                      color: badge.color,
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                    }}
+                  >
                     {badge.label}
                   </span>
                 </td>

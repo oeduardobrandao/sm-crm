@@ -28,7 +28,9 @@ export async function getLeads(): Promise<Lead[]> {
   return data || [];
 }
 
-export async function addLead(l: Omit<Lead, 'id' | 'user_id' | 'conta_id' | 'created_at'>): Promise<Lead> {
+export async function addLead(
+  l: Omit<Lead, 'id' | 'user_id' | 'conta_id' | 'created_at'>,
+): Promise<Lead> {
   const user_id = await getUserId();
   const conta_id = await getContaId();
   const { data, error } = await supabase
@@ -40,13 +42,11 @@ export async function addLead(l: Omit<Lead, 'id' | 'user_id' | 'conta_id' | 'cre
   return data;
 }
 
-export async function updateLead(id: number, l: Partial<Omit<Lead, 'id' | 'user_id' | 'conta_id' | 'created_at'>>): Promise<Lead> {
-  const { data, error } = await supabase
-    .from('leads')
-    .update(l)
-    .eq('id', id)
-    .select()
-    .single();
+export async function updateLead(
+  id: number,
+  l: Partial<Omit<Lead, 'id' | 'user_id' | 'conta_id' | 'created_at'>>,
+): Promise<Lead> {
+  const { data, error } = await supabase.from('leads').update(l).eq('id', id).select().single();
   if (error) throw error;
   return data;
 }

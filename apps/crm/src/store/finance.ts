@@ -39,10 +39,12 @@ export async function getTransacoes(): Promise<Transacao[]> {
   if (error) throw error;
 
   // Retrocompatibilidade: Se status for undefined/null no banco, vira 'pago' localmente para não quebrar fluxos antigos.
-  return (data || []).map(t => ({...t, status: t.status || 'pago'}));
+  return (data || []).map((t) => ({ ...t, status: t.status || 'pago' }));
 }
 
-export async function addTransacao(t: Omit<Transacao, 'id' | 'user_id' | 'conta_id'>): Promise<Transacao> {
+export async function addTransacao(
+  t: Omit<Transacao, 'id' | 'user_id' | 'conta_id'>,
+): Promise<Transacao> {
   const user_id = await getUserId();
   const conta_id = await getContaId();
   const payload = {
@@ -50,18 +52,17 @@ export async function addTransacao(t: Omit<Transacao, 'id' | 'user_id' | 'conta_
     user_id,
     conta_id,
     status: t.status || 'pago',
-    referencia_agendamento: t.referencia_agendamento || null
+    referencia_agendamento: t.referencia_agendamento || null,
   };
-  const { data, error } = await supabase
-    .from('transacoes')
-    .insert(payload)
-    .select()
-    .single();
+  const { data, error } = await supabase.from('transacoes').insert(payload).select().single();
   if (error) throw error;
   return data;
 }
 
-export async function updateTransacao(id: number, t: Partial<Omit<Transacao, 'id' | 'user_id' | 'conta_id'>>): Promise<Transacao> {
+export async function updateTransacao(
+  id: number,
+  t: Partial<Omit<Transacao, 'id' | 'user_id' | 'conta_id'>>,
+): Promise<Transacao> {
   const { data, error } = await supabase
     .from('transacoes')
     .update(t)
@@ -89,7 +90,9 @@ export async function getContratos(): Promise<Contrato[]> {
   return data || [];
 }
 
-export async function addContrato(c: Omit<Contrato, 'id' | 'user_id' | 'conta_id'>): Promise<Contrato> {
+export async function addContrato(
+  c: Omit<Contrato, 'id' | 'user_id' | 'conta_id'>,
+): Promise<Contrato> {
   const user_id = await getUserId();
   const conta_id = await getContaId();
   const { data, error } = await supabase
@@ -101,13 +104,11 @@ export async function addContrato(c: Omit<Contrato, 'id' | 'user_id' | 'conta_id
   return data;
 }
 
-export async function updateContrato(id: number, c: Partial<Omit<Contrato, 'id' | 'user_id' | 'conta_id'>>): Promise<Contrato> {
-  const { data, error } = await supabase
-    .from('contratos')
-    .update(c)
-    .eq('id', id)
-    .select()
-    .single();
+export async function updateContrato(
+  id: number,
+  c: Partial<Omit<Contrato, 'id' | 'user_id' | 'conta_id'>>,
+): Promise<Contrato> {
+  const { data, error } = await supabase.from('contratos').update(c).eq('id', id).select().single();
   if (error) throw error;
   return data;
 }

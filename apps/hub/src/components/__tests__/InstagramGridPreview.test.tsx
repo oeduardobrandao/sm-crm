@@ -10,19 +10,34 @@ vi.mock('../../api', () => ({
 
 function makeMedia(overrides: Partial<HubPostMedia> = {}): HubPostMedia {
   return {
-    id: 1, post_id: 7, kind: 'image', mime_type: 'image/jpeg',
-    url: 'https://cdn.example.com/media-1.jpg', thumbnail_url: 'https://cdn.example.com/thumb-1.jpg',
-    width: 1080, height: 1350, duration_seconds: null, is_cover: false, sort_order: 0,
+    id: 1,
+    post_id: 7,
+    kind: 'image',
+    mime_type: 'image/jpeg',
+    url: 'https://cdn.example.com/media-1.jpg',
+    thumbnail_url: 'https://cdn.example.com/thumb-1.jpg',
+    width: 1080,
+    height: 1350,
+    duration_seconds: null,
+    is_cover: false,
+    sort_order: 0,
     ...overrides,
   };
 }
 
 function makePost(overrides: Partial<HubPost> = {}): HubPost {
   return {
-    id: 7, titulo: 'Post Teste', tipo: 'feed', status: 'enviado_cliente',
-    ordem: 1, conteudo_plain: 'Legenda', scheduled_at: '2026-04-22T10:00:00.000Z',
-    workflow_id: 42, workflow_titulo: 'Editorial',
-    media: [makeMedia()], cover_media: null,
+    id: 7,
+    titulo: 'Post Teste',
+    tipo: 'feed',
+    status: 'enviado_cliente',
+    ordem: 1,
+    conteudo_plain: 'Legenda',
+    scheduled_at: '2026-04-22T10:00:00.000Z',
+    workflow_id: 42,
+    workflow_titulo: 'Editorial',
+    media: [makeMedia()],
+    cover_media: null,
     ...overrides,
   };
 }
@@ -36,9 +51,30 @@ const profile: InstagramFeedProfile = {
 };
 
 const livePosts: InstagramFeedPost[] = [
-  { id: 'ig-1', thumbnailUrl: 'https://cdn.ig/t1.jpg', mediaType: 'IMAGE', permalink: 'https://ig/p/1', postedAt: '2026-04-20T10:00:00Z', impressions: 5292 },
-  { id: 'ig-2', thumbnailUrl: 'https://cdn.ig/t2.jpg', mediaType: 'CAROUSEL_ALBUM', permalink: 'https://ig/p/2', postedAt: '2026-04-18T10:00:00Z', impressions: 4555 },
-  { id: 'ig-3', thumbnailUrl: null, mediaType: 'VIDEO', permalink: 'https://ig/p/3', postedAt: '2026-04-16T10:00:00Z', impressions: 1768 },
+  {
+    id: 'ig-1',
+    thumbnailUrl: 'https://cdn.ig/t1.jpg',
+    mediaType: 'IMAGE',
+    permalink: 'https://ig/p/1',
+    postedAt: '2026-04-20T10:00:00Z',
+    impressions: 5292,
+  },
+  {
+    id: 'ig-2',
+    thumbnailUrl: 'https://cdn.ig/t2.jpg',
+    mediaType: 'CAROUSEL_ALBUM',
+    permalink: 'https://ig/p/2',
+    postedAt: '2026-04-18T10:00:00Z',
+    impressions: 4555,
+  },
+  {
+    id: 'ig-3',
+    thumbnailUrl: null,
+    mediaType: 'VIDEO',
+    permalink: 'https://ig/p/3',
+    postedAt: '2026-04-16T10:00:00Z',
+    impressions: 1768,
+  },
 ];
 
 describe('InstagramGridPreview', () => {

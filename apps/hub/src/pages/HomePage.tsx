@@ -1,5 +1,13 @@
 import { useNavigate, useParams } from 'react-router-dom';
-import { CheckSquare, Palette, FileText, BookOpen, Lightbulb, CalendarDays, ArrowRight } from 'lucide-react';
+import {
+  CheckSquare,
+  Palette,
+  FileText,
+  BookOpen,
+  Lightbulb,
+  CalendarDays,
+  ArrowRight,
+} from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useHub } from '../HubContext';
 import { fetchPosts } from '../api';
@@ -7,12 +15,32 @@ import { PostCalendar } from '../components/PostCalendar';
 import { DashboardSection } from '../components/dashboard/DashboardSection';
 
 const SECTIONS = [
-  { label: 'Aprovações', icon: CheckSquare, path: '/aprovacoes', description: 'Posts aguardando sua aprovação' },
-  { label: 'Postagens', icon: CalendarDays, path: '/postagens', description: 'Calendário editorial e publicações' },
+  {
+    label: 'Aprovações',
+    icon: CheckSquare,
+    path: '/aprovacoes',
+    description: 'Posts aguardando sua aprovação',
+  },
+  {
+    label: 'Postagens',
+    icon: CalendarDays,
+    path: '/postagens',
+    description: 'Calendário editorial e publicações',
+  },
   { label: 'Marca', icon: Palette, path: '/marca', description: 'Identidade visual e arquivos' },
   { label: 'Páginas', icon: FileText, path: '/paginas', description: 'Materiais e estratégia' },
-  { label: 'Briefing', icon: BookOpen, path: '/briefing', description: 'Informações do seu projeto' },
-  { label: 'Ideias', icon: Lightbulb, path: '/ideias', description: 'Compartilhe ideias com sua agência' },
+  {
+    label: 'Briefing',
+    icon: BookOpen,
+    path: '/briefing',
+    description: 'Informações do seu projeto',
+  },
+  {
+    label: 'Ideias',
+    icon: Lightbulb,
+    path: '/ideias',
+    description: 'Compartilhe ideias com sua agência',
+  },
 ];
 
 export function HomePage() {
@@ -27,10 +55,16 @@ export function HomePage() {
   });
 
   const allPosts = data?.posts ?? [];
-  const pendingCount = allPosts.filter(p => p.status === 'enviado_cliente').length;
+  const pendingCount = allPosts.filter((p) => p.status === 'enviado_cliente').length;
 
-  const CALENDAR_STATUSES = new Set(['enviado_cliente', 'aprovado_cliente', 'correcao_cliente', 'agendado', 'publicado']);
-  const posts = allPosts.filter(p => CALENDAR_STATUSES.has(p.status));
+  const CALENDAR_STATUSES = new Set([
+    'enviado_cliente',
+    'aprovado_cliente',
+    'correcao_cliente',
+    'agendado',
+    'publicado',
+  ]);
+  const posts = allPosts.filter((p) => CALENDAR_STATUSES.has(p.status));
 
   const firstName = bootstrap.cliente_nome.split(' ')[0];
 
@@ -60,7 +94,10 @@ export function HomePage() {
               ? 'Você tem 1 post aguardando aprovação'
               : `Você tem ${pendingCount} posts aguardando aprovação`}
           </span>
-          <ArrowRight size={16} className="text-stone-400 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors flex-shrink-0" />
+          <ArrowRight
+            size={16}
+            className="text-stone-400 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors flex-shrink-0"
+          />
         </button>
       )}
 

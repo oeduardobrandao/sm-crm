@@ -12,7 +12,11 @@ type MockedSupabaseModule = typeof supabaseModule & {
     payload?: unknown;
     modifiers: Array<{ method: string; args: unknown[] }>;
   }>;
-  __queueSupabaseResult: (table: string, operation: 'select' | 'insert' | 'update' | 'delete' | 'upsert', ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>) => void;
+  __queueSupabaseResult: (
+    table: string,
+    operation: 'select' | 'insert' | 'update' | 'delete' | 'upsert',
+    ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>
+  ) => void;
   __resetSupabaseMock: () => void;
   __setCurrentProfile: (profile: Record<string, unknown> | null) => void;
 };
@@ -20,7 +24,9 @@ type MockedSupabaseModule = typeof supabaseModule & {
 const mockedSupabase = supabaseModule as MockedSupabaseModule;
 
 function getCalls(table: string, operation?: string) {
-  return mockedSupabase.__getSupabaseCalls().filter((entry) => entry.table === table && (!operation || entry.operation === operation));
+  return mockedSupabase
+    .__getSupabaseCalls()
+    .filter((entry) => entry.table === table && (!operation || entry.operation === operation));
 }
 
 describe('store ideias', () => {
@@ -38,7 +44,13 @@ describe('store ideias', () => {
     it('fetches ideias with joined relations', async () => {
       mockedSupabase.__queueSupabaseResult('ideias', 'select', {
         data: [
-          { id: 'ideia-1', titulo: 'Reels trend', status: 'nova', clientes: { nome: 'Clínica' }, ideia_reactions: [] },
+          {
+            id: 'ideia-1',
+            titulo: 'Reels trend',
+            status: 'nova',
+            clientes: { nome: 'Clínica' },
+            ideia_reactions: [],
+          },
         ],
         error: null,
       });
@@ -64,8 +76,20 @@ describe('store ideias', () => {
     it('returns all ideias without filter when no client_id given', async () => {
       mockedSupabase.__queueSupabaseResult('ideias', 'select', {
         data: [
-          { id: 'ideia-1', titulo: 'Reels', status: 'nova', clientes: { nome: 'A' }, ideia_reactions: [] },
-          { id: 'ideia-2', titulo: 'Stories', status: 'aprovada', clientes: { nome: 'B' }, ideia_reactions: [] },
+          {
+            id: 'ideia-1',
+            titulo: 'Reels',
+            status: 'nova',
+            clientes: { nome: 'A' },
+            ideia_reactions: [],
+          },
+          {
+            id: 'ideia-2',
+            titulo: 'Stories',
+            status: 'aprovada',
+            clientes: { nome: 'B' },
+            ideia_reactions: [],
+          },
         ],
         error: null,
       });
@@ -74,7 +98,9 @@ describe('store ideias', () => {
 
       expect(result).toHaveLength(2);
       const call = getCalls('ideias', 'select').at(-1)!;
-      expect(call.modifiers.some(m => m.method === 'eq' && m.args[0] === 'cliente_id')).toBe(false);
+      expect(call.modifiers.some((m) => m.method === 'eq' && m.args[0] === 'cliente_id')).toBe(
+        false,
+      );
     });
   });
 
@@ -119,14 +145,24 @@ describe('store ideias', () => {
 
   describe('toggleIdeiaReaction', () => {
     it('inserts a reaction when the membro has not reacted yet', async () => {
-      mockedSupabase.__queueSupabaseResult('ideia_reactions', 'select', { data: null, error: null });
-      mockedSupabase.__queueSupabaseResult('ideia_reactions', 'insert', { data: null, error: null });
+      mockedSupabase.__queueSupabaseResult('ideia_reactions', 'select', {
+        data: null,
+        error: null,
+      });
+      mockedSupabase.__queueSupabaseResult('ideia_reactions', 'insert', {
+        data: null,
+        error: null,
+      });
 
       await store.toggleIdeiaReaction('ideia-1', 2, '❤️');
 
       const insertCalls = getCalls('ideia_reactions', 'insert');
       expect(insertCalls).toHaveLength(1);
-      expect(insertCalls[0].payload).toMatchObject({ ideia_id: 'ideia-1', membro_id: 2, emoji: '❤️' });
+      expect(insertCalls[0].payload).toMatchObject({
+        ideia_id: 'ideia-1',
+        membro_id: 2,
+        emoji: '❤️',
+      });
     });
 
     it('removes the reaction when the membro has already reacted', async () => {
@@ -134,13 +170,19 @@ describe('store ideias', () => {
         data: { id: 'reaction-99' },
         error: null,
       });
-      mockedSupabase.__queueSupabaseResult('ideia_reactions', 'delete', { data: null, error: null });
+      mockedSupabase.__queueSupabaseResult('ideia_reactions', 'delete', {
+        data: null,
+        error: null,
+      });
 
       await store.toggleIdeiaReaction('ideia-1', 2, '❤️');
 
       const deleteCalls = getCalls('ideia_reactions', 'delete');
       expect(deleteCalls).toHaveLength(1);
-      expect(deleteCalls[0].modifiers).toContainEqual({ method: 'eq', args: ['id', 'reaction-99'] });
+      expect(deleteCalls[0].modifiers).toContainEqual({
+        method: 'eq',
+        args: ['id', 'reaction-99'],
+      });
     });
   });
 });

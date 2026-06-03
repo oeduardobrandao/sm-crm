@@ -55,57 +55,77 @@ const PageFallback = (
 
 export default function App() {
   return (
-    <Sentry.ErrorBoundary fallback={<div className="flex items-center justify-center h-screen text-center p-8">
-      <div><h1 className="text-xl font-bold mb-2">Algo deu errado</h1><p className="text-muted">Recarregue a página para tentar novamente.</p></div>
-    </div>}>
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <Toaster />
-        <Suspense fallback={PageFallback}>
-          <Routes>
-            {/* Public routes */}
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/configurar-senha" element={<ConfigurarSenhaPage />} />
-            <Route path="/politica-de-privacidade" element={<PoliticaPage />} />
-            <Route path="/termos-de-uso" element={<TermosPage />} />
-            <Route path="/lgpd" element={<LgpdPage />} />
-            <Route path="/portal/:token" element={<PortalPage />} />
+    <Sentry.ErrorBoundary
+      fallback={
+        <div className="flex items-center justify-center h-screen text-center p-8">
+          <div>
+            <h1 className="text-xl font-bold mb-2">Algo deu errado</h1>
+            <p className="text-muted">Recarregue a página para tentar novamente.</p>
+          </div>
+        </div>
+      }
+    >
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <Toaster />
+          <Suspense fallback={PageFallback}>
+            <Routes>
+              {/* Public routes */}
+              <Route path="/" element={<LandingPage />} />
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/configurar-senha" element={<ConfigurarSenhaPage />} />
+              <Route path="/politica-de-privacidade" element={<PoliticaPage />} />
+              <Route path="/termos-de-uso" element={<TermosPage />} />
+              <Route path="/lgpd" element={<LgpdPage />} />
+              <Route path="/portal/:token" element={<PortalPage />} />
 
-            {/* Protected route without sidebar layout */}
-            <Route path="/workspace-setup" element={<ProtectedRoute><WorkspaceSetupPage /></ProtectedRoute>} />
+              {/* Protected route without sidebar layout */}
+              <Route
+                path="/workspace-setup"
+                element={
+                  <ProtectedRoute>
+                    <WorkspaceSetupPage />
+                  </ProtectedRoute>
+                }
+              />
 
-            {/* Protected routes with sidebar layout */}
-            <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
-              <Route path="/dashboard" element={<DashboardPage />} />
-              <Route path="/clientes" element={<ClientesPage />} />
-              <Route path="/clientes/:id" element={<ClienteDetalhePage />} />
-              <Route path="/financeiro" element={<FinanceiroPage />} />
-              <Route path="/contratos" element={<ContratosPage />} />
-              <Route path="/leads" element={<LeadsPage />} />
-              <Route path="/equipe" element={<EquipePage />} />
-              <Route path="/equipe/:id" element={<MembroDetalhePage />} />
-              <Route path="/configuracao" element={<ConfiguracaoPage />} />
-              <Route path="/calendario" element={<CalendarioPage />} />
-              <Route path="/entregas" element={<EntregasPage />} />
-              <Route path="/post-express" element={<ExpressPostPage />} />
-              <Route path="/arquivos" element={<ArquivosPage />} />
-              <Route path="/analytics" element={<AnalyticsPage />} />
-              <Route path="/analytics/:id" element={<AnalyticsContaPage />} />
-              <Route path="/analytics-fluxos" element={<AnalyticsFluxosPage />} />
-              <Route path="/ideias" element={<IdeiasPage />} />
-              <Route path="/ajuda" element={<AjudaPage />} />
-              <Route path="/ajuda/secao/:category" element={<SecaoPage />} />
-              <Route path="/ajuda/secao" element={<Navigate to="/ajuda" replace />} />
-              <Route path="/ajuda/:slug" element={<ArtigoPage />} />
-            </Route>
+              {/* Protected routes with sidebar layout */}
+              <Route
+                element={
+                  <ProtectedRoute>
+                    <AppLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route path="/dashboard" element={<DashboardPage />} />
+                <Route path="/clientes" element={<ClientesPage />} />
+                <Route path="/clientes/:id" element={<ClienteDetalhePage />} />
+                <Route path="/financeiro" element={<FinanceiroPage />} />
+                <Route path="/contratos" element={<ContratosPage />} />
+                <Route path="/leads" element={<LeadsPage />} />
+                <Route path="/equipe" element={<EquipePage />} />
+                <Route path="/equipe/:id" element={<MembroDetalhePage />} />
+                <Route path="/configuracao" element={<ConfiguracaoPage />} />
+                <Route path="/calendario" element={<CalendarioPage />} />
+                <Route path="/entregas" element={<EntregasPage />} />
+                <Route path="/post-express" element={<ExpressPostPage />} />
+                <Route path="/arquivos" element={<ArquivosPage />} />
+                <Route path="/analytics" element={<AnalyticsPage />} />
+                <Route path="/analytics/:id" element={<AnalyticsContaPage />} />
+                <Route path="/analytics-fluxos" element={<AnalyticsFluxosPage />} />
+                <Route path="/ideias" element={<IdeiasPage />} />
+                <Route path="/ajuda" element={<AjudaPage />} />
+                <Route path="/ajuda/secao/:category" element={<SecaoPage />} />
+                <Route path="/ajuda/secao" element={<Navigate to="/ajuda" replace />} />
+                <Route path="/ajuda/:slug" element={<ArtigoPage />} />
+              </Route>
 
-            <Route path="*" element={<Navigate to="/login" replace />} />
-          </Routes>
-        </Suspense>
-        <Analytics />
-      </AuthProvider>
-    </QueryClientProvider>
+              <Route path="*" element={<Navigate to="/login" replace />} />
+            </Routes>
+          </Suspense>
+          <Analytics />
+        </AuthProvider>
+      </QueryClientProvider>
     </Sentry.ErrorBoundary>
   );
 }

@@ -13,7 +13,7 @@ const ALLOWED_DOMAINS = [
 function isAllowedDomain(src: string): boolean {
   try {
     const url = new URL(src);
-    return ALLOWED_DOMAINS.some(d => url.hostname === d || url.hostname.endsWith(`.${d}`));
+    return ALLOWED_DOMAINS.some((d) => url.hostname === d || url.hostname.endsWith(`.${d}`));
   } catch {
     return false;
   }

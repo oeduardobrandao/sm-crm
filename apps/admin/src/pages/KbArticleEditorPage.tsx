@@ -4,23 +4,34 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ArrowLeft, Save, Trash2, Plus, X, Upload, Loader2 } from 'lucide-react';
 import {
-  getKbArticle, createKbArticle, updateKbArticle, deleteKbArticle,
-  listKbContextLinks, upsertKbContextLink, deleteKbContextLink,
-  type KbArticle, type KbContextLink,
+  getKbArticle,
+  createKbArticle,
+  updateKbArticle,
+  deleteKbArticle,
+  listKbContextLinks,
+  upsertKbContextLink,
+  deleteKbContextLink,
+  type KbArticle,
+  type KbContextLink,
 } from '../lib/api';
-import { uploadInlineImage, extractR2Keys, resolveInlineImageUrls, injectSignedUrls } from '../lib/inline-image';
+import {
+  uploadInlineImage,
+  extractR2Keys,
+  resolveInlineImageUrls,
+  injectSignedUrls,
+} from '../lib/inline-image';
 import { ArticleEditor } from '../components/editor/ArticleEditor';
 
 const CATEGORIES: Record<string, string> = {
   'primeiros-passos': 'Getting Started',
-  'clientes': 'Clients',
-  'equipe': 'Team',
+  clientes: 'Clients',
+  equipe: 'Team',
   'entregas-e-fluxos': 'Deliveries & Flows',
   'hub-do-cliente': 'Client Hub',
   'instagram-e-analytics': 'Instagram & Analytics',
   'post-express': 'Post Express',
-  'financeiro': 'Financial',
-  'arquivos': 'Files',
+  financeiro: 'Financial',
+  arquivos: 'Files',
 };
 
 const ALL_CATEGORIES = Object.keys(CATEGORIES);
@@ -70,7 +81,10 @@ export default function KbArticleEditorPage() {
   const [coverPreview, setCoverPreview] = useState('');
   const [coverUploading, setCoverUploading] = useState(false);
   const coverInputRef = useRef<HTMLInputElement>(null);
-  const contentRef = useRef<{ json: Record<string, unknown> | null; plain: string }>({ json: null, plain: '' });
+  const contentRef = useRef<{ json: Record<string, unknown> | null; plain: string }>({
+    json: null,
+    plain: '',
+  });
   const [resolvedContent, setResolvedContent] = useState<Record<string, unknown> | null>(null);
   const [contentLoading, setContentLoading] = useState(false);
   const [selectedRoute, setSelectedRoute] = useState('');
@@ -108,7 +122,7 @@ export default function KbArticleEditorPage() {
       if (r2Keys.length > 0) {
         setContentLoading(true);
         resolveInlineImageUrls(r2Keys)
-          .then(urlMap => setResolvedContent(injectSignedUrls(article.content!, urlMap)))
+          .then((urlMap) => setResolvedContent(injectSignedUrls(article.content!, urlMap)))
           .finally(() => setContentLoading(false));
       } else {
         setResolvedContent(article.content);
@@ -119,9 +133,15 @@ export default function KbArticleEditorPage() {
   const isR2Key = (val: string) => val && !val.startsWith('http');
 
   useEffect(() => {
-    if (!coverUrl) { setCoverPreview(''); return; }
-    if (!isR2Key(coverUrl)) { setCoverPreview(coverUrl); return; }
-    resolveInlineImageUrls([coverUrl]).then(urls => {
+    if (!coverUrl) {
+      setCoverPreview('');
+      return;
+    }
+    if (!isR2Key(coverUrl)) {
+      setCoverPreview(coverUrl);
+      return;
+    }
+    resolveInlineImageUrls([coverUrl]).then((urls) => {
       setCoverPreview(urls[coverUrl] || '');
     });
   }, [coverUrl]);
@@ -152,12 +172,9 @@ export default function KbArticleEditorPage() {
     }
   }, [title, isEdit]);
 
-  const handleEditorUpdate = useCallback(
-    (json: Record<string, unknown>, plain: string) => {
-      contentRef.current = { json, plain };
-    },
-    [],
-  );
+  const handleEditorUpdate = useCallback((json: Record<string, unknown>, plain: string) => {
+    contentRef.current = { json, plain };
+  }, []);
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['admin', 'kb-articles'] });
@@ -166,7 +183,12 @@ export default function KbArticleEditorPage() {
 
   const saveMut = useMutation({
     mutationFn: async () => {
-      const parsedTags = tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : [];
+      const parsedTags = tags
+        ? tags
+            .split(',')
+            .map((t) => t.trim())
+            .filter(Boolean)
+        : [];
       const payload = {
         title,
         slug,
@@ -227,13 +249,15 @@ export default function KbArticleEditorPage() {
     }
   };
 
-  const usedRoutes = new Set(contextLinks.map(l => l.route_pattern));
+  const usedRoutes = new Set(contextLinks.map((l) => l.route_pattern));
 
-  const slugError = slug && (
-    RESERVED_SLUGS.includes(slug) ? 'Reserved slug' :
-    !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug) ? 'Only lowercase letters, numbers, hyphens' :
-    null
-  );
+  const slugError =
+    slug &&
+    (RESERVED_SLUGS.includes(slug)
+      ? 'Reserved slug'
+      : !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug)
+        ? 'Only lowercase letters, numbers, hyphens'
+        : null);
 
   if (isEdit && articleLoading) {
     return <p className="text-sm text-dim-foreground py-8">Loading...</p>;
@@ -244,7 +268,10 @@ export default function KbArticleEditorPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/admin/kb-articles')} className="text-muted-foreground hover:text-foreground transition-colors">
+          <button
+            onClick={() => navigate('/admin/kb-articles')}
+            className="text-muted-foreground hover:text-foreground transition-colors"
+          >
             <ArrowLeft size={18} />
           </button>
           <h1 className="font-['Playfair_Display'] text-xl font-bold">
@@ -254,7 +281,9 @@ export default function KbArticleEditorPage() {
         <div className="flex items-center gap-2">
           {isEdit && (
             <button
-              onClick={() => { if (confirm('Delete this article permanently?')) deleteMut.mutate(); }}
+              onClick={() => {
+                if (confirm('Delete this article permanently?')) deleteMut.mutate();
+              }}
               disabled={deleteMut.isPending}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-destructive/30 text-sm text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
             >
@@ -275,7 +304,9 @@ export default function KbArticleEditorPage() {
       <div className="bg-card border border-border rounded-2xl p-5 md:p-6 space-y-5 mb-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">Title *</label>
+            <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              Title *
+            </label>
             <input
               type="text"
               value={title}
@@ -285,7 +316,9 @@ export default function KbArticleEditorPage() {
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">Slug *</label>
+            <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              Slug *
+            </label>
             <input
               type="text"
               value={slug}
@@ -299,7 +332,9 @@ export default function KbArticleEditorPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">Category *</label>
+            <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              Category *
+            </label>
             <select
               value={category}
               onChange={(e) => setCategory(e.target.value)}
@@ -307,12 +342,16 @@ export default function KbArticleEditorPage() {
             >
               <option value="">Select category</option>
               {ALL_CATEGORIES.map((c) => (
-                <option key={c} value={c}>{CATEGORIES[c]}</option>
+                <option key={c} value={c}>
+                  {CATEGORIES[c]}
+                </option>
               ))}
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">Tags</label>
+            <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              Tags
+            </label>
             <input
               type="text"
               value={tags}
@@ -324,7 +363,9 @@ export default function KbArticleEditorPage() {
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">Excerpt</label>
+          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+            Excerpt
+          </label>
           <textarea
             value={excerpt}
             onChange={(e) => setExcerpt(e.target.value)}
@@ -336,7 +377,9 @@ export default function KbArticleEditorPage() {
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">Cover Image</label>
+          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+            Cover Image
+          </label>
           <div className="flex items-start gap-3">
             <div className="flex-1 flex items-center gap-2">
               <input
@@ -363,7 +406,11 @@ export default function KbArticleEditorPage() {
                 disabled={coverUploading}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:border-primary transition-colors disabled:opacity-50 shrink-0"
               >
-                {coverUploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                {coverUploading ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Upload size={14} />
+                )}
                 {coverUploading ? 'Uploading...' : 'Upload'}
               </button>
               {coverUrl && (
@@ -380,14 +427,20 @@ export default function KbArticleEditorPage() {
           </div>
           {coverPreview && (
             <div className="mt-2 rounded-xl overflow-hidden border border-border">
-              <img src={coverPreview} alt="Cover preview" className="w-full max-h-48 object-cover" />
+              <img
+                src={coverPreview}
+                alt="Cover preview"
+                className="w-full max-h-48 object-cover"
+              />
             </div>
           )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">Display Order</label>
+            <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              Display Order
+            </label>
             <input
               type="number"
               value={displayOrder}
@@ -397,7 +450,9 @@ export default function KbArticleEditorPage() {
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">Status</label>
+            <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+              Status
+            </label>
             <select
               value={status}
               onChange={(e) => setStatus(e.target.value as 'draft' | 'published')}
@@ -413,7 +468,9 @@ export default function KbArticleEditorPage() {
       {/* Content editor */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden mb-6">
         <div className="px-5 pt-4 pb-2">
-          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Content</label>
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            Content
+          </label>
         </div>
         {contentLoading ? (
           <p className="text-sm text-dim-foreground py-8 px-5">Loading content...</p>
@@ -429,13 +486,17 @@ export default function KbArticleEditorPage() {
       {/* Context links — only in edit mode */}
       {isEdit && article && (
         <div className="bg-card border border-border rounded-2xl p-5 md:p-6">
-          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Context Links</label>
-          <p className="text-xs text-dim-foreground mb-3">Select which CRM pages show this article as a help suggestion.</p>
+          <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+            Context Links
+          </label>
+          <p className="text-xs text-dim-foreground mb-3">
+            Select which CRM pages show this article as a help suggestion.
+          </p>
 
           {contextLinks.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-3">
-              {contextLinks.map(link => {
-                const route = CRM_ROUTES.find(r => r.value === link.route_pattern);
+              {contextLinks.map((link) => {
+                const route = CRM_ROUTES.find((r) => r.value === link.route_pattern);
                 return (
                   <span
                     key={link.id}
@@ -462,8 +523,10 @@ export default function KbArticleEditorPage() {
               className="px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm text-foreground focus:outline-none focus:border-primary"
             >
               <option value="">Select page</option>
-              {CRM_ROUTES.filter(r => !usedRoutes.has(r.value)).map(r => (
-                <option key={r.value} value={r.value}>{r.label}</option>
+              {CRM_ROUTES.filter((r) => !usedRoutes.has(r.value)).map((r) => (
+                <option key={r.value} value={r.value}>
+                  {r.label}
+                </option>
               ))}
             </select>
             <button

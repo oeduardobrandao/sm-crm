@@ -13,9 +13,29 @@ import { RoleRestrictionNotice } from '@/components/help/RoleRestrictionNotice';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,11 +44,24 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { ChevronDown } from 'lucide-react';
-import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import {
-  getMembros, addMembro, updateMembro, removeMembro,
-  getWorkspaceUsers, setMembroCrmUser,
-  formatBRL, getInitials,
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import {
+  getMembros,
+  addMembro,
+  updateMembro,
+  removeMembro,
+  getWorkspaceUsers,
+  setMembroCrmUser,
+  formatBRL,
+  getInitials,
   type Membro,
 } from '../../store';
 import { useAuth } from '../../context/AuthContext';
@@ -41,14 +74,27 @@ const membroSchema = z.object({
   cargo: z.string().min(1, 'Cargo obrigatório'),
   tipo: z.enum(['clt', 'freelancer_mensal', 'freelancer_demanda']),
   custo: z.string(),
-  diaPag: z.string().refine((v) => v === '' || (Number(v) >= 1 && Number(v) <= 31), 'Dia deve ser entre 1 e 31'),
+  diaPag: z
+    .string()
+    .refine((v) => v === '' || (Number(v) >= 1 && Number(v) <= 31), 'Dia deve ser entre 1 e 31'),
   crmUserId: z.string().optional(),
 });
 type MembroFormValues = z.infer<typeof membroSchema>;
 
-const AVATAR_COLORS = ['#eab308', '#3ecf8e', '#f5a342', '#f542c8', '#42c8f5', '#8b5cf6', '#ef4444', '#14b8a6'];
+const AVATAR_COLORS = [
+  '#eab308',
+  '#3ecf8e',
+  '#f5a342',
+  '#f542c8',
+  '#42c8f5',
+  '#8b5cf6',
+  '#ef4444',
+  '#14b8a6',
+];
 const TIPO_LABEL: Record<string, string> = {
-  clt: 'CLT', freelancer_mensal: 'Freelancer Mensal', freelancer_demanda: 'Freelancer Demanda',
+  clt: 'CLT',
+  freelancer_mensal: 'Freelancer Mensal',
+  freelancer_demanda: 'Freelancer Demanda',
 };
 
 function getAvatarColor(name: string): string {
@@ -76,7 +122,10 @@ export default function EquipePage() {
     defaultValues: { nome: '', cargo: '', tipo: 'clt', custo: '', diaPag: '', crmUserId: '' },
   });
 
-  const { data: membros = [], isLoading } = useQuery({ queryKey: ['membros'], queryFn: getMembros });
+  const { data: membros = [], isLoading } = useQuery({
+    queryKey: ['membros'],
+    queryFn: getMembros,
+  });
   const { data: workspaceUsers = [] } = useQuery({
     queryKey: ['workspace-users'],
     queryFn: getWorkspaceUsers,
@@ -85,8 +134,13 @@ export default function EquipePage() {
   const totalCost = membros.reduce((s, m) => s + (m.custo_mensal ?? 0), 0);
 
   const filtered = membros
-    .filter(m => filter === 'todos' || m.tipo === filter)
-    .filter(m => !search || m.nome.toLowerCase().includes(search.toLowerCase()) || m.cargo?.toLowerCase().includes(search.toLowerCase()))
+    .filter((m) => filter === 'todos' || m.tipo === filter)
+    .filter(
+      (m) =>
+        !search ||
+        m.nome.toLowerCase().includes(search.toLowerCase()) ||
+        m.cargo?.toLowerCase().includes(search.toLowerCase()),
+    )
     .sort((a, b) => {
       if (sort === 'nome') return a.nome.localeCompare(b.nome);
       if (sort === 'custo_maior') return (b.custo_mensal ?? 0) - (a.custo_mensal ?? 0);
@@ -125,7 +179,8 @@ export default function EquipePage() {
         data_pagamento: diaPag,
       };
       if (editing?.id) {
-        const desiredCrmUser = values.crmUserId === '' || values.crmUserId == null ? null : values.crmUserId;
+        const desiredCrmUser =
+          values.crmUserId === '' || values.crmUserId == null ? null : values.crmUserId;
         const currentCrmUser = editing.crm_user_id ?? null;
         if (desiredCrmUser !== currentCrmUser) {
           await setMembroCrmUser(editing.id, desiredCrmUser);
@@ -164,7 +219,11 @@ export default function EquipePage() {
         for (const row of rows) {
           if (!row.nome || !row.cargo) continue;
           try {
-            const tipo = (['clt', 'freelancer_mensal', 'freelancer_demanda'].includes(row.tipo) ? row.tipo : 'clt') as Membro['tipo'];
+            const tipo = (
+              ['clt', 'freelancer_mensal', 'freelancer_demanda'].includes(row.tipo)
+                ? row.tipo
+                : 'clt'
+            ) as Membro['tipo'];
             await addMembro({
               nome: row.nome,
               cargo: row.cargo,
@@ -174,9 +233,13 @@ export default function EquipePage() {
               data_pagamento: row.data_pagamento ? Number(row.data_pagamento) : undefined,
             });
             count++;
-          } catch { /* skip row */ }
+          } catch {
+            /* skip row */
+          }
         }
-        toast.success(`${count} membro${count !== 1 ? 's' : ''} importado${count !== 1 ? 's' : ''} com sucesso!`);
+        toast.success(
+          `${count} membro${count !== 1 ? 's' : ''} importado${count !== 1 ? 's' : ''} com sucesso!`,
+        );
         qc.invalidateQueries({ queryKey: ['membros'] });
       },
       (err) => toast.error(err.message),
@@ -186,9 +249,29 @@ export default function EquipePage() {
   return (
     <div style={{ padding: '1.5rem' }}>
       <div className="header">
-        <div className="header-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <div
+          className="header-title"
+          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+        >
           <h1>Equipe</h1>
-          <HelpTooltip content={<div className="space-y-2"><p><strong>Membros</strong> = pessoas da equipe (designers, redatores, etc). Servem para custos e atribuição de tarefas em fluxos.</p><p><strong>Usuários do workspace</strong> = contas com acesso ao CRM. Gerencie em Configurações → Workspace.</p><p>Para que um membro acesse o CRM, vincule-o a um usuário do workspace no formulário de edição.</p></div>}>
+          <HelpTooltip
+            content={
+              <div className="space-y-2">
+                <p>
+                  <strong>Membros</strong> = pessoas da equipe (designers, redatores, etc). Servem
+                  para custos e atribuição de tarefas em fluxos.
+                </p>
+                <p>
+                  <strong>Usuários do workspace</strong> = contas com acesso ao CRM. Gerencie em
+                  Configurações → Workspace.
+                </p>
+                <p>
+                  Para que um membro acesse o CRM, vincule-o a um usuário do workspace no formulário
+                  de edição.
+                </p>
+              </div>
+            }
+          >
             <span style={{ display: 'flex' }}>
               <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
             </span>
@@ -198,15 +281,22 @@ export default function EquipePage() {
           {!isAgent && (
             <HelpTooltip content="Colunas CSV: nome*, cargo*, tipo (clt|freelancer_mensal|freelancer_demanda), custo_mensal, data_pagamento">
               <span style={{ display: 'flex' }}>
-                <HelpCircle className="h-4 w-4" style={{ color: 'var(--text-muted)', cursor: 'pointer' }} />
+                <HelpCircle
+                  className="h-4 w-4"
+                  style={{ color: 'var(--text-muted)', cursor: 'pointer' }}
+                />
               </span>
             </HelpTooltip>
           )}
           {!isAgent && (
-            <Button variant="outline" onClick={handleCSVImport}><Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Importar CSV</Button>
+            <Button variant="outline" onClick={handleCSVImport}>
+              <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Importar CSV
+            </Button>
           )}
           {!isAgent && (
-            <Button onClick={openAdd}><Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Adicionar Membro</Button>
+            <Button onClick={openAdd}>
+              <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Adicionar Membro
+            </Button>
           )}
         </div>
       </div>
@@ -235,59 +325,134 @@ export default function EquipePage() {
 
       <div className="flex flex-wrap items-center gap-3 mb-2">
         <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: '320px' }}>
-          <Search className="h-4 w-4" style={{ position: 'absolute', left: '0.625rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
-          <Input placeholder="Buscar por nome ou cargo..." value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: '2rem' }} />
+          <Search
+            className="h-4 w-4"
+            style={{
+              position: 'absolute',
+              left: '0.625rem',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              color: 'var(--text-muted)',
+              pointerEvents: 'none',
+            }}
+          />
+          <Input
+            placeholder="Buscar por nome ou cargo..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ paddingLeft: '2rem' }}
+          />
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="h-9 rounded-full px-4 text-xs gap-1.5 font-normal shadow-sm mb-0">
+            <Button
+              variant="outline"
+              className="h-9 rounded-full px-4 text-xs gap-1.5 font-normal shadow-sm mb-0"
+            >
               {filter === 'todos' ? 'Tipo' : TIPO_LABEL[filter]}
               <ChevronDown className="h-3.5 w-3.5 opacity-60" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-48">
-            <DropdownMenuRadioGroup value={filter} onValueChange={(v) => setFilter(v as FilterTipo)}>
-              {(['todos', 'clt', 'freelancer_mensal', 'freelancer_demanda'] as FilterTipo[]).map(f => (
-                <DropdownMenuRadioItem key={f} value={f}>
-                  {f === 'todos' ? 'Todos' : TIPO_LABEL[f]}
-                </DropdownMenuRadioItem>
-              ))}
+            <DropdownMenuRadioGroup
+              value={filter}
+              onValueChange={(v) => setFilter(v as FilterTipo)}
+            >
+              {(['todos', 'clt', 'freelancer_mensal', 'freelancer_demanda'] as FilterTipo[]).map(
+                (f) => (
+                  <DropdownMenuRadioItem key={f} value={f}>
+                    {f === 'todos' ? 'Todos' : TIPO_LABEL[f]}
+                  </DropdownMenuRadioItem>
+                ),
+              )}
             </DropdownMenuRadioGroup>
           </DropdownMenuContent>
         </DropdownMenu>
-        <Select value={sort} onValueChange={v => setSort(v as SortKey)}>
-          <SelectTrigger className="!rounded-full !text-xs h-9 px-4 mb-0 w-auto min-w-[140px]"><SelectValue /></SelectTrigger>
+        <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
+          <SelectTrigger className="!rounded-full !text-xs h-9 px-4 mb-0 w-auto min-w-[140px]">
+            <SelectValue />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="nome">Nome</SelectItem>
-            {!isAgent && <>
-              <SelectItem value="custo_maior">Custo (maior)</SelectItem>
-              <SelectItem value="custo_menor">Custo (menor)</SelectItem>
-            </>}
+            {!isAgent && (
+              <>
+                <SelectItem value="custo_maior">Custo (maior)</SelectItem>
+                <SelectItem value="custo_menor">Custo (menor)</SelectItem>
+              </>
+            )}
           </SelectContent>
         </Select>
       </div>
 
       {isLoading ? (
-        <div className="flex justify-center p-8"><Spinner size="lg" /></div>
+        <div className="flex justify-center p-8">
+          <Spinner size="lg" />
+        </div>
       ) : (
         <div className="team-grid">
-          {filtered.map(m => {
+          {filtered.map((m) => {
             const color = getAvatarColor(m.nome);
             return (
-              <div key={m.id} className="team-card card animate-up" style={{ padding: '1.25rem 1rem' }}>
+              <div
+                key={m.id}
+                className="team-card card animate-up"
+                style={{ padding: '1.25rem 1rem' }}
+              >
                 <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                  <div className="avatar" style={{ background: color, color: '#fff', fontWeight: 700, width: 44, height: 44, fontSize: '1rem', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div
+                    className="avatar"
+                    style={{
+                      background: color,
+                      color: '#fff',
+                      fontWeight: 700,
+                      width: 44,
+                      height: 44,
+                      fontSize: '1rem',
+                      flexShrink: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
                     {getInitials(m.nome)}
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', flex: 1, minWidth: 0 }}>
-                    <button className="client-link" onClick={() => navigate(`/equipe/${m.id}`)} style={{ fontWeight: 600, textAlign: 'left', lineHeight: 1.2 }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.15rem',
+                      flex: 1,
+                      minWidth: 0,
+                    }}
+                  >
+                    <button
+                      className="client-link"
+                      onClick={() => navigate(`/equipe/${m.id}`)}
+                      style={{ fontWeight: 600, textAlign: 'left', lineHeight: 1.2 }}
+                    >
                       {m.nome}
                     </button>
                     <div style={{ fontSize: '0.75rem', color: '#888' }}>{m.cargo}</div>
-                    <div style={{ marginTop: 2, display: 'flex', flexWrap: 'wrap', gap: '0.25rem', alignItems: 'center' }}>
-                      <Badge variant="secondary" style={{ fontSize: '0.65rem', padding: '0 0.4rem', pointerEvents: 'none' }}>{TIPO_LABEL[m.tipo]}</Badge>
+                    <div
+                      style={{
+                        marginTop: 2,
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: '0.25rem',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Badge
+                        variant="secondary"
+                        style={{ fontSize: '0.65rem', padding: '0 0.4rem', pointerEvents: 'none' }}
+                      >
+                        {TIPO_LABEL[m.tipo]}
+                      </Badge>
                       {!isAgent && !m.crm_user_id && (
-                        <Badge variant="outline" style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
+                        <Badge
+                          variant="outline"
+                          style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}
+                        >
                           sem conta vinculada
                         </Badge>
                       )}
@@ -297,11 +462,21 @@ export default function EquipePage() {
                   <div className="flex gap-1" style={{ marginLeft: 'auto' }}>
                     {!isAgent && (
                       <>
-                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openEdit(m)}>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8"
+                          onClick={() => openEdit(m)}
+                        >
                           <Edit2 className="h-3.5 w-3.5" />
                         </Button>
                         {m.id && (
-                          <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={() => setDeleteId(m.id!)}>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 text-destructive"
+                            onClick={() => setDeleteId(m.id!)}
+                          >
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         )}
@@ -309,7 +484,6 @@ export default function EquipePage() {
                     )}
                   </div>
                 </div>
-
               </div>
             );
           })}
@@ -323,32 +497,80 @@ export default function EquipePage() {
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <FormField control={form.control} name="nome" render={({ field }) => (
-                <FormItem><FormLabel>Nome *</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
-              )} />
-              <FormField control={form.control} name="cargo" render={({ field }) => (
-                <FormItem><FormLabel>Cargo *</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
-              )} />
-              <FormField control={form.control} name="tipo" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Tipo</FormLabel>
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
-                    <SelectContent>
-                      <SelectItem value="clt">CLT</SelectItem>
-                      <SelectItem value="freelancer_mensal">Freelancer Mensal</SelectItem>
-                      <SelectItem value="freelancer_demanda">Freelancer Demanda</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={form.control} name="custo" render={({ field }) => (
-                <FormItem><FormLabel>Custo Mensal (R$)</FormLabel><FormControl><Input type="number" min={0} step={0.01} {...field} /></FormControl><FormMessage /></FormItem>
-              )} />
-              <FormField control={form.control} name="diaPag" render={({ field }) => (
-                <FormItem><FormLabel>Dia de Pagamento (1-31)</FormLabel><FormControl><Input type="number" min={1} max={31} {...field} /></FormControl><FormMessage /></FormItem>
-              )} />
+              <FormField
+                control={form.control}
+                name="nome"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nome *</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="cargo"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Cargo *</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="tipo"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Tipo</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="clt">CLT</SelectItem>
+                        <SelectItem value="freelancer_mensal">Freelancer Mensal</SelectItem>
+                        <SelectItem value="freelancer_demanda">Freelancer Demanda</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="custo"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Custo Mensal (R$)</FormLabel>
+                    <FormControl>
+                      <Input type="number" min={0} step={0.01} {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="diaPag"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Dia de Pagamento (1-31)</FormLabel>
+                    <FormControl>
+                      <Input type="number" min={1} max={31} {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               {!isAgent && (
                 <FormField
                   control={form.control}
@@ -375,7 +597,8 @@ export default function EquipePage() {
                         </SelectContent>
                       </Select>
                       <FormDescription>
-                        Vincular um membro a um usuário do workspace permite que ele acesse o CRM e veja suas atribuições.
+                        Vincular um membro a um usuário do workspace permite que ele acesse o CRM e
+                        veja suas atribuições.
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -383,7 +606,9 @@ export default function EquipePage() {
                 />
               )}
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
+                <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>
+                  Cancelar
+                </Button>
                 <Button type="submit" disabled={saving}>
                   {saving && <Spinner size="sm" />} Salvar
                 </Button>
@@ -393,9 +618,16 @@ export default function EquipePage() {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={deleteId != null} onOpenChange={open => { if (!open) setDeleteId(null); }}>
+      <AlertDialog
+        open={deleteId != null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteId(null);
+        }}
+      >
         <AlertDialogContent>
-          <AlertDialogHeader><AlertDialogTitle>Remover este membro?</AlertDialogTitle></AlertDialogHeader>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover este membro?</AlertDialogTitle>
+          </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Não</AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete}>Sim</AlertDialogAction>

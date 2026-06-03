@@ -35,7 +35,9 @@ class MockXHR {
   body: File | null = null;
   headers = new Map<string, string>();
   upload = {
-    onprogress: null as ((event: { lengthComputable: boolean; loaded: number; total: number }) => void) | null,
+    onprogress: null as
+      | ((event: { lengthComputable: boolean; loaded: number; total: number }) => void)
+      | null,
   };
   onload: (() => void) | null = null;
   onerror: (() => void) | null = null;
@@ -122,17 +124,15 @@ describe('post media service', () => {
     expect(() => detectKind(createFile('planilha.pdf', 'application/pdf'))).toThrow(
       'Tipo não suportado: application/pdf',
     );
-    expect(() => validateFile(createFile('grande.mov', 'video/quicktime', 450 * 1024 * 1024), 'video')).toThrow(
-      'Arquivo maior que 400 MB',
-    );
+    expect(() =>
+      validateFile(createFile('grande.mov', 'video/quicktime', 450 * 1024 * 1024), 'video'),
+    ).toThrow('Arquivo maior que 400 MB');
   });
 
   it('lists media through the edge function helper', async () => {
     fetchHarness.queueResponse({
       json: {
-        media: [
-          { id: 1, post_id: 9, kind: 'image', sort_order: 0 },
-        ],
+        media: [{ id: 1, post_id: 9, kind: 'image', sort_order: 0 }],
       },
     });
 
@@ -306,11 +306,15 @@ describe('post media service', () => {
 
     const started: number[] = [];
     const finished: number[] = [];
-    await uploadMany([1, 2, 3, 4], async (value) => {
-      started.push(value);
-      await Promise.resolve();
-      finished.push(value);
-    }, 2);
+    await uploadMany(
+      [1, 2, 3, 4],
+      async (value) => {
+        started.push(value);
+        await Promise.resolve();
+        finished.push(value);
+      },
+      2,
+    );
 
     expect(started).toHaveLength(4);
     expect(finished).toEqual([1, 2, 3, 4]);

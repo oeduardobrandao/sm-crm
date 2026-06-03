@@ -1,7 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Node, mergeAttributes } from '@tiptap/core';
-import { ReactNodeViewRenderer, NodeViewWrapper, NodeViewContent, type ReactNodeViewProps } from '@tiptap/react';
+import {
+  ReactNodeViewRenderer,
+  NodeViewWrapper,
+  NodeViewContent,
+  type ReactNodeViewProps,
+} from '@tiptap/react';
 
 const CALLOUT_EMOJIS = ['💡', '📌', '⚠️', '✅', '❗', '🧠', '📝', '🎯', '🔥', '💬', '📣', '🚀'];
 
@@ -34,8 +39,10 @@ function CalloutNodeView({ node, updateAttributes }: ReactNodeViewProps) {
     const handler = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       if (
-        pickerRef.current && !pickerRef.current.contains(target) &&
-        btnRef.current && !btnRef.current.contains(target)
+        pickerRef.current &&
+        !pickerRef.current.contains(target) &&
+        btnRef.current &&
+        !btnRef.current.contains(target)
       ) {
         setEmojiPickerOpen(false);
       }
@@ -53,46 +60,55 @@ function CalloutNodeView({ node, updateAttributes }: ReactNodeViewProps) {
         <button
           ref={btnRef}
           className="callout-emoji-btn"
-          onClick={() => emojiPickerOpen ? setEmojiPickerOpen(false) : openPicker()}
+          onClick={() => (emojiPickerOpen ? setEmojiPickerOpen(false) : openPicker())}
           type="button"
         >
           {emoji}
         </button>
-        {emojiPickerOpen && pickerPos && createPortal(
-          <div
-            ref={pickerRef}
-            className="callout-emoji-picker"
-            style={{ top: pickerPos.top, left: pickerPos.left, transform: 'translateY(-100%) translateY(-6px)' }}
-          >
-            <div className="callout-emoji-grid">
-              {CALLOUT_EMOJIS.map(e => (
-                <button
-                  key={e}
-                  type="button"
-                  className={`callout-emoji-option${emoji === e ? ' active' : ''}`}
-                  onClick={() => { updateAttributes({ emoji: e }); setEmojiPickerOpen(false); }}
-                >
-                  {e}
-                </button>
-              ))}
-            </div>
-            <div className="callout-color-section">
-              <span className="callout-color-label">Cor</span>
-              <div className="callout-color-grid">
-                {CALLOUT_COLORS.map(c => (
+        {emojiPickerOpen &&
+          pickerPos &&
+          createPortal(
+            <div
+              ref={pickerRef}
+              className="callout-emoji-picker"
+              style={{
+                top: pickerPos.top,
+                left: pickerPos.left,
+                transform: 'translateY(-100%) translateY(-6px)',
+              }}
+            >
+              <div className="callout-emoji-grid">
+                {CALLOUT_EMOJIS.map((e) => (
                   <button
-                    key={c.value}
+                    key={e}
                     type="button"
-                    className={`callout-color-dot callout-color-dot--${c.value}${color === c.value ? ' active' : ''}`}
-                    title={c.name}
-                    onClick={() => updateAttributes({ color: c.value })}
-                  />
+                    className={`callout-emoji-option${emoji === e ? ' active' : ''}`}
+                    onClick={() => {
+                      updateAttributes({ emoji: e });
+                      setEmojiPickerOpen(false);
+                    }}
+                  >
+                    {e}
+                  </button>
                 ))}
               </div>
-            </div>
-          </div>,
-          document.body,
-        )}
+              <div className="callout-color-section">
+                <span className="callout-color-label">Cor</span>
+                <div className="callout-color-grid">
+                  {CALLOUT_COLORS.map((c) => (
+                    <button
+                      key={c.value}
+                      type="button"
+                      className={`callout-color-dot callout-color-dot--${c.value}${color === c.value ? ' active' : ''}`}
+                      title={c.name}
+                      onClick={() => updateAttributes({ color: c.value })}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )}
       </div>
       <NodeViewContent className="callout-content" />
     </NodeViewWrapper>
@@ -125,7 +141,17 @@ export const CalloutExtension = Node.create({
   },
 
   renderHTML({ HTMLAttributes }) {
-    return ['div', mergeAttributes({ 'data-callout': '', class: `callout-block callout-block--${HTMLAttributes.color || 'brown'}` }, HTMLAttributes), 0];
+    return [
+      'div',
+      mergeAttributes(
+        {
+          'data-callout': '',
+          class: `callout-block callout-block--${HTMLAttributes.color || 'brown'}`,
+        },
+        HTMLAttributes,
+      ),
+      0,
+    ];
   },
 
   addNodeView() {
@@ -134,13 +160,15 @@ export const CalloutExtension = Node.create({
 
   addCommands() {
     return {
-      insertCallout: (attrs?: { emoji?: string; color?: string }) => ({ commands }) => {
-        return commands.insertContent({
-          type: this.name,
-          attrs: { emoji: attrs?.emoji ?? '💡', color: attrs?.color ?? 'brown' },
-          content: [{ type: 'paragraph' }],
-        });
-      },
+      insertCallout:
+        (attrs?: { emoji?: string; color?: string }) =>
+        ({ commands }) => {
+          return commands.insertContent({
+            type: this.name,
+            attrs: { emoji: attrs?.emoji ?? '💡', color: attrs?.color ?? 'brown' },
+            content: [{ type: 'paragraph' }],
+          });
+        },
     };
   },
 

@@ -115,7 +115,9 @@ vi.mock('@/components/ui/label', () => ({
 }));
 
 vi.mock('@/components/ui/spinner', () => ({
-  Spinner: ({ size }: { size?: string }) => <div data-testid={`spinner-${size ?? 'md'}`}>Spinner</div>,
+  Spinner: ({ size }: { size?: string }) => (
+    <div data-testid={`spinner-${size ?? 'md'}`}>Spinner</div>
+  ),
 }));
 
 vi.mock('@/components/ui/dialog', async () => {
@@ -219,7 +221,16 @@ vi.mock('@/components/ui/sheet', async () => {
 });
 
 import AnalyticsContaPage from '../AnalyticsContaPage';
-import { getAccountAIAnalysis, getClientReports, getTags, getBestPostingTimes, getAudienceDemographics, getFollowerHistory, getPostsAnalytics, getAnalyticsOverview } from '../../../services/analytics';
+import {
+  getAccountAIAnalysis,
+  getClientReports,
+  getTags,
+  getBestPostingTimes,
+  getAudienceDemographics,
+  getFollowerHistory,
+  getPostsAnalytics,
+  getAnalyticsOverview,
+} from '../../../services/analytics';
 import { getClientes, getCurrentWorkspace } from '../../../store';
 import { getInstagramSummary } from '../../../services/instagram';
 
@@ -241,7 +252,10 @@ function resetQueryState() {
 
 function seedCommonAnalyticsData() {
   const client = { id: 42, nome: 'Clinica Aurora' };
-  const account = { username: 'clinicaaurora', profile_picture_url: 'https://example.com/avatar.jpg' };
+  const account = {
+    username: 'clinicaaurora',
+    profile_picture_url: 'https://example.com/avatar.jpg',
+  };
 
   queryState.clientes = { data: [client] };
   queryState['ig-summary'] = { data: { account } };
@@ -272,10 +286,10 @@ function seedCommonAnalyticsData() {
           impressions: 4000,
           engagement_rate: 7.2,
           likes: 320,
-        saved: 48,
-        saves_rate: 12.4,
-        comments: 12,
-        shares: 5,
+          saved: 48,
+          saves_rate: 12.4,
+          comments: 12,
+          shares: 5,
           caption: 'Post em reels com alta performance',
           thumbnail_url: 'https://example.com/1.jpg',
           permalink: 'https://instagram.com/p/1',
@@ -289,9 +303,9 @@ function seedCommonAnalyticsData() {
           impressions: 2100,
           engagement_rate: 4.6,
           likes: 180,
-        saved: 36,
-        saves_rate: 8.9,
-        comments: 8,
+          saved: 36,
+          saves_rate: 8.9,
+          comments: 8,
           shares: 3,
           caption: 'Conteúdo institucional',
           thumbnail_url: 'https://example.com/2.jpg',
@@ -339,9 +353,7 @@ function seedCommonAnalyticsData() {
           { name: 'Fortaleza', count: 310 },
           { name: 'Recife', count: 180 },
         ],
-        countries: [
-          { code: 'BR', count: 500 },
-        ],
+        countries: [{ code: 'BR', count: 500 }],
       },
     },
   };
@@ -397,7 +409,9 @@ beforeEach(() => {
   chartCalls.length = 0;
 
   mockedGetClientes.mockResolvedValue([{ id: 42, nome: 'Clinica Aurora' }]);
-  mockedGetInstagramSummary.mockResolvedValue({ account: { username: 'clinicaaurora', profile_picture_url: 'https://example.com/avatar.jpg' } });
+  mockedGetInstagramSummary.mockResolvedValue({
+    account: { username: 'clinicaaurora', profile_picture_url: 'https://example.com/avatar.jpg' },
+  });
   mockedGetAnalyticsOverview.mockResolvedValue({ data: {} });
   mockedGetPostsAnalytics.mockResolvedValue({ posts: [] });
   mockedGetFollowerHistory.mockResolvedValue({ history: [], postDates: [] });
@@ -406,7 +420,10 @@ beforeEach(() => {
   mockedGetAudienceDemographics.mockResolvedValue({ data: null });
   mockedGetBestPostingTimes.mockResolvedValue({ data: null });
   mockedGetCurrentWorkspace.mockResolvedValue({ name: 'Workspace', logo_url: '' });
-  mockedGetAccountAIAnalysis.mockResolvedValue({ analysis: {}, generatedAt: '2026-04-18T12:00:00Z' });
+  mockedGetAccountAIAnalysis.mockResolvedValue({
+    analysis: {},
+    generatedAt: '2026-04-18T12:00:00Z',
+  });
 });
 
 describe('AnalyticsContaPage', () => {
@@ -463,7 +480,11 @@ describe('AnalyticsContaPage', () => {
           projection: 'Mantendo o ritmo, a conta tende a seguir crescendo.',
         },
         actionPlan: [
-          { prioridade: 'alta', acao: 'Publicar mais reels', porque: 'Eles puxam o melhor engajamento.' },
+          {
+            prioridade: 'alta',
+            acao: 'Publicar mais reels',
+            porque: 'Eles puxam o melhor engajamento.',
+          },
         ],
       },
       generatedAt: '2026-04-18T12:00:00Z',

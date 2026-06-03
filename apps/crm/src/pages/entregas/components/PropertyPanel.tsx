@@ -14,7 +14,14 @@ interface Props {
   readOnly?: boolean;
 }
 
-export function PropertyPanel({ templateId, postId, workflowId, propertyValues, membros, readOnly }: Props) {
+export function PropertyPanel({
+  templateId,
+  postId,
+  workflowId,
+  propertyValues,
+  membros,
+  readOnly,
+}: Props) {
   const qc = useQueryClient();
   const [showPanel, setShowPanel] = useState(false);
 
@@ -30,9 +37,16 @@ export function PropertyPanel({ templateId, postId, workflowId, propertyValues, 
         <button
           onClick={() => setShowPanel(true)}
           style={{
-            background: 'none', border: '1px dashed var(--border-color)',
-            borderRadius: 6, padding: '4px 10px', fontSize: '0.78rem',
-            color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4,
+            background: 'none',
+            border: '1px dashed var(--border-color)',
+            borderRadius: 6,
+            padding: '4px 10px',
+            fontSize: '0.78rem',
+            color: 'var(--text-muted)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
           }}
         >
           <Plus className="h-3 w-3" /> Adicionar propriedade
@@ -43,16 +57,29 @@ export function PropertyPanel({ templateId, postId, workflowId, propertyValues, 
 
   return (
     <div style={{ marginBottom: '1rem' }}>
-      <div style={{
-        background: 'var(--card-bg)',
-        border: '1px solid var(--border-color)',
-        borderRadius: 8, padding: '10px 12px', marginBottom: 4,
-      }}>
-        <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+      <div
+        style={{
+          background: 'var(--card-bg)',
+          border: '1px solid var(--border-color)',
+          borderRadius: 8,
+          padding: '10px 12px',
+          marginBottom: 4,
+        }}
+      >
+        <div
+          style={{
+            fontSize: '0.7rem',
+            fontWeight: 700,
+            color: 'var(--text-muted)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.06em',
+            marginBottom: 6,
+          }}
+        >
           Propriedades
         </div>
-        {definitions.map(def => {
-          const pv = propertyValues.find(v => v.property_definition_id === def.id);
+        {definitions.map((def) => {
+          const pv = propertyValues.find((v) => v.property_definition_id === def.id);
           return (
             <PropertyValue
               key={def.id}
@@ -69,8 +96,16 @@ export function PropertyPanel({ templateId, postId, workflowId, propertyValues, 
           <button
             onClick={() => setShowPanel(true)}
             style={{
-              background: 'none', border: 'none', padding: '5px 0 0', fontSize: '0.78rem',
-              color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, marginTop: 2,
+              background: 'none',
+              border: 'none',
+              padding: '5px 0 0',
+              fontSize: '0.78rem',
+              color: 'var(--text-muted)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              marginTop: 2,
             }}
           >
             <Plus className="h-3 w-3" /> Adicionar propriedade

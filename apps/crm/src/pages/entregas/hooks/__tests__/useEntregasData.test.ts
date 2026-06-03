@@ -3,10 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createElement, type ReactNode } from 'react';
 import type { WorkflowEtapa } from '../../../../store';
-import {
-  computeDeadlineDate,
-  computeWorkflowDeadlineDate,
-} from '../useEntregasData';
+import { computeDeadlineDate, computeWorkflowDeadlineDate } from '../useEntregasData';
 
 // ── Mock store ──────────────────────────────────────────────────────────────
 
@@ -19,26 +16,62 @@ vi.mock('../../../../store', async (importOriginal) => {
       { id: 2, cliente_id: 11, titulo: 'WF-2', status: 'ativo', etapa_atual: 0, recorrente: false },
     ]),
     getClientes: vi.fn().mockResolvedValue([
-      { id: 10, nome: 'Cliente A', sigla: 'CA', cor: '#f00', plano: 'basic', email: '', telefone: '', status: 'ativo', valor_mensal: 1000 },
-      { id: 11, nome: 'Cliente B', sigla: 'CB', cor: '#0f0', plano: 'pro', email: '', telefone: '', status: 'ativo', valor_mensal: 2000 },
+      {
+        id: 10,
+        nome: 'Cliente A',
+        sigla: 'CA',
+        cor: '#f00',
+        plano: 'basic',
+        email: '',
+        telefone: '',
+        status: 'ativo',
+        valor_mensal: 1000,
+      },
+      {
+        id: 11,
+        nome: 'Cliente B',
+        sigla: 'CB',
+        cor: '#0f0',
+        plano: 'pro',
+        email: '',
+        telefone: '',
+        status: 'ativo',
+        valor_mensal: 2000,
+      },
     ]),
     getMembros: vi.fn().mockResolvedValue([]),
     getWorkflowTemplates: vi.fn().mockResolvedValue([]),
     getWorkflowEtapas: vi.fn().mockImplementation((wfId: number) =>
       Promise.resolve([
-        { id: wfId * 100, workflow_id: wfId, ordem: 0, nome: 'Etapa 1', tipo: 'padrao', prazo_dias: 3, tipo_prazo: 'corridos', status: 'ativo', iniciado_em: '2026-04-01T00:00:00Z' },
-      ])
+        {
+          id: wfId * 100,
+          workflow_id: wfId,
+          ordem: 0,
+          nome: 'Etapa 1',
+          tipo: 'padrao',
+          prazo_dias: 3,
+          tipo_prazo: 'corridos',
+          status: 'ativo',
+          iniciado_em: '2026-04-01T00:00:00Z',
+        },
+      ]),
     ),
     getPortalApprovals: vi.fn().mockResolvedValue([]),
-    getDeadlineInfo: vi.fn().mockReturnValue({ estourado: false, urgente: false, diasRestantes: 3, resumo: 'em dia' }),
+    getDeadlineInfo: vi
+      .fn()
+      .mockReturnValue({ estourado: false, urgente: false, diasRestantes: 3, resumo: 'em dia' }),
     getWorkflowPostsCounts: vi.fn().mockResolvedValue(
-      new Map<number, number>([[1, 5], [2, 3]])
+      new Map<number, number>([
+        [1, 5],
+        [2, 3],
+      ]),
     ),
-    getWorkflowApprovedPostsCounts: vi.fn().mockResolvedValue(
-      new Map<number, number>()
-    ),
+    getWorkflowApprovedPostsCounts: vi.fn().mockResolvedValue(new Map<number, number>()),
     getWorkflowPostResponsaveis: vi.fn().mockResolvedValue(
-      new Map<number, number[]>([[1, [10, 20]], [2, [10]]])
+      new Map<number, number[]>([
+        [1, [10, 20]],
+        [2, [10]],
+      ]),
     ),
   };
 });
@@ -90,7 +123,9 @@ describe('computeDeadlineDate', () => {
 
   it('returns the start date unchanged when prazo_dias is zero', () => {
     const start = '2026-04-10T00:00:00Z';
-    expect(computeDeadlineDate(start, 0, 'corridos').toISOString()).toBe(start.replace('Z', '.000Z'));
+    expect(computeDeadlineDate(start, 0, 'corridos').toISOString()).toBe(
+      start.replace('Z', '.000Z'),
+    );
     expect(computeDeadlineDate(start, 0, 'uteis').toISOString()).toBe(start.replace('Z', '.000Z'));
   });
 });
@@ -156,26 +191,65 @@ describe('useEntregasData', () => {
       { id: 2, cliente_id: 11, titulo: 'WF-2', status: 'ativo', etapa_atual: 0, recorrente: false },
     ]);
     (store.getClientes as any).mockResolvedValue([
-      { id: 10, nome: 'Cliente A', sigla: 'CA', cor: '#f00', plano: 'basic', email: '', telefone: '', status: 'ativo', valor_mensal: 1000 },
-      { id: 11, nome: 'Cliente B', sigla: 'CB', cor: '#0f0', plano: 'pro', email: '', telefone: '', status: 'ativo', valor_mensal: 2000 },
+      {
+        id: 10,
+        nome: 'Cliente A',
+        sigla: 'CA',
+        cor: '#f00',
+        plano: 'basic',
+        email: '',
+        telefone: '',
+        status: 'ativo',
+        valor_mensal: 1000,
+      },
+      {
+        id: 11,
+        nome: 'Cliente B',
+        sigla: 'CB',
+        cor: '#0f0',
+        plano: 'pro',
+        email: '',
+        telefone: '',
+        status: 'ativo',
+        valor_mensal: 2000,
+      },
     ]);
     (store.getMembros as any).mockResolvedValue([]);
     (store.getWorkflowTemplates as any).mockResolvedValue([]);
     (store.getWorkflowEtapas as any).mockImplementation((wfId: number) =>
       Promise.resolve([
-        { id: wfId * 100, workflow_id: wfId, ordem: 0, nome: 'Etapa 1', tipo: 'padrao', prazo_dias: 3, tipo_prazo: 'corridos', status: 'ativo', iniciado_em: '2026-04-01T00:00:00Z' },
-      ])
+        {
+          id: wfId * 100,
+          workflow_id: wfId,
+          ordem: 0,
+          nome: 'Etapa 1',
+          tipo: 'padrao',
+          prazo_dias: 3,
+          tipo_prazo: 'corridos',
+          status: 'ativo',
+          iniciado_em: '2026-04-01T00:00:00Z',
+        },
+      ]),
     );
     (store.getPortalApprovals as any).mockResolvedValue([]);
-    (store.getDeadlineInfo as any).mockReturnValue({ estourado: false, urgente: false, diasRestantes: 3, resumo: 'em dia' });
+    (store.getDeadlineInfo as any).mockReturnValue({
+      estourado: false,
+      urgente: false,
+      diasRestantes: 3,
+      resumo: 'em dia',
+    });
     (store.getWorkflowPostsCounts as any).mockResolvedValue(
-      new Map<number, number>([[1, 5], [2, 3]])
+      new Map<number, number>([
+        [1, 5],
+        [2, 3],
+      ]),
     );
-    (store.getWorkflowApprovedPostsCounts as any).mockResolvedValue(
-      new Map<number, number>()
-    );
+    (store.getWorkflowApprovedPostsCounts as any).mockResolvedValue(new Map<number, number>());
     (store.getWorkflowPostResponsaveis as any).mockResolvedValue(
-      new Map<number, number[]>([[1, [10, 20]], [2, [10]]])
+      new Map<number, number[]>([
+        [1, [10, 20]],
+        [2, [10]],
+      ]),
     );
 
     const postMedia = await import('../../../../services/postMedia');

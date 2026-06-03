@@ -17,20 +17,18 @@ export default function AjudaPage() {
   });
 
   const sections = useMemo(() => {
-    return ALL_CATEGORIES
-      .map(cat => ({
-        category: cat,
-        label: CATEGORY_LABELS[cat] ?? cat,
-        count: articles.filter(a => a.category === cat).length,
-      }))
-      .filter(s => s.count > 0);
+    return ALL_CATEGORIES.map((cat) => ({
+      category: cat,
+      label: CATEGORY_LABELS[cat] ?? cat,
+      count: articles.filter((a) => a.category === cat).length,
+    })).filter((s) => s.count > 0);
   }, [articles]);
 
   const filteredArticles = useMemo(() => {
     if (!search.trim()) return [];
     const q = search.toLowerCase();
     return articles.filter(
-      a => a.title.toLowerCase().includes(q) || a.content_plain.toLowerCase().includes(q),
+      (a) => a.title.toLowerCase().includes(q) || a.content_plain.toLowerCase().includes(q),
     );
   }, [articles, search]);
 
@@ -49,7 +47,7 @@ export default function AjudaPage() {
         <Input
           placeholder="Buscar artigos..."
           value={search}
-          onChange={e => setSearch(e.target.value)}
+          onChange={(e) => setSearch(e.target.value)}
           className="pl-9"
         />
       </div>
@@ -66,22 +64,31 @@ export default function AjudaPage() {
             </p>
           </div>
         ) : (
-          <div className="grid gap-5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
-            {filteredArticles.map(article => (
+          <div
+            className="grid gap-5"
+            style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}
+          >
+            {filteredArticles.map((article) => (
               <ArticleCard key={article.id} article={article} />
             ))}
           </div>
         )
       ) : sections.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
-          <p className="text-[0.9rem] text-[var(--text-light)]">
-            Nenhum artigo publicado ainda.
-          </p>
+          <p className="text-[0.9rem] text-[var(--text-light)]">Nenhum artigo publicado ainda.</p>
         </div>
       ) : (
-        <div className="grid gap-5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
-          {sections.map(s => (
-            <SectionCard key={s.category} category={s.category} label={s.label} articleCount={s.count} />
+        <div
+          className="grid gap-5"
+          style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}
+        >
+          {sections.map((s) => (
+            <SectionCard
+              key={s.category}
+              category={s.category}
+              label={s.label}
+              articleCount={s.count}
+            />
           ))}
         </div>
       )}

@@ -79,13 +79,17 @@ export default function AdminsPage() {
           (data?.admins || []).map((admin) => {
             const isSelf = admin.user_id === user?.id;
             return (
-              <div key={admin.id} className="border-b border-border/50 py-3 md:grid md:grid-cols-[2fr_2fr_1.5fr_0.5fr] md:gap-2 md:items-center">
+              <div
+                key={admin.id}
+                className="border-b border-border/50 py-3 md:grid md:grid-cols-[2fr_2fr_1.5fr_0.5fr] md:gap-2 md:items-center"
+              >
                 {/* Mobile card */}
                 <div className="md:hidden flex items-center justify-between">
                   <div className="flex flex-col gap-0.5">
                     <span className="text-sm text-foreground">{admin.email}</span>
                     <span className="text-xs text-muted-foreground">
-                      {admin.invited_by_email ? `By ${admin.invited_by_email}` : '—'} · {new Date(admin.created_at).toLocaleDateString('pt-BR')}
+                      {admin.invited_by_email ? `By ${admin.invited_by_email}` : '—'} ·{' '}
+                      {new Date(admin.created_at).toLocaleDateString('pt-BR')}
                     </span>
                   </div>
                   {!isSelf && (
@@ -100,7 +104,9 @@ export default function AdminsPage() {
                 </div>
                 {/* Desktop row */}
                 <span className="hidden md:inline text-sm text-foreground">{admin.email}</span>
-                <span className="hidden md:inline text-sm text-muted-foreground">{admin.invited_by_email || '—'}</span>
+                <span className="hidden md:inline text-sm text-muted-foreground">
+                  {admin.invited_by_email || '—'}
+                </span>
                 <span className="hidden md:inline text-sm text-muted-foreground">
                   {new Date(admin.created_at).toLocaleDateString('pt-BR')}
                 </span>

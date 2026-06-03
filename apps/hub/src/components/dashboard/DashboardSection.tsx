@@ -28,7 +28,10 @@ export function DashboardSection() {
         </div>
         <div className="flex gap-3 mb-6">
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="min-w-[160px] h-[220px] rounded-2xl bg-stone-200 dark:bg-white/[0.06] animate-pulse flex-shrink-0" />
+            <div
+              key={i}
+              className="min-w-[160px] h-[220px] rounded-2xl bg-stone-200 dark:bg-white/[0.06] animate-pulse flex-shrink-0"
+            />
           ))}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

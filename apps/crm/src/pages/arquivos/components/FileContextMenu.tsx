@@ -51,7 +51,15 @@ interface MenuPosition {
   y: number;
 }
 
-export function FileContextMenu({ children, item, type, onActionComplete, onRename, onRequestMove, onRequestCopy }: FileContextMenuProps) {
+export function FileContextMenu({
+  children,
+  item,
+  type,
+  onActionComplete,
+  onRename,
+  onRequestMove,
+  onRequestCopy,
+}: FileContextMenuProps) {
   const [menuPos, setMenuPos] = useState<MenuPosition | null>(null);
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -120,7 +128,7 @@ export function FileContextMenu({ children, item, type, onActionComplete, onRena
   function openDelete() {
     if (!isFolder && file && file.reference_count > 0) {
       toast.error(
-        `Este arquivo está vinculado a ${file.reference_count} post(s). Desvincule primeiro.`
+        `Este arquivo está vinculado a ${file.reference_count} post(s). Desvincule primeiro.`,
       );
       closeMenu();
       return;
@@ -310,9 +318,7 @@ export function FileContextMenu({ children, item, type, onActionComplete, onRena
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              Excluir {isFolder ? 'pasta' : 'arquivo'}?
-            </AlertDialogTitle>
+            <AlertDialogTitle>Excluir {isFolder ? 'pasta' : 'arquivo'}?</AlertDialogTitle>
             <AlertDialogDescription className="break-all">
               {isFolder
                 ? `A pasta "${truncateName(item.name)}" e todos os seus arquivos serão excluídos permanentemente. Esta ação não pode ser desfeita.`
@@ -333,12 +339,7 @@ export function FileContextMenu({ children, item, type, onActionComplete, onRena
       </AlertDialog>
 
       {/* Info modal */}
-      <FolderInfoModal
-        open={infoOpen}
-        onOpenChange={setInfoOpen}
-        item={item}
-        type={type}
-      />
+      <FolderInfoModal open={infoOpen} onOpenChange={setInfoOpen} item={item} type={type} />
     </>
   );
 }

@@ -29,7 +29,13 @@ function Probe() {
       <span data-testid="role">{auth.role}</span>
       <span data-testid="user">{auth.user?.id ?? 'anon'}</span>
       <span data-testid="loading">{String(auth.loading)}</span>
-      <button onClick={() => { void auth.signOut(); }}>sair</button>
+      <button
+        onClick={() => {
+          void auth.signOut();
+        }}
+      >
+        sair
+      </button>
     </div>
   );
 }

@@ -2,8 +2,10 @@ import { useState, useRef, useEffect, useMemo, type ImgHTMLAttributes } from 're
 
 const DEFAULT_WIDTHS = [400, 800, 1200, 1600, 2400];
 
-export interface OptimizedImageProps
-  extends Omit<ImgHTMLAttributes<HTMLImageElement>, 'srcSet' | 'loading' | 'decoding'> {
+export interface OptimizedImageProps extends Omit<
+  ImgHTMLAttributes<HTMLImageElement>,
+  'srcSet' | 'loading' | 'decoding'
+> {
   src: string;
   alt: string;
   width?: number;
@@ -26,21 +28,15 @@ function isMediaProxyUrl(src: string): boolean {
   }
 }
 
-export function buildSrcSet(
-  src: string,
-  widths: number[],
-  sourceWidth?: number,
-): string {
+export function buildSrcSet(src: string, widths: number[], sourceWidth?: number): string {
   if (!isMediaProxyUrl(src)) return '';
-  let applicable = sourceWidth
-    ? widths.filter(w => w < sourceWidth)
-    : widths;
+  let applicable = sourceWidth ? widths.filter((w) => w < sourceWidth) : widths;
   if (sourceWidth && !applicable.includes(sourceWidth)) {
     applicable = [...applicable, sourceWidth];
   }
   if (applicable.length === 0) return '';
   return applicable
-    .map(w => {
+    .map((w) => {
       const sep = src.includes('?') ? '&' : '?';
       return `${src}${sep}w=${w} ${w}w`;
     })
@@ -54,15 +50,13 @@ export function buildFormatSource(
   sourceWidth?: number,
 ): string {
   if (!isMediaProxyUrl(src)) return '';
-  let applicable = sourceWidth
-    ? widths.filter(w => w < sourceWidth)
-    : widths;
+  let applicable = sourceWidth ? widths.filter((w) => w < sourceWidth) : widths;
   if (sourceWidth && !applicable.includes(sourceWidth)) {
     applicable = [...applicable, sourceWidth];
   }
   if (applicable.length === 0) return '';
   return applicable
-    .map(w => {
+    .map((w) => {
       const sep = src.includes('?') ? '&' : '?';
       return `${src}${sep}w=${w}&f=${format} ${w}w`;
     })
@@ -103,7 +97,9 @@ export function OptimizedImage({
     if (srcSet) link.setAttribute('imagesrcset', srcSet);
     if (sizes) link.setAttribute('imagesizes', sizes);
     document.head.appendChild(link);
-    return () => { link.remove(); };
+    return () => {
+      link.remove();
+    };
   }, [priority, src, width, sizes]);
 
   const srcSet = useMemo(() => buildSrcSet(src, DEFAULT_WIDTHS, width ?? undefined), [src, width]);
@@ -155,12 +151,8 @@ export function OptimizedImage({
   if (useProxy && (avifSrcSet || webpSrcSet)) {
     return (
       <picture>
-        {avifSrcSet && (
-          <source type="image/avif" srcSet={avifSrcSet} sizes={sizes} />
-        )}
-        {webpSrcSet && (
-          <source type="image/webp" srcSet={webpSrcSet} sizes={sizes} />
-        )}
+        {avifSrcSet && <source type="image/avif" srcSet={avifSrcSet} sizes={sizes} />}
+        {webpSrcSet && <source type="image/webp" srcSet={webpSrcSet} sizes={sizes} />}
         <img {...imgProps} />
       </picture>
     );

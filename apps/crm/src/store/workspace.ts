@@ -19,7 +19,9 @@ export async function getWorkspaceUsers(): Promise<any[]> {
 }
 
 export async function getMyWorkspaces(): Promise<any[]> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) return [];
   const { data, error } = await supabase
     .from('workspace_members')
@@ -34,7 +36,11 @@ export async function getMyWorkspaces(): Promise<any[]> {
   }));
 }
 
-export async function getCurrentWorkspace(): Promise<{ id: string; name: string; logo_url: string | null } | null> {
+export async function getCurrentWorkspace(): Promise<{
+  id: string;
+  name: string;
+  logo_url: string | null;
+} | null> {
   const profile = await getCurrentProfile();
   if (!profile?.conta_id) return null;
   const { data, error } = await supabase
@@ -46,11 +52,11 @@ export async function getCurrentWorkspace(): Promise<{ id: string; name: string;
   return data;
 }
 
-export async function updateWorkspace(workspaceId: string, updates: { name?: string; logo_url?: string | null }): Promise<void> {
-  const { error } = await supabase
-    .from('workspaces')
-    .update(updates)
-    .eq('id', workspaceId);
+export async function updateWorkspace(
+  workspaceId: string,
+  updates: { name?: string; logo_url?: string | null },
+): Promise<void> {
+  const { error } = await supabase.from('workspaces').update(updates).eq('id', workspaceId);
   if (error) throw error;
 }
 
@@ -65,7 +71,9 @@ export async function getWorkspaceBranding(): Promise<{
   const contaId = await getContaId();
   const { data, error } = await supabase
     .from('workspaces')
-    .select('brand_color, report_secondary_color, report_accent_color, report_font_family, report_theme, send_report_email')
+    .select(
+      'brand_color, report_secondary_color, report_accent_color, report_font_family, report_theme, send_report_email',
+    )
     .eq('id', contaId)
     .single();
   if (error) return null;
@@ -81,15 +89,14 @@ export async function updateWorkspaceBranding(fields: {
   send_report_email?: boolean;
 }) {
   const contaId = await getContaId();
-  const { error } = await supabase
-    .from('workspaces')
-    .update(fields)
-    .eq('id', contaId);
+  const { error } = await supabase.from('workspaces').update(fields).eq('id', contaId);
   if (error) throw error;
 }
 
 export async function switchWorkspace(workspaceId: string): Promise<void> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) throw new Error('Não autenticado');
   const { error } = await supabase
     .from('profiles')
@@ -100,18 +107,26 @@ export async function switchWorkspace(workspaceId: string): Promise<void> {
   clearProfileCache();
 }
 
-export async function callManageWorkspaceUser(action: string, targetUserId: string, extra?: Record<string, unknown>): Promise<void> {
+export async function callManageWorkspaceUser(
+  action: string,
+  targetUserId: string,
+  extra?: Record<string, unknown>,
+): Promise<void> {
   const session = (await supabase.auth.getSession()).data.session;
-  const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-workspace-user`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${session?.access_token}`,
+  const response = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-workspace-user`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session?.access_token}`,
+      },
+      body: JSON.stringify({ action, targetUserId, ...extra }),
     },
-    body: JSON.stringify({ action, targetUserId, ...extra }),
-  });
+  );
   const result = await response.json();
-  if (!response.ok) throw new Error(result.error || result.message || `Erro HTTP ${response.status}`);
+  if (!response.ok)
+    throw new Error(result.error || result.message || `Erro HTTP ${response.status}`);
 }
 
 export async function updateWorkspaceUserRole(userId: string, role: string): Promise<void> {

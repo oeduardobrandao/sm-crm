@@ -30,7 +30,9 @@ export async function getWorkflowTemplates(): Promise<WorkflowTemplate[]> {
   return data || [];
 }
 
-export async function addWorkflowTemplate(t: Omit<WorkflowTemplate, 'id' | 'user_id' | 'conta_id' | 'created_at'>): Promise<WorkflowTemplate> {
+export async function addWorkflowTemplate(
+  t: Omit<WorkflowTemplate, 'id' | 'user_id' | 'conta_id' | 'created_at'>,
+): Promise<WorkflowTemplate> {
   const user_id = await getUserId();
   const conta_id = await getContaId();
   const { data, error } = await supabase
@@ -42,7 +44,10 @@ export async function addWorkflowTemplate(t: Omit<WorkflowTemplate, 'id' | 'user
   return data;
 }
 
-export async function updateWorkflowTemplate(id: number, t: Partial<Omit<WorkflowTemplate, 'id' | 'user_id' | 'conta_id'>>): Promise<WorkflowTemplate> {
+export async function updateWorkflowTemplate(
+  id: number,
+  t: Partial<Omit<WorkflowTemplate, 'id' | 'user_id' | 'conta_id'>>,
+): Promise<WorkflowTemplate> {
   const { data, error } = await supabase
     .from('workflow_templates')
     .update(t)
@@ -63,7 +68,10 @@ export async function removeWorkflowTemplate(id: number): Promise<void> {
  * to all `pendente` workflow_etapas belonging to active workflows that use this template.
  * Steps that are already `ativo` or `concluido` are left untouched.
  */
-export async function propagateTemplateToWorkflows(templateId: number, etapas: WorkflowTemplateEtapa[]): Promise<void> {
+export async function propagateTemplateToWorkflows(
+  templateId: number,
+  etapas: WorkflowTemplateEtapa[],
+): Promise<void> {
   // Find all active workflows using this template
   const { data: workflows, error: wfErr } = await supabase
     .from('workflows')
@@ -160,7 +168,9 @@ export async function getConcludedWorkflowsByCliente(clienteId: number): Promise
   return data || [];
 }
 
-export async function addWorkflow(w: Omit<Workflow, 'id' | 'user_id' | 'conta_id' | 'created_at'>): Promise<Workflow> {
+export async function addWorkflow(
+  w: Omit<Workflow, 'id' | 'user_id' | 'conta_id' | 'created_at'>,
+): Promise<Workflow> {
   const user_id = await getUserId();
   const conta_id = await getContaId();
   const { data, error } = await supabase
@@ -172,24 +182,28 @@ export async function addWorkflow(w: Omit<Workflow, 'id' | 'user_id' | 'conta_id
   return data;
 }
 
-export async function updateWorkflow(id: number, w: Partial<Omit<Workflow, 'id' | 'user_id' | 'conta_id'>>): Promise<Workflow> {
-  const { data, error } = await supabase
-    .from('workflows')
-    .update(w)
-    .eq('id', id)
-    .select()
-    .single();
+export async function updateWorkflow(
+  id: number,
+  w: Partial<Omit<Workflow, 'id' | 'user_id' | 'conta_id'>>,
+): Promise<Workflow> {
+  const { data, error } = await supabase.from('workflows').update(w).eq('id', id).select().single();
   if (error) throw error;
   return data;
 }
 
-export async function updateWorkflowPositions(updates: { id: number; position: number }[]): Promise<void> {
+export async function updateWorkflowPositions(
+  updates: { id: number; position: number }[],
+): Promise<void> {
   await Promise.all(
     updates.map(({ id, position }) =>
-      supabase.from('workflows').update({ position }).eq('id', id).then(({ error }) => {
-        if (error) throw error;
-      })
-    )
+      supabase
+        .from('workflows')
+        .update({ position })
+        .eq('id', id)
+        .then(({ error }) => {
+          if (error) throw error;
+        }),
+    ),
   );
 }
 
@@ -226,7 +240,9 @@ export async function getWorkflowEtapas(workflowId: number): Promise<WorkflowEta
   return data || [];
 }
 
-export async function getAllActiveEtapas(): Promise<(WorkflowEtapa & { workflow_titulo?: string; cliente_nome?: string; cliente_id?: number })[]> {
+export async function getAllActiveEtapas(): Promise<
+  (WorkflowEtapa & { workflow_titulo?: string; cliente_nome?: string; cliente_id?: number })[]
+> {
   const { data, error } = await supabase
     .from('workflow_etapas')
     .select('*, workflows!inner(titulo, cliente_id, status, clientes!inner(nome))')
@@ -242,17 +258,21 @@ export async function getAllActiveEtapas(): Promise<(WorkflowEtapa & { workflow_
   }));
 }
 
-export async function getAllEtapasWithWorkflow(): Promise<(WorkflowEtapa & {
-  workflow_titulo?: string;
-  workflow_status?: string;
-  workflow_created_at?: string;
-  template_id?: number | null;
-  cliente_id?: number;
-  cliente_nome?: string;
-})[]> {
+export async function getAllEtapasWithWorkflow(): Promise<
+  (WorkflowEtapa & {
+    workflow_titulo?: string;
+    workflow_status?: string;
+    workflow_created_at?: string;
+    template_id?: number | null;
+    cliente_id?: number;
+    cliente_nome?: string;
+  })[]
+> {
   const { data, error } = await supabase
     .from('workflow_etapas')
-    .select('*, workflows!inner(titulo, status, created_at, template_id, cliente_id, clientes!inner(nome))')
+    .select(
+      '*, workflows!inner(titulo, status, created_at, template_id, cliente_id, clientes!inner(nome))',
+    )
     .order('ordem', { ascending: true });
   if (error) throw error;
   return (data || []).map((row: any) => ({
@@ -269,16 +289,15 @@ export async function getAllEtapasWithWorkflow(): Promise<(WorkflowEtapa & {
 
 export async function addWorkflowEtapa(e: Omit<WorkflowEtapa, 'id'>): Promise<WorkflowEtapa> {
   const payload = { ...e, responsavel_id: e.responsavel_id || null };
-  const { data, error } = await supabase
-    .from('workflow_etapas')
-    .insert(payload)
-    .select()
-    .single();
+  const { data, error } = await supabase.from('workflow_etapas').insert(payload).select().single();
   if (error) throw error;
   return data;
 }
 
-export async function updateWorkflowEtapa(id: number, e: Partial<Omit<WorkflowEtapa, 'id'>>): Promise<WorkflowEtapa> {
+export async function updateWorkflowEtapa(
+  id: number,
+  e: Partial<Omit<WorkflowEtapa, 'id'>>,
+): Promise<WorkflowEtapa> {
   const { data, error } = await supabase
     .from('workflow_etapas')
     .update(e)
@@ -290,7 +309,10 @@ export async function updateWorkflowEtapa(id: number, e: Partial<Omit<WorkflowEt
 }
 
 /** Complete a step: marks it done, activates the next step, and advances the workflow pointer. */
-export async function completeEtapa(workflowId: number, etapaId: number): Promise<{ workflow: Workflow; etapas: WorkflowEtapa[] }> {
+export async function completeEtapa(
+  workflowId: number,
+  etapaId: number,
+): Promise<{ workflow: Workflow; etapas: WorkflowEtapa[] }> {
   const now = new Date().toISOString();
 
   // Mark current step as done
@@ -298,7 +320,7 @@ export async function completeEtapa(workflowId: number, etapaId: number): Promis
 
   // Get all steps to find the next one
   const etapas = await getWorkflowEtapas(workflowId);
-  const currentIdx = etapas.findIndex(e => e.id === etapaId);
+  const currentIdx = etapas.findIndex((e) => e.id === etapaId);
   const nextIdx = currentIdx + 1;
 
   let workflow: Workflow;
@@ -317,9 +339,11 @@ export async function completeEtapa(workflowId: number, etapaId: number): Promis
 }
 
 /** Revert a workflow to its previous step (move card one column back). */
-export async function revertEtapa(workflowId: number): Promise<{ workflow: Workflow; etapas: WorkflowEtapa[] }> {
+export async function revertEtapa(
+  workflowId: number,
+): Promise<{ workflow: Workflow; etapas: WorkflowEtapa[] }> {
   const etapas = await getWorkflowEtapas(workflowId);
-  const activeIdx = etapas.findIndex(e => e.status === 'ativo');
+  const activeIdx = etapas.findIndex((e) => e.status === 'ativo');
   if (activeIdx <= 0) throw new Error('Não é possível voltar — já está na primeira etapa.');
 
   const now = new Date().toISOString();
@@ -330,7 +354,11 @@ export async function revertEtapa(workflowId: number): Promise<{ workflow: Workf
   await updateWorkflowEtapa(currentEtapa.id!, { status: 'pendente', iniciado_em: null });
 
   // Re-activate previous step (preserve original start time)
-  await updateWorkflowEtapa(prevEtapa.id!, { status: 'ativo', concluido_em: null, iniciado_em: prevEtapa.iniciado_em ?? now });
+  await updateWorkflowEtapa(prevEtapa.id!, {
+    status: 'ativo',
+    concluido_em: null,
+    iniciado_em: prevEtapa.iniciado_em ?? now,
+  });
 
   // Update workflow pointer
   const workflow = await updateWorkflow(workflowId, { etapa_atual: activeIdx - 1 });
@@ -338,15 +366,24 @@ export async function revertEtapa(workflowId: number): Promise<{ workflow: Workf
   return { workflow, etapas: updatedEtapas };
 }
 
-export async function reopenWorkflow(workflowId: number): Promise<{ workflow: Workflow; etapas: WorkflowEtapa[] }> {
+export async function reopenWorkflow(
+  workflowId: number,
+): Promise<{ workflow: Workflow; etapas: WorkflowEtapa[] }> {
   const etapas = await getWorkflowEtapas(workflowId);
   if (etapas.length === 0) throw new Error('Fluxo sem etapas.');
 
   const lastEtapa = etapas[etapas.length - 1];
   const now = new Date().toISOString();
 
-  await updateWorkflowEtapa(lastEtapa.id!, { status: 'ativo', concluido_em: null, iniciado_em: now });
-  const workflow = await updateWorkflow(workflowId, { status: 'ativo', etapa_atual: etapas.length - 1 });
+  await updateWorkflowEtapa(lastEtapa.id!, {
+    status: 'ativo',
+    concluido_em: null,
+    iniciado_em: now,
+  });
+  const workflow = await updateWorkflow(workflowId, {
+    status: 'ativo',
+    etapa_atual: etapas.length - 1,
+  });
   const updatedEtapas = await getWorkflowEtapas(workflowId);
   return { workflow, etapas: updatedEtapas };
 }
@@ -354,7 +391,15 @@ export async function reopenWorkflow(workflowId: number): Promise<{ workflow: Wo
 /** Clone a workflow for recurrence (creates a fresh copy with all steps reset). */
 export async function duplicateWorkflow(workflowId: number): Promise<Workflow> {
   const [workflow, etapas] = await Promise.all([
-    supabase.from('workflows').select('*').eq('id', workflowId).single().then(r => { if (r.error) throw r.error; return r.data as Workflow; }),
+    supabase
+      .from('workflows')
+      .select('*')
+      .eq('id', workflowId)
+      .single()
+      .then((r) => {
+        if (r.error) throw r.error;
+        return r.data as Workflow;
+      }),
     getWorkflowEtapas(workflowId),
   ]);
 
@@ -373,13 +418,16 @@ export async function duplicateWorkflow(workflowId: number): Promise<Workflow> {
     const diaEntrega = clienteRow?.dia_entrega as number | undefined;
     if (diaEntrega) {
       // Find anchor (aprovacao_cliente) step and compute from next month's delivery date
-      const anchorEtapa = etapas.find(e => e.tipo === 'aprovacao_cliente');
+      const anchorEtapa = etapas.find((e) => e.tipo === 'aprovacao_cliente');
       if (anchorEtapa) {
         // Next delivery date: advance one cycle from today
         const today = new Date();
         let nextMonth = today.getMonth() + 2; // +1 for next month, +1 for 1-based
         let nextYear = today.getFullYear();
-        if (nextMonth > 12) { nextMonth = 1; nextYear++; }
+        if (nextMonth > 12) {
+          nextMonth = 1;
+          nextYear++;
+        }
         const daysInNextMonth = new Date(nextYear, nextMonth, 0).getDate();
         const deliveryDay = Math.min(diaEntrega, daysInNextMonth);
         const deliveryDate = new Date(nextYear, nextMonth - 1, deliveryDay);
@@ -424,7 +472,11 @@ export async function duplicateWorkflow(workflowId: number): Promise<Workflow> {
     }
   } catch (err) {
     // Clean up orphaned workflow if etapa inserts failed
-    try { await removeWorkflow(newWorkflow.id!); } catch { /* best effort */ }
+    try {
+      await removeWorkflow(newWorkflow.id!);
+    } catch {
+      /* best effort */
+    }
     throw err;
   }
 
@@ -439,9 +491,12 @@ export async function duplicateWorkflow(workflowId: number): Promise<Workflow> {
  * Steps after anchor: walk forward adding prazo_dias.
  * Returns Map<ordem, ISO date string>.
  */
-function _computeDeliveryDeadlines(etapas: WorkflowEtapa[], deliveryDate: Date): Map<number, string> {
+function _computeDeliveryDeadlines(
+  etapas: WorkflowEtapa[],
+  deliveryDate: Date,
+): Map<number, string> {
   const sorted = [...etapas].sort((a, b) => a.ordem - b.ordem);
-  const anchorIdx = sorted.findIndex(e => e.tipo === 'aprovacao_cliente');
+  const anchorIdx = sorted.findIndex((e) => e.tipo === 'aprovacao_cliente');
   if (anchorIdx === -1) return new Map();
 
   const result = new Map<number, string>();
@@ -498,7 +553,12 @@ function _addDays(from: Date, days: number, tipoPrazo: 'corridos' | 'uteis'): Da
 }
 
 /** Calculate deadline info for an active step. */
-export function getDeadlineInfo(etapa: WorkflowEtapa): { diasRestantes: number; horasRestantes: number; estourado: boolean; urgente: boolean } {
+export function getDeadlineInfo(etapa: WorkflowEtapa): {
+  diasRestantes: number;
+  horasRestantes: number;
+  estourado: boolean;
+  urgente: boolean;
+} {
   const now = new Date();
 
   // FIRST: if a fixed deadline date is set, calculate relative to it directly

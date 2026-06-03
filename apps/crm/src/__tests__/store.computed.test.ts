@@ -6,7 +6,11 @@ import * as supabaseModule from '../lib/supabase';
 import * as store from '../store';
 
 type MockedSupabaseModule = typeof supabaseModule & {
-  __queueSupabaseResult: (table: string, operation: 'select' | 'insert' | 'update' | 'delete' | 'upsert', ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>) => void;
+  __queueSupabaseResult: (
+    table: string,
+    operation: 'select' | 'insert' | 'update' | 'delete' | 'upsert',
+    ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>
+  ) => void;
   __resetSupabaseMock: () => void;
   __setCurrentProfile: (profile: Record<string, unknown> | null) => void;
   __setCurrentUser: (user: { id: string } | null) => void;
@@ -49,9 +53,7 @@ describe('store computed helpers', () => {
           error: null,
         });
         mockedSupabase.__queueSupabaseResult('membros', 'select', {
-          data: [
-            { id: 1, nome: 'Editor', data_pagamento: 20, custo_mensal: 1000 },
-          ],
+          data: [{ id: 1, nome: 'Editor', data_pagamento: 20, custo_mensal: 1000 }],
           error: null,
         });
 
@@ -74,15 +76,15 @@ describe('store computed helpers', () => {
         mockedSupabase.__queueSupabaseResult('clientes', 'select', { data: [], error: null });
         mockedSupabase.__queueSupabaseResult('transacoes', 'select', { data: [], error: null });
         mockedSupabase.__queueSupabaseResult('membros', 'select', {
-          data: [
-            { id: 1, nome: 'Paulo', data_pagamento: 10, custo_mensal: 900 },
-          ],
+          data: [{ id: 1, nome: 'Paulo', data_pagamento: 10, custo_mensal: 900 }],
           error: null,
         });
 
         const stats = await store.getDashboardStats();
 
-        expect(stats.transacoes.some(t => t.referencia_agendamento?.startsWith('membro_1_'))).toBe(true);
+        expect(
+          stats.transacoes.some((t) => t.referencia_agendamento?.startsWith('membro_1_')),
+        ).toBe(true);
       } finally {
         vi.useRealTimers();
       }

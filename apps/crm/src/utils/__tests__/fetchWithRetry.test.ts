@@ -6,8 +6,13 @@ const err500 = () => new Response('fail', { status: 500 });
 const err403 = () => new Response('forbidden', { status: 403 });
 const err404 = () => new Response('not found', { status: 404 });
 
-beforeEach(() => { vi.useFakeTimers(); });
-afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 describe('fetchWithRetry', () => {
   it('returns response on first success', async () => {
@@ -18,7 +23,8 @@ describe('fetchWithRetry', () => {
   });
 
   it('retries on network error then succeeds', async () => {
-    const mock = vi.fn()
+    const mock = vi
+      .fn()
       .mockRejectedValueOnce(new TypeError('Failed to fetch'))
       .mockResolvedValueOnce(ok200());
     vi.stubGlobal('fetch', mock);
@@ -32,9 +38,7 @@ describe('fetchWithRetry', () => {
   });
 
   it('retries on 500 then succeeds', async () => {
-    const mock = vi.fn()
-      .mockResolvedValueOnce(err500())
-      .mockResolvedValueOnce(ok200());
+    const mock = vi.fn().mockResolvedValueOnce(err500()).mockResolvedValueOnce(ok200());
     vi.stubGlobal('fetch', mock);
 
     const promise = fetchWithRetry('https://example.com/a');
@@ -60,15 +64,17 @@ describe('fetchWithRetry', () => {
   it('does not retry AbortError', async () => {
     const abort = new DOMException('The operation was aborted', 'AbortError');
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(abort));
-    await expect(fetchWithRetry('https://example.com/a')).rejects.toMatchObject({ name: 'AbortError' });
+    await expect(fetchWithRetry('https://example.com/a')).rejects.toMatchObject({
+      name: 'AbortError',
+    });
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('does not retry unsafe methods (POST)', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
-    await expect(
-      fetchWithRetry('https://example.com/a', { method: 'POST' }),
-    ).rejects.toThrow('Failed to fetch');
+    await expect(fetchWithRetry('https://example.com/a', { method: 'POST' })).rejects.toThrow(
+      'Failed to fetch',
+    );
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
@@ -84,7 +90,8 @@ describe('fetchWithRetry', () => {
   });
 
   it('applies exponential backoff delays', async () => {
-    const mock = vi.fn()
+    const mock = vi
+      .fn()
       .mockRejectedValueOnce(new TypeError('fail'))
       .mockRejectedValueOnce(new TypeError('fail'))
       .mockResolvedValueOnce(ok200());

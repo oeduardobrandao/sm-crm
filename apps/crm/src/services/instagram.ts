@@ -27,23 +27,25 @@ function invalidateCache(clientId: number) {
 }
 
 async function getAuthHeaders() {
-  const { data: { session } } = await supabase.auth.getSession();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
   return {
-    'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY as string,
-    'Authorization': `Bearer ${session?.access_token}`,
-    'Content-Type': 'application/json'
+    apikey: import.meta.env.VITE_SUPABASE_ANON_KEY as string,
+    Authorization: `Bearer ${session?.access_token}`,
+    'Content-Type': 'application/json',
   };
 }
 
 export async function getInstagramAuthUrl(clientId: number): Promise<string> {
   const headers = await getAuthHeaders();
   const res = await fetch(`${EDGE_FUNCTION_URL}/auth/${clientId}`, { headers });
-  
+
   if (!res.ok) {
-     const data = await res.json().catch(() => ({}));
-     throw new Error(data.message || 'Error generating auth url');
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.message || 'Error generating auth url');
   }
-  
+
   const data = await res.json();
   return data.url;
 }
@@ -51,30 +53,32 @@ export async function getInstagramAuthUrl(clientId: number): Promise<string> {
 export async function disconnectInstagram(clientId: number): Promise<void> {
   const headers = await getAuthHeaders();
   const res = await fetch(`${EDGE_FUNCTION_URL}/disconnect/${clientId}`, {
-      method: 'POST',
-      headers
+    method: 'POST',
+    headers,
   });
-  
+
   if (!res.ok) {
-     const data = await res.json().catch(() => ({}));
-     throw new Error(data.message || 'Error disconnecting');
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.message || 'Error disconnecting');
   }
   invalidateCache(clientId);
 }
 
-export async function refreshInstagramToken(clientId: number): Promise<{ success: boolean; token_expires_at?: string; code?: string }> {
+export async function refreshInstagramToken(
+  clientId: number,
+): Promise<{ success: boolean; token_expires_at?: string; code?: string }> {
   const headers = await getAuthHeaders();
   const res = await fetch(`${EDGE_FUNCTION_URL}/refresh/${clientId}`, {
-      method: 'POST',
-      headers
+    method: 'POST',
+    headers,
   });
 
   const data = await res.json();
   if (!res.ok) {
-     if (data.code === 'TOKEN_EXPIRED') {
-         throw new Error('TOKEN_EXPIRED');
-     }
-     throw new Error(data.message || 'Error refreshing token');
+    if (data.code === 'TOKEN_EXPIRED') {
+      throw new Error('TOKEN_EXPIRED');
+    }
+    throw new Error(data.message || 'Error refreshing token');
   }
   invalidateCache(clientId);
   return data;
@@ -83,59 +87,63 @@ export async function refreshInstagramToken(clientId: number): Promise<{ success
 export async function syncInstagramData(clientId: number): Promise<void> {
   const headers = await getAuthHeaders();
   const res = await fetch(`${EDGE_FUNCTION_URL}/sync/${clientId}`, {
-      method: 'POST',
-      headers
+    method: 'POST',
+    headers,
   });
 
   if (!res.ok) {
-     const data = await res.json().catch(() => ({}));
-     if (data.code === 'TOKEN_EXPIRED') {
-         throw new Error('TOKEN_EXPIRED');
-     }
-     throw new Error(data.message || 'Error syncing data');
+    const data = await res.json().catch(() => ({}));
+    if (data.code === 'TOKEN_EXPIRED') {
+      throw new Error('TOKEN_EXPIRED');
+    }
+    throw new Error(data.message || 'Error syncing data');
   }
   invalidateCache(clientId);
 }
 
 export async function getInstagramSummary(clientId: number): Promise<any> {
-    const cacheKey = `summary/${clientId}`;
-    const cached = getCached(cacheKey);
-    if (cached !== null) return cached;
+  const cacheKey = `summary/${clientId}`;
+  const cached = getCached(cacheKey);
+  if (cached !== null) return cached;
 
-    const headers = await getAuthHeaders();
-    const res = await fetch(`${EDGE_FUNCTION_URL}/summary/${clientId}`, { headers });
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${EDGE_FUNCTION_URL}/summary/${clientId}`, { headers });
 
-    if (!res.ok) {
-       const data = await res.json().catch(() => ({}));
-       throw new Error(data.message || 'Error fetching summary');
-    }
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.message || 'Error fetching summary');
+  }
 
-    const data = await res.json();
-    if (data.exists === false) return null;
-    setCache(cacheKey, data);
-    return data;
+  const data = await res.json();
+  if (data.exists === false) return null;
+  setCache(cacheKey, data);
+  return data;
 }
 
 export async function getInstagramPosts(clientId: number, page: number = 1): Promise<any> {
-    const cacheKey = `posts/${clientId}?page=${page}`;
-    const cached = getCached(cacheKey);
-    if (cached !== null) return cached;
+  const cacheKey = `posts/${clientId}?page=${page}`;
+  const cached = getCached(cacheKey);
+  if (cached !== null) return cached;
 
-    const headers = await getAuthHeaders();
-    const res = await fetch(`${EDGE_FUNCTION_URL}/posts/${clientId}?page=${page}`, { headers });
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${EDGE_FUNCTION_URL}/posts/${clientId}?page=${page}`, { headers });
 
-    if (!res.ok) {
-       const data = await res.json().catch(() => ({}));
-       throw new Error(data.message || 'Error fetching posts');
-    }
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.message || 'Error fetching posts');
+  }
 
-    const data = await res.json();
-    setCache(cacheKey, data);
-    return data;
+  const data = await res.json();
+  setCache(cacheKey, data);
+  return data;
 }
 
-export async function scheduleInstagramPost(postId: number): Promise<{ ok: boolean; status: string }> {
-  const { data: { session } } = await supabase.auth.getSession();
+export async function scheduleInstagramPost(
+  postId: number,
+): Promise<{ ok: boolean; status: string }> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
   if (!session) throw new Error('Not authenticated');
 
   const res = await fetch(
@@ -143,10 +151,10 @@ export async function scheduleInstagramPost(postId: number): Promise<{ ok: boole
     {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${session.access_token}`,
+        Authorization: `Bearer ${session.access_token}`,
         'Content-Type': 'application/json',
       },
-    }
+    },
   );
   const data = await res.json();
   if (!res.ok) throw new Error(data.details?.join('; ') ?? data.error ?? 'Erro ao agendar');
@@ -154,7 +162,9 @@ export async function scheduleInstagramPost(postId: number): Promise<{ ok: boole
 }
 
 export async function cancelInstagramSchedule(postId: number): Promise<{ ok: boolean }> {
-  const { data: { session } } = await supabase.auth.getSession();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
   if (!session) throw new Error('Not authenticated');
 
   const res = await fetch(
@@ -162,18 +172,22 @@ export async function cancelInstagramSchedule(postId: number): Promise<{ ok: boo
     {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${session.access_token}`,
+        Authorization: `Bearer ${session.access_token}`,
         'Content-Type': 'application/json',
       },
-    }
+    },
   );
   const data = await res.json();
   if (!res.ok) throw new Error(data.error ?? 'Erro ao cancelar');
   return data;
 }
 
-export async function publishInstagramPostNow(postId: number): Promise<{ ok: boolean; status: string; instagram_permalink?: string; message?: string }> {
-  const { data: { session } } = await supabase.auth.getSession();
+export async function publishInstagramPostNow(
+  postId: number,
+): Promise<{ ok: boolean; status: string; instagram_permalink?: string; message?: string }> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
   if (!session) throw new Error('Not authenticated');
 
   const res = await fetch(
@@ -181,10 +195,10 @@ export async function publishInstagramPostNow(postId: number): Promise<{ ok: boo
     {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${session.access_token}`,
+        Authorization: `Bearer ${session.access_token}`,
         'Content-Type': 'application/json',
       },
-    }
+    },
   );
   const data = await res.json();
   if (!res.ok) throw new Error(data.details?.join('; ') ?? data.error ?? 'Erro ao publicar');
@@ -192,7 +206,9 @@ export async function publishInstagramPostNow(postId: number): Promise<{ ok: boo
 }
 
 export async function retryInstagramPublish(postId: number): Promise<{ ok: boolean }> {
-  const { data: { session } } = await supabase.auth.getSession();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
   if (!session) throw new Error('Not authenticated');
 
   const res = await fetch(
@@ -200,13 +216,12 @@ export async function retryInstagramPublish(postId: number): Promise<{ ok: boole
     {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${session.access_token}`,
+        Authorization: `Bearer ${session.access_token}`,
         'Content-Type': 'application/json',
       },
-    }
+    },
   );
   const data = await res.json();
   if (!res.ok) throw new Error(data.error ?? 'Erro ao reenviar');
   return data;
 }
-

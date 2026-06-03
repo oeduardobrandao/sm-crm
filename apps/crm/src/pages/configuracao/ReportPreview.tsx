@@ -10,13 +10,19 @@ interface ReportPreviewProps {
 
 const GOOGLE_FONTS_MAP: Record<string, string> = {
   'DM Sans': 'DM+Sans:wght@400;600;800',
-  'Inter': 'Inter:wght@400;600;800',
-  'Poppins': 'Poppins:wght@400;600;800',
-  'Montserrat': 'Montserrat:wght@400;600;800',
+  Inter: 'Inter:wght@400;600;800',
+  Poppins: 'Poppins:wght@400;600;800',
+  Montserrat: 'Montserrat:wght@400;600;800',
   'Plus Jakarta Sans': 'Plus+Jakarta+Sans:wght@400;600;800',
 };
 
-export function ReportPreview({ primaryColor, secondaryColor, accentColor, fontFamily, theme }: ReportPreviewProps) {
+export function ReportPreview({
+  primaryColor,
+  secondaryColor,
+  accentColor,
+  fontFamily,
+  theme,
+}: ReportPreviewProps) {
   const srcdoc = useMemo(() => {
     const fontParam = GOOGLE_FONTS_MAP[fontFamily] ?? GOOGLE_FONTS_MAP['DM Sans'];
     const fontImport = `https://fonts.googleapis.com/css2?family=${fontParam}&family=DM+Mono:wght@400;500&display=swap`;
@@ -438,28 +444,34 @@ export function ReportPreview({ primaryColor, secondaryColor, accentColor, fontF
   }, [primaryColor, secondaryColor, accentColor, fontFamily, theme]);
 
   return (
-    <div style={{
-      borderRadius: 12,
-      overflow: 'hidden',
-      border: '1px solid var(--border-color)',
-      background: theme === 'dark' ? '#0d1117' : '#f8fafc',
-    }}>
-      <div style={{
-        fontSize: '0.7rem',
-        fontWeight: 600,
-        textTransform: 'uppercase' as const,
-        letterSpacing: '0.5px',
-        color: 'var(--text-muted)',
-        padding: '8px 12px',
-        borderBottom: '1px solid var(--border-color)',
-      }}>
+    <div
+      style={{
+        borderRadius: 12,
+        overflow: 'hidden',
+        border: '1px solid var(--border-color)',
+        background: theme === 'dark' ? '#0d1117' : '#f8fafc',
+      }}
+    >
+      <div
+        style={{
+          fontSize: '0.7rem',
+          fontWeight: 600,
+          textTransform: 'uppercase' as const,
+          letterSpacing: '0.5px',
+          color: 'var(--text-muted)',
+          padding: '8px 12px',
+          borderBottom: '1px solid var(--border-color)',
+        }}
+      >
         Prévia do relatório
       </div>
-      <div style={{
-        height: 380,
-        overflow: 'hidden',
-        position: 'relative',
-      }}>
+      <div
+        style={{
+          height: 380,
+          overflow: 'hidden',
+          position: 'relative',
+        }}
+      >
         <iframe
           srcDoc={srcdoc}
           title="Prévia do relatório"

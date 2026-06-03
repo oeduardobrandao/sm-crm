@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  isValidDropTarget,
-  getDescendantIds,
-} from '../utils/validityMatrix';
+import { isValidDropTarget, getDescendantIds } from '../utils/validityMatrix';
 import type { Folder } from '../types';
 
 function makeFolder(overrides: Partial<Folder> = {}): Folder {

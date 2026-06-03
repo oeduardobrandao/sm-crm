@@ -89,11 +89,18 @@ export function __resetSupabaseMock() {
   };
 }
 
-export function __queueSupabaseResult(table: string, operation: 'select' | 'insert' | 'update' | 'delete' | 'upsert', ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>) {
+export function __queueSupabaseResult(
+  table: string,
+  operation: 'select' | 'insert' | 'update' | 'delete' | 'upsert',
+  ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>
+) {
   queryMock.queue(table, operation, ...responses);
 }
 
-export function __queueSupabaseRpc(name: string, ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>) {
+export function __queueSupabaseRpc(
+  name: string,
+  ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>
+) {
   queryMock.queueRpc(name, ...responses);
 }
 
@@ -103,16 +110,16 @@ export function __getSupabaseCalls() {
 
 export function __setCurrentUser(user: { id: string } | null) {
   currentUser = user;
-  currentSession = user
-    ? { access_token: 'token-de-teste', user }
-    : null;
+  currentSession = user ? { access_token: 'token-de-teste', user } : null;
 }
 
 export function __setCurrentProfile(profile: Record<string, unknown> | null) {
   currentProfile = profile;
 }
 
-export function __setCurrentSession(session: { access_token: string; user: { id: string } | null } | null) {
+export function __setCurrentSession(
+  session: { access_token: string; user: { id: string } | null } | null,
+) {
   currentSession = session;
 }
 

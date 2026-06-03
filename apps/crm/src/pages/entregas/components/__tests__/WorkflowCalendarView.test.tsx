@@ -60,8 +60,26 @@ describe('WorkflowCalendarView', () => {
 
   it('renders sidebar and calendar grid after data loads', async () => {
     mockGetClientePosts.mockResolvedValue([
-      { id: 1, workflow_id: 10, titulo: 'Post A', tipo: 'feed', status: 'rascunho', scheduled_at: null, ordem: 0, workflow_titulo: 'Campanha Junho' },
-      { id: 2, workflow_id: 10, titulo: 'Post B', tipo: 'reels', status: 'rascunho', scheduled_at: '2026-06-15T10:00:00.000Z', ordem: 1, workflow_titulo: 'Campanha Junho' },
+      {
+        id: 1,
+        workflow_id: 10,
+        titulo: 'Post A',
+        tipo: 'feed',
+        status: 'rascunho',
+        scheduled_at: null,
+        ordem: 0,
+        workflow_titulo: 'Campanha Junho',
+      },
+      {
+        id: 2,
+        workflow_id: 10,
+        titulo: 'Post B',
+        tipo: 'reels',
+        status: 'rascunho',
+        scheduled_at: '2026-06-15T10:00:00.000Z',
+        ordem: 1,
+        workflow_titulo: 'Campanha Junho',
+      },
     ]);
     renderWithQuery(<WorkflowCalendarView {...baseProps} />);
     expect(await screen.findByText('Sem data')).toBeTruthy();
@@ -70,7 +88,16 @@ describe('WorkflowCalendarView', () => {
 
   it('shows empty state when all posts are scheduled', async () => {
     mockGetClientePosts.mockResolvedValue([
-      { id: 1, workflow_id: 10, titulo: 'Post A', tipo: 'feed', status: 'rascunho', scheduled_at: '2026-06-10T10:00:00.000Z', ordem: 0, workflow_titulo: 'Campanha Junho' },
+      {
+        id: 1,
+        workflow_id: 10,
+        titulo: 'Post A',
+        tipo: 'feed',
+        status: 'rascunho',
+        scheduled_at: '2026-06-10T10:00:00.000Z',
+        ordem: 0,
+        workflow_titulo: 'Campanha Junho',
+      },
     ]);
     renderWithQuery(<WorkflowCalendarView {...baseProps} />);
     expect(await screen.findByText(/agendados/i)).toBeTruthy();
@@ -84,8 +111,26 @@ describe('WorkflowCalendarView', () => {
 
   it('only shows current workflow posts in sidebar', async () => {
     mockGetClientePosts.mockResolvedValue([
-      { id: 1, workflow_id: 10, titulo: 'My Post', tipo: 'feed', status: 'rascunho', scheduled_at: null, ordem: 0, workflow_titulo: 'Campanha Junho' },
-      { id: 2, workflow_id: 20, titulo: 'Other Post', tipo: 'reels', status: 'rascunho', scheduled_at: null, ordem: 0, workflow_titulo: 'Outro Workflow' },
+      {
+        id: 1,
+        workflow_id: 10,
+        titulo: 'My Post',
+        tipo: 'feed',
+        status: 'rascunho',
+        scheduled_at: null,
+        ordem: 0,
+        workflow_titulo: 'Campanha Junho',
+      },
+      {
+        id: 2,
+        workflow_id: 20,
+        titulo: 'Other Post',
+        tipo: 'reels',
+        status: 'rascunho',
+        scheduled_at: null,
+        ordem: 0,
+        workflow_titulo: 'Outro Workflow',
+      },
     ]);
     renderWithQuery(<WorkflowCalendarView {...baseProps} />);
     expect(await screen.findByText('My Post')).toBeTruthy();

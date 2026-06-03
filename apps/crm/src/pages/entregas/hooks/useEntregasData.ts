@@ -1,10 +1,24 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  getWorkflows, getClientes, getMembros, getWorkflowTemplates, getWorkflowEtapas,
-  getPortalApprovals, getDeadlineInfo, getWorkflowPostsCounts, getWorkflowApprovedPostsCounts,
-  getWorkflowRevisaoInternaCounts, getWorkflowPostResponsaveis, getWorkspaceSlug,
-  type Workflow, type WorkflowEtapa, type Cliente, type Membro,
-  type WorkflowTemplate, type PortalApproval, type PostMedia,
+  getWorkflows,
+  getClientes,
+  getMembros,
+  getWorkflowTemplates,
+  getWorkflowEtapas,
+  getPortalApprovals,
+  getDeadlineInfo,
+  getWorkflowPostsCounts,
+  getWorkflowApprovedPostsCounts,
+  getWorkflowRevisaoInternaCounts,
+  getWorkflowPostResponsaveis,
+  getWorkspaceSlug,
+  type Workflow,
+  type WorkflowEtapa,
+  type Cliente,
+  type Membro,
+  type WorkflowTemplate,
+  type PortalApproval,
+  type PostMedia,
 } from '../../../store';
 import { supabase } from '../../../lib/supabase';
 import { getWorkflowCovers } from '../../../services/postMedia';
@@ -44,7 +58,7 @@ export interface BoardFilters {
 export function computeDeadlineDate(
   iniciado_em: string,
   prazo_dias: number,
-  tipo_prazo: 'corridos' | 'uteis'
+  tipo_prazo: 'corridos' | 'uteis',
 ): Date {
   const start = new Date(iniciado_em);
   if (tipo_prazo === 'corridos') {
@@ -71,18 +85,18 @@ export function computeDeadlineDate(
  */
 export function computeWorkflowDeadlineDate(
   allEtapas: WorkflowEtapa[],
-  activeEtapa: WorkflowEtapa
+  activeEtapa: WorkflowEtapa,
 ): Date | null {
   const sorted = [...allEtapas].sort((a, b) => a.ordem - b.ordem);
 
   // If any steps have data_limite set, use the last step's data_limite
-  const lastWithLimit = [...sorted].reverse().find(e => e.data_limite);
+  const lastWithLimit = [...sorted].reverse().find((e) => e.data_limite);
   if (lastWithLimit?.data_limite) {
     return new Date(lastWithLimit.data_limite);
   }
 
   if (!activeEtapa.iniciado_em) return null;
-  const activeIdx = sorted.findIndex(e => e.id === activeEtapa.id);
+  const activeIdx = sorted.findIndex((e) => e.id === activeEtapa.id);
   if (activeIdx === -1) return null;
   const remaining = sorted.slice(activeIdx);
 
@@ -99,11 +113,7 @@ export function computeWorkflowDeadlineDate(
  * Subtracts business or calendar days from a date.
  * Inverse of computeDeadlineDate for backward scheduling.
  */
-export function subtractDays(
-  from: Date,
-  days: number,
-  tipoPrazo: 'corridos' | 'uteis'
-): Date {
+export function subtractDays(from: Date, days: number, tipoPrazo: 'corridos' | 'uteis'): Date {
   const result = new Date(from);
   if (tipoPrazo === 'corridos') {
     result.setDate(result.getDate() - days);
@@ -125,7 +135,7 @@ export function subtractDays(
  */
 export function getNextDeliveryDate(diaEntrega: number): Date {
   const today = new Date();
-  today.setHours(0, 0, 0, 0);  // compare date only
+  today.setHours(0, 0, 0, 0); // compare date only
   const year = today.getFullYear();
   const month = today.getMonth(); // 0-based
 
@@ -154,10 +164,10 @@ export function getNextDeliveryDate(diaEntrega: number): Date {
  */
 export function computeDeliveryDeadlines(
   etapas: WorkflowEtapa[],
-  deliveryDate: Date
+  deliveryDate: Date,
 ): Map<number, string> {
   const sorted = [...etapas].sort((a, b) => a.ordem - b.ordem);
-  const anchorIdx = sorted.findIndex(e => e.tipo === 'aprovacao_cliente');
+  const anchorIdx = sorted.findIndex((e) => e.tipo === 'aprovacao_cliente');
   if (anchorIdx === -1) return new Map();
 
   const toISO = (d: Date) => d.toISOString().split('T')[0];
@@ -192,19 +202,22 @@ export function useEntregasData() {
   });
   const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: getClientes });
   const { data: membros = [] } = useQuery({ queryKey: ['membros'], queryFn: getMembros });
-  const { data: templates = [] } = useQuery({ queryKey: ['workflow-templates'], queryFn: getWorkflowTemplates });
+  const { data: templates = [] } = useQuery({
+    queryKey: ['workflow-templates'],
+    queryFn: getWorkflowTemplates,
+  });
 
-  const activeWorkflows = workflows.filter(w => w.status === 'ativo');
+  const activeWorkflows = workflows.filter((w) => w.status === 'ativo');
 
   const etapasQuery = useQuery({
-    queryKey: ['all-active-etapas', activeWorkflows.map(w => w.id).join(',')],
+    queryKey: ['all-active-etapas', activeWorkflows.map((w) => w.id).join(',')],
     queryFn: async () => {
       const map = new Map<number, WorkflowEtapa[]>();
       await Promise.all(
-        activeWorkflows.map(async w => {
+        activeWorkflows.map(async (w) => {
           const etapas = await getWorkflowEtapas(w.id!);
           map.set(w.id!, etapas);
-        })
+        }),
       );
       return map;
     },
@@ -229,7 +242,7 @@ export function useEntregasData() {
     enabled: approvalEtapaIds.length > 0,
   });
 
-  const activeWorkflowIds = activeWorkflows.map(w => w.id!).filter(Boolean);
+  const activeWorkflowIds = activeWorkflows.map((w) => w.id!).filter(Boolean);
   const { data: covers } = useQuery({
     queryKey: ['workflow-covers', activeWorkflowIds.join(',')],
     queryFn: () => getWorkflowCovers(activeWorkflowIds),
@@ -260,7 +273,7 @@ export function useEntregasData() {
   });
   const postResponsaveis: Map<number, number[]> = postResponsaveisData ?? new Map();
 
-  const clienteIds = clientes.map(c => c.id!).filter(Boolean);
+  const clienteIds = clientes.map((c) => c.id!).filter(Boolean);
   const { data: clienteAvatars } = useQuery({
     queryKey: ['instagram-avatars', clienteIds.join(',')],
     queryFn: async () => {
@@ -270,7 +283,10 @@ export function useEntregasData() {
         .in('client_id', clienteIds)
         .not('profile_picture_url', 'is', null);
       const map = new Map<number, string>();
-      if (data) for (const row of data) if (row.client_id && row.profile_picture_url) map.set(row.client_id, row.profile_picture_url);
+      if (data)
+        for (const row of data)
+          if (row.client_id && row.profile_picture_url)
+            map.set(row.client_id, row.profile_picture_url);
       return map;
     },
     enabled: clienteIds.length > 0,
@@ -290,7 +306,8 @@ export function useEntregasData() {
         .in('cliente_id', clienteIds)
         .eq('is_active', true);
       const map = new Map<number, string>();
-      if (data) for (const row of data) if (row.cliente_id && row.token) map.set(row.cliente_id, row.token);
+      if (data)
+        for (const row of data) if (row.cliente_id && row.token) map.set(row.cliente_id, row.token);
       return map;
     },
     enabled: clienteIds.length > 0,
@@ -300,20 +317,21 @@ export function useEntregasData() {
   const cards: BoardCard[] = [];
   for (const w of activeWorkflows) {
     const etapas = etapasMap.get(w.id!) || [];
-    let activeEtapa = etapas.find(e => e.status === 'ativo');
+    let activeEtapa = etapas.find((e) => e.status === 'ativo');
     if (!activeEtapa && etapas.length > 0) {
       activeEtapa = etapas[w.etapa_atual] || etapas[0];
     }
     if (!activeEtapa) continue;
-    const cliente = clientes.find(c => c.id === w.cliente_id);
+    const cliente = clientes.find((c) => c.id === w.cliente_id);
     const membro = activeEtapa.responsavel_id
-      ? membros.find(m => m.id === activeEtapa!.responsavel_id)
+      ? membros.find((m) => m.id === activeEtapa!.responsavel_id)
       : undefined;
     const deadline = getDeadlineInfo(activeEtapa);
     const hubToken = w.cliente_id ? hubTokens?.get(w.cliente_id) : undefined;
-    const hubUrl = hubToken && workspaceSlug
-      ? `${window.location.origin}/${workspaceSlug}/hub/${hubToken}`
-      : undefined;
+    const hubUrl =
+      hubToken && workspaceSlug
+        ? `${window.location.origin}/${workspaceSlug}/hub/${hubToken}`
+        : undefined;
     cards.push({
       workflow: w,
       etapa: activeEtapa,

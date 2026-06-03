@@ -18,15 +18,17 @@ async function callFn<T>(
   query?: Record<string, string>,
   pathSuffix = '',
 ): Promise<T> {
-  const { data: { session } } = await supabase.auth.getSession();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
   if (!session) throw new Error('Not authenticated');
   const url = new URL(`${SUPABASE_URL}/functions/v1/${name}${pathSuffix}`);
   if (query) Object.entries(query).forEach(([k, v]) => url.searchParams.set(k, v));
   const res = await fetch(url.toString(), {
     method,
     headers: {
-      'Authorization': `Bearer ${session.access_token}`,
-      'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY as string,
+      Authorization: `Bearer ${session.access_token}`,
+      apikey: import.meta.env.VITE_SUPABASE_ANON_KEY as string,
       'Content-Type': 'application/json',
     },
     body: body ? JSON.stringify(body) : undefined,
@@ -72,7 +74,10 @@ function generateBlurDataUrl(file: File): Promise<string> {
         reject(e);
       }
     };
-    img.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
+    img.onerror = (e) => {
+      URL.revokeObjectURL(url);
+      reject(e);
+    };
     img.src = url;
   });
 }
@@ -99,7 +104,10 @@ function generateImageThumbnail(file: File): Promise<File> {
         0.7,
       );
     };
-    img.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
+    img.onerror = (e) => {
+      URL.revokeObjectURL(url);
+      reject(e);
+    };
     img.src = url;
   });
 }
@@ -108,27 +116,46 @@ export async function probeImage(file: File): Promise<{ width: number; height: n
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
-    img.onload = () => { URL.revokeObjectURL(url); resolve({ width: img.naturalWidth, height: img.naturalHeight }); };
-    img.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    };
+    img.onerror = (e) => {
+      URL.revokeObjectURL(url);
+      reject(e);
+    };
     img.src = url;
   });
 }
 
-export async function probeVideo(file: File): Promise<{ width: number; height: number; duration_seconds: number }> {
+export async function probeVideo(
+  file: File,
+): Promise<{ width: number; height: number; duration_seconds: number }> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const vid = document.createElement('video');
     vid.preload = 'metadata';
     vid.onloadedmetadata = () => {
       URL.revokeObjectURL(url);
-      resolve({ width: vid.videoWidth, height: vid.videoHeight, duration_seconds: Math.round(vid.duration) });
+      resolve({
+        width: vid.videoWidth,
+        height: vid.videoHeight,
+        duration_seconds: Math.round(vid.duration),
+      });
     };
-    vid.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
+    vid.onerror = (e) => {
+      URL.revokeObjectURL(url);
+      reject(e);
+    };
     vid.src = url;
   });
 }
 
-function putWithProgress(url: string, file: File, onProgress?: (p: UploadProgress) => void): Promise<void> {
+function putWithProgress(
+  url: string,
+  file: File,
+  onProgress?: (p: UploadProgress) => void,
+): Promise<void> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('PUT', url);
@@ -136,22 +163,27 @@ function putWithProgress(url: string, file: File, onProgress?: (p: UploadProgres
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable && onProgress) onProgress({ loaded: e.loaded, total: e.total });
     };
-    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300) ? resolve() : reject(new Error(`Upload failed: ${xhr.status}`));
+    xhr.onload = () =>
+      xhr.status >= 200 && xhr.status < 300
+        ? resolve()
+        : reject(new Error(`Upload failed: ${xhr.status}`));
     xhr.onerror = () => reject(new Error('Network error during upload'));
     xhr.send(file);
   });
 }
 
 export async function listPostMedia(postId: number): Promise<PostMedia[]> {
-  const { media } = await callFn<{ media: PostMedia[] }>('post-media-manage', 'GET', undefined, { post_id: String(postId) });
+  const { media } = await callFn<{ media: PostMedia[] }>('post-media-manage', 'GET', undefined, {
+    post_id: String(postId),
+  });
   return media;
 }
 
 export async function getWorkflowCovers(workflowIds: number[]): Promise<Map<number, PostMedia[]>> {
   if (workflowIds.length === 0) return new Map();
-  const { covers } = await callFn<{ covers: { workflow_id: number; media: PostMedia | PostMedia[] }[] }>(
-    'post-media-manage', 'GET', undefined, { workflow_ids: workflowIds.join(',') }
-  );
+  const { covers } = await callFn<{
+    covers: { workflow_id: number; media: PostMedia | PostMedia[] }[];
+  }>('post-media-manage', 'GET', undefined, { workflow_ids: workflowIds.join(',') });
   return new Map(covers.map((c) => [c.workflow_id, Array.isArray(c.media) ? c.media : [c.media]]));
 }
 
@@ -183,8 +215,11 @@ export async function uploadPostMedia(args: {
   }
 
   const signed = await callFn<{
-    file_id: string; upload_url: string; r2_key: string;
-    thumbnail_upload_url?: string; thumbnail_r2_key?: string;
+    file_id: string;
+    upload_url: string;
+    r2_key: string;
+    thumbnail_upload_url?: string;
+    thumbnail_r2_key?: string;
   }>('file-upload-url', 'POST', {
     filename: file.name,
     mime_type: file.type,
@@ -207,7 +242,9 @@ export async function uploadPostMedia(args: {
     size_bytes: file.size,
     name: file.name,
     post_id: postId,
-    width, height, duration_seconds,
+    width,
+    height,
+    duration_seconds,
     blur_data_url,
   });
 }
@@ -225,16 +262,22 @@ export async function reorderPostMedia(id: number, sort_order: number): Promise<
 }
 
 // Parallelism cap helper for multi-file uploads
-export async function uploadMany<T>(items: T[], fn: (t: T) => Promise<void>, concurrency = MAX_CONCURRENT) {
+export async function uploadMany<T>(
+  items: T[],
+  fn: (t: T) => Promise<void>,
+  concurrency = MAX_CONCURRENT,
+) {
   const queue = items.slice();
   const workers: Promise<void>[] = [];
   for (let i = 0; i < concurrency; i++) {
-    workers.push((async () => {
-      while (queue.length) {
-        const item = queue.shift();
-        if (item) await fn(item);
-      }
-    })());
+    workers.push(
+      (async () => {
+        while (queue.length) {
+          const item = queue.shift();
+          if (item) await fn(item);
+        }
+      })(),
+    );
   }
   await Promise.all(workers);
 }

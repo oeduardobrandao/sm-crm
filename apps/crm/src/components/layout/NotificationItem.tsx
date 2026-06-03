@@ -2,10 +2,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { X } from 'lucide-react';
 import type { Notification } from '../../store';
-import {
-  NOTIFICATION_TONE_COLOR,
-  getNotificationDisplay,
-} from '../../lib/notification-config';
+import { NOTIFICATION_TONE_COLOR, getNotificationDisplay } from '../../lib/notification-config';
 
 export interface NotificationItemProps {
   notification: Notification;
@@ -14,7 +11,12 @@ export interface NotificationItemProps {
   onNavigate: (link: string) => void;
 }
 
-export default function NotificationItem({ notification, onMarkAsRead, onDismiss, onNavigate }: NotificationItemProps) {
+export default function NotificationItem({
+  notification,
+  onMarkAsRead,
+  onDismiss,
+  onNavigate,
+}: NotificationItemProps) {
   const display = getNotificationDisplay(notification.type, notification.metadata);
   const Icon = display.icon;
   const color = NOTIFICATION_TONE_COLOR[display.tone];
@@ -33,8 +35,12 @@ export default function NotificationItem({ notification, onMarkAsRead, onDismiss
   return (
     <div
       style={{ position: 'relative', borderBottom: '1px solid var(--border-color)' }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--surface-hover)'; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLElement).style.background = 'var(--surface-hover)';
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLElement).style.background = 'transparent';
+      }}
     >
       <button
         type="button"
@@ -72,32 +78,41 @@ export default function NotificationItem({ notification, onMarkAsRead, onDismiss
         </span>
 
         <span style={{ flex: 1, minWidth: 0 }}>
-          <span style={{
-            display: 'block',
-            fontSize: '0.82rem',
-            fontWeight: isRead ? 400 : 500,
-            color: 'var(--text-main)',
-            marginBottom: '0.15rem',
-          }}>
+          <span
+            style={{
+              display: 'block',
+              fontSize: '0.82rem',
+              fontWeight: isRead ? 400 : 500,
+              color: 'var(--text-main)',
+              marginBottom: '0.15rem',
+            }}
+          >
             {display.title}
           </span>
-          <span style={{
-            display: 'block',
-            fontSize: '0.75rem',
-            color: 'var(--text-muted)',
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-          }}>
+          <span
+            style={{
+              display: 'block',
+              fontSize: '0.75rem',
+              color: 'var(--text-muted)',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
             {display.body}
           </span>
-          <span style={{
-            display: 'block',
-            fontSize: '0.7rem',
-            color: 'var(--text-light)',
-            marginTop: '0.2rem',
-          }}>
-            {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true, locale: ptBR })}
+          <span
+            style={{
+              display: 'block',
+              fontSize: '0.7rem',
+              color: 'var(--text-light)',
+              marginTop: '0.2rem',
+            }}
+          >
+            {formatDistanceToNow(new Date(notification.created_at), {
+              addSuffix: true,
+              locale: ptBR,
+            })}
           </span>
         </span>
 

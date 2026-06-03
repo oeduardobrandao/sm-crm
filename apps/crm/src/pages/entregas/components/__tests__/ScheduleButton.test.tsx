@@ -99,7 +99,12 @@ describe('ScheduleButton', () => {
     });
 
     it('shows missing items hint when caption is empty', () => {
-      render(<ScheduleButton post={makePost({ ig_caption: '', scheduled_at: null })} {...defaultProps} />);
+      render(
+        <ScheduleButton
+          post={makePost({ ig_caption: '', scheduled_at: null })}
+          {...defaultProps}
+        />,
+      );
       expect(screen.getByText(/legenda do Instagram/)).toBeTruthy();
     });
 
@@ -117,7 +122,9 @@ describe('ScheduleButton', () => {
     });
 
     it('shows error toast when schedule fails', async () => {
-      vi.mocked(scheduleInstagramPost).mockRejectedValueOnce(new Error('Data de publicação não definida.'));
+      vi.mocked(scheduleInstagramPost).mockRejectedValueOnce(
+        new Error('Data de publicação não definida.'),
+      );
       render(<ScheduleButton post={makePost()} {...defaultProps} />);
 
       await act(async () => {
@@ -208,7 +215,9 @@ describe('ScheduleButton', () => {
     it('shows progress bar with Publicando title during publish', async () => {
       let resolvePublish: (v: any) => void;
       vi.mocked(publishInstagramPostNow).mockReturnValueOnce(
-        new Promise((resolve) => { resolvePublish = resolve; }),
+        new Promise((resolve) => {
+          resolvePublish = resolve;
+        }),
       );
 
       render(<ScheduleButton post={makePost()} {...defaultProps} />);
@@ -348,7 +357,11 @@ describe('ScheduleButton', () => {
 
     it('shows missing permission warning and disables buttons', () => {
       render(
-        <ScheduleButton post={makePost()} {...defaultProps} igAccountStatus={noPublishPermission} />,
+        <ScheduleButton
+          post={makePost()}
+          {...defaultProps}
+          igAccountStatus={noPublishPermission}
+        />,
       );
       expect(screen.getByText(/Permissão de publicação não concedida/)).toBeTruthy();
       const scheduleBtn = screen.getByText('Agendar publicação').closest('button')!;
@@ -359,7 +372,11 @@ describe('ScheduleButton', () => {
 
     it('shows warning banner for agendado status with revoked token', () => {
       render(
-        <ScheduleButton post={makePost({ status: 'agendado' })} {...defaultProps} igAccountStatus={revokedStatus} />,
+        <ScheduleButton
+          post={makePost({ status: 'agendado' })}
+          {...defaultProps}
+          igAccountStatus={revokedStatus}
+        />,
       );
       expect(screen.getByText(/Token do Instagram foi revogado/)).toBeTruthy();
       expect(screen.getByText('Agendado')).toBeTruthy();
@@ -367,7 +384,11 @@ describe('ScheduleButton', () => {
 
     it('shows warning and disables retry for falha_publicacao with revoked token', () => {
       render(
-        <ScheduleButton post={makePost({ status: 'falha_publicacao' })} {...defaultProps} igAccountStatus={revokedStatus} />,
+        <ScheduleButton
+          post={makePost({ status: 'falha_publicacao' })}
+          {...defaultProps}
+          igAccountStatus={revokedStatus}
+        />,
       );
       expect(screen.getByText(/Token do Instagram foi revogado/)).toBeTruthy();
       const retryBtn = screen.getByText('Tentar novamente').closest('button')!;

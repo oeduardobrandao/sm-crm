@@ -16,9 +16,22 @@ function createMockClient(initialUser: SessionUser = { id: 'user-1' }) {
       },
       error: sessionError,
     })),
-    signInWithPassword: vi.fn(async (payload: unknown) => ({ data: { session: sessionUser }, error: null, payload })),
-    signUp: vi.fn(async (payload: unknown) => ({ data: { user: sessionUser }, error: null, payload })),
-    resetPasswordForEmail: vi.fn(async (email: string, options: unknown) => ({ data: {}, error: null, email, options })),
+    signInWithPassword: vi.fn(async (payload: unknown) => ({
+      data: { session: sessionUser },
+      error: null,
+      payload,
+    })),
+    signUp: vi.fn(async (payload: unknown) => ({
+      data: { user: sessionUser },
+      error: null,
+      payload,
+    })),
+    resetPasswordForEmail: vi.fn(async (email: string, options: unknown) => ({
+      data: {},
+      error: null,
+      email,
+      options,
+    })),
     signOut: vi.fn(async () => {
       sessionUser = null;
       return { error: null };
@@ -110,10 +123,14 @@ describe('supabase helpers', () => {
 
     await expect(module.getCurrentProfile()).resolves.toMatchObject({ nome: 'Ana Silva' });
     await expect(module.getCurrentProfile()).resolves.toMatchObject({ nome: 'Ana Silva' });
-    expect(queryMock.calls.filter((call) => call.table === 'profiles' && call.operation === 'select')).toHaveLength(1);
+    expect(
+      queryMock.calls.filter((call) => call.table === 'profiles' && call.operation === 'select'),
+    ).toHaveLength(1);
 
     await expect(module.getCurrentProfile(true)).resolves.toMatchObject({ nome: 'Ana Souza' });
-    expect(queryMock.calls.filter((call) => call.table === 'profiles' && call.operation === 'select')).toHaveLength(2);
+    expect(
+      queryMock.calls.filter((call) => call.table === 'profiles' && call.operation === 'select'),
+    ).toHaveLength(2);
   });
 
   it('returns null when the current profile cannot be loaded', async () => {
@@ -135,7 +152,11 @@ describe('supabase helpers', () => {
 
     queryMock.queue('workspace_members', 'select', {
       data: [
-        { workspace_id: 'w-1', role: 'owner', workspaces: { id: 'w-1', name: 'Workspace Principal' } },
+        {
+          workspace_id: 'w-1',
+          role: 'owner',
+          workspaces: { id: 'w-1', name: 'Workspace Principal' },
+        },
       ],
       error: null,
     });
@@ -162,8 +183,16 @@ describe('supabase helpers', () => {
 
     queryMock.queue('workspace_members', 'select', {
       data: [
-        { workspace_id: 'w-1', role: 'owner', workspaces: { id: 'w-1', name: 'Workspace Principal' } },
-        { workspace_id: 'w-2', role: 'owner', workspaces: { id: 'w-2', name: 'Workspace Secundario' } },
+        {
+          workspace_id: 'w-1',
+          role: 'owner',
+          workspaces: { id: 'w-1', name: 'Workspace Principal' },
+        },
+        {
+          workspace_id: 'w-2',
+          role: 'owner',
+          workspaces: { id: 'w-2', name: 'Workspace Secundario' },
+        },
       ],
       error: null,
     });
@@ -187,14 +216,17 @@ describe('supabase helpers', () => {
       expect(
         queryMock.calls.some(
           (call) =>
-            call.table === 'profiles'
-            && call.operation === 'update'
-            && (call.payload as Record<string, string>).active_workspace_id === 'w-2',
+            call.table === 'profiles' &&
+            call.operation === 'update' &&
+            (call.payload as Record<string, string>).active_workspace_id === 'w-2',
         ),
       ).toBe(true);
     });
 
-    expect(errorSpy).not.toHaveBeenCalledWith('populateWorkspaceSwitcher error:', expect.anything());
+    expect(errorSpy).not.toHaveBeenCalledWith(
+      'populateWorkspaceSwitcher error:',
+      expect.anything(),
+    );
   });
 
   it('forwards auth helper calls with the expected payloads', async () => {

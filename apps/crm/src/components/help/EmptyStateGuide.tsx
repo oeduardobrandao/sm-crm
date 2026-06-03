@@ -1,13 +1,13 @@
-import React from "react"
-import { Link } from "react-router-dom"
+import React from 'react';
+import { Link } from 'react-router-dom';
 
 interface EmptyStateGuideProps {
-  icon: React.ReactNode
-  title: string
-  description: React.ReactNode
-  actionLabel: string
-  actionHref: string
-  hint?: string
+  icon: React.ReactNode;
+  title: string;
+  description: React.ReactNode;
+  actionLabel: string;
+  actionHref: string;
+  hint?: string;
 }
 
 export function EmptyStateGuide({
@@ -25,12 +25,12 @@ export function EmptyStateGuide({
         <span className="font-semibold text-amber-900 text-sm">{title}</span>
       </div>
       <p className="text-stone-500 text-sm">
-        {description}{" "}
+        {description}{' '}
         <Link to={actionHref} className="text-[#eab308] font-semibold underline">
           {actionLabel}
         </Link>
       </p>
       {hint && <p className="text-stone-400 text-xs">{hint}</p>}
     </div>
-  )
+  );
 }
