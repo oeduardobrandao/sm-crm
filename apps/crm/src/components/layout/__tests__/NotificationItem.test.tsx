@@ -58,4 +58,22 @@ describe('NotificationItem', () => {
     expect(onDismiss).toHaveBeenCalledWith('1');
     expect(onMarkAsRead).not.toHaveBeenCalled();
   });
+
+  it('renders a post_edit_suggestion notification without crashing', () => {
+    const notif: Notification = {
+      ...baseNotif,
+      type: 'post_edit_suggestion',
+      metadata: { client_name: 'Foo', post_title: 'Bar' },
+    };
+    render(<NotificationItem notification={notif} onMarkAsRead={vi.fn()} onDismiss={vi.fn()} onNavigate={vi.fn()} />);
+    expect(screen.getByText('Sugestão de edição do cliente')).toBeInTheDocument();
+    expect(screen.getByText(/Foo — Bar/)).toBeInTheDocument();
+  });
+
+  it('falls back to a generic display for an unknown type instead of blank-screening', () => {
+    const notif = { ...baseNotif, type: 'future_unknown_type' as Notification['type'], metadata: {} };
+    expect(() =>
+      render(<NotificationItem notification={notif} onMarkAsRead={vi.fn()} onDismiss={vi.fn()} onNavigate={vi.fn()} />),
+    ).not.toThrow();
+  });
 });
