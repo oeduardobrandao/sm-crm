@@ -54,7 +54,7 @@ recent PR merge already processed (drives the cutoff + dedup — see Generation)
 
 ```jsonc
 {
-  "lastMergedAt": "2026-06-03T13:42:12Z",  // max mergedAt of any included PR
+  "lastMergedAt": "2026-06-03T13:42:12Z",  // watermark: max mergedAt evaluated this run (incl. LLM-dropped)
   "releases": [
     {
       "date": "2026-06-08",                // ISO date of the weekly digest
@@ -152,9 +152,14 @@ remote: `github.com/oeduardobrandao/sm-crm`). Flow:
    Portuguese `title` + `description` aimed at users.
 5. **Self-review** (LLM) against a rubric: accurate to the PR; no internal jargon
    / filenames; no security-sensitive details; no duplicates of existing entries.
-6. **Prepend** the new dated release block via `prependRelease` (dedupes items by
-   `pr`, prepends, and recomputes `lastMergedAt`), validated against the zod
-   schema before writing.
+6. **Advance the watermark + prepend.** Set `lastMergedAt` to the max `mergedAt`
+   of the **entire evaluated batch** — every PR that passed the deterministic
+   select and was shown to the LLM, *not* just the ones the LLM kept — so
+   LLM-dropped PRs are never re-evaluated. Then `prependRelease` dedupes items by
+   `pr`, prepends the new block, and writes the new `lastMergedAt`; validated
+   against the zod schema before writing. **Edge case:** if candidates were fetched
+   but the LLM kept none, still commit a *watermark-only* `lastMergedAt` update (no
+   release block) so they are not reprocessed next run.
 
 ### Pure / testable split (kept inside CI coverage)
 
@@ -165,7 +170,7 @@ the generator script and tests, so Vite tree-shakes them out of the app bundle.
 
 - `cutoffDate(changelog, fallback) -> 'YYYY-MM-DD'`
 - `selectPRs(prs, { lastMergedAt, existingPrNumbers }) -> prs` (dedup + prefilter + labels)
-- `prependRelease(changelog, release) -> changelog` (dedupe by `pr`, recompute `lastMergedAt`)
+- `prependRelease(changelog, release, newLastMergedAt) -> changelog` (dedupe items by `pr`, prepend, set `lastMergedAt`)
 
 The **orchestration glue** (the `gh` calls, file IO, LLM invocation) lives in
 `scripts/changelog/generate.ts`. It is not unit-tested (it is IO/agent harness),
@@ -184,7 +189,9 @@ Hands-off, but CI still guards quality:
    (no human review).
 4. Vercel deploys on merge → the new entries are live on `/novidades`.
 
-If no PRs qualify that week, the agent does nothing (no empty PR).
+If the deterministic select returns nothing, the agent does nothing (no PR). If it
+returned candidates but the LLM kept none, the agent commits only the advanced
+`lastMergedAt` (a small bookkeeping PR) so those PRs are not re-evaluated next week.
 
 > This is the one refinement to the raw "auto-publish" choice: it routes through
 > an auto-merging PR so CI still runs, rather than committing straight to `main`.
@@ -202,6 +209,9 @@ blocking human steps:
    (`alertas@mesaas.com.br`) with a link to `/novidades`. This reliably observes
    the *actual merge*, independent of the agent's lifecycle. (The agent enables
    auto-merge and exits; nothing it does could observe the later merge itself.)
+   **Secrets:** the Action runs in GitHub, not Supabase, so the existing values in
+   `_shared/notify.ts` (`RESEND_API_KEY`, `ALERT_EMAIL`) are not visible to it —
+   both must be added as **GitHub repo secrets** and read via `secrets.*`.
 2. **Full git revertability** — every publish is a squash commit on `main`.
 3. **Deterministic select + self-review rubric** — junk never reaches the model;
    the model double-checks its own output before writing.
@@ -239,7 +249,7 @@ limiting.
 | Create | `scripts/changelog/runbook.md` | Agent generation instructions |
 | Create | `tsconfig.scripts.json` | Typecheck config for `scripts/` |
 | Modify | `.github/workflows/ci.yml` | Add typecheck step for `scripts/` |
-| Create | `.github/workflows/changelog-notify.yml` | Resend email on merge (push to main) |
+| Create | `.github/workflows/changelog-notify.yml` | Resend email on merge (push to main); needs `RESEND_API_KEY` + `ALERT_EMAIL` as GitHub repo secrets |
 
 ## Testing
 
@@ -277,7 +287,17 @@ limiting.
    test and page-side `safeParse` with a fallback.
 7. **Logged-in nav target underspecified** → named `nav-data.ts` (`Suporte`
    group) + `Sidebar.tsx`; in-app navigation via `handleNavClick`.
-```
+
+### Round 2 (2026-06-04)
+
+8. **`lastMergedAt` could reprocess LLM-dropped PRs** → redefined as a watermark
+   over *every evaluated PR* (including ones the LLM dropped); a run that fetches
+   candidates but keeps none commits a watermark-only update so they are not
+   re-evaluated.
+9. **Notification needs GitHub secrets** → `changelog-notify.yml` requires
+   `RESEND_API_KEY` + `ALERT_EMAIL` as GitHub repo secrets (the Supabase env
+   values are not visible to Actions).
+10. **Stray closing code fence** → removed.
 
 ## Open Questions
 
