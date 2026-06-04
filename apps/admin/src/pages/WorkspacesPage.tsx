@@ -14,7 +14,13 @@ export default function WorkspacesPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'workspaces', { search, plan_id: planFilter, offset: page * limit, limit }],
-    queryFn: () => listWorkspaces({ search: search || undefined, plan_id: planFilter || undefined, offset: page * limit, limit }),
+    queryFn: () =>
+      listWorkspaces({
+        search: search || undefined,
+        plan_id: planFilter || undefined,
+        offset: page * limit,
+        limit,
+      }),
   });
 
   const { data: plansData } = useQuery({
@@ -33,23 +39,34 @@ export default function WorkspacesPage() {
 
       <div className="flex flex-col sm:flex-row gap-3 mb-6">
         <div className="flex-1 relative">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Search
+            size={16}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+          />
           <input
             type="text"
             placeholder="Search workspaces..."
             value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(0);
+            }}
             className="w-full pl-9 pr-3 py-2.5 rounded-lg bg-card border border-border text-sm font-['DM_Mono'] text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary transition-colors"
           />
         </div>
         <select
           value={planFilter}
-          onChange={(e) => { setPlanFilter(e.target.value); setPage(0); }}
+          onChange={(e) => {
+            setPlanFilter(e.target.value);
+            setPage(0);
+          }}
           className="px-3 py-2.5 rounded-lg bg-card border border-border text-sm text-muted-foreground focus:outline-none focus:border-primary"
         >
           <option value="">All Plans</option>
           {plansData?.plans?.map((p) => (
-            <option key={p.id} value={p.id}>{p.name}</option>
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
           ))}
         </select>
       </div>
@@ -91,8 +108,13 @@ export default function WorkspacesPage() {
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                   <span className="truncate max-w-[180px]">{ws.owner?.email || '—'}</span>
                   {ws.plan_name && (
-                    <span className="inline-block text-[0.65rem] font-semibold uppercase px-1.5 py-0.5 rounded-sm"
-                      style={{ color: getPlanColor(ws.plan_name), backgroundColor: getPlanColor(ws.plan_name) + '26' }}>
+                    <span
+                      className="inline-block text-[0.65rem] font-semibold uppercase px-1.5 py-0.5 rounded-sm"
+                      style={{
+                        color: getPlanColor(ws.plan_name),
+                        backgroundColor: getPlanColor(ws.plan_name) + '26',
+                      }}
+                    >
                       {ws.plan_name}
                     </span>
                   )}
@@ -109,11 +131,18 @@ export default function WorkspacesPage() {
                   </span>
                 )}
               </span>
-              <span className="hidden md:inline text-muted-foreground truncate text-sm">{ws.owner?.email || '—'}</span>
+              <span className="hidden md:inline text-muted-foreground truncate text-sm">
+                {ws.owner?.email || '—'}
+              </span>
               <span className="hidden md:inline text-sm">
                 {ws.plan_name ? (
-                  <span className="inline-block text-[0.7rem] font-semibold uppercase px-2 py-0.5 rounded-sm"
-                    style={{ color: getPlanColor(ws.plan_name), backgroundColor: getPlanColor(ws.plan_name) + '26' }}>
+                  <span
+                    className="inline-block text-[0.7rem] font-semibold uppercase px-2 py-0.5 rounded-sm"
+                    style={{
+                      color: getPlanColor(ws.plan_name),
+                      backgroundColor: getPlanColor(ws.plan_name) + '26',
+                    }}
+                  >
                     {ws.plan_name}
                   </span>
                 ) : (
@@ -123,9 +152,14 @@ export default function WorkspacesPage() {
               <span className="hidden md:inline font-['DM_Mono'] text-sm">{ws.client_count}</span>
               <span className="hidden md:inline font-['DM_Mono'] text-sm">{ws.member_count}</span>
               <span className="hidden md:inline text-muted-foreground text-sm">
-                {new Date(ws.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                {new Date(ws.created_at).toLocaleDateString('pt-BR', {
+                  day: '2-digit',
+                  month: 'short',
+                })}
               </span>
-              <span className="hidden md:inline text-muted-foreground"><ArrowRight size={16} /></span>
+              <span className="hidden md:inline text-muted-foreground">
+                <ArrowRight size={16} />
+              </span>
             </div>
           ))
         )}

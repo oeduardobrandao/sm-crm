@@ -42,11 +42,7 @@ export async function getCurrentProfile(force = false) {
     const user = await getCurrentUser();
     if (!user) return null;
 
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', user.id)
-      .single();
+    const { data, error } = await supabase.from('profiles').select('*').eq('id', user.id).single();
 
     if (error) throw error;
     cachedProfile = data;
@@ -111,7 +107,8 @@ async function populateWorkspaceSwitcher(activeWorkspaceId: string | null) {
     data.forEach((m: any) => {
       const btn = document.createElement('button');
       btn.className = 'user-dropdown-item';
-      btn.style.cssText = 'width: 100%; border: none; background: transparent; text-align: left; font-family: inherit; font-size: inherit; cursor: pointer; display: flex; align-items: center; gap: 0.5rem;';
+      btn.style.cssText =
+        'width: 100%; border: none; background: transparent; text-align: left; font-family: inherit; font-size: inherit; cursor: pointer; display: flex; align-items: center; gap: 0.5rem;';
       const isActive = m.workspaces.id === activeWorkspaceId;
       if (isActive) {
         btn.style.fontWeight = '600';
@@ -171,17 +168,24 @@ export async function healPendingInvite() {
 
     if (membership) return;
 
-    const { data: { session } } = await supabase.auth.getSession();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
     if (!session) return;
 
     await fetch(`${SUPABASE_URL}/functions/v1/manage-workspace-user`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
       body: JSON.stringify({ action: 'accept-invite', email: user.email.toLowerCase() }),
     });
 
     cachedProfile = null;
-  } catch { /* best-effort */ }
+  } catch {
+    /* best-effort */
+  }
 }
 
 export async function signIn(email: string, password: string) {
@@ -189,7 +193,11 @@ export async function signIn(email: string, password: string) {
   return supabase.auth.signInWithPassword({ email, password });
 }
 
-export async function signUp(email: string, password: string, meta?: { nome?: string; empresa?: string }) {
+export async function signUp(
+  email: string,
+  password: string,
+  meta?: { nome?: string; empresa?: string },
+) {
   return supabase.auth.signUp({
     email,
     password,

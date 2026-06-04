@@ -8,13 +8,23 @@ import { Button } from '@/components/ui/button';
 import { PrerequisiteAlert } from '@/components/help/PrerequisiteAlert';
 import { EmptyStateGuide } from '@/components/help/EmptyStateGuide';
 import {
-  AlertDialog, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { supabase } from '@/lib/supabase';
 import {
-  getClientes, addWorkflow, addWorkflowEtapa, addWorkflowPost,
-  updateWorkflowPost, updateWorkflow, removeWorkflow,
+  getClientes,
+  addWorkflow,
+  addWorkflowEtapa,
+  addWorkflowPost,
+  updateWorkflowPost,
+  updateWorkflow,
+  removeWorkflow,
   type PostMedia,
 } from '../../store';
 import { publishInstagramPostNow } from '../../services/instagram';
@@ -41,11 +51,32 @@ function detectPostType(media: PostMedia[]): 'feed' | 'reels' | 'carrossel' | nu
   return 'feed';
 }
 
-function getTypeLabel(type: 'feed' | 'reels' | 'carrossel', t: (key: string) => string): { label: string; color: string; bg: string; icon: typeof Image } {
+function getTypeLabel(
+  type: 'feed' | 'reels' | 'carrossel',
+  t: (key: string) => string,
+): { label: string; color: string; bg: string; icon: typeof Image } {
   switch (type) {
-    case 'feed': return { label: t('postType.feed'), color: '#eab308', bg: 'rgba(234,179,8,0.12)', icon: Image };
-    case 'reels': return { label: t('postType.reels'), color: '#E1306C', bg: 'rgba(225,48,108,0.12)', icon: Film };
-    case 'carrossel': return { label: t('postType.carrossel'), color: '#42c8f5', bg: 'rgba(66,200,245,0.12)', icon: Images };
+    case 'feed':
+      return {
+        label: t('postType.feed'),
+        color: '#eab308',
+        bg: 'rgba(234,179,8,0.12)',
+        icon: Image,
+      };
+    case 'reels':
+      return {
+        label: t('postType.reels'),
+        color: '#E1306C',
+        bg: 'rgba(225,48,108,0.12)',
+        icon: Film,
+      };
+    case 'carrossel':
+      return {
+        label: t('postType.carrossel'),
+        color: '#42c8f5',
+        bg: 'rgba(66,200,245,0.12)',
+        icon: Images,
+      };
   }
 }
 
@@ -69,12 +100,21 @@ export default function ExpressPostPage() {
   const mediaCountRef = useRef(0);
   const captionRef = useRef('');
 
-  useEffect(() => { draftRef.current = draft; }, [draft]);
-  useEffect(() => { mediaCountRef.current = mediaList.length; }, [mediaList]);
-  useEffect(() => { captionRef.current = caption; }, [caption]);
+  useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
+  useEffect(() => {
+    mediaCountRef.current = mediaList.length;
+  }, [mediaList]);
+  useEffect(() => {
+    captionRef.current = caption;
+  }, [caption]);
 
   const stopProgressTimer = useCallback(() => {
-    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
   }, []);
   useEffect(() => stopProgressTimer, [stopProgressTimer]);
 
@@ -89,7 +129,9 @@ export default function ExpressPostPage() {
       if (!selectedClientId) return null;
       const { data } = await supabase
         .from('instagram_accounts')
-        .select('id, username, profile_picture_url, authorization_status, token_expires_at, permissions')
+        .select(
+          'id, username, profile_picture_url, authorization_status, token_expires_at, permissions',
+        )
         .eq('client_id', selectedClientId)
         .maybeSingle();
       return data;
@@ -100,9 +142,7 @@ export default function ExpressPostPage() {
   const { data: clientsWithIg = [] } = useQuery({
     queryKey: ['clients-with-ig'],
     queryFn: async () => {
-      const { data } = await supabase
-        .from('instagram_accounts')
-        .select('client_id');
+      const { data } = await supabase.from('instagram_accounts').select('client_id');
       return (data ?? []).map((r: { client_id: number }) => r.client_id);
     },
   });
@@ -111,11 +151,17 @@ export default function ExpressPostPage() {
     .filter((c) => clientsWithIg.includes(c.id!))
     .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
 
-  const igAccountStatus = igAccount ? {
-    revoked: igAccount.authorization_status === 'revoked',
-    expired: igAccount.authorization_status === 'expired' || (igAccount.token_expires_at ? new Date(igAccount.token_expires_at) < new Date() : false),
-    canPublish: Array.isArray(igAccount.permissions) && igAccount.permissions.includes('instagram_business_content_publish'),
-  } : null;
+  const igAccountStatus = igAccount
+    ? {
+        revoked: igAccount.authorization_status === 'revoked',
+        expired:
+          igAccount.authorization_status === 'expired' ||
+          (igAccount.token_expires_at ? new Date(igAccount.token_expires_at) < new Date() : false),
+        canPublish:
+          Array.isArray(igAccount.permissions) &&
+          igAccount.permissions.includes('instagram_business_content_publish'),
+      }
+    : null;
 
   const accountBlocked = igAccountStatus?.revoked || igAccountStatus?.expired;
   const missingPublishPermission = igAccountStatus ? !igAccountStatus.canPublish : false;
@@ -131,7 +177,8 @@ export default function ExpressPostPage() {
   }
 
   const detectedType = detectPostType(mediaList);
-  const canPublish = !!draft && !!caption.trim() && mediaList.length > 0 && !accountWarning && !loading;
+  const canPublish =
+    !!draft && !!caption.trim() && mediaList.length > 0 && !accountWarning && !loading;
 
   async function createDraft(clientId: number, clientName: string) {
     setCreatingDraft(true);
@@ -172,14 +219,20 @@ export default function ExpressPostPage() {
 
       setDraft({ workflowId: workflow.id!, postId: post.id! });
     } catch (err: unknown) {
-      toast.error(t('toast.draftError', { error: err instanceof Error ? err.message : String(err) }));
+      toast.error(
+        t('toast.draftError', { error: err instanceof Error ? err.message : String(err) }),
+      );
     } finally {
       setCreatingDraft(false);
     }
   }
 
   async function deleteDraft(wfId: number) {
-    try { await removeWorkflow(wfId); } catch { /* fire-and-forget */ }
+    try {
+      await removeWorkflow(wfId);
+    } catch {
+      /* fire-and-forget */
+    }
   }
 
   async function handleClientChange(clientId: number | null) {
@@ -268,7 +321,13 @@ export default function ExpressPostPage() {
     <div className="animate-up" style={{ padding: 'clamp(1.25rem, 3vw, 2.5rem)' }}>
       {/* Header */}
       <div style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ fontFamily: 'var(--font-heading)', fontSize: 'clamp(2rem, 4vw, 3.2rem)', fontWeight: 900 }}>
+        <h1
+          style={{
+            fontFamily: 'var(--font-heading)',
+            fontSize: 'clamp(2rem, 4vw, 3.2rem)',
+            fontWeight: 900,
+          }}
+        >
           {t('title')}
         </h1>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.25rem' }}>
@@ -289,37 +348,69 @@ export default function ExpressPostPage() {
 
       {/* Warning banner */}
       {warningMessage && selectedClientId && (
-        <div className="flex items-center gap-2 rounded-lg px-4 py-3 text-xs mb-4"
-          style={{ color: '#f55a42', background: 'rgba(245, 90, 66, 0.08)' }}>
+        <div
+          className="flex items-center gap-2 rounded-lg px-4 py-3 text-xs mb-4"
+          style={{ color: '#f55a42', background: 'rgba(245, 90, 66, 0.08)' }}
+        >
           <AlertCircle className="h-4 w-4 flex-shrink-0" />
           <span>{warningMessage}</span>
-          <a href={`/clientes/${selectedClientId}`} className="ml-auto underline font-medium whitespace-nowrap" style={{ color: '#f55a42' }}>
+          <a
+            href={`/clientes/${selectedClientId}`}
+            className="ml-auto underline font-medium whitespace-nowrap"
+            style={{ color: '#f55a42' }}
+          >
             Reconectar →
           </a>
         </div>
       )}
 
       {/* Two-column grid */}
-      <div className="grid gap-6" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 400px), 1fr))' }}>
-
+      <div
+        className="grid gap-6"
+        style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 400px), 1fr))' }}
+      >
         {/* LEFT COLUMN */}
         <div className="flex flex-col gap-4">
-
           {/* Client Picker */}
-          <div style={{ background: 'var(--card-bg)', borderRadius: '8px', padding: '1.25rem', border: '1px solid var(--border-color)' }}>
-            <label className="block text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
+          <div
+            style={{
+              background: 'var(--card-bg)',
+              borderRadius: '8px',
+              padding: '1.25rem',
+              border: '1px solid var(--border-color)',
+            }}
+          >
+            <label
+              className="block text-xs font-semibold uppercase tracking-wider mb-2"
+              style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}
+            >
               {t('labels.client')}
             </label>
             <select
               value={selectedClientId ?? ''}
-              onChange={(e) => handleClientChange(e.target.value ? parseInt(e.target.value, 10) : null)}
+              onChange={(e) =>
+                handleClientChange(e.target.value ? parseInt(e.target.value, 10) : null)
+              }
               disabled={loading || creatingDraft}
               className="w-full pl-3 pr-10 py-2 text-sm border"
-              style={{ fontFamily: 'var(--font-main)', background: 'var(--surface-main)', borderColor: 'var(--border-color)', color: 'var(--text-main)', borderRadius: '4px', appearance: 'none', WebkitAppearance: 'none', backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 0.75rem center' }}
+              style={{
+                fontFamily: 'var(--font-main)',
+                background: 'var(--surface-main)',
+                borderColor: 'var(--border-color)',
+                color: 'var(--text-main)',
+                borderRadius: '4px',
+                appearance: 'none',
+                WebkitAppearance: 'none',
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
+                backgroundRepeat: 'no-repeat',
+                backgroundPosition: 'right 0.75rem center',
+              }}
             >
               <option value="">{t('select.client')}</option>
               {eligibleClients.map((c) => (
-                <option key={c.id} value={c.id}>{c.nome}</option>
+                <option key={c.id} value={c.id}>
+                  {c.nome}
+                </option>
               ))}
             </select>
             {eligibleClients.length === 0 && (
@@ -336,7 +427,12 @@ export default function ExpressPostPage() {
             {igAccount && (
               <div className="flex items-center gap-2 mt-2">
                 {igAccount.profile_picture_url && (
-                  <img src={igAccount.profile_picture_url} alt="" className="w-5 h-5 rounded-full" style={{ border: '1.5px solid #E1306C' }} />
+                  <img
+                    src={igAccount.profile_picture_url}
+                    alt=""
+                    className="w-5 h-5 rounded-full"
+                    style={{ border: '1.5px solid #E1306C' }}
+                  />
                 )}
                 <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
                   @{igAccount.username ?? 'conta'}
@@ -347,8 +443,18 @@ export default function ExpressPostPage() {
 
           {/* Media Upload */}
           {draft && (
-            <div style={{ background: 'var(--card-bg)', borderRadius: '8px', padding: '1.25rem', border: '1px solid var(--border-color)' }}>
-              <label className="block text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
+            <div
+              style={{
+                background: 'var(--card-bg)',
+                borderRadius: '8px',
+                padding: '1.25rem',
+                border: '1px solid var(--border-color)',
+              }}
+            >
+              <label
+                className="block text-xs font-semibold uppercase tracking-wider mb-3"
+                style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}
+              >
                 {t('labels.media')}
               </label>
               <PostMediaGallery
@@ -364,8 +470,10 @@ export default function ExpressPostPage() {
                     const typeInfo = getTypeLabel(detectedType, t);
                     const Icon = typeInfo.icon;
                     return (
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold"
-                        style={{ color: typeInfo.color, background: typeInfo.bg }}>
+                      <span
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold"
+                        style={{ color: typeInfo.color, background: typeInfo.bg }}
+                      >
                         <Icon className="h-3.5 w-3.5" /> {typeInfo.label}
                       </span>
                     );
@@ -376,18 +484,37 @@ export default function ExpressPostPage() {
           )}
 
           {creatingDraft && (
-            <div style={{ background: 'var(--card-bg)', borderRadius: '8px', padding: '2rem', border: '1px solid var(--border-color)', textAlign: 'center' }}>
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{t('empty.preparingDraft')}</p>
+            <div
+              style={{
+                background: 'var(--card-bg)',
+                borderRadius: '8px',
+                padding: '2rem',
+                border: '1px solid var(--border-color)',
+                textAlign: 'center',
+              }}
+            >
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                {t('empty.preparingDraft')}
+              </p>
             </div>
           )}
         </div>
 
         {/* RIGHT COLUMN */}
         <div className="flex flex-col gap-4">
-
           {/* Caption */}
-          <div style={{ background: 'var(--card-bg)', borderRadius: '8px', padding: '1.25rem', border: '1px solid var(--border-color)' }}>
-            <label className="block text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
+          <div
+            style={{
+              background: 'var(--card-bg)',
+              borderRadius: '8px',
+              padding: '1.25rem',
+              border: '1px solid var(--border-color)',
+            }}
+          >
+            <label
+              className="block text-xs font-semibold uppercase tracking-wider mb-2"
+              style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}
+            >
               {t('labels.caption')}
             </label>
             <textarea
@@ -397,7 +524,12 @@ export default function ExpressPostPage() {
               disabled={!draft || loading}
               rows={8}
               className="w-full rounded px-3 py-2.5 text-sm resize-none border"
-              style={{ fontFamily: 'var(--font-main)', background: 'var(--surface-main)', borderColor: 'var(--border-color)', color: 'var(--text-main)' }}
+              style={{
+                fontFamily: 'var(--font-main)',
+                background: 'var(--surface-main)',
+                borderColor: 'var(--border-color)',
+                color: 'var(--text-main)',
+              }}
             />
             <div className="flex justify-end mt-1">
               <span className="text-xs tabular-nums" style={{ color: 'var(--text-muted)' }}>
@@ -408,28 +540,76 @@ export default function ExpressPostPage() {
 
           {/* Instagram Preview */}
           {draft && igAccount && (
-            <div style={{ background: 'var(--card-bg)', borderRadius: '8px', padding: '1.25rem', border: '1px solid var(--border-color)' }}>
-              <label className="block text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
+            <div
+              style={{
+                background: 'var(--card-bg)',
+                borderRadius: '8px',
+                padding: '1.25rem',
+                border: '1px solid var(--border-color)',
+              }}
+            >
+              <label
+                className="block text-xs font-semibold uppercase tracking-wider mb-3"
+                style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}
+              >
                 {t('labels.preview')}
               </label>
-              <div className="rounded-lg overflow-hidden" style={{ background: '#000', padding: '0.75rem', maxWidth: '300px', margin: '0 auto' }}>
+              <div
+                className="rounded-lg overflow-hidden"
+                style={{
+                  background: '#000',
+                  padding: '0.75rem',
+                  maxWidth: '300px',
+                  margin: '0 auto',
+                }}
+              >
                 <div className="flex items-center gap-2 mb-2">
                   {igAccount.profile_picture_url ? (
-                    <img src={igAccount.profile_picture_url} alt="" className="w-6 h-6 rounded-full" style={{ border: '1.5px solid #E1306C' }} />
+                    <img
+                      src={igAccount.profile_picture_url}
+                      alt=""
+                      className="w-6 h-6 rounded-full"
+                      style={{ border: '1.5px solid #E1306C' }}
+                    />
                   ) : (
-                    <div className="w-6 h-6 rounded-full" style={{ background: 'linear-gradient(45deg, #f09433, #dc2743, #bc1888)' }} />
+                    <div
+                      className="w-6 h-6 rounded-full"
+                      style={{ background: 'linear-gradient(45deg, #f09433, #dc2743, #bc1888)' }}
+                    />
                   )}
-                  <span className="text-xs font-semibold" style={{ color: '#e8eaf0' }}>@{igAccount.username ?? 'conta'}</span>
+                  <span className="text-xs font-semibold" style={{ color: '#e8eaf0' }}>
+                    @{igAccount.username ?? 'conta'}
+                  </span>
                 </div>
-                <div className="rounded-lg overflow-hidden" style={{ background: '#1a1e26', aspectRatio: '1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div
+                  className="rounded-lg overflow-hidden"
+                  style={{
+                    background: '#1a1e26',
+                    aspectRatio: '1',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
                   {mediaList.length > 0 && mediaList[0].url ? (
                     mediaList[0].kind === 'video' ? (
-                      <video src={mediaList[0].url} poster={mediaList[0].thumbnail_url ?? undefined} muted className="w-full h-full object-cover" />
+                      <video
+                        src={mediaList[0].url}
+                        poster={mediaList[0].thumbnail_url ?? undefined}
+                        muted
+                        className="w-full h-full object-cover"
+                      />
                     ) : (
-                      <img src={mediaList[0].thumbnail_url ?? mediaList[0].url} alt="" className="w-full h-full object-cover" />
+                      <img
+                        src={mediaList[0].thumbnail_url ?? mediaList[0].url}
+                        alt=""
+                        className="w-full h-full object-cover"
+                      />
                     )
                   ) : (
-                    <span className="text-xs" style={{ color: '#4b5563' }}>{t('empty.mediaPlaceholder')}</span>
+                    <span className="text-xs" style={{ color: '#4b5563' }}>
+                      {t('empty.mediaPlaceholder')}
+                    </span>
                   )}
                 </div>
                 {caption && (
@@ -447,7 +627,11 @@ export default function ExpressPostPage() {
             onClick={() => setConfirmOpen(true)}
             disabled={!canPublish}
             className="w-full text-sm font-bold py-3"
-            style={canPublish ? { background: '#E1306C', color: 'white', borderRadius: '8px' } : { borderRadius: '8px' }}
+            style={
+              canPublish
+                ? { background: '#E1306C', color: 'white', borderRadius: '8px' }
+                : { borderRadius: '8px' }
+            }
           >
             <Send className="h-4 w-4 mr-2" /> {t('publish.button')}
           </Button>
@@ -460,14 +644,19 @@ export default function ExpressPostPage() {
       </div>
 
       {/* Publish Confirmation Dialog */}
-      <AlertDialog open={confirmOpen} onOpenChange={(o) => { if (!publishing) setConfirmOpen(o); }}>
+      <AlertDialog
+        open={confirmOpen}
+        onOpenChange={(o) => {
+          if (!publishing) setConfirmOpen(o);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{publishing ? t('publish.publishingTitle') : t('publish.confirmTitle')}</AlertDialogTitle>
+            <AlertDialogTitle>
+              {publishing ? t('publish.publishingTitle') : t('publish.confirmTitle')}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              {publishing
-                ? t('publish.publishingDescription')
-                : t('publish.confirmDescription')}
+              {publishing ? t('publish.publishingDescription') : t('publish.confirmDescription')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           {publishing && (
@@ -479,7 +668,10 @@ export default function ExpressPostPage() {
               <div className="h-2 rounded-lg bg-stone-200 overflow-hidden">
                 <div
                   className="h-full rounded-lg transition-all duration-300 ease-out"
-                  style={{ width: `${publishPct}%`, background: publishPct < 100 ? '#E1306C' : '#3ecf8e' }}
+                  style={{
+                    width: `${publishPct}%`,
+                    background: publishPct < 100 ? '#E1306C' : '#3ecf8e',
+                  }}
                 />
               </div>
             </div>

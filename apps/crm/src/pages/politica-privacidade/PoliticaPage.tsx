@@ -2,7 +2,14 @@ export default function PoliticaPage() {
   return (
     <div style={{ maxWidth: 800, margin: '0 auto', padding: '2rem 1rem' }} className="animate-up">
       <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
-        <h1 style={{ fontFamily: 'var(--font-heading)', fontSize: '2.5rem', color: 'var(--text-main)', marginBottom: '0.5rem' }}>
+        <h1
+          style={{
+            fontFamily: 'var(--font-heading)',
+            fontSize: '2.5rem',
+            color: 'var(--text-main)',
+            marginBottom: '0.5rem',
+          }}
+        >
           Política de Privacidade
         </h1>
         <p style={{ color: 'var(--text-muted)', fontSize: '1.1rem' }}>
@@ -44,10 +51,19 @@ export default function PoliticaPage() {
             title: '3. Compartilhamento de Dados',
             content: (
               <>
-                <p>O Mesaas <strong>não vende</strong> seus dados pessoais ou comerciais para terceiros. O compartilhamento só ocorre nas seguintes situações:</p>
+                <p>
+                  O Mesaas <strong>não vende</strong> seus dados pessoais ou comerciais para
+                  terceiros. O compartilhamento só ocorre nas seguintes situações:
+                </p>
                 <ul>
-                  <li>Com provedores de serviços terceirizados estritamente essenciais para a operação, sob contratos de confidencialidade;</li>
-                  <li>Para cumprir obrigações legais, processos judiciais ou solicitações governamentais;</li>
+                  <li>
+                    Com provedores de serviços terceirizados estritamente essenciais para a
+                    operação, sob contratos de confidencialidade;
+                  </li>
+                  <li>
+                    Para cumprir obrigações legais, processos judiciais ou solicitações
+                    governamentais;
+                  </li>
                   <li>Em caso de fusão, venda de ativos ou aquisição da empresa.</li>
                 </ul>
               </>
@@ -55,7 +71,13 @@ export default function PoliticaPage() {
           },
           {
             title: '4. Segurança',
-            content: <p>Implementamos medidas técnicas e organizacionais rígidas (como criptografia de senhas e comunicação via HTTPS) para proteger seus dados contra acesso não autorizado.</p>,
+            content: (
+              <p>
+                Implementamos medidas técnicas e organizacionais rígidas (como criptografia de
+                senhas e comunicação via HTTPS) para proteger seus dados contra acesso não
+                autorizado.
+              </p>
+            ),
           },
           {
             title: '5. Seus Direitos (LGPD)',
@@ -74,11 +96,25 @@ export default function PoliticaPage() {
           },
           {
             title: '6. Alterações nesta Política',
-            content: <p>Podemos atualizar esta política periodicamente. Avisaremos sobre mudanças significativas destacando-as na plataforma ou via e-mail.</p>,
+            content: (
+              <p>
+                Podemos atualizar esta política periodicamente. Avisaremos sobre mudanças
+                significativas destacando-as na plataforma ou via e-mail.
+              </p>
+            ),
           },
         ].map(({ title, content }) => (
           <div key={title} style={{ marginBottom: '2rem' }}>
-            <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.5rem', color: 'var(--primary-color)', marginBottom: '1rem', paddingBottom: '0.5rem', borderBottom: '1px solid var(--border-color)' }}>
+            <h2
+              style={{
+                fontFamily: 'var(--font-heading)',
+                fontSize: '1.5rem',
+                color: 'var(--primary-color)',
+                marginBottom: '1rem',
+                paddingBottom: '0.5rem',
+                borderBottom: '1px solid var(--border-color)',
+              }}
+            >
               {title}
             </h2>
             {content}
@@ -86,8 +122,16 @@ export default function PoliticaPage() {
         ))}
       </div>
 
-      <p style={{ textAlign: 'center', marginTop: '3rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-        Última atualização: {new Date().toLocaleDateString('pt-BR')}<br />
+      <p
+        style={{
+          textAlign: 'center',
+          marginTop: '3rem',
+          color: 'var(--text-muted)',
+          fontSize: '0.9rem',
+        }}
+      >
+        Última atualização: {new Date().toLocaleDateString('pt-BR')}
+        <br />
         Mesaas - Gestão Inteligente
       </p>
     </div>

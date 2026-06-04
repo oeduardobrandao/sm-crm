@@ -2,7 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { LayoutGrid, List, Upload, FolderPlus, ArrowUpDown } from 'lucide-react';
 import { toast } from 'sonner';
-import { getFolderContents, createFolder, getFileDownloadUrl, bulkMove, bulkDelete, copyFile, copyFolder, requestZipToken } from '@/services/fileService';
+import {
+  getFolderContents,
+  createFolder,
+  getFileDownloadUrl,
+  bulkMove,
+  bulkDelete,
+  copyFile,
+  copyFolder,
+  requestZipToken,
+} from '@/services/fileService';
 import type { BulkDeleteResult } from '@/services/fileService';
 import {
   AlertDialog,
@@ -53,7 +62,9 @@ export default function ArquivosPage() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [sortBy, setSortBy] = useState<SortBy>('name');
   const [filter, setFilter] = useState<FilterState>(EMPTY_FILTER);
-  const [createFolderParent, setCreateFolderParent] = useState<number | null | undefined>(undefined);
+  const [createFolderParent, setCreateFolderParent] = useState<number | null | undefined>(
+    undefined,
+  );
   const [pickerMode, setPickerMode] = useState<'move' | 'copy' | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{
     fileIds: number[];
@@ -78,14 +89,14 @@ export default function ArquivosPage() {
     if (data?.subfolders) {
       queryClient.setQueryData(
         ['folder-tree', currentFolderId],
-        data.subfolders.map(f => ({
+        data.subfolders.map((f) => ({
           id: f.id,
           name: f.name,
           source: f.source,
           source_type: f.source_type,
           position: f.position,
           has_children: f.has_children ?? false,
-        }))
+        })),
       );
     }
   }, [data, currentFolderId, queryClient]);
@@ -96,7 +107,9 @@ export default function ArquivosPage() {
   const storage = data?.storage;
 
   // Clear selection when navigating to a different folder
-  useEffect(() => { selection.clear(); }, [currentFolderId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    selection.clear();
+  }, [currentFolderId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Escape key clears selection
   useEffect(() => {
@@ -116,25 +129,35 @@ export default function ArquivosPage() {
 
   // Flat ordered item list matching FileGrid's render order — used for range selection
   const displayItems = useMemo(() => {
-    const folderItems = [...(data?.subfolders ?? [])].sort((a, b) => {
-      switch (sortBy) {
-        case 'size': return (b.total_size_bytes ?? 0) - (a.total_size_bytes ?? 0);
-        case 'date': return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-        default: return a.name.localeCompare(b.name, 'pt-BR');
-      }
-    }).map(f => ({ id: f.id }));
-    const fileItems = [...filteredFiles].sort((a, b) => {
-      switch (sortBy) {
-        case 'size': return b.size_bytes - a.size_bytes;
-        case 'date': return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-        default: return a.name.localeCompare(b.name, 'pt-BR');
-      }
-    }).map(f => ({ id: f.id }));
+    const folderItems = [...(data?.subfolders ?? [])]
+      .sort((a, b) => {
+        switch (sortBy) {
+          case 'size':
+            return (b.total_size_bytes ?? 0) - (a.total_size_bytes ?? 0);
+          case 'date':
+            return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+          default:
+            return a.name.localeCompare(b.name, 'pt-BR');
+        }
+      })
+      .map((f) => ({ id: f.id }));
+    const fileItems = [...filteredFiles]
+      .sort((a, b) => {
+        switch (sortBy) {
+          case 'size':
+            return b.size_bytes - a.size_bytes;
+          case 'date':
+            return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+          default:
+            return a.name.localeCompare(b.name, 'pt-BR');
+        }
+      })
+      .map((f) => ({ id: f.id }));
     return [...folderItems, ...fileItems];
   }, [data?.subfolders, filteredFiles, sortBy]);
 
-  const mediaFiles = files.filter(f => f.kind === 'image' || f.kind === 'video');
-  const lightboxMedia: PostMedia[] = mediaFiles.map(f => ({
+  const mediaFiles = files.filter((f) => f.kind === 'image' || f.kind === 'video');
+  const lightboxMedia: PostMedia[] = mediaFiles.map((f) => ({
     id: f.id,
     post_id: 0,
     conta_id: f.conta_id,
@@ -162,7 +185,7 @@ export default function ArquivosPage() {
       const parentId = createFolderParent ?? null;
       await queryClient.cancelQueries({ queryKey: ['folder-contents', parentId] });
       const previous = queryClient.getQueryData<FolderContents>(['folder-contents', parentId]);
-      queryClient.setQueryData<FolderContents>(['folder-contents', parentId], old => {
+      queryClient.setQueryData<FolderContents>(['folder-contents', parentId], (old) => {
         if (!old) return old;
         const tempFolder = {
           id: -Date.now(),
@@ -185,7 +208,8 @@ export default function ArquivosPage() {
       return { previous, parentId };
     },
     onError: (_err, _vars, context) => {
-      if (context) queryClient.setQueryData(['folder-contents', context.parentId], context.previous);
+      if (context)
+        queryClient.setQueryData(['folder-contents', context.parentId], context.previous);
       toast.error('Erro ao criar pasta');
     },
     onSettled: (_data, _err, _vars, context) => {
@@ -198,8 +222,15 @@ export default function ArquivosPage() {
   });
 
   const bulkMoveMutation = useMutation({
-    mutationFn: ({ fileIds, folderIds, destinationId }: { fileIds: number[]; folderIds: number[]; destinationId: number | null }) =>
-      bulkMove(fileIds, folderIds, destinationId),
+    mutationFn: ({
+      fileIds,
+      folderIds,
+      destinationId,
+    }: {
+      fileIds: number[];
+      folderIds: number[];
+      destinationId: number | null;
+    }) => bulkMove(fileIds, folderIds, destinationId),
     onSuccess: () => {
       toast.success('Itens movidos com sucesso');
       selection.clear();
@@ -221,7 +252,9 @@ export default function ArquivosPage() {
           stage: 'partial',
         });
       } else {
-        toast.success(`${(result.files_deleted ?? 0) + (result.folders_deleted ?? 0)} itens excluídos`);
+        toast.success(
+          `${(result.files_deleted ?? 0) + (result.folders_deleted ?? 0)} itens excluídos`,
+        );
         selection.clear();
         setDeleteConfirm(null);
         queryClient.invalidateQueries({ queryKey: ['folder-contents'] });
@@ -254,7 +287,9 @@ export default function ArquivosPage() {
       if (result.failed > 0) {
         toast.warning(`${result.copied} de ${result.copied + result.failed} arquivos copiados`);
       } else {
-        toast.success(`${result.copied} arquivo${result.copied !== 1 ? 's' : ''} copiado${result.copied !== 1 ? 's' : ''}`);
+        toast.success(
+          `${result.copied} arquivo${result.copied !== 1 ? 's' : ''} copiado${result.copied !== 1 ? 's' : ''}`,
+        );
       }
       queryClient.invalidateQueries({ queryKey: ['folder-contents'] });
       queryClient.invalidateQueries({ queryKey: ['folder-tree'] });
@@ -293,11 +328,9 @@ export default function ArquivosPage() {
   });
 
   const classifySelection = useCallback(() => {
-    const fileIds = [...selection.selectedIds].filter((id) =>
-      data?.files.some((f) => f.id === id)
-    );
+    const fileIds = [...selection.selectedIds].filter((id) => data?.files.some((f) => f.id === id));
     const folderIds = [...selection.selectedIds].filter((id) =>
-      data?.subfolders.some((f) => f.id === id)
+      data?.subfolders.some((f) => f.id === id),
     );
     return { fileIds, folderIds };
   }, [selection.selectedIds, data]);
@@ -317,7 +350,7 @@ export default function ArquivosPage() {
     if (action !== 'open') return;
 
     if (file.kind === 'image' || file.kind === 'video') {
-      const idx = mediaFiles.findIndex(f => f.id === file.id);
+      const idx = mediaFiles.findIndex((f) => f.id === file.id);
       if (idx >= 0) {
         setLightboxIndex(idx);
         setLightboxOpen(true);
@@ -327,7 +360,7 @@ export default function ArquivosPage() {
         window.open(file.url, '_blank');
       } else {
         getFileDownloadUrl(file.id)
-          .then(url => window.open(url, '_blank'))
+          .then((url) => window.open(url, '_blank'))
           .catch(() => toast.error('Erro ao abrir arquivo'));
       }
     }
@@ -366,8 +399,12 @@ export default function ArquivosPage() {
             onBulkMove={() => setPickerMode('move')}
             onBulkCopy={() => setPickerMode('copy')}
             onBulkZip={() => {
-              const fileIds = [...selection.selectedIds].filter((id) => data?.files.some((f) => f.id === id));
-              const folderIds = [...selection.selectedIds].filter((id) => data?.subfolders.some((f) => f.id === id));
+              const fileIds = [...selection.selectedIds].filter((id) =>
+                data?.files.some((f) => f.id === id),
+              );
+              const folderIds = [...selection.selectedIds].filter((id) =>
+                data?.subfolders.some((f) => f.id === id),
+              );
               if (folderIds.length === 1 && fileIds.length === 0) {
                 zipMutation.mutate({ folder_id: folderIds[0] });
               } else {
@@ -375,11 +412,21 @@ export default function ArquivosPage() {
               }
             }}
             onBulkDelete={() => {
-              const fileIds = [...selection.selectedIds].filter((id) => data?.files.some((f) => f.id === id));
-              const folderIds = [...selection.selectedIds].filter((id) => data?.subfolders.some((f) => f.id === id));
+              const fileIds = [...selection.selectedIds].filter((id) =>
+                data?.files.some((f) => f.id === id),
+              );
+              const folderIds = [...selection.selectedIds].filter((id) =>
+                data?.subfolders.some((f) => f.id === id),
+              );
               setDeleteConfirm({ fileIds, folderIds, stage: 'confirm' });
             }}
-            isBusy={bulkMoveMutation.isPending || bulkDeleteMutation.isPending || copyFileMutation.isPending || copyFolderMutation.isPending || zipMutation.isPending}
+            isBusy={
+              bulkMoveMutation.isPending ||
+              bulkDeleteMutation.isPending ||
+              copyFileMutation.isPending ||
+              copyFolderMutation.isPending ||
+              zipMutation.isPending
+            }
           />
         </FileUploader>
         <PostMediaLightbox
@@ -390,25 +437,29 @@ export default function ArquivosPage() {
         />
         <CreateFolderModal
           open={createFolderParent !== undefined}
-          onOpenChange={(open) => { if (!open) setCreateFolderParent(undefined); }}
+          onOpenChange={(open) => {
+            if (!open) setCreateFolderParent(undefined);
+          }}
           onConfirm={(name) => createFolderMutation.mutate(name)}
         />
         <FolderPickerModal
           open={pickerMode === 'move'}
-          onOpenChange={(open) => { if (!open) setPickerMode(null); }}
+          onOpenChange={(open) => {
+            if (!open) setPickerMode(null);
+          }}
           title={`Mover ${selection.count} ${selection.count === 1 ? 'item' : 'itens'}`}
           confirmLabel="Mover"
           isLoading={bulkMoveMutation.isPending}
           sourceFolderIds={[...selection.selectedIds].filter((id) =>
-            data?.subfolders.some((f) => f.id === id)
+            data?.subfolders.some((f) => f.id === id),
           )}
           currentFolderId={currentFolderId}
           onConfirm={(destId) => {
             const fileIds = [...selection.selectedIds].filter((id) =>
-              data?.files.some((f) => f.id === id)
+              data?.files.some((f) => f.id === id),
             );
             const folderIds = [...selection.selectedIds].filter((id) =>
-              data?.subfolders.some((f) => f.id === id)
+              data?.subfolders.some((f) => f.id === id),
             );
             bulkMoveMutation.mutate({ fileIds, folderIds, destinationId: destId });
             setPickerMode(null);
@@ -416,7 +467,9 @@ export default function ArquivosPage() {
         />
         <FolderPickerModal
           open={pickerMode === 'copy'}
-          onOpenChange={(open) => { if (!open) setPickerMode(null); }}
+          onOpenChange={(open) => {
+            if (!open) setPickerMode(null);
+          }}
           title={`Copiar ${selection.count} ${selection.count === 1 ? 'item' : 'itens'}`}
           confirmLabel="Copiar"
           isLoading={copyFileMutation.isPending || copyFolderMutation.isPending}
@@ -424,10 +477,10 @@ export default function ArquivosPage() {
           currentFolderId={null}
           onConfirm={(destId) => {
             const fileIds = [...selection.selectedIds].filter((id) =>
-              data?.files.some((f) => f.id === id)
+              data?.files.some((f) => f.id === id),
             );
             const folderIds = [...selection.selectedIds].filter((id) =>
-              data?.subfolders.some((f) => f.id === id)
+              data?.subfolders.some((f) => f.id === id),
             );
             for (const fid of fileIds) {
               copyFileMutation.mutate({ fileId: fid, destinationId: destId });
@@ -439,7 +492,12 @@ export default function ArquivosPage() {
             selection.clear();
           }}
         />
-        <AlertDialog open={deleteConfirm !== null} onOpenChange={(open) => { if (!open) setDeleteConfirm(null); }}>
+        <AlertDialog
+          open={deleteConfirm !== null}
+          onOpenChange={(open) => {
+            if (!open) setDeleteConfirm(null);
+          }}
+        >
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>
@@ -450,9 +508,11 @@ export default function ArquivosPage() {
               <AlertDialogDescription>
                 {deleteConfirm?.stage === 'partial' ? (
                   <>
-                    {deleteConfirm.blocked?.length} {deleteConfirm.blocked?.length === 1 ? 'item está' : 'itens estão'} em uso e{' '}
-                    {deleteConfirm.blocked?.length === 1 ? 'não pode' : 'não podem'} ser {deleteConfirm.blocked?.length === 1 ? 'excluído' : 'excluídos'}.
-                    {(deleteConfirm.fileIds.length + deleteConfirm.folderIds.length) > 0
+                    {deleteConfirm.blocked?.length}{' '}
+                    {deleteConfirm.blocked?.length === 1 ? 'item está' : 'itens estão'} em uso e{' '}
+                    {deleteConfirm.blocked?.length === 1 ? 'não pode' : 'não podem'} ser{' '}
+                    {deleteConfirm.blocked?.length === 1 ? 'excluído' : 'excluídos'}.
+                    {deleteConfirm.fileIds.length + deleteConfirm.folderIds.length > 0
                       ? ` Deseja excluir os outros ${deleteConfirm.fileIds.length + deleteConfirm.folderIds.length}?`
                       : ' Nenhum item pode ser excluído.'}
                   </>
@@ -460,7 +520,9 @@ export default function ArquivosPage() {
                   `Tem certeza que deseja excluir ${
                     (deleteConfirm?.fileIds.length ?? 0) + (deleteConfirm?.folderIds.length ?? 0)
                   } ${
-                    ((deleteConfirm?.fileIds.length ?? 0) + (deleteConfirm?.folderIds.length ?? 0)) === 1
+                    (deleteConfirm?.fileIds.length ?? 0) +
+                      (deleteConfirm?.folderIds.length ?? 0) ===
+                    1
                       ? 'item'
                       : 'itens'
                   }? Esta ação não pode ser desfeita.`
@@ -469,7 +531,8 @@ export default function ArquivosPage() {
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancelar</AlertDialogCancel>
-              {((deleteConfirm?.fileIds.length ?? 0) + (deleteConfirm?.folderIds.length ?? 0)) > 0 && (
+              {(deleteConfirm?.fileIds.length ?? 0) + (deleteConfirm?.folderIds.length ?? 0) >
+                0 && (
                 <AlertDialogAction
                   onClick={() => {
                     if (deleteConfirm) {
@@ -663,7 +726,9 @@ export default function ArquivosPage() {
             />
             {isFilterActive(filter) && filteredFiles.length === 0 && files.length > 0 && (
               <div className="text-center py-4">
-                <p className="text-sm text-[var(--text-muted)] mb-2">Nenhum arquivo corresponde ao filtro</p>
+                <p className="text-sm text-[var(--text-muted)] mb-2">
+                  Nenhum arquivo corresponde ao filtro
+                </p>
                 <button
                   onClick={() => setFilter(EMPTY_FILTER)}
                   className="text-sm text-[var(--primary-color)] hover:underline"
@@ -681,8 +746,12 @@ export default function ArquivosPage() {
         onMove={() => setPickerMode('move')}
         onCopy={() => setPickerMode('copy')}
         onZip={() => {
-          const fileIds = [...selection.selectedIds].filter((id) => data?.files.some((f) => f.id === id));
-          const folderIds = [...selection.selectedIds].filter((id) => data?.subfolders.some((f) => f.id === id));
+          const fileIds = [...selection.selectedIds].filter((id) =>
+            data?.files.some((f) => f.id === id),
+          );
+          const folderIds = [...selection.selectedIds].filter((id) =>
+            data?.subfolders.some((f) => f.id === id),
+          );
 
           if (folderIds.length === 1 && fileIds.length === 0) {
             zipMutation.mutate({ folder_id: folderIds[0] });
@@ -692,8 +761,12 @@ export default function ArquivosPage() {
         }}
         isZipping={zipMutation.isPending}
         onDelete={() => {
-          const fileIds = [...selection.selectedIds].filter((id) => data?.files.some((f) => f.id === id));
-          const folderIds = [...selection.selectedIds].filter((id) => data?.subfolders.some((f) => f.id === id));
+          const fileIds = [...selection.selectedIds].filter((id) =>
+            data?.files.some((f) => f.id === id),
+          );
+          const folderIds = [...selection.selectedIds].filter((id) =>
+            data?.subfolders.some((f) => f.id === id),
+          );
           setDeleteConfirm({ fileIds, folderIds, stage: 'confirm' });
         }}
         onClear={selection.clear}
@@ -710,25 +783,29 @@ export default function ArquivosPage() {
       />
       <CreateFolderModal
         open={createFolderParent !== undefined}
-        onOpenChange={(open) => { if (!open) setCreateFolderParent(undefined); }}
+        onOpenChange={(open) => {
+          if (!open) setCreateFolderParent(undefined);
+        }}
         onConfirm={(name) => createFolderMutation.mutate(name)}
       />
       <FolderPickerModal
         open={pickerMode === 'move'}
-        onOpenChange={(open) => { if (!open) setPickerMode(null); }}
+        onOpenChange={(open) => {
+          if (!open) setPickerMode(null);
+        }}
         title={`Mover ${selection.count} ${selection.count === 1 ? 'item' : 'itens'}`}
         confirmLabel="Mover"
         isLoading={bulkMoveMutation.isPending}
         sourceFolderIds={[...selection.selectedIds].filter((id) =>
-          data?.subfolders.some((f) => f.id === id)
+          data?.subfolders.some((f) => f.id === id),
         )}
         currentFolderId={currentFolderId}
         onConfirm={(destId) => {
           const fileIds = [...selection.selectedIds].filter((id) =>
-            data?.files.some((f) => f.id === id)
+            data?.files.some((f) => f.id === id),
           );
           const folderIds = [...selection.selectedIds].filter((id) =>
-            data?.subfolders.some((f) => f.id === id)
+            data?.subfolders.some((f) => f.id === id),
           );
           bulkMoveMutation.mutate({ fileIds, folderIds, destinationId: destId });
           setPickerMode(null);
@@ -736,7 +813,9 @@ export default function ArquivosPage() {
       />
       <FolderPickerModal
         open={pickerMode === 'copy'}
-        onOpenChange={(open) => { if (!open) setPickerMode(null); }}
+        onOpenChange={(open) => {
+          if (!open) setPickerMode(null);
+        }}
         title={`Copiar ${selection.count} ${selection.count === 1 ? 'item' : 'itens'}`}
         confirmLabel="Copiar"
         isLoading={copyFileMutation.isPending || copyFolderMutation.isPending}
@@ -744,10 +823,10 @@ export default function ArquivosPage() {
         currentFolderId={null}
         onConfirm={(destId) => {
           const fileIds = [...selection.selectedIds].filter((id) =>
-            data?.files.some((f) => f.id === id)
+            data?.files.some((f) => f.id === id),
           );
           const folderIds = [...selection.selectedIds].filter((id) =>
-            data?.subfolders.some((f) => f.id === id)
+            data?.subfolders.some((f) => f.id === id),
           );
           for (const fid of fileIds) {
             copyFileMutation.mutate({ fileId: fid, destinationId: destId });
@@ -759,7 +838,12 @@ export default function ArquivosPage() {
           selection.clear();
         }}
       />
-      <AlertDialog open={deleteConfirm !== null} onOpenChange={(open) => { if (!open) setDeleteConfirm(null); }}>
+      <AlertDialog
+        open={deleteConfirm !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteConfirm(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -770,9 +854,11 @@ export default function ArquivosPage() {
             <AlertDialogDescription>
               {deleteConfirm?.stage === 'partial' ? (
                 <>
-                  {deleteConfirm.blocked?.length} {deleteConfirm.blocked?.length === 1 ? 'item está' : 'itens estão'} em uso e{' '}
-                  {deleteConfirm.blocked?.length === 1 ? 'não pode' : 'não podem'} ser {deleteConfirm.blocked?.length === 1 ? 'excluído' : 'excluídos'}.
-                  {(deleteConfirm.fileIds.length + deleteConfirm.folderIds.length) > 0
+                  {deleteConfirm.blocked?.length}{' '}
+                  {deleteConfirm.blocked?.length === 1 ? 'item está' : 'itens estão'} em uso e{' '}
+                  {deleteConfirm.blocked?.length === 1 ? 'não pode' : 'não podem'} ser{' '}
+                  {deleteConfirm.blocked?.length === 1 ? 'excluído' : 'excluídos'}.
+                  {deleteConfirm.fileIds.length + deleteConfirm.folderIds.length > 0
                     ? ` Deseja excluir os outros ${deleteConfirm.fileIds.length + deleteConfirm.folderIds.length}?`
                     : ' Nenhum item pode ser excluído.'}
                 </>
@@ -780,7 +866,8 @@ export default function ArquivosPage() {
                 `Tem certeza que deseja excluir ${
                   (deleteConfirm?.fileIds.length ?? 0) + (deleteConfirm?.folderIds.length ?? 0)
                 } ${
-                  ((deleteConfirm?.fileIds.length ?? 0) + (deleteConfirm?.folderIds.length ?? 0)) === 1
+                  (deleteConfirm?.fileIds.length ?? 0) + (deleteConfirm?.folderIds.length ?? 0) ===
+                  1
                     ? 'item'
                     : 'itens'
                 }? Esta ação não pode ser desfeita.`
@@ -789,7 +876,7 @@ export default function ArquivosPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            {((deleteConfirm?.fileIds.length ?? 0) + (deleteConfirm?.folderIds.length ?? 0)) > 0 && (
+            {(deleteConfirm?.fileIds.length ?? 0) + (deleteConfirm?.folderIds.length ?? 0) > 0 && (
               <AlertDialogAction
                 onClick={() => {
                   if (deleteConfirm) {

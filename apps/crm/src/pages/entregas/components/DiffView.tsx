@@ -11,19 +11,13 @@ export function DiffView({ segments }: DiffViewProps) {
         if (seg.type === 'equal') return <span key={i}>{seg.text}</span>;
         if (seg.type === 'delete') {
           return (
-            <span
-              key={i}
-              className="bg-rose-100 text-rose-700 line-through decoration-rose-400/70"
-            >
+            <span key={i} className="bg-rose-100 text-rose-700 line-through decoration-rose-400/70">
               {seg.text}
             </span>
           );
         }
         return (
-          <span
-            key={i}
-            className="bg-emerald-100 text-emerald-700"
-          >
+          <span key={i} className="bg-emerald-100 text-emerald-700">
             {seg.text}
           </span>
         );

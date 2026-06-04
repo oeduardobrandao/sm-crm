@@ -66,11 +66,7 @@ function createWrapper() {
     defaultOptions: { queries: { retry: false } },
   });
   return function Wrapper({ children }: { children: React.ReactNode }) {
-    return (
-      <QueryClientProvider client={queryClient}>
-        {children}
-      </QueryClientProvider>
-    );
+    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
   };
 }
 
@@ -82,10 +78,9 @@ describe('FilePickerModal', () => {
   it('shows dialog with title when open', async () => {
     mockedGetFolderContents.mockResolvedValue(makeFolderContents());
 
-    render(
-      <FilePickerModal open={true} onClose={vi.fn()} onSelect={vi.fn()} />,
-      { wrapper: createWrapper() },
-    );
+    render(<FilePickerModal open={true} onClose={vi.fn()} onSelect={vi.fn()} />, {
+      wrapper: createWrapper(),
+    });
 
     await waitFor(() => {
       expect(screen.getByText('Selecionar arquivos')).toBeInTheDocument();
@@ -93,10 +88,9 @@ describe('FilePickerModal', () => {
   });
 
   it('does not render dialog content when closed', () => {
-    render(
-      <FilePickerModal open={false} onClose={vi.fn()} onSelect={vi.fn()} />,
-      { wrapper: createWrapper() },
-    );
+    render(<FilePickerModal open={false} onClose={vi.fn()} onSelect={vi.fn()} />, {
+      wrapper: createWrapper(),
+    });
 
     expect(screen.queryByText('Selecionar arquivos')).not.toBeInTheDocument();
   });
@@ -112,10 +106,9 @@ describe('FilePickerModal', () => {
       }),
     );
 
-    render(
-      <FilePickerModal open={true} onClose={vi.fn()} onSelect={vi.fn()} />,
-      { wrapper: createWrapper() },
-    );
+    render(<FilePickerModal open={true} onClose={vi.fn()} onSelect={vi.fn()} />, {
+      wrapper: createWrapper(),
+    });
 
     await waitFor(() => {
       expect(screen.getByText('Fotos')).toBeInTheDocument();
@@ -127,10 +120,9 @@ describe('FilePickerModal', () => {
   it('shows empty state when no files or folders', async () => {
     mockedGetFolderContents.mockResolvedValue(makeFolderContents());
 
-    render(
-      <FilePickerModal open={true} onClose={vi.fn()} onSelect={vi.fn()} />,
-      { wrapper: createWrapper() },
-    );
+    render(<FilePickerModal open={true} onClose={vi.fn()} onSelect={vi.fn()} />, {
+      wrapper: createWrapper(),
+    });
 
     await waitFor(() => {
       expect(screen.getByText('Nenhum arquivo encontrado')).toBeInTheDocument();
@@ -140,17 +132,13 @@ describe('FilePickerModal', () => {
   it('selecting files toggles selection and updates footer count', async () => {
     mockedGetFolderContents.mockResolvedValue(
       makeFolderContents({
-        files: [
-          makeFile({ id: 100, name: 'a.jpg' }),
-          makeFile({ id: 101, name: 'b.jpg' }),
-        ],
+        files: [makeFile({ id: 100, name: 'a.jpg' }), makeFile({ id: 101, name: 'b.jpg' })],
       }),
     );
 
-    render(
-      <FilePickerModal open={true} onClose={vi.fn()} onSelect={vi.fn()} />,
-      { wrapper: createWrapper() },
-    );
+    render(<FilePickerModal open={true} onClose={vi.fn()} onSelect={vi.fn()} />, {
+      wrapper: createWrapper(),
+    });
 
     await waitFor(() => {
       expect(screen.getByText('a.jpg')).toBeInTheDocument();
@@ -178,10 +166,9 @@ describe('FilePickerModal', () => {
       }),
     );
 
-    render(
-      <FilePickerModal open={true} onClose={vi.fn()} onSelect={vi.fn()} />,
-      { wrapper: createWrapper() },
-    );
+    render(<FilePickerModal open={true} onClose={vi.fn()} onSelect={vi.fn()} />, {
+      wrapper: createWrapper(),
+    });
 
     await waitFor(() => {
       expect(screen.getByText('test.jpg')).toBeInTheDocument();
@@ -193,20 +180,16 @@ describe('FilePickerModal', () => {
   it('Vincular button calls onSelect with selected file IDs and closes', async () => {
     mockedGetFolderContents.mockResolvedValue(
       makeFolderContents({
-        files: [
-          makeFile({ id: 100, name: 'a.jpg' }),
-          makeFile({ id: 101, name: 'b.jpg' }),
-        ],
+        files: [makeFile({ id: 100, name: 'a.jpg' }), makeFile({ id: 101, name: 'b.jpg' })],
       }),
     );
 
     const onSelect = vi.fn();
     const onClose = vi.fn();
 
-    render(
-      <FilePickerModal open={true} onClose={onClose} onSelect={onSelect} />,
-      { wrapper: createWrapper() },
-    );
+    render(<FilePickerModal open={true} onClose={onClose} onSelect={onSelect} />, {
+      wrapper: createWrapper(),
+    });
 
     await waitFor(() => {
       expect(screen.getByText('a.jpg')).toBeInTheDocument();
@@ -230,10 +213,9 @@ describe('FilePickerModal', () => {
       }),
     );
 
-    render(
-      <FilePickerModal open={true} onClose={vi.fn()} onSelect={vi.fn()} />,
-      { wrapper: createWrapper() },
-    );
+    render(<FilePickerModal open={true} onClose={vi.fn()} onSelect={vi.fn()} />, {
+      wrapper: createWrapper(),
+    });
 
     await waitFor(() => {
       expect(screen.getByText('banner-principal.jpg')).toBeInTheDocument();
@@ -258,12 +240,7 @@ describe('FilePickerModal', () => {
     );
 
     render(
-      <FilePickerModal
-        open={true}
-        onClose={vi.fn()}
-        onSelect={vi.fn()}
-        filterKind={['image']}
-      />,
+      <FilePickerModal open={true} onClose={vi.fn()} onSelect={vi.fn()} filterKind={['image']} />,
       { wrapper: createWrapper() },
     );
 
@@ -294,10 +271,9 @@ describe('FilePickerModal', () => {
       }),
     );
 
-    render(
-      <FilePickerModal open={true} onClose={vi.fn()} onSelect={vi.fn()} />,
-      { wrapper: createWrapper() },
-    );
+    render(<FilePickerModal open={true} onClose={vi.fn()} onSelect={vi.fn()} />, {
+      wrapper: createWrapper(),
+    });
 
     await waitFor(() => {
       expect(screen.getByText('Fotos')).toBeInTheDocument();
@@ -314,10 +290,9 @@ describe('FilePickerModal', () => {
     mockedGetFolderContents.mockResolvedValue(makeFolderContents());
 
     const onClose = vi.fn();
-    render(
-      <FilePickerModal open={true} onClose={onClose} onSelect={vi.fn()} />,
-      { wrapper: createWrapper() },
-    );
+    render(<FilePickerModal open={true} onClose={onClose} onSelect={vi.fn()} />, {
+      wrapper: createWrapper(),
+    });
 
     await waitFor(() => {
       expect(screen.getByText('Cancelar')).toBeInTheDocument();

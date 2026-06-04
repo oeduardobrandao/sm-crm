@@ -29,7 +29,12 @@ export function formatDate(d: string): string {
 }
 
 export function getInitials(name: string): string {
-  return name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
+  return name
+    .split(' ')
+    .map((w) => w[0])
+    .join('')
+    .substring(0, 2)
+    .toUpperCase();
 }
 
 export async function getUserId(): Promise<string> {
@@ -40,6 +45,7 @@ export async function getUserId(): Promise<string> {
 
 export async function getContaId(): Promise<string> {
   const profile = await getCurrentProfile();
-  if (!profile || !profile.conta_id) throw new Error('Conta não encontrada ou usuário não autenticado');
+  if (!profile || !profile.conta_id)
+    throw new Error('Conta não encontrada ou usuário não autenticado');
   return profile.conta_id;
 }

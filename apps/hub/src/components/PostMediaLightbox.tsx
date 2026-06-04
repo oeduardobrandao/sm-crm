@@ -11,26 +11,33 @@ interface PostMediaLightboxProps {
   onStaleUrl?: () => void;
 }
 
-export function PostMediaLightbox({ media, initialIndex, onClose, onStaleUrl }: PostMediaLightboxProps) {
+export function PostMediaLightbox({
+  media,
+  initialIndex,
+  onClose,
+  onStaleUrl,
+}: PostMediaLightboxProps) {
   const [idx, setIdx] = useState(initialIndex);
   const current = media[idx];
 
-  const prev = useCallback(() => setIdx((i) => (i - 1 + media.length) % media.length), [media.length]);
+  const prev = useCallback(
+    () => setIdx((i) => (i - 1 + media.length) % media.length),
+    [media.length],
+  );
   const next = useCallback(() => setIdx((i) => (i + 1) % media.length), [media.length]);
 
   // Lock body scroll while open
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = prev; };
+    return () => {
+      document.body.style.overflow = prev;
+    };
   }, []);
 
   // Preload adjacent images so navigation feels instant
   useEffect(() => {
-    const toPreload = [
-      (idx + 1) % media.length,
-      (idx - 1 + media.length) % media.length,
-    ];
+    const toPreload = [(idx + 1) % media.length, (idx - 1 + media.length) % media.length];
     for (const i of toPreload) {
       if (i === idx) continue;
       const m = media[i];
@@ -66,7 +73,8 @@ export function PostMediaLightbox({ media, initialIndex, onClose, onStaleUrl }: 
     const dx = t.clientX - start.x;
     const dy = t.clientY - start.y;
     if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy)) return;
-    if (dx < 0) next(); else prev();
+    if (dx < 0) next();
+    else prev();
   };
 
   if (!current) return null;
@@ -82,7 +90,10 @@ export function PostMediaLightbox({ media, initialIndex, onClose, onStaleUrl }: 
     >
       <button
         type="button"
-        onClick={(e) => { e.stopPropagation(); onClose(); }}
+        onClick={(e) => {
+          e.stopPropagation();
+          onClose();
+        }}
         aria-label="Fechar"
         className="fixed top-4 right-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm text-white hover:bg-white/30 transition-colors ring-1 ring-white/20"
       >
@@ -93,7 +104,10 @@ export function PostMediaLightbox({ media, initialIndex, onClose, onStaleUrl }: 
         <>
           <button
             type="button"
-            onClick={(e) => { e.stopPropagation(); prev(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              prev();
+            }}
             aria-label="Anterior"
             className="fixed left-4 top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm text-white hover:bg-white/30 transition-colors ring-1 ring-white/20"
           >
@@ -101,7 +115,10 @@ export function PostMediaLightbox({ media, initialIndex, onClose, onStaleUrl }: 
           </button>
           <button
             type="button"
-            onClick={(e) => { e.stopPropagation(); next(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              next();
+            }}
             aria-label="Próxima"
             className="fixed right-4 top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm text-white hover:bg-white/30 transition-colors ring-1 ring-white/20"
           >

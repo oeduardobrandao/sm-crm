@@ -22,11 +22,7 @@ export async function fetchWithRetry(
   init?: RequestInit,
   options?: FetchRetryOptions,
 ): Promise<Response> {
-  const {
-    maxAttempts = 3,
-    baseDelayMs = 500,
-    retryableStatus = DEFAULT_RETRYABLE,
-  } = options ?? {};
+  const { maxAttempts = 3, baseDelayMs = 500, retryableStatus = DEFAULT_RETRYABLE } = options ?? {};
 
   const method = resolveMethod(input, init);
   const canRetry = SAFE_METHODS.has(method);
@@ -49,7 +45,7 @@ export async function fetchWithRetry(
     }
 
     if (attempt < maxAttempts) {
-      await new Promise(r => setTimeout(r, baseDelayMs * 2 ** (attempt - 1)));
+      await new Promise((r) => setTimeout(r, baseDelayMs * 2 ** (attempt - 1)));
     }
   }
 

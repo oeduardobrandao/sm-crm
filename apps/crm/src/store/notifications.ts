@@ -1,11 +1,20 @@
 import { supabase } from './core';
 
 export type NotificationType =
-  | 'post_approved' | 'post_correction' | 'post_message' | 'post_edit_suggestion'
-  | 'idea_submitted' | 'briefing_answered'
-  | 'step_activated' | 'step_completed' | 'post_assigned'
-  | 'workflow_completed' | 'deadline_approaching'
-  | 'invite_accepted' | 'member_role_changed' | 'member_removed';
+  | 'post_approved'
+  | 'post_correction'
+  | 'post_message'
+  | 'post_edit_suggestion'
+  | 'idea_submitted'
+  | 'briefing_answered'
+  | 'step_activated'
+  | 'step_completed'
+  | 'post_assigned'
+  | 'workflow_completed'
+  | 'deadline_approaching'
+  | 'invite_accepted'
+  | 'member_role_changed'
+  | 'member_removed';
 
 export interface Notification {
   id: string;

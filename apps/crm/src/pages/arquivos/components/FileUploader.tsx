@@ -1,10 +1,4 @@
-import {
-  useRef,
-  useState,
-  useImperativeHandle,
-  useCallback,
-  type DragEvent,
-} from 'react';
+import { useRef, useState, useImperativeHandle, useCallback, type DragEvent } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
@@ -86,13 +80,7 @@ export function FileUploader({
   }));
 
   const mutation = useMutation({
-    mutationFn: async ({
-      file,
-      itemId,
-    }: {
-      file: File;
-      itemId: string;
-    }) => {
+    mutationFn: async ({ file, itemId }: { file: File; itemId: string }) => {
       // Generate thumbnail for videos
       let thumbnail: File | undefined;
       if (file.type.startsWith('video/')) {
@@ -106,9 +94,7 @@ export function FileUploader({
         onProgress: ({ loaded, total }) => {
           const progress = total > 0 ? Math.round((loaded / total) * 100) : 0;
           setQueue((prev) =>
-            prev.map((item) =>
-              item.id === itemId ? { ...item, progress } : item,
-            ),
+            prev.map((item) => (item.id === itemId ? { ...item, progress } : item)),
           );
         },
       });
@@ -129,9 +115,7 @@ export function FileUploader({
     },
     onError: (_err, { itemId, file }) => {
       setQueue((prev) =>
-        prev.map((item) =>
-          item.id === itemId ? { ...item, status: 'error' } : item,
-        ),
+        prev.map((item) => (item.id === itemId ? { ...item, status: 'error' } : item)),
       );
       toast.error(`Erro ao enviar "${file.name}"`);
 
@@ -228,13 +212,7 @@ export function FileUploader({
   return (
     <>
       {/* Hidden file input */}
-      <input
-        ref={inputRef}
-        type="file"
-        multiple
-        className="hidden"
-        onChange={handleInputChange}
-      />
+      <input ref={inputRef} type="file" multiple className="hidden" onChange={handleInputChange} />
 
       {/* Drag-and-drop wrapper */}
       <div
@@ -254,10 +232,7 @@ export function FileUploader({
               border: '2.5px dashed var(--primary-color)',
             }}
           >
-            <p
-              className="text-lg font-semibold"
-              style={{ color: 'var(--primary-color)' }}
-            >
+            <p className="text-lg font-semibold" style={{ color: 'var(--primary-color)' }}>
               Solte os arquivos aqui
             </p>
           </div>
@@ -266,10 +241,7 @@ export function FileUploader({
 
       {/* Floating upload progress panel */}
       {hasQueue && (
-        <div
-          className="fixed bottom-6 right-6 z-50 flex flex-col gap-2"
-          style={{ width: 320 }}
-        >
+        <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2" style={{ width: 320 }}>
           {queue.map((item) => (
             <UploadProgressCard key={item.id} item={item} />
           ))}
@@ -282,8 +254,7 @@ export function FileUploader({
 // ─── Individual progress card ──────────────────────────────────────
 
 function UploadProgressCard({ item }: { item: UploadItem }) {
-  const truncated =
-    item.name.length > 36 ? `${item.name.slice(0, 33)}...` : item.name;
+  const truncated = item.name.length > 36 ? `${item.name.slice(0, 33)}...` : item.name;
 
   return (
     <div
@@ -304,17 +275,10 @@ function UploadProgressCard({ item }: { item: UploadItem }) {
 
         <span className="flex-shrink-0">
           {item.status === 'uploading' && (
-            <Loader2
-              className="h-4 w-4 animate-spin"
-              style={{ color: 'var(--primary-color)' }}
-            />
+            <Loader2 className="h-4 w-4 animate-spin" style={{ color: 'var(--primary-color)' }} />
           )}
-          {item.status === 'complete' && (
-            <CheckCircle className="h-4 w-4 text-[#3ecf8e]" />
-          )}
-          {item.status === 'error' && (
-            <XCircle className="h-4 w-4 text-[#f55a42]" />
-          )}
+          {item.status === 'complete' && <CheckCircle className="h-4 w-4 text-[#3ecf8e]" />}
+          {item.status === 'error' && <XCircle className="h-4 w-4 text-[#f55a42]" />}
         </span>
       </div>
 
@@ -327,20 +291,14 @@ function UploadProgressCard({ item }: { item: UploadItem }) {
           className="h-full rounded-full transition-all duration-300"
           style={{
             width: `${item.progress}%`,
-            background:
-              item.status === 'error'
-                ? 'var(--danger, #f55a42)'
-                : 'var(--primary-color)',
+            background: item.status === 'error' ? 'var(--danger, #f55a42)' : 'var(--primary-color)',
           }}
         />
       </div>
 
       {/* Status text */}
       <div className="flex justify-between items-center">
-        <span
-          className="text-xs"
-          style={{ color: 'var(--text-muted)' }}
-        >
+        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
           {item.status === 'uploading' && 'Enviando...'}
           {item.status === 'complete' && 'Concluído'}
           {item.status === 'error' && 'Erro no envio'}

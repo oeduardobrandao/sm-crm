@@ -25,7 +25,13 @@ const bootstrap = {
 
 function renderHubNav(pathname: string, logoUrl = bootstrap.workspace.logo_url) {
   return render(
-    <HubContext.Provider value={{ bootstrap: { ...bootstrap, workspace: { ...bootstrap.workspace, logo_url: logoUrl } }, token: 'token-publico', workspace: 'mesaas' }}>
+    <HubContext.Provider
+      value={{
+        bootstrap: { ...bootstrap, workspace: { ...bootstrap.workspace, logo_url: logoUrl } },
+        token: 'token-publico',
+        workspace: 'mesaas',
+      }}
+    >
       <MemoryRouter initialEntries={[pathname]}>
         <Routes>
           <Route path="/:workspace/hub/:token/*" element={<HubNav />} />

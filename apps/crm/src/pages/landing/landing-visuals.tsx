@@ -41,7 +41,10 @@ function shade(hex: string, pct: number) {
   const r = Math.max(0, Math.min(255, (n >> 16) + pct * 2.55));
   const g = Math.max(0, Math.min(255, ((n >> 8) & 0xff) + pct * 2.55));
   const b = Math.max(0, Math.min(255, (n & 0xff) + pct * 2.55));
-  return '#' + ((1 << 24) | (Math.round(r) << 16) | (Math.round(g) << 8) | Math.round(b)).toString(16).slice(1);
+  return (
+    '#' +
+    ((1 << 24) | (Math.round(r) << 16) | (Math.round(g) << 8) | Math.round(b)).toString(16).slice(1)
+  );
 }
 
 function contrastFor(hex: string) {
@@ -88,7 +91,15 @@ function Avatar({ name, size = 28, bg }: { name: string; size?: number; bg?: str
   );
 }
 
-function Badge({ children, tone = 'neutral', small }: { children: React.ReactNode; tone?: string; small?: boolean }) {
+function Badge({
+  children,
+  tone = 'neutral',
+  small,
+}: {
+  children: React.ReactNode;
+  tone?: string;
+  small?: boolean;
+}) {
   const palette: Record<string, { bg: string; fg: string }> = {
     neutral: { bg: '#f1f5f9', fg: '#374151' },
     success: { bg: 'rgba(62,207,142,.15)', fg: '#1e9e66' },
@@ -156,7 +167,16 @@ export function HeroDemo() {
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', minHeight: 520 }}>
-      <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.35, zIndex: 0 }}>
+      <svg
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          opacity: 0.35,
+          zIndex: 0,
+        }}
+      >
         <defs>
           <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse">
             <path d="M 28 0 L 0 0 0 28" fill="none" stroke="rgba(30,36,48,.06)" strokeWidth="1" />
@@ -194,18 +214,42 @@ export function HeroDemo() {
             <span style={{ width: 10, height: 10, borderRadius: 9999, background: '#ffbd2e' }} />
             <span style={{ width: 10, height: 10, borderRadius: 9999, background: '#27c941' }} />
           </div>
-          <div style={{ flex: 1, textAlign: 'center', fontSize: 11, color: '#6b7280', fontFamily: MONO, letterSpacing: '.05em' }}>
+          <div
+            style={{
+              flex: 1,
+              textAlign: 'center',
+              fontSize: 11,
+              color: '#6b7280',
+              fontFamily: MONO,
+              letterSpacing: '.05em',
+            }}
+          >
             mesaas.com.br/dashboard
           </div>
         </div>
 
         <div style={{ padding: '18px 20px 16px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 14 }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-end',
+              marginBottom: 14,
+            }}
+          >
             <div>
               <div className="eyebrow-micro" style={{ fontSize: '.6rem' }}>
                 Visão Geral
               </div>
-              <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-.01em', color: BRAND.dark, marginTop: 4 }}>
+              <div
+                style={{
+                  fontSize: 20,
+                  fontWeight: 800,
+                  letterSpacing: '-.01em',
+                  color: BRAND.dark,
+                  marginTop: 4,
+                }}
+              >
                 Olá, Débora
               </div>
             </div>
@@ -248,14 +292,37 @@ export function HeroDemo() {
                 overflow: 'hidden',
               }}
             >
-              <div style={{ fontFamily: MONO, fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: BRAND.yellow, fontWeight: 700 }}>
+              <div
+                style={{
+                  fontFamily: MONO,
+                  fontSize: 9,
+                  letterSpacing: '.14em',
+                  textTransform: 'uppercase',
+                  color: BRAND.yellow,
+                  fontWeight: 700,
+                }}
+              >
                 Receita Mensal
               </div>
-              <div style={{ fontSize: 26, fontWeight: 900, letterSpacing: '-.02em', marginTop: 6, fontVariantNumeric: 'tabular-nums' }}>
+              <div
+                style={{
+                  fontSize: 26,
+                  fontWeight: 900,
+                  letterSpacing: '-.02em',
+                  marginTop: 6,
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
                 R$ {revenue.toLocaleString('pt-BR')}
               </div>
-              <div style={{ fontSize: 10, color: '#3ecf8e', marginTop: 2, fontWeight: 600 }}>↑ 8,2% vs abril</div>
-              <svg width="90" height="32" style={{ position: 'absolute', right: 10, bottom: 10, opacity: 0.9 }}>
+              <div style={{ fontSize: 10, color: '#3ecf8e', marginTop: 2, fontWeight: 600 }}>
+                ↑ 8,2% vs abril
+              </div>
+              <svg
+                width="90"
+                height="32"
+                style={{ position: 'absolute', right: 10, bottom: 10, opacity: 0.9 }}
+              >
                 <polyline
                   fill="none"
                   stroke={BRAND.yellow}
@@ -267,25 +334,122 @@ export function HeroDemo() {
                 <circle cx="90" cy="4" r="3" fill={BRAND.yellow} />
               </svg>
             </div>
-            <div style={{ background: '#fff', borderRadius: 12, padding: '12px 14px', border: '1px solid rgba(30,36,48,.08)', borderLeft: `3px solid ${BRAND.green}` }}>
-              <div style={{ fontFamily: MONO, fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: '#374151', fontWeight: 700 }}>Clientes</div>
-              <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: '-.02em', marginTop: 4, color: BRAND.dark }}>7</div>
-              <div style={{ fontSize: 10, color: BRAND.green, marginTop: 2, fontWeight: 600 }}>+1 novo</div>
+            <div
+              style={{
+                background: '#fff',
+                borderRadius: 12,
+                padding: '12px 14px',
+                border: '1px solid rgba(30,36,48,.08)',
+                borderLeft: `3px solid ${BRAND.green}`,
+              }}
+            >
+              <div
+                style={{
+                  fontFamily: MONO,
+                  fontSize: 9,
+                  letterSpacing: '.12em',
+                  textTransform: 'uppercase',
+                  color: '#374151',
+                  fontWeight: 700,
+                }}
+              >
+                Clientes
+              </div>
+              <div
+                style={{
+                  fontSize: 22,
+                  fontWeight: 900,
+                  letterSpacing: '-.02em',
+                  marginTop: 4,
+                  color: BRAND.dark,
+                }}
+              >
+                7
+              </div>
+              <div style={{ fontSize: 10, color: BRAND.green, marginTop: 2, fontWeight: 600 }}>
+                +1 novo
+              </div>
             </div>
-            <div style={{ background: '#fff', borderRadius: 12, padding: '12px 14px', border: '1px solid rgba(30,36,48,.08)', borderLeft: `3px solid ${BRAND.teal}` }}>
-              <div style={{ fontFamily: MONO, fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: '#374151', fontWeight: 700 }}>Posts / mês</div>
-              <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: '-.02em', marginTop: 4, color: BRAND.dark }}>42</div>
-              <div style={{ fontSize: 10, color: BRAND.teal, marginTop: 2, fontWeight: 600 }}>12 aprovados</div>
+            <div
+              style={{
+                background: '#fff',
+                borderRadius: 12,
+                padding: '12px 14px',
+                border: '1px solid rgba(30,36,48,.08)',
+                borderLeft: `3px solid ${BRAND.teal}`,
+              }}
+            >
+              <div
+                style={{
+                  fontFamily: MONO,
+                  fontSize: 9,
+                  letterSpacing: '.12em',
+                  textTransform: 'uppercase',
+                  color: '#374151',
+                  fontWeight: 700,
+                }}
+              >
+                Posts / mês
+              </div>
+              <div
+                style={{
+                  fontSize: 22,
+                  fontWeight: 900,
+                  letterSpacing: '-.02em',
+                  marginTop: 4,
+                  color: BRAND.dark,
+                }}
+              >
+                42
+              </div>
+              <div style={{ fontSize: 10, color: BRAND.teal, marginTop: 2, fontWeight: 600 }}>
+                12 aprovados
+              </div>
             </div>
           </div>
 
-          <div style={{ marginTop: 14, background: '#fafbfc', borderRadius: 12, padding: '12px 14px', border: '1px solid rgba(30,36,48,.06)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <div style={{ fontFamily: MONO, fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: '#374151', fontWeight: 700 }}>
+          <div
+            style={{
+              marginTop: 14,
+              background: '#fafbfc',
+              borderRadius: 12,
+              padding: '12px 14px',
+              border: '1px solid rgba(30,36,48,.06)',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 10,
+              }}
+            >
+              <div
+                style={{
+                  fontFamily: MONO,
+                  fontSize: 9,
+                  letterSpacing: '.12em',
+                  textTransform: 'uppercase',
+                  color: '#374151',
+                  fontWeight: 700,
+                }}
+              >
                 Receita · últimos 6 meses
               </div>
               <div style={{ display: 'flex', gap: 3 }}>
-                <span style={{ padding: '2px 6px', fontSize: 9, fontWeight: 600, color: '#6b7280', background: '#fff', borderRadius: 6 }}>Mês</span>
+                <span
+                  style={{
+                    padding: '2px 6px',
+                    fontSize: 9,
+                    fontWeight: 600,
+                    color: '#6b7280',
+                    background: '#fff',
+                    borderRadius: 6,
+                  }}
+                >
+                  Mês
+                </span>
                 <span
                   style={{
                     padding: '2px 6px',
@@ -312,18 +476,39 @@ export function HeroDemo() {
                   ['Abr', 96],
                 ] as const
               ).map(([m, h], i) => (
-                <div key={m} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                <div
+                  key={m}
+                  style={{
+                    flex: 1,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: 4,
+                  }}
+                >
                   <div
                     style={{
                       width: '100%',
                       height: `${h}%`,
-                      background: i === 5 ? `linear-gradient(180deg,${BRAND.yellow},${BRAND.yellowHover})` : 'rgba(30,36,48,.14)',
+                      background:
+                        i === 5
+                          ? `linear-gradient(180deg,${BRAND.yellow},${BRAND.yellowHover})`
+                          : 'rgba(30,36,48,.14)',
                       borderRadius: '4px 4px 2px 2px',
                       transformOrigin: 'bottom',
                       animation: `bar-grow .7s cubic-bezier(.22,1,.36,1) ${i * 0.08}s backwards`,
                     }}
                   />
-                  <span style={{ fontSize: 8, color: '#9ca3af', fontFamily: MONO, letterSpacing: '.08em' }}>{m}</span>
+                  <span
+                    style={{
+                      fontSize: 8,
+                      color: '#9ca3af',
+                      fontFamily: MONO,
+                      letterSpacing: '.08em',
+                    }}
+                  >
+                    {m}
+                  </span>
                 </div>
               ))}
             </div>
@@ -346,11 +531,26 @@ export function HeroDemo() {
           zIndex: 3,
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 8,
+          }}
+        >
           <Badge tone="yellow">Reels</Badge>
           <Badge tone="warning">Aprovação</Badge>
         </div>
-        <div style={{ fontSize: 13, fontWeight: 600, color: BRAND.dark, lineHeight: 1.3, marginBottom: 10 }}>
+        <div
+          style={{
+            fontSize: 13,
+            fontWeight: 600,
+            color: BRAND.dark,
+            lineHeight: 1.3,
+            marginBottom: 10,
+          }}
+        >
           Reels — Novo cardápio de inverno
         </div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -358,7 +558,9 @@ export function HeroDemo() {
             <Avatar name="Café da Manhã" size={20} />
             <span style={{ fontSize: 10, color: '#6b7280', fontWeight: 500 }}>Café da Manhã</span>
           </div>
-          <span style={{ fontSize: 10, color: '#6b7280', fontFamily: MONO, fontWeight: 600 }}>03/05</span>
+          <span style={{ fontSize: 10, color: '#6b7280', fontFamily: MONO, fontWeight: 600 }}>
+            03/05
+          </span>
         </div>
       </div>
 
@@ -395,11 +597,24 @@ export function HeroDemo() {
           <CheckCircle2 size={22} color={BRAND.green} fill={BRAND.green} strokeWidth={0} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: BRAND.dark, marginBottom: 2 }}>Post aprovado</div>
-          <div style={{ fontSize: 11, color: '#6b7280', lineHeight: 1.4 }}>
-            Bella Moda aprovou <strong style={{ color: BRAND.dark, fontWeight: 600 }}>Lançamento Coleção</strong>
+          <div style={{ fontSize: 12, fontWeight: 700, color: BRAND.dark, marginBottom: 2 }}>
+            Post aprovado
           </div>
-          <div style={{ fontSize: 9, color: '#9ca3af', fontFamily: MONO, marginTop: 4, letterSpacing: '.06em' }}>AGORA MESMO</div>
+          <div style={{ fontSize: 11, color: '#6b7280', lineHeight: 1.4 }}>
+            Bella Moda aprovou{' '}
+            <strong style={{ color: BRAND.dark, fontWeight: 600 }}>Lançamento Coleção</strong>
+          </div>
+          <div
+            style={{
+              fontSize: 9,
+              color: '#9ca3af',
+              fontFamily: MONO,
+              marginTop: 4,
+              letterSpacing: '.06em',
+            }}
+          >
+            AGORA MESMO
+          </div>
         </div>
       </div>
     </div>
@@ -420,14 +635,23 @@ export function KanbanVisual() {
     { id: 'aprovacao', title: 'Aprovação', color: BRAND.yellow, count: 4 },
     { id: 'agendado', title: 'Agendado', color: BRAND.green, count: 2 },
   ];
-  const cards: Record<string, Array<{ t: string; c: string; tipo: string; tone: string; late?: boolean }>> = {
+  const cards: Record<
+    string,
+    Array<{ t: string; c: string; tipo: string; tone: string; late?: boolean }>
+  > = {
     ideia: [
       { t: 'Behind the scenes', c: 'Café da Manhã', tipo: 'Reels', tone: 'yellow' },
       { t: 'Carrossel institucional', c: 'Clínica Raiz', tipo: 'Carrossel', tone: 'teal' },
     ],
     producao: [{ t: 'Post Dia das Mães', c: 'Studio Vilma', tipo: 'Feed', tone: 'teal' }],
     aprovacao: [
-      { t: 'Carrossel de outubro', c: 'Studio Vilma', tipo: 'Carrossel', tone: 'danger', late: true },
+      {
+        t: 'Carrossel de outubro',
+        c: 'Studio Vilma',
+        tipo: 'Carrossel',
+        tone: 'danger',
+        late: true,
+      },
       { t: 'Story promocional', c: 'Bella Moda', tipo: 'Story', tone: 'yellow' },
     ],
     agendado: [{ t: 'Lançamento Coleção', c: 'Bella Moda', tipo: 'Feed', tone: 'success' }],
@@ -435,7 +659,10 @@ export function KanbanVisual() {
   const movingCol = ['producao', 'aprovacao', 'agendado'][phase];
   const movingTone = ['teal', 'yellow', 'success'][phase];
 
-  const renderCard = (c: { t: string; c: string; tipo: string; tone: string; late?: boolean }, i: number) => (
+  const renderCard = (
+    c: { t: string; c: string; tipo: string; tone: string; late?: boolean },
+    i: number,
+  ) => (
     <div
       key={i}
       style={{
@@ -450,9 +677,21 @@ export function KanbanVisual() {
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Badge tone={c.tone} small>{c.tipo}</Badge>
+        <Badge tone={c.tone} small>
+          {c.tipo}
+        </Badge>
         {c.late && (
-          <span style={{ fontSize: 8, fontWeight: 700, color: BRAND.red, fontFamily: MONO, letterSpacing: '.08em' }}>ATRASADO</span>
+          <span
+            style={{
+              fontSize: 8,
+              fontWeight: 700,
+              color: BRAND.red,
+              fontFamily: MONO,
+              letterSpacing: '.08em',
+            }}
+          >
+            ATRASADO
+          </span>
         )}
       </div>
       <div style={{ fontSize: 11, fontWeight: 600, color: BRAND.dark, lineHeight: 1.3 }}>{c.t}</div>
@@ -480,10 +719,14 @@ export function KanbanVisual() {
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Badge tone={movingTone} small>Reels</Badge>
+        <Badge tone={movingTone} small>
+          Reels
+        </Badge>
         <MousePointer2 size={14} color={BRAND.yellow} />
       </div>
-      <div style={{ fontSize: 11, fontWeight: 700, color: BRAND.dark, lineHeight: 1.3 }}>Reels — Novo cardápio</div>
+      <div style={{ fontSize: 11, fontWeight: 700, color: BRAND.dark, lineHeight: 1.3 }}>
+        Reels — Novo cardápio
+      </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
         <Avatar name="Café da Manhã" size={16} />
         <span style={{ fontSize: 9.5, color: '#6b7280', fontWeight: 500 }}>Café da Manhã</span>
@@ -495,15 +738,36 @@ export function KanbanVisual() {
     const colCards = cards[col.id] || [];
     const showMoving = col.id === movingCol;
     return (
-      <div key={col.id} style={{ background: '#f5f6f8', borderRadius: 14, padding: 10, minHeight: minH }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 4px 8px' }}>
+      <div
+        key={col.id}
+        style={{ background: '#f5f6f8', borderRadius: 14, padding: 10, minHeight: minH }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '2px 4px 8px',
+          }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ width: 7, height: 7, borderRadius: 9999, background: col.color }} />
-            <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: BRAND.dark }}>
+            <span
+              style={{
+                fontFamily: MONO,
+                fontSize: 9,
+                fontWeight: 700,
+                letterSpacing: '.1em',
+                textTransform: 'uppercase',
+                color: BRAND.dark,
+              }}
+            >
               {col.title}
             </span>
           </div>
-          <span style={{ fontSize: 9, color: '#6b7280', fontWeight: 600, fontFamily: MONO }}>{col.count}</span>
+          <span style={{ fontSize: 9, color: '#6b7280', fontWeight: 600, fontFamily: MONO }}>
+            {col.count}
+          </span>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {colCards.map(renderCard)}
@@ -524,7 +788,14 @@ export function KanbanVisual() {
         overflow: 'hidden',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: mobile ? 12 : 16 }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: mobile ? 12 : 16,
+        }}
+      >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <LayoutGrid size={18} color={BRAND.yellow} fill={BRAND.yellow} strokeWidth={0} />
           <span className="eyebrow-micro" style={{ fontSize: '.7rem' }}>
@@ -615,7 +886,9 @@ export function InstagramVisual() {
     padB = 18;
   const xScale = (i: number) => padL + (i / 11) * (W - padL - 16);
   const yScale = (v: number) => H - padB - (v / 100) * (H - padB - 10);
-  const path = followerPoints.map(([i, v], idx) => `${idx === 0 ? 'M' : 'L'}${xScale(i)},${yScale(v)}`).join(' ');
+  const path = followerPoints
+    .map(([i, v], idx) => `${idx === 0 ? 'M' : 'L'}${xScale(i)},${yScale(v)}`)
+    .join(' ');
   const area = path + ` L${xScale(11)},${H - padB} L${xScale(0)},${H - padB} Z`;
 
   const metrics = [
@@ -661,7 +934,15 @@ export function InstagramVisual() {
         }}
       />
 
-      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+      <div
+        style={{
+          position: 'relative',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 16,
+        }}
+      >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div
             style={{
@@ -677,8 +958,14 @@ export function InstagramVisual() {
             <Instagram size={18} color="#fff" />
           </div>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', letterSpacing: '-.01em' }}>@cafe.damanha</div>
-            <div style={{ fontSize: 10, color: '#9ca3af', fontFamily: MONO, letterSpacing: '.06em' }}>CONECTADO · SYNC 2 MIN</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', letterSpacing: '-.01em' }}>
+              @cafe.damanha
+            </div>
+            <div
+              style={{ fontSize: 10, color: '#9ca3af', fontFamily: MONO, letterSpacing: '.06em' }}
+            >
+              CONECTADO · SYNC 2 MIN
+            </div>
           </div>
         </div>
         <span
@@ -697,7 +984,15 @@ export function InstagramVisual() {
         </span>
       </div>
 
-      <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: mobile ? '1fr 1fr' : 'repeat(3,1fr)', gap: 10, marginBottom: 14 }}>
+      <div
+        style={{
+          position: 'relative',
+          display: 'grid',
+          gridTemplateColumns: mobile ? '1fr 1fr' : 'repeat(3,1fr)',
+          gap: 10,
+          marginBottom: 14,
+        }}
+      >
         {metrics.map((m, i) => (
           <div
             key={i}
@@ -709,11 +1004,32 @@ export function InstagramVisual() {
               ...(mobile && i === 2 ? { gridColumn: '1 / -1' } : {}),
             }}
           >
-            <div style={{ fontSize: 9, fontWeight: 600, color: '#9ca3af', fontFamily: MONO, letterSpacing: '.1em', textTransform: 'uppercase' }}>
+            <div
+              style={{
+                fontSize: 9,
+                fontWeight: 600,
+                color: '#9ca3af',
+                fontFamily: MONO,
+                letterSpacing: '.1em',
+                textTransform: 'uppercase',
+              }}
+            >
               {m.l}
             </div>
-            <div style={{ fontSize: mobile && i === 2 ? 16 : 18, fontWeight: 900, letterSpacing: '-.02em', marginTop: 4, color: '#fff' }}>{m.v}</div>
-            <div style={{ fontSize: 9.5, color: m.tone, marginTop: 2, fontWeight: 600 }}>↑ {m.d}</div>
+            <div
+              style={{
+                fontSize: mobile && i === 2 ? 16 : 18,
+                fontWeight: 900,
+                letterSpacing: '-.02em',
+                marginTop: 4,
+                color: '#fff',
+              }}
+            >
+              {m.v}
+            </div>
+            <div style={{ fontSize: 9.5, color: m.tone, marginTop: 2, fontWeight: 600 }}>
+              ↑ {m.d}
+            </div>
           </div>
         ))}
       </div>
@@ -727,8 +1043,24 @@ export function InstagramVisual() {
           padding: '12px 14px 6px',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: '#fff', fontFamily: MONO, letterSpacing: '.1em', textTransform: 'uppercase' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 8,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              color: '#fff',
+              fontFamily: MONO,
+              letterSpacing: '.1em',
+              textTransform: 'uppercase',
+            }}
+          >
             Crescimento 12 semanas
           </div>
           <div style={{ fontSize: 10, color: BRAND.green, fontWeight: 700 }}>+42,3%</div>
@@ -764,9 +1096,24 @@ export function InstagramVisual() {
             style={{ animation: 'ig-stroke 1.4s cubic-bezier(.22,1,.36,1) forwards' }}
           />
           {followerPoints.map(([i, v]) => (
-            <circle key={i} cx={xScale(i)} cy={yScale(v)} r="2" fill={BRAND.yellow} opacity={i === 11 ? 1 : 0.4} />
+            <circle
+              key={i}
+              cx={xScale(i)}
+              cy={yScale(v)}
+              r="2"
+              fill={BRAND.yellow}
+              opacity={i === 11 ? 1 : 0.4}
+            />
           ))}
-          <circle cx={xScale(11)} cy={yScale(100)} r="5" fill="none" stroke={BRAND.yellow} strokeWidth="2" opacity={0.5}>
+          <circle
+            cx={xScale(11)}
+            cy={yScale(100)}
+            r="5"
+            fill="none"
+            stroke={BRAND.yellow}
+            strokeWidth="2"
+            opacity={0.5}
+          >
             <animate attributeName="r" values="4;10;4" dur="2s" repeatCount="indefinite" />
             <animate attributeName="opacity" values=".8;0;.8" dur="2s" repeatCount="indefinite" />
           </circle>
@@ -788,7 +1135,14 @@ export function InstagramVisual() {
           border: '1px solid rgba(255,255,255,.06)',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: mobile ? '100%' : undefined }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            width: mobile ? '100%' : undefined,
+          }}
+        >
           <div
             style={{
               width: 38,
@@ -805,11 +1159,25 @@ export function InstagramVisual() {
             🥐
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: '#fff', marginBottom: 2 }}>Reels: "Como a gente monta o café"</div>
-            <div style={{ fontSize: 10, color: '#9ca3af', fontFamily: MONO, letterSpacing: '.06em' }}>TOP POST DA SEMANA · 38,4K VIEWS</div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#fff', marginBottom: 2 }}>
+              Reels: "Como a gente monta o café"
+            </div>
+            <div
+              style={{ fontSize: 10, color: '#9ca3af', fontFamily: MONO, letterSpacing: '.06em' }}
+            >
+              TOP POST DA SEMANA · 38,4K VIEWS
+            </div>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8, fontSize: 10, color: '#9ca3af', ...(mobile ? { paddingLeft: 48 } : {}) }}>
+        <div
+          style={{
+            display: 'flex',
+            gap: 8,
+            fontSize: 10,
+            color: '#9ca3af',
+            ...(mobile ? { paddingLeft: 48 } : {}),
+          }}
+        >
           <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
             <Heart size={12} color={BRAND.red} fill={BRAND.red} />
             2,1k
@@ -844,7 +1212,15 @@ export function HubVisual() {
           'radial-gradient(900px 500px at 10% -10%,rgba(255,191,48,.1),transparent 60%),radial-gradient(700px 420px at 110% 10%,rgba(120,113,108,.08),transparent 60%)',
       }}
     >
-      <div style={{ background: '#0a0a0a', padding: mobile ? '10px 14px' : '12px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div
+        style={{
+          background: '#0a0a0a',
+          padding: mobile ? '10px 14px' : '12px 18px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}
+      >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <img src="/logo-white.svg" style={{ height: 14 }} alt="" />
           <span
@@ -864,40 +1240,54 @@ export function HubVisual() {
           </span>
         </div>
         <div style={{ display: 'flex', gap: mobile ? 1 : 3 }}>
-          {(mobile ? ['Aprovar', 'Marca'] : ['Início', 'Aprovar', 'Marca', 'Mensagens']).map((t) => {
-            const isActive = t === 'Aprovar';
-            return (
-              <span
-                key={t}
-                style={{
-                  padding: mobile ? '5px 7px' : '5px 9px',
-                  borderRadius: 7,
-                  fontSize: mobile ? 10 : 10.5,
-                  fontWeight: isActive ? 600 : 500,
-                  color: isActive ? '#fff' : 'rgba(255,255,255,.55)',
-                  position: 'relative',
-                }}
-              >
-                {t}
-                {isActive && (
-                  <span
-                    style={{
-                      marginLeft: 5,
-                      padding: '1px 5px',
-                      borderRadius: 9999,
-                      background: BRAND.yellow,
-                      color: BRAND.dark,
-                      fontSize: 8,
-                      fontWeight: 700,
-                    }}
-                  >
-                    3
-                  </span>
-                )}
-                {isActive && <span style={{ position: 'absolute', left: 9, right: 9, bottom: 1, height: 1.5, background: BRAND.yellow, borderRadius: 2 }} />}
-              </span>
-            );
-          })}
+          {(mobile ? ['Aprovar', 'Marca'] : ['Início', 'Aprovar', 'Marca', 'Mensagens']).map(
+            (t) => {
+              const isActive = t === 'Aprovar';
+              return (
+                <span
+                  key={t}
+                  style={{
+                    padding: mobile ? '5px 7px' : '5px 9px',
+                    borderRadius: 7,
+                    fontSize: mobile ? 10 : 10.5,
+                    fontWeight: isActive ? 600 : 500,
+                    color: isActive ? '#fff' : 'rgba(255,255,255,.55)',
+                    position: 'relative',
+                  }}
+                >
+                  {t}
+                  {isActive && (
+                    <span
+                      style={{
+                        marginLeft: 5,
+                        padding: '1px 5px',
+                        borderRadius: 9999,
+                        background: BRAND.yellow,
+                        color: BRAND.dark,
+                        fontSize: 8,
+                        fontWeight: 700,
+                      }}
+                    >
+                      3
+                    </span>
+                  )}
+                  {isActive && (
+                    <span
+                      style={{
+                        position: 'absolute',
+                        left: 9,
+                        right: 9,
+                        bottom: 1,
+                        height: 1.5,
+                        background: BRAND.yellow,
+                        borderRadius: 2,
+                      }}
+                    />
+                  )}
+                </span>
+              );
+            },
+          )}
         </div>
         <div
           style={{
@@ -918,7 +1308,16 @@ export function HubVisual() {
       </div>
 
       <div style={{ padding: '24px 24px 28px' }}>
-        <div style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, color: '#78716c', letterSpacing: '.14em', textTransform: 'uppercase' }}>
+        <div
+          style={{
+            fontFamily: MONO,
+            fontSize: 10,
+            fontWeight: 600,
+            color: '#78716c',
+            letterSpacing: '.14em',
+            textTransform: 'uppercase',
+          }}
+        >
           Agência Paralela
         </div>
         <div
@@ -934,7 +1333,14 @@ export function HubVisual() {
         >
           Aprovar <em style={{ fontStyle: 'italic', fontWeight: 400, color: '#a16207' }}>posts</em>
         </div>
-        <div style={{ fontFamily: "'Instrument Sans',sans-serif", fontSize: 13, color: '#57534e', marginTop: 6 }}>
+        <div
+          style={{
+            fontFamily: "'Instrument Sans',sans-serif",
+            fontSize: 13,
+            color: '#57534e',
+            marginTop: 6,
+          }}
+        >
           3 posts aguardando sua aprovação · 1 vence hoje
         </div>
 
@@ -948,11 +1354,14 @@ export function HubVisual() {
             boxShadow: '0 1px 0 rgba(0,0,0,.02),0 1px 2px rgba(28,25,23,.04)',
           }}
         >
-          <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : '150px 1fr', gap: 0 }}>
+          <div
+            style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : '150px 1fr', gap: 0 }}
+          >
             <div
               style={{
                 aspectRatio: mobile ? '16/9' : '1/1',
-                background: 'linear-gradient(145deg,#d4a574 0%,#c4956a 25%,#a67c52 50%,#8b6541 75%,#6d4c30 100%)',
+                background:
+                  'linear-gradient(145deg,#d4a574 0%,#c4956a 25%,#a67c52 50%,#8b6541 75%,#6d4c30 100%)',
                 position: 'relative',
                 display: 'flex',
                 alignItems: 'center',
@@ -960,11 +1369,46 @@ export function HubVisual() {
                 overflow: 'hidden',
               }}
             >
-              <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 30% 40%, rgba(255,255,255,.18), transparent 60%)' }} />
-              <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 70% 70%, rgba(0,0,0,.12), transparent 50%)' }} />
-              <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-                <span style={{ fontSize: 32, filter: 'drop-shadow(0 2px 4px rgba(0,0,0,.15))' }}>🍂</span>
-                <span style={{ fontSize: 8, fontFamily: MONO, fontWeight: 700, color: 'rgba(255,255,255,.85)', letterSpacing: '.12em', textTransform: 'uppercase' }}>Inverno</span>
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  background:
+                    'radial-gradient(circle at 30% 40%, rgba(255,255,255,.18), transparent 60%)',
+                }}
+              />
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  background:
+                    'radial-gradient(circle at 70% 70%, rgba(0,0,0,.12), transparent 50%)',
+                }}
+              />
+              <div
+                style={{
+                  position: 'relative',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 2,
+                }}
+              >
+                <span style={{ fontSize: 32, filter: 'drop-shadow(0 2px 4px rgba(0,0,0,.15))' }}>
+                  🍂
+                </span>
+                <span
+                  style={{
+                    fontSize: 8,
+                    fontFamily: MONO,
+                    fontWeight: 700,
+                    color: 'rgba(255,255,255,.85)',
+                    letterSpacing: '.12em',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  Inverno
+                </span>
               </div>
               <div
                 style={{
@@ -1002,11 +1446,30 @@ export function HubVisual() {
                   Vence hoje · 18h
                 </span>
               </div>
-              <div style={{ fontFamily: "'Fraunces',serif", fontSize: 16, fontWeight: 500, letterSpacing: '-.01em', color: '#1C1917', lineHeight: 1.25 }}>
+              <div
+                style={{
+                  fontFamily: "'Fraunces',serif",
+                  fontSize: 16,
+                  fontWeight: 500,
+                  letterSpacing: '-.01em',
+                  color: '#1C1917',
+                  lineHeight: 1.25,
+                }}
+              >
                 Novo cardápio de inverno
               </div>
-              <div style={{ fontFamily: "'Instrument Sans',sans-serif", fontSize: 12, color: '#57534e', marginTop: 6, lineHeight: 1.5, flex: 1 }}>
-                "Chegou o inverno e com ele o cardápio mais aconchegante da temporada. Venha conhecer..."
+              <div
+                style={{
+                  fontFamily: "'Instrument Sans',sans-serif",
+                  fontSize: 12,
+                  color: '#57534e',
+                  marginTop: 6,
+                  lineHeight: 1.5,
+                  flex: 1,
+                }}
+              >
+                "Chegou o inverno e com ele o cardápio mais aconchegante da temporada. Venha
+                conhecer..."
               </div>
               <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
                 <button
@@ -1055,9 +1518,20 @@ export function HubVisual() {
           </div>
         </div>
 
-        <div style={{ marginTop: 12, display: 'flex', flexDirection: mobile ? 'column' : 'row', gap: 10 }}>
+        <div
+          style={{
+            marginTop: 12,
+            display: 'flex',
+            flexDirection: mobile ? 'column' : 'row',
+            gap: 10,
+          }}
+        >
           {[
-            { t: 'Carrossel — dicas', g: 'linear-gradient(135deg,#bbf7d0,#86efac,#22c55e)', e: '🌿' },
+            {
+              t: 'Carrossel — dicas',
+              g: 'linear-gradient(135deg,#bbf7d0,#86efac,#22c55e)',
+              e: '🌿',
+            },
             { t: 'Story promoção', g: 'linear-gradient(135deg,#fecaca,#fca5a5,#ef4444)', e: '🔥' },
           ].map((p, i) => (
             <div
@@ -1089,17 +1563,47 @@ export function HubVisual() {
                 {p.e}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: '#1C1917', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: '#1C1917',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
                   {p.t}
                 </div>
-                <div style={{ fontSize: 9.5, color: '#78716c', marginTop: 1, fontFamily: MONO, letterSpacing: '.06em' }}>AGUARDANDO</div>
+                <div
+                  style={{
+                    fontSize: 9.5,
+                    color: '#78716c',
+                    marginTop: 1,
+                    fontFamily: MONO,
+                    letterSpacing: '.06em',
+                  }}
+                >
+                  AGUARDANDO
+                </div>
               </div>
             </div>
           ))}
         </div>
 
-        <div style={{ marginTop: 14, fontSize: 10.5, color: '#78716c', fontFamily: "'Instrument Sans',sans-serif", textAlign: 'center' }}>
-          <LinkIcon size={12} style={{ verticalAlign: 'middle', marginRight: 4, display: 'inline' }} />
+        <div
+          style={{
+            marginTop: 14,
+            fontSize: 10.5,
+            color: '#78716c',
+            fontFamily: "'Instrument Sans',sans-serif",
+            textAlign: 'center',
+          }}
+        >
+          <LinkIcon
+            size={12}
+            style={{ verticalAlign: 'middle', marginRight: 4, display: 'inline' }}
+          />
           Portal acessado por link único — sem login necessário
         </div>
       </div>
@@ -1146,24 +1650,77 @@ export function CalendarVisual() {
   ];
 
   const upcomingPosts = [
-    { day: 13, weekday: 'Qui', items: [{ t: 'Reels', c: BRAND.yellow, title: 'Café da Manhã — Bastidores' }, { t: 'Story', c: BRAND.teal, title: 'Promoção relâmpago' }] },
+    {
+      day: 13,
+      weekday: 'Qui',
+      items: [
+        { t: 'Reels', c: BRAND.yellow, title: 'Café da Manhã — Bastidores' },
+        { t: 'Story', c: BRAND.teal, title: 'Promoção relâmpago' },
+      ],
+    },
     { day: 15, weekday: 'Sáb', items: [{ t: 'Feed', c: BRAND.green, title: 'Post Dia das Mães' }] },
-    { day: 16, weekday: 'Dom', items: [{ t: 'Carrossel', c: BRAND.pink, title: 'Dicas de inverno' }] },
+    {
+      day: 16,
+      weekday: 'Dom',
+      items: [{ t: 'Carrossel', c: BRAND.pink, title: 'Dicas de inverno' }],
+    },
     { day: 19, weekday: 'Qua', items: [{ t: 'Reels', c: BRAND.yellow, title: 'Novo cardápio' }] },
-    { day: 20, weekday: 'Qui', items: [{ t: 'Feed', c: BRAND.green, title: 'Cliente em destaque' }] },
+    {
+      day: 20,
+      weekday: 'Qui',
+      items: [{ t: 'Feed', c: BRAND.green, title: 'Cliente em destaque' }],
+    },
   ];
 
   if (mobile) {
     return (
-      <div style={{ background: '#fff', borderRadius: 20, padding: 16, border: '1px solid rgba(30,36,48,.06)', boxShadow: '0 30px 80px -20px rgba(0,0,0,.15)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+      <div
+        style={{
+          background: '#fff',
+          borderRadius: 20,
+          padding: 16,
+          border: '1px solid rgba(30,36,48,.06)',
+          boxShadow: '0 30px 80px -20px rgba(0,0,0,.15)',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 14,
+          }}
+        >
           <div>
-            <div className="eyebrow-micro" style={{ fontSize: '.65rem' }}>Calendário editorial</div>
-            <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: '-.01em', color: BRAND.dark, marginTop: 4 }}>Maio 2025</div>
+            <div className="eyebrow-micro" style={{ fontSize: '.65rem' }}>
+              Calendário editorial
+            </div>
+            <div
+              style={{
+                fontSize: 18,
+                fontWeight: 800,
+                letterSpacing: '-.01em',
+                color: BRAND.dark,
+                marginTop: 4,
+              }}
+            >
+              Maio 2025
+            </div>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             {legend.map((l) => (
-              <div key={l.l} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, color: '#4b5563', fontFamily: MONO, letterSpacing: '.06em' }}>
+              <div
+                key={l.l}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  fontSize: 9,
+                  color: '#4b5563',
+                  fontFamily: MONO,
+                  letterSpacing: '.06em',
+                }}
+              >
                 <span style={{ width: 6, height: 6, borderRadius: 9999, background: l.c }} />
                 {l.l}
               </div>
@@ -1171,9 +1728,28 @@ export function CalendarVisual() {
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 3, marginBottom: 14 }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(7,1fr)',
+            gap: 3,
+            marginBottom: 14,
+          }}
+        >
           {days.map((d) => (
-            <div key={d} style={{ fontSize: 8, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: '#9ca3af', fontFamily: MONO, textAlign: 'center', padding: '3px 0' }}>
+            <div
+              key={d}
+              style={{
+                fontSize: 8,
+                fontWeight: 700,
+                letterSpacing: '.08em',
+                textTransform: 'uppercase',
+                color: '#9ca3af',
+                fontFamily: MONO,
+                textAlign: 'center',
+                padding: '3px 0',
+              }}
+            >
               {d.charAt(0)}
             </div>
           ))}
@@ -1186,8 +1762,16 @@ export function CalendarVisual() {
                 key={i}
                 style={{
                   aspectRatio: '1/1',
-                  background: isToday ? 'rgba(255,191,48,.15)' : evs.length ? '#fafbfc' : 'transparent',
-                  border: isToday ? `1.5px solid ${BRAND.yellow}` : evs.length ? '1px solid rgba(30,36,48,.06)' : 'none',
+                  background: isToday
+                    ? 'rgba(255,191,48,.15)'
+                    : evs.length
+                      ? '#fafbfc'
+                      : 'transparent',
+                  border: isToday
+                    ? `1.5px solid ${BRAND.yellow}`
+                    : evs.length
+                      ? '1px solid rgba(30,36,48,.06)'
+                      : 'none',
                   borderRadius: 6,
                   display: 'flex',
                   flexDirection: 'column',
@@ -1196,11 +1780,22 @@ export function CalendarVisual() {
                   gap: 2,
                 }}
               >
-                <div style={{ fontSize: 10, fontWeight: isToday ? 800 : 500, color: isToday ? '#a16207' : evs.length ? BRAND.dark : '#9ca3af' }}>{d}</div>
+                <div
+                  style={{
+                    fontSize: 10,
+                    fontWeight: isToday ? 800 : 500,
+                    color: isToday ? '#a16207' : evs.length ? BRAND.dark : '#9ca3af',
+                  }}
+                >
+                  {d}
+                </div>
                 {evs.length > 0 && (
                   <div style={{ display: 'flex', gap: 2 }}>
                     {evs.slice(0, 2).map((e, j) => (
-                      <span key={j} style={{ width: 5, height: 5, borderRadius: 9999, background: e.c }} />
+                      <span
+                        key={j}
+                        style={{ width: 5, height: 5, borderRadius: 9999, background: e.c }}
+                      />
                     ))}
                   </div>
                 )}
@@ -1209,22 +1804,87 @@ export function CalendarVisual() {
           })}
         </div>
 
-        <div style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: '#6b7280', marginBottom: 10 }}>
+        <div
+          style={{
+            fontFamily: MONO,
+            fontSize: 9,
+            fontWeight: 700,
+            letterSpacing: '.1em',
+            textTransform: 'uppercase',
+            color: '#6b7280',
+            marginBottom: 10,
+          }}
+        >
           Próximos posts
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {upcomingPosts.map((row) => (
-            <div key={row.day} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '8px 10px', background: row.day === today ? 'rgba(255,191,48,.08)' : '#fafbfc', borderRadius: 10, border: row.day === today ? `1px solid rgba(255,191,48,.2)` : '1px solid rgba(30,36,48,.06)' }}>
+            <div
+              key={row.day}
+              style={{
+                display: 'flex',
+                gap: 10,
+                alignItems: 'flex-start',
+                padding: '8px 10px',
+                background: row.day === today ? 'rgba(255,191,48,.08)' : '#fafbfc',
+                borderRadius: 10,
+                border:
+                  row.day === today
+                    ? `1px solid rgba(255,191,48,.2)`
+                    : '1px solid rgba(30,36,48,.06)',
+              }}
+            >
               <div style={{ textAlign: 'center', minWidth: 32 }}>
-                <div style={{ fontSize: 16, fontWeight: 800, color: row.day === today ? '#a16207' : BRAND.dark, lineHeight: 1 }}>{row.day}</div>
-                <div style={{ fontSize: 8, fontWeight: 600, color: '#9ca3af', fontFamily: MONO, letterSpacing: '.08em', marginTop: 2 }}>{row.weekday}</div>
+                <div
+                  style={{
+                    fontSize: 16,
+                    fontWeight: 800,
+                    color: row.day === today ? '#a16207' : BRAND.dark,
+                    lineHeight: 1,
+                  }}
+                >
+                  {row.day}
+                </div>
+                <div
+                  style={{
+                    fontSize: 8,
+                    fontWeight: 600,
+                    color: '#9ca3af',
+                    fontFamily: MONO,
+                    letterSpacing: '.08em',
+                    marginTop: 2,
+                  }}
+                >
+                  {row.weekday}
+                </div>
               </div>
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {row.items.map((item, j) => (
                   <div key={j} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ width: 6, height: 6, borderRadius: 9999, background: item.c, flexShrink: 0 }} />
-                    <span style={{ fontSize: 10, fontWeight: 600, color: '#4b5563', fontFamily: MONO, letterSpacing: '.06em', textTransform: 'uppercase' }}>{item.t}</span>
-                    <span style={{ fontSize: 11, color: BRAND.dark, fontWeight: 500 }}>{item.title}</span>
+                    <span
+                      style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: 9999,
+                        background: item.c,
+                        flexShrink: 0,
+                      }}
+                    />
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 600,
+                        color: '#4b5563',
+                        fontFamily: MONO,
+                        letterSpacing: '.06em',
+                        textTransform: 'uppercase',
+                      }}
+                    >
+                      {item.t}
+                    </span>
+                    <span style={{ fontSize: 11, color: BRAND.dark, fontWeight: 500 }}>
+                      {item.title}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -1236,24 +1896,62 @@ export function CalendarVisual() {
   }
 
   return (
-    <div style={{ background: '#fff', borderRadius: 20, padding: 20, border: '1px solid rgba(30,36,48,.06)', boxShadow: '0 30px 80px -20px rgba(0,0,0,.15)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+    <div
+      style={{
+        background: '#fff',
+        borderRadius: 20,
+        padding: 20,
+        border: '1px solid rgba(30,36,48,.06)',
+        boxShadow: '0 30px 80px -20px rgba(0,0,0,.15)',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 14,
+        }}
+      >
         <div>
           <div className="eyebrow-micro" style={{ fontSize: '.65rem' }}>
             Calendário editorial
           </div>
-          <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-.01em', color: BRAND.dark, marginTop: 4 }}>Maio 2025</div>
+          <div
+            style={{
+              fontSize: 20,
+              fontWeight: 800,
+              letterSpacing: '-.01em',
+              color: BRAND.dark,
+              marginTop: 4,
+            }}
+          >
+            Maio 2025
+          </div>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           {legend.map((l) => (
-            <div key={l.l} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#4b5563', fontFamily: MONO, letterSpacing: '.06em' }}>
+            <div
+              key={l.l}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                fontSize: 10,
+                color: '#4b5563',
+                fontFamily: MONO,
+                letterSpacing: '.06em',
+              }}
+            >
               <span style={{ width: 7, height: 7, borderRadius: 9999, background: l.c }} />
               {l.l}
             </div>
           ))}
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 4, marginBottom: 6 }}>
+      <div
+        style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 4, marginBottom: 6 }}
+      >
         {days.map((d) => (
           <div
             key={d}
@@ -1274,7 +1972,8 @@ export function CalendarVisual() {
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 4 }}>
         {cells.map((d, i) => {
-          if (d === null) return <div key={i} style={{ aspectRatio: '1/1', background: 'transparent' }} />;
+          if (d === null)
+            return <div key={i} style={{ aspectRatio: '1/1', background: 'transparent' }} />;
           const evs = events[d] || [];
           const isToday = d === today;
           return (
@@ -1293,7 +1992,16 @@ export function CalendarVisual() {
                 overflow: 'hidden',
               }}
             >
-              <div style={{ fontSize: 10, fontWeight: isToday ? 800 : 600, color: isToday ? '#a16207' : BRAND.dark, letterSpacing: '-.01em' }}>{d}</div>
+              <div
+                style={{
+                  fontSize: 10,
+                  fontWeight: isToday ? 800 : 600,
+                  color: isToday ? '#a16207' : BRAND.dark,
+                  letterSpacing: '-.01em',
+                }}
+              >
+                {d}
+              </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1 }}>
                 {evs.slice(0, 2).map((e, j) => (
                   <div
@@ -1338,13 +2046,38 @@ export function FinanceVisual() {
   ];
 
   return (
-    <div style={{ background: '#fff', borderRadius: 20, padding: mobile ? 16 : 22, border: '1px solid rgba(30,36,48,.06)', boxShadow: '0 30px 80px -20px rgba(0,0,0,.15)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+    <div
+      style={{
+        background: '#fff',
+        borderRadius: 20,
+        padding: mobile ? 16 : 22,
+        border: '1px solid rgba(30,36,48,.06)',
+        boxShadow: '0 30px 80px -20px rgba(0,0,0,.15)',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 16,
+        }}
+      >
         <div>
           <div className="eyebrow-micro" style={{ fontSize: '.65rem' }}>
             Financeiro · Maio
           </div>
-          <div style={{ fontSize: mobile ? 18 : 20, fontWeight: 800, letterSpacing: '-.01em', color: BRAND.dark, marginTop: 4 }}>Fluxo de caixa</div>
+          <div
+            style={{
+              fontSize: mobile ? 18 : 20,
+              fontWeight: 800,
+              letterSpacing: '-.01em',
+              color: BRAND.dark,
+              marginTop: 4,
+            }}
+          >
+            Fluxo de caixa
+          </div>
         </div>
         <span
           style={{
@@ -1362,7 +2095,14 @@ export function FinanceVisual() {
         </span>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : 'repeat(3,1fr)', gap: 8, marginBottom: 16 }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: mobile ? '1fr' : 'repeat(3,1fr)',
+          gap: 8,
+          marginBottom: 16,
+        }}
+      >
         {kpis.map((k, i) => (
           <div
             key={i}
@@ -1372,14 +2112,38 @@ export function FinanceVisual() {
               background: '#fafbfc',
               border: '1px solid rgba(30,36,48,.06)',
               borderLeft: `3px solid ${k.c}`,
-              ...(mobile ? { display: 'flex', alignItems: 'center', justifyContent: 'space-between' } : {}),
+              ...(mobile
+                ? { display: 'flex', alignItems: 'center', justifyContent: 'space-between' }
+                : {}),
             }}
           >
             <div>
-              <div style={{ fontFamily: MONO, fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: '#6b7280', fontWeight: 700 }}>{k.l}</div>
+              <div
+                style={{
+                  fontFamily: MONO,
+                  fontSize: 9,
+                  letterSpacing: '.12em',
+                  textTransform: 'uppercase',
+                  color: '#6b7280',
+                  fontWeight: 700,
+                }}
+              >
+                {k.l}
+              </div>
               {!mobile && <div style={{ fontSize: 9, color: '#6b7280', marginTop: 4 }}>{k.d}</div>}
             </div>
-            <div style={{ fontSize: mobile ? 18 : 15, fontWeight: 800, letterSpacing: '-.01em', color: BRAND.dark, marginTop: mobile ? 0 : 4, fontFamily: MONO }}>{k.v}</div>
+            <div
+              style={{
+                fontSize: mobile ? 18 : 15,
+                fontWeight: 800,
+                letterSpacing: '-.01em',
+                color: BRAND.dark,
+                marginTop: mobile ? 0 : 4,
+                fontFamily: MONO,
+              }}
+            >
+              {k.v}
+            </div>
           </div>
         ))}
       </div>
@@ -1401,9 +2165,13 @@ export function FinanceVisual() {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span style={{ fontWeight: 600, color: BRAND.dark, fontSize: 12 }}>{t.c}</span>
-                    <Badge tone={t.st === 'Pago' ? 'success' : 'warning'} small>{t.st}</Badge>
+                    <Badge tone={t.st === 'Pago' ? 'success' : 'warning'} small>
+                      {t.st}
+                    </Badge>
                   </div>
-                  <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2, fontFamily: MONO }}>{t.d} · {t.desc}</div>
+                  <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 2, fontFamily: MONO }}>
+                    {t.d} · {t.desc}
+                  </div>
                 </div>
                 <span
                   style={{
@@ -1471,7 +2239,9 @@ export function FinanceVisual() {
                 >
                   {t.v > 0 ? '' : '−'}R$ {Math.abs(t.v).toLocaleString('pt-BR')}
                 </span>
-                <Badge tone={t.st === 'Pago' ? 'success' : 'warning'} small>{t.st}</Badge>
+                <Badge tone={t.st === 'Pago' ? 'success' : 'warning'} small>
+                  {t.st}
+                </Badge>
               </div>
             ))}
           </>
@@ -1533,7 +2303,15 @@ export function SchedulingVisual() {
       />
 
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, position: 'relative' }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          marginBottom: 16,
+          position: 'relative',
+        }}
+      >
         <div
           style={{
             width: 32,
@@ -1549,7 +2327,16 @@ export function SchedulingVisual() {
         </div>
         <div>
           <div style={{ fontSize: '.82rem', fontWeight: 600, lineHeight: 1.2 }}>@bella.moda</div>
-          <div style={{ fontSize: '.6rem', color: 'rgba(255,255,255,.45)', fontFamily: MONO, letterSpacing: '.06em' }}>CONTA CONECTADA</div>
+          <div
+            style={{
+              fontSize: '.6rem',
+              color: 'rgba(255,255,255,.45)',
+              fontFamily: MONO,
+              letterSpacing: '.06em',
+            }}
+          >
+            CONTA CONECTADA
+          </div>
         </div>
         <Badge tone="success" small>
           <Send size={9} style={{ marginRight: 2 }} /> PUBLICAÇÃO AUTO
@@ -1585,8 +2372,12 @@ export function SchedulingVisual() {
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-              <Badge tone="teal" small>CARROSSEL</Badge>
-              <span style={{ fontSize: '.6rem', color: 'rgba(255,255,255,.35)', fontFamily: MONO }}>3 MÍDIAS</span>
+              <Badge tone="teal" small>
+                CARROSSEL
+              </Badge>
+              <span style={{ fontSize: '.6rem', color: 'rgba(255,255,255,.35)', fontFamily: MONO }}>
+                3 MÍDIAS
+              </span>
             </div>
             <div style={{ fontSize: '.85rem', fontWeight: 600, marginBottom: 3, lineHeight: 1.3 }}>
               Lançamento Coleção Inverno
@@ -1620,10 +2411,24 @@ export function SchedulingVisual() {
         }}
       >
         {phase === 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 10,
+            }}
+          >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <CalendarClock size={15} color={BRAND.yellow} />
-              <span style={{ fontFamily: MONO, fontSize: '.75rem', fontWeight: 600, letterSpacing: '.04em' }}>
+              <span
+                style={{
+                  fontFamily: MONO,
+                  fontSize: '.75rem',
+                  fontWeight: 600,
+                  letterSpacing: '.04em',
+                }}
+              >
                 15 Mai · 14:00
               </span>
             </div>
@@ -1648,14 +2453,36 @@ export function SchedulingVisual() {
           </div>
         )}
         {phase === 1 && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 10,
+            }}
+          >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Clock size={15} color={BRAND.teal} />
               <div>
-                <div style={{ fontFamily: MONO, fontSize: '.75rem', fontWeight: 600, letterSpacing: '.04em' }}>
+                <div
+                  style={{
+                    fontFamily: MONO,
+                    fontSize: '.75rem',
+                    fontWeight: 600,
+                    letterSpacing: '.04em',
+                  }}
+                >
                   15 Mai · 14:00
                 </div>
-                <div style={{ fontFamily: MONO, fontSize: '.58rem', color: BRAND.teal, letterSpacing: '.08em', marginTop: 2 }}>
+                <div
+                  style={{
+                    fontFamily: MONO,
+                    fontSize: '.58rem',
+                    color: BRAND.teal,
+                    letterSpacing: '.08em',
+                    marginTop: 2,
+                  }}
+                >
                   PUBLICA EM 2 DIAS
                 </div>
               </div>
@@ -1666,16 +2493,38 @@ export function SchedulingVisual() {
           </div>
         )}
         {phase === 2 && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 10,
+            }}
+          >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <CheckCircle2 size={15} color={BRAND.green} />
               <div>
-                <div style={{ fontFamily: MONO, fontSize: '.75rem', fontWeight: 600, letterSpacing: '.04em', color: BRAND.green }}>
+                <div
+                  style={{
+                    fontFamily: MONO,
+                    fontSize: '.75rem',
+                    fontWeight: 600,
+                    letterSpacing: '.04em',
+                    color: BRAND.green,
+                  }}
+                >
                   PUBLICADO
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginTop: 2 }}>
                   <ExternalLink size={9} color="rgba(255,255,255,.4)" />
-                  <span style={{ fontFamily: MONO, fontSize: '.55rem', color: 'rgba(255,255,255,.4)', letterSpacing: '.04em' }}>
+                  <span
+                    style={{
+                      fontFamily: MONO,
+                      fontSize: '.55rem',
+                      color: 'rgba(255,255,255,.4)',
+                      letterSpacing: '.04em',
+                    }}
+                  >
                     instagram.com/p/Cx7k...
                   </span>
                 </div>
@@ -1689,7 +2538,15 @@ export function SchedulingVisual() {
       </div>
 
       {/* Timeline */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0, position: 'relative' }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 0,
+          position: 'relative',
+        }}
+      >
         {steps.map((s, i) => (
           <div key={s.label} style={{ display: 'flex', alignItems: 'center' }}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
@@ -1737,7 +2594,13 @@ export function SchedulingVisual() {
   );
 }
 
-export function IconSquare({ icon, color = BRAND.yellow }: { icon: React.ReactNode; color?: string }) {
+export function IconSquare({
+  icon,
+  color = BRAND.yellow,
+}: {
+  icon: React.ReactNode;
+  color?: string;
+}) {
   return (
     <div
       style={{

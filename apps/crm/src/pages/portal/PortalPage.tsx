@@ -1,6 +1,17 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Check, Circle, ExternalLink, FolderOpen, FileText, ThumbsUp, MessageSquare, Send, ChevronDown, ChevronRight } from 'lucide-react';
+import {
+  Check,
+  Circle,
+  ExternalLink,
+  FolderOpen,
+  FileText,
+  ThumbsUp,
+  MessageSquare,
+  Send,
+  ChevronDown,
+  ChevronRight,
+} from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { PortalPropertyTable } from './PortalPropertyTable';
@@ -91,7 +102,11 @@ const STATUS_LABEL: Record<string, string> = {
 
 function formatPortalDate(d: string | null): string {
   if (!d) return '';
-  return new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
+  return new Date(d).toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
 }
 
 function PortalSkeleton() {
@@ -99,20 +114,52 @@ function PortalSkeleton() {
     <div className="portal-page" aria-busy="true" aria-label="Carregando portal…">
       <header className="portal-header">
         <div className="portal-header-inner">
-          <div className="portal-skeleton-block" aria-hidden="true" style={{ width: 120, height: 28 }} />
-          <div className="portal-skeleton-block" aria-hidden="true" style={{ width: 72, height: 22, borderRadius: 999 }} />
+          <div
+            className="portal-skeleton-block"
+            aria-hidden="true"
+            style={{ width: 120, height: 28 }}
+          />
+          <div
+            className="portal-skeleton-block"
+            aria-hidden="true"
+            style={{ width: 72, height: 22, borderRadius: 999 }}
+          />
         </div>
       </header>
       <main className="portal-main">
         <section className="portal-hero card">
-          <div className="portal-skeleton-block" aria-hidden="true" style={{ width: 86, height: 20, borderRadius: 999 }} />
-          <div className="portal-skeleton-block" aria-hidden="true" style={{ width: '65%', height: 28, marginTop: 12 }} />
-          <div className="portal-skeleton-block" aria-hidden="true" style={{ width: '40%', height: 16, marginTop: 8, marginBottom: 0 }} />
+          <div
+            className="portal-skeleton-block"
+            aria-hidden="true"
+            style={{ width: 86, height: 20, borderRadius: 999 }}
+          />
+          <div
+            className="portal-skeleton-block"
+            aria-hidden="true"
+            style={{ width: '65%', height: 28, marginTop: 12 }}
+          />
+          <div
+            className="portal-skeleton-block"
+            aria-hidden="true"
+            style={{ width: '40%', height: 16, marginTop: 8, marginBottom: 0 }}
+          />
           <div className="portal-skeleton-progress">
-            <div className="portal-skeleton-block" aria-hidden="true" style={{ width: 60, height: 13 }} />
-            <div className="portal-skeleton-block" aria-hidden="true" style={{ width: 75, height: 13 }} />
+            <div
+              className="portal-skeleton-block"
+              aria-hidden="true"
+              style={{ width: 60, height: 13 }}
+            />
+            <div
+              className="portal-skeleton-block"
+              aria-hidden="true"
+              style={{ width: 75, height: 13 }}
+            />
           </div>
-          <div className="portal-skeleton-block" aria-hidden="true" style={{ width: '100%', height: 8, borderRadius: 4 }} />
+          <div
+            className="portal-skeleton-block"
+            aria-hidden="true"
+            style={{ width: '100%', height: 8, borderRadius: 4 }}
+          />
         </section>
         <div className="portal-skeleton-spinner">
           <Spinner size="sm" />
@@ -132,15 +179,19 @@ export default function PortalPage() {
   // Etapa-level approval state
   const [comentario, setComentario] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [approvalResult, setApprovalResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [approvalResult, setApprovalResult] = useState<{
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
 
   // Post accordion state
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
 
   const togglePost = (id: number) => {
-    setExpandedIds(prev => {
+    setExpandedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
@@ -148,7 +199,9 @@ export default function PortalPage() {
   // Per-post approval state
   const [postComentarios, setPostComentarios] = useState<Record<number, string>>({});
   const [postSubmitting, setPostSubmitting] = useState<number | null>(null);
-  const [postResults, setPostResults] = useState<Record<number, { type: 'success' | 'error'; message: string }>>({});
+  const [postResults, setPostResults] = useState<
+    Record<number, { type: 'success' | 'error'; message: string }>
+  >({});
 
   useEffect(() => {
     document.documentElement.style.overflow = 'auto';
@@ -160,7 +213,11 @@ export default function PortalPage() {
   }, []);
 
   const fetchData = async () => {
-    if (!token) { setError('Link inválido.'); setLoading(false); return; }
+    if (!token) {
+      setError('Link inválido.');
+      setLoading(false);
+      return;
+    }
     try {
       const res = await fetch(
         `${SUPABASE_URL}/functions/v1/portal-data?token=${encodeURIComponent(token)}`,
@@ -176,13 +233,15 @@ export default function PortalPage() {
     }
   };
 
-  useEffect(() => { fetchData(); }, [token]);
+  useEffect(() => {
+    fetchData();
+  }, [token]);
 
   const handleApprovalAction = async (action: 'aprovado' | 'correcao') => {
     if (!token || !data) return;
 
     const approvalEtapa = data.etapas.find(
-      e => e.tipo === 'aprovacao_cliente' && e.status === 'ativo'
+      (e) => e.tipo === 'aprovacao_cliente' && e.status === 'ativo',
     );
     if (!approvalEtapa) return;
 
@@ -213,7 +272,7 @@ export default function PortalPage() {
         setApprovalResult({ type: 'success', message: 'Aprovado com sucesso!' });
         // Update etapas in-place from response
         if (json.etapas) {
-          setData(prev => prev ? { ...prev, etapas: json.etapas } : prev);
+          setData((prev) => (prev ? { ...prev, etapas: json.etapas } : prev));
         } else {
           await fetchData();
         }
@@ -234,29 +293,37 @@ export default function PortalPage() {
     if (action === 'correcao' && !comentarioTrimmed) return;
 
     setPostSubmitting(postId);
-    setPostResults(prev => ({ ...prev, [postId]: undefined as any }));
+    setPostResults((prev) => ({ ...prev, [postId]: undefined as any }));
 
     try {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/portal-approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY },
-        body: JSON.stringify({ token, post_id: postId, action, comentario: comentarioTrimmed || null }),
+        body: JSON.stringify({
+          token,
+          post_id: postId,
+          action,
+          comentario: comentarioTrimmed || null,
+        }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Erro ao enviar.');
 
       const msg = action === 'aprovado' ? 'Post aprovado!' : 'Correções enviadas!';
-      setPostResults(prev => ({ ...prev, [postId]: { type: 'success', message: msg } }));
+      setPostResults((prev) => ({ ...prev, [postId]: { type: 'success', message: msg } }));
       if (action === 'aprovado') {
-        setPostComentarios(prev => ({ ...prev, [postId]: '' }));
+        setPostComentarios((prev) => ({ ...prev, [postId]: '' }));
       }
       if (json.posts) {
-        setData(prev => prev ? { ...prev, posts: json.posts } : prev);
+        setData((prev) => (prev ? { ...prev, posts: json.posts } : prev));
       } else {
         await fetchData();
       }
     } catch (err: any) {
-      setPostResults(prev => ({ ...prev, [postId]: { type: 'error', message: err.message || 'Erro.' } }));
+      setPostResults((prev) => ({
+        ...prev,
+        [postId]: { type: 'error', message: err.message || 'Erro.' },
+      }));
     } finally {
       setPostSubmitting(null);
     }
@@ -278,12 +345,10 @@ export default function PortalPage() {
   }
 
   const { workflow, etapas, cliente_nome, workspace } = data;
-  const completedCount = etapas.filter(e => e.status === 'concluido').length;
+  const completedCount = etapas.filter((e) => e.status === 'concluido').length;
   const progressPct = etapas.length > 0 ? Math.round((completedCount / etapas.length) * 100) : 0;
 
-  const approvalEtapa = etapas.find(
-    e => e.tipo === 'aprovacao_cliente' && e.status === 'ativo'
-  );
+  const approvalEtapa = etapas.find((e) => e.tipo === 'aprovacao_cliente' && e.status === 'ativo');
 
   return (
     <div className="portal-page">
@@ -297,11 +362,15 @@ export default function PortalPage() {
                 alt={workspace.name}
                 onError={(e) => {
                   (e.target as HTMLImageElement).style.display = 'none';
-                  (e.target as HTMLImageElement).parentElement!.querySelector('.portal-header-name')!.removeAttribute('hidden');
+                  (e.target as HTMLImageElement)
+                    .parentElement!.querySelector('.portal-header-name')!
+                    .removeAttribute('hidden');
                 }}
               />
             ) : null}
-            <span className="portal-header-name" hidden={!!workspace.logo_url}>{workspace.name}</span>
+            <span className="portal-header-name" hidden={!!workspace.logo_url}>
+              {workspace.name}
+            </span>
           </div>
           <div className="portal-header-badge">
             <span>Área Segura</span>
@@ -326,7 +395,9 @@ export default function PortalPage() {
           <div className="portal-progress">
             <div className="portal-progress-labels">
               <span>Progresso</span>
-              <span>{progressPct}% ({completedCount}/{etapas.length})</span>
+              <span>
+                {progressPct}% ({completedCount}/{etapas.length})
+              </span>
             </div>
             <div className="portal-progress-bar">
               <div className="portal-progress-fill" style={{ width: `${progressPct}%` }} />
@@ -348,7 +419,7 @@ export default function PortalPage() {
               const isPending = etapa.status === 'pendente';
 
               const etapaApprovals = data.approvals
-                ? data.approvals.filter(a => a.workflow_etapa_id === etapa.id && a.comentario)
+                ? data.approvals.filter((a) => a.workflow_etapa_id === etapa.id && a.comentario)
                 : [];
 
               return (
@@ -358,7 +429,11 @@ export default function PortalPage() {
                 >
                   <div className="portal-timeline-rail">
                     <div className="portal-timeline-dot">
-                      {isDone ? <Check className="h-3.5 w-3.5" /> : <span className="portal-timeline-dot-inner" />}
+                      {isDone ? (
+                        <Check className="h-3.5 w-3.5" />
+                      ) : (
+                        <span className="portal-timeline-dot-inner" />
+                      )}
                     </div>
                     {i < etapas.length - 1 && <div className="portal-timeline-line" />}
                   </div>
@@ -377,25 +452,71 @@ export default function PortalPage() {
                       )}
                     </div>
                     {etapaApprovals.length > 0 && (
-                      <div className="portal-timeline-comments" style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                        {etapaApprovals.slice().reverse().map(a => {
-                          const isTeam = a.is_workspace_user;
-                          return (
-                            <div key={a.id} style={{
-                              background: isTeam ? 'var(--primary-color)' : 'var(--card-bg)',
-                              border: `1px solid ${isTeam ? 'var(--primary-color)' : 'var(--border-color)'}`,
-                              padding: '0.75rem',
-                              borderRadius: '8px',
-                              marginLeft: isTeam ? '2rem' : '0',
-                              marginRight: isTeam ? '0' : '2rem',
-                            }}>
-                              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: isTeam ? '#111' : (a.action === 'correcao' ? '#ef4444' : 'var(--primary-color)'), marginBottom: '0.25rem', opacity: isTeam ? 0.9 : 1 }}>
-                                {isTeam ? 'Resposta da Equipe' : (a.action === 'correcao' ? 'Correção solicitada' : 'Observação')} &bull; {new Date(a.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      <div
+                        className="portal-timeline-comments"
+                        style={{
+                          marginTop: '0.75rem',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '0.75rem',
+                        }}
+                      >
+                        {etapaApprovals
+                          .slice()
+                          .reverse()
+                          .map((a) => {
+                            const isTeam = a.is_workspace_user;
+                            return (
+                              <div
+                                key={a.id}
+                                style={{
+                                  background: isTeam ? 'var(--primary-color)' : 'var(--card-bg)',
+                                  border: `1px solid ${isTeam ? 'var(--primary-color)' : 'var(--border-color)'}`,
+                                  padding: '0.75rem',
+                                  borderRadius: '8px',
+                                  marginLeft: isTeam ? '2rem' : '0',
+                                  marginRight: isTeam ? '0' : '2rem',
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    fontSize: '0.75rem',
+                                    fontWeight: 600,
+                                    color: isTeam
+                                      ? '#111'
+                                      : a.action === 'correcao'
+                                        ? '#ef4444'
+                                        : 'var(--primary-color)',
+                                    marginBottom: '0.25rem',
+                                    opacity: isTeam ? 0.9 : 1,
+                                  }}
+                                >
+                                  {isTeam
+                                    ? 'Resposta da Equipe'
+                                    : a.action === 'correcao'
+                                      ? 'Correção solicitada'
+                                      : 'Observação'}{' '}
+                                  &bull;{' '}
+                                  {new Date(a.created_at).toLocaleDateString('pt-BR', {
+                                    day: '2-digit',
+                                    month: 'short',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  })}
+                                </div>
+                                <p
+                                  style={{
+                                    fontSize: '0.9rem',
+                                    color: isTeam ? '#111' : 'var(--text-color)',
+                                    margin: 0,
+                                    whiteSpace: 'pre-wrap',
+                                  }}
+                                >
+                                  {a.comentario}
+                                </p>
                               </div>
-                              <p style={{ fontSize: '0.9rem', color: isTeam ? '#111' : 'var(--text-color)', margin: 0, whiteSpace: 'pre-wrap' }}>{a.comentario}</p>
-                            </div>
-                          );
-                        })}
+                            );
+                          })}
                       </div>
                     )}
                   </div>
@@ -416,25 +537,42 @@ export default function PortalPage() {
             </p>
 
             <div className="portal-posts-list">
-              {data.posts.map(post => {
-                const postThread = (data.postApprovals || []).filter(a => a.post_id === post.id);
+              {data.posts.map((post) => {
+                const postThread = (data.postApprovals || []).filter((a) => a.post_id === post.id);
                 const isApproved = post.status === 'aprovado_cliente';
                 const isCorrection = post.status === 'correcao_cliente';
                 const result = postResults[post.id];
 
                 return (
-                  <div key={post.id} className={`portal-post-card${isApproved ? ' portal-post-card--approved' : isCorrection ? ' portal-post-card--correction' : ''}`}>
+                  <div
+                    key={post.id}
+                    className={`portal-post-card${isApproved ? ' portal-post-card--approved' : isCorrection ? ' portal-post-card--correction' : ''}`}
+                  >
                     {/* Accordion header — always visible */}
-                    <div className="portal-post-card-header" onClick={() => togglePost(post.id)} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                      <span className={`portal-post-status-badge ${isApproved ? 'approved' : isCorrection ? 'correction' : 'pending'}`} style={{ marginBottom: '0.35rem' }}>
-                        {isApproved ? '✅ Aprovado' : isCorrection ? '✏️ Correção' : '⏳ Aguardando'}
+                    <div
+                      className="portal-post-card-header"
+                      onClick={() => togglePost(post.id)}
+                      style={{ cursor: 'pointer', userSelect: 'none' }}
+                    >
+                      <span
+                        className={`portal-post-status-badge ${isApproved ? 'approved' : isCorrection ? 'correction' : 'pending'}`}
+                        style={{ marginBottom: '0.35rem' }}
+                      >
+                        {isApproved
+                          ? '✅ Aprovado'
+                          : isCorrection
+                            ? '✏️ Correção'
+                            : '⏳ Aguardando'}
                       </span>
                       <div className="portal-post-card-meta">
-                        {expandedIds.has(post.id)
-                          ? <ChevronDown className="h-4 w-4" style={{ flexShrink: 0 }} />
-                          : <ChevronRight className="h-4 w-4" style={{ flexShrink: 0 }} />
-                        }
-                        <span className="portal-post-tipo">{post.tipo.charAt(0).toUpperCase() + post.tipo.slice(1)}</span>
+                        {expandedIds.has(post.id) ? (
+                          <ChevronDown className="h-4 w-4" style={{ flexShrink: 0 }} />
+                        ) : (
+                          <ChevronRight className="h-4 w-4" style={{ flexShrink: 0 }} />
+                        )}
+                        <span className="portal-post-tipo">
+                          {post.tipo.charAt(0).toUpperCase() + post.tipo.slice(1)}
+                        </span>
                         <span className="portal-post-titulo">{post.titulo}</span>
                       </div>
                     </div>
@@ -446,7 +584,9 @@ export default function PortalPage() {
                         {(data.propertyDefinitions ?? []).length > 0 && (
                           <PortalPropertyTable
                             definitions={data.propertyDefinitions ?? []}
-                            values={(data.propertyValues ?? []).filter((v: any) => v.post_id === post.id)}
+                            values={(data.propertyValues ?? []).filter(
+                              (v: any) => v.post_id === post.id,
+                            )}
                             selectOptions={data.selectOptions ?? []}
                           />
                         )}
@@ -457,21 +597,57 @@ export default function PortalPage() {
 
                         {postThread.length > 0 && (
                           <div className="portal-post-thread">
-                            {postThread.map(a => {
+                            {postThread.map((a) => {
                               const isTeam = a.is_workspace_user;
                               return (
-                                <div key={a.id} style={{
-                                  background: isTeam ? 'var(--primary-color)' : 'var(--card-bg)',
-                                  border: `1px solid ${isTeam ? 'var(--primary-color)' : 'var(--border-color)'}`,
-                                  padding: '0.65rem 0.75rem',
-                                  borderRadius: '8px',
-                                  marginLeft: isTeam ? '2rem' : '0',
-                                  marginRight: isTeam ? '0' : '2rem',
-                                }}>
-                                  <div style={{ fontSize: '0.72rem', fontWeight: 600, color: isTeam ? '#111' : (a.action === 'correcao' ? '#ef4444' : 'var(--primary-color)'), marginBottom: '0.2rem' }}>
-                                    {isTeam ? 'Equipe' : a.action === 'correcao' ? 'Correção solicitada' : 'Aprovado'} &bull; {new Date(a.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                <div
+                                  key={a.id}
+                                  style={{
+                                    background: isTeam ? 'var(--primary-color)' : 'var(--card-bg)',
+                                    border: `1px solid ${isTeam ? 'var(--primary-color)' : 'var(--border-color)'}`,
+                                    padding: '0.65rem 0.75rem',
+                                    borderRadius: '8px',
+                                    marginLeft: isTeam ? '2rem' : '0',
+                                    marginRight: isTeam ? '0' : '2rem',
+                                  }}
+                                >
+                                  <div
+                                    style={{
+                                      fontSize: '0.72rem',
+                                      fontWeight: 600,
+                                      color: isTeam
+                                        ? '#111'
+                                        : a.action === 'correcao'
+                                          ? '#ef4444'
+                                          : 'var(--primary-color)',
+                                      marginBottom: '0.2rem',
+                                    }}
+                                  >
+                                    {isTeam
+                                      ? 'Equipe'
+                                      : a.action === 'correcao'
+                                        ? 'Correção solicitada'
+                                        : 'Aprovado'}{' '}
+                                    &bull;{' '}
+                                    {new Date(a.created_at).toLocaleDateString('pt-BR', {
+                                      day: '2-digit',
+                                      month: 'short',
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                    })}
                                   </div>
-                                  {a.comentario && <p style={{ fontSize: '0.875rem', color: isTeam ? '#111' : 'var(--text-color)', margin: 0, whiteSpace: 'pre-wrap' }}>{a.comentario}</p>}
+                                  {a.comentario && (
+                                    <p
+                                      style={{
+                                        fontSize: '0.875rem',
+                                        color: isTeam ? '#111' : 'var(--text-color)',
+                                        margin: 0,
+                                        whiteSpace: 'pre-wrap',
+                                      }}
+                                    >
+                                      {a.comentario}
+                                    </p>
+                                  )}
                                 </div>
                               );
                             })}
@@ -479,17 +655,28 @@ export default function PortalPage() {
                         )}
 
                         {result && (
-                          <div className={`portal-approval-result ${result.type}`} style={{ marginTop: '0.5rem' }}>
+                          <div
+                            className={`portal-approval-result ${result.type}`}
+                            style={{ marginTop: '0.5rem' }}
+                          >
                             {result.message}
                           </div>
                         )}
 
                         {!isApproved && (
                           <div className="portal-post-actions">
-                            <div className="portal-approval-comment" style={{ marginBottom: '0.5rem' }}>
+                            <div
+                              className="portal-approval-comment"
+                              style={{ marginBottom: '0.5rem' }}
+                            >
                               <textarea
                                 value={postComentarios[post.id] || ''}
-                                onChange={e => setPostComentarios(prev => ({ ...prev, [post.id]: e.target.value }))}
+                                onChange={(e) =>
+                                  setPostComentarios((prev) => ({
+                                    ...prev,
+                                    [post.id]: e.target.value,
+                                  }))
+                                }
                                 placeholder="Comentários ou correções (opcional para aprovação)…"
                                 rows={2}
                                 disabled={postSubmitting === post.id}
@@ -501,15 +688,26 @@ export default function PortalPage() {
                                 onClick={() => handlePostApprovalAction(post.id, 'aprovado')}
                                 disabled={postSubmitting === post.id}
                               >
-                                {postSubmitting === post.id ? <Spinner size="sm" /> : <ThumbsUp className="h-4 w-4" />}
+                                {postSubmitting === post.id ? (
+                                  <Spinner size="sm" />
+                                ) : (
+                                  <ThumbsUp className="h-4 w-4" />
+                                )}
                                 Aprovar
                               </button>
                               <button
                                 className="portal-approval-btn portal-approval-btn--correction"
                                 onClick={() => handlePostApprovalAction(post.id, 'correcao')}
-                                disabled={postSubmitting === post.id || !(postComentarios[post.id] || '').trim()}
+                                disabled={
+                                  postSubmitting === post.id ||
+                                  !(postComentarios[post.id] || '').trim()
+                                }
                               >
-                                {postSubmitting === post.id ? <Spinner size="sm" /> : <Send className="h-4 w-4" />}
+                                {postSubmitting === post.id ? (
+                                  <Spinner size="sm" />
+                                ) : (
+                                  <Send className="h-4 w-4" />
+                                )}
                                 Enviar Correções
                               </button>
                             </div>
@@ -581,7 +779,7 @@ export default function PortalPage() {
               <textarea
                 id="portal-comment"
                 value={comentario}
-                onChange={e => setComentario(e.target.value)}
+                onChange={(e) => setComentario(e.target.value)}
                 placeholder="Descreva aqui as correções necessárias ou deixe um comentário..."
                 rows={4}
                 disabled={submitting}
@@ -610,9 +808,7 @@ export default function PortalPage() {
         )}
 
         {/* Last updated */}
-        <div className="portal-updated">
-          Criado em {formatPortalDate(workflow.created_at)}
-        </div>
+        <div className="portal-updated">Criado em {formatPortalDate(workflow.created_at)}</div>
       </main>
 
       {/* Footer */}

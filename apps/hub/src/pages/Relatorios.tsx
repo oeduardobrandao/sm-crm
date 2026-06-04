@@ -89,9 +89,7 @@ function ReportCard({ report, base }: { report: HubReport; base: string }) {
         </div>
       )}
 
-      {!isReady && (
-        <p className="text-[12px] text-stone-400">Em preparação...</p>
-      )}
+      {!isReady && <p className="text-[12px] text-stone-400">Em preparação...</p>}
     </div>
   );
 }
@@ -128,7 +126,8 @@ export function RelatoriosPage() {
     <div className="max-w-5xl mx-auto hub-fade-up">
       <header className="mb-8">
         <p className="text-[11px] uppercase tracking-[0.14em] text-stone-500 font-medium mb-2">
-          <span className="accent-bar" />Resultados mensais
+          <span className="accent-bar" />
+          Resultados mensais
         </p>
         <h2 className="font-display text-[2rem] sm:text-[2.25rem] leading-[1.05] font-medium tracking-tight text-stone-900">
           Relatórios
@@ -139,7 +138,7 @@ export function RelatoriosPage() {
         <p className="text-sm text-stone-500">Nenhum relatório disponível ainda.</p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {reports.map(report => (
+          {reports.map((report) => (
             <ReportCard key={report.month} report={report} base={base} />
           ))}
         </div>

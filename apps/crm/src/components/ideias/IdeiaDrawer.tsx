@@ -3,7 +3,13 @@ import { ExternalLink, Save, Loader2 } from 'lucide-react';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Sheet,
@@ -55,7 +61,9 @@ export function IdeiaDrawer({ ideia, queryKey, onClose }: IdeiaDrawerProps) {
 
   function formatDate(iso: string) {
     return new Date(iso).toLocaleDateString('pt-BR', {
-      day: '2-digit', month: 'short', year: 'numeric',
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
     });
   }
 
@@ -109,7 +117,12 @@ export function IdeiaDrawer({ ideia, queryKey, onClose }: IdeiaDrawerProps) {
   }
 
   return (
-    <Sheet open onOpenChange={(o) => { if (!o) onClose(); }}>
+    <Sheet
+      open
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+    >
       <SheetContent side="right" className="w-full sm:max-w-lg flex flex-col p-0 gap-0">
         <SheetHeader className="px-6 py-5 border-b border-border space-y-1.5">
           <div className="mb-1.5">
@@ -123,13 +136,17 @@ export function IdeiaDrawer({ ideia, queryKey, onClose }: IdeiaDrawerProps) {
 
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Descrição</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+              Descrição
+            </p>
             <p className="text-sm whitespace-pre-wrap">{ideia.descricao}</p>
           </div>
 
           {ideia.links.length > 0 && (
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Links de referência</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+                Links de referência
+              </p>
               <div className="space-y-1">
                 {ideia.links.map((link, i) => (
                   <a
@@ -148,7 +165,9 @@ export function IdeiaDrawer({ ideia, queryKey, onClose }: IdeiaDrawerProps) {
           )}
 
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">Status</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+              Status
+            </p>
             <Select
               value={ideia.status}
               onValueChange={(v) => handleStatusChange(v as Ideia['status'])}
@@ -158,17 +177,21 @@ export function IdeiaDrawer({ ideia, queryKey, onClose }: IdeiaDrawerProps) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {STATUS_OPTIONS.map(o => (
-                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                {STATUS_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
 
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Reações</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+              Reações
+            </p>
             <div className="flex flex-wrap gap-2">
-              {ALLOWED_EMOJI.map(emoji => {
+              {ALLOWED_EMOJI.map((emoji) => {
                 const entry = reactionMap.get(emoji);
                 const active = entry?.myReaction ?? false;
                 return (
@@ -182,7 +205,11 @@ export function IdeiaDrawer({ ideia, queryKey, onClose }: IdeiaDrawerProps) {
                     title={entry?.names.join(', ') ?? ''}
                     className="rounded-full gap-1.5"
                   >
-                    {reactionLoading === emoji ? <Loader2 size={13} className="animate-spin" /> : emoji}
+                    {reactionLoading === emoji ? (
+                      <Loader2 size={13} className="animate-spin" />
+                    ) : (
+                      emoji
+                    )}
                     {entry && <span className="font-medium text-[12px]">{entry.count}</span>}
                   </Button>
                 );
@@ -202,7 +229,7 @@ export function IdeiaDrawer({ ideia, queryKey, onClose }: IdeiaDrawerProps) {
             </p>
             <Textarea
               value={comentario}
-              onChange={e => setComentario(e.target.value)}
+              onChange={(e) => setComentario(e.target.value)}
               placeholder="Escreva uma resposta para o cliente..."
               className="min-h-[90px] resize-none rounded-[8px]"
             />

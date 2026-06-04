@@ -24,7 +24,7 @@ describe('CalloutExtension', () => {
 
   it('exports all 8 color options', () => {
     expect(CALLOUT_COLORS).toHaveLength(8);
-    const values = CALLOUT_COLORS.map(c => c.value);
+    const values = CALLOUT_COLORS.map((c) => c.value);
     expect(values).toContain('brown');
     expect(values).toContain('blue');
     expect(values).toContain('green');

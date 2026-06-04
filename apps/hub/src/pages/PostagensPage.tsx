@@ -9,7 +9,12 @@ import { TextPostCard } from '../components/TextPostCard';
 import type { HubPost } from '../types';
 
 const VISIBLE_STATUSES = new Set<HubPost['status']>([
-  'enviado_cliente', 'aprovado_cliente', 'correcao_cliente', 'agendado', 'postado', 'falha_publicacao',
+  'enviado_cliente',
+  'aprovado_cliente',
+  'correcao_cliente',
+  'agendado',
+  'postado',
+  'falha_publicacao',
 ]);
 
 const STATUS_COLORS: Record<string, string> = {
@@ -51,7 +56,9 @@ function StatusTag({ status }: { status: string }) {
         padding: '0.2rem 0.5rem',
       }}
     >
-      <span style={{ width: 6, height: 6, borderRadius: '50%', background: color, flexShrink: 0 }} />
+      <span
+        style={{ width: 6, height: 6, borderRadius: '50%', background: color, flexShrink: 0 }}
+      />
       {label}
     </span>
   );
@@ -65,32 +72,36 @@ export function PostagensPage() {
     queryFn: () => fetchPosts(token),
   });
 
-  const allPosts = (data?.posts ?? []).filter(p => VISIBLE_STATUSES.has(p.status));
+  const allPosts = (data?.posts ?? []).filter((p) => VISIBLE_STATUSES.has(p.status));
   const approvals = data?.postApprovals ?? [];
   const instagramProfile = data?.instagramProfile ?? null;
 
-  const groups = useMemo(() => Object.values(
-    allPosts.reduce<Record<number, { titulo: string; posts: HubPost[] }>>((acc, post) => {
-      if (!acc[post.workflow_id]) {
-        acc[post.workflow_id] = { titulo: post.workflow_titulo, posts: [] };
-      }
-      acc[post.workflow_id].posts.push(post);
-      return acc;
-    }, {})
-  ).sort((a, b) => {
-    const aDate = a.posts[0]?.workflow_created_at ?? '';
-    const bDate = b.posts[0]?.workflow_created_at ?? '';
-    return bDate.localeCompare(aDate);
-  }), [allPosts]);
+  const groups = useMemo(
+    () =>
+      Object.values(
+        allPosts.reduce<Record<number, { titulo: string; posts: HubPost[] }>>((acc, post) => {
+          if (!acc[post.workflow_id]) {
+            acc[post.workflow_id] = { titulo: post.workflow_titulo, posts: [] };
+          }
+          acc[post.workflow_id].posts.push(post);
+          return acc;
+        }, {}),
+      ).sort((a, b) => {
+        const aDate = a.posts[0]?.workflow_created_at ?? '';
+        const bDate = b.posts[0]?.workflow_created_at ?? '';
+        return bDate.localeCompare(aDate);
+      }),
+    [allPosts],
+  );
 
   const initializedRef = useRef(false);
   if (!initializedRef.current && groups.length > 0 && collapsed === null) {
     initializedRef.current = true;
-    setCollapsed(new Set(groups.slice(1).map(g => g.titulo)));
+    setCollapsed(new Set(groups.slice(1).map((g) => g.titulo)));
   }
   const effectiveCollapsed = collapsed ?? new Set<string>();
 
-  groups.forEach(g => {
+  groups.forEach((g) => {
     g.posts.sort((a, b) => {
       if (!a.scheduled_at && !b.scheduled_at) return a.ordem - b.ordem;
       if (!a.scheduled_at) return 1;
@@ -100,55 +111,71 @@ export function PostagensPage() {
     });
   });
 
-  if (isLoading) return (
-    <div className="flex justify-center py-20">
-      <div className="animate-spin h-6 w-6 rounded-full border-2 border-stone-300 border-t-stone-900" />
-    </div>
-  );
+  if (isLoading)
+    return (
+      <div className="flex justify-center py-20">
+        <div className="animate-spin h-6 w-6 rounded-full border-2 border-stone-300 border-t-stone-900" />
+      </div>
+    );
 
-  if (isError) return (
-    <div className="max-w-5xl mx-auto py-20 text-center text-sm text-stone-500">
-      Erro ao carregar postagens.
-    </div>
-  );
+  if (isError)
+    return (
+      <div className="max-w-5xl mx-auto py-20 text-center text-sm text-stone-500">
+        Erro ao carregar postagens.
+      </div>
+    );
 
   return (
     <div className="max-w-5xl mx-auto hub-fade-up">
       <header className="mb-8">
         <p className="text-[11px] uppercase tracking-[0.14em] text-stone-500 font-medium mb-2">
-          <span className="accent-bar" />Calendário editorial
+          <span className="accent-bar" />
+          Calendário editorial
         </p>
-        <h2 className="font-display text-[2rem] sm:text-[2.25rem] leading-[1.05] font-medium tracking-tight text-stone-900">Postagens</h2>
+        <h2 className="font-display text-[2rem] sm:text-[2.25rem] leading-[1.05] font-medium tracking-tight text-stone-900">
+          Postagens
+        </h2>
       </header>
 
       {groups.length === 0 ? (
         <p className="text-sm text-stone-500">Nenhuma postagem disponível ainda.</p>
       ) : (
         <div className="space-y-10">
-          {groups.map(group => {
-            const withMedia = group.posts.filter(p => p.media.length > 0 && p.tipo !== 'stories');
-            const stories = group.posts.filter(p => p.media.length > 0 && p.tipo === 'stories');
-            const withoutMedia = group.posts.filter(p => p.media.length === 0);
+          {groups.map((group) => {
+            const withMedia = group.posts.filter((p) => p.media.length > 0 && p.tipo !== 'stories');
+            const stories = group.posts.filter((p) => p.media.length > 0 && p.tipo === 'stories');
+            const withoutMedia = group.posts.filter((p) => p.media.length === 0);
 
             return (
               <section key={group.titulo}>
                 <button
                   type="button"
                   className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mb-4 w-full text-left group"
-                  onClick={() => setCollapsed(prev => {
-                    const next = new Set(prev ?? new Set<string>());
-                    if (next.has(group.titulo)) next.delete(group.titulo);
-                    else next.add(group.titulo);
-                    return next;
-                  })}
+                  onClick={() =>
+                    setCollapsed((prev) => {
+                      const next = new Set(prev ?? new Set<string>());
+                      if (next.has(group.titulo)) next.delete(group.titulo);
+                      else next.add(group.titulo);
+                      return next;
+                    })
+                  }
                 >
                   <span className="h-[1px] w-6 bg-stone-300 hidden sm:block" />
-                  <h3 className="font-display text-[17px] font-semibold tracking-tight text-stone-900">{group.titulo}</h3>
-                  <span className="text-[11px] text-stone-400">{group.posts.length} {group.posts.length === 1 ? 'post' : 'posts'}</span>
+                  <h3 className="font-display text-[17px] font-semibold tracking-tight text-stone-900">
+                    {group.titulo}
+                  </h3>
+                  <span className="text-[11px] text-stone-400">
+                    {group.posts.length} {group.posts.length === 1 ? 'post' : 'posts'}
+                  </span>
                   {effectiveCollapsed.has(group.titulo) && (
-                    <span className="text-[10px] text-stone-300 dark:text-stone-600 hidden sm:inline">clique para expandir</span>
+                    <span className="text-[10px] text-stone-300 dark:text-stone-600 hidden sm:inline">
+                      clique para expandir
+                    </span>
                   )}
-                  <ChevronDown size={16} className={`ml-auto text-stone-400 transition-transform ${effectiveCollapsed.has(group.titulo) ? '-rotate-90' : ''}`} />
+                  <ChevronDown
+                    size={16}
+                    className={`ml-auto text-stone-400 transition-transform ${effectiveCollapsed.has(group.titulo) ? '-rotate-90' : ''}`}
+                  />
                 </button>
 
                 {!effectiveCollapsed.has(group.titulo) && withMedia.length > 0 && (
@@ -174,7 +201,7 @@ export function PostagensPage() {
                 {!effectiveCollapsed.has(group.titulo) && stories.length > 0 && (
                   <div className={withMedia.length > 0 ? 'mt-4' : ''}>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {stories.map(post => (
+                      {stories.map((post) => (
                         <div key={post.id} className="flex flex-col gap-1.5">
                           <StatusTag status={post.status} />
                           <StoryPostCard
@@ -192,17 +219,12 @@ export function PostagensPage() {
                 )}
 
                 {!effectiveCollapsed.has(group.titulo) && withoutMedia.length > 0 && (
-                  <div className={(withMedia.length > 0 || stories.length > 0) ? 'mt-4' : ''}>
+                  <div className={withMedia.length > 0 || stories.length > 0 ? 'mt-4' : ''}>
                     <div className="max-w-[640px] space-y-3">
-                      {withoutMedia.map(post => (
+                      {withoutMedia.map((post) => (
                         <div key={post.id} className="flex flex-col gap-1.5">
                           <StatusTag status={post.status} />
-                          <TextPostCard
-                            post={post}
-                            token={token}
-                            approvals={approvals}
-                            readOnly
-                          />
+                          <TextPostCard post={post} token={token} approvals={approvals} readOnly />
                         </div>
                       ))}
                     </div>

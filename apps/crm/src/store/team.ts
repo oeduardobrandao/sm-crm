@@ -34,13 +34,11 @@ export async function addMembro(m: Omit<Membro, 'id' | 'user_id' | 'conta_id'>):
   return data;
 }
 
-export async function updateMembro(id: number, m: Partial<Omit<Membro, 'id' | 'user_id' | 'conta_id'>>): Promise<Membro> {
-  const { data, error } = await supabase
-    .from('membros')
-    .update(m)
-    .eq('id', id)
-    .select()
-    .single();
+export async function updateMembro(
+  id: number,
+  m: Partial<Omit<Membro, 'id' | 'user_id' | 'conta_id'>>,
+): Promise<Membro> {
+  const { data, error } = await supabase.from('membros').update(m).eq('id', id).select().single();
   if (error) throw error;
   return data;
 }
@@ -52,7 +50,7 @@ export async function removeMembro(id: number): Promise<void> {
 
 export async function setMembroCrmUser(membroId: number, crmUserId: string | null): Promise<void> {
   const { error } = await supabase.rpc('set_membro_crm_user', {
-    p_membro_id:   membroId,
+    p_membro_id: membroId,
     p_crm_user_id: crmUserId,
   });
   if (error) throw error;

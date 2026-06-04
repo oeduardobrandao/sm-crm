@@ -2,12 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
 import { Folder as FolderIcon, FileImage, FileVideo, FileText } from 'lucide-react';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Spinner } from '@/components/ui/spinner';
 import { getFolderInfo } from '@/services/fileService';
 import { formatBytes } from './FileGrid';
@@ -44,9 +39,7 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
       <span className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide flex-shrink-0">
         {label}
       </span>
-      <span className="text-sm text-[var(--text-main)] text-right font-mono">
-        {value}
-      </span>
+      <span className="text-sm text-[var(--text-main)] text-right font-mono">{value}</span>
     </div>
   );
 }
@@ -79,7 +72,10 @@ function FolderInfoContent({ folder }: { folder: Folder }) {
       <div className="flex items-center gap-3 mb-4">
         <FolderIcon className="h-8 w-8 text-[var(--primary-color)] flex-shrink-0" />
         <div className="min-w-0">
-          <h3 className="text-lg font-bold text-[var(--text-main)] truncate" style={{ fontFamily: 'var(--font-heading, "Playfair Display", serif)' }}>
+          <h3
+            className="text-lg font-bold text-[var(--text-main)] truncate"
+            style={{ fontFamily: 'var(--font-heading, "Playfair Display", serif)' }}
+          >
             {folder.name}
           </h3>
           <div className="flex items-center gap-2 mt-0.5">
@@ -89,9 +85,7 @@ function FolderInfoContent({ folder }: { folder: Folder }) {
               </span>
             )}
             {folder.source === 'system' && sourceLabel && (
-              <span className="text-xs text-[var(--text-muted)]">
-                Vinculado a: {sourceLabel}
-              </span>
+              <span className="text-xs text-[var(--text-muted)]">Vinculado a: {sourceLabel}</span>
             )}
           </div>
         </div>
@@ -99,7 +93,9 @@ function FolderInfoContent({ folder }: { folder: Folder }) {
 
       <InfoRow
         label="Criada em"
-        value={format(new Date(folder.created_at), "dd 'de' MMM 'de' yyyy, HH:mm", { locale: ptBR })}
+        value={format(new Date(folder.created_at), "dd 'de' MMM 'de' yyyy, HH:mm", {
+          locale: ptBR,
+        })}
       />
       {info && (
         <>
@@ -118,7 +114,10 @@ function FileInfoContent({ file }: { file: FileRecord }) {
     <div className="space-y-1">
       <div className="flex items-center gap-3 mb-4">
         <FileKindIcon kind={file.kind} className="h-8 w-8 text-[var(--text-muted)] flex-shrink-0" />
-        <h3 className="text-lg font-bold text-[var(--text-main)] truncate" style={{ fontFamily: 'var(--font-heading, "Playfair Display", serif)' }}>
+        <h3
+          className="text-lg font-bold text-[var(--text-main)] truncate"
+          style={{ fontFamily: 'var(--font-heading, "Playfair Display", serif)' }}
+        >
           {file.name}
         </h3>
       </div>
@@ -126,7 +125,7 @@ function FileInfoContent({ file }: { file: FileRecord }) {
       <InfoRow label="Tipo" value={kindLabel(file.kind)} />
       <InfoRow label="MIME" value={file.mime_type} />
       <InfoRow label="Tamanho" value={formatBytes(file.size_bytes)} />
-      {(file.width != null && file.height != null) && (
+      {file.width != null && file.height != null && (
         <InfoRow label="Dimensões" value={`${file.width} × ${file.height}`} />
       )}
       {file.duration_seconds != null && (

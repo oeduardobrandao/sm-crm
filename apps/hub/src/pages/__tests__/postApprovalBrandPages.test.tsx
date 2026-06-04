@@ -57,28 +57,52 @@ vi.mock('../../components/PostCard', async (importOriginal) => {
 });
 
 vi.mock('../../components/InstagramPostCard', () => ({
-  InstagramPostCard: ({ post, onApprovalSubmitted }: { post: { id: number; titulo: string }; onApprovalSubmitted: () => void }) => (
+  InstagramPostCard: ({
+    post,
+    onApprovalSubmitted,
+  }: {
+    post: { id: number; titulo: string };
+    onApprovalSubmitted: () => void;
+  }) => (
     <article data-testid="instagram-post-card" data-post-id={String(post.id)}>
       <h4>{post.titulo}</h4>
-      <button type="button" onClick={onApprovalSubmitted}>Refresh {post.id}</button>
+      <button type="button" onClick={onApprovalSubmitted}>
+        Refresh {post.id}
+      </button>
     </article>
   ),
 }));
 
 vi.mock('../../components/TextPostCard', () => ({
-  TextPostCard: ({ post, onApprovalSubmitted }: { post: { id: number; titulo: string }; onApprovalSubmitted: () => void }) => (
+  TextPostCard: ({
+    post,
+    onApprovalSubmitted,
+  }: {
+    post: { id: number; titulo: string };
+    onApprovalSubmitted: () => void;
+  }) => (
     <article data-testid="text-post-card" data-post-id={String(post.id)}>
       <h4>{post.titulo}</h4>
-      <button type="button" onClick={onApprovalSubmitted}>Refresh {post.id}</button>
+      <button type="button" onClick={onApprovalSubmitted}>
+        Refresh {post.id}
+      </button>
     </article>
   ),
 }));
 
 vi.mock('../../components/StoryPostCard', () => ({
-  StoryPostCard: ({ post, onApprovalSubmitted }: { post: { id: number; titulo: string }; onApprovalSubmitted: () => void }) => (
+  StoryPostCard: ({
+    post,
+    onApprovalSubmitted,
+  }: {
+    post: { id: number; titulo: string };
+    onApprovalSubmitted: () => void;
+  }) => (
     <article data-testid="story-post-card" data-post-id={String(post.id)}>
       <h4>{post.titulo}</h4>
-      <button type="button" onClick={onApprovalSubmitted}>Refresh {post.id}</button>
+      <button type="button" onClick={onApprovalSubmitted}>
+        Refresh {post.id}
+      </button>
     </article>
   ),
 }));
@@ -150,7 +174,14 @@ function makePost(
   overrides: Partial<{
     id: number;
     titulo: string;
-    status: 'rascunho' | 'em_producao' | 'enviado_cliente' | 'aprovado_cliente' | 'correcao_cliente' | 'agendado' | 'publicado';
+    status:
+      | 'rascunho'
+      | 'em_producao'
+      | 'enviado_cliente'
+      | 'aprovado_cliente'
+      | 'correcao_cliente'
+      | 'agendado'
+      | 'publicado';
     scheduled_at: string | null;
     ordem: number;
     workflow_id: number;
@@ -209,7 +240,9 @@ describe('hub approval, posts, and brand pages', () => {
         <AprovacoesPage />,
       );
 
-      expect(await screen.findByText('Tudo em dia. Nenhum post aguardando aprovação.')).toBeInTheDocument();
+      expect(
+        await screen.findByText('Tudo em dia. Nenhum post aguardando aprovação.'),
+      ).toBeInTheDocument();
       expect(screen.queryByTestId('text-post-card')).not.toBeInTheDocument();
       expect(screen.queryByTestId('instagram-post-card')).not.toBeInTheDocument();
     });
@@ -233,9 +266,38 @@ describe('hub approval, posts, and brand pages', () => {
             status: 'agendado',
           }),
         ],
-        postApprovals: [{ id: 1, post_id: 12, action: 'mensagem', comentario: 'Olhar CTA', is_workspace_user: false, created_at: '2026-04-18T10:00:00.000Z' }],
-        propertyValues: [{ post_id: 12, value: 'Instagram', template_property_definitions: { name: 'Canal', type: 'text', config: {}, portal_visible: true, display_order: 1 } }],
-        workflowSelectOptions: [{ workflow_id: 1, property_definition_id: 99, option_id: 'feed', label: 'Feed', color: '#0f766e' }],
+        postApprovals: [
+          {
+            id: 1,
+            post_id: 12,
+            action: 'mensagem',
+            comentario: 'Olhar CTA',
+            is_workspace_user: false,
+            created_at: '2026-04-18T10:00:00.000Z',
+          },
+        ],
+        propertyValues: [
+          {
+            post_id: 12,
+            value: 'Instagram',
+            template_property_definitions: {
+              name: 'Canal',
+              type: 'text',
+              config: {},
+              portal_visible: true,
+              display_order: 1,
+            },
+          },
+        ],
+        workflowSelectOptions: [
+          {
+            workflow_id: 1,
+            property_definition_id: 99,
+            option_id: 'feed',
+            label: 'Feed',
+            color: '#0f766e',
+          },
+        ],
         instagramProfile: null,
       } as never);
 
@@ -250,10 +312,9 @@ describe('hub approval, posts, and brand pages', () => {
       );
 
       expect(await screen.findByText('2 posts aguardando sua aprovação.')).toBeInTheDocument();
-      expect(screen.getAllByRole('heading', { level: 4 }).map((heading) => heading.textContent)).toEqual([
-        'Post mais cedo',
-        'Post mais tarde',
-      ]);
+      expect(
+        screen.getAllByRole('heading', { level: 4 }).map((heading) => heading.textContent),
+      ).toEqual(['Post mais cedo', 'Post mais tarde']);
       expect(screen.queryByText('Post já agendado')).not.toBeInTheDocument();
 
       fireEvent.click(screen.getByRole('button', { name: 'Refresh 12' }));
@@ -375,25 +436,30 @@ describe('hub approval, posts, and brand pages', () => {
       expect(await screen.findByRole('heading', { name: 'Postagens' })).toBeInTheDocument();
 
       const groupHeadings = screen.getAllByRole('heading', { level: 3 });
-      expect(groupHeadings.map((heading) => heading.textContent)).toEqual(['Atendimento', 'Branding']);
+      expect(groupHeadings.map((heading) => heading.textContent)).toEqual([
+        'Atendimento',
+        'Branding',
+      ]);
 
       const atendimentoSection = groupHeadings[0].closest('section');
       const brandingSection = groupHeadings[1].closest('section');
 
       expect(atendimentoSection).not.toBeNull();
       expect(brandingSection).not.toBeNull();
-      expect(within(atendimentoSection as HTMLElement).getAllByRole('heading', { level: 4 }).map((heading) => heading.textContent)).toEqual([
-        'Aprovado hoje',
-      ]);
+      expect(
+        within(atendimentoSection as HTMLElement)
+          .getAllByRole('heading', { level: 4 })
+          .map((heading) => heading.textContent),
+      ).toEqual(['Aprovado hoje']);
 
       // Branding is the second group and is collapsed by default — expand it first
       fireEvent.click(screen.getByRole('button', { name: /Branding/ }));
 
-      expect(within(brandingSection as HTMLElement).getAllByRole('heading', { level: 4 }).map((heading) => heading.textContent)).toEqual([
-        'Mais cedo',
-        'Mais tarde',
-        'Sem data',
-      ]);
+      expect(
+        within(brandingSection as HTMLElement)
+          .getAllByRole('heading', { level: 4 })
+          .map((heading) => heading.textContent),
+      ).toEqual(['Mais cedo', 'Mais tarde', 'Sem data']);
 
       expect(screen.queryByText('Rascunho oculto')).not.toBeInTheDocument();
     });
@@ -421,7 +487,9 @@ describe('hub approval, posts, and brand pages', () => {
         <MarcaPage />,
       );
 
-      expect(await screen.findByText('Nenhum material de marca foi adicionado ainda.')).toBeInTheDocument();
+      expect(
+        await screen.findByText('Nenhum material de marca foi adicionado ainda.'),
+      ).toBeInTheDocument();
     });
 
     it('renders the brand assets, typography, and downloadable files', async () => {
@@ -462,7 +530,10 @@ describe('hub approval, posts, and brand pages', () => {
       );
 
       expect(await screen.findByRole('heading', { name: 'Marca' })).toBeInTheDocument();
-      expect(screen.getByRole('img', { name: 'Logo' })).toHaveAttribute('src', 'https://cdn.mesaas.com/brand/logo.png');
+      expect(screen.getByRole('img', { name: 'Logo' })).toHaveAttribute(
+        'src',
+        'https://cdn.mesaas.com/brand/logo.png',
+      );
       expect(screen.getByText('Cor primária')).toBeInTheDocument();
       expect(screen.getByText('#0f766e')).toBeInTheDocument();
       expect(screen.getByText('Cor secundária')).toBeInTheDocument();
@@ -471,8 +542,14 @@ describe('hub approval, posts, and brand pages', () => {
       expect(screen.getByText('Fraunces')).toBeInTheDocument();
       expect(screen.getByText('Fonte secundária')).toBeInTheDocument();
       expect(screen.getByText('Manrope')).toBeInTheDocument();
-      expect(screen.getByRole('link', { name: /Brandbook\.pdf/i })).toHaveAttribute('href', 'https://cdn.mesaas.com/brand/brandbook.pdf');
-      expect(screen.getByRole('link', { name: /Logo\.zip/i })).toHaveAttribute('href', 'https://cdn.mesaas.com/brand/logo.zip');
+      expect(screen.getByRole('link', { name: /Brandbook\.pdf/i })).toHaveAttribute(
+        'href',
+        'https://cdn.mesaas.com/brand/brandbook.pdf',
+      );
+      expect(screen.getByRole('link', { name: /Logo\.zip/i })).toHaveAttribute(
+        'href',
+        'https://cdn.mesaas.com/brand/logo.zip',
+      );
     });
   });
 });

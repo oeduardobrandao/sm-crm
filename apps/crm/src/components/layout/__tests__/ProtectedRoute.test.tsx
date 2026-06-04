@@ -26,23 +26,29 @@ function renderRoute(pathname: string) {
     <MemoryRouter initialEntries={[pathname]}>
       <Routes>
         <Route path="/login" element={<div>Tela de login</div>} />
-        <Route path="/dashboard" element={(
-          <ProtectedRoute>
-            <div>Área protegida: dashboard</div>
-          </ProtectedRoute>
-        )} />
-        <Route path="/workspace-setup" element={(
-          <ProtectedRoute>
-            <div>Área protegida: setup</div>
-          </ProtectedRoute>
-        )} />
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <div>Área protegida: dashboard</div>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/workspace-setup"
+          element={
+            <ProtectedRoute>
+              <div>Área protegida: setup</div>
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="*"
-          element={(
+          element={
             <ProtectedRoute>
               <div>Área protegida</div>
             </ProtectedRoute>
-          )}
+          }
         />
       </Routes>
     </MemoryRouter>,

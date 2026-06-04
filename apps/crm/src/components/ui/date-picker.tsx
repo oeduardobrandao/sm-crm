@@ -68,13 +68,7 @@ export function DatePicker({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0" align="start">
-        <Calendar
-          mode="single"
-          locale={ptBR}
-          selected={value}
-          onSelect={onChange}
-          initialFocus
-        />
+        <Calendar mode="single" locale={ptBR} selected={value} onSelect={onChange} initialFocus />
       </PopoverContent>
     </Popover>
   );

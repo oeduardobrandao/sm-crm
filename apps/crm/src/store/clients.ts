@@ -55,7 +55,9 @@ export async function getClientes(): Promise<Cliente[]> {
   return data || [];
 }
 
-export async function addCliente(c: Omit<Cliente, 'id' | 'user_id' | 'conta_id'>): Promise<Cliente> {
+export async function addCliente(
+  c: Omit<Cliente, 'id' | 'user_id' | 'conta_id'>,
+): Promise<Cliente> {
   const user_id = await getUserId();
   const conta_id = await getContaId();
   const { data, error } = await supabase
@@ -67,13 +69,11 @@ export async function addCliente(c: Omit<Cliente, 'id' | 'user_id' | 'conta_id'>
   return data;
 }
 
-export async function updateCliente(id: number, c: Partial<Omit<Cliente, 'id' | 'user_id' | 'conta_id'>>): Promise<Cliente> {
-  const { data, error } = await supabase
-    .from('clientes')
-    .update(c)
-    .eq('id', id)
-    .select()
-    .single();
+export async function updateCliente(
+  id: number,
+  c: Partial<Omit<Cliente, 'id' | 'user_id' | 'conta_id'>>,
+): Promise<Cliente> {
+  const { data, error } = await supabase.from('clientes').update(c).eq('id', id).select().single();
   if (error) throw error;
   return data;
 }
@@ -97,7 +97,9 @@ export async function getClienteEnderecos(clienteId: number): Promise<ClienteEnd
   return data || [];
 }
 
-export async function addClienteEndereco(e: Omit<ClienteEndereco, 'id' | 'conta_id' | 'created_at' | 'updated_at'>): Promise<ClienteEndereco> {
+export async function addClienteEndereco(
+  e: Omit<ClienteEndereco, 'id' | 'conta_id' | 'created_at' | 'updated_at'>,
+): Promise<ClienteEndereco> {
   const conta_id = await getContaId();
   const { data, error } = await supabase
     .from('cliente_enderecos')
@@ -108,7 +110,10 @@ export async function addClienteEndereco(e: Omit<ClienteEndereco, 'id' | 'conta_
   return data;
 }
 
-export async function updateClienteEndereco(id: number, e: Partial<Omit<ClienteEndereco, 'id' | 'conta_id' | 'created_at' | 'updated_at'>>): Promise<ClienteEndereco> {
+export async function updateClienteEndereco(
+  id: number,
+  e: Partial<Omit<ClienteEndereco, 'id' | 'conta_id' | 'created_at' | 'updated_at'>>,
+): Promise<ClienteEndereco> {
   const { data, error } = await supabase
     .from('cliente_enderecos')
     .update({ ...e, updated_at: new Date().toISOString() })
@@ -147,7 +152,9 @@ export async function getAllClienteDatas(): Promise<ClienteData[]> {
   return data || [];
 }
 
-export async function addClienteData(d: Omit<ClienteData, 'id' | 'conta_id' | 'created_at'>): Promise<ClienteData> {
+export async function addClienteData(
+  d: Omit<ClienteData, 'id' | 'conta_id' | 'created_at'>,
+): Promise<ClienteData> {
   const conta_id = await getContaId();
   const { data, error } = await supabase
     .from('cliente_datas')
@@ -158,7 +165,10 @@ export async function addClienteData(d: Omit<ClienteData, 'id' | 'conta_id' | 'c
   return data;
 }
 
-export async function updateClienteData(id: number, d: Partial<Omit<ClienteData, 'id' | 'conta_id' | 'created_at'>>): Promise<ClienteData> {
+export async function updateClienteData(
+  id: number,
+  d: Partial<Omit<ClienteData, 'id' | 'conta_id' | 'created_at'>>,
+): Promise<ClienteData> {
   const { data, error } = await supabase
     .from('cliente_datas')
     .update(d)

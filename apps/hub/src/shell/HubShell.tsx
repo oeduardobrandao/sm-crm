@@ -52,7 +52,9 @@ export function HubShell() {
   if (!bootstrap.is_active) {
     return (
       <div className="hub-root min-h-screen flex flex-col items-center justify-center gap-3 px-6 text-center">
-        <p className="font-display text-2xl font-medium text-stone-900">{t('hub.accessDisabled')}</p>
+        <p className="font-display text-2xl font-medium text-stone-900">
+          {t('hub.accessDisabled')}
+        </p>
         <p className="text-sm text-stone-500">{t('hub.contactAgency')}</p>
       </div>
     );

@@ -18,13 +18,7 @@ vi.mock('../../components/PostCalendar', () => ({
   ),
 }));
 
-import {
-  fetchBriefing,
-  fetchPage,
-  fetchPages,
-  fetchPosts,
-  submitBriefingAnswer,
-} from '../../api';
+import { fetchBriefing, fetchPage, fetchPages, fetchPosts, submitBriefingAnswer } from '../../api';
 import { HomePage } from '../HomePage';
 import { PaginasPage } from '../PaginasPage';
 import { PaginaPage } from '../PaginaPage';
@@ -81,12 +75,12 @@ function renderHubPage(
             <Routes>
               <Route
                 path={routePath}
-                element={(
+                element={
                   <>
                     {page}
                     <PathProbe />
                   </>
-                )}
+                }
               />
             </Routes>
           </MemoryRouter>
@@ -96,11 +90,19 @@ function renderHubPage(
   };
 }
 
-function makePost(overrides: Partial<{
-  id: number;
-  titulo: string;
-  status: 'rascunho' | 'enviado_cliente' | 'aprovado_cliente' | 'correcao_cliente' | 'agendado' | 'publicado';
-}> = {}) {
+function makePost(
+  overrides: Partial<{
+    id: number;
+    titulo: string;
+    status:
+      | 'rascunho'
+      | 'enviado_cliente'
+      | 'aprovado_cliente'
+      | 'correcao_cliente'
+      | 'agendado'
+      | 'publicado';
+  }> = {},
+) {
   return {
     id: 1,
     titulo: 'Post padrão',
@@ -142,20 +144,28 @@ describe('hub content pages', () => {
     renderHubPage('/mesaas/hub/token-publico', '/:workspace/hub/:token/*', <HomePage />);
 
     expect(await screen.findByText(/Olá,/)).toBeInTheDocument();
-    expect(await screen.findByText('Post calendar: Post pendente, Post agendado')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Post calendar: Post pendente, Post agendado'),
+    ).toBeInTheDocument();
     expect(screen.getByText('1', { selector: 'span' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Aprovações/ }));
 
     await waitFor(() => {
-      expect(screen.getByTestId('current-path')).toHaveTextContent('/mesaas/hub/token-publico/aprovacoes');
+      expect(screen.getByTestId('current-path')).toHaveTextContent(
+        '/mesaas/hub/token-publico/aprovacoes',
+      );
     });
   });
 
   it('renders the empty pages state when no materials exist yet', async () => {
     mockedFetchPages.mockResolvedValue({ pages: [] });
 
-    renderHubPage('/mesaas/hub/token-publico/paginas', '/:workspace/hub/:token/paginas', <PaginasPage />);
+    renderHubPage(
+      '/mesaas/hub/token-publico/paginas',
+      '/:workspace/hub/:token/paginas',
+      <PaginasPage />,
+    );
 
     expect(await screen.findByText('Nenhuma página foi criada ainda.')).toBeInTheDocument();
   });
@@ -163,11 +173,20 @@ describe('hub content pages', () => {
   it('renders page links with the workspace-scoped URLs', async () => {
     mockedFetchPages.mockResolvedValue({
       pages: [
-        { id: '42', title: 'Guia da Marca', display_order: 1, created_at: '2026-04-18T10:00:00.000Z' },
+        {
+          id: '42',
+          title: 'Guia da Marca',
+          display_order: 1,
+          created_at: '2026-04-18T10:00:00.000Z',
+        },
       ],
     });
 
-    renderHubPage('/mesaas/hub/token-publico/paginas', '/:workspace/hub/:token/paginas', <PaginasPage />);
+    renderHubPage(
+      '/mesaas/hub/token-publico/paginas',
+      '/:workspace/hub/:token/paginas',
+      <PaginasPage />,
+    );
 
     const link = await screen.findByRole('link', { name: 'Guia da Marca' });
     expect(link).toHaveAttribute('href', '/mesaas/hub/token-publico/paginas/42');
@@ -176,7 +195,11 @@ describe('hub content pages', () => {
   it('renders a not-found state when a page payload is missing', async () => {
     mockedFetchPage.mockResolvedValue({ page: null } as never);
 
-    renderHubPage('/mesaas/hub/token-publico/paginas/42', '/:workspace/hub/:token/paginas/:pageId', <PaginaPage />);
+    renderHubPage(
+      '/mesaas/hub/token-publico/paginas/42',
+      '/:workspace/hub/:token/paginas/:pageId',
+      <PaginaPage />,
+    );
 
     expect(await screen.findByText('Página não encontrada.')).toBeInTheDocument();
   });
@@ -198,21 +221,35 @@ describe('hub content pages', () => {
       },
     } as never);
 
-    renderHubPage('/mesaas/hub/token-publico/paginas/42', '/:workspace/hub/:token/paginas/:pageId', <PaginaPage />);
+    renderHubPage(
+      '/mesaas/hub/token-publico/paginas/42',
+      '/:workspace/hub/:token/paginas/:pageId',
+      <PaginaPage />,
+    );
 
     expect(await screen.findByText('Plano Editorial')).toBeInTheDocument();
     expect(screen.getByText('Estratégia')).toBeInTheDocument();
     expect(screen.getByText('Texto base da estratégia.')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Abrir site' })).toHaveAttribute('href', 'https://mesaas.com');
+    expect(screen.getByRole('link', { name: 'Abrir site' })).toHaveAttribute(
+      'href',
+      'https://mesaas.com',
+    );
     expect(screen.getByText('Mensagem-chave')).toBeInTheDocument();
     expect(document.querySelector('img[src="https://cdn.mesaas.com/guia.png"]')).not.toBeNull();
-    expect(screen.getByRole('link', { name: /Voltar/ })).toHaveAttribute('href', '/mesaas/hub/token-publico/paginas');
+    expect(screen.getByRole('link', { name: /Voltar/ })).toHaveAttribute(
+      'href',
+      '/mesaas/hub/token-publico/paginas',
+    );
   });
 
   it('renders the empty briefing state when no questions are available', async () => {
     mockedFetchBriefing.mockResolvedValue({ questions: [] });
 
-    renderHubPage('/mesaas/hub/token-publico/briefing', '/:workspace/hub/:token/briefing', <BriefingPage />);
+    renderHubPage(
+      '/mesaas/hub/token-publico/briefing',
+      '/:workspace/hub/:token/briefing',
+      <BriefingPage />,
+    );
 
     expect(await screen.findByText('Nenhuma pergunta disponível ainda.')).toBeInTheDocument();
   });

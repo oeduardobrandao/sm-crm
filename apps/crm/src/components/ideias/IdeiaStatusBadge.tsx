@@ -16,7 +16,9 @@ const CLASSES: Record<Ideia['status'], string> = {
 
 export function IdeiaStatusBadge({ status }: { status: Ideia['status'] }) {
   return (
-    <span className={`inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full ${CLASSES[status]}`}>
+    <span
+      className={`inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full ${CLASSES[status]}`}
+    >
       {LABELS[status]}
     </span>
   );

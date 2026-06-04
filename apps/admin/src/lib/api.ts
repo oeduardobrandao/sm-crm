@@ -118,10 +118,17 @@ export interface GlobalBanner {
 // ─── Column definitions ─────────────────────────────────────
 
 export const RESOURCE_LIMIT_KEYS = [
-  'max_clients', 'max_team_members', 'max_workflow_templates',
-  'max_active_workflows_per_client', 'max_instagram_accounts', 'max_leads',
-  'max_hub_tokens', 'storage_quota_bytes', 'max_custom_properties_per_template',
-  'max_posts_per_workflow', 'max_workspaces_per_user',
+  'max_clients',
+  'max_team_members',
+  'max_workflow_templates',
+  'max_active_workflows_per_client',
+  'max_instagram_accounts',
+  'max_leads',
+  'max_hub_tokens',
+  'storage_quota_bytes',
+  'max_custom_properties_per_template',
+  'max_posts_per_workflow',
+  'max_workspaces_per_user',
 ] as const;
 
 export const RESOURCE_LIMIT_LABELS: Record<string, string> = {
@@ -139,12 +146,24 @@ export const RESOURCE_LIMIT_LABELS: Record<string, string> = {
 };
 
 export const FEATURE_FLAG_KEYS = [
-  'feature_instagram', 'feature_instagram_ai', 'feature_analytics_reports',
-  'feature_best_times', 'feature_audience_demographics', 'feature_hub_portal',
-  'feature_leads', 'feature_financial', 'feature_contracts', 'feature_ideas',
-  'feature_workflow_gantt', 'feature_workflow_recurrence', 'feature_csv_import',
-  'feature_custom_properties', 'feature_post_scheduling', 'feature_auto_sync_cron',
-  'feature_post_tagging', 'feature_brand_customization',
+  'feature_instagram',
+  'feature_instagram_ai',
+  'feature_analytics_reports',
+  'feature_best_times',
+  'feature_audience_demographics',
+  'feature_hub_portal',
+  'feature_leads',
+  'feature_financial',
+  'feature_contracts',
+  'feature_ideas',
+  'feature_workflow_gantt',
+  'feature_workflow_recurrence',
+  'feature_csv_import',
+  'feature_custom_properties',
+  'feature_post_scheduling',
+  'feature_auto_sync_cron',
+  'feature_post_tagging',
+  'feature_brand_customization',
 ] as const;
 
 export const FEATURE_FLAG_LABELS: Record<string, string> = {
@@ -169,7 +188,8 @@ export const FEATURE_FLAG_LABELS: Record<string, string> = {
 };
 
 export const RATE_LIMIT_KEYS = [
-  'rate_instagram_syncs_per_day', 'rate_ai_analyses_per_month',
+  'rate_instagram_syncs_per_day',
+  'rate_ai_analyses_per_month',
   'rate_report_generations_per_month',
 ] as const;
 
@@ -182,7 +202,9 @@ export const RATE_LIMIT_LABELS: Record<string, string> = {
 // ─── API Call ─────────────────────────────────────────────────
 
 async function adminApi<T>(action: string, params: Record<string, unknown> = {}): Promise<T> {
-  const { data: { session } } = await supabase.auth.getSession();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
   if (!session) throw new Error('Not authenticated');
 
   const res = await fetch(`${SUPABASE_URL}/functions/v1/platform-admin`, {
@@ -208,8 +230,16 @@ export function verifyAdmin() {
   return adminApi<{ is_admin: boolean }>('verify-admin');
 }
 
-export function listWorkspaces(params?: { search?: string; plan_id?: string; offset?: number; limit?: number }) {
-  return adminApi<{ workspaces: WorkspaceSummary[]; total: number }>('list-workspaces', params || {});
+export function listWorkspaces(params?: {
+  search?: string;
+  plan_id?: string;
+  offset?: number;
+  limit?: number;
+}) {
+  return adminApi<{ workspaces: WorkspaceSummary[]; total: number }>(
+    'list-workspaces',
+    params || {},
+  );
 }
 
 export function getWorkspace(workspace_id: string) {
@@ -236,7 +266,12 @@ export function setWorkspacePlan(workspace_id: string, plan_id: string) {
   return adminApi<{ message: string }>('set-workspace-plan', { workspace_id, plan_id });
 }
 
-export function setWorkspaceOverrides(params: { workspace_id: string; resource_overrides?: Record<string, number>; feature_overrides?: Record<string, boolean>; notes?: string }) {
+export function setWorkspaceOverrides(params: {
+  workspace_id: string;
+  resource_overrides?: Record<string, number>;
+  feature_overrides?: Record<string, boolean>;
+  notes?: string;
+}) {
   return adminApi<{ message: string }>('set-workspace-overrides', params);
 }
 

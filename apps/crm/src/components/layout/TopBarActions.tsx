@@ -30,12 +30,7 @@ export default function TopBarActions() {
 
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
-            type="button"
-            className="topbar-action-btn"
-            aria-label="Chat"
-            onClick={openCrisp}
-          >
+          <button type="button" className="topbar-action-btn" aria-label="Chat" onClick={openCrisp}>
             <MessageCircle size={18} />
             {crispUnread && <span className="unread-dot unread-dot--primary" />}
           </button>

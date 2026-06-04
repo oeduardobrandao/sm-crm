@@ -3,24 +3,36 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
-  listPlans, createPlan, updatePlan, deletePlan,
+  listPlans,
+  createPlan,
+  updatePlan,
+  deletePlan,
   type Plan,
-  RESOURCE_LIMIT_KEYS, RESOURCE_LIMIT_LABELS,
-  FEATURE_FLAG_KEYS, FEATURE_FLAG_LABELS,
-  RATE_LIMIT_KEYS, RATE_LIMIT_LABELS,
+  RESOURCE_LIMIT_KEYS,
+  RESOURCE_LIMIT_LABELS,
+  FEATURE_FLAG_KEYS,
+  FEATURE_FLAG_LABELS,
+  RATE_LIMIT_KEYS,
+  RATE_LIMIT_LABELS,
 } from '../lib/api';
 import { getPlanColor } from '../lib/plan-colors';
 
 const DEFAULT_RESOURCES: Record<string, number> = {
-  max_clients: 5, max_team_members: 3, max_instagram_accounts: 1,
-  storage_quota_bytes: 524288000, max_leads: 100, max_hub_tokens: 3,
-  max_workflow_templates: 5, max_active_workflows_per_client: 3,
-  max_custom_properties_per_template: 5, max_posts_per_workflow: 20,
+  max_clients: 5,
+  max_team_members: 3,
+  max_instagram_accounts: 1,
+  storage_quota_bytes: 524288000,
+  max_leads: 100,
+  max_hub_tokens: 3,
+  max_workflow_templates: 5,
+  max_active_workflows_per_client: 3,
+  max_custom_properties_per_template: 5,
+  max_posts_per_workflow: 20,
   max_workspaces_per_user: 1,
 };
 
 const DEFAULT_FEATURES: Record<string, boolean> = Object.fromEntries(
-  FEATURE_FLAG_KEYS.map((k) => [k, false])
+  FEATURE_FLAG_KEYS.map((k) => [k, false]),
 );
 
 const DEFAULT_RATES: Record<string, number> = {
@@ -40,16 +52,30 @@ interface FormState {
 
 function planToForm(plan: Plan): FormState {
   const resources: Record<string, number | null> = {};
-  for (const k of RESOURCE_LIMIT_KEYS) resources[k] = (plan[k] as number | null);
+  for (const k of RESOURCE_LIMIT_KEYS) resources[k] = plan[k] as number | null;
   const features: Record<string, boolean> = {};
   for (const k of FEATURE_FLAG_KEYS) features[k] = (plan[k] as boolean) ?? false;
   const rates: Record<string, number | null> = {};
-  for (const k of RATE_LIMIT_KEYS) rates[k] = (plan[k] as number | null);
-  return { name: plan.name, resources, features, rates, is_default: plan.is_default, is_active: plan.is_active };
+  for (const k of RATE_LIMIT_KEYS) rates[k] = plan[k] as number | null;
+  return {
+    name: plan.name,
+    resources,
+    features,
+    rates,
+    is_default: plan.is_default,
+    is_active: plan.is_active,
+  };
 }
 
 function formToPayload(form: FormState): Record<string, unknown> {
-  return { name: form.name, is_default: form.is_default, is_active: form.is_active, ...form.resources, ...form.features, ...form.rates };
+  return {
+    name: form.name,
+    is_default: form.is_default,
+    is_active: form.is_active,
+    ...form.resources,
+    ...form.features,
+    ...form.rates,
+  };
 }
 
 export default function PlansPage() {
@@ -57,8 +83,12 @@ export default function PlansPage() {
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<FormState>({
-    name: '', resources: { ...DEFAULT_RESOURCES }, features: { ...DEFAULT_FEATURES },
-    rates: { ...DEFAULT_RATES }, is_default: false, is_active: true,
+    name: '',
+    resources: { ...DEFAULT_RESOURCES },
+    features: { ...DEFAULT_FEATURES },
+    rates: { ...DEFAULT_RATES },
+    is_default: false,
+    is_active: true,
   });
 
   const { data, isLoading } = useQuery({
@@ -68,25 +98,44 @@ export default function PlansPage() {
 
   const createMutation = useMutation({
     mutationFn: () => createPlan(formToPayload(form)),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin', 'plans'] }); toast.success('Plan created'); closeForm(); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'plans'] });
+      toast.success('Plan created');
+      closeForm();
+    },
     onError: (err: Error) => toast.error(err.message),
   });
 
   const updateMutation = useMutation({
     mutationFn: () => updatePlan({ plan_id: editingPlan!.id, ...formToPayload(form) }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin', 'plans'] }); toast.success('Plan updated'); closeForm(); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'plans'] });
+      toast.success('Plan updated');
+      closeForm();
+    },
     onError: (err: Error) => toast.error(err.message),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (planId: string) => deletePlan(planId),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin', 'plans'] }); toast.success('Plan deleted'); closeForm(); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'plans'] });
+      toast.success('Plan deleted');
+      closeForm();
+    },
     onError: (err: Error) => toast.error(err.message),
   });
 
   const openCreate = () => {
     setEditingPlan(null);
-    setForm({ name: '', resources: { ...DEFAULT_RESOURCES }, features: { ...DEFAULT_FEATURES }, rates: { ...DEFAULT_RATES }, is_default: false, is_active: true });
+    setForm({
+      name: '',
+      resources: { ...DEFAULT_RESOURCES },
+      features: { ...DEFAULT_FEATURES },
+      rates: { ...DEFAULT_RATES },
+      is_default: false,
+      is_active: true,
+    });
     setShowForm(true);
   };
 
@@ -96,11 +145,15 @@ export default function PlansPage() {
     setShowForm(true);
   };
 
-  const closeForm = () => { setShowForm(false); setEditingPlan(null); };
+  const closeForm = () => {
+    setShowForm(false);
+    setEditingPlan(null);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingPlan) updateMutation.mutate(); else createMutation.mutate();
+    if (editingPlan) updateMutation.mutate();
+    else createMutation.mutate();
   };
 
   return (
@@ -110,7 +163,10 @@ export default function PlansPage() {
           <h1 className="font-['Playfair_Display'] text-2xl font-bold mb-1">Plans</h1>
           <p className="text-sm text-muted-foreground">Manage plan templates</p>
         </div>
-        <button onClick={openCreate} className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary-hover transition-colors">
+        <button
+          onClick={openCreate}
+          className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary-hover transition-colors"
+        >
           <Plus size={16} /> New Plan
         </button>
       </div>
@@ -126,8 +182,14 @@ export default function PlansPage() {
       )}
 
       {showForm && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={closeForm}>
-          <div className="bg-card border border-border rounded-2xl p-5 md:p-8 w-full max-w-2xl max-h-[85vh] overflow-y-auto mx-4 md:mx-0" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
+          onClick={closeForm}
+        >
+          <div
+            className="bg-card border border-border rounded-2xl p-5 md:p-8 w-full max-w-2xl max-h-[85vh] overflow-y-auto mx-4 md:mx-0"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h2 className="font-['Playfair_Display'] text-lg font-bold mb-6">
               {editingPlan ? `Edit: ${editingPlan.name}` : 'New Plan'}
             </h2>
@@ -135,17 +197,34 @@ export default function PlansPage() {
             <form onSubmit={handleSubmit} className="flex flex-col gap-5">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">Name</label>
-                  <input type="text" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required
-                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Mono'] text-foreground focus:outline-none focus:border-primary" />
+                  <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                    Name
+                  </label>
+                  <input
+                    type="text"
+                    value={form.name}
+                    onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                    required
+                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Mono'] text-foreground focus:outline-none focus:border-primary"
+                  />
                 </div>
                 <div className="flex items-end gap-4">
                   <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <input type="checkbox" checked={form.is_default} onChange={(e) => setForm((f) => ({ ...f, is_default: e.target.checked }))} className="rounded" />
+                    <input
+                      type="checkbox"
+                      checked={form.is_default}
+                      onChange={(e) => setForm((f) => ({ ...f, is_default: e.target.checked }))}
+                      className="rounded"
+                    />
                     Default
                   </label>
                   <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <input type="checkbox" checked={form.is_active} onChange={(e) => setForm((f) => ({ ...f, is_active: e.target.checked }))} className="rounded" />
+                    <input
+                      type="checkbox"
+                      checked={form.is_active}
+                      onChange={(e) => setForm((f) => ({ ...f, is_active: e.target.checked }))}
+                      className="rounded"
+                    />
                     Active
                   </label>
                 </div>
@@ -156,18 +235,34 @@ export default function PlansPage() {
                 keys={RESOURCE_LIMIT_KEYS as unknown as string[]}
                 labels={RESOURCE_LIMIT_LABELS}
                 values={form.resources}
-                onChange={(key, val: number | null) => setForm((f) => ({ ...f, resources: { ...f.resources, [key]: val } }))}
+                onChange={(key, val: number | null) =>
+                  setForm((f) => ({ ...f, resources: { ...f.resources, [key]: val } }))
+                }
               />
 
               <div>
-                <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Feature Flags</label>
+                <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                  Feature Flags
+                </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                   {FEATURE_FLAG_KEYS.map((key) => (
-                    <div key={key} className="flex justify-between items-center bg-secondary/50 rounded-lg px-3 py-1.5">
-                      <span className="text-xs text-muted-foreground">{FEATURE_FLAG_LABELS[key]}</span>
-                      <button type="button"
-                        onClick={() => setForm((f) => ({ ...f, features: { ...f.features, [key]: !f.features[key] } }))}
-                        className={`text-xs font-medium ${form.features[key] ? 'text-success' : 'text-destructive'}`}>
+                    <div
+                      key={key}
+                      className="flex justify-between items-center bg-secondary/50 rounded-lg px-3 py-1.5"
+                    >
+                      <span className="text-xs text-muted-foreground">
+                        {FEATURE_FLAG_LABELS[key]}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setForm((f) => ({
+                            ...f,
+                            features: { ...f.features, [key]: !f.features[key] },
+                          }))
+                        }
+                        className={`text-xs font-medium ${form.features[key] ? 'text-success' : 'text-destructive'}`}
+                      >
                         {form.features[key] ? 'ON' : 'OFF'}
                       </button>
                     </div>
@@ -180,21 +275,33 @@ export default function PlansPage() {
                 keys={RATE_LIMIT_KEYS as unknown as string[]}
                 labels={RATE_LIMIT_LABELS}
                 values={form.rates}
-                onChange={(key, val: number | null) => setForm((f) => ({ ...f, rates: { ...f.rates, [key]: val } }))}
+                onChange={(key, val: number | null) =>
+                  setForm((f) => ({ ...f, rates: { ...f.rates, [key]: val } }))
+                }
               />
 
               <div className="flex gap-3 mt-2">
-                <button type="submit" disabled={createMutation.isPending || updateMutation.isPending}
-                  className="flex-1 py-2.5 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary-hover transition-colors disabled:opacity-50">
+                <button
+                  type="submit"
+                  disabled={createMutation.isPending || updateMutation.isPending}
+                  className="flex-1 py-2.5 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary-hover transition-colors disabled:opacity-50"
+                >
                   {editingPlan ? 'Update' : 'Create'}
                 </button>
-                <button type="button" onClick={closeForm}
-                  className="px-4 py-2.5 rounded-lg border border-border text-sm text-muted-foreground hover:border-primary transition-colors">
+                <button
+                  type="button"
+                  onClick={closeForm}
+                  className="px-4 py-2.5 rounded-lg border border-border text-sm text-muted-foreground hover:border-primary transition-colors"
+                >
                   Cancel
                 </button>
                 {editingPlan && editingPlan.workspace_count === 0 && (
-                  <button type="button" onClick={() => deleteMutation.mutate(editingPlan.id)} disabled={deleteMutation.isPending}
-                    className="px-4 py-2.5 rounded-lg border border-destructive/30 text-sm text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50">
+                  <button
+                    type="button"
+                    onClick={() => deleteMutation.mutate(editingPlan.id)}
+                    disabled={deleteMutation.isPending}
+                    className="px-4 py-2.5 rounded-lg border border-destructive/30 text-sm text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
+                  >
                     <Trash2 size={16} />
                   </button>
                 )}
@@ -211,17 +318,29 @@ function PlanCard({ plan, onEdit }: { plan: Plan; onEdit: (p: Plan) => void }) {
   const enabledFeatures = FEATURE_FLAG_KEYS.filter((k) => plan[k]);
 
   return (
-    <div className="bg-card border border-border rounded-2xl p-6 relative border-l-[3px]" style={{ borderLeftColor: getPlanColor(plan.name) }}>
+    <div
+      className="bg-card border border-border rounded-2xl p-6 relative border-l-[3px]"
+      style={{ borderLeftColor: getPlanColor(plan.name) }}
+    >
       <div className="flex justify-between items-center mb-4">
-        <span className="text-lg font-bold" style={{ color: getPlanColor(plan.name) }}>{plan.name}</span>
+        <span className="text-lg font-bold" style={{ color: getPlanColor(plan.name) }}>
+          {plan.name}
+        </span>
         <div className="flex items-center gap-2">
           {plan.is_default && (
-            <span className="text-[0.65rem] font-semibold uppercase px-2 py-0.5 rounded-sm bg-success/15 text-success">DEFAULT</span>
+            <span className="text-[0.65rem] font-semibold uppercase px-2 py-0.5 rounded-sm bg-success/15 text-success">
+              DEFAULT
+            </span>
           )}
           {!plan.is_active && (
-            <span className="text-[0.65rem] font-semibold uppercase px-2 py-0.5 rounded-sm bg-destructive/15 text-destructive">INACTIVE</span>
+            <span className="text-[0.65rem] font-semibold uppercase px-2 py-0.5 rounded-sm bg-destructive/15 text-destructive">
+              INACTIVE
+            </span>
           )}
-          <button onClick={() => onEdit(plan)} className="text-muted-foreground hover:text-primary transition-colors">
+          <button
+            onClick={() => onEdit(plan)}
+            className="text-muted-foreground hover:text-primary transition-colors"
+          >
             <Pencil size={14} />
           </button>
         </div>
@@ -230,26 +349,55 @@ function PlanCard({ plan, onEdit }: { plan: Plan; onEdit: (p: Plan) => void }) {
       {plan.price_brl != null && (
         <p className="text-sm text-muted-foreground mb-3">
           R$ {(plan.price_brl / 100).toFixed(2)}/mo
-          {plan.price_brl_annual != null && <span className="text-dim-foreground"> · R$ {(plan.price_brl_annual / 100).toFixed(2)}/yr</span>}
+          {plan.price_brl_annual != null && (
+            <span className="text-dim-foreground">
+              {' '}
+              · R$ {(plan.price_brl_annual / 100).toFixed(2)}/yr
+            </span>
+          )}
         </p>
       )}
 
-      <p className="text-[0.75rem] text-muted-foreground uppercase tracking-wider mb-2">Key Limits</p>
+      <p className="text-[0.75rem] text-muted-foreground uppercase tracking-wider mb-2">
+        Key Limits
+      </p>
       <div className="flex flex-col gap-0.5 mb-3 text-sm text-muted-foreground">
-        <div>Clients: <span className="text-foreground font-['DM_Mono']">{plan.max_clients ?? '∞'}</span></div>
-        <div>Members: <span className="text-foreground font-['DM_Mono']">{plan.max_team_members ?? '∞'}</span></div>
-        <div>Instagram: <span className="text-foreground font-['DM_Mono']">{plan.max_instagram_accounts ?? '∞'}</span></div>
-        <div>Storage: <span className="text-foreground font-['DM_Mono']">{plan.storage_quota_bytes != null ? `${Math.round(plan.storage_quota_bytes / 1048576)} MB` : '∞'}</span></div>
+        <div>
+          Clients:{' '}
+          <span className="text-foreground font-['DM_Mono']">{plan.max_clients ?? '∞'}</span>
+        </div>
+        <div>
+          Members:{' '}
+          <span className="text-foreground font-['DM_Mono']">{plan.max_team_members ?? '∞'}</span>
+        </div>
+        <div>
+          Instagram:{' '}
+          <span className="text-foreground font-['DM_Mono']">
+            {plan.max_instagram_accounts ?? '∞'}
+          </span>
+        </div>
+        <div>
+          Storage:{' '}
+          <span className="text-foreground font-['DM_Mono']">
+            {plan.storage_quota_bytes != null
+              ? `${Math.round(plan.storage_quota_bytes / 1048576)} MB`
+              : '∞'}
+          </span>
+        </div>
       </div>
 
-      <p className="text-[0.75rem] text-muted-foreground uppercase tracking-wider mb-2">Features ({enabledFeatures.length}/{FEATURE_FLAG_KEYS.length})</p>
+      <p className="text-[0.75rem] text-muted-foreground uppercase tracking-wider mb-2">
+        Features ({enabledFeatures.length}/{FEATURE_FLAG_KEYS.length})
+      </p>
       <div className="flex flex-wrap gap-1 mb-4">
         {enabledFeatures.map((k) => (
           <span key={k} className="text-[0.6rem] px-1.5 py-0.5 rounded bg-success/10 text-success">
             {FEATURE_FLAG_LABELS[k]}
           </span>
         ))}
-        {enabledFeatures.length === 0 && <span className="text-[0.65rem] text-dim-foreground">None</span>}
+        {enabledFeatures.length === 0 && (
+          <span className="text-[0.65rem] text-dim-foreground">None</span>
+        )}
       </div>
 
       <div className="pt-3 border-t border-border text-dim-foreground text-sm">
@@ -259,7 +407,13 @@ function PlanCard({ plan, onEdit }: { plan: Plan; onEdit: (p: Plan) => void }) {
   );
 }
 
-function NumberFieldGroup({ title, keys, labels, values, onChange }: {
+function NumberFieldGroup({
+  title,
+  keys,
+  labels,
+  values,
+  onChange,
+}: {
   title: string;
   keys: string[];
   labels: Record<string, string>;
@@ -268,18 +422,23 @@ function NumberFieldGroup({ title, keys, labels, values, onChange }: {
 }) {
   return (
     <div>
-      <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">{title}</label>
+      <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+        {title}
+      </label>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {keys.map((key) => (
           <div key={key}>
             <label className="block text-xs text-dim-foreground mb-1">{labels[key]}</label>
-            <input type="number" value={values[key] ?? ''}
+            <input
+              type="number"
+              value={values[key] ?? ''}
               placeholder="∞"
               onChange={(e) => {
                 const v = e.target.value;
                 onChange(key, v === '' ? null : parseInt(v, 10));
               }}
-              className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Mono'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary" />
+              className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Mono'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
+            />
           </div>
         ))}
       </div>

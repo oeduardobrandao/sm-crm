@@ -2,10 +2,7 @@ import React from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const {
-  queryState,
-  chartCalls,
-} = vi.hoisted(() => {
+const { queryState, chartCalls } = vi.hoisted(() => {
   const queryState: Record<string, { data?: unknown; isLoading?: boolean; error?: unknown }> = {};
   const chartCalls: Array<unknown[]> = [];
 
@@ -55,7 +52,9 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
 }));
 
 vi.mock('@/components/ui/spinner', () => ({
-  Spinner: ({ size }: { size?: string }) => <div data-testid={`spinner-${size ?? 'md'}`}>Spinner</div>,
+  Spinner: ({ size }: { size?: string }) => (
+    <div data-testid={`spinner-${size ?? 'md'}`}>Spinner</div>
+  ),
 }));
 
 vi.mock('@/components/ui/select', async () => {
@@ -121,7 +120,13 @@ vi.mock('@/components/ui/select', async () => {
 });
 
 import AnalyticsFluxosPage from '../AnalyticsFluxosPage';
-import { getAllEtapasWithWorkflow, getClientes, getMembros, getWorkflowTemplates, getWorkflows } from '../../../store';
+import {
+  getAllEtapasWithWorkflow,
+  getClientes,
+  getMembros,
+  getWorkflowTemplates,
+  getWorkflows,
+} from '../../../store';
 
 const mockedGetAllEtapasWithWorkflow = vi.mocked(getAllEtapasWithWorkflow);
 const mockedGetWorkflows = vi.mocked(getWorkflows);
@@ -193,9 +198,7 @@ function seedFluxosData() {
     ],
   };
   queryState.membros = {
-    data: [
-      { id: 7, nome: 'Ana' },
-    ],
+    data: [{ id: 7, nome: 'Ana' }],
   };
 }
 
@@ -215,7 +218,6 @@ beforeEach(() => {
   mockedGetMembros.mockResolvedValue([]);
 });
 
-
 describe('AnalyticsFluxosPage', () => {
   it('shows the loading spinner while the workflow data is still loading', () => {
     queryState['all-etapas-workflow'] = { isLoading: true };
@@ -234,7 +236,11 @@ describe('AnalyticsFluxosPage', () => {
 
     render(<AnalyticsFluxosPage />);
 
-    expect(screen.getByText('Nenhum dado de fluxo encontrado. Crie fluxos de trabalho para começar a ver analytics.')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Nenhum dado de fluxo encontrado. Crie fluxos de trabalho para começar a ver analytics.',
+      ),
+    ).toBeTruthy();
   });
 
   it('renders the summary metrics and recomputes them when a filter changes', async () => {

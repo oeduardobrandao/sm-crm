@@ -1,15 +1,10 @@
-import React from "react"
-import { HelpCircle } from "lucide-react"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
+import React from 'react';
+import { HelpCircle } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface HelpTooltipProps {
-  children?: React.ReactNode
-  content: React.ReactNode
+  children?: React.ReactNode;
+  content: React.ReactNode;
 }
 
 export function HelpTooltip({ children, content }: HelpTooltipProps) {
@@ -31,5 +26,5 @@ export function HelpTooltip({ children, content }: HelpTooltipProps) {
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
-  )
+  );
 }

@@ -23,8 +23,16 @@ interface InstagramPostCardProps {
 }
 
 export function InstagramPostCard({
-  post, token, approvals, instagramProfile, workspaceName,
-  isSelected, onToggleSelect, onApprovalSubmitted, readOnly, priority,
+  post,
+  token,
+  approvals,
+  instagramProfile,
+  workspaceName,
+  isSelected,
+  onToggleSelect,
+  onApprovalSubmitted,
+  readOnly,
+  priority,
   autoPublishOnApproval = false,
 }: InstagramPostCardProps) {
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -40,7 +48,16 @@ export function InstagramPostCard({
   const media = post.media ?? [];
   const isCarousel = media.length > 1;
 
-  const { isEditable: canEdit, hasPendingSuggestion, wasRejected, saveSuggestion, saveState, approvalBlocked, draftConteudo, draftIgCaption } = useEditSuggestion({
+  const {
+    isEditable: canEdit,
+    hasPendingSuggestion,
+    wasRejected,
+    saveSuggestion,
+    saveState,
+    approvalBlocked,
+    draftConteudo,
+    draftIgCaption,
+  } = useEditSuggestion({
     token,
     post,
     onSaved: () => onApprovalSubmitted?.(),
@@ -68,7 +85,10 @@ export function InstagramPostCard({
         const rawText = post.conteudo_plain || '';
         const legendaIdx = rawText.toUpperCase().indexOf('LEGENDA');
         return legendaIdx !== -1
-          ? rawText.slice(legendaIdx + 'LEGENDA'.length).replace(/^[:\s\n]+/, '').trim()
+          ? rawText
+              .slice(legendaIdx + 'LEGENDA'.length)
+              .replace(/^[:\s\n]+/, '')
+              .trim()
           : rawText;
       })();
 
@@ -77,9 +97,12 @@ export function InstagramPostCard({
     setResult(null);
     try {
       const res = await submitApproval(token, post.id, action, comentario || undefined);
-      const message = action === 'aprovado'
-        ? (res.scheduled ? 'Post aprovado e agendado para publicação!' : 'Post aprovado!')
-        : 'Correção enviada!';
+      const message =
+        action === 'aprovado'
+          ? res.scheduled
+            ? 'Post aprovado e agendado para publicação!'
+            : 'Post aprovado!'
+          : 'Correção enviada!';
       setResult({ type: 'success', message });
       onApprovalSubmitted?.();
     } catch (e) {
@@ -89,15 +112,22 @@ export function InstagramPostCard({
     }
   }
 
-  function prevSlide() { setCurrentSlide(i => Math.max(0, i - 1)); }
-  function nextSlide() { setCurrentSlide(i => Math.min(media.length - 1, i + 1)); }
+  function prevSlide() {
+    setCurrentSlide((i) => Math.max(0, i - 1));
+  }
+  function nextSlide() {
+    setCurrentSlide((i) => Math.min(media.length - 1, i + 1));
+  }
 
   const currentMedia = media[currentSlide];
 
   return (
     <div
       className={`relative flex flex-col h-full bg-white dark:bg-[#1a1a1a] rounded-xl overflow-hidden transition-all ${isSelected ? 'border-[1.5px] border-[#0095f6] shadow-[0_0_0_2px_rgba(0,149,246,0.2)]' : 'shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]'}`}
-      style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' }}
+      style={{
+        fontFamily:
+          '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+      }}
     >
       {/* Selection checkbox */}
       {onToggleSelect && (
@@ -106,10 +136,22 @@ export function InstagramPostCard({
             type="button"
             role="checkbox"
             aria-checked={isSelected}
-            onClick={(e) => { e.stopPropagation(); onToggleSelect(post.id); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleSelect(post.id);
+            }}
             className={`w-5 h-5 rounded-full flex items-center justify-center cursor-pointer shadow-md ${isSelected ? 'bg-[#0095f6]' : 'bg-black/30 dark:bg-white/20 border-2 border-white dark:border-white/60'}`}
           >
-            <svg width="10" height="10" fill="none" stroke="#fff" strokeWidth="2.5" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+            <svg
+              width="10"
+              height="10"
+              fill="none"
+              stroke="#fff"
+              strokeWidth="2.5"
+              viewBox="0 0 24 24"
+            >
+              <path d="M5 13l4 4L19 7" />
+            </svg>
           </button>
         </div>
       )}
@@ -123,7 +165,9 @@ export function InstagramPostCard({
             {displayName.charAt(0).toUpperCase()}
           </div>
         )}
-        <span className="text-[11px] font-semibold text-[#262626] dark:text-[#f5f5f5] truncate">{displayName}</span>
+        <span className="text-[11px] font-semibold text-[#262626] dark:text-[#f5f5f5] truncate">
+          {displayName}
+        </span>
       </div>
 
       {/* Image area */}
@@ -134,7 +178,11 @@ export function InstagramPostCard({
         onTouchEnd={isCarousel ? onTouchEnd : undefined}
       >
         {currentMedia && (
-          <button type="button" onClick={() => setLightboxIdx(currentSlide)} className="w-full h-full">
+          <button
+            type="button"
+            onClick={() => setLightboxIdx(currentSlide)}
+            className="w-full h-full"
+          >
             {currentMedia.kind === 'image' ? (
               <OptimizedImage
                 src={currentMedia.url}
@@ -147,7 +195,11 @@ export function InstagramPostCard({
                 className="w-full h-full object-cover"
               />
             ) : (
-              <img src={currentMedia.thumbnail_url ?? ''} alt="" className="w-full h-full object-cover" />
+              <img
+                src={currentMedia.thumbnail_url ?? ''}
+                alt=""
+                className="w-full h-full object-cover"
+              />
             )}
           </button>
         )}
@@ -155,39 +207,111 @@ export function InstagramPostCard({
         {currentMedia?.kind === 'video' && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div className="w-12 h-12 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+                <path d="M8 5v14l11-7z" />
+              </svg>
             </div>
           </div>
         )}
 
         {isCarousel && currentSlide > 0 && (
-          <button onClick={prevSlide} className="absolute left-1.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/80 dark:bg-black/60 flex items-center justify-center shadow-sm text-[#262626] dark:text-white opacity-0 group-hover/carousel:opacity-100 transition-opacity">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M15 18l-6-6 6-6"/></svg>
+          <button
+            onClick={prevSlide}
+            className="absolute left-1.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/80 dark:bg-black/60 flex items-center justify-center shadow-sm text-[#262626] dark:text-white opacity-0 group-hover/carousel:opacity-100 transition-opacity"
+          >
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+            >
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
           </button>
         )}
         {isCarousel && currentSlide < media.length - 1 && (
-          <button onClick={nextSlide} className="absolute right-1.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/80 dark:bg-black/60 flex items-center justify-center shadow-sm text-[#262626] dark:text-white opacity-0 group-hover/carousel:opacity-100 transition-opacity">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M9 18l6-6-6-6"/></svg>
+          <button
+            onClick={nextSlide}
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/80 dark:bg-black/60 flex items-center justify-center shadow-sm text-[#262626] dark:text-white opacity-0 group-hover/carousel:opacity-100 transition-opacity"
+          >
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+            >
+              <path d="M9 18l6-6-6-6" />
+            </svg>
           </button>
         )}
       </div>
 
       {/* Carousel dots (fixed height so feed and carousel cards match) */}
       <div className="flex justify-center gap-0.5 py-1.5 min-h-[18px]">
-        {isCarousel && media.map((_, i) => (
-          <div key={i} data-carousel-dot className={`w-1 h-1 rounded-full ${i === currentSlide ? 'bg-[#0095f6]' : 'bg-[#c7c7c7] dark:bg-[#555]'}`} />
-        ))}
+        {isCarousel &&
+          media.map((_, i) => (
+            <div
+              key={i}
+              data-carousel-dot
+              className={`w-1 h-1 rounded-full ${i === currentSlide ? 'bg-[#0095f6]' : 'bg-[#c7c7c7] dark:bg-[#555]'}`}
+            />
+          ))}
       </div>
 
       {/* Action icons */}
       <div className={`px-2.5 ${isCarousel ? 'pt-0' : 'pt-1.5'} pb-0.5`}>
         <div className="flex items-center gap-2.5 text-[#262626] dark:text-[#f5f5f5]">
-          <button type="button" onClick={() => setLiked(l => !l)} className="transition-transform active:scale-125">
-            <svg width="18" height="18" fill={liked ? '#ed4956' : 'none'} stroke={liked ? '#ed4956' : 'currentColor'} strokeWidth="1.8" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+          <button
+            type="button"
+            onClick={() => setLiked((l) => !l)}
+            className="transition-transform active:scale-125"
+          >
+            <svg
+              width="18"
+              height="18"
+              fill={liked ? '#ed4956' : 'none'}
+              stroke={liked ? '#ed4956' : 'currentColor'}
+              strokeWidth="1.8"
+              viewBox="0 0 24 24"
+            >
+              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+            </svg>
           </button>
-          <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
-          <svg className="ml-auto" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+          <svg
+            width="18"
+            height="18"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            viewBox="0 0 24 24"
+          >
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+          </svg>
+          <svg
+            width="18"
+            height="18"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            viewBox="0 0 24 24"
+          >
+            <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
+          </svg>
+          <svg
+            className="ml-auto"
+            width="18"
+            height="18"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            viewBox="0 0 24 24"
+          >
+            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+          </svg>
         </div>
       </div>
 
@@ -195,19 +319,25 @@ export function InstagramPostCard({
       <div className="flex-1 flex flex-col px-2.5 py-1">
         {isEditable ? (
           <div className="flex-1">
-            <p className={`text-[10px] mb-0.5 ${wasRejected ? 'text-amber-600' : 'text-stone-400'}`}>
-              {wasRejected ? '⚠️ Sugestão rejeitada — edite novamente' : '✏️ Edite a legenda abaixo'}
+            <p
+              className={`text-[10px] mb-0.5 ${wasRejected ? 'text-amber-600' : 'text-stone-400'}`}
+            >
+              {wasRejected
+                ? '⚠️ Sugestão rejeitada — edite novamente'
+                : '✏️ Edite a legenda abaixo'}
             </p>
             <textarea
               defaultValue={caption}
-              onChange={e => {
+              onChange={(e) => {
                 saveSuggestion(draftConteudo, post.conteudo_plain, e.target.value);
               }}
               className="w-full text-[11px] text-[#262626] dark:text-[#f5f5f5] leading-[1.4] border border-dashed border-stone-300 dark:border-stone-600 rounded px-2 py-1.5 resize-none min-h-[48px] max-h-[96px] bg-transparent focus:outline-none focus:border-stone-400 focus:border-solid transition-colors"
             />
             {saveState !== 'idle' && (
               <div className="flex items-center gap-1 mt-0.5">
-                {saveState === 'saving' && <span className="text-[10px] text-stone-400">Salvando...</span>}
+                {saveState === 'saving' && (
+                  <span className="text-[10px] text-stone-400">Salvando...</span>
+                )}
                 {saveState === 'saved' && (
                   <>
                     <span className="w-1 h-1 rounded-full bg-emerald-500" />
@@ -218,32 +348,52 @@ export function InstagramPostCard({
             )}
           </div>
         ) : (
-          <div className="flex-1 max-h-[72px] overflow-y-auto overscroll-contain" style={{ scrollbarWidth: 'thin' }}>
+          <div
+            className="flex-1 max-h-[72px] overflow-y-auto overscroll-contain"
+            style={{ scrollbarWidth: 'thin' }}
+          >
             <p className="text-[11px] text-[#262626] dark:text-[#f5f5f5] leading-[1.4]">
-              <span className="font-semibold">{displayName}</span>{' '}
-              {caption}
+              <span className="font-semibold">{displayName}</span> {caption}
             </p>
           </div>
         )}
-        <p className="text-[10px] text-[#737373] dark:text-[#a8a8a8] mt-1">Agendado: {formatDate(post.scheduled_at)}</p>
+        <p className="text-[10px] text-[#737373] dark:text-[#a8a8a8] mt-1">
+          Agendado: {formatDate(post.scheduled_at)}
+        </p>
       </div>
 
       {/* Agendado banner */}
       {post.status === 'agendado' && post.scheduled_at && (
-        <div style={{
-          padding: '0.75rem 1rem',
-          borderTop: '1px solid var(--border-color)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.5rem',
-          background: 'rgba(62, 207, 142, 0.03)',
-        }}>
-          <div style={{ width: 8, height: 8, background: '#3ecf8e', borderRadius: '50%', flexShrink: 0 }} />
+        <div
+          style={{
+            padding: '0.75rem 1rem',
+            borderTop: '1px solid var(--border-color)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            background: 'rgba(62, 207, 142, 0.03)',
+          }}
+        >
+          <div
+            style={{
+              width: 8,
+              height: 8,
+              background: '#3ecf8e',
+              borderRadius: '50%',
+              flexShrink: 0,
+            }}
+          />
           <div>
-            <div style={{ color: '#3ecf8e', fontSize: '0.8rem', fontWeight: 600 }}>Agendado para publicação</div>
+            <div style={{ color: '#3ecf8e', fontSize: '0.8rem', fontWeight: 600 }}>
+              Agendado para publicação
+            </div>
             <div style={{ color: 'var(--text-light)', fontSize: '0.75rem' }}>
               {new Date(post.scheduled_at).toLocaleDateString('pt-BR', {
-                day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
               })}
             </div>
           </div>
@@ -252,14 +402,16 @@ export function InstagramPostCard({
 
       {/* Postado banner */}
       {post.status === 'postado' && (
-        <div style={{
-          padding: '0.75rem 1rem',
-          borderTop: '1px solid var(--border-color)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          background: 'rgba(234, 179, 8, 0.03)',
-        }}>
+        <div
+          style={{
+            padding: '0.75rem 1rem',
+            borderTop: '1px solid var(--border-color)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: 'rgba(234, 179, 8, 0.03)',
+          }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <span style={{ color: '#eab308', fontSize: '0.9rem' }}>✓</span>
             <div>
@@ -267,15 +419,31 @@ export function InstagramPostCard({
               {post.published_at && (
                 <div style={{ color: 'var(--text-light)', fontSize: '0.75rem' }}>
                   {new Date(post.published_at).toLocaleDateString('pt-BR', {
-                    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+                    day: '2-digit',
+                    month: 'short',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
                   })}
                 </div>
               )}
             </div>
           </div>
           {post.instagram_permalink && (
-            <a href={post.instagram_permalink} target="_blank" rel="noopener noreferrer"
-              style={{ color: '#E1306C', fontSize: '0.75rem', fontWeight: 500, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+            <a
+              href={post.instagram_permalink}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                color: '#E1306C',
+                fontSize: '0.75rem',
+                fontWeight: 500,
+                textDecoration: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.3rem',
+              }}
+            >
               Ver no Instagram <span style={{ fontSize: '0.7rem' }}>↗</span>
             </a>
           )}
@@ -293,7 +461,7 @@ export function InstagramPostCard({
             <>
               <textarea
                 value={comentario}
-                onChange={e => setComentario(e.target.value)}
+                onChange={(e) => setComentario(e.target.value)}
                 placeholder="Comentário (necessário para correção)…"
                 className="w-full rounded border border-stone-200 dark:border-[#333] px-2.5 py-1.5 text-[11px] resize-none min-h-[48px] bg-white dark:bg-[#0a0a0a] text-stone-900 dark:text-[#f5f5f5] placeholder:text-stone-400 dark:placeholder:text-[#666] focus:outline-none focus:border-stone-300 dark:focus:border-[#555] transition-all"
               />
@@ -308,7 +476,9 @@ export function InstagramPostCard({
                 <button
                   onClick={() => handleAction('correcao')}
                   disabled={submitting || approvalBlocked || !comentario.trim()}
-                  title={!comentario.trim() ? 'Deixe um comentário para solicitar correção' : undefined}
+                  title={
+                    !comentario.trim() ? 'Deixe um comentário para solicitar correção' : undefined
+                  }
                   className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-[4px] border border-stone-200 dark:border-stone-700 bg-white dark:bg-transparent text-stone-700 dark:text-stone-300 text-[11px] font-medium hover:bg-stone-50 dark:hover:bg-stone-800 disabled:opacity-50 transition-colors"
                 >
                   <AlertCircle size={12} /> Correção
@@ -317,26 +487,52 @@ export function InstagramPostCard({
             </>
           )}
           {autoPublishOnApproval && isPending && (
-            <div style={{
-              marginTop: '0.75rem',
-              padding: '0.6rem',
-              background: post.scheduled_at ? 'rgba(234, 179, 8, 0.06)' : 'rgba(62, 207, 142, 0.06)',
-              border: `1px solid ${post.scheduled_at ? 'rgba(234, 179, 8, 0.19)' : 'rgba(62, 207, 142, 0.19)'}`,
-              borderRadius: 6,
-              display: 'flex',
-              alignItems: 'flex-start',
-              gap: '0.4rem',
-            }}>
-              <span style={{ color: post.scheduled_at ? '#eab308' : '#3ecf8e', fontSize: '0.8rem', flexShrink: 0 }}>⚡</span>
-              <div style={{ color: post.scheduled_at ? '#eab308' : '#3ecf8e', fontSize: '0.7rem', lineHeight: 1.4 }}>
-                {post.scheduled_at
-                  ? <>Ao aprovar, este post será publicado automaticamente no Instagram em{' '}
-                      <strong>
-                        {new Date(post.scheduled_at).toLocaleDateString('pt-BR', {
-                          day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
-                        })}
-                      </strong>.</>
-                  : 'Ao aprovar, este post será agendado para publicação automática no Instagram.'}
+            <div
+              style={{
+                marginTop: '0.75rem',
+                padding: '0.6rem',
+                background: post.scheduled_at
+                  ? 'rgba(234, 179, 8, 0.06)'
+                  : 'rgba(62, 207, 142, 0.06)',
+                border: `1px solid ${post.scheduled_at ? 'rgba(234, 179, 8, 0.19)' : 'rgba(62, 207, 142, 0.19)'}`,
+                borderRadius: 6,
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '0.4rem',
+              }}
+            >
+              <span
+                style={{
+                  color: post.scheduled_at ? '#eab308' : '#3ecf8e',
+                  fontSize: '0.8rem',
+                  flexShrink: 0,
+                }}
+              >
+                ⚡
+              </span>
+              <div
+                style={{
+                  color: post.scheduled_at ? '#eab308' : '#3ecf8e',
+                  fontSize: '0.7rem',
+                  lineHeight: 1.4,
+                }}
+              >
+                {post.scheduled_at ? (
+                  <>
+                    Ao aprovar, este post será publicado automaticamente no Instagram em{' '}
+                    <strong>
+                      {new Date(post.scheduled_at).toLocaleDateString('pt-BR', {
+                        day: '2-digit',
+                        month: 'short',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </strong>
+                    .
+                  </>
+                ) : (
+                  'Ao aprovar, este post será agendado para publicação automática no Instagram.'
+                )}
               </div>
             </div>
           )}
@@ -344,7 +540,9 @@ export function InstagramPostCard({
       )}
 
       {result && (
-        <div className={`mx-2.5 mb-2 rounded-lg px-3 py-2 text-[11px] font-medium ${result.type === 'success' ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300' : 'bg-rose-50 dark:bg-rose-950/50 text-rose-800 dark:text-rose-300'}`}>
+        <div
+          className={`mx-2.5 mb-2 rounded-lg px-3 py-2 text-[11px] font-medium ${result.type === 'success' ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300' : 'bg-rose-50 dark:bg-rose-950/50 text-rose-800 dark:text-rose-300'}`}
+        >
           {result.message}
         </div>
       )}

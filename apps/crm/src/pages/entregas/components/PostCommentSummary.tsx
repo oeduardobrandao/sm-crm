@@ -18,7 +18,11 @@ interface PostCommentSummaryProps {
   readOnly?: boolean;
 }
 
-function resolveAuthorName(userId: string, membros: Membro[], workspaceUsers: WorkspaceUser[]): string {
+function resolveAuthorName(
+  userId: string,
+  membros: Membro[],
+  workspaceUsers: WorkspaceUser[],
+): string {
   const wsUser = workspaceUsers.find((u) => u.id === userId);
   if (wsUser) return wsUser.nome;
   return membros.find((m) => m.user_id === userId)?.nome ?? 'Membro';
@@ -38,16 +42,11 @@ export default function PostCommentSummary({
 
   if (threads.length === 0) return null;
 
-  const visibleThreads = showResolved
-    ? [...activeThreads, ...resolvedThreads]
-    : activeThreads;
+  const visibleThreads = showResolved ? [...activeThreads, ...resolvedThreads] : activeThreads;
 
   return (
     <div className="comment-summary">
-      <div
-        className="comment-summary-header"
-        onClick={() => setExpanded((prev) => !prev)}
-      >
+      <div className="comment-summary-header" onClick={() => setExpanded((prev) => !prev)}>
         {expanded ? (
           <ChevronDown className="h-3.5 w-3.5" />
         ) : (
@@ -85,21 +84,15 @@ export default function PostCommentSummary({
               >
                 <div
                   className={`comment-summary-dot ${
-                    isResolved
-                      ? 'comment-summary-dot--resolved'
-                      : 'comment-summary-dot--active'
+                    isResolved ? 'comment-summary-dot--resolved' : 'comment-summary-dot--active'
                   }`}
                 />
                 <div className="comment-summary-content">
                   {thread.quoted_text && (
-                    <span className="comment-summary-quote">
-                      {thread.quoted_text}
-                    </span>
+                    <span className="comment-summary-quote">{thread.quoted_text}</span>
                   )}
                   {firstComment && (
-                    <span className="comment-summary-preview">
-                      {firstComment.content}
-                    </span>
+                    <span className="comment-summary-preview">{firstComment.content}</span>
                   )}
                   <div className="comment-summary-meta">
                     <span className="comment-summary-author">

@@ -4,17 +4,55 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Plus, Edit2, Trash2, Check, Upload, Info, HelpCircle, Search, SlidersHorizontal, MoreVertical } from 'lucide-react';
+import {
+  Plus,
+  Edit2,
+  Trash2,
+  Check,
+  Upload,
+  Info,
+  HelpCircle,
+  Search,
+  SlidersHorizontal,
+  MoreVertical,
+} from 'lucide-react';
 import { openCSVSelector } from '../../lib/csv';
 import { Button } from '@/components/ui/button';
 import { HelpTooltip } from '@/components/help/HelpTooltip';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,15 +65,36 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { MonthPicker } from '@/components/ui/month-picker';
 import { DatePicker } from '@/components/ui/date-picker';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import {
-  getClientes, getMembros, getTransacoes, projetarAgendamentos,
-  addTransacao, updateTransacao, removeTransacao,
-  formatBRL, formatDate,
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import {
+  getClientes,
+  getMembros,
+  getTransacoes,
+  projetarAgendamentos,
+  addTransacao,
+  updateTransacao,
+  removeTransacao,
+  formatBRL,
+  formatDate,
   type Transacao,
 } from '../../store';
 
-const CATEGORIAS = ['Mensalidade', 'Produção', 'Tráfego', 'Salário', 'Imposto', 'Ferramenta', 'Outro'];
+const CATEGORIAS = [
+  'Mensalidade',
+  'Produção',
+  'Tráfego',
+  'Salário',
+  'Imposto',
+  'Ferramenta',
+  'Outro',
+];
 type FilterType = 'todas' | 'entradas' | 'saidas';
 
 const transacaoSchema = z.object({
@@ -86,22 +145,42 @@ export default function FinanceiroPage() {
 
   const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: getClientes });
   const { data: membros = [] } = useQuery({ queryKey: ['membros'], queryFn: getMembros });
-  const { data: transacoesFisicas = [], isLoading } = useQuery({ queryKey: ['transacoes'], queryFn: getTransacoes });
+  const { data: transacoesFisicas = [], isLoading } = useQuery({
+    queryKey: ['transacoes'],
+    queryFn: getTransacoes,
+  });
 
   const projected = projetarAgendamentos(transacoesFisicas, clientes, membros);
-  const allTransacoes = projected.filter(t => !monthFilter || t.data.startsWith(monthFilter));
+  const allTransacoes = projected.filter((t) => !monthFilter || t.data.startsWith(monthFilter));
 
-  const recebido = allTransacoes.filter(t => t.tipo === 'entrada' && t.status === 'pago').reduce((s, t) => s + t.valor, 0);
-  const aReceber = allTransacoes.filter(t => t.tipo === 'entrada' && t.status === 'agendado').reduce((s, t) => s + t.valor, 0);
-  const aPagar = allTransacoes.filter(t => t.tipo === 'saida' && t.status === 'agendado').reduce((s, t) => s + t.valor, 0);
-  const saldoAtual = recebido - allTransacoes.filter(t => t.tipo === 'saida' && t.status === 'pago').reduce((s, t) => s + t.valor, 0);
+  const recebido = allTransacoes
+    .filter((t) => t.tipo === 'entrada' && t.status === 'pago')
+    .reduce((s, t) => s + t.valor, 0);
+  const aReceber = allTransacoes
+    .filter((t) => t.tipo === 'entrada' && t.status === 'agendado')
+    .reduce((s, t) => s + t.valor, 0);
+  const aPagar = allTransacoes
+    .filter((t) => t.tipo === 'saida' && t.status === 'agendado')
+    .reduce((s, t) => s + t.valor, 0);
+  const saldoAtual =
+    recebido -
+    allTransacoes
+      .filter((t) => t.tipo === 'saida' && t.status === 'pago')
+      .reduce((s, t) => s + t.valor, 0);
   const saldoProjetado = saldoAtual + aReceber - aPagar;
 
-  const filtered = allTransacoes.filter(t => {
-    if (filter === 'entradas') return t.tipo === 'entrada';
-    if (filter === 'saidas') return t.tipo === 'saida';
-    return true;
-  }).filter(t => !search || t.descricao.toLowerCase().includes(search.toLowerCase()) || t.categoria?.toLowerCase().includes(search.toLowerCase()));
+  const filtered = allTransacoes
+    .filter((t) => {
+      if (filter === 'entradas') return t.tipo === 'entrada';
+      if (filter === 'saidas') return t.tipo === 'saida';
+      return true;
+    })
+    .filter(
+      (t) =>
+        !search ||
+        t.descricao.toLowerCase().includes(search.toLowerCase()) ||
+        t.categoria?.toLowerCase().includes(search.toLowerCase()),
+    );
 
   const openAdd = (tipo: 'entrada' | 'saida') => {
     setEditing(null);
@@ -197,9 +276,13 @@ export default function FinanceiroPage() {
               status: 'pago',
             });
             count++;
-          } catch { /* skip row */ }
+          } catch {
+            /* skip row */
+          }
         }
-        toast.success(`${count} transação${count !== 1 ? 'ões' : ''} importada${count !== 1 ? 's' : ''} com sucesso!`);
+        toast.success(
+          `${count} transação${count !== 1 ? 'ões' : ''} importada${count !== 1 ? 's' : ''} com sucesso!`,
+        );
         qc.invalidateQueries({ queryKey: ['transacoes'] });
       },
       (err) => toast.error(err.message),
@@ -209,19 +292,47 @@ export default function FinanceiroPage() {
   return (
     <div className="page-content">
       <div className="header">
-        <div className="header-title" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <div
+          className="header-title"
+          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+        >
           <h1>Financeiro</h1>
-          <span data-tooltip="Visão das finanças, receitas projetadas e despesas." data-tooltip-dir="right" style={{ display: 'flex' }}>
+          <span
+            data-tooltip="Visão das finanças, receitas projetadas e despesas."
+            data-tooltip-dir="right"
+            style={{ display: 'flex' }}
+          >
             <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
           </span>
         </div>
         <div className="header-actions">
-          <HelpTooltip content={<div className="space-y-1.5"><p><strong>Colunas CSV:</strong> descricao*, valor*, data* (AAAA-MM-DD), tipo (entrada|saida), categoria, detalhe</p><p><strong>Categorias válidas:</strong> Mensalidade, Produção, Tráfego, Salário, Imposto, Ferramenta, Outro</p></div>}>
+          <HelpTooltip
+            content={
+              <div className="space-y-1.5">
+                <p>
+                  <strong>Colunas CSV:</strong> descricao*, valor*, data* (AAAA-MM-DD), tipo
+                  (entrada|saida), categoria, detalhe
+                </p>
+                <p>
+                  <strong>Categorias válidas:</strong> Mensalidade, Produção, Tráfego, Salário,
+                  Imposto, Ferramenta, Outro
+                </p>
+              </div>
+            }
+          >
             <span style={{ display: 'flex' }}>
-              <HelpCircle className="h-4 w-4" style={{ color: 'var(--text-muted)', cursor: 'pointer' }} />
+              <HelpCircle
+                className="h-4 w-4"
+                style={{ color: 'var(--text-muted)', cursor: 'pointer' }}
+              />
             </span>
           </HelpTooltip>
-          <Button variant="outline" size="icon" onClick={handleCSVImport} className="header-actions-icon-only">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={handleCSVImport}
+            className="header-actions-icon-only"
+          >
             <Upload className="h-4 w-4" />
           </Button>
           <Button variant="outline" onClick={handleCSVImport} className="header-actions-full-only">
@@ -241,10 +352,22 @@ export default function FinanceiroPage() {
           { label: 'Recebido', value: formatBRL(recebido), color: '#3ecf8e' },
           { label: 'A Receber', value: formatBRL(aReceber), color: '#f5a342' },
           { label: 'A Pagar', value: formatBRL(aPagar), color: '#ef4444' },
-          { label: 'Saldo Atual', value: formatBRL(saldoAtual), color: saldoAtual >= 0 ? '#3ecf8e' : '#ef4444' },
-          { label: 'Saldo Projetado', value: formatBRL(saldoProjetado), color: saldoProjetado >= 0 ? '#3ecf8e' : '#ef4444' },
-        ].map(kpi => (
-          <div key={kpi.label} className="kpi-card" style={{ '--kpi-accent': kpi.color } as React.CSSProperties}>
+          {
+            label: 'Saldo Atual',
+            value: formatBRL(saldoAtual),
+            color: saldoAtual >= 0 ? '#3ecf8e' : '#ef4444',
+          },
+          {
+            label: 'Saldo Projetado',
+            value: formatBRL(saldoProjetado),
+            color: saldoProjetado >= 0 ? '#3ecf8e' : '#ef4444',
+          },
+        ].map((kpi) => (
+          <div
+            key={kpi.label}
+            className="kpi-card"
+            style={{ '--kpi-accent': kpi.color } as React.CSSProperties}
+          >
             <div className="kpi-label">{kpi.label}</div>
             <div className="kpi-value">{kpi.value}</div>
           </div>
@@ -253,22 +376,60 @@ export default function FinanceiroPage() {
 
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center' }}>
         <div style={{ position: 'relative', flex: 1 }}>
-          <Search className="h-4 w-4" style={{ position: 'absolute', left: '0.625rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
-          <Input className="h-9" placeholder="Buscar por descrição ou categoria..." value={search} onChange={e => setSearch(e.target.value)} style={{ paddingLeft: '2rem' }} />
+          <Search
+            className="h-4 w-4"
+            style={{
+              position: 'absolute',
+              left: '0.625rem',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              color: 'var(--text-muted)',
+              pointerEvents: 'none',
+            }}
+          />
+          <Input
+            className="h-9"
+            placeholder="Buscar por descrição ou categoria..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ paddingLeft: '2rem' }}
+          />
         </div>
-        <MonthPicker value={monthFilter} onChange={setMonthFilter} className="rounded-full text-xs px-4 mb-0 shrink-0" />
+        <MonthPicker
+          value={monthFilter}
+          onChange={setMonthFilter}
+          className="rounded-full text-xs px-4 mb-0 shrink-0"
+        />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="icon" className="h-9 w-9 shrink-0 mb-0" style={{ position: 'relative' }}>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-9 w-9 shrink-0 mb-0"
+              style={{ position: 'relative' }}
+            >
               <SlidersHorizontal className="h-4 w-4" />
               {filter !== 'todas' && (
-                <span style={{ position: 'absolute', top: -2, right: -2, width: 8, height: 8, borderRadius: '50%', background: 'var(--primary-color)' }} />
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: -2,
+                    right: -2,
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    background: 'var(--primary-color)',
+                  }}
+                />
               )}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-44">
             <DropdownMenuLabel>Tipo</DropdownMenuLabel>
-            <DropdownMenuRadioGroup value={filter} onValueChange={(v) => setFilter(v as FilterType)}>
+            <DropdownMenuRadioGroup
+              value={filter}
+              onValueChange={(v) => setFilter(v as FilterType)}
+            >
               <DropdownMenuRadioItem value="todas">Todas</DropdownMenuRadioItem>
               <DropdownMenuRadioItem value="entradas">Entradas</DropdownMenuRadioItem>
               <DropdownMenuRadioItem value="saidas">Saídas</DropdownMenuRadioItem>
@@ -278,7 +439,9 @@ export default function FinanceiroPage() {
       </div>
 
       {isLoading ? (
-        <div className="flex justify-center p-8"><Spinner size="lg" /></div>
+        <div className="flex justify-center p-8">
+          <Spinner size="lg" />
+        </div>
       ) : (
         <>
           {/* Desktop table */}
@@ -304,8 +467,14 @@ export default function FinanceiroPage() {
                     </TableCell>
                     <TableCell data-label="Categoria">{t.categoria}</TableCell>
                     <TableCell data-label="Valor">
-                      <span style={{ color: t.tipo === 'entrada' ? '#3ecf8e' : '#ef4444', fontWeight: 600 }}>
-                        {t.tipo === 'entrada' ? '+' : '-'}{formatBRL(t.valor)}
+                      <span
+                        style={{
+                          color: t.tipo === 'entrada' ? '#3ecf8e' : '#ef4444',
+                          fontWeight: 600,
+                        }}
+                      >
+                        {t.tipo === 'entrada' ? '+' : '-'}
+                        {formatBRL(t.valor)}
                       </span>
                     </TableCell>
                     <TableCell data-label="Status">
@@ -325,7 +494,12 @@ export default function FinanceiroPage() {
                               <Edit2 className="h-4 w-4" />
                             </Button>
                             {t.id && (
-                              <Button size="icon" variant="ghost" className="text-destructive" onClick={() => setDeleteId(t.id!)}>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="text-destructive"
+                                onClick={() => setDeleteId(t.id!)}
+                              >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
                             )}
@@ -345,18 +519,45 @@ export default function FinanceiroPage() {
               <div key={t.id ?? `proj-${i}`} className="team-card card animate-up">
                 <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        flexWrap: 'wrap',
+                      }}
+                    >
                       <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{t.descricao}</span>
-                      <Badge variant={t.status === 'pago' ? 'default' : 'secondary'} style={{ fontSize: '0.6rem', padding: '0 0.4rem', pointerEvents: 'none' }}>
+                      <Badge
+                        variant={t.status === 'pago' ? 'default' : 'secondary'}
+                        style={{ fontSize: '0.6rem', padding: '0 0.4rem', pointerEvents: 'none' }}
+                      >
                         {t.status === 'pago' ? 'Pago' : 'Agendado'}
                       </Badge>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap', marginTop: 2 }}>
-                      <span style={{ color: t.tipo === 'entrada' ? '#3ecf8e' : '#ef4444', fontWeight: 600, fontSize: '0.85rem' }}>
-                        {t.tipo === 'entrada' ? '+' : '-'}{formatBRL(t.valor)}
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        flexWrap: 'wrap',
+                        marginTop: 2,
+                      }}
+                    >
+                      <span
+                        style={{
+                          color: t.tipo === 'entrada' ? '#3ecf8e' : '#ef4444',
+                          fontWeight: 600,
+                          fontSize: '0.85rem',
+                        }}
+                      >
+                        {t.tipo === 'entrada' ? '+' : '-'}
+                        {formatBRL(t.valor)}
                       </span>
                       <span style={{ fontSize: '0.75rem', color: '#888' }}>&bull;</span>
-                      <span style={{ fontSize: '0.75rem', color: '#888' }}>{formatDate(t.data)}</span>
+                      <span style={{ fontSize: '0.75rem', color: '#888' }}>
+                        {formatDate(t.data)}
+                      </span>
                       {t.categoria && (
                         <>
                           <span style={{ fontSize: '0.75rem', color: '#888' }}>&bull;</span>
@@ -378,13 +579,18 @@ export default function FinanceiroPage() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => openEdit(t)}>
-                          <Edit2 className="h-4 w-4 mr-2" />Editar
+                          <Edit2 className="h-4 w-4 mr-2" />
+                          Editar
                         </DropdownMenuItem>
                         {t.id && (
                           <>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem className="text-destructive" onClick={() => setDeleteId(t.id!)}>
-                              <Trash2 className="h-4 w-4 mr-2" />Remover
+                            <DropdownMenuItem
+                              className="text-destructive"
+                              onClick={() => setDeleteId(t.id!)}
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Remover
                             </DropdownMenuItem>
                           </>
                         )}
@@ -402,7 +608,13 @@ export default function FinanceiroPage() {
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent onConfirmClose={() => setModalOpen(false)}>
           <DialogHeader>
-            <DialogTitle>{editing ? 'Editar Transação' : modalTipo === 'entrada' ? 'Registrar Entrada' : 'Registrar Saída'}</DialogTitle>
+            <DialogTitle>
+              {editing
+                ? 'Editar Transação'
+                : modalTipo === 'entrada'
+                  ? 'Registrar Entrada'
+                  : 'Registrar Saída'}
+            </DialogTitle>
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -412,7 +624,9 @@ export default function FinanceiroPage() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Descrição</FormLabel>
-                    <FormControl><Input {...field} /></FormControl>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -460,10 +674,16 @@ export default function FinanceiroPage() {
                     <FormLabel>Categoria</FormLabel>
                     <Select value={field.value} onValueChange={field.onChange}>
                       <FormControl>
-                        <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione..." />
+                        </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {CATEGORIAS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                        {CATEGORIAS.map((c) => (
+                          <SelectItem key={c} value={c}>
+                            {c}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -471,7 +691,9 @@ export default function FinanceiroPage() {
                 )}
               />
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>Cancelar</Button>
+                <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>
+                  Cancelar
+                </Button>
                 <Button type="submit" disabled={saving}>
                   {saving && <Spinner size="sm" />}
                   Salvar
@@ -483,9 +705,16 @@ export default function FinanceiroPage() {
       </Dialog>
 
       {/* Confirmar pagamento */}
-      <AlertDialog open={!!confirmT} onOpenChange={open => { if (!open) setConfirmT(null); }}>
+      <AlertDialog
+        open={!!confirmT}
+        onOpenChange={(open) => {
+          if (!open) setConfirmT(null);
+        }}
+      >
         <AlertDialogContent>
-          <AlertDialogHeader><AlertDialogTitle>Confirmar pagamento?</AlertDialogTitle></AlertDialogHeader>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar pagamento?</AlertDialogTitle>
+          </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Não</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmPago}>Sim</AlertDialogAction>
@@ -494,9 +723,16 @@ export default function FinanceiroPage() {
       </AlertDialog>
 
       {/* Confirmar exclusão */}
-      <AlertDialog open={deleteId != null} onOpenChange={open => { if (!open) setDeleteId(null); }}>
+      <AlertDialog
+        open={deleteId != null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteId(null);
+        }}
+      >
         <AlertDialogContent>
-          <AlertDialogHeader><AlertDialogTitle>Remover esta transação?</AlertDialogTitle></AlertDialogHeader>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover esta transação?</AlertDialogTitle>
+          </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Não</AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete}>Sim</AlertDialogAction>

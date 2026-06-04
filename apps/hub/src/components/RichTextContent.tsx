@@ -30,7 +30,12 @@ interface RichTextContentProps {
   fallbackText?: string;
 }
 
-function RichTextEditor({ content, className, editable = false, onUpdate }: Omit<RichTextContentProps, 'fallbackText'>) {
+function RichTextEditor({
+  content,
+  className,
+  editable = false,
+  onUpdate,
+}: Omit<RichTextContentProps, 'fallbackText'>) {
   const onUpdateRef = useRef(onUpdate);
   onUpdateRef.current = onUpdate;
   const [focused, setFocused] = useState(false);
@@ -48,20 +53,24 @@ function RichTextEditor({ content, className, editable = false, onUpdate }: Omit
     ],
     content,
     editable,
-    editorProps: editable ? {
-      handlePaste: (_view, event) => {
-        const text = event.clipboardData?.getData('text/plain');
-        if (text) {
-          editor?.commands.insertContent(text);
-          return true;
+    editorProps: editable
+      ? {
+          handlePaste: (_view, event) => {
+            const text = event.clipboardData?.getData('text/plain');
+            if (text) {
+              editor?.commands.insertContent(text);
+              return true;
+            }
+            return false;
+          },
+          handleDrop: () => true,
         }
-        return false;
-      },
-      handleDrop: () => true,
-    } : undefined,
-    onUpdate: editable ? ({ editor: ed }) => {
-      onUpdateRef.current?.(ed.getJSON() as Record<string, unknown>, ed.getText());
-    } : undefined,
+      : undefined,
+    onUpdate: editable
+      ? ({ editor: ed }) => {
+          onUpdateRef.current?.(ed.getJSON() as Record<string, unknown>, ed.getText());
+        }
+      : undefined,
     onFocus: () => setFocused(true),
     onBlur: () => setFocused(false),
   });
@@ -80,7 +89,11 @@ function RichTextEditor({ content, className, editable = false, onUpdate }: Omit
         </p>
       )}
       <div
-        className={editable ? 'border border-dashed border-stone-300 rounded-lg px-3 py-2 transition-colors focus-within:border-stone-400 focus-within:border-solid' : ''}
+        className={
+          editable
+            ? 'border border-dashed border-stone-300 rounded-lg px-3 py-2 transition-colors focus-within:border-stone-400 focus-within:border-solid'
+            : ''
+        }
       >
         <EditorContent editor={editor} className="post-editor-content" />
       </div>
@@ -97,14 +110,25 @@ function PlainFallback({ className, text }: { className?: string; text?: string 
   );
 }
 
-export function RichTextContent({ content, className, editable, onUpdate, fallbackText }: RichTextContentProps) {
+export function RichTextContent({
+  content,
+  className,
+  editable,
+  onUpdate,
+  fallbackText,
+}: RichTextContentProps) {
   if (typeof content !== 'object' || content === null || !('type' in content)) {
     return <PlainFallback className={className} text={fallbackText} />;
   }
 
   return (
     <EditorErrorBoundary fallback={<PlainFallback className={className} text={fallbackText} />}>
-      <RichTextEditor content={content} className={className} editable={editable} onUpdate={onUpdate} />
+      <RichTextEditor
+        content={content}
+        className={className}
+        editable={editable}
+        onUpdate={onUpdate}
+      />
     </EditorErrorBoundary>
   );
 }

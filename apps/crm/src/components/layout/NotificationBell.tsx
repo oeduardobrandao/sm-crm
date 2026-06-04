@@ -9,8 +9,9 @@ import NotificationPopover from './NotificationPopover';
 export default function NotificationBell() {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
-  const { notifications, unreadCount, markAsRead, markAllAsRead, dismiss } =
-    useNotifications({ popoverOpen: open });
+  const { notifications, unreadCount, markAsRead, markAllAsRead, dismiss } = useNotifications({
+    popoverOpen: open,
+  });
 
   const badge = unreadCount > 99 ? '99+' : String(unreadCount);
 

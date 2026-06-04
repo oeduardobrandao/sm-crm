@@ -20,9 +20,7 @@ const providerValue = {
 describe('HubContext', () => {
   it('returns the hub context value from the provider', () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
-      <HubContext.Provider value={providerValue}>
-        {children}
-      </HubContext.Provider>
+      <HubContext.Provider value={providerValue}>{children}</HubContext.Provider>
     );
 
     const { result } = renderHook(() => useHub(), { wrapper });
@@ -34,7 +32,9 @@ describe('HubContext', () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
     try {
-      expect(() => renderHook(() => useHub())).toThrow('useHub must be used inside HubContext.Provider');
+      expect(() => renderHook(() => useHub())).toThrow(
+        'useHub must be used inside HubContext.Provider',
+      );
     } finally {
       spy.mockRestore();
     }

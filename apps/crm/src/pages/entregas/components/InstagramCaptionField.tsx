@@ -12,11 +12,18 @@ interface InstagramCaptionFieldProps {
 
 const MAX_CHARS = 2200;
 
-export function InstagramCaptionField({ value, onChange, disabled, lockedMessage }: InstagramCaptionFieldProps) {
+export function InstagramCaptionField({
+  value,
+  onChange,
+  disabled,
+  lockedMessage,
+}: InstagramCaptionFieldProps) {
   const [local, setLocal] = useState(value);
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  useEffect(() => { setLocal(value); }, [value]);
+  useEffect(() => {
+    setLocal(value);
+  }, [value]);
 
   const handleChange = (newVal: string) => {
     if (newVal.length > MAX_CHARS) return;
@@ -26,7 +33,10 @@ export function InstagramCaptionField({ value, onChange, disabled, lockedMessage
   };
 
   return (
-    <div className="mt-3 rounded-lg border-2 p-3" style={{ borderColor: 'var(--border-color)', background: 'var(--surface-hover)' }}>
+    <div
+      className="mt-3 rounded-lg border-2 p-3"
+      style={{ borderColor: 'var(--border-color)', background: 'var(--surface-hover)' }}
+    >
       <div className="flex items-center gap-2 mb-2">
         <Instagram className="h-4 w-4" style={{ color: '#E1306C' }} />
         <span className="text-sm font-semibold" style={{ color: 'var(--text-main)' }}>
@@ -42,7 +52,10 @@ export function InstagramCaptionField({ value, onChange, disabled, lockedMessage
             </Tooltip>
           </TooltipProvider>
         )}
-        <span className="ml-auto text-xs" style={{ color: 'var(--text-light)', fontFamily: 'var(--font-mono)' }}>
+        <span
+          className="ml-auto text-xs"
+          style={{ color: 'var(--text-light)', fontFamily: 'var(--font-mono)' }}
+        >
           {local.length} / {MAX_CHARS}
         </span>
       </div>

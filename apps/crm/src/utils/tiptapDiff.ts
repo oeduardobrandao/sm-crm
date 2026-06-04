@@ -26,18 +26,13 @@ function diffsToTextNodes(diffs: [number, string][]): TipTapNode[] {
       nodes.push({
         type: 'text',
         text,
-        marks: [
-          { type: 'textStyle', attrs: { color: '#be123c' } },
-          { type: 'strike' },
-        ],
+        marks: [{ type: 'textStyle', attrs: { color: '#be123c' } }, { type: 'strike' }],
       });
     } else if (op === 1) {
       nodes.push({
         type: 'text',
         text,
-        marks: [
-          { type: 'highlight', attrs: { color: '#bbf7d0' } },
-        ],
+        marks: [{ type: 'highlight', attrs: { color: '#bbf7d0' } }],
       });
     } else {
       nodes.push({ type: 'text', text });
@@ -48,13 +43,14 @@ function diffsToTextNodes(diffs: [number, string][]): TipTapNode[] {
 
 function markAllText(node: TipTapNode, mode: 'insert' | 'delete'): TipTapNode {
   if (node.type === 'text') {
-    const diffMarks: TipTapNode['marks'] = mode === 'delete'
-      ? [{ type: 'textStyle', attrs: { color: '#be123c' } }, { type: 'strike' }]
-      : [{ type: 'highlight', attrs: { color: '#bbf7d0' } }];
+    const diffMarks: TipTapNode['marks'] =
+      mode === 'delete'
+        ? [{ type: 'textStyle', attrs: { color: '#be123c' } }, { type: 'strike' }]
+        : [{ type: 'highlight', attrs: { color: '#bbf7d0' } }];
     return { ...node, marks: [...(node.marks || []), ...diffMarks] };
   }
   if (node.content) {
-    return { ...node, content: node.content.map(c => markAllText(c, mode)) };
+    return { ...node, content: node.content.map((c) => markAllText(c, mode)) };
   }
   return { ...node };
 }
@@ -80,15 +76,19 @@ function alignChildren(
   }
 
   const aligned: Array<{ orig: TipTapNode | null; sugg: TipTapNode | null }> = [];
-  let i = m, j = n;
+  let i = m,
+    j = n;
   while (i > 0 || j > 0) {
     if (
-      i > 0 && j > 0 &&
+      i > 0 &&
+      j > 0 &&
       orig[i - 1].type === sugg[j - 1].type &&
-      dp[i][j] === dp[i - 1][j - 1] + (extractText(orig[i - 1]) === extractText(sugg[j - 1]) ? 3 : 1)
+      dp[i][j] ===
+        dp[i - 1][j - 1] + (extractText(orig[i - 1]) === extractText(sugg[j - 1]) ? 3 : 1)
     ) {
       aligned.unshift({ orig: orig[i - 1], sugg: sugg[j - 1] });
-      i--; j--;
+      i--;
+      j--;
     } else if (i > 0 && dp[i][j] === dp[i - 1][j]) {
       aligned.unshift({ orig: orig[i - 1], sugg: null });
       i--;

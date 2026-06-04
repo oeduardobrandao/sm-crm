@@ -9,7 +9,10 @@ const TIPO_COLORS: Record<string, { bg: string; text: string }> = {
 };
 
 const TIPO_LABELS: Record<string, string> = {
-  feed: 'Feed', reels: 'Reels', stories: 'Stories', carrossel: 'Carrossel',
+  feed: 'Feed',
+  reels: 'Reels',
+  stories: 'Stories',
+  carrossel: 'Carrossel',
 };
 
 const LOCKED_STATUSES = new Set(['agendado', 'postado', 'falha_publicacao']);
@@ -51,10 +54,13 @@ function DraggablePostCard({ post }: { post: ClientePost }) {
   );
 }
 
-export function UnscheduledPostsSidebar({ posts, currentWorkflowId }: UnscheduledPostsSidebarProps) {
+export function UnscheduledPostsSidebar({
+  posts,
+  currentWorkflowId,
+}: UnscheduledPostsSidebarProps) {
   const { setNodeRef, isOver } = useDroppable({ id: 'unscheduled-zone' });
 
-  const currentWorkflowPosts = posts.filter(p => p.workflow_id === currentWorkflowId);
+  const currentWorkflowPosts = posts.filter((p) => p.workflow_id === currentWorkflowId);
 
   return (
     <div
@@ -74,9 +80,7 @@ export function UnscheduledPostsSidebar({ posts, currentWorkflowId }: Unschedule
         {currentWorkflowPosts.length === 0 ? (
           <div className="sidebar-empty">Todos os posts estão agendados ✓</div>
         ) : (
-          currentWorkflowPosts.map(post => (
-            <DraggablePostCard key={post.id} post={post} />
-          ))
+          currentWorkflowPosts.map((post) => <DraggablePostCard key={post.id} post={post} />)
         )}
       </div>
 

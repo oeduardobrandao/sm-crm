@@ -48,16 +48,20 @@ export async function getPortalApprovals(etapaIds: number[]): Promise<PortalAppr
   return data || [];
 }
 
-export async function replyToPortalApproval(workflowId: number, etapaId: number, comentario: string): Promise<void> {
+export async function replyToPortalApproval(
+  workflowId: number,
+  etapaId: number,
+  comentario: string,
+): Promise<void> {
   const token = await getPortalToken(workflowId);
-  if (!token) throw new Error("Workflow must be shared before replying.");
+  if (!token) throw new Error('Workflow must be shared before replying.');
 
   const { error } = await supabase.from('portal_approvals').insert({
     workflow_etapa_id: etapaId,
     token,
     action: 'mensagem',
     comentario,
-    is_workspace_user: true
+    is_workspace_user: true,
   });
   if (error) throw error;
 }

@@ -2,18 +2,37 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { ArrowLeft, Edit2, Check, FileText, ExternalLink } from 'lucide-react';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { updateWorkflowEtapa, type Membro } from '../../../store';
 
-const avatarColors = ['#eab308', '#3ecf8e', '#f5a342', '#f542c8', '#42c8f5', '#8b5cf6', '#ef4444', '#14b8a6'];
+const avatarColors = [
+  '#eab308',
+  '#3ecf8e',
+  '#f5a342',
+  '#f542c8',
+  '#42c8f5',
+  '#8b5cf6',
+  '#ef4444',
+  '#14b8a6',
+];
 function getAvatarColor(name: string): string {
   let hash = 0;
   for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
   return avatarColors[Math.abs(hash) % avatarColors.length];
 }
 function getInitials(name: string): string {
-  return name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase();
+  return name
+    .split(' ')
+    .map((p) => p[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
 }
 
 // Deadline accent colors mapped from class name
@@ -47,7 +66,21 @@ interface WorkflowCardProps {
   revisaoInternaCount?: number;
 }
 
-export function WorkflowCard({ card, onClick, onEditClick, isDragOverlay, dragHandle, membros, onRefresh, onRevertClick, onForwardClick, onPostsClick, postsCount, approvedPostsCount, revisaoInternaCount }: WorkflowCardProps) {
+export function WorkflowCard({
+  card,
+  onClick,
+  onEditClick,
+  isDragOverlay,
+  dragHandle,
+  membros,
+  onRefresh,
+  onRevertClick,
+  onForwardClick,
+  onPostsClick,
+  postsCount,
+  approvedPostsCount,
+  revisaoInternaCount,
+}: WorkflowCardProps) {
   const navigate = useNavigate();
   const [assignDropdownOpen, setAssignDropdownOpen] = useState(false);
   const [localMembro, setLocalMembro] = useState<Membro | undefined | null>(undefined);
@@ -55,22 +88,26 @@ export function WorkflowCard({ card, onClick, onEditClick, isDragOverlay, dragHa
   const deadlineClass = dl.estourado
     ? 'deadline-overdue'
     : dl.urgente
-    ? 'deadline-warning'
-    : dl.diasRestantes <= 3
-    ? 'deadline-caution'
-    : 'deadline-ok';
+      ? 'deadline-warning'
+      : dl.diasRestantes <= 3
+        ? 'deadline-caution'
+        : 'deadline-ok';
   const deadlineText = dl.estourado
     ? `${Math.abs(dl.diasRestantes)}d atrasado`
     : dl.diasRestantes === 0 && dl.horasRestantes === 0
-    ? 'Vence agora'
-    : dl.diasRestantes === 0
-    ? `${dl.horasRestantes}h restantes`
-    : dl.horasRestantes > 0
-    ? `${dl.diasRestantes}d ${dl.horasRestantes}h restantes`
-    : `${dl.diasRestantes}d restantes`;
-  const progressPct = card.totalEtapas > 0 ? Math.round((card.etapaIdx / card.totalEtapas) * 100) : 0;
+      ? 'Vence agora'
+      : dl.diasRestantes === 0
+        ? `${dl.horasRestantes}h restantes`
+        : dl.horasRestantes > 0
+          ? `${dl.diasRestantes}d ${dl.horasRestantes}h restantes`
+          : `${dl.diasRestantes}d restantes`;
+  const progressPct =
+    card.totalEtapas > 0 ? Math.round((card.etapaIdx / card.totalEtapas) * 100) : 0;
   const iniciadoEm = card.etapa.iniciado_em
-    ? new Date(card.etapa.iniciado_em).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
+    ? new Date(card.etapa.iniciado_em).toLocaleDateString('pt-BR', {
+        day: '2-digit',
+        month: 'short',
+      })
     : null;
 
   const accent = deadlineAccent[deadlineClass] ?? '#3ecf8e';
@@ -114,23 +151,46 @@ export function WorkflowCard({ card, onClick, onEditClick, isDragOverlay, dragHa
                   alt=""
                   loading="lazy"
                   decoding="async"
-                  style={{ width: 18, height: 18, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+                  style={{
+                    width: 18,
+                    height: 18,
+                    borderRadius: '50%',
+                    objectFit: 'cover',
+                    flexShrink: 0,
+                  }}
                 />
               ) : (
-                <div style={{
-                  width: 18, height: 18, borderRadius: '50%',
-                  background: card.cliente.cor || 'var(--surface-hover)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '0.45rem', fontWeight: 800, color: '#fff', flexShrink: 0,
-                }}>
+                <div
+                  style={{
+                    width: 18,
+                    height: 18,
+                    borderRadius: '50%',
+                    background: card.cliente.cor || 'var(--surface-hover)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '0.45rem',
+                    fontWeight: 800,
+                    color: '#fff',
+                    flexShrink: 0,
+                  }}
+                >
                   {getInitials(card.cliente.nome)}
                 </div>
               )}
               <span
                 role="link"
                 tabIndex={0}
-                onClick={(e) => { e.stopPropagation(); navigate(`/clientes/${card.cliente!.id}`); }}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); navigate(`/clientes/${card.cliente!.id}`); } }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate(`/clientes/${card.cliente!.id}`);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.stopPropagation();
+                    navigate(`/clientes/${card.cliente!.id}`);
+                  }
+                }}
                 style={{
                   cursor: 'pointer',
                   color: card.cliente.cor || 'var(--text-muted)',
@@ -164,15 +224,21 @@ export function WorkflowCard({ card, onClick, onEditClick, isDragOverlay, dragHa
                     transition: 'opacity 0.15s',
                     flexShrink: 0,
                   }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.75'; }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLElement).style.opacity = '1';
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLElement).style.opacity = '0.75';
+                  }}
                 >
                   <ExternalLink style={{ width: 10, height: 10 }} />
                   Hub
                 </a>
               )}
             </>
-          ) : '—'}
+          ) : (
+            '—'
+          )}
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
           {card.workflow.recorrente && (
@@ -214,7 +280,14 @@ export function WorkflowCard({ card, onClick, onEditClick, isDragOverlay, dragHa
       </div>
 
       {/* Deadline badge + prazo type */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '0.5rem',
+        }}
+      >
         <span
           className={`board-card-deadline ${deadlineClass}`}
           style={{
@@ -241,9 +314,12 @@ export function WorkflowCard({ card, onClick, onEditClick, isDragOverlay, dragHa
       </div>
 
       {/* Assignee chip */}
-      <DropdownMenu open={assignDropdownOpen} onOpenChange={(open) => {
-        if (membros) setAssignDropdownOpen(open);
-      }}>
+      <DropdownMenu
+        open={assignDropdownOpen}
+        onOpenChange={(open) => {
+          if (membros) setAssignDropdownOpen(open);
+        }}
+      >
         <DropdownMenuTrigger asChild>
           <div
             className={`board-card-assignee ${membros ? 'board-card-assignee--clickable' : ''}`}
@@ -270,19 +346,59 @@ export function WorkflowCard({ card, onClick, onEditClick, isDragOverlay, dragHa
               const displayMembro = localMembro !== undefined ? localMembro : card.membro;
               return displayMembro ? (
                 <>
-                  <div style={{ width: 20, height: 20, borderRadius: '50%', background: getAvatarColor(displayMembro.nome), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.55rem', fontWeight: 800, color: '#fff', flexShrink: 0 }}>
+                  <div
+                    style={{
+                      width: 20,
+                      height: 20,
+                      borderRadius: '50%',
+                      background: getAvatarColor(displayMembro.nome),
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '0.55rem',
+                      fontWeight: 800,
+                      color: '#fff',
+                      flexShrink: 0,
+                    }}
+                  >
                     {getInitials(displayMembro.nome)}
                   </div>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-main)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <span
+                    style={{
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      color: 'var(--text-main)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
                     {displayMembro.nome}
                   </span>
                 </>
               ) : (
                 <>
-                  <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--surface-hover)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', color: 'var(--text-muted)', flexShrink: 0 }}>
+                  <div
+                    style={{
+                      width: 20,
+                      height: 20,
+                      borderRadius: '50%',
+                      background: 'var(--surface-hover)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '0.6rem',
+                      color: 'var(--text-muted)',
+                      flexShrink: 0,
+                    }}
+                  >
                     ?
                   </div>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Sem responsável</span>
+                  <span
+                    style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}
+                  >
+                    Sem responsável
+                  </span>
                 </>
               );
             })()}
@@ -291,7 +407,7 @@ export function WorkflowCard({ card, onClick, onEditClick, isDragOverlay, dragHa
 
         {membros && (
           <DropdownMenuContent align="start" style={{ zIndex: 99999, minWidth: '160px' }}>
-            {membros.map(m => (
+            {membros.map((m) => (
               <DropdownMenuItem
                 key={m.id}
                 onClick={async (e) => {
@@ -307,9 +423,27 @@ export function WorkflowCard({ card, onClick, onEditClick, isDragOverlay, dragHa
                     toast.error('Erro ao atualizar');
                   }
                 }}
-                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.75rem' }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  cursor: 'pointer',
+                  fontSize: '0.75rem',
+                }}
               >
-                <div style={{ width: 16, height: 16, borderRadius: '50%', background: getAvatarColor(m.nome), color: '#fff', fontSize: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div
+                  style={{
+                    width: 16,
+                    height: 16,
+                    borderRadius: '50%',
+                    background: getAvatarColor(m.nome),
+                    color: '#fff',
+                    fontSize: '0.5rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
                   {getInitials(m.nome)}
                 </div>
                 {m.nome}
@@ -325,38 +459,69 @@ export function WorkflowCard({ card, onClick, onEditClick, isDragOverlay, dragHa
           {postsCount != null && postsCount > 0 && approvedPostsCount === postsCount ? (
             <div
               className="board-card-approval-badge"
-              style={{ borderRadius: '999px', padding: '0.2rem 0.65rem', fontSize: '0.68rem', letterSpacing: '0.02em', background: 'rgba(62, 207, 142, 0.15)', color: 'var(--success)' }}
+              style={{
+                borderRadius: '999px',
+                padding: '0.2rem 0.65rem',
+                fontSize: '0.68rem',
+                letterSpacing: '0.02em',
+                background: 'rgba(62, 207, 142, 0.15)',
+                color: 'var(--success)',
+              }}
             >
               ✓ Aprovado pelo cliente
             </div>
           ) : (
             <div
               className="board-card-approval-badge"
-              style={{ borderRadius: '999px', padding: '0.2rem 0.65rem', fontSize: '0.68rem', letterSpacing: '0.02em' }}
+              style={{
+                borderRadius: '999px',
+                padding: '0.2rem 0.65rem',
+                fontSize: '0.68rem',
+                letterSpacing: '0.02em',
+              }}
             >
               ⏳ Aguardando cliente
             </div>
           )}
         </div>
       )}
-      {card.etapa.tipo !== 'aprovacao_cliente' && revisaoInternaCount != null && revisaoInternaCount > 0 && (
-        <div className="board-card-approval">
-          <div
-            className="board-card-approval-badge"
-            style={{ borderRadius: '999px', padding: '0.2rem 0.65rem', fontSize: '0.68rem', letterSpacing: '0.02em', background: 'rgba(234, 179, 8, 0.12)', color: '#eab308' }}
-          >
-            ✏️ Aguardando aprovação interna
+      {card.etapa.tipo !== 'aprovacao_cliente' &&
+        revisaoInternaCount != null &&
+        revisaoInternaCount > 0 && (
+          <div className="board-card-approval">
+            <div
+              className="board-card-approval-badge"
+              style={{
+                borderRadius: '999px',
+                padding: '0.2rem 0.65rem',
+                fontSize: '0.68rem',
+                letterSpacing: '0.02em',
+                background: 'rgba(234, 179, 8, 0.12)',
+                color: '#eab308',
+              }}
+            >
+              ✏️ Aguardando aprovação interna
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
       {/* Current etapa + Progress bar */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: '0.68rem', fontWeight: 600, color: accent, letterSpacing: '0.02em' }}>
+          <span
+            style={{ fontSize: '0.68rem', fontWeight: 600, color: accent, letterSpacing: '0.02em' }}
+          >
             {card.etapa.nome}
           </span>
-          <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 600, whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)' }}>
+          <span
+            style={{
+              fontSize: '0.65rem',
+              color: 'var(--text-muted)',
+              fontWeight: 600,
+              whiteSpace: 'nowrap',
+              fontFamily: 'var(--font-mono)',
+            }}
+          >
             {card.etapaIdx + 1}/{card.totalEtapas}
           </span>
         </div>
@@ -386,7 +551,17 @@ export function WorkflowCard({ card, onClick, onEditClick, isDragOverlay, dragHa
 
       {/* Initiated date */}
       {iniciadoEm && (
-        <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.25rem', fontFamily: 'var(--font-mono)', letterSpacing: '0.05em' }}>
+        <div
+          style={{
+            fontSize: '0.65rem',
+            color: 'var(--text-muted)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.25rem',
+            fontFamily: 'var(--font-mono)',
+            letterSpacing: '0.05em',
+          }}
+        >
           iniciada em {iniciadoEm}
         </div>
       )}
@@ -457,7 +632,10 @@ export function WorkflowCard({ card, onClick, onEditClick, isDragOverlay, dragHa
             className="btn-revert-etapa"
             title="Voltar etapa"
             style={{ padding: '0.35rem 0.55rem', borderRadius: '10px', flexShrink: 0 }}
-            onClick={e => { e.stopPropagation(); onRevertClick(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onRevertClick();
+            }}
           >
             <ArrowLeft className="h-3.5 w-3.5" />
           </button>
@@ -466,7 +644,10 @@ export function WorkflowCard({ card, onClick, onEditClick, isDragOverlay, dragHa
           className="btn-edit-workflow"
           title="Editar fluxo"
           style={{ padding: '0.35rem 0.55rem', borderRadius: '10px', flexShrink: 0 }}
-          onClick={e => { e.stopPropagation(); onEditClick?.(); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onEditClick?.();
+          }}
         >
           <Edit2 className="h-3.5 w-3.5" />
         </button>
@@ -488,7 +669,10 @@ export function WorkflowCard({ card, onClick, onEditClick, isDragOverlay, dragHa
             position: 'relative',
             transition: 'all 0.15s',
           }}
-          onClick={e => { e.stopPropagation(); onPostsClick?.(); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onPostsClick?.();
+          }}
         >
           <FileText className="h-3.5 w-3.5" />
           Posts
@@ -499,9 +683,21 @@ export function WorkflowCard({ card, onClick, onEditClick, isDragOverlay, dragHa
         {onForwardClick && (
           <button
             className="btn-edit-workflow btn-forward-etapa"
-            title={card.etapaIdx < card.totalEtapas - 1 ? 'Concluir etapa e avançar' : 'Concluir fluxo'}
-            style={{ padding: '0.35rem 0.55rem', borderRadius: '10px', flexShrink: 0, marginLeft: 'auto', color: '#3ecf8e', borderColor: '#3ecf8e' }}
-            onClick={e => { e.stopPropagation(); onForwardClick(); }}
+            title={
+              card.etapaIdx < card.totalEtapas - 1 ? 'Concluir etapa e avançar' : 'Concluir fluxo'
+            }
+            style={{
+              padding: '0.35rem 0.55rem',
+              borderRadius: '10px',
+              flexShrink: 0,
+              marginLeft: 'auto',
+              color: '#3ecf8e',
+              borderColor: '#3ecf8e',
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onForwardClick();
+            }}
           >
             <Check className="h-3.5 w-3.5" />
           </button>

@@ -35,11 +35,7 @@ function createWrapper() {
     defaultOptions: { queries: { retry: false } },
   });
   return function Wrapper({ children }: { children: React.ReactNode }) {
-    return (
-      <QueryClientProvider client={queryClient}>
-        {children}
-      </QueryClientProvider>
-    );
+    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
   };
 }
 
@@ -56,7 +52,11 @@ describe('FolderTree', () => {
 
     const onSelectFolder = vi.fn();
     render(
-      <FolderTree selectedFolderId={null} onSelectFolder={onSelectFolder} onRequestCreateFolder={vi.fn()} />,
+      <FolderTree
+        selectedFolderId={null}
+        onSelectFolder={onSelectFolder}
+        onRequestCreateFolder={vi.fn()}
+      />,
       { wrapper: createWrapper() },
     );
 
@@ -70,7 +70,11 @@ describe('FolderTree', () => {
     mockedGetTreeChildren.mockReturnValue(new Promise(() => {}));
 
     render(
-      <FolderTree selectedFolderId={null} onSelectFolder={vi.fn()} onRequestCreateFolder={vi.fn()} />,
+      <FolderTree
+        selectedFolderId={null}
+        onSelectFolder={vi.fn()}
+        onRequestCreateFolder={vi.fn()}
+      />,
       { wrapper: createWrapper() },
     );
 
@@ -84,7 +88,11 @@ describe('FolderTree', () => {
     ]);
 
     render(
-      <FolderTree selectedFolderId={null} onSelectFolder={vi.fn()} onRequestCreateFolder={vi.fn()} />,
+      <FolderTree
+        selectedFolderId={null}
+        onSelectFolder={vi.fn()}
+        onRequestCreateFolder={vi.fn()}
+      />,
       { wrapper: createWrapper() },
     );
 
@@ -96,13 +104,15 @@ describe('FolderTree', () => {
   });
 
   it('clicking folder calls onSelectFolder', async () => {
-    mockedGetTreeChildren.mockResolvedValue([
-      makeTreeNode({ id: 5, name: 'Minha Pasta' }),
-    ]);
+    mockedGetTreeChildren.mockResolvedValue([makeTreeNode({ id: 5, name: 'Minha Pasta' })]);
 
     const onSelectFolder = vi.fn();
     render(
-      <FolderTree selectedFolderId={null} onSelectFolder={onSelectFolder} onRequestCreateFolder={vi.fn()} />,
+      <FolderTree
+        selectedFolderId={null}
+        onSelectFolder={onSelectFolder}
+        onRequestCreateFolder={vi.fn()}
+      />,
       { wrapper: createWrapper() },
     );
 
@@ -115,9 +125,7 @@ describe('FolderTree', () => {
   });
 
   it('selected folder is visually highlighted', async () => {
-    mockedGetTreeChildren.mockResolvedValue([
-      makeTreeNode({ id: 3, name: 'Selecionada' }),
-    ]);
+    mockedGetTreeChildren.mockResolvedValue([makeTreeNode({ id: 3, name: 'Selecionada' })]);
 
     render(
       <FolderTree selectedFolderId={3} onSelectFolder={vi.fn()} onRequestCreateFolder={vi.fn()} />,
@@ -140,12 +148,14 @@ describe('FolderTree', () => {
     ]);
 
     // Expanded children call
-    mockedGetTreeChildren.mockResolvedValueOnce([
-      makeTreeNode({ id: 10, name: 'Child Folder' }),
-    ]);
+    mockedGetTreeChildren.mockResolvedValueOnce([makeTreeNode({ id: 10, name: 'Child Folder' })]);
 
     render(
-      <FolderTree selectedFolderId={null} onSelectFolder={vi.fn()} onRequestCreateFolder={vi.fn()} />,
+      <FolderTree
+        selectedFolderId={null}
+        onSelectFolder={vi.fn()}
+        onRequestCreateFolder={vi.fn()}
+      />,
       { wrapper: createWrapper() },
     );
 
@@ -167,7 +177,11 @@ describe('FolderTree', () => {
     mockedGetTreeChildren.mockResolvedValue([]);
 
     render(
-      <FolderTree selectedFolderId={null} onSelectFolder={vi.fn()} onRequestCreateFolder={vi.fn()} />,
+      <FolderTree
+        selectedFolderId={null}
+        onSelectFolder={vi.fn()}
+        onRequestCreateFolder={vi.fn()}
+      />,
       { wrapper: createWrapper() },
     );
 
@@ -180,7 +194,11 @@ describe('FolderTree', () => {
     mockedGetTreeChildren.mockResolvedValue([]);
 
     render(
-      <FolderTree selectedFolderId={null} onSelectFolder={vi.fn()} onRequestCreateFolder={vi.fn()} />,
+      <FolderTree
+        selectedFolderId={null}
+        onSelectFolder={vi.fn()}
+        onRequestCreateFolder={vi.fn()}
+      />,
       { wrapper: createWrapper() },
     );
 

@@ -3,13 +3,7 @@ import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale/pt-BR';
-import {
-  Folder,
-  FileText,
-  FileVideo,
-  FileImage,
-  Link as LinkIcon,
-} from 'lucide-react';
+import { Folder, FileText, FileVideo, FileImage, Link as LinkIcon } from 'lucide-react';
 import type { FileRecord, Folder as FolderType, FolderContents } from '../types';
 import { FileContextMenu } from './FileContextMenu';
 import { InlineRenameInput } from './InlineRenameInput';
@@ -107,7 +101,9 @@ export function FileGrid(props: FileGridProps) {
   const queryClient = useQueryClient();
   const prefetchTimeout = useRef<number | undefined>(undefined);
   const ghostRef = useRef<HTMLDivElement | null>(null);
-  const [renamingId, setRenamingId] = useState<{ id: number; type: 'file' | 'folder' } | null>(null);
+  const [renamingId, setRenamingId] = useState<{ id: number; type: 'file' | 'folder' } | null>(
+    null,
+  );
   const [dragOverFolderId, setDragOverFolderId] = useState<number | null>(null);
 
   const handleDragStart = useCallback(
@@ -164,7 +160,15 @@ export function FileGrid(props: FileGridProps) {
   }
 
   const renameMutation = useMutation({
-    mutationFn: async ({ id, type, name }: { id: number; type: 'file' | 'folder'; name: string }) => {
+    mutationFn: async ({
+      id,
+      type,
+      name,
+    }: {
+      id: number;
+      type: 'file' | 'folder';
+      name: string;
+    }) => {
       if (type === 'folder') return renameFolder(id, name);
       return renameFile(id, name);
     },
@@ -183,7 +187,8 @@ export function FileGrid(props: FileGridProps) {
       return { prev };
     },
     onError: (_err, _vars, ctx) => {
-      if (ctx?.prev) queryClient.setQueryData(['folder-contents', currentFolderId ?? null], ctx.prev);
+      if (ctx?.prev)
+        queryClient.setQueryData(['folder-contents', currentFolderId ?? null], ctx.prev);
       toast.error('Erro ao renomear');
     },
     onSettled: () => {
@@ -209,9 +214,15 @@ export function FileGrid(props: FileGridProps) {
   // Skeleton loading state
   if (isLoading) {
     return (
-      <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))' }}>
+      <div
+        className="grid gap-3"
+        style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))' }}
+      >
         {Array.from({ length: 8 }).map((_, i) => (
-          <div key={i} className="flex flex-col rounded-lg bg-[var(--card-bg)] border border-[var(--border-color)] overflow-hidden animate-pulse">
+          <div
+            key={i}
+            className="flex flex-col rounded-lg bg-[var(--card-bg)] border border-[var(--border-color)] overflow-hidden animate-pulse"
+          >
             <div className="w-full aspect-square bg-[var(--surface-hover)]" />
             <div className="px-3 py-2 space-y-1.5">
               <div className="h-3 w-3/4 bg-[var(--surface-hover)] rounded" />
@@ -327,12 +338,17 @@ export function FileGrid(props: FileGridProps) {
                       {folder.total_size_bytes != null ? formatBytes(folder.total_size_bytes) : '—'}
                     </td>
                     <td className="py-2.5 pr-4 text-[var(--text-muted)]">
-                      {formatDistanceToNow(new Date(folder.created_at), { addSuffix: true, locale: ptBR })}
+                      {formatDistanceToNow(new Date(folder.created_at), {
+                        addSuffix: true,
+                        locale: ptBR,
+                      })}
                     </td>
                     <td className="py-2.5 text-[var(--text-muted)]">
                       {folder.file_count != null ? (
                         <span className="text-xs">{folder.file_count} arquivos</span>
-                      ) : '—'}
+                      ) : (
+                        '—'
+                      )}
                     </td>
                   </tr>
                 </FileContextMenu>
@@ -385,7 +401,10 @@ export function FileGrid(props: FileGridProps) {
                     )}
                     <td className="py-2.5 pr-4">
                       <div className="flex items-center gap-2">
-                        <FileIcon kind={file.kind} className="h-4 w-4 text-[var(--text-muted)] flex-shrink-0" />
+                        <FileIcon
+                          kind={file.kind}
+                          className="h-4 w-4 text-[var(--text-muted)] flex-shrink-0"
+                        />
                         {renamingId?.id === file.id && renamingId?.type === 'file' ? (
                           <InlineRenameInput
                             currentName={file.name}
@@ -410,7 +429,10 @@ export function FileGrid(props: FileGridProps) {
                       {formatBytes(file.size_bytes)}
                     </td>
                     <td className="py-2.5 pr-4 text-[var(--text-muted)]">
-                      {formatDistanceToNow(new Date(file.created_at), { addSuffix: true, locale: ptBR })}
+                      {formatDistanceToNow(new Date(file.created_at), {
+                        addSuffix: true,
+                        locale: ptBR,
+                      })}
                     </td>
                     <td className="py-2.5">
                       {file.reference_count > 0 ? (
@@ -434,7 +456,10 @@ export function FileGrid(props: FileGridProps) {
 
   // Grid mode
   return (
-    <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))' }}>
+    <div
+      className="grid gap-3"
+      style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))' }}
+    >
       {sortedFolders.map((folder) => {
         const isSelected = selectedIds.has(folder.id);
         return (
@@ -532,7 +557,9 @@ export function FileGrid(props: FileGridProps) {
                 </span>
               )}
               {folder.total_size_bytes != null && (
-                <p className="text-[0.65rem] text-[var(--text-muted)] mt-0.5 font-mono">{formatBytes(folder.total_size_bytes)}</p>
+                <p className="text-[0.65rem] text-[var(--text-muted)] mt-0.5 font-mono">
+                  {formatBytes(folder.total_size_bytes)}
+                </p>
               )}
               {folder.source === 'system' && (
                 <span className="text-[0.6rem] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded bg-[var(--surface-hover)] text-[var(--text-muted)]">
@@ -572,7 +599,8 @@ export function FileGrid(props: FileGridProps) {
             >
               {/* Thumbnail area */}
               <div className="relative w-full aspect-square bg-[var(--surface-hover)] flex items-center justify-center overflow-hidden">
-                {(file.kind === 'image' || file.kind === 'video') && (file.thumbnail_url ?? file.url) ? (
+                {(file.kind === 'image' || file.kind === 'video') &&
+                (file.thumbnail_url ?? file.url) ? (
                   <img
                     src={(file.thumbnail_url ?? file.url)!}
                     alt={file.name}
@@ -580,7 +608,10 @@ export function FileGrid(props: FileGridProps) {
                     loading="lazy"
                   />
                 ) : (
-                  <FileIcon kind={file.kind} className="h-10 w-10 text-[var(--text-muted)] opacity-40" />
+                  <FileIcon
+                    kind={file.kind}
+                    className="h-10 w-10 text-[var(--text-muted)] opacity-40"
+                  />
                 )}
 
                 {/* Hover checkbox */}

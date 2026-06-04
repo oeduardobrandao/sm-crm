@@ -20,7 +20,7 @@ export default function SecaoPage() {
   });
 
   const sectionArticles = useMemo(
-    () => articles.filter(a => a.category === category),
+    () => articles.filter((a) => a.category === category),
     [articles, category],
   );
 
@@ -29,7 +29,9 @@ export default function SecaoPage() {
       <div className="flex flex-col items-center justify-center py-20 gap-4">
         <p className="text-[0.9rem] text-[var(--text-light)]">Seção não encontrada.</p>
         <Link to="/ajuda">
-          <Button variant="outline" size="sm">Voltar à Central de Ajuda</Button>
+          <Button variant="outline" size="sm">
+            Voltar à Central de Ajuda
+          </Button>
         </Link>
       </div>
     );
@@ -59,13 +61,14 @@ export default function SecaoPage() {
         </div>
       ) : sectionArticles.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
-          <p className="text-[0.9rem] text-[var(--text-light)]">
-            Nenhum artigo nesta seção ainda.
-          </p>
+          <p className="text-[0.9rem] text-[var(--text-light)]">Nenhum artigo nesta seção ainda.</p>
         </div>
       ) : (
-        <div className="grid gap-5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
-          {sectionArticles.map(article => (
+        <div
+          className="grid gap-5"
+          style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}
+        >
+          {sectionArticles.map((article) => (
             <ArticleCard key={article.id} article={article} />
           ))}
         </div>

@@ -43,7 +43,8 @@ export function useNotifications({ popoverOpen }: UseNotificationsOptions) {
       await qc.cancelQueries({ queryKey: LIST_KEY });
       const prev = qc.getQueryData<Notification[]>(LIST_KEY);
       qc.setQueryData<Notification[]>(LIST_KEY, (old) =>
-        (old ?? []).map(n => n.id === id ? { ...n, read_at: new Date().toISOString() } : n));
+        (old ?? []).map((n) => (n.id === id ? { ...n, read_at: new Date().toISOString() } : n)),
+      );
       const prevCount = qc.getQueryData<number>(UNREAD_KEY) ?? 0;
       qc.setQueryData<number>(UNREAD_KEY, Math.max(0, prevCount - 1));
       return { prev, prevCount };
@@ -65,7 +66,8 @@ export function useNotifications({ popoverOpen }: UseNotificationsOptions) {
       const prev = qc.getQueryData<Notification[]>(LIST_KEY);
       const now = new Date().toISOString();
       qc.setQueryData<Notification[]>(LIST_KEY, (old) =>
-        (old ?? []).map(n => n.read_at ? n : { ...n, read_at: now }));
+        (old ?? []).map((n) => (n.read_at ? n : { ...n, read_at: now })),
+      );
       qc.setQueryData<number>(UNREAD_KEY, 0);
       return { prev };
     },
@@ -83,10 +85,9 @@ export function useNotifications({ popoverOpen }: UseNotificationsOptions) {
     onMutate: async (id) => {
       await qc.cancelQueries({ queryKey: LIST_KEY });
       const prev = qc.getQueryData<Notification[]>(LIST_KEY);
-      qc.setQueryData<Notification[]>(LIST_KEY, (old) =>
-        (old ?? []).filter(n => n.id !== id));
+      qc.setQueryData<Notification[]>(LIST_KEY, (old) => (old ?? []).filter((n) => n.id !== id));
       // If the dismissed item was unread, decrement the badge
-      const wasUnread = (prev ?? []).find(n => n.id === id && !n.read_at);
+      const wasUnread = (prev ?? []).find((n) => n.id === id && !n.read_at);
       if (wasUnread) {
         const prevCount = qc.getQueryData<number>(UNREAD_KEY) ?? 0;
         qc.setQueryData<number>(UNREAD_KEY, Math.max(0, prevCount - 1));

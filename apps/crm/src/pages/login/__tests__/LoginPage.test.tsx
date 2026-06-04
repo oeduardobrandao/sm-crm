@@ -30,18 +30,20 @@ function PathProbe() {
   return <div data-testid="current-path">{location.pathname}</div>;
 }
 
-function renderLoginPage(initialEntry: string | { pathname: string; search?: string; state?: unknown } = '/login') {
+function renderLoginPage(
+  initialEntry: string | { pathname: string; search?: string; state?: unknown } = '/login',
+) {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
       <Routes>
         <Route
           path="/login"
-          element={(
+          element={
             <>
               <LoginPage />
               <PathProbe />
             </>
-          )}
+          }
         />
         <Route path="/dashboard" element={<PathProbe />} />
         <Route path="/clientes" element={<PathProbe />} />

@@ -16,29 +16,38 @@ export type InlineImageUploadFn = (file: File) => Promise<{
   height: number;
 }>;
 
-function ResizeHandle({ onResize, onResizeEnd }: { onResize: (delta: number) => void; onResizeEnd: () => void }) {
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const startX = e.clientX;
+function ResizeHandle({
+  onResize,
+  onResizeEnd,
+}: {
+  onResize: (delta: number) => void;
+  onResizeEnd: () => void;
+}) {
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const startX = e.clientX;
 
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      onResize(moveEvent.clientX - startX);
-    };
+      const handleMouseMove = (moveEvent: MouseEvent) => {
+        onResize(moveEvent.clientX - startX);
+      };
 
-    const handleMouseUp = () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      onResizeEnd();
-    };
+      const handleMouseUp = () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        onResizeEnd();
+      };
 
-    document.body.style.cursor = 'ew-resize';
-    document.body.style.userSelect = 'none';
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-  }, [onResize, onResizeEnd]);
+      document.body.style.cursor = 'ew-resize';
+      document.body.style.userSelect = 'none';
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    },
+    [onResize, onResizeEnd],
+  );
 
   return (
     <div
@@ -55,13 +64,15 @@ function ResizeHandle({ onResize, onResizeEnd }: { onResize: (delta: number) => 
         justifyContent: 'center',
       }}
     >
-      <div style={{
-        width: 4,
-        height: 32,
-        borderRadius: 2,
-        background: 'var(--primary-color)',
-        opacity: 0.7,
-      }} />
+      <div
+        style={{
+          width: 4,
+          height: 32,
+          borderRadius: 2,
+          background: 'var(--primary-color)',
+          opacity: 0.7,
+        }}
+      />
     </div>
   );
 }
@@ -76,7 +87,8 @@ function InlineImageNodeView({ node, updateAttributes, editor, selected }: NodeV
   const handleResize = useCallback((delta: number) => {
     if (!wrapperRef.current) return;
     if (baseWidthRef.current === 0) {
-      baseWidthRef.current = wrapperRef.current.querySelector('img')?.offsetWidth ?? wrapperRef.current.offsetWidth;
+      baseWidthRef.current =
+        wrapperRef.current.querySelector('img')?.offsetWidth ?? wrapperRef.current.offsetWidth;
     }
     const newWidth = Math.max(MIN_WIDTH, baseWidthRef.current + delta);
     liveWidthRef.current = newWidth;
@@ -110,17 +122,33 @@ function InlineImageNodeView({ node, updateAttributes, editor, selected }: NodeV
             <img
               src={blurSrc}
               alt=""
-              style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'blur(8px)', transform: 'scale(1.1)' }}
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                filter: 'blur(8px)',
+                transform: 'scale(1.1)',
+              }}
             />
           ) : (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '120px' }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                height: '120px',
+              }}
+            >
               <ImageIcon size={32} style={{ opacity: 0.3 }} />
             </div>
           )}
           <div
             style={{
-              position: 'absolute', inset: 0,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
               background: 'rgba(0,0,0,0.25)',
             }}
           >
@@ -221,7 +249,11 @@ export function createInlineImageExtension(uploadFn: InlineImageUploadFn) {
     },
 
     renderHTML({ HTMLAttributes }) {
-      return ['figure', mergeAttributes(HTMLAttributes, { 'data-inline-image': '' }), ['img', { src: HTMLAttributes.src }]];
+      return [
+        'figure',
+        mergeAttributes(HTMLAttributes, { 'data-inline-image': '' }),
+        ['img', { src: HTMLAttributes.src }],
+      ];
     },
 
     addNodeView() {
@@ -230,9 +262,11 @@ export function createInlineImageExtension(uploadFn: InlineImageUploadFn) {
 
     addCommands() {
       return {
-        insertInlineImage: (attrs) => ({ commands }) => {
-          return commands.insertContent({ type: this.name, attrs });
-        },
+        insertInlineImage:
+          (attrs) =>
+          ({ commands }) => {
+            return commands.insertContent({ type: this.name, attrs });
+          },
       };
     },
 
@@ -301,7 +335,11 @@ async function handleImageUpload(
 
     newState.doc.descendants((node: any, pos: number) => {
       if (replaced) return false;
-      if (node.type.name === nodeType && node.attrs.loading === true && node.attrs.blurSrc === blurSrc) {
+      if (
+        node.type.name === nodeType &&
+        node.attrs.loading === true &&
+        node.attrs.blurSrc === blurSrc
+      ) {
         newTr.setNodeMarkup(pos, undefined, {
           r2Key: result.r2Key,
           src: result.src,
@@ -324,7 +362,11 @@ async function handleImageUpload(
 
     newState.doc.descendants((node: any, pos: number) => {
       if (removed) return false;
-      if (node.type.name === nodeType && node.attrs.loading === true && node.attrs.blurSrc === blurSrc) {
+      if (
+        node.type.name === nodeType &&
+        node.attrs.loading === true &&
+        node.attrs.blurSrc === blurSrc
+      ) {
         newTr.delete(pos, pos + node.nodeSize);
         removed = true;
         return false;
@@ -352,9 +394,14 @@ function createBlurPreview(file: File): Promise<string> {
         canvas.height = h;
         canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
         resolve(canvas.toDataURL('image/webp', 0.2));
-      } catch (e) { reject(e); }
+      } catch (e) {
+        reject(e);
+      }
     };
-    img.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
+    img.onerror = (e) => {
+      URL.revokeObjectURL(url);
+      reject(e);
+    };
     img.src = url;
   });
 }

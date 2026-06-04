@@ -9,11 +9,18 @@ interface TocItem {
 function extractToc(content: Record<string, unknown> | null): TocItem[] {
   if (!content || !Array.isArray((content as { content?: unknown[] }).content)) return [];
   const items: TocItem[] = [];
-  for (const node of (content as { content: { type: string; attrs?: { level?: number }; content?: { text?: string }[] }[] }).content) {
+  for (const node of (
+    content as {
+      content: { type: string; attrs?: { level?: number }; content?: { text?: string }[] }[];
+    }
+  ).content) {
     if (node.type === 'heading' && node.attrs?.level && node.content?.length) {
-      const text = node.content.map(c => c.text ?? '').join('');
+      const text = node.content.map((c) => c.text ?? '').join('');
       if (text.trim()) {
-        const id = text.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '');
+        const id = text
+          .toLowerCase()
+          .replace(/\s+/g, '-')
+          .replace(/[^\w-]/g, '');
         items.push({ id, text, level: node.attrs.level });
       }
     }
@@ -32,7 +39,7 @@ export function TableOfContents({ content }: TableOfContentsProps) {
   useEffect(() => {
     if (items.length === 0) return;
     const observer = new IntersectionObserver(
-      entries => {
+      (entries) => {
         for (const entry of entries) {
           if (entry.isIntersecting) {
             setActiveId(entry.target.id);
@@ -58,7 +65,7 @@ export function TableOfContents({ content }: TableOfContentsProps) {
         Neste artigo
       </h4>
       <ul className="space-y-1">
-        {items.map(item => (
+        {items.map((item) => (
           <li key={item.id}>
             <a
               href={`#${item.id}`}
@@ -69,7 +76,7 @@ export function TableOfContents({ content }: TableOfContentsProps) {
                   ? 'text-[var(--primary-color)] font-medium bg-[rgba(234,179,8,0.06)]'
                   : 'text-[var(--text-light)] hover:text-[var(--text-main)]'
               }`}
-              onClick={e => {
+              onClick={(e) => {
                 e.preventDefault();
                 document.getElementById(item.id)?.scrollIntoView({ behavior: 'smooth' });
               }}

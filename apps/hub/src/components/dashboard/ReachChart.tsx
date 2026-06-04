@@ -1,10 +1,4 @@
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  Tooltip,
-} from 'chart.js';
+import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Tooltip } from 'chart.js';
 import { Bar } from 'react-chartjs-2';
 import type { DashboardReachEntry } from '../../types';
 
@@ -99,9 +93,7 @@ export function ReachChart({ reachHistory }: ReachChartProps) {
         <span className="font-mono text-lg font-bold text-stone-900 dark:text-stone-100">
           {formatAbbrev(totalReach)}
         </span>
-        <span className="text-[11px] text-stone-500 dark:text-stone-400">
-          total no período
-        </span>
+        <span className="text-[11px] text-stone-500 dark:text-stone-400">total no período</span>
       </div>
     </div>
   );

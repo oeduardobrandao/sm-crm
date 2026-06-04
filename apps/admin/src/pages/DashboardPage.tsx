@@ -38,10 +38,10 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         {kpis.map((kpi) => (
           <div key={kpi.label} className="bg-card border border-border rounded-2xl p-5">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">{kpi.label}</p>
-            <p className="text-3xl font-bold font-['DM_Mono']">
-              {isLoading ? '—' : kpi.value}
+            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">
+              {kpi.label}
             </p>
+            <p className="text-3xl font-bold font-['DM_Mono']">{isLoading ? '—' : kpi.value}</p>
           </div>
         ))}
       </div>
@@ -77,8 +77,13 @@ export default function DashboardPage() {
                   {ws.plan_name && (
                     <>
                       <span>·</span>
-                      <span className="inline-block text-[0.65rem] font-semibold uppercase px-1.5 py-0.5 rounded-sm"
-                        style={{ color: getPlanColor(ws.plan_name), backgroundColor: getPlanColor(ws.plan_name) + '26' }}>
+                      <span
+                        className="inline-block text-[0.65rem] font-semibold uppercase px-1.5 py-0.5 rounded-sm"
+                        style={{
+                          color: getPlanColor(ws.plan_name),
+                          backgroundColor: getPlanColor(ws.plan_name) + '26',
+                        }}
+                      >
                         {ws.plan_name}
                       </span>
                     </>
@@ -86,12 +91,21 @@ export default function DashboardPage() {
                 </div>
               </div>
               {/* Desktop row */}
-              <span className="hidden md:inline text-foreground font-medium text-sm">{ws.name}</span>
-              <span className="hidden md:inline text-muted-foreground text-sm">{ws.owner?.name || '—'}</span>
+              <span className="hidden md:inline text-foreground font-medium text-sm">
+                {ws.name}
+              </span>
+              <span className="hidden md:inline text-muted-foreground text-sm">
+                {ws.owner?.name || '—'}
+              </span>
               <span className="hidden md:inline text-sm">
                 {ws.plan_name ? (
-                  <span className="inline-block text-[0.7rem] font-semibold uppercase px-2 py-0.5 rounded-sm"
-                    style={{ color: getPlanColor(ws.plan_name), backgroundColor: getPlanColor(ws.plan_name) + '26' }}>
+                  <span
+                    className="inline-block text-[0.7rem] font-semibold uppercase px-2 py-0.5 rounded-sm"
+                    style={{
+                      color: getPlanColor(ws.plan_name),
+                      backgroundColor: getPlanColor(ws.plan_name) + '26',
+                    }}
+                  >
                     {ws.plan_name}
                   </span>
                 ) : (
@@ -100,7 +114,10 @@ export default function DashboardPage() {
               </span>
               <span className="hidden md:inline font-['DM_Mono'] text-sm">{ws.member_count}</span>
               <span className="hidden md:inline text-muted-foreground text-sm">
-                {new Date(ws.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                {new Date(ws.created_at).toLocaleDateString('pt-BR', {
+                  day: '2-digit',
+                  month: 'short',
+                })}
               </span>
             </div>
           ))
