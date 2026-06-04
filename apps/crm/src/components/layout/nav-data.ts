@@ -33,6 +33,7 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
   },
   {
     id: 'ajuda-group', label: 'Suporte', labelKey: 'nav.suporte', icon: 'ph-lifebuoy', items: [
+      { id: 'novidades', route: '/novidades', label: 'Novidades', labelKey: 'nav.novidades', icon: 'ph-sparkle' },
       { id: 'ajuda', route: '/ajuda', label: 'Ajuda', labelKey: 'nav.ajuda', icon: 'ph-question' },
     ]
   },

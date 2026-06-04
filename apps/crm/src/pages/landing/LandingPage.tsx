@@ -751,6 +751,9 @@ function Footer() {
               <li>
                 <a href="#faq">FAQ</a>
               </li>
+              <li>
+                <a href="/novidades">Novidades</a>
+              </li>
             </ul>
           </div>
           <div className="footer-col">
