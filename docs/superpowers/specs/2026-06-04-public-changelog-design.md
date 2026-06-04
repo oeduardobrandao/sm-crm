@@ -1,6 +1,8 @@
 # Public Auto-Generated Changelog ("Novidades")
 
-> **Status:** Design approved 2026-06-04. Next step: implementation plan via `superpowers:writing-plans`.
+> **Status:** Design approved 2026-06-04. Revised 2026-06-04 after a spec review
+> (7 findings resolved — see "Review Resolutions" at the end).
+> Next step: implementation plan via `superpowers:writing-plans`.
 
 ## Overview
 
@@ -8,17 +10,18 @@ A **public, auto-generated changelog** at `/novidades` that doubles as a feature
 showcase. A scheduled agent runs **weekly**, reads the PRs merged since the last
 entry, writes benefit-oriented Portuguese release notes, and publishes them
 **hands-off** (no human approval gate). The page is reachable by logged-out
-visitors and is linked from both the landing page and the logged-in app.
+visitors, is **prerendered for search engines**, and is linked from both the
+landing page and the logged-in app.
 
 ## Goals
 
 - Customers (and prospects on the landing page) can see what shipped, in plain
   Portuguese, without anyone manually writing release notes.
 - Fully automatic: new entries appear weekly with no human in the loop.
-- Public and SEO-friendly — works for non-authenticated visitors and doubles as
-  a "what does this app do" feature list.
-- Safe despite being unreviewed: CI still gates, everything is git-revertable,
-  and the owner is notified of every publish.
+- **Public and crawlable** — works for non-authenticated visitors, is indexable
+  by search engines, and doubles as a "what does this app do" feature list.
+- Safe despite being unreviewed: CI still gates, content is git-revertable and
+  schema-validated, and the owner is notified of every publish.
 
 ## Non-Goals (YAGNI for v1)
 
@@ -34,21 +37,24 @@ on later:
 ## Audience & Surface
 
 - **Primary audience:** Mesaas CRM customers (social media managers) — and
-  prospects, since the page is public and linked from the landing page.
+  prospects, since the page is public, crawlable, and linked from the landing
+  page.
 - **Surfaces:**
-  - Public route `/novidades` (no auth).
+  - Public route `/novidades` (no auth), prerendered for direct requests/crawlers.
   - Link on the landing page (`LandingPage.tsx`).
-  - Link inside the logged-in app (user dropdown, near the help link).
+  - Link inside the logged-in app (sidebar nav, in the `Suporte` group).
 
 ## Content Model & Storage
 
-Single version-controlled file, bundled at build time (static = fast,
-SEO-friendly, no DB / no RLS): `apps/crm/src/content/changelog.json`.
+Single version-controlled file, bundled at build time (static, version-controlled,
+no DB / no RLS): `apps/crm/src/content/changelog.json`.
 
-Releases are stored newest-first. Shape:
+Releases are stored newest-first. A top-level `lastMergedAt` tracks the most
+recent PR merge already processed (drives the cutoff + dedup — see Generation):
 
 ```jsonc
 {
+  "lastMergedAt": "2026-06-03T13:42:12Z",  // max mergedAt of any included PR
   "releases": [
     {
       "date": "2026-06-08",                // ISO date of the weekly digest
@@ -59,7 +65,7 @@ Releases are stored newest-first. Shape:
           "area": "Entregas",             // product area label
           "title": "Veja a data de publicação direto na lista de posts",
           "description": "A lista de posts agora mostra quando cada post foi publicado, sem precisar abrir o card.",
-          "pr": 93                          // source PR number, for traceability
+          "pr": 93                          // source PR number — also the dedup key
         }
       ]
     }
@@ -69,11 +75,17 @@ Releases are stored newest-first. Shape:
 
 - `type` renders as a badge: **Novo** (feature) / **Melhoria** (improvement) /
   **Correção** (fix).
-- `pr` is kept for traceability; not necessarily shown in the UI.
-- A **zod schema** validates the file shape; the generator validates generated
-  content against it before writing.
+- `pr` is both traceability and the **deterministic dedup key**.
+- A **zod schema** (`changelog.schema.ts`) defines the shape. It is used in three
+  places so malformed content cannot ship or crash the page:
+  1. The generator validates generated content before writing.
+  2. A CI test validates the committed `changelog.json` against it (guaranteed to
+     run — see Testing — so the auto-merge gate blocks malformed content).
+  3. The page parses the imported JSON via `schema.safeParse` and renders a
+     graceful empty/error state on failure (defense in depth against a bad manual
+     edit or merge).
 
-## Public Page & Routing
+## Public Page, Routing & SEO
 
 - Add route `/novidades` to the **public** block in `apps/crm/src/App.tsx`
   (alongside `/`, `/login`, `/politica-de-privacidade`, etc.) — explicitly
@@ -83,46 +95,82 @@ Releases are stored newest-first. Shape:
   - Reverse-chronological list grouped by release date.
   - Each item: type badge + area tag + title + description.
   - Uses the existing design system (Ant Design tokens + CSS variables).
-  - Reads `changelog.json` via direct import (static bundle).
-- Links:
-  - Landing page (`LandingPage.tsx`) — nav and/or footer link to `/novidades`.
-  - Logged-in app — link in the user dropdown, near the help link.
-  - (Exact placement is an implementation detail.)
+  - Reads `changelog.json` through `schema.safeParse` (see Content Model).
+
+### SEO (real, not just "fast")
+
+The CRM is a Vite SPA; a normal route renders client-side and is **not** crawlable
+on its own. To make `/novidades` genuinely indexable:
+
+- **Build-time prerender** of `/novidades` into static HTML containing the actual
+  changelog content (so crawlers and link-unfurlers see it without executing JS).
+  Tooling to be chosen in the plan (e.g. a small post-build prerender script that
+  reuses the React render, or a Vite prerender plugin). Output served for direct
+  `GET /novidades`.
+- **Vercel rewrite exception:** `vercel.json` currently rewrites CRM URLs to
+  `/index.html` (SPA fallback). Add an exception so a direct request to
+  `/novidades` serves the prerendered HTML instead of the SPA shell, while
+  client-side navigation to `/novidades` still works via React Router.
+  (Verify the existing catch-all does not shadow this.)
+- **Per-page metadata:** `<title>`, meta description, canonical URL
+  (`https://<prod>/novidades`), and Open Graph / Twitter tags for link previews.
+- **Sitemap:** add `/novidades` to a `sitemap.xml` (create one if absent) and
+  reference it from `robots.txt`.
+
+### Links into the page
+
+- Landing page (`LandingPage.tsx`) — nav and/or footer link to `/novidades`.
+- Logged-in app — nav is config-driven via
+  `apps/crm/src/components/layout/nav-data.ts`. Add a `Novidades` item (icon e.g.
+  `ph-sparkle`) to the existing `Suporte` group (next to `Ajuda`). `Sidebar.tsx`
+  renders it automatically; navigation is **in-app** via the existing
+  `handleNavClick('/novidades')` (client-side route, same app — no full reload),
+  even though the route is also publicly reachable.
 
 ## Generation Agent
 
 Runs in the repository with `git` + `gh` available (both confirmed working;
 remote: `github.com/oeduardobrandao/sm-crm`). Flow:
 
-1. **Cutoff** — read `changelog.json`; the cutoff date is the `date` of the
-   newest release block (or "last 7 days" if the file is empty). Self-contained;
-   no external state to track.
-2. **Fetch** — `gh pr list --state merged --search "merged:>=<cutoff>"` with
+1. **Cutoff** — from `changelog.json.lastMergedAt`. Fetch lower bound =
+   `date(lastMergedAt)` (GitHub search is date-granular). If the file is empty,
+   fall back to a caller-supplied "7 days ago".
+2. **Fetch** — `gh pr list --state merged --search "merged:>=<cutoffDate>"` with
    `--json number,title,body,labels,mergedAt`.
-3. **Deterministic prefilter** (pure code) — drop PRs whose conventional-commit
-   title prefix is in `{ci, chore, style, test, docs, build, refactor}`; keep
-   `feat` and `fix`. Guarantees noise never reaches the model.
-4. **Write** (LLM) — for each kept PR: classify `type` and `area`, drop fixes a
-   customer would not notice, and write a friendly Portuguese `title` +
-   `description` aimed at users (benefit-oriented, not raw commit text).
-5. **Self-review** (LLM) against a rubric: accurate to the PR; no internal
-   jargon / filenames; no security-sensitive details; no duplicates of entries
-   already in `changelog.json`.
-6. **Prepend** the new dated release block to `changelog.json`, validated
-   against the zod schema before writing.
+3. **Deterministic select** (pure code, before any LLM step):
+   - **Dedup:** drop any PR whose `number` already appears in `changelog.json`,
+     and any PR with `mergedAt <= lastMergedAt`. (Idempotent: re-running the same
+     day cannot duplicate entries.)
+   - **Prefilter:** keep PRs whose conventional-commit title prefix is in
+     `{feat, fix, perf}`, **plus** any PR carrying an opt-in label `changelog`;
+     always exclude any PR carrying `no-changelog`. Everything else is dropped.
+     (Broadened from feat/fix-only so user-visible `perf`/labelled improvements
+     are not lost.)
+4. **Write** (LLM) — for each selected PR: choose `type` (feature/improvement/fix,
+   independent of the title prefix — e.g. a `perf` PR is usually an *improvement*)
+   and `area`, drop fixes a customer would not notice, and write a friendly
+   Portuguese `title` + `description` aimed at users.
+5. **Self-review** (LLM) against a rubric: accurate to the PR; no internal jargon
+   / filenames; no security-sensitive details; no duplicates of existing entries.
+6. **Prepend** the new dated release block via `prependRelease` (dedupes items by
+   `pr`, prepends, and recomputes `lastMergedAt`), validated against the zod
+   schema before writing.
 
-### Pure / testable split
+### Pure / testable split (kept inside CI coverage)
 
-The mechanical parts live as **pure functions** in `scripts/changelog/`
-(mirroring the `pool.ts` pure-module pattern used elsewhere in the repo), so
-they can be unit-tested without invoking the agent or the network:
+The pure data-transform functions live under **`apps/crm/src/content/`** so they
+are covered by the existing Vitest `include` (`apps/**`) and typechecked by
+`apps/crm/tsconfig.json` with **no CI config change**. They are imported only by
+the generator script and tests, so Vite tree-shakes them out of the app bundle.
 
-- `cutoffFromChangelog(changelog) -> isoDate`
-- `selectPRs(prs) -> prs` (the deterministic prefilter)
-- `prependRelease(changelog, release) -> changelog` (idempotent)
+- `cutoffDate(changelog, fallback) -> 'YYYY-MM-DD'`
+- `selectPRs(prs, { lastMergedAt, existingPrNumbers }) -> prs` (dedup + prefilter + labels)
+- `prependRelease(changelog, release) -> changelog` (dedupe by `pr`, recompute `lastMergedAt`)
 
-The agent orchestrates: run the fetch, call the LLM to write + self-review,
-validate, write the file, open the PR.
+The **orchestration glue** (the `gh` calls, file IO, LLM invocation) lives in
+`scripts/changelog/generate.ts`. It is not unit-tested (it is IO/agent harness),
+but it **is typechecked in CI** via a new `tsconfig.scripts.json` + a typecheck
+step added to `ci.yml`.
 
 ## Publishing — "Auto-Publish" Without Losing CI
 
@@ -131,8 +179,9 @@ Hands-off, but CI still guards quality:
 1. Agent creates a branch (e.g. `chore/changelog-YYYY-MM-DD`), commits the
    `changelog.json` change, and opens a PR.
 2. Agent enables **auto-merge (squash)** on the PR.
-3. The existing backpressure-gate CI runs. Once green, the PR merges **itself** —
-   no human review.
+3. The existing backpressure-gate CI runs — including schema validation of
+   `changelog.json` and the prerender build. Once green, the PR merges **itself**
+   (no human review).
 4. Vercel deploys on merge → the new entries are live on `/novidades`.
 
 If no PRs qualify that week, the agent does nothing (no empty PR).
@@ -141,27 +190,34 @@ If no PRs qualify that week, the agent does nothing (no empty PR).
 > an auto-merging PR so CI still runs, rather than committing straight to `main`.
 > Confirmed acceptable by the owner.
 
-## Non-Blocking Safeguards
+## Notification & Safeguards
 
-Unreviewed copy lands on a public page, so three guards that add **zero** human
-steps:
+Unreviewed copy lands on a public page, so the following guards add **zero**
+blocking human steps:
 
-1. **Post-publish notification** via the existing Resend pattern
-   (`alertas@mesaas.com.br`): after the PR merges, send a summary email listing
-   the published entries and a link, so the owner always knows what went out and
-   can revert. (Confirmed wanted.)
+1. **Post-publish notification — its own GitHub Action.** A small workflow
+   (`.github/workflows/changelog-notify.yml`) triggers on `push` to `main` filtered
+   to `apps/crm/src/content/changelog.json`, computes the newly added release block
+   from the diff, and sends a summary email via the existing Resend pattern
+   (`alertas@mesaas.com.br`) with a link to `/novidades`. This reliably observes
+   the *actual merge*, independent of the agent's lifecycle. (The agent enables
+   auto-merge and exits; nothing it does could observe the later merge itself.)
 2. **Full git revertability** — every publish is a squash commit on `main`.
-3. **Deterministic prefilter + self-review rubric** — junk never reaches the
-   model; the model double-checks its own output before writing.
+3. **Deterministic select + self-review rubric** — junk never reaches the model;
+   the model double-checks its own output before writing.
+4. **Schema gate** — CI rejects malformed `changelog.json`, and the page
+   `safeParse`s as a last line of defense.
 
 ## Scheduling
 
-A **weekly scheduled remote agent (routine)** runs the generation flow — native
-to the existing Claude Code workflow, no CI wiring required. The generation
-instructions are captured as a repeatable runbook/command the routine executes.
+A **weekly scheduled remote agent (routine)** runs the generation flow (steps 1–6
+above) — native to the existing Claude Code workflow. **The generation routine
+needs no CI wiring;** the only CI piece in this design is the small notification
+workflow above. The generation instructions are captured as a repeatable
+runbook/command the routine executes.
 
-Alternative considered: a GitHub Actions cron running Claude Code headless.
-Start with the routine; the GH Action remains an option if cloud routines prove
+Alternative considered: a GitHub Actions cron running Claude Code headless. Start
+with the routine; the GH Action remains an option if cloud routines prove
 limiting.
 
 ## File Map
@@ -169,31 +225,60 @@ limiting.
 | Action | Path | Responsibility |
 |--------|------|----------------|
 | Create | `apps/crm/src/content/changelog.json` | The changelog data (source of truth) |
-| Create | `apps/crm/src/content/changelog.schema.ts` | Zod schema + types for entries |
-| Create | `apps/crm/src/pages/novidades/NovidadesPage.tsx` | Public changelog page |
+| Create | `apps/crm/src/content/changelog.schema.ts` | Zod schema + types |
+| Create | `apps/crm/src/content/changelog.logic.ts` | Pure: `cutoffDate`, `selectPRs`, `prependRelease` |
+| Create | `apps/crm/src/content/__tests__/changelog.test.ts` | Unit tests for logic + `changelog.json` schema validation |
+| Create | `apps/crm/src/pages/novidades/NovidadesPage.tsx` | Public changelog page (safeParse) |
+| Create | `apps/crm/src/pages/novidades/__tests__/NovidadesPage.test.tsx` | Render test (badges, grouping, empty/error state) |
 | Modify | `apps/crm/src/App.tsx` | Add public `/novidades` route |
 | Modify | `apps/crm/src/pages/landing/LandingPage.tsx` | Link to `/novidades` |
-| Modify | logged-in nav (user dropdown) | Link to `/novidades` |
-| Create | `scripts/changelog/select.ts` | Pure: cutoff + PR prefilter |
-| Create | `scripts/changelog/prepend.ts` | Pure: idempotent release prepend |
+| Modify | `apps/crm/src/components/layout/nav-data.ts` | Add `Novidades` item to `Suporte` group |
+| Create | prerender config/script + `sitemap.xml` / `robots.txt` | SEO: static HTML + canonical/OG + sitemap |
+| Modify | `vercel.json` | Rewrite exception so `/novidades` serves prerendered HTML |
+| Create | `scripts/changelog/generate.ts` | Orchestration glue (gh, IO, LLM) |
 | Create | `scripts/changelog/runbook.md` | Agent generation instructions |
-| Create | `scripts/changelog/__tests__/...` | Unit tests for pure functions |
+| Create | `tsconfig.scripts.json` | Typecheck config for `scripts/` |
+| Modify | `.github/workflows/ci.yml` | Add typecheck step for `scripts/` |
+| Create | `.github/workflows/changelog-notify.yml` | Resend email on merge (push to main) |
 
 ## Testing
 
-- Unit tests for `cutoffFromChangelog`, `selectPRs` (prefilter rules), and
-  `prependRelease` (idempotency: re-running with overlapping PRs does not
-  duplicate entries).
-- Zod schema validation tests (reject malformed entries).
-- A render test for `NovidadesPage` with sample data (badges, grouping, empty
-  state).
+- Unit tests (Vitest, under `apps/crm/src/content/__tests__/`, so they run in CI):
+  - `cutoffDate` from `lastMergedAt` (and the empty-file fallback).
+  - `selectPRs`: dedup by existing `pr` number and by `mergedAt <= lastMergedAt`;
+    prefilter allowlist (`feat/fix/perf`); label overrides (`changelog` include,
+    `no-changelog` exclude).
+  - `prependRelease`: idempotency (overlapping PRs do not duplicate) and correct
+    `lastMergedAt` recomputation.
+- Schema validation test: parse the committed `changelog.json` with the zod schema
+  (fails CI on malformed content — gates the auto-merge).
+- `NovidadesPage` render test: badges, date grouping, empty state, and a
+  `safeParse`-failure fallback state.
+- Prerender smoke check: the build emits static HTML for `/novidades` containing
+  entry text (so SEO does not silently regress).
+
+## Review Resolutions (2026-06-04)
+
+1. **scripts/ tests/typecheck not in CI** → pure logic + tests moved to
+   `apps/crm/src/content/` (covered by existing Vitest/typecheck); glue stays in
+   `scripts/` with a new `tsconfig.scripts.json` + CI typecheck step.
+2. **Notification had no execution mechanism** → dedicated
+   `changelog-notify.yml` GitHub Action on push-to-main observes the merge and
+   sends the Resend email.
+3. **Cutoff could duplicate/miss PRs** → top-level `lastMergedAt` drives the
+   cutoff; deterministic dedup by `pr` number and `mergedAt` before any LLM step;
+   `prependRelease` dedupes by `pr`.
+4. **SEO overstated for a SPA** → owner chose real SEO: build-time prerender +
+   Vercel rewrite exception + canonical/OG + sitemap.
+5. **Prefilter dropped "improvement"-class PRs** → allowlist broadened to
+   `{feat, fix, perf}` + opt-in/opt-out labels; LLM maps prefix→`type`
+   independently.
+6. **Schema validation only at generation** → also a guaranteed CI validation
+   test and page-side `safeParse` with a fallback.
+7. **Logged-in nav target underspecified** → named `nav-data.ts` (`Suporte`
+   group) + `Sidebar.tsx`; in-app navigation via `handleNavClick`.
+```
 
 ## Open Questions
 
-None — all design decisions resolved during brainstorming:
-
-- Audience: public, CRM-customer focused, linked from landing + in-app.
-- Cadence: weekly digest.
-- Storage: git-native `changelog.json` (no DB).
-- Publishing: auto-merge PR after CI (no human gate).
-- Notification: Resend email on publish (yes).
+None — all resolved during brainstorming and the review pass.
