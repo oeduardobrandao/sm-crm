@@ -116,3 +116,33 @@ describe('changelog.json (committed data)', () => {
     expect(result.success).toBe(true);
   });
 });
+
+import { renderChangelogHtml } from '../changelog.seo';
+import type { ChangelogRelease } from '../changelog.schema';
+
+const releases: ChangelogRelease[] = [
+  { date: '2026-06-03', summary: 'Resumo.', items: [
+    { type: 'feature', area: 'Entregas', title: 'Novo recurso', description: 'Faz algo útil.', pr: 1 },
+  ] },
+];
+
+describe('renderChangelogHtml', () => {
+  it('includes the heading, dates, titles, and descriptions', () => {
+    const html = renderChangelogHtml(releases);
+    expect(html).toContain('<h1>Novidades</h1>');
+    expect(html).toContain('2026-06-03');
+    expect(html).toContain('Novo recurso');
+    expect(html).toContain('Faz algo útil.');
+  });
+  it('escapes HTML in content (XSS safety)', () => {
+    const html = renderChangelogHtml([
+      { date: '2026-06-03', items: [{ type: 'fix', area: 'A', title: '<script>x</script>', description: 'a & b', pr: 2 }] },
+    ]);
+    expect(html).not.toContain('<script>x</script>');
+    expect(html).toContain('&lt;script&gt;');
+    expect(html).toContain('a &amp; b');
+  });
+  it('renders an empty-state message when there are no releases', () => {
+    expect(renderChangelogHtml([])).toContain('Em breve');
+  });
+});
