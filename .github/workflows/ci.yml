@@ -35,6 +35,9 @@ jobs:
       - name: Typecheck Admin
         run: npx tsc -p apps/admin/tsconfig.json --noEmit
 
+      - name: Typecheck scripts
+        run: npx tsc -p tsconfig.scripts.json
+
       - name: Tests with coverage
         run: npm run test:coverage
 
