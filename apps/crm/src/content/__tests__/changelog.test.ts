@@ -106,3 +106,13 @@ describe('prependRelease', () => {
     expect(out.lastMergedAt).toBe('2026-06-08T00:00:00Z'); // watermark still advances
   });
 });
+
+import changelogData from '../changelog.json';
+
+describe('changelog.json (committed data)', () => {
+  it('always conforms to the schema — gates the auto-merge', () => {
+    const result = changelogSchema.safeParse(changelogData);
+    if (!result.success) console.error(result.error.format());
+    expect(result.success).toBe(true);
+  });
+});
