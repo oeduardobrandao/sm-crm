@@ -1,5 +1,5 @@
-// Writes this week's changelog entries by asking a free LLM (Google Gemini) to
-// turn the selected merged PRs into customer-facing Portuguese entries.
+// Writes this week's changelog entries by asking a free LLM (Groq) to turn the
+// selected merged PRs into customer-facing Portuguese entries.
 //
 // This is NOT an agent: it makes exactly one API call and writes one file. It
 // has no shell, no tools, and no repo/push token. The output is later validated
@@ -17,12 +17,12 @@ if (!fetchPath || !outPath) {
   process.exit(1);
 }
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-if (!GEMINI_API_KEY) {
-  console.error('GEMINI_API_KEY is not set.');
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+if (!GROQ_API_KEY) {
+  console.error('GROQ_API_KEY is not set.');
   process.exit(1);
 }
-const MODEL = process.env.GEMINI_MODEL ?? 'gemini-2.0-flash';
+const MODEL = process.env.GROQ_MODEL ?? 'llama-3.3-70b-versatile';
 const CHANGELOG = 'apps/crm/src/content/changelog.json';
 
 const fetchData = JSON.parse(readFileSync(fetchPath, 'utf8'));
@@ -42,47 +42,53 @@ const prList = selected
   .map((p) => `PR #${p.number} — ${p.title}\n${(p.body ?? '').slice(0, 1000)}`)
   .join('\n\n---\n\n');
 
-const prompt = [
+const system = [
   'Você escreve as notas de versão (changelog) PÚBLICAS do Mesaas, um CRM para social media managers.',
-  'Para cada PR relevante abaixo, escreva UMA entrada voltada ao cliente, em português do Brasil, focada no benefício.',
-  'Regras:',
+  'Escreva entradas voltadas ao cliente, em português do Brasil, focadas no benefício.',
+  'Responda APENAS com um objeto JSON (sem markdown), exatamente neste formato:',
+  '{"summary": string, "items": [{"type": "feature"|"improvement"|"fix", "area": string, "title": string, "description": string, "pr": number}]}',
+].join('\n');
+
+const user = [
+  'Para cada PR relevante abaixo, escreva UMA entrada:',
   '- type: "feature" (novo recurso), "improvement" (melhoria/desempenho) ou "fix" (correção perceptível).',
   '- area: área do produto em português (ex.: Entregas, Analytics, Clientes, Hub, Financeiro).',
   '- title e description: linguagem amigável, SEM nomes de arquivo, jargão interno ou detalhes de segurança.',
   '- pr: o número do PR (inteiro).',
   `- NÃO inclua PRs cujo número já esteja nesta lista: [${existingPrs.join(', ')}].`,
-  '- DESCARTE PRs que um cliente não perceberia (refactors internos, chores, testes, CI).',
+  '- DESCARTE PRs que um cliente não perceberia (refactors internos, chores, testes, CI). Se nenhum merecer, items = [].',
   '- "summary": uma linha resumindo a semana (ou string vazia).',
-  'Se nenhum PR merecer entrada, retorne items como lista vazia.',
-  '',
-  'Responda APENAS com um objeto JSON exatamente neste formato:',
-  '{"summary": string, "items": [{"type": "feature"|"improvement"|"fix", "area": string, "title": string, "description": string, "pr": number}]}',
   '',
   'PRs:',
   prList,
 ].join('\n');
 
-const res = await fetch(
-  `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${GEMINI_API_KEY}`,
-  {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.4, responseMimeType: 'application/json' },
-    }),
+const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+  method: 'POST',
+  headers: {
+    Authorization: `Bearer ${GROQ_API_KEY}`,
+    'Content-Type': 'application/json',
   },
-);
+  body: JSON.stringify({
+    model: MODEL,
+    temperature: 0.4,
+    response_format: { type: 'json_object' },
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: user },
+    ],
+  }),
+});
 
 if (!res.ok) {
-  console.error('Gemini error:', res.status, await res.text());
+  console.error('Groq error:', res.status, await res.text());
   process.exit(1);
 }
 
 const data = await res.json();
-const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+const text = data?.choices?.[0]?.message?.content;
 if (!text) {
-  console.error('Gemini returned no content:', JSON.stringify(data).slice(0, 500));
+  console.error('Groq returned no content:', JSON.stringify(data).slice(0, 500));
   process.exit(1);
 }
 
@@ -90,7 +96,7 @@ let parsed;
 try {
   parsed = JSON.parse(text.trim().replace(/^```json\s*/, '').replace(/```$/, ''));
 } catch {
-  console.error('Failed to parse Gemini JSON output:', text.slice(0, 500));
+  console.error('Failed to parse Groq JSON output:', text.slice(0, 500));
   process.exit(1);
 }
 

@@ -3,12 +3,12 @@ name: Weekly Changelog
 # Generates the public changelog from the week's merged PRs.
 #
 # No agent: every step is deterministic, trusted code in this repo. The only LLM
-# call is a single Gemini request (scripts/changelog/write-entries.mjs) that turns
+# call is a single Groq request (scripts/changelog/write-entries.mjs) that turns
 # the selected PRs into entries — it has no shell, no tools, and no repo token.
 # Its output is schema-validated by apply.ts and gated by CI before publishing.
 #
 # Trust split: merged-PR titles/bodies are semi-untrusted, so the only secret
-# exposed alongside them is the (free, low-value) GEMINI_API_KEY. The push-capable
+# exposed alongside them is the (free, low-value) GROQ_API_KEY. The push-capable
 # PAT (CHANGELOG_PAT) is used ONLY in the final deterministic PR step. The PAT is
 # required so the opened PR triggers CI (the auto-merge gate) and the post-merge
 # push triggers changelog-notify.yml; a GITHUB_TOKEN-authored PR would trigger neither.
@@ -49,12 +49,12 @@ jobs:
           echo "count=$count" >> "$GITHUB_OUTPUT"
           echo "Selected $count PR(s) since the last watermark."
 
-      # 2. One Gemini call turns the selected PRs into entries (RUNNER_TEMP/entries.json).
+      # 2. One Groq call turns the selected PRs into entries (RUNNER_TEMP/entries.json).
       #    Free tier; no repo token in this step.
-      - name: Write entries (Gemini)
+      - name: Write entries (Groq)
         if: steps.fetch.outputs.count != '0'
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: node scripts/changelog/write-entries.mjs "$RUNNER_TEMP/fetch.json" "$RUNNER_TEMP/entries.json"
 
       # 3. Deterministic: apply (schema-validated) + test-gate + open auto-merging PR.
