@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 const PATH = 'apps/crm/src/content/changelog.json';
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const ALERT_EMAIL = process.env.ALERT_EMAIL;
-const SITE_URL = process.env.SITE_URL ?? 'https://app.mesaas.com';
+const SITE_URL = process.env.SITE_URL ?? 'https://mesaas.com.br';
 
 if (!RESEND_API_KEY || !ALERT_EMAIL) {
   console.log('Missing RESEND_API_KEY/ALERT_EMAIL; skipping.');

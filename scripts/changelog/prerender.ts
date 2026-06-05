@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { changelogSchema } from '../../apps/crm/src/content/changelog.schema';
 import { renderChangelogHtml } from '../../apps/crm/src/content/changelog.seo';
 
-const SITE_URL = process.env.SITE_URL ?? 'https://app.mesaas.com';
+const SITE_URL = process.env.SITE_URL ?? 'https://mesaas.com.br';
 const DIST = 'dist/index.html';
 const OUT = 'dist/novidades.html';
 
