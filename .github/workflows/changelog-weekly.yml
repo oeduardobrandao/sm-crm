@@ -1,0 +1,54 @@
+name: Weekly Changelog
+
+# Runs Claude Code headlessly to generate the public changelog from the week's
+# merged PRs, following scripts/changelog/runbook.md (fetch -> write -> apply ->
+# open an auto-merging PR). CI gates the PR; on merge, changelog-notify.yml emails.
+#
+# Auth uses a fine-grained PAT (CHANGELOG_PAT), NOT the default GITHUB_TOKEN, so
+# the PR it opens actually triggers CI (a GITHUB_TOKEN-authored PR does not) and
+# the post-merge push triggers the notify workflow.
+
+on:
+  schedule:
+    # Saturdays 09:00 America/Fortaleza (UTC-3, no DST) == 12:00 UTC
+    - cron: '0 12 * * 6'
+  workflow_dispatch: {} # manual trigger — use this for the first validation run
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.CHANGELOG_PAT }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Generate weekly changelog
+        uses: anthropics/claude-code-action@v1
+        with:
+          # Anthropic API key (console.anthropic.com). To use a Claude Pro/Max
+          # subscription instead, remove this line and set:
+          #   claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # (token from `claude setup-token`).
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.CHANGELOG_PAT }}
+          prompt: |
+            You are running headless in CI. Follow scripts/changelog/runbook.md
+            EXACTLY to generate and publish this week's public changelog for
+            Mesaas, working in this repository. gh is authenticated via GH_TOKEN.
+            If the runbook's fetch step selects no PRs, do nothing and open no PR.
+            Do not make any changes outside what the runbook specifies.
+          claude_args: '--max-turns 30 --allowedTools Bash,Read,Write,Edit'
+        env:
+          GH_TOKEN: ${{ secrets.CHANGELOG_PAT }}
