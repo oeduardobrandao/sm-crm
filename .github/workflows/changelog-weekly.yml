@@ -1,0 +1,86 @@
+name: Weekly Changelog
+
+# Generates the public changelog from the week's merged PRs.
+#
+# No agent: every step is deterministic, trusted code in this repo. The only LLM
+# call is a single Gemini request (scripts/changelog/write-entries.mjs) that turns
+# the selected PRs into entries — it has no shell, no tools, and no repo token.
+# Its output is schema-validated by apply.ts and gated by CI before publishing.
+#
+# Trust split: merged-PR titles/bodies are semi-untrusted, so the only secret
+# exposed alongside them is the (free, low-value) GEMINI_API_KEY. The push-capable
+# PAT (CHANGELOG_PAT) is used ONLY in the final deterministic PR step. The PAT is
+# required so the opened PR triggers CI (the auto-merge gate) and the post-merge
+# push triggers changelog-notify.yml; a GITHUB_TOKEN-authored PR would trigger neither.
+
+on:
+  schedule:
+    # Saturdays 09:00 America/Fortaleza (UTC-3, no DST) == 12:00 UTC
+    - cron: '0 12 * * 6'
+  workflow_dispatch: {} # manual trigger — use for the first validation run
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.CHANGELOG_PAT }} # so the later push/PR is PAT-authored
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      # 1. Deterministic: list merged PRs + apply the selection filter. Read-only token.
+      - name: Select candidate PRs
+        id: fetch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npx tsx scripts/changelog/fetch.ts > "$RUNNER_TEMP/fetch.json"
+          count=$(node -e "process.stdout.write(String(JSON.parse(require('fs').readFileSync(process.env.RUNNER_TEMP+'/fetch.json','utf8')).selected.length))")
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "Selected $count PR(s) since the last watermark."
+
+      # 2. One Gemini call turns the selected PRs into entries (RUNNER_TEMP/entries.json).
+      #    Free tier; no repo token in this step.
+      - name: Write entries (Gemini)
+        if: steps.fetch.outputs.count != '0'
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: node scripts/changelog/write-entries.mjs "$RUNNER_TEMP/fetch.json" "$RUNNER_TEMP/entries.json"
+
+      # 3. Deterministic: apply (schema-validated) + test-gate + open auto-merging PR.
+      #    This is the ONLY place the PAT is exposed.
+      - name: Apply and open auto-merging PR
+        if: steps.fetch.outputs.count != '0'
+        env:
+          GH_TOKEN: ${{ secrets.CHANGELOG_PAT }}
+        run: |
+          if [ ! -f "$RUNNER_TEMP/entries.json" ]; then
+            node -e "const t=process.env.RUNNER_TEMP;const f=JSON.parse(require('fs').readFileSync(t+'/fetch.json','utf8'));require('fs').writeFileSync(t+'/entries.json',JSON.stringify({batchMaxMergedAt:f.batchMaxMergedAt}))"
+          fi
+          npx tsx scripts/changelog/apply.ts "$RUNNER_TEMP/entries.json"
+          npx vitest run apps/crm/src/content/__tests__/changelog.test.ts
+          if git diff --quiet -- apps/crm/src/content/changelog.json; then
+            echo "No changelog change to publish."
+            exit 0
+          fi
+          branch="chore/changelog-$(date +%F)"
+          git config user.name "mesaas-bot"
+          git config user.email "alertas@mesaas.com.br"
+          git switch -c "$branch"
+          git add apps/crm/src/content/changelog.json
+          git commit -m "chore(changelog): weekly update"
+          git push -u origin "$branch"
+          gh pr create --base main --head "$branch" \
+            --title "chore(changelog): weekly update" \
+            --body "Automated weekly changelog."
+          gh pr merge --auto --squash "$branch"
