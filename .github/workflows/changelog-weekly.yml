@@ -2,19 +2,16 @@ name: Weekly Changelog
 
 # Generates the public changelog from the week's merged PRs.
 #
-# SECURITY: merged-PR titles/bodies are semi-untrusted input. To avoid a
-# prompt-injection -> arbitrary-shell-with-push-token risk, trust is split:
-#   * The Claude step is sandboxed to Read/Write ONLY, with NO repo/PAT token in
-#     its environment. It just reads the selected PRs + current changelog and
-#     writes an entries file under RUNNER_TEMP. It cannot run shell or push.
-#   * A guard aborts if that step modified any tracked file (e.g. tampering with
-#     apply.ts before it runs).
-#   * All git/gh/push/merge — and the only place the PAT is exposed — live in
-#     fixed deterministic `run:` steps.
+# No agent: every step is deterministic, trusted code in this repo. The only LLM
+# call is a single Gemini request (scripts/changelog/write-entries.mjs) that turns
+# the selected PRs into entries — it has no shell, no tools, and no repo token.
+# Its output is schema-validated by apply.ts and gated by CI before publishing.
 #
-# The PAT (CHANGELOG_PAT) is used so the opened PR triggers CI (the auto-merge
-# gate) and the post-merge push triggers changelog-notify.yml; a GITHUB_TOKEN-
-# authored PR would trigger neither.
+# Trust split: merged-PR titles/bodies are semi-untrusted, so the only secret
+# exposed alongside them is the (free, low-value) GEMINI_API_KEY. The push-capable
+# PAT (CHANGELOG_PAT) is used ONLY in the final deterministic PR step. The PAT is
+# required so the opened PR triggers CI (the auto-merge gate) and the post-merge
+# push triggers changelog-notify.yml; a GITHUB_TOKEN-authored PR would trigger neither.
 
 on:
   schedule:
@@ -52,48 +49,15 @@ jobs:
           echo "count=$count" >> "$GITHUB_OUTPUT"
           echo "Selected $count PR(s) since the last watermark."
 
-      # 2. Sandboxed agent: Read/Write only, NO token. Reads the candidates +
-      #    current changelog, writes ONLY RUNNER_TEMP/entries.json. Cannot run
-      #    shell, make network calls, or push.
-      - name: Write entries (Claude)
+      # 2. One Gemini call turns the selected PRs into entries (RUNNER_TEMP/entries.json).
+      #    Free tier; no repo token in this step.
+      - name: Write entries (Gemini)
         if: steps.fetch.outputs.count != '0'
-        uses: anthropics/claude-code-action@v1
-        with:
-          # To use a Claude Pro/Max subscription instead of API billing, replace
-          # this with: claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          prompt: |
-            You are running headless in CI with file Read/Write only. Do NOT run
-            shell commands and do NOT modify any repository file.
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: node scripts/changelog/write-entries.mjs "$RUNNER_TEMP/fetch.json" "$RUNNER_TEMP/entries.json"
 
-            Read:
-              - ${{ runner.temp }}/fetch.json  ({ selected: PR[], batchMaxMergedAt })
-              - apps/crm/src/content/changelog.json  (existing entries — never duplicate by `pr`)
-
-            For each PR in `selected`, write one customer-facing entry in Brazilian
-            Portuguese (benefit-oriented; no filenames, internal jargon, or security
-            details), with fields: type ("feature" | "improvement" | "fix"), area
-            (e.g. Entregas, Analytics, Clientes, Hub), title, description, pr.
-            Drop any PR a customer would not notice.
-
-            Write ONLY this file: ${{ runner.temp }}/entries.json
-              { "batchMaxMergedAt": "<copy from fetch.json>",
-                "release": { "date": "<today YYYY-MM-DD>", "summary": "<1 line>", "items": [ ... ] } }
-            Omit "release" entirely if every PR was dropped.
-          claude_args: '--max-turns 12 --allowedTools Read,Write'
-
-      # 3. Guard: the agent must not have modified any tracked file (it should only
-      #    have written to RUNNER_TEMP). Blocks e.g. tampering with apply.ts.
-      - name: Verify agent touched no tracked files
-        if: steps.fetch.outputs.count != '0'
-        run: |
-          if ! git diff --quiet HEAD; then
-            echo "::error::Claude step modified tracked files; aborting."
-            git --no-pager diff --name-only HEAD
-            exit 1
-          fi
-
-      # 4. Deterministic: apply (schema-validated) + test-gate + open auto-merging PR.
+      # 3. Deterministic: apply (schema-validated) + test-gate + open auto-merging PR.
       #    This is the ONLY place the PAT is exposed.
       - name: Apply and open auto-merging PR
         if: steps.fetch.outputs.count != '0'
