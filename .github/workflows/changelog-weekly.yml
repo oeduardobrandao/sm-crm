@@ -1,22 +1,30 @@
 name: Weekly Changelog
 
-# Runs Claude Code headlessly to generate the public changelog from the week's
-# merged PRs, following scripts/changelog/runbook.md (fetch -> write -> apply ->
-# open an auto-merging PR). CI gates the PR; on merge, changelog-notify.yml emails.
+# Generates the public changelog from the week's merged PRs.
 #
-# Auth uses a fine-grained PAT (CHANGELOG_PAT), NOT the default GITHUB_TOKEN, so
-# the PR it opens actually triggers CI (a GITHUB_TOKEN-authored PR does not) and
-# the post-merge push triggers the notify workflow.
+# SECURITY: merged-PR titles/bodies are semi-untrusted input. To avoid a
+# prompt-injection -> arbitrary-shell-with-push-token risk, trust is split:
+#   * The Claude step is sandboxed to Read/Write ONLY, with NO repo/PAT token in
+#     its environment. It just reads the selected PRs + current changelog and
+#     writes an entries file under RUNNER_TEMP. It cannot run shell or push.
+#   * A guard aborts if that step modified any tracked file (e.g. tampering with
+#     apply.ts before it runs).
+#   * All git/gh/push/merge — and the only place the PAT is exposed — live in
+#     fixed deterministic `run:` steps.
+#
+# The PAT (CHANGELOG_PAT) is used so the opened PR triggers CI (the auto-merge
+# gate) and the post-merge push triggers changelog-notify.yml; a GITHUB_TOKEN-
+# authored PR would trigger neither.
 
 on:
   schedule:
     # Saturdays 09:00 America/Fortaleza (UTC-3, no DST) == 12:00 UTC
     - cron: '0 12 * * 6'
-  workflow_dispatch: {} # manual trigger — use this for the first validation run
+  workflow_dispatch: {} # manual trigger — use for the first validation run
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
+  pull-requests: read
 
 jobs:
   generate:
@@ -25,30 +33,90 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.CHANGELOG_PAT }}
+          token: ${{ secrets.CHANGELOG_PAT }} # so the later push/PR is PAT-authored
 
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-
       - run: npm ci
 
-      - name: Generate weekly changelog
+      # 1. Deterministic: list merged PRs + apply the selection filter. Read-only token.
+      - name: Select candidate PRs
+        id: fetch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npx tsx scripts/changelog/fetch.ts > "$RUNNER_TEMP/fetch.json"
+          count=$(node -e "process.stdout.write(String(JSON.parse(require('fs').readFileSync(process.env.RUNNER_TEMP+'/fetch.json','utf8')).selected.length))")
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "Selected $count PR(s) since the last watermark."
+
+      # 2. Sandboxed agent: Read/Write only, NO token. Reads the candidates +
+      #    current changelog, writes ONLY RUNNER_TEMP/entries.json. Cannot run
+      #    shell, make network calls, or push.
+      - name: Write entries (Claude)
+        if: steps.fetch.outputs.count != '0'
         uses: anthropics/claude-code-action@v1
         with:
-          # Anthropic API key (console.anthropic.com). To use a Claude Pro/Max
-          # subscription instead, remove this line and set:
-          #   claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          # (token from `claude setup-token`).
+          # To use a Claude Pro/Max subscription instead of API billing, replace
+          # this with: claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          github_token: ${{ secrets.CHANGELOG_PAT }}
           prompt: |
-            You are running headless in CI. Follow scripts/changelog/runbook.md
-            EXACTLY to generate and publish this week's public changelog for
-            Mesaas, working in this repository. gh is authenticated via GH_TOKEN.
-            If the runbook's fetch step selects no PRs, do nothing and open no PR.
-            Do not make any changes outside what the runbook specifies.
-          claude_args: '--max-turns 30 --allowedTools Bash,Read,Write,Edit'
+            You are running headless in CI with file Read/Write only. Do NOT run
+            shell commands and do NOT modify any repository file.
+
+            Read:
+              - ${{ runner.temp }}/fetch.json  ({ selected: PR[], batchMaxMergedAt })
+              - apps/crm/src/content/changelog.json  (existing entries — never duplicate by `pr`)
+
+            For each PR in `selected`, write one customer-facing entry in Brazilian
+            Portuguese (benefit-oriented; no filenames, internal jargon, or security
+            details), with fields: type ("feature" | "improvement" | "fix"), area
+            (e.g. Entregas, Analytics, Clientes, Hub), title, description, pr.
+            Drop any PR a customer would not notice.
+
+            Write ONLY this file: ${{ runner.temp }}/entries.json
+              { "batchMaxMergedAt": "<copy from fetch.json>",
+                "release": { "date": "<today YYYY-MM-DD>", "summary": "<1 line>", "items": [ ... ] } }
+            Omit "release" entirely if every PR was dropped.
+          claude_args: '--max-turns 12 --allowedTools Read,Write'
+
+      # 3. Guard: the agent must not have modified any tracked file (it should only
+      #    have written to RUNNER_TEMP). Blocks e.g. tampering with apply.ts.
+      - name: Verify agent touched no tracked files
+        if: steps.fetch.outputs.count != '0'
+        run: |
+          if ! git diff --quiet HEAD; then
+            echo "::error::Claude step modified tracked files; aborting."
+            git --no-pager diff --name-only HEAD
+            exit 1
+          fi
+
+      # 4. Deterministic: apply (schema-validated) + test-gate + open auto-merging PR.
+      #    This is the ONLY place the PAT is exposed.
+      - name: Apply and open auto-merging PR
+        if: steps.fetch.outputs.count != '0'
         env:
           GH_TOKEN: ${{ secrets.CHANGELOG_PAT }}
+        run: |
+          if [ ! -f "$RUNNER_TEMP/entries.json" ]; then
+            node -e "const t=process.env.RUNNER_TEMP;const f=JSON.parse(require('fs').readFileSync(t+'/fetch.json','utf8'));require('fs').writeFileSync(t+'/entries.json',JSON.stringify({batchMaxMergedAt:f.batchMaxMergedAt}))"
+          fi
+          npx tsx scripts/changelog/apply.ts "$RUNNER_TEMP/entries.json"
+          npx vitest run apps/crm/src/content/__tests__/changelog.test.ts
+          if git diff --quiet -- apps/crm/src/content/changelog.json; then
+            echo "No changelog change to publish."
+            exit 0
+          fi
+          branch="chore/changelog-$(date +%F)"
+          git config user.name "mesaas-bot"
+          git config user.email "alertas@mesaas.com.br"
+          git switch -c "$branch"
+          git add apps/crm/src/content/changelog.json
+          git commit -m "chore(changelog): weekly update"
+          git push -u origin "$branch"
+          gh pr create --base main --head "$branch" \
+            --title "chore(changelog): weekly update" \
+            --body "Automated weekly changelog."
+          gh pr merge --auto --squash "$branch"
