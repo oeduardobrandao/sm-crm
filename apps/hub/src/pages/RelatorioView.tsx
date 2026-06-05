@@ -17,7 +17,11 @@ export function RelatorioViewPage() {
   const navigate = useNavigate();
   const base = `/${workspace}/hub/${token}`;
 
-  const { data: html, isLoading, isError } = useQuery({
+  const {
+    data: html,
+    isLoading,
+    isError,
+  } = useQuery({
     queryKey: ['hub-report-html', token, month],
     queryFn: () => fetchReportHtml(token, month ?? ''),
     enabled: !!month,
@@ -53,14 +57,10 @@ export function RelatorioViewPage() {
           Relatórios
         </button>
 
-        {month && (
-          <span className="text-stone-300 select-none">/</span>
-        )}
+        {month && <span className="text-stone-300 select-none">/</span>}
 
         {month && (
-          <span className="text-[13px] font-medium text-stone-900">
-            {formatMonth(month)}
-          </span>
+          <span className="text-[13px] font-medium text-stone-900">{formatMonth(month)}</span>
         )}
 
         <button
@@ -90,7 +90,13 @@ export function RelatorioViewPage() {
         <iframe
           srcDoc={html}
           sandbox=""
-          style={{ width: '100%', flex: 1, minHeight: '80vh', border: 'none', borderRadius: '12px' }}
+          style={{
+            width: '100%',
+            flex: 1,
+            minHeight: '80vh',
+            border: 'none',
+            borderRadius: '12px',
+          }}
           title={month ? `Relatório ${formatMonth(month)}` : 'Relatório'}
         />
       )}

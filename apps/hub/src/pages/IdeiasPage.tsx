@@ -33,7 +33,9 @@ function sanitizeUrl(href: string): string {
   try {
     const url = new URL(href);
     if (url.protocol === 'http:' || url.protocol === 'https:') return url.toString();
-  } catch { /* fall through */ }
+  } catch {
+    /* fall through */
+  }
   return '#';
 }
 
@@ -55,19 +57,29 @@ export function IdeiasPage() {
 
   const ideias = data?.ideias ?? [];
 
-  function openCreate() { setEditing(null); setModalOpen(true); }
-  function openEdit(ideia: HubIdeia) { setEditing(ideia); setModalOpen(true); }
+  function openCreate() {
+    setEditing(null);
+    setModalOpen(true);
+  }
+  function openEdit(ideia: HubIdeia) {
+    setEditing(ideia);
+    setModalOpen(true);
+  }
 
   return (
     <div className="hub-fade-up">
       {/* Hero */}
       <div className="mb-8 sm:mb-10 flex items-end justify-between gap-4">
         <div>
-          <p className="text-[11px] uppercase tracking-[0.14em] text-stone-500 font-medium mb-2">Ideias</p>
+          <p className="text-[11px] uppercase tracking-[0.14em] text-stone-500 font-medium mb-2">
+            Ideias
+          </p>
           <h1 className="font-display text-[2rem] sm:text-[2.5rem] leading-[1.05] font-medium tracking-tight text-stone-900">
             Compartilhe suas ideias
           </h1>
-          <p className="text-sm text-stone-500 mt-2">Envie sugestões e a agência responderá em breve.</p>
+          <p className="text-sm text-stone-500 mt-2">
+            Envie sugestões e a agência responderá em breve.
+          </p>
         </div>
         <button
           onClick={openCreate}
@@ -86,7 +98,9 @@ export function IdeiasPage() {
       ) : error ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <span className="text-5xl mb-4">⚠️</span>
-          <p className="font-display text-lg font-semibold text-stone-800 mb-1">Erro ao carregar ideias</p>
+          <p className="font-display text-lg font-semibold text-stone-800 mb-1">
+            Erro ao carregar ideias
+          </p>
           <p className="text-sm text-stone-500 mb-6">{error.message}</p>
           <button
             onClick={() => qc.invalidateQueries({ queryKey: ['hub-ideias', token] })}
@@ -98,8 +112,12 @@ export function IdeiasPage() {
       ) : ideias.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <span className="text-5xl mb-4">💡</span>
-          <p className="font-display text-lg font-semibold text-stone-800 mb-1">Nenhuma ideia ainda</p>
-          <p className="text-sm text-stone-500 mb-6">Clique em "Nova ideia" para compartilhar sua primeira sugestão.</p>
+          <p className="font-display text-lg font-semibold text-stone-800 mb-1">
+            Nenhuma ideia ainda
+          </p>
+          <p className="text-sm text-stone-500 mb-6">
+            Clique em "Nova ideia" para compartilhar sua primeira sugestão.
+          </p>
           <button
             onClick={openCreate}
             className="px-4 py-2 rounded-lg bg-stone-900 text-white text-sm font-semibold hover:bg-stone-800 transition-colors"
@@ -109,7 +127,7 @@ export function IdeiasPage() {
         </div>
       ) : (
         <div className="space-y-4">
-          {ideias.map(ideia => (
+          {ideias.map((ideia) => (
             <IdeiaCard
               key={ideia.id}
               ideia={ideia}
@@ -117,7 +135,7 @@ export function IdeiasPage() {
               onDelete={() => {
                 deleteIdeia(token, ideia.id)
                   .then(() => qc.invalidateQueries({ queryKey: ['hub-ideias', token] }))
-                  .catch(err => alert(err.message));
+                  .catch((err) => alert(err.message));
               }}
             />
           ))}
@@ -139,7 +157,15 @@ export function IdeiasPage() {
   );
 }
 
-function IdeiaCard({ ideia, onEdit, onDelete }: { ideia: HubIdeia; onEdit: () => void; onDelete: () => void }) {
+function IdeiaCard({
+  ideia,
+  onEdit,
+  onDelete,
+}: {
+  ideia: HubIdeia;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
   const mutable = isMutable(ideia);
 
   // Group reactions by emoji
@@ -155,18 +181,28 @@ function IdeiaCard({ ideia, onEdit, onDelete }: { ideia: HubIdeia; onEdit: () =>
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
-          <span className={`inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full mb-2 ${STATUS_COLOR[ideia.status]}`}>
+          <span
+            className={`inline-block text-[11px] font-semibold px-2 py-0.5 rounded-full mb-2 ${STATUS_COLOR[ideia.status]}`}
+          >
             {STATUS_LABEL[ideia.status]}
           </span>
-          <h3 className="font-display text-[17px] font-semibold text-stone-900 leading-snug">{ideia.titulo}</h3>
+          <h3 className="font-display text-[17px] font-semibold text-stone-900 leading-snug">
+            {ideia.titulo}
+          </h3>
           <p className="text-sm text-stone-600 mt-1 whitespace-pre-wrap">{ideia.descricao}</p>
         </div>
         {mutable && (
           <div className="flex gap-1 shrink-0">
-            <button onClick={onEdit} className="p-1.5 rounded-md hover:bg-stone-100 text-stone-500 hover:text-stone-800 transition-colors">
+            <button
+              onClick={onEdit}
+              className="p-1.5 rounded-md hover:bg-stone-100 text-stone-500 hover:text-stone-800 transition-colors"
+            >
               <Pencil size={15} />
             </button>
-            <button onClick={onDelete} className="p-1.5 rounded-md hover:bg-red-50 text-stone-500 hover:text-red-600 transition-colors">
+            <button
+              onClick={onDelete}
+              className="p-1.5 rounded-md hover:bg-red-50 text-stone-500 hover:text-red-600 transition-colors"
+            >
               <Trash2 size={15} />
             </button>
           </div>
@@ -211,7 +247,11 @@ function IdeiaCard({ ideia, onEdit, onDelete }: { ideia: HubIdeia; onEdit: () =>
         <div className="border-t border-stone-100 pt-3 mt-1">
           <p className="text-[11px] uppercase tracking-wide text-stone-400 font-medium mb-1">
             Resposta da agência
-            {ideia.comentario_autor && <span className="normal-case tracking-normal ml-1">— {ideia.comentario_autor.nome}</span>}
+            {ideia.comentario_autor && (
+              <span className="normal-case tracking-normal ml-1">
+                — {ideia.comentario_autor.nome}
+              </span>
+            )}
           </p>
           <p className="text-sm text-stone-700 whitespace-pre-wrap">{ideia.comentario_agencia}</p>
         </div>
@@ -245,12 +285,20 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
   async function handleSave() {
     if (!validate()) return;
     setSaving(true);
-    const cleanLinks = links.map(l => l.trim()).filter(Boolean);
+    const cleanLinks = links.map((l) => l.trim()).filter(Boolean);
     try {
       if (editing) {
-        await updateIdeia(token, editing.id, { titulo: titulo.trim(), descricao: descricao.trim(), links: cleanLinks });
+        await updateIdeia(token, editing.id, {
+          titulo: titulo.trim(),
+          descricao: descricao.trim(),
+          links: cleanLinks,
+        });
       } else {
-        await createIdeia(token, { titulo: titulo.trim(), descricao: descricao.trim(), links: cleanLinks });
+        await createIdeia(token, {
+          titulo: titulo.trim(),
+          descricao: descricao.trim(),
+          links: cleanLinks,
+        });
       }
       onSaved();
     } catch (err: unknown) {
@@ -267,29 +315,36 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
           <h2 className="font-display text-lg font-semibold text-stone-900">
             {editing ? 'Editar ideia' : 'Nova ideia'}
           </h2>
-          <button onClick={onClose} className="p-1.5 rounded-md hover:bg-stone-100 transition-colors text-stone-500">
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-md hover:bg-stone-100 transition-colors text-stone-500"
+          >
             <X size={18} />
           </button>
         </div>
 
         <div className="space-y-3">
           <div>
-            <label className="text-[12px] font-semibold text-stone-600 uppercase tracking-wide mb-1 block">Título</label>
+            <label className="text-[12px] font-semibold text-stone-600 uppercase tracking-wide mb-1 block">
+              Título
+            </label>
             <input
               className={`w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-stone-900/20 ${errors.titulo ? 'border-red-400' : 'border-stone-200'}`}
               value={titulo}
-              onChange={e => setTitulo(e.target.value)}
+              onChange={(e) => setTitulo(e.target.value)}
               placeholder="Ex: Reel mostrando os bastidores..."
             />
             {errors.titulo && <p className="text-xs text-red-500 mt-0.5">{errors.titulo}</p>}
           </div>
 
           <div>
-            <label className="text-[12px] font-semibold text-stone-600 uppercase tracking-wide mb-1 block">Descrição</label>
+            <label className="text-[12px] font-semibold text-stone-600 uppercase tracking-wide mb-1 block">
+              Descrição
+            </label>
             <textarea
               className={`w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-stone-900/20 resize-none min-h-[100px] ${errors.descricao ? 'border-red-400' : 'border-stone-200'}`}
               value={descricao}
-              onChange={e => setDescricao(e.target.value)}
+              onChange={(e) => setDescricao(e.target.value)}
               placeholder="Descreva sua ideia com detalhes..."
             />
             {errors.descricao && <p className="text-xs text-red-500 mt-0.5">{errors.descricao}</p>}
@@ -297,19 +352,24 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
 
           <div>
             <label className="text-[12px] font-semibold text-stone-600 uppercase tracking-wide mb-1 block">
-              Links de referência <span className="text-stone-400 normal-case tracking-normal font-normal">(opcional)</span>
+              Links de referência{' '}
+              <span className="text-stone-400 normal-case tracking-normal font-normal">
+                (opcional)
+              </span>
             </label>
             {links.map((link, i) => (
               <div key={i} className="flex gap-2 mb-2">
                 <input
                   className="flex-1 border border-stone-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-stone-900/20"
                   value={link}
-                  onChange={e => setLinks(ls => ls.map((l, j) => j === i ? e.target.value : l))}
+                  onChange={(e) =>
+                    setLinks((ls) => ls.map((l, j) => (j === i ? e.target.value : l)))
+                  }
                   placeholder="https://..."
                 />
                 {links.length > 1 && (
                   <button
-                    onClick={() => setLinks(ls => ls.filter((_, j) => j !== i))}
+                    onClick={() => setLinks((ls) => ls.filter((_, j) => j !== i))}
                     className="p-2 rounded-md hover:bg-stone-100 text-stone-400 hover:text-stone-700 transition-colors"
                   >
                     <X size={14} />
@@ -318,7 +378,7 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
               </div>
             ))}
             <button
-              onClick={() => setLinks(ls => [...ls, ''])}
+              onClick={() => setLinks((ls) => [...ls, ''])}
               className="text-xs text-stone-500 hover:text-stone-800 underline underline-offset-2 transition-colors"
             >
               + Adicionar outro link

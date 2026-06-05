@@ -100,7 +100,9 @@ vi.mock('../../components/InstagramGridPreview', () => ({
   }) => (
     <div data-testid="instagram-grid-preview">
       <span data-testid="grid-selected-count">{selectedPosts.length}</span>
-      <button type="button" onClick={onClose}>Close grid</button>
+      <button type="button" onClick={onClose}>
+        Close grid
+      </button>
     </div>
   ),
 }));
@@ -114,7 +116,11 @@ const mockedFetchInstagramFeed = vi.mocked(fetchInstagramFeed);
 
 const hubValue = {
   bootstrap: {
-    workspace: { name: 'Mesaas', logo_url: 'https://cdn.mesaas.com/logo.png', brand_color: '#0f766e' },
+    workspace: {
+      name: 'Mesaas',
+      logo_url: 'https://cdn.mesaas.com/logo.png',
+      brand_color: '#0f766e',
+    },
     cliente_nome: 'Clínica Aurora',
     is_active: true,
     cliente_id: 14,
@@ -127,7 +133,12 @@ function createQueryClient() {
   return new QueryClient({ defaultOptions: { queries: { retry: false } } });
 }
 
-function renderHubPage(pathname: string, routePath: string, page: ReactElement, queryClient = createQueryClient()) {
+function renderHubPage(
+  pathname: string,
+  routePath: string,
+  page: ReactElement,
+  queryClient = createQueryClient(),
+) {
   return {
     queryClient,
     ...render(
@@ -202,19 +213,21 @@ describe('AprovacoesPage — post type categorization', () => {
   });
 
   it('renders media posts as InstagramPostCard and excludes stories from that section', async () => {
-    mockedFetchPosts.mockResolvedValue(makeResponse({
-      posts: [
-        makePost({ id: 1, titulo: 'Feed post', tipo: 'feed' }),
-        makePost({ id: 2, titulo: 'Reels post', tipo: 'reels' }),
-        makePost({ id: 3, titulo: 'Story post', tipo: 'stories' }),
-      ],
-    }));
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({
+        posts: [
+          makePost({ id: 1, titulo: 'Feed post', tipo: 'feed' }),
+          makePost({ id: 2, titulo: 'Reels post', tipo: 'reels' }),
+          makePost({ id: 3, titulo: 'Story post', tipo: 'stories' }),
+        ],
+      }),
+    );
 
     renderHubPage(APROVACOES_PATH, APROVACOES_ROUTE, <AprovacoesPage />);
 
     const instagramCards = await screen.findAllByTestId('instagram-post-card');
     expect(instagramCards).toHaveLength(2);
-    expect(instagramCards.map(c => c.dataset.postId)).toEqual(['1', '2']);
+    expect(instagramCards.map((c) => c.dataset.postId)).toEqual(['1', '2']);
 
     const storyCards = screen.getAllByTestId('story-post-card');
     expect(storyCards).toHaveLength(1);
@@ -222,11 +235,11 @@ describe('AprovacoesPage — post type categorization', () => {
   });
 
   it('renders posts without media as TextPostCard', async () => {
-    mockedFetchPosts.mockResolvedValue(makeResponse({
-      posts: [
-        makePost({ id: 1, titulo: 'No media', media: [] }),
-      ],
-    }));
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({
+        posts: [makePost({ id: 1, titulo: 'No media', media: [] })],
+      }),
+    );
 
     renderHubPage(APROVACOES_PATH, APROVACOES_ROUTE, <AprovacoesPage />);
 
@@ -236,11 +249,11 @@ describe('AprovacoesPage — post type categorization', () => {
   });
 
   it('renders carrossel posts as InstagramPostCard (not stories)', async () => {
-    mockedFetchPosts.mockResolvedValue(makeResponse({
-      posts: [
-        makePost({ id: 1, titulo: 'Carrossel post', tipo: 'carrossel' }),
-      ],
-    }));
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({
+        posts: [makePost({ id: 1, titulo: 'Carrossel post', tipo: 'carrossel' })],
+      }),
+    );
 
     renderHubPage(APROVACOES_PATH, APROVACOES_ROUTE, <AprovacoesPage />);
 
@@ -249,12 +262,14 @@ describe('AprovacoesPage — post type categorization', () => {
   });
 
   it('shows the Stories section header only when media posts also exist', async () => {
-    mockedFetchPosts.mockResolvedValue(makeResponse({
-      posts: [
-        makePost({ id: 1, titulo: 'Feed', tipo: 'feed' }),
-        makePost({ id: 2, titulo: 'Story', tipo: 'stories' }),
-      ],
-    }));
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({
+        posts: [
+          makePost({ id: 1, titulo: 'Feed', tipo: 'feed' }),
+          makePost({ id: 2, titulo: 'Story', tipo: 'stories' }),
+        ],
+      }),
+    );
 
     renderHubPage(APROVACOES_PATH, APROVACOES_ROUTE, <AprovacoesPage />);
 
@@ -262,11 +277,11 @@ describe('AprovacoesPage — post type categorization', () => {
   });
 
   it('hides the Stories section header when only stories exist (no media posts)', async () => {
-    mockedFetchPosts.mockResolvedValue(makeResponse({
-      posts: [
-        makePost({ id: 2, titulo: 'Story only', tipo: 'stories' }),
-      ],
-    }));
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({
+        posts: [makePost({ id: 2, titulo: 'Story only', tipo: 'stories' })],
+      }),
+    );
 
     renderHubPage(APROVACOES_PATH, APROVACOES_ROUTE, <AprovacoesPage />);
 
@@ -275,12 +290,14 @@ describe('AprovacoesPage — post type categorization', () => {
   });
 
   it('shows "Posts sem mídia" header when stories or media posts also exist', async () => {
-    mockedFetchPosts.mockResolvedValue(makeResponse({
-      posts: [
-        makePost({ id: 1, titulo: 'Story', tipo: 'stories' }),
-        makePost({ id: 2, titulo: 'Text only', media: [] }),
-      ],
-    }));
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({
+        posts: [
+          makePost({ id: 1, titulo: 'Story', tipo: 'stories' }),
+          makePost({ id: 2, titulo: 'Text only', media: [] }),
+        ],
+      }),
+    );
 
     renderHubPage(APROVACOES_PATH, APROVACOES_ROUTE, <AprovacoesPage />);
 
@@ -288,11 +305,11 @@ describe('AprovacoesPage — post type categorization', () => {
   });
 
   it('hides "Posts sem mídia" header when only text posts exist', async () => {
-    mockedFetchPosts.mockResolvedValue(makeResponse({
-      posts: [
-        makePost({ id: 1, titulo: 'Text only', media: [] }),
-      ],
-    }));
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({
+        posts: [makePost({ id: 1, titulo: 'Text only', media: [] })],
+      }),
+    );
 
     renderHubPage(APROVACOES_PATH, APROVACOES_ROUTE, <AprovacoesPage />);
 
@@ -301,14 +318,16 @@ describe('AprovacoesPage — post type categorization', () => {
   });
 
   it('only shows posts with status enviado_cliente', async () => {
-    mockedFetchPosts.mockResolvedValue(makeResponse({
-      posts: [
-        makePost({ id: 1, titulo: 'Pending', status: 'enviado_cliente' }),
-        makePost({ id: 2, titulo: 'Approved', status: 'aprovado_cliente' }),
-        makePost({ id: 3, titulo: 'Scheduled', status: 'agendado' }),
-        makePost({ id: 4, titulo: 'Draft', status: 'rascunho' }),
-      ],
-    }));
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({
+        posts: [
+          makePost({ id: 1, titulo: 'Pending', status: 'enviado_cliente' }),
+          makePost({ id: 2, titulo: 'Approved', status: 'aprovado_cliente' }),
+          makePost({ id: 3, titulo: 'Scheduled', status: 'agendado' }),
+          makePost({ id: 4, titulo: 'Draft', status: 'rascunho' }),
+        ],
+      }),
+    );
 
     renderHubPage(APROVACOES_PATH, APROVACOES_ROUTE, <AprovacoesPage />);
 
@@ -320,9 +339,11 @@ describe('AprovacoesPage — post type categorization', () => {
   });
 
   it('shows singular count text for exactly one pending post', async () => {
-    mockedFetchPosts.mockResolvedValue(makeResponse({
-      posts: [makePost({ id: 1, titulo: 'Single' })],
-    }));
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({
+        posts: [makePost({ id: 1, titulo: 'Single' })],
+      }),
+    );
 
     renderHubPage(APROVACOES_PATH, APROVACOES_ROUTE, <AprovacoesPage />);
 
@@ -330,13 +351,15 @@ describe('AprovacoesPage — post type categorization', () => {
   });
 
   it('shows plural count text for multiple pending posts', async () => {
-    mockedFetchPosts.mockResolvedValue(makeResponse({
-      posts: [
-        makePost({ id: 1, titulo: 'First' }),
-        makePost({ id: 2, titulo: 'Second' }),
-        makePost({ id: 3, titulo: 'Third' }),
-      ],
-    }));
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({
+        posts: [
+          makePost({ id: 1, titulo: 'First' }),
+          makePost({ id: 2, titulo: 'Second' }),
+          makePost({ id: 3, titulo: 'Third' }),
+        ],
+      }),
+    );
 
     renderHubPage(APROVACOES_PATH, APROVACOES_ROUTE, <AprovacoesPage />);
 
@@ -351,10 +374,12 @@ describe('AprovacoesPage — feed preview and selection', () => {
   });
 
   it('hides FeedPreviewButton when no instagramProfile is present', async () => {
-    mockedFetchPosts.mockResolvedValue(makeResponse({
-      posts: [makePost({ id: 1 })],
-      instagramProfile: null,
-    }));
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({
+        posts: [makePost({ id: 1 })],
+        instagramProfile: null,
+      }),
+    );
 
     renderHubPage(APROVACOES_PATH, APROVACOES_ROUTE, <AprovacoesPage />);
 
@@ -363,10 +388,12 @@ describe('AprovacoesPage — feed preview and selection', () => {
   });
 
   it('shows FeedPreviewButton when instagramProfile is present', async () => {
-    mockedFetchPosts.mockResolvedValue(makeResponse({
-      posts: [makePost({ id: 1 })],
-      instagramProfile: { username: 'clinica_aurora', profilePictureUrl: null },
-    }));
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({
+        posts: [makePost({ id: 1 })],
+        instagramProfile: { username: 'clinica_aurora', profilePictureUrl: null },
+      }),
+    );
 
     renderHubPage(APROVACOES_PATH, APROVACOES_ROUTE, <AprovacoesPage />);
 
@@ -375,13 +402,12 @@ describe('AprovacoesPage — feed preview and selection', () => {
   });
 
   it('updates selected count when toggling post selection', async () => {
-    mockedFetchPosts.mockResolvedValue(makeResponse({
-      posts: [
-        makePost({ id: 1, titulo: 'Post A' }),
-        makePost({ id: 2, titulo: 'Post B' }),
-      ],
-      instagramProfile: { username: 'clinica_aurora', profilePictureUrl: null },
-    }));
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({
+        posts: [makePost({ id: 1, titulo: 'Post A' }), makePost({ id: 2, titulo: 'Post B' })],
+        instagramProfile: { username: 'clinica_aurora', profilePictureUrl: null },
+      }),
+    );
 
     renderHubPage(APROVACOES_PATH, APROVACOES_ROUTE, <AprovacoesPage />);
 
@@ -399,13 +425,12 @@ describe('AprovacoesPage — feed preview and selection', () => {
   });
 
   it('opens the grid preview and passes selected posts to it', async () => {
-    mockedFetchPosts.mockResolvedValue(makeResponse({
-      posts: [
-        makePost({ id: 1, titulo: 'Post A' }),
-        makePost({ id: 2, titulo: 'Post B' }),
-      ],
-      instagramProfile: { username: 'clinica_aurora', profilePictureUrl: null },
-    }));
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({
+        posts: [makePost({ id: 1, titulo: 'Post A' }), makePost({ id: 2, titulo: 'Post B' })],
+        instagramProfile: { username: 'clinica_aurora', profilePictureUrl: null },
+      }),
+    );
     mockedFetchInstagramFeed.mockResolvedValue({
       profile: {
         username: 'clinica_aurora',
@@ -429,10 +454,12 @@ describe('AprovacoesPage — feed preview and selection', () => {
   });
 
   it('closes the grid preview when onClose is called', async () => {
-    mockedFetchPosts.mockResolvedValue(makeResponse({
-      posts: [makePost({ id: 1 })],
-      instagramProfile: { username: 'clinica_aurora', profilePictureUrl: null },
-    }));
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({
+        posts: [makePost({ id: 1 })],
+        instagramProfile: { username: 'clinica_aurora', profilePictureUrl: null },
+      }),
+    );
     mockedFetchInstagramFeed.mockResolvedValue({
       profile: {
         username: 'clinica_aurora',
@@ -458,13 +485,15 @@ describe('AprovacoesPage — feed preview and selection', () => {
   });
 
   it('only includes withMedia posts (not stories) in grid preview selection', async () => {
-    mockedFetchPosts.mockResolvedValue(makeResponse({
-      posts: [
-        makePost({ id: 1, titulo: 'Feed post', tipo: 'feed' }),
-        makePost({ id: 2, titulo: 'Story post', tipo: 'stories' }),
-      ],
-      instagramProfile: { username: 'clinica_aurora', profilePictureUrl: null },
-    }));
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({
+        posts: [
+          makePost({ id: 1, titulo: 'Feed post', tipo: 'feed' }),
+          makePost({ id: 2, titulo: 'Story post', tipo: 'stories' }),
+        ],
+        instagramProfile: { username: 'clinica_aurora', profilePictureUrl: null },
+      }),
+    );
     mockedFetchInstagramFeed.mockResolvedValue({
       profile: {
         username: 'clinica_aurora',
@@ -494,14 +523,40 @@ describe('PostagensPage — post type categorization within groups', () => {
   });
 
   it('renders feed/reels/carrossel as InstagramPostCard and stories as StoryPostCard within a group', async () => {
-    mockedFetchPosts.mockResolvedValue(makeResponse({
-      posts: [
-        makePost({ id: 1, titulo: 'Feed post', tipo: 'feed', workflow_id: 1, workflow_titulo: 'Content' }),
-        makePost({ id: 2, titulo: 'Reels post', tipo: 'reels', workflow_id: 1, workflow_titulo: 'Content' }),
-        makePost({ id: 3, titulo: 'Story post', tipo: 'stories', workflow_id: 1, workflow_titulo: 'Content' }),
-        makePost({ id: 4, titulo: 'Text post', media: [], workflow_id: 1, workflow_titulo: 'Content' }),
-      ],
-    }));
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({
+        posts: [
+          makePost({
+            id: 1,
+            titulo: 'Feed post',
+            tipo: 'feed',
+            workflow_id: 1,
+            workflow_titulo: 'Content',
+          }),
+          makePost({
+            id: 2,
+            titulo: 'Reels post',
+            tipo: 'reels',
+            workflow_id: 1,
+            workflow_titulo: 'Content',
+          }),
+          makePost({
+            id: 3,
+            titulo: 'Story post',
+            tipo: 'stories',
+            workflow_id: 1,
+            workflow_titulo: 'Content',
+          }),
+          makePost({
+            id: 4,
+            titulo: 'Text post',
+            media: [],
+            workflow_id: 1,
+            workflow_titulo: 'Content',
+          }),
+        ],
+      }),
+    );
 
     renderHubPage(POSTAGENS_PATH, POSTAGENS_ROUTE, <PostagensPage />);
 
@@ -513,13 +568,15 @@ describe('PostagensPage — post type categorization within groups', () => {
   });
 
   it('passes readOnly to all card types in PostagensPage', async () => {
-    mockedFetchPosts.mockResolvedValue(makeResponse({
-      posts: [
-        makePost({ id: 1, tipo: 'feed', workflow_id: 1, workflow_titulo: 'Content' }),
-        makePost({ id: 2, tipo: 'stories', workflow_id: 1, workflow_titulo: 'Content' }),
-        makePost({ id: 3, media: [], workflow_id: 1, workflow_titulo: 'Content' }),
-      ],
-    }));
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({
+        posts: [
+          makePost({ id: 1, tipo: 'feed', workflow_id: 1, workflow_titulo: 'Content' }),
+          makePost({ id: 2, tipo: 'stories', workflow_id: 1, workflow_titulo: 'Content' }),
+          makePost({ id: 3, media: [], workflow_id: 1, workflow_titulo: 'Content' }),
+        ],
+      }),
+    );
 
     renderHubPage(POSTAGENS_PATH, POSTAGENS_ROUTE, <PostagensPage />);
 
@@ -535,11 +592,11 @@ describe('PostagensPage — post type categorization within groups', () => {
   });
 
   it('shows singular post count in group header', async () => {
-    mockedFetchPosts.mockResolvedValue(makeResponse({
-      posts: [
-        makePost({ id: 1, workflow_id: 1, workflow_titulo: 'Solo Group' }),
-      ],
-    }));
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({
+        posts: [makePost({ id: 1, workflow_id: 1, workflow_titulo: 'Solo Group' })],
+      }),
+    );
 
     renderHubPage(POSTAGENS_PATH, POSTAGENS_ROUTE, <PostagensPage />);
 
@@ -547,13 +604,15 @@ describe('PostagensPage — post type categorization within groups', () => {
   });
 
   it('shows plural post count in group header', async () => {
-    mockedFetchPosts.mockResolvedValue(makeResponse({
-      posts: [
-        makePost({ id: 1, workflow_id: 1, workflow_titulo: 'Multi Group' }),
-        makePost({ id: 2, workflow_id: 1, workflow_titulo: 'Multi Group' }),
-        makePost({ id: 3, workflow_id: 1, workflow_titulo: 'Multi Group' }),
-      ],
-    }));
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({
+        posts: [
+          makePost({ id: 1, workflow_id: 1, workflow_titulo: 'Multi Group' }),
+          makePost({ id: 2, workflow_id: 1, workflow_titulo: 'Multi Group' }),
+          makePost({ id: 3, workflow_id: 1, workflow_titulo: 'Multi Group' }),
+        ],
+      }),
+    );
 
     renderHubPage(POSTAGENS_PATH, POSTAGENS_ROUTE, <PostagensPage />);
 
@@ -567,11 +626,11 @@ describe('PostagensPage — collapse/expand groups', () => {
   });
 
   it('groups are expanded by default', async () => {
-    mockedFetchPosts.mockResolvedValue(makeResponse({
-      posts: [
-        makePost({ id: 1, titulo: 'Visible', workflow_id: 1, workflow_titulo: 'Alpha' }),
-      ],
-    }));
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({
+        posts: [makePost({ id: 1, titulo: 'Visible', workflow_id: 1, workflow_titulo: 'Alpha' })],
+      }),
+    );
 
     renderHubPage(POSTAGENS_PATH, POSTAGENS_ROUTE, <PostagensPage />);
 
@@ -579,11 +638,13 @@ describe('PostagensPage — collapse/expand groups', () => {
   });
 
   it('hides posts when a group is collapsed', async () => {
-    mockedFetchPosts.mockResolvedValue(makeResponse({
-      posts: [
-        makePost({ id: 1, titulo: 'Hidden post', workflow_id: 1, workflow_titulo: 'Group A' }),
-      ],
-    }));
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({
+        posts: [
+          makePost({ id: 1, titulo: 'Hidden post', workflow_id: 1, workflow_titulo: 'Group A' }),
+        ],
+      }),
+    );
 
     renderHubPage(POSTAGENS_PATH, POSTAGENS_ROUTE, <PostagensPage />);
 
@@ -595,11 +656,18 @@ describe('PostagensPage — collapse/expand groups', () => {
   });
 
   it('re-shows posts when a collapsed group is expanded', async () => {
-    mockedFetchPosts.mockResolvedValue(makeResponse({
-      posts: [
-        makePost({ id: 1, titulo: 'Toggle post', workflow_id: 1, workflow_titulo: 'Toggle Group' }),
-      ],
-    }));
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({
+        posts: [
+          makePost({
+            id: 1,
+            titulo: 'Toggle post',
+            workflow_id: 1,
+            workflow_titulo: 'Toggle Group',
+          }),
+        ],
+      }),
+    );
 
     renderHubPage(POSTAGENS_PATH, POSTAGENS_ROUTE, <PostagensPage />);
 
@@ -613,12 +681,14 @@ describe('PostagensPage — collapse/expand groups', () => {
   });
 
   it('collapsing one group does not affect another', async () => {
-    mockedFetchPosts.mockResolvedValue(makeResponse({
-      posts: [
-        makePost({ id: 1, titulo: 'Post Alpha', workflow_id: 1, workflow_titulo: 'Alpha' }),
-        makePost({ id: 2, titulo: 'Post Beta', workflow_id: 2, workflow_titulo: 'Beta' }),
-      ],
-    }));
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({
+        posts: [
+          makePost({ id: 1, titulo: 'Post Alpha', workflow_id: 1, workflow_titulo: 'Alpha' }),
+          makePost({ id: 2, titulo: 'Post Beta', workflow_id: 2, workflow_titulo: 'Beta' }),
+        ],
+      }),
+    );
 
     renderHubPage(POSTAGENS_PATH, POSTAGENS_ROUTE, <PostagensPage />);
 
@@ -635,13 +705,33 @@ describe('PostagensPage — collapse/expand groups', () => {
   });
 
   it('hides all card types (media, stories, text) when collapsed', async () => {
-    mockedFetchPosts.mockResolvedValue(makeResponse({
-      posts: [
-        makePost({ id: 1, titulo: 'Feed', tipo: 'feed', workflow_id: 1, workflow_titulo: 'Full Group' }),
-        makePost({ id: 2, titulo: 'Story', tipo: 'stories', workflow_id: 1, workflow_titulo: 'Full Group' }),
-        makePost({ id: 3, titulo: 'Text', media: [], workflow_id: 1, workflow_titulo: 'Full Group' }),
-      ],
-    }));
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({
+        posts: [
+          makePost({
+            id: 1,
+            titulo: 'Feed',
+            tipo: 'feed',
+            workflow_id: 1,
+            workflow_titulo: 'Full Group',
+          }),
+          makePost({
+            id: 2,
+            titulo: 'Story',
+            tipo: 'stories',
+            workflow_id: 1,
+            workflow_titulo: 'Full Group',
+          }),
+          makePost({
+            id: 3,
+            titulo: 'Text',
+            media: [],
+            workflow_id: 1,
+            workflow_titulo: 'Full Group',
+          }),
+        ],
+      }),
+    );
 
     renderHubPage(POSTAGENS_PATH, POSTAGENS_ROUTE, <PostagensPage />);
 
@@ -657,11 +747,11 @@ describe('PostagensPage — collapse/expand groups', () => {
   });
 
   it('keeps the group header visible even when collapsed', async () => {
-    mockedFetchPosts.mockResolvedValue(makeResponse({
-      posts: [
-        makePost({ id: 1, workflow_id: 1, workflow_titulo: 'Persistent Header' }),
-      ],
-    }));
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({
+        posts: [makePost({ id: 1, workflow_id: 1, workflow_titulo: 'Persistent Header' })],
+      }),
+    );
 
     renderHubPage(POSTAGENS_PATH, POSTAGENS_ROUTE, <PostagensPage />);
 
@@ -680,37 +770,83 @@ describe('PostagensPage — sorting within groups', () => {
   });
 
   it('sorts posts by scheduled_at within a group, nulls last, then by ordem', async () => {
-    mockedFetchPosts.mockResolvedValue(makeResponse({
-      posts: [
-        makePost({ id: 1, titulo: 'No date A', workflow_id: 1, workflow_titulo: 'Group', scheduled_at: null, ordem: 2 }),
-        makePost({ id: 2, titulo: 'No date B', workflow_id: 1, workflow_titulo: 'Group', scheduled_at: null, ordem: 1 }),
-        makePost({ id: 3, titulo: 'Late', workflow_id: 1, workflow_titulo: 'Group', scheduled_at: '2026-05-01T10:00:00Z', ordem: 1 }),
-        makePost({ id: 4, titulo: 'Early', workflow_id: 1, workflow_titulo: 'Group', scheduled_at: '2026-04-01T10:00:00Z', ordem: 1 }),
-      ],
-    }));
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({
+        posts: [
+          makePost({
+            id: 1,
+            titulo: 'No date A',
+            workflow_id: 1,
+            workflow_titulo: 'Group',
+            scheduled_at: null,
+            ordem: 2,
+          }),
+          makePost({
+            id: 2,
+            titulo: 'No date B',
+            workflow_id: 1,
+            workflow_titulo: 'Group',
+            scheduled_at: null,
+            ordem: 1,
+          }),
+          makePost({
+            id: 3,
+            titulo: 'Late',
+            workflow_id: 1,
+            workflow_titulo: 'Group',
+            scheduled_at: '2026-05-01T10:00:00Z',
+            ordem: 1,
+          }),
+          makePost({
+            id: 4,
+            titulo: 'Early',
+            workflow_id: 1,
+            workflow_titulo: 'Group',
+            scheduled_at: '2026-04-01T10:00:00Z',
+            ordem: 1,
+          }),
+        ],
+      }),
+    );
 
     renderHubPage(POSTAGENS_PATH, POSTAGENS_ROUTE, <PostagensPage />);
 
     await screen.findByRole('heading', { name: 'Group' });
 
     const headings = screen.getAllByRole('heading', { level: 4 });
-    expect(headings.map(h => h.textContent)).toEqual(['Early', 'Late', 'No date B', 'No date A']);
+    expect(headings.map((h) => h.textContent)).toEqual(['Early', 'Late', 'No date B', 'No date A']);
   });
 
   it('uses ordem as tiebreaker when scheduled_at is the same', async () => {
-    mockedFetchPosts.mockResolvedValue(makeResponse({
-      posts: [
-        makePost({ id: 1, titulo: 'Second', workflow_id: 1, workflow_titulo: 'Group', scheduled_at: '2026-04-20T10:00:00Z', ordem: 5 }),
-        makePost({ id: 2, titulo: 'First', workflow_id: 1, workflow_titulo: 'Group', scheduled_at: '2026-04-20T10:00:00Z', ordem: 2 }),
-      ],
-    }));
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({
+        posts: [
+          makePost({
+            id: 1,
+            titulo: 'Second',
+            workflow_id: 1,
+            workflow_titulo: 'Group',
+            scheduled_at: '2026-04-20T10:00:00Z',
+            ordem: 5,
+          }),
+          makePost({
+            id: 2,
+            titulo: 'First',
+            workflow_id: 1,
+            workflow_titulo: 'Group',
+            scheduled_at: '2026-04-20T10:00:00Z',
+            ordem: 2,
+          }),
+        ],
+      }),
+    );
 
     renderHubPage(POSTAGENS_PATH, POSTAGENS_ROUTE, <PostagensPage />);
 
     await screen.findByRole('heading', { name: 'Group' });
 
     const headings = screen.getAllByRole('heading', { level: 4 });
-    expect(headings.map(h => h.textContent)).toEqual(['First', 'Second']);
+    expect(headings.map((h) => h.textContent)).toEqual(['First', 'Second']);
   });
 });
 
@@ -720,16 +856,54 @@ describe('PostagensPage — status filtering', () => {
   });
 
   it('shows all visible statuses: enviado_cliente, aprovado_cliente, correcao_cliente, agendado, postado, falha_publicacao', async () => {
-    mockedFetchPosts.mockResolvedValue(makeResponse({
-      posts: [
-        makePost({ id: 1, titulo: 'Enviado', status: 'enviado_cliente', workflow_id: 1, workflow_titulo: 'W' }),
-        makePost({ id: 2, titulo: 'Post Aprovado', status: 'aprovado_cliente', workflow_id: 1, workflow_titulo: 'W' }),
-        makePost({ id: 3, titulo: 'Correção', status: 'correcao_cliente', workflow_id: 1, workflow_titulo: 'W' }),
-        makePost({ id: 4, titulo: 'Post Agendado', status: 'agendado', workflow_id: 1, workflow_titulo: 'W' }),
-        makePost({ id: 5, titulo: 'Postado', status: 'postado', workflow_id: 1, workflow_titulo: 'W' }),
-        makePost({ id: 6, titulo: 'Falha', status: 'falha_publicacao', workflow_id: 1, workflow_titulo: 'W' }),
-      ],
-    }));
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({
+        posts: [
+          makePost({
+            id: 1,
+            titulo: 'Enviado',
+            status: 'enviado_cliente',
+            workflow_id: 1,
+            workflow_titulo: 'W',
+          }),
+          makePost({
+            id: 2,
+            titulo: 'Post Aprovado',
+            status: 'aprovado_cliente',
+            workflow_id: 1,
+            workflow_titulo: 'W',
+          }),
+          makePost({
+            id: 3,
+            titulo: 'Correção',
+            status: 'correcao_cliente',
+            workflow_id: 1,
+            workflow_titulo: 'W',
+          }),
+          makePost({
+            id: 4,
+            titulo: 'Post Agendado',
+            status: 'agendado',
+            workflow_id: 1,
+            workflow_titulo: 'W',
+          }),
+          makePost({
+            id: 5,
+            titulo: 'Postado',
+            status: 'postado',
+            workflow_id: 1,
+            workflow_titulo: 'W',
+          }),
+          makePost({
+            id: 6,
+            titulo: 'Falha',
+            status: 'falha_publicacao',
+            workflow_id: 1,
+            workflow_titulo: 'W',
+          }),
+        ],
+      }),
+    );
 
     renderHubPage(POSTAGENS_PATH, POSTAGENS_ROUTE, <PostagensPage />);
 
@@ -743,13 +917,33 @@ describe('PostagensPage — status filtering', () => {
   });
 
   it('filters out rascunho and em_producao statuses', async () => {
-    mockedFetchPosts.mockResolvedValue(makeResponse({
-      posts: [
-        makePost({ id: 1, titulo: 'Rascunho', status: 'rascunho', workflow_id: 1, workflow_titulo: 'W' }),
-        makePost({ id: 2, titulo: 'Produção', status: 'em_producao', workflow_id: 1, workflow_titulo: 'W' }),
-        makePost({ id: 3, titulo: 'Visible', status: 'enviado_cliente', workflow_id: 1, workflow_titulo: 'W' }),
-      ],
-    }));
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({
+        posts: [
+          makePost({
+            id: 1,
+            titulo: 'Rascunho',
+            status: 'rascunho',
+            workflow_id: 1,
+            workflow_titulo: 'W',
+          }),
+          makePost({
+            id: 2,
+            titulo: 'Produção',
+            status: 'em_producao',
+            workflow_id: 1,
+            workflow_titulo: 'W',
+          }),
+          makePost({
+            id: 3,
+            titulo: 'Visible',
+            status: 'enviado_cliente',
+            workflow_id: 1,
+            workflow_titulo: 'W',
+          }),
+        ],
+      }),
+    );
 
     renderHubPage(POSTAGENS_PATH, POSTAGENS_ROUTE, <PostagensPage />);
 

@@ -13,7 +13,9 @@ vi.mock('../../api', () => ({
 vi.mock('../PostMediaLightbox', () => ({
   PostMediaLightbox: ({ onClose }: { onClose: () => void }) => (
     <div data-testid="post-media-lightbox">
-      <button type="button" onClick={onClose}>Fechar lightbox</button>
+      <button type="button" onClick={onClose}>
+        Fechar lightbox
+      </button>
     </div>
   ),
 }));
@@ -22,19 +24,34 @@ const mockedSubmitApproval = vi.mocked(submitApproval);
 
 function makeMedia(overrides: Partial<HubPostMedia> = {}): HubPostMedia {
   return {
-    id: 1, post_id: 7, kind: 'image', mime_type: 'image/jpeg',
-    url: 'https://cdn.example.com/media-1.jpg', thumbnail_url: null,
-    width: 1080, height: 1350, duration_seconds: null, is_cover: false, sort_order: 0,
+    id: 1,
+    post_id: 7,
+    kind: 'image',
+    mime_type: 'image/jpeg',
+    url: 'https://cdn.example.com/media-1.jpg',
+    thumbnail_url: null,
+    width: 1080,
+    height: 1350,
+    duration_seconds: null,
+    is_cover: false,
+    sort_order: 0,
     ...overrides,
   };
 }
 
 function makePost(overrides: Partial<HubPost> = {}): HubPost {
   return {
-    id: 7, titulo: 'Campanha de Páscoa', tipo: 'feed', status: 'enviado_cliente',
-    ordem: 1, conteudo_plain: 'Legenda principal do post.',
-    scheduled_at: '2026-04-22T10:00:00.000Z', workflow_id: 42, workflow_titulo: 'Editorial',
-    media: [makeMedia()], cover_media: null,
+    id: 7,
+    titulo: 'Campanha de Páscoa',
+    tipo: 'feed',
+    status: 'enviado_cliente',
+    ordem: 1,
+    conteudo_plain: 'Legenda principal do post.',
+    scheduled_at: '2026-04-22T10:00:00.000Z',
+    workflow_id: 42,
+    workflow_titulo: 'Editorial',
+    media: [makeMedia()],
+    cover_media: null,
     ...overrides,
   };
 }

@@ -1,9 +1,9 @@
-import React from "react"
-import { Lock } from "lucide-react"
+import React from 'react';
+import { Lock } from 'lucide-react';
 
 interface RoleRestrictionNoticeProps {
-  title: string
-  description: string
+  title: string;
+  description: string;
 }
 
 export function RoleRestrictionNotice({ title, description }: RoleRestrictionNoticeProps) {
@@ -15,5 +15,5 @@ export function RoleRestrictionNotice({ title, description }: RoleRestrictionNot
         <p className="text-stone-500 dark:text-stone-400 text-xs">{description}</p>
       </div>
     </div>
-  )
+  );
 }

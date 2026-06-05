@@ -1,7 +1,11 @@
 // =============================================
 // Mesaas - Instagram Overview Card Component
 // =============================================
-import { syncInstagramData, disconnectInstagram, getInstagramAuthUrl } from '../../services/instagram';
+import {
+  syncInstagramData,
+  disconnectInstagram,
+  getInstagramAuthUrl,
+} from '../../services/instagram';
 import { showToast, openModal, closeModal, escapeHTML, sanitizeUrl } from '../../router';
 import { formatDate } from '../../store';
 import { i18n } from '@mesaas/i18n';
@@ -15,9 +19,16 @@ function numFmt(n: number | undefined) {
   return (n ?? 0).toLocaleString(locale);
 }
 
-export function renderInstagramOverviewCard(container: HTMLElement, clientId: number, account: any, onRefresh: () => void) {
+export function renderInstagramOverviewCard(
+  container: HTMLElement,
+  clientId: number,
+  account: any,
+  onRefresh: () => void,
+) {
   const isRevoked = account.authorization_status === 'revoked';
-  const isExpired = account.authorization_status === 'expired' || (account.token_expires_at && new Date(account.token_expires_at) < new Date());
+  const isExpired =
+    account.authorization_status === 'expired' ||
+    (account.token_expires_at && new Date(account.token_expires_at) < new Date());
 
   let statusBanner = '';
   if (isRevoked) {
@@ -29,13 +40,18 @@ export function renderInstagramOverviewCard(container: HTMLElement, clientId: nu
     </div>`;
   }
 
-  const updatedDate = (account.last_synced_at || account.updated_at)
-    ? t('instagram.updatedAt', { date: formatDate((account.last_synced_at || account.updated_at).split('T')[0]) })
-    : t('instagram.updatedNow');
+  const updatedDate =
+    account.last_synced_at || account.updated_at
+      ? t('instagram.updatedAt', {
+          date: formatDate((account.last_synced_at || account.updated_at).split('T')[0]),
+        })
+      : t('instagram.updatedNow');
 
   let tokenBadge = '';
   if (account.token_expires_at && !isRevoked) {
-    const daysLeft = Math.ceil((new Date(account.token_expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    const daysLeft = Math.ceil(
+      (new Date(account.token_expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24),
+    );
     const tooltip = escapeHTML(t('instagram.tokenTooltip'));
     const badgeBase = `cursor: help; display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.7rem; font-weight: 600; font-family: var(--font-mono);`;
     if (daysLeft <= 0) {
@@ -112,66 +128,70 @@ export function renderInstagramOverviewCard(container: HTMLElement, clientId: nu
   // Bind Sync
   const btnSync = container.querySelector('#btn-ig-sync') as HTMLButtonElement;
   if (btnSync) {
-      btnSync.addEventListener('click', async () => {
-          try {
-             btnSync.innerHTML = '<i class="ph ph-spinner ph-spin"></i>';
-             btnSync.disabled = true;
-             await syncInstagramData(clientId);
-             showToast(t('instagram.syncSuccess'));
-             onRefresh();
-          } catch (err: any) {
-             btnSync.innerHTML = '<i class="ph ph-arrows-clockwise"></i>';
-             btnSync.disabled = false;
-             if (err.message === 'TOKEN_EXPIRED') {
-                 showToast(t('instagram.syncTokenExpired'), 'error');
-             } else {
-                 showToast(t('instagram.syncError', { error: err.message }), 'error');
-             }
-          }
-      });
+    btnSync.addEventListener('click', async () => {
+      try {
+        btnSync.innerHTML = '<i class="ph ph-spinner ph-spin"></i>';
+        btnSync.disabled = true;
+        await syncInstagramData(clientId);
+        showToast(t('instagram.syncSuccess'));
+        onRefresh();
+      } catch (err: any) {
+        btnSync.innerHTML = '<i class="ph ph-arrows-clockwise"></i>';
+        btnSync.disabled = false;
+        if (err.message === 'TOKEN_EXPIRED') {
+          showToast(t('instagram.syncTokenExpired'), 'error');
+        } else {
+          showToast(t('instagram.syncError', { error: err.message }), 'error');
+        }
+      }
+    });
   }
 
   // Bind Reconnect
   const btnReconnect = container.querySelector('#btn-ig-reconnect') as HTMLButtonElement;
   if (btnReconnect) {
-      btnReconnect.addEventListener('click', async () => {
-          try {
-             btnReconnect.innerHTML = `<i class="ph ph-spinner ph-spin"></i> ${escapeHTML(t('instagram.connecting'))}`;
-             btnReconnect.disabled = true;
-             const url = await getInstagramAuthUrl(clientId);
-             window.location.href = url;
-          } catch (err: any) {
-             btnReconnect.textContent = escapeHTML(t('instagram.reconnectButton'));
-             btnReconnect.disabled = false;
-             showToast(t('instagram.connectError', { error: err.message }), 'error');
-          }
-      });
+    btnReconnect.addEventListener('click', async () => {
+      try {
+        btnReconnect.innerHTML = `<i class="ph ph-spinner ph-spin"></i> ${escapeHTML(t('instagram.connecting'))}`;
+        btnReconnect.disabled = true;
+        const url = await getInstagramAuthUrl(clientId);
+        window.location.href = url;
+      } catch (err: any) {
+        btnReconnect.textContent = escapeHTML(t('instagram.reconnectButton'));
+        btnReconnect.disabled = false;
+        showToast(t('instagram.connectError', { error: err.message }), 'error');
+      }
+    });
   }
 
   // Bind Disconnect
   const btnDisconnect = container.querySelector('#btn-ig-disconnect') as HTMLButtonElement;
   if (btnDisconnect) {
-      btnDisconnect.addEventListener('click', () => {
-          openModal(
-            t('instagram.disconnectTitle'),
-            `<p style="color:var(--text-muted);line-height:1.6;">${t('instagram.disconnectConfirm', { username: escapeHTML(account.username || t('instagram.account')) })}</p>
+    btnDisconnect.addEventListener('click', () => {
+      openModal(
+        t('instagram.disconnectTitle'),
+        `<p style="color:var(--text-muted);line-height:1.6;">${t('instagram.disconnectConfirm', { username: escapeHTML(account.username || t('instagram.account')) })}</p>
              <p style="color:var(--text-muted);font-size:0.85rem;margin-top:0.5rem;">${escapeHTML(t('instagram.disconnectWarning'))}</p>`,
-            async () => {
-              closeModal();
-              try {
-                btnDisconnect.innerHTML = '<i class="ph ph-spinner ph-spin"></i>';
-                btnDisconnect.disabled = true;
-                await disconnectInstagram(clientId);
-                showToast(t('instagram.disconnectSuccess'));
-                onRefresh();
-              } catch (err: any) {
-                btnDisconnect.innerHTML = '<i class="ph ph-plugs"></i>';
-                btnDisconnect.disabled = false;
-                showToast(t('instagram.disconnectError', { error: err.message }), 'error');
-              }
-            },
-            { danger: true, submitText: t('instagram.disconnectButton'), cancelText: i18n.t('actions.cancel') }
-          );
-      });
+        async () => {
+          closeModal();
+          try {
+            btnDisconnect.innerHTML = '<i class="ph ph-spinner ph-spin"></i>';
+            btnDisconnect.disabled = true;
+            await disconnectInstagram(clientId);
+            showToast(t('instagram.disconnectSuccess'));
+            onRefresh();
+          } catch (err: any) {
+            btnDisconnect.innerHTML = '<i class="ph ph-plugs"></i>';
+            btnDisconnect.disabled = false;
+            showToast(t('instagram.disconnectError', { error: err.message }), 'error');
+          }
+        },
+        {
+          danger: true,
+          submitText: t('instagram.disconnectButton'),
+          cancelText: i18n.t('actions.cancel'),
+        },
+      );
+    });
   }
 }

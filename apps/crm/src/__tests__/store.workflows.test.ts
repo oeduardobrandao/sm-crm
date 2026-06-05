@@ -12,7 +12,11 @@ type MockedSupabaseModule = typeof supabaseModule & {
     payload?: unknown;
     modifiers: Array<{ method: string; args: unknown[] }>;
   }>;
-  __queueSupabaseResult: (table: string, operation: 'select' | 'insert' | 'update' | 'delete' | 'upsert', ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>) => void;
+  __queueSupabaseResult: (
+    table: string,
+    operation: 'select' | 'insert' | 'update' | 'delete' | 'upsert',
+    ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>
+  ) => void;
   __resetSupabaseMock: () => void;
   __setCurrentProfile: (profile: Record<string, unknown> | null) => void;
 };
@@ -20,7 +24,9 @@ type MockedSupabaseModule = typeof supabaseModule & {
 const mockedSupabase = supabaseModule as MockedSupabaseModule;
 
 function getCalls(table: string, operation?: string) {
-  return mockedSupabase.__getSupabaseCalls().filter((entry) => entry.table === table && (!operation || entry.operation === operation));
+  return mockedSupabase
+    .__getSupabaseCalls()
+    .filter((entry) => entry.table === table && (!operation || entry.operation === operation));
 }
 
 describe('store workflow and portal functions', () => {
@@ -47,10 +53,11 @@ describe('store workflow and portal functions', () => {
       name: 'addWorkflowTemplate',
       table: 'workflow_templates',
       operation: 'insert' as const,
-      run: () => store.addWorkflowTemplate({
-        nome: 'Social Mensal',
-        etapas: [{ nome: 'Briefing', prazo_dias: 2, tipo_prazo: 'uteis' }],
-      }),
+      run: () =>
+        store.addWorkflowTemplate({
+          nome: 'Social Mensal',
+          etapas: [{ nome: 'Briefing', prazo_dias: 2, tipo_prazo: 'uteis' }],
+        }),
       response: { id: 1, nome: 'Social Mensal' },
       payload: {
         nome: 'Social Mensal',
@@ -76,23 +83,28 @@ describe('store workflow and portal functions', () => {
       response: null,
       modifier: { method: 'eq', args: ['id', 1] },
     },
-  ])('$name issues the expected workflow template query', async ({ table, operation, run, response, payload, modifier }) => {
-    mockedSupabase.__queueSupabaseResult(table, operation, { data: response, error: null });
+  ])(
+    '$name issues the expected workflow template query',
+    async ({ table, operation, run, response, payload, modifier }) => {
+      mockedSupabase.__queueSupabaseResult(table, operation, { data: response, error: null });
 
-    await run();
+      await run();
 
-    const call = getCalls(table, operation).at(-1)!;
-    expect(call).toBeDefined();
-    if (payload) expect(call.payload).toEqual(payload);
-    if (modifier) expect(call.modifiers).toContainEqual(modifier);
-  });
+      const call = getCalls(table, operation).at(-1)!;
+      expect(call).toBeDefined();
+      if (payload) expect(call.payload).toEqual(payload);
+      if (modifier) expect(call.modifiers).toContainEqual(modifier);
+    },
+  );
 
   it('propagates pending template steps to active workflows only', async () => {
     mockedSupabase.__queueSupabaseResult('workflows', 'select', {
       data: [{ id: 10 }, { id: 11 }],
       error: null,
     });
-    mockedSupabase.__queueSupabaseResult('workflow_etapas', 'select',
+    mockedSupabase.__queueSupabaseResult(
+      'workflow_etapas',
+      'select',
       {
         data: [
           { id: 101, ordem: 0, status: 'pendente' },
@@ -101,13 +113,13 @@ describe('store workflow and portal functions', () => {
         error: null,
       },
       {
-        data: [
-          { id: 111, ordem: 0, status: 'pendente' },
-        ],
+        data: [{ id: 111, ordem: 0, status: 'pendente' }],
         error: null,
       },
     );
-    mockedSupabase.__queueSupabaseResult('workflow_etapas', 'update',
+    mockedSupabase.__queueSupabaseResult(
+      'workflow_etapas',
+      'update',
       { data: null, error: null },
       { data: null, error: null },
     );
@@ -124,11 +136,15 @@ describe('store workflow and portal functions', () => {
   });
 
   it('completes a step and activates the next workflow stage', async () => {
-    mockedSupabase.__queueSupabaseResult('workflow_etapas', 'update',
+    mockedSupabase.__queueSupabaseResult(
+      'workflow_etapas',
+      'update',
       { data: { id: 501, status: 'concluido' }, error: null },
       { data: { id: 502, status: 'ativo' }, error: null },
     );
-    mockedSupabase.__queueSupabaseResult('workflow_etapas', 'select',
+    mockedSupabase.__queueSupabaseResult(
+      'workflow_etapas',
+      'select',
       {
         data: [
           { id: 501, ordem: 0, status: 'pendente' },
@@ -160,7 +176,9 @@ describe('store workflow and portal functions', () => {
 
   it('reverts the active step back to the previous stage preserving iniciado_em', async () => {
     const originalStart = '2026-04-01T10:00:00.000Z';
-    mockedSupabase.__queueSupabaseResult('workflow_etapas', 'select',
+    mockedSupabase.__queueSupabaseResult(
+      'workflow_etapas',
+      'select',
       {
         data: [
           { id: 601, ordem: 0, status: 'concluido', iniciado_em: originalStart },
@@ -176,7 +194,9 @@ describe('store workflow and portal functions', () => {
         error: null,
       },
     );
-    mockedSupabase.__queueSupabaseResult('workflow_etapas', 'update',
+    mockedSupabase.__queueSupabaseResult(
+      'workflow_etapas',
+      'update',
       { data: { id: 602, status: 'pendente' }, error: null },
       { data: { id: 601, status: 'ativo' }, error: null },
     );
@@ -192,7 +212,11 @@ describe('store workflow and portal functions', () => {
     expect(result.etapas[1].status).toBe('pendente');
 
     const updates = getCalls('workflow_etapas', 'update');
-    expect(updates[1].payload).toMatchObject({ status: 'ativo', concluido_em: null, iniciado_em: originalStart });
+    expect(updates[1].payload).toMatchObject({
+      status: 'ativo',
+      concluido_em: null,
+      iniciado_em: originalStart,
+    });
     expect(updates[1].modifiers).toContainEqual({ method: 'eq', args: ['id', 601] });
   });
 
@@ -200,7 +224,9 @@ describe('store workflow and portal functions', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-05-26T12:00:00.000Z'));
 
-    mockedSupabase.__queueSupabaseResult('workflow_etapas', 'select',
+    mockedSupabase.__queueSupabaseResult(
+      'workflow_etapas',
+      'select',
       {
         data: [
           { id: 701, ordem: 0, status: 'concluido', iniciado_em: null },
@@ -216,7 +242,9 @@ describe('store workflow and portal functions', () => {
         error: null,
       },
     );
-    mockedSupabase.__queueSupabaseResult('workflow_etapas', 'update',
+    mockedSupabase.__queueSupabaseResult(
+      'workflow_etapas',
+      'update',
       { data: { id: 702, status: 'pendente' }, error: null },
       { data: { id: 701, status: 'ativo' }, error: null },
     );
@@ -228,7 +256,11 @@ describe('store workflow and portal functions', () => {
     await store.revertEtapa(60);
 
     const updates = getCalls('workflow_etapas', 'update');
-    expect(updates[1].payload).toMatchObject({ status: 'ativo', concluido_em: null, iniciado_em: '2026-05-26T12:00:00.000Z' });
+    expect(updates[1].payload).toMatchObject({
+      status: 'ativo',
+      concluido_em: null,
+      iniciado_em: '2026-05-26T12:00:00.000Z',
+    });
     expect(updates[1].modifiers).toContainEqual({ method: 'eq', args: ['id', 701] });
 
     vi.useRealTimers();
@@ -301,7 +333,9 @@ describe('store workflow and portal functions', () => {
       data: { id: 9, titulo: 'Carrossel Abril' },
       error: null,
     });
-    mockedSupabase.__queueSupabaseResult('workflow_posts', 'update',
+    mockedSupabase.__queueSupabaseResult(
+      'workflow_posts',
+      'update',
       { data: { id: 9, titulo: 'Carrossel Abril V2' }, error: null },
       { data: null, error: null },
       { data: { id: 9, is_cover: true }, error: null },
@@ -323,34 +357,46 @@ describe('store workflow and portal functions', () => {
       error: null,
     });
 
-    await expect(store.addWorkflowPost({
-      workflow_id: 2,
-      titulo: 'Carrossel Abril',
-      conteudo: null,
-      conteudo_plain: 'Legenda',
-      tipo: 'carrossel',
-      ordem: 0,
-      status: 'rascunho',
-    })).resolves.toMatchObject({ id: 9 });
+    await expect(
+      store.addWorkflowPost({
+        workflow_id: 2,
+        titulo: 'Carrossel Abril',
+        conteudo: null,
+        conteudo_plain: 'Legenda',
+        tipo: 'carrossel',
+        ordem: 0,
+        status: 'rascunho',
+      }),
+    ).resolves.toMatchObject({ id: 9 });
 
-    await expect(store.updateWorkflowPost(9, { titulo: 'Carrossel Abril V2' })).resolves.toMatchObject({
+    await expect(
+      store.updateWorkflowPost(9, { titulo: 'Carrossel Abril V2' }),
+    ).resolves.toMatchObject({
       titulo: 'Carrossel Abril V2',
     });
     await expect(store.sendPostsToCliente(2)).resolves.toBeUndefined();
 
-    await expect(store.createPropertyDefinition(8, {
-      name: 'CTA',
-      type: 'text',
-      config: {},
-      portal_visible: true,
-      display_order: 0,
-    })).resolves.toMatchObject({ id: 3 });
+    await expect(
+      store.createPropertyDefinition(8, {
+        name: 'CTA',
+        type: 'text',
+        config: {},
+        portal_visible: true,
+        display_order: 0,
+      }),
+    ).resolves.toMatchObject({ id: 3 });
 
-    await expect(store.updatePropertyDefinition(3, { name: 'CTA principal' })).resolves.toMatchObject({
+    await expect(
+      store.updatePropertyDefinition(3, { name: 'CTA principal' }),
+    ).resolves.toMatchObject({
       name: 'CTA principal',
     });
-    await expect(store.upsertPostPropertyValue(9, 3, 'Fale conosco no WhatsApp')).resolves.toBeUndefined();
-    await expect(store.createWorkflowSelectOption(2, 3, 'Stories', '#06b6d4')).resolves.toMatchObject({
+    await expect(
+      store.upsertPostPropertyValue(9, 3, 'Fale conosco no WhatsApp'),
+    ).resolves.toBeUndefined();
+    await expect(
+      store.createWorkflowSelectOption(2, 3, 'Stories', '#06b6d4'),
+    ).resolves.toMatchObject({
       label: 'Stories',
     });
 
@@ -367,7 +413,9 @@ describe('store workflow and portal functions', () => {
   });
 
   it('inserts workspace replies for portal and post approvals', async () => {
-    mockedSupabase.__queueSupabaseResult('portal_tokens', 'select',
+    mockedSupabase.__queueSupabaseResult(
+      'portal_tokens',
+      'select',
       { data: { token: 'portal-123' }, error: null },
       { data: { token: 'portal-123' }, error: null },
     );
@@ -434,7 +482,12 @@ describe('getDeadlineInfo', () => {
       iniciado_em: null,
     } as never);
 
-    expect(result).toEqual({ diasRestantes: 5, horasRestantes: 0, estourado: false, urgente: false });
+    expect(result).toEqual({
+      diasRestantes: 5,
+      horasRestantes: 0,
+      estourado: false,
+      urgente: false,
+    });
   });
 
   it('returns prazo_dias unchanged when iniciado_em is missing on an active step', () => {
@@ -552,12 +605,7 @@ describe('getWorkflowPostsCounts', () => {
 
   it('aggregates rows into a Map keyed by workflow_id', async () => {
     mockedSupabase.__queueSupabaseResult('workflow_posts', 'select', {
-      data: [
-        { workflow_id: 10 },
-        { workflow_id: 10 },
-        { workflow_id: 10 },
-        { workflow_id: 20 },
-      ],
+      data: [{ workflow_id: 10 }, { workflow_id: 10 }, { workflow_id: 10 }, { workflow_id: 20 }],
       error: null,
     });
 
@@ -571,9 +619,7 @@ describe('getWorkflowPostsCounts', () => {
     expect(calls).toHaveLength(1);
     expect(calls[0].selectArgs).toEqual(expect.arrayContaining([['workflow_id']]));
     expect(calls[0].modifiers).toEqual(
-      expect.arrayContaining([
-        { method: 'in', args: ['workflow_id', [10, 20, 30]] },
-      ]),
+      expect.arrayContaining([{ method: 'in', args: ['workflow_id', [10, 20, 30]] }]),
     );
   });
 

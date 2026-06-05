@@ -15,6 +15,8 @@ function makeDeps(overrides: Partial<Parameters<typeof createSignR2UrlsHandler>[
         select: (_cols: string) => ({
           eq: (_col: string, _val: string) => ({
             single: async () => ({ data: { conta_id: "conta-abc" }, error: null }),
+            // kb_articles lookup chains .in() after .eq(); default to no matches.
+            in: async (_inCol: string, _vals: string[]) => ({ data: [], error: null }),
           }),
         }),
       }),

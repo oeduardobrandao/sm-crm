@@ -5,10 +5,16 @@ import { MonthGrid } from '@/components/ui/month-grid';
 import type { ClientePost } from '@/store/posts';
 
 const TIPO_COLORS: Record<string, string> = {
-  feed: '#eab308', reels: '#E1306C', stories: '#42c8f5', carrossel: '#3ecf8e',
+  feed: '#eab308',
+  reels: '#E1306C',
+  stories: '#42c8f5',
+  carrossel: '#3ecf8e',
 };
 const TIPO_LABELS: Record<string, string> = {
-  feed: 'Feed', reels: 'Reels', stories: 'Stories', carrossel: 'Carrossel',
+  feed: 'Feed',
+  reels: 'Reels',
+  stories: 'Stories',
+  carrossel: 'Carrossel',
 };
 const LOCKED_STATUSES = new Set(['agendado', 'postado', 'falha_publicacao']);
 const LOCKED_TOOLTIPS: Record<string, string> = {
@@ -63,9 +69,15 @@ function PostPill({ post, currentWorkflowId }: { post: ClientePost; currentWorkf
 }
 
 function DroppableCell({
-  date, isCurrentMonth, posts, currentWorkflowId,
+  date,
+  isCurrentMonth,
+  posts,
+  currentWorkflowId,
 }: {
-  date: Date; isCurrentMonth: boolean; posts: ClientePost[]; currentWorkflowId: number;
+  date: Date;
+  isCurrentMonth: boolean;
+  posts: ClientePost[];
+  currentWorkflowId: number;
 }) {
   const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   const { setNodeRef, isOver } = useDroppable({ id: `date-${dateStr}` });
@@ -86,17 +98,23 @@ function DroppableCell({
         boxShadow: isOver ? '0 0 12px rgba(234, 179, 8, 0.12)' : undefined,
       }}
     >
-      <div className="cell-day-number" style={{ fontFamily: 'var(--font-mono)', fontSize: 11, textAlign: 'right' }}>
+      <div
+        className="cell-day-number"
+        style={{ fontFamily: 'var(--font-mono)', fontSize: 11, textAlign: 'right' }}
+      >
         {date.getDate()}
       </div>
       <div className="cell-posts">
-        {visiblePosts.map(post => (
+        {visiblePosts.map((post) => (
           <PostPill key={post.id} post={post} currentWorkflowId={currentWorkflowId} />
         ))}
         {overflow > 0 && (
           <div
             className="cell-overflow"
-            title={posts.slice(maxVisible).map(p => `${TIPO_LABELS[p.tipo]} · ${p.titulo}`).join('\n')}
+            title={posts
+              .slice(maxVisible)
+              .map((p) => `${TIPO_LABELS[p.tipo]} · ${p.titulo}`)
+              .join('\n')}
           >
             +{overflow} mais
           </div>
@@ -107,13 +125,18 @@ function DroppableCell({
   );
 }
 
-export function CalendarGrid({ currentMonth, scheduledPosts, currentWorkflowId, onMonthChange }: CalendarGridProps) {
+export function CalendarGrid({
+  currentMonth,
+  scheduledPosts,
+  currentWorkflowId,
+  onMonthChange,
+}: CalendarGridProps) {
   return (
     <MonthGrid
       currentMonth={currentMonth}
       onMonthChange={onMonthChange}
       renderCell={(date, isCurrentMonth) => {
-        const dayPosts = scheduledPosts.filter(p => {
+        const dayPosts = scheduledPosts.filter((p) => {
           if (!p.scheduled_at) return false;
           const postDate = parseISO(p.scheduled_at);
           return isSameDay(postDate, date);

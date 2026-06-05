@@ -1,12 +1,24 @@
 import { Link, useLocation, useParams } from 'react-router-dom';
-import { Home, CheckSquare, Palette, FileText, BookOpen, LayoutList, Sun, Moon } from 'lucide-react';
+import {
+  Home,
+  CheckSquare,
+  Palette,
+  FileText,
+  BookOpen,
+  LayoutList,
+  Sun,
+  Moon,
+} from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useHub } from '../HubContext';
 import { useTheme } from '../hooks/useTheme';
 import { changeLanguage, SUPPORTED_LANGUAGES } from '@mesaas/i18n';
 import type { Language } from '@mesaas/i18n';
 
-const LANGUAGE_FLAGS: Record<Language, string> = { pt: '\u{1F1E7}\u{1F1F7}', en: '\u{1F1FA}\u{1F1F8}' };
+const LANGUAGE_FLAGS: Record<Language, string> = {
+  pt: '\u{1F1E7}\u{1F1F7}',
+  en: '\u{1F1FA}\u{1F1F8}',
+};
 
 const NAV_ITEMS = [
   { label: 'Home', labelKey: 'nav.home', icon: Home, path: '' },
@@ -38,7 +50,11 @@ export function HubNav() {
         <div className="mx-auto w-full max-w-5xl px-8 h-16 flex items-center gap-8">
           <div className="flex items-center gap-2.5">
             {bootstrap.workspace.logo_url && (
-              <img src={bootstrap.workspace.logo_url} alt={bootstrap.workspace.name} className="h-6 w-auto object-contain" />
+              <img
+                src={bootstrap.workspace.logo_url}
+                alt={bootstrap.workspace.name}
+                className="h-6 w-auto object-contain"
+              />
             )}
             <span className="font-display text-[15px] font-semibold tracking-tight text-white">
               {bootstrap.workspace.name}
@@ -47,15 +63,14 @@ export function HubNav() {
           <nav className="flex items-center gap-1">
             {NAV_ITEMS.map(({ label, labelKey, path }) => {
               const href = `${base}${path}`;
-              const active = path === '' ? pathname === base : pathname.startsWith(`${base}${path}`);
+              const active =
+                path === '' ? pathname === base : pathname.startsWith(`${base}${path}`);
               return (
                 <Link
                   key={path}
                   to={href}
                   className={`relative px-3 py-1.5 text-[13px] font-medium rounded-full transition-all duration-200 ${
-                    active
-                      ? 'text-white bg-white/10'
-                      : 'text-stone-400 hover:text-white'
+                    active ? 'text-white bg-white/10' : 'text-stone-400 hover:text-white'
                   }`}
                 >
                   {t(labelKey, label)}
@@ -90,14 +105,20 @@ export function HubNav() {
       <header className="md:hidden sticky top-0 z-20 h-14 px-5 flex items-center justify-between border-b border-stone-900 bg-stone-950/95 backdrop-blur-md">
         <div className="flex items-center gap-2">
           {bootstrap.workspace.logo_url && (
-            <img src={bootstrap.workspace.logo_url} alt={bootstrap.workspace.name} className="h-5 w-auto object-contain" />
+            <img
+              src={bootstrap.workspace.logo_url}
+              alt={bootstrap.workspace.name}
+              className="h-5 w-auto object-contain"
+            />
           )}
           <span className="font-display text-sm font-semibold tracking-tight text-white">
             {bootstrap.workspace.name}
           </span>
         </div>
         <span className="flex items-center gap-2">
-          <span className="text-[11px] text-stone-400 truncate max-w-[120px]">{bootstrap.cliente_nome}</span>
+          <span className="text-[11px] text-stone-400 truncate max-w-[120px]">
+            {bootstrap.cliente_nome}
+          </span>
           <button
             onClick={() => cycleLanguage(i18n.language)}
             aria-label={t('sidebar.language')}
@@ -130,8 +151,16 @@ export function HubNav() {
                 {active && (
                   <span className="absolute top-0 left-1/2 -translate-x-1/2 h-[2px] w-8 rounded-full bg-[#FFBF30]" />
                 )}
-                <Icon size={19} strokeWidth={active ? 2.25 : 1.75} className={active ? 'text-stone-900' : 'text-stone-400'} />
-                <span className={active ? 'text-stone-900 font-semibold' : 'text-stone-500 font-medium'}>{t(labelKey, label)}</span>
+                <Icon
+                  size={19}
+                  strokeWidth={active ? 2.25 : 1.75}
+                  className={active ? 'text-stone-900' : 'text-stone-400'}
+                />
+                <span
+                  className={active ? 'text-stone-900 font-semibold' : 'text-stone-500 font-medium'}
+                >
+                  {t(labelKey, label)}
+                </span>
               </Link>
             );
           })}

@@ -175,7 +175,10 @@ describe('PostCard', () => {
 
     expect(scrollIntoViewMock).toHaveBeenCalled();
     expect(screen.getByText('Legenda principal do post.')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'example.com/brief' })).toHaveAttribute('href', 'https://example.com/brief');
+    expect(screen.getByRole('link', { name: 'example.com/brief' })).toHaveAttribute(
+      'href',
+      'https://example.com/brief',
+    );
     expect(screen.getByText('10/05/2026')).toBeInTheDocument();
     expect(screen.getByText('Sim')).toBeInTheDocument();
     expect(screen.getByText('Urgente')).toBeInTheDocument();
@@ -211,7 +214,12 @@ describe('PostCard', () => {
     fireEvent.click(screen.getByRole('button', { name: /Aprovar/i }));
 
     await waitFor(() => {
-      expect(mockedSubmitApproval).toHaveBeenCalledWith('token-publico', 7, 'aprovado', 'Pode publicar.');
+      expect(mockedSubmitApproval).toHaveBeenCalledWith(
+        'token-publico',
+        7,
+        'aprovado',
+        'Pode publicar.',
+      );
     });
 
     expect(await screen.findByText('Post aprovado!')).toBeInTheDocument();
@@ -272,7 +280,12 @@ describe('PostCard', () => {
     fireEvent.keyDown(replyInput, { key: 'Enter' });
 
     await waitFor(() => {
-      expect(mockedSubmitApproval).toHaveBeenCalledWith('token-publico', 7, 'mensagem', 'Obrigado pelo retorno!');
+      expect(mockedSubmitApproval).toHaveBeenCalledWith(
+        'token-publico',
+        7,
+        'mensagem',
+        'Obrigado pelo retorno!',
+      );
     });
 
     expect(replyInput).toHaveValue('');
@@ -301,7 +314,9 @@ describe('PostCard', () => {
       />,
     );
 
-    const coverButton = container.querySelector('img[src="https://cdn.example.com/cover.jpg"]')?.closest('button');
+    const coverButton = container
+      .querySelector('img[src="https://cdn.example.com/cover.jpg"]')
+      ?.closest('button');
 
     if (!coverButton) {
       throw new Error('Cover button was not rendered');

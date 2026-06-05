@@ -31,9 +31,9 @@ function makePost(overrides: Partial<HubPost> = {}): HubPost {
 }
 
 function getDayButton(day: number) {
-  const button = screen.getAllByRole('button').find((candidate) => (
-    within(candidate).queryByText(String(day), { selector: 'div' }) !== null
-  ));
+  const button = screen
+    .getAllByRole('button')
+    .find((candidate) => within(candidate).queryByText(String(day), { selector: 'div' }) !== null);
 
   if (!button) {
     throw new Error(`Could not find calendar day button for ${day}`);
@@ -58,11 +58,36 @@ describe('PostCalendar', () => {
     render(
       <PostCalendar
         posts={[
-          makePost({ id: 1, titulo: 'Feed 1 do dia 18', tipo: 'feed', scheduled_at: '2026-04-18T10:00:00.000Z' }),
-          makePost({ id: 2, titulo: 'Feed 2 do dia 18', tipo: 'feed', scheduled_at: '2026-04-18T12:00:00.000Z' }),
-          makePost({ id: 3, titulo: 'Stories do dia 18', tipo: 'stories', scheduled_at: '2026-04-18T14:00:00.000Z' }),
-          makePost({ id: 4, titulo: 'Post do dia 20', tipo: 'reels', scheduled_at: '2026-04-20T09:00:00.000Z' }),
-          makePost({ id: 5, titulo: 'Post de maio', tipo: 'carrossel', scheduled_at: '2026-05-05T09:00:00.000Z' }),
+          makePost({
+            id: 1,
+            titulo: 'Feed 1 do dia 18',
+            tipo: 'feed',
+            scheduled_at: '2026-04-18T10:00:00.000Z',
+          }),
+          makePost({
+            id: 2,
+            titulo: 'Feed 2 do dia 18',
+            tipo: 'feed',
+            scheduled_at: '2026-04-18T12:00:00.000Z',
+          }),
+          makePost({
+            id: 3,
+            titulo: 'Stories do dia 18',
+            tipo: 'stories',
+            scheduled_at: '2026-04-18T14:00:00.000Z',
+          }),
+          makePost({
+            id: 4,
+            titulo: 'Post do dia 20',
+            tipo: 'reels',
+            scheduled_at: '2026-04-20T09:00:00.000Z',
+          }),
+          makePost({
+            id: 5,
+            titulo: 'Post de maio',
+            tipo: 'carrossel',
+            scheduled_at: '2026-05-05T09:00:00.000Z',
+          }),
         ]}
       />,
     );
@@ -89,8 +114,16 @@ describe('PostCalendar', () => {
     render(
       <PostCalendar
         posts={[
-          makePost({ id: 11, titulo: 'Retrospectiva 2025', scheduled_at: '2025-12-12T15:00:00.000Z' }),
-          makePost({ id: 12, titulo: 'Campanha de fevereiro', scheduled_at: '2026-02-03T15:00:00.000Z' }),
+          makePost({
+            id: 11,
+            titulo: 'Retrospectiva 2025',
+            scheduled_at: '2025-12-12T15:00:00.000Z',
+          }),
+          makePost({
+            id: 12,
+            titulo: 'Campanha de fevereiro',
+            scheduled_at: '2026-02-03T15:00:00.000Z',
+          }),
         ]}
       />,
     );

@@ -25,7 +25,11 @@ vi.mock('../components/EntregasFilters', () => ({
     membros,
   }: {
     filters: { filterCliente: number | null; filterMembro: number | null; filterStatus: string };
-    onChange: (next: { filterCliente: number | null; filterMembro: number | null; filterStatus: string }) => void;
+    onChange: (next: {
+      filterCliente: number | null;
+      filterMembro: number | null;
+      filterStatus: string;
+    }) => void;
     clientes: Array<{ id: number; nome: string }>;
     membros: Array<{ id: number; nome: string }>;
   }) => (
@@ -33,7 +37,9 @@ vi.mock('../components/EntregasFilters', () => ({
       <div>Filters: {filters.filterStatus}</div>
       <div>Clientes: {clientes.length}</div>
       <div>Membros: {membros.length}</div>
-      <button onClick={() => onChange({ ...filters, filterStatus: 'atrasado' })}>Filter overdue</button>
+      <button onClick={() => onChange({ ...filters, filterStatus: 'atrasado' })}>
+        Filter overdue
+      </button>
       <button onClick={() => onChange({ ...filters, filterCliente: 10 })}>Filter client</button>
       <button onClick={() => onChange({ ...filters, filterMembro: 7 })}>Filter member</button>
     </div>
@@ -97,8 +103,12 @@ vi.mock('../views/ListView', () => ({
   }) => (
     <div>
       <div>List view: {cards.map((card) => card.workflow.titulo).join(', ')}</div>
-      <div>Sort: {sort.column}/{sort.direction}</div>
-      <button onClick={() => onSortChange({ column: 'deadline', direction: 'desc' })}>Change sort</button>
+      <div>
+        Sort: {sort.column}/{sort.direction}
+      </div>
+      <button onClick={() => onSortChange({ column: 'deadline', direction: 'desc' })}>
+        Change sort
+      </button>
     </div>
   ),
 }));
@@ -131,13 +141,14 @@ vi.mock('../components/WorkflowModals', () => ({
     open: boolean;
     onClose: () => void;
     onCreated: () => void;
-  }) => open ? (
-    <div>
-      <div>New workflow modal</div>
-      <button onClick={onCreated}>Created workflow</button>
-      <button onClick={onClose}>Close new modal</button>
-    </div>
-  ) : null,
+  }) =>
+    open ? (
+      <div>
+        <div>New workflow modal</div>
+        <button onClick={onCreated}>Created workflow</button>
+        <button onClick={onClose}>Close new modal</button>
+      </div>
+    ) : null,
   EditWorkflowModal: ({
     card,
     onClose,
@@ -167,13 +178,14 @@ vi.mock('../components/WorkflowModals', () => ({
     open: boolean;
     onClose: () => void;
     onRefresh: () => void;
-  }) => open ? (
-    <div>
-      <div>Templates modal</div>
-      <button onClick={onRefresh}>Refresh templates</button>
-      <button onClick={onClose}>Close templates modal</button>
-    </div>
-  ) : null,
+  }) =>
+    open ? (
+      <div>
+        <div>Templates modal</div>
+        <button onClick={onRefresh}>Refresh templates</button>
+        <button onClick={onClose}>Close templates modal</button>
+      </div>
+    ) : null,
   RecurringWorkflowDialog: ({
     open,
     onConfirm,
@@ -182,13 +194,14 @@ vi.mock('../components/WorkflowModals', () => ({
     open: boolean;
     onConfirm: () => void;
     onCancel: () => void;
-  }) => open ? (
-    <div>
-      <div>Recurring dialog</div>
-      <button onClick={onConfirm}>Confirm recurring</button>
-      <button onClick={onCancel}>Cancel recurring</button>
-    </div>
-  ) : null,
+  }) =>
+    open ? (
+      <div>
+        <div>Recurring dialog</div>
+        <button onClick={onConfirm}>Confirm recurring</button>
+        <button onClick={onCancel}>Cancel recurring</button>
+      </div>
+    ) : null,
 }));
 
 import { useEntregasData } from '../hooks/useEntregasData';
@@ -230,12 +243,12 @@ function renderPage(initialEntry = '/entregas') {
       <Routes>
         <Route
           path="/entregas"
-          element={(
+          element={
             <>
               <EntregasPage />
               <PathProbe />
             </>
-          )}
+          }
         />
       </Routes>
     </MemoryRouter>,

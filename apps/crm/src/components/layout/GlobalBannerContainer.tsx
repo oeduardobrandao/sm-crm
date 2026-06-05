@@ -48,24 +48,40 @@ export default function GlobalBannerContainer() {
 
         const inner = (
           <>
-            <div className="banner-content" style={b.type === 'critical' ? { color: styles.accent } : undefined}>
-              <ReactMarkdown remarkPlugins={[remarkGfm]}
+            <div
+              className="banner-content"
+              style={b.type === 'critical' ? { color: styles.accent } : undefined}
+            >
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
                 components={{
                   p: ({ children }) => <span>{children}</span>,
                   a: ({ href, children }) => (
-                    <a href={sanitizeUrl(href || '')} target="_blank" rel="noopener noreferrer"
+                    <a
+                      href={sanitizeUrl(href || '')}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       style={{ color: styles.accent, textDecoration: 'underline' }}
-                      onClick={(e) => e.stopPropagation()}>
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       {children}
                     </a>
                   ),
-                }}>
+                }}
+              >
                 {b.content}
               </ReactMarkdown>
             </div>
             {b.dismissible && (
-              <button className="banner-dismiss" onClick={(e) => { e.preventDefault(); e.stopPropagation(); dismiss(b.id); }}
-                aria-label="Dismiss banner">
+              <button
+                className="banner-dismiss"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  dismiss(b.id);
+                }}
+                aria-label="Dismiss banner"
+              >
                 ×
               </button>
             )}
@@ -73,13 +89,22 @@ export default function GlobalBannerContainer() {
         );
 
         return useLink ? (
-          <a key={b.id} href={sanitizeUrl(b.link!)} target="_blank" rel="noopener noreferrer"
-            className="banner-bar" style={{ background: styles.bg, borderBottom: `1px solid ${styles.border}` }}>
+          <a
+            key={b.id}
+            href={sanitizeUrl(b.link!)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="banner-bar"
+            style={{ background: styles.bg, borderBottom: `1px solid ${styles.border}` }}
+          >
             {inner}
           </a>
         ) : (
-          <div key={b.id} className="banner-bar"
-            style={{ background: styles.bg, borderBottom: `1px solid ${styles.border}` }}>
+          <div
+            key={b.id}
+            className="banner-bar"
+            style={{ background: styles.bg, borderBottom: `1px solid ${styles.border}` }}
+          >
             {inner}
           </div>
         );

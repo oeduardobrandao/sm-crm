@@ -12,7 +12,11 @@ type MockedSupabaseModule = typeof supabaseModule & {
     payload?: unknown;
     modifiers: Array<{ method: string; args: unknown[] }>;
   }>;
-  __queueSupabaseResult: (table: string, operation: 'select' | 'insert' | 'update' | 'delete' | 'upsert', ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>) => void;
+  __queueSupabaseResult: (
+    table: string,
+    operation: 'select' | 'insert' | 'update' | 'delete' | 'upsert',
+    ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>
+  ) => void;
   __resetSupabaseMock: () => void;
   __setCurrentProfile: (profile: Record<string, unknown> | null) => void;
   __setCurrentUser: (user: { id: string } | null) => void;
@@ -21,7 +25,10 @@ type MockedSupabaseModule = typeof supabaseModule & {
 const mockedSupabase = supabaseModule as MockedSupabaseModule;
 
 function getLastCall(table: string) {
-  const call = mockedSupabase.__getSupabaseCalls().filter((entry) => entry.table === table).at(-1);
+  const call = mockedSupabase
+    .__getSupabaseCalls()
+    .filter((entry) => entry.table === table)
+    .at(-1);
   expect(call).toBeDefined();
   return call!;
 }
@@ -96,9 +103,15 @@ describe('store CRUD write operations', () => {
 
       await expect(
         store.addCliente({
-          nome: 'Test', sigla: 'T', cor: '#000', plano: 'basico',
-          email: 'x@x.com', telefone: '0', status: 'ativo', valor_mensal: 0,
-        })
+          nome: 'Test',
+          sigla: 'T',
+          cor: '#000',
+          plano: 'basico',
+          email: 'x@x.com',
+          telefone: '0',
+          status: 'ativo',
+          valor_mensal: 0,
+        }),
       ).rejects.toThrow('Não autenticado');
     });
   });
@@ -349,7 +362,10 @@ describe('store CRUD write operations', () => {
     });
 
     it('removeClienteEndereco deletes by id', async () => {
-      mockedSupabase.__queueSupabaseResult('cliente_enderecos', 'delete', { data: null, error: null });
+      mockedSupabase.__queueSupabaseResult('cliente_enderecos', 'delete', {
+        data: null,
+        error: null,
+      });
 
       await store.removeClienteEndereco(60);
 

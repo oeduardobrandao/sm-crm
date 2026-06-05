@@ -8,10 +8,15 @@ export interface NotificationListProps {
   onNavigate: (link: string) => void;
 }
 
-export default function NotificationList({ notifications, onMarkAsRead, onDismiss, onNavigate }: NotificationListProps) {
+export default function NotificationList({
+  notifications,
+  onMarkAsRead,
+  onDismiss,
+  onNavigate,
+}: NotificationListProps) {
   return (
     <div style={{ maxHeight: 'calc(480px - 56px)', overflowY: 'auto' }}>
-      {notifications.map(n => (
+      {notifications.map((n) => (
         <NotificationItem
           key={n.id}
           notification={n}

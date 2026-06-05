@@ -1,6 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { getActiveBanners, getDismissedBannerIds, dismissBanner, type GlobalBanner } from '../store';
+import {
+  getActiveBanners,
+  getDismissedBannerIds,
+  dismissBanner,
+  type GlobalBanner,
+} from '../store';
 
 const BANNERS_KEY = ['banners'] as const;
 const DISMISSED_KEY = ['banner-dismissals'] as const;

@@ -1,7 +1,20 @@
 import type {
-  HubBootstrap, HubPost, PostApproval, HubPostProperty, HubSelectOption, HubBrand, HubBrandFile,
-  HubPage, HubPageFull, BriefingQuestion, HubIdeia, IdeiaReaction,
-  InstagramFeedData, HubPostsResponse, HubDashboardResponse, PendingEditSuggestion
+  HubBootstrap,
+  HubPost,
+  PostApproval,
+  HubPostProperty,
+  HubSelectOption,
+  HubBrand,
+  HubBrandFile,
+  HubPage,
+  HubPageFull,
+  BriefingQuestion,
+  HubIdeia,
+  IdeiaReaction,
+  InstagramFeedData,
+  HubPostsResponse,
+  HubDashboardResponse,
+  PendingEditSuggestion,
 } from './types';
 
 const BASE = import.meta.env.VITE_SUPABASE_URL as string;
@@ -45,11 +58,24 @@ export function fetchPosts(token: string) {
   return get<HubPostsResponse>('hub-posts', { token });
 }
 
-export function submitApproval(token: string, post_id: number, action: 'aprovado' | 'correcao' | 'mensagem', comentario?: string) {
-  return post<{ ok: boolean; scheduled?: boolean }>('hub-approve', { token, post_id, action, comentario });
+export function submitApproval(
+  token: string,
+  post_id: number,
+  action: 'aprovado' | 'correcao' | 'mensagem',
+  comentario?: string,
+) {
+  return post<{ ok: boolean; scheduled?: boolean }>('hub-approve', {
+    token,
+    post_id,
+    action,
+    comentario,
+  });
 }
 
-export async function reorderPostSchedules(token: string, updates: { post_id: number; scheduled_at: string | null }[]) {
+export async function reorderPostSchedules(
+  token: string,
+  updates: { post_id: number; scheduled_at: string | null }[],
+) {
   const res = await fetch(`${BASE}/functions/v1/hub-posts`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', apikey: ANON },
@@ -132,11 +158,18 @@ export function fetchIdeias(token: string) {
   return get<{ ideias: HubIdeia[] }>('hub-ideias', { token });
 }
 
-export function createIdeia(token: string, payload: { titulo: string; descricao: string; links: string[] }) {
+export function createIdeia(
+  token: string,
+  payload: { titulo: string; descricao: string; links: string[] },
+) {
   return post<{ ideia: HubIdeia }>('hub-ideias', { token, ...payload });
 }
 
-export function updateIdeia(token: string, id: string, payload: { titulo?: string; descricao?: string; links?: string[] }) {
+export function updateIdeia(
+  token: string,
+  id: string,
+  payload: { titulo?: string; descricao?: string; links?: string[] },
+) {
   return patch<{ ideia: HubIdeia }>('hub-ideias', id, token, payload);
 }
 

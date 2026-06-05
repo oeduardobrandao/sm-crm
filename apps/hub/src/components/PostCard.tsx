@@ -8,7 +8,10 @@ import { RichTextContent } from './RichTextContent';
 import { useEditSuggestion } from '../hooks/useEditSuggestion';
 
 export const TIPO_LABEL: Record<string, string> = {
-  feed: 'Feed', reels: 'Reels', stories: 'Stories', carrossel: 'Carrossel',
+  feed: 'Feed',
+  reels: 'Reels',
+  stories: 'Stories',
+  carrossel: 'Carrossel',
 };
 
 export const STATUS_LABEL: Record<string, string> = {
@@ -23,7 +26,12 @@ export const STATUS_LABEL: Record<string, string> = {
 
 export function formatDate(d: string | null) {
   if (!d) return '—';
-  return new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' });
+  return new Date(d).toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
 }
 
 function sanitizeUrl(url: string) {
@@ -33,15 +41,31 @@ function sanitizeUrl(url: string) {
 type PropDef = HubPostProperty['template_property_definitions'];
 type SelectOpt = { id: string; label: string; color: string };
 
-function resolveOptions(def: PropDef, workflowSelectOptions: HubSelectOption[], workflowId?: number): SelectOpt[] {
-  const templateOpts: SelectOpt[] = (def.config?.options ?? []).map(o => ({ id: o.id, label: o.label, color: o.color }));
+function resolveOptions(
+  def: PropDef,
+  workflowSelectOptions: HubSelectOption[],
+  workflowId?: number,
+): SelectOpt[] {
+  const templateOpts: SelectOpt[] = (def.config?.options ?? []).map((o) => ({
+    id: o.id,
+    label: o.label,
+    color: o.color,
+  }));
   const workflowOpts: SelectOpt[] = workflowSelectOptions
-    .filter(o => workflowId == null || o.workflow_id === workflowId)
-    .map(o => ({ id: o.option_id, label: o.label, color: o.color }));
+    .filter((o) => workflowId == null || o.workflow_id === workflowId)
+    .map((o) => ({ id: o.option_id, label: o.label, color: o.color }));
   return [...templateOpts, ...workflowOpts];
 }
 
-function PropertyRow({ prop, workflowSelectOptions, workflowId }: { prop: HubPostProperty; workflowSelectOptions: HubSelectOption[]; workflowId: number }) {
+function PropertyRow({
+  prop,
+  workflowSelectOptions,
+  workflowId,
+}: {
+  prop: HubPostProperty;
+  workflowSelectOptions: HubSelectOption[];
+  workflowId: number;
+}) {
   const def = prop.template_property_definitions;
   const value = prop.value;
 
@@ -52,7 +76,12 @@ function PropertyRow({ prop, workflowSelectOptions, workflowId }: { prop: HubPos
     if (def.type === 'url') {
       const safe = sanitizeUrl(String(value));
       return (
-        <a href={safe} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline break-all">
+        <a
+          href={safe}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-sm text-primary hover:underline break-all"
+        >
           {String(value).replace(/^https?:\/\//, '')}
         </a>
       );
@@ -68,22 +97,36 @@ function PropertyRow({ prop, workflowSelectOptions, workflowId }: { prop: HubPos
     }
     if (def.type === 'select' || def.type === 'status') {
       const options = resolveOptions(def, workflowSelectOptions, workflowId);
-      const opt = options.find(o => o.id === value);
+      const opt = options.find((o) => o.id === value);
       if (!opt) return <span className="text-sm text-muted-foreground italic">—</span>;
       return (
-        <span className="text-xs px-2 py-0.5 rounded-full border" style={{ background: opt.color + '22', color: opt.color, borderColor: opt.color + '55' }}>
+        <span
+          className="text-xs px-2 py-0.5 rounded-full border"
+          style={{ background: opt.color + '22', color: opt.color, borderColor: opt.color + '55' }}
+        >
           {opt.label}
         </span>
       );
     }
     if (def.type === 'multiselect') {
       const options = resolveOptions(def, workflowSelectOptions, workflowId);
-      const selected = (value as string[]).map(id => options.find(o => o.id === id)).filter(Boolean) as SelectOpt[];
-      if (selected.length === 0) return <span className="text-sm text-muted-foreground italic">—</span>;
+      const selected = (value as string[])
+        .map((id) => options.find((o) => o.id === id))
+        .filter(Boolean) as SelectOpt[];
+      if (selected.length === 0)
+        return <span className="text-sm text-muted-foreground italic">—</span>;
       return (
         <div className="flex flex-wrap gap-1">
-          {selected.map(opt => (
-            <span key={opt.id} className="text-xs px-2 py-0.5 rounded-full border" style={{ background: opt.color + '22', color: opt.color, borderColor: opt.color + '55' }}>
+          {selected.map((opt) => (
+            <span
+              key={opt.id}
+              className="text-xs px-2 py-0.5 rounded-full border"
+              style={{
+                background: opt.color + '22',
+                color: opt.color,
+                borderColor: opt.color + '55',
+              }}
+            >
               {opt.label}
             </span>
           ))}
@@ -111,7 +154,15 @@ export interface PostCardProps {
   defaultExpanded?: boolean;
 }
 
-export function PostCard({ post, token, approvals, propertyValues, workflowSelectOptions, onApprovalSubmitted, defaultExpanded }: PostCardProps) {
+export function PostCard({
+  post,
+  token,
+  approvals,
+  propertyValues,
+  workflowSelectOptions,
+  onApprovalSubmitted,
+  defaultExpanded,
+}: PostCardProps) {
   const [expanded, setExpanded] = useState(defaultExpanded ?? false);
   const cardRef = useRef<HTMLDivElement>(null);
 
@@ -128,22 +179,35 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const isPending = post.status === 'enviado_cliente';
 
-  const { isEditable, hasPendingSuggestion, wasRejected, saveSuggestion, saveState, approvalBlocked, draftConteudo, draftIgCaption } = useEditSuggestion({
+  const {
+    isEditable,
+    hasPendingSuggestion,
+    wasRejected,
+    saveSuggestion,
+    saveState,
+    approvalBlocked,
+    draftConteudo,
+    draftIgCaption,
+  } = useEditSuggestion({
     token,
     post,
     onSaved: onApprovalSubmitted,
   });
   const igCaptionRef = useRef(draftIgCaption ?? '');
-  const postApprovals = approvals.filter(a => a.post_id === post.id);
-  const postProperties = propertyValues.filter(p => p.post_id === post.id);
-  const displayCover = post.cover_media ?? (post.media && post.media.length > 0 ? post.media[0] : null);
+  const postApprovals = approvals.filter((a) => a.post_id === post.id);
+  const postProperties = propertyValues.filter((p) => p.post_id === post.id);
+  const displayCover =
+    post.cover_media ?? (post.media && post.media.length > 0 ? post.media[0] : null);
 
   async function handleAction(action: 'aprovado' | 'correcao') {
     setSubmitting(true);
     setResult(null);
     try {
       await submitApproval(token, post.id, action, comentario || undefined);
-      setResult({ type: 'success', message: action === 'aprovado' ? 'Post aprovado!' : 'Correção enviada!' });
+      setResult({
+        type: 'success',
+        message: action === 'aprovado' ? 'Post aprovado!' : 'Correção enviada!',
+      });
       onApprovalSubmitted();
     } catch (e) {
       setResult({ type: 'error', message: (e as Error).message });
@@ -166,13 +230,14 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
     }
   }
 
-  const statusStyles = post.status === 'correcao_cliente'
-    ? 'bg-rose-50 text-rose-700 ring-1 ring-rose-200/60'
-    : isPending
-    ? 'bg-[#FFBF30]/18 text-stone-900 ring-1 ring-[#FFBF30]/50'
-    : post.status === 'agendado'
-    ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200/60'
-    : 'bg-stone-100 text-stone-700 ring-1 ring-stone-200/80';
+  const statusStyles =
+    post.status === 'correcao_cliente'
+      ? 'bg-rose-50 text-rose-700 ring-1 ring-rose-200/60'
+      : isPending
+        ? 'bg-[#FFBF30]/18 text-stone-900 ring-1 ring-[#FFBF30]/50'
+        : post.status === 'agendado'
+          ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200/60'
+          : 'bg-stone-100 text-stone-700 ring-1 ring-stone-200/80';
 
   return (
     <div ref={cardRef} className="hub-card overflow-hidden transition-shadow hover:shadow-md">
@@ -181,7 +246,7 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
           type="button"
           onClick={(e) => {
             e.stopPropagation();
-            const coverIdx = post.media?.findIndex(m => m.id === displayCover.id) ?? 0;
+            const coverIdx = post.media?.findIndex((m) => m.id === displayCover.id) ?? 0;
             setLightboxIdx(Math.max(0, coverIdx));
           }}
           className="relative block w-full aspect-[4/3] overflow-hidden bg-stone-100"
@@ -198,10 +263,16 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
             />
           ) : (
             <>
-              <img src={displayCover.thumbnail_url ?? ''} alt="" className="w-full h-full object-cover" />
+              <img
+                src={displayCover.thumbnail_url ?? ''}
+                alt=""
+                className="w-full h-full object-cover"
+              />
               <span className="absolute inset-0 flex items-center justify-center">
                 <span className="flex h-12 w-12 items-center justify-center rounded-full bg-black/60 text-white">
-                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
                 </span>
               </span>
             </>
@@ -209,13 +280,25 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
         </button>
       ) : (
         <div className="w-full aspect-[4/3] bg-stone-100 flex flex-col items-center justify-center gap-2 text-stone-400">
-          <svg className="h-8 w-8 opacity-40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-          <span className="text-[11px] font-medium tracking-wide uppercase">Nenhuma imagem adicionada</span>
+          <svg
+            className="h-8 w-8 opacity-40"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <circle cx="8.5" cy="8.5" r="1.5" />
+            <path d="M21 15l-5-5L5 21" />
+          </svg>
+          <span className="text-[11px] font-medium tracking-wide uppercase">
+            Nenhuma imagem adicionada
+          </span>
         </div>
       )}
       <button
         className="w-full flex items-start justify-between gap-3 px-5 py-4 text-left hover:bg-stone-50/80 transition-colors"
-        onClick={() => setExpanded(e => !e)}
+        onClick={() => setExpanded((e) => !e)}
       >
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 mb-2">
@@ -226,10 +309,16 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
               {STATUS_LABEL[post.status] ?? post.status}
             </span>
           </div>
-          <p className="font-display font-semibold text-[16px] tracking-tight text-stone-900 leading-snug">{post.titulo}</p>
-          {post.scheduled_at && <p className="text-[12px] text-stone-500 mt-1">{formatDate(post.scheduled_at)}</p>}
+          <p className="font-display font-semibold text-[16px] tracking-tight text-stone-900 leading-snug">
+            {post.titulo}
+          </p>
+          {post.scheduled_at && (
+            <p className="text-[12px] text-stone-500 mt-1">{formatDate(post.scheduled_at)}</p>
+          )}
         </div>
-        <span className={`mt-1 shrink-0 flex items-center justify-center w-7 h-7 rounded-full text-stone-500 transition-all ${expanded ? 'bg-stone-100 rotate-180' : 'hover:bg-stone-100'}`}>
+        <span
+          className={`mt-1 shrink-0 flex items-center justify-center w-7 h-7 rounded-full text-stone-500 transition-all ${expanded ? 'bg-stone-100 rotate-180' : 'hover:bg-stone-100'}`}
+        >
           <ChevronDown size={15} />
         </span>
       </button>
@@ -241,18 +330,26 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
               content={draftConteudo}
               className="text-[13.5px] text-stone-600 leading-relaxed"
               editable={isEditable}
-              onUpdate={isEditable ? (json, plain) => {
-                saveSuggestion(json, plain, igCaptionRef.current);
-              } : undefined}
+              onUpdate={
+                isEditable
+                  ? (json, plain) => {
+                      saveSuggestion(json, plain, igCaptionRef.current);
+                    }
+                  : undefined
+              }
               fallbackText={post.conteudo_plain}
             />
           ) : post.conteudo_plain ? (
-            <p className="text-[13.5px] text-stone-600 leading-relaxed whitespace-pre-wrap">{post.conteudo_plain}</p>
+            <p className="text-[13.5px] text-stone-600 leading-relaxed whitespace-pre-wrap">
+              {post.conteudo_plain}
+            </p>
           ) : null}
 
           {isEditable && saveState !== 'idle' && (
             <div className="flex items-center gap-1.5">
-              {saveState === 'saving' && <span className="text-[11px] text-stone-400">Salvando sugestão...</span>}
+              {saveState === 'saving' && (
+                <span className="text-[11px] text-stone-400">Salvando sugestão...</span>
+              )}
               {saveState === 'saved' && (
                 <>
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
@@ -263,8 +360,12 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
           )}
 
           {isEditable && (
-            <div className={`flex items-center gap-1.5 px-3 py-2 rounded-lg ring-1 ${wasRejected ? 'bg-amber-50 ring-amber-200/40' : 'bg-emerald-50 ring-emerald-200/40'}`}>
-              <span className={`text-[11px] ${wasRejected ? 'text-amber-800' : 'text-emerald-800'}`}>
+            <div
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg ring-1 ${wasRejected ? 'bg-amber-50 ring-amber-200/40' : 'bg-emerald-50 ring-emerald-200/40'}`}
+            >
+              <span
+                className={`text-[11px] ${wasRejected ? 'text-amber-800' : 'text-emerald-800'}`}
+              >
                 {wasRejected
                   ? '⚠️ Sua sugestão anterior foi rejeitada pela equipe. Edite novamente para enviar uma nova.'
                   : 'ℹ️ Suas edições serão enviadas como sugestão para a equipe revisar'}
@@ -291,7 +392,11 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
                       className="w-full h-full object-cover"
                     />
                   ) : (
-                    <img src={m.thumbnail_url ?? ''} alt="" className="w-full h-full object-cover" />
+                    <img
+                      src={m.thumbnail_url ?? ''}
+                      alt=""
+                      className="w-full h-full object-cover"
+                    />
                   )}
                 </button>
               ))}
@@ -300,9 +405,16 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
 
           {postProperties.length > 0 && (
             <div className="rounded-xl border border-stone-200/80 bg-white px-4 pt-3 pb-1">
-              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-stone-400 pb-2">Propriedades</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-stone-400 pb-2">
+                Propriedades
+              </p>
               {postProperties.map((p) => (
-                <PropertyRow key={`${p.post_id}-${p.template_property_definitions.name}`} prop={p} workflowSelectOptions={workflowSelectOptions} workflowId={post.workflow_id} />
+                <PropertyRow
+                  key={`${p.post_id}-${p.template_property_definitions.name}`}
+                  prop={p}
+                  workflowSelectOptions={workflowSelectOptions}
+                  workflowId={post.workflow_id}
+                />
               ))}
             </div>
           )}
@@ -312,25 +424,41 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
               <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-stone-400">
                 <MessageSquare size={12} /> Comentários
               </div>
-              {postApprovals.map(a => {
+              {postApprovals.map((a) => {
                 const isTeam = a.is_workspace_user;
                 const label = isTeam
                   ? 'Equipe'
-                  : a.action === 'correcao' ? 'Correção solicitada'
-                  : a.action === 'aprovado' ? 'Aprovado'
-                  : 'Você';
-                const date = new Date(a.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+                  : a.action === 'correcao'
+                    ? 'Correção solicitada'
+                    : a.action === 'aprovado'
+                      ? 'Aprovado'
+                      : 'Você';
+                const date = new Date(a.created_at).toLocaleDateString('pt-BR', {
+                  day: '2-digit',
+                  month: 'short',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                });
                 return (
-                  <div key={a.id} className={`rounded-xl px-4 py-3 text-[13.5px] ${
-                    isTeam
-                      ? 'bg-[#FFBF30]/10 ring-1 ring-[#FFBF30]/25 ml-6'
-                      : 'bg-white ring-1 ring-stone-200/80 mr-6'
-                  }`}>
+                  <div
+                    key={a.id}
+                    className={`rounded-xl px-4 py-3 text-[13.5px] ${
+                      isTeam
+                        ? 'bg-[#FFBF30]/10 ring-1 ring-[#FFBF30]/25 ml-6'
+                        : 'bg-white ring-1 ring-stone-200/80 mr-6'
+                    }`}
+                  >
                     <div className="flex items-center gap-2 mb-1">
-                      <span className={`font-semibold text-[11.5px] ${isTeam ? 'text-amber-900' : 'text-stone-900'}`}>{label}</span>
+                      <span
+                        className={`font-semibold text-[11.5px] ${isTeam ? 'text-amber-900' : 'text-stone-900'}`}
+                      >
+                        {label}
+                      </span>
                       <span className="text-[11px] text-stone-400">{date}</span>
                     </div>
-                    {a.comentario && <p className="text-[13.5px] leading-relaxed text-stone-800">{a.comentario}</p>}
+                    {a.comentario && (
+                      <p className="text-[13.5px] leading-relaxed text-stone-800">{a.comentario}</p>
+                    )}
                   </div>
                 );
               })}
@@ -343,8 +471,13 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
                 className="flex-1 rounded-full border border-stone-200/80 bg-white px-4 py-2.5 text-[13.5px] text-stone-900 placeholder:text-stone-400 focus:outline-none focus:border-stone-300 focus:ring-4 focus:ring-[#FFBF30]/15 transition-all"
                 placeholder="Enviar mensagem…"
                 value={replyText}
-                onChange={e => setReplyText(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleReply(); } }}
+                onChange={(e) => setReplyText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleReply();
+                  }
+                }}
               />
               <button
                 className="shrink-0 flex items-center justify-center w-10 h-10 rounded-full bg-stone-900 text-white hover:bg-stone-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
@@ -367,7 +500,7 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
                 <>
                   <textarea
                     value={comentario}
-                    onChange={e => setComentario(e.target.value)}
+                    onChange={(e) => setComentario(e.target.value)}
                     placeholder="Comentário (opcional)…"
                     className="w-full rounded-xl border border-stone-200/80 px-4 py-3 text-[13.5px] resize-none min-h-[80px] bg-white text-stone-900 placeholder:text-stone-400 focus:outline-none focus:border-stone-300 focus:ring-4 focus:ring-[#FFBF30]/15 transition-all"
                   />
@@ -377,7 +510,8 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
                       disabled={submitting || approvalBlocked}
                       className="flex-1 flex items-center justify-center gap-2 bg-stone-900 text-white rounded-full py-3 text-[13.5px] font-semibold hover:bg-stone-800 disabled:opacity-50 transition-colors shadow-sm"
                     >
-                      <CheckCircle size={15} /> {saveState === 'saving' ? 'Salvando sugestão...' : 'Aprovar'}
+                      <CheckCircle size={15} />{' '}
+                      {saveState === 'saving' ? 'Salvando sugestão...' : 'Aprovar'}
                     </button>
                     <button
                       onClick={() => handleAction('correcao')}
@@ -393,7 +527,9 @@ export function PostCard({ post, token, approvals, propertyValues, workflowSelec
           )}
 
           {result && (
-            <div className={`rounded-xl px-4 py-3 text-[13.5px] font-medium ${result.type === 'success' ? 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200/60' : 'bg-rose-50 text-rose-800 ring-1 ring-rose-200/60'}`}>
+            <div
+              className={`rounded-xl px-4 py-3 text-[13.5px] font-medium ${result.type === 'success' ? 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200/60' : 'bg-rose-50 text-rose-800 ring-1 ring-rose-200/60'}`}
+            >
               {result.message}
             </div>
           )}

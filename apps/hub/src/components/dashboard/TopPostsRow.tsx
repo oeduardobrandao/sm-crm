@@ -26,11 +26,7 @@ export function TopPostsRow({ posts }: TopPostsRowProps) {
   const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
 
   if (posts.length === 0) {
-    return (
-      <p className="text-sm text-stone-400 py-4">
-        Nenhum post no período selecionado.
-      </p>
-    );
+    return <p className="text-sm text-stone-400 py-4">Nenhum post no período selecionado.</p>;
   }
 
   return (
@@ -48,14 +44,18 @@ export function TopPostsRow({ posts }: TopPostsRowProps) {
           >
             <div
               className="aspect-square relative overflow-hidden"
-              style={showImage ? undefined : { background: `linear-gradient(135deg, ${color}, ${color}dd)` }}
+              style={
+                showImage
+                  ? undefined
+                  : { background: `linear-gradient(135deg, ${color}, ${color}dd)` }
+              }
             >
               {showImage ? (
                 <img
                   src={post.thumbnailUrl!}
                   alt=""
                   className="w-full h-full object-cover"
-                  onError={() => setFailedImages(prev => new Set(prev).add(post.id))}
+                  onError={() => setFailedImages((prev) => new Set(prev).add(post.id))}
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center">

@@ -45,6 +45,8 @@ export function prependRelease(
 ): Changelog {
   const existing = new Set(changelog.releases.flatMap((r) => r.items.map((i) => i.pr)));
   const items = release.items.filter((i) => !existing.has(i.pr));
-  const releases = items.length ? [{ ...release, items }, ...changelog.releases] : changelog.releases;
+  const releases = items.length
+    ? [{ ...release, items }, ...changelog.releases]
+    : changelog.releases;
   return { lastMergedAt: newLastMergedAt, releases };
 }

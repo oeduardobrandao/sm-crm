@@ -33,7 +33,8 @@ export function FollowerChart({ followerHistory }: FollowerChartProps) {
   const dataPoints = followerHistory.map((e) => e.followerCount);
 
   const earliest = followerHistory.length > 0 ? followerHistory[0].followerCount : 0;
-  const latest = followerHistory.length > 0 ? followerHistory[followerHistory.length - 1].followerCount : 0;
+  const latest =
+    followerHistory.length > 0 ? followerHistory[followerHistory.length - 1].followerCount : 0;
   const delta = earliest > 0 ? Math.round(((latest - earliest) / earliest) * 1000) / 10 : 0;
 
   const data = {
@@ -115,12 +116,11 @@ export function FollowerChart({ followerHistory }: FollowerChartProps) {
         {delta !== 0 && (
           <span
             className={`text-[11px] font-semibold px-1.5 py-0.5 rounded ${
-              delta > 0
-                ? 'bg-emerald-500/10 text-emerald-500'
-                : 'bg-red-500/10 text-red-500'
+              delta > 0 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'
             }`}
           >
-            {delta > 0 ? '+' : ''}{delta}%
+            {delta > 0 ? '+' : ''}
+            {delta}%
           </span>
         )}
       </div>

@@ -30,13 +30,15 @@ export interface Ideia {
 export async function getIdeias(filters: { cliente_id?: number } = {}): Promise<Ideia[]> {
   let q = supabase
     .from('ideias')
-    .select(`
+    .select(
+      `
       id, workspace_id, cliente_id, titulo, descricao, links, status,
       comentario_agencia, comentario_autor_id, comentario_at, created_at, updated_at,
       clientes(nome),
       comentario_autor:membros!comentario_autor_id(nome),
       ideia_reactions(id, ideia_id, membro_id, emoji, created_at, membros(nome))
-    `)
+    `,
+    )
     .order('created_at', { ascending: false });
 
   if (filters.cliente_id) q = q.eq('cliente_id', filters.cliente_id);
@@ -46,14 +48,8 @@ export async function getIdeias(filters: { cliente_id?: number } = {}): Promise<
   return (data ?? []) as unknown as Ideia[];
 }
 
-export async function updateIdeiaStatus(
-  ideiaId: string,
-  status: Ideia['status'],
-): Promise<void> {
-  const { error } = await supabase
-    .from('ideias')
-    .update({ status })
-    .eq('id', ideiaId);
+export async function updateIdeiaStatus(ideiaId: string, status: Ideia['status']): Promise<void> {
+  const { error } = await supabase.from('ideias').update({ status }).eq('id', ideiaId);
   if (error) throw new Error(error.message);
 }
 
@@ -88,10 +84,7 @@ export async function toggleIdeiaReaction(
     .maybeSingle();
 
   if (existing) {
-    const { error } = await supabase
-      .from('ideia_reactions')
-      .delete()
-      .eq('id', existing.id);
+    const { error } = await supabase.from('ideia_reactions').delete().eq('id', existing.id);
     if (error) throw new Error(error.message);
   } else {
     const { error } = await supabase

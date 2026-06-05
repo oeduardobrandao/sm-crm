@@ -42,7 +42,7 @@ export default function GlobalSearchTrigger() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
-        setOpen(v => !v);
+        setOpen((v) => !v);
       }
     };
     document.addEventListener('keydown', handleKeyDown);
@@ -62,8 +62,17 @@ export default function GlobalSearchTrigger() {
     ],
   });
 
-  const [clientesRes, contratosRes, membrosRes, transacoesRes, workflowsRes, postsRes, ideiasRes, pagesRes] = results;
-  const isLoading = results.some(r => r.isLoading);
+  const [
+    clientesRes,
+    contratosRes,
+    membrosRes,
+    transacoesRes,
+    workflowsRes,
+    postsRes,
+    ideiasRes,
+    pagesRes,
+  ] = results;
+  const isLoading = results.some((r) => r.isLoading);
 
   const clientes = clientesRes.data ?? [];
   const contratos = contratosRes.data ?? [];
@@ -114,7 +123,7 @@ export default function GlobalSearchTrigger() {
 
               {clientes.length > 0 && (
                 <CommandGroup heading="Clientes">
-                  {clientes.map(c => (
+                  {clientes.map((c) => (
                     <CommandItem
                       key={`cliente-${c.id}`}
                       value={`cliente ${c.nome} ${c.email} ${c.sigla}`}
@@ -122,7 +131,9 @@ export default function GlobalSearchTrigger() {
                     >
                       <Users className="h-4 w-4 shrink-0" />
                       <span className="truncate">{c.nome}</span>
-                      <span className="ml-auto truncate text-xs text-muted-foreground">{c.email}</span>
+                      <span className="ml-auto truncate text-xs text-muted-foreground">
+                        {c.email}
+                      </span>
                     </CommandItem>
                   ))}
                 </CommandGroup>
@@ -130,7 +141,7 @@ export default function GlobalSearchTrigger() {
 
               {contratos.length > 0 && (
                 <CommandGroup heading="Contratos">
-                  {contratos.map(c => (
+                  {contratos.map((c) => (
                     <CommandItem
                       key={`contrato-${c.id}`}
                       value={`contrato ${c.titulo} ${c.cliente_nome}`}
@@ -138,7 +149,9 @@ export default function GlobalSearchTrigger() {
                     >
                       <FileText className="h-4 w-4 shrink-0" />
                       <span className="truncate">{c.titulo}</span>
-                      <span className="ml-auto truncate text-xs text-muted-foreground">{c.cliente_nome}</span>
+                      <span className="ml-auto truncate text-xs text-muted-foreground">
+                        {c.cliente_nome}
+                      </span>
                     </CommandItem>
                   ))}
                 </CommandGroup>
@@ -146,7 +159,7 @@ export default function GlobalSearchTrigger() {
 
               {membros.length > 0 && (
                 <CommandGroup heading="Equipe">
-                  {membros.map(m => (
+                  {membros.map((m) => (
                     <CommandItem
                       key={`membro-${m.id}`}
                       value={`equipe ${m.nome} ${m.cargo}`}
@@ -154,7 +167,9 @@ export default function GlobalSearchTrigger() {
                     >
                       <UserRound className="h-4 w-4 shrink-0" />
                       <span className="truncate">{m.nome}</span>
-                      <span className="ml-auto truncate text-xs text-muted-foreground">{m.cargo}</span>
+                      <span className="ml-auto truncate text-xs text-muted-foreground">
+                        {m.cargo}
+                      </span>
                     </CommandItem>
                   ))}
                 </CommandGroup>
@@ -162,7 +177,7 @@ export default function GlobalSearchTrigger() {
 
               {transacoes.length > 0 && (
                 <CommandGroup heading="Financeiro">
-                  {transacoes.map(tx => (
+                  {transacoes.map((tx) => (
                     <CommandItem
                       key={`transacao-${tx.id}`}
                       value={`financeiro ${tx.descricao} ${tx.categoria} ${tx.detalhe}`}
@@ -170,7 +185,9 @@ export default function GlobalSearchTrigger() {
                     >
                       <Wallet className="h-4 w-4 shrink-0" />
                       <span className="truncate">{tx.descricao}</span>
-                      <span className="ml-auto truncate text-xs text-muted-foreground">{tx.categoria}</span>
+                      <span className="ml-auto truncate text-xs text-muted-foreground">
+                        {tx.categoria}
+                      </span>
                     </CommandItem>
                   ))}
                 </CommandGroup>
@@ -178,7 +195,7 @@ export default function GlobalSearchTrigger() {
 
               {workflows.length > 0 && (
                 <CommandGroup heading="Workflows">
-                  {workflows.map(w => (
+                  {workflows.map((w) => (
                     <CommandItem
                       key={`workflow-${w.id}`}
                       value={`workflow ${w.titulo}`}
@@ -186,7 +203,9 @@ export default function GlobalSearchTrigger() {
                     >
                       <Kanban className="h-4 w-4 shrink-0" />
                       <span className="truncate">{w.titulo}</span>
-                      <span className="ml-auto truncate text-xs text-muted-foreground">{w.status}</span>
+                      <span className="ml-auto truncate text-xs text-muted-foreground">
+                        {w.status}
+                      </span>
                     </CommandItem>
                   ))}
                 </CommandGroup>
@@ -194,7 +213,7 @@ export default function GlobalSearchTrigger() {
 
               {posts.length > 0 && (
                 <CommandGroup heading="Postagens">
-                  {posts.map(p => (
+                  {posts.map((p) => (
                     <CommandItem
                       key={`post-${p.id}`}
                       value={`postagem ${p.titulo} ${workflowMap.get(p.workflow_id) ?? ''}`}
@@ -202,7 +221,9 @@ export default function GlobalSearchTrigger() {
                     >
                       <Image className="h-4 w-4 shrink-0" />
                       <span className="truncate">{p.titulo}</span>
-                      <span className="ml-auto truncate text-xs text-muted-foreground">{p.tipo}</span>
+                      <span className="ml-auto truncate text-xs text-muted-foreground">
+                        {p.tipo}
+                      </span>
                     </CommandItem>
                   ))}
                 </CommandGroup>
@@ -210,7 +231,7 @@ export default function GlobalSearchTrigger() {
 
               {ideias.length > 0 && (
                 <CommandGroup heading="Ideias">
-                  {ideias.map(idea => (
+                  {ideias.map((idea) => (
                     <CommandItem
                       key={`ideia-${idea.id}`}
                       value={`ideia ${idea.titulo} ${idea.clientes?.nome ?? ''}`}
@@ -218,7 +239,9 @@ export default function GlobalSearchTrigger() {
                     >
                       <Lightbulb className="h-4 w-4 shrink-0" />
                       <span className="truncate">{idea.titulo}</span>
-                      <span className="ml-auto truncate text-xs text-muted-foreground">{idea.clientes?.nome}</span>
+                      <span className="ml-auto truncate text-xs text-muted-foreground">
+                        {idea.clientes?.nome}
+                      </span>
                     </CommandItem>
                   ))}
                 </CommandGroup>
@@ -226,7 +249,7 @@ export default function GlobalSearchTrigger() {
 
               {pages.length > 0 && (
                 <CommandGroup heading="Páginas">
-                  {pages.map(pg => (
+                  {pages.map((pg) => (
                     <CommandItem
                       key={`page-${pg.id}`}
                       value={`pagina ${pg.title} ${clienteMap.get(pg.cliente_id) ?? ''}`}

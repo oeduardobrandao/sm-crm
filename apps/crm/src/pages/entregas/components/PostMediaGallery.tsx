@@ -6,16 +6,22 @@ import { Upload, Star, Trash2, AlertTriangle, Download, FolderOpen } from 'lucid
 import { fetchWithRetry } from '@/utils/fetchWithRetry';
 import { UploadHint } from '@/components/help/UploadHint';
 import {
-  DndContext, closestCenter, PointerSensor, useSensor, useSensors,
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core';
-import {
-  SortableContext, useSortable, rectSortingStrategy, arrayMove,
-} from '@dnd-kit/sortable';
+import { SortableContext, useSortable, rectSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
-  listPostMedia, uploadPostMedia, deletePostMedia, setPostMediaCover,
-  reorderPostMedia, detectKind,
+  listPostMedia,
+  uploadPostMedia,
+  deletePostMedia,
+  setPostMediaCover,
+  reorderPostMedia,
+  detectKind,
 } from '../../../services/postMedia';
 import { useTranslation } from 'react-i18next';
 import type { PostMedia } from '../../../store';
@@ -46,12 +52,18 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
   // query produces a new defined value — destructuring with a `[]` default
   // would create a fresh reference each render and loop the effect.
   const [media, setMedia] = useState<PostMedia[]>([]);
-  useEffect(() => { if (serverMedia) setMedia(serverMedia); }, [serverMedia]);
+  useEffect(() => {
+    if (serverMedia) setMedia(serverMedia);
+  }, [serverMedia]);
 
   // Stash onChange in a ref so an unmemoized parent callback can't loop us.
   const onChangeRef = useRef(onChange);
-  useEffect(() => { onChangeRef.current = onChange; });
-  useEffect(() => { onChangeRef.current?.(media); }, [media]);
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  });
+  useEffect(() => {
+    onChangeRef.current?.(media);
+  }, [media]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -79,7 +91,9 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [pendingVideo, setPendingVideo] = useState<File | null>(null);
   const [showFilePicker, setShowFilePicker] = useState(false);
-  const [uploadQueue, setUploadQueue] = useState<Map<string, { name: string; pct: number; status: 'uploading' | 'done' | 'error' }>>(new Map());
+  const [uploadQueue, setUploadQueue] = useState<
+    Map<string, { name: string; pct: number; status: 'uploading' | 'done' | 'error' }>
+  >(new Map());
   const [dragOver, setDragOver] = useState(false);
 
   // Preload images into browser cache so lightbox opens instantly.
@@ -113,7 +127,7 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
 
     setUploading(true);
     const ids = images.map((_, i) => `upload-${Date.now()}-${i}`);
-    setUploadQueue(prev => {
+    setUploadQueue((prev) => {
       const next = new Map(prev);
       images.forEach((f, i) => next.set(ids[i], { name: f.name, pct: 0, status: 'uploading' }));
       return next;
@@ -127,13 +141,18 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
           await uploadPostMedia({
             postId,
             file,
-            onProgress: (p) => setUploadQueue(prev => {
-              const next = new Map(prev);
-              next.set(uid, { name: file.name, pct: Math.round((p.loaded / p.total) * 100), status: 'uploading' });
-              return next;
-            }),
+            onProgress: (p) =>
+              setUploadQueue((prev) => {
+                const next = new Map(prev);
+                next.set(uid, {
+                  name: file.name,
+                  pct: Math.round((p.loaded / p.total) * 100),
+                  status: 'uploading',
+                });
+                return next;
+              }),
           });
-          setUploadQueue(prev => {
+          setUploadQueue((prev) => {
             const next = new Map(prev);
             next.set(uid, { name: file.name, pct: 100, status: 'done' });
             return next;
@@ -141,13 +160,13 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
         } catch (e) {
           hasError = true;
           toast.error(`${file.name}: ${(e as Error).message}`);
-          setUploadQueue(prev => {
+          setUploadQueue((prev) => {
             const next = new Map(prev);
             next.set(uid, { name: file.name, pct: 0, status: 'error' });
             return next;
           });
         }
-      })
+      }),
     );
 
     refresh();
@@ -160,7 +179,7 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
     if (!pendingVideo) return;
     setUploading(true);
     const uid = `upload-video-${Date.now()}`;
-    setUploadQueue(prev => {
+    setUploadQueue((prev) => {
       const next = new Map(prev);
       next.set(uid, { name: pendingVideo.name, pct: 0, status: 'uploading' });
       return next;
@@ -170,13 +189,18 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
         postId,
         file: pendingVideo,
         thumbnail,
-        onProgress: (p) => setUploadQueue(prev => {
-          const next = new Map(prev);
-          next.set(uid, { name: pendingVideo.name, pct: Math.round((p.loaded / p.total) * 100), status: 'uploading' });
-          return next;
-        }),
+        onProgress: (p) =>
+          setUploadQueue((prev) => {
+            const next = new Map(prev);
+            next.set(uid, {
+              name: pendingVideo.name,
+              pct: Math.round((p.loaded / p.total) * 100),
+              status: 'uploading',
+            });
+            return next;
+          }),
       });
-      setUploadQueue(prev => {
+      setUploadQueue((prev) => {
         const next = new Map(prev);
         next.set(uid, { name: pendingVideo.name, pct: 100, status: 'done' });
         return next;
@@ -186,7 +210,7 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
       toast.success(t('mediaGallery.videoUploaded'));
     } catch (e) {
       toast.error((e as Error).message);
-      setUploadQueue(prev => {
+      setUploadQueue((prev) => {
         const next = new Map(prev);
         next.set(uid, { name: pendingVideo.name, pct: 0, status: 'error' });
         return next;
@@ -222,9 +246,10 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
         const count = seen.get(rawName) ?? 0;
         if (count > 0) {
           const dotIdx = filename.lastIndexOf('.');
-          filename = dotIdx > 0
-            ? `${filename.slice(0, dotIdx)} (${count})${filename.slice(dotIdx)}`
-            : `${filename} (${count})`;
+          filename =
+            dotIdx > 0
+              ? `${filename.slice(0, dotIdx)} (${count})${filename.slice(dotIdx)}`
+              : `${filename} (${count})`;
         }
         seen.set(rawName, count + 1);
         zip.file(filename, blob);
@@ -248,13 +273,21 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
   }
 
   async function handleDelete(id: number) {
-    try { await deletePostMedia(id); refresh(); }
-    catch (e) { toast.error((e as Error).message); }
+    try {
+      await deletePostMedia(id);
+      refresh();
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
   }
 
   async function handleSetCover(id: number) {
-    try { await setPostMediaCover(id); refresh(); }
-    catch (e) { toast.error((e as Error).message); }
+    try {
+      await setPostMediaCover(id);
+      refresh();
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
   }
 
   async function handlePickFiles(fileIds: number[]) {
@@ -271,7 +304,11 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
     return (
       <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
         {[1, 0.5, 0.2].map((opacity, i) => (
-          <div key={i} className="aspect-square rounded-xl bg-stone-100 dark:bg-stone-800 animate-pulse" style={{ opacity }} />
+          <div
+            key={i}
+            className="aspect-square rounded-xl bg-stone-100 dark:bg-stone-800 animate-pulse"
+            style={{ opacity }}
+          />
         ))}
       </div>
     );
@@ -318,8 +355,23 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
                 className={`flex flex-col items-center justify-center gap-1 aspect-square rounded-xl border border-dashed cursor-pointer transition-colors ${dragOver ? 'ring-2 ring-[#eab308] border-[#eab308] bg-[#eab308]/10 text-[#eab308]' : 'border-stone-300 bg-stone-50 text-stone-500 hover:border-stone-400 hover:bg-stone-100 dark:border-stone-600 dark:bg-stone-800 dark:text-stone-400 dark:hover:border-stone-500 dark:hover:bg-stone-700'}`}
               >
                 <Upload className="h-4 w-4" />
-                <span className="text-[11px]">{dragOver ? t('mediaGallery.dropHere') : uploading ? t('mediaGallery.uploading') : t('mediaGallery.add')}</span>
-                <input type="file" multiple accept="image/*,video/*" hidden onChange={(e) => { handleFiles(e.target.files); e.target.value = ''; }} />
+                <span className="text-[11px]">
+                  {dragOver
+                    ? t('mediaGallery.dropHere')
+                    : uploading
+                      ? t('mediaGallery.uploading')
+                      : t('mediaGallery.add')}
+                </span>
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*,video/*"
+                  hidden
+                  onChange={(e) => {
+                    handleFiles(e.target.files);
+                    e.target.value = '';
+                  }}
+                />
               </label>
             )}
             {!disabled && !atLimit && (
@@ -362,7 +414,11 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
               <div className="flex items-center justify-between text-[11.5px] text-stone-600 mb-1">
                 <span className="truncate pr-2">{item.name}</span>
                 <span className="tabular-nums font-medium text-stone-900">
-                  {item.status === 'done' ? '✓' : item.status === 'error' ? t('mediaGallery.error') : `${item.pct}%`}
+                  {item.status === 'done'
+                    ? '✓'
+                    : item.status === 'error'
+                      ? t('mediaGallery.error')
+                      : `${item.pct}%`}
                 </span>
               </div>
               <div className="h-1.5 rounded-full bg-stone-200 overflow-hidden">
@@ -382,11 +438,21 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
             <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
             <span className="text-[12.5px] font-semibold">Thumbnail necessária</span>
           </div>
-          <span className="text-[12px] text-stone-600">Selecione uma imagem de capa para <strong>{pendingVideo.name}</strong></span>
+          <span className="text-[12px] text-stone-600">
+            Selecione uma imagem de capa para <strong>{pendingVideo.name}</strong>
+          </span>
           <div className="flex items-center gap-3">
             <label className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-stone-900 text-white text-[11px] font-semibold cursor-pointer hover:bg-stone-700">
               {t('mediaGallery.chooseThumbnail')}
-              <input type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) handleVideoThumbnail(f); }} />
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                hidden
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handleVideoThumbnail(f);
+                }}
+              />
             </label>
             <button
               type="button"
@@ -403,7 +469,9 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
         media={media}
         initialIndex={lightboxIndex ?? 0}
         open={lightboxIndex !== null}
-        onOpenChange={(o) => { if (!o) setLightboxIndex(null); }}
+        onOpenChange={(o) => {
+          if (!o) setLightboxIndex(null);
+        }}
         onDownloadAll={handleDownloadAll}
       />
 
@@ -425,9 +493,17 @@ interface SortableMediaTileProps {
   onDelete: () => void;
 }
 
-function SortableMediaTile({ media: m, disabled, onOpen, onSetCover, onDelete }: SortableMediaTileProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: m.id, disabled });
+function SortableMediaTile({
+  media: m,
+  disabled,
+  onOpen,
+  onSetCover,
+  onDelete,
+}: SortableMediaTileProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: m.id,
+    disabled,
+  });
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -452,7 +528,13 @@ function SortableMediaTile({ media: m, disabled, onOpen, onSetCover, onDelete }:
           className="w-full h-full object-cover pointer-events-none"
         />
       ) : (
-        <video src={m.url ?? undefined} poster={m.thumbnail_url ?? undefined} crossOrigin="anonymous" muted className="w-full h-full object-cover pointer-events-none" />
+        <video
+          src={m.url ?? undefined}
+          poster={m.thumbnail_url ?? undefined}
+          crossOrigin="anonymous"
+          muted
+          className="w-full h-full object-cover pointer-events-none"
+        />
       )}
       {m.is_cover && (
         <span className="absolute top-1.5 left-1.5 inline-flex items-center gap-1 text-[10px] font-semibold bg-stone-900/85 text-white px-1.5 py-0.5 rounded-full">

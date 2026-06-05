@@ -30,8 +30,15 @@ export interface HubPost {
   id: number;
   titulo: string;
   tipo: 'feed' | 'reels' | 'stories' | 'carrossel';
-  status: 'rascunho' | 'em_producao' | 'enviado_cliente'
-    | 'aprovado_cliente' | 'correcao_cliente' | 'agendado' | 'postado' | 'falha_publicacao';
+  status:
+    | 'rascunho'
+    | 'em_producao'
+    | 'enviado_cliente'
+    | 'aprovado_cliente'
+    | 'correcao_cliente'
+    | 'agendado'
+    | 'postado'
+    | 'falha_publicacao';
   ordem: number;
   conteudo: Record<string, unknown> | null;
   conteudo_plain: string;

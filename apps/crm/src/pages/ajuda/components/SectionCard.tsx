@@ -1,20 +1,27 @@
 import { Link } from 'react-router-dom';
 import {
-  Rocket, Users, UsersRound, Kanban, Globe,
-  Instagram, Zap, DollarSign, FolderOpen,
+  Rocket,
+  Users,
+  UsersRound,
+  Kanban,
+  Globe,
+  Instagram,
+  Zap,
+  DollarSign,
+  FolderOpen,
   type LucideIcon,
 } from 'lucide-react';
 
 const SECTION_ICONS: Record<string, LucideIcon> = {
   'primeiros-passos': Rocket,
-  'clientes': Users,
-  'equipe': UsersRound,
+  clientes: Users,
+  equipe: UsersRound,
   'entregas-e-fluxos': Kanban,
   'hub-do-cliente': Globe,
   'instagram-e-analytics': Instagram,
   'post-express': Zap,
-  'financeiro': DollarSign,
-  'arquivos': FolderOpen,
+  financeiro: DollarSign,
+  arquivos: FolderOpen,
 };
 
 interface SectionCardProps {

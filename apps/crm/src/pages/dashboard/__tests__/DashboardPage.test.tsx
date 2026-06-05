@@ -3,13 +3,15 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { useAuthMock, useQueriesMock, useQueryMock, onboardingBannerMock, spinnerMock } = vi.hoisted(() => ({
-  useAuthMock: vi.fn(),
-  useQueriesMock: vi.fn(),
-  useQueryMock: vi.fn(),
-  onboardingBannerMock: vi.fn(),
-  spinnerMock: vi.fn(),
-}));
+const { useAuthMock, useQueriesMock, useQueryMock, onboardingBannerMock, spinnerMock } = vi.hoisted(
+  () => ({
+    useAuthMock: vi.fn(),
+    useQueriesMock: vi.fn(),
+    useQueryMock: vi.fn(),
+    onboardingBannerMock: vi.fn(),
+    spinnerMock: vi.fn(),
+  }),
+);
 
 vi.mock('@tanstack/react-query', () => ({
   useQueries: useQueriesMock,
@@ -93,7 +95,9 @@ describe('DashboardPage', () => {
       if (queryKey[0] === 'calendar-deadlines') return makeQueryResult([]);
       return makeQueryResult([]);
     });
-    mockedSpinner.mockImplementation(({ size }: { size?: string }) => <div data-testid="spinner">Spinner {size}</div>);
+    mockedSpinner.mockImplementation(({ size }: { size?: string }) => (
+      <div data-testid="spinner">Spinner {size}</div>
+    ));
     mockedOnboardingBanner.mockImplementation(() => <div data-testid="onboarding-banner" />);
   });
 
@@ -139,7 +143,14 @@ describe('DashboardPage', () => {
         { id: 'mem-1', nome: 'Membro 1', tipo: 'clt', custo_mensal: 5000, data_pagamento: 18 },
       ]),
       makeQueryResult([
-        { id: 'cli-1', nome: 'Cliente 1', status: 'ativo', cor: '#111111', data_pagamento: 18, data_aniversario: '04-18' },
+        {
+          id: 'cli-1',
+          nome: 'Cliente 1',
+          status: 'ativo',
+          cor: '#111111',
+          data_pagamento: 18,
+          data_aniversario: '04-18',
+        },
       ]),
       makeQueryResult({
         accounts: [
@@ -163,9 +174,7 @@ describe('DashboardPage', () => {
           declining: 0,
         },
       }),
-      makeQueryResult([
-        { id: 'wf-1', titulo: 'Workflow 1', status: 'ativo', cliente_id: 'cli-1' },
-      ]),
+      makeQueryResult([{ id: 'wf-1', titulo: 'Workflow 1', status: 'ativo', cliente_id: 'cli-1' }]),
     ] as never);
 
     renderDashboardPage();
@@ -187,7 +196,13 @@ describe('DashboardPage', () => {
         transacoes: [
           { id: 'tx-1', tipo: 'entrada', status: 'agendado', valor: 1200, descricao: 'Receita A' },
           { id: 'tx-2', tipo: 'saida', status: 'agendado', valor: 450, descricao: 'Despesa B' },
-          { id: 'tx-3', tipo: 'entrada', status: 'concluido', valor: 300, descricao: 'Receita antiga' },
+          {
+            id: 'tx-3',
+            tipo: 'entrada',
+            status: 'concluido',
+            valor: 300,
+            descricao: 'Receita antiga',
+          },
         ],
         receitaMensal: 1800,
         despesaTotal: 450,
@@ -207,12 +222,38 @@ describe('DashboardPage', () => {
       ]),
       makeQueryResult([
         { id: 'mem-1', nome: 'Ana', tipo: 'clt', custo_mensal: 5000, data_pagamento: 18 },
-        { id: 'mem-2', nome: 'Bia', tipo: 'freelancer_mensal', custo_mensal: 1500, data_pagamento: 20 },
-        { id: 'mem-3', nome: 'Caio', tipo: 'freelancer_demanda', custo_mensal: 0, data_pagamento: 19 },
+        {
+          id: 'mem-2',
+          nome: 'Bia',
+          tipo: 'freelancer_mensal',
+          custo_mensal: 1500,
+          data_pagamento: 20,
+        },
+        {
+          id: 'mem-3',
+          nome: 'Caio',
+          tipo: 'freelancer_demanda',
+          custo_mensal: 0,
+          data_pagamento: 19,
+        },
       ]),
       makeQueryResult([
-        { id: 'cli-1', nome: 'Cliente Hoje', status: 'ativo', cor: '#111111', data_pagamento: 18, data_aniversario: '04-18' },
-        { id: 'cli-2', nome: 'Cliente Futuro', status: 'ativo', cor: '#222222', data_pagamento: 25, data_aniversario: '01-01' },
+        {
+          id: 'cli-1',
+          nome: 'Cliente Hoje',
+          status: 'ativo',
+          cor: '#111111',
+          data_pagamento: 18,
+          data_aniversario: '04-18',
+        },
+        {
+          id: 'cli-2',
+          nome: 'Cliente Futuro',
+          status: 'ativo',
+          cor: '#222222',
+          data_pagamento: 25,
+          data_aniversario: '01-01',
+        },
       ]),
       makeQueryResult({
         accounts: [
@@ -256,9 +297,7 @@ describe('DashboardPage', () => {
 
     mockedUseQuery.mockImplementation(({ queryKey }: { queryKey: readonly unknown[] }) => {
       if (queryKey[0] === 'allClienteDatas') {
-        return makeQueryResult([
-          { id: 'data-1', titulo: 'Lançamento', data: '2026-04-18' },
-        ]);
+        return makeQueryResult([{ id: 'data-1', titulo: 'Lançamento', data: '2026-04-18' }]);
       }
       if (queryKey[0] === 'calendar-deadlines') {
         return makeQueryResult([
@@ -301,7 +340,14 @@ describe('DashboardPage', () => {
 
   it('shows the empty today card when there are no events', () => {
     mockedUseQueries.mockReturnValue([
-      makeQueryResult({ transacoes: [], receitaMensal: 0, despesaTotal: 0, saldo: 0, clientesAtivos: [], clientes: [] }),
+      makeQueryResult({
+        transacoes: [],
+        receitaMensal: 0,
+        despesaTotal: 0,
+        saldo: 0,
+        clientesAtivos: [],
+        clientes: [],
+      }),
       makeQueryResult([]),
       makeQueryResult([]),
       makeQueryResult([]),

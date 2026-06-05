@@ -64,7 +64,9 @@ describe('fileService', () => {
 
   describe('callFn (tested through public functions)', () => {
     it('includes Authorization bearer token and apikey on every request', async () => {
-      fetchHarness.queueResponse({ json: { folder: null, subfolders: [], files: [], breadcrumbs: [] } });
+      fetchHarness.queueResponse({
+        json: { folder: null, subfolders: [], files: [], breadcrumbs: [] },
+      });
 
       await getFolderContents(null);
 
@@ -128,7 +130,12 @@ describe('fileService', () => {
     });
 
     it('passes parent_id query param when requesting a specific folder', async () => {
-      const contents = { folder: { id: 5, name: 'Images' }, subfolders: [], files: [], breadcrumbs: [] };
+      const contents = {
+        folder: { id: 5, name: 'Images' },
+        subfolders: [],
+        files: [],
+        breadcrumbs: [],
+      };
       fetchHarness.queueResponse({ json: contents });
 
       const result = await getFolderContents(5);
@@ -417,7 +424,10 @@ describe('fileService', () => {
       // The createElement mock above causes infinite recursion for the canvas call.
       // We need a different approach: only intercept 'video', pass through everything else.
       const originalCreateElement = Document.prototype.createElement;
-      vi.spyOn(document, 'createElement').mockImplementation(function (this: Document, tag: string) {
+      vi.spyOn(document, 'createElement').mockImplementation(function (
+        this: Document,
+        tag: string,
+      ) {
         if (tag === 'video') return mockVideo as unknown as HTMLVideoElement;
         return originalCreateElement.call(this, tag);
       } as typeof document.createElement);
@@ -456,19 +466,24 @@ describe('fileService', () => {
 
       const file = mockFile('banner.png', 'image/png', 2000);
 
-      vi.stubGlobal('Image', class MockImage {
-        naturalWidth = 800;
-        naturalHeight = 600;
-        onload: (() => void) | null = null;
-        onerror: (() => void) | null = null;
-        _src = '';
-        constructor() {}
-        set src(val: string) {
-          this._src = val;
-          setTimeout(() => this.onload?.(), 0);
-        }
-        get src() { return this._src; }
-      });
+      vi.stubGlobal(
+        'Image',
+        class MockImage {
+          naturalWidth = 800;
+          naturalHeight = 600;
+          onload: (() => void) | null = null;
+          onerror: (() => void) | null = null;
+          _src = '';
+          constructor() {}
+          set src(val: string) {
+            this._src = val;
+            setTimeout(() => this.onload?.(), 0);
+          }
+          get src() {
+            return this._src;
+          }
+        },
+      );
 
       const mockCtx = { drawImage: vi.fn() };
       const mockCanvas = {
@@ -478,7 +493,10 @@ describe('fileService', () => {
         toDataURL: vi.fn(() => 'data:image/webp;base64,blur-placeholder'),
       };
       const originalCreateElement = Document.prototype.createElement;
-      vi.spyOn(document, 'createElement').mockImplementation(function (this: Document, tag: string) {
+      vi.spyOn(document, 'createElement').mockImplementation(function (
+        this: Document,
+        tag: string,
+      ) {
         if (tag === 'canvas') return mockCanvas as unknown as HTMLCanvasElement;
         return originalCreateElement.call(this, tag);
       } as typeof document.createElement);
@@ -511,7 +529,9 @@ describe('fileService', () => {
       const originalSend = MockXHR.prototype.send;
       MockXHR.prototype.send = function (this: MockXHR) {
         if (this.upload.onprogress) {
-          this.upload.onprogress(new ProgressEvent('progress', { loaded: 512, total: 1024, lengthComputable: true }));
+          this.upload.onprogress(
+            new ProgressEvent('progress', { loaded: 512, total: 1024, lengthComputable: true }),
+          );
         }
         this.status = 200;
         setTimeout(() => this.onload?.(), 0);
@@ -578,9 +598,7 @@ describe('fileService', () => {
   describe('getPostLinks', () => {
     it('sends GET with post_id query param', async () => {
       const data = {
-        links: [
-          { id: 1, post_id: 30, file_id: 10, files: { id: 10, name: 'image.png' } },
-        ],
+        links: [{ id: 1, post_id: 30, file_id: 10, files: { id: 10, name: 'image.png' } }],
       };
       fetchHarness.queueResponse({ json: data });
 
@@ -650,34 +668,46 @@ describe('fileService', () => {
 
       // Image that loads for probeImage but fails generateBlurDataUrl
       let imageCount = 0;
-      vi.stubGlobal('Image', class MockImage {
-        naturalWidth = 640;
-        naturalHeight = 480;
-        onload: (() => void) | null = null;
-        onerror: ((e: unknown) => void) | null = null;
-        _src = '';
-        set src(val: string) {
-          this._src = val;
-          imageCount++;
-          if (imageCount <= 1) {
-            // probeImage succeeds
-            setTimeout(() => this.onload?.(), 0);
-          } else {
-            // generateBlurDataUrl - image loads, but canvas fails
-            setTimeout(() => this.onload?.(), 0);
+      vi.stubGlobal(
+        'Image',
+        class MockImage {
+          naturalWidth = 640;
+          naturalHeight = 480;
+          onload: (() => void) | null = null;
+          onerror: ((e: unknown) => void) | null = null;
+          _src = '';
+          set src(val: string) {
+            this._src = val;
+            imageCount++;
+            if (imageCount <= 1) {
+              // probeImage succeeds
+              setTimeout(() => this.onload?.(), 0);
+            } else {
+              // generateBlurDataUrl - image loads, but canvas fails
+              setTimeout(() => this.onload?.(), 0);
+            }
           }
-        }
-        get src() { return this._src; }
-      });
+          get src() {
+            return this._src;
+          }
+        },
+      );
 
       // Canvas that throws
       const originalCreateElement = Document.prototype.createElement;
-      vi.spyOn(document, 'createElement').mockImplementation(function (this: Document, tag: string) {
+      vi.spyOn(document, 'createElement').mockImplementation(function (
+        this: Document,
+        tag: string,
+      ) {
         if (tag === 'canvas') {
           return {
             width: 0,
             height: 0,
-            getContext: () => ({ drawImage: () => { throw new Error('Canvas not supported'); } }),
+            getContext: () => ({
+              drawImage: () => {
+                throw new Error('Canvas not supported');
+              },
+            }),
             toDataURL: vi.fn(),
           } as unknown as HTMLCanvasElement;
         }

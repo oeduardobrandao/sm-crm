@@ -2,28 +2,73 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Plus, Trash2, Edit2, FileText, Settings, GripVertical } from 'lucide-react';
-import { DndContext, PointerSensor, KeyboardSensor, useSensor, useSensors, type DragEndEvent, closestCenter } from '@dnd-kit/core';
-import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
+import {
+  DndContext,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  closestCenter,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+  sortableKeyboardCoordinates,
+} from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Spinner } from '@/components/ui/spinner';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { EmptyStateGuide } from '@/components/help/EmptyStateGuide';
 import { PrerequisiteAlert } from '@/components/help/PrerequisiteAlert';
 import { HelpTooltip } from '@/components/help/HelpTooltip';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   getDeadlineInfo,
-  addWorkflow, addWorkflowEtapa, addWorkflowTemplate, removeWorkflowTemplate,
+  addWorkflow,
+  addWorkflowEtapa,
+  addWorkflowTemplate,
+  removeWorkflowTemplate,
   removeWorkflow,
-  updateWorkflow, updateWorkflowEtapa, updateWorkflowTemplate,
+  updateWorkflow,
+  updateWorkflowEtapa,
+  updateWorkflowTemplate,
   propagateTemplateToWorkflows,
-  getPropertyDefinitions, deletePropertyDefinition,
-  type Workflow, type WorkflowEtapa, type WorkflowTemplate, type Cliente, type Membro,
+  getPropertyDefinitions,
+  deletePropertyDefinition,
+  type Workflow,
+  type WorkflowEtapa,
+  type WorkflowTemplate,
+  type Cliente,
+  type Membro,
   type TemplatePropertyDefinition,
 } from '../../../store';
 import { getNextDeliveryDate, computeDeliveryDeadlines } from '../hooks/useEntregasData';
@@ -54,7 +99,15 @@ interface EtapaFormData {
 
 let _etapaIdCounter = 0;
 function defaultEtapa(): EtapaFormData {
-  return { _id: `etapa-${++_etapaIdCounter}`, nome: '', prazo: 3, tipoPrazo: 'corridos', responsavelId: null, tipo: 'padrao', dataLimite: '' };
+  return {
+    _id: `etapa-${++_etapaIdCounter}`,
+    nome: '',
+    prazo: 3,
+    tipoPrazo: 'corridos',
+    responsavelId: null,
+    tipo: 'padrao',
+    dataLimite: '',
+  };
 }
 
 // ---- SortableEtapaRow component ----
@@ -72,8 +125,22 @@ function SortableEtapaRow(props: {
   onChange: (field: string, val: unknown) => void;
   onRemove: () => void;
 }) {
-  const { id, nome, prazo, tipoPrazo, responsavelId, tipo, dataLimite, modoPrazo, membros, onChange, onRemove } = props;
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const {
+    id,
+    nome,
+    prazo,
+    tipoPrazo,
+    responsavelId,
+    tipo,
+    dataLimite,
+    modoPrazo,
+    membros,
+    onChange,
+    onRemove,
+  } = props;
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+  });
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -81,7 +148,20 @@ function SortableEtapaRow(props: {
   };
 
   return (
-    <div ref={setNodeRef} style={{ ...style, display: 'flex', flexDirection: 'column' as const, gap: '0.5rem', marginBottom: '0.75rem', padding: '0.75rem', border: '1px solid var(--border-color)', borderRadius: '8px' }} {...attributes}>
+    <div
+      ref={setNodeRef}
+      style={{
+        ...style,
+        display: 'flex',
+        flexDirection: 'column' as const,
+        gap: '0.5rem',
+        marginBottom: '0.75rem',
+        padding: '0.75rem',
+        border: '1px solid var(--border-color)',
+        borderRadius: '8px',
+      }}
+      {...attributes}
+    >
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         <div {...listeners} style={{ cursor: 'grab', color: 'var(--text-muted)', flexShrink: 0 }}>
           <GripVertical className="h-4 w-4" />
@@ -89,10 +169,16 @@ function SortableEtapaRow(props: {
         <Input
           placeholder="Nome da etapa"
           value={nome}
-          onChange={e => onChange('nome', e.target.value)}
+          onChange={(e) => onChange('nome', e.target.value)}
           style={{ flex: 1 }}
         />
-        <Button size="icon" variant="ghost" className="text-destructive" onClick={onRemove} style={{ flexShrink: 0 }}>
+        <Button
+          size="icon"
+          variant="ghost"
+          className="text-destructive"
+          onClick={onRemove}
+          style={{ flexShrink: 0 }}
+        >
           <Trash2 className="h-4 w-4" />
         </Button>
       </div>
@@ -102,7 +188,7 @@ function SortableEtapaRow(props: {
           <Input
             type="date"
             value={dataLimite}
-            onChange={e => onChange('dataLimite', e.target.value)}
+            onChange={(e) => onChange('dataLimite', e.target.value)}
           />
         </div>
       ) : (
@@ -111,12 +197,14 @@ function SortableEtapaRow(props: {
             type="number"
             min={1}
             value={prazo}
-            onChange={e => onChange('prazo', Number(e.target.value))}
+            onChange={(e) => onChange('prazo', Number(e.target.value))}
             placeholder="Prazo (dias)"
           />
           <div className="flex items-center gap-1">
-            <Select value={tipoPrazo} onValueChange={val => onChange('tipoPrazo', val)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+            <Select value={tipoPrazo} onValueChange={(val) => onChange('tipoPrazo', val)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value="corridos">Corridos</SelectItem>
                 <SelectItem value="uteis">Úteis</SelectItem>
@@ -136,11 +224,24 @@ function SortableEtapaRow(props: {
           hint="💡 Membros são pessoas da equipe (designers, redatores, etc). Para dar acesso ao CRM, vincule o membro a um usuário do workspace."
         />
       ) : (
-        <Select value={responsavelId != null ? String(responsavelId) : '__none__'} onValueChange={val => onChange('responsavelId', val === '__none__' ? null : Number(val))}>
-          <SelectTrigger><SelectValue placeholder="Sem responsável" /></SelectTrigger>
+        <Select
+          value={responsavelId != null ? String(responsavelId) : '__none__'}
+          onValueChange={(val) =>
+            onChange('responsavelId', val === '__none__' ? null : Number(val))
+          }
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Sem responsável" />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="__none__">Sem responsável</SelectItem>
-            {[...membros].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')).map(m => <SelectItem key={m.id} value={String(m.id)}>{m.nome}</SelectItem>)}
+            {[...membros]
+              .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+              .map((m) => (
+                <SelectItem key={m.id} value={String(m.id)}>
+                  {m.nome}
+                </SelectItem>
+              ))}
           </SelectContent>
         </Select>
       )}
@@ -148,16 +249,23 @@ function SortableEtapaRow(props: {
         <Checkbox
           id={`aprovacao-${id}`}
           checked={tipo === 'aprovacao_cliente'}
-          onCheckedChange={v => onChange('tipo', v ? 'aprovacao_cliente' : 'padrao')}
+          onCheckedChange={(v) => onChange('tipo', v ? 'aprovacao_cliente' : 'padrao')}
         />
-        <Label htmlFor={`aprovacao-${id}`} style={{ fontSize: '0.8rem', cursor: 'pointer' }}>Aprovação externa</Label>
+        <Label htmlFor={`aprovacao-${id}`} style={{ fontSize: '0.8rem', cursor: 'pointer' }}>
+          Aprovação externa
+        </Label>
       </div>
     </div>
   );
 }
 
 // ---- Sortable etapa list wrapper ----
-function SortableEtapaList({ etapas, setEtapas, modoPrazo, membros }: {
+function SortableEtapaList({
+  etapas,
+  setEtapas,
+  modoPrazo,
+  membros,
+}: {
   etapas: EtapaFormData[];
   setEtapas: (e: EtapaFormData[]) => void;
   modoPrazo: ModoPrazo;
@@ -170,17 +278,23 @@ function SortableEtapaList({ etapas, setEtapas, modoPrazo, membros }: {
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (over && active.id !== over.id) {
-      const oldIdx = etapas.findIndex(e => e._id === active.id);
-      const newIdx = etapas.findIndex(e => e._id === over.id);
+      const oldIdx = etapas.findIndex((e) => e._id === active.id);
+      const newIdx = etapas.findIndex((e) => e._id === over.id);
       if (oldIdx !== -1 && newIdx !== -1) setEtapas(arrayMove(etapas, oldIdx, newIdx));
     }
   };
 
   return (
-    <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem', marginTop: '0.5rem' }}>
+    <div
+      style={{
+        borderTop: '1px solid var(--border-color)',
+        paddingTop: '1rem',
+        marginTop: '0.5rem',
+      }}
+    >
       <h4 style={{ marginBottom: '0.75rem' }}>Etapas</h4>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={etapas.map(e => e._id)} strategy={verticalListSortingStrategy}>
+        <SortableContext items={etapas.map((e) => e._id)} strategy={verticalListSortingStrategy}>
           {etapas.map((e, i) => (
             <SortableEtapaRow
               key={e._id}
@@ -239,32 +353,40 @@ export function NewWorkflowModal({
   const handleTemplateChange = (templateId: string) => {
     setFTemplateId(templateId);
     if (!templateId) return;
-    const tpl = templates.find(t => t.id === Number(templateId));
+    const tpl = templates.find((t) => t.id === Number(templateId));
     if (!tpl) return;
     if (tpl.modo_prazo) setFModoPrazo(tpl.modo_prazo);
-    setEtapas(tpl.etapas.map(e => ({
-      _id: `etapa-${++_etapaIdCounter}`,
-      nome: e.nome,
-      prazo: e.prazo_dias,
-      tipoPrazo: e.tipo_prazo,
-      responsavelId: e.responsavel_id || null,
-      tipo: e.tipo || 'padrao',
-      dataLimite: '',
-    })));
+    setEtapas(
+      tpl.etapas.map((e) => ({
+        _id: `etapa-${++_etapaIdCounter}`,
+        nome: e.nome,
+        prazo: e.prazo_dias,
+        tipoPrazo: e.tipo_prazo,
+        responsavelId: e.responsavel_id || null,
+        tipo: e.tipo || 'padrao',
+        dataLimite: '',
+      })),
+    );
   };
 
   const handleSave = async () => {
-    if (!fTitulo || !fClienteId) { toast.error('Título e cliente são obrigatórios.'); return; }
-    const validEtapas = etapas.filter(e => e.nome.trim());
-    if (validEtapas.length === 0) { toast.error('Adicione pelo menos uma etapa.'); return; }
-    if (validEtapas.some(e => e.responsavelId == null)) {
+    if (!fTitulo || !fClienteId) {
+      toast.error('Título e cliente são obrigatórios.');
+      return;
+    }
+    const validEtapas = etapas.filter((e) => e.nome.trim());
+    if (validEtapas.length === 0) {
+      toast.error('Adicione pelo menos uma etapa.');
+      return;
+    }
+    if (validEtapas.some((e) => e.responsavelId == null)) {
       toast.error('Todas as etapas precisam de um responsável atribuído.');
       return;
     }
 
     // Mode-specific validation
     if (fModoPrazo === 'data_fixa') {
-      if (validEtapas.some(e => !e.dataLimite)) {
+      if (validEtapas.some((e) => !e.dataLimite)) {
         toast.error('Todas as etapas precisam de uma data limite no modo Data Fixa.');
         return;
       }
@@ -273,14 +395,18 @@ export function NewWorkflowModal({
     // data_entrega mode: need aprovacao_cliente step and client dia_entrega
     let deliveryDeadlines: Map<number, string> | null = null;
     if (fModoPrazo === 'data_entrega') {
-      const hasAprovacao = validEtapas.some(e => e.tipo === 'aprovacao_cliente');
+      const hasAprovacao = validEtapas.some((e) => e.tipo === 'aprovacao_cliente');
       if (!hasAprovacao) {
-        toast.error('No modo Data de Entrega, é necessário ter ao menos uma etapa de Aprovação do Cliente como âncora.');
+        toast.error(
+          'No modo Data de Entrega, é necessário ter ao menos uma etapa de Aprovação do Cliente como âncora.',
+        );
         return;
       }
-      const selectedCliente = clientes.find(c => c.id === Number(fClienteId));
+      const selectedCliente = clientes.find((c) => c.id === Number(fClienteId));
       if (!selectedCliente?.dia_entrega) {
-        toast.error('O cliente selecionado não tem um Dia de Entrega configurado. Configure em Detalhes do Cliente.');
+        toast.error(
+          'O cliente selecionado não tem um Dia de Entrega configurado. Configure em Detalhes do Cliente.',
+        );
         return;
       }
       let deliveryDate: Date;
@@ -309,7 +435,7 @@ export function NewWorkflowModal({
       deliveryDeadlines = computeDeliveryDeadlines(etapasMock, deliveryDate);
     }
 
-    const validMemberIds = new Set(membros.map(m => m.id));
+    const validMemberIds = new Set(membros.map((m) => m.id));
 
     setSaving(true);
     let wf: Workflow | null = null;
@@ -332,7 +458,8 @@ export function NewWorkflowModal({
         } else if (fModoPrazo === 'data_entrega' && deliveryDeadlines) {
           dataLimite = deliveryDeadlines.get(i) || null;
         }
-        const safeResponsavelId = e.responsavelId && validMemberIds.has(e.responsavelId) ? e.responsavelId : null;
+        const safeResponsavelId =
+          e.responsavelId && validMemberIds.has(e.responsavelId) ? e.responsavelId : null;
         await addWorkflowEtapa({
           workflow_id: wf.id!,
           ordem: i,
@@ -348,24 +475,52 @@ export function NewWorkflowModal({
         });
       }
       toast.success('Fluxo criado com sucesso!');
-      setFTitulo(''); setFClienteId(''); setFTemplateId(''); setFRecorrente(false); setFModoPrazo('padrao'); setFMesEntrega('');
+      setFTitulo('');
+      setFClienteId('');
+      setFTemplateId('');
+      setFRecorrente(false);
+      setFModoPrazo('padrao');
+      setFMesEntrega('');
       setEtapas([defaultEtapa()]);
       onCreated();
       onClose();
     } catch (err: unknown) {
-      if (wf?.id) try { await removeWorkflow(wf.id); } catch { /* */ }
+      if (wf?.id)
+        try {
+          await removeWorkflow(wf.id);
+        } catch {
+          /* */
+        }
       toast.error((err as Error).message || 'Erro ao criar fluxo');
     } finally {
       setSaving(false);
     }
   };
 
-  const activeClientes = clientes.filter(c => c.status === 'ativo').sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  const activeClientes = clientes
+    .filter((c) => c.status === 'ativo')
+    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
 
   return (
-    <Dialog open={open} onOpenChange={open => { if (!open) { setEtapas([defaultEtapa()]); onClose(); } }}>
-      <DialogContent style={{ maxWidth: 700, width: 'calc(100vw - 2rem)' }} onConfirmClose={() => { setEtapas([defaultEtapa()]); onClose(); }}>
-        <DialogHeader><DialogTitle>Novo Fluxo de Entrega</DialogTitle></DialogHeader>
+    <Dialog
+      open={open}
+      onOpenChange={(open) => {
+        if (!open) {
+          setEtapas([defaultEtapa()]);
+          onClose();
+        }
+      }}
+    >
+      <DialogContent
+        style={{ maxWidth: 700, width: 'calc(100vw - 2rem)' }}
+        onConfirmClose={() => {
+          setEtapas([defaultEtapa()]);
+          onClose();
+        }}
+      >
+        <DialogHeader>
+          <DialogTitle>Novo Fluxo de Entrega</DialogTitle>
+        </DialogHeader>
         <div className="space-y-3">
           {membros.length === 0 && (
             <PrerequisiteAlert
@@ -375,30 +530,54 @@ export function NewWorkflowModal({
               actionHref="/equipe"
             />
           )}
-          <div className="space-y-1"><Label>Título *</Label><Input placeholder="Ex: Posts Instagram — Março 2026" value={fTitulo} onChange={e => setFTitulo(e.target.value)} /></div>
+          <div className="space-y-1">
+            <Label>Título *</Label>
+            <Input
+              placeholder="Ex: Posts Instagram — Março 2026"
+              value={fTitulo}
+              onChange={(e) => setFTitulo(e.target.value)}
+            />
+          </div>
           <div className="space-y-1">
             <Label>Cliente *</Label>
             <Select value={fClienteId} onValueChange={setFClienteId}>
-              <SelectTrigger><SelectValue placeholder="Selecionar cliente..." /></SelectTrigger>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecionar cliente..." />
+              </SelectTrigger>
               <SelectContent>
-                {activeClientes.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.nome}</SelectItem>)}
+                {activeClientes.map((c) => (
+                  <SelectItem key={c.id} value={String(c.id)}>
+                    {c.nome}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-1">
             <Label>Template</Label>
-            <Select value={fTemplateId || '__none__'} onValueChange={val => handleTemplateChange(val === '__none__' ? '' : val)}>
-              <SelectTrigger><SelectValue placeholder="Personalizado" /></SelectTrigger>
+            <Select
+              value={fTemplateId || '__none__'}
+              onValueChange={(val) => handleTemplateChange(val === '__none__' ? '' : val)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Personalizado" />
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none__">Personalizado</SelectItem>
-                {templates.map(t => <SelectItem key={t.id} value={String(t.id)}>{t.nome} ({t.etapas.length} etapas)</SelectItem>)}
+                {templates.map((t) => (
+                  <SelectItem key={t.id} value={String(t.id)}>
+                    {t.nome} ({t.etapas.length} etapas)
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-1">
             <Label>Modo de Prazo</Label>
-            <Select value={fModoPrazo} onValueChange={v => setFModoPrazo(v as ModoPrazo)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+            <Select value={fModoPrazo} onValueChange={(v) => setFModoPrazo(v as ModoPrazo)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value="padrao">Duração (padrão)</SelectItem>
                 <SelectItem value="data_fixa">Data fixa por etapa</SelectItem>
@@ -407,21 +586,36 @@ export function NewWorkflowModal({
             </Select>
             {fModoPrazo === 'data_entrega' && (
               <>
-                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-                  Prazos calculados automaticamente a partir do dia de entrega do cliente, usando a etapa de Aprovação como âncora.
+                <p
+                  style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}
+                >
+                  Prazos calculados automaticamente a partir do dia de entrega do cliente, usando a
+                  etapa de Aprovação como âncora.
                 </p>
                 <div style={{ marginTop: '0.5rem' }}>
                   <Label>Mês de Entrega</Label>
-                  <Select value={fMesEntrega || '__auto__'} onValueChange={val => setFMesEntrega(val === '__auto__' ? '' : val)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                  <Select
+                    value={fMesEntrega || '__auto__'}
+                    onValueChange={(val) => setFMesEntrega(val === '__auto__' ? '' : val)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="__auto__">Próximo mês disponível</SelectItem>
                       {Array.from({ length: 6 }, (_, i) => {
                         const d = new Date();
                         d.setMonth(d.getMonth() + i);
                         const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-                        const label = d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-                        return <SelectItem key={key} value={key}>{label.charAt(0).toUpperCase() + label.slice(1)}</SelectItem>;
+                        const label = d.toLocaleDateString('pt-BR', {
+                          month: 'long',
+                          year: 'numeric',
+                        });
+                        return (
+                          <SelectItem key={key} value={key}>
+                            {label.charAt(0).toUpperCase() + label.slice(1)}
+                          </SelectItem>
+                        );
                       })}
                     </SelectContent>
                   </Select>
@@ -430,14 +624,35 @@ export function NewWorkflowModal({
             )}
           </div>
           <div className="flex items-center gap-2">
-            <Checkbox id="recorrente-new" checked={fRecorrente} onCheckedChange={v => setFRecorrente(!!v)} />
-            <Label htmlFor="recorrente-new">Fluxo recorrente (ao concluir, oferecer criar novo ciclo)</Label>
+            <Checkbox
+              id="recorrente-new"
+              checked={fRecorrente}
+              onCheckedChange={(v) => setFRecorrente(!!v)}
+            />
+            <Label htmlFor="recorrente-new">
+              Fluxo recorrente (ao concluir, oferecer criar novo ciclo)
+            </Label>
           </div>
-          <SortableEtapaList etapas={etapas} setEtapas={setEtapas} modoPrazo={fModoPrazo} membros={membros} />
+          <SortableEtapaList
+            etapas={etapas}
+            setEtapas={setEtapas}
+            modoPrazo={fModoPrazo}
+            membros={membros}
+          />
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => { setEtapas([defaultEtapa()]); onClose(); }}>Cancelar</Button>
-          <Button onClick={handleSave} disabled={saving}>{saving && <Spinner size="sm" />} Criar Fluxo</Button>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setEtapas([defaultEtapa()]);
+              onClose();
+            }}
+          >
+            Cancelar
+          </Button>
+          <Button onClick={handleSave} disabled={saving}>
+            {saving && <Spinner size="sm" />} Criar Fluxo
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -475,12 +690,17 @@ export function EditWorkflowModal({
   const [fPrazoDias, setFPrazoDias] = useState(String(e.prazo_dias));
   const [fTipoPrazo, setFTipoPrazo] = useState(e.tipo_prazo);
   const [fDataLimite, setFDataLimite] = useState(e.data_limite || '');
-  const activeClientes = clientes.filter(c => c.status === 'ativo').sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  const activeClientes = clientes
+    .filter((c) => c.status === 'ativo')
+    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
 
   const markDirty = () => setIsDirty(true);
 
   const handleSave = async () => {
-    if (!fTitulo || !fClienteId) { toast.error('Título e cliente são obrigatórios.'); return; }
+    if (!fTitulo || !fClienteId) {
+      toast.error('Título e cliente são obrigatórios.');
+      return;
+    }
     setSaving(true);
     try {
       await updateWorkflow(w.id!, {
@@ -514,59 +734,148 @@ export function EditWorkflowModal({
       toast.success('Fluxo excluído!');
       onDeleted();
       onClose();
-    } catch { toast.error('Erro ao excluir'); }
+    } catch {
+      toast.error('Erro ao excluir');
+    }
   };
 
   return (
     <>
-      <Dialog open={true} onOpenChange={open => { if (!open) onClose(); }}>
+      <Dialog
+        open={true}
+        onOpenChange={(open) => {
+          if (!open) onClose();
+        }}
+      >
         <DialogContent onConfirmClose={onClose} confirmClose={isDirty}>
-          <DialogHeader><DialogTitle>Editar Fluxo</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Editar Fluxo</DialogTitle>
+          </DialogHeader>
           <div className="space-y-3">
-            <div className="space-y-1"><Label>Título *</Label><Input value={fTitulo} onChange={e => { setFTitulo(e.target.value); markDirty(); }} /></div>
+            <div className="space-y-1">
+              <Label>Título *</Label>
+              <Input
+                value={fTitulo}
+                onChange={(e) => {
+                  setFTitulo(e.target.value);
+                  markDirty();
+                }}
+              />
+            </div>
             <div className="space-y-1">
               <Label>Cliente *</Label>
-              <Select value={fClienteId} onValueChange={v => { setFClienteId(v); markDirty(); }}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+              <Select
+                value={fClienteId}
+                onValueChange={(v) => {
+                  setFClienteId(v);
+                  markDirty();
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
-                  {activeClientes.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.nome}</SelectItem>)}
+                  {activeClientes.map((c) => (
+                    <SelectItem key={c.id} value={String(c.id)}>
+                      {c.nome}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="flex items-center gap-2">
-              <Checkbox id="recorrente-edit" checked={fRecorrente} onCheckedChange={v => { setFRecorrente(!!v); markDirty(); }} />
+              <Checkbox
+                id="recorrente-edit"
+                checked={fRecorrente}
+                onCheckedChange={(v) => {
+                  setFRecorrente(!!v);
+                  markDirty();
+                }}
+              />
               <Label htmlFor="recorrente-edit">Fluxo recorrente</Label>
             </div>
             <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: '0.75rem',
+                }}
+              >
                 <h4>Etapa Atual: {e.nome}</h4>
                 {modoPrazo !== 'padrao' && (
-                  <span style={{
-                    fontSize: '0.72rem', fontWeight: 600, padding: '2px 8px', borderRadius: 10,
-                    background: modoPrazo === 'data_entrega' ? '#dbeafe' : '#f3e8ff',
-                    color: modoPrazo === 'data_entrega' ? '#1d4ed8' : '#7e22ce',
-                  }}>
+                  <span
+                    style={{
+                      fontSize: '0.72rem',
+                      fontWeight: 600,
+                      padding: '2px 8px',
+                      borderRadius: 10,
+                      background: modoPrazo === 'data_entrega' ? '#dbeafe' : '#f3e8ff',
+                      color: modoPrazo === 'data_entrega' ? '#1d4ed8' : '#7e22ce',
+                    }}
+                  >
                     {modoPrazo === 'data_entrega' ? 'Data de entrega' : 'Data fixa'}
                   </span>
                 )}
               </div>
               <div className="space-y-1">
                 <Label>Responsável</Label>
-                <Select value={fResponsavelId || '__none__'} onValueChange={val => { setFResponsavelId(val === '__none__' ? '' : val); markDirty(); }}>
-                  <SelectTrigger><SelectValue placeholder="Sem responsável" /></SelectTrigger>
+                <Select
+                  value={fResponsavelId || '__none__'}
+                  onValueChange={(val) => {
+                    setFResponsavelId(val === '__none__' ? '' : val);
+                    markDirty();
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Sem responsável" />
+                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none__">Sem responsável</SelectItem>
-                    {[...membros].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')).map(m => <SelectItem key={m.id} value={String(m.id)}>{m.nome}</SelectItem>)}
+                    {[...membros]
+                      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+                      .map((m) => (
+                        <SelectItem key={m.id} value={String(m.id)}>
+                          {m.nome}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>
               {modoPrazo === 'padrao' && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '0.75rem' }}>
-                  <div className="space-y-1"><Label>Prazo (dias)</Label><Input type="number" min={1} value={fPrazoDias} onChange={e => { setFPrazoDias(e.target.value); markDirty(); }} /></div>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '1rem',
+                    marginTop: '0.75rem',
+                  }}
+                >
+                  <div className="space-y-1">
+                    <Label>Prazo (dias)</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={fPrazoDias}
+                      onChange={(e) => {
+                        setFPrazoDias(e.target.value);
+                        markDirty();
+                      }}
+                    />
+                  </div>
                   <div className="space-y-1">
                     <Label>Tipo de prazo</Label>
-                    <Select value={fTipoPrazo} onValueChange={v => { setFTipoPrazo(v as 'corridos' | 'uteis'); markDirty(); }}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                    <Select
+                      value={fTipoPrazo}
+                      onValueChange={(v) => {
+                        setFTipoPrazo(v as 'corridos' | 'uteis');
+                        markDirty();
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="corridos">Dias corridos</SelectItem>
                         <SelectItem value="uteis">Dias úteis</SelectItem>
@@ -578,19 +887,42 @@ export function EditWorkflowModal({
               {modoPrazo === 'data_fixa' && (
                 <div className="space-y-1" style={{ marginTop: '0.75rem' }}>
                   <Label>Data limite</Label>
-                  <Input type="date" value={fDataLimite} onChange={ev => { setFDataLimite(ev.target.value); markDirty(); }} />
+                  <Input
+                    type="date"
+                    value={fDataLimite}
+                    onChange={(ev) => {
+                      setFDataLimite(ev.target.value);
+                      markDirty();
+                    }}
+                  />
                 </div>
               )}
               {modoPrazo === 'data_entrega' && e.data_limite && (
-                <div style={{ marginTop: '0.75rem', padding: '0.5rem 0.75rem', background: '#eff6ff', borderRadius: 6, fontSize: '0.82rem', color: '#1d4ed8' }}>
-                  Data limite calculada: <strong>{new Date(e.data_limite + 'T00:00:00').toLocaleDateString('pt-BR')}</strong>
+                <div
+                  style={{
+                    marginTop: '0.75rem',
+                    padding: '0.5rem 0.75rem',
+                    background: '#eff6ff',
+                    borderRadius: 6,
+                    fontSize: '0.82rem',
+                    color: '#1d4ed8',
+                  }}
+                >
+                  Data limite calculada:{' '}
+                  <strong>
+                    {new Date(e.data_limite + 'T00:00:00').toLocaleDateString('pt-BR')}
+                  </strong>
                 </div>
               )}
             </div>
           </div>
           <div className="edit-modal-footer">
             <div className="edit-modal-footer-secondary">
-              <Button variant="outline" className="text-destructive" onClick={() => setDeleteOpen(true)}>
+              <Button
+                variant="outline"
+                className="text-destructive"
+                onClick={() => setDeleteOpen(true)}
+              >
                 <Trash2 className="h-4 w-4" /> Excluir
               </Button>
               {onOpenPosts && (
@@ -600,8 +932,12 @@ export function EditWorkflowModal({
               )}
             </div>
             <div className="edit-modal-footer-primary">
-              <Button variant="outline" onClick={onClose}>Cancelar</Button>
-              <Button onClick={handleSave} disabled={saving}>{saving && <Spinner size="sm" />} Salvar</Button>
+              <Button variant="outline" onClick={onClose}>
+                Cancelar
+              </Button>
+              <Button onClick={handleSave} disabled={saving}>
+                {saving && <Spinner size="sm" />} Salvar
+              </Button>
             </div>
           </div>
         </DialogContent>
@@ -662,18 +998,26 @@ export function TemplatesModal({
       await deletePropertyDefinition(deletingDefId);
       toast.success('Propriedade excluída.');
       qc.invalidateQueries({ queryKey: ['property-definitions', selectedTemplateId] });
-    } catch { toast.error('Erro ao excluir propriedade.'); }
+    } catch {
+      toast.error('Erro ao excluir propriedade.');
+    }
     setDeletingDefId(null);
   };
 
   const handleSave = async () => {
     const nome = fNome.trim();
-    if (!nome) { toast.error('Nome do template é obrigatório.'); return; }
-    const validEtapas = etapas.filter(e => e.nome.trim());
-    if (validEtapas.length === 0) { toast.error('Adicione pelo menos uma etapa.'); return; }
+    if (!nome) {
+      toast.error('Nome do template é obrigatório.');
+      return;
+    }
+    const validEtapas = etapas.filter((e) => e.nome.trim());
+    if (validEtapas.length === 0) {
+      toast.error('Adicione pelo menos uma etapa.');
+      return;
+    }
     setSaving(true);
     try {
-      const etapaData = validEtapas.map(e => ({
+      const etapaData = validEtapas.map((e) => ({
         nome: e.nome,
         prazo_dias: e.prazo,
         tipo_prazo: e.tipoPrazo,
@@ -681,7 +1025,11 @@ export function TemplatesModal({
         tipo: e.tipo,
       }));
       if (editingTemplate?.id) {
-        await updateWorkflowTemplate(editingTemplate.id, { nome, etapas: etapaData, modo_prazo: fModoPrazo });
+        await updateWorkflowTemplate(editingTemplate.id, {
+          nome,
+          etapas: etapaData,
+          modo_prazo: fModoPrazo,
+        });
         await propagateTemplateToWorkflows(editingTemplate.id, etapaData);
         toast.success('Template atualizado!');
       } else {
@@ -704,15 +1052,17 @@ export function TemplatesModal({
     setEditingTemplate(tpl);
     setFNome(tpl.nome);
     setFModoPrazo((tpl.modo_prazo as ModoPrazo) || 'padrao');
-    setEtapas(tpl.etapas.map(e => ({
-      _id: `etapa-${++_etapaIdCounter}`,
-      nome: e.nome,
-      prazo: e.prazo_dias,
-      tipoPrazo: e.tipo_prazo,
-      responsavelId: e.responsavel_id || null,
-      tipo: e.tipo || 'padrao',
-      dataLimite: '',
-    })));
+    setEtapas(
+      tpl.etapas.map((e) => ({
+        _id: `etapa-${++_etapaIdCounter}`,
+        nome: e.nome,
+        prazo: e.prazo_dias,
+        tipoPrazo: e.tipo_prazo,
+        responsavelId: e.responsavel_id || null,
+        tipo: e.tipo || 'padrao',
+        dataLimite: '',
+      })),
+    );
   };
 
   const handleDeleteConfirm = async () => {
@@ -721,24 +1071,63 @@ export function TemplatesModal({
       await removeWorkflowTemplate(deleteTemplateId);
       toast.success('Template excluído.');
       onRefresh();
-    } catch { toast.error('Erro ao excluir.'); }
+    } catch {
+      toast.error('Erro ao excluir.');
+    }
     setDeleteTemplateId(null);
   };
 
   return (
     <>
-      <Dialog open={open} onOpenChange={open => { if (!open) { setFNome(''); setEtapas([defaultEtapa()]); setEditingTemplate(null); setFModoPrazo('padrao'); onClose(); } }}>
-        <DialogContent style={{ maxWidth: 700, width: 'calc(100vw - 2rem)' }} onConfirmClose={() => { setFNome(''); setEtapas([defaultEtapa()]); setEditingTemplate(null); setFModoPrazo('padrao'); onClose(); }}>
-          <DialogHeader><DialogTitle>Gerenciar Templates</DialogTitle></DialogHeader>
+      <Dialog
+        open={open}
+        onOpenChange={(open) => {
+          if (!open) {
+            setFNome('');
+            setEtapas([defaultEtapa()]);
+            setEditingTemplate(null);
+            setFModoPrazo('padrao');
+            onClose();
+          }
+        }}
+      >
+        <DialogContent
+          style={{ maxWidth: 700, width: 'calc(100vw - 2rem)' }}
+          onConfirmClose={() => {
+            setFNome('');
+            setEtapas([defaultEtapa()]);
+            setEditingTemplate(null);
+            setFModoPrazo('padrao');
+            onClose();
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Gerenciar Templates</DialogTitle>
+          </DialogHeader>
           {/* Tab navigation */}
-          <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--border-color)', marginBottom: '1rem' }}>
+          <div
+            style={{
+              display: 'flex',
+              gap: 0,
+              borderBottom: '1px solid var(--border-color)',
+              marginBottom: '1rem',
+            }}
+          >
             <button
               onClick={() => setActiveTab('templates')}
               style={{
-                padding: '8px 16px', border: 'none', background: 'none', cursor: 'pointer', fontSize: '0.9rem',
-                borderBottom: activeTab === 'templates' ? '2px solid var(--primary, #1d4ed8)' : '2px solid transparent',
+                padding: '8px 16px',
+                border: 'none',
+                background: 'none',
+                cursor: 'pointer',
+                fontSize: '0.9rem',
+                borderBottom:
+                  activeTab === 'templates'
+                    ? '2px solid var(--primary, #1d4ed8)'
+                    : '2px solid transparent',
                 color: activeTab === 'templates' ? 'var(--primary, #1d4ed8)' : 'inherit',
-                fontWeight: activeTab === 'templates' ? 600 : 400, marginBottom: -1,
+                fontWeight: activeTab === 'templates' ? 600 : 400,
+                marginBottom: -1,
               }}
             >
               Templates
@@ -746,10 +1135,18 @@ export function TemplatesModal({
             <button
               onClick={() => setActiveTab('properties')}
               style={{
-                padding: '8px 16px', border: 'none', background: 'none', cursor: 'pointer', fontSize: '0.9rem',
-                borderBottom: activeTab === 'properties' ? '2px solid var(--primary, #1d4ed8)' : '2px solid transparent',
+                padding: '8px 16px',
+                border: 'none',
+                background: 'none',
+                cursor: 'pointer',
+                fontSize: '0.9rem',
+                borderBottom:
+                  activeTab === 'properties'
+                    ? '2px solid var(--primary, #1d4ed8)'
+                    : '2px solid transparent',
                 color: activeTab === 'properties' ? 'var(--primary, #1d4ed8)' : 'inherit',
-                fontWeight: activeTab === 'properties' ? 600 : 400, marginBottom: -1,
+                fontWeight: activeTab === 'properties' ? 600 : 400,
+                marginBottom: -1,
               }}
             >
               <Settings className="h-3.5 w-3.5" style={{ display: 'inline', marginRight: 4 }} />
@@ -759,32 +1156,73 @@ export function TemplatesModal({
           {activeTab === 'templates' && (
             <>
               <div style={{ marginBottom: '1rem' }}>
-                {templates.length === 0
-                  ? <p style={{ color: 'var(--text-muted)' }}>Nenhum template salvo.</p>
-                  : templates.map(t => (
-                    <div key={t.id} className="card" style={{ marginBottom: '0.75rem', padding: '1rem 1.25rem', position: 'relative' }}>
+                {templates.length === 0 ? (
+                  <p style={{ color: 'var(--text-muted)' }}>Nenhum template salvo.</p>
+                ) : (
+                  templates.map((t) => (
+                    <div
+                      key={t.id}
+                      className="card"
+                      style={{
+                        marginBottom: '0.75rem',
+                        padding: '1rem 1.25rem',
+                        position: 'relative',
+                      }}
+                    >
                       <strong>{t.nome}</strong>
-                      <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-                        {t.etapas.length} etapa{t.etapas.length !== 1 ? 's' : ''}: {t.etapas.map(e => e.nome).join(' → ')}
+                      <p
+                        style={{
+                          fontSize: '0.82rem',
+                          color: 'var(--text-muted)',
+                          marginTop: '0.25rem',
+                        }}
+                      >
+                        {t.etapas.length} etapa{t.etapas.length !== 1 ? 's' : ''}:{' '}
+                        {t.etapas.map((e) => e.nome).join(' → ')}
                       </p>
-                      <div style={{ position: 'absolute', top: '1rem', right: '1rem', display: 'flex', gap: '0.5rem' }}>
-                        <Button size="icon" variant="ghost" onClick={() => handleEdit(t)}><Edit2 className="h-4 w-4" /></Button>
-                        <Button size="icon" variant="ghost" className="text-destructive" onClick={() => setDeleteTemplateId(t.id!)}><Trash2 className="h-4 w-4" /></Button>
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: '1rem',
+                          right: '1rem',
+                          display: 'flex',
+                          gap: '0.5rem',
+                        }}
+                      >
+                        <Button size="icon" variant="ghost" onClick={() => handleEdit(t)}>
+                          <Edit2 className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="text-destructive"
+                          onClick={() => setDeleteTemplateId(t.id!)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
                   ))
-                }
+                )}
               </div>
               <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
-                <h4 style={{ marginBottom: '0.75rem' }}>{editingTemplate ? `Editar: ${editingTemplate.nome}` : 'Novo Template'}</h4>
+                <h4 style={{ marginBottom: '0.75rem' }}>
+                  {editingTemplate ? `Editar: ${editingTemplate.nome}` : 'Novo Template'}
+                </h4>
                 <div className="space-y-1" style={{ marginBottom: '0.75rem' }}>
                   <Label>Nome *</Label>
-                  <Input placeholder="Ex: Fluxo Padrão de Post" value={fNome} onChange={e => setFNome(e.target.value)} />
+                  <Input
+                    placeholder="Ex: Fluxo Padrão de Post"
+                    value={fNome}
+                    onChange={(e) => setFNome(e.target.value)}
+                  />
                 </div>
                 <div className="space-y-1" style={{ marginBottom: '0.75rem' }}>
                   <Label>Modo de Prazo</Label>
-                  <Select value={fModoPrazo} onValueChange={v => setFModoPrazo(v as ModoPrazo)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                  <Select value={fModoPrazo} onValueChange={(v) => setFModoPrazo(v as ModoPrazo)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="padrao">Duração (padrão)</SelectItem>
                       <SelectItem value="data_fixa">Data fixa por etapa</SelectItem>
@@ -792,7 +1230,12 @@ export function TemplatesModal({
                     </SelectContent>
                   </Select>
                 </div>
-                <SortableEtapaList etapas={etapas} setEtapas={setEtapas} modoPrazo={fModoPrazo} membros={membros} />
+                <SortableEtapaList
+                  etapas={etapas}
+                  setEtapas={setEtapas}
+                  modoPrazo={fModoPrazo}
+                  membros={membros}
+                />
               </div>
             </>
           )}
@@ -805,11 +1248,15 @@ export function TemplatesModal({
                   className="drawer-select"
                   style={{ marginTop: 4, width: '100%' }}
                   value={selectedTemplateId ?? ''}
-                  onChange={e => setSelectedTemplateId(e.target.value ? Number(e.target.value) : null)}
+                  onChange={(e) =>
+                    setSelectedTemplateId(e.target.value ? Number(e.target.value) : null)
+                  }
                 >
                   <option value="">Escolha um template…</option>
-                  {templates.map(t => (
-                    <option key={t.id} value={t.id}>{t.nome}</option>
+                  {templates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.nome}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -817,46 +1264,81 @@ export function TemplatesModal({
               {selectedTemplateId && (
                 <>
                   {propertyDefinitions.length === 0 ? (
-                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '0.75rem' }}>
+                    <p
+                      style={{
+                        color: 'var(--text-muted)',
+                        fontSize: '0.85rem',
+                        marginBottom: '0.75rem',
+                      }}
+                    >
                       Nenhuma propriedade definida neste template.
                     </p>
                   ) : (
                     <div style={{ marginBottom: '0.75rem' }}>
-                      {propertyDefinitions.map(def => (
+                      {propertyDefinitions.map((def) => (
                         <div
                           key={def.id}
                           style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                            padding: '7px 10px', background: 'var(--card-bg-secondary, #f8fafc)',
-                            border: '1px solid var(--border-color)', borderRadius: 6, marginBottom: 4,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '7px 10px',
+                            background: 'var(--card-bg-secondary, #f8fafc)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: 6,
+                            marginBottom: 4,
                           }}
                         >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem' }}>
-                            <span style={{
-                              background: 'var(--primary-light, #eff6ff)', color: 'var(--primary, #1d4ed8)',
-                              padding: '1px 6px', borderRadius: 4, fontSize: '0.72rem', fontWeight: 600,
-                            }}>
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 8,
+                              fontSize: '0.85rem',
+                            }}
+                          >
+                            <span
+                              style={{
+                                background: 'var(--primary-light, #eff6ff)',
+                                color: 'var(--primary, #1d4ed8)',
+                                padding: '1px 6px',
+                                borderRadius: 4,
+                                fontSize: '0.72rem',
+                                fontWeight: 600,
+                              }}
+                            >
                               {def.type}
                             </span>
                             <span style={{ fontWeight: 500 }}>{def.name}</span>
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             {def.portal_visible && (
-                              <span style={{
-                                background: '#dcfce7', color: '#15803d',
-                                padding: '1px 8px', borderRadius: 10, fontSize: '0.72rem',
-                              }}>
+                              <span
+                                style={{
+                                  background: '#dcfce7',
+                                  color: '#15803d',
+                                  padding: '1px 8px',
+                                  borderRadius: 10,
+                                  fontSize: '0.72rem',
+                                }}
+                              >
                                 Portal
                               </span>
                             )}
                             <Button
-                              size="icon" variant="ghost"
-                              onClick={() => { setEditingDef(def); setShowDefPanel(true); }}
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => {
+                                setEditingDef(def);
+                                setShowDefPanel(true);
+                              }}
                             >
                               <Edit2 className="h-3.5 w-3.5" />
                             </Button>
                             <Button
-                              size="icon" variant="ghost" className="text-destructive"
+                              size="icon"
+                              variant="ghost"
+                              className="text-destructive"
                               onClick={() => setDeletingDefId(def.id!)}
                             >
                               <Trash2 className="h-3.5 w-3.5" />
@@ -868,9 +1350,13 @@ export function TemplatesModal({
                   )}
 
                   <Button
-                    variant="outline" size="sm"
+                    variant="outline"
+                    size="sm"
                     style={{ borderStyle: 'dashed' }}
-                    onClick={() => { setEditingDef(undefined); setShowDefPanel(true); }}
+                    onClick={() => {
+                      setEditingDef(undefined);
+                      setShowDefPanel(true);
+                    }}
                   >
                     + Adicionar propriedade
                   </Button>
@@ -884,39 +1370,73 @@ export function TemplatesModal({
                   onSave={() => {
                     setShowDefPanel(false);
                     setEditingDef(undefined);
-                    qc.invalidateQueries({ queryKey: ['property-definitions', selectedTemplateId] });
+                    qc.invalidateQueries({
+                      queryKey: ['property-definitions', selectedTemplateId],
+                    });
                   }}
-                  onClose={() => { setShowDefPanel(false); setEditingDef(undefined); }}
+                  onClose={() => {
+                    setShowDefPanel(false);
+                    setEditingDef(undefined);
+                  }}
                 />
               )}
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setFNome(''); setEtapas([defaultEtapa()]); setEditingTemplate(null); setFModoPrazo('padrao'); onClose(); }}>Fechar</Button>
-            <Button onClick={handleSave} disabled={saving}>{saving && <Spinner size="sm" />} {editingTemplate ? 'Salvar' : 'Salvar Template'}</Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setFNome('');
+                setEtapas([defaultEtapa()]);
+                setEditingTemplate(null);
+                setFModoPrazo('padrao');
+                onClose();
+              }}
+            >
+              Fechar
+            </Button>
+            <Button onClick={handleSave} disabled={saving}>
+              {saving && <Spinner size="sm" />} {editingTemplate ? 'Salvar' : 'Salvar Template'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <AlertDialog open={deleteTemplateId != null} onOpenChange={open => { if (!open) setDeleteTemplateId(null); }}>
+      <AlertDialog
+        open={deleteTemplateId != null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTemplateId(null);
+        }}
+      >
         <AlertDialogContent>
-          <AlertDialogHeader><AlertDialogTitle>Remover este template?</AlertDialogTitle></AlertDialogHeader>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover este template?</AlertDialogTitle>
+          </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Não</AlertDialogCancel>
             <AlertDialogAction onClick={handleDeleteConfirm}>Sim</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <AlertDialog open={deletingDefId !== null} onOpenChange={open => { if (!open) setDeletingDefId(null); }}>
+      <AlertDialog
+        open={deletingDefId !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeletingDefId(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir propriedade?</AlertDialogTitle>
             <AlertDialogDescription>
-              Isso removerá os valores preenchidos em todos os posts deste template. Esta ação não pode ser desfeita.
+              Isso removerá os valores preenchidos em todos os posts deste template. Esta ação não
+              pode ser desfeita.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteDefinition} className="bg-destructive text-destructive-foreground">
+            <AlertDialogAction
+              onClick={handleDeleteDefinition}
+              className="bg-destructive text-destructive-foreground"
+            >
               Excluir
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -932,13 +1452,24 @@ interface RecurringWorkflowDialogProps {
   onConfirm: () => void;
   onCancel: () => void;
 }
-export function RecurringWorkflowDialog({ open, onConfirm, onCancel }: RecurringWorkflowDialogProps) {
+export function RecurringWorkflowDialog({
+  open,
+  onConfirm,
+  onCancel,
+}: RecurringWorkflowDialogProps) {
   return (
-    <AlertDialog open={open} onOpenChange={open => { if (!open) onCancel(); }}>
+    <AlertDialog
+      open={open}
+      onOpenChange={(open) => {
+        if (!open) onCancel();
+      }}
+    >
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Criar novo ciclo?</AlertDialogTitle>
-          <AlertDialogDescription>Este fluxo é recorrente. Deseja criar um novo ciclo?</AlertDialogDescription>
+          <AlertDialogDescription>
+            Este fluxo é recorrente. Deseja criar um novo ciclo?
+          </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel onClick={onCancel}>Não</AlertDialogCancel>
@@ -956,14 +1487,25 @@ interface RevertConfirmDialogProps {
   onConfirm: () => void;
   onCancel: () => void;
 }
-export function RevertConfirmDialog({ open, workflowTitle, onConfirm, onCancel }: RevertConfirmDialogProps) {
+export function RevertConfirmDialog({
+  open,
+  workflowTitle,
+  onConfirm,
+  onCancel,
+}: RevertConfirmDialogProps) {
   return (
-    <AlertDialog open={open} onOpenChange={open => { if (!open) onCancel(); }}>
+    <AlertDialog
+      open={open}
+      onOpenChange={(open) => {
+        if (!open) onCancel();
+      }}
+    >
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Reverter etapa?</AlertDialogTitle>
           <AlertDialogDescription>
-            Isso vai reverter "{workflowTitle}" para a etapa anterior. Esta ação pode ser refeita arrastando para frente novamente.
+            Isso vai reverter "{workflowTitle}" para a etapa anterior. Esta ação pode ser refeita
+            arrastando para frente novamente.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -983,9 +1525,20 @@ interface ForwardConfirmDialogProps {
   onConfirm: () => void;
   onCancel: () => void;
 }
-export function ForwardConfirmDialog({ open, workflowTitle, nextEtapaName, onConfirm, onCancel }: ForwardConfirmDialogProps) {
+export function ForwardConfirmDialog({
+  open,
+  workflowTitle,
+  nextEtapaName,
+  onConfirm,
+  onCancel,
+}: ForwardConfirmDialogProps) {
   return (
-    <AlertDialog open={open} onOpenChange={open => { if (!open) onCancel(); }}>
+    <AlertDialog
+      open={open}
+      onOpenChange={(open) => {
+        if (!open) onCancel();
+      }}
+    >
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Avançar etapa?</AlertDialogTitle>
@@ -1018,7 +1571,12 @@ export function ClientApprovalChoiceDialog({
   onCancel,
 }: ClientApprovalChoiceDialogProps) {
   return (
-    <Dialog open={open} onOpenChange={open => { if (!open) onCancel(); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(open) => {
+        if (!open) onCancel();
+      }}
+    >
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Como deseja prosseguir com a aprovação?</DialogTitle>

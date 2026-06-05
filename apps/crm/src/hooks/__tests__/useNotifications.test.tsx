@@ -30,10 +30,10 @@ describe('useNotifications', () => {
     vi.mocked(getUnreadNotificationCount).mockResolvedValue(3);
     vi.mocked(getNotifications).mockResolvedValue([]);
 
-    const { result, rerender } = renderHook(
-      ({ open }) => useNotifications({ popoverOpen: open }),
-      { wrapper: wrapper(), initialProps: { open: false } },
-    );
+    const { result, rerender } = renderHook(({ open }) => useNotifications({ popoverOpen: open }), {
+      wrapper: wrapper(),
+      initialProps: { open: false },
+    });
 
     await waitFor(() => expect(result.current.unreadCount).toBe(3));
     expect(getNotifications).not.toHaveBeenCalled();

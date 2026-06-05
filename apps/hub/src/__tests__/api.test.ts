@@ -48,9 +48,9 @@ describe('hub api client', () => {
       json: { error: 'Comentário obrigatório' },
     });
 
-    await expect(
-      submitApproval('token-hub', 12, 'mensagem'),
-    ).rejects.toThrow('Comentário obrigatório');
+    await expect(submitApproval('token-hub', 12, 'mensagem')).rejects.toThrow(
+      'Comentário obrigatório',
+    );
   });
 
   it('falls back to HTTP status when error bodies are not valid JSON', async () => {
@@ -81,7 +81,9 @@ describe('hub api client', () => {
     await deleteIdeia('token-hub', '7c2f6741-9fe7-40cc-9d58-54aa5e1fb1b9');
 
     expect(fetchHarness.calls).toHaveLength(2);
-    expect(String(fetchHarness.calls[0].input)).toContain('/hub-ideias/7c2f6741-9fe7-40cc-9d58-54aa5e1fb1b9');
+    expect(String(fetchHarness.calls[0].input)).toContain(
+      '/hub-ideias/7c2f6741-9fe7-40cc-9d58-54aa5e1fb1b9',
+    );
     expect(String(fetchHarness.calls[0].input)).toContain('token=token-hub');
     expect(fetchHarness.calls[0].init?.method).toBe('PATCH');
     expect(fetchHarness.calls[1].init?.method).toBe('DELETE');
@@ -131,7 +133,10 @@ describe('hub api client', () => {
         pending_suggestion: {
           id: 5,
           post_id: 42,
-          suggested_conteudo: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Texto editado' }] }] },
+          suggested_conteudo: {
+            type: 'doc',
+            content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Texto editado' }] }],
+          },
           suggested_conteudo_plain: 'Texto editado',
           suggested_ig_caption: null,
           changed_fields: ['conteudo'],
@@ -144,7 +149,10 @@ describe('hub api client', () => {
     const result = await submitEditSuggestion(
       'token-hub',
       42,
-      { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Texto editado' }] }] },
+      {
+        type: 'doc',
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Texto editado' }] }],
+      },
       'Texto editado',
       null,
     );
@@ -170,8 +178,8 @@ describe('hub api client', () => {
       json: { error: 'Post não está em revisão' },
     });
 
-    await expect(
-      submitEditSuggestion('token-hub', 99, null, 'texto', null),
-    ).rejects.toThrow('Post não está em revisão');
+    await expect(submitEditSuggestion('token-hub', 99, null, 'texto', null)).rejects.toThrow(
+      'Post não está em revisão',
+    );
   });
 });

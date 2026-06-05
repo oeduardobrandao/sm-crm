@@ -13,7 +13,14 @@ interface FolderNodeProps {
   onDrop?: (targetFolderId: number, payload: { fileIds: number[]; folderIds: number[] }) => void;
 }
 
-function FolderNode({ folder, selectedFolderId, onSelectFolder, onRequestCreateFolder, depth, onDrop }: FolderNodeProps) {
+function FolderNode({
+  folder,
+  selectedFolderId,
+  onSelectFolder,
+  onRequestCreateFolder,
+  depth,
+  onDrop,
+}: FolderNodeProps) {
   const [expanded, setExpanded] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const expandTimerRef = useRef<number | undefined>(undefined);
@@ -82,7 +89,10 @@ function FolderNode({ folder, selectedFolderId, onSelectFolder, onRequestCreateF
       >
         {folder.has_children ? (
           <button
-            onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              setExpanded((v) => !v);
+            }}
             className="flex-shrink-0 w-4 flex items-center justify-center opacity-60 hover:opacity-100"
             aria-label={expanded ? 'Recolher' : 'Expandir'}
           >
@@ -121,7 +131,10 @@ function FolderNode({ folder, selectedFolderId, onSelectFolder, onRequestCreateF
 
         {folder.source !== 'system' && (
           <button
-            onClick={(e) => { e.stopPropagation(); onRequestCreateFolder(folder.id); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onRequestCreateFolder(folder.id);
+            }}
             className="flex-shrink-0 opacity-0 group-hover:opacity-60 hover:!opacity-100 p-0.5 rounded transition-opacity"
             aria-label="Nova subpasta"
           >
@@ -156,7 +169,12 @@ interface FolderTreeProps {
   onDrop?: (targetFolderId: number, payload: { fileIds: number[]; folderIds: number[] }) => void;
 }
 
-export function FolderTree({ selectedFolderId, onSelectFolder, onRequestCreateFolder, onDrop }: FolderTreeProps) {
+export function FolderTree({
+  selectedFolderId,
+  onSelectFolder,
+  onRequestCreateFolder,
+  onDrop,
+}: FolderTreeProps) {
   const { data: rootFolders = [], isLoading } = useQuery({
     queryKey: ['folder-tree', null],
     queryFn: () => getTreeChildren(null),

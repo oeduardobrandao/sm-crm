@@ -9,7 +9,12 @@ export function showToast(msg: string, type: 'success' | 'error' | 'info' = 'suc
   else toast.success(msg);
 }
 
-export function openModal(title: string, _html?: string, onConfirm?: () => void, _opts?: string | Record<string, unknown>): void {
+export function openModal(
+  title: string,
+  _html?: string,
+  onConfirm?: () => void,
+  _opts?: string | Record<string, unknown>,
+): void {
   if (window.confirm(title)) {
     onConfirm?.();
   }

@@ -19,7 +19,11 @@ vi.mock('../MobileNav', () => ({
 }));
 
 vi.mock('../TopBar', () => ({
-  default: ({ showHamburger, isDrawerOpen, onHamburgerClick }: {
+  default: ({
+    showHamburger,
+    isDrawerOpen,
+    onHamburgerClick,
+  }: {
     showHamburger?: boolean;
     isDrawerOpen?: boolean;
     onHamburgerClick?: () => void;
@@ -61,7 +65,9 @@ function createMediaQuery(initialMatches: boolean) {
   const listeners = new Set<(event: MediaQueryListEvent) => void>();
 
   return {
-    get matches() { return matches; },
+    get matches() {
+      return matches;
+    },
     media: '',
     addEventListener: vi.fn((_event: string, listener: (event: MediaQueryListEvent) => void) => {
       listeners.add(listener);
@@ -80,10 +86,13 @@ function mockMatchMedia(tabletMatches: boolean) {
   const tabletQuery = createMediaQuery(tabletMatches);
   const mobileQuery = createMediaQuery(false);
 
-  vi.stubGlobal('matchMedia', vi.fn((query: string) => {
-    if (query.includes('max-width: 767px')) return mobileQuery;
-    return tabletQuery;
-  }));
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn((query: string) => {
+      if (query.includes('max-width: 767px')) return mobileQuery;
+      return tabletQuery;
+    }),
+  );
 
   return tabletQuery;
 }
@@ -95,12 +104,12 @@ function renderLayout(pathname = '/dashboard') {
         <Route element={<AppLayout />}>
           <Route
             path="/dashboard"
-            element={(
+            element={
               <div>
                 <div>Dashboard screen</div>
                 <Link to="/clientes">Ir para clientes</Link>
               </div>
-            )}
+            }
           />
           <Route path="/clientes" element={<div>Clientes screen</div>} />
         </Route>

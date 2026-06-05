@@ -22,6 +22,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "coverage:check": "vitest run --coverage --config vitest.coverage.config.ts",
+    "test:functions": "deno test --no-check --node-modules-dir=auto --allow-env --allow-read --allow-net --allow-sys supabase/functions/",
     "test:e2e": "playwright test",
     "test:e2e:crm": "playwright test --project=crm",
     "test:e2e:hub": "playwright test --project=hub",

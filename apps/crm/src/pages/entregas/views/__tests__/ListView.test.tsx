@@ -36,8 +36,8 @@ function makeCard(overrides: Record<string, unknown> = {}) {
 }
 
 function getRenderedTitles(container: HTMLElement) {
-  return Array.from(container.querySelectorAll('tbody tr')).map(row =>
-    row.querySelector('td')?.textContent,
+  return Array.from(container.querySelectorAll('tbody tr')).map(
+    (row) => row.querySelector('td')?.textContent,
   );
 }
 

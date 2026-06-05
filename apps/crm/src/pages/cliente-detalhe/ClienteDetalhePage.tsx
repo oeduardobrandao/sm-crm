@@ -4,17 +4,59 @@ import { MonthGrid } from '@/components/ui/month-grid';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ArrowLeft, Edit2, MapPin, Plus, Pencil, Trash2, Building2, Home, Loader2, Cake, CalendarDays, FolderOpen, ExternalLink } from 'lucide-react';
+import {
+  ArrowLeft,
+  Edit2,
+  MapPin,
+  Plus,
+  Pencil,
+  Trash2,
+  Building2,
+  Home,
+  Loader2,
+  Cake,
+  CalendarDays,
+  FolderOpen,
+  ExternalLink,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { RoleRestrictionNotice } from '@/components/help/RoleRestrictionNotice';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Switch } from '@/components/ui/switch';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import {
   getClientes,
   getTransacoes,
@@ -62,7 +104,12 @@ import {
 import { HistoryDrawer } from '../entregas/components/HistoryDrawer';
 import { WorkflowCard } from '../entregas/components/WorkflowCard';
 import { WorkflowDrawer } from '../entregas/components/WorkflowDrawer';
-import { EditWorkflowModal, ForwardConfirmDialog, RevertConfirmDialog, ClientApprovalChoiceDialog } from '../entregas/components/WorkflowModals';
+import {
+  EditWorkflowModal,
+  ForwardConfirmDialog,
+  RevertConfirmDialog,
+  ClientApprovalChoiceDialog,
+} from '../entregas/components/WorkflowModals';
 import type { BoardCard } from '../entregas/hooks/useEntregasData';
 import { getWorkflowCovers } from '../../services/postMedia';
 import { HubTab } from './HubTab';
@@ -81,13 +128,25 @@ import { supabase } from '@/lib/supabase';
 function StatusBadge({ status }: { status: string }) {
   const { t: tc } = useTranslation();
   const map: Record<string, string> = {
-    ativo: 'badge-success', pausado: 'badge-warning', encerrado: 'badge-danger',
-    vigente: 'badge-success', a_assinar: 'badge-warning', pago: 'badge-success', agendado: 'badge-neutral',
+    ativo: 'badge-success',
+    pausado: 'badge-warning',
+    encerrado: 'badge-danger',
+    vigente: 'badge-success',
+    a_assinar: 'badge-warning',
+    pago: 'badge-success',
+    agendado: 'badge-neutral',
   };
-  return <span className={`badge ${map[status] ?? 'badge-neutral'}`}>{tc(`status.${status}`, { defaultValue: status })}</span>;
+  return (
+    <span className={`badge ${map[status] ?? 'badge-neutral'}`}>
+      {tc(`status.${status}`, { defaultValue: status })}
+    </span>
+  );
 }
 
-interface WorkflowWithEtapas { workflow: Workflow; etapas: WorkflowEtapa[] }
+interface WorkflowWithEtapas {
+  workflow: Workflow;
+  etapas: WorkflowEtapa[];
+}
 
 export default function ClienteDetalhePage() {
   const { id: idParam } = useParams<{ id: string }>();
@@ -157,10 +216,23 @@ export default function ClienteDetalhePage() {
     }
   }, [t]);
 
-  const { data: clientes, isLoading: loadingClientes } = useQuery({ queryKey: ['clientes'], queryFn: getClientes });
-  const { data: transacoes, isLoading: loadingTx } = useQuery({ queryKey: ['transacoes'], queryFn: getTransacoes });
-  const { data: contratos, isLoading: loadingContratos } = useQuery({ queryKey: ['contratos'], queryFn: getContratos });
-  const { data: igSummary, isLoading: loadingIg, refetch: refetchIg } = useQuery({
+  const { data: clientes, isLoading: loadingClientes } = useQuery({
+    queryKey: ['clientes'],
+    queryFn: getClientes,
+  });
+  const { data: transacoes, isLoading: loadingTx } = useQuery({
+    queryKey: ['transacoes'],
+    queryFn: getTransacoes,
+  });
+  const { data: contratos, isLoading: loadingContratos } = useQuery({
+    queryKey: ['contratos'],
+    queryFn: getContratos,
+  });
+  const {
+    data: igSummary,
+    isLoading: loadingIg,
+    refetch: refetchIg,
+  } = useQuery({
     queryKey: ['igSummary', clienteId],
     queryFn: () => getInstagramSummary(clienteId).catch(() => null),
     enabled: !isNaN(clienteId),
@@ -180,7 +252,10 @@ export default function ClienteDetalhePage() {
     queryFn: () => getClienteDatas(clienteId),
     enabled: !isNaN(clienteId),
   });
-  const { data: membros = [] as Membro[] } = useQuery({ queryKey: ['membros'], queryFn: getMembros });
+  const { data: membros = [] as Membro[] } = useQuery({
+    queryKey: ['membros'],
+    queryFn: getMembros,
+  });
 
   const { data: workspaceSlug } = useQuery({
     queryKey: ['workspace-slug'],
@@ -194,40 +269,54 @@ export default function ClienteDetalhePage() {
   });
 
   const { data: concludedSummaries = [] } = useQuery({
-    queryKey: ['concluded-summaries-cliente', concludedWfs.map(w => w.id).join(',')],
+    queryKey: ['concluded-summaries-cliente', concludedWfs.map((w) => w.id).join(',')],
     queryFn: async () => {
-      return Promise.all(concludedWfs.map(async (workflow) => {
-        const [etapas, posts] = await Promise.all([
-          getWorkflowEtapas(workflow.id!),
-          getWorkflowPosts(workflow.id!),
-        ]);
-        const firstStart = etapas.find(e => e.iniciado_em)?.iniciado_em;
-        const concludedEtapas = etapas.filter(e => e.concluido_em);
-        const lastEnd = concludedEtapas.length > 0 ? concludedEtapas[concludedEtapas.length - 1].concluido_em : null;
-        const totalDays = firstStart && lastEnd
-          ? Math.round((new Date(lastEnd).getTime() - new Date(firstStart).getTime()) / (1000 * 60 * 60 * 24))
-          : null;
-        return { workflow, postCount: posts.length, totalDays, completedAt: lastEnd ?? null };
-      }));
+      return Promise.all(
+        concludedWfs.map(async (workflow) => {
+          const [etapas, posts] = await Promise.all([
+            getWorkflowEtapas(workflow.id!),
+            getWorkflowPosts(workflow.id!),
+          ]);
+          const firstStart = etapas.find((e) => e.iniciado_em)?.iniciado_em;
+          const concludedEtapas = etapas.filter((e) => e.concluido_em);
+          const lastEnd =
+            concludedEtapas.length > 0
+              ? concludedEtapas[concludedEtapas.length - 1].concluido_em
+              : null;
+          const totalDays =
+            firstStart && lastEnd
+              ? Math.round(
+                  (new Date(lastEnd).getTime() - new Date(firstStart).getTime()) /
+                    (1000 * 60 * 60 * 24),
+                )
+              : null;
+          return { workflow, postCount: posts.length, totalDays, completedAt: lastEnd ?? null };
+        }),
+      );
     },
     enabled: concludedWfs.length > 0,
   });
 
   const isLoading = loadingClientes || loadingTx || loadingContratos || loadingIg || loadingWf;
 
-  const cliente: Cliente | undefined = (clientes ?? []).find(c => c.id === clienteId);
+  const cliente: Cliente | undefined = (clientes ?? []).find((c) => c.id === clienteId);
 
   const [workflowsWithEtapas, setWorkflowsWithEtapas] = useState<WorkflowWithEtapas[]>([]);
   useEffect(() => {
-    const activeWfs = (clienteWorkflowsRaw ?? []).filter(w => w.status === 'ativo');
-    if (activeWfs.length === 0) { setWorkflowsWithEtapas([]); return; }
-    Promise.all(activeWfs.map(async w => ({ workflow: w, etapas: await getWorkflowEtapas(w.id!) })))
+    const activeWfs = (clienteWorkflowsRaw ?? []).filter((w) => w.status === 'ativo');
+    if (activeWfs.length === 0) {
+      setWorkflowsWithEtapas([]);
+      return;
+    }
+    Promise.all(
+      activeWfs.map(async (w) => ({ workflow: w, etapas: await getWorkflowEtapas(w.id!) })),
+    )
       .then(setWorkflowsWithEtapas)
       .catch(() => setWorkflowsWithEtapas([]));
   }, [clienteWorkflowsRaw]);
 
   const activeWorkflowIds = useMemo(
-    () => workflowsWithEtapas.map(w => w.workflow.id!),
+    () => workflowsWithEtapas.map((w) => w.workflow.id!),
     [workflowsWithEtapas],
   );
 
@@ -261,29 +350,32 @@ export default function ClienteDetalhePage() {
 
   const boardCards: BoardCard[] = useMemo(() => {
     if (!cliente) return [];
-    return workflowsWithEtapas.map(({ workflow, etapas }) => {
-      const activeEtapa = etapas.find(e => e.status === 'ativo');
-      if (!activeEtapa) return null;
-      const membro = activeEtapa.responsavel_id
-        ? membros.find((m: Membro) => m.id === activeEtapa.responsavel_id)
-        : undefined;
-      const hubUrl = hubToken && workspaceSlug
-        ? `${window.location.origin}/${workspaceSlug}/hub/${hubToken}`
-        : undefined;
-      return {
-        workflow,
-        etapa: activeEtapa,
-        cliente,
-        membro,
-        deadline: getDeadlineInfo(activeEtapa),
-        totalEtapas: etapas.length,
-        etapaIdx: activeEtapa.ordem,
-        allEtapas: etapas,
-        postCovers: workflowCovers?.get(workflow.id!),
-        clienteAvatarUrl: igSummary?.account?.profile_picture_url,
-        hubUrl,
-      } satisfies BoardCard;
-    }).filter(Boolean) as BoardCard[];
+    return workflowsWithEtapas
+      .map(({ workflow, etapas }) => {
+        const activeEtapa = etapas.find((e) => e.status === 'ativo');
+        if (!activeEtapa) return null;
+        const membro = activeEtapa.responsavel_id
+          ? membros.find((m: Membro) => m.id === activeEtapa.responsavel_id)
+          : undefined;
+        const hubUrl =
+          hubToken && workspaceSlug
+            ? `${window.location.origin}/${workspaceSlug}/hub/${hubToken}`
+            : undefined;
+        return {
+          workflow,
+          etapa: activeEtapa,
+          cliente,
+          membro,
+          deadline: getDeadlineInfo(activeEtapa),
+          totalEtapas: etapas.length,
+          etapaIdx: activeEtapa.ordem,
+          allEtapas: etapas,
+          postCovers: workflowCovers?.get(workflow.id!),
+          clienteAvatarUrl: igSummary?.account?.profile_picture_url,
+          hubUrl,
+        } satisfies BoardCard;
+      })
+      .filter(Boolean) as BoardCard[];
   }, [workflowsWithEtapas, cliente, membros, workflowCovers, igSummary, hubToken, workspaceSlug]);
 
   // Post calendar: fetch posts with scheduled_at for all active workflows
@@ -297,19 +389,27 @@ export default function ClienteDetalhePage() {
     status: WorkflowPost['status'];
   }
   const [postCalendarEvents, setPostCalendarEvents] = useState<PostCalendarEvent[]>([]);
-  const [calendarMonth, setCalendarMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
   const [selectedPostDay, setSelectedPostDay] = useState<number | null>(new Date().getDate());
   const [postUpdating, setPostUpdating] = useState<number | null>(null);
 
   useEffect(() => {
-    const activeWfs = (clienteWorkflowsRaw ?? []).filter(w => w.status === 'ativo');
-    if (activeWfs.length === 0) { setPostCalendarEvents([]); return; }
+    const activeWfs = (clienteWorkflowsRaw ?? []).filter((w) => w.status === 'ativo');
+    if (activeWfs.length === 0) {
+      setPostCalendarEvents([]);
+      return;
+    }
     let cancelled = false;
-    Promise.all(activeWfs.map(async wf => {
-      const posts = await getWorkflowPostsWithProperties(wf.id!);
-      return posts.map(p => ({ ...p, _wfId: wf.id!, _wfTitle: wf.titulo }));
-    }))
-      .then(results => {
+    Promise.all(
+      activeWfs.map(async (wf) => {
+        const posts = await getWorkflowPostsWithProperties(wf.id!);
+        return posts.map((p) => ({ ...p, _wfId: wf.id!, _wfTitle: wf.titulo }));
+      }),
+    )
+      .then((results) => {
         if (cancelled) return;
         const events: PostCalendarEvent[] = [];
         for (const posts of results) {
@@ -335,18 +435,27 @@ export default function ClienteDetalhePage() {
         }
         setPostCalendarEvents(events);
       })
-      .catch(() => { if (!cancelled) setPostCalendarEvents([]); });
-    return () => { cancelled = true; };
+      .catch(() => {
+        if (!cancelled) setPostCalendarEvents([]);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [clienteWorkflowsRaw]);
 
   const refreshPostCalendar = () => {
-    const activeWfs = (clienteWorkflowsRaw ?? []).filter(w => w.status === 'ativo');
-    if (activeWfs.length === 0) { setPostCalendarEvents([]); return; }
-    Promise.all(activeWfs.map(async wf => {
-      const posts = await getWorkflowPostsWithProperties(wf.id!);
-      return posts.map(p => ({ ...p, _wfId: wf.id!, _wfTitle: wf.titulo }));
-    }))
-      .then(results => {
+    const activeWfs = (clienteWorkflowsRaw ?? []).filter((w) => w.status === 'ativo');
+    if (activeWfs.length === 0) {
+      setPostCalendarEvents([]);
+      return;
+    }
+    Promise.all(
+      activeWfs.map(async (wf) => {
+        const posts = await getWorkflowPostsWithProperties(wf.id!);
+        return posts.map((p) => ({ ...p, _wfId: wf.id!, _wfTitle: wf.titulo }));
+      }),
+    )
+      .then((results) => {
         const events: PostCalendarEvent[] = [];
         for (const posts of results) {
           for (const post of posts) {
@@ -371,14 +480,18 @@ export default function ClienteDetalhePage() {
         }
         setPostCalendarEvents(events);
       })
-      .catch(() => { toast.error(t('detail.calendarUpdateError')); });
+      .catch(() => {
+        toast.error(t('detail.calendarUpdateError'));
+      });
   };
 
   const handlePostStatusUpdate = async (postId: number, newStatus: 'agendado' | 'postado') => {
     setPostUpdating(postId);
     try {
       await updateWorkflowPost(postId, { status: newStatus });
-      toast.success(newStatus === 'agendado' ? t('detail.postScheduled') : t('detail.postMarkedPosted'));
+      toast.success(
+        newStatus === 'agendado' ? t('detail.postScheduled') : t('detail.postMarkedPosted'),
+      );
       refreshPostCalendar();
     } catch {
       toast.error(t('detail.postStatusError'));
@@ -392,10 +505,11 @@ export default function ClienteDetalhePage() {
     if (!igSummary || igSyncAttempted.current) return;
     if (!igSummary.account?.last_synced_at) {
       igSyncAttempted.current = true;
-      syncInstagramData(clienteId).then(() => refetchIg()).catch(() => refetchIg());
+      syncInstagramData(clienteId)
+        .then(() => refetchIg())
+        .catch(() => refetchIg());
     }
   }, [igSummary, clienteId, refetchIg]);
-
 
   const refreshCards = () => {
     queryClient.invalidateQueries({ queryKey: ['workflowsByCliente', clienteId] });
@@ -410,12 +524,12 @@ export default function ClienteDetalhePage() {
 
   useEffect(() => {
     if (drawerCard) {
-      const updated = boardCards.find(c => c.workflow.id === drawerCard.workflow.id);
+      const updated = boardCards.find((c) => c.workflow.id === drawerCard.workflow.id);
       if (updated) setDrawerCard(updated);
       else setDrawerCard(null);
     }
     if (editCardModal) {
-      const updated = boardCards.find(c => c.workflow.id === editCardModal.workflow.id);
+      const updated = boardCards.find((c) => c.workflow.id === editCardModal.workflow.id);
       if (!updated) setEditCardModal(null);
     }
   }, [boardCards]);
@@ -501,24 +615,35 @@ export default function ClienteDetalhePage() {
       await duplicateWorkflow(recurringWfId);
       queryClient.invalidateQueries({ queryKey: ['workflowsByCliente', clienteId] });
       toast.success(t('detail.newCycleCreated'));
-    } catch { toast.error(t('detail.newCycleError')); }
+    } catch {
+      toast.error(t('detail.newCycleError'));
+    }
     setRecurringWfId(null);
   };
 
   const handleEdit = () => {
     if (!cliente) return;
-    setFNome(cliente.nome); setFEmail(cliente.email || ''); setFTelefone(cliente.telefone || '');
-    setFPlano(cliente.plano || ''); setFValor(cliente.valor_mensal ? String(cliente.valor_mensal) : '');
-    setFNotion(cliente.notion_page_url || ''); setFDiaPag(cliente.data_pagamento ? String(cliente.data_pagamento) : '');
+    setFNome(cliente.nome);
+    setFEmail(cliente.email || '');
+    setFTelefone(cliente.telefone || '');
+    setFPlano(cliente.plano || '');
+    setFValor(cliente.valor_mensal ? String(cliente.valor_mensal) : '');
+    setFNotion(cliente.notion_page_url || '');
+    setFDiaPag(cliente.data_pagamento ? String(cliente.data_pagamento) : '');
     setFDiaEntrega(cliente.dia_entrega ? String(cliente.dia_entrega) : '');
-    setFStatus(cliente.status); setFEspecialidade(cliente.especialidade || '');
+    setFStatus(cliente.status);
+    setFEspecialidade(cliente.especialidade || '');
     const [aniMes = '', aniDia = ''] = (cliente.data_aniversario || '').split('-');
-    setFAniMes(aniMes); setFAniDia(aniDia);
+    setFAniMes(aniMes);
+    setFAniDia(aniDia);
     setEditOpen(true);
   };
 
   const handleEditSubmit = async () => {
-    if (!fNome) { toast.error(t('detail.nameRequired')); return; }
+    if (!fNome) {
+      toast.error(t('detail.nameRequired'));
+      return;
+    }
     const diaPag = fDiaPag ? parseInt(fDiaPag, 10) : undefined;
     if (diaPag !== undefined && (isNaN(diaPag) || diaPag < 1 || diaPag > 31)) {
       toast.error(t('detail.paymentDayRange'));
@@ -532,12 +657,16 @@ export default function ClienteDetalhePage() {
     setEditLoading(true);
     try {
       await updateCliente(clienteId, {
-        nome: fNome, email: fEmail, telefone: fTelefone, plano: fPlano,
+        nome: fNome,
+        email: fEmail,
+        telefone: fTelefone,
+        plano: fPlano,
         valor_mensal: fValor ? Number(fValor) : undefined,
         notion_page_url: fNotion,
         data_pagamento: diaPag,
         dia_entrega: diaEntrega,
-        status: fStatus, especialidade: fEspecialidade,
+        status: fStatus,
+        especialidade: fEspecialidade,
         data_aniversario: fAniMes && fAniDia ? `${fAniMes}-${fAniDia}` : null,
       });
       queryClient.invalidateQueries({ queryKey: ['clientes'] });
@@ -552,17 +681,28 @@ export default function ClienteDetalhePage() {
 
   // Address handlers
   const resetAddrForm = () => {
-    setAdrTipo('comercial'); setAdrLogradouro(''); setAdrNumero('');
-    setAdrComplemento(''); setAdrBairro(''); setAdrCidade('');
-    setAdrEstado(''); setAdrCep(''); setAddrEditing(null);
+    setAdrTipo('comercial');
+    setAdrLogradouro('');
+    setAdrNumero('');
+    setAdrComplemento('');
+    setAdrBairro('');
+    setAdrCidade('');
+    setAdrEstado('');
+    setAdrCep('');
+    setAddrEditing(null);
   };
 
   const handleOpenAddrModal = (addr?: ClienteEndereco) => {
     if (addr) {
       setAddrEditing(addr);
-      setAdrTipo(addr.tipo); setAdrLogradouro(addr.logradouro); setAdrNumero(addr.numero);
-      setAdrComplemento(addr.complemento || ''); setAdrBairro(addr.bairro);
-      setAdrCidade(addr.cidade); setAdrEstado(addr.estado); setAdrCep(addr.cep);
+      setAdrTipo(addr.tipo);
+      setAdrLogradouro(addr.logradouro);
+      setAdrNumero(addr.numero);
+      setAdrComplemento(addr.complemento || '');
+      setAdrBairro(addr.bairro);
+      setAdrCidade(addr.cidade);
+      setAdrEstado(addr.estado);
+      setAdrCep(addr.cep);
     } else {
       resetAddrForm();
     }
@@ -594,14 +734,21 @@ export default function ClienteDetalhePage() {
 
   const handleAddrSubmit = async () => {
     if (!adrLogradouro || !adrNumero || !adrBairro || !adrCidade || !adrEstado || !adrCep) {
-      toast.error(t('detail.fillRequired')); return;
+      toast.error(t('detail.fillRequired'));
+      return;
     }
     setAddrLoading(true);
     try {
       const payload = {
-        cliente_id: clienteId, tipo: adrTipo, logradouro: adrLogradouro,
-        numero: adrNumero, complemento: adrComplemento, bairro: adrBairro,
-        cidade: adrCidade, estado: adrEstado, cep: adrCep,
+        cliente_id: clienteId,
+        tipo: adrTipo,
+        logradouro: adrLogradouro,
+        numero: adrNumero,
+        complemento: adrComplemento,
+        bairro: adrBairro,
+        cidade: adrCidade,
+        estado: adrEstado,
+        cep: adrCep,
       };
       if (addrEditing?.id) {
         await updateClienteEndereco(addrEditing.id, payload);
@@ -634,13 +781,16 @@ export default function ClienteDetalhePage() {
 
   // Important dates handlers
   const resetDateForm = () => {
-    setDateTitulo(''); setDateData(''); setDateEditing(null);
+    setDateTitulo('');
+    setDateData('');
+    setDateEditing(null);
   };
 
   const handleOpenDateModal = (d?: ClienteData) => {
     if (d) {
       setDateEditing(d);
-      setDateTitulo(d.titulo); setDateData(d.data);
+      setDateTitulo(d.titulo);
+      setDateData(d.data);
     } else {
       resetDateForm();
     }
@@ -649,7 +799,8 @@ export default function ClienteDetalhePage() {
 
   const handleDateSubmit = async () => {
     if (!dateTitulo || !dateData) {
-      toast.error(t('detail.fillTitleAndDate')); return;
+      toast.error(t('detail.fillTitleAndDate'));
+      return;
     }
     setDateLoading(true);
     try {
@@ -682,8 +833,10 @@ export default function ClienteDetalhePage() {
     setDateDeleteId(null);
   };
 
-  const contratosCliente: Contrato[] = (contratos ?? []).filter(c => c.cliente_id === clienteId);
-  const transacoesCliente: Transacao[] = (transacoes ?? []).filter(t => t.cliente_id === clienteId);
+  const contratosCliente: Contrato[] = (contratos ?? []).filter((c) => c.cliente_id === clienteId);
+  const transacoesCliente: Transacao[] = (transacoes ?? []).filter(
+    (t) => t.cliente_id === clienteId,
+  );
 
   if (isLoading) {
     return (
@@ -697,28 +850,61 @@ export default function ClienteDetalhePage() {
     return (
       <div className="card" style={{ margin: '2rem', textAlign: 'center', padding: '3rem' }}>
         <h2>{t('detail.notFound')}</h2>
-        <Button onClick={() => navigate('/clientes')} style={{ marginTop: 16 }}>{tc('actions.back')}</Button>
+        <Button onClick={() => navigate('/clientes')} style={{ marginTop: 16 }}>
+          {tc('actions.back')}
+        </Button>
       </div>
     );
   }
 
-  const receitaTotal = transacoesCliente.filter(t => t.tipo === 'entrada' && t.status === 'pago').reduce((s, t) => s + Number(t.valor), 0);
-  const pendente = transacoesCliente.filter(t => t.tipo === 'entrada' && t.status === 'agendado').reduce((s, t) => s + Number(t.valor), 0);
+  const receitaTotal = transacoesCliente
+    .filter((t) => t.tipo === 'entrada' && t.status === 'pago')
+    .reduce((s, t) => s + Number(t.valor), 0);
+  const pendente = transacoesCliente
+    .filter((t) => t.tipo === 'entrada' && t.status === 'agendado')
+    .reduce((s, t) => s + Number(t.valor), 0);
 
   return (
     <div style={{ padding: '1.5rem' }}>
       {/* Header */}
       <div className="header" style={{ marginBottom: '1.5rem', alignContent: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <Button variant="outline" size="icon" style={{ borderRadius: '50%' }} onClick={() => navigate('/clientes')}><ArrowLeft className="h-4 w-4" /></Button>
+          <Button
+            variant="outline"
+            size="icon"
+            style={{ borderRadius: '50%' }}
+            onClick={() => navigate('/clientes')}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
           {igSummary?.account?.profile_picture_url ? (
             <img
               src={igSummary.account.profile_picture_url}
               alt={cliente.nome}
-              style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: '50%',
+                objectFit: 'cover',
+                flexShrink: 0,
+              }}
             />
           ) : (
-            <div style={{ background: cliente.cor, width: 48, height: 48, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: '1.1rem', flexShrink: 0 }}>
+            <div
+              style={{
+                background: cliente.cor,
+                width: 48,
+                height: 48,
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#fff',
+                fontWeight: 700,
+                fontSize: '1.1rem',
+                flexShrink: 0,
+              }}
+            >
               {getInitials(cliente.nome)}
             </div>
           )}
@@ -731,27 +917,61 @@ export default function ClienteDetalhePage() {
           </div>
         </div>
         <div className="header-actions">
-          <Button variant="outline" onClick={handleEdit}><Edit2 className="h-4 w-4" /> {tc('actions.edit')}</Button>
+          <Button variant="outline" onClick={handleEdit}>
+            <Edit2 className="h-4 w-4" /> {tc('actions.edit')}
+          </Button>
         </div>
       </div>
 
       {/* Info Card */}
       <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-        <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">{t('detail.information')}</h3>
+        <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">
+          {t('detail.information')}
+        </h3>
         <div className="client-info-grid">
-          <div className="client-info-item"><span className="client-info-label">{t('detail.email')}</span><span className="client-info-value">{cliente.email || '—'}</span></div>
-          <div className="client-info-item"><span className="client-info-label">{t('detail.phone')}</span><span className="client-info-value">{cliente.telefone || '—'}</span></div>
-          <div className="client-info-item"><span className="client-info-label">{t('detail.paymentDay')}</span><span className="client-info-value">{cliente.data_pagamento ? t('detail.dayN', { day: cliente.data_pagamento }) : '—'}</span></div>
-          <div className="client-info-item"><span className="client-info-label">{t('detail.deliveryDay')}</span><span className="client-info-value">{cliente.dia_entrega ? t('detail.dayN', { day: cliente.dia_entrega }) : '—'}</span></div>
-          <div className="client-info-item"><span className="client-info-label">{t('detail.specialty')}</span><span className="client-info-value">{cliente.especialidade || '—'}</span></div>
+          <div className="client-info-item">
+            <span className="client-info-label">{t('detail.email')}</span>
+            <span className="client-info-value">{cliente.email || '—'}</span>
+          </div>
+          <div className="client-info-item">
+            <span className="client-info-label">{t('detail.phone')}</span>
+            <span className="client-info-value">{cliente.telefone || '—'}</span>
+          </div>
+          <div className="client-info-item">
+            <span className="client-info-label">{t('detail.paymentDay')}</span>
+            <span className="client-info-value">
+              {cliente.data_pagamento ? t('detail.dayN', { day: cliente.data_pagamento }) : '—'}
+            </span>
+          </div>
+          <div className="client-info-item">
+            <span className="client-info-label">{t('detail.deliveryDay')}</span>
+            <span className="client-info-value">
+              {cliente.dia_entrega ? t('detail.dayN', { day: cliente.dia_entrega }) : '—'}
+            </span>
+          </div>
+          <div className="client-info-item">
+            <span className="client-info-label">{t('detail.specialty')}</span>
+            <span className="client-info-value">{cliente.especialidade || '—'}</span>
+          </div>
           <div className="client-info-item">
             <span className="client-info-label">{t('detail.birthday')}</span>
-            <span className="client-info-value" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <span
+              className="client-info-value"
+              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+            >
               {cliente.data_aniversario
                 ? (() => {
-                  const [mm, dd] = cliente.data_aniversario.split('-');
-                  return <><Cake className="h-4 w-4" style={{ color: 'var(--pink, #f542c8)' }} />{t('detail.dayOf', { day: parseInt(dd), month: tc(`months.${parseInt(mm) - 1}`) })}</>;
-                })()
+                    const [mm, dd] = cliente.data_aniversario.split('-');
+                    return (
+                      <>
+                        <Cake className="h-4 w-4" style={{ color: 'var(--pink, #f542c8)' }} />
+                        {t('detail.dayOf', {
+                          day: parseInt(dd),
+                          month: tc(`months.${parseInt(mm) - 1}`),
+                        })}
+                      </>
+                    );
+                  })()
                 : '—'}
             </span>
           </div>
@@ -759,7 +979,13 @@ export default function ClienteDetalhePage() {
             <div className="client-info-item">
               <span className="client-info-label">Notion</span>
               <span className="client-info-value">
-                <a href={sanitizeUrl(cliente.notion_page_url)} target="_blank" rel="noopener noreferrer">{t('openNotion')}</a>
+                <a
+                  href={sanitizeUrl(cliente.notion_page_url)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {t('openNotion')}
+                </a>
               </span>
             </div>
           )}
@@ -769,9 +995,11 @@ export default function ClienteDetalhePage() {
       {/* Entregas Ativas + Post Calendar */}
       {boardCards.length > 0 && (
         <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-          <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">{t('detail.activeDeliveries')}</h3>
+          <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">
+            {t('detail.activeDeliveries')}
+          </h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            {boardCards.map(card => (
+            {boardCards.map((card) => (
               <WorkflowCard
                 key={card.workflow.id}
                 card={card}
@@ -790,182 +1018,337 @@ export default function ClienteDetalhePage() {
           </div>
 
           {/* Post Calendar */}
-          {postCalendarEvents.length > 0 && (() => {
-            const calYear = calendarMonth.getFullYear();
-            const calMonth = calendarMonth.getMonth();
-            const monthNamesLocal = Array.from({ length: 12 }, (_, i) => tc(`months.${i}`));
+          {postCalendarEvents.length > 0 &&
+            (() => {
+              const calYear = calendarMonth.getFullYear();
+              const calMonth = calendarMonth.getMonth();
+              const monthNamesLocal = Array.from({ length: 12 }, (_, i) => tc(`months.${i}`));
 
-            const tipoColors: Record<string, string> = {
-              feed: '#3b82f6',
-              reels: '#8b5cf6',
-              stories: '#f59e0b',
-              carrossel: '#10b981',
-            };
-            const tipoLabels: Record<string, string> = {
-              feed: t('detail.postType.feed'),
-              reels: t('detail.postType.reels'),
-              stories: t('detail.postType.stories'),
-              carrossel: t('detail.postType.carrossel'),
-            };
+              const tipoColors: Record<string, string> = {
+                feed: '#3b82f6',
+                reels: '#8b5cf6',
+                stories: '#f59e0b',
+                carrossel: '#10b981',
+              };
+              const tipoLabels: Record<string, string> = {
+                feed: t('detail.postType.feed'),
+                reels: t('detail.postType.reels'),
+                stories: t('detail.postType.stories'),
+                carrossel: t('detail.postType.carrossel'),
+              };
 
-            const selectedEvents = selectedPostDay
-              ? postCalendarEvents.filter(e => e.date.getFullYear() === calYear && e.date.getMonth() === calMonth && e.date.getDate() === selectedPostDay)
-              : [];
+              const selectedEvents = selectedPostDay
+                ? postCalendarEvents.filter(
+                    (e) =>
+                      e.date.getFullYear() === calYear &&
+                      e.date.getMonth() === calMonth &&
+                      e.date.getDate() === selectedPostDay,
+                  )
+                : [];
 
-            return (
-              <div style={{ marginTop: '1rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
-                <div className="calendar-layout">
-                  <div className="calendar-main">
-                    <MonthGrid
-                      currentMonth={calendarMonth}
-                      onMonthChange={(d) => { setCalendarMonth(d); setSelectedPostDay(null); }}
-                      renderCell={(date, isCurrentMonth) => {
-                        if (!isCurrentMonth) return <div className="calendar-day empty" />;
-                        const d = date.getDate();
-                        const dayEvents = postCalendarEvents.filter(e => isSameDay(e.date, date));
-                        const hasEvents = dayEvents.length > 0;
-                        const isDayToday = isSameDay(date, new Date());
-                        const byTipo: Record<string, number> = {};
-                        for (const ev of dayEvents) {
-                          byTipo[ev.tipo] = (byTipo[ev.tipo] || 0) + 1;
-                        }
-                        return (
-                          <div
-                            className={`calendar-day ${isDayToday ? 'today' : ''} ${selectedPostDay === d ? 'selected' : ''} ${hasEvents ? 'has-events' : ''}`}
-                            onClick={() => setSelectedPostDay(d)}
-                          >
-                            <span className="day-number">{d}</span>
-                            <div className="day-events">
-                              {Object.entries(byTipo).map(([tipo, count]) => (
-                                <div
-                                  key={tipo}
-                                  className="event-pill"
-                                  style={{ background: `${tipoColors[tipo]}18`, color: tipoColors[tipo], fontWeight: 600 }}
-                                >
-                                  {count} {tipoLabels[tipo] || tipo}
-                                </div>
-                              ))}
+              return (
+                <div
+                  style={{
+                    marginTop: '1rem',
+                    borderTop: '1px solid var(--border-color)',
+                    paddingTop: '1rem',
+                  }}
+                >
+                  <div className="calendar-layout">
+                    <div className="calendar-main">
+                      <MonthGrid
+                        currentMonth={calendarMonth}
+                        onMonthChange={(d) => {
+                          setCalendarMonth(d);
+                          setSelectedPostDay(null);
+                        }}
+                        renderCell={(date, isCurrentMonth) => {
+                          if (!isCurrentMonth) return <div className="calendar-day empty" />;
+                          const d = date.getDate();
+                          const dayEvents = postCalendarEvents.filter((e) =>
+                            isSameDay(e.date, date),
+                          );
+                          const hasEvents = dayEvents.length > 0;
+                          const isDayToday = isSameDay(date, new Date());
+                          const byTipo: Record<string, number> = {};
+                          for (const ev of dayEvents) {
+                            byTipo[ev.tipo] = (byTipo[ev.tipo] || 0) + 1;
+                          }
+                          return (
+                            <div
+                              className={`calendar-day ${isDayToday ? 'today' : ''} ${selectedPostDay === d ? 'selected' : ''} ${hasEvents ? 'has-events' : ''}`}
+                              onClick={() => setSelectedPostDay(d)}
+                            >
+                              <span className="day-number">{d}</span>
+                              <div className="day-events">
+                                {Object.entries(byTipo).map(([tipo, count]) => (
+                                  <div
+                                    key={tipo}
+                                    className="event-pill"
+                                    style={{
+                                      background: `${tipoColors[tipo]}18`,
+                                      color: tipoColors[tipo],
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    {count} {tipoLabels[tipo] || tipo}
+                                  </div>
+                                ))}
+                              </div>
                             </div>
-                          </div>
-                        );
-                      }}
-                    />
-                  </div>
-
-                  <div className="scheduled-panel">
-                    <div className="scheduled-header">
-                      <h3>{t('detail.posts')}</h3>
-                      <p>{selectedPostDay ? t('detail.dayOf', { day: selectedPostDay, month: `${monthNamesLocal[calMonth]}, ${calYear}` }) : `${monthNamesLocal[calMonth]} ${calYear}`}</p>
+                          );
+                        }}
+                      />
                     </div>
-                    <div className="scheduled-list">
-                      {selectedEvents.length === 0 ? (
-                        <div style={{ textAlign: 'center', padding: '2rem 0', color: 'var(--text-muted)' }}>
-                          <p>{selectedPostDay ? t('detail.noPostsThisDay') : t('detail.selectDay')}</p>
-                        </div>
-                      ) : (
-                        selectedEvents.map((ev, i) => (
+
+                    <div className="scheduled-panel">
+                      <div className="scheduled-header">
+                        <h3>{t('detail.posts')}</h3>
+                        <p>
+                          {selectedPostDay
+                            ? t('detail.dayOf', {
+                                day: selectedPostDay,
+                                month: `${monthNamesLocal[calMonth]}, ${calYear}`,
+                              })
+                            : `${monthNamesLocal[calMonth]} ${calYear}`}
+                        </p>
+                      </div>
+                      <div className="scheduled-list">
+                        {selectedEvents.length === 0 ? (
                           <div
-                            key={i}
-                            className="scheduled-item"
-                            style={{ cursor: 'pointer' }}
-                            onClick={() => {
-                              const card = boardCards.find(c => c.workflow.id === ev.workflowId);
-                              if (card) setDrawerCard(card);
+                            style={{
+                              textAlign: 'center',
+                              padding: '2rem 0',
+                              color: 'var(--text-muted)',
                             }}
                           >
-                            <div className="item-top">
-                              <div className="item-badge" style={{ background: tipoColors[ev.tipo] || '#6b7280' }} />
-                              <span className="badge" style={{ fontSize: '0.65rem', background: `${tipoColors[ev.tipo]}18`, color: tipoColors[ev.tipo] }}>
-                                {(tipoLabels[ev.tipo] || ev.tipo).toUpperCase()}
-                              </span>
-                            </div>
-                            <div className="item-title">{ev.postTitle}</div>
-                            <div className="item-subtitle">{ev.workflowTitle}</div>
-                            <div className="item-divider" />
-                            <div className="item-meta">
-                              {ev.date.toLocaleDateString(dateLocale)}
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.6rem', flexWrap: 'wrap' }}>
-                              {/* Chip 1: Aprovado (read-only) */}
-                              {(ev.status === 'aprovado_interno' || ev.status === 'aprovado_cliente' || ev.status === 'agendado' || ev.status === 'postado') ? (
-                                <span style={{ fontSize: '0.68rem', background: '#dbeafe', color: '#1e40af', border: '1px solid #93c5fd44', padding: '2px 8px', borderRadius: '4px' }}>
-                                  ✓ {t('detail.approved')}
-                                </span>
-                              ) : (
-                                <span style={{ fontSize: '0.68rem', background: 'var(--surface-2)', color: 'var(--text-muted)', border: '1px solid var(--border-color)', padding: '2px 8px', borderRadius: '4px' }}>
-                                  {t(`detail.postStatus.${ev.status}`, { defaultValue: ev.status })}
-                                </span>
-                              )}
-
-                              {/* Separator */}
-                              {(ev.status === 'aprovado_interno' || ev.status === 'aprovado_cliente' || ev.status === 'agendado' || ev.status === 'postado') && (
-                                <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>→</span>
-                              )}
-
-                              {/* Chip 2: Agendar */}
-                              {(ev.status === 'aprovado_interno' || ev.status === 'aprovado_cliente') && (
-                                <button
-                                  onClick={e => { e.stopPropagation(); handlePostStatusUpdate(ev.postId, 'agendado'); }}
-                                  disabled={postUpdating !== null}
-                                  style={{ fontSize: '0.68rem', background: '#eff6ff', color: '#2563eb', border: '1px solid #3b82f6', padding: '2px 8px', borderRadius: '4px', cursor: 'pointer', fontWeight: 600 }}
-                                >
-                                  {postUpdating === ev.postId ? '...' : `○ ${t('detail.schedule')}`}
-                                </button>
-                              )}
-                              {(ev.status === 'agendado' || ev.status === 'postado') && (
-                                <span style={{ fontSize: '0.68rem', background: '#ccfbf1', color: '#0f766e', border: '1px solid #5eead444', padding: '2px 8px', borderRadius: '4px' }}>
-                                  ✓ {t('detail.scheduled')}
-                                </span>
-                              )}
-
-                              {/* Separator */}
-                              {(ev.status === 'agendado' || ev.status === 'postado') && (
-                                <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>→</span>
-                              )}
-
-                              {/* Chip 3: Postado */}
-                              {ev.status === 'agendado' && (
-                                <button
-                                  onClick={e => { e.stopPropagation(); handlePostStatusUpdate(ev.postId, 'postado'); }}
-                                  disabled={postUpdating !== null}
-                                  style={{ fontSize: '0.68rem', background: '#f0fdf4', color: '#15803d', border: '1px solid #22c55e', padding: '2px 8px', borderRadius: '4px', cursor: 'pointer', fontWeight: 600 }}
-                                >
-                                  {postUpdating === ev.postId ? '...' : `○ ${t('detail.markPosted')}`}
-                                </button>
-                              )}
-                              {ev.status === 'postado' && (
-                                <span style={{ fontSize: '0.68rem', background: '#dcfce7', color: '#15803d', border: '1px solid #22c55e', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
-                                  ✓ {t('detail.posted')}
-                                </span>
-                              )}
-                            </div>
+                            <p>
+                              {selectedPostDay ? t('detail.noPostsThisDay') : t('detail.selectDay')}
+                            </p>
                           </div>
-                        ))
-                      )}
+                        ) : (
+                          selectedEvents.map((ev, i) => (
+                            <div
+                              key={i}
+                              className="scheduled-item"
+                              style={{ cursor: 'pointer' }}
+                              onClick={() => {
+                                const card = boardCards.find(
+                                  (c) => c.workflow.id === ev.workflowId,
+                                );
+                                if (card) setDrawerCard(card);
+                              }}
+                            >
+                              <div className="item-top">
+                                <div
+                                  className="item-badge"
+                                  style={{ background: tipoColors[ev.tipo] || '#6b7280' }}
+                                />
+                                <span
+                                  className="badge"
+                                  style={{
+                                    fontSize: '0.65rem',
+                                    background: `${tipoColors[ev.tipo]}18`,
+                                    color: tipoColors[ev.tipo],
+                                  }}
+                                >
+                                  {(tipoLabels[ev.tipo] || ev.tipo).toUpperCase()}
+                                </span>
+                              </div>
+                              <div className="item-title">{ev.postTitle}</div>
+                              <div className="item-subtitle">{ev.workflowTitle}</div>
+                              <div className="item-divider" />
+                              <div className="item-meta">
+                                {ev.date.toLocaleDateString(dateLocale)}
+                              </div>
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.3rem',
+                                  marginTop: '0.6rem',
+                                  flexWrap: 'wrap',
+                                }}
+                              >
+                                {/* Chip 1: Aprovado (read-only) */}
+                                {ev.status === 'aprovado_interno' ||
+                                ev.status === 'aprovado_cliente' ||
+                                ev.status === 'agendado' ||
+                                ev.status === 'postado' ? (
+                                  <span
+                                    style={{
+                                      fontSize: '0.68rem',
+                                      background: '#dbeafe',
+                                      color: '#1e40af',
+                                      border: '1px solid #93c5fd44',
+                                      padding: '2px 8px',
+                                      borderRadius: '4px',
+                                    }}
+                                  >
+                                    ✓ {t('detail.approved')}
+                                  </span>
+                                ) : (
+                                  <span
+                                    style={{
+                                      fontSize: '0.68rem',
+                                      background: 'var(--surface-2)',
+                                      color: 'var(--text-muted)',
+                                      border: '1px solid var(--border-color)',
+                                      padding: '2px 8px',
+                                      borderRadius: '4px',
+                                    }}
+                                  >
+                                    {t(`detail.postStatus.${ev.status}`, {
+                                      defaultValue: ev.status,
+                                    })}
+                                  </span>
+                                )}
+
+                                {/* Separator */}
+                                {(ev.status === 'aprovado_interno' ||
+                                  ev.status === 'aprovado_cliente' ||
+                                  ev.status === 'agendado' ||
+                                  ev.status === 'postado') && (
+                                  <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
+                                    →
+                                  </span>
+                                )}
+
+                                {/* Chip 2: Agendar */}
+                                {(ev.status === 'aprovado_interno' ||
+                                  ev.status === 'aprovado_cliente') && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handlePostStatusUpdate(ev.postId, 'agendado');
+                                    }}
+                                    disabled={postUpdating !== null}
+                                    style={{
+                                      fontSize: '0.68rem',
+                                      background: '#eff6ff',
+                                      color: '#2563eb',
+                                      border: '1px solid #3b82f6',
+                                      padding: '2px 8px',
+                                      borderRadius: '4px',
+                                      cursor: 'pointer',
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    {postUpdating === ev.postId
+                                      ? '...'
+                                      : `○ ${t('detail.schedule')}`}
+                                  </button>
+                                )}
+                                {(ev.status === 'agendado' || ev.status === 'postado') && (
+                                  <span
+                                    style={{
+                                      fontSize: '0.68rem',
+                                      background: '#ccfbf1',
+                                      color: '#0f766e',
+                                      border: '1px solid #5eead444',
+                                      padding: '2px 8px',
+                                      borderRadius: '4px',
+                                    }}
+                                  >
+                                    ✓ {t('detail.scheduled')}
+                                  </span>
+                                )}
+
+                                {/* Separator */}
+                                {(ev.status === 'agendado' || ev.status === 'postado') && (
+                                  <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
+                                    →
+                                  </span>
+                                )}
+
+                                {/* Chip 3: Postado */}
+                                {ev.status === 'agendado' && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handlePostStatusUpdate(ev.postId, 'postado');
+                                    }}
+                                    disabled={postUpdating !== null}
+                                    style={{
+                                      fontSize: '0.68rem',
+                                      background: '#f0fdf4',
+                                      color: '#15803d',
+                                      border: '1px solid #22c55e',
+                                      padding: '2px 8px',
+                                      borderRadius: '4px',
+                                      cursor: 'pointer',
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    {postUpdating === ev.postId
+                                      ? '...'
+                                      : `○ ${t('detail.markPosted')}`}
+                                  </button>
+                                )}
+                                {ev.status === 'postado' && (
+                                  <span
+                                    style={{
+                                      fontSize: '0.68rem',
+                                      background: '#dcfce7',
+                                      color: '#15803d',
+                                      border: '1px solid #22c55e',
+                                      padding: '2px 8px',
+                                      borderRadius: '4px',
+                                      fontWeight: 700,
+                                    }}
+                                  >
+                                    ✓ {t('detail.posted')}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {/* Legend */}
-                <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '1rem' }}>
-                  {Object.entries(tipoColors).map(([tipo, color]) => (
-                    <span key={tipo} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <span style={{ width: 10, height: 10, borderRadius: '50%', background: color, display: 'inline-block' }} />
-                      {tipoLabels[tipo] || tipo}
-                    </span>
-                  ))}
+                  {/* Legend */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      gap: '1.5rem',
+                      fontSize: '0.75rem',
+                      color: 'var(--text-muted)',
+                      marginTop: '1rem',
+                    }}
+                  >
+                    {Object.entries(tipoColors).map(([tipo, color]) => (
+                      <span
+                        key={tipo}
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                      >
+                        <span
+                          style={{
+                            width: 10,
+                            height: 10,
+                            borderRadius: '50%',
+                            background: color,
+                            display: 'inline-block',
+                          }}
+                        />
+                        {tipoLabels[tipo] || tipo}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            );
-          })()}
+              );
+            })()}
         </div>
       )}
 
       {concludedSummaries.length > 0 && (
         <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-          <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">{t('detail.deliveryHistory')}</h3>
+          <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">
+            {t('detail.deliveryHistory')}
+          </h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            {concludedSummaries.map(s => (
+            {concludedSummaries.map((s) => (
               <div
                 key={s.workflow.id}
                 className="concluded-wf-row"
@@ -975,8 +1358,19 @@ export default function ClienteDetalhePage() {
                   <div className="concluded-wf-title">{s.workflow.titulo}</div>
                   <div className="concluded-wf-meta">
                     {t('detail.postCount', { count: s.postCount })}
-                    {s.totalDays !== null && <> &bull; {t('detail.dayCount', { count: s.totalDays })}</>}
-                    {s.completedAt && <> &bull; {t('detail.concluded')} {new Date(s.completedAt).toLocaleDateString(dateLocale, { day: '2-digit', month: 'short' })}</>}
+                    {s.totalDays !== null && (
+                      <> &bull; {t('detail.dayCount', { count: s.totalDays })}</>
+                    )}
+                    {s.completedAt && (
+                      <>
+                        {' '}
+                        &bull; {t('detail.concluded')}{' '}
+                        {new Date(s.completedAt).toLocaleDateString(dateLocale, {
+                          day: '2-digit',
+                          month: 'short',
+                        })}
+                      </>
+                    )}
                   </div>
                 </div>
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>→</span>
@@ -999,8 +1393,12 @@ export default function ClienteDetalhePage() {
       {/* Relatório Mensal Settings */}
       {!isAgent && cliente && (
         <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-          <h3 className="text-xl font-bold tracking-tight text-foreground mb-1">Relatório Mensal</h3>
-          <p className="text-sm text-muted-foreground mb-4">Configure as opções de envio e análise do relatório mensal.</p>
+          <h3 className="text-xl font-bold tracking-tight text-foreground mb-1">
+            Relatório Mensal
+          </h3>
+          <p className="text-sm text-muted-foreground mb-4">
+            Configure as opções de envio e análise do relatório mensal.
+          </p>
 
           {/* Toggle: Send report email */}
           <div className="card" style={{ padding: '1.25rem', marginBottom: '0.75rem' }}>
@@ -1009,7 +1407,9 @@ export default function ClienteDetalhePage() {
                 <div style={{ color: 'var(--text-main)', fontSize: '0.85rem', fontWeight: 500 }}>
                   Enviar relatório por e-mail
                 </div>
-                <div style={{ color: 'var(--text-light)', fontSize: '0.75rem', marginTop: '0.25rem' }}>
+                <div
+                  style={{ color: 'var(--text-light)', fontSize: '0.75rem', marginTop: '0.25rem' }}
+                >
                   Envia automaticamente o relatório mensal para o e-mail do cliente
                 </div>
               </div>
@@ -1019,7 +1419,9 @@ export default function ClienteDetalhePage() {
                   try {
                     await updateCliente(clienteId, { send_report_email: checked });
                     queryClient.invalidateQueries({ queryKey: ['cliente', clienteId] });
-                    toast.success(checked ? 'Envio por e-mail ativado' : 'Envio por e-mail desativado');
+                    toast.success(
+                      checked ? 'Envio por e-mail ativado' : 'Envio por e-mail desativado',
+                    );
                   } catch {
                     toast.error('Erro ao atualizar configuração');
                   }
@@ -1035,7 +1437,9 @@ export default function ClienteDetalhePage() {
                 <div style={{ color: 'var(--text-main)', fontSize: '0.85rem', fontWeight: 500 }}>
                   Incluir análise AI
                 </div>
-                <div style={{ color: 'var(--text-light)', fontSize: '0.75rem', marginTop: '0.25rem' }}>
+                <div
+                  style={{ color: 'var(--text-light)', fontSize: '0.75rem', marginTop: '0.25rem' }}
+                >
                   Adiciona resumo e recomendações geradas por inteligência artificial
                 </div>
               </div>
@@ -1059,7 +1463,9 @@ export default function ClienteDetalhePage() {
       {/* Hub do Cliente */}
       {!isAgent && cliente && cliente.id != null && cliente.conta_id && workspaceSlug && (
         <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-          <h3 className="text-xl font-bold tracking-tight text-foreground mb-1">{t('detail.clientHub')}</h3>
+          <h3 className="text-xl font-bold tracking-tight text-foreground mb-1">
+            {t('detail.clientHub')}
+          </h3>
           <p className="text-sm text-muted-foreground mb-4">{t('detail.clientHubDesc')}</p>
           <HubTab
             clienteId={cliente.id!}
@@ -1070,7 +1476,9 @@ export default function ClienteDetalhePage() {
       )}
       {isAgent && (
         <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-          <h3 className="text-xl font-bold tracking-tight text-foreground mb-3">{t('detail.clientHub')}</h3>
+          <h3 className="text-xl font-bold tracking-tight text-foreground mb-3">
+            {t('detail.clientHub')}
+          </h3>
           <RoleRestrictionNotice
             title="Hub do Cliente"
             description="O gerenciamento do Hub do Cliente está disponível apenas para proprietários e administradores do workspace."
@@ -1079,13 +1487,18 @@ export default function ClienteDetalhePage() {
       )}
 
       {/* Arquivos do Cliente */}
-      {cliente && cliente.id != null && (
-        <ClienteArquivosSection clienteId={cliente.id!} />
-      )}
+      {cliente && cliente.id != null && <ClienteArquivosSection clienteId={cliente.id!} />}
 
       {/* Important Dates Section */}
       <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '1rem',
+          }}
+        >
           <h3 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2 mb-0">
             <CalendarDays className="h-5 w-5" style={{ color: 'var(--primary-color)' }} />
             {t('detail.importantDates')}
@@ -1102,10 +1515,15 @@ export default function ClienteDetalhePage() {
         )}
 
         {!loadingDatas && (!datasImportantes || datasImportantes.length === 0) && (
-          <div style={{
-            textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-muted)',
-            border: '1px dashed var(--border-color)', borderRadius: '12px',
-          }}>
+          <div
+            style={{
+              textAlign: 'center',
+              padding: '2rem 1rem',
+              color: 'var(--text-muted)',
+              border: '1px dashed var(--border-color)',
+              borderRadius: '12px',
+            }}
+          >
             <CalendarDays className="h-8 w-8" style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
             <p style={{ fontSize: '0.9rem' }}>{t('detail.noImportantDates')}</p>
             <p style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>{t('detail.addDateHint')}</p>
@@ -1113,28 +1531,59 @@ export default function ClienteDetalhePage() {
         )}
 
         {!loadingDatas && datasImportantes && datasImportantes.length > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '0.75rem' }}>
-            {datasImportantes.map(d => (
-              <div key={d.id} style={{
-                padding: '0.75rem 1rem', borderRadius: '12px',
-                border: '1px solid var(--border-color)', background: 'var(--surface-main)',
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                transition: 'box-shadow 0.2s ease, transform 0.2s ease',
-              }}
-                onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLDivElement).style.boxShadow = '0 6px 16px rgba(0,0,0,0.08)'; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = ''; (e.currentTarget as HTMLDivElement).style.boxShadow = ''; }}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))',
+              gap: '0.75rem',
+            }}
+          >
+            {datasImportantes.map((d) => (
+              <div
+                key={d.id}
+                style={{
+                  padding: '0.75rem 1rem',
+                  borderRadius: '12px',
+                  border: '1px solid var(--border-color)',
+                  background: 'var(--surface-main)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  transition: 'box-shadow 0.2s ease, transform 0.2s ease',
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)';
+                  (e.currentTarget as HTMLDivElement).style.boxShadow =
+                    '0 6px 16px rgba(0,0,0,0.08)';
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLDivElement).style.transform = '';
+                  (e.currentTarget as HTMLDivElement).style.boxShadow = '';
+                }}
               >
                 <div>
-                  <p style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.1rem' }}>{d.titulo}</p>
-                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{formatDate(d.data)}</p>
+                  <p style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.1rem' }}>
+                    {d.titulo}
+                  </p>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                    {formatDate(d.data)}
+                  </p>
                 </div>
                 <div style={{ display: 'flex', gap: '4px' }}>
-                  <Button variant="ghost" size="icon" style={{ width: 28, height: 28 }}
-                    onClick={() => handleOpenDateModal(d)}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    style={{ width: 28, height: 28 }}
+                    onClick={() => handleOpenDateModal(d)}
+                  >
                     <Pencil className="h-3.5 w-3.5" />
                   </Button>
-                  <Button variant="ghost" size="icon" style={{ width: 28, height: 28, color: 'var(--danger)' }}
-                    onClick={() => setDateDeleteId(d.id!)}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    style={{ width: 28, height: 28, color: 'var(--danger)' }}
+                    onClick={() => setDateDeleteId(d.id!)}
+                  >
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
                 </div>
@@ -1146,7 +1595,14 @@ export default function ClienteDetalhePage() {
 
       {/* Addresses Section */}
       <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '1rem',
+          }}
+        >
           <h3 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2 mb-0">
             <MapPin className="h-5 w-5" style={{ color: 'var(--primary-color)' }} />
             {t('detail.addresses')}
@@ -1163,10 +1619,15 @@ export default function ClienteDetalhePage() {
         )}
 
         {!loadingEnderecos && (!enderecos || enderecos.length === 0) && (
-          <div style={{
-            textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-muted)',
-            border: '1px dashed var(--border-color)', borderRadius: '12px',
-          }}>
+          <div
+            style={{
+              textAlign: 'center',
+              padding: '2rem 1rem',
+              color: 'var(--text-muted)',
+              border: '1px dashed var(--border-color)',
+              borderRadius: '12px',
+            }}
+          >
             <MapPin className="h-8 w-8" style={{ margin: '0 auto 0.5rem', opacity: 0.4 }} />
             <p style={{ fontSize: '0.9rem' }}>{t('detail.noAddresses')}</p>
             <p style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>{t('detail.addAddressHint')}</p>
@@ -1174,43 +1635,88 @@ export default function ClienteDetalhePage() {
         )}
 
         {!loadingEnderecos && enderecos && enderecos.length > 0 && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '0.75rem' }}>
-            {enderecos.map(addr => (
-              <div key={addr.id} style={{
-                position: 'relative', padding: '1rem 1.25rem', borderRadius: '12px',
-                border: '1px solid var(--border-color)', background: 'var(--surface-main)',
-                transition: 'box-shadow 0.2s ease, transform 0.2s ease',
-              }}
-                onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLDivElement).style.boxShadow = '0 6px 16px rgba(0,0,0,0.08)'; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = ''; (e.currentTarget as HTMLDivElement).style.boxShadow = ''; }}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+              gap: '0.75rem',
+            }}
+          >
+            {enderecos.map((addr) => (
+              <div
+                key={addr.id}
+                style={{
+                  position: 'relative',
+                  padding: '1rem 1.25rem',
+                  borderRadius: '12px',
+                  border: '1px solid var(--border-color)',
+                  background: 'var(--surface-main)',
+                  transition: 'box-shadow 0.2s ease, transform 0.2s ease',
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)';
+                  (e.currentTarget as HTMLDivElement).style.boxShadow =
+                    '0 6px 16px rgba(0,0,0,0.08)';
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLDivElement).style.transform = '';
+                  (e.currentTarget as HTMLDivElement).style.boxShadow = '';
+                }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.5rem' }}>
-                  <span className={`badge ${addr.tipo === 'residencial' ? 'badge-info' : 'badge-warning'}`}
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem' }}>
-                    {addr.tipo === 'residencial'
-                      ? <><Home className="h-3 w-3" /> {t('detail.residential')}</>
-                      : <><Building2 className="h-3 w-3" /> {t('detail.commercial')}</>}
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    marginBottom: '0.5rem',
+                  }}
+                >
+                  <span
+                    className={`badge ${addr.tipo === 'residencial' ? 'badge-info' : 'badge-warning'}`}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      fontSize: '0.75rem',
+                    }}
+                  >
+                    {addr.tipo === 'residencial' ? (
+                      <>
+                        <Home className="h-3 w-3" /> {t('detail.residential')}
+                      </>
+                    ) : (
+                      <>
+                        <Building2 className="h-3 w-3" /> {t('detail.commercial')}
+                      </>
+                    )}
                   </span>
                   <div style={{ display: 'flex', gap: '4px' }}>
-                    <Button variant="ghost" size="icon" style={{ width: 28, height: 28 }}
-                      onClick={() => handleOpenAddrModal(addr)}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      style={{ width: 28, height: 28 }}
+                      onClick={() => handleOpenAddrModal(addr)}
+                    >
                       <Pencil className="h-3.5 w-3.5" />
                     </Button>
-                    <Button variant="ghost" size="icon" style={{ width: 28, height: 28, color: 'var(--danger)' }}
-                      onClick={() => setAddrDeleteId(addr.id!)}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      style={{ width: 28, height: 28, color: 'var(--danger)' }}
+                      onClick={() => setAddrDeleteId(addr.id!)}
+                    >
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
                 </div>
                 <p style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.15rem' }}>
-                  {addr.logradouro}, {addr.numero}{addr.complemento ? ` — ${addr.complemento}` : ''}
+                  {addr.logradouro}, {addr.numero}
+                  {addr.complemento ? ` — ${addr.complemento}` : ''}
                 </p>
                 <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                   {addr.bairro} · {addr.cidade}/{addr.estado}
                 </p>
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                  CEP: {addr.cep}
-                </p>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>CEP: {addr.cep}</p>
               </div>
             ))}
           </div>
@@ -1231,13 +1737,17 @@ export default function ClienteDetalhePage() {
             </div>
             <div className="kpi-card animate-up">
               <span className="kpi-label">{t('detail.pending')}</span>
-              <span className="kpi-value" style={{ color: 'var(--warning)' }}>{formatBRL(pendente)}</span>
+              <span className="kpi-value" style={{ color: 'var(--warning)' }}>
+                {formatBRL(pendente)}
+              </span>
             </div>
           </div>
 
           {/* Contratos Table */}
           <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-            <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">{t('detail.contracts')}</h3>
+            <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">
+              {t('detail.contracts')}
+            </h3>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -1249,22 +1759,39 @@ export default function ClienteDetalhePage() {
               </TableHeader>
               <TableBody>
                 {contratosCliente.length === 0 ? (
-                  <TableRow><TableCell colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>{t('detail.noContracts')}</TableCell></TableRow>
-                ) : contratosCliente.map(r => (
-                  <TableRow key={r.id ?? Math.random()}>
-                    <TableCell data-label={t('detail.contractTitle')}>{r.titulo}</TableCell>
-                    <TableCell data-label={t('detail.contractPeriod')}>{formatDate(r.data_inicio)} – {formatDate(r.data_fim)}</TableCell>
-                    <TableCell data-label={t('detail.contractValue')}>{formatBRL(Number(r.valor_total))}</TableCell>
-                    <TableCell data-label={t('detail.contractStatus')}><StatusBadge status={r.status} /></TableCell>
+                  <TableRow>
+                    <TableCell
+                      colSpan={4}
+                      style={{ textAlign: 'center', color: 'var(--text-muted)' }}
+                    >
+                      {t('detail.noContracts')}
+                    </TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  contratosCliente.map((r) => (
+                    <TableRow key={r.id ?? Math.random()}>
+                      <TableCell data-label={t('detail.contractTitle')}>{r.titulo}</TableCell>
+                      <TableCell data-label={t('detail.contractPeriod')}>
+                        {formatDate(r.data_inicio)} – {formatDate(r.data_fim)}
+                      </TableCell>
+                      <TableCell data-label={t('detail.contractValue')}>
+                        {formatBRL(Number(r.valor_total))}
+                      </TableCell>
+                      <TableCell data-label={t('detail.contractStatus')}>
+                        <StatusBadge status={r.status} />
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
           </div>
 
           {/* Transações Table */}
           <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-            <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">{t('detail.transactions')}</h3>
+            <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">
+              {t('detail.transactions')}
+            </h3>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -1276,19 +1803,36 @@ export default function ClienteDetalhePage() {
               </TableHeader>
               <TableBody>
                 {transacoesCliente.length === 0 ? (
-                  <TableRow><TableCell colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>{t('detail.noTransactions')}</TableCell></TableRow>
-                ) : transacoesCliente.map(r => (
-                  <TableRow key={r.id ?? Math.random()}>
-                    <TableCell data-label={t('detail.txDescription')}>{r.descricao}</TableCell>
-                    <TableCell data-label={t('detail.txDate')}>{formatDate(r.data)}</TableCell>
-                    <TableCell data-label={t('detail.txValue')}>
-                      <span style={{ color: r.tipo === 'entrada' ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>
-                        {r.tipo === 'entrada' ? '+' : '-'}{formatBRL(Number(r.valor))}
-                      </span>
+                  <TableRow>
+                    <TableCell
+                      colSpan={4}
+                      style={{ textAlign: 'center', color: 'var(--text-muted)' }}
+                    >
+                      {t('detail.noTransactions')}
                     </TableCell>
-                    <TableCell data-label={t('detail.txStatus')}><StatusBadge status={r.status ?? 'pago'} /></TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  transacoesCliente.map((r) => (
+                    <TableRow key={r.id ?? Math.random()}>
+                      <TableCell data-label={t('detail.txDescription')}>{r.descricao}</TableCell>
+                      <TableCell data-label={t('detail.txDate')}>{formatDate(r.data)}</TableCell>
+                      <TableCell data-label={t('detail.txValue')}>
+                        <span
+                          style={{
+                            color: r.tipo === 'entrada' ? 'var(--success)' : 'var(--danger)',
+                            fontWeight: 600,
+                          }}
+                        >
+                          {r.tipo === 'entrada' ? '+' : '-'}
+                          {formatBRL(Number(r.valor))}
+                        </span>
+                      </TableCell>
+                      <TableCell data-label={t('detail.txStatus')}>
+                        <StatusBadge status={r.status ?? 'pago'} />
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
           </div>
@@ -1298,20 +1842,61 @@ export default function ClienteDetalhePage() {
       {/* Edit Modal */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent style={{ maxWidth: 600 }} onConfirmClose={() => setEditOpen(false)}>
-          <DialogHeader><DialogTitle>{t('detail.editClient')}</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>{t('detail.editClient')}</DialogTitle>
+          </DialogHeader>
           <div className="space-y-3">
-            <div className="space-y-1"><Label>{t('detail.formName')}</Label><Input value={fNome} onChange={e => setFNome(e.target.value)} /></div>
-            <div className="space-y-1"><Label>{t('detail.formEmail')}</Label><Input type="email" value={fEmail} onChange={e => setFEmail(e.target.value)} /></div>
-            <div className="space-y-1"><Label>{t('detail.formPhone')}</Label><Input value={fTelefone} onChange={e => setFTelefone(e.target.value)} /></div>
-            <div className="space-y-1"><Label>{t('detail.formPlan')}</Label><Input value={fPlano} onChange={e => setFPlano(e.target.value)} /></div>
-            <div className="space-y-1"><Label>{t('detail.formMonthlyValue')}</Label><Input type="number" value={fValor} onChange={e => setFValor(e.target.value)} /></div>
-            <div className="space-y-1"><Label>{t('detail.formNotionUrl')}</Label><Input value={fNotion} onChange={e => setFNotion(e.target.value)} /></div>
-            <div className="space-y-1"><Label>{t('detail.formPaymentDay')}</Label><Input type="number" min={1} max={31} value={fDiaPag} onChange={e => setFDiaPag(e.target.value)} /></div>
-            <div className="space-y-1"><Label>{t('detail.formDeliveryDay')}</Label><Input type="number" min={1} max={31} value={fDiaEntrega} onChange={e => setFDiaEntrega(e.target.value)} placeholder="1-31" /></div>
+            <div className="space-y-1">
+              <Label>{t('detail.formName')}</Label>
+              <Input value={fNome} onChange={(e) => setFNome(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label>{t('detail.formEmail')}</Label>
+              <Input type="email" value={fEmail} onChange={(e) => setFEmail(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label>{t('detail.formPhone')}</Label>
+              <Input value={fTelefone} onChange={(e) => setFTelefone(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label>{t('detail.formPlan')}</Label>
+              <Input value={fPlano} onChange={(e) => setFPlano(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label>{t('detail.formMonthlyValue')}</Label>
+              <Input type="number" value={fValor} onChange={(e) => setFValor(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label>{t('detail.formNotionUrl')}</Label>
+              <Input value={fNotion} onChange={(e) => setFNotion(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label>{t('detail.formPaymentDay')}</Label>
+              <Input
+                type="number"
+                min={1}
+                max={31}
+                value={fDiaPag}
+                onChange={(e) => setFDiaPag(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>{t('detail.formDeliveryDay')}</Label>
+              <Input
+                type="number"
+                min={1}
+                max={31}
+                value={fDiaEntrega}
+                onChange={(e) => setFDiaEntrega(e.target.value)}
+                placeholder="1-31"
+              />
+            </div>
             <div className="space-y-1">
               <Label>{t('detail.formStatus')}</Label>
-              <Select value={fStatus} onValueChange={v => setFStatus(v as Cliente['status'])}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+              <Select value={fStatus} onValueChange={(v) => setFStatus(v as Cliente['status'])}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="ativo">{tc('status.ativo')}</SelectItem>
                   <SelectItem value="pausado">{tc('status.pausado')}</SelectItem>
@@ -1319,45 +1904,89 @@ export default function ClienteDetalhePage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1"><Label>{t('detail.formSpecialty')}</Label><Input value={fEspecialidade} onChange={e => setFEspecialidade(e.target.value)} /></div>
+            <div className="space-y-1">
+              <Label>{t('detail.formSpecialty')}</Label>
+              <Input value={fEspecialidade} onChange={(e) => setFEspecialidade(e.target.value)} />
+            </div>
             <div className="space-y-1">
               <Label>{t('detail.formBirthday')}</Label>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
                 <Select value={fAniMes} onValueChange={setFAniMes}>
-                  <SelectTrigger><SelectValue placeholder={t('detail.monthPlaceholder')} /></SelectTrigger>
+                  <SelectTrigger>
+                    <SelectValue placeholder={t('detail.monthPlaceholder')} />
+                  </SelectTrigger>
                   <SelectContent>
-                    {Array.from({ length: 12 }, (_, i) => [String(i + 1).padStart(2, '0'), tc(`months.${i}`)] as [string, string])
-                      .map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
+                    {Array.from(
+                      { length: 12 },
+                      (_, i) =>
+                        [String(i + 1).padStart(2, '0'), tc(`months.${i}`)] as [string, string],
+                    ).map(([v, l]) => (
+                      <SelectItem key={v} value={v}>
+                        {l}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 <Select value={fAniDia} onValueChange={setFAniDia}>
-                  <SelectTrigger><SelectValue placeholder={t('detail.dayPlaceholder')} /></SelectTrigger>
+                  <SelectTrigger>
+                    <SelectValue placeholder={t('detail.dayPlaceholder')} />
+                  </SelectTrigger>
                   <SelectContent>
-                    {Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, '0'))
-                      .map(d => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                    {Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, '0')).map(
+                      (d) => (
+                        <SelectItem key={d} value={d}>
+                          {d}
+                        </SelectItem>
+                      ),
+                    )}
                   </SelectContent>
                 </Select>
               </div>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditOpen(false)}>{tc('actions.cancel')}</Button>
-            <Button onClick={handleEditSubmit} disabled={editLoading}>{editLoading && <Spinner size="sm" />} {tc('actions.save')}</Button>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>
+              {tc('actions.cancel')}
+            </Button>
+            <Button onClick={handleEditSubmit} disabled={editLoading}>
+              {editLoading && <Spinner size="sm" />} {tc('actions.save')}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Address Add/Edit Modal */}
-      <Dialog open={addrModalOpen} onOpenChange={open => { if (!open) { setAddrModalOpen(false); resetAddrForm(); } }}>
-        <DialogContent style={{ maxWidth: 540 }} onConfirmClose={() => { setAddrModalOpen(false); resetAddrForm(); }}>
+      <Dialog
+        open={addrModalOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setAddrModalOpen(false);
+            resetAddrForm();
+          }
+        }}
+      >
+        <DialogContent
+          style={{ maxWidth: 540 }}
+          onConfirmClose={() => {
+            setAddrModalOpen(false);
+            resetAddrForm();
+          }}
+        >
           <DialogHeader>
-            <DialogTitle>{addrEditing ? t('detail.editAddress') : t('detail.newAddress')}</DialogTitle>
+            <DialogTitle>
+              {addrEditing ? t('detail.editAddress') : t('detail.newAddress')}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1">
               <Label>{t('detail.addrType')}</Label>
-              <Select value={adrTipo} onValueChange={v => setAdrTipo(v as 'residencial' | 'comercial')}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+              <Select
+                value={adrTipo}
+                onValueChange={(v) => setAdrTipo(v as 'residencial' | 'comercial')}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="comercial">{t('detail.commercial')}</SelectItem>
                   <SelectItem value="residencial">{t('detail.residential')}</SelectItem>
@@ -1367,35 +1996,110 @@ export default function ClienteDetalhePage() {
             <div className="space-y-1">
               <Label>{t('detail.addrCep')}</Label>
               <div style={{ position: 'relative' }}>
-                <Input placeholder="00000-000" value={adrCep} onChange={e => handleCepChange(e.target.value)} />
+                <Input
+                  placeholder="00000-000"
+                  value={adrCep}
+                  onChange={(e) => handleCepChange(e.target.value)}
+                />
                 {cepLoading && (
-                  <div style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)' }}>
-                    <Loader2 className="h-4 w-4 animate-spin" style={{ color: 'var(--primary-color)' }} />
+                  <div
+                    style={{
+                      position: 'absolute',
+                      right: 10,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                    }}
+                  >
+                    <Loader2
+                      className="h-4 w-4 animate-spin"
+                      style={{ color: 'var(--primary-color)' }}
+                    />
                   </div>
                 )}
               </div>
-              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>{t('detail.addrCepHint')}</p>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                {t('detail.addrCepHint')}
+              </p>
             </div>
-            <div className="space-y-1"><Label>{t('detail.addrStreet')}</Label><Input placeholder={t('detail.addrStreetPlaceholder')} value={adrLogradouro} onChange={e => setAdrLogradouro(e.target.value)} /></div>
+            <div className="space-y-1">
+              <Label>{t('detail.addrStreet')}</Label>
+              <Input
+                placeholder={t('detail.addrStreetPlaceholder')}
+                value={adrLogradouro}
+                onChange={(e) => setAdrLogradouro(e.target.value)}
+              />
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '0.75rem' }}>
-              <div className="space-y-1"><Label>{t('detail.addrNumber')}</Label><Input placeholder="123" value={adrNumero} onChange={e => setAdrNumero(e.target.value)} /></div>
-              <div className="space-y-1"><Label>{t('detail.addrComplement')}</Label><Input placeholder={t('detail.addrComplementPlaceholder')} value={adrComplemento} onChange={e => setAdrComplemento(e.target.value)} /></div>
+              <div className="space-y-1">
+                <Label>{t('detail.addrNumber')}</Label>
+                <Input
+                  placeholder="123"
+                  value={adrNumero}
+                  onChange={(e) => setAdrNumero(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>{t('detail.addrComplement')}</Label>
+                <Input
+                  placeholder={t('detail.addrComplementPlaceholder')}
+                  value={adrComplemento}
+                  onChange={(e) => setAdrComplemento(e.target.value)}
+                />
+              </div>
             </div>
-            <div className="space-y-1"><Label>{t('detail.addrNeighborhood')}</Label><Input placeholder={t('detail.addrNeighborhoodPlaceholder')} value={adrBairro} onChange={e => setAdrBairro(e.target.value)} /></div>
+            <div className="space-y-1">
+              <Label>{t('detail.addrNeighborhood')}</Label>
+              <Input
+                placeholder={t('detail.addrNeighborhoodPlaceholder')}
+                value={adrBairro}
+                onChange={(e) => setAdrBairro(e.target.value)}
+              />
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '0.75rem' }}>
-              <div className="space-y-1"><Label>{t('detail.addrCity')}</Label><Input placeholder={t('detail.addrCityPlaceholder')} value={adrCidade} onChange={e => setAdrCidade(e.target.value)} /></div>
-              <div className="space-y-1"><Label>{t('detail.addrState')}</Label><Input placeholder={t('detail.addrStatePlaceholder')} maxLength={2} value={adrEstado} onChange={e => setAdrEstado(e.target.value.toUpperCase())} /></div>
+              <div className="space-y-1">
+                <Label>{t('detail.addrCity')}</Label>
+                <Input
+                  placeholder={t('detail.addrCityPlaceholder')}
+                  value={adrCidade}
+                  onChange={(e) => setAdrCidade(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>{t('detail.addrState')}</Label>
+                <Input
+                  placeholder={t('detail.addrStatePlaceholder')}
+                  maxLength={2}
+                  value={adrEstado}
+                  onChange={(e) => setAdrEstado(e.target.value.toUpperCase())}
+                />
+              </div>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setAddrModalOpen(false); resetAddrForm(); }}>{tc('actions.cancel')}</Button>
-            <Button onClick={handleAddrSubmit} disabled={addrLoading}>{addrLoading && <Spinner size="sm" />} {addrEditing ? tc('actions.save') : tc('actions.add')}</Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setAddrModalOpen(false);
+                resetAddrForm();
+              }}
+            >
+              {tc('actions.cancel')}
+            </Button>
+            <Button onClick={handleAddrSubmit} disabled={addrLoading}>
+              {addrLoading && <Spinner size="sm" />}{' '}
+              {addrEditing ? tc('actions.save') : tc('actions.add')}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Address Delete Confirm */}
-      <AlertDialog open={addrDeleteId !== null} onOpenChange={open => { if (!open) setAddrDeleteId(null); }}>
+      <AlertDialog
+        open={addrDeleteId !== null}
+        onOpenChange={(open) => {
+          if (!open) setAddrDeleteId(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t('detail.removeAddress')}</AlertDialogTitle>
@@ -1409,24 +2113,66 @@ export default function ClienteDetalhePage() {
       </AlertDialog>
 
       {/* Date Add/Edit Modal */}
-      <Dialog open={dateModalOpen} onOpenChange={open => { if (!open) { setDateModalOpen(false); resetDateForm(); } }}>
-        <DialogContent style={{ maxWidth: 440 }} onConfirmClose={() => { setDateModalOpen(false); resetDateForm(); }}>
+      <Dialog
+        open={dateModalOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDateModalOpen(false);
+            resetDateForm();
+          }
+        }}
+      >
+        <DialogContent
+          style={{ maxWidth: 440 }}
+          onConfirmClose={() => {
+            setDateModalOpen(false);
+            resetDateForm();
+          }}
+        >
           <DialogHeader>
-            <DialogTitle>{dateEditing ? t('detail.editDate') : t('detail.newImportantDate')}</DialogTitle>
+            <DialogTitle>
+              {dateEditing ? t('detail.editDate') : t('detail.newImportantDate')}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            <div className="space-y-1"><Label>{t('detail.dateTitle')}</Label><Input placeholder={t('detail.dateTitlePlaceholder')} value={dateTitulo} onChange={e => setDateTitulo(e.target.value)} /></div>
-            <div className="space-y-1"><Label>{t('detail.dateField')}</Label><Input type="date" value={dateData} onChange={e => setDateData(e.target.value)} /></div>
+            <div className="space-y-1">
+              <Label>{t('detail.dateTitle')}</Label>
+              <Input
+                placeholder={t('detail.dateTitlePlaceholder')}
+                value={dateTitulo}
+                onChange={(e) => setDateTitulo(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>{t('detail.dateField')}</Label>
+              <Input type="date" value={dateData} onChange={(e) => setDateData(e.target.value)} />
+            </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setDateModalOpen(false); resetDateForm(); }}>{tc('actions.cancel')}</Button>
-            <Button onClick={handleDateSubmit} disabled={dateLoading}>{dateLoading && <Spinner size="sm" />} {dateEditing ? tc('actions.save') : tc('actions.add')}</Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDateModalOpen(false);
+                resetDateForm();
+              }}
+            >
+              {tc('actions.cancel')}
+            </Button>
+            <Button onClick={handleDateSubmit} disabled={dateLoading}>
+              {dateLoading && <Spinner size="sm" />}{' '}
+              {dateEditing ? tc('actions.save') : tc('actions.add')}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Date Delete Confirm */}
-      <AlertDialog open={dateDeleteId !== null} onOpenChange={open => { if (!open) setDateDeleteId(null); }}>
+      <AlertDialog
+        open={dateDeleteId !== null}
+        onOpenChange={(open) => {
+          if (!open) setDateDeleteId(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t('detail.removeDate')}</AlertDialogTitle>
@@ -1440,15 +2186,32 @@ export default function ClienteDetalhePage() {
       </AlertDialog>
 
       {/* Recurring workflow confirm */}
-      <AlertDialog open={recurringWfId !== null} onOpenChange={open => { if (!open) { setRecurringWfId(null); queryClient.invalidateQueries({ queryKey: ['workflowsByCliente', clienteId] }); } }}>
+      <AlertDialog
+        open={recurringWfId !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setRecurringWfId(null);
+            queryClient.invalidateQueries({ queryKey: ['workflowsByCliente', clienteId] });
+          }
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t('detail.workflowCompleted')}</AlertDialogTitle>
             <AlertDialogDescription>{t('detail.workflowRecurring')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => { setRecurringWfId(null); queryClient.invalidateQueries({ queryKey: ['workflowsByCliente', clienteId] }); }}>{tc('actions.no')}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleRecurringConfirm}>{t('detail.createNewCycle')}</AlertDialogAction>
+            <AlertDialogCancel
+              onClick={() => {
+                setRecurringWfId(null);
+                queryClient.invalidateQueries({ queryKey: ['workflowsByCliente', clienteId] });
+              }}
+            >
+              {tc('actions.no')}
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleRecurringConfirm}>
+              {t('detail.createNewCycle')}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -1477,17 +2240,26 @@ export default function ClienteDetalhePage() {
           clientes={clientes ?? []}
           onClose={() => setEditCardModal(null)}
           onSaved={refreshCards}
-          onDeleted={() => { setEditCardModal(null); refreshCards(); }}
-          onOpenPosts={() => { setDrawerCard(editCardModal); setEditCardModal(null); }}
+          onDeleted={() => {
+            setEditCardModal(null);
+            refreshCards();
+          }}
+          onOpenPosts={() => {
+            setDrawerCard(editCardModal);
+            setEditCardModal(null);
+          }}
         />
       )}
 
       <ForwardConfirmDialog
         open={!!forwardTarget}
         workflowTitle={forwardTarget?.workflow.titulo ?? ''}
-        nextEtapaName={forwardTarget
-          ? (forwardTarget.allEtapas.find(e => e.ordem === forwardTarget.etapaIdx + 1)?.nome ?? '')
-          : ''}
+        nextEtapaName={
+          forwardTarget
+            ? (forwardTarget.allEtapas.find((e) => e.ordem === forwardTarget.etapaIdx + 1)?.nome ??
+              '')
+            : ''
+        }
         onConfirm={handleForwardConfirm}
         onCancel={() => setForwardTarget(null)}
       />
@@ -1554,7 +2326,9 @@ function ClienteArquivosSection({ clienteId }: { clienteId: number }) {
         )}
       </div>
       {isLoading ? (
-        <div className="flex items-center justify-center py-8"><Spinner size="md" /></div>
+        <div className="flex items-center justify-center py-8">
+          <Spinner size="md" />
+        </div>
       ) : files.length === 0 && subfolders.length === 0 ? (
         <p className="text-sm text-[var(--text-muted)] py-4">{t('detail.noFiles')}</p>
       ) : (
@@ -1584,7 +2358,13 @@ function ClienteArquivosSection({ clienteId }: { clienteId: number }) {
 // Isolated component for imperative Instagram widgets.
 // Keyed by clienteId so it fully remounts on navigation.
 // Never conditionally mounts/unmounts its ref divs — React never touches their children.
-function InstagramSection({ clienteId, loadingIg, igSummary, refetchIg, onNavigateAnalytics }: {
+function InstagramSection({
+  clienteId,
+  loadingIg,
+  igSummary,
+  refetchIg,
+  onNavigateAnalytics,
+}: {
   clienteId: number;
   loadingIg: boolean;
   igSummary: any;
@@ -1601,17 +2381,29 @@ function InstagramSection({ clienteId, loadingIg, igSummary, refetchIg, onNaviga
   const [autoPublishLoading, setAutoPublishLoading] = useState(false);
 
   useEffect(() => {
-    supabase.from('clientes').select('auto_publish_on_approval').eq('id', clienteId).single()
-      .then(({ data }) => { if (data) setAutoPublish(data.auto_publish_on_approval); });
+    supabase
+      .from('clientes')
+      .select('auto_publish_on_approval')
+      .eq('id', clienteId)
+      .single()
+      .then(({ data }) => {
+        if (data) setAutoPublish(data.auto_publish_on_approval);
+      });
   }, [clienteId]);
 
   const handleAutoPublishToggle = async (checked: boolean) => {
     setAutoPublishLoading(true);
     try {
-      await supabase.from('clientes').update({ auto_publish_on_approval: checked }).eq('id', clienteId);
+      await supabase
+        .from('clientes')
+        .update({ auto_publish_on_approval: checked })
+        .eq('id', clienteId);
       setAutoPublish(checked);
-    } catch { /* ignore */ }
-    finally { setAutoPublishLoading(false); }
+    } catch {
+      /* ignore */
+    } finally {
+      setAutoPublishLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -1623,15 +2415,21 @@ function InstagramSection({ clienteId, loadingIg, igSummary, refetchIg, onNaviga
       return;
     }
     if (igSummary.account?.last_synced_at) {
-      if (igOverviewRef.current) renderInstagramOverviewCard(igOverviewRef.current, clienteId, igSummary.account, refetchIg);
-      if (igChartRef.current) renderInstagramFollowerChart(igChartRef.current, igSummary.history ?? []);
+      if (igOverviewRef.current)
+        renderInstagramOverviewCard(igOverviewRef.current, clienteId, igSummary.account, refetchIg);
+      if (igChartRef.current)
+        renderInstagramFollowerChart(igChartRef.current, igSummary.history ?? []);
       if (igPostsRef.current) renderInstagramPostsTable(igPostsRef.current, clienteId);
     }
   }, [loadingIg, igSummary, clienteId, refetchIg, i18n.language]);
 
   return (
     <div id="ig-container" style={{ marginBottom: '1.5rem' }}>
-      {loadingIg && <div className="flex justify-center p-4"><Spinner size="lg" /></div>}
+      {loadingIg && (
+        <div className="flex justify-center p-4">
+          <Spinner size="lg" />
+        </div>
+      )}
       {!loadingIg && igSummary && !igSummary.account?.last_synced_at && (
         <div className="card" style={{ padding: '2rem', textAlign: 'center' }}>
           <Spinner size="lg" />
@@ -1642,7 +2440,14 @@ function InstagramSection({ clienteId, loadingIg, igSummary, refetchIg, onNaviga
       <div ref={igChartRef} />
       <div ref={igPostsRef} />
       {!loadingIg && igSummary?.account?.last_synced_at && (
-        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '1.5rem', marginBottom: '1rem' }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'center',
+            marginTop: '1.5rem',
+            marginBottom: '1rem',
+          }}
+        >
           <Button onClick={onNavigateAnalytics}>{t('detail.viewFullAnalytics')}</Button>
         </div>
       )}
@@ -1653,7 +2458,9 @@ function InstagramSection({ clienteId, loadingIg, igSummary, refetchIg, onNaviga
               <div style={{ color: 'var(--text-main)', fontSize: '0.85rem', fontWeight: 500 }}>
                 {t('detail.autoPublishTitle')}
               </div>
-              <div style={{ color: 'var(--text-light)', fontSize: '0.75rem', marginTop: '0.25rem' }}>
+              <div
+                style={{ color: 'var(--text-light)', fontSize: '0.75rem', marginTop: '0.25rem' }}
+              >
                 {t('detail.autoPublishDesc')}
               </div>
             </div>

@@ -5,11 +5,7 @@ import type { FileRecord, Folder } from '../types';
 
 // Mock FileContextMenu to pass through children and right-click
 vi.mock('../components/FileContextMenu', () => ({
-  FileContextMenu: ({
-    children,
-  }: {
-    children: React.ReactNode;
-  }) => <>{children}</>,
+  FileContextMenu: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
 // Mock tanstack/react-query so FileGrid can call useQueryClient/useMutation without a provider
@@ -96,13 +92,7 @@ describe('FileGrid', () => {
   };
 
   it('shows empty state when no files or folders', () => {
-    render(
-      <FileGrid
-        files={[]}
-        subfolders={[]}
-        {...defaultProps}
-      />,
-    );
+    render(<FileGrid files={[]} subfolders={[]} {...defaultProps} />);
 
     expect(screen.getByText('Nenhum arquivo nesta pasta')).toBeInTheDocument();
   });
@@ -112,10 +102,7 @@ describe('FileGrid', () => {
       render(
         <FileGrid
           files={[]}
-          subfolders={[
-            makeFolder({ id: 1, name: 'Fotos' }),
-            makeFolder({ id: 2, name: 'Videos' }),
-          ]}
+          subfolders={[makeFolder({ id: 1, name: 'Fotos' }), makeFolder({ id: 2, name: 'Videos' })]}
           {...defaultProps}
         />,
       );
@@ -161,12 +148,7 @@ describe('FileGrid', () => {
       const onFileAction = vi.fn();
       const file = makeFile({ id: 100, name: 'foto.jpg' });
       render(
-        <FileGrid
-          files={[file]}
-          subfolders={[]}
-          {...defaultProps}
-          onFileAction={onFileAction}
-        />,
+        <FileGrid files={[file]} subfolders={[]} {...defaultProps} onFileAction={onFileAction} />,
       );
 
       fireEvent.click(screen.getByText('foto.jpg'));

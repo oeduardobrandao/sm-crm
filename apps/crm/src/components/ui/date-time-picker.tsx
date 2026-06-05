@@ -22,8 +22,14 @@ export interface DateTimePickerProps {
 function roundUpToNext5(date: Date): { h: number; m: number } {
   let h = date.getHours();
   let m = Math.ceil(date.getMinutes() / 5) * 5;
-  if (m >= 60) { m = 0; h += 1; }
-  if (h >= 24) { h = 0; m = 0; }
+  if (m >= 60) {
+    m = 0;
+    h += 1;
+  }
+  if (h >= 24) {
+    h = 0;
+    m = 0;
+  }
   return { h, m };
 }
 
@@ -40,18 +46,19 @@ export function DateTimePicker({
 
   const now = React.useMemo(() => new Date(), [open]);
   const minDateTime = futureOnly ? addMinutes(now, MIN_SCHEDULE_MINUTES) : undefined;
-  const calendarDisabled = futureOnly
-    ? { before: startOfDay(now) }
-    : undefined;
+  const calendarDisabled = futureOnly ? { before: startOfDay(now) } : undefined;
 
   const hours = value ? value.getHours() : 10;
   const minutes = value ? value.getMinutes() : 0;
 
-  const clampToMin = React.useCallback((date: Date): Date => {
-    if (!minDateTime || !isBefore(date, minDateTime)) return date;
-    const { h, m } = roundUpToNext5(minDateTime);
-    return setMinutes(setHours(date, h), m);
-  }, [minDateTime]);
+  const clampToMin = React.useCallback(
+    (date: Date): Date => {
+      if (!minDateTime || !isBefore(date, minDateTime)) return date;
+      const { h, m } = roundUpToNext5(minDateTime);
+      return setMinutes(setHours(date, h), m);
+    },
+    [minDateTime],
+  );
 
   const handleDateSelect = (date: Date | undefined) => {
     if (!date) {
@@ -69,9 +76,8 @@ export function DateTimePicker({
   };
 
   const selectedIsToday = value ? isToday(value) : false;
-  const earliestTime = selectedIsToday && minDateTime
-    ? roundUpToNext5(minDateTime)
-    : { h: 0, m: 0 };
+  const earliestTime =
+    selectedIsToday && minDateTime ? roundUpToNext5(minDateTime) : { h: 0, m: 0 };
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -85,12 +91,19 @@ export function DateTimePicker({
             !value && 'text-muted-foreground',
             className,
           )}
-          style={{ padding: '0.4rem 0.6rem', borderRadius: 6, fontSize: '0.82rem', background: 'var(--card-bg)' }}
+          style={{
+            padding: '0.4rem 0.6rem',
+            borderRadius: 6,
+            fontSize: '0.82rem',
+            background: 'var(--card-bg)',
+          }}
         >
           <CalendarIcon className="mr-2 h-4 w-4" />
-          {value
-            ? format(value, "dd MMM yyyy '·' HH:mm", { locale: ptBR })
-            : <span>{placeholder}</span>}
+          {value ? (
+            format(value, "dd MMM yyyy '·' HH:mm", { locale: ptBR })
+          ) : (
+            <span>{placeholder}</span>
+          )}
           {clearable && value && (
             <span
               role="button"
@@ -152,7 +165,9 @@ export function DateTimePicker({
         </div>
         {futureOnly && (
           <div className="border-t px-3 py-1.5">
-            <p className="text-[11px] text-muted-foreground">Mínimo {MIN_SCHEDULE_MINUTES} min no futuro</p>
+            <p className="text-[11px] text-muted-foreground">
+              Mínimo {MIN_SCHEDULE_MINUTES} min no futuro
+            </p>
           </div>
         )}
       </PopoverContent>

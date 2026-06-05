@@ -21,12 +21,26 @@ import '../style.css';
 initSentry();
 
 initI18n({
-  pt: { common: ptCommon, dashboard: ptDashboard, clients: ptClients, leads: ptLeads, posts: ptPosts, auth: ptAuth },
-  en: { common: enCommon, dashboard: enDashboard, clients: enClients, leads: enLeads, posts: enPosts, auth: enAuth },
+  pt: {
+    common: ptCommon,
+    dashboard: ptDashboard,
+    clients: ptClients,
+    leads: ptLeads,
+    posts: ptPosts,
+    auth: ptAuth,
+  },
+  en: {
+    common: enCommon,
+    dashboard: enDashboard,
+    clients: enClients,
+    leads: enLeads,
+    posts: enPosts,
+    auth: enAuth,
+  },
 });
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <BrowserRouter>
     <App />
-  </BrowserRouter>
+  </BrowserRouter>,
 );

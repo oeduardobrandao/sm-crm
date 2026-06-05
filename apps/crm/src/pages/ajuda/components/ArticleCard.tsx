@@ -9,7 +9,7 @@ function useCoverUrl(raw: string | null) {
   const isR2 = !!raw && !raw.startsWith('http');
   const { data } = useQuery({
     queryKey: ['cover-url', raw],
-    queryFn: () => resolveInlineImageUrls([raw!]).then(m => m[raw!] ?? ''),
+    queryFn: () => resolveInlineImageUrls([raw!]).then((m) => m[raw!] ?? ''),
     enabled: isR2,
     staleTime: 10 * 60 * 1000,
   });

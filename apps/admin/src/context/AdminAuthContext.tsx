@@ -35,7 +35,9 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
       const newUser = session?.user ?? null;
       setUser(newUser);
       if (!newUser) {
@@ -49,7 +51,9 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!initialCheckDone.current) return;
     if (user) {
-      verifyAdmin().then((r) => setIsAdmin(r.is_admin)).catch(() => setIsAdmin(false));
+      verifyAdmin()
+        .then((r) => setIsAdmin(r.is_admin))
+        .catch(() => setIsAdmin(false));
     } else {
       setIsAdmin(false);
     }
@@ -62,7 +66,9 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AdminAuthContext.Provider value={{ user, isAdmin, loading, adminEmail: user?.email ?? null, signOut }}>
+    <AdminAuthContext.Provider
+      value={{ user, isAdmin, loading, adminEmail: user?.email ?? null, signOut }}
+    >
       {children}
     </AdminAuthContext.Provider>
   );

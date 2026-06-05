@@ -27,7 +27,9 @@ export interface CommentThreadWithComments extends CommentThread {
 
 // ── Inline comment threads ──────────────────────────────────────
 
-export async function getPostCommentThreads(postIds: number[]): Promise<CommentThreadWithComments[]> {
+export async function getPostCommentThreads(
+  postIds: number[],
+): Promise<CommentThreadWithComments[]> {
   if (postIds.length === 0) return [];
   const { data, error } = await supabase
     .from('post_comment_threads')
@@ -37,7 +39,9 @@ export async function getPostCommentThreads(postIds: number[]): Promise<CommentT
   if (error) throw error;
   const threads = (data || []) as CommentThreadWithComments[];
   for (const t of threads) {
-    t.post_comments.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    t.post_comments.sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+    );
   }
   return threads;
 }
@@ -97,10 +101,7 @@ export async function updatePostComment(commentId: number, content: string): Pro
 }
 
 export async function deletePostComment(commentId: number): Promise<void> {
-  const { error } = await supabase
-    .from('post_comments')
-    .delete()
-    .eq('id', commentId);
+  const { error } = await supabase.from('post_comments').delete().eq('id', commentId);
   if (error) throw error;
 }
 
@@ -123,9 +124,6 @@ export async function reopenCommentThread(threadId: number): Promise<void> {
 }
 
 export async function deleteCommentThread(threadId: number): Promise<void> {
-  const { error } = await supabase
-    .from('post_comment_threads')
-    .delete()
-    .eq('id', threadId);
+  const { error } = await supabase.from('post_comment_threads').delete().eq('id', threadId);
   if (error) throw error;
 }

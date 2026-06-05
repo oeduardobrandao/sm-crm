@@ -11,8 +11,14 @@ const PLAN_COLORS: Record<string, string> = {
 };
 
 const FALLBACK_PALETTE = [
-  '#06b6d4', '#ec4899', '#6366f1', '#14b8a6',
-  '#f97316', '#a855f7', '#ef4444', '#22d3ee',
+  '#06b6d4',
+  '#ec4899',
+  '#6366f1',
+  '#14b8a6',
+  '#f97316',
+  '#a855f7',
+  '#ef4444',
+  '#22d3ee',
 ];
 
 export function getPlanColor(planName: string): string {

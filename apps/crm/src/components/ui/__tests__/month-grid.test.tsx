@@ -7,9 +7,7 @@ describe('MonthGrid', () => {
     currentMonth: new Date(2026, 5, 1), // June 2026
     onMonthChange: vi.fn(),
     renderCell: (date: Date, isCurrentMonth: boolean) => (
-      <span data-testid={`cell-${date.getDate()}`}>
-        {isCurrentMonth ? date.getDate() : ''}
-      </span>
+      <span data-testid={`cell-${date.getDate()}`}>{isCurrentMonth ? date.getDate() : ''}</span>
     ),
   };
 

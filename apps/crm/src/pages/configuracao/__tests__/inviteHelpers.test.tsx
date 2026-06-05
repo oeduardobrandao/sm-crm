@@ -1,7 +1,11 @@
 import { render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { computeEffectiveInviteStatus, InviteStatusBadge, InviteTimeLeft } from '../ConfiguracaoPage';
+import {
+  computeEffectiveInviteStatus,
+  InviteStatusBadge,
+  InviteTimeLeft,
+} from '../ConfiguracaoPage';
 
 describe('InviteStatusBadge', () => {
   it('renders PENDENTE for pending status', () => {
@@ -46,12 +50,16 @@ describe('InviteTimeLeft', () => {
   });
 
   it('renders nothing for expired status', () => {
-    const { container } = render(<InviteTimeLeft expiresAt="2026-04-25T00:00:00Z" status="expired" />);
+    const { container } = render(
+      <InviteTimeLeft expiresAt="2026-04-25T00:00:00Z" status="expired" />,
+    );
     expect(container.innerHTML).toBe('');
   });
 
   it('renders nothing for accepted status', () => {
-    const { container } = render(<InviteTimeLeft expiresAt="2026-04-25T00:00:00Z" status="accepted" />);
+    const { container } = render(
+      <InviteTimeLeft expiresAt="2026-04-25T00:00:00Z" status="accepted" />,
+    );
     expect(container.innerHTML).toBe('');
   });
 
@@ -61,7 +69,9 @@ describe('InviteTimeLeft', () => {
   });
 
   it('renders nothing when already past expiry', () => {
-    const { container } = render(<InviteTimeLeft expiresAt="2026-04-19T00:00:00Z" status="pending" />);
+    const { container } = render(
+      <InviteTimeLeft expiresAt="2026-04-19T00:00:00Z" status="pending" />,
+    );
     expect(container.innerHTML).toBe('');
   });
 });
@@ -101,9 +111,7 @@ describe('computeEffectiveInviteStatus', () => {
   });
 
   it('handles invites without expires_at', () => {
-    const invites = [
-      { id: '4', status: 'pending', email: 'g@h.com' },
-    ];
+    const invites = [{ id: '4', status: 'pending', email: 'g@h.com' }];
     const result = computeEffectiveInviteStatus(invites);
     expect(result[0].status).toBe('pending');
   });

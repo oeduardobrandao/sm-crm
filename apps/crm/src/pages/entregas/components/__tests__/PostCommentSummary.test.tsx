@@ -54,9 +54,7 @@ describe('PostCommentSummary', () => {
   });
 
   it('returns null when there are no threads', () => {
-    const { container } = render(
-      <PostCommentSummary threads={[]} {...defaultProps} />,
-    );
+    const { container } = render(<PostCommentSummary threads={[]} {...defaultProps} />);
     expect(container.innerHTML).toBe('');
   });
 
@@ -129,9 +127,30 @@ describe('PostCommentSummary', () => {
     const threads = [
       makeThread({
         post_comments: [
-          { id: 100, thread_id: 1, author_id: 'user-1', content: 'First', created_at: new Date().toISOString(), updated_at: null },
-          { id: 101, thread_id: 1, author_id: 'user-1', content: 'Reply 1', created_at: new Date().toISOString(), updated_at: null },
-          { id: 102, thread_id: 1, author_id: 'user-1', content: 'Reply 2', created_at: new Date().toISOString(), updated_at: null },
+          {
+            id: 100,
+            thread_id: 1,
+            author_id: 'user-1',
+            content: 'First',
+            created_at: new Date().toISOString(),
+            updated_at: null,
+          },
+          {
+            id: 101,
+            thread_id: 1,
+            author_id: 'user-1',
+            content: 'Reply 1',
+            created_at: new Date().toISOString(),
+            updated_at: null,
+          },
+          {
+            id: 102,
+            thread_id: 1,
+            author_id: 'user-1',
+            content: 'Reply 2',
+            created_at: new Date().toISOString(),
+            updated_at: null,
+          },
         ],
       }),
     ];
@@ -144,8 +163,22 @@ describe('PostCommentSummary', () => {
     const threads = [
       makeThread({
         post_comments: [
-          { id: 100, thread_id: 1, author_id: 'user-1', content: 'First', created_at: new Date().toISOString(), updated_at: null },
-          { id: 101, thread_id: 1, author_id: 'user-1', content: 'Reply', created_at: new Date().toISOString(), updated_at: null },
+          {
+            id: 100,
+            thread_id: 1,
+            author_id: 'user-1',
+            content: 'First',
+            created_at: new Date().toISOString(),
+            updated_at: null,
+          },
+          {
+            id: 101,
+            thread_id: 1,
+            author_id: 'user-1',
+            content: 'Reply',
+            created_at: new Date().toISOString(),
+            updated_at: null,
+          },
         ],
       }),
     ];
@@ -156,8 +189,34 @@ describe('PostCommentSummary', () => {
 
   it('hides resolved threads by default and shows them on toggle', () => {
     const threads = [
-      makeThread({ id: 1, status: 'active', post_comments: [{ id: 100, thread_id: 1, author_id: 'user-1', content: 'Active comment', created_at: new Date().toISOString(), updated_at: null }] }),
-      makeThread({ id: 2, status: 'resolved', post_comments: [{ id: 101, thread_id: 2, author_id: 'user-1', content: 'Resolved comment', created_at: new Date().toISOString(), updated_at: null }] }),
+      makeThread({
+        id: 1,
+        status: 'active',
+        post_comments: [
+          {
+            id: 100,
+            thread_id: 1,
+            author_id: 'user-1',
+            content: 'Active comment',
+            created_at: new Date().toISOString(),
+            updated_at: null,
+          },
+        ],
+      }),
+      makeThread({
+        id: 2,
+        status: 'resolved',
+        post_comments: [
+          {
+            id: 101,
+            thread_id: 2,
+            author_id: 'user-1',
+            content: 'Resolved comment',
+            created_at: new Date().toISOString(),
+            updated_at: null,
+          },
+        ],
+      }),
     ];
     render(<PostCommentSummary threads={threads} {...defaultProps} />);
 

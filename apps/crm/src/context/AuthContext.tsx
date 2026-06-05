@@ -1,6 +1,12 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import type { User } from '@supabase/supabase-js';
-import { supabase, getCurrentProfile, clearProfileCache, signOut as supabaseSignOut, healPendingInvite } from '../lib/supabase';
+import {
+  supabase,
+  getCurrentProfile,
+  clearProfileCache,
+  signOut as supabaseSignOut,
+  healPendingInvite,
+} from '../lib/supabase';
 import { initStoreRole } from '../store';
 
 interface Profile {
@@ -49,7 +55,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     // Listen for auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
       if (!session?.user) {
         clearProfileCache();
@@ -69,7 +77,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [user?.id]);
 
-  const role: 'owner' | 'admin' | 'agent' = (profile?.role as 'owner' | 'admin' | 'agent') ?? 'agent';
+  const role: 'owner' | 'admin' | 'agent' =
+    (profile?.role as 'owner' | 'admin' | 'agent') ?? 'agent';
 
   const signOut = async () => {
     await supabaseSignOut();
@@ -78,7 +87,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, role, loading, refetchProfile: fetchProfile, signOut }}>
+    <AuthContext.Provider
+      value={{ user, profile, role, loading, refetchProfile: fetchProfile, signOut }}
+    >
       {children}
     </AuthContext.Provider>
   );

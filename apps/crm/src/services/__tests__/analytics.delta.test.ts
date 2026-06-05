@@ -6,7 +6,11 @@ import * as supabaseModule from '../../lib/supabase';
 import { getAnalyticsOverview } from '../analytics';
 
 type MockedSupabaseModule = typeof supabaseModule & {
-  __queueSupabaseResult: (table: string, operation: 'select' | 'insert' | 'update' | 'delete' | 'upsert', ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>) => void;
+  __queueSupabaseResult: (
+    table: string,
+    operation: 'select' | 'insert' | 'update' | 'delete' | 'upsert',
+    ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>
+  ) => void;
   __resetSupabaseMock: () => void;
   __setCurrentProfile: (profile: Record<string, unknown> | null) => void;
 };
@@ -38,7 +42,9 @@ describe('analytics delta calculations', () => {
       error: null,
     });
     // current posts, previous posts (both empty — we're testing follower delta only)
-    mockedSupabase.__queueSupabaseResult('instagram_posts', 'select',
+    mockedSupabase.__queueSupabaseResult(
+      'instagram_posts',
+      'select',
       { data: [], error: null },
       { data: [], error: null },
     );
@@ -66,7 +72,9 @@ describe('analytics delta calculations', () => {
       data: TEST_ACCOUNT,
       error: null,
     });
-    mockedSupabase.__queueSupabaseResult('instagram_posts', 'select',
+    mockedSupabase.__queueSupabaseResult(
+      'instagram_posts',
+      'select',
       { data: [], error: null },
       { data: [], error: null },
     );
@@ -95,7 +103,9 @@ describe('analytics delta calculations', () => {
       data: TEST_ACCOUNT,
       error: null,
     });
-    mockedSupabase.__queueSupabaseResult('instagram_posts', 'select',
+    mockedSupabase.__queueSupabaseResult(
+      'instagram_posts',
+      'select',
       { data: [], error: null },
       { data: [], error: null },
     );

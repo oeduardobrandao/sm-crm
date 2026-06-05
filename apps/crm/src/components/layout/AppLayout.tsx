@@ -62,23 +62,16 @@ export default function AppLayout() {
         <TopBar
           showHamburger={isTablet}
           isDrawerOpen={drawerOpen}
-          onHamburgerClick={() => setDrawerOpen(v => !v)}
+          onHamburgerClick={() => setDrawerOpen((v) => !v)}
         />
       )}
 
       <GlobalBannerContainer />
 
-      <Sidebar
-        isDrawer={isTablet}
-        isOpen={drawerOpen}
-        onClose={closeDrawer}
-      />
+      <Sidebar isDrawer={isTablet} isOpen={drawerOpen} onClose={closeDrawer} />
 
       {isTablet && drawerOpen && (
-        <div
-          className="tablet-drawer-backdrop visible"
-          onClick={closeDrawer}
-        />
+        <div className="tablet-drawer-backdrop visible" onClick={closeDrawer} />
       )}
 
       <main className="main-content" id="app">

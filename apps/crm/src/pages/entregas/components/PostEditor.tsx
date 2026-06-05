@@ -10,8 +10,17 @@ import Color from '@tiptap/extension-color';
 import { TextStyle } from '@tiptap/extension-text-style';
 import Highlight from '@tiptap/extension-highlight';
 import {
-  Bold, Italic, Underline as UnderlineIcon, Link as LinkIcon,
-  List, ListOrdered, Baseline, Highlighter, Check, Lightbulb, MessageSquare,
+  Bold,
+  Italic,
+  Underline as UnderlineIcon,
+  Link as LinkIcon,
+  List,
+  ListOrdered,
+  Baseline,
+  Highlighter,
+  Check,
+  Lightbulb,
+  MessageSquare,
 } from 'lucide-react';
 import { CalloutExtension } from './CalloutExtension';
 import { CommentHighlight } from './CommentHighlight';
@@ -92,7 +101,9 @@ export function PostEditor({
   const [activeThreadId, setActiveThreadId] = useState<number | null>(null);
   const [commentSubmitting, setCommentSubmitting] = useState(false);
   const [commentAddPos, setCommentAddPos] = useState<{ top: number; left: number } | null>(null);
-  const [threadPopoverPos, setThreadPopoverPos] = useState<{ top: number; left: number } | null>(null);
+  const [threadPopoverPos, setThreadPopoverPos] = useState<{ top: number; left: number } | null>(
+    null,
+  );
   const commentBtnRef = useRef<HTMLButtonElement>(null);
   const commentAddRef = useRef<HTMLDivElement>(null);
   const commentAddWrapperRef = useRef<HTMLDivElement>(null);
@@ -116,7 +127,9 @@ export function PostEditor({
     ],
     content: initialContent ?? undefined,
     editable: !disabled,
-    onCreate: () => { isInitialized.current = true; },
+    onCreate: () => {
+      isInitialized.current = true;
+    },
     onUpdate: ({ editor: ed }) => {
       if (!isInitialized.current) return;
       onUpdate(ed.getJSON() as Record<string, unknown>, ed.getText());
@@ -130,10 +143,18 @@ export function PostEditor({
   // Close dropdowns on outside click
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
-      if (textColorOpen && textColorRef.current && !textColorRef.current.contains(e.target as Node)) {
+      if (
+        textColorOpen &&
+        textColorRef.current &&
+        !textColorRef.current.contains(e.target as Node)
+      ) {
         setTextColorOpen(false);
       }
-      if (highlightOpen && highlightRef.current && !highlightRef.current.contains(e.target as Node)) {
+      if (
+        highlightOpen &&
+        highlightRef.current &&
+        !highlightRef.current.contains(e.target as Node)
+      ) {
         setHighlightOpen(false);
       }
       if (commentAddOpen) {
@@ -141,7 +162,11 @@ export function PostEditor({
         const inWrapper = commentAddWrapperRef.current?.contains(e.target as Node);
         if (!inPortal && !inWrapper) setCommentAddOpen(false);
       }
-      if (activeThreadId != null && commentPopoverRef.current && !commentPopoverRef.current.contains(e.target as Node)) {
+      if (
+        activeThreadId != null &&
+        commentPopoverRef.current &&
+        !commentPopoverRef.current.contains(e.target as Node)
+      ) {
         setActiveThreadId(null);
       }
     };
@@ -175,25 +200,31 @@ export function PostEditor({
     setLinkPopoverOpen(false);
   }, [editor]);
 
-  const applyTextColor = useCallback((color: string | null) => {
-    if (!editor) return;
-    if (color) {
-      editor.chain().focus().setColor(color).run();
-    } else {
-      editor.chain().focus().unsetColor().run();
-    }
-    setTextColorOpen(false);
-  }, [editor]);
+  const applyTextColor = useCallback(
+    (color: string | null) => {
+      if (!editor) return;
+      if (color) {
+        editor.chain().focus().setColor(color).run();
+      } else {
+        editor.chain().focus().unsetColor().run();
+      }
+      setTextColorOpen(false);
+    },
+    [editor],
+  );
 
-  const applyHighlight = useCallback((color: string | null) => {
-    if (!editor) return;
-    if (color) {
-      editor.chain().focus().setHighlight({ color }).run();
-    } else {
-      editor.chain().focus().unsetHighlight().run();
-    }
-    setHighlightOpen(false);
-  }, [editor]);
+  const applyHighlight = useCallback(
+    (color: string | null) => {
+      if (!editor) return;
+      if (color) {
+        editor.chain().focus().setHighlight({ color }).run();
+      } else {
+        editor.chain().focus().unsetHighlight().run();
+      }
+      setHighlightOpen(false);
+    },
+    [editor],
+  );
 
   const handleAddComment = useCallback(async () => {
     if (!editor || !onCreateComment || !commentAddText.trim()) return;
@@ -226,9 +257,10 @@ export function PostEditor({
           const popoverW = 320;
           const popoverH = 400;
           const left = Math.min(rect.left, window.innerWidth - popoverW - 16);
-          const top = rect.bottom + 6 + popoverH > window.innerHeight
-            ? Math.max(8, rect.top - popoverH - 6)
-            : rect.bottom + 6;
+          const top =
+            rect.bottom + 6 + popoverH > window.innerHeight
+              ? Math.max(8, rect.top - popoverH - 6)
+              : rect.bottom + 6;
           setThreadPopoverPos({ top, left });
           setActiveThreadId(threadId);
           setCommentAddOpen(false);
@@ -239,27 +271,36 @@ export function PostEditor({
     return () => editorDom.removeEventListener('click', handleEditorClick);
   }, [editor]);
 
-  const handleResolveThread = useCallback(async (threadId: number) => {
-    if (!onResolveThread) return;
-    await onResolveThread(threadId);
-    editor?.commands.updateCommentResolved(threadId, true);
-  }, [editor, onResolveThread]);
+  const handleResolveThread = useCallback(
+    async (threadId: number) => {
+      if (!onResolveThread) return;
+      await onResolveThread(threadId);
+      editor?.commands.updateCommentResolved(threadId, true);
+    },
+    [editor, onResolveThread],
+  );
 
-  const handleReopenThread = useCallback(async (threadId: number) => {
-    if (!onReopenThread) return;
-    await onReopenThread(threadId);
-    editor?.commands.updateCommentResolved(threadId, false);
-  }, [editor, onReopenThread]);
+  const handleReopenThread = useCallback(
+    async (threadId: number) => {
+      if (!onReopenThread) return;
+      await onReopenThread(threadId);
+      editor?.commands.updateCommentResolved(threadId, false);
+    },
+    [editor, onReopenThread],
+  );
 
-  const handleDeleteComment = useCallback(async (commentId: number, threadId: number) => {
-    if (!onDeleteComment) return;
-    await onDeleteComment(commentId, threadId);
-    const thread = threads?.find(t => t.id === threadId);
-    if (thread && thread.post_comments.length <= 1) {
-      editor?.commands.unsetCommentHighlight(threadId);
-      setActiveThreadId(null);
-    }
-  }, [editor, onDeleteComment, threads]);
+  const handleDeleteComment = useCallback(
+    async (commentId: number, threadId: number) => {
+      if (!onDeleteComment) return;
+      await onDeleteComment(commentId, threadId);
+      const thread = threads?.find((t) => t.id === threadId);
+      if (thread && thread.post_comments.length <= 1) {
+        editor?.commands.unsetCommentHighlight(threadId);
+        setActiveThreadId(null);
+      }
+    },
+    [editor, onDeleteComment, threads],
+  );
 
   const currentTextColor = editor?.getAttributes('textStyle').color ?? null;
   const currentHighlight = editor?.getAttributes('highlight').color ?? null;
@@ -271,7 +312,10 @@ export function PostEditor({
           <button
             type="button"
             className={`post-editor-btn${editor?.isActive('bulletList') ? ' active' : ''}`}
-            onMouseDown={e => { e.preventDefault(); editor?.chain().focus().toggleBulletList().run(); }}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              editor?.chain().focus().toggleBulletList().run();
+            }}
             data-tooltip="Lista"
           >
             <List className="h-3.5 w-3.5" />
@@ -279,7 +323,10 @@ export function PostEditor({
           <button
             type="button"
             className={`post-editor-btn${editor?.isActive('orderedList') ? ' active' : ''}`}
-            onMouseDown={e => { e.preventDefault(); editor?.chain().focus().toggleOrderedList().run(); }}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              editor?.chain().focus().toggleOrderedList().run();
+            }}
             data-tooltip="Lista numerada"
           >
             <ListOrdered className="h-3.5 w-3.5" />
@@ -288,7 +335,10 @@ export function PostEditor({
           <button
             type="button"
             className={`post-editor-btn${editor?.isActive('callout') ? ' active' : ''}`}
-            onMouseDown={e => { e.preventDefault(); editor?.chain().focus().insertCallout().run(); }}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              editor?.chain().focus().insertCallout().run();
+            }}
             data-tooltip="Callout"
           >
             <Lightbulb className="h-3.5 w-3.5" />
@@ -304,7 +354,10 @@ export function PostEditor({
           <button
             type="button"
             className={`post-editor-btn${editor.isActive('bold') ? ' active' : ''}`}
-            onMouseDown={e => { e.preventDefault(); editor.chain().focus().toggleBold().run(); }}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              editor.chain().focus().toggleBold().run();
+            }}
             data-tooltip="Negrito"
           >
             <Bold className="h-3.5 w-3.5" />
@@ -312,7 +365,10 @@ export function PostEditor({
           <button
             type="button"
             className={`post-editor-btn${editor.isActive('italic') ? ' active' : ''}`}
-            onMouseDown={e => { e.preventDefault(); editor.chain().focus().toggleItalic().run(); }}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              editor.chain().focus().toggleItalic().run();
+            }}
             data-tooltip="Itálico"
           >
             <Italic className="h-3.5 w-3.5" />
@@ -320,7 +376,10 @@ export function PostEditor({
           <button
             type="button"
             className={`post-editor-btn${editor.isActive('underline') ? ' active' : ''}`}
-            onMouseDown={e => { e.preventDefault(); editor.chain().focus().toggleUnderline().run(); }}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              editor.chain().focus().toggleUnderline().run();
+            }}
             data-tooltip="Sublinhado"
           >
             <UnderlineIcon className="h-3.5 w-3.5" />
@@ -330,28 +389,38 @@ export function PostEditor({
             <button
               type="button"
               className={`post-editor-btn${editor.isActive('link') ? ' active' : ''}`}
-              onMouseDown={e => { e.preventDefault(); openLinkPopover(); }}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                openLinkPopover();
+              }}
               data-tooltip="Inserir link"
             >
               <LinkIcon className="h-3.5 w-3.5" />
             </button>
             {linkPopoverOpen && (
-              <div className="post-editor-link-popover" onMouseDown={e => e.stopPropagation()}>
+              <div className="post-editor-link-popover" onMouseDown={(e) => e.stopPropagation()}>
                 <input
                   ref={linkInputRef}
                   className="post-editor-link-input"
                   type="url"
                   placeholder="https://..."
                   value={linkInputValue}
-                  onChange={e => setLinkInputValue(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') { e.preventDefault(); applyLink(); }
+                  onChange={(e) => setLinkInputValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      applyLink();
+                    }
                     if (e.key === 'Escape') setLinkPopoverOpen(false);
                   }}
                 />
-                <button type="button" className="post-editor-link-apply" onClick={applyLink}>OK</button>
+                <button type="button" className="post-editor-link-apply" onClick={applyLink}>
+                  OK
+                </button>
                 {editor.isActive('link') && (
-                  <button type="button" className="post-editor-link-remove" onClick={removeLink}>Remover</button>
+                  <button type="button" className="post-editor-link-remove" onClick={removeLink}>
+                    Remover
+                  </button>
                 )}
               </div>
             )}
@@ -364,9 +433,9 @@ export function PostEditor({
             <button
               type="button"
               className={`post-editor-btn${currentTextColor ? ' active' : ''}`}
-              onMouseDown={e => {
+              onMouseDown={(e) => {
                 e.preventDefault();
-                setTextColorOpen(v => !v);
+                setTextColorOpen((v) => !v);
                 setHighlightOpen(false);
                 setLinkPopoverOpen(false);
               }}
@@ -380,17 +449,17 @@ export function PostEditor({
               />
             </button>
             {textColorOpen && (
-              <div className="color-dropdown" onMouseDown={e => e.stopPropagation()}>
+              <div className="color-dropdown" onMouseDown={(e) => e.stopPropagation()}>
                 <div className="color-dropdown-label">Cor do texto</div>
                 <div className="color-dropdown-grid">
-                  {TEXT_COLORS.map(tc => (
+                  {TEXT_COLORS.map((tc) => (
                     <button
                       key={tc.name}
                       type="button"
                       className={`color-swatch${currentTextColor === tc.color || (!currentTextColor && !tc.color) ? ' active' : ''}${!tc.color ? ' color-swatch--default' : ''}`}
                       style={tc.color ? { background: tc.color } : undefined}
                       title={tc.name}
-                      onMouseDown={e => {
+                      onMouseDown={(e) => {
                         e.preventDefault();
                         applyTextColor(tc.color);
                       }}
@@ -411,9 +480,9 @@ export function PostEditor({
             <button
               type="button"
               className={`post-editor-btn${currentHighlight ? ' active' : ''}`}
-              onMouseDown={e => {
+              onMouseDown={(e) => {
                 e.preventDefault();
-                setHighlightOpen(v => !v);
+                setHighlightOpen((v) => !v);
                 setTextColorOpen(false);
                 setLinkPopoverOpen(false);
               }}
@@ -424,15 +493,19 @@ export function PostEditor({
               {currentHighlight && (
                 <span
                   className="color-indicator"
-                  style={{ background: HIGHLIGHT_COLORS.find(h => h.color === currentHighlight)?.cssColor ?? currentHighlight }}
+                  style={{
+                    background:
+                      HIGHLIGHT_COLORS.find((h) => h.color === currentHighlight)?.cssColor ??
+                      currentHighlight,
+                  }}
                 />
               )}
             </button>
             {highlightOpen && (
-              <div className="color-dropdown" onMouseDown={e => e.stopPropagation()}>
+              <div className="color-dropdown" onMouseDown={(e) => e.stopPropagation()}>
                 <div className="color-dropdown-label">Cor de fundo</div>
                 <div className="color-dropdown-grid">
-                  {HIGHLIGHT_COLORS.map(hc => (
+                  {HIGHLIGHT_COLORS.map((hc) => (
                     <button
                       key={hc.name}
                       type="button"
@@ -440,7 +513,7 @@ export function PostEditor({
                       style={hc.color ? { background: hc.cssColor } : undefined}
                       data-highlight={hc.color ?? undefined}
                       title={hc.name}
-                      onMouseDown={e => {
+                      onMouseDown={(e) => {
                         e.preventDefault();
                         applyHighlight(hc.color);
                       }}
@@ -464,14 +537,14 @@ export function PostEditor({
               ref={commentBtnRef}
               type="button"
               className="post-editor-btn"
-              onMouseDown={e => {
+              onMouseDown={(e) => {
                 e.preventDefault();
                 if (!commentAddOpen && commentBtnRef.current) {
                   const rect = commentBtnRef.current.getBoundingClientRect();
                   const left = Math.min(rect.left, window.innerWidth - 280 - 16);
                   setCommentAddPos({ top: rect.bottom + 6, left });
                 }
-                setCommentAddOpen(v => !v);
+                setCommentAddOpen((v) => !v);
                 setTextColorOpen(false);
                 setHighlightOpen(false);
                 setLinkPopoverOpen(false);
@@ -486,48 +559,64 @@ export function PostEditor({
 
       <EditorContent editor={editor} className="post-editor-content" />
 
-      {commentAddOpen && commentAddPos && createPortal(
-        <div
-          ref={commentAddRef}
-          className="comment-add-popover"
-          style={{ position: 'fixed', top: commentAddPos.top, left: commentAddPos.left, zIndex: 9999 }}
-          onMouseDown={e => e.stopPropagation()}
-        >
-          <div className="comment-add-label">Adicionar comentário</div>
-          <textarea
-            className="comment-add-input"
-            placeholder="Escreva seu comentário..."
-            value={commentAddText}
-            onChange={e => setCommentAddText(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleAddComment();
-              }
-              if (e.key === 'Escape') setCommentAddOpen(false);
+      {commentAddOpen &&
+        commentAddPos &&
+        createPortal(
+          <div
+            ref={commentAddRef}
+            className="comment-add-popover"
+            style={{
+              position: 'fixed',
+              top: commentAddPos.top,
+              left: commentAddPos.left,
+              zIndex: 9999,
             }}
-            autoFocus
-          />
-          <button
-            type="button"
-            className="comment-add-submit"
-            onClick={handleAddComment}
-            disabled={!commentAddText.trim() || commentSubmitting}
+            onMouseDown={(e) => e.stopPropagation()}
           >
-            Comentar
-          </button>
-        </div>,
-        document.body,
-      )}
+            <div className="comment-add-label">Adicionar comentário</div>
+            <textarea
+              className="comment-add-input"
+              placeholder="Escreva seu comentário..."
+              value={commentAddText}
+              onChange={(e) => setCommentAddText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleAddComment();
+                }
+                if (e.key === 'Escape') setCommentAddOpen(false);
+              }}
+              autoFocus
+            />
+            <button
+              type="button"
+              className="comment-add-submit"
+              onClick={handleAddComment}
+              disabled={!commentAddText.trim() || commentSubmitting}
+            >
+              Comentar
+            </button>
+          </div>,
+          document.body,
+        )}
 
-      {activeThreadId != null && threadPopoverPos && threads && currentUserId && currentUserRole &&
+      {activeThreadId != null &&
+        threadPopoverPos &&
+        threads &&
+        currentUserId &&
+        currentUserRole &&
         createPortal(
           <div
             ref={commentPopoverRef}
-            style={{ position: 'fixed', top: threadPopoverPos.top, left: threadPopoverPos.left, zIndex: 9999 }}
+            style={{
+              position: 'fixed',
+              top: threadPopoverPos.top,
+              left: threadPopoverPos.left,
+              zIndex: 9999,
+            }}
           >
             {(() => {
-              const thread = threads.find(t => t.id === activeThreadId);
+              const thread = threads.find((t) => t.id === activeThreadId);
               if (!thread) return null;
               return (
                 <PostCommentPopover
@@ -548,8 +637,7 @@ export function PostEditor({
             })()}
           </div>,
           document.body,
-        )
-      }
+        )}
     </div>
   );
 }

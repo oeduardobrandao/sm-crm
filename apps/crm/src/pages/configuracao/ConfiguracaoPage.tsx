@@ -10,10 +10,30 @@ import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Spinner } from '@/components/ui/spinner';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { ReportPreview } from './ReportPreview';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import {
@@ -28,18 +48,32 @@ import {
 } from '../../store';
 
 function RoleBadge({ role }: { role: string }) {
-  const map: Record<string, string> = { owner: 'badge-danger', admin: 'badge-info', agent: 'badge-neutral' };
+  const map: Record<string, string> = {
+    owner: 'badge-danger',
+    admin: 'badge-info',
+    agent: 'badge-neutral',
+  };
   const pt: Record<string, string> = { owner: 'DONO', admin: 'ADMIN', agent: 'AGENTE' };
   return <span className={`badge ${map[role] ?? 'badge-neutral'}`}>{pt[role] ?? role}</span>;
 }
 
 export function InviteStatusBadge({ status }: { status: string }) {
-  const map: Record<string, string> = { pending: 'badge-warning', expired: 'badge-danger', accepted: 'badge-success' };
-  const pt: Record<string, string> = { pending: 'PENDENTE', expired: 'EXPIRADO', accepted: 'ACEITO' };
+  const map: Record<string, string> = {
+    pending: 'badge-warning',
+    expired: 'badge-danger',
+    accepted: 'badge-success',
+  };
+  const pt: Record<string, string> = {
+    pending: 'PENDENTE',
+    expired: 'EXPIRADO',
+    accepted: 'ACEITO',
+  };
   return <span className={`badge ${map[status] ?? 'badge-neutral'}`}>{pt[status] ?? status}</span>;
 }
 
-export function computeEffectiveInviteStatus<T extends { status: string; expires_at?: string | null }>(invites: T[]): T[] {
+export function computeEffectiveInviteStatus<
+  T extends { status: string; expires_at?: string | null },
+>(invites: T[]): T[] {
   return invites.map((inv) => {
     if (inv.status === 'pending' && inv.expires_at && new Date(inv.expires_at) < new Date()) {
       return { ...inv, status: 'expired' as T['status'] };
@@ -56,7 +90,16 @@ export function InviteTimeLeft({ expiresAt, status }: { expiresAt: string; statu
   const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
   const label = days > 0 ? `${days}d ${hours}h restantes` : `${hours}h restantes`;
   return (
-    <span style={{ marginLeft: 8, color: 'var(--text-light)', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+    <span
+      style={{
+        marginLeft: 8,
+        color: 'var(--text-light)',
+        fontSize: '0.75rem',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 4,
+      }}
+    >
       <Clock size={12} />
       {label}
     </span>
@@ -89,7 +132,10 @@ export default function ConfiguracaoPage() {
   }, [profile]);
 
   const handleProfileSave = async () => {
-    if (!pNome) { toast.error('Nome é obrigatório.'); return; }
+    if (!pNome) {
+      toast.error('Nome é obrigatório.');
+      return;
+    }
     setProfileLoading(true);
     try {
       const { error } = await supabase
@@ -112,13 +158,20 @@ export default function ConfiguracaoPage() {
   const [pwLoading, setPwLoading] = useState(false);
 
   const handlePasswordSave = async () => {
-    if (!senha || senha.length < 8) { toast.error('Mínimo 8 caracteres.'); return; }
-    if (senha !== confirmar) { toast.error('As senhas não coincidem.'); return; }
+    if (!senha || senha.length < 8) {
+      toast.error('Mínimo 8 caracteres.');
+      return;
+    }
+    if (senha !== confirmar) {
+      toast.error('As senhas não coincidem.');
+      return;
+    }
     setPwLoading(true);
     try {
       const { error } = await supabase.auth.updateUser({ password: senha });
       if (error) throw error;
-      setSenha(''); setConfirmar('');
+      setSenha('');
+      setConfirmar('');
       toast.success('Senha atualizada!');
     } catch (err: unknown) {
       toast.error('Erro ao atualizar senha: ' + (err as Error).message);
@@ -151,19 +204,25 @@ export default function ConfiguracaoPage() {
 
   const handleLogoUpload = async (file: File) => {
     if (!workspace) return;
-    if (file.size > 2 * 1024 * 1024) { toast.error('Arquivo deve ser menor que 2MB.'); return; }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('Arquivo deve ser menor que 2MB.');
+      return;
+    }
     setWsLogoLoading(true);
     try {
       const bitmap = await createImageBitmap(file);
       const canvas = document.createElement('canvas');
       const size = Math.min(bitmap.width, bitmap.height, 512);
-      canvas.width = size; canvas.height = size;
+      canvas.width = size;
+      canvas.height = size;
       const ctx = canvas.getContext('2d')!;
       ctx.drawImage(bitmap, 0, 0, size, size);
-      const blob: Blob = await new Promise(res => canvas.toBlob(b => res(b!), 'image/png'));
+      const blob: Blob = await new Promise((res) => canvas.toBlob((b) => res(b!), 'image/png'));
 
       const path = `workspaces/${workspace.id}/logo.png`;
-      const { error: upErr } = await supabase.storage.from('avatars').upload(path, blob, { upsert: true, contentType: 'image/png' });
+      const { error: upErr } = await supabase.storage
+        .from('avatars')
+        .upload(path, blob, { upsert: true, contentType: 'image/png' });
       if (upErr) throw upErr;
 
       const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
@@ -232,14 +291,15 @@ export default function ConfiguracaoPage() {
   }, [branding]);
 
   const brandingMutation = useMutation({
-    mutationFn: () => updateWorkspaceBranding({
-      brand_color: brandColor,
-      report_secondary_color: secondaryColor,
-      report_accent_color: accentColor,
-      report_font_family: reportFont,
-      report_theme: reportTheme,
-      send_report_email: sendReportEmail,
-    }),
+    mutationFn: () =>
+      updateWorkspaceBranding({
+        brand_color: brandColor,
+        report_secondary_color: secondaryColor,
+        report_accent_color: accentColor,
+        report_font_family: reportFont,
+        report_theme: reportTheme,
+        send_report_email: sendReportEmail,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workspace-branding'] });
       toast.success('Configurações de relatório salvas!');
@@ -263,13 +323,18 @@ export default function ConfiguracaoPage() {
     enabled: isOwnerOrAdmin && !!profile?.conta_id,
   });
 
-  const autoSyncEnabled = (igAccounts ?? []).some((a: Record<string, unknown>) => a.auto_sync_enabled);
+  const autoSyncEnabled = (igAccounts ?? []).some(
+    (a: Record<string, unknown>) => a.auto_sync_enabled,
+  );
 
   const handleAutoSyncToggle = async (checked: boolean) => {
     if (!igAccounts || igAccounts.length === 0) return;
     try {
       const ids = igAccounts.map((a: Record<string, unknown>) => a.id);
-      const { error } = await supabase.from('instagram_accounts').update({ auto_sync_enabled: checked }).in('id', ids);
+      const { error } = await supabase
+        .from('instagram_accounts')
+        .update({ auto_sync_enabled: checked })
+        .in('id', ids);
       if (error) throw error;
       queryClient.invalidateQueries({ queryKey: ['igAccountsForSync'] });
       toast.success(checked ? 'Auto-sync ativado.' : 'Auto-sync desativado.');
@@ -289,7 +354,12 @@ export default function ConfiguracaoPage() {
     queryKey: ['invites'],
     queryFn: async () => {
       if (!profile?.conta_id) return [];
-      const { data } = await supabase.from('invites').select('*').eq('conta_id', profile.conta_id).in('status', ['pending', 'expired']).order('created_at', { ascending: false });
+      const { data } = await supabase
+        .from('invites')
+        .select('*')
+        .eq('conta_id', profile.conta_id)
+        .in('status', ['pending', 'expired'])
+        .order('created_at', { ascending: false });
       return computeEffectiveInviteStatus(data ?? []);
     },
     enabled: isOwnerOrAdmin && !!profile?.conta_id,
@@ -297,7 +367,11 @@ export default function ConfiguracaoPage() {
 
   // Edit role modal
   const [editRoleOpen, setEditRoleOpen] = useState(false);
-  const [editRoleUser, setEditRoleUser] = useState<{ id: string; nome: string; role: string } | null>(null);
+  const [editRoleUser, setEditRoleUser] = useState<{
+    id: string;
+    nome: string;
+    role: string;
+  } | null>(null);
   const [editRoleValue, setEditRoleValue] = useState('');
   const [editRoleLoading, setEditRoleLoading] = useState(false);
   const [removeUserId, setRemoveUserId] = useState<string | null>(null);
@@ -344,20 +418,29 @@ export default function ConfiguracaoPage() {
   const [cancelInviteId, setCancelInviteId] = useState<string | null>(null);
 
   const handleInvite = async () => {
-    if (!inviteEmail) { toast.error('Email é obrigatório.'); return; }
+    if (!inviteEmail) {
+      toast.error('Email é obrigatório.');
+      return;
+    }
     setInviteLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/invite-user`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token}`,
+        },
         body: JSON.stringify({ email: inviteEmail, role: inviteRole }),
       });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || result.message || `Erro ${res.status}`);
       refetchInvites();
       setInviteOpen(false);
-      setInviteEmail(''); setInviteRole('agent');
+      setInviteEmail('');
+      setInviteRole('agent');
       toast.success('Convite enviado!');
     } catch (err: unknown) {
       toast.error('Erro ao convidar: ' + (err as Error).message);
@@ -369,11 +452,16 @@ export default function ConfiguracaoPage() {
   const handleCancelInvite = async () => {
     if (cancelInviteId == null) return;
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/invite-user?id=${cancelInviteId}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${session?.access_token}` },
-      });
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/invite-user?id=${cancelInviteId}`,
+        {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${session?.access_token}` },
+        },
+      );
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || `Erro ${res.status}`);
       await refetchInvites();
@@ -387,10 +475,15 @@ export default function ConfiguracaoPage() {
 
   const handleResendInvite = async (invite: Record<string, string>) => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/invite-user`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token}`,
+        },
         body: JSON.stringify({ email: invite.email, role: invite.role }),
       });
       const result = await res.json();
@@ -402,35 +495,98 @@ export default function ConfiguracaoPage() {
     }
   };
 
-  if (!user) return <div style={{ padding: '2rem', textAlign: 'center' }}><Spinner size="lg" /></div>;
+  if (!user)
+    return (
+      <div style={{ padding: '2rem', textAlign: 'center' }}>
+        <Spinner size="lg" />
+      </div>
+    );
 
   const initials = profile?.nome ? getInitials(profile.nome) : '??';
 
   return (
     <div className="page-content" style={{ maxWidth: 900, margin: '0 auto' }}>
-      <h2 className="header-title" style={{ marginBottom: '1.5rem' }}>Configurações</h2>
+      <h2 className="header-title" style={{ marginBottom: '1.5rem' }}>
+        Configurações
+      </h2>
 
       {/* Profile Card */}
       <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem', minWidth: 0 }}>
-          <div className="avatar" style={{ width: 64, height: 64, borderRadius: '50%', background: 'var(--primary-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: '1.4rem', flexShrink: 0 }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '1rem',
+            marginBottom: '1.5rem',
+            minWidth: 0,
+          }}
+        >
+          <div
+            className="avatar"
+            style={{
+              width: 64,
+              height: 64,
+              borderRadius: '50%',
+              background: 'var(--primary-color)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#fff',
+              fontWeight: 700,
+              fontSize: '1.4rem',
+              flexShrink: 0,
+            }}
+          >
             {initials}
           </div>
           <div style={{ minWidth: 0 }}>
-            <h3 style={{ margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{profile?.nome ?? user.email}</h3>
-            <p style={{ color: 'var(--text-muted)', margin: '4px 0 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</p>
+            <h3
+              style={{
+                margin: 0,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {profile?.nome ?? user.email}
+            </h3>
+            <p
+              style={{
+                color: 'var(--text-muted)',
+                margin: '4px 0 4px',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {user.email}
+            </p>
             <span className="badge badge-success">Conta Ativa</span>
           </div>
         </div>
 
         <div className="space-y-3">
           <div className="config-form-grid">
-            <div className="space-y-1"><Label>Nome *</Label><Input value={pNome} onChange={e => setPNome(e.target.value)} /></div>
-            <div className="space-y-1"><Label>Empresa</Label><Input value={pEmpresa} onChange={e => setPEmpresa(e.target.value)} /></div>
-            <div className="space-y-1"><Label>Telefone</Label><Input value={pTelefone} onChange={e => setPTelefone(e.target.value)} /></div>
-            <div className="space-y-1"><Label>WhatsApp</Label><Input value={pWhatsapp} onChange={e => setPWhatsapp(e.target.value)} /></div>
+            <div className="space-y-1">
+              <Label>Nome *</Label>
+              <Input value={pNome} onChange={(e) => setPNome(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label>Empresa</Label>
+              <Input value={pEmpresa} onChange={(e) => setPEmpresa(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label>Telefone</Label>
+              <Input value={pTelefone} onChange={(e) => setPTelefone(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label>WhatsApp</Label>
+              <Input value={pWhatsapp} onChange={(e) => setPWhatsapp(e.target.value)} />
+            </div>
           </div>
-          <Button onClick={handleProfileSave} disabled={profileLoading}>{profileLoading && <Spinner size="sm" />} Salvar Perfil</Button>
+          <Button onClick={handleProfileSave} disabled={profileLoading}>
+            {profileLoading && <Spinner size="sm" />} Salvar Perfil
+          </Button>
         </div>
       </div>
 
@@ -438,9 +594,17 @@ export default function ConfiguracaoPage() {
       <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
         <h3 className="config-title">Alterar Senha</h3>
         <div className="space-y-3">
-          <div className="space-y-1"><Label>Nova Senha</Label><PasswordInput value={senha} onChange={e => setSenha(e.target.value)} /></div>
-          <div className="space-y-1"><Label>Confirmar Nova Senha</Label><PasswordInput value={confirmar} onChange={e => setConfirmar(e.target.value)} /></div>
-          <Button onClick={handlePasswordSave} disabled={pwLoading}>{pwLoading && <Spinner size="sm" />} Atualizar Senha</Button>
+          <div className="space-y-1">
+            <Label>Nova Senha</Label>
+            <PasswordInput value={senha} onChange={(e) => setSenha(e.target.value)} />
+          </div>
+          <div className="space-y-1">
+            <Label>Confirmar Nova Senha</Label>
+            <PasswordInput value={confirmar} onChange={(e) => setConfirmar(e.target.value)} />
+          </div>
+          <Button onClick={handlePasswordSave} disabled={pwLoading}>
+            {pwLoading && <Spinner size="sm" />} Atualizar Senha
+          </Button>
         </div>
       </div>
 
@@ -462,15 +626,32 @@ export default function ConfiguracaoPage() {
             <Label style={{ display: 'block', marginBottom: 8 }}>Logo</Label>
             {wsLogoUrl && (
               <div style={{ marginBottom: 12 }}>
-                <img src={wsLogoUrl} alt="Logo" style={{ maxHeight: 80, borderRadius: 8, border: '1px solid var(--border-color)' }} />
+                <img
+                  src={wsLogoUrl}
+                  alt="Logo"
+                  style={{
+                    maxHeight: 80,
+                    borderRadius: 8,
+                    border: '1px solid var(--border-color)',
+                  }}
+                />
               </div>
             )}
             <div style={{ display: 'flex', gap: 8 }}>
-              <Button variant="outline" disabled={wsLogoLoading} onClick={() => logoInputRef.current?.click()}>
+              <Button
+                variant="outline"
+                disabled={wsLogoLoading}
+                onClick={() => logoInputRef.current?.click()}
+              >
                 {wsLogoLoading && <Spinner size="sm" />} {wsLogoUrl ? 'Trocar Logo' : 'Enviar Logo'}
               </Button>
               {wsLogoUrl && (
-                <Button variant="ghost" className="text-destructive" disabled={wsLogoLoading} onClick={() => setRemoveLogoOpen(true)}>
+                <Button
+                  variant="ghost"
+                  className="text-destructive"
+                  disabled={wsLogoLoading}
+                  onClick={() => setRemoveLogoOpen(true)}
+                >
                   Remover
                 </Button>
               )}
@@ -480,16 +661,24 @@ export default function ConfiguracaoPage() {
               type="file"
               accept="image/png,image/jpeg,image/webp"
               style={{ display: 'none' }}
-              onChange={e => { const f = e.target.files?.[0]; if (f) handleLogoUpload(f); e.target.value = ''; }}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleLogoUpload(f);
+                e.target.value = '';
+              }}
             />
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: 6 }}>PNG, JPG ou WebP. Máx 2MB. Será redimensionado para 512px.</p>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: 6 }}>
+              PNG, JPG ou WebP. Máx 2MB. Será redimensionado para 512px.
+            </p>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginTop: 12 }}>
             <div style={{ flex: 1 }}>
               <Label style={{ display: 'block', marginBottom: 6 }}>Nome do Workspace</Label>
-              <Input value={wsName} onChange={e => setWsName(e.target.value)} />
+              <Input value={wsName} onChange={(e) => setWsName(e.target.value)} />
             </div>
-            <Button className="mb-0" onClick={handleWsSave}>Salvar</Button>
+            <Button className="mb-0" onClick={handleWsSave}>
+              Salvar
+            </Button>
           </div>
         </div>
       )}
@@ -502,39 +691,104 @@ export default function ConfiguracaoPage() {
             Personalize as cores, fonte e tema dos relatórios mensais enviados para seus clientes.
           </p>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: '1.5rem', alignItems: 'start' }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 300px',
+              gap: '1.5rem',
+              alignItems: 'start',
+            }}
+          >
             <div>
               {/* Color pickers */}
-              <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', marginBottom: '1.25rem' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  gap: '1.5rem',
+                  flexWrap: 'wrap',
+                  marginBottom: '1.25rem',
+                }}
+              >
                 <div>
                   <Label style={{ display: 'block', marginBottom: 6 }}>Cor primária</Label>
                   <input
                     type="color"
                     value={brandColor}
-                    onChange={e => setBrandColor(e.target.value)}
-                    style={{ width: 48, height: 36, padding: 2, borderRadius: 6, border: '1px solid var(--border-color)', cursor: 'pointer', background: 'none' }}
+                    onChange={(e) => setBrandColor(e.target.value)}
+                    style={{
+                      width: 48,
+                      height: 36,
+                      padding: 2,
+                      borderRadius: 6,
+                      border: '1px solid var(--border-color)',
+                      cursor: 'pointer',
+                      background: 'none',
+                    }}
                   />
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4, fontFamily: 'var(--font-mono)' }}>{brandColor}</div>
+                  <div
+                    style={{
+                      fontSize: '0.75rem',
+                      color: 'var(--text-muted)',
+                      marginTop: 4,
+                      fontFamily: 'var(--font-mono)',
+                    }}
+                  >
+                    {brandColor}
+                  </div>
                 </div>
                 <div>
                   <Label style={{ display: 'block', marginBottom: 6 }}>Cor secundária</Label>
                   <input
                     type="color"
                     value={secondaryColor}
-                    onChange={e => setSecondaryColor(e.target.value)}
-                    style={{ width: 48, height: 36, padding: 2, borderRadius: 6, border: '1px solid var(--border-color)', cursor: 'pointer', background: 'none' }}
+                    onChange={(e) => setSecondaryColor(e.target.value)}
+                    style={{
+                      width: 48,
+                      height: 36,
+                      padding: 2,
+                      borderRadius: 6,
+                      border: '1px solid var(--border-color)',
+                      cursor: 'pointer',
+                      background: 'none',
+                    }}
                   />
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4, fontFamily: 'var(--font-mono)' }}>{secondaryColor}</div>
+                  <div
+                    style={{
+                      fontSize: '0.75rem',
+                      color: 'var(--text-muted)',
+                      marginTop: 4,
+                      fontFamily: 'var(--font-mono)',
+                    }}
+                  >
+                    {secondaryColor}
+                  </div>
                 </div>
                 <div>
                   <Label style={{ display: 'block', marginBottom: 6 }}>Cor de destaque</Label>
                   <input
                     type="color"
                     value={accentColor}
-                    onChange={e => setAccentColor(e.target.value)}
-                    style={{ width: 48, height: 36, padding: 2, borderRadius: 6, border: '1px solid var(--border-color)', cursor: 'pointer', background: 'none' }}
+                    onChange={(e) => setAccentColor(e.target.value)}
+                    style={{
+                      width: 48,
+                      height: 36,
+                      padding: 2,
+                      borderRadius: 6,
+                      border: '1px solid var(--border-color)',
+                      cursor: 'pointer',
+                      background: 'none',
+                    }}
                   />
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4, fontFamily: 'var(--font-mono)' }}>{accentColor}</div>
+                  <div
+                    style={{
+                      fontSize: '0.75rem',
+                      color: 'var(--text-muted)',
+                      marginTop: 4,
+                      fontFamily: 'var(--font-mono)',
+                    }}
+                  >
+                    {accentColor}
+                  </div>
                 </div>
               </div>
 
@@ -542,7 +796,9 @@ export default function ConfiguracaoPage() {
               <div style={{ marginBottom: '1.25rem' }}>
                 <Label style={{ display: 'block', marginBottom: 6 }}>Fonte do relatório</Label>
                 <Select value={reportFont} onValueChange={setReportFont}>
-                  <SelectTrigger style={{ maxWidth: 260 }}><SelectValue /></SelectTrigger>
+                  <SelectTrigger style={{ maxWidth: 260 }}>
+                    <SelectValue />
+                  </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="DM Sans">DM Sans</SelectItem>
                     <SelectItem value="Inter">Inter</SelectItem>
@@ -554,10 +810,17 @@ export default function ConfiguracaoPage() {
               </div>
 
               {/* Theme toggle */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.25rem' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '1rem',
+                  marginBottom: '1.25rem',
+                }}
+              >
                 <Switch
                   checked={reportTheme === 'dark'}
-                  onCheckedChange={checked => setReportTheme(checked ? 'dark' : 'light')}
+                  onCheckedChange={(checked) => setReportTheme(checked ? 'dark' : 'light')}
                 />
                 <div>
                   <div style={{ fontWeight: 500 }}>Tema do relatório</div>
@@ -568,20 +831,28 @@ export default function ConfiguracaoPage() {
               </div>
 
               {/* Email delivery toggle */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
-                <Switch
-                  checked={sendReportEmail}
-                  onCheckedChange={setSendReportEmail}
-                />
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '1rem',
+                  marginBottom: '1.5rem',
+                }}
+              >
+                <Switch checked={sendReportEmail} onCheckedChange={setSendReportEmail} />
                 <div>
                   <div style={{ fontWeight: 500 }}>Enviar relatórios por e-mail</div>
                   <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                    Quando ativado, relatórios mensais serão enviados automaticamente para clientes habilitados.
+                    Quando ativado, relatórios mensais serão enviados automaticamente para clientes
+                    habilitados.
                   </div>
                 </div>
               </div>
 
-              <Button onClick={() => brandingMutation.mutate()} disabled={brandingMutation.isPending}>
+              <Button
+                onClick={() => brandingMutation.mutate()}
+                disabled={brandingMutation.isPending}
+              >
                 {brandingMutation.isPending && <Spinner size="sm" />} Salvar
               </Button>
             </div>
@@ -604,7 +875,11 @@ export default function ConfiguracaoPage() {
           <h3 className="config-title">Auto-Sync Instagram</h3>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             <Switch checked={autoSyncEnabled} onCheckedChange={handleAutoSyncToggle} />
-            <span>{autoSyncEnabled ? 'Sincronização automática ativada' : 'Sincronização automática desativada'}</span>
+            <span>
+              {autoSyncEnabled
+                ? 'Sincronização automática ativada'
+                : 'Sincronização automática desativada'}
+            </span>
           </div>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: 8 }}>
             Quando ativada, os dados do Instagram são sincronizados automaticamente uma vez por dia.
@@ -615,25 +890,66 @@ export default function ConfiguracaoPage() {
       {/* Workspace Members */}
       {isOwnerOrAdmin && (
         <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '1rem',
+            }}
+          >
             <h3 className="config-title">Membros do Workspace</h3>
-            <Button onClick={() => setInviteOpen(true)}><Plus className="h-4 w-4" /> Convidar</Button>
+            <Button onClick={() => setInviteOpen(true)}>
+              <Plus className="h-4 w-4" /> Convidar
+            </Button>
           </div>
 
           <div style={{ marginBottom: '1rem' }}>
             {(wsUsers ?? []).map((u: Record<string, string>) => (
               <div key={u.id} className="config-member-row">
-                <div className="avatar" style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--primary-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, flexShrink: 0 }}>
+                <div
+                  className="avatar"
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: '50%',
+                    background: 'var(--primary-color)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#fff',
+                    fontWeight: 700,
+                    flexShrink: 0,
+                  }}
+                >
                   {getInitials(u.nome || '?')}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.nome}</div>
+                  <div
+                    style={{
+                      fontWeight: 500,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {u.nome}
+                  </div>
                   <RoleBadge role={u.role} />
                 </div>
                 {u.id !== user?.id && (
                   <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                    <Button size="sm" variant="outline" onClick={() => handleEditRole(u)}>Função</Button>
-                    <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setRemoveUserId(u.id)}>Remover</Button>
+                    <Button size="sm" variant="outline" onClick={() => handleEditRole(u)}>
+                      Função
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive"
+                      onClick={() => setRemoveUserId(u.id)}
+                    >
+                      Remover
+                    </Button>
                   </div>
                 )}
               </div>
@@ -643,24 +959,66 @@ export default function ConfiguracaoPage() {
           {/* Invites */}
           {(invites ?? []).length > 0 && (
             <>
-              <h4 style={{ marginBottom: 8, fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Convites</h4>
+              <h4
+                style={{
+                  marginBottom: 8,
+                  fontSize: '0.85rem',
+                  color: 'var(--text-muted)',
+                  textTransform: 'uppercase',
+                }}
+              >
+                Convites
+              </h4>
               {(invites ?? []).map((inv: Record<string, string>) => (
                 <div key={inv.id} className="config-member-row">
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ fontWeight: 500, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{inv.email}</span>
-                    <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span
+                      style={{
+                        fontWeight: 500,
+                        display: 'block',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {inv.email}
+                    </span>
+                    <div
+                      style={{
+                        marginTop: 4,
+                        display: 'flex',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                      }}
+                    >
                       <InviteStatusBadge status={inv.status} />
-                      <span style={{ marginLeft: 8, color: 'var(--text-muted)', fontSize: '0.8rem' }}>
-                        {({ owner: 'dono', admin: 'admin', agent: 'agente' } as Record<string, string>)[inv.role] ?? inv.role}
+                      <span
+                        style={{ marginLeft: 8, color: 'var(--text-muted)', fontSize: '0.8rem' }}
+                      >
+                        {(
+                          { owner: 'dono', admin: 'admin', agent: 'agente' } as Record<
+                            string,
+                            string
+                          >
+                        )[inv.role] ?? inv.role}
                       </span>
                       <InviteTimeLeft expiresAt={inv.expires_at} status={inv.status} />
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
                     {(inv.status === 'expired' || inv.status === 'pending') && (
-                      <Button size="sm" variant="outline" onClick={() => handleResendInvite(inv)}>Reenviar</Button>
+                      <Button size="sm" variant="outline" onClick={() => handleResendInvite(inv)}>
+                        Reenviar
+                      </Button>
                     )}
-                    <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setCancelInviteId(inv.id)}>Cancelar</Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive"
+                      onClick={() => setCancelInviteId(inv.id)}
+                    >
+                      Cancelar
+                    </Button>
                   </div>
                 </div>
               ))}
@@ -675,15 +1033,24 @@ export default function ConfiguracaoPage() {
         <div className="client-info-grid">
           <div className="client-info-item">
             <span className="client-info-label">ID do Usuário</span>
-            <span className="client-info-value" style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{user.id.substring(0, 18)}...</span>
+            <span
+              className="client-info-value"
+              style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}
+            >
+              {user.id.substring(0, 18)}...
+            </span>
           </div>
           <div className="client-info-item">
             <span className="client-info-label">Criado em</span>
-            <span className="client-info-value">{user.created_at ? new Date(user.created_at).toLocaleDateString('pt-BR') : '—'}</span>
+            <span className="client-info-value">
+              {user.created_at ? new Date(user.created_at).toLocaleDateString('pt-BR') : '—'}
+            </span>
           </div>
           <div className="client-info-item">
             <span className="client-info-label">Último acesso</span>
-            <span className="client-info-value">{user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleString('pt-BR') : '—'}</span>
+            <span className="client-info-value">
+              {user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleString('pt-BR') : '—'}
+            </span>
           </div>
           <div className="client-info-item">
             <span className="client-info-label">Provedor</span>
@@ -695,17 +1062,23 @@ export default function ConfiguracaoPage() {
       {/* Logout */}
       <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
         <h3 className="config-title">Sessão</h3>
-        <Button variant="ghost" className="text-destructive" onClick={signOut}><LogOut className="h-4 w-4" /> Sair da Conta</Button>
+        <Button variant="ghost" className="text-destructive" onClick={signOut}>
+          <LogOut className="h-4 w-4" /> Sair da Conta
+        </Button>
       </div>
 
       {/* Edit Role Modal */}
       <Dialog open={editRoleOpen} onOpenChange={setEditRoleOpen}>
         <DialogContent onConfirmClose={() => setEditRoleOpen(false)}>
-          <DialogHeader><DialogTitle>Editar função — {editRoleUser?.nome}</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Editar função — {editRoleUser?.nome}</DialogTitle>
+          </DialogHeader>
           <div className="space-y-1">
             <Label>Função</Label>
             <Select value={editRoleValue} onValueChange={setEditRoleValue}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value="admin">Admin</SelectItem>
                 <SelectItem value="agent">Agente</SelectItem>
@@ -713,22 +1086,52 @@ export default function ConfiguracaoPage() {
             </Select>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditRoleOpen(false)}>Cancelar</Button>
-            <Button onClick={handleEditRoleSave} disabled={editRoleLoading}>{editRoleLoading && <Spinner size="sm" />} Salvar</Button>
+            <Button variant="outline" onClick={() => setEditRoleOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleEditRoleSave} disabled={editRoleLoading}>
+              {editRoleLoading && <Spinner size="sm" />} Salvar
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Invite Modal */}
-      <Dialog open={inviteOpen} onOpenChange={open => { if (!open) { setInviteEmail(''); setInviteRole('agent'); } setInviteOpen(open); }}>
-        <DialogContent onConfirmClose={() => { setInviteEmail(''); setInviteRole('agent'); setInviteOpen(false); }}>
-          <DialogHeader><DialogTitle>Convidar Membro</DialogTitle></DialogHeader>
+      <Dialog
+        open={inviteOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setInviteEmail('');
+            setInviteRole('agent');
+          }
+          setInviteOpen(open);
+        }}
+      >
+        <DialogContent
+          onConfirmClose={() => {
+            setInviteEmail('');
+            setInviteRole('agent');
+            setInviteOpen(false);
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Convidar Membro</DialogTitle>
+          </DialogHeader>
           <div className="space-y-3">
-            <div className="space-y-1"><Label>Email *</Label><Input type="email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} /></div>
+            <div className="space-y-1">
+              <Label>Email *</Label>
+              <Input
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+              />
+            </div>
             <div className="space-y-1">
               <Label>Função</Label>
               <Select value={inviteRole} onValueChange={setInviteRole}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="admin">Admin</SelectItem>
                   <SelectItem value="agent">Agente</SelectItem>
@@ -737,16 +1140,34 @@ export default function ConfiguracaoPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setInviteOpen(false); setInviteEmail(''); setInviteRole('agent'); }}>Cancelar</Button>
-            <Button onClick={handleInvite} disabled={inviteLoading}>{inviteLoading && <Spinner size="sm" />} Enviar Convite</Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setInviteOpen(false);
+                setInviteEmail('');
+                setInviteRole('agent');
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button onClick={handleInvite} disabled={inviteLoading}>
+              {inviteLoading && <Spinner size="sm" />} Enviar Convite
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Remove User Confirm */}
-      <AlertDialog open={removeUserId !== null} onOpenChange={open => { if (!open) setRemoveUserId(null); }}>
+      <AlertDialog
+        open={removeUserId !== null}
+        onOpenChange={(open) => {
+          if (!open) setRemoveUserId(null);
+        }}
+      >
         <AlertDialogContent>
-          <AlertDialogHeader><AlertDialogTitle>Remover membro?</AlertDialogTitle></AlertDialogHeader>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover membro?</AlertDialogTitle>
+          </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={handleRemoveUser}>Remover</AlertDialogAction>
@@ -757,7 +1178,9 @@ export default function ConfiguracaoPage() {
       {/* Remove Logo Confirm */}
       <AlertDialog open={removeLogoOpen} onOpenChange={setRemoveLogoOpen}>
         <AlertDialogContent>
-          <AlertDialogHeader><AlertDialogTitle>Remover logo?</AlertDialogTitle></AlertDialogHeader>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover logo?</AlertDialogTitle>
+          </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={handleRemoveLogo}>Remover</AlertDialogAction>
@@ -766,9 +1189,16 @@ export default function ConfiguracaoPage() {
       </AlertDialog>
 
       {/* Cancel Invite Confirm */}
-      <AlertDialog open={cancelInviteId !== null} onOpenChange={open => { if (!open) setCancelInviteId(null); }}>
+      <AlertDialog
+        open={cancelInviteId !== null}
+        onOpenChange={(open) => {
+          if (!open) setCancelInviteId(null);
+        }}
+      >
         <AlertDialogContent>
-          <AlertDialogHeader><AlertDialogTitle>Cancelar convite?</AlertDialogTitle></AlertDialogHeader>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancelar convite?</AlertDialogTitle>
+          </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Não</AlertDialogCancel>
             <AlertDialogAction onClick={handleCancelInvite}>Sim</AlertDialogAction>

@@ -139,7 +139,9 @@ function FolderCards({
               <ArrowUpRight className="h-3.5 w-3.5 text-[var(--text-muted)]" />
             </div>
             <div>
-              <p className="text-[13px] font-semibold text-[var(--text-main)] leading-tight line-clamp-1">{f.name}</p>
+              <p className="text-[13px] font-semibold text-[var(--text-main)] leading-tight line-clamp-1">
+                {f.name}
+              </p>
               <p className="font-mono text-[10px] text-[var(--text-muted)] mt-0.5 font-semibold tracking-wide uppercase">
                 {f.file_count ?? 0} arquivos
               </p>
@@ -238,7 +240,8 @@ function FolderList({
 
 function StorageCard({ storage }: { storage: { used_bytes: number; quota_bytes: number } }) {
   const totalFiles = '--';
-  const pct = storage.quota_bytes > 0 ? Math.round((storage.used_bytes / storage.quota_bytes) * 100) : 0;
+  const pct =
+    storage.quota_bytes > 0 ? Math.round((storage.used_bytes / storage.quota_bytes) * 100) : 0;
 
   return (
     <div className="mx-3 mt-4">
@@ -264,7 +267,12 @@ function StorageCard({ storage }: { storage: { used_bytes: number; quota_bytes: 
               className="h-full rounded-full"
               style={{
                 width: `${Math.min(pct, 100)}%`,
-                backgroundColor: pct >= 100 ? 'var(--danger)' : pct >= 90 ? 'var(--warning)' : 'var(--primary-color)',
+                backgroundColor:
+                  pct >= 100
+                    ? 'var(--danger)'
+                    : pct >= 90
+                      ? 'var(--warning)'
+                      : 'var(--primary-color)',
               }}
             />
           </div>
@@ -333,7 +341,12 @@ function MobileFileGrid({
             >
               <div className="relative w-full aspect-square bg-[var(--surface-hover)] flex items-center justify-center overflow-hidden">
                 {(f.kind === 'image' || f.kind === 'video') && (f.thumbnail_url ?? f.url) ? (
-                  <img src={(f.thumbnail_url ?? f.url)!} alt={f.name} className="w-full h-full object-cover" loading="lazy" />
+                  <img
+                    src={(f.thumbnail_url ?? f.url)!}
+                    alt={f.name}
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                  />
                 ) : (
                   <FileIcon kind={f.kind} className="h-8 w-8 text-[var(--text-muted)] opacity-40" />
                 )}
@@ -354,7 +367,9 @@ function MobileFileGrid({
               </div>
               <div className="px-2.5 py-1.5">
                 <p className="text-xs font-medium text-[var(--text-main)] truncate">{f.name}</p>
-                <p className="font-mono text-[10px] text-[var(--text-muted)] mt-0.5">{formatBytes(f.size_bytes)}</p>
+                <p className="font-mono text-[10px] text-[var(--text-muted)] mt-0.5">
+                  {formatBytes(f.size_bytes)}
+                </p>
               </div>
             </button>
           </FileContextMenu>
@@ -434,7 +449,11 @@ function MobileFileList({
               )}
               <div className="w-10 h-10 rounded-sm bg-[var(--surface-hover)] flex items-center justify-center flex-shrink-0 overflow-hidden">
                 {(f.kind === 'image' || f.kind === 'video') && (f.thumbnail_url ?? f.url) ? (
-                  <img src={(f.thumbnail_url ?? f.url)!} alt={f.name} className="w-full h-full object-cover" />
+                  <img
+                    src={(f.thumbnail_url ?? f.url)!}
+                    alt={f.name}
+                    className="w-full h-full object-cover"
+                  />
                 ) : (
                   <FileIcon kind={f.kind} className="h-[18px] w-[18px] text-[var(--text-muted)]" />
                 )}
@@ -492,16 +511,20 @@ export function MobileArquivosView({
   const isInSelectionMode = selectionCount > 0;
   const isInsideFolder = currentFolderId !== null;
   const parentId = breadcrumbs.length >= 2 ? breadcrumbs[breadcrumbs.length - 2].id : null;
-  const currentName = breadcrumbs.length > 0 ? breadcrumbs[breadcrumbs.length - 1].name : 'Arquivos';
+  const currentName =
+    breadcrumbs.length > 0 ? breadcrumbs[breadcrumbs.length - 1].name : 'Arquivos';
 
   const filteredFiles = useMemo(() => filterFiles(files, filter), [files, filter]);
 
-  const fileCounts = useMemo(() => ({
-    todos: files.length,
-    imagens: files.filter((f) => f.kind === 'image').length,
-    videos: files.filter((f) => f.kind === 'video').length,
-    docs: files.filter((f) => f.kind === 'document').length,
-  }), [files]);
+  const fileCounts = useMemo(
+    () => ({
+      todos: files.length,
+      imagens: files.filter((f) => f.kind === 'image').length,
+      videos: files.filter((f) => f.kind === 'video').length,
+      docs: files.filter((f) => f.kind === 'document').length,
+    }),
+    [files],
+  );
 
   const totalFileCount = files.length + subfolders.reduce((a, f) => a + (f.file_count ?? 0), 0);
 
@@ -518,11 +541,16 @@ export function MobileArquivosView({
                 >
                   <ChevronLeft className="h-[18px] w-[18px]" />
                 </button>
-                <button onClick={() => onNavigate(null)} className="text-[var(--text-light)] font-medium truncate">
+                <button
+                  onClick={() => onNavigate(null)}
+                  className="text-[var(--text-light)] font-medium truncate"
+                >
                   Arquivos
                 </button>
                 <ChevronRight className="h-3 w-3 text-[var(--text-muted)] opacity-50 flex-shrink-0" />
-                <span className="text-[var(--text-main)] font-semibold truncate">{currentName}</span>
+                <span className="text-[var(--text-main)] font-semibold truncate">
+                  {currentName}
+                </span>
               </>
             ) : (
               <span className="text-[var(--text-light)] font-medium pl-1">Todos os clientes</span>
@@ -550,7 +578,10 @@ export function MobileArquivosView({
           </h1>
           <div className="flex gap-3 text-xs text-[var(--text-light)] mt-1">
             <span>
-              <strong className="text-[var(--text-main)] font-mono">{isInsideFolder ? files.length : totalFileCount}</strong> arquivos
+              <strong className="text-[var(--text-main)] font-mono">
+                {isInsideFolder ? files.length : totalFileCount}
+              </strong>{' '}
+              arquivos
             </span>
             <span className="text-[var(--text-muted)]">·</span>
             <span className="font-mono">
@@ -574,7 +605,9 @@ export function MobileArquivosView({
                   }`}
                 >
                   {opt.label}
-                  <span className="font-mono text-[10px] opacity-70 font-semibold">{fileCounts[opt.id]}</span>
+                  <span className="font-mono text-[10px] opacity-70 font-semibold">
+                    {fileCounts[opt.id]}
+                  </span>
                 </button>
               );
             })}
@@ -649,24 +682,25 @@ export function MobileArquivosView({
                 <p className="font-mono text-[11px] tracking-[.12em] uppercase text-[var(--text-muted)] font-semibold mb-2 px-4">
                   Pastas
                 </p>
-                {viewMode === 'grid'
-                  ? <FolderCards
-                      folders={subfolders}
-                      onOpen={onNavigate}
-                      selectedIds={selectedIds}
-                      isInSelectionMode={isInSelectionMode}
-                      onToggleSelect={onToggleSelect}
-                      longPressTimer={longPressTimer}
-                    />
-                  : <FolderList
-                      folders={subfolders}
-                      onOpen={onNavigate}
-                      selectedIds={selectedIds}
-                      isInSelectionMode={isInSelectionMode}
-                      onToggleSelect={onToggleSelect}
-                      longPressTimer={longPressTimer}
-                    />
-                }
+                {viewMode === 'grid' ? (
+                  <FolderCards
+                    folders={subfolders}
+                    onOpen={onNavigate}
+                    selectedIds={selectedIds}
+                    isInSelectionMode={isInSelectionMode}
+                    onToggleSelect={onToggleSelect}
+                    longPressTimer={longPressTimer}
+                  />
+                ) : (
+                  <FolderList
+                    folders={subfolders}
+                    onOpen={onNavigate}
+                    selectedIds={selectedIds}
+                    isInSelectionMode={isInSelectionMode}
+                    onToggleSelect={onToggleSelect}
+                    longPressTimer={longPressTimer}
+                  />
+                )}
               </div>
             )}
             {filteredFiles.length > 0 && viewMode === 'grid' && (
@@ -698,11 +732,37 @@ export function MobileArquivosView({
       {isInSelectionMode && (
         <div className="fixed bottom-[80px] left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-3 py-2 rounded-full bg-[var(--surface-main)] border border-[var(--border-color)] shadow-lg">
           <span className="text-xs font-bold text-[var(--primary-color)]">{selectionCount}</span>
-          <button onClick={onBulkMove} disabled={isBusy} className="text-xs px-2.5 py-1 rounded-full bg-[var(--surface-hover)] disabled:opacity-50">Mover</button>
-          <button onClick={onBulkZip} disabled={isBusy} className="text-xs px-2.5 py-1 rounded-full bg-[var(--surface-hover)] disabled:opacity-50">ZIP</button>
-          <button onClick={onBulkCopy} disabled={isBusy} className="text-xs px-2.5 py-1 rounded-full bg-[var(--surface-hover)] disabled:opacity-50">Copiar</button>
-          <button onClick={onBulkDelete} disabled={isBusy} className="text-xs px-2.5 py-1 rounded-full bg-[rgba(245,90,66,0.15)] text-[var(--danger)] disabled:opacity-50">Excluir</button>
-          <button onClick={onClearSelection} className="text-[var(--text-muted)]"><X className="h-3.5 w-3.5" /></button>
+          <button
+            onClick={onBulkMove}
+            disabled={isBusy}
+            className="text-xs px-2.5 py-1 rounded-full bg-[var(--surface-hover)] disabled:opacity-50"
+          >
+            Mover
+          </button>
+          <button
+            onClick={onBulkZip}
+            disabled={isBusy}
+            className="text-xs px-2.5 py-1 rounded-full bg-[var(--surface-hover)] disabled:opacity-50"
+          >
+            ZIP
+          </button>
+          <button
+            onClick={onBulkCopy}
+            disabled={isBusy}
+            className="text-xs px-2.5 py-1 rounded-full bg-[var(--surface-hover)] disabled:opacity-50"
+          >
+            Copiar
+          </button>
+          <button
+            onClick={onBulkDelete}
+            disabled={isBusy}
+            className="text-xs px-2.5 py-1 rounded-full bg-[rgba(245,90,66,0.15)] text-[var(--danger)] disabled:opacity-50"
+          >
+            Excluir
+          </button>
+          <button onClick={onClearSelection} className="text-[var(--text-muted)]">
+            <X className="h-3.5 w-3.5" />
+          </button>
         </div>
       )}
     </div>

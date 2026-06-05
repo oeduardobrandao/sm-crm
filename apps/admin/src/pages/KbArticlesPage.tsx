@@ -6,14 +6,14 @@ import { listKbArticles, type KbArticle } from '../lib/api';
 
 const CATEGORIES: Record<string, string> = {
   'primeiros-passos': 'Getting Started',
-  'clientes': 'Clients',
-  'equipe': 'Team',
+  clientes: 'Clients',
+  equipe: 'Team',
   'entregas-e-fluxos': 'Deliveries & Flows',
   'hub-do-cliente': 'Client Hub',
   'instagram-e-analytics': 'Instagram & Analytics',
   'post-express': 'Post Express',
-  'financeiro': 'Financial',
-  'arquivos': 'Files',
+  financeiro: 'Financial',
+  arquivos: 'Files',
 };
 
 const ALL_CATEGORIES = Object.keys(CATEGORIES);
@@ -32,14 +32,15 @@ export default function KbArticlesPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'kb-articles', statusFilter, categoryFilter],
-    queryFn: () => listKbArticles({
-      ...(statusFilter ? { status: statusFilter } : {}),
-      ...(categoryFilter ? { category: categoryFilter } : {}),
-    }),
+    queryFn: () =>
+      listKbArticles({
+        ...(statusFilter ? { status: statusFilter } : {}),
+        ...(categoryFilter ? { category: categoryFilter } : {}),
+      }),
   });
 
-  const articles = (data?.articles || []).filter((a) =>
-    !search || a.title.toLowerCase().includes(search.toLowerCase())
+  const articles = (data?.articles || []).filter(
+    (a) => !search || a.title.toLowerCase().includes(search.toLowerCase()),
   );
 
   return (
@@ -72,7 +73,9 @@ export default function KbArticlesPage() {
         >
           <option value="">All Categories</option>
           {ALL_CATEGORIES.map((c) => (
-            <option key={c} value={c}>{CATEGORIES[c]}</option>
+            <option key={c} value={c}>
+              {CATEGORIES[c]}
+            </option>
           ))}
         </select>
         <select
@@ -82,14 +85,20 @@ export default function KbArticlesPage() {
         >
           <option value="">All Statuses</option>
           {STATUSES.map((s) => (
-            <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+            <option key={s} value={s}>
+              {s.charAt(0).toUpperCase() + s.slice(1)}
+            </option>
           ))}
         </select>
       </div>
 
       <div className="bg-card border border-border rounded-2xl p-5">
         <div className="hidden md:grid grid-cols-[2fr_1fr_0.7fr_0.7fr_0.5fr] gap-2 text-[0.7rem] text-muted-foreground uppercase tracking-wider pb-3 border-b border-border">
-          <span>Title</span><span>Category</span><span>Status</span><span>Order</span><span></span>
+          <span>Title</span>
+          <span>Category</span>
+          <span>Status</span>
+          <span>Order</span>
+          <span></span>
         </div>
 
         {isLoading ? (
@@ -110,7 +119,11 @@ export default function KbArticlesPage() {
                   <span className="text-sm font-medium truncate">{a.title}</span>
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                     <span>{catLabel}</span>
-                    <span className={`text-[0.65rem] font-semibold uppercase px-1.5 py-0.5 rounded-sm ${badge.cls}`}>{badge.label}</span>
+                    <span
+                      className={`text-[0.65rem] font-semibold uppercase px-1.5 py-0.5 rounded-sm ${badge.cls}`}
+                    >
+                      {badge.label}
+                    </span>
                   </div>
                 </div>
                 <div className="hidden md:grid grid-cols-[2fr_1fr_0.7fr_0.7fr_0.5fr] gap-2 items-center">
@@ -119,9 +132,15 @@ export default function KbArticlesPage() {
                     <div className="text-xs text-muted-foreground mt-0.5">/{a.slug}</div>
                   </div>
                   <span className="text-sm text-muted-foreground">{catLabel}</span>
-                  <span className={`text-[0.65rem] font-semibold uppercase px-1.5 py-0.5 rounded-sm w-fit ${badge.cls}`}>{badge.label}</span>
+                  <span
+                    className={`text-[0.65rem] font-semibold uppercase px-1.5 py-0.5 rounded-sm w-fit ${badge.cls}`}
+                  >
+                    {badge.label}
+                  </span>
                   <span className="text-sm text-muted-foreground">{a.display_order}</span>
-                  <span className="text-muted-foreground hover:text-primary"><Pencil size={14} /></span>
+                  <span className="text-muted-foreground hover:text-primary">
+                    <Pencil size={14} />
+                  </span>
                 </div>
               </div>
             );

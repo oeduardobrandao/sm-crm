@@ -79,3 +79,86 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 14
+
+  # ===========================================================================
+  # Backpressure jobs (added 2026-06-03). ADDITIVE ONLY — these do not modify
+  # the typecheck-and-test or e2e jobs above. Each closes a gap where an
+  # existing guardrail was not actually gating PRs.
+  # ===========================================================================
+
+  # Leak 1: the Deno edge-function test suite ran nowhere automated. This gates
+  # the full suite (supabase/functions/) on every PR and push.
+  edge-function-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Edge function tests (Deno)
+        run: npm run test:functions
+
+  # Leak 2: the e2e job above skips silently (reporting a false green) when its
+  # secrets are absent. This standalone guard surfaces that as a visible,
+  # NON-BLOCKING warning annotation — it never fails the build, so the silent
+  # skip becomes noticeable without turning CI red. To make it block instead,
+  # change the `::warning::` below to `::error::` and add `exit 1`.
+  e2e-secrets-guard:
+    runs-on: ubuntu-latest
+    env:
+      E2E_CRM_EMAIL: ${{ secrets.E2E_CRM_EMAIL }}
+      E2E_CRM_PASSWORD: ${{ secrets.E2E_CRM_PASSWORD }}
+      E2E_HUB_PATH: ${{ secrets.E2E_HUB_PATH }}
+      CRM_BASE_URL: ${{ secrets.CRM_BASE_URL }}
+      HUB_BASE_URL: ${{ secrets.HUB_BASE_URL }}
+    steps:
+      - name: Warn if E2E secrets are missing
+        run: |
+          missing=()
+          if [ -z "$E2E_CRM_EMAIL" ]; then missing+=("E2E_CRM_EMAIL"); fi
+          if [ -z "$E2E_CRM_PASSWORD" ]; then missing+=("E2E_CRM_PASSWORD"); fi
+          if [ -z "$E2E_HUB_PATH" ]; then missing+=("E2E_HUB_PATH"); fi
+          if [ -z "$CRM_BASE_URL" ]; then missing+=("CRM_BASE_URL"); fi
+          if [ -z "$HUB_BASE_URL" ]; then missing+=("HUB_BASE_URL"); fi
+          if [ ${#missing[@]} -ne 0 ]; then
+            echo "::warning::E2E secrets missing: ${missing[*]}. The 'e2e' job is skipping silently (false green). Configure them in repo Settings > Secrets to actually run e2e."
+          else
+            echo "All E2E secrets present — the e2e job will actually run."
+          fi
+
+  # Leak 3: coverage was measured (test:coverage) but enforced nothing. This
+  # gates a coverage floor without touching the existing report-only step.
+  coverage-threshold:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Coverage threshold (ratchet floor)
+        run: npm run coverage:check
+
+  # Leak 4: prettier format:check was never a CI gate. The whole apps/ and
+  # packages/ tree was formatted in this branch, so a full-repo check is now
+  # green and is the simplest, strongest gate against future formatting drift.
+  format-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Prettier check
+        run: npm run format:check

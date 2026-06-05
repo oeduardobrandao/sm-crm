@@ -12,7 +12,11 @@ type MockedSupabaseModule = typeof supabaseModule & {
     payload?: unknown;
     modifiers: Array<{ method: string; args: unknown[] }>;
   }>;
-  __queueSupabaseResult: (table: string, operation: 'select' | 'insert' | 'update' | 'delete' | 'upsert', ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>) => void;
+  __queueSupabaseResult: (
+    table: string,
+    operation: 'select' | 'insert' | 'update' | 'delete' | 'upsert',
+    ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>
+  ) => void;
   __resetSupabaseMock: () => void;
   __setCurrentProfile: (profile: Record<string, unknown> | null) => void;
 };
@@ -20,7 +24,9 @@ type MockedSupabaseModule = typeof supabaseModule & {
 const mockedSupabase = supabaseModule as MockedSupabaseModule;
 
 function getCalls(table: string, operation?: string) {
-  return mockedSupabase.__getSupabaseCalls().filter((entry) => entry.table === table && (!operation || entry.operation === operation));
+  return mockedSupabase
+    .__getSupabaseCalls()
+    .filter((entry) => entry.table === table && (!operation || entry.operation === operation));
 }
 
 describe('store custom properties', () => {
@@ -48,7 +54,10 @@ describe('store custom properties', () => {
     expect(result).toHaveLength(2);
     const call = getCalls('template_property_definitions', 'select').at(-1)!;
     expect(call.modifiers).toContainEqual({ method: 'eq', args: ['template_id', 10] });
-    expect(call.modifiers).toContainEqual({ method: 'order', args: ['display_order', { ascending: true }] });
+    expect(call.modifiers).toContainEqual({
+      method: 'order',
+      args: ['display_order', { ascending: true }],
+    });
   });
 
   it('createPropertyDefinition inserts with template_id and conta_id', async () => {
@@ -93,11 +102,16 @@ describe('store custom properties', () => {
       error: null,
     });
 
-    await expect(store.updatePropertyDefinition(999, { name: 'X' })).rejects.toThrow('Property definition not found');
+    await expect(store.updatePropertyDefinition(999, { name: 'X' })).rejects.toThrow(
+      'Property definition not found',
+    );
   });
 
   it('deletePropertyDefinition scopes to conta_id', async () => {
-    mockedSupabase.__queueSupabaseResult('template_property_definitions', 'delete', { data: null, error: null });
+    mockedSupabase.__queueSupabaseResult('template_property_definitions', 'delete', {
+      data: null,
+      error: null,
+    });
 
     await store.deletePropertyDefinition(3);
 
@@ -107,7 +121,10 @@ describe('store custom properties', () => {
   });
 
   it('upsertPostPropertyValue uses upsert with onConflict', async () => {
-    mockedSupabase.__queueSupabaseResult('post_property_values', 'upsert', { data: null, error: null });
+    mockedSupabase.__queueSupabaseResult('post_property_values', 'upsert', {
+      data: null,
+      error: null,
+    });
 
     await store.upsertPostPropertyValue(100, 3, 'option-1');
 

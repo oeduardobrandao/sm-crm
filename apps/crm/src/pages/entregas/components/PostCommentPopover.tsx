@@ -32,7 +32,11 @@ function formatCommentDate(dateStr: string): string {
   });
 }
 
-function resolveAuthor(authorId: string, membros: Membro[], workspaceUsers: WorkspaceUser[]): { nome: string; avatar_url: string } | undefined {
+function resolveAuthor(
+  authorId: string,
+  membros: Membro[],
+  workspaceUsers: WorkspaceUser[],
+): { nome: string; avatar_url: string } | undefined {
   const wsUser = workspaceUsers.find((u) => u.id === authorId);
   if (wsUser) return { nome: wsUser.nome, avatar_url: wsUser.avatar_url };
   return membros.find((m) => m.user_id === authorId);
@@ -48,13 +52,7 @@ function AuthorAvatar({ membro }: { membro: { nome: string; avatar_url: string }
     .toUpperCase();
 
   if (membro?.avatar_url) {
-    return (
-      <img
-        src={membro.avatar_url}
-        alt={name}
-        className="comment-avatar"
-      />
-    );
+    return <img src={membro.avatar_url} alt={name} className="comment-avatar" />;
   }
 
   return <span className="comment-avatar comment-avatar--initials">{initials}</span>;
@@ -168,11 +166,7 @@ function CommentItem({
             >
               Salvar
             </button>
-            <button
-              className="comment-edit-cancel"
-              onClick={handleCancelEdit}
-              disabled={saving}
-            >
+            <button className="comment-edit-cancel" onClick={handleCancelEdit} disabled={saving}>
               Cancelar
             </button>
           </div>
@@ -180,9 +174,7 @@ function CommentItem({
       ) : (
         <div className="comment-item-body">
           <p className="comment-item-content">{comment.content}</p>
-          {comment.updated_at && (
-            <span className="comment-item-edited">(editado)</span>
-          )}
+          {comment.updated_at && <span className="comment-item-edited">(editado)</span>}
         </div>
       )}
     </div>
@@ -291,11 +283,7 @@ export default function PostCommentPopover({
               <RotateCcw size={14} />
             </button>
           )}
-          <button
-            className="comment-popover-action-btn"
-            title="Fechar"
-            onClick={onClose}
-          >
+          <button className="comment-popover-action-btn" title="Fechar" onClick={onClose}>
             <X size={14} />
           </button>
         </div>

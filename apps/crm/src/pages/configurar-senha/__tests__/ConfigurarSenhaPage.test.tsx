@@ -74,7 +74,9 @@ describe('ConfigurarSenhaPage', () => {
     __queueSupabaseResult('profiles', 'select', { data: OWNER_PROFILE });
     renderPage();
 
-    act(() => { __emitAuthChange('INITIAL_SESSION', INVITE_SESSION as any); });
+    act(() => {
+      __emitAuthChange('INITIAL_SESSION', INVITE_SESSION as any);
+    });
 
     await waitFor(() => {
       expect(screen.getByText('Você foi convidado')).toBeInTheDocument();
@@ -86,7 +88,9 @@ describe('ConfigurarSenhaPage', () => {
     __queueSupabaseResult('profiles', 'select', { data: OWNER_PROFILE });
     renderPage();
 
-    act(() => { __emitAuthChange('SIGNED_IN', INVITE_SESSION as any); });
+    act(() => {
+      __emitAuthChange('SIGNED_IN', INVITE_SESSION as any);
+    });
 
     await waitFor(() => {
       expect(screen.getByText('Você foi convidado')).toBeInTheDocument();
@@ -96,7 +100,9 @@ describe('ConfigurarSenhaPage', () => {
   it('detects password recovery via PASSWORD_RECOVERY event', async () => {
     renderPage();
 
-    act(() => { __emitAuthChange('PASSWORD_RECOVERY', RECOVERY_SESSION as any); });
+    act(() => {
+      __emitAuthChange('PASSWORD_RECOVERY', RECOVERY_SESSION as any);
+    });
 
     await waitFor(() => {
       expect(screen.getByText('Configurar Senha')).toBeInTheDocument();
@@ -106,7 +112,9 @@ describe('ConfigurarSenhaPage', () => {
   it('detects password recovery via INITIAL_SESSION without conta_id', async () => {
     renderPage();
 
-    act(() => { __emitAuthChange('INITIAL_SESSION', RECOVERY_SESSION as any); });
+    act(() => {
+      __emitAuthChange('INITIAL_SESSION', RECOVERY_SESSION as any);
+    });
 
     await waitFor(() => {
       expect(screen.getByText('Configurar Senha')).toBeInTheDocument();
@@ -117,7 +125,9 @@ describe('ConfigurarSenhaPage', () => {
     __queueSupabaseResult('profiles', 'select', { data: OWNER_PROFILE });
     renderPage();
 
-    act(() => { __emitAuthChange('INITIAL_SESSION', INVITE_SESSION as any); });
+    act(() => {
+      __emitAuthChange('INITIAL_SESSION', INVITE_SESSION as any);
+    });
 
     await waitFor(() => {
       expect(screen.getByLabelText('Seu nome completo')).toBeInTheDocument();
@@ -129,7 +139,9 @@ describe('ConfigurarSenhaPage', () => {
   it('shows only password field for recovery flow', async () => {
     renderPage();
 
-    act(() => { __emitAuthChange('PASSWORD_RECOVERY', RECOVERY_SESSION as any); });
+    act(() => {
+      __emitAuthChange('PASSWORD_RECOVERY', RECOVERY_SESSION as any);
+    });
 
     await waitFor(() => {
       expect(screen.getByLabelText('Nova senha')).toBeInTheDocument();
@@ -152,7 +164,9 @@ describe('ConfigurarSenhaPage', () => {
     it('shows error after 8 seconds with no session', async () => {
       renderPage();
 
-      act(() => { vi.advanceTimersByTime(8000); });
+      act(() => {
+        vi.advanceTimersByTime(8000);
+      });
 
       expect(screen.getByText('Link inválido ou expirado')).toBeInTheDocument();
     });
@@ -160,7 +174,9 @@ describe('ConfigurarSenhaPage', () => {
     it('does not show error before 8 seconds', async () => {
       renderPage();
 
-      act(() => { vi.advanceTimersByTime(7000); });
+      act(() => {
+        vi.advanceTimersByTime(7000);
+      });
 
       expect(screen.queryByText('Link inválido ou expirado')).not.toBeInTheDocument();
     });
@@ -169,7 +185,9 @@ describe('ConfigurarSenhaPage', () => {
       __queueSupabaseResult('profiles', 'select', { data: OWNER_PROFILE });
       renderPage();
 
-      act(() => { vi.advanceTimersByTime(9000); });
+      act(() => {
+        vi.advanceTimersByTime(9000);
+      });
 
       expect(screen.getByText('Link inválido ou expirado')).toBeInTheDocument();
 
@@ -191,13 +209,17 @@ describe('ConfigurarSenhaPage', () => {
     __queueSupabaseResult('profiles', 'select', { data: OWNER_PROFILE });
     __queueSupabaseResult('profiles', 'update', { data: null });
 
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ message: 'Convite aceito.' }), { status: 200 }),
-    );
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        new Response(JSON.stringify({ message: 'Convite aceito.' }), { status: 200 }),
+      );
 
     renderPage();
 
-    act(() => { __emitAuthChange('INITIAL_SESSION', INVITE_SESSION as any); });
+    act(() => {
+      __emitAuthChange('INITIAL_SESSION', INVITE_SESSION as any);
+    });
 
     await waitFor(() => {
       expect(screen.getByText('Aceitar convite e entrar')).toBeInTheDocument();
@@ -216,8 +238,8 @@ describe('ConfigurarSenhaPage', () => {
       expect(screen.getByText('Conta criada com sucesso!')).toBeInTheDocument();
     });
 
-    const acceptCall = fetchSpy.mock.calls.find(
-      (c) => String(c[0]).includes('manage-workspace-user'),
+    const acceptCall = fetchSpy.mock.calls.find((c) =>
+      String(c[0]).includes('manage-workspace-user'),
     );
     expect(acceptCall).toBeDefined();
     const body = JSON.parse(String((acceptCall![1] as any).body));
@@ -232,7 +254,9 @@ describe('ConfigurarSenhaPage', () => {
     __queueSupabaseResult('profiles', 'select', { data: OWNER_PROFILE });
     renderPage();
 
-    act(() => { __emitAuthChange('INITIAL_SESSION', INVITE_SESSION as any); });
+    act(() => {
+      __emitAuthChange('INITIAL_SESSION', INVITE_SESSION as any);
+    });
 
     await waitFor(() => {
       expect(screen.getByText('Aceitar convite e entrar')).toBeInTheDocument();

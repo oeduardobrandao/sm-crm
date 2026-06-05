@@ -57,7 +57,9 @@ vi.mock('@/components/ui/button', () => ({
 }));
 
 vi.mock('@/components/ui/badge', () => ({
-  Badge: ({ children, ...props }: React.HTMLAttributes<HTMLSpanElement>) => <span {...props}>{children}</span>,
+  Badge: ({ children, ...props }: React.HTMLAttributes<HTMLSpanElement>) => (
+    <span {...props}>{children}</span>
+  ),
 }));
 
 vi.mock('@/components/ui/spinner', () => ({
@@ -156,8 +158,18 @@ vi.mock('@/components/ui/dropdown-menu', async () => {
     return <hr />;
   }
 
-  function DropdownMenuItem({ children, onClick }: { children: React.ReactNode; onClick?: () => void }) {
-    return <button type="button" onClick={onClick}>{children}</button>;
+  function DropdownMenuItem({
+    children,
+    onClick,
+  }: {
+    children: React.ReactNode;
+    onClick?: () => void;
+  }) {
+    return (
+      <button type="button" onClick={onClick}>
+        {children}
+      </button>
+    );
   }
 
   function DropdownMenuRadioGroup({
@@ -176,7 +188,13 @@ vi.mock('@/components/ui/dropdown-menu', async () => {
     );
   }
 
-  function DropdownMenuRadioItem({ value, children }: { value: string; children: React.ReactNode }) {
+  function DropdownMenuRadioItem({
+    value,
+    children,
+  }: {
+    value: string;
+    children: React.ReactNode;
+  }) {
     const { onValueChange } = ReactModule.useContext(DropdownContext);
     return (
       <button type="button" onClick={() => onValueChange?.(value)}>
@@ -217,9 +235,19 @@ vi.mock('@/components/ui/dialog', async () => {
     children: React.ReactNode;
   }) {
     const [open, setOpen] = ReactModule.useState(openProp);
-    ReactModule.useEffect(() => { setOpen(openProp); }, [openProp]);
+    ReactModule.useEffect(() => {
+      setOpen(openProp);
+    }, [openProp]);
     return (
-      <DialogContext.Provider value={{ open, onOpenChange: (v: boolean) => { setOpen(v); onOpenChange?.(v); } }}>
+      <DialogContext.Provider
+        value={{
+          open,
+          onOpenChange: (v: boolean) => {
+            setOpen(v);
+            onOpenChange?.(v);
+          },
+        }}
+      >
         <div>{children}</div>
       </DialogContext.Provider>
     );
@@ -271,9 +299,19 @@ vi.mock('@/components/ui/alert-dialog', async () => {
     children: React.ReactNode;
   }) {
     const [open, setOpen] = ReactModule.useState(openProp);
-    ReactModule.useEffect(() => { setOpen(openProp); }, [openProp]);
+    ReactModule.useEffect(() => {
+      setOpen(openProp);
+    }, [openProp]);
     return (
-      <AlertDialogContext.Provider value={{ open, onOpenChange: (v: boolean) => { setOpen(v); onOpenChange?.(v); } }}>
+      <AlertDialogContext.Provider
+        value={{
+          open,
+          onOpenChange: (v: boolean) => {
+            setOpen(v);
+            onOpenChange?.(v);
+          },
+        }}
+      >
         <div>{children}</div>
       </AlertDialogContext.Provider>
     );
@@ -296,10 +334,7 @@ vi.mock('@/components/ui/alert-dialog', async () => {
     return <h2>{children}</h2>;
   }
 
-  function AlertDialogAction({
-    children,
-    onClick,
-  }: React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  function AlertDialogAction({ children, onClick }: React.ButtonHTMLAttributes<HTMLButtonElement>) {
     const { onOpenChange } = ReactModule.useContext(AlertDialogContext);
     return (
       <button
@@ -431,7 +466,7 @@ beforeEach(() => {
   mockedRemoveCliente.mockReset();
 
   mockedGetClientes.mockResolvedValue([]);
-  mockedAddCliente.mockImplementation(async (payload) => ({ id: 99, ...payload } as store.Cliente));
+  mockedAddCliente.mockImplementation(async (payload) => ({ id: 99, ...payload }) as store.Cliente);
   mockedUpdateCliente.mockImplementation(async (id, payload) => ({ id, ...makeCliente(payload) }));
   mockedRemoveCliente.mockResolvedValue(undefined);
 });
@@ -459,9 +494,30 @@ describe('ClientesPage', () => {
 
   it('filters by status, searches by name or email, and sorts the client cards', async () => {
     mockedGetClientes.mockResolvedValue([
-      makeCliente({ id: 1, nome: 'Alpha Studio', sigla: 'AS', email: 'alpha@studio.com', valor_mensal: 3200, status: 'ativo' }),
-      makeCliente({ id: 2, nome: 'Bruno Labs', sigla: 'BL', email: 'bruno@labs.com', valor_mensal: 1500, status: 'pausado' }),
-      makeCliente({ id: 3, nome: 'Carla Care', sigla: 'CC', email: 'carla@care.com', valor_mensal: 2800, status: 'encerrado' }),
+      makeCliente({
+        id: 1,
+        nome: 'Alpha Studio',
+        sigla: 'AS',
+        email: 'alpha@studio.com',
+        valor_mensal: 3200,
+        status: 'ativo',
+      }),
+      makeCliente({
+        id: 2,
+        nome: 'Bruno Labs',
+        sigla: 'BL',
+        email: 'bruno@labs.com',
+        valor_mensal: 1500,
+        status: 'pausado',
+      }),
+      makeCliente({
+        id: 3,
+        nome: 'Carla Care',
+        sigla: 'CC',
+        email: 'carla@care.com',
+        valor_mensal: 2800,
+        status: 'encerrado',
+      }),
     ]);
 
     renderPage();
@@ -512,13 +568,25 @@ describe('ClientesPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Novo Cliente' }));
 
     const dialog = screen.getByRole('dialog');
-    fireEvent.change(within(dialog).getByLabelText('Nome *'), { target: { value: 'Clínica Solaris' } });
-    fireEvent.change(within(dialog).getByLabelText('E-mail'), { target: { value: 'oi@solaris.com' } });
-    fireEvent.change(within(dialog).getByLabelText('Telefone'), { target: { value: '(85) 98888-0000' } });
+    fireEvent.change(within(dialog).getByLabelText('Nome *'), {
+      target: { value: 'Clínica Solaris' },
+    });
+    fireEvent.change(within(dialog).getByLabelText('E-mail'), {
+      target: { value: 'oi@solaris.com' },
+    });
+    fireEvent.change(within(dialog).getByLabelText('Telefone'), {
+      target: { value: '(85) 98888-0000' },
+    });
     fireEvent.change(within(dialog).getByLabelText('Plano'), { target: { value: 'Growth' } });
-    fireEvent.change(within(dialog).getByLabelText('Valor Mensal (R$)'), { target: { value: '2500' } });
-    fireEvent.change(within(dialog).getByLabelText('URL do Notion'), { target: { value: 'https://notion.so/solaris' } });
-    fireEvent.change(within(dialog).getByLabelText('Dia de Pagamento (1-31)'), { target: { value: '18' } });
+    fireEvent.change(within(dialog).getByLabelText('Valor Mensal (R$)'), {
+      target: { value: '2500' },
+    });
+    fireEvent.change(within(dialog).getByLabelText('URL do Notion'), {
+      target: { value: 'https://notion.so/solaris' },
+    });
+    fireEvent.change(within(dialog).getByLabelText('Dia de Pagamento (1-31)'), {
+      target: { value: '18' },
+    });
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }));
 
@@ -572,9 +640,15 @@ describe('ClientesPage', () => {
     expect(within(dialog).getByDisplayValue('Beta Care')).toBeInTheDocument();
     expect(within(dialog).getByDisplayValue('beta@care.com')).toBeInTheDocument();
 
-    fireEvent.change(within(dialog).getByLabelText('Nome *'), { target: { value: 'Beta Care Plus' } });
-    fireEvent.change(within(dialog).getByLabelText('Valor Mensal (R$)'), { target: { value: '2100' } });
-    fireEvent.change(within(dialog).getByLabelText('Dia de Pagamento (1-31)'), { target: { value: '22' } });
+    fireEvent.change(within(dialog).getByLabelText('Nome *'), {
+      target: { value: 'Beta Care Plus' },
+    });
+    fireEvent.change(within(dialog).getByLabelText('Valor Mensal (R$)'), {
+      target: { value: '2100' },
+    });
+    fireEvent.change(within(dialog).getByLabelText('Dia de Pagamento (1-31)'), {
+      target: { value: '22' },
+    });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Pausado' }));
     fireEvent.click(within(dialog).getByRole('button', { name: 'Salvar' }));
 
@@ -635,10 +709,20 @@ describe('ClientesPage', () => {
 
     await act(async () => {
       await onUpload([
-        { nome: 'Atlas Saúde', email: 'atlas@saude.com', valor_mensal: '1200', data_pagamento: '5' },
+        {
+          nome: 'Atlas Saúde',
+          email: 'atlas@saude.com',
+          valor_mensal: '1200',
+          data_pagamento: '5',
+        },
         { nome: '' },
         { nome: 'Beta Labs', email: 'beta@labs.com', valor_mensal: '1800', data_pagamento: '10' },
-        { nome: 'Cora Studio', email: 'cora@studio.com', valor_mensal: '2200', data_pagamento: '15' },
+        {
+          nome: 'Cora Studio',
+          email: 'cora@studio.com',
+          valor_mensal: '2200',
+          data_pagamento: '15',
+        },
       ]);
     });
 
@@ -689,26 +773,32 @@ describe('ClientesPage', () => {
       makeCliente({ id: 12, nome: 'Bruno Lima', sigla: 'BL' }),
     ]);
     mockedSupabase.__queueSupabaseResult('instagram_accounts', 'select', {
-      data: [
-        { client_id: 11, profile_picture_url: 'https://cdn.mesaas.com/ana.jpg' },
-      ],
+      data: [{ client_id: 11, profile_picture_url: 'https://cdn.mesaas.com/ana.jpg' }],
       error: null,
     });
 
     renderPage();
 
-    expect(await screen.findByRole('img', { name: 'AC' })).toHaveAttribute('src', 'https://cdn.mesaas.com/ana.jpg');
+    expect(await screen.findByRole('img', { name: 'AC' })).toHaveAttribute(
+      'src',
+      'https://cdn.mesaas.com/ana.jpg',
+    );
 
     const fallbackCard = getClientCard('Bruno Lima');
     expect(within(fallbackCard).queryByRole('img')).not.toBeInTheDocument();
     expect(within(fallbackCard).getByText('BL')).toBeInTheDocument();
 
     await waitFor(() => {
-      const avatarCall = mockedSupabase.__getSupabaseCalls().find((entry) => entry.table === 'instagram_accounts');
+      const avatarCall = mockedSupabase
+        .__getSupabaseCalls()
+        .find((entry) => entry.table === 'instagram_accounts');
       expect(avatarCall).toBeDefined();
       expect(avatarCall?.selectArgs).toEqual([['client_id, profile_picture_url']]);
       expect(avatarCall?.modifiers).toContainEqual({ method: 'in', args: ['client_id', [11, 12]] });
-      expect(avatarCall?.modifiers).toContainEqual({ method: 'not', args: ['profile_picture_url', 'is', null] });
+      expect(avatarCall?.modifiers).toContainEqual({
+        method: 'not',
+        args: ['profile_picture_url', 'is', null],
+      });
     });
   });
 });

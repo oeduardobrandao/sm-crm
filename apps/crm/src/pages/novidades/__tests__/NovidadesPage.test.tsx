@@ -4,10 +4,14 @@ import NovidadesPage from '../NovidadesPage';
 import type { ChangelogRelease } from '@/content/changelog.schema';
 
 const releases: ChangelogRelease[] = [
-  { date: '2026-06-03', summary: 'Resumo da semana.', items: [
-    { type: 'feature', area: 'Entregas', title: 'Recurso A', description: 'Descrição A.', pr: 1 },
-    { type: 'fix', area: 'Analytics', title: 'Correção B', description: 'Descrição B.', pr: 2 },
-  ] },
+  {
+    date: '2026-06-03',
+    summary: 'Resumo da semana.',
+    items: [
+      { type: 'feature', area: 'Entregas', title: 'Recurso A', description: 'Descrição A.', pr: 1 },
+      { type: 'fix', area: 'Analytics', title: 'Correção B', description: 'Descrição B.', pr: 2 },
+    ],
+  },
 ];
 
 describe('NovidadesPage', () => {

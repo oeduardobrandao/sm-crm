@@ -31,7 +31,9 @@ export default function NavigationProgress() {
     state === 'loading' && 'nav-progress-bar--active',
     (state === 'completing' || state === 'fading') && 'nav-progress-bar--completing',
     state === 'fading' && 'nav-progress-bar--fade',
-  ].filter(Boolean).join(' ');
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return (
     <div className="nav-progress">

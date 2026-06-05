@@ -1,6 +1,11 @@
 import {
-  startOfMonth, endOfMonth, eachDayOfInterval, getDay,
-  addMonths, subMonths, format,
+  startOfMonth,
+  endOfMonth,
+  eachDayOfInterval,
+  getDay,
+  addMonths,
+  subMonths,
+  format,
 } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -29,7 +34,7 @@ function getMonthDays(month: Date): { date: Date; isCurrentMonth: boolean }[] {
     leading.push({ date: d, isCurrentMonth: false });
   }
 
-  const current = days.map(d => ({ date: d, isCurrentMonth: true }));
+  const current = days.map((d) => ({ date: d, isCurrentMonth: true }));
 
   const totalSoFar = leading.length + current.length;
   const trailing: { date: Date; isCurrentMonth: boolean }[] = [];
@@ -60,7 +65,14 @@ export function MonthGrid({
   return (
     <div className={headerClassName}>
       {showNavigation && (
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 16,
+          }}
+        >
           <button
             onClick={() => onMonthChange(subMonths(currentMonth, 1))}
             aria-label="Mês anterior"
@@ -70,7 +82,12 @@ export function MonthGrid({
           </button>
           <span
             className="month-grid-title"
-            style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '1rem', textTransform: 'capitalize' }}
+            style={{
+              fontFamily: 'var(--font-heading)',
+              fontWeight: 700,
+              fontSize: '1rem',
+              textTransform: 'capitalize',
+            }}
           >
             {monthLabel}
           </span>
@@ -84,8 +101,10 @@ export function MonthGrid({
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 6 }}>
-        {WEEK_DAYS.map(d => (
+      <div
+        style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 6 }}
+      >
+        {WEEK_DAYS.map((d) => (
           <div
             key={d}
             style={{

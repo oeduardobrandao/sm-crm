@@ -7,10 +7,10 @@
  * Espera que a primeira linha contenha os cabeçalhos.
  */
 export function parseCSV(csvText: string): Record<string, string>[] {
-  const lines = csvText.split('\n').filter(line => line.trim() !== '');
+  const lines = csvText.split('\n').filter((line) => line.trim() !== '');
   if (lines.length < 2) return [];
 
-  const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+  const headers = lines[0].split(',').map((h) => h.trim().toLowerCase());
   const data: Record<string, string>[] = [];
 
   for (let i = 1; i < lines.length; i++) {
@@ -36,7 +36,10 @@ export function parseCSV(csvText: string): Record<string, string>[] {
 /**
  * Aciona o seletor de arquivo nativo para arquivos CSV e retorna as linhas lidas.
  */
-export function openCSVSelector(onUpload: (data: Record<string, string>[]) => void, onError: (err: Error) => void) {
+export function openCSVSelector(
+  onUpload: (data: Record<string, string>[]) => void,
+  onError: (err: Error) => void,
+) {
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = '.csv';
@@ -54,7 +57,7 @@ export function openCSVSelector(onUpload: (data: Record<string, string>[]) => vo
     } catch (error) {
       onError(error instanceof Error ? error : new Error('Falha ao processar o arquivo CSV.'));
     }
-    
+
     // Cleanup
     document.body.removeChild(input);
   });

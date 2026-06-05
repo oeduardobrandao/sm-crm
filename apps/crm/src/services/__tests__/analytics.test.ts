@@ -19,7 +19,11 @@ type MockedSupabaseModule = typeof supabaseModule & {
     payload?: unknown;
     modifiers: Array<{ method: string; args: unknown[] }>;
   }>;
-  __queueSupabaseResult: (table: string, operation: 'select' | 'insert' | 'update' | 'delete' | 'upsert', ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>) => void;
+  __queueSupabaseResult: (
+    table: string,
+    operation: 'select' | 'insert' | 'update' | 'delete' | 'upsert',
+    ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>
+  ) => void;
   __resetSupabaseMock: () => void;
   __setCurrentProfile: (profile: Record<string, unknown> | null) => void;
 };
@@ -28,7 +32,10 @@ const mockedSupabase = supabaseModule as MockedSupabaseModule;
 const fetchHarness = createFetchMock();
 
 function getLastCall(table: string) {
-  const call = mockedSupabase.__getSupabaseCalls().filter((entry) => entry.table === table).at(-1);
+  const call = mockedSupabase
+    .__getSupabaseCalls()
+    .filter((entry) => entry.table === table)
+    .at(-1);
   expect(call).toBeDefined();
   return call!;
 }
@@ -44,9 +51,30 @@ describe('analytics service', () => {
   it('aggregates an active portfolio summary from multiple Supabase datasets', async () => {
     mockedSupabase.__queueSupabaseResult('clientes', 'select', {
       data: [
-        { id: 1, nome: 'Clínica Aurora', sigla: 'CA', cor: '#db2777', especialidade: 'Dermatologia', status: 'ativo' },
-        { id: 2, nome: 'Restaurante Sabor', sigla: 'RS', cor: '#ea580c', especialidade: 'Gastronomia', status: 'ativo' },
-        { id: 3, nome: 'Arquivo Antigo', sigla: 'AA', cor: '#64748b', especialidade: 'Arquivo', status: 'pausado' },
+        {
+          id: 1,
+          nome: 'Clínica Aurora',
+          sigla: 'CA',
+          cor: '#db2777',
+          especialidade: 'Dermatologia',
+          status: 'ativo',
+        },
+        {
+          id: 2,
+          nome: 'Restaurante Sabor',
+          sigla: 'RS',
+          cor: '#ea580c',
+          especialidade: 'Gastronomia',
+          status: 'ativo',
+        },
+        {
+          id: 3,
+          nome: 'Arquivo Antigo',
+          sigla: 'AA',
+          cor: '#64748b',
+          especialidade: 'Arquivo',
+          status: 'pausado',
+        },
       ],
       error: null,
     });
@@ -81,12 +109,38 @@ describe('analytics service', () => {
       ],
       error: null,
     });
-    mockedSupabase.__queueSupabaseResult('instagram_posts', 'select',
+    mockedSupabase.__queueSupabaseResult(
+      'instagram_posts',
+      'select',
       {
         data: [
-          { instagram_account_id: 10, posted_at: '2026-04-10T10:00:00.000Z', likes: 90, comments: 10, saved: 12, shares: 8, reach: 1000 },
-          { instagram_account_id: 10, posted_at: '2026-04-12T10:00:00.000Z', likes: 140, comments: 20, saved: 18, shares: 10, reach: 1300 },
-          { instagram_account_id: 20, posted_at: '2026-04-11T10:00:00.000Z', likes: 70, comments: 9, saved: 7, shares: 3, reach: 900 },
+          {
+            instagram_account_id: 10,
+            posted_at: '2026-04-10T10:00:00.000Z',
+            likes: 90,
+            comments: 10,
+            saved: 12,
+            shares: 8,
+            reach: 1000,
+          },
+          {
+            instagram_account_id: 10,
+            posted_at: '2026-04-12T10:00:00.000Z',
+            likes: 140,
+            comments: 20,
+            saved: 18,
+            shares: 10,
+            reach: 1300,
+          },
+          {
+            instagram_account_id: 20,
+            posted_at: '2026-04-11T10:00:00.000Z',
+            likes: 70,
+            comments: 9,
+            saved: 7,
+            shares: 3,
+            reach: 900,
+          },
         ],
         error: null,
       },
@@ -100,8 +154,32 @@ describe('analytics service', () => {
       },
       {
         data: [
-          { id: 1, instagram_account_id: 10, thumbnail_url: null, media_type: 'IMAGE', permalink: 'https://instagram.com/p/1', posted_at: '2026-04-12T10:00:00.000Z', likes: 140, comments: 20, reach: 1300, saved: 18, shares: 10 },
-          { id: 2, instagram_account_id: 20, thumbnail_url: null, media_type: 'IMAGE', permalink: 'https://instagram.com/p/2', posted_at: '2026-04-11T10:00:00.000Z', likes: 70, comments: 9, reach: 900, saved: 7, shares: 3 },
+          {
+            id: 1,
+            instagram_account_id: 10,
+            thumbnail_url: null,
+            media_type: 'IMAGE',
+            permalink: 'https://instagram.com/p/1',
+            posted_at: '2026-04-12T10:00:00.000Z',
+            likes: 140,
+            comments: 20,
+            reach: 1300,
+            saved: 18,
+            shares: 10,
+          },
+          {
+            id: 2,
+            instagram_account_id: 20,
+            thumbnail_url: null,
+            media_type: 'IMAGE',
+            permalink: 'https://instagram.com/p/2',
+            posted_at: '2026-04-11T10:00:00.000Z',
+            likes: 70,
+            comments: 9,
+            reach: 900,
+            saved: 7,
+            shares: 3,
+          },
         ],
         error: null,
       },
@@ -153,7 +231,9 @@ describe('analytics service', () => {
       },
       error: null,
     });
-    mockedSupabase.__queueSupabaseResult('instagram_posts', 'select',
+    mockedSupabase.__queueSupabaseResult(
+      'instagram_posts',
+      'select',
       {
         data: [
           { likes: 100, comments: 10, saved: 20, shares: 5, reach: 1000, impressions: 1500 },
@@ -162,9 +242,7 @@ describe('analytics service', () => {
         error: null,
       },
       {
-        data: [
-          { likes: 60, comments: 4, saved: 8, shares: 2, reach: 800, impressions: 1000 },
-        ],
+        data: [{ likes: 60, comments: 4, saved: 8, shares: 2, reach: 800, impressions: 1000 }],
         error: null,
       },
     );
@@ -275,7 +353,15 @@ describe('analytics service', () => {
       topPosts: [],
       worstPosts: [],
       allRankedPosts: [],
-      summary: { total: 0, connected: 0, growing: 0, stagnant: 0, declining: 0, bestByEngagement: null, mostImproved: null },
+      summary: {
+        total: 0,
+        connected: 0,
+        growing: 0,
+        stagnant: 0,
+        declining: 0,
+        bestByEngagement: null,
+        mostImproved: null,
+      },
     });
   });
 
@@ -307,7 +393,13 @@ describe('analytics service', () => {
 
     const summary = await getPortfolioSummary(28);
 
-    expect(summary.summary).toMatchObject({ total: 1, connected: 0, growing: 0, declining: 0, stagnant: 0 });
+    expect(summary.summary).toMatchObject({
+      total: 1,
+      connected: 0,
+      growing: 0,
+      declining: 0,
+      stagnant: 0,
+    });
     expect(summary.summary.bestByEngagement).toBeNull();
     expect(summary.summary.mostImproved).toBeNull();
   });
@@ -321,11 +413,29 @@ describe('analytics service', () => {
       data: [{ id: 10, client_id: 1, username: 'clinica', follower_count: 1000 }],
       error: null,
     });
-    mockedSupabase.__queueSupabaseResult('instagram_posts', 'select',
+    mockedSupabase.__queueSupabaseResult(
+      'instagram_posts',
+      'select',
       {
         data: [
-          { instagram_account_id: 10, posted_at: '2026-04-10T10:00:00.000Z', likes: 10, comments: 2, saved: 1, shares: 1, reach: 0 },
-          { instagram_account_id: 10, posted_at: '2026-04-11T10:00:00.000Z', likes: 50, comments: 5, saved: 5, shares: 0, reach: 1000 },
+          {
+            instagram_account_id: 10,
+            posted_at: '2026-04-10T10:00:00.000Z',
+            likes: 10,
+            comments: 2,
+            saved: 1,
+            shares: 1,
+            reach: 0,
+          },
+          {
+            instagram_account_id: 10,
+            posted_at: '2026-04-11T10:00:00.000Z',
+            likes: 50,
+            comments: 5,
+            saved: 5,
+            shares: 0,
+            reach: 1000,
+          },
         ],
         error: null,
       },

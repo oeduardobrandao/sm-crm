@@ -55,8 +55,8 @@ export async function getContextLinksForRoute(route: string): Promise<KbContextL
   if (error) throw error;
 
   return ((data ?? []) as (KbContextLink & { article: KbArticle | null })[])
-    .filter(link => link.article && link.article.status === 'published')
-    .map(link => ({
+    .filter((link) => link.article && link.article.status === 'published')
+    .map((link) => ({
       id: link.id,
       route_pattern: link.route_pattern,
       article_id: link.article_id,

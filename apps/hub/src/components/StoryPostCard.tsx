@@ -18,8 +18,13 @@ interface StoryPostCardProps {
 }
 
 export function StoryPostCard({
-  post, token, approvals, instagramProfile, workspaceName,
-  onApprovalSubmitted, readOnly,
+  post,
+  token,
+  approvals,
+  instagramProfile,
+  workspaceName,
+  onApprovalSubmitted,
+  readOnly,
 }: StoryPostCardProps) {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [comentario, setComentario] = useState('');
@@ -32,7 +37,15 @@ export function StoryPostCard({
   const displayName = instagramProfile?.username ?? workspaceName ?? '';
   const profilePic = instagramProfile?.profilePictureUrl;
 
-  const { isEditable: canEdit, hasPendingSuggestion, wasRejected, saveSuggestion, saveState, approvalBlocked, draftIgCaption } = useEditSuggestion({
+  const {
+    isEditable: canEdit,
+    hasPendingSuggestion,
+    wasRejected,
+    saveSuggestion,
+    saveState,
+    approvalBlocked,
+    draftIgCaption,
+  } = useEditSuggestion({
     token,
     post,
     onSaved: () => onApprovalSubmitted?.(),
@@ -47,7 +60,10 @@ export function StoryPostCard({
         const rawText = post.conteudo_plain ?? '';
         const legendaIdx = rawText.toUpperCase().indexOf('LEGENDA');
         return legendaIdx !== -1
-          ? rawText.slice(legendaIdx + 'LEGENDA'.length).replace(/^[:\s\n]+/, '').trim()
+          ? rawText
+              .slice(legendaIdx + 'LEGENDA'.length)
+              .replace(/^[:\s\n]+/, '')
+              .trim()
           : rawText;
       })();
 
@@ -58,7 +74,10 @@ export function StoryPostCard({
     setResult(null);
     try {
       await submitApproval(token, post.id, action, comentario || undefined);
-      setResult({ type: 'success', message: action === 'aprovado' ? 'Post aprovado!' : 'Correção enviada!' });
+      setResult({
+        type: 'success',
+        message: action === 'aprovado' ? 'Post aprovado!' : 'Correção enviada!',
+      });
       onApprovalSubmitted?.();
     } catch (e) {
       setResult({ type: 'error', message: (e as Error).message });
@@ -68,24 +87,34 @@ export function StoryPostCard({
   }
 
   function handleTapLeft() {
-    if (currentSlide > 0) setCurrentSlide(i => i - 1);
+    if (currentSlide > 0) setCurrentSlide((i) => i - 1);
   }
 
   function handleTapRight() {
-    if (currentSlide < media.length - 1) setCurrentSlide(i => i + 1);
+    if (currentSlide < media.length - 1) setCurrentSlide((i) => i + 1);
     else setLightboxIdx(currentSlide);
   }
 
   return (
     <div
       className="relative rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]"
-      style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' }}
+      style={{
+        fontFamily:
+          '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+      }}
     >
       {/* Story frame */}
-      <div className="relative bg-[#1a1a1a] rounded-2xl overflow-hidden" style={{ aspectRatio: '9/16' }}>
+      <div
+        className="relative bg-[#1a1a1a] rounded-2xl overflow-hidden"
+        style={{ aspectRatio: '9/16' }}
+      >
         {/* Image */}
         {currentMedia && (
-          <button type="button" onClick={() => setLightboxIdx(currentSlide)} className="absolute inset-0 w-full h-full z-0">
+          <button
+            type="button"
+            onClick={() => setLightboxIdx(currentSlide)}
+            className="absolute inset-0 w-full h-full z-0"
+          >
             {currentMedia.kind === 'image' ? (
               <OptimizedImage
                 src={currentMedia.url}
@@ -97,7 +126,11 @@ export function StoryPostCard({
                 className="w-full h-full object-cover"
               />
             ) : (
-              <img src={currentMedia.thumbnail_url ?? ''} alt="" className="w-full h-full object-cover" />
+              <img
+                src={currentMedia.thumbnail_url ?? ''}
+                alt=""
+                className="w-full h-full object-cover"
+              />
             )}
           </button>
         )}
@@ -105,7 +138,9 @@ export function StoryPostCard({
         {currentMedia?.kind === 'video' && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
             <div className="w-14 h-14 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+                <path d="M8 5v14l11-7z" />
+              </svg>
             </div>
           </div>
         )}
@@ -113,8 +148,16 @@ export function StoryPostCard({
         {/* Tap zones for multi-media stories */}
         {media.length > 1 && (
           <>
-            <button onClick={handleTapLeft} className="absolute left-0 top-0 w-1/3 h-full z-10" aria-label="Anterior" />
-            <button onClick={handleTapRight} className="absolute right-0 top-0 w-1/3 h-full z-10" aria-label="Próximo" />
+            <button
+              onClick={handleTapLeft}
+              className="absolute left-0 top-0 w-1/3 h-full z-10"
+              aria-label="Anterior"
+            />
+            <button
+              onClick={handleTapRight}
+              className="absolute right-0 top-0 w-1/3 h-full z-10"
+              aria-label="Próximo"
+            />
           </>
         )}
 
@@ -123,11 +166,15 @@ export function StoryPostCard({
 
         {/* Progress bar segments */}
         <div className="absolute top-2 left-2 right-2 z-20 flex gap-[3px]">
-          {media.length > 0 ? media.map((_, i) => (
-            <div key={i} className="flex-1 h-[2px] rounded-full bg-white/30 overflow-hidden">
-              <div className={`h-full rounded-full bg-white ${i < currentSlide ? 'w-full' : i === currentSlide ? 'w-full' : 'w-0'}`} />
-            </div>
-          )) : (
+          {media.length > 0 ? (
+            media.map((_, i) => (
+              <div key={i} className="flex-1 h-[2px] rounded-full bg-white/30 overflow-hidden">
+                <div
+                  className={`h-full rounded-full bg-white ${i < currentSlide ? 'w-full' : i === currentSlide ? 'w-full' : 'w-0'}`}
+                />
+              </div>
+            ))
+          ) : (
             <div className="flex-1 h-[2px] rounded-full bg-white/30 overflow-hidden">
               <div className="h-full rounded-full bg-white w-full" />
             </div>
@@ -137,23 +184,37 @@ export function StoryPostCard({
         {/* Profile header */}
         <div className="absolute top-5 left-0 right-0 z-20 flex items-center px-3 gap-2">
           {profilePic ? (
-            <img src={profilePic} alt={displayName} className="w-8 h-8 rounded-full object-cover ring-2 ring-white/40" />
+            <img
+              src={profilePic}
+              alt={displayName}
+              className="w-8 h-8 rounded-full object-cover ring-2 ring-white/40"
+            />
           ) : (
             <div className="w-8 h-8 rounded-full bg-stone-600 flex items-center justify-center text-[11px] font-bold text-white ring-2 ring-white/40">
               {displayName.charAt(0).toUpperCase()}
             </div>
           )}
           <span className="text-white text-[13px] font-semibold drop-shadow-sm">{displayName}</span>
-          <span className="text-white/60 text-[11px] drop-shadow-sm whitespace-nowrap">{post.scheduled_at ? new Date(post.scheduled_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', timeZone: 'UTC' }) : ''}</span>
+          <span className="text-white/60 text-[11px] drop-shadow-sm whitespace-nowrap">
+            {post.scheduled_at
+              ? new Date(post.scheduled_at).toLocaleDateString('pt-BR', {
+                  day: '2-digit',
+                  month: 'short',
+                  timeZone: 'UTC',
+                })
+              : ''}
+          </span>
 
           <div className="ml-auto flex items-center gap-3">
             {/* Play icon */}
             <svg width="16" height="16" viewBox="0 0 24 24" fill="white" className="opacity-80">
-              <path d="M8 5v14l11-7z"/>
+              <path d="M8 5v14l11-7z" />
             </svg>
             {/* More menu */}
             <svg width="16" height="16" viewBox="0 0 24 24" fill="white" className="opacity-80">
-              <circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/>
+              <circle cx="12" cy="5" r="1.5" />
+              <circle cx="12" cy="12" r="1.5" />
+              <circle cx="12" cy="19" r="1.5" />
             </svg>
           </div>
         </div>
@@ -167,7 +228,7 @@ export function StoryPostCard({
             {isEditable ? (
               <textarea
                 defaultValue={draftIgCaption ?? ''}
-                onChange={e => {
+                onChange={(e) => {
                   igCaptionRef.current = e.target.value;
                   saveSuggestion(null, post.conteudo_plain ?? '', e.target.value);
                 }}
@@ -187,12 +248,28 @@ export function StoryPostCard({
             Responder para {displayName}...
           </div>
           {/* Heart */}
-          <svg width="22" height="22" fill="none" stroke="white" strokeWidth="1.5" viewBox="0 0 24 24" className="opacity-90 shrink-0">
-            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+          <svg
+            width="22"
+            height="22"
+            fill="none"
+            stroke="white"
+            strokeWidth="1.5"
+            viewBox="0 0 24 24"
+            className="opacity-90 shrink-0"
+          >
+            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
           </svg>
           {/* Send */}
-          <svg width="22" height="22" fill="none" stroke="white" strokeWidth="1.5" viewBox="0 0 24 24" className="opacity-90 shrink-0">
-            <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+          <svg
+            width="22"
+            height="22"
+            fill="none"
+            stroke="white"
+            strokeWidth="1.5"
+            viewBox="0 0 24 24"
+            className="opacity-90 shrink-0"
+          >
+            <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
           </svg>
         </div>
       </div>
@@ -202,7 +279,9 @@ export function StoryPostCard({
         <div className="bg-white dark:bg-[#1a1a1a] px-3 py-2 -mt-2 pt-4 space-y-1.5">
           {saveState !== 'idle' && (
             <div className="flex items-center gap-1.5">
-              {saveState === 'saving' && <span className="text-[10px] text-stone-400">Salvando sugestão...</span>}
+              {saveState === 'saving' && (
+                <span className="text-[10px] text-stone-400">Salvando sugestão...</span>
+              )}
               {saveState === 'saved' && (
                 <>
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
@@ -211,7 +290,9 @@ export function StoryPostCard({
               )}
             </div>
           )}
-          <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg ring-1 ${wasRejected ? 'bg-amber-50 ring-amber-200/40' : 'bg-emerald-50 ring-emerald-200/40'}`}>
+          <div
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg ring-1 ${wasRejected ? 'bg-amber-50 ring-amber-200/40' : 'bg-emerald-50 ring-emerald-200/40'}`}
+          >
             <span className={`text-[10px] ${wasRejected ? 'text-amber-800' : 'text-emerald-800'}`}>
               {wasRejected
                 ? '⚠️ Sua sugestão anterior foi rejeitada pela equipe. Edite novamente para enviar uma nova.'
@@ -232,7 +313,7 @@ export function StoryPostCard({
             <>
               <textarea
                 value={comentario}
-                onChange={e => setComentario(e.target.value)}
+                onChange={(e) => setComentario(e.target.value)}
                 placeholder="Comentário (necessário para correção)…"
                 className="w-full rounded border border-stone-200 dark:border-[#333] px-2.5 py-1.5 text-[11px] resize-none min-h-[48px] bg-white dark:bg-[#0a0a0a] text-stone-900 dark:text-[#f5f5f5] placeholder:text-stone-400 dark:placeholder:text-[#666] focus:outline-none focus:border-stone-300 dark:focus:border-[#555] transition-all"
               />
@@ -247,7 +328,9 @@ export function StoryPostCard({
                 <button
                   onClick={() => handleAction('correcao')}
                   disabled={submitting || approvalBlocked || !comentario.trim()}
-                  title={!comentario.trim() ? 'Deixe um comentário para solicitar correção' : undefined}
+                  title={
+                    !comentario.trim() ? 'Deixe um comentário para solicitar correção' : undefined
+                  }
                   className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-[4px] border border-stone-200 dark:border-stone-700 bg-white dark:bg-transparent text-stone-700 dark:text-stone-300 text-[11px] font-medium hover:bg-stone-50 dark:hover:bg-stone-800 disabled:opacity-50 transition-colors"
                 >
                   <AlertCircle size={12} /> Correção
@@ -259,8 +342,12 @@ export function StoryPostCard({
       )}
 
       {result && (
-        <div className={`bg-white dark:bg-[#1a1a1a] rounded-b-2xl px-3 py-2.5 -mt-2 pt-4 shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]`}>
-          <div className={`rounded-lg px-3 py-2 text-[11px] font-medium ${result.type === 'success' ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300' : 'bg-rose-50 dark:bg-rose-950/50 text-rose-800 dark:text-rose-300'}`}>
+        <div
+          className={`bg-white dark:bg-[#1a1a1a] rounded-b-2xl px-3 py-2.5 -mt-2 pt-4 shadow-[0_1px_3px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)]`}
+        >
+          <div
+            className={`rounded-lg px-3 py-2 text-[11px] font-medium ${result.type === 'success' ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300' : 'bg-rose-50 dark:bg-rose-950/50 text-rose-800 dark:text-rose-300'}`}
+          >
             {result.message}
           </div>
         </div>

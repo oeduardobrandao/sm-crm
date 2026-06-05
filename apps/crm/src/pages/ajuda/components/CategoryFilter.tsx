@@ -20,7 +20,7 @@ export function CategoryFilter({ selected, onChange }: CategoryFilterProps) {
       >
         Todos
       </button>
-      {ALL_CATEGORIES.map(cat => (
+      {ALL_CATEGORIES.map((cat) => (
         <button
           key={cat}
           type="button"

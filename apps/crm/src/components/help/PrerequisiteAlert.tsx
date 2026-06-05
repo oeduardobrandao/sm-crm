@@ -1,12 +1,12 @@
-import React from "react"
-import { Info } from "lucide-react"
-import { Link } from "react-router-dom"
+import React from 'react';
+import { Info } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 interface PrerequisiteAlertProps {
-  title: string
-  description: React.ReactNode
-  actionLabel: string
-  actionHref: string
+  title: string;
+  description: React.ReactNode;
+  actionLabel: string;
+  actionHref: string;
 }
 
 export function PrerequisiteAlert({
@@ -21,12 +21,12 @@ export function PrerequisiteAlert({
       <div className="flex flex-col gap-1">
         <span className="text-[#1e40af] font-semibold text-sm">{title}</span>
         <p className="text-[#3b82f6] text-xs">
-          {description}{" "}
+          {description}{' '}
           <Link to={actionHref} className="text-[#1e40af] underline font-medium">
             {actionLabel}
           </Link>
         </p>
       </div>
     </div>
-  )
+  );
 }

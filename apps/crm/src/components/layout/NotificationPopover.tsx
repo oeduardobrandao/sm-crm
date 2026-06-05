@@ -15,14 +15,20 @@ export interface NotificationPopoverProps {
 type FilterMode = 'all' | 'unread';
 
 export default function NotificationPopover({
-  notifications, onMarkAsRead, onMarkAllAsRead, onDismiss, onNavigate, onClose,
+  notifications,
+  onMarkAsRead,
+  onMarkAllAsRead,
+  onDismiss,
+  onNavigate,
+  onClose,
 }: NotificationPopoverProps) {
   const [filter, setFilter] = useState<FilterMode>('all');
-  const visible = filter === 'unread'
-    ? notifications.filter(n => !n.read_at)
-    : notifications;
+  const visible = filter === 'unread' ? notifications.filter((n) => !n.read_at) : notifications;
 
-  const handleNavigate = (link: string) => { onClose(); onNavigate(link); };
+  const handleNavigate = (link: string) => {
+    onClose();
+    onNavigate(link);
+  };
 
   return (
     <div
@@ -40,14 +46,18 @@ export default function NotificationPopover({
         flexDirection: 'column',
       }}
     >
-      <header style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '0.75rem 1rem',
-        borderBottom: '1px solid var(--border-color)',
-      }}>
-        <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-main)' }}>Notificações</span>
+      <header
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0.75rem 1rem',
+          borderBottom: '1px solid var(--border-color)',
+        }}
+      >
+        <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-main)' }}>
+          Notificações
+        </span>
         <span style={{ display: 'flex', gap: '0.25rem' }}>
           <button
             type="button"
@@ -79,11 +89,13 @@ export default function NotificationPopover({
         />
       )}
 
-      <footer style={{
-        padding: '0.5rem 1rem',
-        borderTop: '1px solid var(--border-color)',
-        textAlign: 'center',
-      }}>
+      <footer
+        style={{
+          padding: '0.5rem 1rem',
+          borderTop: '1px solid var(--border-color)',
+          textAlign: 'center',
+        }}
+      >
         <button
           type="button"
           disabled
@@ -120,27 +132,33 @@ function iconButtonStyle(active: boolean): React.CSSProperties {
 
 function EmptyState() {
   return (
-    <div style={{
-      padding: '2rem 1rem',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      gap: '0.5rem',
-      textAlign: 'center',
-    }}>
-      <span style={{
-        width: 48,
-        height: 48,
-        borderRadius: 12,
-        background: 'var(--surface-hover)',
+    <div
+      style={{
+        padding: '2rem 1rem',
         display: 'flex',
+        flexDirection: 'column',
         alignItems: 'center',
-        justifyContent: 'center',
-        color: 'var(--text-muted)',
-      }}>
+        gap: '0.5rem',
+        textAlign: 'center',
+      }}
+    >
+      <span
+        style={{
+          width: 48,
+          height: 48,
+          borderRadius: 12,
+          background: 'var(--surface-hover)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'var(--text-muted)',
+        }}
+      >
         <Bell size={20} />
       </span>
-      <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-main)' }}>Nenhuma notificação</span>
+      <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-main)' }}>
+        Nenhuma notificação
+      </span>
       <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', maxWidth: 240 }}>
         Notificações sobre sua conta e atividades aparecerão aqui
       </span>

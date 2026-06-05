@@ -56,12 +56,12 @@ function renderSidebar(
       <Routes>
         <Route
           path="*"
-          element={(
+          element={
             <>
               <Sidebar {...props} />
               <PathProbe />
             </>
-          )}
+          }
         />
       </Routes>
     </MemoryRouter>,
@@ -120,8 +120,16 @@ describe('Sidebar', () => {
     setAuth({ signOut });
     mockedSupabase.__queueSupabaseResult('workspace_members', 'select', {
       data: [
-        { workspace_id: 'w-1', role: 'owner', workspaces: { id: 'w-1', name: 'Workspace Principal' } },
-        { workspace_id: 'w-2', role: 'owner', workspaces: { id: 'w-2', name: 'Workspace Secundario' } },
+        {
+          workspace_id: 'w-1',
+          role: 'owner',
+          workspaces: { id: 'w-1', name: 'Workspace Principal' },
+        },
+        {
+          workspace_id: 'w-2',
+          role: 'owner',
+          workspaces: { id: 'w-2', name: 'Workspace Secundario' },
+        },
       ],
       error: null,
     });

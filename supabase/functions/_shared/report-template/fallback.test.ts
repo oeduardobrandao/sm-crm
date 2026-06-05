@@ -1,5 +1,5 @@
-import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.208.0/assert/mod.ts";
-import { buildFallbackSummary, buildFallbackRecommendations } from "./fallback.ts";
+import { assertStringIncludes } from "https://deno.land/std@0.208.0/assert/mod.ts";
+import { buildFallbackSummary } from "./fallback.ts";
 import type { ReportData } from "./types.ts";
 
 const fixture: ReportData = {
@@ -34,14 +34,4 @@ Deno.test("buildFallbackSummary returns bullet-point summary", () => {
   assertStringIncludes(summary, "45.200");
   assertStringIncludes(summary, "4,2%");
   assertStringIncludes(summary, "18");
-});
-
-Deno.test("buildFallbackRecommendations returns 3-5 items", () => {
-  const recs = buildFallbackRecommendations(fixture);
-  assertEquals(recs.length >= 3 && recs.length <= 5, true);
-  for (const rec of recs) {
-    assertEquals(typeof rec.title, "string");
-    assertEquals(typeof rec.description, "string");
-    assertEquals(["high", "medium", "low"].includes(rec.priority), true);
-  }
 });

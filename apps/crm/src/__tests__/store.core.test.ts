@@ -12,7 +12,11 @@ type MockedSupabaseModule = typeof supabaseModule & {
     payload?: unknown;
     modifiers: Array<{ method: string; args: unknown[] }>;
   }>;
-  __queueSupabaseResult: (table: string, operation: 'select' | 'insert' | 'update' | 'delete' | 'upsert', ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>) => void;
+  __queueSupabaseResult: (
+    table: string,
+    operation: 'select' | 'insert' | 'update' | 'delete' | 'upsert',
+    ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>
+  ) => void;
   __resetSupabaseMock: () => void;
   __setCurrentProfile: (profile: Record<string, unknown> | null) => void;
   __setCurrentUser: (user: { id: string } | null) => void;
@@ -21,7 +25,10 @@ type MockedSupabaseModule = typeof supabaseModule & {
 const mockedSupabase = supabaseModule as MockedSupabaseModule;
 
 function getLastCall(table: string) {
-  const call = mockedSupabase.__getSupabaseCalls().filter((entry) => entry.table === table).at(-1);
+  const call = mockedSupabase
+    .__getSupabaseCalls()
+    .filter((entry) => entry.table === table)
+    .at(-1);
   expect(call).toBeDefined();
   return call!;
 }
@@ -142,9 +149,7 @@ describe('store core helpers and CRUD', () => {
 
   it('maps legacy transaction rows without status to pago', async () => {
     mockedSupabase.__queueSupabaseResult('transacoes', 'select', {
-      data: [
-        { id: 1, descricao: 'Mensalidade Clínica Aurora', status: null },
-      ],
+      data: [{ id: 1, descricao: 'Mensalidade Clínica Aurora', status: null }],
       error: null,
     });
 
@@ -178,8 +183,12 @@ describe('store core helpers and CRUD', () => {
         ],
       );
 
-      expect(projected.some((item) => item.referencia_agendamento?.startsWith('membro_2_'))).toBe(true);
-      expect(projected.some((item) => item.referencia_agendamento === 'cliente_1_2026_04')).toBe(true);
+      expect(projected.some((item) => item.referencia_agendamento?.startsWith('membro_2_'))).toBe(
+        true,
+      );
+      expect(projected.some((item) => item.referencia_agendamento === 'cliente_1_2026_04')).toBe(
+        true,
+      );
     } finally {
       vi.useRealTimers();
     }
@@ -255,32 +264,36 @@ describe('store core helpers and CRUD', () => {
       expected: [{ id: 1, nome: 'Ana Fisioterapia' }],
       modifiers: [{ method: 'order', args: ['created_at', { ascending: false }] }],
     },
-  ])('$name issues the expected select query', async ({ table, operation, run, response, expected, modifiers }) => {
-    mockedSupabase.__queueSupabaseResult(table, operation, { data: response, error: null });
+  ])(
+    '$name issues the expected select query',
+    async ({ table, operation, run, response, expected, modifiers }) => {
+      mockedSupabase.__queueSupabaseResult(table, operation, { data: response, error: null });
 
-    await expect(run()).resolves.toEqual(expected);
+      await expect(run()).resolves.toEqual(expected);
 
-    const call = getLastCall(table);
-    expect(call.operation).toBe(operation);
-    for (const modifier of modifiers) {
-      expect(call.modifiers).toContainEqual(modifier);
-    }
-  });
+      const call = getLastCall(table);
+      expect(call.operation).toBe(operation);
+      for (const modifier of modifiers) {
+        expect(call.modifiers).toContainEqual(modifier);
+      }
+    },
+  );
 
   it.each([
     {
       name: 'addCliente',
       table: 'clientes',
-      run: () => store.addCliente({
-        nome: 'Clínica Aurora',
-        sigla: 'CA',
-        cor: '#db2777',
-        plano: 'Premium',
-        email: 'contato@aurora.com.br',
-        telefone: '(85) 99999-0000',
-        status: 'ativo',
-        valor_mensal: 3200,
-      }),
+      run: () =>
+        store.addCliente({
+          nome: 'Clínica Aurora',
+          sigla: 'CA',
+          cor: '#db2777',
+          plano: 'Premium',
+          email: 'contato@aurora.com.br',
+          telefone: '(85) 99999-0000',
+          status: 'ativo',
+          valor_mensal: 3200,
+        }),
       payload: {
         nome: 'Clínica Aurora',
         sigla: 'CA',
@@ -297,16 +310,17 @@ describe('store core helpers and CRUD', () => {
     {
       name: 'addClienteEndereco',
       table: 'cliente_enderecos',
-      run: () => store.addClienteEndereco({
-        cliente_id: 12,
-        tipo: 'comercial',
-        logradouro: 'Rua das Flores',
-        numero: '123',
-        bairro: 'Aldeota',
-        cidade: 'Fortaleza',
-        estado: 'CE',
-        cep: '60150-160',
-      }),
+      run: () =>
+        store.addClienteEndereco({
+          cliente_id: 12,
+          tipo: 'comercial',
+          logradouro: 'Rua das Flores',
+          numero: '123',
+          bairro: 'Aldeota',
+          cidade: 'Fortaleza',
+          estado: 'CE',
+          cep: '60150-160',
+        }),
       payload: {
         cliente_id: 12,
         tipo: 'comercial',
@@ -322,11 +336,12 @@ describe('store core helpers and CRUD', () => {
     {
       name: 'addClienteData',
       table: 'cliente_datas',
-      run: () => store.addClienteData({
-        cliente_id: 12,
-        titulo: 'Aniversário da marca',
-        data: '2026-06-14',
-      }),
+      run: () =>
+        store.addClienteData({
+          cliente_id: 12,
+          titulo: 'Aniversário da marca',
+          data: '2026-06-14',
+        }),
       payload: {
         cliente_id: 12,
         titulo: 'Aniversário da marca',
@@ -337,14 +352,15 @@ describe('store core helpers and CRUD', () => {
     {
       name: 'addTransacao',
       table: 'transacoes',
-      run: () => store.addTransacao({
-        data: '2026-04-18',
-        descricao: 'Mensalidade Clínica Aurora',
-        detalhe: 'Plano Premium',
-        categoria: 'Receita',
-        tipo: 'entrada',
-        valor: 3200,
-      }),
+      run: () =>
+        store.addTransacao({
+          data: '2026-04-18',
+          descricao: 'Mensalidade Clínica Aurora',
+          detalhe: 'Plano Premium',
+          categoria: 'Receita',
+          tipo: 'entrada',
+          valor: 3200,
+        }),
       payload: {
         data: '2026-04-18',
         descricao: 'Mensalidade Clínica Aurora',
@@ -361,14 +377,15 @@ describe('store core helpers and CRUD', () => {
     {
       name: 'addContrato',
       table: 'contratos',
-      run: () => store.addContrato({
-        cliente_nome: 'Clínica Aurora',
-        titulo: 'Plano Trimestral',
-        data_inicio: '2026-04-01',
-        data_fim: '2026-06-30',
-        status: 'vigente',
-        valor_total: 9600,
-      }),
+      run: () =>
+        store.addContrato({
+          cliente_nome: 'Clínica Aurora',
+          titulo: 'Plano Trimestral',
+          data_inicio: '2026-04-01',
+          data_fim: '2026-06-30',
+          status: 'vigente',
+          valor_total: 9600,
+        }),
       payload: {
         cliente_nome: 'Clínica Aurora',
         titulo: 'Plano Trimestral',
@@ -383,13 +400,14 @@ describe('store core helpers and CRUD', () => {
     {
       name: 'addMembro',
       table: 'membros',
-      run: () => store.addMembro({
-        nome: 'Paulo Editor',
-        cargo: 'Editor',
-        tipo: 'freelancer_mensal',
-        custo_mensal: 900,
-        avatar_url: 'https://cdn.mesaas.com/paulo.jpg',
-      }),
+      run: () =>
+        store.addMembro({
+          nome: 'Paulo Editor',
+          cargo: 'Editor',
+          tipo: 'freelancer_mensal',
+          custo_mensal: 900,
+          avatar_url: 'https://cdn.mesaas.com/paulo.jpg',
+        }),
       payload: {
         nome: 'Paulo Editor',
         cargo: 'Editor',
@@ -403,20 +421,21 @@ describe('store core helpers and CRUD', () => {
     {
       name: 'addLead',
       table: 'leads',
-      run: () => store.addLead({
-        nome: 'Ana Fisioterapia',
-        email: 'ana@fisio.com.br',
-        telefone: '(85) 98888-1111',
-        instagram: '@anafisio',
-        canal: 'instagram',
-        origem: 'manual',
-        status: 'novo',
-        notas: 'Veio por indicação',
-        especialidade: 'Fisioterapia',
-        faturamento: '20k-50k',
-        objetivo: 'Gerar leads',
-        tags: 'saude,clinica',
-      }),
+      run: () =>
+        store.addLead({
+          nome: 'Ana Fisioterapia',
+          email: 'ana@fisio.com.br',
+          telefone: '(85) 98888-1111',
+          instagram: '@anafisio',
+          canal: 'instagram',
+          origem: 'manual',
+          status: 'novo',
+          notas: 'Veio por indicação',
+          especialidade: 'Fisioterapia',
+          faturamento: '20k-50k',
+          objetivo: 'Gerar leads',
+          tags: 'saude,clinica',
+        }),
       payload: {
         nome: 'Ana Fisioterapia',
         email: 'ana@fisio.com.br',
@@ -435,7 +454,10 @@ describe('store core helpers and CRUD', () => {
       },
     },
   ])('$name inserts with the authenticated workspace context', async ({ table, run, payload }) => {
-    mockedSupabase.__queueSupabaseResult(table, 'insert', { data: { id: 1, ...payload }, error: null });
+    mockedSupabase.__queueSupabaseResult(table, 'insert', {
+      data: { id: 1, ...payload },
+      error: null,
+    });
 
     await expect(run()).resolves.toMatchObject({ id: 1, ...payload });
 
@@ -511,10 +533,30 @@ describe('store core helpers and CRUD', () => {
 
   it.each([
     { name: 'removeCliente', table: 'clientes', run: () => store.removeCliente(7), eq: ['id', 7] },
-    { name: 'removeClienteEndereco', table: 'cliente_enderecos', run: () => store.removeClienteEndereco(9), eq: ['id', 9] },
-    { name: 'removeClienteData', table: 'cliente_datas', run: () => store.removeClienteData(3), eq: ['id', 3] },
-    { name: 'removeTransacao', table: 'transacoes', run: () => store.removeTransacao(4), eq: ['id', 4] },
-    { name: 'removeContrato', table: 'contratos', run: () => store.removeContrato(5), eq: ['id', 5] },
+    {
+      name: 'removeClienteEndereco',
+      table: 'cliente_enderecos',
+      run: () => store.removeClienteEndereco(9),
+      eq: ['id', 9],
+    },
+    {
+      name: 'removeClienteData',
+      table: 'cliente_datas',
+      run: () => store.removeClienteData(3),
+      eq: ['id', 3],
+    },
+    {
+      name: 'removeTransacao',
+      table: 'transacoes',
+      run: () => store.removeTransacao(4),
+      eq: ['id', 4],
+    },
+    {
+      name: 'removeContrato',
+      table: 'contratos',
+      run: () => store.removeContrato(5),
+      eq: ['id', 5],
+    },
     { name: 'removeMembro', table: 'membros', run: () => store.removeMembro(8), eq: ['id', 8] },
     { name: 'removeLead', table: 'leads', run: () => store.removeLead(11), eq: ['id', 11] },
   ])('$name deletes the requested row', async ({ table, run, eq }) => {

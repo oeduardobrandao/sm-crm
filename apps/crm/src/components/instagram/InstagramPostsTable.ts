@@ -41,21 +41,22 @@ export async function renderInstagramPostsTable(container: HTMLElement, clientId
       contentArea.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100px;">
              <i class="ph ph-spinner ph-spin" style="font-size:1.5rem;color:var(--primary-color)"></i>
           </div>`;
-          
+
       const data = await getInstagramPosts(clientId, page);
       const posts = data.posts || [];
       const total = data.total || 0;
       const totalPages = Math.ceil(total / 10);
 
       if (posts.length === 0) {
-          const noPostsEl = document.createElement('p');
-          noPostsEl.style.cssText = 'color:var(--text-muted);font-size:0.9rem;text-align:center;padding:1rem;';
-          noPostsEl.textContent = t('instagram.noPosts');
-          contentArea.replaceChildren(noPostsEl);
-          btnPrev.disabled = true;
-          btnNext.disabled = true;
-          lblPage.textContent = '-';
-          return;
+        const noPostsEl = document.createElement('p');
+        noPostsEl.style.cssText =
+          'color:var(--text-muted);font-size:0.9rem;text-align:center;padding:1rem;';
+        noPostsEl.textContent = t('instagram.noPosts');
+        contentArea.replaceChildren(noPostsEl);
+        btnPrev.disabled = true;
+        btnNext.disabled = true;
+        lblPage.textContent = '-';
+        return;
       }
 
       let html = `
@@ -75,12 +76,16 @@ export async function renderInstagramPostsTable(container: HTMLElement, clientId
       const COLLAPSED_LIMIT = 5;
       let rowIndex = 0;
       for (const p of posts) {
-          const rawCaption = p.caption ? (p.caption.length > 50 ? p.caption.substring(0, 50) + '...' : p.caption) : '—';
-          const captionStr = escapeHTML(rawCaption);
-          const safePermalink = sanitizeUrl(p.permalink || '');
-          const safeThumbnail = p.thumbnail_url ? sanitizeUrl(p.thumbnail_url) : '';
+        const rawCaption = p.caption
+          ? p.caption.length > 50
+            ? p.caption.substring(0, 50) + '...'
+            : p.caption
+          : '—';
+        const captionStr = escapeHTML(rawCaption);
+        const safePermalink = sanitizeUrl(p.permalink || '');
+        const safeThumbnail = p.thumbnail_url ? sanitizeUrl(p.thumbnail_url) : '';
 
-          html += `
+        html += `
             <tr${rowIndex >= COLLAPSED_LIMIT ? ' class="ig-row-hidden" style="display:none;"' : ''}>
               <td data-label="${escapeHTML(t('instagram.colDate'))}" style="width: 140px;">
                   <div style="display:flex;align-items:center;gap:0.75rem;">
@@ -111,7 +116,7 @@ export async function renderInstagramPostsTable(container: HTMLElement, clientId
               </td>
             </tr>
           `;
-          rowIndex++;
+        rowIndex++;
       }
 
       html += '</tbody></table>';
@@ -130,7 +135,7 @@ export async function renderInstagramPostsTable(container: HTMLElement, clientId
           const hidden = contentArea.querySelectorAll('.ig-row-hidden');
           const isExpanded = expandBtn.dataset.expanded === '1';
           const pagination = container.querySelector('#ig-pagination') as HTMLElement;
-          hidden.forEach(r => (r as HTMLElement).style.display = isExpanded ? 'none' : '');
+          hidden.forEach((r) => ((r as HTMLElement).style.display = isExpanded ? 'none' : ''));
           expandBtn.dataset.expanded = isExpanded ? '0' : '1';
           pagination.style.display = isExpanded ? 'none' : 'flex';
           const icon = expandBtn.querySelector('i')!;
@@ -146,25 +151,27 @@ export async function renderInstagramPostsTable(container: HTMLElement, clientId
       }
 
       // Update Pagination UI
-      lblPage.textContent = t('instagram.pageIndicator', { page: String(page), total: String(totalPages) });
+      lblPage.textContent = t('instagram.pageIndicator', {
+        page: String(page),
+        total: String(totalPages),
+      });
       btnPrev.disabled = page <= 1;
       btnNext.disabled = page >= totalPages;
-
     } catch (err: any) {
-        contentArea.innerHTML = `<p style="color:var(--danger);font-size:0.9rem;padding:1rem;">${escapeHTML(t('instagram.postsError', { error: err.message || t('instagram.unknownError') }))}</p>`;
+      contentArea.innerHTML = `<p style="color:var(--danger);font-size:0.9rem;padding:1rem;">${escapeHTML(t('instagram.postsError', { error: err.message || t('instagram.unknownError') }))}</p>`;
     }
   }
 
   btnPrev.addEventListener('click', () => {
-     if (currentPage > 1) {
-         currentPage--;
-         loadPosts(currentPage);
-     }
+    if (currentPage > 1) {
+      currentPage--;
+      loadPosts(currentPage);
+    }
   });
 
   btnNext.addEventListener('click', () => {
-     currentPage++;
-     loadPosts(currentPage);
+    currentPage++;
+    loadPosts(currentPage);
   });
 
   // Initial load

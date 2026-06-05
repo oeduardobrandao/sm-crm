@@ -48,9 +48,7 @@ export function FilterPopover({ filter, onChange }: FilterPopoverProps) {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button
-          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md border border-[var(--border-color)] bg-[var(--surface-main)] text-[var(--text-muted)] hover:bg-[var(--surface-hover)] transition-colors"
-        >
+        <button className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md border border-[var(--border-color)] bg-[var(--surface-main)] text-[var(--text-muted)] hover:bg-[var(--surface-hover)] transition-colors">
           <SlidersHorizontal className="h-3.5 w-3.5" />
           <span>Filtros</span>
           {count > 0 && (

@@ -7,7 +7,9 @@ import { Spinner } from '@/components/ui/spinner';
 import { useEntregasData, type BoardCard } from './hooks/useEntregasData';
 import { EntregasFilters, type FilterState } from './components/EntregasFilters';
 import {
-  NewWorkflowModal, EditWorkflowModal, TemplatesModal,
+  NewWorkflowModal,
+  EditWorkflowModal,
+  TemplatesModal,
   RecurringWorkflowDialog,
 } from './components/WorkflowModals';
 import { KanbanView } from './views/KanbanView';
@@ -30,8 +32,19 @@ const VIEW_TABS: { id: ActiveView; label: string; icon: React.ReactNode }[] = [
 
 export default function EntregasPage() {
   const [activeView, setActiveView] = useState<ActiveView>('kanban');
-  const [filters, setFilters] = useState<FilterState>({ filterCliente: null, filterMembro: null, filterPostResponsavel: null, filterStatus: 'todos', filterSearch: '', filterEtapa: null, filterTemplate: null });
-  const [listSort, setListSort] = useState<{ column: string; direction: 'asc' | 'desc' }>({ column: 'titulo', direction: 'asc' });
+  const [filters, setFilters] = useState<FilterState>({
+    filterCliente: null,
+    filterMembro: null,
+    filterPostResponsavel: null,
+    filterStatus: 'todos',
+    filterSearch: '',
+    filterEtapa: null,
+    filterTemplate: null,
+  });
+  const [listSort, setListSort] = useState<{ column: string; direction: 'asc' | 'desc' }>({
+    column: 'titulo',
+    direction: 'asc',
+  });
   const [newWorkflowOpen, setNewWorkflowOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [editCard, setEditCard] = useState<BoardCard | null>(null);
@@ -39,7 +52,19 @@ export default function EntregasPage() {
   const [recurringWfId, setRecurringWfId] = useState<number | null>(null);
 
   const [searchParams, setSearchParams] = useSearchParams();
-  const { clientes, membros, templates, cards, activeWorkflows, postsCounts, approvedPostsCounts, revisaoInternaCounts, postResponsaveis, isLoading, refresh } = useEntregasData();
+  const {
+    clientes,
+    membros,
+    templates,
+    cards,
+    activeWorkflows,
+    postsCounts,
+    approvedPostsCounts,
+    revisaoInternaCounts,
+    postResponsaveis,
+    isLoading,
+    refresh,
+  } = useEntregasData();
 
   // Auto-open drawer when navigated with ?drawer=<workflowId>
   const pendingDrawerId = useRef<number | null>(null);
@@ -55,7 +80,7 @@ export default function EntregasPage() {
 
   useEffect(() => {
     if (pendingDrawerId.current === null || cards.length === 0) return;
-    const match = cards.find(c => c.workflow.id === pendingDrawerId.current);
+    const match = cards.find((c) => c.workflow.id === pendingDrawerId.current);
     if (match) {
       pendingDrawerId.current = null;
       setDrawerCard(match);
@@ -73,36 +98,48 @@ export default function EntregasPage() {
   let filteredCards = cards;
   if (filters.filterSearch) {
     const q = filters.filterSearch.toLowerCase();
-    filteredCards = filteredCards.filter(c => c.workflow.titulo.toLowerCase().includes(q));
+    filteredCards = filteredCards.filter((c) => c.workflow.titulo.toLowerCase().includes(q));
   }
-  if (filters.filterCliente) filteredCards = filteredCards.filter(c => c.workflow.cliente_id === filters.filterCliente);
-  if (filters.filterMembro) filteredCards = filteredCards.filter(c => c.etapa.responsavel_id === filters.filterMembro);
-  if (filters.filterPostResponsavel) filteredCards = filteredCards.filter(c => {
-    const responsaveis = postResponsaveis.get(c.workflow.id!);
-    return responsaveis?.includes(filters.filterPostResponsavel!) ?? false;
-  });
-  if (filters.filterEtapa) filteredCards = filteredCards.filter(c => c.etapa.nome === filters.filterEtapa);
-  if (filters.filterTemplate) filteredCards = filteredCards.filter(c => c.workflow.template_id === filters.filterTemplate);
-  if (filters.filterStatus === 'atrasado') filteredCards = filteredCards.filter(c => c.deadline.estourado);
-  else if (filters.filterStatus === 'urgente') filteredCards = filteredCards.filter(c => c.deadline.urgente && !c.deadline.estourado);
-  else if (filters.filterStatus === 'em_dia') filteredCards = filteredCards.filter(c => !c.deadline.estourado && !c.deadline.urgente);
+  if (filters.filterCliente)
+    filteredCards = filteredCards.filter((c) => c.workflow.cliente_id === filters.filterCliente);
+  if (filters.filterMembro)
+    filteredCards = filteredCards.filter((c) => c.etapa.responsavel_id === filters.filterMembro);
+  if (filters.filterPostResponsavel)
+    filteredCards = filteredCards.filter((c) => {
+      const responsaveis = postResponsaveis.get(c.workflow.id!);
+      return responsaveis?.includes(filters.filterPostResponsavel!) ?? false;
+    });
+  if (filters.filterEtapa)
+    filteredCards = filteredCards.filter((c) => c.etapa.nome === filters.filterEtapa);
+  if (filters.filterTemplate)
+    filteredCards = filteredCards.filter((c) => c.workflow.template_id === filters.filterTemplate);
+  if (filters.filterStatus === 'atrasado')
+    filteredCards = filteredCards.filter((c) => c.deadline.estourado);
+  else if (filters.filterStatus === 'urgente')
+    filteredCards = filteredCards.filter((c) => c.deadline.urgente && !c.deadline.estourado);
+  else if (filters.filterStatus === 'em_dia')
+    filteredCards = filteredCards.filter((c) => !c.deadline.estourado && !c.deadline.urgente);
 
-  const overdue = cards.filter(c => c.deadline.estourado).length;
-  const urgent = cards.filter(c => c.deadline.urgente && !c.deadline.estourado).length;
+  const overdue = cards.filter((c) => c.deadline.estourado).length;
+  const urgent = cards.filter((c) => c.deadline.urgente && !c.deadline.estourado).length;
 
   const handleRecurringConfirm = async () => {
     if (!recurringWfId) return;
     try {
       await duplicateWorkflow(recurringWfId);
       toast.success('Novo ciclo criado!');
-    } catch { toast.error('Erro ao criar ciclo'); }
+    } catch {
+      toast.error('Erro ao criar ciclo');
+    }
     setRecurringWfId(null);
     refresh();
   };
 
   if (isLoading) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '40vh' }}>
+      <div
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '40vh' }}
+      >
         <Spinner size="lg" />
       </div>
     );
@@ -114,36 +151,68 @@ export default function EntregasPage() {
         <div className="header-title">
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <h1>Entregas</h1>
-            <span data-tooltip="Acompanhe o andamento das entregas e fluxos ativos." data-tooltip-dir="right" style={{ display: 'flex' }}>
+            <span
+              data-tooltip="Acompanhe o andamento das entregas e fluxos ativos."
+              data-tooltip-dir="right"
+              style={{ display: 'flex' }}
+            >
               <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
             </span>
           </div>
           <p>
             fluxos ativos: {activeWorkflows.length}
-            {overdue > 0 && <span style={{ color: 'var(--danger)', fontWeight: 600 }}> • {overdue} atrasado{overdue > 1 ? 's' : ''}</span>}
-            {urgent > 0 && <span style={{ color: 'var(--warning)', fontWeight: 600 }}> • {urgent} urgente{urgent > 1 ? 's' : ''}</span>}
+            {overdue > 0 && (
+              <span style={{ color: 'var(--danger)', fontWeight: 600 }}>
+                {' '}
+                • {overdue} atrasado{overdue > 1 ? 's' : ''}
+              </span>
+            )}
+            {urgent > 0 && (
+              <span style={{ color: 'var(--warning)', fontWeight: 600 }}>
+                {' '}
+                • {urgent} urgente{urgent > 1 ? 's' : ''}
+              </span>
+            )}
           </p>
         </div>
         <div className="header-actions">
-
-          <Button variant="outline" onClick={() => setTemplatesOpen(true)}><LayoutGrid className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Templates</Button>
-          <Button onClick={() => setNewWorkflowOpen(true)}><Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Novo Fluxo</Button>
+          <Button variant="outline" onClick={() => setTemplatesOpen(true)}>
+            <LayoutGrid className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Templates
+          </Button>
+          <Button onClick={() => setNewWorkflowOpen(true)}>
+            <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Novo Fluxo
+          </Button>
         </div>
       </header>
 
-      <div style={{ display: 'flex', gap: '0.25rem', background: 'var(--surface-2)', padding: '0.25rem', borderRadius: '8px', overflowX: 'auto', width: 'fit-content', maxWidth: '100%' }} className="animate-up no-scrollbar">
-        {VIEW_TABS.map(tab => (
+      <div
+        style={{
+          display: 'flex',
+          gap: '0.25rem',
+          background: 'var(--surface-2)',
+          padding: '0.25rem',
+          borderRadius: '8px',
+          overflowX: 'auto',
+          width: 'fit-content',
+          maxWidth: '100%',
+        }}
+        className="animate-up no-scrollbar"
+      >
+        {VIEW_TABS.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveView(tab.id)}
             style={{
-              display: 'flex', alignItems: 'center', gap: '0.4rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
               padding: '0.4rem 0.9rem',
               borderRadius: '6px',
               border: 'none',
               background: activeView === tab.id ? '#000' : 'transparent',
               color: activeView === tab.id ? '#fff' : 'var(--text-secondary)',
-              fontSize: '0.8rem', fontWeight: activeView === tab.id ? 600 : 400,
+              fontSize: '0.8rem',
+              fontWeight: activeView === tab.id ? 600 : 400,
               cursor: 'pointer',
               whiteSpace: 'nowrap',
             }}
@@ -154,7 +223,14 @@ export default function EntregasPage() {
       </div>
 
       {activeView !== 'concluded' && (
-        <EntregasFilters filters={filters} onChange={setFilters} clientes={clientes} membros={membros} templates={templates} etapaNames={etapaNames} />
+        <EntregasFilters
+          filters={filters}
+          onChange={setFilters}
+          clientes={clientes}
+          membros={membros}
+          templates={templates}
+          etapaNames={etapaNames}
+        />
       )}
 
       {activeView === 'kanban' && (
@@ -173,7 +249,9 @@ export default function EntregasPage() {
         />
       )}
       {activeView === 'chart' && <ChartView cards={filteredCards} />}
-      {activeView === 'calendar' && <CalendarView cards={filteredCards} onCardClick={setDrawerCard} />}
+      {activeView === 'calendar' && (
+        <CalendarView cards={filteredCards} onCardClick={setDrawerCard} />
+      )}
       {activeView === 'list' && (
         <ListView
           cards={filteredCards}
@@ -202,7 +280,10 @@ export default function EntregasPage() {
           onClose={() => setEditCard(null)}
           onSaved={refresh}
           onDeleted={refresh}
-          onOpenPosts={() => { setDrawerCard(editCard); setEditCard(null); }}
+          onOpenPosts={() => {
+            setDrawerCard(editCard);
+            setEditCard(null);
+          }}
         />
       )}
       {templatesOpen && (

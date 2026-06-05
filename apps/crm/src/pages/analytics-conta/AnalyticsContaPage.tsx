@@ -2,23 +2,72 @@ import { Fragment, type ReactNode, useMemo, useState, useRef, useEffect } from '
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { AlertTriangle, ArrowLeft, ArrowUpDown, Bookmark, ChevronRight, FileText, Heart, MessageCircle, Plus, RefreshCw, Trophy, Zap } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowLeft,
+  ArrowUpDown,
+  Bookmark,
+  ChevronRight,
+  FileText,
+  Heart,
+  MessageCircle,
+  Plus,
+  RefreshCw,
+  Trophy,
+  Zap,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import { Chart, registerables } from 'chart.js';
 import { getClientes, getCurrentWorkspace } from '../../store';
 import {
-  getAnalyticsOverview, getPostsAnalytics, getFollowerHistory,
-  getAudienceDemographics, getBestPostingTimes, getTags, createTag, deleteTag,
-  assignTagToPost, getClientReports, getAccountAIAnalysis,
-  upsertManualFollowerCount, generateReport, sendReportEmail, getReportDownloadUrl,
-  type KpiDelta, type PostAnalytics, type PostTag, type AudienceDemographics,
-  type BestPostingTimes, type AnalyticsReport,
+  getAnalyticsOverview,
+  getPostsAnalytics,
+  getFollowerHistory,
+  getAudienceDemographics,
+  getBestPostingTimes,
+  getTags,
+  createTag,
+  deleteTag,
+  assignTagToPost,
+  getClientReports,
+  getAccountAIAnalysis,
+  upsertManualFollowerCount,
+  generateReport,
+  sendReportEmail,
+  getReportDownloadUrl,
+  type KpiDelta,
+  type PostAnalytics,
+  type PostTag,
+  type AudienceDemographics,
+  type BestPostingTimes,
+  type AnalyticsReport,
 } from '../../services/analytics';
 import { getInstagramSummary, syncInstagramData } from '../../services/instagram';
 import { sanitizeUrl } from '../../utils/security';
@@ -30,30 +79,63 @@ function BulletText({ text }: { text: unknown }) {
   if (!text || typeof text !== 'string') {
     return <p style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>{String(text ?? '')}</p>;
   }
-  const lines = text.split(/\n|[,.]?\s*•\s*/).map(l => l.trim()).filter(Boolean);
+  const lines = text
+    .split(/\n|[,.]?\s*•\s*/)
+    .map((l) => l.trim())
+    .filter(Boolean);
   if (lines.length <= 1) {
     return <p style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>{text}</p>;
   }
   return (
-    <ul style={{ fontSize: '0.85rem', lineHeight: 1.6, margin: 0, paddingLeft: '1.2rem', listStyle: 'disc' }}>
-      {lines.map((line, i) => <li key={i} style={{ marginBottom: '0.25rem' }}>{line}</li>)}
+    <ul
+      style={{
+        fontSize: '0.85rem',
+        lineHeight: 1.6,
+        margin: 0,
+        paddingLeft: '1.2rem',
+        listStyle: 'disc',
+      }}
+    >
+      {lines.map((line, i) => (
+        <li key={i} style={{ marginBottom: '0.25rem' }}>
+          {line}
+        </li>
+      ))}
     </ul>
   );
 }
 
 function formatMediaType(type: string): string {
   switch (type) {
-    case 'VIDEO': return 'Reel';
-    case 'CAROUSEL_ALBUM': return 'Carrossel';
-    case 'IMAGE': return 'Imagem';
-    case 'STORY': return 'Story';
-    default: return type;
+    case 'VIDEO':
+      return 'Reel';
+    case 'CAROUSEL_ALBUM':
+      return 'Carrossel';
+    case 'IMAGE':
+      return 'Imagem';
+    case 'STORY':
+      return 'Story';
+    default:
+      return type;
   }
 }
 
 function formatReportMonth(month: string): string {
   const [y, m] = month.split('-');
-  const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+  const months = [
+    'Jan',
+    'Fev',
+    'Mar',
+    'Abr',
+    'Mai',
+    'Jun',
+    'Jul',
+    'Ago',
+    'Set',
+    'Out',
+    'Nov',
+    'Dez',
+  ];
   return `${months[parseInt(m) - 1]} ${y}`;
 }
 
@@ -67,40 +149,54 @@ function formatPostDate(date: string): string {
 
 function mediaAccentColor(type: string): string {
   switch (type) {
-    case 'VIDEO': return '#8b5cf6';
-    case 'CAROUSEL_ALBUM': return '#10b981';
-    case 'IMAGE': return '#3b82f6';
-    default: return '#64748b';
+    case 'VIDEO':
+      return '#8b5cf6';
+    case 'CAROUSEL_ALBUM':
+      return '#10b981';
+    case 'IMAGE':
+      return '#3b82f6';
+    default:
+      return '#64748b';
   }
 }
 
 function PostThumbnail({ post, size = 'card' }: { post: PostAnalytics; size?: 'card' | 'list' }) {
   const accent = mediaAccentColor(post.media_type);
-  const dimensions = size === 'card'
-    ? { width: '100%', height: '100%' }
-    : { width: 52, height: 52 };
+  const dimensions =
+    size === 'card' ? { width: '100%', height: '100%' } : { width: 52, height: 52 };
 
   if (post.thumbnail_url) {
     return (
       <img
         src={sanitizeUrl(post.thumbnail_url)}
         alt=""
-        style={{ ...dimensions, objectFit: 'cover', flexShrink: 0, background: 'var(--surface-darker)' }}
-        onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+        style={{
+          ...dimensions,
+          objectFit: 'cover',
+          flexShrink: 0,
+          background: 'var(--surface-darker)',
+        }}
+        onError={(e) => {
+          (e.target as HTMLImageElement).style.display = 'none';
+        }}
       />
     );
   }
 
   return (
-    <div style={{
-      ...dimensions,
-      flexShrink: 0,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      background: `linear-gradient(135deg, ${accent}, ${accent}cc)`,
-    }}>
-      <span style={{ width: 42, height: 42, borderRadius: 8, background: 'rgba(255,255,255,0.18)' }} />
+    <div
+      style={{
+        ...dimensions,
+        flexShrink: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: `linear-gradient(135deg, ${accent}, ${accent}cc)`,
+      }}
+    >
+      <span
+        style={{ width: 42, height: 42, borderRadius: 8, background: 'rgba(255,255,255,0.18)' }}
+      />
     </div>
   );
 }
@@ -116,29 +212,120 @@ function RankedPostCard({ post, tone }: { post: PostAnalytics; tone: 'best' | 'w
       className="analytics-post-card"
       style={{ minWidth: 180, textDecoration: 'none', color: 'inherit' }}
     >
-      <div style={{ aspectRatio: '3/4', position: 'relative', overflow: 'hidden', background: 'var(--surface-darker)' }}>
+      <div
+        style={{
+          aspectRatio: '3/4',
+          position: 'relative',
+          overflow: 'hidden',
+          background: 'var(--surface-darker)',
+        }}
+      >
         <PostThumbnail post={post} />
-        <span style={{ position: 'absolute', top: 8, left: 8, background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: '0.6rem', padding: '2px 6px', borderRadius: 4, fontWeight: 600 }}>
+        <span
+          style={{
+            position: 'absolute',
+            top: 8,
+            left: 8,
+            background: 'rgba(0,0,0,0.55)',
+            color: '#fff',
+            fontSize: '0.6rem',
+            padding: '2px 6px',
+            borderRadius: 4,
+            fontWeight: 600,
+          }}
+        >
           {formatMediaType(post.media_type)}
         </span>
       </div>
       <div style={{ padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-        <span style={{ minHeight: 34, fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', lineHeight: 1.35, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+        <span
+          style={{
+            minHeight: 34,
+            fontSize: '0.72rem',
+            fontWeight: 600,
+            color: 'var(--text-muted)',
+            lineHeight: 1.35,
+            overflow: 'hidden',
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+          }}
+        >
           {post.caption || 'Sem legenda'}
         </span>
-        <span style={{ fontSize: '0.65rem', color: 'var(--text-light)' }}>{formatPostDate(post.posted_at)}</span>
+        <span style={{ fontSize: '0.65rem', color: 'var(--text-light)' }}>
+          {formatPostDate(post.posted_at)}
+        </span>
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
           <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Alcance</span>
-          <span style={{ fontSize: '0.7rem', fontWeight: 700, fontFamily: 'var(--font-mono)', color: reachColor }}>{formatNumber(post.reach)}</span>
+          <span
+            style={{
+              fontSize: '0.7rem',
+              fontWeight: 700,
+              fontFamily: 'var(--font-mono)',
+              color: reachColor,
+            }}
+          >
+            {formatNumber(post.reach)}
+          </span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
           <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Engajamento</span>
-          <span style={{ fontSize: '0.7rem', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{post.engagement_rate.toFixed(2)}%</span>
+          <span style={{ fontSize: '0.7rem', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
+            {post.engagement_rate.toFixed(2)}%
+          </span>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-start', gap: '0.5rem', marginTop: 2, flexWrap: 'wrap' }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: '0.65rem', color: 'var(--text-muted)' }}><Heart className="h-3 w-3" /> <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>{formatNumber(post.likes)}</strong></span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: '0.65rem', color: 'var(--text-muted)' }}><MessageCircle className="h-3 w-3" /> <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>{formatNumber(post.comments)}</strong></span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: '0.65rem', color: 'var(--text-muted)' }}><Bookmark className="h-3 w-3" /> <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>{formatNumber(post.saved)}</strong></span>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'flex-start',
+            gap: '0.5rem',
+            marginTop: 2,
+            flexWrap: 'wrap',
+          }}
+        >
+          <span
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 3,
+              fontSize: '0.65rem',
+              color: 'var(--text-muted)',
+            }}
+          >
+            <Heart className="h-3 w-3" />{' '}
+            <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>
+              {formatNumber(post.likes)}
+            </strong>
+          </span>
+          <span
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 3,
+              fontSize: '0.65rem',
+              color: 'var(--text-muted)',
+            }}
+          >
+            <MessageCircle className="h-3 w-3" />{' '}
+            <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>
+              {formatNumber(post.comments)}
+            </strong>
+          </span>
+          <span
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 3,
+              fontSize: '0.65rem',
+              color: 'var(--text-muted)',
+            }}
+          >
+            <Bookmark className="h-3 w-3" />{' '}
+            <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>
+              {formatNumber(post.saved)}
+            </strong>
+          </span>
         </div>
       </div>
     </a>
@@ -166,32 +353,60 @@ function RankedPostsSection({
 
   return (
     <div className="card animate-up">
-      <div className="dashboard-hub-card-header" style={{ marginBottom: '1rem', alignItems: 'flex-start' }}>
+      <div
+        className="dashboard-hub-card-header"
+        style={{ marginBottom: '1rem', alignItems: 'flex-start' }}
+      >
         <div>
           <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: 2 }}>
             {icon}
             {title}
           </h3>
-          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: 0 }}>{description}</p>
+          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: 0 }}>
+            {description}
+          </p>
         </div>
         {canSeeMore && (
-          <Button variant="ghost" size="sm" onClick={onSeeMore} style={{ fontSize: '0.75rem', gap: '0.25rem', flexShrink: 0 }}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onSeeMore}
+            style={{ fontSize: '0.75rem', gap: '0.25rem', flexShrink: 0 }}
+          >
             Ver mais <ChevronRight className="h-3.5 w-3.5" />
           </Button>
         )}
       </div>
-      <div className="analytics-posts-row" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))' }}>
-        {posts.map(post => <RankedPostCard key={post.id} post={post} tone={tone} />)}
+      <div
+        className="analytics-posts-row"
+        style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))' }}
+      >
+        {posts.map((post) => (
+          <RankedPostCard key={post.id} post={post} tone={tone} />
+        ))}
       </div>
     </div>
   );
 }
 
 type RankedDrawerMode = 'best' | 'worst';
-type RankedPostOrderBy = 'engagement' | 'reach' | 'likes' | 'comments' | 'saved' | 'shares' | 'date';
+type RankedPostOrderBy =
+  | 'engagement'
+  | 'reach'
+  | 'likes'
+  | 'comments'
+  | 'saved'
+  | 'shares'
+  | 'date';
 
 // ---- KPI Card ----
-function KpiCard({ label, value, delta, period, prevFormatted }: {
+function KpiCard({
+  label,
+  value,
+  delta,
+  period,
+  prevFormatted,
+}: {
   label: string;
   value: string;
   delta: KpiDelta;
@@ -199,16 +414,44 @@ function KpiCard({ label, value, delta, period, prevFormatted }: {
   prevFormatted?: string;
 }) {
   const dirIcon = delta.direction === 'up' ? '↑' : delta.direction === 'down' ? '↓' : '→';
-  const dirColor = delta.direction === 'up' ? 'var(--success)' : delta.direction === 'down' ? 'var(--danger)' : 'var(--text-muted)';
+  const dirColor =
+    delta.direction === 'up'
+      ? 'var(--success)'
+      : delta.direction === 'down'
+        ? 'var(--danger)'
+        : 'var(--text-muted)';
   const pct = Math.abs(delta.deltaPercent).toFixed(1);
 
   return (
     <div className="kpi-card">
       <span className="kpi-label">{label}</span>
-      <span className="kpi-value" style={{ fontSize: '1.3rem' }}>{value}</span>
-      <span className="kpi-sub" style={{ color: dirColor }}>{dirIcon} {pct}% vs período anterior</span>
-      {prevFormatted != null && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>Anterior: {prevFormatted}</span>}
-      {period && <span style={{ display: 'inline-block', alignSelf: 'flex-start', marginTop: 4, fontSize: '0.72rem', padding: '2px 7px', borderRadius: 4, background: 'var(--border-color,rgba(0,0,0,0.08))', color: 'var(--text-muted)' }}>{period}</span>}
+      <span className="kpi-value" style={{ fontSize: '1.3rem' }}>
+        {value}
+      </span>
+      <span className="kpi-sub" style={{ color: dirColor }}>
+        {dirIcon} {pct}% vs período anterior
+      </span>
+      {prevFormatted != null && (
+        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>
+          Anterior: {prevFormatted}
+        </span>
+      )}
+      {period && (
+        <span
+          style={{
+            display: 'inline-block',
+            alignSelf: 'flex-start',
+            marginTop: 4,
+            fontSize: '0.72rem',
+            padding: '2px 7px',
+            borderRadius: 4,
+            background: 'var(--border-color,rgba(0,0,0,0.08))',
+            color: 'var(--text-muted)',
+          }}
+        >
+          {period}
+        </span>
+      )}
     </div>
   );
 }
@@ -225,25 +468,30 @@ function FollowerChart({ history, postDates }: { history: any[]; postDates: any[
     const chart = new Chart(canvasRef.current, {
       type: 'line',
       data: {
-        labels: history.map(h => new Date(h.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })),
-        datasets: [{
-          label: 'Seguidores',
-          data: history.map(h => h.follower_count),
-          borderColor: '#E1306C',
-          backgroundColor: 'rgba(225, 48, 108, 0.1)',
-          borderWidth: 2,
-          fill: true,
-          tension: 0.4,
-          pointRadius: 3,
-          pointStyle: 'circle',
-          pointBackgroundColor: '#E1306C',
-          pointBorderColor: '#fff',
-          pointHoverBackgroundColor: '#fff',
-          pointHoverBorderColor: '#E1306C',
-        }],
+        labels: history.map((h) =>
+          new Date(h.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+        ),
+        datasets: [
+          {
+            label: 'Seguidores',
+            data: history.map((h) => h.follower_count),
+            borderColor: '#E1306C',
+            backgroundColor: 'rgba(225, 48, 108, 0.1)',
+            borderWidth: 2,
+            fill: true,
+            tension: 0.4,
+            pointRadius: 3,
+            pointStyle: 'circle',
+            pointBackgroundColor: '#E1306C',
+            pointBorderColor: '#fff',
+            pointHoverBackgroundColor: '#fff',
+            pointHoverBorderColor: '#E1306C',
+          },
+        ],
       },
       options: {
-        responsive: true, maintainAspectRatio: false,
+        responsive: true,
+        maintainAspectRatio: false,
         plugins: {
           legend: { display: false },
           tooltip: {
@@ -260,20 +508,40 @@ function FollowerChart({ history, postDates }: { history: any[]; postDates: any[
           },
         },
         scales: {
-          x: { grid: { display: false }, ticks: { color: textColor, font: { size: 10 }, maxTicksLimit: 10 } },
-          // @ts-ignore
-          y: { grid: { color: gridColor, borderDash: [5, 5] }, ticks: { color: textColor, font: { size: 10 }, precision: 0 }, beginAtZero: false },
+          x: {
+            grid: { display: false },
+            ticks: { color: textColor, font: { size: 10 }, maxTicksLimit: 10 },
+          },
+          y: {
+            // @ts-ignore
+            grid: { color: gridColor, borderDash: [5, 5] },
+            ticks: { color: textColor, font: { size: 10 }, precision: 0 },
+            beginAtZero: false,
+          },
         },
       },
     });
     return () => chart.destroy();
   }, [history, postDates]);
-  if (history.length < 2) return <p style={{ color: 'var(--text-muted)', marginTop: '1rem' }}>Dados insuficientes. O histórico é construído diariamente.</p>;
-  return <div style={{ position: 'relative', height: 280, marginTop: '1rem' }}><canvas ref={canvasRef} /></div>;
+  if (history.length < 2)
+    return (
+      <p style={{ color: 'var(--text-muted)', marginTop: '1rem' }}>
+        Dados insuficientes. O histórico é construído diariamente.
+      </p>
+    );
+  return (
+    <div style={{ position: 'relative', height: 280, marginTop: '1rem' }}>
+      <canvas ref={canvasRef} />
+    </div>
+  );
 }
 
 // ---- Type Chart ----
-function TypeChart({ typeBreakdown }: { typeBreakdown: { type: string; count: number; avgEngagement: number }[] }) {
+function TypeChart({
+  typeBreakdown,
+}: {
+  typeBreakdown: { type: string; count: number; avgEngagement: number }[];
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     if (!canvasRef.current || typeBreakdown.length === 0) return;
@@ -284,28 +552,49 @@ function TypeChart({ typeBreakdown }: { typeBreakdown: { type: string; count: nu
     const chart = new Chart(canvasRef.current, {
       type: 'bar',
       data: {
-        labels: typeBreakdown.map(t => `${t.type} (${t.count})`),
-        datasets: [{
-          label: 'Engajamento Médio',
-          data: typeBreakdown.map(t => t.avgEngagement),
-          backgroundColor: typeBreakdown.map((_, i) => colors[i % colors.length] + '99'),
-          borderRadius: 4,
-          barThickness: 28,
-        }],
+        labels: typeBreakdown.map((t) => `${t.type} (${t.count})`),
+        datasets: [
+          {
+            label: 'Engajamento Médio',
+            data: typeBreakdown.map((t) => t.avgEngagement),
+            backgroundColor: typeBreakdown.map((_, i) => colors[i % colors.length] + '99'),
+            borderRadius: 4,
+            barThickness: 28,
+          },
+        ],
       },
       options: {
-        indexAxis: 'y', responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx: any) => `${ctx.parsed.x.toFixed(2)}%` } } },
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: (ctx: any) => `${ctx.parsed.x.toFixed(2)}%` } },
+        },
         scales: {
-          x: { grid: { color: gridColor }, ticks: { color: textColor, callback: (v: any) => v + '%' } },
+          x: {
+            grid: { color: gridColor },
+            ticks: { color: textColor, callback: (v: any) => v + '%' },
+          },
           y: { grid: { display: false }, ticks: { color: textColor } },
         },
       },
     });
     return () => chart.destroy();
   }, [typeBreakdown]);
-  if (typeBreakdown.length === 0) return <p style={{ color: 'var(--text-muted)', marginTop: '1rem' }}>Sem dados.</p>;
-  return <div style={{ position: 'relative', height: Math.max(150, typeBreakdown.length * 50), marginTop: '1rem' }}><canvas ref={canvasRef} /></div>;
+  if (typeBreakdown.length === 0)
+    return <p style={{ color: 'var(--text-muted)', marginTop: '1rem' }}>Sem dados.</p>;
+  return (
+    <div
+      style={{
+        position: 'relative',
+        height: Math.max(150, typeBreakdown.length * 50),
+        marginTop: '1rem',
+      }}
+    >
+      <canvas ref={canvasRef} />
+    </div>
+  );
 }
 
 // ---- Age Chart ----
@@ -319,14 +608,25 @@ function AgeChart({ demographics }: { demographics: AudienceDemographics }) {
     const chart = new Chart(canvasRef.current, {
       type: 'bar',
       data: {
-        labels: demographics.age_gender.map(a => a.age_range),
+        labels: demographics.age_gender.map((a) => a.age_range),
         datasets: [
-          { label: 'Masculino', data: demographics.age_gender.map(a => a.male), backgroundColor: 'rgba(66,133,244,0.6)', borderRadius: 4 },
-          { label: 'Feminino', data: demographics.age_gender.map(a => a.female), backgroundColor: 'rgba(234,67,149,0.6)', borderRadius: 4 },
+          {
+            label: 'Masculino',
+            data: demographics.age_gender.map((a) => a.male),
+            backgroundColor: 'rgba(66,133,244,0.6)',
+            borderRadius: 4,
+          },
+          {
+            label: 'Feminino',
+            data: demographics.age_gender.map((a) => a.female),
+            backgroundColor: 'rgba(234,67,149,0.6)',
+            borderRadius: 4,
+          },
         ],
       },
       options: {
-        responsive: true, maintainAspectRatio: false,
+        responsive: true,
+        maintainAspectRatio: false,
         plugins: { legend: { labels: { color: textColor, boxWidth: 12 } } },
         scales: {
           x: { grid: { display: false }, ticks: { color: textColor } },
@@ -336,7 +636,11 @@ function AgeChart({ demographics }: { demographics: AudienceDemographics }) {
     });
     return () => chart.destroy();
   }, [demographics]);
-  return <div style={{ position: 'relative', height: 200, marginBottom: '1rem' }}><canvas ref={canvasRef} /></div>;
+  return (
+    <div style={{ position: 'relative', height: 200, marginBottom: '1rem' }}>
+      <canvas ref={canvasRef} />
+    </div>
+  );
 }
 
 // ---- Best Times Heatmap ----
@@ -349,23 +653,49 @@ function BestTimesHeatmap({ data }: { data: BestPostingTimes }) {
         <thead>
           <tr>
             <th />
-            {hours.map(h => <th key={h} style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 400 }}>{h}h</th>)}
+            {hours.map((h) => (
+              <th
+                key={h}
+                style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 400 }}
+              >
+                {h}h
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
           {data.labels_days.map((day, d) => (
             <tr key={d}>
-              <td style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 500, textAlign: 'right', paddingRight: 4 }}>{day}</td>
-              {hours.map(h => {
+              <td
+                style={{
+                  fontSize: '0.7rem',
+                  color: 'var(--text-muted)',
+                  fontWeight: 500,
+                  textAlign: 'right',
+                  paddingRight: 4,
+                }}
+              >
+                {day}
+              </td>
+              {hours.map((h) => {
                 const val = data.heatmap[d][h];
                 const postCount = data.counts[d][h];
                 const intensity = max > 0 ? val / max : 0;
-                const isTop = data.topSlots.some(s => s.day === d && s.hour === h);
-                const bg = intensity > 0 ? `rgba(76,175,80,${0.1 + intensity * 0.8})` : 'rgba(0,0,0,0.02)';
+                const isTop = data.topSlots.some((s) => s.day === d && s.hour === h);
+                const bg =
+                  intensity > 0 ? `rgba(76,175,80,${0.1 + intensity * 0.8})` : 'rgba(0,0,0,0.02)';
                 return (
                   <td
                     key={h}
-                    style={{ background: bg, ...(isTop ? { outline: '2px solid var(--primary-color)', outlineOffset: -1 } : {}), fontSize: '0.6rem', textAlign: 'center', padding: '4px 2px' }}
+                    style={{
+                      background: bg,
+                      ...(isTop
+                        ? { outline: '2px solid var(--primary-color)', outlineOffset: -1 }
+                        : {}),
+                      fontSize: '0.6rem',
+                      textAlign: 'center',
+                      padding: '4px 2px',
+                    }}
                     title={`${day} ${h}h: ${val.toFixed(1)}% eng. (${postCount} post${postCount !== 1 ? 's' : ''})`}
                   >
                     {val > 0 ? val.toFixed(1) + '%' : ''}
@@ -387,7 +717,8 @@ function AISection({ clientId, days }: { clientId: number; days: number }) {
   const [error, setError] = useState('');
 
   const handleGenerate = async () => {
-    setLoading(true); setError('');
+    setLoading(true);
+    setError('');
     try {
       const result = await getAccountAIAnalysis(clientId, days);
       if (result.analysis.error) {
@@ -403,36 +734,79 @@ function AISection({ clientId, days }: { clientId: number; days: number }) {
   };
 
   const score = analysis?.healthScore?.score ?? 0;
-  const scoreColor = analysis ? (score >= 70 ? 'var(--success)' : score >= 40 ? 'var(--warning)' : 'var(--danger)') : '';
-  const priorityColor = (p: string) => p === 'alta' ? 'var(--danger)' : p === 'media' ? 'var(--warning)' : 'var(--success)';
+  const scoreColor = analysis
+    ? score >= 70
+      ? 'var(--success)'
+      : score >= 40
+        ? 'var(--warning)'
+        : 'var(--danger)'
+    : '';
+  const priorityColor = (p: string) =>
+    p === 'alta' ? 'var(--danger)' : p === 'media' ? 'var(--warning)' : 'var(--success)';
 
   return (
     <div className="card animate-up">
       <div className="dashboard-hub-card-header" style={{ marginBottom: '1rem' }}>
         <h3>Análise Inteligente</h3>
-        <Button size="sm" variant="outline" disabled={loading} onClick={handleGenerate}>{loading ? <Spinner size="sm" /> : <Zap className="h-3 w-3" />} Gerar Análise IA</Button>
+        <Button size="sm" variant="outline" disabled={loading} onClick={handleGenerate}>
+          {loading ? <Spinner size="sm" /> : <Zap className="h-3 w-3" />} Gerar Análise IA
+        </Button>
       </div>
       {!analysis && !error && !loading && (
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Clique em "Gerar Análise IA" para obter insights personalizados.</p>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+          Clique em "Gerar Análise IA" para obter insights personalizados.
+        </p>
       )}
       {error && <p style={{ color: 'var(--danger)' }}>{error}</p>}
       {analysis && (
         <div>
           {/* Health Score */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', paddingBottom: '1rem', borderBottom: '1px solid var(--border-color)' }}>
-            <div style={{ fontSize: '2.8rem', fontWeight: 800, color: scoreColor, lineHeight: 1 }}>{score}</div>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '1.25rem',
+              paddingBottom: '1rem',
+              borderBottom: '1px solid var(--border-color)',
+            }}
+          >
+            <div style={{ fontSize: '2.8rem', fontWeight: 800, color: scoreColor, lineHeight: 1 }}>
+              {score}
+            </div>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '0.2rem' }}>Health Score</div>
-              <p style={{ fontSize: '0.85rem', lineHeight: 1.4 }}>{String(analysis.healthScore?.summary ?? '')}</p>
+              <div
+                style={{
+                  fontSize: '0.75rem',
+                  textTransform: 'uppercase',
+                  fontWeight: 700,
+                  color: 'var(--text-muted)',
+                  marginBottom: '0.2rem',
+                }}
+              >
+                Health Score
+              </div>
+              <p style={{ fontSize: '0.85rem', lineHeight: 1.4 }}>
+                {String(analysis.healthScore?.summary ?? '')}
+              </p>
             </div>
           </div>
 
           {/* Health Score Breakdown */}
           {analysis.healthScore?.breakdown && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: '0.75rem', padding: '1rem 0', borderBottom: '1px solid var(--border-color)' }}>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))',
+                gap: '0.75rem',
+                padding: '1rem 0',
+                borderBottom: '1px solid var(--border-color)',
+              }}
+            >
               {Object.entries(analysis.healthScore.breakdown).map(([key, val]: [string, any]) => (
                 <div key={key} style={{ fontSize: '0.8rem' }}>
-                  <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>{key.replace(/([A-Z])/g, ' $1')}: </span>
+                  <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>
+                    {key.replace(/([A-Z])/g, ' $1')}:{' '}
+                  </span>
                   <span>{typeof val === 'string' ? val : val === null ? 'N/A' : String(val)}</span>
                 </div>
               ))}
@@ -441,38 +815,86 @@ function AISection({ clientId, days }: { clientId: number; days: number }) {
 
           {/* Performance Map */}
           {analysis.performanceMap && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: '1.25rem', padding: '1.25rem 0', borderBottom: '1px solid var(--border-color)' }}>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))',
+                gap: '1.25rem',
+                padding: '1.25rem 0',
+                borderBottom: '1px solid var(--border-color)',
+              }}
+            >
               <div>
-                <h4 style={{ fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}>Melhor Post</h4>
+                <h4
+                  style={{ fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}
+                >
+                  Melhor Post
+                </h4>
                 <BulletText text={analysis.performanceMap.topPerformer} />
               </div>
               <div>
-                <h4 style={{ fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}>Pior Post</h4>
+                <h4
+                  style={{ fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}
+                >
+                  Pior Post
+                </h4>
                 <BulletText text={analysis.performanceMap.worstPerformer} />
               </div>
               <div>
-                <h4 style={{ fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}>Mix de Conteúdo</h4>
+                <h4
+                  style={{ fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}
+                >
+                  Mix de Conteúdo
+                </h4>
                 <BulletText text={analysis.performanceMap.contentMix} />
               </div>
             </div>
           )}
 
           {/* Caption Diagnostic + Growth */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: '1.25rem', padding: '1.25rem 0', borderBottom: '1px solid var(--border-color)' }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))',
+              gap: '1.25rem',
+              padding: '1.25rem 0',
+              borderBottom: '1px solid var(--border-color)',
+            }}
+          >
             {analysis.captionDiagnostic && (
               <div>
-                <h4 style={{ fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}>Diagnóstico de Legendas</h4>
+                <h4
+                  style={{ fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}
+                >
+                  Diagnóstico de Legendas
+                </h4>
                 <BulletText text={analysis.captionDiagnostic} />
               </div>
             )}
             {analysis.growthAnalysis && (
               <>
                 <div>
-                  <h4 style={{ fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}>Trajetória de Crescimento</h4>
+                  <h4
+                    style={{
+                      fontSize: '0.8rem',
+                      marginBottom: '0.4rem',
+                      color: 'var(--text-muted)',
+                    }}
+                  >
+                    Trajetória de Crescimento
+                  </h4>
                   <BulletText text={analysis.growthAnalysis.trajectory} />
                 </div>
                 <div>
-                  <h4 style={{ fontSize: '0.8rem', marginBottom: '0.4rem', color: 'var(--text-muted)' }}>Projeção</h4>
+                  <h4
+                    style={{
+                      fontSize: '0.8rem',
+                      marginBottom: '0.4rem',
+                      color: 'var(--text-muted)',
+                    }}
+                  >
+                    Projeção
+                  </h4>
                   <BulletText text={analysis.growthAnalysis.projection} />
                 </div>
               </>
@@ -482,14 +904,46 @@ function AISection({ clientId, days }: { clientId: number; days: number }) {
           {/* Action Plan */}
           {analysis.actionPlan && analysis.actionPlan.length > 0 && (
             <div style={{ paddingTop: '1.25rem' }}>
-              <h4 style={{ fontSize: '0.8rem', marginBottom: '0.6rem', color: 'var(--text-muted)' }}>Plano de Ação</h4>
+              <h4
+                style={{ fontSize: '0.8rem', marginBottom: '0.6rem', color: 'var(--text-muted)' }}
+              >
+                Plano de Ação
+              </h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 {analysis.actionPlan.map((a: any, i: number) => (
-                  <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem', fontSize: '0.85rem' }}>
-                    <span className="badge" style={{ fontSize: '0.65rem', minWidth: 44, textAlign: 'center', background: priorityColor(a.prioridade) + '20', color: priorityColor(a.prioridade), border: `1px solid ${priorityColor(a.prioridade)}40` }}>{a.prioridade}</span>
+                  <div
+                    key={i}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'baseline',
+                      gap: '0.6rem',
+                      fontSize: '0.85rem',
+                    }}
+                  >
+                    <span
+                      className="badge"
+                      style={{
+                        fontSize: '0.65rem',
+                        minWidth: 44,
+                        textAlign: 'center',
+                        background: priorityColor(a.prioridade) + '20',
+                        color: priorityColor(a.prioridade),
+                        border: `1px solid ${priorityColor(a.prioridade)}40`,
+                      }}
+                    >
+                      {a.prioridade}
+                    </span>
                     <div style={{ lineHeight: 1.4 }}>
                       <div style={{ fontWeight: 600 }}>{a.acao}</div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>{a.porque}</div>
+                      <div
+                        style={{
+                          fontSize: '0.8rem',
+                          color: 'var(--text-muted)',
+                          marginTop: '0.15rem',
+                        }}
+                      >
+                        {a.porque}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -497,8 +951,18 @@ function AISection({ clientId, days }: { clientId: number; days: number }) {
             </div>
           )}
 
-          <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '1rem', textAlign: 'right' }}>
-            Gerado em {new Date(analysis.generatedAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
+          <p
+            style={{
+              fontSize: '0.65rem',
+              color: 'var(--text-muted)',
+              marginTop: '1rem',
+              textAlign: 'right',
+            }}
+          >
+            Gerado em{' '}
+            {new Date(analysis.generatedAt).toLocaleString('pt-BR', {
+              timeZone: 'America/Sao_Paulo',
+            })}
           </p>
         </div>
       )}
@@ -509,13 +973,19 @@ function AISection({ clientId, days }: { clientId: number; days: number }) {
 // ---- Tag pill component ----
 function TagPill({ tag, onRemove }: { tag: PostTag; onRemove: () => void }) {
   return (
-    <span className="tag-pill" style={{ background: tag.color + '20', color: tag.color, border: `1px solid ${tag.color}40` }}>
+    <span
+      className="tag-pill"
+      style={{ background: tag.color + '20', color: tag.color, border: `1px solid ${tag.color}40` }}
+    >
       {tag.tag_name}
       <span
         className="tag-remove"
         title="Remover tag"
         style={{ cursor: 'pointer', marginLeft: 4 }}
-        onClick={e => { e.stopPropagation(); onRemove(); }}
+        onClick={(e) => {
+          e.stopPropagation();
+          onRemove();
+        }}
       >
         ×
       </span>
@@ -541,7 +1011,10 @@ function AnalyticsContent({
   const [periodStart, setPeriodStart] = useState<string | undefined>();
   const [periodEnd, setPeriodEnd] = useState<string | undefined>();
   const [periodLabel, setPeriodLabel] = useState<string | undefined>();
-  const [sort, setSort] = useState<{ col: string; dir: 'asc' | 'desc' }>({ col: 'posted_at', dir: 'desc' });
+  const [sort, setSort] = useState<{ col: string; dir: 'asc' | 'desc' }>({
+    col: 'posted_at',
+    dir: 'desc',
+  });
   const [expandedPostId, setExpandedPostId] = useState<number | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [showAllPosts, setShowAllPosts] = useState(false);
@@ -578,12 +1051,18 @@ function AnalyticsContent({
     queryFn: () => getClientReports(clientId),
     refetchInterval: (query) => {
       const reports = query.state.data;
-      if (reports?.some(r => r.status === 'pending' || r.status === 'generating')) return 10000;
+      if (reports?.some((r) => r.status === 'pending' || r.status === 'generating')) return 10000;
       return false;
     },
   });
-  const { data: demoRes } = useQuery({ queryKey: ['analytics-demo', clientId], queryFn: () => getAudienceDemographics(clientId).catch(() => null) });
-  const { data: onlineRes } = useQuery({ queryKey: ['analytics-times', clientId], queryFn: () => getBestPostingTimes(clientId).catch(() => null) });
+  const { data: demoRes } = useQuery({
+    queryKey: ['analytics-demo', clientId],
+    queryFn: () => getAudienceDemographics(clientId).catch(() => null),
+  });
+  const { data: onlineRes } = useQuery({
+    queryKey: ['analytics-times', clientId],
+    queryFn: () => getBestPostingTimes(clientId).catch(() => null),
+  });
 
   const isLoading = loadingOv || loadingPosts;
   const overview = overviewRes?.data;
@@ -594,18 +1073,15 @@ function AnalyticsContent({
   const bestTimesData: BestPostingTimes | null = onlineRes?.data || null;
 
   const topSaved = [...posts].sort((a, b) => b.saved - a.saved).slice(0, 5);
-  const rankedPosts = useMemo(
-    () => [...posts].sort((a, b) => b.reach - a.reach),
-    [posts],
-  );
+  const rankedPosts = useMemo(() => [...posts].sort((a, b) => b.reach - a.reach), [posts]);
   const matureRankedPosts = useMemo(() => {
     const cutoff48h = Date.now() - 48 * 60 * 60 * 1000;
     return [...posts]
-      .filter(p => new Date(p.posted_at).getTime() < cutoff48h)
+      .filter((p) => new Date(p.posted_at).getTime() < cutoff48h)
       .sort((a, b) => a.reach - b.reach);
   }, [posts]);
   const rankedPostFormats = useMemo(
-    () => Array.from(new Set(posts.map(p => p.media_type))).sort(),
+    () => Array.from(new Set(posts.map((p) => p.media_type))).sort(),
     [posts],
   );
   const rankedDrawerPosts = useMemo(() => {
@@ -613,15 +1089,15 @@ function AnalyticsContent({
     let next = [...basePosts];
 
     if (rankedFormatFilter !== 'all') {
-      next = next.filter(p => p.media_type === rankedFormatFilter);
+      next = next.filter((p) => p.media_type === rankedFormatFilter);
     }
     if (rankedDateFrom) {
       const from = new Date(rankedDateFrom).getTime();
-      next = next.filter(p => new Date(p.posted_at).getTime() >= from);
+      next = next.filter((p) => new Date(p.posted_at).getTime() >= from);
     }
     if (rankedDateTo) {
       const to = new Date(`${rankedDateTo}T23:59:59`).getTime();
-      next = next.filter(p => new Date(p.posted_at).getTime() <= to);
+      next = next.filter((p) => new Date(p.posted_at).getTime() <= to);
     }
 
     const dir = rankedAsc ? 1 : -1;
@@ -645,12 +1121,23 @@ function AnalyticsContent({
         next.sort((a, b) => (a.shares - b.shares) * dir);
         break;
       case 'date':
-        next.sort((a, b) => (new Date(a.posted_at).getTime() - new Date(b.posted_at).getTime()) * dir);
+        next.sort(
+          (a, b) => (new Date(a.posted_at).getTime() - new Date(b.posted_at).getTime()) * dir,
+        );
         break;
     }
 
     return next;
-  }, [matureRankedPosts, posts, rankedAsc, rankedDateFrom, rankedDateTo, rankedDrawer, rankedFormatFilter, rankedOrderBy]);
+  }, [
+    matureRankedPosts,
+    posts,
+    rankedAsc,
+    rankedDateFrom,
+    rankedDateTo,
+    rankedDrawer,
+    rankedFormatFilter,
+    rankedOrderBy,
+  ]);
 
   // Content type breakdown
   const typeMap: Record<string, { count: number; totalEng: number }> = {};
@@ -660,9 +1147,13 @@ function AnalyticsContent({
     typeMap[type].count++;
     typeMap[type].totalEng += p.engagement_rate;
   }
-  const typeBreakdown = Object.entries(typeMap).map(([type, data]) => ({
-    type, count: data.count, avgEngagement: data.count > 0 ? data.totalEng / data.count : 0,
-  })).sort((a, b) => b.avgEngagement - a.avgEngagement);
+  const typeBreakdown = Object.entries(typeMap)
+    .map(([type, data]) => ({
+      type,
+      count: data.count,
+      avgEngagement: data.count > 0 ? data.totalEng / data.count : 0,
+    }))
+    .sort((a, b) => b.avgEngagement - a.avgEngagement);
 
   // Topic performance
   const tagEngMap: Record<string, { tag: PostTag; totalEng: number; count: number }> = {};
@@ -673,9 +1164,13 @@ function AnalyticsContent({
       tagEngMap[t.tag_name].count++;
     }
   }
-  const topicStats = Object.values(tagEngMap).map(t => ({
-    ...t.tag, avgEngagement: t.count > 0 ? t.totalEng / t.count : 0, count: t.count,
-  })).sort((a, b) => b.avgEngagement - a.avgEngagement);
+  const topicStats = Object.values(tagEngMap)
+    .map((t) => ({
+      ...t.tag,
+      avgEngagement: t.count > 0 ? t.totalEng / t.count : 0,
+      count: t.count,
+    }))
+    .sort((a, b) => b.avgEngagement - a.avgEngagement);
 
   const handleSync = async () => {
     setSyncing(true);
@@ -697,8 +1192,11 @@ function AnalyticsContent({
   };
 
   const handleDaysChange = (newDays: number) => {
-    setDays(newDays); setOverviewDays(newDays);
-    setPeriodStart(undefined); setPeriodEnd(undefined); setPeriodLabel(undefined);
+    setDays(newDays);
+    setOverviewDays(newDays);
+    setPeriodStart(undefined);
+    setPeriodEnd(undefined);
+    setPeriodLabel(undefined);
     setShowAllPosts(false);
     resetRankedDrawer();
   };
@@ -710,7 +1208,8 @@ function AnalyticsContent({
     const daysInLastMonth = lastOfLastMonth.getDate();
     const pad = (n: number) => String(n).padStart(2, '0');
     const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-    setDays(daysInLastMonth); setOverviewDays(daysInLastMonth);
+    setDays(daysInLastMonth);
+    setOverviewDays(daysInLastMonth);
     setPeriodStart(fmt(firstOfLastMonth));
     setPeriodEnd(fmt(lastOfLastMonth));
     setPeriodLabel(firstOfLastMonth.toLocaleString('pt-BR', { month: 'short', year: 'numeric' }));
@@ -719,7 +1218,7 @@ function AnalyticsContent({
   };
 
   const handleSortChange = (col: string) => {
-    setSort(s => ({ col, dir: s.col === col ? (s.dir === 'asc' ? 'desc' : 'asc') : 'desc' }));
+    setSort((s) => ({ col, dir: s.col === col ? (s.dir === 'asc' ? 'desc' : 'asc') : 'desc' }));
   };
 
   const resetRankedDrawer = () => {
@@ -821,7 +1320,9 @@ function AnalyticsContent({
       a.click();
     }
     setTimeout(() => URL.revokeObjectURL(url), 30000);
-    toast.success('Relatório aberto em nova aba. Use "Salvar como PDF" para baixar.', { duration: 4000 });
+    toast.success('Relatório aberto em nova aba. Use "Salvar como PDF" para baixar.', {
+      duration: 4000,
+    });
   };
 
   const handleConfirmSendEmail = async () => {
@@ -856,15 +1357,21 @@ function AnalyticsContent({
   const periodTag = periodLabel || `${overviewDays}d`;
   const visiblePosts = showAllPosts ? posts : posts.slice(0, 5);
 
-  if (isLoading) return (
-    <div style={{ display: 'flex', justifyContent: 'center', padding: '4rem' }}><Spinner size="lg" /></div>
-  );
+  if (isLoading)
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', padding: '4rem' }}>
+        <Spinner size="lg" />
+      </div>
+    );
 
   if (!overview) return null;
 
-  const cacheNote = overviewRes?.fromCache
-    ? <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Dados de {new Date(overviewRes.fetchedAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</span>
-    : null;
+  const cacheNote = overviewRes?.fromCache ? (
+    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+      Dados de{' '}
+      {new Date(overviewRes.fetchedAt).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
+    </span>
+  ) : null;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -872,39 +1379,56 @@ function AnalyticsContent({
         <div className="header-title">
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             {account.profile_picture_url && account.profile_picture_url.startsWith('https://') && (
-              <img src={account.profile_picture_url} alt="" style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover' }} />
+              <img
+                src={account.profile_picture_url}
+                alt=""
+                style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover' }}
+              />
             )}
             <div>
               <h1>{cliente.nome}</h1>
-              <p>@{account.username} {cacheNote}</p>
+              <p>
+                @{account.username} {cacheNote}
+              </p>
             </div>
           </div>
         </div>
         <div className="header-actions">
-          <Button variant="outline" onClick={() => navigate(-1)}><ArrowLeft className="h-4 w-4" /> Voltar</Button>
-          <Button variant="outline" size="icon" disabled={syncing} onClick={handleSync} title="Sincronizar Dados">{syncing ? <Spinner size="sm" /> : <RefreshCw className="h-4 w-4" />}</Button>
-          <Button onClick={() => handleGenerateScheduledReport()}><FileText className="h-4 w-4" /> Gerar Relatório</Button>
+          <Button variant="outline" onClick={() => navigate(-1)}>
+            <ArrowLeft className="h-4 w-4" /> Voltar
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            disabled={syncing}
+            onClick={handleSync}
+            title="Sincronizar Dados"
+          >
+            {syncing ? <Spinner size="sm" /> : <RefreshCw className="h-4 w-4" />}
+          </Button>
+          <Button onClick={() => handleGenerateScheduledReport()}>
+            <FileText className="h-4 w-4" /> Gerar Relatório
+          </Button>
         </div>
       </header>
 
       {/* Filter bar */}
       <div className="filter-bar animate-up">
-        {[7, 30, 90].map(d => (
+        {[7, 30, 90].map((d) => (
           <button
             key={d}
-            className={`filter-btn${(!periodStart && overviewDays === d) ? ' active' : ''}`}
+            className={`filter-btn${!periodStart && overviewDays === d ? ' active' : ''}`}
             onClick={() => handleDaysChange(d)}
           >
             {d} dias
           </button>
         ))}
-        <button
-          className={`filter-btn${periodStart ? ' active' : ''}`}
-          onClick={handleLastMonth}
-        >
+        <button className={`filter-btn${periodStart ? ' active' : ''}`} onClick={handleLastMonth}>
           Último mês
         </button>
-        <span style={{ color: 'var(--text-muted)', alignSelf: 'center', fontSize: '0.75rem' }}>ou</span>
+        <span style={{ color: 'var(--text-muted)', alignSelf: 'center', fontSize: '0.75rem' }}>
+          ou
+        </span>
         <input
           type="number"
           className="filter-btn"
@@ -912,44 +1436,112 @@ function AnalyticsContent({
           max={730}
           placeholder="Dias..."
           style={{ width: 80 }}
-          onKeyDown={e => {
+          onKeyDown={(e) => {
             if (e.key === 'Enter') {
               const val = parseInt((e.target as HTMLInputElement).value, 10);
-              if (isNaN(val) || val < 1 || val > 730) { toast.error('Insira um valor entre 1 e 730 dias'); return; }
+              if (isNaN(val) || val < 1 || val > 730) {
+                toast.error('Insira um valor entre 1 e 730 dias');
+                return;
+              }
               setOverviewDays(val);
-              setPeriodStart(undefined); setPeriodEnd(undefined); setPeriodLabel(undefined);
+              setPeriodStart(undefined);
+              setPeriodEnd(undefined);
+              setPeriodLabel(undefined);
             }
           }}
         />
       </div>
 
       {/* KPI Cards */}
-      <div className="kpi-grid animate-up" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
-        <KpiCard label="SEGUIDORES" value={overview.followerCount.toLocaleString('pt-BR')} delta={overview.followers} period={periodTag} prevFormatted={(overview.followerCount - overview.followers.current).toLocaleString('pt-BR')} />
-        <KpiCard label="ENGAJAMENTO" value={overview.engagement.current.toFixed(2) + '%'} delta={overview.engagement} period={periodTag} prevFormatted={overview.engagement.previous.toFixed(2) + '%'} />
-        <KpiCard label="ALCANCE" value={overview.reach.current.toLocaleString('pt-BR')} delta={overview.reach} period={periodTag} prevFormatted={overview.reach.previous.toLocaleString('pt-BR')} />
-        <KpiCard label="CONTAS ENGAJADAS" value={overview.profileViews.current.toLocaleString('pt-BR')} delta={overview.profileViews} period="28d fixo" />
-        <KpiCard label="CLIQUES NO LINK" value={overview.websiteClicks.current.toLocaleString('pt-BR')} delta={overview.websiteClicks} period="28d fixo" />
-        <KpiCard label="TAXA DE SALVAMENTOS" value={overview.savesRate.current.toFixed(2) + '%'} delta={overview.savesRate} period={periodTag} prevFormatted={overview.savesRate.previous.toFixed(2) + '%'} />
-        <KpiCard label="POSTS PUBLICADOS" value={String(overview.postsPublished.current)} delta={overview.postsPublished} period={periodTag} prevFormatted={String(overview.postsPublished.previous)} />
+      <div
+        className="kpi-grid animate-up"
+        style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}
+      >
+        <KpiCard
+          label="SEGUIDORES"
+          value={overview.followerCount.toLocaleString('pt-BR')}
+          delta={overview.followers}
+          period={periodTag}
+          prevFormatted={(overview.followerCount - overview.followers.current).toLocaleString(
+            'pt-BR',
+          )}
+        />
+        <KpiCard
+          label="ENGAJAMENTO"
+          value={overview.engagement.current.toFixed(2) + '%'}
+          delta={overview.engagement}
+          period={periodTag}
+          prevFormatted={overview.engagement.previous.toFixed(2) + '%'}
+        />
+        <KpiCard
+          label="ALCANCE"
+          value={overview.reach.current.toLocaleString('pt-BR')}
+          delta={overview.reach}
+          period={periodTag}
+          prevFormatted={overview.reach.previous.toLocaleString('pt-BR')}
+        />
+        <KpiCard
+          label="CONTAS ENGAJADAS"
+          value={overview.profileViews.current.toLocaleString('pt-BR')}
+          delta={overview.profileViews}
+          period="28d fixo"
+        />
+        <KpiCard
+          label="CLIQUES NO LINK"
+          value={overview.websiteClicks.current.toLocaleString('pt-BR')}
+          delta={overview.websiteClicks}
+          period="28d fixo"
+        />
+        <KpiCard
+          label="TAXA DE SALVAMENTOS"
+          value={overview.savesRate.current.toFixed(2) + '%'}
+          delta={overview.savesRate}
+          period={periodTag}
+          prevFormatted={overview.savesRate.previous.toFixed(2) + '%'}
+        />
+        <KpiCard
+          label="POSTS PUBLICADOS"
+          value={String(overview.postsPublished.current)}
+          delta={overview.postsPublished}
+          period={periodTag}
+          prevFormatted={String(overview.postsPublished.previous)}
+        />
       </div>
 
       {/* Top Saved callout */}
       {topSaved.length > 0 && (
-        <div className="analytics-callout animate-up" style={{ borderLeftColor: 'var(--primary-color)', background: 'rgba(234,179,8,0.03)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+        <div
+          className="analytics-callout animate-up"
+          style={{ borderLeftColor: 'var(--primary-color)', background: 'rgba(234,179,8,0.03)' }}
+        >
+          <div
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}
+          >
             <strong>Taxa de Salvamentos</strong>
           </div>
           <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
-            Salvamentos indicam que alguém guardou o conteúdo para uma decisão de saúde. É a métrica mais subestimada para conteúdo médico.
+            Salvamentos indicam que alguém guardou o conteúdo para uma decisão de saúde. É a métrica
+            mais subestimada para conteúdo médico.
           </p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-            {topSaved.map(p => (
-              <div key={p.id} style={{ background: 'var(--card-bg)', border: '1px solid var(--border-color,rgba(0,0,0,0.08))', borderRadius: 8, padding: '0.5rem 0.75rem', fontSize: '0.8rem' }}>
+            {topSaved.map((p) => (
+              <div
+                key={p.id}
+                style={{
+                  background: 'var(--card-bg)',
+                  border: '1px solid var(--border-color,rgba(0,0,0,0.08))',
+                  borderRadius: 8,
+                  padding: '0.5rem 0.75rem',
+                  fontSize: '0.8rem',
+                }}
+              >
                 <strong>{p.saved}</strong> salvamentos
-                <span style={{ color: 'var(--text-muted)', marginLeft: '0.25rem' }}>({p.saves_rate.toFixed(1)}% taxa)</span>
+                <span style={{ color: 'var(--text-muted)', marginLeft: '0.25rem' }}>
+                  ({p.saves_rate.toFixed(1)}% taxa)
+                </span>
                 <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                  {(p.caption || '').slice(0, 60)}{(p.caption || '').length > 60 ? '...' : ''}
+                  {(p.caption || '').slice(0, 60)}
+                  {(p.caption || '').length > 60 ? '...' : ''}
                 </div>
               </div>
             ))}
@@ -981,122 +1573,227 @@ function AnalyticsContent({
       <div className="card animate-up">
         <div className="dashboard-hub-card-header">
           <h3>Crescimento de Seguidores</h3>
-          <Button size="sm" variant="outline" onClick={() => setManualFollowerOpen(true)}>✏ Inserir manualmente</Button>
+          <Button size="sm" variant="outline" onClick={() => setManualFollowerOpen(true)}>
+            ✏ Inserir manualmente
+          </Button>
         </div>
         <FollowerChart history={history} postDates={postDates} />
       </div>
 
       {/* Content Performance Table */}
       <div className="card animate-up">
-        <div className="dashboard-hub-card-header"><h3>Performance de Conteúdo</h3></div>
-        {posts.length === 0
-          ? <p style={{ color: 'var(--text-muted)', marginTop: '1rem' }}>Nenhuma publicação neste período.</p>
-          : (
-            <div style={{ overflowX: 'auto', marginTop: '1rem' }}>
-              <table className="data-table" id="posts-table">
-                <thead>
-                  <tr>
-                    {[
-                      { col: 'posted_at', label: 'Data' },
-                      { col: null, label: 'Tipo' },
-                      { col: 'reach', label: 'Alcance' },
-                      { col: 'impressions', label: 'Impressões' },
-                      { col: 'engagement_rate', label: 'Eng.' },
-                      { col: 'likes', label: 'Curtidas' },
-                      { col: 'saved', label: 'Salvos' },
-                      { col: 'comments', label: 'Coment.' },
-                      { col: 'shares', label: 'Compart.' },
-                      { col: null, label: 'Tags' },
-                    ].map(({ col, label }) => (
-                      <th
-                        key={label}
-                        style={{ cursor: col ? 'pointer' : 'default' }}
-                        onClick={col ? () => handleSortChange(col) : undefined}
-                      >
-                        {label}
-                        {col && sort.col === col && (sort.dir === 'asc' ? ' ↑' : ' ↓')}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {visiblePosts.map(p => (
-                    <Fragment key={p.id}>
-                      <tr
-                        style={{ cursor: 'pointer' }}
-                        onClick={() => setExpandedPostId(expandedPostId === p.id ? null : p.id)}
-                      >
-                        <td data-label="Data">
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                            {p.thumbnail_url
-                              ? <img loading="lazy" src={sanitizeUrl(p.thumbnail_url)} alt="" style={{ width: 40, height: 40, borderRadius: 6, objectFit: 'cover', flexShrink: 0, background: 'var(--bg-secondary)' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                              : <div style={{ width: 40, height: 40, borderRadius: 6, background: 'var(--bg-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>📷</div>
-                            }
-                            <span>{new Date(p.posted_at).toLocaleDateString('pt-BR')}</span>
-                          </div>
-                        </td>
-                        <td data-label="Tipo"><span className="badge badge-info">{formatMediaType(p.media_type)}</span></td>
-                        <td data-label="Alcance">{p.reach.toLocaleString('pt-BR')}</td>
-                        <td data-label="Impressões">{(p.impressions || 0).toLocaleString('pt-BR')}</td>
-                        <td data-label="Eng.">
-                          <span className={`badge ${p.engagement_rate >= 5 ? 'badge-success' : p.engagement_rate >= 2 ? 'badge-warning' : 'badge-neutral'}`}>
-                            {p.engagement_rate.toFixed(1)}%
+        <div className="dashboard-hub-card-header">
+          <h3>Performance de Conteúdo</h3>
+        </div>
+        {posts.length === 0 ? (
+          <p style={{ color: 'var(--text-muted)', marginTop: '1rem' }}>
+            Nenhuma publicação neste período.
+          </p>
+        ) : (
+          <div style={{ overflowX: 'auto', marginTop: '1rem' }}>
+            <table className="data-table" id="posts-table">
+              <thead>
+                <tr>
+                  {[
+                    { col: 'posted_at', label: 'Data' },
+                    { col: null, label: 'Tipo' },
+                    { col: 'reach', label: 'Alcance' },
+                    { col: 'impressions', label: 'Impressões' },
+                    { col: 'engagement_rate', label: 'Eng.' },
+                    { col: 'likes', label: 'Curtidas' },
+                    { col: 'saved', label: 'Salvos' },
+                    { col: 'comments', label: 'Coment.' },
+                    { col: 'shares', label: 'Compart.' },
+                    { col: null, label: 'Tags' },
+                  ].map(({ col, label }) => (
+                    <th
+                      key={label}
+                      style={{ cursor: col ? 'pointer' : 'default' }}
+                      onClick={col ? () => handleSortChange(col) : undefined}
+                    >
+                      {label}
+                      {col && sort.col === col && (sort.dir === 'asc' ? ' ↑' : ' ↓')}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {visiblePosts.map((p) => (
+                  <Fragment key={p.id}>
+                    <tr
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => setExpandedPostId(expandedPostId === p.id ? null : p.id)}
+                    >
+                      <td data-label="Data">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                          {p.thumbnail_url ? (
+                            <img
+                              loading="lazy"
+                              src={sanitizeUrl(p.thumbnail_url)}
+                              alt=""
+                              style={{
+                                width: 40,
+                                height: 40,
+                                borderRadius: 6,
+                                objectFit: 'cover',
+                                flexShrink: 0,
+                                background: 'var(--bg-secondary)',
+                              }}
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).style.display = 'none';
+                              }}
+                            />
+                          ) : (
+                            <div
+                              style={{
+                                width: 40,
+                                height: 40,
+                                borderRadius: 6,
+                                background: 'var(--bg-secondary)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                flexShrink: 0,
+                              }}
+                            >
+                              📷
+                            </div>
+                          )}
+                          <span>{new Date(p.posted_at).toLocaleDateString('pt-BR')}</span>
+                        </div>
+                      </td>
+                      <td data-label="Tipo">
+                        <span className="badge badge-info">{formatMediaType(p.media_type)}</span>
+                      </td>
+                      <td data-label="Alcance">{p.reach.toLocaleString('pt-BR')}</td>
+                      <td data-label="Impressões">
+                        {(p.impressions || 0).toLocaleString('pt-BR')}
+                      </td>
+                      <td data-label="Eng.">
+                        <span
+                          className={`badge ${p.engagement_rate >= 5 ? 'badge-success' : p.engagement_rate >= 2 ? 'badge-warning' : 'badge-neutral'}`}
+                        >
+                          {p.engagement_rate.toFixed(1)}%
+                        </span>
+                      </td>
+                      <td data-label="Curtidas">{(p.likes || 0).toLocaleString('pt-BR')}</td>
+                      <td data-label="Salvos">{p.saved}</td>
+                      <td data-label="Coment.">{p.comments}</td>
+                      <td data-label="Compart.">{p.shares}</td>
+                      <td data-label="Tags" onClick={(e) => e.stopPropagation()}>
+                        {p.tags.map((t) => (
+                          <span
+                            key={t.id}
+                            className="tag-pill"
+                            style={{
+                              background: t.color + '20',
+                              color: t.color,
+                              border: `1px solid ${t.color}40`,
+                              marginRight: 2,
+                            }}
+                          >
+                            {t.tag_name}
                           </span>
-                        </td>
-                        <td data-label="Curtidas">{(p.likes || 0).toLocaleString('pt-BR')}</td>
-                        <td data-label="Salvos">{p.saved}</td>
-                        <td data-label="Coment.">{p.comments}</td>
-                        <td data-label="Compart.">{p.shares}</td>
-                        <td data-label="Tags" onClick={e => e.stopPropagation()}>
-                          {p.tags.map(t => (
-                            <span key={t.id} className="tag-pill" style={{ background: t.color + '20', color: t.color, border: `1px solid ${t.color}40`, marginRight: 2 }}>
-                              {t.tag_name}
-                            </span>
-                          ))}
-                          {tagsData.length > 0 && (
-                            <span style={{ cursor: 'pointer', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
-                              {tagsData.filter(t => !p.tags.some(pt => pt.id === t.id)).map(t => (
+                        ))}
+                        {tagsData.length > 0 && (
+                          <span
+                            style={{
+                              cursor: 'pointer',
+                              color: 'var(--text-muted)',
+                              fontSize: '0.8rem',
+                            }}
+                          >
+                            {tagsData
+                              .filter((t) => !p.tags.some((pt) => pt.id === t.id))
+                              .map((t) => (
                                 <span
                                   key={t.id}
                                   title={`Adicionar "${t.tag_name}"`}
                                   onClick={() => handleAssignTag(p.id, t.id)}
-                                  style={{ background: t.color + '20', color: t.color, border: `1px solid ${t.color}40`, cursor: 'pointer', display: 'inline-block', padding: '1px 6px', borderRadius: 4, fontSize: '0.7rem', marginRight: 2 }}
+                                  style={{
+                                    background: t.color + '20',
+                                    color: t.color,
+                                    border: `1px solid ${t.color}40`,
+                                    cursor: 'pointer',
+                                    display: 'inline-block',
+                                    padding: '1px 6px',
+                                    borderRadius: 4,
+                                    fontSize: '0.7rem',
+                                    marginRight: 2,
+                                  }}
                                 >
                                   + {t.tag_name}
                                 </span>
                               ))}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                    {expandedPostId === p.id && (
+                      <tr key={`detail-${p.id}`}>
+                        <td colSpan={10} style={{ padding: '1rem', background: 'var(--card-bg)' }}>
+                          <p
+                            style={{
+                              fontSize: '0.85rem',
+                              whiteSpace: 'pre-wrap',
+                              marginBottom: '0.5rem',
+                            }}
+                          >
+                            {p.caption || 'Sem legenda'}
+                          </p>
+                          <div
+                            style={{
+                              display: 'flex',
+                              gap: '1rem',
+                              alignItems: 'center',
+                              fontSize: '0.8rem',
+                            }}
+                          >
+                            <a
+                              href={sanitizeUrl(p.permalink)}
+                              target="_blank"
+                              rel="noopener"
+                              style={{ color: 'var(--primary-color)' }}
+                            >
+                              ↗ Ver no Instagram
+                            </a>
+                            <span style={{ color: 'var(--text-muted)' }}>
+                              Impressões: {p.impressions.toLocaleString('pt-BR')}
                             </span>
-                          )}
+                            <span style={{ color: 'var(--text-muted)' }}>
+                              Curtidas: {p.likes.toLocaleString('pt-BR')}
+                            </span>
+                          </div>
                         </td>
                       </tr>
-                      {expandedPostId === p.id && (
-                        <tr key={`detail-${p.id}`}>
-                          <td colSpan={10} style={{ padding: '1rem', background: 'var(--card-bg)' }}>
-                            <p style={{ fontSize: '0.85rem', whiteSpace: 'pre-wrap', marginBottom: '0.5rem' }}>{p.caption || 'Sem legenda'}</p>
-                            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', fontSize: '0.8rem' }}>
-                              <a href={sanitizeUrl(p.permalink)} target="_blank" rel="noopener" style={{ color: 'var(--primary-color)' }}>
-                                ↗ Ver no Instagram
-                              </a>
-                              <span style={{ color: 'var(--text-muted)' }}>Impressões: {p.impressions.toLocaleString('pt-BR')}</span>
-                              <span style={{ color: 'var(--text-muted)' }}>Curtidas: {p.likes.toLocaleString('pt-BR')}</span>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
-                  ))}
-                </tbody>
-              </table>
-              {posts.length > 5 && (
-                <button
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', margin: '0.75rem auto 0', padding: '0.4rem 1rem', fontSize: '0.8rem', color: 'var(--primary-color)', background: 'none', border: '1px solid var(--border-color)', borderRadius: 6, cursor: 'pointer' }}
-                  onClick={() => setShowAllPosts(!showAllPosts)}
-                >
-                  {showAllPosts ? '↑ Ver menos' : '↓ Ver mais publicações'}
-                </button>
-              )}
-            </div>
-          )}
+                    )}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+            {posts.length > 5 && (
+              <button
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.4rem',
+                  margin: '0.75rem auto 0',
+                  padding: '0.4rem 1rem',
+                  fontSize: '0.8rem',
+                  color: 'var(--primary-color)',
+                  background: 'none',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                }}
+                onClick={() => setShowAllPosts(!showAllPosts)}
+              >
+                {showAllPosts ? '↑ Ver menos' : '↓ Ver mais publicações'}
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* AI Analysis */}
@@ -1105,104 +1802,218 @@ function AnalyticsContent({
       {/* Type + Topic */}
       <div className="widgets-grid animate-up">
         <div className="card">
-          <div className="dashboard-hub-card-header"><h3>Desempenho por Tipo</h3></div>
+          <div className="dashboard-hub-card-header">
+            <h3>Desempenho por Tipo</h3>
+          </div>
           <TypeChart typeBreakdown={typeBreakdown} />
         </div>
         <div className="card">
-          <div className="dashboard-hub-card-header"><h3>Desempenho por Tópico</h3></div>
-          <div style={{ marginTop: '0.75rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem' }}>
-            {tagsData.map(t => <TagPill key={t.id} tag={t} onRemove={() => handleRemoveTag(t.id)} />)}
-            <Button size="sm" variant="outline" onClick={handleAddTag} style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem' }}><Plus className="h-3 w-3" /> Nova Tag</Button>
+          <div className="dashboard-hub-card-header">
+            <h3>Desempenho por Tópico</h3>
           </div>
-          {topicStats.length === 0
-            ? <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Atribua tags aos posts para ver o desempenho por tópico.</p>
-            : (
-              <div style={{ marginTop: '0.5rem' }}>
-                {topicStats.map((t, i) => (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.4rem 0', borderBottom: '1px solid var(--border-color,rgba(0,0,0,0.06))' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <span style={{ width: 10, height: 10, borderRadius: '50%', background: t.color }} />
-                      <span style={{ fontSize: '0.85rem' }}>{t.tag_name}</span>
-                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>({t.count} posts)</span>
-                    </div>
-                    <span className={`badge ${t.avgEngagement >= 5 ? 'badge-success' : t.avgEngagement >= 2 ? 'badge-warning' : 'badge-neutral'}`}>{t.avgEngagement.toFixed(2)}%</span>
+          <div
+            style={{
+              marginTop: '0.75rem',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '0.5rem',
+              marginBottom: '1rem',
+            }}
+          >
+            {tagsData.map((t) => (
+              <TagPill key={t.id} tag={t} onRemove={() => handleRemoveTag(t.id)} />
+            ))}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleAddTag}
+              style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem' }}
+            >
+              <Plus className="h-3 w-3" /> Nova Tag
+            </Button>
+          </div>
+          {topicStats.length === 0 ? (
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+              Atribua tags aos posts para ver o desempenho por tópico.
+            </p>
+          ) : (
+            <div style={{ marginTop: '0.5rem' }}>
+              {topicStats.map((t, i) => (
+                <div
+                  key={i}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '0.4rem 0',
+                    borderBottom: '1px solid var(--border-color,rgba(0,0,0,0.06))',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span
+                      style={{ width: 10, height: 10, borderRadius: '50%', background: t.color }}
+                    />
+                    <span style={{ fontSize: '0.85rem' }}>{t.tag_name}</span>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                      ({t.count} posts)
+                    </span>
                   </div>
-                ))}
-              </div>
-            )}
+                  <span
+                    className={`badge ${t.avgEngagement >= 5 ? 'badge-success' : t.avgEngagement >= 2 ? 'badge-warning' : 'badge-neutral'}`}
+                  >
+                    {t.avgEngagement.toFixed(2)}%
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
       {/* Demographics + Best Times */}
-      <div className="widgets-grid animate-up" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>
+      <div
+        className="widgets-grid animate-up"
+        style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}
+      >
         <div className="card">
-          <div className="dashboard-hub-card-header"><h3>Demografia da Audiência</h3></div>
-          {!demographicsData
-            ? <p style={{ color: 'var(--text-muted)', marginTop: '1rem' }}>Dados demográficos indisponíveis. A conta pode não ter seguidores suficientes ou a permissão instagram_manage_insights pode estar ausente.</p>
-            : (
-              <div style={{ marginTop: '1rem' }}>
-                <h4 style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>Gênero</h4>
-                <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
-                  <div style={{ flex: 1, background: 'rgba(66,133,244,0.1)', borderRadius: 8, padding: '0.5rem', textAlign: 'center' }}>
-                    <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#4285f4' }}>{demographicsData.gender_split.male}%</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Masculino</div>
+          <div className="dashboard-hub-card-header">
+            <h3>Demografia da Audiência</h3>
+          </div>
+          {!demographicsData ? (
+            <p style={{ color: 'var(--text-muted)', marginTop: '1rem' }}>
+              Dados demográficos indisponíveis. A conta pode não ter seguidores suficientes ou a
+              permissão instagram_manage_insights pode estar ausente.
+            </p>
+          ) : (
+            <div style={{ marginTop: '1rem' }}>
+              <h4 style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>Gênero</h4>
+              <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+                <div
+                  style={{
+                    flex: 1,
+                    background: 'rgba(66,133,244,0.1)',
+                    borderRadius: 8,
+                    padding: '0.5rem',
+                    textAlign: 'center',
+                  }}
+                >
+                  <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#4285f4' }}>
+                    {demographicsData.gender_split.male}%
                   </div>
-                  <div style={{ flex: 1, background: 'rgba(234,67,149,0.1)', borderRadius: 8, padding: '0.5rem', textAlign: 'center' }}>
-                    <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#ea4395' }}>{demographicsData.gender_split.female}%</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Feminino</div>
-                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Masculino</div>
                 </div>
-                <h4 style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>Faixa Etária</h4>
-                <AgeChart demographics={demographicsData} />
-                <h4 style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>Principais Cidades</h4>
-                {demographicsData.cities.slice(0, 5).map((c, i) => (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.3rem 0', fontSize: '0.85rem' }}>
-                    <span>{i + 1}. {c.name}</span>
-                    <span style={{ color: 'var(--text-muted)' }}>{c.count.toLocaleString('pt-BR')}</span>
+                <div
+                  style={{
+                    flex: 1,
+                    background: 'rgba(234,67,149,0.1)',
+                    borderRadius: 8,
+                    padding: '0.5rem',
+                    textAlign: 'center',
+                  }}
+                >
+                  <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#ea4395' }}>
+                    {demographicsData.gender_split.female}%
                   </div>
-                ))}
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Feminino</div>
+                </div>
               </div>
-            )}
+              <h4 style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>Faixa Etária</h4>
+              <AgeChart demographics={demographicsData} />
+              <h4 style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>Principais Cidades</h4>
+              {demographicsData.cities.slice(0, 5).map((c, i) => (
+                <div
+                  key={i}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '0.3rem 0',
+                    fontSize: '0.85rem',
+                  }}
+                >
+                  <span>
+                    {i + 1}. {c.name}
+                  </span>
+                  <span style={{ color: 'var(--text-muted)' }}>
+                    {c.count.toLocaleString('pt-BR')}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <div className="card">
-          <div className="dashboard-hub-card-header"><h3>Melhor Horário para Postar</h3></div>
-          {!bestTimesData || bestTimesData.totalPosts < 5
-            ? <p style={{ color: 'var(--text-muted)', marginTop: '1rem' }}>Dados insuficientes. São necessários pelo menos 5 posts nos últimos 90 dias para análise.</p>
-            : (
-              <>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '0.25rem' }}>
-                  Baseado no engajamento de {bestTimesData.totalPosts} posts dos últimos 90 dias
-                </p>
-                <div style={{ marginTop: '0.75rem' }}>
-                  <BestTimesHeatmap data={bestTimesData} />
-                  {bestTimesData.topSlots.length > 0 && (
-                    <div style={{ marginTop: '1rem' }}>
-                      <h4 style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>Top 3 Horários Recomendados</h4>
-                      {bestTimesData.topSlots.map((s, i) => (
-                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.3rem 0', fontSize: '0.85rem' }}>
-                          <span className="badge badge-success">{i + 1}</span>
-                          <span>{bestTimesData.labels_days[s.day]} às {bestTimesData.labels_hours[s.hour]}</span>
-                          <span style={{ color: 'var(--text-muted)' }}>{s.value.toFixed(1)}% eng. ({s.postCount} post{s.postCount > 1 ? 's' : ''})</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
+          <div className="dashboard-hub-card-header">
+            <h3>Melhor Horário para Postar</h3>
+          </div>
+          {!bestTimesData || bestTimesData.totalPosts < 5 ? (
+            <p style={{ color: 'var(--text-muted)', marginTop: '1rem' }}>
+              Dados insuficientes. São necessários pelo menos 5 posts nos últimos 90 dias para
+              análise.
+            </p>
+          ) : (
+            <>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '0.25rem' }}>
+                Baseado no engajamento de {bestTimesData.totalPosts} posts dos últimos 90 dias
+              </p>
+              <div style={{ marginTop: '0.75rem' }}>
+                <BestTimesHeatmap data={bestTimesData} />
+                {bestTimesData.topSlots.length > 0 && (
+                  <div style={{ marginTop: '1rem' }}>
+                    <h4 style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>
+                      Top 3 Horários Recomendados
+                    </h4>
+                    {bestTimesData.topSlots.map((s, i) => (
+                      <div
+                        key={i}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.5rem',
+                          padding: '0.3rem 0',
+                          fontSize: '0.85rem',
+                        }}
+                      >
+                        <span className="badge badge-success">{i + 1}</span>
+                        <span>
+                          {bestTimesData.labels_days[s.day]} às {bestTimesData.labels_hours[s.hour]}
+                        </span>
+                        <span style={{ color: 'var(--text-muted)' }}>
+                          {s.value.toFixed(1)}% eng. ({s.postCount} post{s.postCount > 1 ? 's' : ''}
+                          )
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </div>
 
       {/* Reports */}
       <div className="card animate-up">
-        <div className="dashboard-hub-card-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div
+          className="dashboard-hub-card-header"
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+        >
           <h3>Relatórios Gerados</h3>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', color: 'var(--text-muted)', cursor: 'pointer' }}>
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                fontSize: '0.8rem',
+                color: 'var(--text-muted)',
+                cursor: 'pointer',
+              }}
+            >
               <input
                 type="checkbox"
                 checked={generateIncludeAI}
-                onChange={e => setGenerateIncludeAI(e.target.checked)}
+                onChange={(e) => setGenerateIncludeAI(e.target.checked)}
                 style={{ accentColor: 'var(--primary-color)' }}
               />
               Incluir IA
@@ -1214,80 +2025,136 @@ function AnalyticsContent({
         </div>
         <div style={{ marginTop: '1rem' }}>
           {reportsData.length === 0 && (
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Nenhum relatório gerado ainda. Clique em "Gerar" para criar o primeiro.</p>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+              Nenhum relatório gerado ainda. Clique em "Gerar" para criar o primeiro.
+            </p>
           )}
-          {reportsData.map(r => (
-              <div key={r.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid var(--border-color,rgba(0,0,0,0.06))' }}>
-                <div>
-                  <strong>{formatReportMonth(r.report_month)}</strong>
-                  {r.generated_at && (
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>
-                      {new Date(r.generated_at).toLocaleDateString('pt-BR')}
-                    </span>
-                  )}
-                  {r.include_ai && (
-                    <span className="badge badge-neutral" style={{ marginLeft: '0.5rem', fontSize: '0.6rem' }}>IA</span>
-                  )}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  {r.status === 'pending' && (
-                    <span className="badge badge-warning">Pendente</span>
-                  )}
-                  {r.status === 'generating' && (
-                    <span className="badge badge-neutral" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: '#3b82f6' }}>
-                      <Spinner size="sm" /> Gerando...
-                    </span>
-                  )}
-                  {r.status === 'failed' && (
-                    <span
-                      className="badge badge-danger"
-                      title={r.generation_error || 'Erro desconhecido'}
-                      style={{ cursor: 'help' }}
-                    >
-                      Falha
-                    </span>
-                  )}
-                  {r.status === 'ready' && (
-                    <>
-                      <span className="badge badge-success">Pronto</span>
-                      {r.storage_path && (
-                        <Button variant="outline" size="sm" onClick={async () => {
+          {reportsData.map((r) => (
+            <div
+              key={r.id}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '0.5rem 0',
+                borderBottom: '1px solid var(--border-color,rgba(0,0,0,0.06))',
+              }}
+            >
+              <div>
+                <strong>{formatReportMonth(r.report_month)}</strong>
+                {r.generated_at && (
+                  <span
+                    style={{
+                      fontSize: '0.75rem',
+                      color: 'var(--text-muted)',
+                      marginLeft: '0.5rem',
+                    }}
+                  >
+                    {new Date(r.generated_at).toLocaleDateString('pt-BR')}
+                  </span>
+                )}
+                {r.include_ai && (
+                  <span
+                    className="badge badge-neutral"
+                    style={{ marginLeft: '0.5rem', fontSize: '0.6rem' }}
+                  >
+                    IA
+                  </span>
+                )}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                {r.status === 'pending' && <span className="badge badge-warning">Pendente</span>}
+                {r.status === 'generating' && (
+                  <span
+                    className="badge badge-neutral"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.3rem',
+                      color: '#3b82f6',
+                    }}
+                  >
+                    <Spinner size="sm" /> Gerando...
+                  </span>
+                )}
+                {r.status === 'failed' && (
+                  <span
+                    className="badge badge-danger"
+                    title={r.generation_error || 'Erro desconhecido'}
+                    style={{ cursor: 'help' }}
+                  >
+                    Falha
+                  </span>
+                )}
+                {r.status === 'ready' && (
+                  <>
+                    <span className="badge badge-success">Pronto</span>
+                    {r.storage_path && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={async () => {
                           try {
                             const url = await getReportDownloadUrl(r.id);
                             window.open(url, '_blank');
-                          } catch { toast.error('Erro ao baixar relatório'); }
-                        }}>
-                          ↓ Baixar PDF
-                        </Button>
-                      )}
-                      <Button variant="outline" size="sm" onClick={() => setEmailReportTarget(r)}>
-                        Enviar
+                          } catch {
+                            toast.error('Erro ao baixar relatório');
+                          }
+                        }}
+                      >
+                        ↓ Baixar PDF
                       </Button>
-                    </>
-                  )}
-                </div>
+                    )}
+                    <Button variant="outline" size="sm" onClick={() => setEmailReportTarget(r)}>
+                      Enviar
+                    </Button>
+                  </>
+                )}
               </div>
-            ))}
+            </div>
+          ))}
         </div>
       </div>
 
       {/* Send report email confirmation dialog */}
-      <AlertDialog open={emailReportTarget !== null} onOpenChange={open => { if (!open) setEmailReportTarget(null); }}>
+      <AlertDialog
+        open={emailReportTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setEmailReportTarget(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Enviar relatório por e-mail</AlertDialogTitle>
             <AlertDialogDescription>
               {emailReportTarget && (
                 <>
-                  Enviar o relatório de <strong>{formatReportMonth(emailReportTarget.report_month)}</strong> por e-mail para o cliente <strong>{cliente.nome}</strong>?
+                  Enviar o relatório de{' '}
+                  <strong>{formatReportMonth(emailReportTarget.report_month)}</strong> por e-mail
+                  para o cliente <strong>{cliente.nome}</strong>?
                   {cliente.send_report_email === false && (
-                    <span style={{ display: 'block', marginTop: '0.5rem', color: 'var(--warning)', fontWeight: 600 }}>
+                    <span
+                      style={{
+                        display: 'block',
+                        marginTop: '0.5rem',
+                        color: 'var(--warning)',
+                        fontWeight: 600,
+                      }}
+                    >
                       Atenção: este cliente tem o envio de relatórios por e-mail desativado.
                     </span>
                   )}
                   {emailReportTarget.last_emailed_at && (
-                    <span style={{ display: 'block', marginTop: '0.25rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                      Último envio: {new Date(emailReportTarget.last_emailed_at).toLocaleString('pt-BR')}
+                    <span
+                      style={{
+                        display: 'block',
+                        marginTop: '0.25rem',
+                        fontSize: '0.8rem',
+                        color: 'var(--text-muted)',
+                      }}
+                    >
+                      Último envio:{' '}
+                      {new Date(emailReportTarget.last_emailed_at).toLocaleString('pt-BR')}
                     </span>
                   )}
                 </>
@@ -1304,51 +2171,122 @@ function AnalyticsContent({
       </AlertDialog>
 
       {/* Manual follower modal */}
-      <Dialog open={manualFollowerOpen} onOpenChange={open => { if (!open) { setManualFollowerOpen(false); setManualCount(''); } }}>
-        <DialogContent onConfirmClose={() => { setManualFollowerOpen(false); setManualCount(''); }}>
-          <DialogHeader><DialogTitle>Inserir Seguidores Manualmente</DialogTitle></DialogHeader>
+      <Dialog
+        open={manualFollowerOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setManualFollowerOpen(false);
+            setManualCount('');
+          }
+        }}
+      >
+        <DialogContent
+          onConfirmClose={() => {
+            setManualFollowerOpen(false);
+            setManualCount('');
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Inserir Seguidores Manualmente</DialogTitle>
+          </DialogHeader>
           <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
-            Insira a contagem de seguidores para uma data específica. Dados manuais não serão sobrescritos pela sincronização automática.
+            Insira a contagem de seguidores para uma data específica. Dados manuais não serão
+            sobrescritos pela sincronização automática.
           </p>
           <div className="space-y-3">
             <div className="space-y-1">
               <Label>Data</Label>
-              <Input type="date" value={manualDate} max={new Date().toISOString().split('T')[0]} onChange={e => setManualDate(e.target.value)} />
+              <Input
+                type="date"
+                value={manualDate}
+                max={new Date().toISOString().split('T')[0]}
+                onChange={(e) => setManualDate(e.target.value)}
+              />
             </div>
             <div className="space-y-1">
               <Label>Número de seguidores</Label>
-              <Input type="number" min={0} placeholder="Ex: 15432" value={manualCount} onChange={e => setManualCount(e.target.value)} />
+              <Input
+                type="number"
+                min={0}
+                placeholder="Ex: 15432"
+                value={manualCount}
+                onChange={(e) => setManualCount(e.target.value)}
+              />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setManualFollowerOpen(false); setManualCount(''); }}>Cancelar</Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setManualFollowerOpen(false);
+                setManualCount('');
+              }}
+            >
+              Cancelar
+            </Button>
             <Button onClick={handleSaveManualFollower}>Salvar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Sheet open={rankedDrawer !== null} onOpenChange={open => { if (!open) resetRankedDrawer(); }}>
+      <Sheet
+        open={rankedDrawer !== null}
+        onOpenChange={(open) => {
+          if (!open) resetRankedDrawer();
+        }}
+      >
         <SheetContent side="right" className="!w-full !max-w-xl overflow-y-auto">
           <SheetHeader>
             <SheetTitle style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              {rankedDrawer === 'worst'
-                ? <><AlertTriangle className="h-5 w-5" style={{ color: 'var(--warning)' }} /> Posts que precisam de atenção</>
-                : <><Trophy className="h-5 w-5" style={{ color: 'var(--success)' }} /> Melhores posts</>
-              }
+              {rankedDrawer === 'worst' ? (
+                <>
+                  <AlertTriangle className="h-5 w-5" style={{ color: 'var(--warning)' }} /> Posts
+                  que precisam de atenção
+                </>
+              ) : (
+                <>
+                  <Trophy className="h-5 w-5" style={{ color: 'var(--success)' }} /> Melhores posts
+                </>
+              )}
             </SheetTitle>
             <SheetDescription>
-              {rankedDrawerPosts.length} de {rankedDrawer === 'worst' ? matureRankedPosts.length : posts.length} posts de @{account.username}
+              {rankedDrawerPosts.length} de{' '}
+              {rankedDrawer === 'worst' ? matureRankedPosts.length : posts.length} posts de @
+              {account.username}
             </SheetDescription>
           </SheetHeader>
 
-          <div style={{ display: 'grid', gap: '0.5rem', paddingBottom: '0.75rem', marginTop: '0.75rem', borderBottom: '1px solid var(--border-color)' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 2.25rem minmax(0,1fr)', gap: '0.5rem', alignItems: 'center' }}>
+          <div
+            style={{
+              display: 'grid',
+              gap: '0.5rem',
+              paddingBottom: '0.75rem',
+              marginTop: '0.75rem',
+              borderBottom: '1px solid var(--border-color)',
+            }}
+          >
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'minmax(0,1fr) 2.25rem minmax(0,1fr)',
+                gap: '0.5rem',
+                alignItems: 'center',
+              }}
+            >
               <select
                 value={rankedOrderBy}
-                onChange={e => setRankedOrderBy(e.target.value as RankedPostOrderBy)}
+                onChange={(e) => setRankedOrderBy(e.target.value as RankedPostOrderBy)}
                 aria-label="Ordenar posts"
                 className="drawer-select"
-                style={{ height: 36, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--card-bg)', color: 'var(--text-main)', padding: '0 0.6rem', fontSize: '0.85rem' }}
+                style={{
+                  height: 36,
+                  borderRadius: 8,
+                  border: '1px solid var(--border-color)',
+                  background: 'var(--card-bg)',
+                  color: 'var(--text-main)',
+                  padding: '0 0.6rem',
+                  fontSize: '0.85rem',
+                }}
               >
                 <option value="reach">Alcance</option>
                 <option value="engagement">Engajamento</option>
@@ -1361,7 +2299,7 @@ function AnalyticsContent({
               <Button
                 variant="outline"
                 size="icon"
-                onClick={() => setRankedAsc(v => !v)}
+                onClick={() => setRankedAsc((v) => !v)}
                 className="mb-0 h-9 w-9 shrink-0 rounded-lg"
                 title={rankedAsc ? 'Crescente' : 'Decrescente'}
               >
@@ -1369,74 +2307,209 @@ function AnalyticsContent({
               </Button>
               <select
                 value={rankedFormatFilter}
-                onChange={e => setRankedFormatFilter(e.target.value)}
+                onChange={(e) => setRankedFormatFilter(e.target.value)}
                 aria-label="Filtrar formato"
                 className="drawer-select"
-                style={{ height: 36, borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--card-bg)', color: 'var(--text-main)', padding: '0 0.6rem', fontSize: '0.85rem' }}
+                style={{
+                  height: 36,
+                  borderRadius: 8,
+                  border: '1px solid var(--border-color)',
+                  background: 'var(--card-bg)',
+                  color: 'var(--text-main)',
+                  padding: '0 0.6rem',
+                  fontSize: '0.85rem',
+                }}
               >
                 <option value="all">Todos os formatos</option>
-                {rankedPostFormats.map(type => (
-                  <option key={type} value={type}>{formatMediaType(type)}</option>
+                {rankedPostFormats.map((type) => (
+                  <option key={type} value={type}>
+                    {formatMediaType(type)}
+                  </option>
                 ))}
               </select>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto minmax(0,1fr)', gap: '0.5rem', alignItems: 'center' }}>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'minmax(0,1fr) auto minmax(0,1fr)',
+                gap: '0.5rem',
+                alignItems: 'center',
+              }}
+            >
               <Input
                 type="date"
                 value={rankedDateFrom}
-                onChange={e => setRankedDateFrom(e.target.value)}
+                onChange={(e) => setRankedDateFrom(e.target.value)}
                 className="h-9 rounded-lg font-mono text-sm"
               />
               <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>até</span>
               <Input
                 type="date"
                 value={rankedDateTo}
-                onChange={e => setRankedDateTo(e.target.value)}
+                onChange={(e) => setRankedDateTo(e.target.value)}
                 className="h-9 rounded-lg font-mono text-sm"
               />
             </div>
             {(rankedDateFrom || rankedDateTo) && (
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                <button type="button" onClick={() => { setRankedDateFrom(''); setRankedDateTo(''); }} style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--danger)', background: 'none', border: 0, cursor: 'pointer' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRankedDateFrom('');
+                    setRankedDateTo('');
+                  }}
+                  style={{
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    color: 'var(--danger)',
+                    background: 'none',
+                    border: 0,
+                    cursor: 'pointer',
+                  }}
+                >
                   Limpar datas
                 </button>
               </div>
             )}
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.75rem' }}>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.5rem',
+              marginTop: '0.75rem',
+            }}
+          >
             {rankedDrawerPosts.length === 0 ? (
               <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', padding: '1rem 0' }}>
                 Nenhum post encontrado com estes filtros.
               </p>
-            ) : rankedDrawerPosts.map((post, i) => (
-              <a
-                key={post.id}
-                href={sanitizeUrl(post.permalink)}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.65rem 0.75rem', borderRadius: 10, border: '1px solid var(--border-color)', background: 'var(--card-bg)', textDecoration: 'none', color: 'inherit' }}
-              >
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', minWidth: 24, textAlign: 'center' }}>{i + 1}</span>
-                <div style={{ width: 52, height: 52, borderRadius: 8, overflow: 'hidden', flexShrink: 0 }}>
-                  <PostThumbnail post={post} size="list" />
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span style={{ fontSize: '0.8rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{post.caption || 'Sem legenda'}</span>
-                    <span style={{ fontSize: '0.65rem', color: 'var(--text-light)', flexShrink: 0 }}>{formatPostDate(post.posted_at)}</span>
+            ) : (
+              rankedDrawerPosts.map((post, i) => (
+                <a
+                  key={post.id}
+                  href={sanitizeUrl(post.permalink)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.75rem',
+                    padding: '0.65rem 0.75rem',
+                    borderRadius: 10,
+                    border: '1px solid var(--border-color)',
+                    background: 'var(--card-bg)',
+                    textDecoration: 'none',
+                    color: 'inherit',
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      fontFamily: 'var(--font-mono)',
+                      color: 'var(--text-muted)',
+                      minWidth: 24,
+                      textAlign: 'center',
+                    }}
+                  >
+                    {i + 1}
+                  </span>
+                  <div
+                    style={{
+                      width: 52,
+                      height: 52,
+                      borderRadius: 8,
+                      overflow: 'hidden',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <PostThumbnail post={post} size="list" />
                   </div>
-                  <div style={{ display: 'flex', gap: '0.7rem', fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 3, flexWrap: 'wrap' }}>
-                    <span>{formatMediaType(post.media_type)}</span>
-                    <span>Alcance <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>{formatNumber(post.reach)}</strong></span>
-                    <span>Eng. <strong style={{ fontFamily: 'var(--font-mono)', color: post.engagement_rate >= 3 ? 'var(--success)' : post.engagement_rate < 1 ? 'var(--danger)' : 'var(--text-main)' }}>{post.engagement_rate.toFixed(2)}%</strong></span>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}><Heart className="h-3 w-3" /> <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>{formatNumber(post.likes)}</strong></span>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}><MessageCircle className="h-3 w-3" /> <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>{formatNumber(post.comments)}</strong></span>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}><Bookmark className="h-3 w-3" /> <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>{formatNumber(post.saved)}</strong></span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span
+                        style={{
+                          fontSize: '0.8rem',
+                          fontWeight: 600,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {post.caption || 'Sem legenda'}
+                      </span>
+                      <span
+                        style={{ fontSize: '0.65rem', color: 'var(--text-light)', flexShrink: 0 }}
+                      >
+                        {formatPostDate(post.posted_at)}
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: '0.7rem',
+                        fontSize: '0.7rem',
+                        color: 'var(--text-muted)',
+                        marginTop: 3,
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      <span>{formatMediaType(post.media_type)}</span>
+                      <span>
+                        Alcance{' '}
+                        <strong
+                          style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}
+                        >
+                          {formatNumber(post.reach)}
+                        </strong>
+                      </span>
+                      <span>
+                        Eng.{' '}
+                        <strong
+                          style={{
+                            fontFamily: 'var(--font-mono)',
+                            color:
+                              post.engagement_rate >= 3
+                                ? 'var(--success)'
+                                : post.engagement_rate < 1
+                                  ? 'var(--danger)'
+                                  : 'var(--text-main)',
+                          }}
+                        >
+                          {post.engagement_rate.toFixed(2)}%
+                        </strong>
+                      </span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                        <Heart className="h-3 w-3" />{' '}
+                        <strong
+                          style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}
+                        >
+                          {formatNumber(post.likes)}
+                        </strong>
+                      </span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                        <MessageCircle className="h-3 w-3" />{' '}
+                        <strong
+                          style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}
+                        >
+                          {formatNumber(post.comments)}
+                        </strong>
+                      </span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                        <Bookmark className="h-3 w-3" />{' '}
+                        <strong
+                          style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}
+                        >
+                          {formatNumber(post.saved)}
+                        </strong>
+                      </span>
+                    </div>
                   </div>
-                </div>
-              </a>
-            ))}
+                </a>
+              ))
+            )}
           </div>
         </SheetContent>
       </Sheet>
@@ -1461,26 +2534,60 @@ function buildReportHtml(data: {
   workspaceLogoUrl?: string;
   periodLabel?: string;
 }): string {
-  const { clientName, username, overviewDays, overview, posts, typeBreakdown, topSaved, demographicsData, bestTimesData, periodLabel, workspaceName, workspaceLogoUrl } = data;
+  const {
+    clientName,
+    username,
+    overviewDays,
+    overview,
+    posts,
+    typeBreakdown,
+    topSaved,
+    demographicsData,
+    bestTimesData,
+    periodLabel,
+    workspaceName,
+    workspaceLogoUrl,
+  } = data;
   const periodTag = periodLabel || `${overviewDays} dias`;
-  const dateStr = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+  const dateStr = new Date().toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  });
   const ov = overview || {};
 
-  const escHtml = (s: string) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const escHtml = (s: string) =>
+    String(s || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
   const fmtN = (n: number) => n?.toLocaleString('pt-BR') ?? '—';
   const fmtP = (n: number) => (n != null ? n.toFixed(2) + '%' : '—');
-  const arrow = (d: any) => !d ? '' : d.direction === 'up' ? '▲' : d.direction === 'down' ? '▼' : '→';
-  const arrowColor = (d: any) => !d ? '#888' : d.direction === 'up' ? '#16a34a' : d.direction === 'down' ? '#dc2626' : '#888';
+  const arrow = (d: any) =>
+    !d ? '' : d.direction === 'up' ? '▲' : d.direction === 'down' ? '▼' : '→';
+  const arrowColor = (d: any) =>
+    !d ? '#888' : d.direction === 'up' ? '#16a34a' : d.direction === 'down' ? '#dc2626' : '#888';
 
-  const kpiCard = (label: string, value: string, delta?: any, prefix?: string, noDelta?: boolean) => `
+  const kpiCard = (
+    label: string,
+    value: string,
+    delta?: any,
+    prefix?: string,
+    noDelta?: boolean,
+  ) => `
     <div class="kpi-card">
       <div class="kpi-label">${escHtml(label)}</div>
       <div class="kpi-value">${value}</div>
-      ${!noDelta && delta ? `
+      ${
+        !noDelta && delta
+          ? `
       <div class="kpi-delta" style="color: ${arrowColor(delta)}">
         <strong>${arrow(delta)} ${Math.abs(delta.deltaPercent).toFixed(1)}%</strong>
         <span style="color:#a1a1aa; font-weight:normal; font-size:10px; margin-left:4px;">Anterior: ${prefix || ''}${fmtN(delta.previous)}</span>
-      </div>` : ''}
+      </div>`
+          : ''
+      }
     </div>`;
 
   let demoHtml = '';
@@ -1488,14 +2595,28 @@ function buildReportHtml(data: {
     const fPct = demographicsData.gender_split?.female ?? 0;
     const mPct = demographicsData.gender_split?.male ?? 0;
 
-    const ageRows = (demographicsData.age_gender || []).map(a => {
-      const malePt = (a.male / (a.male + a.female || 1) * 100).toFixed(0);
-      const femalePt = (a.female / (a.male + a.female || 1) * 100).toFixed(0);
-      return `<tr><td>${escHtml(a.age_range)}</td><td style="color:#2563eb; font-weight:bold;">${malePt}%</td><td style="color:#db2777; font-weight:bold;">${femalePt}%</td></tr>`;
-    }).join('');
+    const ageRows = (demographicsData.age_gender || [])
+      .map((a) => {
+        const malePt = ((a.male / (a.male + a.female || 1)) * 100).toFixed(0);
+        const femalePt = ((a.female / (a.male + a.female || 1)) * 100).toFixed(0);
+        return `<tr><td>${escHtml(a.age_range)}</td><td style="color:#2563eb; font-weight:bold;">${malePt}%</td><td style="color:#db2777; font-weight:bold;">${femalePt}%</td></tr>`;
+      })
+      .join('');
 
-    const cityRows = (demographicsData.cities || []).slice(0, 5).map((c, i) => `<tr><td style="border:none; padding:4px 8px;">${i + 1}. ${escHtml(c.name)}</td><td style="border:none; padding:4px 8px; text-align:right">${fmtN(c.count)}</td></tr>`).join('');
-    const countryRows = (demographicsData.countries || []).slice(0, 5).map((c, i) => `<tr><td style="border:none; padding:4px 8px;">${i + 1}. ${escHtml(c.code)}</td><td style="border:none; padding:4px 8px; text-align:right">${fmtN(c.count)}</td></tr>`).join('');
+    const cityRows = (demographicsData.cities || [])
+      .slice(0, 5)
+      .map(
+        (c, i) =>
+          `<tr><td style="border:none; padding:4px 8px;">${i + 1}. ${escHtml(c.name)}</td><td style="border:none; padding:4px 8px; text-align:right">${fmtN(c.count)}</td></tr>`,
+      )
+      .join('');
+    const countryRows = (demographicsData.countries || [])
+      .slice(0, 5)
+      .map(
+        (c, i) =>
+          `<tr><td style="border:none; padding:4px 8px;">${i + 1}. ${escHtml(c.code)}</td><td style="border:none; padding:4px 8px; text-align:right">${fmtN(c.count)}</td></tr>`,
+      )
+      .join('');
 
     demoHtml = `
       <h2 class="section-title">Demografia da Audiência</h2>
@@ -1533,7 +2654,8 @@ function buildReportHtml(data: {
     // Header row (Hours)
     let ths = '<th></th>';
     for (let h = 0; h < d.labels_hours.length; h++) {
-      if (h % 3 === 0) ths += `<th style="text-align:center; font-size:10px;">${d.labels_hours[h]}</th>`;
+      if (h % 3 === 0)
+        ths += `<th style="text-align:center; font-size:10px;">${d.labels_hours[h]}</th>`;
     }
 
     for (let day = 0; day < 7; day++) {
@@ -1556,11 +2678,16 @@ function buildReportHtml(data: {
       tableTrs += `<tr>${tds}</tr>`;
     }
 
-    const tops = d.topSlots.slice(0, 3).map((t, i) => `
+    const tops = d.topSlots
+      .slice(0, 3)
+      .map(
+        (t, i) => `
       <div style="font-size:13px; margin-bottom:4px; display:flex; gap:8px;">
         <span style="background:#f5a342; color:#fff; border-radius:12px; height:20px; width:20px; text-align:center; line-height:20px; font-size:11px;">${i + 1}</span>
-        <span><strong>${d.labels_days[t.day]} ${d.labels_hours[t.hour]}</strong> - ${(t.value).toFixed(1)}% engaj. médio</span>
-      </div>`).join('');
+        <span><strong>${d.labels_days[t.day]} ${d.labels_hours[t.hour]}</strong> - ${t.value.toFixed(1)}% engaj. médio</span>
+      </div>`,
+      )
+      .join('');
 
     heatmapHtml = `
       <h2 class="section-title" style="margin-top:30px;">Melhor Horário para Postar</h2>
@@ -1573,21 +2700,27 @@ function buildReportHtml(data: {
     `;
   }
 
-  const savedRows = topSaved.map(p => `
+  const savedRows = topSaved
+    .map(
+      (p) => `
     <tr>
       <td width="300" style="padding-right:20px;">
         <div style="display:flex; align-items:center; gap:12px;">
           ${p.thumbnail_url ? `<img src="${escHtml(p.thumbnail_url)}" crossorigin="anonymous" style="width:48px; height:48px; border-radius:6px; object-fit:cover;">` : '<div style="width:48px;height:48px;border-radius:6px;background:#f3f4f6;"></div>'}
-          <span style="font-size:12px; color:#4b5563; line-height:1.4; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;">${escHtml((p.caption || 'Sem legenda'))}</span>
+          <span style="font-size:12px; color:#4b5563; line-height:1.4; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;">${escHtml(p.caption || 'Sem legenda')}</span>
         </div>
       </td>
       <td style="font-weight:bold; font-size:16px; text-align:center;">${p.saved}</td>
       <td style="text-align:center;">${p.saves_rate.toFixed(1)}%</td>
     </tr>
-  `).join('');
+  `,
+    )
+    .join('');
 
-  const perfRows = posts.slice(0, 20).map(p => {
-    return `
+  const perfRows = posts
+    .slice(0, 20)
+    .map((p) => {
+      return `
       <tr>
         <td style="font-size:12px;">${new Date(p.posted_at).toLocaleDateString('pt-BR')}</td>
         <td style="font-size:12px;">${escHtml(p.media_type === 'VIDEO' ? 'Reel' : p.media_type === 'CAROUSEL_ALBUM' ? 'Carrossel' : 'Imagem')}</td>
@@ -1598,7 +2731,8 @@ function buildReportHtml(data: {
         <td>${p.shares}</td>
       </tr>
     `;
-  }).join('');
+    })
+    .join('');
 
   return `<!DOCTYPE html><html lang="pt-BR">
     <head>
@@ -1646,7 +2780,7 @@ function buildReportHtml(data: {
     <body>
       <div class="container">
         <div class="header">
-          ${workspaceLogoUrl ? `<img src="${escHtml(workspaceLogoUrl)}" crossorigin="anonymous" class="header-logo" alt="Logo" onerror="this.style.display='none'">` : (workspaceName ? `<div style="font-size:24px; font-weight:800; letter-spacing:-1px; margin-bottom:20px;">${escHtml(workspaceName)}</div>` : '')}
+          ${workspaceLogoUrl ? `<img src="${escHtml(workspaceLogoUrl)}" crossorigin="anonymous" class="header-logo" alt="Logo" onerror="this.style.display='none'">` : workspaceName ? `<div style="font-size:24px; font-weight:800; letter-spacing:-1px; margin-bottom:20px;">${escHtml(workspaceName)}</div>` : ''}
           <div class="title">${escHtml(clientName)}</div>
           <div class="subtitle">@${escHtml(username)}</div>
           <div class="head-meta">Relatório de Rendimento · Últimos ${overviewDays} dias · Gerado em ${dateStr}</div>
@@ -1680,7 +2814,7 @@ function buildReportHtml(data: {
           <table class="data-table">
             <thead><tr><th>Tipo</th><th>Quantidade</th><th>Engajamento Médio</th></tr></thead>
             <tbody>
-              ${typeBreakdown.map(t => `<tr><td>${escHtml(t.type)}</td><td>${t.count}</td><td style="font-weight:bold;">${t.avgEngagement.toFixed(2)}%</td></tr>`).join('')}
+              ${typeBreakdown.map((t) => `<tr><td>${escHtml(t.type)}</td><td>${t.count}</td><td style="font-weight:bold;">${t.avgEngagement.toFixed(2)}%</td></tr>`).join('')}
             </tbody>
           </table>
 
@@ -1733,31 +2867,46 @@ export default function AnalyticsContaPage() {
   const clientId = parseInt(id || '', 10);
 
   const { data: clientes = [], isLoading: loadingClientes } = useQuery({
-    queryKey: ['clientes'], queryFn: getClientes,
+    queryKey: ['clientes'],
+    queryFn: getClientes,
   });
 
-  const cliente = clientes.find(c => c.id === clientId);
+  const cliente = clientes.find((c) => c.id === clientId);
 
-  const { data: igSummary, isLoading: loadingIg, error: igError } = useQuery({
+  const {
+    data: igSummary,
+    isLoading: loadingIg,
+    error: igError,
+  } = useQuery({
     queryKey: ['ig-summary', clientId],
     queryFn: () => getInstagramSummary(clientId),
     enabled: !!clientId && !isNaN(clientId) && !!cliente,
   });
 
   if (isNaN(clientId) || clientId <= 0) {
-    return <div className="card"><p style={{ color: 'var(--danger)' }}>ID de cliente inválido.</p></div>;
+    return (
+      <div className="card">
+        <p style={{ color: 'var(--danger)' }}>ID de cliente inválido.</p>
+      </div>
+    );
   }
 
   if (loadingClientes || loadingIg) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '40vh' }}>
+      <div
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '40vh' }}
+      >
         <Spinner size="lg" />
       </div>
     );
   }
 
   if (!cliente) {
-    return <div className="card"><p style={{ color: 'var(--danger)' }}>Cliente não encontrado.</p></div>;
+    return (
+      <div className="card">
+        <p style={{ color: 'var(--danger)' }}>Cliente não encontrado.</p>
+      </div>
+    );
   }
 
   if (igError) {
@@ -1766,37 +2915,47 @@ export default function AnalyticsContaPage() {
       return (
         <div className="card animate-up" style={{ textAlign: 'center', padding: '3rem' }}>
           <h3>Token do Instagram expirado</h3>
-          <p style={{ color: 'var(--text-muted)', marginTop: '0.5rem' }}>Reconecte a conta Instagram para continuar visualizando os analytics.</p>
-          <Button style={{ marginTop: '1rem' }} onClick={() => navigate(`/cliente/${clientId}`)}>Reconectar Conta</Button>
+          <p style={{ color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+            Reconecte a conta Instagram para continuar visualizando os analytics.
+          </p>
+          <Button style={{ marginTop: '1rem' }} onClick={() => navigate(`/cliente/${clientId}`)}>
+            Reconectar Conta
+          </Button>
         </div>
       );
     }
-    return <div className="card"><p style={{ color: 'var(--danger)' }}>Erro ao carregar analytics: {msg}</p></div>;
+    return (
+      <div className="card">
+        <p style={{ color: 'var(--danger)' }}>Erro ao carregar analytics: {msg}</p>
+      </div>
+    );
   }
 
   if (!igSummary) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
         <header className="header animate-up">
-          <div className="header-title"><h1>Analytics</h1></div>
+          <div className="header-title">
+            <h1>Analytics</h1>
+          </div>
           <div className="header-actions">
-            <Button variant="outline" onClick={() => navigate(-1)}><ArrowLeft className="h-4 w-4" /> Voltar</Button>
+            <Button variant="outline" onClick={() => navigate(-1)}>
+              <ArrowLeft className="h-4 w-4" /> Voltar
+            </Button>
           </div>
         </header>
         <div className="card animate-up" style={{ textAlign: 'center', padding: '3rem' }}>
           <h3>Instagram não conectado</h3>
-          <p style={{ color: 'var(--text-muted)', marginTop: '0.5rem' }}>Conecte a conta Instagram deste cliente para acessar os analytics.</p>
-          <Button style={{ marginTop: '1rem' }} onClick={() => navigate(`/cliente/${clientId}`)}>Ir para o perfil do cliente</Button>
+          <p style={{ color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+            Conecte a conta Instagram deste cliente para acessar os analytics.
+          </p>
+          <Button style={{ marginTop: '1rem' }} onClick={() => navigate(`/cliente/${clientId}`)}>
+            Ir para o perfil do cliente
+          </Button>
         </div>
       </div>
     );
   }
 
-  return (
-    <AnalyticsContent
-      clientId={clientId}
-      cliente={cliente}
-      account={igSummary.account}
-    />
-  );
+  return <AnalyticsContent clientId={clientId} cliente={cliente} account={igSummary.account} />;
 }

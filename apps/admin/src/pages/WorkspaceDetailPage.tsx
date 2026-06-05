@@ -4,11 +4,17 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import {
-  getWorkspace, listPlans, setWorkspacePlan,
-  setWorkspaceOverrides, clearWorkspaceOverrides,
-  RESOURCE_LIMIT_KEYS, RESOURCE_LIMIT_LABELS,
-  FEATURE_FLAG_KEYS, FEATURE_FLAG_LABELS,
-  RATE_LIMIT_KEYS, RATE_LIMIT_LABELS,
+  getWorkspace,
+  listPlans,
+  setWorkspacePlan,
+  setWorkspaceOverrides,
+  clearWorkspaceOverrides,
+  RESOURCE_LIMIT_KEYS,
+  RESOURCE_LIMIT_LABELS,
+  FEATURE_FLAG_KEYS,
+  FEATURE_FLAG_LABELS,
+  RATE_LIMIT_KEYS,
+  RATE_LIMIT_LABELS,
 } from '../lib/api';
 
 const ALL_LIMIT_KEYS = [...RESOURCE_LIMIT_KEYS, ...RATE_LIMIT_KEYS];
@@ -125,7 +131,10 @@ export default function WorkspaceDetailPage() {
 
   return (
     <div className="w-full min-w-0 max-w-full overflow-x-hidden">
-      <button onClick={() => navigate('/admin/workspaces')} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary mb-4 transition-colors">
+      <button
+        onClick={() => navigate('/admin/workspaces')}
+        className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary mb-4 transition-colors"
+      >
         <ArrowLeft size={16} /> Back
       </button>
 
@@ -135,9 +144,12 @@ export default function WorkspaceDetailPage() {
             {data.workspace.name.charAt(0).toUpperCase()}
           </div>
           <div className="min-w-0">
-            <h1 className="font-['Playfair_Display'] text-xl font-bold break-words">{data.workspace.name}</h1>
+            <h1 className="font-['Playfair_Display'] text-xl font-bold break-words">
+              {data.workspace.name}
+            </h1>
             <p className="text-sm text-muted-foreground truncate">
-              Owner: {data.owner?.email || '—'} · Created {new Date(data.workspace.created_at).toLocaleDateString('pt-BR')}
+              Owner: {data.owner?.email || '—'} · Created{' '}
+              {new Date(data.workspace.created_at).toLocaleDateString('pt-BR')}
             </p>
           </div>
         </div>
@@ -152,7 +164,9 @@ export default function WorkspaceDetailPage() {
         >
           <option value="">No plan</option>
           {plansData?.plans?.map((p) => (
-            <option key={p.id} value={p.id}>{p.name}</option>
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
           ))}
         </select>
       </div>
@@ -162,20 +176,30 @@ export default function WorkspaceDetailPage() {
           <h2 className="font-semibold mb-4">Resource Limits</h2>
           <div className="flex flex-col gap-2">
             {RESOURCE_LIMIT_KEYS.map((key) => (
-              <LimitRow key={key} label={RESOURCE_LIMIT_LABELS[key]} fieldKey={key}
-                value={resourceEdits[key] ?? ''} planValue={plan ? (plan[key] as number | null) : null}
+              <LimitRow
+                key={key}
+                label={RESOURCE_LIMIT_LABELS[key]}
+                fieldKey={key}
+                value={resourceEdits[key] ?? ''}
+                planValue={plan ? (plan[key] as number | null) : null}
                 isOverridden={isOverridden(key, 'resource')}
-                onChange={(val) => setResourceEdits((prev) => ({ ...prev, [key]: val }))} />
+                onChange={(val) => setResourceEdits((prev) => ({ ...prev, [key]: val }))}
+              />
             ))}
           </div>
 
           <h3 className="font-semibold mt-5 mb-3 text-sm text-muted-foreground">Rate Limits</h3>
           <div className="flex flex-col gap-2">
             {RATE_LIMIT_KEYS.map((key) => (
-              <LimitRow key={key} label={RATE_LIMIT_LABELS[key]} fieldKey={key}
-                value={resourceEdits[key] ?? ''} planValue={plan ? (plan[key] as number | null) : null}
+              <LimitRow
+                key={key}
+                label={RATE_LIMIT_LABELS[key]}
+                fieldKey={key}
+                value={resourceEdits[key] ?? ''}
+                planValue={plan ? (plan[key] as number | null) : null}
                 isOverridden={isOverridden(key, 'resource')}
-                onChange={(val) => setResourceEdits((prev) => ({ ...prev, [key]: val }))} />
+                onChange={(val) => setResourceEdits((prev) => ({ ...prev, [key]: val }))}
+              />
             ))}
           </div>
         </div>
@@ -185,7 +209,9 @@ export default function WorkspaceDetailPage() {
           <div className="flex flex-col gap-2">
             {FEATURE_FLAG_KEYS.map((key) => (
               <div key={key} className="flex items-center justify-between gap-2 overflow-hidden">
-                <span className="text-sm text-muted-foreground truncate">{FEATURE_FLAG_LABELS[key]}</span>
+                <span className="text-sm text-muted-foreground truncate">
+                  {FEATURE_FLAG_LABELS[key]}
+                </span>
                 <div className="flex items-center gap-2 shrink-0">
                   <button
                     onClick={() => setFeatureEdits((prev) => ({ ...prev, [key]: !prev[key] }))}
@@ -194,7 +220,10 @@ export default function WorkspaceDetailPage() {
                     {featureEdits[key] ? 'ON' : 'OFF'}
                   </button>
                   {isOverridden(key, 'feature') && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-warning shrink-0" title={`override (plan: ${plan?.[key] ? 'ON' : 'OFF'})`} />
+                    <span
+                      className="w-1.5 h-1.5 rounded-full bg-warning shrink-0"
+                      title={`override (plan: ${plan?.[key] ? 'ON' : 'OFF'})`}
+                    />
                   )}
                 </div>
               </div>
@@ -205,17 +234,28 @@ export default function WorkspaceDetailPage() {
 
       <div className="min-w-0 bg-card border border-border rounded-2xl p-5 mb-6">
         <h2 className="font-semibold mb-3">Notes</h2>
-        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Admin notes..." rows={2}
-          className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary resize-none" />
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Admin notes..."
+          rows={2}
+          className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary resize-none"
+        />
       </div>
 
       <div className="flex min-w-0 flex-col gap-3 mb-8 sm:flex-row">
-        <button onClick={() => saveOverridesMutation.mutate()} disabled={saveOverridesMutation.isPending}
-          className="w-full px-6 py-2.5 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary-hover transition-colors disabled:opacity-50 sm:w-auto">
+        <button
+          onClick={() => saveOverridesMutation.mutate()}
+          disabled={saveOverridesMutation.isPending}
+          className="w-full px-6 py-2.5 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary-hover transition-colors disabled:opacity-50 sm:w-auto"
+        >
           {saveOverridesMutation.isPending ? 'Saving...' : 'Save Overrides'}
         </button>
-        <button onClick={() => clearMutation.mutate()} disabled={clearMutation.isPending}
-          className="w-full px-6 py-2.5 rounded-lg border border-border text-sm text-muted-foreground hover:border-primary hover:text-primary transition-colors disabled:opacity-50 sm:w-auto">
+        <button
+          onClick={() => clearMutation.mutate()}
+          disabled={clearMutation.isPending}
+          className="w-full px-6 py-2.5 rounded-lg border border-border text-sm text-muted-foreground hover:border-primary hover:text-primary transition-colors disabled:opacity-50 sm:w-auto"
+        >
           Reset to Plan Defaults
         </button>
       </div>
@@ -224,23 +264,44 @@ export default function WorkspaceDetailPage() {
         <h2 className="font-semibold mb-4">Members ({data.members.length})</h2>
         {/* Desktop table header */}
         <div className="hidden md:grid grid-cols-[2fr_2fr_1fr_1fr] gap-2 text-[0.7rem] text-muted-foreground uppercase tracking-wider pb-3 border-b border-border">
-          <span>Name</span><span>Email</span><span>Role</span><span>Joined</span>
+          <span>Name</span>
+          <span>Email</span>
+          <span>Role</span>
+          <span>Joined</span>
         </div>
         {data.members.map((m) => (
-          <div key={m.user_id} className="min-w-0 border-b border-border/50 py-2.5 md:grid md:grid-cols-[2fr_2fr_1fr_1fr] md:gap-2">
+          <div
+            key={m.user_id}
+            className="min-w-0 border-b border-border/50 py-2.5 md:grid md:grid-cols-[2fr_2fr_1fr_1fr] md:gap-2"
+          >
             {/* Mobile card */}
             <div className="flex min-w-0 items-center justify-between gap-3 md:hidden">
               <div className="flex min-w-0 flex-col gap-0.5">
                 <span className="truncate text-sm">{m.name}</span>
                 <span className="truncate text-xs text-muted-foreground">{m.email}</span>
               </div>
-              <span className={`shrink-0 text-xs font-medium ${m.role === 'owner' ? 'text-foreground font-semibold' : 'text-muted-foreground'}`}>{m.role}</span>
+              <span
+                className={`shrink-0 text-xs font-medium ${m.role === 'owner' ? 'text-foreground font-semibold' : 'text-muted-foreground'}`}
+              >
+                {m.role}
+              </span>
             </div>
             {/* Desktop row */}
             <span className="hidden truncate text-sm md:inline">{m.name}</span>
-            <span className="hidden truncate text-sm text-muted-foreground md:inline">{m.email}</span>
-            <span className={`hidden md:inline text-sm ${m.role === 'owner' ? 'text-foreground font-semibold' : 'text-muted-foreground'}`}>{m.role}</span>
-            <span className="hidden md:inline text-sm text-muted-foreground">{new Date(m.joined_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}</span>
+            <span className="hidden truncate text-sm text-muted-foreground md:inline">
+              {m.email}
+            </span>
+            <span
+              className={`hidden md:inline text-sm ${m.role === 'owner' ? 'text-foreground font-semibold' : 'text-muted-foreground'}`}
+            >
+              {m.role}
+            </span>
+            <span className="hidden md:inline text-sm text-muted-foreground">
+              {new Date(m.joined_at).toLocaleDateString('pt-BR', {
+                day: '2-digit',
+                month: 'short',
+              })}
+            </span>
           </div>
         ))}
       </div>
@@ -248,22 +309,42 @@ export default function WorkspaceDetailPage() {
   );
 }
 
-function LimitRow({ label, fieldKey, value, planValue, isOverridden, onChange }: {
-  label: string; fieldKey: string; value: string; planValue: number | null;
-  isOverridden: boolean; onChange: (val: string) => void;
+function LimitRow({
+  label,
+  fieldKey,
+  value,
+  planValue,
+  isOverridden,
+  onChange,
+}: {
+  label: string;
+  fieldKey: string;
+  value: string;
+  planValue: number | null;
+  isOverridden: boolean;
+  onChange: (val: string) => void;
 }) {
   return (
     <div className="flex items-center justify-between gap-2 min-w-0">
       <span className="text-sm text-muted-foreground truncate">{label}</span>
       <div className="flex items-center gap-2 shrink-0">
-        <input type="number" value={value} onChange={(e) => onChange(e.target.value)}
+        <input
+          type="number"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
           className={`w-20 px-2 py-1 rounded text-right font-['DM_Mono'] text-sm bg-secondary border focus:outline-none focus:border-primary ${
             isOverridden ? 'border-primary/30 text-primary' : 'border-transparent text-foreground'
-          }`} />
+          }`}
+        />
         {isOverridden ? (
-          <span className="w-1.5 h-1.5 rounded-full bg-warning shrink-0" title={`plan: ${planValue ?? '—'}`} />
+          <span
+            className="w-1.5 h-1.5 rounded-full bg-warning shrink-0"
+            title={`plan: ${planValue ?? '—'}`}
+          />
         ) : (
-          <span className="text-[0.7rem] text-dim-foreground hidden sm:inline whitespace-nowrap">plan: {planValue ?? '—'}</span>
+          <span className="text-[0.7rem] text-dim-foreground hidden sm:inline whitespace-nowrap">
+            plan: {planValue ?? '—'}
+          </span>
         )}
       </div>
     </div>

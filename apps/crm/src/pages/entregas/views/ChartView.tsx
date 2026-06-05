@@ -9,13 +9,16 @@ interface ChartViewProps {
 }
 
 export function ChartView({ cards }: ChartViewProps) {
-  const atrasado = cards.filter(c => c.deadline.estourado).length;
-  const urgente = cards.filter(c => c.deadline.urgente && !c.deadline.estourado).length;
-  const emDia = cards.filter(c => !c.deadline.estourado && !c.deadline.urgente).length;
+  const atrasado = cards.filter((c) => c.deadline.estourado).length;
+  const urgente = cards.filter((c) => c.deadline.urgente && !c.deadline.estourado).length;
+  const emDia = cards.filter((c) => !c.deadline.estourado && !c.deadline.urgente).length;
 
   if (cards.length === 0) {
     return (
-      <div className="card animate-up" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+      <div
+        className="card animate-up"
+        style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}
+      >
         <p>Nenhuma entrega encontrada. Ajuste os filtros.</p>
       </div>
     );
@@ -23,11 +26,13 @@ export function ChartView({ cards }: ChartViewProps) {
 
   const data = {
     labels: ['Em dia', 'Urgente', 'Atrasado'],
-    datasets: [{
-      data: [emDia, urgente, atrasado],
-      backgroundColor: ['#3ecf8e', '#eab308', '#ef4444'],
-      borderWidth: 0,
-    }],
+    datasets: [
+      {
+        data: [emDia, urgente, atrasado],
+        backgroundColor: ['#3ecf8e', '#eab308', '#ef4444'],
+        borderWidth: 0,
+      },
+    ],
   };
 
   const options = {
@@ -38,7 +43,10 @@ export function ChartView({ cards }: ChartViewProps) {
   };
 
   return (
-    <div className="animate-up" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2rem' }}>
+    <div
+      className="animate-up"
+      style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2rem' }}
+    >
       <div style={{ maxWidth: 320, width: '100%' }}>
         <Doughnut data={data} options={options} />
       </div>
@@ -47,10 +55,18 @@ export function ChartView({ cards }: ChartViewProps) {
           { label: 'Em dia', count: emDia, color: '#3ecf8e' },
           { label: 'Urgente', count: urgente, color: '#eab308' },
           { label: 'Atrasado', count: atrasado, color: '#ef4444' },
-        ].map(stat => (
-          <div key={stat.label} className="card" style={{ textAlign: 'center', minWidth: 120, padding: '1.5rem 2rem' }}>
-            <div style={{ fontSize: '2.5rem', fontWeight: 700, color: stat.color }}>{stat.count}</div>
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>{stat.label}</div>
+        ].map((stat) => (
+          <div
+            key={stat.label}
+            className="card"
+            style={{ textAlign: 'center', minWidth: 120, padding: '1.5rem 2rem' }}
+          >
+            <div style={{ fontSize: '2.5rem', fontWeight: 700, color: stat.color }}>
+              {stat.count}
+            </div>
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+              {stat.label}
+            </div>
           </div>
         ))}
       </div>

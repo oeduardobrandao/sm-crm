@@ -49,7 +49,10 @@ describe('HubShell', () => {
     expect(mockedFetchBootstrap).toHaveBeenCalledWith('mesaas', 'token-publico');
     expect(screen.getByText('Hub nav')).toBeInTheDocument();
     await waitFor(() => {
-      expect(document.querySelector("link[rel='icon']")).toHaveAttribute('href', 'https://cdn.mesaas.com/logo.png');
+      expect(document.querySelector("link[rel='icon']")).toHaveAttribute(
+        'href',
+        'https://cdn.mesaas.com/logo.png',
+      );
     });
   });
 

@@ -39,7 +39,11 @@ vi.mock('../../../lib/supabase', () => ({
 vi.mock('../../entregas/components/PostMediaGallery', () => ({
   PostMediaGallery: ({ onChange }: { onChange?: (m: any[]) => void }) => (
     <div data-testid="media-gallery">
-      <button onClick={() => onChange?.([{ id: 1, kind: 'image', url: 'test.jpg', original_filename: 'test.jpg' }])}>
+      <button
+        onClick={() =>
+          onChange?.([{ id: 1, kind: 'image', url: 'test.jpg', original_filename: 'test.jpg' }])
+        }
+      >
         Simulate Upload
       </button>
     </div>
@@ -52,27 +56,78 @@ vi.mock('sonner', () => ({
 
 import ExpressPostPage from '../ExpressPostPage';
 import {
-  getClientes, addWorkflow, addWorkflowEtapa, addWorkflowPost,
+  getClientes,
+  addWorkflow,
+  addWorkflowEtapa,
+  addWorkflowPost,
   removeWorkflow,
 } from '../../../store';
 
 function renderWithProviders(ui: React.ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<MemoryRouter><QueryClientProvider client={qc}>{ui}</QueryClientProvider></MemoryRouter>);
+  return render(
+    <MemoryRouter>
+      <QueryClientProvider client={qc}>{ui}</QueryClientProvider>
+    </MemoryRouter>,
+  );
 }
 
 const mockClientes = [
-  { id: 1, nome: 'Client A', sigla: 'CA', cor: '#000', plano: 'pro', email: 'a@a.com', telefone: '', status: 'ativo' as const, valor_mensal: 100 },
-  { id: 2, nome: 'Client B', sigla: 'CB', cor: '#000', plano: 'pro', email: 'b@b.com', telefone: '', status: 'ativo' as const, valor_mensal: 200 },
+  {
+    id: 1,
+    nome: 'Client A',
+    sigla: 'CA',
+    cor: '#000',
+    plano: 'pro',
+    email: 'a@a.com',
+    telefone: '',
+    status: 'ativo' as const,
+    valor_mensal: 100,
+  },
+  {
+    id: 2,
+    nome: 'Client B',
+    sigla: 'CB',
+    cor: '#000',
+    plano: 'pro',
+    email: 'b@b.com',
+    telefone: '',
+    status: 'ativo' as const,
+    valor_mensal: 200,
+  },
 ];
 
 describe('ExpressPostPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(getClientes).mockResolvedValue(mockClientes);
-    vi.mocked(addWorkflow).mockResolvedValue({ id: 10, cliente_id: 1, titulo: 'Post Express', status: 'ativo', etapa_atual: 0, recorrente: false });
-    vi.mocked(addWorkflowEtapa).mockResolvedValue({ id: 20, workflow_id: 10, ordem: 0, nome: 'Publicação', prazo_dias: 0, tipo_prazo: 'corridos', status: 'concluido' });
-    vi.mocked(addWorkflowPost).mockResolvedValue({ id: 30, workflow_id: 10, titulo: 'Post Express', conteudo: null, conteudo_plain: '', tipo: 'feed', ordem: 0, status: 'rascunho' });
+    vi.mocked(addWorkflow).mockResolvedValue({
+      id: 10,
+      cliente_id: 1,
+      titulo: 'Post Express',
+      status: 'ativo',
+      etapa_atual: 0,
+      recorrente: false,
+    });
+    vi.mocked(addWorkflowEtapa).mockResolvedValue({
+      id: 20,
+      workflow_id: 10,
+      ordem: 0,
+      nome: 'Publicação',
+      prazo_dias: 0,
+      tipo_prazo: 'corridos',
+      status: 'concluido',
+    });
+    vi.mocked(addWorkflowPost).mockResolvedValue({
+      id: 30,
+      workflow_id: 10,
+      titulo: 'Post Express',
+      conteudo: null,
+      conteudo_plain: '',
+      tipo: 'feed',
+      ordem: 0,
+      status: 'rascunho',
+    });
     vi.mocked(removeWorkflow).mockResolvedValue(undefined);
   });
 
@@ -120,7 +175,6 @@ describe('ExpressPostPage', () => {
     const publishBtn = screen.getByText('Publicar agora').closest('button')!;
     expect(publishBtn.hasAttribute('disabled')).toBe(true);
   });
-
 
   it('does not call removeWorkflow on unmount when no draft exists', async () => {
     const { unmount } = renderWithProviders(<ExpressPostPage />);

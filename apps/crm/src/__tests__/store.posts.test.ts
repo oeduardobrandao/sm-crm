@@ -12,7 +12,11 @@ type MockedSupabaseModule = typeof supabaseModule & {
     payload?: unknown;
     modifiers: Array<{ method: string; args: unknown[] }>;
   }>;
-  __queueSupabaseResult: (table: string, operation: 'select' | 'insert' | 'update' | 'delete' | 'upsert', ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>) => void;
+  __queueSupabaseResult: (
+    table: string,
+    operation: 'select' | 'insert' | 'update' | 'delete' | 'upsert',
+    ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>
+  ) => void;
   __resetSupabaseMock: () => void;
   __setCurrentProfile: (profile: Record<string, unknown> | null) => void;
 };
@@ -20,7 +24,9 @@ type MockedSupabaseModule = typeof supabaseModule & {
 const mockedSupabase = supabaseModule as MockedSupabaseModule;
 
 function getCalls(table: string, operation?: string) {
-  return mockedSupabase.__getSupabaseCalls().filter((entry) => entry.table === table && (!operation || entry.operation === operation));
+  return mockedSupabase
+    .__getSupabaseCalls()
+    .filter((entry) => entry.table === table && (!operation || entry.operation === operation));
 }
 
 describe('store workflow posts', () => {
@@ -78,7 +84,9 @@ describe('store workflow posts', () => {
   });
 
   it('reorderWorkflowPosts updates ordem for each post', async () => {
-    mockedSupabase.__queueSupabaseResult('workflow_posts', 'update',
+    mockedSupabase.__queueSupabaseResult(
+      'workflow_posts',
+      'update',
       { data: null, error: null },
       { data: null, error: null },
       { data: null, error: null },
@@ -96,11 +104,7 @@ describe('store workflow posts', () => {
 
   it('getWorkflowPostsCounts returns a map of workflow_id to count', async () => {
     mockedSupabase.__queueSupabaseResult('workflow_posts', 'select', {
-      data: [
-        { workflow_id: 5 },
-        { workflow_id: 5 },
-        { workflow_id: 7 },
-      ],
+      data: [{ workflow_id: 5 }, { workflow_id: 5 }, { workflow_id: 7 }],
       error: null,
     });
 
@@ -134,7 +138,10 @@ describe('store workflow posts', () => {
     const call = getCalls('workflow_posts', 'update').at(-1)!;
     expect(call.payload).toEqual({ status: 'aprovado_cliente' });
     expect(call.modifiers).toContainEqual({ method: 'eq', args: ['workflow_id', 5] });
-    expect(call.modifiers).toContainEqual({ method: 'not', args: ['status', 'in', '(agendado,postado)'] });
+    expect(call.modifiers).toContainEqual({
+      method: 'not',
+      args: ['status', 'in', '(agendado,postado)'],
+    });
   });
 
   it('getPostApprovals returns empty array for no post ids', async () => {
@@ -184,7 +191,14 @@ describe('store workflow posts', () => {
   it('getPostApprovals queries with in filter', async () => {
     mockedSupabase.__queueSupabaseResult('post_approvals', 'select', {
       data: [
-        { id: 1, post_id: 100, action: 'aprovado', comentario: 'Ótimo!', is_workspace_user: false, created_at: '2026-04-15' },
+        {
+          id: 1,
+          post_id: 100,
+          action: 'aprovado',
+          comentario: 'Ótimo!',
+          is_workspace_user: false,
+          created_at: '2026-04-15',
+        },
       ],
       error: null,
     });

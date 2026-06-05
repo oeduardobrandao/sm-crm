@@ -10,18 +10,25 @@ const EDGE_URL = import.meta.env.VITE_SUPABASE_URL + '/functions/v1/instagram-an
 // ---- Edge function helper (for demographics/online-followers only) ----
 
 async function getAuthHeaders() {
-  const { data: { session } } = await supabase.auth.getSession();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
   return {
-    'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY as string,
-    'Authorization': `Bearer ${session?.access_token}`,
-    'Content-Type': 'application/json'
+    apikey: import.meta.env.VITE_SUPABASE_ANON_KEY as string,
+    Authorization: `Bearer ${session?.access_token}`,
+    'Content-Type': 'application/json',
   };
 }
 
 async function fetchEdge<T>(url: string, options?: RequestInit): Promise<T | null> {
   try {
     const headers = await getAuthHeaders();
-    console.log('[fetchEdge] auth:', headers.Authorization?.slice(0, 20) + '...', 'method:', options?.method || 'GET');
+    console.log(
+      '[fetchEdge] auth:',
+      headers.Authorization?.slice(0, 20) + '...',
+      'method:',
+      options?.method || 'GET',
+    );
     const res = await fetch(url, { ...options, headers });
     if (!res.ok) {
       console.error(`[fetchEdge] ${res.status} ${res.statusText} — ${url}`);
@@ -59,7 +66,8 @@ function makeDelta(current: number, previous: number): KpiDelta {
     current,
     previous,
     delta: current - previous,
-    deltaPercent: previous !== 0 ? ((current - previous) / Math.abs(previous)) * 100 : (current > 0 ? 100 : 0),
+    deltaPercent:
+      previous !== 0 ? ((current - previous) / Math.abs(previous)) * 100 : current > 0 ? 100 : 0,
     direction: current > previous ? 'up' : current < previous ? 'down' : 'stable',
   };
 }
@@ -216,16 +224,44 @@ export async function getPortfolioSummary(days = 28): Promise<PortfolioSummary> 
 
   if (clientsError) {
     console.error('Analytics: Error fetching clients:', clientsError);
-    return { accounts: [], topPosts: [], worstPosts: [], allRankedPosts: [], summary: { total: 0, connected: 0, growing: 0, stagnant: 0, declining: 0, bestByEngagement: null, mostImproved: null } };
+    return {
+      accounts: [],
+      topPosts: [],
+      worstPosts: [],
+      allRankedPosts: [],
+      summary: {
+        total: 0,
+        connected: 0,
+        growing: 0,
+        stagnant: 0,
+        declining: 0,
+        bestByEngagement: null,
+        mostImproved: null,
+      },
+    };
   }
 
-  const clients = (allClients || []).filter(c => c.status === 'ativo');
+  const clients = (allClients || []).filter((c) => c.status === 'ativo');
 
   if (clients.length === 0) {
-    return { accounts: [], topPosts: [], worstPosts: [], allRankedPosts: [], summary: { total: 0, connected: 0, growing: 0, stagnant: 0, declining: 0, bestByEngagement: null, mostImproved: null } };
+    return {
+      accounts: [],
+      topPosts: [],
+      worstPosts: [],
+      allRankedPosts: [],
+      summary: {
+        total: 0,
+        connected: 0,
+        growing: 0,
+        stagnant: 0,
+        declining: 0,
+        bestByEngagement: null,
+        mostImproved: null,
+      },
+    };
   }
 
-  const clientIds = clients.map(c => c.id);
+  const clientIds = clients.map((c) => c.id);
 
   // Get connected Instagram accounts
   const { data: igAccounts, error: igError } = await supabase
@@ -236,10 +272,24 @@ export async function getPortfolioSummary(days = 28): Promise<PortfolioSummary> 
   if (igError) console.error('Analytics: Error fetching IG accounts:', igError);
 
   if (!igAccounts || igAccounts.length === 0) {
-    return { accounts: [], topPosts: [], worstPosts: [], allRankedPosts: [], summary: { total: clients.length, connected: 0, growing: 0, stagnant: 0, declining: 0, bestByEngagement: null, mostImproved: null } };
+    return {
+      accounts: [],
+      topPosts: [],
+      worstPosts: [],
+      allRankedPosts: [],
+      summary: {
+        total: clients.length,
+        connected: 0,
+        growing: 0,
+        stagnant: 0,
+        declining: 0,
+        bestByEngagement: null,
+        mostImproved: null,
+      },
+    };
   }
 
-  const accountIds = igAccounts.map(a => a.id);
+  const accountIds = igAccounts.map((a) => a.id);
   const periodAgo = new Date(Date.now() - days * 86400000).toISOString();
 
   // Get latest post per account + recent posts for engagement
@@ -265,7 +315,7 @@ export async function getPortfolioSummary(days = 28): Promise<PortfolioSummary> 
     .order('posted_at', { ascending: false });
 
   const latestPostMap: Record<number, string> = {};
-  for (const p of (latestPosts || [])) {
+  for (const p of latestPosts || []) {
     if (!latestPostMap[p.instagram_account_id]) {
       latestPostMap[p.instagram_account_id] = p.posted_at;
     }
@@ -273,35 +323,41 @@ export async function getPortfolioSummary(days = 28): Promise<PortfolioSummary> 
 
   // Aggregate post stats per account
   const accountPostStats: Record<number, { count: number; engagement: number }> = {};
-  for (const p of (allRecentPosts || [])) {
-    if (!accountPostStats[p.instagram_account_id]) accountPostStats[p.instagram_account_id] = { count: 0, engagement: 0 };
+  for (const p of allRecentPosts || []) {
+    if (!accountPostStats[p.instagram_account_id])
+      accountPostStats[p.instagram_account_id] = { count: 0, engagement: 0 };
     accountPostStats[p.instagram_account_id].count++;
     const interactions = (p.likes || 0) + (p.comments || 0) + (p.saved || 0) + (p.shares || 0);
-    if (p.reach > 0) accountPostStats[p.instagram_account_id].engagement += (interactions / p.reach) * 100;
+    if (p.reach > 0)
+      accountPostStats[p.instagram_account_id].engagement += (interactions / p.reach) * 100;
   }
 
   // Follower deltas
   const followerByAccount: Record<string, any[]> = {};
-  for (const f of (followerHist || [])) {
+  for (const f of followerHist || []) {
     if (!followerByAccount[f.instagram_account_id]) followerByAccount[f.instagram_account_id] = [];
     followerByAccount[f.instagram_account_id].push(f);
   }
   const followerDeltaMap: Record<string, number> = {};
   for (const [accId, entries] of Object.entries(followerByAccount)) {
     if (entries.length >= 2) {
-      followerDeltaMap[accId] = entries[entries.length - 1].follower_count - entries[0].follower_count;
+      followerDeltaMap[accId] =
+        entries[entries.length - 1].follower_count - entries[0].follower_count;
     }
   }
 
   const clientMap: Record<number, any> = {};
   for (const c of clients) clientMap[c.id] = c;
 
-  let growing = 0, declining = 0, stagnant = 0;
+  let growing = 0,
+    declining = 0,
+    stagnant = 0;
 
-  const accounts: PortfolioAccount[] = igAccounts.map(a => {
+  const accounts: PortfolioAccount[] = igAccounts.map((a) => {
     const client = clientMap[a.client_id];
     const stats = accountPostStats[a.id] || { count: 0, engagement: 0 };
-    const avgEngagement = stats.count > 0 ? Math.round((stats.engagement / stats.count) * 100) / 100 : 0;
+    const avgEngagement =
+      stats.count > 0 ? Math.round((stats.engagement / stats.count) * 100) / 100 : 0;
     const delta = followerDeltaMap[a.id] || 0;
 
     if (delta > 0) growing++;
@@ -331,12 +387,15 @@ export async function getPortfolioSummary(days = 28): Promise<PortfolioSummary> 
     };
   });
 
-  const bestByEngagement = [...accounts].sort((a, b) => b.engagement_rate_avg - a.engagement_rate_avg)[0] || null;
+  const bestByEngagement =
+    [...accounts].sort((a, b) => b.engagement_rate_avg - a.engagement_rate_avg)[0] || null;
   const mostImproved = [...accounts].sort((a, b) => b.follower_delta - a.follower_delta)[0] || null;
 
   const { data: topPostsRaw } = await supabase
     .from('instagram_posts')
-    .select('id, instagram_account_id, thumbnail_url, media_type, permalink, posted_at, likes, comments, reach, saved, shares')
+    .select(
+      'id, instagram_account_id, thumbnail_url, media_type, permalink, posted_at, likes, comments, reach, saved, shares',
+    )
     .in('instagram_account_id', accountIds)
     .gte('posted_at', periodAgo)
     .gt('reach', 0)
@@ -350,11 +409,16 @@ export async function getPortfolioSummary(days = 28): Promise<PortfolioSummary> 
   }
 
   const allRankedPosts: PortfolioTopPost[] = (topPostsRaw || [])
-    .map(p => {
+    .map((p) => {
       const interactions = (p.likes || 0) + (p.comments || 0) + (p.saved || 0) + (p.shares || 0);
       const engagement_rate = p.reach > 0 ? Math.round((interactions / p.reach) * 10000) / 100 : 0;
       const info = accountToClient[p.instagram_account_id];
-      return { ...p, engagement_rate, client_name: info?.client_name || '', client_id: info?.client_id || 0 };
+      return {
+        ...p,
+        engagement_rate,
+        client_name: info?.client_name || '',
+        client_id: info?.client_id || 0,
+      };
     })
     .sort((a, b) => b.reach - a.reach);
 
@@ -372,13 +436,24 @@ export async function getPortfolioSummary(days = 28): Promise<PortfolioSummary> 
       growing,
       stagnant,
       declining,
-      bestByEngagement: bestByEngagement ? { client_name: bestByEngagement.client_name, engagement_rate_avg: bestByEngagement.engagement_rate_avg } : null,
-      mostImproved: mostImproved ? { client_name: mostImproved.client_name, follower_delta: mostImproved.follower_delta } : null,
+      bestByEngagement: bestByEngagement
+        ? {
+            client_name: bestByEngagement.client_name,
+            engagement_rate_avg: bestByEngagement.engagement_rate_avg,
+          }
+        : null,
+      mostImproved: mostImproved
+        ? { client_name: mostImproved.client_name, follower_delta: mostImproved.follower_delta }
+        : null,
     },
   };
 }
 
-export async function getAnalyticsOverview(clientId: number, days = 30, dateRange?: { start: string; end: string }): Promise<AnalyticsOverview> {
+export async function getAnalyticsOverview(
+  clientId: number,
+  days = 30,
+  dateRange?: { start: string; end: string },
+): Promise<AnalyticsOverview> {
   const account = await getAccountByClientId(clientId);
 
   let periodStart: string;
@@ -406,40 +481,56 @@ export async function getAnalyticsOverview(clientId: number, days = 30, dateRang
   if (periodEnd) currentPostsQuery.lte('posted_at', periodEnd);
 
   const followerHistoryStart = dateRange
-    ? new Date(new Date(dateRange.start).getTime() - (new Date(dateRange.end).getTime() - new Date(dateRange.start).getTime())).toISOString().split('T')[0]
+    ? new Date(
+        new Date(dateRange.start).getTime() -
+          (new Date(dateRange.end).getTime() - new Date(dateRange.start).getTime()),
+      )
+        .toISOString()
+        .split('T')[0]
     : new Date(Date.now() - days * 2 * 86400000).toISOString().split('T')[0];
 
-  const [{ data: currentPosts }, { data: previousPosts }, { data: followerHistory }] = await Promise.all([
-    currentPostsQuery,
-    supabase
-      .from('instagram_posts')
-      .select('likes, comments, saved, shares, reach')
-      .eq('instagram_account_id', account.id)
-      .gte('posted_at', prevStart)
-      .lt('posted_at', periodStart),
-    supabase
-      .from('instagram_follower_history')
-      .select('date, follower_count')
-      .eq('instagram_account_id', account.id)
-      .gte('date', followerHistoryStart)
-      .order('date', { ascending: true }),
-  ]);
+  const [{ data: currentPosts }, { data: previousPosts }, { data: followerHistory }] =
+    await Promise.all([
+      currentPostsQuery,
+      supabase
+        .from('instagram_posts')
+        .select('likes, comments, saved, shares, reach')
+        .eq('instagram_account_id', account.id)
+        .gte('posted_at', prevStart)
+        .lt('posted_at', periodStart),
+      supabase
+        .from('instagram_follower_history')
+        .select('date, follower_count')
+        .eq('instagram_account_id', account.id)
+        .gte('date', followerHistoryStart)
+        .order('date', { ascending: true }),
+    ]);
 
   const history = followerHistory || [];
-  const periodStartDate = dateRange ? dateRange.start : new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
-  const currentFollowers = history.filter(h => h.date >= periodStartDate);
-  const previousFollowers = history.filter(h => h.date < periodStartDate);
+  const periodStartDate = dateRange
+    ? dateRange.start
+    : new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
+  const currentFollowers = history.filter((h) => h.date >= periodStartDate);
+  const previousFollowers = history.filter((h) => h.date < periodStartDate);
 
-  const followerDeltaCurrent = currentFollowers.length >= 2
-    ? currentFollowers[currentFollowers.length - 1].follower_count - currentFollowers[0].follower_count
-    : 0;
-  const followerDeltaPrevious = previousFollowers.length >= 2
-    ? previousFollowers[previousFollowers.length - 1].follower_count - previousFollowers[0].follower_count
-    : 0;
+  const followerDeltaCurrent =
+    currentFollowers.length >= 2
+      ? currentFollowers[currentFollowers.length - 1].follower_count -
+        currentFollowers[0].follower_count
+      : 0;
+  const followerDeltaPrevious =
+    previousFollowers.length >= 2
+      ? previousFollowers[previousFollowers.length - 1].follower_count -
+        previousFollowers[0].follower_count
+      : 0;
 
   const calcEngagement = (posts: any[]) => {
     if (!posts || posts.length === 0) return 0;
-    const totalInteractions = posts.reduce((s: number, p: any) => s + (p.likes || 0) + (p.comments || 0) + (p.saved || 0) + (p.shares || 0), 0);
+    const totalInteractions = posts.reduce(
+      (s: number, p: any) =>
+        s + (p.likes || 0) + (p.comments || 0) + (p.saved || 0) + (p.shares || 0),
+      0,
+    );
     const totalReach = posts.reduce((s: number, p: any) => s + (p.reach || 0), 0);
     return totalReach > 0 ? (totalInteractions / totalReach) * 100 : 0;
   };
@@ -463,7 +554,7 @@ export async function getAnalyticsOverview(clientId: number, days = 30, dateRang
       reach: makeDelta(currentReach, previousReach),
       impressions: makeDelta(
         cp.reduce((s: number, p: any) => s + (p.impressions || 0), 0),
-        pp.reduce((s: number, p: any) => s + (p.impressions || 0), 0)
+        pp.reduce((s: number, p: any) => s + (p.impressions || 0), 0),
       ),
       profileViews: makeDelta(account.profile_views_28d || 0, 0), // No previous period data stored
       websiteClicks: makeDelta(account.website_clicks_28d || 0, 0),
@@ -477,14 +568,25 @@ export async function getAnalyticsOverview(clientId: number, days = 30, dateRang
   };
 }
 
-export async function getPostsAnalytics(clientId: number, days = 30, sort = 'posted_at', dir = 'desc', dateRange?: { start: string; end: string }): Promise<{ posts: PostAnalytics[]; total: number }> {
+export async function getPostsAnalytics(
+  clientId: number,
+  days = 30,
+  sort = 'posted_at',
+  dir = 'desc',
+  dateRange?: { start: string; end: string },
+): Promise<{ posts: PostAnalytics[]; total: number }> {
   const account = await getAccountByClientId(clientId);
 
   const query = supabase
     .from('instagram_posts')
     .select('*')
     .eq('instagram_account_id', account.id)
-    .gte('posted_at', dateRange ? new Date(dateRange.start).toISOString() : new Date(Date.now() - days * 86400000).toISOString())
+    .gte(
+      'posted_at',
+      dateRange
+        ? new Date(dateRange.start).toISOString()
+        : new Date(Date.now() - days * 86400000).toISOString(),
+    )
     .order('posted_at', { ascending: false });
   if (dateRange) query.lte('posted_at', new Date(dateRange.end + 'T23:59:59.999Z').toISOString());
 
@@ -494,7 +596,7 @@ export async function getPostsAnalytics(clientId: number, days = 30, sort = 'pos
   const allPosts = posts || [];
 
   // Get tag assignments
-  const postIds = allPosts.map(p => p.id);
+  const postIds = allPosts.map((p) => p.id);
   const tagMap: Record<number, PostTag[]> = {};
 
   if (postIds.length > 0) {
@@ -504,7 +606,7 @@ export async function getPostsAnalytics(clientId: number, days = 30, sort = 'pos
         .select('post_id, tag_id, instagram_post_tags(id, tag_name, color)')
         .in('post_id', postIds);
 
-      for (const a of (assignments || [])) {
+      for (const a of assignments || []) {
         if (!tagMap[a.post_id]) tagMap[a.post_id] = [];
         if (a.instagram_post_tags) tagMap[a.post_id].push(a.instagram_post_tags as any);
       }
@@ -514,7 +616,7 @@ export async function getPostsAnalytics(clientId: number, days = 30, sort = 'pos
   }
 
   // Compute engagement + sort
-  const enriched: PostAnalytics[] = allPosts.map(p => {
+  const enriched: PostAnalytics[] = allPosts.map((p) => {
     const interactions = (p.likes || 0) + (p.comments || 0) + (p.saved || 0) + (p.shares || 0);
     const engRate = p.reach > 0 ? (interactions / p.reach) * 100 : 0;
     const savesRate = p.reach > 0 ? ((p.saved || 0) / p.reach) * 100 : 0;
@@ -526,20 +628,36 @@ export async function getPostsAnalytics(clientId: number, days = 30, sort = 'pos
     };
   });
 
-  const validCols = ['posted_at', 'reach', 'impressions', 'engagement_rate', 'saves_rate', 'saved', 'likes', 'comments', 'shares'];
+  const validCols = [
+    'posted_at',
+    'reach',
+    'impressions',
+    'engagement_rate',
+    'saves_rate',
+    'saved',
+    'likes',
+    'comments',
+    'shares',
+  ];
   const col = validCols.includes(sort) ? sort : 'posted_at';
   enriched.sort((a: any, b: any) => {
     const va = a[col] ?? 0;
     const vb = b[col] ?? 0;
-    return dir === 'asc' ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1);
+    return dir === 'asc' ? (va > vb ? 1 : -1) : va < vb ? 1 : -1;
   });
 
   return { posts: enriched, total: enriched.length };
 }
 
-export async function getFollowerHistory(clientId: number, days = 90, dateRange?: { start: string; end: string }): Promise<FollowerHistory> {
+export async function getFollowerHistory(
+  clientId: number,
+  days = 90,
+  dateRange?: { start: string; end: string },
+): Promise<FollowerHistory> {
   const account = await getAccountByClientId(clientId);
-  const sinceDate = dateRange ? dateRange.start : new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
+  const sinceDate = dateRange
+    ? dateRange.start
+    : new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
 
   const historyQuery = supabase
     .from('instagram_follower_history')
@@ -553,15 +671,21 @@ export async function getFollowerHistory(clientId: number, days = 90, dateRange?
     .from('instagram_posts')
     .select('posted_at, media_type')
     .eq('instagram_account_id', account.id)
-    .gte('posted_at', dateRange ? new Date(dateRange.start).toISOString() : new Date(Date.now() - days * 86400000).toISOString())
+    .gte(
+      'posted_at',
+      dateRange
+        ? new Date(dateRange.start).toISOString()
+        : new Date(Date.now() - days * 86400000).toISOString(),
+    )
     .order('posted_at', { ascending: true });
-  if (dateRange) postsQuery.lte('posted_at', new Date(dateRange.end + 'T23:59:59.999Z').toISOString());
+  if (dateRange)
+    postsQuery.lte('posted_at', new Date(dateRange.end + 'T23:59:59.999Z').toISOString());
 
   const [{ data: history }, { data: postDates }] = await Promise.all([historyQuery, postsQuery]);
 
   return {
     history: history || [],
-    postDates: (postDates || []).map(p => ({
+    postDates: (postDates || []).map((p) => ({
       date: p.posted_at.split('T')[0],
       media_type: p.media_type,
     })),
@@ -569,11 +693,15 @@ export async function getFollowerHistory(clientId: number, days = 90, dateRange?
 }
 
 // Demographics and online-followers: try edge function, return null if unavailable
-export async function getAudienceDemographics(clientId: number): Promise<{ data: AudienceDemographics; fromCache: boolean; fetchedAt: string } | null> {
+export async function getAudienceDemographics(
+  clientId: number,
+): Promise<{ data: AudienceDemographics; fromCache: boolean; fetchedAt: string } | null> {
   return fetchEdge(`${EDGE_URL}/demographics/${clientId}`);
 }
 
-export async function getBestPostingTimes(clientId: number): Promise<{ data: BestPostingTimes; fromCache: boolean; fetchedAt: string } | null> {
+export async function getBestPostingTimes(
+  clientId: number,
+): Promise<{ data: BestPostingTimes; fromCache: boolean; fetchedAt: string } | null> {
   return fetchEdge(`${EDGE_URL}/best-times/${clientId}`);
 }
 
@@ -599,7 +727,10 @@ export interface PortfolioAIAnalysis {
   raw?: string;
 }
 
-export async function getAccountAIAnalysis(clientId: number, days = 30): Promise<{ analysis: AccountAIAnalysis; generatedAt: string }> {
+export async function getAccountAIAnalysis(
+  clientId: number,
+  days = 30,
+): Promise<{ analysis: AccountAIAnalysis; generatedAt: string }> {
   const headers = await getAuthHeaders();
   const res = await fetch(`${EDGE_URL}/ai-analysis/${clientId}`, {
     method: 'POST',
@@ -613,7 +744,10 @@ export async function getAccountAIAnalysis(clientId: number, days = 30): Promise
   return res.json();
 }
 
-export async function getPortfolioAIAnalysis(): Promise<{ analysis: PortfolioAIAnalysis; generatedAt: string }> {
+export async function getPortfolioAIAnalysis(): Promise<{
+  analysis: PortfolioAIAnalysis;
+  generatedAt: string;
+}> {
   const headers = await getAuthHeaders();
   const res = await fetch(`${EDGE_URL}/ai-analysis-portfolio`, {
     method: 'POST',
@@ -654,7 +788,8 @@ export async function createTag(tag_name: string, color = '#eab308'): Promise<Po
 
   if (error) {
     if (error.code === '23505') throw new Error('Tag já existe');
-    if (error.code === '42P01') throw new Error('Tabela de tags não encontrada. Execute a migração do banco de dados.');
+    if (error.code === '42P01')
+      throw new Error('Tabela de tags não encontrada. Execute a migração do banco de dados.');
     throw error;
   }
   return data;
@@ -663,7 +798,9 @@ export async function createTag(tag_name: string, color = '#eab308'): Promise<Po
 export async function deleteTag(tagId: number): Promise<void> {
   try {
     await supabase.from('instagram_post_tag_assignments').delete().eq('tag_id', tagId);
-  } catch (_e) { /* table may not exist */ }
+  } catch (_e) {
+    /* table may not exist */
+  }
   const { error } = await supabase.from('instagram_post_tags').delete().eq('id', tagId);
   if (error) throw error;
 }
@@ -688,7 +825,11 @@ export async function removeTagFromPost(postId: number, tagId: number): Promise<
 
 // ---- Reports ----
 
-export async function generateReport(clientId: number, month?: string, includeAI = true): Promise<{ reportId: number; status: string }> {
+export async function generateReport(
+  clientId: number,
+  month?: string,
+  includeAI = true,
+): Promise<{ reportId: number; status: string }> {
   const headers = await getAuthHeaders();
   const res = await fetch(`${EDGE_URL}/generate-report/${clientId}`, {
     method: 'POST',
@@ -707,7 +848,9 @@ export async function generateReport(clientId: number, month?: string, includeAI
   return data;
 }
 
-export async function sendReportEmail(reportId: number): Promise<{ success: boolean; warning?: string }> {
+export async function sendReportEmail(
+  reportId: number,
+): Promise<{ success: boolean; warning?: string }> {
   const headers = await getAuthHeaders();
   const res = await fetch(`${EDGE_URL}/send-report-email?reportId=${reportId}`, {
     method: 'POST',
@@ -728,16 +871,21 @@ export async function getReportDownloadUrl(reportId: number): Promise<string> {
   return data.url;
 }
 
-export async function upsertManualFollowerCount(clientId: number, date: string, followerCount: number): Promise<void> {
+export async function upsertManualFollowerCount(
+  clientId: number,
+  date: string,
+  followerCount: number,
+): Promise<void> {
   const account = await getAccountByClientId(clientId);
-  const { error } = await supabase
-    .from('instagram_follower_history')
-    .upsert({
+  const { error } = await supabase.from('instagram_follower_history').upsert(
+    {
       instagram_account_id: account.id,
       date,
       follower_count: followerCount,
       source: 'manual',
-    }, { onConflict: 'instagram_account_id,date' });
+    },
+    { onConflict: 'instagram_account_id,date' },
+  );
   if (error) throw new Error(error.message);
 }
 

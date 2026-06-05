@@ -32,11 +32,7 @@ export function useEditSuggestion({ token, post, onSaved }: UseEditSuggestionOpt
   );
 
   const saveSuggestion = useCallback(
-    (
-      conteudo: Record<string, unknown> | null,
-      conteudoPlain: string,
-      igCaption: string | null,
-    ) => {
+    (conteudo: Record<string, unknown> | null, conteudoPlain: string, igCaption: string | null) => {
       if (timerRef.current) clearTimeout(timerRef.current);
       if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
 

@@ -52,14 +52,23 @@ import { cutoffDate, selectPRs, prependRelease, type PullRequest } from '../chan
 import type { Changelog } from '../changelog.schema';
 
 function pr(over: Partial<PullRequest> = {}): PullRequest {
-  return { number: 1, title: 'feat: x', body: '', labels: [], mergedAt: '2026-06-02T10:00:00Z', ...over };
+  return {
+    number: 1,
+    title: 'feat: x',
+    body: '',
+    labels: [],
+    mergedAt: '2026-06-02T10:00:00Z',
+    ...over,
+  };
 }
 
 const EMPTY: Changelog = { lastMergedAt: '', releases: [] };
 
 describe('cutoffDate', () => {
   it('uses the date part of lastMergedAt', () => {
-    expect(cutoffDate({ ...EMPTY, lastMergedAt: '2026-06-03T13:42:12Z' }, '2000-01-01')).toBe('2026-06-03');
+    expect(cutoffDate({ ...EMPTY, lastMergedAt: '2026-06-03T13:42:12Z' }, '2000-01-01')).toBe(
+      '2026-06-03',
+    );
   });
   it('falls back when empty', () => {
     expect(cutoffDate(EMPTY, '2026-05-28')).toBe('2026-05-28');
@@ -70,29 +79,54 @@ describe('selectPRs', () => {
   const base = { lastMergedAt: '2026-06-01T00:00:00Z', existingPrNumbers: [42] };
 
   it('keeps feat/fix/perf prefixes', () => {
-    const out = selectPRs([pr({ number: 1, title: 'feat: a' }), pr({ number: 2, title: 'fix(x): b' }), pr({ number: 3, title: 'perf: c' })], base);
-    expect(out.map(p => p.number)).toEqual([1, 2, 3]);
+    const out = selectPRs(
+      [
+        pr({ number: 1, title: 'feat: a' }),
+        pr({ number: 2, title: 'fix(x): b' }),
+        pr({ number: 3, title: 'perf: c' }),
+      ],
+      base,
+    );
+    expect(out.map((p) => p.number)).toEqual([1, 2, 3]);
   });
   it('drops chore/ci/docs/style/refactor', () => {
-    const out = selectPRs([pr({ number: 1, title: 'chore: a' }), pr({ number: 2, title: 'ci: b' }), pr({ number: 3, title: 'docs: c' })], base);
+    const out = selectPRs(
+      [
+        pr({ number: 1, title: 'chore: a' }),
+        pr({ number: 2, title: 'ci: b' }),
+        pr({ number: 3, title: 'docs: c' }),
+      ],
+      base,
+    );
     expect(out).toEqual([]);
   });
   it('drops already-recorded PR numbers', () => {
     expect(selectPRs([pr({ number: 42, title: 'feat: a' })], base)).toEqual([]);
   });
   it('drops PRs at or before the watermark', () => {
-    expect(selectPRs([pr({ number: 5, title: 'feat: a', mergedAt: '2026-05-30T00:00:00Z' })], base)).toEqual([]);
+    expect(
+      selectPRs([pr({ number: 5, title: 'feat: a', mergedAt: '2026-05-30T00:00:00Z' })], base),
+    ).toEqual([]);
   });
   it('includes via opt-in label despite a non-matching prefix', () => {
-    expect(selectPRs([pr({ number: 6, title: 'refactor: a', labels: ['changelog'] })], base).map(p => p.number)).toEqual([6]);
+    expect(
+      selectPRs([pr({ number: 6, title: 'refactor: a', labels: ['changelog'] })], base).map(
+        (p) => p.number,
+      ),
+    ).toEqual([6]);
   });
   it('excludes via opt-out label despite a matching prefix', () => {
-    expect(selectPRs([pr({ number: 7, title: 'feat: a', labels: ['no-changelog'] })], base)).toEqual([]);
+    expect(
+      selectPRs([pr({ number: 7, title: 'feat: a', labels: ['no-changelog'] })], base),
+    ).toEqual([]);
   });
 });
 
 describe('prependRelease', () => {
-  const release = { date: '2026-06-08', items: [{ type: 'feature' as const, area: 'A', title: 't', description: 'd', pr: 10 }] };
+  const release = {
+    date: '2026-06-08',
+    items: [{ type: 'feature' as const, area: 'A', title: 't', description: 'd', pr: 10 }],
+  };
 
   it('prepends a new release and sets lastMergedAt', () => {
     const out = prependRelease(EMPTY, release, '2026-06-08T00:00:00Z');
@@ -100,7 +134,15 @@ describe('prependRelease', () => {
     expect(out.lastMergedAt).toBe('2026-06-08T00:00:00Z');
   });
   it('is idempotent — drops items whose pr already exists', () => {
-    const seeded: Changelog = { lastMergedAt: 'x', releases: [{ date: '2026-06-01', items: [{ type: 'fix', area: 'A', title: 'old', description: 'd', pr: 10 }] }] };
+    const seeded: Changelog = {
+      lastMergedAt: 'x',
+      releases: [
+        {
+          date: '2026-06-01',
+          items: [{ type: 'fix', area: 'A', title: 'old', description: 'd', pr: 10 }],
+        },
+      ],
+    };
     const out = prependRelease(seeded, release, '2026-06-08T00:00:00Z');
     expect(out.releases).toHaveLength(1); // no new block — item 10 was a duplicate
     expect(out.lastMergedAt).toBe('2026-06-08T00:00:00Z'); // watermark still advances
@@ -121,9 +163,19 @@ import { renderChangelogHtml } from '../changelog.seo';
 import type { ChangelogRelease } from '../changelog.schema';
 
 const releases: ChangelogRelease[] = [
-  { date: '2026-06-03', summary: 'Resumo.', items: [
-    { type: 'feature', area: 'Entregas', title: 'Novo recurso', description: 'Faz algo útil.', pr: 1 },
-  ] },
+  {
+    date: '2026-06-03',
+    summary: 'Resumo.',
+    items: [
+      {
+        type: 'feature',
+        area: 'Entregas',
+        title: 'Novo recurso',
+        description: 'Faz algo útil.',
+        pr: 1,
+      },
+    ],
+  },
 ];
 
 describe('renderChangelogHtml', () => {
@@ -136,7 +188,12 @@ describe('renderChangelogHtml', () => {
   });
   it('escapes HTML in content (XSS safety)', () => {
     const html = renderChangelogHtml([
-      { date: '2026-06-03', items: [{ type: 'fix', area: 'A', title: '<script>x</script>', description: 'a & b', pr: 2 }] },
+      {
+        date: '2026-06-03',
+        items: [
+          { type: 'fix', area: 'A', title: '<script>x</script>', description: 'a & b', pr: 2 },
+        ],
+      },
     ]);
     expect(html).not.toContain('<script>x</script>');
     expect(html).toContain('&lt;script&gt;');

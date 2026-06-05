@@ -74,15 +74,11 @@ export function FilePickerModal({ open, onClose, onSelect, filterKind }: FilePic
 
   // Apply search filter (client-side)
   const files = searchQuery.trim()
-    ? kindFilteredFiles.filter((f) =>
-        f.name.toLowerCase().includes(searchQuery.toLowerCase())
-      )
+    ? kindFilteredFiles.filter((f) => f.name.toLowerCase().includes(searchQuery.toLowerCase()))
     : kindFilteredFiles;
 
   const filteredFolders = searchQuery.trim()
-    ? subfolders.filter((folder) =>
-        folder.name.toLowerCase().includes(searchQuery.toLowerCase())
-      )
+    ? subfolders.filter((folder) => folder.name.toLowerCase().includes(searchQuery.toLowerCase()))
     : subfolders;
 
   function toggleFile(id: number) {
@@ -105,8 +101,16 @@ export function FilePickerModal({ open, onClose, onSelect, filterKind }: FilePic
   const selectedCount = selectedFileIds.size;
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="max-w-3xl p-0 gap-0 overflow-hidden flex flex-col" style={{ maxHeight: '70vh' }}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) onClose();
+      }}
+    >
+      <DialogContent
+        className="max-w-3xl p-0 gap-0 overflow-hidden flex flex-col"
+        style={{ maxHeight: '70vh' }}
+      >
         <DialogHeader className="px-5 pt-5 pb-3 border-b border-[var(--border-color)] flex-shrink-0">
           <DialogTitle className="text-base font-semibold text-[var(--text-main)]">
             Selecionar arquivos

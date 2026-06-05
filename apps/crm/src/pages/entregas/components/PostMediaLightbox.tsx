@@ -27,10 +27,8 @@ export function PostMediaLightbox({
 
   const hasMultiple = media.length >= 2;
 
-  const prev = () =>
-    setIndex((i) => (i - 1 + media.length) % media.length);
-  const next = () =>
-    setIndex((i) => (i + 1) % media.length);
+  const prev = () => setIndex((i) => (i - 1 + media.length) % media.length);
+  const next = () => setIndex((i) => (i + 1) % media.length);
 
   // Arrow-key nav only; Esc is handled by Radix Dialog itself.
   useEffect(() => {

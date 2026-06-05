@@ -138,7 +138,11 @@ describe('FileContextMenu', () => {
     mockedRenameFolder.mockResolvedValue(makeFolder({ id: 1, name: 'Novo Nome' }));
 
     render(
-      <FileContextMenu item={makeFolder({ id: 1, name: 'Original' })} type="folder" onActionComplete={onActionComplete}>
+      <FileContextMenu
+        item={makeFolder({ id: 1, name: 'Original' })}
+        type="folder"
+        onActionComplete={onActionComplete}
+      >
         <div>Rename target</div>
       </FileContextMenu>,
     );
@@ -187,7 +191,11 @@ describe('FileContextMenu', () => {
     mockedDeleteFolder.mockResolvedValue(undefined);
 
     render(
-      <FileContextMenu item={makeFolder({ id: 3, name: 'Excluir Esta' })} type="folder" onActionComplete={onActionComplete}>
+      <FileContextMenu
+        item={makeFolder({ id: 3, name: 'Excluir Esta' })}
+        type="folder"
+        onActionComplete={onActionComplete}
+      >
         <div>Delete folder</div>
       </FileContextMenu>,
     );
@@ -197,7 +205,9 @@ describe('FileContextMenu', () => {
 
     // Confirmation dialog
     await waitFor(() => {
-      expect(screen.getByText(/será excluído permanentemente|serão excluídos permanentemente/)).toBeInTheDocument();
+      expect(
+        screen.getByText(/será excluído permanentemente|serão excluídos permanentemente/),
+      ).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Excluir' }));
@@ -246,9 +256,7 @@ describe('FileContextMenu', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Excluir' }));
 
     // Should show toast error, not open confirmation
-    expect(mockedToast.error).toHaveBeenCalledWith(
-      expect.stringContaining('2 post(s)'),
-    );
+    expect(mockedToast.error).toHaveBeenCalledWith(expect.stringContaining('2 post(s)'));
   });
 
   it('closes menu on Escape key', () => {

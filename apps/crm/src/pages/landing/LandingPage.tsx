@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowRight, ChevronDown, Instagram, Linkedin, LogIn, Moon, Sun, Youtube } from 'lucide-react';
+import {
+  ArrowRight,
+  ChevronDown,
+  Instagram,
+  Linkedin,
+  LogIn,
+  Moon,
+  Sun,
+  Youtube,
+} from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 import {
@@ -70,7 +79,9 @@ export default function LandingPage() {
 
 function Header() {
   const { user, loading } = useAuth();
-  const [isDark, setIsDark] = useState(document.documentElement.getAttribute('data-theme') === 'dark');
+  const [isDark, setIsDark] = useState(
+    document.documentElement.getAttribute('data-theme') === 'dark',
+  );
 
   const toggleTheme = () => {
     const next = !isDark;
@@ -82,7 +93,10 @@ function Header() {
   return (
     <header className="site-hdr">
       <div className="hdr-inner">
-        <a href="#top" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
+        <a
+          href="#top"
+          style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}
+        >
           <img src="/logo-black.svg" className="hdr-logo logo-light" alt="Mesaas" />
           <img src="/logo-white.svg" className="hdr-logo logo-dark" alt="Mesaas" />
         </a>
@@ -93,15 +107,11 @@ function Header() {
           <button onClick={() => scrollTo('faq')}>FAQ</button>
         </nav>
         <div className="hdr-actions">
-          <button
-            onClick={toggleTheme}
-            className="theme-toggle"
-            aria-label="Alternar tema"
-          >
+          <button onClick={toggleTheme} className="theme-toggle" aria-label="Alternar tema">
             {isDark ? <Sun size={18} /> : <Moon size={18} />}
           </button>
-          {!loading && (
-            user ? (
+          {!loading &&
+            (user ? (
               <a href="/dashboard" className="lp-btn lp-btn-primary">
                 Acessar painel <ArrowRight size={14} />
               </a>
@@ -115,8 +125,7 @@ function Header() {
                   Criar conta grátis
                 </a>
               </>
-            )
-          )}
+            ))}
         </div>
       </div>
     </header>
@@ -136,11 +145,12 @@ function Hero() {
               Sua agência de social media <em>sem caos</em>, sem planilha, sem grupo de WhatsApp.
             </h1>
             <p className="hero-sub">
-              Mesaas é o CRM feito para gestores e agências de social media. Clientes, entregas, aprovações, agendamento automático no Instagram e métricas — em um só lugar.
+              Mesaas é o CRM feito para gestores e agências de social media. Clientes, entregas,
+              aprovações, agendamento automático no Instagram e métricas — em um só lugar.
             </p>
             <div className="hero-ctas">
-              {!loading && (
-                user ? (
+              {!loading &&
+                (user ? (
                   <a href="/dashboard" className="lp-btn lp-btn-primary lg">
                     Acessar painel <ArrowRight size={16} />
                   </a>
@@ -148,8 +158,7 @@ function Hero() {
                   <a href="/login?tab=register" className="lp-btn lp-btn-primary lg">
                     Criar conta grátis <ArrowRight size={16} />
                   </a>
-                )
-              )}
+                ))}
               <button onClick={() => scrollTo('features')} className="lp-btn lp-btn-outline lg">
                 Ver como funciona
               </button>
@@ -201,14 +210,20 @@ function Features() {
         <div className="section-head reveal">
           <span className="eyebrow-pill">Funcionalidades</span>
           <h2>Tudo que sua agência já faz — só que organizado.</h2>
-          <p>Cada módulo foi desenhado com quem passa o dia gerenciando social media. Menos abas abertas, mais entrega.</p>
+          <p>
+            Cada módulo foi desenhado com quem passa o dia gerenciando social media. Menos abas
+            abertas, mais entrega.
+          </p>
         </div>
 
         <div className="feat-row reveal">
           <div className="feat-copy">
             <IconSquare icon={<LayoutGrid size={22} />} color="#FFBF30" />
             <h3>Kanban de entregas que sua equipe entende no primeiro dia</h3>
-            <p>Arraste cada post pelas etapas — da ideia à publicação. Cada cliente, cada tipo de conteúdo, cada prazo em um só fluxo visual.</p>
+            <p>
+              Arraste cada post pelas etapas — da ideia à publicação. Cada cliente, cada tipo de
+              conteúdo, cada prazo em um só fluxo visual.
+            </p>
             <ul className="feat-bullets">
               <li>
                 <span className="check">✓</span>
@@ -244,14 +259,16 @@ function Features() {
             <IconSquare icon={<Send size={22} />} color="#3984FF" />
             <h3>Agende e publique no Instagram — sem sair do Mesaas.</h3>
             <p>
-              Escolha o dia e horário, escreva a legenda e pronto: o Mesaas publica automaticamente no perfil do seu cliente via API oficial do Meta. Feed, Reels
-              e Carrossel — sem aplicativos externos, sem alarmes no celular.
+              Escolha o dia e horário, escreva a legenda e pronto: o Mesaas publica automaticamente
+              no perfil do seu cliente via API oficial do Meta. Feed, Reels e Carrossel — sem
+              aplicativos externos, sem alarmes no celular.
             </p>
             <ul className="feat-bullets">
               <li>
                 <span className="check">✓</span>
                 <span>
-                  <strong>Publicação automática</strong> — o post vai ao ar sozinho no dia e hora marcados
+                  <strong>Publicação automática</strong> — o post vai ao ar sozinho no dia e hora
+                  marcados
                 </span>
               </li>
               <li>
@@ -278,8 +295,8 @@ function Features() {
             <IconSquare icon={<InstagramIcon size={22} />} color="#f542c8" />
             <h3>Métricas reais do Instagram — prontas para o relatório.</h3>
             <p>
-              Seguidores, alcance, engajamento e top posts atualizados todo dia. Conecte a conta via API oficial e tenha dados confiáveis para mostrar o valor do
-              seu trabalho ao cliente.
+              Seguidores, alcance, engajamento e top posts atualizados todo dia. Conecte a conta via
+              API oficial e tenha dados confiáveis para mostrar o valor do seu trabalho ao cliente.
             </p>
             <ul className="feat-bullets">
               <li>
@@ -314,8 +331,9 @@ function Features() {
             <IconSquare icon={<Users size={22} />} color="#42c8f5" />
             <h3>Portal do cliente que o cliente realmente usa</h3>
             <p>
-              Seu cliente aprova posts, vê o calendário e conversa com a equipe por um link único — <strong>sem login, sem app, sem fricção</strong>. Design
-              editorial pensado para a marca dele, não para a sua CRM.
+              Seu cliente aprova posts, vê o calendário e conversa com a equipe por um link único —{' '}
+              <strong>sem login, sem app, sem fricção</strong>. Design editorial pensado para a
+              marca dele, não para a sua CRM.
             </p>
             <ul className="feat-bullets">
               <li>
@@ -350,8 +368,9 @@ function Features() {
             <IconSquare icon={<CalendarIcon size={22} />} color="#3ecf8e" />
             <h3>Calendário editorial por cliente ou unificado</h3>
             <p>
-              Veja tudo que foi planejado, agendado e publicado em um mês. Troque entre clientes ou visualize toda a operação de uma vez para identificar
-              semanas vazias antes que virem problema.
+              Veja tudo que foi planejado, agendado e publicado em um mês. Troque entre clientes ou
+              visualize toda a operação de uma vez para identificar semanas vazias antes que virem
+              problema.
             </p>
             <ul className="feat-bullets">
               <li>
@@ -386,8 +405,9 @@ function Features() {
             <IconSquare icon={<CircleDollarSign size={22} />} color="#6b7280" />
             <h3>Financeiro sem planilha paralela</h3>
             <p>
-              Contratos, mensalidades e despesas da operação em um lugar só. Saiba o MRR da sua agência, quais clientes estão em aberto e quanto sobra no fim
-              do mês — sem abrir o Excel.
+              Contratos, mensalidades e despesas da operação em um lugar só. Saiba o MRR da sua
+              agência, quais clientes estão em aberto e quanto sobra no fim do mês — sem abrir o
+              Excel.
             </p>
             <ul className="feat-bullets">
               <li>
@@ -468,8 +488,9 @@ function Testimonial() {
       <div className="quote-card reveal">
         <div className="quote-mark">"</div>
         <blockquote>
-          O Mesaas mudou completamente a forma como gerencio meus clientes. Antes eu vivia perdida em planilhas e grupos de WhatsApp — agora tudo fica em um só
-          lugar e consigo entregar com muito mais qualidade e no prazo.
+          O Mesaas mudou completamente a forma como gerencio meus clientes. Antes eu vivia perdida
+          em planilhas e grupos de WhatsApp — agora tudo fica em um só lugar e consigo entregar com
+          muito mais qualidade e no prazo.
         </blockquote>
         <cite>
           <div className="quote-avatar">DK</div>
@@ -569,7 +590,10 @@ function Pricing() {
         <div className="section-head reveal">
           <span className="eyebrow-pill">Em breve · Beta 100% grátis</span>
           <h2>Um plano que cresce junto com a sua agência.</h2>
-          <p>Enquanto o Mesaas está em beta, é totalmente gratuito. Estes são os planos que entrarão em vigor nos próximos meses.</p>
+          <p>
+            Enquanto o Mesaas está em beta, é totalmente gratuito. Estes são os planos que entrarão
+            em vigor nos próximos meses.
+          </p>
         </div>
         <div className="plans-grid">
           {plans.map((p) => (
@@ -601,13 +625,9 @@ function Pricing() {
               </ul>
               <div className="plan-cta">
                 {p.highlight ? (
-                  <span className="lp-btn lp-btn-primary">
-                    {p.cta} · Em breve
-                  </span>
+                  <span className="lp-btn lp-btn-primary">{p.cta} · Em breve</span>
                 ) : (
-                  <span className="soon">
-                    {p.cta} · Em breve
-                  </span>
+                  <span className="soon">{p.cta} · Em breve</span>
                 )}
               </div>
             </div>
@@ -662,7 +682,11 @@ function Faq() {
         <div className="faqs">
           {items.map((item, i) => (
             <div key={i} className="faq-item">
-              <button onClick={() => setOpen(open === i ? null : i)} aria-expanded={open === i} aria-controls={`faq-answer-${i}`}>
+              <button
+                onClick={() => setOpen(open === i ? null : i)}
+                aria-expanded={open === i}
+                aria-controls={`faq-answer-${i}`}
+              >
                 <span>{item.q}</span>
                 <ChevronDown className={`faq-chevron ${open === i ? 'open' : ''}`} />
               </button>
@@ -686,7 +710,11 @@ function CtaFinal() {
     <section className="cta-final-wrap">
       <div className="lp-container">
         <div className="cta-final-card reveal">
-          <img src="/icon.svg" style={{ height: 44, margin: '0 auto 22px', display: 'block' }} alt="" />
+          <img
+            src="/icon.svg"
+            style={{ height: 44, margin: '0 auto 22px', display: 'block' }}
+            alt=""
+          />
           {user ? (
             <>
               <h2>Bem-vindo de volta!</h2>
@@ -695,11 +723,14 @@ function CtaFinal() {
           ) : (
             <>
               <h2>Pronto para sair das planilhas?</h2>
-              <p>Crie sua conta grátis e comece a organizar sua agência hoje. Sem cartão, sem compromisso.</p>
+              <p>
+                Crie sua conta grátis e comece a organizar sua agência hoje. Sem cartão, sem
+                compromisso.
+              </p>
             </>
           )}
-          {!loading && (
-            user ? (
+          {!loading &&
+            (user ? (
               <a href="/dashboard" className="lp-btn lp-btn-primary lg">
                 Acessar painel <ArrowRight size={16} />
               </a>
@@ -707,8 +738,7 @@ function CtaFinal() {
               <a href="/login?tab=register" className="lp-btn lp-btn-primary lg">
                 Criar conta grátis <ArrowRight size={16} />
               </a>
-            )
-          )}
+            ))}
           <div
             style={{
               marginTop: 18,
@@ -734,7 +764,10 @@ function Footer() {
           <div className="footer-col">
             <img src="/logo-black.svg" style={{ height: 22 }} className="logo-light" alt="Mesaas" />
             <img src="/logo-white.svg" style={{ height: 22 }} className="logo-dark" alt="Mesaas" />
-            <p className="footer-tag">Gestão inteligente para social media managers. Feito no Brasil, pensado para quem entrega conteúdo todo dia.</p>
+            <p className="footer-tag">
+              Gestão inteligente para social media managers. Feito no Brasil, pensado para quem
+              entrega conteúdo todo dia.
+            </p>
           </div>
           <div className="footer-col">
             <h5>Produto</h5>
@@ -773,7 +806,9 @@ function Footer() {
         </div>
       </div>
       <div className="footer-bottom">
-        <span>© 2025 Mesaas. Todos os direitos reservados. · CNPJ 63.758.902/0001-01 — EBS IT SOLUTIONS</span>
+        <span>
+          © 2025 Mesaas. Todos os direitos reservados. · CNPJ 63.758.902/0001-01 — EBS IT SOLUTIONS
+        </span>
         <div className="footer-socials">
           <a href="#">
             <Instagram size={18} />
