@@ -22,7 +22,7 @@ const meta = [
 ].join('\n    ');
 
 let html = readFileSync(DIST, 'utf8');
-html = html.replace('<title>Mesaas - Gestão Inteligente</title>', '');
+html = html.replace(/<title>[\s\S]*?<\/title>/, ''); // strip whatever title index.html ships
 html = html.replace('</head>', `    ${meta}\n  </head>`);
 html = html.replace('<div id="root"></div>', `<div id="root">${content}</div>`);
 writeFileSync(OUT, html);
