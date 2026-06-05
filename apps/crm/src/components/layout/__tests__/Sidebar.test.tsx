@@ -158,4 +158,15 @@ describe('Sidebar', () => {
 
     expect(onClose).toHaveBeenCalled();
   });
+
+  it('opens the Novidades changelog in a new tab', () => {
+    setAuth();
+
+    renderSidebar('/dashboard');
+
+    const link = screen.getByText('Novidades').closest('a');
+    expect(link).toHaveAttribute('href', '/novidades');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  });
 });

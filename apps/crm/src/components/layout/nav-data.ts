@@ -4,6 +4,8 @@ export interface NavItem {
   label: string;
   labelKey: string;
   icon: string;
+  /** Open the route in a new browser tab instead of in-app SPA navigation. */
+  newTab?: boolean;
 }
 export interface NavGroup {
   id: string;
@@ -144,6 +146,7 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
         label: 'Novidades',
         labelKey: 'nav.novidades',
         icon: 'ph-sparkle',
+        newTab: true,
       },
       { id: 'ajuda', route: '/ajuda', label: 'Ajuda', labelKey: 'nav.ajuda', icon: 'ph-question' },
     ],

@@ -103,17 +103,32 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
           const ItemIcon = isActiveItem ? `ph-fill ${item.icon}` : `ph ${item.icon}`;
           return (
             <li key={item.id} className="sidebar-sub-item">
-              <a
-                className={`sidebar-sub-link ${isActiveItem ? 'active' : ''}`}
-                href={`#${item.route}`}
-                onClick={(e) => {
-                  e.preventDefault();
-                  handleNavClick(item.route);
-                }}
-              >
-                <i className={ItemIcon} />
-                <span>{t(item.labelKey, item.label)}</span>
-              </a>
+              {item.newTab ? (
+                <a
+                  className="sidebar-sub-link"
+                  href={item.route}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => {
+                    if (isDrawer) onClose?.();
+                  }}
+                >
+                  <i className={`ph ${item.icon}`} />
+                  <span>{t(item.labelKey, item.label)}</span>
+                </a>
+              ) : (
+                <a
+                  className={`sidebar-sub-link ${isActiveItem ? 'active' : ''}`}
+                  href={`#${item.route}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handleNavClick(item.route);
+                  }}
+                >
+                  <i className={ItemIcon} />
+                  <span>{t(item.labelKey, item.label)}</span>
+                </a>
+              )}
             </li>
           );
         })}

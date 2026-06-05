@@ -785,7 +785,9 @@ function Footer() {
                 <a href="#faq">FAQ</a>
               </li>
               <li>
-                <a href="/novidades">Novidades</a>
+                <a href="/novidades" target="_blank" rel="noopener noreferrer">
+                  Novidades
+                </a>
               </li>
             </ul>
           </div>
