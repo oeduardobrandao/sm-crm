@@ -1,6 +1,19 @@
 {
-  "lastMergedAt": "2026-06-03T13:42:12Z",
+  "lastMergedAt": "2026-06-05T01:50:26Z",
   "releases": [
+    {
+      "date": "2026-06-05",
+      "summary": "Nova página de Novidades com atualizações automáticas",
+      "items": [
+        {
+          "type": "feature",
+          "area": "Suporte",
+          "title": "Página de Novidades",
+          "description": "Agora você pode acessar nossa página de novidades em `/novidades` e acompanhar as últimas atualizações do Mesaas, incluindo novos recursos e melhorias.",
+          "pr": 96
+        }
+      ]
+    },
     {
       "date": "2026-06-03",
       "summary": "Datas de publicação na lista de posts e relatórios mensais repaginados.",
