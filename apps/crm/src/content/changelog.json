@@ -1,0 +1,32 @@
+{
+  "lastMergedAt": "2026-06-03T13:42:12Z",
+  "releases": [
+    {
+      "date": "2026-06-03",
+      "summary": "Datas de publicação na lista de posts e relatórios mensais repaginados.",
+      "items": [
+        {
+          "type": "feature",
+          "area": "Entregas",
+          "title": "Veja a data de publicação direto na lista de posts",
+          "description": "A lista de posts agora mostra quando cada post foi publicado, sem precisar abrir o card.",
+          "pr": 93
+        },
+        {
+          "type": "feature",
+          "area": "Analytics",
+          "title": "Relatório mensal do Instagram repaginado",
+          "description": "O relatório mensal ganhou um novo visual, com layout mais limpo e exportação em PDF aprimorada.",
+          "pr": 90
+        },
+        {
+          "type": "improvement",
+          "area": "Clientes",
+          "title": "Cards de fluxo mais ricos no detalhe do cliente",
+          "description": "A tela de detalhe do cliente agora traz cards de fluxo de trabalho com mais informação e um painel lateral rápido.",
+          "pr": 89
+        }
+      ]
+    }
+  ]
+}

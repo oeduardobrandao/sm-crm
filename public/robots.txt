@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /novidades
+Sitemap: https://mesaas.com.br/sitemap.xml
