@@ -210,3 +210,47 @@ describe('store workflow posts', () => {
     expect(call.modifiers).toContainEqual({ method: 'in', args: ['post_id', [100, 101]] });
   });
 });
+
+describe('getPostStatusEvents', () => {
+  beforeEach(() => {
+    mockedSupabase.__resetSupabaseMock();
+  });
+
+  it('queries post_status_events for the given post ids, ordered by created_at', async () => {
+    mockedSupabase.__queueSupabaseResult('post_status_events', 'select', {
+      data: [
+        {
+          id: 1,
+          post_id: 10,
+          from_status: 'rascunho',
+          to_status: 'revisao_interna',
+          source: 'workspace_user',
+          actor_user_id: 'user-1',
+          actor_name: 'Eduardo Souza',
+          post_approval_id: null,
+          created_at: '2026-06-01T10:00:00Z',
+        },
+      ],
+      error: null,
+    });
+
+    const result = await store.getPostStatusEvents([10, 11]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ post_id: 10, source: 'workspace_user' });
+
+    const call = getCalls('post_status_events', 'select').at(-1)!;
+    expect(call.modifiers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ method: 'in', args: ['post_id', [10, 11]] }),
+        expect.objectContaining({ method: 'order', args: ['created_at', { ascending: true }] }),
+      ]),
+    );
+  });
+
+  it('returns [] without querying when no post ids are given', async () => {
+    const result = await store.getPostStatusEvents([]);
+    expect(result).toEqual([]);
+    expect(getCalls('post_status_events')).toHaveLength(0);
+  });
+});
