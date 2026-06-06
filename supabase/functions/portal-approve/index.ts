@@ -105,18 +105,19 @@ Deno.serve(async (req) => {
         return json({ error: "Post is not awaiting client review" }, 400);
       }
 
-      // Record approval
-      await db.from("post_approvals").insert({
-        post_id,
-        token,
-        action,
-        comentario: comentario?.trim() || null,
-        is_workspace_user: false,
-      });
-
-      // Update post status
+      // Record approval + status transition atomically (links the comment to the event)
       const newStatus = action === "aprovado" ? "aprovado_cliente" : "correcao_cliente";
-      await db.from("workflow_posts").update({ status: newStatus }).eq("id", post_id);
+      const { error: approvalErr } = await db.rpc("record_client_approval", {
+        p_post_id: post_id,
+        p_token: token,
+        p_action: action,
+        p_comentario: comentario?.trim() || null,
+        p_is_workspace_user: false,
+        p_new_status: newStatus,
+      });
+      if (approvalErr) {
+        return json({ error: "Failed to record approval" }, 500);
+      }
 
       await insertAuditLog(db, {
         action: `portal-${action}`,
