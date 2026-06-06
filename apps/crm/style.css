@@ -6379,6 +6379,71 @@ body.role-agent input[name="valor_total"] {
   color: var(--text-secondary, #718096);
 }
 
+/* Per-post timeline popover (WorkflowDrawer) */
+.history-step-icon--approved { background: var(--success, #3ecf8e); }
+.history-step-icon--correction { background: var(--warning, #f5a342); }
+.history-step-icon--published { background: var(--teal, #42c8f5); }
+.history-step-icon--failed { background: var(--danger, #f55a42); }
+.history-step-icon--neutral { background: var(--text-muted, #9ca3af); }
+
+.history-step-line--approved { background: var(--success, #3ecf8e); }
+.history-step-line--correction { background: var(--warning, #f5a342); }
+.history-step-line--published { background: var(--teal, #42c8f5); }
+.history-step-line--failed { background: var(--danger, #f55a42); }
+
+.post-timeline-popover {
+  width: 18rem;
+  max-height: 22rem;
+  overflow-y: auto;
+}
+
+.post-timeline-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted, #718096);
+}
+
+.post-timeline-popover .history-timeline {
+  padding: 0.5rem 0 0;
+}
+
+.post-timeline-actor {
+  font-weight: 500;
+  color: var(--text-main, #12151a);
+}
+
+.post-timeline-comment {
+  margin-top: 0.35rem;
+  padding: 0.4rem 0.6rem;
+  background: var(--surface-hover, #f8fafc);
+  border-radius: 8px;
+  font-size: 0.75rem;
+  color: var(--text-main, #12151a);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.drawer-post-history-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted, #718096);
+  cursor: pointer;
+  transition: var(--transition, 0.2s);
+}
+
+.drawer-post-history-btn:hover {
+  background: var(--surface-hover, #f1f5f9);
+  color: var(--text-main, #12151a);
+}
+
 /* ConcludedView */
 .concluded-client-group {
   margin-bottom: 1rem;
