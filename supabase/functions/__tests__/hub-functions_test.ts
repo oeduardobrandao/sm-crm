@@ -512,12 +512,14 @@ Deno.test("hub-approve returns 403 when the post belongs to a different client",
   assertEquals(response.status, 403);
 });
 
-Deno.test("hub-approve returns 500 when the approval insert fails", async () => {
+Deno.test("hub-approve returns 500 when recording the approval fails", async () => {
   const db = createSupabaseQueryMock();
   db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, is_active: true }, error: null });
   db.queue("workflow_posts", "select", { data: { id: 99, workflow_id: 7, status: "enviado_cliente" }, error: null });
   db.queue("workflows", "select", { data: { cliente_id: 14 }, error: null });
-  db.queue("post_approvals", "insert", { data: null, error: { message: "constraint violation" } });
+  // aprovado/correcao now go through the record_client_approval RPC (atomic
+  // insert + status). A failure there must surface as a 500.
+  db.queueRpc("record_client_approval", { data: null, error: { message: "constraint violation" } });
 
   const handler = createHubApproveHandler({
     buildCorsHeaders,
@@ -529,6 +531,24 @@ Deno.test("hub-approve returns 500 when the approval insert fails", async () => 
     body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado" }),
   }));
   assertEquals(response.status, 500);
+});
+
+Deno.test("hub-approve returns 400 when the post is not awaiting client review", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, is_active: true }, error: null });
+  db.queue("workflow_posts", "select", { data: { id: 99, workflow_id: 7, status: "aprovado_cliente" }, error: null });
+  db.queue("workflows", "select", { data: { cliente_id: 14 }, error: null });
+
+  const handler = createHubApproveHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+  });
+  const response = await handler(new Request("https://example.test/hub-approve", {
+    method: "POST",
+    body: JSON.stringify({ token: "hub-123", post_id: 99, action: "aprovado" }),
+  }));
+  assertEquals(response.status, 400);
 });
 
 Deno.test("hub-posts rejects non-GET methods with 405", async () => {
