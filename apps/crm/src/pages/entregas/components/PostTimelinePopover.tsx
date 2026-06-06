@@ -76,6 +76,7 @@ export function PostTimelinePopover({ post, events, approvals }: PostTimelinePop
       <PopoverContent
         align="end"
         className="post-timeline-popover"
+        style={{ zIndex: 9999 }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="post-timeline-title">Histórico</div>
