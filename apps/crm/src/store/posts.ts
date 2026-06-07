@@ -102,6 +102,18 @@ export interface PostApproval {
   created_at: string;
 }
 
+export interface PostStatusEvent {
+  id: number;
+  post_id: number;
+  from_status: WorkflowPost['status'] | null;
+  to_status: WorkflowPost['status'];
+  source: 'workspace_user' | 'client' | 'system';
+  actor_user_id: string | null;
+  actor_name: string | null;
+  post_approval_id: number | null;
+  created_at: string;
+}
+
 // =============================================
 // CUSTOM PROPERTIES
 // =============================================
@@ -460,6 +472,19 @@ export async function getPostApprovals(postIds: number[]): Promise<PostApproval[
   const { data, error } = await supabase
     .from('post_approvals')
     .select('*')
+    .in('post_id', postIds)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function getPostStatusEvents(postIds: number[]): Promise<PostStatusEvent[]> {
+  if (postIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from('post_status_events')
+    .select(
+      'id, post_id, from_status, to_status, source, actor_user_id, actor_name, post_approval_id, created_at',
+    )
     .in('post_id', postIds)
     .order('created_at', { ascending: true });
   if (error) throw error;

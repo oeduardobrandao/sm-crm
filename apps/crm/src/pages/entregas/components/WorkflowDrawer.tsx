@@ -46,6 +46,7 @@ import {
   reorderWorkflowPosts,
   sendPostsToCliente,
   getPostApprovals,
+  getPostStatusEvents,
   replyToPostApproval,
   completeEtapa,
   getPostCommentThreads,
@@ -62,6 +63,7 @@ import {
   rejectEditSuggestion,
   type WorkflowPost,
   type PostApproval,
+  type PostStatusEvent,
   type Membro,
   type PostPropertyValue,
   type CommentThreadWithComments,
@@ -71,6 +73,7 @@ import type { BoardCard } from '../hooks/useEntregasData';
 import { PostEditor } from './PostEditor';
 import { PropertyPanel } from './PropertyPanel';
 import PostCommentSummary from './PostCommentSummary';
+import { PostTimelinePopover } from './PostTimelinePopover';
 import { useAuth } from '@/context/AuthContext';
 import { PostMediaGallery, hasVideoMissingThumbnail } from './PostMediaGallery';
 import {
@@ -224,6 +227,12 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
     enabled: postIds.length > 0,
   });
 
+  const { data: statusEvents = [] } = useQuery({
+    queryKey: ['post-status-events', postIds.join(',')],
+    queryFn: () => getPostStatusEvents(postIds),
+    enabled: postIds.length > 0,
+  });
+
   const { data: editSuggestions = [] } = useQuery({
     queryKey: ['post-edit-suggestions', postIds.join(',')],
     queryFn: () => getPostEditSuggestions(postIds),
@@ -276,6 +285,7 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
     qc.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
     qc.invalidateQueries({ queryKey: ['post-comment-threads'] });
     qc.invalidateQueries({ queryKey: ['post-edit-suggestions'] });
+    qc.invalidateQueries({ queryKey: ['post-status-events'] });
   }, [qc, workflowId]);
 
   const handleDragEnd = useCallback(
@@ -695,6 +705,7 @@ export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDr
                           isExpanded={expandedId === post.id}
                           isSaving={savingIds.has(post.id!)}
                           approvals={approvals.filter((a) => a.post_id === post.id)}
+                          statusEvents={statusEvents.filter((e) => e.post_id === post.id)}
                           editSuggestion={
                             editSuggestions.find((s) => s.post_id === post.id) ?? null
                           }
@@ -840,6 +851,7 @@ interface SortablePostItemProps {
   isExpanded: boolean;
   isSaving: boolean;
   approvals: PostApproval[];
+  statusEvents: PostStatusEvent[];
   editSuggestion: PostEditSuggestion | null;
   membros: Membro[];
   replyText: string;
@@ -876,6 +888,7 @@ function SortablePostItem({
   isExpanded,
   isSaving,
   approvals,
+  statusEvents,
   editSuggestion,
   membros,
   replyText,
@@ -1053,6 +1066,7 @@ function SortablePostItem({
         </div>
         <div className="drawer-post-trigger-right" onClick={(e) => e.stopPropagation()}>
           {isSaving && <span className="drawer-saving-indicator">Salvando…</span>}
+          <PostTimelinePopover post={post} events={statusEvents} approvals={approvals} />
           {publishIso ? (
             <span
               className="drawer-post-date"

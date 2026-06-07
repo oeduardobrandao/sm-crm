@@ -14,7 +14,11 @@ import {
 } from "../_shared/instagram-publish-utils.ts";
 import { signGetUrl } from "../_shared/r2.ts";
 
-type DbClient = { from: (table: string) => any };
+type DbClient = {
+  from: (table: string) => any;
+  rpc: (fn: string, params: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
+  auth: { getUser: (jwt: string) => Promise<{ data: { user: { id: string } | null }; error: unknown }> };
+};
 
 interface PublishHandlerDeps {
   buildCorsHeaders: (req: Request) => Record<string, string>;
@@ -47,6 +51,8 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
 
     const userDb = deps.createDb(jwt);
     const svcDb = deps.createServiceDb();
+    const { data: { user: actorUser } } = await svcDb.auth.getUser(jwt);
+    const actorId = actorUser?.id ?? null;
 
     // Verify post exists and user has access (via RLS)
     const { data: post } = await userDb
@@ -70,9 +76,12 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
         console.error("Schedule validation error:", e);
         return json({ error: "Erro ao validar post para agendamento." }, 500);
       }
-      await svcDb.from("workflow_posts")
-        .update({ status: "agendado" })
-        .eq("id", postId);
+      await svcDb.rpc("record_post_status_change", {
+        p_post_id: postId,
+        p_new_status: "agendado",
+        p_source: "workspace_user",
+        p_actor: actorId,
+      });
       return json({ ok: true, status: "agendado" });
     }
 
@@ -80,12 +89,17 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
       if (post.status !== "agendado") {
         return json({ error: "Apenas posts agendados podem ser cancelados." }, 422);
       }
-      await svcDb.from("workflow_posts").update({
-        status: "aprovado_cliente",
-        instagram_container_id: null,
-        publish_processing_at: null,
-        publish_error: null,
-      }).eq("id", postId);
+      await svcDb.rpc("record_post_status_change", {
+        p_post_id: postId,
+        p_new_status: "aprovado_cliente",
+        p_source: "workspace_user",
+        p_actor: actorId,
+        p_fields: {
+          instagram_container_id: null,
+          publish_processing_at: null,
+          publish_error: null,
+        },
+      });
       return json({ ok: true, status: "aprovado_cliente" });
     }
 
@@ -93,13 +107,18 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
       if (post.status !== "falha_publicacao") {
         return json({ error: "Apenas posts com falha podem ser reenviados." }, 422);
       }
-      await svcDb.from("workflow_posts").update({
-        status: "agendado",
-        publish_retry_count: 0,
-        publish_error: null,
-        instagram_container_id: null,
-        publish_processing_at: null,
-      }).eq("id", postId);
+      await svcDb.rpc("record_post_status_change", {
+        p_post_id: postId,
+        p_new_status: "agendado",
+        p_source: "workspace_user",
+        p_actor: actorId,
+        p_fields: {
+          publish_retry_count: 0,
+          publish_error: null,
+          instagram_container_id: null,
+          publish_processing_at: null,
+        },
+      });
       return json({ ok: true, status: "agendado" });
     }
 
@@ -119,10 +138,13 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
         return json({ error: "Erro ao validar post para publicação." }, 500);
       }
 
-      await svcDb.from("workflow_posts").update({
-        status: "agendado",
-        publish_processing_at: new Date().toISOString(),
-      }).eq("id", postId);
+      await svcDb.rpc("record_post_status_change", {
+        p_post_id: postId,
+        p_new_status: "agendado",
+        p_source: "workspace_user",
+        p_actor: actorId,
+        p_fields: { publish_processing_at: new Date().toISOString() },
+      });
 
       try {
         const token = await decryptToken(validation.account!.encrypted_access_token);
@@ -189,14 +211,19 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
 
         const result = await publishContainer(igUserId, token, containerId);
 
-        await svcDb.from("workflow_posts").update({
-          instagram_media_id: result.id,
-          status: "postado",
-          published_at: new Date().toISOString(),
-          publish_processing_at: null,
-          publish_error: null,
-          publish_retry_count: 0,
-        }).eq("id", postId);
+        await svcDb.rpc("record_post_status_change", {
+          p_post_id: postId,
+          p_new_status: "postado",
+          p_source: "workspace_user",
+          p_actor: actorId,
+          p_fields: {
+            instagram_media_id: result.id,
+            published_at: new Date().toISOString(),
+            publish_processing_at: null,
+            publish_error: null,
+            publish_retry_count: 0,
+          },
+        });
 
         console.log(`[IG-PUBLISH-NOW] Published post ${postId}, media_id: ${result.id}`);
 
@@ -208,11 +235,16 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
         return json({ ok: true, status: "postado", instagram_permalink: permalink });
       } catch (err: any) {
         console.error(`[IG-PUBLISH-NOW] Failed for post ${postId}:`, err.message);
-        await svcDb.from("workflow_posts").update({
-          status: "falha_publicacao",
-          publish_error: (err.message ?? "Unknown error").slice(0, 500),
-          publish_processing_at: null,
-        }).eq("id", postId);
+        await svcDb.rpc("record_post_status_change", {
+          p_post_id: postId,
+          p_new_status: "falha_publicacao",
+          p_source: "workspace_user",
+          p_actor: actorId,
+          p_fields: {
+            publish_error: (err.message ?? "Unknown error").slice(0, 500),
+            publish_processing_at: null,
+          },
+        });
 
         if (err.code === 'TOKEN_EXPIRED') {
           try {
