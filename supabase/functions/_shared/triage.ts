@@ -1,4 +1,5 @@
-import type { CronFailureDetail } from "./notify.ts";
+import { type CronFailureDetail, sendCronFailureEmail } from "./notify.ts";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
  * Normalize a cron error into a stable dedup signature + a short,
@@ -52,4 +53,75 @@ export function renderFailureReport(
   if (detail.context) lines.push("", `Context: ${JSON.stringify(detail.context)}`);
   if (detail.stack) lines.push("", "Stack:", detail.stack);
   return lines.join("\n");
+}
+
+export async function reportCronFailure(
+  supabase: SupabaseClient,
+  cronName: string,
+  detail: CronFailureDetail,
+): Promise<void> {
+  const errorMessage = detail.errors?.[0]?.error ?? detail.stack?.split("\n")[0] ?? "unknown";
+  const { signature, hash } = computeSignature(cronName, String(errorMessage));
+
+  // Step 1 — best-effort insert (failure here must NOT block email or triage).
+  try {
+    const { error } = await supabase.from("cron_failures").insert({
+      cron_name: cronName,
+      signature,
+      signature_hash: hash,
+      error_message: String(errorMessage).slice(0, 1000),
+      error_detail: detail,
+    });
+    if (error) console.error(`[triage] insert failed: ${error.message ?? "unknown"}`);
+  } catch (_e) {
+    console.error("[triage] insert threw");
+  }
+
+  // Step 2 — ALWAYS attempt the email, regardless of step 1.
+  try {
+    await sendCronFailureEmail(cronName, detail);
+  } catch (_e) {
+    console.error("[triage] email threw");
+  }
+
+  // Step 3 — atomic claim + fire (independent of step 1; uses cron_triage_state).
+  try {
+    const ROUTINE_URL = Deno.env.get("TRIAGE_ROUTINE_URL");
+    const ROUTINE_TOKEN = Deno.env.get("TRIAGE_ROUTINE_TOKEN");
+    if (!ROUTINE_URL || !ROUTINE_TOKEN) return;
+
+    const cooldownSeconds =
+      (Number(Deno.env.get("TRIAGE_COOLDOWN_HOURS") ?? "24") || 24) * 3600;
+    // NOTE: verify the current routine beta header against Anthropic docs before
+    // shipping — it is dated/versioned and may differ from the default below.
+    const betaHeader =
+      Deno.env.get("TRIAGE_ROUTINE_BETA") ?? "experimental-cc-routine-2026-04-01";
+
+    const { data: claimed, error } = await supabase.rpc("claim_cron_triage", {
+      p_hash: hash,
+      p_cron_name: cronName,
+      p_cooldown_seconds: cooldownSeconds,
+    });
+    if (error) {
+      console.error(`[triage] claim rpc failed: ${error.message ?? "unknown"}`);
+      return;
+    }
+    // claim_cron_triage `returns boolean`: PostgREST yields bare `true` when the
+    // claim is won, or HTTP 204 → data:null when the cooldown WHERE no-ops. Not array-wrapped.
+    if (claimed !== true) return; // within cooldown — another failure already triaged this signature
+
+    const res = await fetch(ROUTINE_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${ROUTINE_TOKEN}`,
+        "anthropic-beta": betaHeader,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ text: renderFailureReport(cronName, detail, signature, hash) }),
+    });
+    if (!res.ok) console.error(`[triage] routine /fire non-2xx: ${res.status}`);
+  } catch (_e) {
+    console.error("[triage] claim/fire threw");
+  }
 }
