@@ -1,3 +1,5 @@
+import type { CronFailureDetail } from "./notify.ts";
+
 /**
  * Normalize a cron error into a stable dedup signature + a short,
  * GitHub-label-safe hash. Pure and synchronous (no Web Crypto) so it stays
@@ -27,4 +29,27 @@ function fnv1a(input: string): string {
     h = Math.imul(h, 0x01000193);
   }
   return (h >>> 0).toString(36);
+}
+
+export function renderFailureReport(
+  cronName: string,
+  detail: CronFailureDetail,
+  signature: string,
+  hash: string,
+): string {
+  const lines = [
+    `Cron failure: ${cronName}`,
+    `Signature: ${signature}`,
+    `Signature hash (apply the GitHub label "cron-triage:<hash>"): ${hash}`,
+    `Occurred at: ${new Date().toISOString()}`,
+    `Total: ${detail.total ?? "?"}  Failed: ${detail.failed ?? "?"}`,
+    "",
+    "Errors:",
+    ...(detail.errors ?? []).map(
+      (e) => `- account ${e.accountId ?? "?"}: ${e.error ?? "unknown"}`,
+    ),
+  ];
+  if (detail.context) lines.push("", `Context: ${JSON.stringify(detail.context)}`);
+  if (detail.stack) lines.push("", "Stack:", detail.stack);
+  return lines.join("\n");
 }

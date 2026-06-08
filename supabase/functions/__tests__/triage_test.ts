@@ -27,3 +27,26 @@ Deno.test("computeSignature hash is short and label-safe", () => {
   assert(hash.length <= 12, `hash too long: ${hash.length}`);
   assert(("cron-triage:" + hash).length <= 50);
 });
+
+import { renderFailureReport } from "../_shared/triage.ts";
+
+Deno.test("renderFailureReport includes cron, signature, hash, errors, stack", () => {
+  const { signature, hash } = computeSignature("report-worker", "boom");
+  const text = renderFailureReport(
+    "report-worker",
+    {
+      total: 1,
+      failed: 1,
+      errors: [{ accountId: "42", error: "Network error after 3 attempts" }],
+      stack: "Error: boom\n  at x",
+    },
+    signature,
+    hash,
+  );
+  assert(text.includes("report-worker"));
+  assert(text.includes(signature));
+  assert(text.includes(hash));
+  assert(text.includes("42"));
+  assert(text.includes("Network error after 3 attempts"));
+  assert(text.includes("Error: boom"));
+});

@@ -1,3 +1,11 @@
+export interface CronFailureDetail {
+  total?: number;
+  failed?: number;
+  errors?: Array<{ accountId?: string; error?: string }>;
+  stack?: string;
+  context?: Record<string, unknown>;
+}
+
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const ALERT_EMAIL = Deno.env.get("ALERT_EMAIL");
 
