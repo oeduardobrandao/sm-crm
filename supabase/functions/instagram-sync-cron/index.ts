@@ -1,7 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { timingSafeEqual } from "../_shared/crypto.ts";
 import { createInstagramSyncCronHandler } from "./handler.ts";
-import { notifyCronFailure } from "../_shared/notify.ts";
+import { reportCronFailure } from "../_shared/triage.ts";
 import { runPool } from "./pool.ts";
 import { buildSnapshotRow } from "./snapshot.ts";
 
@@ -285,8 +285,8 @@ Deno.serve(createInstagramSyncCronHandler({
   cronSecret: CRON_SECRET,
   timingSafeEqual,
   run: async () => {
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     try {
-      const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     // Fetch all accounts with auto-sync enabled and active status
     // (proactive refresh inside syncAccount handles near-expiry tokens)
@@ -331,7 +331,7 @@ Deno.serve(createInstagramSyncCronHandler({
       console.log(`[IG-SYNC-CRON] Done. Synced: ${syncedCount}, Failed: ${failedCount}`);
 
       if (failedCount > 0) {
-        await notifyCronFailure('instagram-sync-cron', { total: accounts.length, failed: failedCount, errors });
+        await reportCronFailure(supabase, 'instagram-sync-cron', { total: accounts.length, failed: failedCount, errors });
       }
 
       return new Response(JSON.stringify({
@@ -345,7 +345,7 @@ Deno.serve(createInstagramSyncCronHandler({
       });
     } catch (err: any) {
       console.error("[IG-SYNC-CRON] Cron Job Failed", err);
-      await notifyCronFailure('instagram-sync-cron', { total: 0, failed: 1, errors: [{ error: err.message }] });
+      await reportCronFailure(supabase, 'instagram-sync-cron', { total: 0, failed: 1, errors: [{ error: err.message }], stack: err?.stack });
       return new Response(JSON.stringify({ error: err.message }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' }
