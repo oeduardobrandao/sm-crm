@@ -166,6 +166,13 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
         icon: 'ph-gear',
       },
       {
+        id: 'cobranca',
+        route: '/configuracao/cobranca',
+        label: 'Plano & Cobrança',
+        labelKey: 'nav.cobranca',
+        icon: 'ph-credit-card',
+      },
+      {
         id: 'politica-de-privacidade',
         route: '/politica-de-privacidade',
         label: 'Privacidade',
@@ -179,13 +186,24 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
 export const PRIMARY_NAV_IDS = ['dashboard', 'clientes', 'analytics', 'entregas'];
 
 export function getNavGroups(role: string): NavGroup[] {
-  if (role !== 'agent') return ALL_NAV_GROUPS;
-  return ALL_NAV_GROUPS.map((g) => {
-    if (g.id === 'crm') return { ...g, items: g.items.filter((i) => i.id !== 'leads') };
-    if (g.id === 'gestao')
-      return { ...g, items: g.items.filter((i) => i.id !== 'financeiro' && i.id !== 'contratos') };
-    return g;
-  }).filter((g) => g.items.length > 0);
+  let groups = ALL_NAV_GROUPS;
+
+  // Billing is owner-only.
+  if (role !== 'owner') {
+    groups = groups.map((g) =>
+      g.id === 'config' ? { ...g, items: g.items.filter((i) => i.id !== 'cobranca') } : g,
+    );
+  }
+
+  if (role !== 'agent') return groups;
+  return groups
+    .map((g) => {
+      if (g.id === 'crm') return { ...g, items: g.items.filter((i) => i.id !== 'leads') };
+      if (g.id === 'gestao')
+        return { ...g, items: g.items.filter((i) => i.id !== 'financeiro' && i.id !== 'contratos') };
+      return g;
+    })
+    .filter((g) => g.items.length > 0);
 }
 
 export function getMoreSheetGroups(role: string): NavGroup[] {
