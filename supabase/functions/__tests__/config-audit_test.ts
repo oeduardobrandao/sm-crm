@@ -56,6 +56,10 @@ const REQUIRED_FUNCTIONS = [
   "portal-approve",
   "portal-data",
   "sign-r2-urls",
+  // Billing (manual auth: user-JWT or Stripe signature)
+  "billing-checkout",
+  "billing-portal",
+  "stripe-webhook",
 ];
 
 Deno.test("config.toml: all non-JWT functions have verify_jwt = false", async () => {
