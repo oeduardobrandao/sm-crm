@@ -1,7 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { timingSafeEqual } from "../_shared/crypto.ts";
-import { notifyCronFailure } from "../_shared/notify.ts";
+import { reportCronFailure } from "../_shared/triage.ts";
 
 // ---------------------------------------------------------------------------
 // Environment
@@ -129,10 +129,11 @@ Deno.serve(async (req) => {
     }).eq("id", claimed.id);
 
     if (newRetryCount >= 3) {
-      await notifyCronFailure("report-worker", {
+      await reportCronFailure(supabase, "report-worker", {
         total: 1,
         failed: 1,
         errors: [{ accountId: String(claimed.id), error: `Network error after ${newRetryCount} attempts: ${message}` }],
+        stack: fetchErr instanceof Error ? fetchErr.stack : undefined,
       });
     }
 
@@ -245,13 +246,10 @@ Deno.serve(async (req) => {
 
   if (newRetryCount >= 3) {
     console.warn(`[report-worker] Report ${claimed.id} exhausted retries (${newRetryCount}), sending alert`);
-    await notifyCronFailure("report-worker", {
+    await reportCronFailure(supabase, "report-worker", {
       total: 1,
       failed: 1,
-      errors: [{
-        accountId: String(claimed.id),
-        error: `Exhausted ${newRetryCount} retries. Last error: ${errorBody.substring(0, 200)}`,
-      }],
+      errors: [{ accountId: String(claimed.id), error: `Generator error after ${newRetryCount} attempts: ${errorBody}`.slice(0, 500) }],
     });
   }
 

@@ -1,0 +1,73 @@
+name: Cron Triage
+# Drafts a fix-spec for a cron failure (free Groq call) and files it as a GitHub
+# issue. No agent: gather.mjs (deterministic) + one Groq call + gh. Trust split:
+# the Groq step has no repo token; issue creation uses GITHUB_TOKEN only.
+on:
+  repository_dispatch:
+    types: [cron-failure]
+  workflow_dispatch:
+    inputs:
+      cron_name:
+        description: cron function name (e.g. instagram-refresh-cron)
+        required: true
+      payload_json:
+        description: optional JSON client_payload
+        required: false
+        default: '{}'
+permissions:
+  contents: read
+  issues: write
+concurrency:
+  group: cron-triage-${{ github.event.client_payload.signature_hash || github.event.inputs.cron_name }}
+  cancel-in-progress: false
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Assemble payload
+        id: p
+        env:
+          PAYLOAD: ${{ toJSON(github.event.client_payload) }}
+          WF_CRON: ${{ github.event.inputs.cron_name }}
+          WF_PAYLOAD: ${{ github.event.inputs.payload_json }}
+        run: |
+          if [ -n "$WF_CRON" ]; then
+            printf '%s' "$WF_PAYLOAD" | node -e 'const fs=require("fs");let p={};try{p=JSON.parse(fs.readFileSync(0,"utf8"))}catch{} p.cron_name=process.env.WF_CRON; p.signature_hash=p.signature_hash||"manual"; fs.writeFileSync(process.env.RUNNER_TEMP+"/payload.json",JSON.stringify(p))'
+          else
+            printf '%s' "$PAYLOAD" > "$RUNNER_TEMP/payload.json"
+          fi
+          cron=$(node -e 'process.stdout.write((JSON.parse(require("fs").readFileSync(process.env.RUNNER_TEMP+"/payload.json","utf8")).cron_name)||"")')
+          hash=$(node -e 'process.stdout.write((JSON.parse(require("fs").readFileSync(process.env.RUNNER_TEMP+"/payload.json","utf8")).signature_hash)||"manual")')
+          if [ -z "$cron" ]; then echo "no cron_name in payload"; exit 1; fi
+          echo "cron=$cron" >> "$GITHUB_OUTPUT"
+          echo "hash=$hash" >> "$GITHUB_OUTPUT"
+      - name: Gather source
+        env:
+          CRON_NAME: ${{ steps.p.outputs.cron }}
+        run: node scripts/cron-triage/gather.mjs "$CRON_NAME" > "$RUNNER_TEMP/context.json"
+      - name: Draft spec (Groq)
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: node scripts/cron-triage/write-spec.mjs "$RUNNER_TEMP/payload.json" "$RUNNER_TEMP/context.json" "$RUNNER_TEMP/spec.json"
+      - name: File or update issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HASH: ${{ steps.p.outputs.hash }}
+        run: |
+          title=$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.env.RUNNER_TEMP+"/spec.json","utf8")).title)')
+          node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.env.RUNNER_TEMP+"/spec.json","utf8")).body)' > "$RUNNER_TEMP/body.md"
+          label="cron-triage:${HASH}"
+          gh label create "cron-triage" --color B60205 --force >/dev/null 2>&1 || true
+          gh label create "$label" --color ededed --force >/dev/null 2>&1 || true
+          existing=$(gh issue list --state open --label "$label" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file "$RUNNER_TEMP/body.md"
+            echo "Commented on existing issue #$existing"
+          else
+            gh issue create --title "$title" --body-file "$RUNNER_TEMP/body.md" --label "cron-triage" --label "$label"
+          fi

@@ -2,7 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { timingSafeEqual } from "../_shared/crypto.ts";
 import { createInstagramRefreshCronHandler } from "./handler.ts";
 import { shouldRevokeOnError } from "./utils.ts";
-import { notifyCronFailure } from "../_shared/notify.ts";
+import { reportCronFailure } from "../_shared/triage.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -166,7 +166,7 @@ Deno.serve(createInstagramRefreshCronHandler({
       }
 
       if (failedCount > 0) {
-        await notifyCronFailure('instagram-refresh-cron', { total: accounts.length, failed: failedCount, errors });
+        await reportCronFailure(supabase, 'instagram-refresh-cron', { total: accounts.length, failed: failedCount, errors });
       }
 
       return new Response(JSON.stringify({

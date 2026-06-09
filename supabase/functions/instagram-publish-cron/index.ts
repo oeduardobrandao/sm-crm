@@ -3,7 +3,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { timingSafeEqual } from "../_shared/crypto.ts";
 import { createPublishCronHandler } from "./handler.ts";
-import { notifyCronFailure } from "../_shared/notify.ts";
+import { reportCronFailure } from "../_shared/triage.ts";
 import {
   decryptToken,
   createSingleImageContainer,
@@ -256,7 +256,7 @@ Deno.serve(createPublishCronHandler({
 
       const totalFailed = summary.phase1.failed + summary.phase2.failed + summary.phase3.failed;
       if (totalFailed > 0) {
-        await notifyCronFailure('instagram-publish-cron', {
+        await reportCronFailure(db, 'instagram-publish-cron', {
           total: summary.phase1.succeeded + summary.phase1.failed + summary.phase2.succeeded + summary.phase2.failed + summary.phase3.succeeded + summary.phase3.failed,
           failed: totalFailed,
           errors: [{ error: `Phase1: ${summary.phase1.failed}, Phase2: ${summary.phase2.failed}, Phase3: ${summary.phase3.failed}` }],
@@ -268,7 +268,7 @@ Deno.serve(createPublishCronHandler({
       });
     } catch (err: any) {
       console.error("[IG-PUBLISH] Cron failed:", err);
-      await notifyCronFailure('instagram-publish-cron', { total: 0, failed: 1, errors: [{ error: err.message }] });
+      await reportCronFailure(db, 'instagram-publish-cron', { total: 0, failed: 1, errors: [{ error: err.message }], stack: err?.stack });
       return new Response(JSON.stringify({ error: err.message }), {
         status: 500,
         headers: { "Content-Type": "application/json" },
