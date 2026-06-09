@@ -383,6 +383,9 @@ async function handleCreatePlan(
   if (rest.price_brl_annual !== undefined) insert.price_brl_annual = rest.price_brl_annual;
   if (rest.sort_order !== undefined) insert.sort_order = rest.sort_order;
   if (rest.is_active !== undefined) insert.is_active = rest.is_active;
+  if (rest.stripe_product_id !== undefined) insert.stripe_product_id = rest.stripe_product_id;
+  if (rest.stripe_price_id !== undefined) insert.stripe_price_id = rest.stripe_price_id;
+  if (rest.stripe_price_id_annual !== undefined) insert.stripe_price_id_annual = rest.stripe_price_id_annual;
 
   const { data, error } = await svc
     .from("plans")
@@ -410,7 +413,10 @@ async function handleUpdatePlan(
 
   const updatePayload: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
-  const allowedScalar = ["name", "is_default", "price_brl", "price_brl_annual", "sort_order", "is_active"];
+  const allowedScalar = [
+    "name", "is_default", "price_brl", "price_brl_annual", "sort_order", "is_active",
+    "stripe_product_id", "stripe_price_id", "stripe_price_id_annual",
+  ];
   for (const key of allowedScalar) {
     if (rest[key] !== undefined) updatePayload[key] = rest[key];
   }
@@ -480,7 +486,7 @@ async function handleSetWorkspacePlan(
 
   const { error: wErr } = await svc
     .from("workspaces")
-    .update({ plan_id })
+    .update({ plan_id, plan_source: "manual" })
     .eq("id", workspace_id);
   if (wErr) throw wErr;
 
