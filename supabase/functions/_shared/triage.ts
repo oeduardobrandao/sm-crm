@@ -32,28 +32,6 @@ function fnv1a(input: string): string {
   return (h >>> 0).toString(36);
 }
 
-export function renderFailureReport(
-  cronName: string,
-  detail: CronFailureDetail,
-  signature: string,
-  hash: string,
-): string {
-  const lines = [
-    `Cron failure: ${cronName}`,
-    `Signature: ${signature}`,
-    `Signature hash (apply the GitHub label "cron-triage:<hash>"): ${hash}`,
-    `Occurred at: ${new Date().toISOString()}`,
-    `Total: ${detail.total ?? "?"}  Failed: ${detail.failed ?? "?"}`,
-    "",
-    "Errors:",
-    ...(detail.errors ?? []).map(
-      (e) => `- account ${e.accountId ?? "?"}: ${e.error ?? "unknown"}`,
-    ),
-  ];
-  if (detail.context) lines.push("", `Context: ${JSON.stringify(detail.context)}`);
-  if (detail.stack) lines.push("", "Stack:", detail.stack);
-  return lines.join("\n");
-}
 
 export async function reportCronFailure(
   supabase: SupabaseClient,
@@ -84,44 +62,47 @@ export async function reportCronFailure(
     console.error("[triage] email threw");
   }
 
-  // Step 3 — atomic claim + fire (independent of step 1; uses cron_triage_state).
+  // Step 3 — atomic claim + fire a GitHub repository_dispatch (independent of step 1).
   try {
-    const ROUTINE_URL = Deno.env.get("TRIAGE_ROUTINE_URL");
-    const ROUTINE_TOKEN = Deno.env.get("TRIAGE_ROUTINE_TOKEN");
-    if (!ROUTINE_URL || !ROUTINE_TOKEN) return;
+    const DISPATCH_TOKEN = Deno.env.get("GITHUB_DISPATCH_TOKEN");
+    const REPO = Deno.env.get("GITHUB_TRIAGE_REPO"); // "owner/repo"
+    if (!DISPATCH_TOKEN || !REPO) return;
 
     const cooldownSeconds =
       (Number(Deno.env.get("TRIAGE_COOLDOWN_HOURS") ?? "24") || 24) * 3600;
-    // NOTE: verify the current routine beta header against Anthropic docs before
-    // shipping — it is dated/versioned and may differ from the default below.
-    const betaHeader =
-      Deno.env.get("TRIAGE_ROUTINE_BETA") ?? "experimental-cc-routine-2026-04-01";
 
     const { data: claimed, error } = await supabase.rpc("claim_cron_triage", {
-      p_hash: hash,
-      p_cron_name: cronName,
-      p_cooldown_seconds: cooldownSeconds,
+      p_hash: hash, p_cron_name: cronName, p_cooldown_seconds: cooldownSeconds,
     });
-    if (error) {
-      console.error(`[triage] claim rpc failed: ${error.message ?? "unknown"}`);
-      return;
-    }
+    if (error) { console.error(`[triage] claim rpc failed: ${error.message ?? "unknown"}`); return; }
     // claim_cron_triage `returns boolean`: PostgREST yields bare `true` when the
-    // claim is won, or HTTP 204 → data:null when the cooldown WHERE no-ops. Not array-wrapped.
-    if (claimed !== true) return; // within cooldown — another failure already triaged this signature
+    // claim is won, or HTTP 204 → data:null when the cooldown WHERE no-ops.
+    if (claimed !== true) return;
 
-    const res = await fetch(ROUTINE_URL, {
+    const res = await fetch(`https://api.github.com/repos/${REPO}/dispatches`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${ROUTINE_TOKEN}`,
-        "anthropic-beta": betaHeader,
-        "anthropic-version": "2023-06-01",
+        Authorization: `Bearer ${DISPATCH_TOKEN}`,
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
         "Content-Type": "application/json",
+        "User-Agent": "mesaas-cron-triage",
       },
-      body: JSON.stringify({ text: renderFailureReport(cronName, detail, signature, hash) }),
+      body: JSON.stringify({
+        event_type: "cron-failure",
+        client_payload: {
+          cron_name: cronName,
+          signature,
+          signature_hash: hash,
+          error_message: String(errorMessage).slice(0, 1000),
+          errors: (detail.errors ?? []).slice(0, 50),
+          stack: detail.stack ? detail.stack.slice(0, 4000) : undefined,
+          occurred_at: new Date().toISOString(),
+        },
+      }),
     });
-    if (!res.ok) console.error(`[triage] routine /fire non-2xx: ${res.status}`);
+    if (!res.ok) console.error(`[triage] repository_dispatch non-2xx: ${res.status}`);
   } catch (_e) {
-    console.error("[triage] claim/fire threw");
+    console.error("[triage] claim/dispatch threw");
   }
 }

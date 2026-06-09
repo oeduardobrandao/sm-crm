@@ -28,29 +28,6 @@ Deno.test("computeSignature hash is short and label-safe", () => {
   assert(("cron-triage:" + hash).length <= 50);
 });
 
-import { renderFailureReport } from "../_shared/triage.ts";
-
-Deno.test("renderFailureReport includes cron, signature, hash, errors, stack", () => {
-  const { signature, hash } = computeSignature("report-worker", "boom");
-  const text = renderFailureReport(
-    "report-worker",
-    {
-      total: 1,
-      failed: 1,
-      errors: [{ accountId: "42", error: "Network error after 3 attempts" }],
-      stack: "Error: boom\n  at x",
-    },
-    signature,
-    hash,
-  );
-  assert(text.includes("report-worker"));
-  assert(text.includes(signature));
-  assert(text.includes(hash));
-  assert(text.includes("42"));
-  assert(text.includes("Network error after 3 attempts"));
-  assert(text.includes("Error: boom"));
-});
-
 import { reportCronFailure } from "../_shared/triage.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 
@@ -64,63 +41,58 @@ function stubFetch(handler: (url: string, init?: RequestInit) => Promise<Respons
   return { calls, restore: () => { globalThis.fetch = original; } };
 }
 
-Deno.test("reportCronFailure fires the routine when the claim is won", async () => {
-  Deno.env.set("TRIAGE_ROUTINE_URL", "https://api.anthropic.test/routines/x/fire");
-  Deno.env.set("TRIAGE_ROUTINE_TOKEN", "sk-ant-oat01-test");
-  Deno.env.set("RESEND_API_KEY", ""); // suppress email path in this test
+Deno.test("reportCronFailure fires a repository_dispatch when the claim is won", async () => {
+  Deno.env.set("GITHUB_DISPATCH_TOKEN", "ghp_test");
+  Deno.env.set("GITHUB_TRIAGE_REPO", "owner/repo");
+  Deno.env.set("RESEND_API_KEY", "");
   const db = createSupabaseQueryMock();
   db.queue("cron_failures", "insert", { data: null, error: null });
   db.queueRpc("claim_cron_triage", { data: true, error: null });
-  const f = stubFetch(() => Promise.resolve(new Response("{}", { status: 200 })));
+  const f = stubFetch(() => Promise.resolve(new Response(null, { status: 204 })));
   try {
     await reportCronFailure(db as never, "instagram-sync-cron", {
       total: 3, failed: 1, errors: [{ accountId: "9", error: "Token expired" }],
     });
   } finally { f.restore(); }
-  const fires = f.calls.filter((c) => c.url.includes("/fire"));
-  assertEquals(fires.length, 1);
-  const body = JSON.parse(String(fires[0].init?.body));
-  assert(typeof body.text === "string" && body.text.includes("instagram-sync-cron"));
+  const disp = f.calls.filter((c) => c.url.includes("/repos/owner/repo/dispatches"));
+  assertEquals(disp.length, 1);
+  const body = JSON.parse(String(disp[0].init?.body));
+  assertEquals(body.event_type, "cron-failure");
+  assert(body.client_payload?.cron_name === "instagram-sync-cron");
+  assert(body.client_payload?.signature_hash && typeof body.client_payload.signature_hash === "string");
 });
 
-Deno.test("reportCronFailure skips the routine when within cooldown", async () => {
-  Deno.env.set("TRIAGE_ROUTINE_URL", "https://api.anthropic.test/routines/x/fire");
-  Deno.env.set("TRIAGE_ROUTINE_TOKEN", "sk-ant-oat01-test");
+Deno.test("reportCronFailure skips dispatch when within cooldown", async () => {
+  Deno.env.set("GITHUB_DISPATCH_TOKEN", "ghp_test");
+  Deno.env.set("GITHUB_TRIAGE_REPO", "owner/repo");
   Deno.env.set("RESEND_API_KEY", "");
   const db = createSupabaseQueryMock();
   db.queue("cron_failures", "insert", { data: null, error: null });
   db.queueRpc("claim_cron_triage", { data: null, error: null });
-  const f = stubFetch(() => Promise.resolve(new Response("{}", { status: 200 })));
+  const f = stubFetch(() => Promise.resolve(new Response(null, { status: 204 })));
   try {
-    await reportCronFailure(db as never, "instagram-sync-cron", {
-      total: 1, failed: 1, errors: [{ error: "x" }],
-    });
+    await reportCronFailure(db as never, "instagram-sync-cron", { total: 1, failed: 1, errors: [{ error: "x" }] });
   } finally { f.restore(); }
-  assertEquals(f.calls.filter((c) => c.url.includes("/fire")).length, 0);
+  assertEquals(f.calls.filter((c) => c.url.includes("/dispatches")).length, 0);
 });
 
 Deno.test("reportCronFailure still emails when the insert rejects", async () => {
-  Deno.env.set("TRIAGE_ROUTINE_URL", ""); // no fire
-  Deno.env.set("TRIAGE_ROUTINE_TOKEN", "");
+  Deno.env.set("GITHUB_DISPATCH_TOKEN", "");
+  Deno.env.set("GITHUB_TRIAGE_REPO", "");
   Deno.env.set("RESEND_API_KEY", "test-key");
   Deno.env.set("ALERT_EMAIL", "alerts@example.test");
   const db = createSupabaseQueryMock();
   db.queue("cron_failures", "insert", { data: null, error: { message: "db down" } });
   const f = stubFetch(() => Promise.resolve(new Response("{}", { status: 200 })));
   try {
-    await reportCronFailure(db as never, "report-worker", {
-      total: 1, failed: 1, errors: [{ error: "x" }],
-    });
+    await reportCronFailure(db as never, "report-worker", { total: 1, failed: 1, errors: [{ error: "x" }] });
   } finally { f.restore(); }
-  assert(
-    f.calls.some((c) => c.url.includes("api.resend.com")),
-    "email not attempted after insert error",
-  );
+  assert(f.calls.some((c) => c.url.includes("api.resend.com")), "email not attempted after insert error");
 });
 
 Deno.test("reportCronFailure never throws when rpc and fetch reject", async () => {
-  Deno.env.set("TRIAGE_ROUTINE_URL", "https://api.anthropic.test/routines/x/fire");
-  Deno.env.set("TRIAGE_ROUTINE_TOKEN", "sk-ant-oat01-test");
+  Deno.env.set("GITHUB_DISPATCH_TOKEN", "ghp_test");
+  Deno.env.set("GITHUB_TRIAGE_REPO", "owner/repo");
   Deno.env.set("RESEND_API_KEY", "");
   const db = createSupabaseQueryMock();
   db.queue("cron_failures", "insert", () => { throw new Error("insert blew up"); });
@@ -128,11 +100,7 @@ Deno.test("reportCronFailure never throws when rpc and fetch reject", async () =
   const f = stubFetch(() => Promise.reject(new Error("network down")));
   let threw = false;
   try {
-    await reportCronFailure(db as never, "instagram-sync-cron", {
-      total: 1, failed: 1, errors: [{ error: "x" }],
-    });
-  } catch {
-    threw = true;
-  } finally { f.restore(); }
+    await reportCronFailure(db as never, "instagram-sync-cron", { total: 1, failed: 1, errors: [{ error: "x" }] });
+  } catch { threw = true; } finally { f.restore(); }
   assertEquals(threw, false);
 });
