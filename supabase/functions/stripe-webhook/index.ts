@@ -91,6 +91,17 @@ async function syncSubscription(
   const subscribedPlanId = resolved?.plan_id ?? defaultPlanId;
   const customerId = typeof sub.customer === "string" ? sub.customer : sub.customer.id;
 
+  // current_period_end lives on the subscription root in older API versions (acacia) and
+  // on the first subscription item in basil (2025-03-31)+. Webhook payloads use the account's
+  // API version regardless of the SDK pin, so read whichever is present.
+  const subPeriod = sub as unknown as {
+    current_period_end?: number;
+    items?: { data?: Array<{ current_period_end?: number }> };
+  };
+  const periodEndUnix = subPeriod.current_period_end
+    ?? subPeriod.items?.data?.[0]?.current_period_end
+    ?? null;
+
   await svc.from("workspace_subscriptions").upsert({
     workspace_id: workspaceId,
     stripe_customer_id: customerId,
@@ -98,8 +109,8 @@ async function syncSubscription(
     status: sub.status,
     plan_id: resolved?.plan_id ?? null,
     billing_interval: resolved?.interval ?? null,
-    current_period_end: sub.current_period_end
-      ? new Date(sub.current_period_end * 1000).toISOString() : null,
+    current_period_end: periodEndUnix
+      ? new Date(periodEndUnix * 1000).toISOString() : null,
     cancel_at_period_end: sub.cancel_at_period_end ?? false,
     updated_at: new Date().toISOString(),
   }, { onConflict: "workspace_id" });

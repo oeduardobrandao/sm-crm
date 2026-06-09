@@ -68,6 +68,7 @@ Deno.serve(async (req: Request) => {
       cancel_url: `${APP_BASE_URL}/configuracao/cobranca?status=cancelled`,
     });
 
+    if (!session.url) throw new Error("Stripe returned no checkout URL");
     return json({ url: session.url }, 200, headers);
   } catch (err) {
     console.error("[billing-checkout] error:", err);
