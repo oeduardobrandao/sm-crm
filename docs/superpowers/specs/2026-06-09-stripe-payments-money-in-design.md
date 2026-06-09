@@ -114,13 +114,17 @@ paid customers (stale or default-to-free).
 
 2. `workspace_plan_overrides` is **demoted to overrides-only** — it keeps
    `resource_overrides` / `feature_overrides` / `notes` (admin comp metadata). Its `plan_id`
-   column is **retired as a source of truth**: no reader consults it after this change. The
-   column is left in place (kept nullable-compatible; not dropped) to avoid a destructive
-   migration, and is marked deprecated in a comment.
+   column is **retired as a source of truth**: no reader consults it after this change. Because
+   the column is currently `NOT NULL` (`platform-admin_tables:21`), an override-only row can no
+   longer be inserted without a plan — so **Migration F** (§5) drops the `NOT NULL` and marks the
+   column deprecated via `comment on column`.
 
 3. Admin `set-workspace-plan` (`platform-admin/index.ts:472-513`) is updated to write
-   `workspaces.plan_id` + `workspaces.plan_source = 'manual'` and still upsert the override JSON
-   row; it no longer relies on `workspace_plan_overrides.plan_id` for the effective plan.
+   `workspaces.plan_id` + `workspaces.plan_source = 'manual'` and still upsert the override row
+   for its JSON overrides (it may omit `plan_id` now that the column is nullable). It no longer
+   relies on `workspace_plan_overrides.plan_id` for the effective plan. `set-workspace-plan`
+   remains the single admin action that sets plan + overrides together; an overrides-only admin
+   action is not needed for this slice.
 
 4. The Stripe webhook writes `workspaces.plan_id` + `workspaces.plan_source = 'stripe'`, **only
    when** the workspace is not admin-comped (see `plan_source` guard in §5).
@@ -192,6 +196,15 @@ create table stripe_webhook_events (
 );
 ```
 
+**Migration F — retire `workspace_plan_overrides.plan_id` as a source of truth** (it is `NOT NULL`
+today, which blocks override-only rows once assignment moves to `workspaces.plan_id`).
+
+```sql
+alter table workspace_plan_overrides alter column plan_id drop not null;
+comment on column workspace_plan_overrides.plan_id is
+  'Deprecated: effective plan now lives in workspaces.plan_id; retained for back-compat, not read.';
+```
+
 ---
 
 ## 6. Edge functions
@@ -224,10 +237,13 @@ var (reused; no new var). Below, `<app>` denotes that base.
   is async; the sync `constructEvent` throws).
 - **Dedup (failure-safe):** look up `event_id` in `stripe_webhook_events`; if present, return 200
   (already done). Otherwise process, and **insert `event_id` only after** the handler succeeds.
-  On any handler error, return **5xx without recording** so Stripe redelivers. Handlers are
-  idempotent (upsert by `workspace_id`; plan writes are idempotent), so a redelivery that slips in
-  before the insert is harmless. *(Stronger optional variant: a `status` column
-  `processing|processed|failed` with an atomic claim; not needed given idempotent handlers.)*
+  On any handler error, return **5xx without recording** so Stripe redelivers. **Every handler
+  write must be idempotent so that concurrent duplicate deliveries converge** (the post-success
+  ledger does not serialize concurrent processing): upserts keyed by `workspace_id`, plan-id
+  *assignments* (never read-modify-write), and the failed-payment counter set by **assignment from
+  Stripe's authoritative `invoice.attempt_count`** — never `++` (see below). *(Stronger optional
+  variant if you want hard serialization: a `status` column `processing|processed|failed` with an
+  atomic claim. Not required given assignment-only writes.)*
 - **Workspace resolution order** (handles event races, e.g. `subscription.updated` arriving
   around `checkout.session.completed`):
   1. event's subscription/session `metadata.workspace_id`,
@@ -244,7 +260,8 @@ var (reused; no new var). Below, `<app>` denotes that base.
     `workspaces.plan_id` + `plan_source='stripe'` (subject to guard).
   - `customer.subscription.updated` → resync all fields; apply status mapping (below).
   - `customer.subscription.deleted` → status `canceled`; `workspaces.plan_id` → default/free.
-  - `invoice.payment_failed` → `failed_payment_count++`, status `past_due`; **no** plan change.
+  - `invoice.payment_failed` → `failed_payment_count = invoice.attempt_count` (idempotent
+    assignment from Stripe's own retry counter, not `++`), status `past_due`; **no** plan change.
 - **`plan_source` guard:** all `workspaces.plan_id` writes are skipped when
   `plan_source = 'manual'` (the `workspace_subscriptions` mirror is still updated for visibility).
 
@@ -267,20 +284,39 @@ var (reused; no new var). Below, `<app>` denotes that base.
 - `STRIPE_SECRET_KEY` — REQUIRED, throw if missing (mirrors `TOKEN_ENCRYPTION_KEY`).
 - `STRIPE_WEBHOOK_SECRET` — REQUIRED by `stripe-webhook`, throw if missing.
 
+### 6d. Function registration (`config.toml` + audit test)
+
+This repo registers **every** edge function in `supabase/config.toml` with `verify_jwt = false`
+(the manual-auth pattern), and `supabase/functions/__tests__/config-audit_test.ts` enforces it via
+a `REQUIRED_FUNCTIONS` allowlist (line 20-59). All three new functions handle their own auth, so:
+
+- Add `[functions.billing-checkout]`, `[functions.billing-portal]`, and `[functions.stripe-webhook]`
+  blocks — each with `verify_jwt = false` — to `config.toml`.
+- Add the same three names to `REQUIRED_FUNCTIONS` in `config-audit_test.ts` (else the audit test
+  fails / they go unverified).
+- Deploy all three with `--no-verify-jwt`.
+
+`billing-checkout` and `billing-portal` verify the **user** JWT manually via `getUser(token)`
+(exactly like `workspace-limits`); `stripe-webhook` authenticates via **Stripe signature**. None
+rely on Supabase's gateway JWT check — hence `verify_jwt = false` for all three.
+
 ---
 
 ## 7. Admin: editable Stripe product/price IDs
 
-The DB columns and the `Plan` type exist, but there is **no write path** today:
-`FormState` (`apps/admin/src/pages/PlansPage.tsx:44-51`) omits the stripe fields,
-`formToPayload` (70-79) doesn't send them, and `handleUpdatePlan`'s `allowedScalar`
-(`platform-admin/index.ts:413`) excludes them.
+The DB columns and the `Plan` type exist, but there is **no write path** today — for **either
+create or update**: `FormState` (`apps/admin/src/pages/PlansPage.tsx:44-51`) omits the stripe
+fields, `formToPayload` (70-79) doesn't send them (and feeds *both* the create and update
+mutations), `handleUpdatePlan`'s `allowedScalar` (`platform-admin/index.ts:413`) excludes them,
+and `handleCreatePlan`'s `insert` builder (`platform-admin/index.ts:377-385`) excludes them.
 
 Tasks:
 
 - Add `stripe_product_id`, `stripe_price_id`, `stripe_price_id_annual` to `FormState`,
-  `planToForm`, `formToPayload`, and the form UI (3 text inputs).
-- Add the three keys to `allowedScalar` in `handleUpdatePlan`.
+  `planToForm`, `formToPayload`, and the form UI (3 text inputs). Because `formToPayload` feeds
+  both mutations, this single form change covers create and update on the client.
+- Accept the three keys server-side in **both** `handleUpdatePlan` (add to `allowedScalar`) **and**
+  `handleCreatePlan` (add to the `insert` builder).
 
 This is how the Stripe price IDs created in the dashboard get into `plans` — owner/admin pastes
 them per plan. (Free plan has no price IDs.)
@@ -338,11 +374,12 @@ Build and validate against **Stripe test mode** first.
 
 ## 11. Build sequence
 
-1. Migrations A–E (+ `resolve_workspace_plan` rewrite) → push to **staging** first (dry-run).
-2. Admin Stripe-ID edit path (§7).
-3. `billing-checkout` + `billing-portal` (+ deno tests).
-4. `stripe-webhook` (+ deno tests) — deploy `--no-verify-jwt`; register endpoint + retry settings
-   in Stripe (§9).
+1. Migrations A–F (+ `resolve_workspace_plan` rewrite) → push to **staging** first (dry-run).
+2. Admin Stripe-ID edit path — create *and* update (§7).
+3. `billing-checkout` + `billing-portal` (+ deno tests); register both in `config.toml` +
+   `config-audit_test.ts` (§6d).
+4. `stripe-webhook` (+ deno tests) — register in `config.toml` + `config-audit_test.ts` (§6d);
+   deploy all three `--no-verify-jwt`; register endpoint + retry settings in Stripe (§9).
 5. CRM `Plano & Cobrança` page + `services/billing.ts`.
 6. Create products/prices in Stripe test mode; paste IDs via admin; end-to-end test.
 7. Update `CLAUDE.md` + `.env.example` with the new env vars.
