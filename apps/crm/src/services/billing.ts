@@ -20,7 +20,9 @@ export interface WorkspaceSubscription {
 const FUNCTIONS_BASE = (import.meta.env.VITE_SUPABASE_URL as string) + '/functions/v1';
 
 async function authHeaders(): Promise<Record<string, string>> {
-  const { data: { session } } = await supabase.auth.getSession();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
   if (!session) throw new Error('Não autenticado');
   return {
     Authorization: `Bearer ${session.access_token}`,
@@ -41,10 +43,15 @@ export async function listActivePlans(): Promise<BillingPlan[]> {
 
 /** Current workspace's subscription row (owner-only via RLS), or null. */
 export async function getWorkspaceSubscription(): Promise<WorkspaceSubscription | null> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) return null;
   const { data: profile } = await supabase
-    .from('profiles').select('conta_id').eq('id', user.id).single();
+    .from('profiles')
+    .select('conta_id')
+    .eq('id', user.id)
+    .single();
   if (!profile?.conta_id) return null;
   const { data, error } = await supabase
     .from('workspace_subscriptions')

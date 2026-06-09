@@ -37,14 +37,17 @@ describe('billing service', () => {
 
   it('startCheckout throws the server error message on non-ok', async () => {
     (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      ok: false, status: 400, json: async () => ({ error: 'Plan price not configured' }),
+      ok: false,
+      status: 400,
+      json: async () => ({ error: 'Plan price not configured' }),
     });
     await expect(startCheckout('pro', 'month')).rejects.toThrow('Plan price not configured');
   });
 
   it('openBillingPortal returns the portal url', async () => {
     (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      ok: true, json: async () => ({ url: 'https://billing.stripe.com/xyz' }),
+      ok: true,
+      json: async () => ({ url: 'https://billing.stripe.com/xyz' }),
     });
     expect(await openBillingPortal()).toBe('https://billing.stripe.com/xyz');
   });

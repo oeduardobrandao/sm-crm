@@ -28,7 +28,9 @@ export default function CobrancaPage() {
     enabled: role === 'owner',
   });
 
-  // Handle the Checkout return.
+  // Handle the Checkout return once on mount. Runs once intentionally: clearing the
+  // `status` param via setSearchParams must NOT re-trigger this effect (doing so would
+  // cancel the polling interval on the next render before it ever ticks).
   useEffect(() => {
     const status = searchParams.get('status');
     if (!status) return;
@@ -40,16 +42,13 @@ export default function CobrancaPage() {
         refetchSub();
         if (tries >= 5) window.clearInterval(id);
       }, 2000);
-      searchParams.delete('status');
-      setSearchParams(searchParams, { replace: true });
+      setSearchParams({}, { replace: true });
       return () => window.clearInterval(id);
     }
-    if (status === 'cancelled') {
-      toast('Checkout cancelado.');
-      searchParams.delete('status');
-      setSearchParams(searchParams, { replace: true });
-    }
-  }, [searchParams, setSearchParams, refetchSub]);
+    toast('Checkout cancelado.');
+    setSearchParams({}, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (role !== 'owner') {
     return (
@@ -65,7 +64,8 @@ export default function CobrancaPage() {
   async function handleUpgrade(planId: string) {
     setBusy(planId);
     try {
-      window.location.href = await startCheckout(planId, interval);
+      const url = await startCheckout(planId, interval);
+      window.location.assign(url);
     } catch (err) {
       toast.error('Erro ao iniciar checkout: ' + (err as Error).message);
       setBusy(null);
@@ -75,7 +75,8 @@ export default function CobrancaPage() {
   async function handleManage() {
     setBusy('portal');
     try {
-      window.location.href = await openBillingPortal();
+      const url = await openBillingPortal();
+      window.location.assign(url);
     } catch (err) {
       toast.error('Erro ao abrir portal: ' + (err as Error).message);
       setBusy(null);
