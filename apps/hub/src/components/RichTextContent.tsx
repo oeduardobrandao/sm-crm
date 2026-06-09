@@ -8,6 +8,27 @@ import Highlight from '@tiptap/extension-highlight';
 import Link from '@tiptap/extension-link';
 import { CalloutReadonly } from './CalloutReadonly';
 import { InlineImageReadonly } from './InlineImageReadonly';
+import { CommentHighlightReadonly } from './CommentHighlightReadonly';
+
+/**
+ * The TipTap extension set used to read post `conteudo` in the hub. This must stay a
+ * superset of the marks/nodes the CRM editor (`PostEditor`) can persist — if the hub
+ * schema is missing a mark/node type that appears in `conteudo`, TipTap discards the
+ * ENTIRE document (logging a warning, not throwing), rendering an empty body.
+ */
+export function richTextExtensions(editable = false) {
+  return [
+    StarterKit,
+    UnderlineExt,
+    TextStyle,
+    Color,
+    Highlight.configure({ multicolor: true }),
+    Link.configure({ openOnClick: !editable, autolink: false }),
+    CalloutReadonly,
+    InlineImageReadonly,
+    CommentHighlightReadonly,
+  ];
+}
 
 class EditorErrorBoundary extends Component<
   { fallback: ReactNode; children: ReactNode },
@@ -41,16 +62,7 @@ function RichTextEditor({
   const [focused, setFocused] = useState(false);
 
   const editor = useEditor({
-    extensions: [
-      StarterKit,
-      UnderlineExt,
-      TextStyle,
-      Color,
-      Highlight.configure({ multicolor: true }),
-      Link.configure({ openOnClick: !editable, autolink: false }),
-      CalloutReadonly,
-      InlineImageReadonly,
-    ],
+    extensions: richTextExtensions(editable),
     content,
     editable,
     editorProps: editable
