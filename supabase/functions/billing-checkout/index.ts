@@ -1,22 +1,11 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { buildCorsHeaders } from "../_shared/cors.ts";
+import { buildCorsHeaders, resolveAllowedOrigin } from "../_shared/cors.ts";
 import { stripe } from "../_shared/stripe.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const PAID_PLANS = ["start", "pro", "max"];
-
-// Stripe requires success_url/cancel_url to be valid absolute URLs. Prefer the caller's Origin
-// (so the redirect returns to whatever app/host the user is actually on); fall back to a
-// scheme-validated OAUTH_REDIRECT_BASE, then localhost. Avoids a misconfigured env breaking checkout.
-function resolveBaseUrl(req: Request): string {
-  const origin = req.headers.get("origin");
-  if (origin && /^https?:\/\//.test(origin)) return origin;
-  const envBase = Deno.env.get("OAUTH_REDIRECT_BASE");
-  if (envBase && /^https?:\/\//.test(envBase)) return envBase;
-  return "http://localhost:5173";
-}
 
 Deno.serve(async (req: Request) => {
   const corsHeaders = buildCorsHeaders(req);
@@ -68,7 +57,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const appBaseUrl = resolveBaseUrl(req);
+    const appBaseUrl = resolveAllowedOrigin(req);
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: customerId,

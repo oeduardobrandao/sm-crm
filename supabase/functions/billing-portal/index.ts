@@ -1,19 +1,9 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { buildCorsHeaders } from "../_shared/cors.ts";
+import { buildCorsHeaders, resolveAllowedOrigin } from "../_shared/cors.ts";
 import { stripe } from "../_shared/stripe.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-// return_url must be a valid absolute URL. Prefer the caller's Origin; fall back to a
-// scheme-validated OAUTH_REDIRECT_BASE, then localhost.
-function resolveBaseUrl(req: Request): string {
-  const origin = req.headers.get("origin");
-  if (origin && /^https?:\/\//.test(origin)) return origin;
-  const envBase = Deno.env.get("OAUTH_REDIRECT_BASE");
-  if (envBase && /^https?:\/\//.test(envBase)) return envBase;
-  return "http://localhost:5173";
-}
 
 Deno.serve(async (req: Request) => {
   const corsHeaders = buildCorsHeaders(req);
@@ -41,7 +31,7 @@ Deno.serve(async (req: Request) => {
 
     const portal = await stripe.billingPortal.sessions.create({
       customer: subRow.stripe_customer_id,
-      return_url: `${resolveBaseUrl(req)}/configuracao/cobranca`,
+      return_url: `${resolveAllowedOrigin(req)}/configuracao/cobranca`,
     });
 
     return json({ url: portal.url }, 200, headers);
