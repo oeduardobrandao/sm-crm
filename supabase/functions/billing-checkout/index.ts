@@ -6,7 +6,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const APP_BASE_URL = Deno.env.get("OAUTH_REDIRECT_BASE") || "http://localhost:5173";
 
-const PAID_PLANS = ["starter", "pro", "max"];
+const PAID_PLANS = ["start", "pro", "max"];
 
 Deno.serve(async (req: Request) => {
   const corsHeaders = buildCorsHeaders(req);

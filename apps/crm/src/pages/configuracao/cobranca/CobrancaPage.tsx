@@ -11,6 +11,11 @@ import {
   type BillingInterval,
 } from '@/services/billing';
 
+/** plans.price_brl is stored in centavos (e.g. 9990 = R$ 99,90). */
+function formatBRL(centavos: number): string {
+  return (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
 export default function CobrancaPage() {
   const { role } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -130,7 +135,7 @@ export default function CobrancaPage() {
               <h3>{p.name}</h3>
               <p>
                 {price != null && price > 0
-                  ? `R$ ${price}${interval === 'year' ? '/ano' : '/mês'}`
+                  ? `${formatBRL(price)}${interval === 'year' ? '/ano' : '/mês'}`
                   : 'Grátis'}
               </p>
               {isFree ? (
