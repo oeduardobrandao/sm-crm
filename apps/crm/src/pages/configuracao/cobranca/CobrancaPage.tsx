@@ -237,7 +237,9 @@ export default function CobrancaPage() {
               </div>
             ))
           : (plans ?? []).map((p, i) => {
-              const price = interval === 'year' ? p.price_brl_annual : p.price_brl;
+              const isYear = interval === 'year';
+              const monthly =
+                isYear && p.price_brl_annual != null ? p.price_brl_annual / 12 : p.price_brl;
               const isCurrent = p.id === currentPlanId;
               const isReco = p.id === RECOMMENDED_ID && !isCurrent;
               return (
@@ -257,19 +259,19 @@ export default function CobrancaPage() {
 
                   <div>
                     <div className="plan-price">
-                      {price != null && price > 0 ? (
+                      {monthly != null && monthly > 0 ? (
                         <>
-                          <span className="plan-price__amount">{formatBRL(price)}</span>
-                          <span className="plan-price__period">
-                            {interval === 'year' ? '/ano' : '/mês'}
-                          </span>
+                          <span className="plan-price__amount">{formatBRL(monthly)}</span>
+                          <span className="plan-price__period">/mês</span>
                         </>
                       ) : (
                         <span className="plan-price__free">Grátis</span>
                       )}
                     </div>
                     <div className="plan-annual-note">
-                      {interval === 'year' && price ? `≈ ${formatBRL(price / 12)}/mês` : ' '}
+                      {isYear && p.price_brl_annual
+                        ? `${formatBRL(p.price_brl_annual)} cobrado anualmente`
+                        : ' '}
                     </div>
                   </div>
 
