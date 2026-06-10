@@ -1,13 +1,6 @@
 /* ===== Plano & Cobrança ===== */
 /* Uses the global design tokens (var(--*)) so it tracks light/dark automatically. */
 
-.billing-intro {
-  color: var(--text-muted);
-  font-size: 0.9rem;
-  margin: -0.75rem 0 1.75rem;
-  max-width: 60ch;
-}
-
 /* Current-plan panel (active subscribers) */
 .billing-current {
   display: flex;

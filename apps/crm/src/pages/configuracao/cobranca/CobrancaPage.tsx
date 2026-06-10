@@ -105,9 +105,11 @@ export default function CobrancaPage() {
   if (!isOwner) {
     return (
       <div className="page-content" style={{ maxWidth: 900, margin: '0 auto' }}>
-        <h2 className="header-title" style={{ marginBottom: '1.5rem' }}>
-          Plano &amp; Cobrança
-        </h2>
+        <div className="header">
+          <div className="header-title">
+            <h1>Plano &amp; Cobrança</h1>
+          </div>
+        </div>
         <div className="card">
           <p style={{ color: 'var(--text-muted)' }}>
             Apenas o proprietário da conta pode gerenciar a assinatura.
@@ -163,13 +165,11 @@ export default function CobrancaPage() {
 
   return (
     <div className="page-content" style={{ maxWidth: 1040, margin: '0 auto' }}>
-      <h2 className="header-title" style={{ marginBottom: '0.75rem' }}>
-        Plano &amp; Cobrança
-      </h2>
-      <p className="billing-intro">
-        Escolha o plano ideal para a sua operação. Faça upgrade quando quiser, o acesso é liberado
-        na hora.
-      </p>
+      <div className="header">
+        <div className="header-title">
+          <h1>Plano &amp; Cobrança</h1>
+        </div>
+      </div>
 
       {hasActiveSub && (
         <div className="card" style={{ marginBottom: '1.5rem' }}>
