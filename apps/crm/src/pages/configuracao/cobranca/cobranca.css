@@ -1,0 +1,309 @@
+/* ===== Plano & Cobrança ===== */
+/* Uses the global design tokens (var(--*)) so it tracks light/dark automatically. */
+
+.billing-intro {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin: -0.75rem 0 1.75rem;
+  max-width: 60ch;
+}
+
+/* Current-plan panel (active subscribers) */
+.billing-current {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem 1.5rem;
+}
+.billing-current__plan {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.billing-current__label {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-light);
+  display: block;
+  margin-bottom: 0.35rem;
+}
+.billing-current__name {
+  font-family: var(--font-heading);
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text-main);
+  line-height: 1;
+}
+.billing-current__meta {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-light);
+  margin-top: 0.5rem;
+}
+
+/* Billing-interval segmented control */
+.billing-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+}
+.billing-toggle {
+  display: inline-flex;
+  background: var(--surface-darker);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 3px;
+}
+.billing-toggle button {
+  appearance: none;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-light);
+  padding: 0.45rem 1.1rem;
+  border-radius: 8px;
+  transition:
+    color var(--transition),
+    background var(--transition);
+}
+.billing-toggle button:hover {
+  color: var(--text-main);
+}
+.billing-toggle button[aria-pressed='true'] {
+  background: var(--card-bg);
+  color: var(--text-main);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+.billing-save-hint {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--success);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+/* Plan grid */
+.plan-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.plan-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  padding: 1.6rem 1.4rem;
+  transition:
+    transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+.plan-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(30, 36, 48, 0.22);
+  box-shadow: 0 12px 28px -14px rgba(0, 0, 0, 0.18);
+}
+[data-theme='dark'] .plan-card:hover {
+  border-color: var(--text-light);
+  box-shadow: 0 12px 28px -14px rgba(0, 0, 0, 0.5);
+}
+
+/* Recommended + current emphasis (full border, no side-stripe) */
+.plan-card.is-recommended {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 1px var(--primary-color) inset;
+}
+.plan-card.is-current {
+  border-color: var(--primary-color);
+  background: linear-gradient(180deg, rgba(255, 191, 48, 0.07), transparent 60%);
+}
+
+.plan-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: 1.5rem;
+}
+.plan-name {
+  font-family: var(--font-heading);
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--text-main);
+}
+.plan-tag {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.plan-tag--reco {
+  background: var(--primary-color);
+  color: #12151a;
+}
+.plan-tag--current {
+  background: var(--surface-hover);
+  color: var(--text-muted);
+  border: 1px solid var(--border-color);
+}
+
+/* Price */
+.plan-price {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  min-height: 2.2rem;
+}
+.plan-price__amount {
+  font-family: var(--font-heading);
+  font-size: 1.9rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text-main);
+  line-height: 1;
+}
+.plan-price__period {
+  font-size: 0.85rem;
+  color: var(--text-light);
+}
+.plan-price__free {
+  font-family: var(--font-heading);
+  font-size: 1.9rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text-main);
+  line-height: 1;
+}
+.plan-annual-note {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--text-light);
+  margin-top: -0.45rem;
+  min-height: 0.9rem;
+}
+
+/* Feature list */
+.plan-features {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  flex: 1;
+}
+.plan-features li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+.plan-features li i {
+  color: var(--primary-hover);
+  font-size: 1rem;
+  flex-shrink: 0;
+  margin-top: 0.05rem;
+}
+[data-theme='dark'] .plan-features li i {
+  color: var(--primary-color);
+}
+
+/* CTA */
+.plan-cta {
+  margin-top: auto;
+}
+.plan-cta .btn-primary,
+.plan-cta .btn-secondary {
+  width: 100%;
+  justify-content: center;
+}
+.plan-cta__static {
+  display: block;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-light);
+  padding: 0.62rem;
+  border: 1px dashed var(--border-color);
+  border-radius: 4px;
+}
+
+/* Loading skeletons */
+.plan-skeleton {
+  min-height: 280px;
+}
+.plan-skeleton .sk {
+  border-radius: 6px;
+  background: linear-gradient(
+    90deg,
+    var(--skeleton-base) 25%,
+    var(--skeleton-highlight) 50%,
+    var(--skeleton-base) 75%
+  );
+  background-size: 200% 100%;
+  animation: billing-shimmer 1.3s ease-in-out infinite;
+}
+
+@keyframes billing-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Staggered entrance — enhances an already-visible default */
+.plan-card,
+.billing-current {
+  animation: billing-rise 0.42s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+@keyframes billing-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plan-card,
+  .billing-current {
+    animation: none;
+  }
+  .plan-card:hover {
+    transform: none;
+  }
+  .plan-skeleton .sk {
+    animation: none;
+  }
+}

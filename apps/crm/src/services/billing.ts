@@ -8,6 +8,12 @@ export interface BillingPlan {
   price_brl: number | null;
   price_brl_annual: number | null;
   sort_order: number;
+  max_clients: number | null;
+  max_team_members: number | null;
+  storage_quota_bytes: number | null;
+  feature_hub_portal: boolean;
+  feature_analytics_reports: boolean;
+  feature_brand_customization: boolean;
 }
 
 export interface WorkspaceSubscription {
@@ -34,7 +40,9 @@ async function authHeaders(): Promise<Record<string, string>> {
 export async function listActivePlans(): Promise<BillingPlan[]> {
   const { data, error } = await supabase
     .from('plans')
-    .select('id, name, price_brl, price_brl_annual, sort_order')
+    .select(
+      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members, storage_quota_bytes, feature_hub_portal, feature_analytics_reports, feature_brand_customization',
+    )
     .eq('is_active', true)
     .order('sort_order', { ascending: true });
   if (error) throw new Error(error.message);
