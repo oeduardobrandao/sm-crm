@@ -193,12 +193,12 @@
   color: var(--text-main);
   line-height: 1;
 }
-.plan-annual-note {
+.plan-annual-lead {
   font-family: var(--font-mono);
   font-size: 0.68rem;
+  letter-spacing: 0.04em;
   color: var(--text-light);
-  margin-top: -0.45rem;
-  min-height: 0.9rem;
+  margin-bottom: 0.2rem;
 }
 
 /* Feature list */

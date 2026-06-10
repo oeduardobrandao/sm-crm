@@ -258,20 +258,18 @@ export default function CobrancaPage() {
                   </div>
 
                   <div>
+                    {isYear && monthly != null && monthly > 0 && (
+                      <div className="plan-annual-lead">em 12x de</div>
+                    )}
                     <div className="plan-price">
                       {monthly != null && monthly > 0 ? (
                         <>
                           <span className="plan-price__amount">{formatBRL(monthly)}</span>
-                          <span className="plan-price__period">/mês</span>
+                          {!isYear && <span className="plan-price__period">/mês</span>}
                         </>
                       ) : (
                         <span className="plan-price__free">Grátis</span>
                       )}
-                    </div>
-                    <div className="plan-annual-note">
-                      {isYear && p.price_brl_annual
-                        ? `${formatBRL(p.price_brl_annual)} cobrado anualmente`
-                        : ' '}
                     </div>
                   </div>
 
