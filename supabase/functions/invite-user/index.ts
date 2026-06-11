@@ -1,5 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
+import { seatsAvailable } from "./seats.ts";
+import { effectivePlanLimit } from "../_shared/entitlements-rpc.ts";
 
 async function findAuthUserByEmail(adminClient: any, email: string) {
   let page = 1;
@@ -114,6 +116,21 @@ Deno.serve(async (req) => {
     // Admin can't invite owner
     if (profile.role === 'admin' && role === 'owner') {
       throw new Error('Administradores não podem convidar novos donos.');
+    }
+
+    // Seat pre-check: count active members + pending invites against plan limit
+    const limit = await effectivePlanLimit(adminClient, profile.conta_id, "max_team_members");
+    const [{ count: members }, { count: pending }] = await Promise.all([
+      adminClient.from("workspace_members").select("*", { count: "exact", head: true })
+        .eq("workspace_id", profile.conta_id),
+      adminClient.from("invites").select("*", { count: "exact", head: true })
+        .eq("conta_id", profile.conta_id).eq("status", "pending"),
+    ]);
+    if (!seatsAvailable({ limit, members: members ?? 0, pendingInvites: pending ?? 0 })) {
+      return new Response(
+        JSON.stringify({ error: "plan_limit_exceeded", resource: "max_team_members" }),
+        { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } },
+      );
     }
 
     // Clean up any existing pending/expired invites for this email + workspace
