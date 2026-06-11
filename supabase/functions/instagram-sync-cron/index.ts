@@ -293,7 +293,7 @@ Deno.serve(createInstagramSyncCronHandler({
     const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
     const { data: accounts, error } = await supabase
       .from('instagram_accounts')
-      .select('id, instagram_user_id, encrypted_access_token, token_expires_at, follower_count, following_count, media_count')
+      .select('id, instagram_user_id, encrypted_access_token, token_expires_at, follower_count, following_count, media_count, clientes!inner(conta_id)')
       .eq('authorization_status', 'active')
       .eq('auto_sync_enabled', true)
       .or(`last_synced_at.is.null,last_synced_at.lt.${sixHoursAgo}`);
@@ -303,14 +303,27 @@ Deno.serve(createInstagramSyncCronHandler({
       return new Response("No accounts to sync", { status: 200 });
     }
 
-    console.log(`[IG-SYNC-CRON] Starting sync for ${accounts.length} account(s) (skipped recently synced)`);
+    // Keep only accounts whose workspace has feature_auto_sync_cron
+    const wsIds = [...new Set(accounts.map((a: any) => (a.clientes as { conta_id: string }).conta_id))];
+    const allowed = new Set<string>();
+    await Promise.all(wsIds.map(async (ws) => {
+      const { data } = await supabase.rpc("effective_plan_feature",
+        { ws_id: ws, feature_key: "feature_auto_sync_cron" });
+      if (data === true) allowed.add(ws);
+    }));
+    const eligible = accounts.filter((a: any) => allowed.has((a.clientes as { conta_id: string }).conta_id));
+    if (!eligible.length) {
+      return new Response("No eligible accounts", { status: 200 });
+    }
+
+    console.log(`[IG-SYNC-CRON] Starting sync for ${eligible.length} eligible account(s) of ${accounts.length} fetched (skipped recently synced or lacking feature)`);
 
     let syncedCount = 0;
     let failedCount = 0;
     const errors: Array<{ accountId: string; error: string }> = [];
 
     const CONCURRENCY = Math.max(1, parseInt(Deno.env.get("SYNC_CONCURRENCY") || "5", 10) || 5);
-    await runPool(accounts, CONCURRENCY, async (account) => {
+    await runPool(eligible, CONCURRENCY, async (account) => {
       try {
         const result = await syncAccount(supabase, account);
         if (result.success) {
@@ -331,14 +344,14 @@ Deno.serve(createInstagramSyncCronHandler({
       console.log(`[IG-SYNC-CRON] Done. Synced: ${syncedCount}, Failed: ${failedCount}`);
 
       if (failedCount > 0) {
-        await reportCronFailure(supabase, 'instagram-sync-cron', { total: accounts.length, failed: failedCount, errors });
+        await reportCronFailure(supabase, 'instagram-sync-cron', { total: eligible.length, failed: failedCount, errors });
       }
 
       return new Response(JSON.stringify({
         success: true,
         synced: syncedCount,
         failed: failedCount,
-        total: accounts.length,
+        total: eligible.length,
         errors
       }), {
         headers: { 'Content-Type': 'application/json' }
