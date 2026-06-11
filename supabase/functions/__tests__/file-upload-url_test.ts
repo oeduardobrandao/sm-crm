@@ -174,9 +174,10 @@ Deno.test("file-upload-url: quota exceeded returns 413", async () => {
   const db = createSupabaseQueryMock();
   setupAuthAndProfile(db);
   db.queue("workspaces", "select", {
-    data: { storage_quota_bytes: 1000, storage_used_bytes: 900 },
+    data: { storage_used_bytes: 900 },
     error: null,
   });
+  db.queueRpc("effective_plan_limit", { data: 1000, error: null });
   const handler = makeHandler(db);
   const res = await handler(authedRequest({ filename: "f.png", mime_type: "image/png", size_bytes: 200 }));
   assertEquals(res.status, 413);
@@ -190,9 +191,10 @@ Deno.test("file-upload-url: image upload returns presigned URL and r2_key", asyn
   const db = createSupabaseQueryMock();
   setupAuthAndProfile(db);
   db.queue("workspaces", "select", {
-    data: { storage_quota_bytes: null, storage_used_bytes: 0 },
+    data: { storage_used_bytes: 0 },
     error: null,
   });
+  db.queueRpc("effective_plan_limit", { data: null, error: null });
   const handler = makeHandler(db);
   const res = await handler(authedRequest({ filename: "photo.png", mime_type: "image/png", size_bytes: 5000 }));
   assertEquals(res.status, 200);
@@ -209,9 +211,10 @@ Deno.test("file-upload-url: video upload returns both file and thumbnail presign
   const db = createSupabaseQueryMock();
   setupAuthAndProfile(db);
   db.queue("workspaces", "select", {
-    data: { storage_quota_bytes: null, storage_used_bytes: 0 },
+    data: { storage_used_bytes: 0 },
     error: null,
   });
+  db.queueRpc("effective_plan_limit", { data: null, error: null });
   const handler = makeHandler(db);
   const res = await handler(authedRequest({
     filename: "clip.mp4", mime_type: "video/mp4", size_bytes: 10000,
@@ -229,9 +232,10 @@ Deno.test("file-upload-url: document upload classifies kind as document", async 
   const db = createSupabaseQueryMock();
   setupAuthAndProfile(db);
   db.queue("workspaces", "select", {
-    data: { storage_quota_bytes: null, storage_used_bytes: 0 },
+    data: { storage_used_bytes: 0 },
     error: null,
   });
+  db.queueRpc("effective_plan_limit", { data: null, error: null });
   const handler = makeHandler(db);
   const res = await handler(authedRequest({ filename: "file.pdf", mime_type: "application/pdf", size_bytes: 2000 }));
   assertEquals(res.status, 200);
@@ -245,9 +249,10 @@ Deno.test("file-upload-url: upload into a valid folder succeeds", async () => {
   setupAuthAndProfile(db);
   db.queue("folders", "select", { data: { conta_id: "conta-1" }, error: null });
   db.queue("workspaces", "select", {
-    data: { storage_quota_bytes: null, storage_used_bytes: 0 },
+    data: { storage_used_bytes: 0 },
     error: null,
   });
+  db.queueRpc("effective_plan_limit", { data: null, error: null });
   const handler = makeHandler(db);
   const res = await handler(authedRequest({ filename: "f.png", mime_type: "image/png", size_bytes: 1000, folder_id: 5 }));
   assertEquals(res.status, 200);
@@ -257,9 +262,10 @@ Deno.test("file-upload-url: quota check passes when under limit", async () => {
   const db = createSupabaseQueryMock();
   setupAuthAndProfile(db);
   db.queue("workspaces", "select", {
-    data: { storage_quota_bytes: 10000, storage_used_bytes: 5000 },
+    data: { storage_used_bytes: 5000 },
     error: null,
   });
+  db.queueRpc("effective_plan_limit", { data: 10000, error: null });
   const handler = makeHandler(db);
   const res = await handler(authedRequest({ filename: "f.png", mime_type: "image/png", size_bytes: 3000 }));
   assertEquals(res.status, 200);
@@ -284,7 +290,8 @@ Deno.test("file-upload-url: rejects executable MIME type", async () => {
 Deno.test("file-upload-url: accepts valid video MIME type", async () => {
   const db = createSupabaseQueryMock();
   setupAuthAndProfile(db);
-  db.queue("workspaces", "select", { data: { storage_used_bytes: 0, storage_quota_bytes: 1000000 }, error: null });
+  db.queue("workspaces", "select", { data: { storage_used_bytes: 0 }, error: null });
+  db.queueRpc("effective_plan_limit", { data: 1000000, error: null });
   const handler = makeHandler(db);
   const res = await handler(authedRequest({
     filename: "video.mp4",

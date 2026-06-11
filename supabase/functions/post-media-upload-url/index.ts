@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { signPutUrl } from "../_shared/r2.ts";
 import { buildCorsHeaders } from "../_shared/cors.ts";
+import { effectivePlanLimit } from "../_shared/entitlements-rpc.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -74,9 +75,8 @@ Deno.serve(async (req) => {
   // the workspace row; this early-reject exists only so the client fails fast
   // before uploading bytes to R2.
   const { data: ws } = await svc.from("workspaces")
-    .select("storage_quota_bytes, storage_used_bytes")
-    .eq("id", profile.conta_id).single();
-  const quota = ws?.storage_quota_bytes ?? null;
+    .select("storage_used_bytes").eq("id", profile.conta_id).single();
+  const quota = await effectivePlanLimit(svc, profile.conta_id, "storage_quota_bytes"); // null=unlimited
   if (quota !== null) {
     const used = Number(ws?.storage_used_bytes ?? 0);
     const needed = size_bytes + (thumbnail?.size_bytes ?? 0);
