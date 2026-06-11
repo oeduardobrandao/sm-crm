@@ -144,9 +144,35 @@ Deno.test("copy-file: returns 413 when quota exceeded", async () => {
     },
     error: null,
   });
-  db.queue("workspaces", "select", { data: { storage_used_bytes: 9500, storage_quota_bytes: 10000 }, error: null });
+  db.queue("workspaces", "select", { data: { storage_used_bytes: 9500 }, error: null });
+  db.queueRpc("effective_plan_limit", { data: 10000, error: null });
   const handler = makeHandler(db);
   const res = await handler(req("POST", "/files/1/copy", { destination_folder_id: null }));
+  assertEquals(res.status, 413);
+  const body = await readJson(res);
+  assertEquals(body.error, "quota_exceeded");
+});
+
+Deno.test("copy-file: quota=0 (fail-closed) blocks copy", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("files", "select", {
+    data: {
+      id: 2,
+      conta_id: "conta-1",
+      size_bytes: 1,
+      name: "tiny.jpg",
+      kind: "image",
+      r2_key: "conta-1/tiny.jpg",
+      thumbnail_r2_key: null,
+    },
+    error: null,
+  });
+  // quota=0 means fail-closed (not unlimited) — copy must be blocked
+  db.queue("workspaces", "select", { data: { storage_used_bytes: 0 }, error: null });
+  db.queueRpc("effective_plan_limit", { data: 0, error: null });
+  const handler = makeHandler(db);
+  const res = await handler(req("POST", "/files/2/copy", { destination_folder_id: null }));
   assertEquals(res.status, 413);
   const body = await readJson(res);
   assertEquals(body.error, "quota_exceeded");
@@ -182,9 +208,25 @@ Deno.test("copy-folder: returns 413 when quota exceeded", async () => {
   setupAuth(db);
   db.queue("folders", "select", { data: { id: 2, conta_id: "conta-1", name: "Big Folder" }, error: null });
   db.queueRpc("folder_sizes_batch", { data: [{ folder_id: 2, total_size_bytes: 5000, file_count: 10 }], error: null });
-  db.queue("workspaces", "select", { data: { storage_used_bytes: 9000, storage_quota_bytes: 10000 }, error: null });
+  db.queue("workspaces", "select", { data: { storage_used_bytes: 9000 }, error: null });
+  db.queueRpc("effective_plan_limit", { data: 10000, error: null });
   const handler = makeHandler(db);
   const res = await handler(req("POST", "/folders/2/copy", {}));
+  assertEquals(res.status, 413);
+  const body = await readJson(res);
+  assertEquals(body.error, "quota_exceeded");
+});
+
+Deno.test("copy-folder: quota=0 (fail-closed) blocks copy", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("folders", "select", { data: { id: 3, conta_id: "conta-1", name: "Empty Folder" }, error: null });
+  db.queueRpc("folder_sizes_batch", { data: [{ folder_id: 3, total_size_bytes: 1, file_count: 1 }], error: null });
+  // quota=0 means fail-closed (not unlimited) — copy must be blocked
+  db.queue("workspaces", "select", { data: { storage_used_bytes: 0 }, error: null });
+  db.queueRpc("effective_plan_limit", { data: 0, error: null });
+  const handler = makeHandler(db);
+  const res = await handler(req("POST", "/folders/3/copy", {}));
   assertEquals(res.status, 413);
   const body = await readJson(res);
   assertEquals(body.error, "quota_exceeded");
