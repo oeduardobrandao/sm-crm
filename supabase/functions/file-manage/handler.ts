@@ -2,6 +2,7 @@ import { createJsonResponder } from "../_shared/http.ts";
 import { insertAuditLog } from "../_shared/audit.ts";
 import { copyObject } from "../_shared/r2.ts";
 import { checkRateLimit } from "../_shared/rate-limit.ts";
+import { effectivePlanLimit } from "../_shared/entitlements-rpc.ts";
 
 async function signZipToken(payload: Record<string, unknown>, secret: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -168,9 +169,10 @@ export function createFileManageHandler(deps: FileManageDeps) {
 
         // Fetch workspace storage usage
         const { data: workspace } = await svc.from("workspaces")
-          .select("storage_used_bytes, storage_quota_bytes")
+          .select("storage_used_bytes")
           .eq("id", contaId)
           .single();
+        const quota = await effectivePlanLimit(svc as any, contaId, "storage_quota_bytes");
 
         return json({
           folder,
@@ -179,7 +181,10 @@ export function createFileManageHandler(deps: FileManageDeps) {
           breadcrumbs,
           storage: {
             used_bytes: workspace?.storage_used_bytes ?? 0,
-            quota_bytes: workspace?.storage_quota_bytes ?? 0,
+            // NOTE: the UI's legacy display sentinel is 0 = "unlimited/unknown", which now
+            // conflicts with the resolver's 0 = fail-closed-blocked. Keep this comment so nobody
+            // "aligns" the quota checks to this display semantic.
+            quota_bytes: quota ?? 0,
           },
         });
       }
@@ -274,9 +279,10 @@ export function createFileManageHandler(deps: FileManageDeps) {
           return json({ error: "copy_limit_exceeded", file_count: totalFiles, limit: 200 }, 413);
         }
 
-        const { data: ws } = await svc.from("workspaces").select("storage_used_bytes, storage_quota_bytes").eq("id", contaId).single();
-        if (ws && ws.storage_quota_bytes > 0 && (ws.storage_used_bytes + totalBytes) > ws.storage_quota_bytes) {
-          return json({ error: "quota_exceeded", used: ws.storage_used_bytes, quota: ws.storage_quota_bytes, copy_bytes: totalBytes }, 413);
+        const { data: ws } = await svc.from("workspaces").select("storage_used_bytes").eq("id", contaId).single();
+        const folderCopyQuota = await effectivePlanLimit(svc as any, contaId, "storage_quota_bytes");
+        if (folderCopyQuota !== null && (Number(ws?.storage_used_bytes ?? 0) + totalBytes) > folderCopyQuota) {
+          return json({ error: "quota_exceeded", used: ws?.storage_used_bytes ?? 0, quota: folderCopyQuota, copy_bytes: totalBytes }, 413);
         }
 
         let copiedCount = 0;
@@ -386,9 +392,10 @@ export function createFileManageHandler(deps: FileManageDeps) {
           if (!destFolder || destFolder.conta_id !== contaId) return json({ error: "Destination not found" }, 404);
         }
 
-        const { data: ws } = await svc.from("workspaces").select("storage_used_bytes, storage_quota_bytes").eq("id", contaId).single();
-        if (ws && ws.storage_quota_bytes > 0 && (ws.storage_used_bytes + source.size_bytes) > ws.storage_quota_bytes) {
-          return json({ error: "quota_exceeded", used: ws.storage_used_bytes, quota: ws.storage_quota_bytes, copy_bytes: source.size_bytes }, 413);
+        const { data: ws } = await svc.from("workspaces").select("storage_used_bytes").eq("id", contaId).single();
+        const fileCopyQuota = await effectivePlanLimit(svc as any, contaId, "storage_quota_bytes");
+        if (fileCopyQuota !== null && (Number(ws?.storage_used_bytes ?? 0) + source.size_bytes) > fileCopyQuota) {
+          return json({ error: "quota_exceeded", used: ws?.storage_used_bytes ?? 0, quota: fileCopyQuota, copy_bytes: source.size_bytes }, 413);
         }
 
         const newR2Key = `${contaId}/${crypto.randomUUID()}-${source.name}`;
