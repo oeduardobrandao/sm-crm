@@ -67,7 +67,10 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
     // Resolve caller's workspace and guard feature_post_scheduling
     const { data: actorProfile } = await svcDb.from("profiles").select("conta_id").eq("id", actorId).single();
     if (!actorProfile?.conta_id) return json({ error: "Unauthorized" }, 403);
-    if (!(await effectivePlanFeature(svcDb as any, actorProfile.conta_id, "feature_post_scheduling"))) {
+    if (
+      (action === "schedule" || action === "publish-now") &&
+      !(await effectivePlanFeature(svcDb as any, actorProfile.conta_id, "feature_post_scheduling"))
+    ) {
       return json({ error: "feature_disabled", feature: "feature_post_scheduling" }, 403);
     }
 
