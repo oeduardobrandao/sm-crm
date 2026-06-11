@@ -1,24 +1,15 @@
 import { createJsonResponder } from "../_shared/http.ts";
+import { resolveHubToken } from "../_shared/hub-token.ts";
 
 type DbClient = {
   from: (table: string) => any;
+  rpc: (fn: string, params: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
 };
 
 interface HubBriefingHandlerDeps {
   buildCorsHeaders: (req: Request) => Record<string, string>;
   createDb: () => DbClient;
   now: () => string;
-}
-
-async function resolveToken(db: DbClient, token: string, now: string) {
-  const { data } = await db
-    .from("client_hub_tokens")
-    .select("cliente_id, is_active, clientes(conta_id)")
-    .eq("token", token)
-    .gt("expires_at", now)
-    .maybeSingle();
-  if (!data || !data.is_active) return null;
-  return data as { cliente_id: number; is_active: boolean; clientes: { conta_id: number } };
 }
 
 export function createHubBriefingHandler(deps: HubBriefingHandlerDeps) {
@@ -34,7 +25,7 @@ export function createHubBriefingHandler(deps: HubBriefingHandlerDeps) {
       const token = new URL(req.url).searchParams.get("token");
       if (!token) return json({ error: "token required" }, 400);
 
-      const hubToken = await resolveToken(db, token, deps.now());
+      const hubToken = await resolveHubToken(db as any, token, deps.now());
       if (!hubToken) return json({ error: "Link inválido." }, 404);
 
       const { data, error } = await db
@@ -60,7 +51,7 @@ export function createHubBriefingHandler(deps: HubBriefingHandlerDeps) {
         return json({ error: "token, question_id, and answer are required" }, 400);
       }
 
-      const hubToken = await resolveToken(db, token, deps.now());
+      const hubToken = await resolveHubToken(db as any, token, deps.now());
       if (!hubToken) return json({ error: "Link inválido." }, 404);
 
       const { data: question } = await db

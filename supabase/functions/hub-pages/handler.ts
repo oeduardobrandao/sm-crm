@@ -1,7 +1,9 @@
 import { createJsonResponder } from "../_shared/http.ts";
+import { resolveHubToken } from "../_shared/hub-token.ts";
 
 type DbClient = {
   from: (table: string) => any;
+  rpc: (fn: string, params: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
 };
 
 interface HubPagesHandlerDeps {
@@ -24,13 +26,8 @@ export function createHubPagesHandler(deps: HubPagesHandlerDeps) {
     if (!token) return json({ error: "token required" }, 400);
 
     const db = deps.createDb();
-    const { data: hubToken } = await db
-      .from("client_hub_tokens")
-      .select("cliente_id, conta_id, is_active")
-      .eq("token", token)
-      .gt("expires_at", deps.now())
-      .maybeSingle();
-    if (!hubToken || !hubToken.is_active) return json({ error: "Link inválido." }, 404);
+    const hubToken = await resolveHubToken(db as any, token, deps.now());
+    if (!hubToken) return json({ error: "Link inválido." }, 404);
 
     const { data: clientCheck } = await db
       .from("clientes")

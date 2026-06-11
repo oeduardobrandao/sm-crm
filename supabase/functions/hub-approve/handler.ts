@@ -1,5 +1,6 @@
 import { createJsonResponder } from "../_shared/http.ts";
 import { validateForScheduling } from "../_shared/instagram-publish-utils.ts";
+import { resolveHubToken } from "../_shared/hub-token.ts";
 
 type DbClient = {
   from: (table: string) => any;
@@ -26,13 +27,8 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
 
     const db = deps.createDb();
 
-    const { data: hubToken } = await db
-      .from("client_hub_tokens")
-      .select("cliente_id, is_active")
-      .eq("token", token)
-      .gt("expires_at", deps.now())
-      .maybeSingle();
-    if (!hubToken || !hubToken.is_active) return json({ error: "Link inválido." }, 404);
+    const hubToken = await resolveHubToken(db as any, token, deps.now());
+    if (!hubToken) return json({ error: "Link inválido." }, 404);
 
     const { data: post } = await db
       .from("workflow_posts")
