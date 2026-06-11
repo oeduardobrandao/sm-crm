@@ -28,6 +28,8 @@ create trigger trg_limit_instagram before insert on instagram_accounts
 -- active workflows per client: scope cliente_id, only status='ativo'
 -- WHEN guard ensures the trigger only fires for active inserts (not arquivado/concluido),
 -- so archived inserts are never blocked by the active-workflow limit.
+-- NOTE: BEFORE INSERT only — promoting an existing arquivado row to 'ativo' via UPDATE is
+-- not blocked here (matches the "block new" policy); enforce at the app layer if needed.
 drop trigger if exists trg_limit_workflows on workflows;
 create trigger trg_limit_workflows before insert on workflows
   for each row when (new.status = 'ativo')
