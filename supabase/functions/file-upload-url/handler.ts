@@ -1,4 +1,5 @@
 import { createJsonResponder } from "../_shared/http.ts";
+import { effectivePlanLimit } from "../_shared/entitlements-rpc.ts";
 
 type DbClient = {
   from: (table: string) => any;
@@ -87,9 +88,8 @@ export function createFileUploadUrlHandler(deps: FileUploadUrlDeps) {
     }
 
     const { data: ws } = await svc.from("workspaces")
-      .select("storage_quota_bytes, storage_used_bytes")
-      .eq("id", profile.conta_id).single();
-    const quota = ws?.storage_quota_bytes ?? null;
+      .select("storage_used_bytes").eq("id", profile.conta_id).single();
+    const quota = await effectivePlanLimit(svc as any, profile.conta_id, "storage_quota_bytes"); // null=unlimited
     if (quota !== null) {
       const used = Number(ws?.storage_used_bytes ?? 0);
       const needed = size_bytes + (thumbnail?.size_bytes ?? 0);
