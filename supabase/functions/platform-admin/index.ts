@@ -353,8 +353,8 @@ async function handleListPlans(
   const enriched = await Promise.all(
     (plans || []).map(async (plan) => {
       const { count } = await svc
-        .from("workspace_plan_overrides")
-        .select("id", { count: "exact", head: true })
+        .from("workspaces")
+        .select("*", { count: "exact", head: true })
         .eq("plan_id", plan.id);
       return { ...plan, workspace_count: count || 0 };
     })
