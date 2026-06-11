@@ -27,7 +27,7 @@
 - Modify: `supabase/functions/workspace-limits/index.ts`, `instagram-analytics/index.ts`, `instagram-publish/index.ts`, `instagram-integration/index.ts`, `report-worker/index.ts`, `instagram-report-generator-v2/index.ts`, `instagram-sync-cron/index.ts`, and the `hub-*` handlers
 - Delete: `supabase/functions/portal-data/`, `supabase/functions/portal-approve/`, `apps/crm/src/store/portal.ts`, `apps/crm/src/pages/portal/PortalPage.tsx`
 - Create: `apps/crm/src/hooks/useEntitlements.ts`, `apps/crm/src/components/paywall/FeatureGate.tsx`, `apps/crm/src/components/paywall/UpgradeLockedScreen.tsx`
-- Modify: `apps/crm/src/components/layout/ProtectedRoute.tsx`, `apps/crm/src/App.tsx` (route removal), `apps/crm/src/pages/clientes/ClientesPage.tsx`, `apps/crm/src/pages/leads/LeadsPage.tsx` (+ other create entry points)
+- Modify: `apps/crm/src/components/layout/ProtectedRoute.tsx`, `apps/crm/src/App.tsx` (route removal), `apps/crm/src/store/posts.ts` (portal-token removal), `apps/crm/src/pages/clientes/ClientesPage.tsx`, `apps/crm/src/pages/leads/LeadsPage.tsx` (+ other create entry points)
 
 ---
 
@@ -54,9 +54,9 @@ begin
   -- pro.feature_leads = true
   v_ws := et_make_workspace('pro');
   assert effective_plan_feature(v_ws, 'feature_leads') = true, 'pro should have leads';
-  -- feature_overrides flips it on for a free ws
-  insert into workspaces (id, name, plan_id, plan_source) values (gen_random_uuid(), 'x', 'free', 'manual');
-  v_ws := (select id from workspaces order by created_at desc limit 1);
+  -- feature_overrides flips it on for a free ws (reuse the helper — a raw
+  -- workspaces insert would need every NOT NULL column)
+  v_ws := et_make_workspace('free');
   insert into workspace_plan_overrides (workspace_id, feature_overrides)
     values (v_ws, '{"feature_leads": true}'::jsonb);
   assert effective_plan_feature(v_ws, 'feature_leads') = true, 'override should enable leads';
@@ -84,6 +84,7 @@ create or replace function effective_plan_feature(ws_id uuid, feature_key text)
 returns boolean
 language plpgsql
 security definer
+set search_path = public
 stable
 as $$
 declare
@@ -128,7 +129,7 @@ git commit -m "feat(paywall): effective_plan_feature resolver"
 
 ---
 
-## Task 2: `enforce_plan_feature()` trigger + 7 write-feature triggers
+## Task 2: `enforce_plan_feature()` trigger + 8 write-feature triggers
 
 **Files:**
 - Create: `supabase/migrations/20260611140002_enforce_plan_feature_fn.sql`
@@ -144,12 +145,16 @@ Create `supabase/tests/entitlements/11_feature_triggers.sql`:
 \i supabase/tests/entitlements/_helpers.sql
 begin;
 do $$
-declare v_ws uuid; v_uid uuid := gen_random_uuid(); v_blocked boolean := false;
+declare v_ws uuid; v_uid uuid := gen_random_uuid(); v_cli bigint; v_blocked boolean := false;
 begin
-  -- free.feature_ideas = false; ideias uses workspace_id
+  -- free.feature_ideas = false. ideias has NO user_id column — its NOT NULLs are
+  -- workspace_id, cliente_id, titulo, descricao (20260414114009_ideias.sql), so a
+  -- clientes fixture is needed first (free max_clients=2, so one insert is fine).
   v_ws := et_make_workspace('free');
+  insert into clientes (user_id, conta_id, nome, sigla, cor)
+    values (v_uid, v_ws, 'C', 'C', '#000') returning id into v_cli;
   begin
-    insert into ideias (workspace_id, user_id, titulo) values (v_ws, v_uid, 'I1');
+    insert into ideias (workspace_id, cliente_id, titulo, descricao) values (v_ws, v_cli, 'I1', 'd');
   exception when sqlstate 'P0001' then
     assert sqlerrm like 'feature_disabled:feature_ideas%', format('wrong msg: %s', sqlerrm);
     v_blocked := true;
@@ -158,13 +163,15 @@ begin
 
   -- pro.feature_ideas = true => allowed
   v_ws := et_make_workspace('pro');
-  insert into ideias (workspace_id, user_id, titulo) values (v_ws, v_uid, 'OK');
+  insert into clientes (user_id, conta_id, nome, sigla, cor)
+    values (v_uid, v_ws, 'C2', 'C2', '#000') returning id into v_cli;
+  insert into ideias (workspace_id, cliente_id, titulo, descricao) values (v_ws, v_cli, 'OK', 'd');
   raise notice 'PASS 11_feature_triggers';
 end $$;
 rollback;
 ```
 
-(Adjust column lists to each table's `NOT NULL` set per the baseline/feature migrations.)
+(Column lists verified against the migrations: `clientes` requires `user_id, conta_id, nome, sigla, cor`; `ideias` requires `workspace_id, cliente_id, titulo, descricao`.)
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -184,6 +191,7 @@ create or replace function enforce_plan_feature()
 returns trigger
 language plpgsql
 security definer
+set search_path = public
 as $$
 declare
   v_feature_key text := TG_ARGV[0];
@@ -209,7 +217,7 @@ end;
 $$;
 ```
 
-- [ ] **Step 4: Attach the 7 triggers**
+- [ ] **Step 4: Attach the 8 triggers**
 
 Create `supabase/migrations/20260611140003_feature_triggers.sql`:
 
@@ -238,9 +246,13 @@ drop trigger if exists trg_feature_custom_props on template_property_definitions
 create trigger trg_feature_custom_props before insert on template_property_definitions
   for each row execute function enforce_plan_feature('feature_custom_properties', 'direct', 'conta_id');
 
--- brand: block edits too (INSERT OR UPDATE); hub_brand is scoped via clientes
+-- brand: block edits too (INSERT OR UPDATE); hub_brand + hub_brand_files are scoped via clientes
 drop trigger if exists trg_feature_brand on hub_brand;
 create trigger trg_feature_brand before insert or update on hub_brand
+  for each row execute function enforce_plan_feature('feature_brand_customization', 'via_clientes', 'cliente_id');
+
+drop trigger if exists trg_feature_brand_files on hub_brand_files;
+create trigger trg_feature_brand_files before insert or update on hub_brand_files
   for each row execute function enforce_plan_feature('feature_brand_customization', 'via_clientes', 'cliente_id');
 ```
 
@@ -262,7 +274,7 @@ declare v_ws uuid; v_uid uuid := gen_random_uuid(); v_cli bigint; v_blocked bool
 begin
   -- brand update blocked on free (feature_brand_customization=false), scoped via clientes
   v_ws := et_make_workspace('free');
-  insert into clientes (user_id, conta_id, nome) values (v_uid, v_ws, 'C') returning id into v_cli;
+  insert into clientes (user_id, conta_id, nome, sigla, cor) values (v_uid, v_ws, 'C', 'C', '#000') returning id into v_cli;
   begin
     insert into hub_brand (cliente_id) values (v_cli);
   exception when sqlstate 'P0001' then v_blocked := true; end;
@@ -279,7 +291,7 @@ Expected: both `PASS` notices.
 
 ```bash
 git add supabase/migrations/20260611140002_enforce_plan_feature_fn.sql supabase/migrations/20260611140003_feature_triggers.sql supabase/tests/entitlements/11_feature_triggers.sql
-git commit -m "feat(paywall): enforce_plan_feature trigger + 7 write-feature triggers"
+git commit -m "feat(paywall): enforce_plan_feature trigger + 8 write-feature triggers"
 ```
 
 ---
@@ -602,20 +614,20 @@ In `supabase/functions/report-worker/index.ts`, change the candidate select (lin
 .select("id, status, locked_at, retry_count, conta_id")
 ```
 
-Then, in the claim loop (after a candidate is chosen, before/right after claiming), skip + mark candidates whose workspace lacks the feature:
+Then, inside the claim loop (the worker fetches up to 5 candidates and claims ONE — lines ~74-93), right after a successful claim, mark non-entitled candidates `skipped` and `continue` to the next candidate. Do NOT `return` here — that would burn the whole cron tick on one non-entitled report:
 
 ```ts
 import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
-// for the chosen `claimed` row (conta_id now present):
-if (!(await effectivePlanFeature(supabase, claimed.conta_id as string, "feature_analytics_reports"))) {
+// inside the claim loop, right after a candidate is successfully claimed:
+if (!(await effectivePlanFeature(supabase, candidate.conta_id as string, "feature_analytics_reports"))) {
   await supabase.from("analytics_reports").update({
     status: "skipped", locked_at: null,
-  }).eq("id", claimed.id);
-  return json({ processed: false, reason: "feature_disabled" });
+  }).eq("id", candidate.id);
+  continue; // try the next candidate this tick
 }
 ```
 
-(If `analytics_reports.status` has a CHECK constraint without `'skipped'`, use `'failed'` with a `generation_error` of `'feature_disabled'` instead — verify the status enum in the report migrations.)
+(Verified: `analytics_reports.status` has NO CHECK constraint — only the separate `ai_status` column does — so `'skipped'` is insertable, and the candidate query (`pending` / retryable-`failed` / stale-`generating`) never re-selects it. Do check that the CRM reports list renders an unknown `'skipped'` status sanely.)
 
 - [ ] **Step 2: Guard generator-v2 as defense-in-depth**
 
@@ -730,13 +742,17 @@ export function hubTokenActive(tok: { is_active: boolean }, featureEnabled: bool
 /**
  * Resolves a hub token to its workspace and enforces feature_hub_portal.
  * Returns the token row, or null if missing/inactive/feature-disabled.
+ * Pass expectedContaId when the caller already resolved the workspace
+ * (hub-bootstrap resolves by slug) to preserve the slug↔token binding.
  */
 export async function resolveHubToken(
-  db: SupabaseClient, token: string, now: string,
+  db: SupabaseClient, token: string, now: string, expectedContaId?: string,
 ): Promise<HubToken | null> {
-  const { data } = await db.from("client_hub_tokens")
+  let q = db.from("client_hub_tokens")
     .select("cliente_id, conta_id, is_active")
-    .eq("token", token).gt("expires_at", now).maybeSingle();
+    .eq("token", token).gt("expires_at", now);
+  if (expectedContaId) q = q.eq("conta_id", expectedContaId);
+  const { data } = await q.maybeSingle();
   if (!data) return null;
   const featureOn = await effectivePlanFeature(db, data.conta_id as string, "feature_hub_portal");
   if (!hubTokenActive(data, featureOn)) return null;
@@ -746,7 +762,7 @@ export async function resolveHubToken(
 
 - [ ] **Step 4: Route each hub-* handler through `resolveHubToken`**
 
-For each handler that inlines `client_hub_tokens` token lookup (`hub-bootstrap` 38-44, `hub-posts` 39-46, `hub-reports` 32-37, `hub-dashboard` 49-54, `hub-brand` 25-30, `hub-briefing` 13-21, `hub-ideias` 13-20, `hub-pages` 27-32, `hub-approve` 29-34, `hub-edit-suggestion` 67-72, `hub-instagram-feed` 27-32), replace the inline `.from("client_hub_tokens")...maybeSingle()` block with `const hubToken = await resolveHubToken(db, token, deps.now());` and the existing `if (!hubToken) return <not found/403>` guard. `hub-bootstrap` keeps its `conta.hub_enabled` check in addition.
+For each handler that inlines `client_hub_tokens` token lookup (`hub-bootstrap` 38-44, `hub-posts` 39-46, `hub-reports` 32-37, `hub-dashboard` 49-54, `hub-brand` 25-30, `hub-briefing` 13-21, `hub-ideias` 13-20, `hub-pages` 27-32, `hub-approve` 29-34, `hub-edit-suggestion` 67-72, `hub-instagram-feed` 27-32), replace the inline `.from("client_hub_tokens")...maybeSingle()` block with `const hubToken = await resolveHubToken(db, token, deps.now());` and the existing `if (!hubToken) return <not found/403>` guard. **`hub-bootstrap` MUST pass `conta.id` as `expectedContaId`** — it resolves the workspace by slug first and today binds the token with `.eq("conta_id", conta.id)` (`handler.ts:38-44`); dropping that binding would let a token from one workspace be served under another workspace's slug/branding. `hub-bootstrap` also keeps its `conta.hub_enabled` check in addition. (Behavior note: all current handlers already 404 inactive tokens, so folding `is_active` into the null return is behavior-preserving.)
 
 - [ ] **Step 5: Run test + verify**
 
@@ -766,11 +782,17 @@ git commit -m "feat(paywall): shared hub-token resolver enforcing feature_hub_po
 
 **Files:**
 - Delete: `supabase/functions/portal-data/`, `supabase/functions/portal-approve/`, `apps/crm/src/store/portal.ts`, `apps/crm/src/pages/portal/PortalPage.tsx`
-- Modify: `apps/crm/src/App.tsx` (remove `/portal/:token` route + `PortalPage` import), `supabase/functions/__tests__/config-audit_test.ts` (remove `portal-data`/`portal-approve` from `REQUIRED_FUNCTIONS`), `apps/crm/src/__tests__/store.workflows.test.ts` (remove portal mocks/cases)
+- Modify: `apps/crm/src/store/posts.ts` (drop `getPortalToken` usage in `replyToPostApproval`), `apps/crm/src/App.tsx` (remove `/portal/:token` route + `PortalPage` import), `supabase/functions/__tests__/config-audit_test.ts` (remove `portal-data`/`portal-approve` from `REQUIRED_FUNCTIONS`), `apps/crm/src/__tests__/store.workflows.test.ts` (remove portal mocks/cases)
 
-- [ ] **Step 1: Remove the frontend route + page**
+- [ ] **Step 0: Confirm the legacy portal is dead BEFORE removing the access surface**
 
-In `apps/crm/src/App.tsx`, delete the `const PortalPage = lazy(...)` import (line 19) and the `<Route path="/portal/:token" ... />` route. Delete `apps/crm/src/pages/portal/PortalPage.tsx` and `apps/crm/src/store/portal.ts`. Remove any imports of `store/portal` (check `store/index.ts`).
+Removing the route/functions is the breaking act (the deferred table DROP is just cleanup). Check recent `portal-data`/`portal-approve` invocations in the Supabase function logs and recent `portal_tokens` activity (e.g. rows created in the last 90 days). If there is recent traffic, STOP and surface it to the user instead of proceeding.
+
+- [ ] **Step 1: Refactor `store/posts.ts`, then remove the frontend route + page**
+
+`apps/crm/src/store/posts.ts` imports `getPortalToken` and uses it inside `replyToPostApproval` — a functional dependency, not just an import. Change `replyToPostApproval` to stop resolving a portal token and insert the `post_approvals` row with a null token (already supported — see "replyToPostApproval works without portal token", `store.workflows.test.ts:450`).
+
+Then in `apps/crm/src/App.tsx`, delete the `const PortalPage = lazy(...)` import (line 19) and the `<Route path="/portal/:token" ... />` route (line 83). Delete `apps/crm/src/pages/portal/PortalPage.tsx` and `apps/crm/src/store/portal.ts`. Remove any remaining imports of `store/portal` (check `store/index.ts`).
 
 - [ ] **Step 2: Remove the edge functions + audit entries**
 
@@ -782,7 +804,7 @@ In `supabase/functions/__tests__/config-audit_test.ts`, remove `"portal-data"` a
 
 - [ ] **Step 3: Remove the portal store tests**
 
-In `apps/crm/src/__tests__/store.workflows.test.ts`, delete the test cases and mocks referencing `portal_tokens`/`portal_approvals` (lines ~270-287, 417-451). If a whole describe block is portal-only, remove it.
+In `apps/crm/src/__tests__/store.workflows.test.ts`, delete the test cases and mocks referencing `portal_tokens`/`portal_approvals` (lines ~269-291, ~415-461), and update the `replyToPostApproval` cases to match the refactor from Step 1 (null token becomes the only path). If a whole describe block is portal-only, remove it.
 
 - [ ] **Step 4: Verify nothing references the removed code**
 
@@ -1060,7 +1082,7 @@ git commit -m "feat(paywall): frontend feature gating (route upgrade screen, Fea
 
 ## Self-review notes
 
-- **Spec coverage (§6.2, §8):** feature resolver (T1), write-feature triggers incl. leads (T2), shared TS resolver + assertPlanFeature + workspace-limits refactor (T3), IA path matrix (T4), connect/publish guards (T5), report generation gating + worker filter (T6), auto-sync cron filter (T7), hub access guard + shared resolver (T8), legacy-portal retirement (T9), frontend route/section/nav gating + role-vs-plan upgrade screen + CSV + at-limit (T10).
+- **Spec coverage (§6.2, §8):** feature resolver (T1), write-feature triggers incl. leads + hub_brand_files (T2), shared TS resolver + assertPlanFeature + workspace-limits refactor (T3), IA path matrix (T4), connect/publish guards (T5), report generation gating + worker filter (T6), auto-sync cron filter (T7), hub access guard + shared resolver (T8), legacy-portal retirement (T9), frontend route/section/nav gating + role-vs-plan upgrade screen + CSV + at-limit (T10).
 - **Type consistency:** `effective_plan_feature(ws_id, feature_key)` identical across migration (T1), RPC helper `effectivePlanFeature` (T4), and all callers (T5–T8). `assertPlanFeature`/`FeatureDisabledError`/`resolveEntitlements` defined once (T3). `useEntitlements`'s `hasFeature`/`isAtLimit` consumed unchanged by `FeatureGate` (T7) and the pages (T11).
 - **Reuses Plan 1:** `mapEntitlementError` already maps `feature_disabled` JSON, and the global mutation `onError` already toasts — so feature-guard 403s surface without new wiring; T10 adds only proactive UI.
-- **Pins:** confirm `analytics_reports.status` allows `'skipped'` (else use `'failed'`); confirm the exact post-ownership line in `instagram-publish`/`integration`.
+- **Pins (mostly resolved):** `analytics_reports.status` has no CHECK constraint — `'skipped'` is safe and never re-selected by the worker's candidate query. Still confirm the exact post-ownership line in `instagram-publish`/`integration` while editing.

@@ -70,7 +70,7 @@ rollback;
 - [ ] **Step 2: Run to verify it fails**
 
 Run: `psql "$LOCAL_DB" -f supabase/tests/entitlements/20_storage_rpcs.sql`
-Expected: assertion failure on the first block — today the RPC reads the huge column, so the insert is *not* blocked. (`file_insert_with_quota` also currently raises with no errcode, which the `sqlstate 'P0001'` handler won't catch — another reason it fails.)
+Expected: the DO block ERRORS — today the RPC reads the huge column, so the quota check passes and execution reaches the INSERT, which dies on the `post_id` FK violation (SQLSTATE 23503 — NOT caught by the `P0001` handler). That FK error, not a clean assert message, is the red step here. (After the migration the over-quota path raises *before* the INSERT, so no FK fixtures are needed. `file_insert_with_quota` also currently raises with no errcode, which the `sqlstate 'P0001'` handler won't catch — another reason it fails today.)
 
 - [ ] **Step 3: Write the migration (CREATE OR REPLACE both RPCs)**
 
@@ -118,6 +118,7 @@ create or replace function file_insert_with_quota(p jsonb)
 returns files
 language plpgsql
 security definer
+set search_path = public  -- previously missing; its sibling RPC already pins it
 as $$
 declare
   v_conta_id uuid := (p->>'conta_id')::uuid;
@@ -231,7 +232,10 @@ return json({
   folder, subfolders: subfoldersWithSize, files: signedFiles, breadcrumbs,
   storage: {
     used_bytes: workspace?.storage_used_bytes ?? 0,
-    quota_bytes: quota ?? 0, // 0 => unlimited/unknown in the UI
+    // NOTE: the UI's legacy display sentinel is 0 = "unlimited/unknown", which now
+    // CONFLICTS with the resolver's 0 = fail-closed-blocked. Keep this comment in
+    // the code so nobody "aligns" the quota checks to this display semantic.
+    quota_bytes: quota ?? 0,
   },
 });
 ```
