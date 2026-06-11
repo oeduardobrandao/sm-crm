@@ -17,7 +17,6 @@ const WorkspaceSetupPage = lazy(() => import('./pages/workspace-setup/WorkspaceS
 const PoliticaPage = lazy(() => import('./pages/politica-privacidade/PoliticaPage'));
 const TermosPage = lazy(() => import('./pages/termos-de-uso/TermosPage'));
 const LgpdPage = lazy(() => import('./pages/lgpd/LgpdPage'));
-const PortalPage = lazy(() => import('./pages/portal/PortalPage'));
 const LandingPage = lazy(() => import('./pages/landing/LandingPage'));
 const NovidadesPage = lazy(() => import('./pages/novidades/NovidadesPage'));
 
@@ -88,7 +87,6 @@ export default function App() {
               <Route path="/termos-de-uso" element={<TermosPage />} />
               <Route path="/lgpd" element={<LgpdPage />} />
               <Route path="/novidades" element={<NovidadesPage />} />
-              <Route path="/portal/:token" element={<PortalPage />} />
 
               {/* Protected route without sidebar layout */}
               <Route
