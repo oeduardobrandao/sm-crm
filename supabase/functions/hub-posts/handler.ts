@@ -1,4 +1,5 @@
 import { createJsonResponder } from "../_shared/http.ts";
+import { resolveHubToken } from "../_shared/hub-token.ts";
 
 function extractR2Keys(content: any): string[] {
   const keys: string[] = [];
@@ -27,6 +28,7 @@ function injectSignedUrls(content: any, urlMap: Record<string, string>): any {
 
 type DbClient = {
   from: (table: string) => any;
+  rpc: (fn: string, params: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
 };
 
 interface HubPostsHandlerDeps {
@@ -34,16 +36,6 @@ interface HubPostsHandlerDeps {
   createDb: () => DbClient;
   now: () => string;
   signGetUrl: (key: string, expiresSeconds?: number) => Promise<string>;
-}
-
-async function resolveToken(db: DbClient, token: string, now: string) {
-  const { data } = await db
-    .from("client_hub_tokens")
-    .select("cliente_id, conta_id, is_active")
-    .eq("token", token)
-    .gt("expires_at", now)
-    .maybeSingle();
-  return data;
 }
 
 export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
@@ -62,8 +54,8 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
     if (!token) return json({ error: "token required" }, 400);
 
     const db = deps.createDb();
-    const hubToken = await resolveToken(db, token, deps.now());
-    if (!hubToken || !hubToken.is_active) return json({ error: "Link inválido." }, 404);
+    const hubToken = await resolveHubToken(db as any, token, deps.now());
+    if (!hubToken) return json({ error: "Link inválido." }, 404);
 
     if (req.method === "PATCH") {
       const body = await req.json().catch(() => ({}));
