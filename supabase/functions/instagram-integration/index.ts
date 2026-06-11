@@ -3,6 +3,7 @@ import { buildCorsHeaders } from "../_shared/cors.ts";
 import { insertAuditLog } from "../_shared/audit.ts";
 import { checkRateLimit } from "../_shared/rate-limit.ts";
 import { createSignedState, verifySignedState } from "./oauth-state.ts";
+import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const META_APP_ID = Deno.env.get("META_APP_ID")!;
@@ -128,6 +129,11 @@ Deno.serve(async (req) => {
         const { data: authCallerProfile } = await authServiceClient.from('profiles').select('conta_id').eq('id', user!.id).single();
         if (!authCallerProfile?.conta_id || !await verifyClientOwnership(authServiceClient, clientId, authCallerProfile.conta_id)) {
             return new Response(JSON.stringify({ error: true, message: 'Unauthorized' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 });
+        }
+
+        if (!(await effectivePlanFeature(authServiceClient, authCallerProfile.conta_id, "feature_instagram"))) {
+            return new Response(JSON.stringify({ error: "feature_disabled", feature: "feature_instagram" }),
+                { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } });
         }
 
         const state = await createSignedState(clientId, user!.id, authCallerProfile.conta_id, authServiceClient);
@@ -393,6 +399,11 @@ Deno.serve(async (req) => {
         const { data: callerProfile } = await serviceClient.from('profiles').select('conta_id').eq('id', user!.id).single();
         if (!callerProfile?.conta_id || !await verifyClientOwnership(serviceClient, clientId, callerProfile.conta_id)) {
             return new Response(JSON.stringify({ error: true, message: 'Unauthorized' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 });
+        }
+
+        if (!(await effectivePlanFeature(serviceClient, callerProfile.conta_id, "feature_instagram"))) {
+            return new Response(JSON.stringify({ error: "feature_disabled", feature: "feature_instagram" }),
+                { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } });
         }
 
         const syncAllowed = await checkRateLimit(serviceClient, `ig-sync:${callerProfile.conta_id}:${clientId}`, 5, 300);
