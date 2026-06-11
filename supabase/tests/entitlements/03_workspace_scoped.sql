@@ -6,11 +6,15 @@ do $$
 declare v_ws uuid; v_uid uuid := gen_random_uuid(); v_cli bigint; v_blocked boolean;
         v_uid2 uuid; v_uid3 uuid;
 begin
-  -- LEADS: free max_leads = 10
-  v_ws := et_make_workspace('free');
-  for i in 1..10 loop insert into leads (user_id, conta_id, nome) values (v_uid, v_ws, 'L'||i); end loop;
+  -- LEADS count limit: tested on a plan WITH feature_leads (start), max_leads overridden to 2.
+  -- (free has feature_leads=false, so free workspaces can't create leads at all — its enforced by
+  --  the Plan 2 feature trigger and covered in 11_feature_triggers; the COUNT limit only applies
+  --  on plans where the feature is enabled.)
+  v_ws := et_make_workspace('start', '{"max_leads": 2}'::jsonb);
+  insert into leads (user_id, conta_id, nome) values (v_uid, v_ws, 'L1');
+  insert into leads (user_id, conta_id, nome) values (v_uid, v_ws, 'L2');
   v_blocked := false;
-  begin insert into leads (user_id, conta_id, nome) values (v_uid, v_ws, 'L11');
+  begin insert into leads (user_id, conta_id, nome) values (v_uid, v_ws, 'L3');
   exception when sqlstate 'P0001' then v_blocked := true; end;
   assert v_blocked, 'lead over limit must block';
 
