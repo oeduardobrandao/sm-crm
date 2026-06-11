@@ -37,13 +37,18 @@ Create `supabase/functions/__tests__/revert-target_test.ts`:
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { revertPlanTarget } from "../platform-admin/revert-target.ts";
 
-Deno.test("active subscription => revert to stripe + sub plan", () => {
+Deno.test("live subscription => revert to stripe + sub plan", () => {
   assertEquals(
     revertPlanTarget({ status: "active", plan_id: "pro" }, "free"),
     { plan_source: "stripe", plan_id: "pro" });
   assertEquals(
     revertPlanTarget({ status: "trialing", plan_id: "max" }, "free"),
     { plan_source: "stripe", plan_id: "max" });
+  // past_due/unpaid are still Stripe-managed (dunning) — hand control back to the
+  // webhook rather than dropping to free and fighting the next subscription event
+  assertEquals(
+    revertPlanTarget({ status: "past_due", plan_id: "pro" }, "free"),
+    { plan_source: "stripe", plan_id: "pro" });
 });
 
 Deno.test("no/inactive subscription => revert to system + default plan", () => {
@@ -69,14 +74,19 @@ Create `supabase/functions/platform-admin/revert-target.ts`:
 ```ts
 /**
  * Decides the workspace state when un-comping (clearing plan_source='manual').
- * If an active Stripe subscription exists, hand control back to it; otherwise
- * fall back to the default (free) plan as an unmanaged 'system' workspace.
+ * Any LIVE Stripe subscription (active, trialing, past_due, unpaid — i.e. still
+ * Stripe-managed, possibly in dunning) hands control back to the webhook with the
+ * subscription's plan; otherwise fall back to the default (free) plan as an
+ * unmanaged 'system' workspace. The webhook writes Stripe-derived statuses with
+ * no CHECK constraint, so gate on the known-dead set rather than a live allowlist.
  */
+const DEAD_STATUSES = new Set(["canceled", "incomplete", "incomplete_expired"]);
+
 export function revertPlanTarget(
   sub: { status?: string | null; plan_id?: string | null } | null,
   defaultPlanId: string,
 ): { plan_source: "stripe" | "system"; plan_id: string } {
-  if (sub && (sub.status === "active" || sub.status === "trialing") && sub.plan_id) {
+  if (sub?.status && !DEAD_STATUSES.has(sub.status) && sub.plan_id) {
     return { plan_source: "stripe", plan_id: sub.plan_id };
   }
   return { plan_source: "system", plan_id: defaultPlanId };
@@ -212,7 +222,7 @@ export function unsetWorkspacePlan(workspace_id: string) {
 }
 ```
 
-If the `Workspace` type used by `get-workspace` doesn't include `plan_source`, add `plan_source?: string;` to it.
+Add `plan_source?: string;` to the `WorkspaceDetail` interface (`api.ts:19-32`) — it doesn't include it today.
 
 - [ ] **Step 2: Add the mutation + button**
 
@@ -234,7 +244,7 @@ const unsetMutation = useMutation({
 And render the button next to the plan selector (after line ~172), only when the workspace is comped:
 
 ```tsx
-{workspace?.plan_source === 'manual' && (
+{data?.plan_source === 'manual' && (
   <button
     type="button"
     onClick={() => unsetMutation.mutate()}
@@ -246,11 +256,11 @@ And render the button next to the plan selector (after line ~172), only when the
 )}
 ```
 
-(`workspace` is the `get-workspace` result already loaded on this page; confirm the variable name in scope and that it now carries `plan_source` from Task 2 Step 4.)
+(The `get-workspace` result on this page is `data` — `useQuery` at `WorkspaceDetailPage.tsx:28`, typed `WorkspaceDetail`; it carries `plan_source` after Task 2 Step 4 + the type addition in Step 1.)
 
 - [ ] **Step 3: Typecheck the admin app**
 
-Run: `npm run build -w apps/admin` (or the admin build script in `package.json`).
+Run: `npm run build:admin` (root script: `tsc -p apps/admin/tsconfig.json && vite build --config apps/admin/vite.config.ts` — there is no `-w apps/admin` build).
 Expected: build succeeds.
 
 - [ ] **Step 4: Commit**
@@ -265,11 +275,12 @@ git commit -m "feat(paywall): admin un-comp button (revert plan_source)"
 ## Final verification
 
 - [ ] Deno: `deno test --no-check --allow-env --allow-read --allow-net supabase/functions/__tests__/revert-target_test.ts` → PASS. `deno check supabase/functions/platform-admin/index.ts` → clean. Then `git checkout deno.lock && npm ci` if needed.
-- [ ] Admin build: `npm run build -w apps/admin` → succeeds.
+- [ ] Admin build: `npm run build:admin` → succeeds.
 - [ ] Manual (local Supabase): comp a workspace to `max` (`set-workspace-plan`) → it shows `plan_source='manual'`; click "Remover comp" → with no active subscription it reverts to `system`/free; with an active subscription it reverts to `stripe` and the subscription's plan. Confirm `set-workspace-plan` no longer writes `workspace_plan_overrides.plan_id`.
 
 ## Self-review notes
 
 - **Spec coverage (§6.3, decision 9):** un-comp action with stripe/system revert logic (T1–T2), stop deprecated dual-write (T2 Step 3), admin UI (T3).
 - **Type consistency:** `revertPlanTarget(sub, defaultPlanId)` return `{ plan_source, plan_id }` is consumed unchanged by `handleUnsetWorkspacePlan`. `unsetWorkspacePlan` action string `'unset-workspace-plan'` matches the switch case.
-- **Pin:** confirm `WorkspaceDetailPage`'s workspace query variable name and that `get-workspace` exposes `plan_source` after Task 2 Step 4.
+- **Pin (resolved):** the get-workspace result variable is `data` (`WorkspaceDetailPage.tsx:28`, typed `WorkspaceDetail` at `api.ts:19-32`); `plan_source` is exposed by Task 2 Step 4 and added to the type in Task 3 Step 1.
+- **Policy note:** `revertPlanTarget` treats dunning states (`past_due`, `unpaid`) as Stripe-managed — un-comp hands control back to the webhook with the subscription's plan; only `canceled`/`incomplete`/`incomplete_expired` (or no sub) fall back to `system` + default.

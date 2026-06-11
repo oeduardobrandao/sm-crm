@@ -119,6 +119,7 @@ create or replace function effective_plan_limit(ws_id uuid, limit_key text)
 returns bigint
 language plpgsql
 security definer
+set search_path = public
 stable
 as $$
 declare
@@ -206,10 +207,10 @@ do $$
 declare v_ws uuid; v_uid uuid := gen_random_uuid(); v_blocked boolean := false;
 begin
   v_ws := et_make_workspace('free'); -- max_clients = 2
-  insert into clientes (user_id, conta_id, nome) values (v_uid, v_ws, 'C1');
-  insert into clientes (user_id, conta_id, nome) values (v_uid, v_ws, 'C2');
+  insert into clientes (user_id, conta_id, nome, sigla, cor) values (v_uid, v_ws, 'C1', 'C1', '#000');
+  insert into clientes (user_id, conta_id, nome, sigla, cor) values (v_uid, v_ws, 'C2', 'C2', '#000');
   begin
-    insert into clientes (user_id, conta_id, nome) values (v_uid, v_ws, 'C3'); -- 3rd, over limit
+    insert into clientes (user_id, conta_id, nome, sigla, cor) values (v_uid, v_ws, 'C3', 'C3', '#000'); -- 3rd, over limit
   exception when sqlstate 'P0001' then
     assert sqlerrm like 'plan_limit_exceeded:max_clients%', format('wrong msg: %s', sqlerrm);
     v_blocked := true;
@@ -220,7 +221,7 @@ end $$;
 rollback;
 ```
 
-(If `clientes` has additional `NOT NULL` columns beyond `user_id, conta_id, nome`, add minimal values — check `20260301_baseline_schema.sql`.)
+(Verified against `20260301_baseline_schema.sql:39-54`: `clientes`' NOT NULL set is `user_id, conta_id, nome, sigla, cor` — the fixtures above include all five.)
 
 - [ ] **Step 2: Run it to verify it fails**
 
@@ -243,6 +244,7 @@ create or replace function enforce_plan_count_limit()
 returns trigger
 language plpgsql
 security definer
+set search_path = public
 as $$
 declare
   v_limit_key text := TG_ARGV[0];
@@ -327,12 +329,12 @@ begin
   -- override raises the limit
   v_ws := et_make_workspace('free', '{"max_clients": 3}'::jsonb);
   for i in 1..3 loop
-    insert into clientes (user_id, conta_id, nome) values (v_uid, v_ws, 'C'||i);
+    insert into clientes (user_id, conta_id, nome, sigla, cor) values (v_uid, v_ws, 'C'||i, 'C'||i, '#000');
   end loop; -- 3 allowed by override
   -- max plan: unlimited
   v_ws := et_make_workspace('max');
   for i in 1..10 loop
-    insert into clientes (user_id, conta_id, nome) values (v_uid, v_ws, 'M'||i);
+    insert into clientes (user_id, conta_id, nome, sigla, cor) values (v_uid, v_ws, 'M'||i, 'M'||i, '#000');
   end loop;
   raise notice 'PASS 02_clientes override/unlimited';
 end $$;
@@ -387,7 +389,7 @@ begin
 
   -- INSTAGRAM (via clientes join): free max_instagram_accounts = 1
   v_ws := et_make_workspace('free');
-  insert into clientes (user_id, conta_id, nome) values (v_uid, v_ws, 'C') returning id into v_cli;
+  insert into clientes (user_id, conta_id, nome, sigla, cor) values (v_uid, v_ws, 'C', 'C', '#000') returning id into v_cli;
   insert into instagram_accounts (client_id, instagram_user_id) values (v_cli, 'ig1');
   v_blocked := false;
   begin insert into instagram_accounts (client_id, instagram_user_id) values (v_cli, 'ig2');
@@ -468,7 +470,7 @@ declare v_ws uuid; v_uid uuid := gen_random_uuid(); v_cli bigint; v_blocked bool
 begin
   -- free max_active_workflows_per_client = 1, scoped per cliente_id, only status='ativo'
   v_ws := et_make_workspace('free');
-  insert into clientes (user_id, conta_id, nome) values (v_uid, v_ws, 'C') returning id into v_cli;
+  insert into clientes (user_id, conta_id, nome, sigla, cor) values (v_uid, v_ws, 'C', 'C', '#000') returning id into v_cli;
   insert into workflows (user_id, conta_id, cliente_id, titulo, status)
     values (v_uid, v_ws, v_cli, 'W1', 'ativo');
   -- an archived one must NOT count
@@ -532,8 +534,8 @@ do $$
 declare v_ws uuid; v_uid uuid := gen_random_uuid(); v_n int;
 begin
   v_ws := et_make_workspace('free'); -- max_clients = 2
-  insert into clientes (user_id, conta_id, nome) values (v_uid, v_ws, 'A');
-  insert into clientes (user_id, conta_id, nome) values (v_uid, v_ws, 'B');
+  insert into clientes (user_id, conta_id, nome, sigla, cor) values (v_uid, v_ws, 'A', 'A', '#000');
+  insert into clientes (user_id, conta_id, nome, sigla, cor) values (v_uid, v_ws, 'B', 'B', '#000');
   select count(*) into v_n from clientes where conta_id = v_ws;
   assert v_n = 2, 'exactly two clients';
   raise notice 'PASS 04 lock-path smoke';
