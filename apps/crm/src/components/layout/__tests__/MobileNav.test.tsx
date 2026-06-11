@@ -8,6 +8,16 @@ vi.mock('../../../context/AuthContext', () => ({
   useAuth: vi.fn(),
 }));
 
+vi.mock('../../../hooks/useWorkspaceLimits', () => ({
+  useWorkspaceLimits: () => ({
+    limits: null,
+    features: null,
+    planName: null,
+    isLoading: false,
+    isUnlimited: true,
+  }),
+}));
+
 vi.mock('../mobile-nav-canvas', () => ({
   drawNavBar: vi.fn(),
   getItemCenterX: vi.fn().mockReturnValue(50),

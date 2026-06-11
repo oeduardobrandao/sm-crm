@@ -74,6 +74,8 @@ import {
 } from '../../store';
 import { sanitizeUrl } from '../../utils/security';
 import { supabase } from '../../lib/supabase';
+import { useEntitlements } from '../../hooks/useEntitlements';
+import { FeatureGate } from '@/components/paywall/FeatureGate';
 
 type ClienteFormValues = z.infer<ReturnType<typeof createClienteSchema>>;
 
@@ -138,10 +140,14 @@ export default function ClientesPage() {
     },
   });
 
+  const { isAtLimit } = useEntitlements();
+
   const { data: clientes = [], isLoading } = useQuery({
     queryKey: ['clientes'],
     queryFn: getClientes,
   });
+
+  const clientsAtLimit = isAtLimit('max_clients', clientes.length);
   const { data: avatarMap = {} } = useQuery({
     queryKey: ['instagram_avatars', clientes.map((c) => c.id).join(',')],
     queryFn: () => fetchAvatars(clientes.map((c) => c.id as number).filter(Boolean)),
@@ -302,11 +308,17 @@ export default function ClientesPage() {
               style={{ color: 'var(--text-muted)', cursor: 'pointer' }}
             />
           </span>
-          <Button variant="outline" onClick={handleCSVImport}>
-            <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} />{' '}
-            {tc('actions.importCsv')}
-          </Button>
-          <Button onClick={openAdd}>
+          <FeatureGate flag="feature_csv_import" label="Importação CSV">
+            <Button variant="outline" onClick={handleCSVImport}>
+              <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} />{' '}
+              {tc('actions.importCsv')}
+            </Button>
+          </FeatureGate>
+          <Button
+            onClick={openAdd}
+            disabled={clientsAtLimit}
+            title={clientsAtLimit ? 'Limite do plano atingido' : undefined}
+          >
             <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('newClient')}
           </Button>
         </div>

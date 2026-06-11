@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 vi.mock('../../../context/AuthContext', () => ({
@@ -7,19 +7,28 @@ vi.mock('../../../context/AuthContext', () => ({
 }));
 
 vi.mock('../../../hooks/useWorkspaceLimits', () => ({
-  useWorkspaceLimits: () => ({
-    limits: null,
-    features: null,
-    planName: null,
-    isLoading: false,
-    isUnlimited: true,
-  }),
+  useWorkspaceLimits: vi.fn(),
 }));
 
 import { useAuth } from '../../../context/AuthContext';
+import { useWorkspaceLimits } from '../../../hooks/useWorkspaceLimits';
 import ProtectedRoute from '../ProtectedRoute';
 
+const mockedUseWorkspaceLimits = vi.mocked(useWorkspaceLimits);
+
 const mockedUseAuth = vi.mocked(useAuth);
+
+const defaultLimits = {
+  limits: null,
+  features: null,
+  planName: null,
+  isLoading: false,
+  isUnlimited: true,
+};
+
+beforeEach(() => {
+  mockedUseWorkspaceLimits.mockReturnValue(defaultLimits);
+});
 
 function renderRoute(pathname: string) {
   return render(
@@ -181,5 +190,48 @@ describe('ProtectedRoute', () => {
     renderRoute('/dashboard');
 
     expect(screen.getByText('Área protegida: dashboard')).toBeInTheDocument();
+  });
+
+  it('shows upgrade screen (not dashboard redirect) when owner visits /leads with feature_leads:false', () => {
+    mockedUseAuth.mockReturnValue({
+      user: { id: 'owner-1' } as never,
+      profile: { id: 'owner-1', role: 'owner', empresa: 'Mesaas' } as never,
+      role: 'owner',
+      loading: false,
+      refetchProfile: vi.fn(),
+      signOut: vi.fn(),
+    });
+
+    mockedUseWorkspaceLimits.mockReturnValue({
+      limits: null,
+      features: {
+        feature_instagram: true,
+        feature_instagram_ai: false,
+        feature_analytics_reports: false,
+        feature_best_times: false,
+        feature_audience_demographics: false,
+        feature_hub_portal: false,
+        feature_leads: false,
+        feature_financial: false,
+        feature_contracts: false,
+        feature_ideas: false,
+        feature_workflow_gantt: false,
+        feature_workflow_recurrence: false,
+        feature_csv_import: false,
+        feature_custom_properties: false,
+        feature_post_scheduling: false,
+        feature_auto_sync_cron: false,
+        feature_post_tagging: false,
+        feature_brand_customization: false,
+      },
+      planName: 'starter',
+      isLoading: false,
+      isUnlimited: false,
+    });
+
+    renderRoute('/leads');
+
+    expect(screen.getByText(/Leads não está no seu plano/)).toBeInTheDocument();
+    expect(screen.queryByText('Área protegida: dashboard')).toBeNull();
   });
 });

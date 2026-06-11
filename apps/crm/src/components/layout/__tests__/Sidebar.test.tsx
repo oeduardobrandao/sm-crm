@@ -6,6 +6,16 @@ vi.mock('../../../context/AuthContext', () => ({
   useAuth: vi.fn(),
 }));
 
+vi.mock('../../../hooks/useWorkspaceLimits', () => ({
+  useWorkspaceLimits: () => ({
+    limits: null,
+    features: null,
+    planName: null,
+    isLoading: false,
+    isUnlimited: true,
+  }),
+}));
+
 vi.mock('../../../lib/supabase');
 
 import { useAuth } from '../../../context/AuthContext';

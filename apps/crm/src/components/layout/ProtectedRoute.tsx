@@ -3,13 +3,18 @@ import { ReactNode } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
 import { Spinner } from '@/components/ui/spinner';
+import { UpgradeLockedScreen } from '@/components/paywall/UpgradeLockedScreen';
 
 const AGENT_BLOCKED = ['/financeiro', '/contratos', '/leads', '/equipe'];
 
-const FEATURE_GATED: Record<string, string> = {
-  '/analytics': 'feature_analytics_reports',
-  '/post-express': 'feature_post_scheduling',
-  '/ideias': 'feature_ideas',
+const FEATURE_GATED: Record<string, { flag: string; label: string }> = {
+  '/analytics': { flag: 'feature_analytics_reports', label: 'Relatórios e Analytics' },
+  '/analytics-fluxos': { flag: 'feature_analytics_reports', label: 'Relatórios e Analytics' },
+  '/leads': { flag: 'feature_leads', label: 'Leads' },
+  '/financeiro': { flag: 'feature_financial', label: 'Financeiro' },
+  '/contratos': { flag: 'feature_contracts', label: 'Contratos' },
+  '/ideias': { flag: 'feature_ideas', label: 'Ideias' },
+  '/post-express': { flag: 'feature_post_scheduling', label: 'Agendamento de Posts' },
 };
 
 export default function ProtectedRoute({ children }: { children: ReactNode }) {
@@ -36,9 +41,9 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
   }
 
   if (!isUnlimited && features) {
-    for (const [path, flag] of Object.entries(FEATURE_GATED)) {
+    for (const [path, { flag, label }] of Object.entries(FEATURE_GATED)) {
       if (location.pathname.startsWith(path) && features[flag as keyof typeof features] === false) {
-        return <Navigate to="/dashboard" replace />;
+        return <UpgradeLockedScreen featureLabel={label} />;
       }
     }
   }
