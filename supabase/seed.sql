@@ -1,0 +1,37 @@
+-- Local-dev seed: the plan catalog (free/start/pro/max), mirroring the prod catalog's
+-- limits/features. Stripe IDs are intentionally omitted (not needed for local work).
+-- Loaded by `supabase start` / `supabase db reset`. Limits in CENTAVOS; storage in bytes.
+
+insert into plans (
+  id, name, price_brl, price_brl_annual,
+  max_clients, max_team_members, max_workflow_templates, max_active_workflows_per_client,
+  max_instagram_accounts, max_leads, max_hub_tokens, storage_quota_bytes,
+  max_custom_properties_per_template, max_posts_per_workflow, max_workspaces_per_user,
+  feature_instagram, feature_instagram_ai, feature_analytics_reports, feature_best_times,
+  feature_audience_demographics, feature_hub_portal, feature_leads, feature_financial,
+  feature_contracts, feature_ideas, feature_workflow_gantt, feature_workflow_recurrence,
+  feature_csv_import, feature_custom_properties, feature_post_scheduling, feature_auto_sync_cron,
+  feature_post_tagging, feature_brand_customization,
+  rate_instagram_syncs_per_day, rate_ai_analyses_per_month, rate_report_generations_per_month,
+  sort_order, is_active, is_default
+) values
+  ('free', 'Free', 0, 0,
+   2, 1, 1, 1, 1, 10, 0, 104857600, 0, 5, 1,
+   true, false, false, false, false, false, false, false, false, false, false, false,
+   true, false, false, false, false, false,
+   0, 0, 0, 0, true, true),
+  ('start', 'Start', 9990, 95900,
+   5, 1, 3, 5, 5, 50, 5, 5368709120, 5, 20, 1,
+   true, false, true, false, false, true, true, true, true, true, true, true,
+   true, true, true, true, false, false,
+   5, 0, 5, 1, true, false),
+  ('pro', 'Pro', 13990, 134300,
+   15, 3, 8, 10, 15, 200, 15, 10737418240, 15, null, 1,
+   true, true, true, true, true, true, true, true, true, true, true, true,
+   true, true, true, true, true, true,
+   15, 15, 15, 2, true, false),
+  ('max', 'Max', 19990, 191900,
+   null, null, null, null, null, null, null, 26843545600, null, null, 5,
+   true, true, true, true, true, true, true, true, true, true, true, true,
+   true, true, true, true, true, true,
+   50, 30, 30, 3, true, false);
