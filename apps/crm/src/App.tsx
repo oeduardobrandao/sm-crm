@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, MutationCache } from '@tanstack/react-query';
+import { handleEntitlementMutationError } from './lib/entitlement-toast';
 import * as Sentry from '@sentry/react';
 import { Analytics } from '@vercel/analytics/react';
 import { AuthProvider } from './context/AuthContext';
@@ -47,6 +48,13 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: { retry: 1, staleTime: 30_000 },
   },
+  mutationCache: new MutationCache({
+    onError: (error) => {
+      // Entitlement errors get a universal upgrade toast; everything else falls
+      // through to each mutation's own onError.
+      handleEntitlementMutationError(error);
+    },
+  }),
 });
 
 const PageFallback = (
