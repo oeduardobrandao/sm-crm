@@ -53,8 +53,6 @@ const REQUIRED_FUNCTIONS = [
   "instagram-report-generator",
   "invite-user",
   "manage-workspace-user",
-  "portal-approve",
-  "portal-data",
   "sign-r2-urls",
   // Billing (manual auth: user-JWT or Stripe signature)
   "billing-checkout",

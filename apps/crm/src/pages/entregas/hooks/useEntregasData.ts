@@ -5,7 +5,6 @@ import {
   getMembros,
   getWorkflowTemplates,
   getWorkflowEtapas,
-  getPortalApprovals,
   getDeadlineInfo,
   getWorkflowPostsCounts,
   getWorkflowApprovedPostsCounts,
@@ -17,7 +16,6 @@ import {
   type Cliente,
   type Membro,
   type WorkflowTemplate,
-  type PortalApproval,
   type PostMedia,
 } from '../../../store';
 import { supabase } from '../../../lib/supabase';
@@ -226,22 +224,6 @@ export function useEntregasData() {
 
   const etapasMap: Map<number, WorkflowEtapa[]> = etapasQuery.data || new Map();
 
-  // Collect approval etapa IDs for portal approvals query
-  const approvalEtapaIds: number[] = [];
-  for (const [, etapas] of etapasMap) {
-    for (const e of etapas) {
-      if (e.tipo === 'aprovacao_cliente' && e.status === 'ativo' && e.id) {
-        approvalEtapaIds.push(e.id);
-      }
-    }
-  }
-
-  const { data: portalApprovals = [] } = useQuery<PortalApproval[]>({
-    queryKey: ['portal-approvals', approvalEtapaIds.join(',')],
-    queryFn: () => getPortalApprovals(approvalEtapaIds),
-    enabled: approvalEtapaIds.length > 0,
-  });
-
   const activeWorkflowIds = activeWorkflows.map((w) => w.id!).filter(Boolean);
   const { data: covers } = useQuery({
     queryKey: ['workflow-covers', activeWorkflowIds.join(',')],
@@ -351,7 +333,6 @@ export function useEntregasData() {
     qc.invalidateQueries({ queryKey: ['workflows'] });
     qc.invalidateQueries({ queryKey: ['workflow-templates'] });
     qc.invalidateQueries({ queryKey: ['all-active-etapas'] });
-    qc.invalidateQueries({ queryKey: ['portal-approvals'] });
     qc.invalidateQueries({ queryKey: ['workflow-covers'] });
     qc.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
     qc.invalidateQueries({ queryKey: ['workflow-approved-posts-counts'] });
@@ -373,7 +354,6 @@ export function useEntregasData() {
     approvedPostsCounts,
     revisaoInternaCounts,
     postResponsaveis,
-    portalApprovals,
     isLoading,
     refresh,
   };

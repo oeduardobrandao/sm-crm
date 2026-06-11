@@ -1,5 +1,4 @@
 import { supabase, getContaId } from './core';
-import { getPortalToken } from './portal';
 
 // =============================================
 // WORKFLOW POSTS (Sub-tasks / Content pieces)
@@ -493,13 +492,12 @@ export async function getPostStatusEvents(postIds: number[]): Promise<PostStatus
 
 export async function replyToPostApproval(
   postId: number,
-  workflowId: number,
+  _workflowId: number,
   comentario: string,
 ): Promise<void> {
-  const token = await getPortalToken(workflowId);
   const { error } = await supabase.from('post_approvals').insert({
     post_id: postId,
-    token: token ?? null,
+    token: null,
     action: 'mensagem',
     comentario,
     is_workspace_user: true,
