@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
+import { revertPlanTarget } from "./revert-target.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -98,6 +99,8 @@ Deno.serve(async (req: Request) => {
         return await handleDeletePlan(svc, body, headers);
       case "set-workspace-plan":
         return await handleSetWorkspacePlan(svc, body, admin.id, headers);
+      case "unset-workspace-plan":
+        return await handleUnsetWorkspacePlan(svc, body, admin.id, headers);
       case "set-workspace-overrides":
         return await handleSetWorkspaceOverrides(svc, body, admin.id, headers);
       case "clear-workspace-overrides":
@@ -251,7 +254,7 @@ async function handleGetWorkspace(
 
   const { data: ws, error } = await svc
     .from("workspaces")
-    .select("id, name, logo_url, created_at, plan_id")
+    .select("id, name, logo_url, created_at, plan_id, plan_source")
     .eq("id", workspace_id)
     .single();
   if (error || !ws) {
@@ -500,7 +503,6 @@ async function handleSetWorkspacePlan(
     const { error } = await svc
       .from("workspace_plan_overrides")
       .update({
-        plan_id,
         resource_overrides: null,
         feature_overrides: null,
         notes: null,
@@ -512,11 +514,63 @@ async function handleSetWorkspacePlan(
   } else {
     const { error } = await svc
       .from("workspace_plan_overrides")
-      .insert({ workspace_id, plan_id, updated_by: adminId });
+      .insert({ workspace_id, updated_by: adminId });
     if (error) throw error;
   }
 
   return new Response(JSON.stringify({ message: "Workspace plan updated" }), { status: 200, headers });
+}
+
+async function handleUnsetWorkspacePlan(
+  svc: ReturnType<typeof createClient>,
+  body: { workspace_id: string },
+  adminId: string,
+  headers: Record<string, string>,
+) {
+  const { workspace_id } = body;
+  if (!workspace_id) {
+    return new Response(JSON.stringify({ error: "workspace_id is required" }), { status: 400, headers });
+  }
+
+  const { data: sub } = await svc
+    .from("workspace_subscriptions")
+    .select("status, plan_id")
+    .eq("workspace_id", workspace_id)
+    .maybeSingle();
+
+  const { data: def } = await svc
+    .from("plans")
+    .select("id")
+    .eq("is_default", true)
+    .maybeSingle();
+
+  const target = revertPlanTarget(
+    sub as { status?: string; plan_id?: string } | null,
+    (def?.id as string) ?? "free",
+  );
+
+  const { error: wErr } = await svc
+    .from("workspaces")
+    .update({ plan_id: target.plan_id, plan_source: target.plan_source })
+    .eq("id", workspace_id);
+  if (wErr) throw wErr;
+
+  // clear any manual granular overrides left from the comp
+  await svc
+    .from("workspace_plan_overrides")
+    .update({
+      resource_overrides: null,
+      feature_overrides: null,
+      notes: null,
+      updated_by: adminId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("workspace_id", workspace_id);
+
+  return new Response(
+    JSON.stringify({ message: "Comp removed", plan_source: target.plan_source }),
+    { status: 200, headers },
+  );
 }
 
 async function handleSetWorkspaceOverrides(
