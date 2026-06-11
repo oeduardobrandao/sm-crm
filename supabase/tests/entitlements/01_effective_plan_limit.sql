@@ -34,3 +34,17 @@ begin
   assert v_n = 1, format('expected exactly one is_default plan, got %s', v_n);
   raise notice 'PASS is_default invariant';
 end $$;
+
+begin;
+do $$
+declare v_ws uuid;
+begin
+  -- malformed override value must fail closed (not throw)
+  v_ws := et_make_workspace('free', '{"max_clients": "fifty"}'::jsonb);
+  assert effective_plan_limit(v_ws, 'max_clients') = 0, 'malformed override must fail closed';
+  -- unknown limit_key must fail closed (not throw)
+  v_ws := et_make_workspace('free');
+  assert effective_plan_limit(v_ws, 'nonexistent_column') = 0, 'unknown limit_key must fail closed';
+  raise notice 'PASS 01 fail-closed edges';
+end $$;
+rollback;
