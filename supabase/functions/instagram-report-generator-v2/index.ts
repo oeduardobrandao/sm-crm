@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { timingSafeEqual } from "../_shared/crypto.ts";
+import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
 import { renderReport } from "../_shared/report-template/render.ts";
 import { convertHtmlToPdf } from "../_shared/report-template/pdf.ts";
 import { generateAINarrative } from "../_shared/report-template/ai.ts";
@@ -324,6 +325,11 @@ Deno.serve(async (req) => {
       report_month: reportMonth,
       include_ai: includeAi,
     } = report;
+
+    // Defense-in-depth: verify the workspace is entitled to generate reports
+    if (!(await effectivePlanFeature(serviceClient, contaId, "feature_analytics_reports"))) {
+      throw new Error("feature_disabled:feature_analytics_reports");
+    }
 
     const month = reportMonth || getPreviousMonth();
     const [year, monthNum] = month.split("-").map(Number);
