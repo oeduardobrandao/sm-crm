@@ -43,6 +43,7 @@ A paying customer therefore gets a correct subscription + Billing Portal + 3 pag
 6. **`feature_hub_portal`** gates the Hub access path (downgraded portals stop serving; owners keep internal access). The **legacy `portal_tokens` path is retired**, not gated.
 7. **`max_team_members` = login seats** (`workspace_members`/invites), **not** the `membros` Equipe roster.
 8. **Automated/service-role writes are enforced too** (no bypass-via-automation); system writers catch `plan_limit_exceeded` and skip cleanly.
+9. **Admin comps flow through the resolver** (no separate bypass — §6.3). Add an **un-comp admin action** to revert sticky `plan_source='manual'`; **stop dual-writing** the deprecated `workspace_plan_overrides.plan_id`.
 
 ## 5. Architecture & layering
 
@@ -68,6 +69,23 @@ Three layers, all reading the same effective entitlements:
 ### 6.2 TS — `_shared/entitlements.ts`
 
 Extract `workspace-limits`' resolution (plan row + override merge + default fallback) into `resolveEntitlements(svc, workspaceId)` → `{ planName, limits, features }`, plus `assertPlanFeature(svc, workspaceId, flag)` throwing a typed `FeatureDisabledError` (→ `403`). `workspace-limits` refactored to use it (behavior unchanged).
+
+### 6.3 Admin-controlled plans & comps (the resolver's inputs)
+
+The admin portal (`platform-admin`) already writes exactly what the resolver reads, so admin control flows into enforcement **with no separate bypass**:
+
+- **`set-workspace-plan`** → `workspaces.plan_id` + `plan_source='manual'`. The resolver returns that plan's limits/features.
+- **`set-workspace-overrides`** → `resource_overrides` / `feature_overrides` JSON. The resolver applies these *over* the plan, **in both directions** — an admin can grant or revoke a specific limit/feature regardless of the plan.
+- **`clear-workspace-overrides`** → back to the pure plan.
+
+Consequences:
+- **Comps are honored everywhere** — count triggers, feature triggers, endpoint guards, and storage all resolve through the same path, so a comped/overridden workspace is enforced exactly as the admin intends. This matches `workspace-limits`' existing TS merge, so SQL and TS agree.
+- **Admin downgrade = block-new / keep-existing**, identical to a Stripe downgrade.
+- **Ordering caveat:** `set-workspace-plan` clears granular overrides, so admins assign the plan first, then apply overrides.
+
+Changes this slice makes to `platform-admin`:
+- **New `unset-workspace-plan` (un-comp) action.** `plan_source='manual'` is sticky and the Stripe webhook never overrides it — so a comped workspace that later subscribes stays stuck on the comp. The new action reverts `plan_source` to `'stripe'` when an active `workspace_subscriptions` row exists, else `'system'`, returning the workspace to normal Stripe-driven billing (and resets `plan_id` accordingly).
+- **Stop dual-writing the deprecated `workspace_plan_overrides.plan_id`** in `set-workspace-plan` (`workspaces.plan_id` is the source of truth; the resolver ignores the old column). Column left in place; the override row still carries the JSON overrides.
 
 ## 7. Count enforcement (DB triggers)
 
@@ -219,6 +237,7 @@ Every quota reader resolves from the plan via `effective_plan_limit(conta_id, 's
 - Legacy portal removal (no `portal-data`/`portal-approve`; `/portal/:token` gone).
 - Storage resolve-at-check-time across presign + `file-manage` copy/duplicate.
 - System-writer paths skip cleanly on `plan_limit_exceeded` (don't crash the batch).
+- `platform-admin`: `set-workspace-plan` no longer writes the deprecated `plan_id`; new `unset-workspace-plan` reverts `plan_source` (→ `'stripe'` with an active subscription, else `'system'`); a comped/overridden workspace resolves to the intended limits/features (overrides honored both directions).
 - Update `__tests__/config-audit_test.ts`'s `REQUIRED_FUNCTIONS` list for any added/removed function.
 
 **Frontend:**
@@ -233,7 +252,7 @@ Every quota reader resolves from the plan via `effective_plan_limit(conta_id, 's
 
 ## 12. Rollout & migration
 
-**Sequence:** migrations (resolvers, count triggers w/ advisory lock, feature triggers, RPC swaps) → edge-function deploys (guards, `report-worker`, `_shared/hub-token.ts` + Hub guard, storage paths, legacy-portal removal) → frontend (route gating, `<FeatureGate>`, error mapper, `useEntitlements`, `/portal/:token` removal).
+**Sequence:** migrations (resolvers, count triggers w/ advisory lock, feature triggers, RPC swaps) → edge-function deploys (guards, `report-worker`, `_shared/hub-token.ts` + Hub guard, storage paths, legacy-portal removal, `platform-admin` un-comp action + drop deprecated dual-write) → frontend (route gating, `<FeatureGate>`, error mapper, `useEntitlements`, `/portal/:token` removal).
 
 **System write paths — enumerate before coding** (decision 8: enforce + skip): every server-side inserter into the 9 gated tables — workflow recurrence (`workflows`/`workflow_posts`), hub approval flows, any cron/import — must catch `plan_limit_exceeded` and skip cleanly rather than crash. Planning produces this inventory.
 
