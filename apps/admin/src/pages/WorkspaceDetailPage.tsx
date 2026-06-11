@@ -7,6 +7,7 @@ import {
   getWorkspace,
   listPlans,
   setWorkspacePlan,
+  unsetWorkspacePlan,
   setWorkspaceOverrides,
   clearWorkspaceOverrides,
   RESOURCE_LIMIT_KEYS,
@@ -117,6 +118,15 @@ export default function WorkspaceDetailPage() {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  const unsetMutation = useMutation({
+    mutationFn: () => unsetWorkspacePlan(id!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'workspace', id] });
+      toast.success('Comp removido — workspace volta à cobrança normal');
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   if (isLoading || !data) {
     return <p className="text-dim-foreground">Loading...</p>;
   }
@@ -154,21 +164,33 @@ export default function WorkspaceDetailPage() {
           </div>
         </div>
 
-        <select
-          value={selectedPlanId}
-          onChange={(e) => {
-            setSelectedPlanId(e.target.value);
-            setPlanMutation.mutate(e.target.value);
-          }}
-          className="w-full min-w-0 max-w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none sm:w-auto"
-        >
-          <option value="">No plan</option>
-          {plansData?.plans?.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
+        <div className="flex flex-col items-stretch gap-1 sm:items-end">
+          <select
+            value={selectedPlanId}
+            onChange={(e) => {
+              setSelectedPlanId(e.target.value);
+              setPlanMutation.mutate(e.target.value);
+            }}
+            className="w-full min-w-0 max-w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none sm:w-auto"
+          >
+            <option value="">No plan</option>
+            {plansData?.plans?.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+          {data?.workspace.plan_source === 'manual' && (
+            <button
+              type="button"
+              onClick={() => unsetMutation.mutate()}
+              disabled={unsetMutation.isPending}
+              className="mt-1 text-sm underline text-muted-foreground hover:text-foreground disabled:opacity-50 text-right"
+            >
+              Remover comp (voltar à cobrança)
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="grid min-w-0 max-w-full grid-cols-1 gap-6 mb-6 md:grid-cols-2">
