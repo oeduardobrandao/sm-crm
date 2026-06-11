@@ -24,3 +24,24 @@ create trigger trg_limit_templates before insert on workflow_templates
 drop trigger if exists trg_limit_instagram on instagram_accounts;
 create trigger trg_limit_instagram before insert on instagram_accounts
   for each row execute function enforce_plan_count_limit('max_instagram_accounts', 'via_clientes', 'client_id', '');
+
+-- active workflows per client: scope cliente_id, only status='ativo'
+-- WHEN guard ensures the trigger only fires for active inserts (not arquivado/concluido),
+-- so archived inserts are never blocked by the active-workflow limit.
+drop trigger if exists trg_limit_workflows on workflows;
+create trigger trg_limit_workflows before insert on workflows
+  for each row when (new.status = 'ativo')
+  execute function enforce_plan_count_limit(
+    'max_active_workflows_per_client', 'direct', 'conta_id', 'cliente_id', 'status = ''ativo''');
+
+-- custom properties per template
+drop trigger if exists trg_limit_custom_props on template_property_definitions;
+create trigger trg_limit_custom_props before insert on template_property_definitions
+  for each row execute function enforce_plan_count_limit(
+    'max_custom_properties_per_template', 'direct', 'conta_id', 'template_id');
+
+-- posts per workflow
+drop trigger if exists trg_limit_posts on workflow_posts;
+create trigger trg_limit_posts before insert on workflow_posts
+  for each row execute function enforce_plan_count_limit(
+    'max_posts_per_workflow', 'direct', 'conta_id', 'workflow_id');
