@@ -2,6 +2,8 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { checkRateLimit } from "../_shared/rate-limit.ts";
 import { insertAuditLog } from "../_shared/audit.ts";
+import { featureForPath } from "../_shared/feature-guard.ts";
+import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -222,6 +224,12 @@ Deno.serve(async (req) => {
       .single();
     const contaId = profile?.conta_id;
     if (!contaId) throw new Error("User profile not found");
+
+    // Feature gate: check plan entitlement for this path before routing
+    const requiredFlag = featureForPath(req.method, path);
+    if (requiredFlag && !(await effectivePlanFeature(serviceClient, contaId, requiredFlag))) {
+      return json({ error: "feature_disabled", feature: requiredFlag }, 403);
+    }
 
     // ==========================================
     // GET /overview/:clientId?days=30

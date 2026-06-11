@@ -10,3 +10,13 @@ export async function effectivePlanLimit(
   if (error) throw error;
   return data === null ? null : Number(data);
 }
+
+export async function effectivePlanFeature(
+  svc: SupabaseClient, workspaceId: string, featureKey: string,
+): Promise<boolean> {
+  const { data, error } = await svc.rpc("effective_plan_feature", {
+    ws_id: workspaceId, feature_key: featureKey,
+  });
+  if (error) throw error;
+  return data === true;
+}
