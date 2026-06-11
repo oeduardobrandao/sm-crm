@@ -7,6 +7,7 @@ import { changeLanguage, SUPPORTED_LANGUAGES } from '@mesaas/i18n';
 import type { Language } from '@mesaas/i18n';
 import { getNavGroups } from './nav-data';
 import type { NavGroup } from './nav-data';
+import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
 
 const LANGUAGE_FLAGS: Record<Language, string> = {
   pt: '\u{1F1E7}\u{1F1F7}',
@@ -24,13 +25,14 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
   const navigate = useNavigate();
   const location = useLocation();
   const { t, i18n } = useTranslation();
+  const { features } = useWorkspaceLimits();
   const [isDark, setIsDark] = useState(
     document.documentElement.getAttribute('data-theme') === 'dark',
   );
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [workspaces, setWorkspaces] = useState<any[]>([]);
 
-  const navGroups = getNavGroups(role);
+  const navGroups = getNavGroups(role, features as Record<string, boolean> | null);
   const activeRoute = location.pathname;
 
   // Load workspaces for switcher
