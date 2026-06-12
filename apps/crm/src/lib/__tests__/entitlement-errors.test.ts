@@ -12,7 +12,13 @@ describe('mapEntitlementError', () => {
   });
   it('maps a quota_exceeded body', () => {
     const r = mapEntitlementError({ error: 'quota_exceeded', used: 9, quota: 10 });
-    expect(r).toEqual({ kind: 'quota', key: 'storage', label: 'armazenamento', used: 9, quota: 10 });
+    expect(r).toEqual({
+      kind: 'quota',
+      key: 'storage',
+      label: 'armazenamento',
+      used: 9,
+      quota: 10,
+    });
   });
   it('returns null for unrelated errors', () => {
     expect(mapEntitlementError({ message: 'network error' })).toBeNull();

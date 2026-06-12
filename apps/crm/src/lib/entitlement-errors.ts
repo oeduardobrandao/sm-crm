@@ -36,7 +36,13 @@ const FEATURE_LABELS: Record<string, string> = {
 /** Normalizes a DB-raised message or an edge-function JSON error into an EntitlementError, or null. */
 export function mapEntitlementError(err: unknown): EntitlementError | null {
   if (!err || typeof err !== 'object') return null;
-  const e = err as { message?: string; error?: string; feature?: string; used?: number; quota?: number };
+  const e = err as {
+    message?: string;
+    error?: string;
+    feature?: string;
+    used?: number;
+    quota?: number;
+  };
 
   // DB-raised PostgREST message: "plan_limit_exceeded:max_clients"
   const msg = typeof e.message === 'string' ? e.message : '';

@@ -17,7 +17,13 @@ export interface WorkspaceSummary {
 }
 
 export interface WorkspaceDetail {
-  workspace: { id: string; name: string; logo_url: string | null; created_at: string; plan_source?: string };
+  workspace: {
+    id: string;
+    name: string;
+    logo_url: string | null;
+    created_at: string;
+    plan_source?: string;
+  };
   owner: MemberInfo | null;
   members: MemberInfo[];
   plan: { id: string; name: string } | null;
@@ -267,7 +273,9 @@ export function setWorkspacePlan(workspace_id: string, plan_id: string) {
 }
 
 export function unsetWorkspacePlan(workspace_id: string) {
-  return adminApi<{ message: string; plan_source: string }>('unset-workspace-plan', { workspace_id });
+  return adminApi<{ message: string; plan_source: string }>('unset-workspace-plan', {
+    workspace_id,
+  });
 }
 
 export function setWorkspaceOverrides(params: {

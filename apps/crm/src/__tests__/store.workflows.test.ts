@@ -394,7 +394,9 @@ describe('store workflow functions', () => {
       error: null,
     });
 
-    await expect(store.replyToPostApproval(55, 20, 'Trocar a imagem principal.')).resolves.not.toThrow();
+    await expect(
+      store.replyToPostApproval(55, 20, 'Trocar a imagem principal.'),
+    ).resolves.not.toThrow();
 
     expect(getCalls('post_approvals', 'insert').at(-1)?.payload).toEqual({
       post_id: 55,

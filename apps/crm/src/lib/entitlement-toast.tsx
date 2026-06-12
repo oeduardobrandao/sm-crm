@@ -11,7 +11,12 @@ export function handleEntitlementMutationError(err: unknown): boolean {
   const mapped = mapEntitlementError(err);
   if (!mapped) return false;
   toast.error(entitlementMessage(mapped), {
-    action: { label: 'Fazer upgrade', onClick: () => { window.location.href = '/configuracao/cobranca'; } },
+    action: {
+      label: 'Fazer upgrade',
+      onClick: () => {
+        window.location.href = '/configuracao/cobranca';
+      },
+    },
   });
   return true;
 }

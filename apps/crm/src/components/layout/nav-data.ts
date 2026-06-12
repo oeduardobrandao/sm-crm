@@ -196,10 +196,7 @@ const NAV_FEATURE: Record<string, string> = {
   'post-express': 'feature_post_scheduling',
 };
 
-export function getNavGroups(
-  role: string,
-  features?: Record<string, boolean> | null,
-): NavGroup[] {
+export function getNavGroups(role: string, features?: Record<string, boolean> | null): NavGroup[] {
   let groups = ALL_NAV_GROUPS;
 
   // Billing is owner-only.
