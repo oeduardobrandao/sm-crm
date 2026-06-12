@@ -52,6 +52,12 @@ same selection.
   `timeSeconds ?? min(0.5, duration / 2)` — guarding `duration` against
   NaN/Infinity (fall back to 0) — then delegates to `captureFrameFromElement`.
   Rejects on decode/load failure (e.g., HEVC `.mov` the browser can't play).
+- **Capture-race requirement:** after setting `currentTime`, awaiting `seeked`
+  alone is not sufficient — some browsers still paint a black or previous
+  frame. Use `requestVideoFrameCallback` (supported in all targets) as the
+  capture primitive, guarded by `readyState >= HAVE_CURRENT_DATA`. In the
+  scrub dialog, pause the element before capturing — on a playing video the
+  frame advances between the click and the draw.
 
 ### 2. Upload flow — `PostMediaGallery.tsx`
 
@@ -61,8 +67,13 @@ same selection.
   → fallback panel" trivially distinguishable from upload/network errors (no
   typed-error contract) and keeps the Vitest boundary clean.
 - `handleFiles` no longer diverts videos to a blocking prompt. All files in a
-  selection upload concurrently: images as today; videos get
-  `extractVideoFrame(file)` first, then upload with that thumbnail.
+  selection upload: images as today; videos get `extractVideoFrame(file)`
+  first, then upload with that thumbnail.
+- **Concurrency cap:** route `handleFiles` through the existing (currently
+  unused by the gallery) `uploadMany` helper (`MAX_CONCURRENT = 3`,
+  `postMedia.ts:265`), capping extraction + upload together. Unbounded
+  concurrency would mean N hidden `<video>` elements decoding simultaneously
+  for an N-video selection.
 - **Fallback (load-bearing, not polish):** `file-upload-finalize` hard-requires
   `thumbnail_r2_key` for videos, so when extraction fails the video cannot
   upload. Failed videos go into a **queue** — `pendingVideos: File[]`
@@ -71,8 +82,16 @@ same selection.
   time, asking for a manual thumbnail upload exactly as today. Canceling skips
   that video.
 - After a video upload completes, the success toast offers an **"Ajustar
-  capa"** action that opens the thumbnail editor for that video — the
-  non-blocking, opt-in scrub entry point at upload time.
+  miniatura"** action that opens the thumbnail editor for that video — the
+  non-blocking, opt-in scrub entry point at upload time. `uploadPostMedia`
+  returns the full `PostMedia` (link id, signed url, thumbnail_url), so the
+  toast action needs no refetch.
+- **Cache invalidation:** after a successful video upload AND after a
+  successful thumbnail edit, invalidate `['workflow-covers']` alongside
+  `['post-media', postId]`. The kanban board (`useEntregasData.ts:229`) and
+  client detail page (`ClienteDetalhePage.tsx:339`) read covers — including
+  `thumbnail_url` — from that separate query; without invalidation the board
+  card keeps the stale cover until an unrelated refetch.
 - `UploadHint` copy updated: thumbnail is generated automatically and can be
   adjusted afterwards.
 - `hasVideoMissingThumbnail` (WorkflowDrawer "send to client" gate) stays
@@ -83,21 +102,37 @@ same selection.
 shadcn Dialog, CRM only. Two ways to set the cover:
 
 - **Scrub:** the video plays in the dialog (signed URL,
-  `crossOrigin="anonymous"`) with a timeline slider; "Usar este frame"
-  captures via `captureFrameFromElement` on the already-playing element — no
+  `crossOrigin="anonymous"`) with a timeline slider; "Usar este frame" pauses
+  the element, then captures via `captureFrameFromElement` — no
   re-download/re-seek.
 - **Upload:** file input accepting `image/jpeg,image/png,image/webp` (matches
   `THUMB_MIME` on both endpoints).
 
 Shows the current thumbnail and a preview of the new choice before confirming.
 
-**Copy requirement:** the dialog states that the cover applies to the CRM/Hub
-preview and does **not** change the published Instagram reel cover (avoids the
-expectation trap for users who scrub to a perfect frame).
+**Copy requirements (i18n-visible, pinned here):**
+- **Naming — avoid the "capa" collision.** The tile already uses "capa" for
+  the `is_cover` concept (badge "capa", action "Definir como capa"). The
+  thumbnail feature must use **"Miniatura do vídeo"** terminology everywhere
+  (hover action title, dialog title, toast action "Ajustar miniatura"),
+  leaving plain "capa" exclusively to the post-cover concept. Two adjacent
+  buttons on one tile both saying "capa" while doing different things is a
+  confusion trap.
+- The dialog states that the miniatura applies to the CRM/Hub preview and
+  does **not** change the published Instagram reel cover (avoids the
+  expectation trap for users who scrub to a perfect frame).
 
 Entry points:
-1. New hover action (image icon) on video tiles in `SortableMediaTile`.
-2. The post-upload toast's "Ajustar capa" action.
+1. New hover action (image icon) on video tiles in `SortableMediaTile` —
+   placed inside the existing `onPointerDown={e => e.stopPropagation()}`
+   wrapper (`PostMediaGallery.tsx:547`), since the tile container handles
+   click (lightbox) and drag.
+2. The post-upload toast's "Ajustar miniatura" action.
+
+**Signed-URL expiry:** tile URLs are signed for 900s; a dialog opened from a
+long-idle gallery could 403. Read the video URL from the current query cache
+at open time rather than a captured prop; the error path (toast, dialog stays
+open) covers the residual case.
 
 ### 4. Service — `updateVideoThumbnail(linkId, thumbnail)` in `postMedia.ts` (new)
 
@@ -113,6 +148,10 @@ Three steps, all against existing endpoints (zero backend changes):
 **Shared-file caveat (accepted):** thumbnails live on the `files` table, so a
 video linked to multiple posts shows the new thumbnail everywhere. This
 matches existing PATCH behavior.
+
+**Storage quota (accepted):** auto-thumbnails add bytes to every video upload
+(`file-upload-url` counts thumbnail bytes against the workspace quota). At
+≤1920px JPEG this is negligible — no action needed.
 
 ## Error handling
 
