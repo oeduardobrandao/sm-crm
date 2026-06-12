@@ -49,6 +49,33 @@ export async function listActivePlans(): Promise<BillingPlan[]> {
   return (data ?? []) as BillingPlan[];
 }
 
+/**
+ * The current workspace's effective plan id (`workspaces.plan_id`). This is the
+ * source of truth for what plan the workspace is on — including admin/comp overrides
+ * like Lifetime, which have no Stripe subscription. Owner can read their own
+ * workspace row via the `ws_select_member` RLS policy. Returns null when unset
+ * (resolves to the default plan elsewhere).
+ */
+export async function getEffectivePlanId(): Promise<string | null> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('conta_id')
+    .eq('id', user.id)
+    .single();
+  if (!profile?.conta_id) return null;
+  const { data, error } = await supabase
+    .from('workspaces')
+    .select('plan_id')
+    .eq('id', profile.conta_id)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return (data?.plan_id as string | null) ?? null;
+}
+
 /** Current workspace's subscription row (owner-only via RLS), or null. */
 export async function getWorkspaceSubscription(): Promise<WorkspaceSubscription | null> {
   const {

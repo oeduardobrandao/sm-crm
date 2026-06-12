@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import type { SubscriptionInfo, SubscriptionSummary } from './subscription';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 
@@ -14,6 +15,7 @@ export interface WorkspaceSummary {
   client_count: number;
   plan_name: string | null;
   has_overrides: boolean;
+  subscription: SubscriptionSummary | null;
 }
 
 export interface WorkspaceDetail {
@@ -34,6 +36,7 @@ export interface WorkspaceDetail {
   } | null;
   resolved_limits: Record<string, number | null> | null;
   resolved_features: Record<string, boolean> | null;
+  subscription: SubscriptionInfo | null;
   usage: { client_count: number; member_count: number; integration_count: number };
 }
 

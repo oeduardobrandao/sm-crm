@@ -193,6 +193,13 @@
   color: var(--text-main);
   line-height: 1;
 }
+/* Internal/comp plans (e.g. Lifetime) have no purchasable price. */
+.plan-price__note {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+  color: var(--text-light);
+}
 .plan-annual-lead {
   font-family: var(--font-mono);
   font-size: 0.68rem;
@@ -249,6 +256,120 @@
   padding: 0.62rem;
   border: 1px dashed var(--border-color);
   border-radius: 4px;
+}
+
+/* ── Lifetime: a shiny golden card so the exclusive plan feels special ───────── */
+.plan-card.is-lifetime {
+  position: relative;
+  overflow: hidden;
+  border: 2px solid transparent;
+  /* gold cream face + metallic-gold border via padding-box/border-box layering */
+  background:
+    linear-gradient(180deg, rgba(255, 246, 214, 0.82), rgba(255, 252, 242, 0.97)) padding-box,
+    linear-gradient(135deg, #bf953f, #fcf6ba 32%, #b38728 52%, #fbf5b7 74%, #aa771c) border-box;
+  box-shadow:
+    0 14px 34px -16px rgba(176, 137, 43, 0.65),
+    0 1px 0 rgba(255, 255, 255, 0.6) inset;
+}
+.plan-card.is-lifetime:hover {
+  transform: translateY(-3px);
+  box-shadow:
+    0 20px 46px -16px rgba(176, 137, 43, 0.82),
+    0 1px 0 rgba(255, 255, 255, 0.6) inset;
+}
+[data-theme='dark'] .plan-card.is-lifetime {
+  background:
+    linear-gradient(180deg, rgba(74, 58, 22, 0.55), rgba(26, 22, 12, 0.96)) padding-box,
+    linear-gradient(135deg, #bf953f, #fcf6ba 32%, #b38728 52%, #fbf5b7 74%, #aa771c) border-box;
+  box-shadow:
+    0 16px 40px -18px rgba(0, 0, 0, 0.7),
+    0 0 22px -6px rgba(212, 175, 55, 0.35);
+}
+
+/* Light glint that sweeps across the foil every few seconds */
+.plan-card.is-lifetime::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    115deg,
+    transparent 34%,
+    rgba(255, 255, 255, 0.5) 48%,
+    transparent 62%
+  );
+  transform: translateX(-130%);
+  animation: lifetime-shine 5s ease-in-out infinite;
+  pointer-events: none;
+}
+[data-theme='dark'] .plan-card.is-lifetime::before {
+  background: linear-gradient(
+    115deg,
+    transparent 34%,
+    rgba(255, 240, 200, 0.22) 48%,
+    transparent 62%
+  );
+}
+@keyframes lifetime-shine {
+  0%,
+  16% {
+    transform: translateX(-130%);
+  }
+  42%,
+  100% {
+    transform: translateX(130%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .plan-card.is-lifetime::before {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+/* Metallic-gold plan name */
+.plan-card.is-lifetime .plan-name {
+  background: linear-gradient(135deg, #8a6d1f, #d4af37 38%, #b8860b 60%, #e6c44d);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+[data-theme='dark'] .plan-card.is-lifetime .plan-name {
+  background: linear-gradient(135deg, #f5d76e, #fff3c4 42%, #d4af37 72%, #fbe48a);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Gold accents on the rest of the card */
+.plan-card.is-lifetime .plan-price__note {
+  color: #9c7a20;
+  font-weight: 600;
+}
+[data-theme='dark'] .plan-card.is-lifetime .plan-price__note {
+  color: #e6c44d;
+}
+.plan-card.is-lifetime .plan-features li i {
+  color: #b8860b;
+}
+[data-theme='dark'] .plan-card.is-lifetime .plan-features li i {
+  color: #f5d76e;
+}
+
+/* Golden "Plano atual" pill (with crown) + bottom CTA */
+.plan-card.is-lifetime .plan-tag--current {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: linear-gradient(135deg, #bf953f, #fcf6ba 50%, #b38728);
+  color: #4a3a0e;
+  border: none;
+}
+.plan-card.is-lifetime .plan-cta__static {
+  color: #9c7a20;
+  border-color: rgba(176, 137, 43, 0.5);
+}
+[data-theme='dark'] .plan-card.is-lifetime .plan-cta__static {
+  color: #e6c44d;
 }
 
 /* Loading skeletons */

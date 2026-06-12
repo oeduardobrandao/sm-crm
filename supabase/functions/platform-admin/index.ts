@@ -231,11 +231,110 @@ async function handleListWorkspaces(
     })
   );
 
-  let result = enriched;
+  // Attach each workspace's Stripe-subscription summary (status, plan, and amount).
+  // The amount is fetched live from Stripe for paying rows only — so it reflects
+  // coupons/discounts, bounded by the number of real subscriptions on the page —
+  // with the plan's catalog price as a fallback. Rows with no subscription do no
+  // Stripe work.
+  const wsIds = enriched.map((w) => w.id);
+  const subByWs = new Map<
+    string,
+    {
+      status: string | null;
+      plan_id: string | null;
+      billing_interval: string | null;
+      stripe_subscription_id: string | null;
+    }
+  >();
+  const planById = new Map<
+    string,
+    { name: string; price_brl: number | null; price_brl_annual: number | null }
+  >();
+  if (wsIds.length) {
+    const { data: subRows } = await svc
+      .from("workspace_subscriptions")
+      .select("workspace_id, status, plan_id, billing_interval, stripe_subscription_id")
+      .in("workspace_id", wsIds);
+    for (const s of subRows ?? []) {
+      subByWs.set(s.workspace_id, {
+        status: s.status ?? null,
+        plan_id: s.plan_id ?? null,
+        billing_interval: s.billing_interval ?? null,
+        stripe_subscription_id: s.stripe_subscription_id ?? null,
+      });
+    }
+    const { data: planRows } = await svc
+      .from("plans")
+      .select("id, name, price_brl, price_brl_annual");
+    for (const p of planRows ?? []) {
+      planById.set(p.id, {
+        name: p.name,
+        price_brl: p.price_brl ?? null,
+        price_brl_annual: p.price_brl_annual ?? null,
+      });
+    }
+  }
+
+  // Load the Stripe client once if any row actually has a subscription to price.
+  let stripeClient: StripeClient | null = null;
+  if ([...subByWs.values()].some((s) => s.stripe_subscription_id)) {
+    try {
+      stripeClient = (await import("../_shared/stripe.ts")).stripe;
+    } catch (err) {
+      console.error("[platform-admin] stripe import failed:", (err as Error).message);
+    }
+  }
+
+  const enrichedWithSubs = await Promise.all(
+    enriched.map(async (w) => {
+      const s = subByWs.get(w.id);
+      if (!s) return { ...w, subscription: null };
+
+      const planMeta = s.plan_id ? planById.get(s.plan_id) : undefined;
+      let amount_cents: number | null = null;
+      let currency: string | null = null;
+      let interval: string | null = s.billing_interval;
+      let discount_label: string | null = null;
+
+      if (stripeClient && s.stripe_subscription_id) {
+        try {
+          const amt = await fetchStripeAmount(stripeClient, s.stripe_subscription_id, s.billing_interval);
+          amount_cents = amt.amount_cents;
+          currency = amt.currency;
+          interval = amt.interval ?? s.billing_interval;
+          discount_label = amt.discount_label;
+        } catch (err) {
+          console.error("[platform-admin] list stripe fetch failed:", (err as Error).message);
+        }
+      }
+      if (amount_cents == null && planMeta) {
+        const cents = s.billing_interval === "year" ? planMeta.price_brl_annual : planMeta.price_brl;
+        if (cents != null) {
+          amount_cents = cents;
+          currency = "brl";
+        }
+      }
+
+      return {
+        ...w,
+        subscription: {
+          status: s.status,
+          plan_name: planMeta?.name ?? null,
+          billing_interval: s.billing_interval,
+          amount_cents,
+          currency,
+          interval,
+          discount_label,
+        },
+      };
+    }),
+  );
+
+  let result = enrichedWithSubs;
   if (plan_id) {
     const { data: plan } = await svc.from("plans").select("name").eq("id", plan_id).single();
     if (plan) {
-      result = enriched.filter((ws) => ws.plan_name === plan.name);
+      result = enrichedWithSubs.filter((ws) => ws.plan_name === plan.name);
     }
   }
 
@@ -318,6 +417,8 @@ async function handleGetWorkspace(
     }
   }
 
+  const subscription = await buildSubscriptionDetail(svc, workspace_id);
+
   return new Response(JSON.stringify({
     workspace: ws,
     owner,
@@ -330,12 +431,188 @@ async function handleGetWorkspace(
     } : null,
     resolved_limits: resolvedLimits,
     resolved_features: resolvedFeatures,
+    subscription,
     usage: {
       client_count: clientCount || 0,
       member_count: enrichedMembers.length,
       integration_count: integrationCount || 0,
     },
   }), { status: 200, headers });
+}
+
+// ─── Stripe subscription detail (live amount, catalog fallback) ────────────────
+
+type CouponLike = {
+  id: string;
+  name?: string | null;
+  percent_off?: number | null;
+  amount_off?: number | null;
+};
+
+/** Reads the active coupon off a subscription (handles both `discounts[]` and legacy `discount`). */
+function extractCoupon(sub: unknown): CouponLike | null {
+  const s = sub as { discounts?: unknown; discount?: unknown };
+  const d = Array.isArray(s.discounts) && s.discounts.length ? s.discounts[0] : s.discount;
+  if (!d || typeof d === "string") return null;
+  return (d as { coupon?: CouponLike }).coupon ?? null;
+}
+
+function stripeDashboardUrl(livemode: boolean, kind: string, id: string): string {
+  return `https://dashboard.stripe.com/${livemode ? "" : "test/"}${kind}/${id}`;
+}
+
+function trimPercent(n: number): string {
+  return Number.isInteger(n) ? String(n) : String(Number(n.toFixed(2)));
+}
+
+type StripeClient = {
+  subscriptions: { retrieve: (id: string, opts: { expand: string[] }) => Promise<unknown> };
+};
+
+type StripeAmount = {
+  amount_cents: number;
+  gross_cents: number | null;
+  currency: string;
+  interval: string | null;
+  discount_label: string | null;
+  livemode: boolean;
+};
+
+/**
+ * Retrieves a subscription's current price from Stripe and applies any active coupon,
+ * so the returned amount is what the customer actually pays. Shared by the detail
+ * view and the list. `fallbackInterval` is the mirror's billing_interval, used when
+ * the price object doesn't carry a recurring interval.
+ */
+async function fetchStripeAmount(
+  stripe: StripeClient,
+  subscriptionId: string,
+  fallbackInterval: string | null,
+): Promise<StripeAmount> {
+  let sub: unknown;
+  try {
+    sub = await stripe.subscriptions.retrieve(subscriptionId, {
+      expand: ["items.data.price", "discounts"],
+    });
+  } catch (_e) {
+    // Some API versions reject expanding `discounts`; retry with price only.
+    sub = await stripe.subscriptions.retrieve(subscriptionId, { expand: ["items.data.price"] });
+  }
+  const s = sub as {
+    livemode?: boolean;
+    items?: {
+      data?: Array<{
+        quantity?: number;
+        price?: { unit_amount?: number | null; currency?: string; recurring?: { interval?: string } };
+      }>;
+    };
+  };
+  const item = s.items?.data?.[0];
+  const qty = item?.quantity ?? 1;
+  const gross = (item?.price?.unit_amount ?? 0) * qty;
+  const coupon = extractCoupon(sub);
+  let net = gross;
+  let discountLabel: string | null = null;
+  if (coupon) {
+    if (typeof coupon.percent_off === "number" && coupon.percent_off > 0) {
+      net = Math.round(gross * (1 - coupon.percent_off / 100));
+      discountLabel = `${coupon.name ?? coupon.id} −${trimPercent(coupon.percent_off)}%`;
+    } else if (typeof coupon.amount_off === "number" && coupon.amount_off > 0) {
+      net = Math.max(0, gross - coupon.amount_off);
+      discountLabel = coupon.name ?? coupon.id;
+    }
+  }
+  return {
+    amount_cents: net,
+    gross_cents: net !== gross ? gross : null,
+    currency: item?.price?.currency ?? "brl",
+    interval: item?.price?.recurring?.interval ?? fallbackInterval,
+    discount_label: discountLabel,
+    livemode: s.livemode ?? true,
+  };
+}
+
+/**
+ * Builds the Stripe-subscription view for one workspace. The local mirror
+ * (workspace_subscriptions) always reflects the real Stripe status even when an
+ * admin has manually comped the workspace's effective plan, so we surface it here.
+ * The exact amount (incl. coupons/custom prices) comes live from Stripe; if Stripe
+ * is unreachable or the key is unset we fall back to the plan's catalog price.
+ */
+async function buildSubscriptionDetail(
+  svc: ReturnType<typeof createClient>,
+  workspaceId: string,
+) {
+  const { data: row } = await svc
+    .from("workspace_subscriptions")
+    .select(
+      "status, plan_id, billing_interval, current_period_end, cancel_at_period_end, failed_payment_count, stripe_customer_id, stripe_subscription_id",
+    )
+    .eq("workspace_id", workspaceId)
+    .maybeSingle();
+  if (!row) return null;
+
+  let planName: string | null = null;
+  if (row.plan_id) {
+    const { data: plan } = await svc.from("plans").select("name").eq("id", row.plan_id).single();
+    planName = plan?.name ?? null;
+  }
+
+  const info = {
+    status: row.status ?? null,
+    plan_id: row.plan_id ?? null,
+    plan_name: planName,
+    billing_interval: row.billing_interval ?? null,
+    current_period_end: row.current_period_end ?? null,
+    cancel_at_period_end: row.cancel_at_period_end ?? false,
+    failed_payment_count: row.failed_payment_count ?? 0,
+    stripe_customer_id: row.stripe_customer_id ?? null,
+    stripe_subscription_id: row.stripe_subscription_id ?? null,
+    amount_cents: null as number | null,
+    gross_cents: null as number | null,
+    currency: null as string | null,
+    interval: row.billing_interval ?? null,
+    discount_label: null as string | null,
+    amount_source: null as "stripe" | "catalog" | null,
+    stripe_dashboard_url: null as string | null,
+  };
+
+  if (row.stripe_subscription_id) {
+    try {
+      const { stripe } = await import("../_shared/stripe.ts");
+      const amt = await fetchStripeAmount(stripe, row.stripe_subscription_id, row.billing_interval ?? null);
+      info.amount_cents = amt.amount_cents;
+      info.gross_cents = amt.gross_cents;
+      info.currency = amt.currency;
+      info.interval = amt.interval;
+      info.discount_label = amt.discount_label;
+      info.amount_source = "stripe";
+      info.stripe_dashboard_url = stripeDashboardUrl(
+        amt.livemode,
+        "subscriptions",
+        row.stripe_subscription_id,
+      );
+      return info;
+    } catch (err) {
+      console.error("[platform-admin] stripe fetch failed:", (err as Error).message);
+    }
+  }
+
+  // Catalog fallback: list price from the plan row × billing interval.
+  if (row.plan_id) {
+    const { data: plan } = await svc
+      .from("plans")
+      .select("price_brl, price_brl_annual")
+      .eq("id", row.plan_id)
+      .single();
+    const cents = row.billing_interval === "year" ? plan?.price_brl_annual : plan?.price_brl;
+    if (cents != null) {
+      info.amount_cents = cents as number;
+      info.currency = "brl";
+      info.amount_source = "catalog";
+    }
+  }
+  return info;
 }
 
 // ─── Plans ─────────────────────────────────────────────────────
