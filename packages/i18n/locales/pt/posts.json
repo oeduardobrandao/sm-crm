@@ -59,6 +59,23 @@
     "videoUploaded": "Vídeo enviado",
     "downloadDone": "Download concluído",
     "selectThumbnail": "Selecione uma thumbnail para o vídeo",
-    "chooseThumbnail": "Escolher thumbnail"
+    "chooseThumbnail": "Escolher thumbnail",
+    "adjustThumbnail": "Ajustar miniatura",
+    "videoThumbnail": "Miniatura do vídeo",
+    "thumbnailHint": "Vídeos ganham uma miniatura automática (um frame do vídeo). Você pode ajustá-la depois pelo ícone de imagem no vídeo.",
+    "thumbnailFallback": "Não foi possível gerar a miniatura automaticamente. Selecione uma imagem de capa para",
+    "remainingVideos": "{{count}} vídeo(s) aguardando miniatura"
+  },
+  "thumbnailEditor": {
+    "title": "Miniatura do vídeo",
+    "disclaimer": "A miniatura aparece na pré-visualização do CRM e do portal do cliente. Ela não altera a capa do Reel publicado no Instagram.",
+    "useFrame": "Usar este frame",
+    "uploadImage": "Enviar imagem",
+    "current": "Miniatura atual",
+    "preview": "Nova miniatura",
+    "save": "Salvar miniatura",
+    "saving": "Salvando…",
+    "captureError": "Não foi possível capturar o frame",
+    "updated": "Miniatura atualizada"
   }
 }

@@ -59,6 +59,23 @@
     "videoUploaded": "Video uploaded",
     "downloadDone": "Download complete",
     "selectThumbnail": "Select a thumbnail for the video",
-    "chooseThumbnail": "Choose thumbnail"
+    "chooseThumbnail": "Choose thumbnail",
+    "adjustThumbnail": "Adjust thumbnail",
+    "videoThumbnail": "Video thumbnail",
+    "thumbnailHint": "Videos get an automatic thumbnail (a frame from the video). You can adjust it later via the image icon on the video.",
+    "thumbnailFallback": "Could not generate a thumbnail automatically. Select a cover image for",
+    "remainingVideos": "{{count}} video(s) awaiting a thumbnail"
+  },
+  "thumbnailEditor": {
+    "title": "Video thumbnail",
+    "disclaimer": "The thumbnail is used in the CRM and client portal previews. It does not change the cover of the Reel published on Instagram.",
+    "useFrame": "Use this frame",
+    "uploadImage": "Upload image",
+    "current": "Current thumbnail",
+    "preview": "New thumbnail",
+    "save": "Save thumbnail",
+    "saving": "Saving…",
+    "captureError": "Could not capture the frame",
+    "updated": "Thumbnail updated"
   }
 }
