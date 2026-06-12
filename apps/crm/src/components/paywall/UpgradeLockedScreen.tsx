@@ -15,9 +15,7 @@ export function UpgradeLockedScreen({ featureLabel }: { featureLabel: string }) 
           <Button onClick={() => navigate('/configuracao/cobranca')}>Fazer upgrade</Button>
         </>
       ) : (
-        <p className="text-muted">
-          Fale com o dono do workspace para liberar este recurso.
-        </p>
+        <p className="text-muted">Fale com o dono do workspace para liberar este recurso.</p>
       )}
     </div>
   );
