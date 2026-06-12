@@ -167,25 +167,23 @@ export default function WorkspacesPage() {
                   <span className="text-dim-foreground">—</span>
                 )}
               </span>
-              <span className="hidden min-w-0 text-sm md:flex md:flex-col md:gap-0.5">
+              <span className="hidden min-w-0 items-center gap-2 text-sm md:flex">
                 {hasSubscription(ws.subscription) ? (
                   <>
-                    <span className="inline-flex min-w-0 items-center gap-1.5">
-                      <span
-                        className={`shrink-0 text-[0.7rem] font-semibold uppercase px-2 py-0.5 rounded-sm ${toneBadgeClass(statusMeta(ws.subscription.status).tone)}`}
-                      >
-                        {ws.subscription.plan_name ?? 'Stripe'}
-                      </span>
-                      {ws.subscription.status !== 'active' && (
-                        <span className="truncate text-[0.65rem] text-muted-foreground">
-                          {statusMeta(ws.subscription.status).label}
-                        </span>
-                      )}
+                    <span
+                      className={`shrink-0 text-[0.7rem] font-semibold uppercase px-2 py-0.5 rounded-sm ${toneBadgeClass(statusMeta(ws.subscription.status).tone)}`}
+                    >
+                      {ws.subscription.plan_name ?? 'Stripe'}
                     </span>
-                    <span className="font-['DM_Mono'] text-xs text-muted-foreground">
+                    <span className="whitespace-nowrap font-['DM_Mono'] text-xs text-muted-foreground">
                       {formatMoney(ws.subscription.amount_cents, ws.subscription.currency)}
                       {intervalSuffix(ws.subscription.interval)}
                     </span>
+                    {ws.subscription.status !== 'active' && (
+                      <span className="truncate text-[0.65rem] text-muted-foreground">
+                        {statusMeta(ws.subscription.status).label}
+                      </span>
+                    )}
                   </>
                 ) : (
                   <span className="text-dim-foreground">—</span>
