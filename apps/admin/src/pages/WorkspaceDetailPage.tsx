@@ -1,8 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+  statusMeta,
+  toneBadgeClass,
+  hasSubscription,
+  intervalLabel,
+  intervalSuffix,
+  formatMoney,
+} from '../lib/subscription';
 import {
   getWorkspace,
   listPlans,
@@ -193,6 +201,91 @@ export default function WorkspaceDetailPage() {
         </div>
       </div>
 
+      {/* Stripe subscription — the customer's real billing, even when an admin has
+          manually comped the effective plan above. */}
+      <div className="min-w-0 bg-card border border-border rounded-2xl p-5 mb-6">
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <h2 className="font-semibold">Assinatura Stripe</h2>
+          {data.subscription?.stripe_dashboard_url && (
+            <a
+              href={data.subscription.stripe_dashboard_url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex shrink-0 items-center gap-1 text-sm text-primary hover:underline"
+            >
+              Abrir no Stripe <ExternalLink size={14} />
+            </a>
+          )}
+        </div>
+
+        {hasSubscription(data.subscription) ? (
+          <>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
+              <Field label="Status">
+                <span
+                  className={`inline-block text-xs font-semibold uppercase px-2 py-0.5 rounded-sm ${toneBadgeClass(statusMeta(data.subscription.status).tone)}`}
+                >
+                  {statusMeta(data.subscription.status).label}
+                </span>
+              </Field>
+              <Field label="Plano">
+                <span className="text-sm">
+                  {data.subscription.plan_name ?? '—'}
+                  {intervalLabel(data.subscription.interval)
+                    ? ` (${intervalLabel(data.subscription.interval)})`
+                    : ''}
+                </span>
+              </Field>
+              <Field label="Valor">
+                <span className="font-['DM_Mono'] text-sm">
+                  {formatMoney(data.subscription.amount_cents, data.subscription.currency)}
+                  {intervalSuffix(data.subscription.interval)}
+                </span>
+                {data.subscription.gross_cents != null && (
+                  <span className="ml-2 text-xs text-muted-foreground line-through">
+                    {formatMoney(data.subscription.gross_cents, data.subscription.currency)}
+                  </span>
+                )}
+                {data.subscription.discount_label && (
+                  <div className="text-[0.7rem] text-muted-foreground">
+                    {data.subscription.discount_label}
+                  </div>
+                )}
+                {data.subscription.amount_source === 'catalog' && (
+                  <div className="text-[0.7rem] text-muted-foreground">preço de tabela</div>
+                )}
+              </Field>
+              <Field label={data.subscription.cancel_at_period_end ? 'Cancela em' : 'Renova em'}>
+                <span className="text-sm">
+                  {data.subscription.current_period_end
+                    ? new Date(data.subscription.current_period_end).toLocaleDateString('pt-BR', {
+                        day: '2-digit',
+                        month: 'long',
+                        year: 'numeric',
+                      })
+                    : '—'}
+                </span>
+              </Field>
+              {data.subscription.failed_payment_count > 0 && (
+                <Field label="Pagamentos falhos">
+                  <span className="text-sm text-warning">
+                    {data.subscription.failed_payment_count}
+                  </span>
+                </Field>
+              )}
+            </div>
+            {data.workspace.plan_source === 'manual' && (
+              <p className="mt-4 text-xs text-muted-foreground">
+                O plano efetivo foi ajustado manualmente (comp). Os dados acima refletem a
+                assinatura real do cliente no Stripe.
+              </p>
+            )}
+          </>
+        ) : (
+          <p className="text-sm text-muted-foreground">Sem assinatura Stripe.</p>
+        )}
+      </div>
+
       <div className="grid min-w-0 max-w-full grid-cols-1 gap-6 mb-6 md:grid-cols-2">
         <div className="bg-card border border-border rounded-2xl p-5 min-w-0">
           <h2 className="font-semibold mb-4">Resource Limits</h2>
@@ -327,6 +420,17 @@ export default function WorkspaceDetailPage() {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <div className="text-[0.65rem] uppercase tracking-wider text-muted-foreground mb-1">
+        {label}
+      </div>
+      <div className="min-w-0">{children}</div>
     </div>
   );
 }

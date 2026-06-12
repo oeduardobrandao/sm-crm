@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Search, ArrowRight } from 'lucide-react';
 import { listWorkspaces, listPlans } from '../lib/api';
 import { getPlanColor } from '../lib/plan-colors';
+import { statusMeta, toneBadgeClass, hasSubscription } from '../lib/subscription';
 
 export default function WorkspacesPage() {
   const navigate = useNavigate();
@@ -73,10 +74,11 @@ export default function WorkspacesPage() {
 
       <div className="bg-card border border-border rounded-2xl p-5">
         {/* Desktop table header */}
-        <div className="hidden md:grid grid-cols-[2fr_1.5fr_1fr_0.75fr_0.75fr_0.75fr_0.5fr] gap-2 text-[0.7rem] text-muted-foreground uppercase tracking-wider pb-3 border-b border-border">
+        <div className="hidden md:grid grid-cols-[1.8fr_1.3fr_0.9fr_1.1fr_0.55fr_0.55fr_0.7fr_0.4fr] gap-2 text-[0.7rem] text-muted-foreground uppercase tracking-wider pb-3 border-b border-border">
           <span>Workspace</span>
           <span>Owner</span>
           <span>Plan</span>
+          <span>Stripe</span>
           <span>Clients</span>
           <span>Members</span>
           <span>Created</span>
@@ -92,7 +94,7 @@ export default function WorkspacesPage() {
             <div
               key={ws.id}
               onClick={() => navigate(`/admin/workspaces/${ws.id}`)}
-              className="cursor-pointer hover:bg-secondary/30 transition-colors border-b border-border/50 py-3 -mx-5 px-5 md:grid md:grid-cols-[2fr_1.5fr_1fr_0.75fr_0.75fr_0.75fr_0.5fr] md:gap-2 md:items-center"
+              className="cursor-pointer hover:bg-secondary/30 transition-colors border-b border-border/50 py-3 -mx-5 px-5 md:grid md:grid-cols-[1.8fr_1.3fr_0.9fr_1.1fr_0.55fr_0.55fr_0.7fr_0.4fr] md:gap-2 md:items-center"
             >
               {/* Mobile card layout */}
               <div className="md:hidden flex flex-col gap-1.5">
@@ -116,6 +118,14 @@ export default function WorkspacesPage() {
                       }}
                     >
                       {ws.plan_name}
+                    </span>
+                  )}
+                  {hasSubscription(ws.subscription) && (
+                    <span
+                      className={`inline-block text-[0.6rem] font-semibold uppercase px-1.5 py-0.5 rounded-sm ${toneBadgeClass(statusMeta(ws.subscription.status).tone)}`}
+                    >
+                      Stripe: {ws.subscription.plan_name ?? '—'} ·{' '}
+                      {statusMeta(ws.subscription.status).label}
                     </span>
                   )}
                   <span>{ws.client_count} clients</span>
@@ -144,6 +154,24 @@ export default function WorkspacesPage() {
                     }}
                   >
                     {ws.plan_name}
+                  </span>
+                ) : (
+                  <span className="text-dim-foreground">—</span>
+                )}
+              </span>
+              <span className="hidden md:inline min-w-0 text-sm">
+                {hasSubscription(ws.subscription) ? (
+                  <span className="inline-flex min-w-0 items-center gap-1.5">
+                    <span
+                      className={`shrink-0 text-[0.7rem] font-semibold uppercase px-2 py-0.5 rounded-sm ${toneBadgeClass(statusMeta(ws.subscription.status).tone)}`}
+                    >
+                      {ws.subscription.plan_name ?? 'Stripe'}
+                    </span>
+                    {ws.subscription.status !== 'active' && (
+                      <span className="truncate text-[0.65rem] text-muted-foreground">
+                        {statusMeta(ws.subscription.status).label}
+                      </span>
+                    )}
                   </span>
                 ) : (
                   <span className="text-dim-foreground">—</span>
