@@ -115,6 +115,17 @@ verify_jwt = false
 [functions.stripe-webhook]
 verify_jwt = false
 
+# Hub (token-based) + cron functions added with the paywall/hub work — must NOT
+# require a JWT (clients/cron don't send one).
+[functions.hub-edit-suggestion]
+verify_jwt = false
+
+[functions.hub-reports]
+verify_jwt = false
+
+[functions.instagram-report-generator-v2]
+verify_jwt = false
+
 # Local-dev only: the analytics/vector container can't bind-mount the Docker
 # socket under colima/headless Docker. Disabling it keeps `supabase start`
 # working; does not affect the hosted project.
