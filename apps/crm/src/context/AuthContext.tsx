@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import type { User } from '@supabase/supabase-js';
 import {
   supabase,
@@ -27,9 +28,10 @@ interface AuthContextValue {
   signOut: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextValue | null>(null);
+export const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -84,6 +86,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabaseSignOut();
     clearProfileCache();
     setProfile(null);
+    // Drop all cached per-user data (entitlements, notifications, …) so the next
+    // account that logs in never sees the previous user's plan/limits.
+    queryClient.clear();
   };
 
   return (

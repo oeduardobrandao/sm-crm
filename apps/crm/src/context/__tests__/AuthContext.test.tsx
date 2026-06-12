@@ -1,4 +1,5 @@
 import { act, render, renderHook, screen, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../lib/supabase');
@@ -21,6 +22,17 @@ type MockedSupabaseModule = typeof supabaseModule & {
 };
 
 const mockedSupabase = supabaseModule as MockedSupabaseModule;
+
+function renderWithAuth() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>
+    </QueryClientProvider>,
+  );
+}
 
 function Probe() {
   const auth = useAuth();
@@ -51,11 +63,7 @@ describe('AuthProvider', () => {
       conta_id: 'conta-admin',
     });
 
-    render(
-      <AuthProvider>
-        <Probe />
-      </AuthProvider>,
-    );
+    renderWithAuth();
 
     await waitFor(() => {
       expect(screen.getByTestId('loading')).toHaveTextContent('false');
@@ -75,11 +83,7 @@ describe('AuthProvider', () => {
       conta_id: 'conta-1',
     });
 
-    render(
-      <AuthProvider>
-        <Probe />
-      </AuthProvider>,
-    );
+    renderWithAuth();
 
     await waitFor(() => {
       expect(screen.getByTestId('role')).toHaveTextContent('owner');
@@ -105,11 +109,7 @@ describe('AuthProvider', () => {
       conta_id: 'conta-1',
     });
 
-    render(
-      <AuthProvider>
-        <Probe />
-      </AuthProvider>,
-    );
+    renderWithAuth();
 
     await waitFor(() => {
       expect(screen.getByTestId('role')).toHaveTextContent('owner');
@@ -121,6 +121,45 @@ describe('AuthProvider', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('role')).toHaveTextContent('agent');
+    });
+  });
+
+  it('signOut clears the React Query cache so the next account gets no stale entitlements', async () => {
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-1' });
+    mockedSupabase.__setCurrentProfile({
+      id: 'user-1',
+      nome: 'Eduardo',
+      role: 'owner',
+      conta_id: 'conta-1',
+    });
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    // Seed a previous user's cached entitlements (free plan, everything locked).
+    queryClient.setQueryData(['workspace-limits', 'conta-1'], {
+      plan_name: 'Free',
+      features: { feature_leads: false },
+    });
+    expect(queryClient.getQueryData(['workspace-limits', 'conta-1'])).toBeDefined();
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <Probe />
+        </AuthProvider>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('role')).toHaveTextContent('owner');
+    });
+
+    await act(async () => {
+      screen.getByText('sair').click();
+    });
+
+    await waitFor(() => {
+      expect(queryClient.getQueryData(['workspace-limits', 'conta-1'])).toBeUndefined();
     });
   });
 

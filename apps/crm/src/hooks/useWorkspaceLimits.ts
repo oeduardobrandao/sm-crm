@@ -1,5 +1,7 @@
+import { useContext } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
+import { AuthContext } from '../context/AuthContext';
 
 export interface ResourceLimits {
   max_clients: number | null;
@@ -64,8 +66,14 @@ async function fetchWorkspaceLimits(): Promise<WorkspaceLimitsResponse> {
 }
 
 export function useWorkspaceLimits() {
+  // Scope the cache to the active workspace so switching accounts/workspaces
+  // never serves a previous plan's entitlements (which would wrongly gate the UI).
+  // Read the context directly (not useAuth) so the hook stays usable — keyed by a
+  // null workspace — outside an AuthProvider (e.g. in isolated component tests).
+  const auth = useContext(AuthContext);
+  const workspaceId = auth?.profile?.conta_id ?? null;
   const { data, isLoading } = useQuery({
-    queryKey: ['workspace-limits'],
+    queryKey: ['workspace-limits', workspaceId],
     queryFn: fetchWorkspaceLimits,
     staleTime: 5 * 60 * 1000,
     retry: 2,
