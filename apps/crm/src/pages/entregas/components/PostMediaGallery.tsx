@@ -134,6 +134,7 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
     });
 
     let hasError = false;
+    let deferredCount = 0;
     await uploadMany(items, async ({ file, uid }) => {
       try {
         let thumbnail: File | undefined;
@@ -143,6 +144,7 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
           } catch {
             // Browser can't decode this video — fall back to asking for a
             // manual thumbnail (finalize rejects videos without one).
+            deferredCount++;
             setPendingVideos((prev) => [...prev, file]);
             setUploadQueue((prev) => {
               const next = new Map(prev);
@@ -192,9 +194,17 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
     });
 
     refreshWithCovers();
-    if (!hasError) toast.success(t('mediaGallery.uploadDone'));
+    if (!hasError && deferredCount < items.length) toast.success(t('mediaGallery.uploadDone'));
     setUploading(false);
-    setTimeout(() => setUploadQueue(new Map()), 2000);
+    setTimeout(() => {
+      setUploadQueue((prev) => {
+        const next = new Map(prev);
+        for (const [k, v] of next) {
+          if (v.status === 'done' || v.status === 'error') next.delete(k);
+        }
+        return next;
+      });
+    }, 2000);
   }
 
   async function handleVideoThumbnail(thumbnail: File) {
@@ -240,7 +250,15 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
       });
     } finally {
       setUploading(false);
-      setTimeout(() => setUploadQueue(new Map()), 2000);
+      setTimeout(() => {
+        setUploadQueue((prev) => {
+          const next = new Map(prev);
+          for (const [k, v] of next) {
+            if (v.status === 'done' || v.status === 'error') next.delete(k);
+          }
+          return next;
+        });
+      }, 2000);
     }
   }
 
@@ -578,6 +596,7 @@ function SortableMediaTile({
         <div
           className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
           onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
         >
           {!m.is_cover && (
             <button
