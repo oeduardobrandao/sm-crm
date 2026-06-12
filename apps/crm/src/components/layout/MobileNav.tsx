@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
+import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
 import { getMoreSheetGroups } from './nav-data';
 import { drawNavBar, getItemCenterX, BAR_WIDTH } from './mobile-nav-canvas';
 import { useBubbleAnimation, BUBBLE_SIZE } from './use-bubble-animation';
@@ -32,6 +33,7 @@ export default function MobileNav() {
   const navigate = useNavigate();
   const location = useLocation();
   const { profile, role, signOut } = useAuth();
+  const { features } = useWorkspaceLimits();
   const { t } = useTranslation();
   const [moreOpen, setMoreOpen] = useState(false);
   const [isDark, setIsDark] = useState(
@@ -109,7 +111,7 @@ export default function MobileNav() {
     : 'U';
 
   const activeItem = activeIndex >= 0 ? PRIMARY_ITEMS[activeIndex] : null;
-  const moreSheetGroups = getMoreSheetGroups(role);
+  const moreSheetGroups = getMoreSheetGroups(role, features as Record<string, boolean> | null);
 
   return (
     <>

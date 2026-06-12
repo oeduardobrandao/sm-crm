@@ -6,11 +6,29 @@ vi.mock('../../../context/AuthContext', () => ({
   useAuth: vi.fn(),
 }));
 
+vi.mock('../../../hooks/useWorkspaceLimits', () => ({
+  useWorkspaceLimits: vi.fn(),
+}));
+
 vi.mock('../../../lib/supabase');
 
 import { useAuth } from '../../../context/AuthContext';
+import { useWorkspaceLimits } from '../../../hooks/useWorkspaceLimits';
 import * as supabaseModule from '../../../lib/supabase';
 import Sidebar from '../Sidebar';
+
+const mockedUseWorkspaceLimits = vi.mocked(useWorkspaceLimits);
+
+function setLimits(overrides: Record<string, unknown> = {}) {
+  mockedUseWorkspaceLimits.mockReturnValue({
+    limits: null,
+    features: null,
+    planName: null,
+    isLoading: false,
+    isUnlimited: true,
+    ...overrides,
+  } as never);
+}
 
 type MockedSupabaseModule = typeof supabaseModule & {
   __resetSupabaseMock: () => void;
@@ -73,6 +91,7 @@ describe('Sidebar', () => {
     mockedSupabase.__resetSupabaseMock();
     document.documentElement.removeAttribute('data-theme');
     localStorage.clear();
+    setLimits();
   });
 
   it('filters restricted navigation items for agents and marks the active route', () => {
@@ -168,5 +187,43 @@ describe('Sidebar', () => {
     expect(link).toHaveAttribute('href', '/novidades');
     expect(link).toHaveAttribute('target', '_blank');
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  });
+
+  it('hides feature-gated nav items when their feature flag is explicitly false', () => {
+    setAuth();
+    setLimits({
+      features: {
+        feature_leads: false,
+        feature_financial: false,
+        feature_contracts: false,
+      },
+    });
+
+    renderSidebar('/dashboard');
+
+    // Gated items whose flag is false are removed from the DOM.
+    expect(screen.queryByText('Leads')).not.toBeInTheDocument();
+    expect(screen.queryByText('Financeiro')).not.toBeInTheDocument();
+    expect(screen.queryByText('Contratos')).not.toBeInTheDocument();
+    // Ungated items remain visible.
+    expect(screen.getByText('Clientes')).toBeInTheDocument();
+    expect(screen.getByText('Equipe')).toBeInTheDocument();
+  });
+
+  it('shows feature-gated nav items when their feature flag is true', () => {
+    setAuth();
+    setLimits({
+      features: {
+        feature_leads: true,
+        feature_financial: true,
+        feature_contracts: true,
+      },
+    });
+
+    renderSidebar('/dashboard');
+
+    expect(screen.getByText('Leads')).toBeInTheDocument();
+    expect(screen.getByText('Financeiro')).toBeInTheDocument();
+    expect(screen.getByText('Contratos')).toBeInTheDocument();
   });
 });

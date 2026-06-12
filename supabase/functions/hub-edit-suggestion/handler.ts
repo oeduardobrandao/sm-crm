@@ -1,4 +1,5 @@
 import { createJsonResponder } from "../_shared/http.ts";
+import { resolveHubToken } from "../_shared/hub-token.ts";
 
 type DbClient = {
   from: (table: string) => any;
@@ -63,15 +64,9 @@ export function createHubEditSuggestionHandler(deps: HubEditSuggestionHandlerDep
 
     const db = deps.createDb();
 
-    // Verify token
-    const { data: hubToken } = await db
-      .from("client_hub_tokens")
-      .select("cliente_id, is_active")
-      .eq("token", token)
-      .gt("expires_at", deps.now())
-      .maybeSingle();
-
-    if (!hubToken || !hubToken.is_active) {
+    // Verify token and enforce feature_hub_portal
+    const hubToken = await resolveHubToken(db as any, token, deps.now());
+    if (!hubToken) {
       return json({ error: "Link inválido." }, 404);
     }
 

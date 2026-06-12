@@ -83,6 +83,8 @@ import {
   getInitials,
   type Lead,
 } from '../../store';
+import { useEntitlements } from '../../hooks/useEntitlements';
+import { FeatureGate } from '@/components/paywall/FeatureGate';
 
 function createLeadSchema(t: (key: string) => string) {
   return z.object({
@@ -184,7 +186,11 @@ export default function LeadsPage() {
     defaultValues: { nome: '', email: '', telefone: '', plano: '', valor: '', diaPag: '' },
   });
 
+  const { isAtLimit } = useEntitlements();
+
   const { data: leads = [], isLoading } = useQuery({ queryKey: ['leads'], queryFn: getLeads });
+
+  const leadsAtLimit = isAtLimit('max_leads', leads.length);
 
   const handleSort = (col: string) => {
     if (sortCol === col) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -406,11 +412,17 @@ export default function LeadsPage() {
               style={{ color: 'var(--text-muted)', cursor: 'pointer' }}
             />
           </span>
-          <Button variant="outline" onClick={handleCSVImport}>
-            <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} />{' '}
-            {tc('actions.importCsv')}
-          </Button>
-          <Button onClick={openAdd}>
+          <FeatureGate flag="feature_csv_import" label="Importação CSV">
+            <Button variant="outline" onClick={handleCSVImport}>
+              <Upload className="h-4 w-4" style={{ marginRight: '0.5rem' }} />{' '}
+              {tc('actions.importCsv')}
+            </Button>
+          </FeatureGate>
+          <Button
+            onClick={openAdd}
+            disabled={leadsAtLimit}
+            title={leadsAtLimit ? 'Limite do plano atingido' : undefined}
+          >
             <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> {t('newLead')}
           </Button>
         </div>

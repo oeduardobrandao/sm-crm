@@ -5,10 +5,15 @@ Social media agency CRM (React + Supabase). Two apps: **CRM** (internal dashboar
 ## Commands
 
 ```bash
-# Development
-npm run dev              # CRM app on :5173
-npm run dev:hub          # Hub app on :5175
-npm run dev:staging      # CRM against staging Supabase
+# Development (default = PROD via .env; :staging overlays .env.staging)
+npm run dev              # CRM app on :5173      (prod)
+npm run dev:hub          # Hub app on :5175      (prod)
+npm run dev:admin        # Admin app on :5177    (prod)
+npm run dev:staging      # CRM   against staging Supabase
+npm run dev:hub:staging  # Hub   against staging Supabase
+npm run dev:admin:staging# Admin against staging Supabase
+npm run dev:all          # CRM + Hub + Admin together (prod)    via concurrently
+npm run dev:all:staging  # CRM + Hub + Admin together (staging) via concurrently
 
 # Build (always typecheck first)
 npm run build            # tsc + vite build for CRM

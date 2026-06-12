@@ -2,6 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { timingSafeEqual } from "../_shared/crypto.ts";
 import { reportCronFailure } from "../_shared/triage.ts";
+import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
 
 // ---------------------------------------------------------------------------
 // Environment
@@ -51,7 +52,7 @@ Deno.serve(async (req) => {
 
   const { data: candidates, error: queryError } = await supabase
     .from("analytics_reports")
-    .select("id, status, locked_at, retry_count")
+    .select("id, status, locked_at, retry_count, conta_id")
     .or(
       `status.eq.pending,` +
       `and(status.eq.failed,retry_count.lt.3),` +
@@ -87,6 +88,22 @@ Deno.serve(async (req) => {
       .single();
 
     if (data && !error) {
+      // Check feature entitlement before committing to this report
+      const entitled = await effectivePlanFeature(
+        supabase,
+        data.conta_id as string,
+        "feature_analytics_reports",
+      );
+      if (!entitled) {
+        console.log(
+          `[report-worker] Report ${data.id} skipped — workspace ${data.conta_id} not entitled to feature_analytics_reports`,
+        );
+        await supabase
+          .from("analytics_reports")
+          .update({ status: "skipped", locked_at: null, locked_by: null })
+          .eq("id", data.id);
+        continue; // try the next candidate this tick
+      }
       claimed = data;
       break;
     }

@@ -114,3 +114,9 @@ verify_jwt = false
 
 [functions.stripe-webhook]
 verify_jwt = false
+
+# Local-dev only: the analytics/vector container can't bind-mount the Docker
+# socket under colima/headless Docker. Disabling it keeps `supabase start`
+# working; does not affect the hosted project.
+[analytics]
+enabled = false

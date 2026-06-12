@@ -56,7 +56,6 @@ vi.mock('../../../../store', async (importOriginal) => {
         },
       ]),
     ),
-    getPortalApprovals: vi.fn().mockResolvedValue([]),
     getDeadlineInfo: vi
       .fn()
       .mockReturnValue({ estourado: false, urgente: false, diasRestantes: 3, resumo: 'em dia' }),
@@ -231,7 +230,6 @@ describe('useEntregasData', () => {
         },
       ]),
     );
-    (store.getPortalApprovals as any).mockResolvedValue([]);
     (store.getDeadlineInfo as any).mockReturnValue({
       estourado: false,
       urgente: false,

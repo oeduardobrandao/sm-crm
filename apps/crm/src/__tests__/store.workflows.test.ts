@@ -29,7 +29,7 @@ function getCalls(table: string, operation?: string) {
     .filter((entry) => entry.table === table && (!operation || entry.operation === operation));
 }
 
-describe('store workflow and portal functions', () => {
+describe('store workflow functions', () => {
   beforeEach(() => {
     mockedSupabase.__resetSupabaseMock();
     mockedSupabase.__setCurrentProfile({
@@ -266,30 +266,6 @@ describe('store workflow and portal functions', () => {
     vi.useRealTimers();
   });
 
-  it('creates a portal token only once and reuses existing shares', async () => {
-    mockedSupabase.__queueSupabaseResult('portal_tokens', 'select', {
-      data: { token: 'portal-existente' },
-      error: null,
-    });
-
-    await expect(store.createPortalToken(77)).resolves.toBe('portal-existente');
-
-    mockedSupabase.__queueSupabaseResult('portal_tokens', 'select', {
-      data: null,
-      error: null,
-    });
-    mockedSupabase.__queueSupabaseResult('portal_tokens', 'insert', {
-      data: { token: 'portal-novo' },
-      error: null,
-    });
-
-    await expect(store.createPortalToken(78)).resolves.toBe('portal-novo');
-    expect(getCalls('portal_tokens', 'insert').at(-1)?.payload).toEqual({
-      workflow_id: 78,
-      conta_id: 'conta-1',
-    });
-  });
-
   it('maps workflow posts with nested property definitions', async () => {
     mockedSupabase.__queueSupabaseResult('workflow_posts', 'select', {
       data: [
@@ -412,52 +388,23 @@ describe('store workflow and portal functions', () => {
     });
   });
 
-  it('inserts workspace replies for portal and post approvals', async () => {
-    mockedSupabase.__queueSupabaseResult(
-      'portal_tokens',
-      'select',
-      { data: { token: 'portal-123' }, error: null },
-      { data: { token: 'portal-123' }, error: null },
-    );
-    mockedSupabase.__queueSupabaseResult('portal_approvals', 'insert', {
-      data: null,
-      error: null,
-    });
+  it('replyToPostApproval inserts a post_approvals row with null token', async () => {
     mockedSupabase.__queueSupabaseResult('post_approvals', 'insert', {
       data: null,
       error: null,
     });
 
-    await store.replyToPortalApproval(20, 7, 'Ajustar a headline com foco em conversão.');
-    await store.replyToPostApproval(55, 20, 'Trocar a imagem principal por uma versão com logo.');
+    await expect(
+      store.replyToPostApproval(55, 20, 'Trocar a imagem principal.'),
+    ).resolves.not.toThrow();
 
-    expect(getCalls('portal_approvals', 'insert').at(-1)?.payload).toEqual({
-      workflow_etapa_id: 7,
-      token: 'portal-123',
-      action: 'mensagem',
-      comentario: 'Ajustar a headline com foco em conversão.',
-      is_workspace_user: true,
-    });
     expect(getCalls('post_approvals', 'insert').at(-1)?.payload).toEqual({
       post_id: 55,
-      token: 'portal-123',
+      token: null,
       action: 'mensagem',
-      comentario: 'Trocar a imagem principal por uma versão com logo.',
+      comentario: 'Trocar a imagem principal.',
       is_workspace_user: true,
     });
-  });
-
-  it('replyToPostApproval works without portal token', async () => {
-    mockedSupabase.__queueSupabaseResult('portal_tokens', 'select', {
-      data: null,
-      error: null,
-    });
-    mockedSupabase.__queueSupabaseResult('post_approvals', 'insert', {
-      data: null,
-      error: null,
-    });
-
-    await expect(store.replyToPostApproval(1, 2, 'mensagem')).resolves.not.toThrow();
   });
 });
 

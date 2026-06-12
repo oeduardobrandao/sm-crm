@@ -88,7 +88,8 @@ Deno.test("file-manage: GET /folders lists root folders and files", async () => 
   // has_children check for subfolders
   db.queue("folders", "select", { data: [], error: null });
   // workspace storage query
-  db.queue("workspaces", "select", { data: { storage_used_bytes: 5000, storage_quota_bytes: 1000000 }, error: null });
+  db.queue("workspaces", "select", { data: { storage_used_bytes: 5000 }, error: null });
+  db.queueRpc("effective_plan_limit", { data: 1000000, error: null });
   const handler = makeHandler(db);
   const res = await handler(req("GET", "/folders"));
   assertEquals(res.status, 200);
@@ -119,7 +120,8 @@ Deno.test("file-manage: GET /folders?parent_id builds breadcrumbs", async () => 
   // folder detail
   db.queue("folders", "select", { data: { id: 5, name: "Sub" }, error: null });
   // workspace storage query
-  db.queue("workspaces", "select", { data: { storage_used_bytes: 0, storage_quota_bytes: 1000000 }, error: null });
+  db.queue("workspaces", "select", { data: { storage_used_bytes: 0 }, error: null });
+  db.queueRpc("effective_plan_limit", { data: 1000000, error: null });
   const handler = makeHandler(db);
   const res = await handler(req("GET", "/folders?parent_id=5"));
   assertEquals(res.status, 200);
@@ -139,7 +141,8 @@ Deno.test("file-manage: GET /folders signs documents as url:null", async () => {
     error: null,
   });
   // workspace storage query (no subfolders, so no RPC calls needed)
-  db.queue("workspaces", "select", { data: { storage_used_bytes: 0, storage_quota_bytes: 1000000 }, error: null });
+  db.queue("workspaces", "select", { data: { storage_used_bytes: 0 }, error: null });
+  db.queueRpc("effective_plan_limit", { data: 1000000, error: null });
   const handler = makeHandler(db);
   const res = await handler(req("GET", "/folders"));
   assertEquals(res.status, 200);
@@ -547,7 +550,8 @@ Deno.test("file-manage: GET /folders uses folder_sizes_batch and includes has_ch
   });
   // has_children: folder 4 has children
   db.queue("folders", "select", { data: [{ parent_id: 4 }], error: null });
-  db.queue("workspaces", "select", { data: { storage_used_bytes: 0, storage_quota_bytes: 1000000 }, error: null });
+  db.queue("workspaces", "select", { data: { storage_used_bytes: 0 }, error: null });
+  db.queueRpc("effective_plan_limit", { data: 1000000, error: null });
   const handler = makeHandler(db);
   const res = await handler(req("GET", "/folders"));
   assertEquals(res.status, 200);
@@ -575,7 +579,8 @@ Deno.test("file-manage: GET /folders?parent_id=5 uses folder_breadcrumbs RPC", a
     error: null,
   });
   db.queue("folders", "select", { data: { id: 5, name: "Sub" }, error: null });
-  db.queue("workspaces", "select", { data: { storage_used_bytes: 0, storage_quota_bytes: 1000000 }, error: null });
+  db.queue("workspaces", "select", { data: { storage_used_bytes: 0 }, error: null });
+  db.queueRpc("effective_plan_limit", { data: 1000000, error: null });
   const handler = makeHandler(db);
   const res = await handler(req("GET", "/folders?parent_id=5"));
   assertEquals(res.status, 200);

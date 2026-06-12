@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, MutationCache } from '@tanstack/react-query';
+import { handleEntitlementMutationError } from './lib/entitlement-toast';
 import * as Sentry from '@sentry/react';
 import { Analytics } from '@vercel/analytics/react';
 import { AuthProvider } from './context/AuthContext';
@@ -16,7 +17,6 @@ const WorkspaceSetupPage = lazy(() => import('./pages/workspace-setup/WorkspaceS
 const PoliticaPage = lazy(() => import('./pages/politica-privacidade/PoliticaPage'));
 const TermosPage = lazy(() => import('./pages/termos-de-uso/TermosPage'));
 const LgpdPage = lazy(() => import('./pages/lgpd/LgpdPage'));
-const PortalPage = lazy(() => import('./pages/portal/PortalPage'));
 const LandingPage = lazy(() => import('./pages/landing/LandingPage'));
 const NovidadesPage = lazy(() => import('./pages/novidades/NovidadesPage'));
 
@@ -47,6 +47,13 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: { retry: 1, staleTime: 30_000 },
   },
+  mutationCache: new MutationCache({
+    onError: (error) => {
+      // Entitlement errors get a universal upgrade toast; everything else falls
+      // through to each mutation's own onError.
+      handleEntitlementMutationError(error);
+    },
+  }),
 });
 
 const PageFallback = (
@@ -80,7 +87,6 @@ export default function App() {
               <Route path="/termos-de-uso" element={<TermosPage />} />
               <Route path="/lgpd" element={<LgpdPage />} />
               <Route path="/novidades" element={<NovidadesPage />} />
-              <Route path="/portal/:token" element={<PortalPage />} />
 
               {/* Protected route without sidebar layout */}
               <Route

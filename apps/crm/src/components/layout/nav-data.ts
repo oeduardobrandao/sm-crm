@@ -185,7 +185,18 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
 
 export const PRIMARY_NAV_IDS = ['dashboard', 'clientes', 'analytics', 'entregas'];
 
-export function getNavGroups(role: string): NavGroup[] {
+/** Maps nav item id → feature flag key. If the flag is false, the item is hidden. */
+const NAV_FEATURE: Record<string, string> = {
+  leads: 'feature_leads',
+  financeiro: 'feature_financial',
+  contratos: 'feature_contracts',
+  ideias: 'feature_ideas',
+  analytics: 'feature_analytics_reports',
+  'analytics-fluxos': 'feature_analytics_reports',
+  'post-express': 'feature_post_scheduling',
+};
+
+export function getNavGroups(role: string, features?: Record<string, boolean> | null): NavGroup[] {
   let groups = ALL_NAV_GROUPS;
 
   // Billing is owner-only.
@@ -195,22 +206,41 @@ export function getNavGroups(role: string): NavGroup[] {
     );
   }
 
-  if (role !== 'agent') return groups;
-  return groups
-    .map((g) => {
-      if (g.id === 'crm') return { ...g, items: g.items.filter((i) => i.id !== 'leads') };
-      if (g.id === 'gestao')
-        return {
-          ...g,
-          items: g.items.filter((i) => i.id !== 'financeiro' && i.id !== 'contratos'),
-        };
-      return g;
-    })
-    .filter((g) => g.items.length > 0);
+  if (role === 'agent') {
+    groups = groups
+      .map((g) => {
+        if (g.id === 'crm') return { ...g, items: g.items.filter((i) => i.id !== 'leads') };
+        if (g.id === 'gestao')
+          return {
+            ...g,
+            items: g.items.filter((i) => i.id !== 'financeiro' && i.id !== 'contratos'),
+          };
+        return g;
+      })
+      .filter((g) => g.items.length > 0);
+  }
+
+  // Hide feature-gated nav items when the flag is explicitly false.
+  if (features) {
+    groups = groups
+      .map((g) => ({
+        ...g,
+        items: g.items.filter((i) => {
+          const flag = NAV_FEATURE[i.id];
+          return !flag || features[flag] !== false;
+        }),
+      }))
+      .filter((g) => g.items.length > 0);
+  }
+
+  return groups;
 }
 
-export function getMoreSheetGroups(role: string): NavGroup[] {
-  return getNavGroups(role)
+export function getMoreSheetGroups(
+  role: string,
+  features?: Record<string, boolean> | null,
+): NavGroup[] {
+  return getNavGroups(role, features)
     .map((g) => ({
       ...g,
       items: g.items.filter((i) => !PRIMARY_NAV_IDS.includes(i.id)),

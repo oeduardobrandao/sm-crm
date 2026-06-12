@@ -8,7 +8,6 @@ export * from './leads';
 export * from './workflows';
 export * from './posts';
 export * from './comments';
-export * from './portal';
 export * from './hub';
 export * from './ideias';
 export * from './notifications';

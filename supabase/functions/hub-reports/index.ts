@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
+import { resolveHubToken } from "../_shared/hub-token.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -28,15 +29,9 @@ Deno.serve(async (req: Request) => {
   const db = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
   const now = new Date().toISOString();
 
-  // Verify hub token
-  const { data: hubToken } = await db
-    .from("client_hub_tokens")
-    .select("cliente_id, conta_id, is_active")
-    .eq("token", token)
-    .gt("expires_at", now)
-    .maybeSingle();
-
-  if (!hubToken || !hubToken.is_active) return json({ error: "Link inválido." }, 404);
+  // Verify hub token and enforce feature_hub_portal
+  const hubToken = await resolveHubToken(db, token, now);
+  if (!hubToken) return json({ error: "Link inválido." }, 404);
 
   // GET /hub-reports/list — list reports for the client
   if (path === "/list" || path === "/list/") {
