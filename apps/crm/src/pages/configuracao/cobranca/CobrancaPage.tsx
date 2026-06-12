@@ -6,11 +6,13 @@ import { useAuth } from '@/context/AuthContext';
 import {
   listActivePlans,
   getWorkspaceSubscription,
+  getEffectivePlanId,
   startCheckout,
   openBillingPortal,
   type BillingInterval,
   type BillingPlan,
 } from '@/services/billing';
+import { isInternalPlan, resolveCurrentPlanId, isPlanVisible, canUpgradeTo } from './plan-display';
 import './cobranca.css';
 
 const RECOMMENDED_ID = 'pro';
@@ -70,6 +72,13 @@ export default function CobrancaPage() {
     queryFn: getWorkspaceSubscription,
     enabled: isOwner,
   });
+  // Source of truth for the workspace's plan, incl. comp overrides (e.g. Lifetime)
+  // that have no Stripe subscription and would otherwise read as Free.
+  const { data: effectivePlanId, refetch: refetchEffectivePlan } = useQuery({
+    queryKey: ['billing', 'effective-plan'],
+    queryFn: getEffectivePlanId,
+    enabled: isOwner,
+  });
 
   // Handle the Checkout return once on mount (see git history for why deps are empty).
   useEffect(() => {
@@ -81,6 +90,7 @@ export default function CobrancaPage() {
       const id = window.setInterval(() => {
         tries += 1;
         refetchSub();
+        refetchEffectivePlan();
         if (tries >= 5) window.clearInterval(id);
       }, 2000);
       setSearchParams({}, { replace: true });
@@ -120,8 +130,9 @@ export default function CobrancaPage() {
   }
 
   const hasActiveSub = subscription?.status === 'active' || subscription?.status === 'trialing';
-  const currentPlanId = subscription?.plan_id ?? 'free';
+  const currentPlanId = resolveCurrentPlanId(effectivePlanId, subscription?.plan_id);
   const currentPlan = plans?.find((p) => p.id === currentPlanId);
+  const visiblePlans = (plans ?? []).filter((p) => isPlanVisible(p.id, currentPlanId));
 
   async function handleUpgrade(planId: string) {
     setBusy(planId);
@@ -149,7 +160,7 @@ export default function CobrancaPage() {
     if (p.id === currentPlanId) {
       return <span className="plan-cta__static">Plano atual</span>;
     }
-    if (!hasActiveSub && p.id !== 'free') {
+    if (canUpgradeTo(p.id, currentPlanId, hasActiveSub)) {
       return (
         <button
           className="btn-primary"
@@ -236,12 +247,13 @@ export default function CobrancaPage() {
                 <div className="sk" style={{ height: 38, width: '100%', marginTop: 'auto' }} />
               </div>
             ))
-          : (plans ?? []).map((p, i) => {
+          : visiblePlans.map((p, i) => {
               const isYear = interval === 'year';
               const monthly =
                 isYear && p.price_brl_annual != null ? p.price_brl_annual / 12 : p.price_brl;
               const isCurrent = p.id === currentPlanId;
               const isReco = p.id === RECOMMENDED_ID && !isCurrent;
+              const isInternal = isInternalPlan(p.id);
               return (
                 <div
                   key={p.id}
@@ -258,11 +270,13 @@ export default function CobrancaPage() {
                   </div>
 
                   <div>
-                    {isYear && monthly != null && monthly > 0 && (
+                    {!isInternal && isYear && monthly != null && monthly > 0 && (
                       <div className="plan-annual-lead">em 12x de</div>
                     )}
                     <div className="plan-price">
-                      {monthly != null && monthly > 0 ? (
+                      {isInternal ? (
+                        <span className="plan-price__note">Plano exclusivo</span>
+                      ) : monthly != null && monthly > 0 ? (
                         <>
                           <span className="plan-price__amount">{formatBRL(monthly)}</span>
                           {!isYear && <span className="plan-price__period">/mês</span>}

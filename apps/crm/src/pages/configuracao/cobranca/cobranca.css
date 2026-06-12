@@ -193,6 +193,13 @@
   color: var(--text-main);
   line-height: 1;
 }
+/* Internal/comp plans (e.g. Lifetime) have no purchasable price. */
+.plan-price__note {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+  color: var(--text-light);
+}
 .plan-annual-lead {
   font-family: var(--font-mono);
   font-size: 0.68rem;
