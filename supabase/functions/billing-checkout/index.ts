@@ -64,6 +64,10 @@ Deno.serve(async (req: Request) => {
       client_reference_id: workspaceId,
       line_items: [{ price: priceId, quantity: 1 }],
       subscription_data: { metadata: { workspace_id: workspaceId, plan_id: planId } },
+      // Allow promotion codes; skip card collection when a 100%-off coupon leaves
+      // nothing due (also lets us run real promos later).
+      allow_promotion_codes: true,
+      payment_method_collection: "if_required",
       success_url: `${appBaseUrl}/configuracao/cobranca?status=success`,
       cancel_url: `${appBaseUrl}/configuracao/cobranca?status=cancelled`,
     });
