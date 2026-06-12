@@ -48,6 +48,9 @@ interface FormState {
   rates: Record<string, number | null>;
   is_default: boolean;
   is_active: boolean;
+  stripe_product_id: string;
+  stripe_price_id: string;
+  stripe_price_id_annual: string;
 }
 
 function planToForm(plan: Plan): FormState {
@@ -64,6 +67,9 @@ function planToForm(plan: Plan): FormState {
     rates,
     is_default: plan.is_default,
     is_active: plan.is_active,
+    stripe_product_id: plan.stripe_product_id ?? '',
+    stripe_price_id: plan.stripe_price_id ?? '',
+    stripe_price_id_annual: plan.stripe_price_id_annual ?? '',
   };
 }
 
@@ -72,6 +78,9 @@ function formToPayload(form: FormState): Record<string, unknown> {
     name: form.name,
     is_default: form.is_default,
     is_active: form.is_active,
+    stripe_product_id: form.stripe_product_id || null,
+    stripe_price_id: form.stripe_price_id || null,
+    stripe_price_id_annual: form.stripe_price_id_annual || null,
     ...form.resources,
     ...form.features,
     ...form.rates,
@@ -89,6 +98,9 @@ export default function PlansPage() {
     rates: { ...DEFAULT_RATES },
     is_default: false,
     is_active: true,
+    stripe_product_id: '',
+    stripe_price_id: '',
+    stripe_price_id_annual: '',
   });
 
   const { data, isLoading } = useQuery({
@@ -135,6 +147,9 @@ export default function PlansPage() {
       rates: { ...DEFAULT_RATES },
       is_default: false,
       is_active: true,
+      stripe_product_id: '',
+      stripe_price_id: '',
+      stripe_price_id_annual: '',
     });
     setShowForm(true);
   };
@@ -227,6 +242,47 @@ export default function PlansPage() {
                     />
                     Active
                   </label>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                    Stripe Product ID
+                  </label>
+                  <input
+                    type="text"
+                    value={form.stripe_product_id}
+                    onChange={(e) => setForm((f) => ({ ...f, stripe_product_id: e.target.value }))}
+                    placeholder="prod_..."
+                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Mono'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                    Stripe Price ID (monthly)
+                  </label>
+                  <input
+                    type="text"
+                    value={form.stripe_price_id}
+                    onChange={(e) => setForm((f) => ({ ...f, stripe_price_id: e.target.value }))}
+                    placeholder="price_..."
+                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Mono'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                    Stripe Price ID (annual)
+                  </label>
+                  <input
+                    type="text"
+                    value={form.stripe_price_id_annual}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, stripe_price_id_annual: e.target.value }))
+                    }
+                    placeholder="price_..."
+                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Mono'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
+                  />
                 </div>
               </div>
 

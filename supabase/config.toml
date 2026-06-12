@@ -105,3 +105,12 @@ verify_jwt = false
 
 [functions.sign-r2-urls]
 verify_jwt = false
+
+[functions.billing-checkout]
+verify_jwt = false
+
+[functions.billing-portal]
+verify_jwt = false
+
+[functions.stripe-webhook]
+verify_jwt = false

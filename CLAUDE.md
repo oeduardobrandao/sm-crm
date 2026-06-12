@@ -105,6 +105,8 @@ Monorepo with npm workspaces:
 - `ALLOWED_ORIGINS` -- Comma-separated allowed CORS origins
 - `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` -- Cloudflare R2
 - `CRON_SECRET` -- Shared secret for cron function authentication
+- `STRIPE_SECRET_KEY` -- Stripe API secret key. REQUIRED by billing functions, no default -- throw if missing
+- `STRIPE_WEBHOOK_SECRET` -- Stripe webhook signing secret. REQUIRED by stripe-webhook, no default -- throw if missing
 
 ## Gotchas
 
