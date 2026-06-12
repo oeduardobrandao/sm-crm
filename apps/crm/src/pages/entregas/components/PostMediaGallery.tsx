@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import JSZip from 'jszip';
-import { Upload, Star, Trash2, AlertTriangle, Download, FolderOpen } from 'lucide-react';
+import { Upload, Star, Trash2, AlertTriangle, Download, FolderOpen, Image as ImageIcon } from 'lucide-react';
 import { fetchWithRetry } from '@/utils/fetchWithRetry';
 import { UploadHint } from '@/components/help/UploadHint';
 import {
@@ -22,7 +22,10 @@ import {
   setPostMediaCover,
   reorderPostMedia,
   detectKind,
+  uploadMany,
 } from '../../../services/postMedia';
+import { extractVideoFrame } from '../../../utils/videoFrame';
+import { ThumbnailPickerDialog } from './ThumbnailPickerDialog';
 import { useTranslation } from 'react-i18next';
 import type { PostMedia } from '../../../store';
 import { OptimizedImage } from '../../../components/OptimizedImage';
@@ -89,7 +92,8 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
   const [uploading, setUploading] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
-  const [pendingVideo, setPendingVideo] = useState<File | null>(null);
+  const [pendingVideos, setPendingVideos] = useState<File[]>([]);
+  const [editingMedia, setEditingMedia] = useState<PostMedia | null>(null);
   const [showFilePicker, setShowFilePicker] = useState(false);
   const [uploadQueue, setUploadQueue] = useState<
     Map<string, { name: string; pct: number; status: 'uploading' | 'done' | 'error' }>
@@ -110,90 +114,110 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
   }, [media]);
 
   const refresh = () => qc.invalidateQueries({ queryKey: ['post-media', postId] });
+  const refreshWithCovers = () => {
+    refresh();
+    qc.invalidateQueries({ queryKey: ['workflow-covers'] });
+  };
   const atLimit = maxFiles != null && media.length >= maxFiles;
 
   async function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
     const fileArr = Array.from(files);
-    const images: File[] = [];
-    for (const file of fileArr) {
-      if (detectKind(file) === 'video') {
-        setPendingVideo(file);
-        return;
-      }
-      images.push(file);
-    }
-    if (images.length === 0) return;
 
     setUploading(true);
-    const ids = images.map((_, i) => `upload-${Date.now()}-${i}`);
+    const stamp = Date.now();
+    const items = fileArr.map((file, i) => ({ file, uid: `upload-${stamp}-${i}` }));
     setUploadQueue((prev) => {
       const next = new Map(prev);
-      images.forEach((f, i) => next.set(ids[i], { name: f.name, pct: 0, status: 'uploading' }));
+      items.forEach(({ file, uid }) => next.set(uid, { name: file.name, pct: 0, status: 'uploading' }));
       return next;
     });
 
     let hasError = false;
-    await Promise.all(
-      images.map(async (file, i) => {
-        const uid = ids[i];
-        try {
-          await uploadPostMedia({
-            postId,
-            file,
-            onProgress: (p) =>
-              setUploadQueue((prev) => {
-                const next = new Map(prev);
-                next.set(uid, {
-                  name: file.name,
-                  pct: Math.round((p.loaded / p.total) * 100),
-                  status: 'uploading',
-                });
-                return next;
-              }),
-          });
-          setUploadQueue((prev) => {
-            const next = new Map(prev);
-            next.set(uid, { name: file.name, pct: 100, status: 'done' });
-            return next;
-          });
-        } catch (e) {
-          hasError = true;
-          toast.error(`${file.name}: ${(e as Error).message}`);
-          setUploadQueue((prev) => {
-            const next = new Map(prev);
-            next.set(uid, { name: file.name, pct: 0, status: 'error' });
-            return next;
+    await uploadMany(items, async ({ file, uid }) => {
+      try {
+        let thumbnail: File | undefined;
+        if (detectKind(file) === 'video') {
+          try {
+            thumbnail = await extractVideoFrame(file);
+          } catch {
+            // Browser can't decode this video — fall back to asking for a
+            // manual thumbnail (finalize rejects videos without one).
+            setPendingVideos((prev) => [...prev, file]);
+            setUploadQueue((prev) => {
+              const next = new Map(prev);
+              next.delete(uid);
+              return next;
+            });
+            return;
+          }
+        }
+        const uploaded = await uploadPostMedia({
+          postId,
+          file,
+          thumbnail,
+          onProgress: (p) =>
+            setUploadQueue((prev) => {
+              const next = new Map(prev);
+              next.set(uid, {
+                name: file.name,
+                pct: Math.round((p.loaded / p.total) * 100),
+                status: 'uploading',
+              });
+              return next;
+            }),
+        });
+        setUploadQueue((prev) => {
+          const next = new Map(prev);
+          next.set(uid, { name: file.name, pct: 100, status: 'done' });
+          return next;
+        });
+        if (uploaded.kind === 'video') {
+          toast.success(t('mediaGallery.videoUploaded'), {
+            action: {
+              label: t('mediaGallery.adjustThumbnail'),
+              onClick: () => setEditingMedia(uploaded),
+            },
           });
         }
-      }),
-    );
+      } catch (e) {
+        hasError = true;
+        toast.error(`${file.name}: ${(e as Error).message}`);
+        setUploadQueue((prev) => {
+          const next = new Map(prev);
+          next.set(uid, { name: file.name, pct: 0, status: 'error' });
+          return next;
+        });
+      }
+    });
 
-    refresh();
+    refreshWithCovers();
     if (!hasError) toast.success(t('mediaGallery.uploadDone'));
     setUploading(false);
     setTimeout(() => setUploadQueue(new Map()), 2000);
   }
 
   async function handleVideoThumbnail(thumbnail: File) {
-    if (!pendingVideo) return;
+    const video = pendingVideos[0];
+    if (!video) return;
+    setPendingVideos((prev) => prev.slice(1));
     setUploading(true);
     const uid = `upload-video-${Date.now()}`;
     setUploadQueue((prev) => {
       const next = new Map(prev);
-      next.set(uid, { name: pendingVideo.name, pct: 0, status: 'uploading' });
+      next.set(uid, { name: video.name, pct: 0, status: 'uploading' });
       return next;
     });
     try {
       await uploadPostMedia({
         postId,
-        file: pendingVideo,
+        file: video,
         thumbnail,
         onProgress: (p) =>
           setUploadQueue((prev) => {
             const next = new Map(prev);
             next.set(uid, {
-              name: pendingVideo.name,
+              name: video.name,
               pct: Math.round((p.loaded / p.total) * 100),
               status: 'uploading',
             });
@@ -202,17 +226,16 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
       });
       setUploadQueue((prev) => {
         const next = new Map(prev);
-        next.set(uid, { name: pendingVideo.name, pct: 100, status: 'done' });
+        next.set(uid, { name: video.name, pct: 100, status: 'done' });
         return next;
       });
-      setPendingVideo(null);
-      refresh();
+      refreshWithCovers();
       toast.success(t('mediaGallery.videoUploaded'));
     } catch (e) {
       toast.error((e as Error).message);
       setUploadQueue((prev) => {
         const next = new Map(prev);
-        next.set(uid, { name: pendingVideo.name, pct: 0, status: 'error' });
+        next.set(uid, { name: video.name, pct: 0, status: 'error' });
         return next;
       });
     } finally {
@@ -345,6 +368,7 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
                 onOpen={() => setLightboxIndex(i)}
                 onSetCover={() => handleSetCover(m.id)}
                 onDelete={() => handleDelete(m.id)}
+                onEditThumbnail={m.kind === 'video' ? () => setEditingMedia(m) : undefined}
               />
             ))}
             {!disabled && !atLimit && (
@@ -400,12 +424,7 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
         </button>
       )}
 
-      {!disabled && !atLimit && (
-        <UploadHint
-          icon="🎬"
-          text="Vídeos precisam de uma imagem de thumbnail. Você poderá selecioná-la logo após o upload."
-        />
-      )}
+      {!disabled && !atLimit && <UploadHint icon="🎬" text={t('mediaGallery.thumbnailHint')} />}
 
       {uploadQueue.size > 0 && (
         <div className="space-y-1.5">
@@ -432,15 +451,20 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
         </div>
       )}
 
-      {pendingVideo && (
+      {pendingVideos.length > 0 && (
         <div className="flex flex-col gap-2 rounded-xl bg-amber-50 ring-1 ring-amber-200/60 px-3 py-2.5 text-amber-900">
           <div className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
-            <span className="text-[12.5px] font-semibold">Thumbnail necessária</span>
+            <span className="text-[12.5px] font-semibold">{t('mediaGallery.videoThumbnail')}</span>
           </div>
           <span className="text-[12px] text-stone-600">
-            Selecione uma imagem de capa para <strong>{pendingVideo.name}</strong>
+            {t('mediaGallery.thumbnailFallback')} <strong>{pendingVideos[0].name}</strong>
           </span>
+          {pendingVideos.length > 1 && (
+            <span className="text-[11px] text-stone-500">
+              {t('mediaGallery.remainingVideos', { count: pendingVideos.length - 1 })}
+            </span>
+          )}
           <div className="flex items-center gap-3">
             <label className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-stone-900 text-white text-[11px] font-semibold cursor-pointer hover:bg-stone-700">
               {t('mediaGallery.chooseThumbnail')}
@@ -451,12 +475,13 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
                 onChange={(e) => {
                   const f = e.target.files?.[0];
                   if (f) handleVideoThumbnail(f);
+                  e.target.value = '';
                 }}
               />
             </label>
             <button
               type="button"
-              onClick={() => setPendingVideo(null)}
+              onClick={() => setPendingVideos((prev) => prev.slice(1))}
               className="text-[11px] text-stone-500 hover:text-stone-700"
             >
               {tc('actions.cancel')}
@@ -475,6 +500,12 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
         onDownloadAll={handleDownloadAll}
       />
 
+      <ThumbnailPickerDialog
+        media={editingMedia ? (media.find((m) => m.id === editingMedia.id) ?? editingMedia) : null}
+        onClose={() => setEditingMedia(null)}
+        onUpdated={refreshWithCovers}
+      />
+
       <FilePickerModal
         open={showFilePicker}
         onClose={() => setShowFilePicker(false)}
@@ -491,6 +522,7 @@ interface SortableMediaTileProps {
   onOpen: () => void;
   onSetCover: () => void;
   onDelete: () => void;
+  onEditThumbnail?: () => void;
 }
 
 function SortableMediaTile({
@@ -499,6 +531,7 @@ function SortableMediaTile({
   onOpen,
   onSetCover,
   onDelete,
+  onEditThumbnail,
 }: SortableMediaTileProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: m.id,
@@ -554,6 +587,16 @@ function SortableMediaTile({
               className="flex items-center justify-center w-6 h-6 rounded-full bg-stone-900/85 text-white hover:bg-stone-900"
             >
               <Star className="h-3 w-3" />
+            </button>
+          )}
+          {onEditThumbnail && (
+            <button
+              type="button"
+              onClick={onEditThumbnail}
+              title="Miniatura do vídeo"
+              className="flex items-center justify-center w-6 h-6 rounded-full bg-stone-900/85 text-white hover:bg-stone-900"
+            >
+              <ImageIcon className="h-3 w-3" />
             </button>
           )}
           <button
