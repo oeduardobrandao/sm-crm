@@ -257,13 +257,16 @@ export default function CobrancaPage() {
               return (
                 <div
                   key={p.id}
-                  className={`plan-card${isCurrent ? ' is-current' : ''}${isReco ? ' is-recommended' : ''}`}
+                  className={`plan-card${isCurrent ? ' is-current' : ''}${isReco ? ' is-recommended' : ''}${isInternal ? ' is-lifetime' : ''}`}
                   style={{ animationDelay: `${i * 60}ms` }}
                 >
                   <div className="plan-card__top">
                     <span className="plan-name">{p.name}</span>
                     {isCurrent ? (
-                      <span className="plan-tag plan-tag--current">Plano atual</span>
+                      <span className="plan-tag plan-tag--current">
+                        {isInternal && <i className="ph ph-crown-simple" aria-hidden="true" />}
+                        Plano atual
+                      </span>
                     ) : isReco ? (
                       <span className="plan-tag plan-tag--reco">Recomendado</span>
                     ) : null}
