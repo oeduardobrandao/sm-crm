@@ -261,6 +261,30 @@ export async function reorderPostMedia(id: number, sort_order: number): Promise<
   return callFn<PostMedia>(`post-media-manage`, 'PATCH', { sort_order }, undefined, `/${id}`);
 }
 
+// Mirrors THUMB_MIME in post-media-manage (gif is valid media but not a poster).
+const VIDEO_THUMB_MIME = ['image/jpeg', 'image/png', 'image/webp'];
+
+export async function updateVideoThumbnail(linkId: number, thumbnail: File): Promise<PostMedia> {
+  if (!VIDEO_THUMB_MIME.includes(thumbnail.type)) {
+    throw new Error(`Tipo de arquivo não suportado: ${thumbnail.type}`);
+  }
+  const signed = await callFn<{ thumbnail_r2_key: string; thumbnail_upload_url: string }>(
+    'post-media-manage',
+    'POST',
+    { mime_type: thumbnail.type, size_bytes: thumbnail.size },
+    undefined,
+    `/${linkId}/thumbnail`,
+  );
+  await putWithProgress(signed.thumbnail_upload_url, thumbnail);
+  return callFn<PostMedia>(
+    'post-media-manage',
+    'PATCH',
+    { thumbnail_r2_key: signed.thumbnail_r2_key },
+    undefined,
+    `/${linkId}`,
+  );
+}
+
 // Parallelism cap helper for multi-file uploads
 export async function uploadMany<T>(
   items: T[],
