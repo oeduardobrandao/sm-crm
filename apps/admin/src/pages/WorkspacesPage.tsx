@@ -4,7 +4,13 @@ import { useNavigate } from 'react-router-dom';
 import { Search, ArrowRight } from 'lucide-react';
 import { listWorkspaces, listPlans } from '../lib/api';
 import { getPlanColor } from '../lib/plan-colors';
-import { statusMeta, toneBadgeClass, hasSubscription } from '../lib/subscription';
+import {
+  statusMeta,
+  toneBadgeClass,
+  hasSubscription,
+  formatMoney,
+  intervalSuffix,
+} from '../lib/subscription';
 
 export default function WorkspacesPage() {
   const navigate = useNavigate();
@@ -125,6 +131,8 @@ export default function WorkspacesPage() {
                       className={`inline-block text-[0.6rem] font-semibold uppercase px-1.5 py-0.5 rounded-sm ${toneBadgeClass(statusMeta(ws.subscription.status).tone)}`}
                     >
                       Stripe: {ws.subscription.plan_name ?? '—'} ·{' '}
+                      {formatMoney(ws.subscription.amount_cents, ws.subscription.currency)}
+                      {intervalSuffix(ws.subscription.interval)} ·{' '}
                       {statusMeta(ws.subscription.status).label}
                     </span>
                   )}
@@ -159,20 +167,26 @@ export default function WorkspacesPage() {
                   <span className="text-dim-foreground">—</span>
                 )}
               </span>
-              <span className="hidden md:inline min-w-0 text-sm">
+              <span className="hidden min-w-0 text-sm md:flex md:flex-col md:gap-0.5">
                 {hasSubscription(ws.subscription) ? (
-                  <span className="inline-flex min-w-0 items-center gap-1.5">
-                    <span
-                      className={`shrink-0 text-[0.7rem] font-semibold uppercase px-2 py-0.5 rounded-sm ${toneBadgeClass(statusMeta(ws.subscription.status).tone)}`}
-                    >
-                      {ws.subscription.plan_name ?? 'Stripe'}
-                    </span>
-                    {ws.subscription.status !== 'active' && (
-                      <span className="truncate text-[0.65rem] text-muted-foreground">
-                        {statusMeta(ws.subscription.status).label}
+                  <>
+                    <span className="inline-flex min-w-0 items-center gap-1.5">
+                      <span
+                        className={`shrink-0 text-[0.7rem] font-semibold uppercase px-2 py-0.5 rounded-sm ${toneBadgeClass(statusMeta(ws.subscription.status).tone)}`}
+                      >
+                        {ws.subscription.plan_name ?? 'Stripe'}
                       </span>
-                    )}
-                  </span>
+                      {ws.subscription.status !== 'active' && (
+                        <span className="truncate text-[0.65rem] text-muted-foreground">
+                          {statusMeta(ws.subscription.status).label}
+                        </span>
+                      )}
+                    </span>
+                    <span className="font-['DM_Mono'] text-xs text-muted-foreground">
+                      {formatMoney(ws.subscription.amount_cents, ws.subscription.currency)}
+                      {intervalSuffix(ws.subscription.interval)}
+                    </span>
+                  </>
                 ) : (
                   <span className="text-dim-foreground">—</span>
                 )}

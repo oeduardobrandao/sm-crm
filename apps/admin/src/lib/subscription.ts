@@ -4,11 +4,15 @@
  * formatting logic can be unit-tested.
  */
 
-/** Compact summary shown in the workspaces list (from the local mirror only). */
+/** Compact summary shown in the workspaces list (mirror + the amount the customer pays). */
 export interface SubscriptionSummary {
   status: string | null;
   plan_name: string | null;
   billing_interval: string | null;
+  amount_cents: number | null;
+  currency: string | null;
+  interval: string | null;
+  discount_label: string | null;
 }
 
 /** Full subscription view shown on the workspace detail (mirror + live Stripe amount). */

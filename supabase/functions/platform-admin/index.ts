@@ -231,43 +231,104 @@ async function handleListWorkspaces(
     })
   );
 
-  // Attach the Stripe-subscription summary from the local mirror — one batched read,
-  // no per-row Stripe calls (the detail view does the live amount lookup).
+  // Attach each workspace's Stripe-subscription summary (status, plan, and amount).
+  // The amount is fetched live from Stripe for paying rows only — so it reflects
+  // coupons/discounts, bounded by the number of real subscriptions on the page —
+  // with the plan's catalog price as a fallback. Rows with no subscription do no
+  // Stripe work.
   const wsIds = enriched.map((w) => w.id);
   const subByWs = new Map<
     string,
-    { status: string | null; plan_id: string | null; billing_interval: string | null }
+    {
+      status: string | null;
+      plan_id: string | null;
+      billing_interval: string | null;
+      stripe_subscription_id: string | null;
+    }
   >();
-  const planNameById = new Map<string, string>();
+  const planById = new Map<
+    string,
+    { name: string; price_brl: number | null; price_brl_annual: number | null }
+  >();
   if (wsIds.length) {
     const { data: subRows } = await svc
       .from("workspace_subscriptions")
-      .select("workspace_id, status, plan_id, billing_interval")
+      .select("workspace_id, status, plan_id, billing_interval, stripe_subscription_id")
       .in("workspace_id", wsIds);
     for (const s of subRows ?? []) {
       subByWs.set(s.workspace_id, {
         status: s.status ?? null,
         plan_id: s.plan_id ?? null,
         billing_interval: s.billing_interval ?? null,
+        stripe_subscription_id: s.stripe_subscription_id ?? null,
       });
     }
-    const { data: planRows } = await svc.from("plans").select("id, name");
-    for (const p of planRows ?? []) planNameById.set(p.id, p.name);
+    const { data: planRows } = await svc
+      .from("plans")
+      .select("id, name, price_brl, price_brl_annual");
+    for (const p of planRows ?? []) {
+      planById.set(p.id, {
+        name: p.name,
+        price_brl: p.price_brl ?? null,
+        price_brl_annual: p.price_brl_annual ?? null,
+      });
+    }
   }
 
-  const enrichedWithSubs = enriched.map((w) => {
-    const s = subByWs.get(w.id);
-    return {
-      ...w,
-      subscription: s
-        ? {
-            status: s.status,
-            plan_name: s.plan_id ? (planNameById.get(s.plan_id) ?? null) : null,
-            billing_interval: s.billing_interval,
-          }
-        : null,
-    };
-  });
+  // Load the Stripe client once if any row actually has a subscription to price.
+  let stripeClient: StripeClient | null = null;
+  if ([...subByWs.values()].some((s) => s.stripe_subscription_id)) {
+    try {
+      stripeClient = (await import("../_shared/stripe.ts")).stripe;
+    } catch (err) {
+      console.error("[platform-admin] stripe import failed:", (err as Error).message);
+    }
+  }
+
+  const enrichedWithSubs = await Promise.all(
+    enriched.map(async (w) => {
+      const s = subByWs.get(w.id);
+      if (!s) return { ...w, subscription: null };
+
+      const planMeta = s.plan_id ? planById.get(s.plan_id) : undefined;
+      let amount_cents: number | null = null;
+      let currency: string | null = null;
+      let interval: string | null = s.billing_interval;
+      let discount_label: string | null = null;
+
+      if (stripeClient && s.stripe_subscription_id) {
+        try {
+          const amt = await fetchStripeAmount(stripeClient, s.stripe_subscription_id, s.billing_interval);
+          amount_cents = amt.amount_cents;
+          currency = amt.currency;
+          interval = amt.interval ?? s.billing_interval;
+          discount_label = amt.discount_label;
+        } catch (err) {
+          console.error("[platform-admin] list stripe fetch failed:", (err as Error).message);
+        }
+      }
+      if (amount_cents == null && planMeta) {
+        const cents = s.billing_interval === "year" ? planMeta.price_brl_annual : planMeta.price_brl;
+        if (cents != null) {
+          amount_cents = cents;
+          currency = "brl";
+        }
+      }
+
+      return {
+        ...w,
+        subscription: {
+          status: s.status,
+          plan_name: planMeta?.name ?? null,
+          billing_interval: s.billing_interval,
+          amount_cents,
+          currency,
+          interval,
+          discount_label,
+        },
+      };
+    }),
+  );
 
   let result = enrichedWithSubs;
   if (plan_id) {
@@ -404,6 +465,73 @@ function trimPercent(n: number): string {
   return Number.isInteger(n) ? String(n) : String(Number(n.toFixed(2)));
 }
 
+type StripeClient = {
+  subscriptions: { retrieve: (id: string, opts: { expand: string[] }) => Promise<unknown> };
+};
+
+type StripeAmount = {
+  amount_cents: number;
+  gross_cents: number | null;
+  currency: string;
+  interval: string | null;
+  discount_label: string | null;
+  livemode: boolean;
+};
+
+/**
+ * Retrieves a subscription's current price from Stripe and applies any active coupon,
+ * so the returned amount is what the customer actually pays. Shared by the detail
+ * view and the list. `fallbackInterval` is the mirror's billing_interval, used when
+ * the price object doesn't carry a recurring interval.
+ */
+async function fetchStripeAmount(
+  stripe: StripeClient,
+  subscriptionId: string,
+  fallbackInterval: string | null,
+): Promise<StripeAmount> {
+  let sub: unknown;
+  try {
+    sub = await stripe.subscriptions.retrieve(subscriptionId, {
+      expand: ["items.data.price", "discounts"],
+    });
+  } catch (_e) {
+    // Some API versions reject expanding `discounts`; retry with price only.
+    sub = await stripe.subscriptions.retrieve(subscriptionId, { expand: ["items.data.price"] });
+  }
+  const s = sub as {
+    livemode?: boolean;
+    items?: {
+      data?: Array<{
+        quantity?: number;
+        price?: { unit_amount?: number | null; currency?: string; recurring?: { interval?: string } };
+      }>;
+    };
+  };
+  const item = s.items?.data?.[0];
+  const qty = item?.quantity ?? 1;
+  const gross = (item?.price?.unit_amount ?? 0) * qty;
+  const coupon = extractCoupon(sub);
+  let net = gross;
+  let discountLabel: string | null = null;
+  if (coupon) {
+    if (typeof coupon.percent_off === "number" && coupon.percent_off > 0) {
+      net = Math.round(gross * (1 - coupon.percent_off / 100));
+      discountLabel = `${coupon.name ?? coupon.id} −${trimPercent(coupon.percent_off)}%`;
+    } else if (typeof coupon.amount_off === "number" && coupon.amount_off > 0) {
+      net = Math.max(0, gross - coupon.amount_off);
+      discountLabel = coupon.name ?? coupon.id;
+    }
+  }
+  return {
+    amount_cents: net,
+    gross_cents: net !== gross ? gross : null,
+    currency: item?.price?.currency ?? "brl",
+    interval: item?.price?.recurring?.interval ?? fallbackInterval,
+    discount_label: discountLabel,
+    livemode: s.livemode ?? true,
+  };
+}
+
 /**
  * Builds the Stripe-subscription view for one workspace. The local mirror
  * (workspace_subscriptions) always reflects the real Stripe status even when an
@@ -452,47 +580,15 @@ async function buildSubscriptionDetail(
   if (row.stripe_subscription_id) {
     try {
       const { stripe } = await import("../_shared/stripe.ts");
-      let sub;
-      try {
-        sub = await stripe.subscriptions.retrieve(row.stripe_subscription_id, {
-          expand: ["items.data.price", "discounts"],
-        });
-      } catch (_e) {
-        // Some API versions reject expanding `discounts`; retry with price only.
-        sub = await stripe.subscriptions.retrieve(row.stripe_subscription_id, {
-          expand: ["items.data.price"],
-        });
-      }
-      const s = sub as unknown as {
-        livemode?: boolean;
-        items?: {
-          data?: Array<{
-            quantity?: number;
-            price?: { unit_amount?: number | null; currency?: string; recurring?: { interval?: string } };
-          }>;
-        };
-      };
-      const item = s.items?.data?.[0];
-      const qty = item?.quantity ?? 1;
-      const gross = (item?.price?.unit_amount ?? 0) * qty;
-      const coupon = extractCoupon(sub);
-      let net = gross;
-      if (coupon) {
-        if (typeof coupon.percent_off === "number" && coupon.percent_off > 0) {
-          net = Math.round(gross * (1 - coupon.percent_off / 100));
-          info.discount_label = `${coupon.name ?? coupon.id} −${trimPercent(coupon.percent_off)}%`;
-        } else if (typeof coupon.amount_off === "number" && coupon.amount_off > 0) {
-          net = Math.max(0, gross - coupon.amount_off);
-          info.discount_label = coupon.name ?? coupon.id;
-        }
-      }
-      info.amount_cents = net;
-      info.gross_cents = net !== gross ? gross : null;
-      info.currency = item?.price?.currency ?? "brl";
-      info.interval = item?.price?.recurring?.interval ?? row.billing_interval ?? null;
+      const amt = await fetchStripeAmount(stripe, row.stripe_subscription_id, row.billing_interval ?? null);
+      info.amount_cents = amt.amount_cents;
+      info.gross_cents = amt.gross_cents;
+      info.currency = amt.currency;
+      info.interval = amt.interval;
+      info.discount_label = amt.discount_label;
       info.amount_source = "stripe";
       info.stripe_dashboard_url = stripeDashboardUrl(
-        s.livemode ?? true,
+        amt.livemode,
         "subscriptions",
         row.stripe_subscription_id,
       );
