@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { captureFrameFromElement, extractVideoFrame } from '../videoFrame';
 
-type FrameCb = () => void;
+type FrameCb = (now: number, metadata: unknown) => void;
 
 class MockVideo {
   static instances: MockVideo[] = [];
@@ -49,7 +49,7 @@ class MockVideo {
   }
 
   requestVideoFrameCallback(cb: FrameCb) {
-    queueMicrotask(cb);
+    queueMicrotask(() => cb(0, {}));
     return 1;
   }
 
@@ -168,5 +168,21 @@ describe('extractVideoFrame', () => {
     MockVideo.instances[0].failOnLoad = true;
 
     await expect(promise).rejects.toThrow('Não foi possível decodificar o vídeo');
+  });
+
+  it('falls back to requestAnimationFrame when rVFC is unavailable', async () => {
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      queueMicrotask(() => cb(0));
+      return 0;
+    });
+    const proto = MockVideo.prototype as unknown as Record<string, unknown>;
+    const saved = proto.requestVideoFrameCallback;
+    delete proto.requestVideoFrameCallback;
+    try {
+      const file = await extractVideoFrame(createVideoFile());
+      expect(file.type).toBe('image/jpeg');
+    } finally {
+      proto.requestVideoFrameCallback = saved;
+    }
   });
 });

@@ -6,7 +6,9 @@ const JPEG_QUALITY = 0.85;
 const LOAD_TIMEOUT_MS = 15_000;
 
 type VideoWithFrameCallback = HTMLVideoElement & {
-  requestVideoFrameCallback?: (cb: () => void) => number;
+  requestVideoFrameCallback?: (
+    cb: (now: DOMHighResTimeStamp, metadata: unknown) => void,
+  ) => number;
 };
 
 export function captureFrameFromElement(video: HTMLVideoElement): Promise<File> {
@@ -83,6 +85,7 @@ export function extractVideoFrame(source: File | string, timeSeconds?: number): 
       // seeked alone is not enough: some browsers still paint the previous
       // frame. requestVideoFrameCallback waits for actual frame presentation.
       video.onseeked = () => {
+        video.onseeked = null;
         const capture = () => captureFrameFromElement(video).then(succeed, fail);
         if (typeof video.requestVideoFrameCallback === 'function') {
           video.requestVideoFrameCallback(capture);
