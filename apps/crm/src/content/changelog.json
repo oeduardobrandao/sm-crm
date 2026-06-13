@@ -20,13 +20,6 @@
           "pr": 112
         },
         {
-          "type": "improvement",
-          "area": "Cobrança",
-          "title": "Melhoria na visibilidade de assinaturas do Stripe",
-          "description": "Agora é possível visualizar as assinaturas do Stripe de cada workspace, mesmo que o plano tenha sido alterado manualmente.",
-          "pr": 113
-        },
-        {
           "type": "fix",
           "area": "Hub",
           "title": "Correção no renderizado do corpo do post",
