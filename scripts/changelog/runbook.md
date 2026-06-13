@@ -17,6 +17,11 @@ You are generating the public changelog for Mesaas. Work on a fresh branch off `
    - `area`: product area in Portuguese (Entregas, Analytics, Clientes, Hub, …).
    - `title` + `description`: friendly Brazilian Portuguese, benefit-oriented, no filenames,
      no internal jargon, no security-sensitive details.
+   - The changelog is for customers using the CRM and the Hub. NEVER write up internal
+     admin-portal / platform-admin work (the `apps/admin` app): per-workspace Stripe
+     subscription visibility, plan/price ID editing, comp/un-comp controls, etc. Watch for
+     mixed PRs whose title is scoped to something else (e.g. `feat(billing): … + admin …`) —
+     keep only the customer-facing half and drop the admin half entirely.
    - Drop fixes a customer would not notice. If you drop ALL of them, still proceed to step 5
      with `release` omitted so the watermark advances.
 
