@@ -1,6 +1,40 @@
 {
-  "lastMergedAt": "2026-06-05T01:50:26Z",
+  "lastMergedAt": "2026-06-12T20:14:43Z",
   "releases": [
+    {
+      "date": "2026-06-13",
+      "summary": "Melhorias nos recursos de cobrança e entrega",
+      "items": [
+        {
+          "type": "feature",
+          "area": "Entregas",
+          "title": "Linhas do tempo de auditoria por post",
+          "description": "Agora é possível visualizar o histórico de alterações de status de cada post, incluindo quem e quando foram feitas as alterações.",
+          "pr": 100
+        },
+        {
+          "type": "feature",
+          "area": "Cobrança",
+          "title": "Código de promoção no checkout",
+          "description": "Agora é possível inserir códigos de promoção durante o checkout, permitindo descontos e promoções especiais.",
+          "pr": 112
+        },
+        {
+          "type": "improvement",
+          "area": "Cobrança",
+          "title": "Melhoria na visibilidade de assinaturas do Stripe",
+          "description": "Agora é possível visualizar as assinaturas do Stripe de cada workspace, mesmo que o plano tenha sido alterado manualmente.",
+          "pr": 113
+        },
+        {
+          "type": "fix",
+          "area": "Hub",
+          "title": "Correção no renderizado do corpo do post",
+          "description": "Agora o corpo do post é renderizado corretamente no hub, mesmo quando há comentários ou marcas de comentário.",
+          "pr": 104
+        }
+      ]
+    },
     {
       "date": "2026-06-05",
       "summary": "Nova página de Novidades com atualizações automáticas",
