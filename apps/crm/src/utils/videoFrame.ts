@@ -1,6 +1,7 @@
 // apps/crm/src/utils/videoFrame.ts
-// Captures video frames as JPEG thumbnails. Display-only artifacts (CRM/Hub
-// posters) — Instagram publishing never reads them — so resolution is capped.
+// Captures video frames as JPEG thumbnails for CRM/Hub previews and as the
+// default Instagram Reel cover (cover_url) when publishing. Resolution is
+// capped at 1920px.
 const MAX_EDGE = 1920;
 const JPEG_QUALITY = 0.85;
 const LOAD_TIMEOUT_MS = 15_000;

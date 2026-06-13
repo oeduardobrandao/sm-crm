@@ -33,6 +33,7 @@ import {
   uploadMany,
 } from '../../../services/postMedia';
 import { extractVideoFrame } from '../../../utils/videoFrame';
+import { encodeImageAsJpeg } from '../../../utils/imageJpeg';
 import { ThumbnailPickerDialog } from './ThumbnailPickerDialog';
 import { useTranslation } from 'react-i18next';
 import type { PostMedia } from '../../../store';
@@ -218,9 +219,16 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
     }, 2000);
   }
 
-  async function handleVideoThumbnail(thumbnail: File) {
+  async function handleVideoThumbnail(rawThumbnail: File) {
     const video = pendingVideos[0];
     if (!video) return;
+    let thumbnail: File;
+    try {
+      thumbnail = await encodeImageAsJpeg(rawThumbnail);
+    } catch {
+      toast.error(t('thumbnailEditor.imageError'));
+      return; // keep the video queued so the user can retry
+    }
     setPendingVideos((prev) => prev.slice(1));
     setUploading(true);
     const uid = `upload-video-${Date.now()}`;

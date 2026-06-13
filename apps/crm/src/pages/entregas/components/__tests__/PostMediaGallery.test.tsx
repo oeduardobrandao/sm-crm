@@ -23,6 +23,10 @@ vi.mock('../../../../utils/videoFrame', () => ({
   captureFrameFromElement: vi.fn(),
 }));
 
+vi.mock('../../../../utils/imageJpeg', () => ({
+  encodeImageAsJpeg: vi.fn((f: File) => Promise.resolve(f)),
+}));
+
 vi.mock('../PostMediaLightbox', () => ({
   PostMediaLightbox: () => null,
 }));
@@ -42,10 +46,12 @@ vi.mock('../../../../services/fileService', () => ({
 
 import { uploadPostMedia } from '../../../../services/postMedia';
 import { extractVideoFrame } from '../../../../utils/videoFrame';
+import { encodeImageAsJpeg } from '../../../../utils/imageJpeg';
 import { PostMediaGallery } from '../PostMediaGallery';
 
 const uploadPostMediaMock = vi.mocked(uploadPostMedia);
 const extractVideoFrameMock = vi.mocked(extractVideoFrame);
+const encodeImageAsJpegMock = vi.mocked(encodeImageAsJpeg);
 
 function createFile(name: string, type: string) {
   return new File([new Uint8Array(64)], name, { type });
@@ -156,6 +162,7 @@ describe('PostMediaGallery upload orchestration', () => {
         file: video,
         thumbnail: manualThumb,
       });
+      expect(encodeImageAsJpegMock).toHaveBeenCalledWith(manualThumb);
       // Advance past the 2s setTimeout that clears the upload progress items.
       vi.advanceTimersByTime(3000);
       await waitFor(() => expect(screen.queryByText('um.mov')).not.toBeInTheDocument());
