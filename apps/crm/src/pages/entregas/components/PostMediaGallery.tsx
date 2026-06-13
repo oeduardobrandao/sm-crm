@@ -151,9 +151,10 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
         if (detectKind(file) === 'video') {
           try {
             thumbnail = await extractVideoFrame(file);
-          } catch {
+          } catch (err) {
             // Browser can't decode this video — fall back to asking for a
             // manual thumbnail (finalize rejects videos without one).
+            console.warn(`[thumbnail] auto-extraction failed for ${file.name}:`, err);
             deferredCount++;
             setPendingVideos((prev) => [...prev, file]);
             setUploadQueue((prev) => {

@@ -5,10 +5,6 @@ const MAX_EDGE = 1920;
 const JPEG_QUALITY = 0.85;
 const LOAD_TIMEOUT_MS = 15_000;
 
-type VideoWithFrameCallback = HTMLVideoElement & {
-  requestVideoFrameCallback?: (cb: (now: DOMHighResTimeStamp, metadata: unknown) => void) => number;
-};
-
 export function captureFrameFromElement(video: HTMLVideoElement): Promise<File> {
   return new Promise((resolve, reject) => {
     // 2 = HAVE_CURRENT_DATA: anything less and drawImage paints black.
@@ -44,7 +40,7 @@ export function extractVideoFrame(source: File | string, timeSeconds?: number): 
   return new Promise((resolve, reject) => {
     const isFile = source instanceof File;
     const url = isFile ? URL.createObjectURL(source) : source;
-    const video = document.createElement('video') as VideoWithFrameCallback;
+    const video = document.createElement('video');
     video.preload = 'auto';
     video.muted = true;
     video.playsInline = true;
@@ -80,16 +76,17 @@ export function extractVideoFrame(source: File | string, timeSeconds?: number): 
     video.onloadedmetadata = () => {
       const duration = Number.isFinite(video.duration) ? video.duration : 0;
       const target = timeSeconds ?? Math.min(0.5, duration / 2);
-      // seeked alone is not enough: some browsers still paint the previous
-      // frame. requestVideoFrameCallback waits for actual frame presentation.
+      // Capture one animation frame after the seek settles. We deliberately do
+      // NOT use requestVideoFrameCallback: this <video> is never added to the
+      // DOM and is paused, so the browser never presents a frame to the
+      // compositor — rVFC would never fire and extraction would hang until the
+      // timeout. requestAnimationFrame is page-level and fires regardless, and
+      // after `seeked` the target frame is decoded (readyState >= 2), so the
+      // draw lands on the right frame (the seek target avoids the black frame
+      // at t=0 via min(0.5, duration/2)).
       video.onseeked = () => {
         video.onseeked = null;
-        const capture = () => captureFrameFromElement(video).then(succeed, fail);
-        if (typeof video.requestVideoFrameCallback === 'function') {
-          video.requestVideoFrameCallback(capture);
-        } else {
-          requestAnimationFrame(capture);
-        }
+        requestAnimationFrame(() => captureFrameFromElement(video).then(succeed, fail));
       };
       video.currentTime = target;
     };

@@ -2,10 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { captureFrameFromElement, extractVideoFrame } from '../videoFrame';
 
-type FrameCb = (now: number, metadata: unknown) => void;
-
 class MockVideo {
   static instances: MockVideo[] = [];
+  // When true, the created element exposes a requestVideoFrameCallback that
+  // accepts a callback but never invokes it — exactly how real browsers behave
+  // for a detached, paused <video>. Capture must not depend on it firing.
+  static neverFiringRvfc = false;
 
   preload = '';
   muted = false;
@@ -19,12 +21,15 @@ class MockVideo {
   onloadedmetadata: (() => void) | null = null;
   onseeked: (() => void) | null = null;
   onerror: ((e: Event) => void) | null = null;
-  frameCallbacks: FrameCb[] = [];
   srcValue = '';
   failOnLoad = false;
 
   constructor() {
     MockVideo.instances.push(this);
+    if (MockVideo.neverFiringRvfc) {
+      (this as unknown as { requestVideoFrameCallback: () => number }).requestVideoFrameCallback =
+        () => 1;
+    }
   }
 
   set src(value: string) {
@@ -48,11 +53,6 @@ class MockVideo {
     return this.currentTimeValue;
   }
 
-  requestVideoFrameCallback(cb: FrameCb) {
-    queueMicrotask(() => cb(0, {}));
-    return 1;
-  }
-
   removeAttribute() {}
   load() {}
 }
@@ -61,7 +61,15 @@ const canvases: { width: number; height: number }[] = [];
 
 beforeEach(() => {
   MockVideo.instances.length = 0;
+  MockVideo.neverFiringRvfc = false;
   canvases.length = 0;
+
+  // Capture is driven off requestAnimationFrame; fire it on the microtask queue
+  // so the extraction promise settles within an awaited test.
+  vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+    queueMicrotask(() => cb(0));
+    return 0;
+  });
 
   const realCreateElement = document.createElement.bind(document);
   vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
@@ -170,19 +178,14 @@ describe('extractVideoFrame', () => {
     await expect(promise).rejects.toThrow('Não foi possível decodificar o vídeo');
   });
 
-  it('falls back to requestAnimationFrame when rVFC is unavailable', async () => {
-    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
-      queueMicrotask(() => cb(0));
-      return 0;
-    });
-    const proto = MockVideo.prototype as unknown as Record<string, unknown>;
-    const saved = proto.requestVideoFrameCallback;
-    delete proto.requestVideoFrameCallback;
-    try {
-      const file = await extractVideoFrame(createVideoFile());
-      expect(file.type).toBe('image/jpeg');
-    } finally {
-      proto.requestVideoFrameCallback = saved;
-    }
+  it('captures via requestAnimationFrame even when requestVideoFrameCallback never fires', async () => {
+    // Regression: real browsers never fire rVFC for a detached, paused <video>,
+    // so the previous rVFC-based capture hung until the load timeout and the UI
+    // fell back to a manual thumbnail. Capture must come from `seeked` + rAF.
+    MockVideo.neverFiringRvfc = true;
+
+    const file = await extractVideoFrame(createVideoFile());
+
+    expect(file.type).toBe('image/jpeg');
   });
 });
