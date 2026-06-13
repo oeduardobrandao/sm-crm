@@ -327,6 +327,17 @@ section.lp-pad-alt{background:#fafbfc;border-top:1px solid rgba(30,36,48,.06);bo
 .pricing-toggle button[aria-pressed='true']{background:#fff;color:#12151a;box-shadow:0 1px 3px rgba(0,0,0,.1)}
 .pricing-save{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:.7rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#15a35b}
 .price-annual-note{margin-top:4px;font-size:.72rem;color:#6b7280;min-height:1.1em}
+.pricing-promo-note{
+  margin-top:18px;display:inline-flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;
+  padding:10px 18px;border-radius:12px;
+  background:rgba(255,191,48,.12);border:1px solid rgba(255,191,48,.35);
+  color:#7a5a00;font-size:.9rem;line-height:1.45;
+}
+.pricing-promo-note strong{color:#12151a}
+.pricing-promo-note .promo-code{
+  font-family:ui-monospace,'SF Mono',Menlo,monospace;font-weight:700;
+  background:#FFBF30;color:#12151a;padding:1px 8px;border-radius:6px;letter-spacing:.04em;
+}
 
 /* ---- FAQ ---- */
 .faqs{max-width:780px;margin:48px auto 0;border:1px solid rgba(30,36,48,.08);background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.04)}
@@ -486,6 +497,8 @@ section.lp-pad-alt{background:#fafbfc;border-top:1px solid rgba(30,36,48,.06);bo
 [data-theme='dark'] .pricing-toggle button[aria-pressed='true']{background:#12151a;color:#e8eaf0}
 [data-theme='dark'] .pricing-save{color:#3ecf8e}
 [data-theme='dark'] .price-annual-note{color:#94a3b8}
+[data-theme='dark'] .pricing-promo-note{background:rgba(255,191,48,.1);border-color:rgba(255,191,48,.28);color:#eab308}
+[data-theme='dark'] .pricing-promo-note strong{color:#e8eaf0}
 
 /* FAQ */
 [data-theme='dark'] .faqs{background:#12151a;border-color:rgba(255,255,255,.08);box-shadow:0 1px 2px rgba(0,0,0,.2)}

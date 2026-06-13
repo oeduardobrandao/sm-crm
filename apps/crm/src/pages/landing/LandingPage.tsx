@@ -654,6 +654,10 @@ function Pricing() {
             Comece com o plano Free e mude de plano quando quiser. Sem fidelidade — cancele a
             qualquer momento.
           </p>
+          <div className="pricing-promo-note">
+            🎁 Novos usuários ganham o <strong>1º mês grátis</strong> em qualquer plano — use o
+            código <code className="promo-code">{PROMO_CODE}</code> no checkout.
+          </div>
         </div>
 
         <div className="pricing-toggle-row reveal">

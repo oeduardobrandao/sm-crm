@@ -56,11 +56,13 @@ describe('LandingPage', () => {
   it('shows the promo banner and hides it (persisted) after dismissing', () => {
     renderLandingPage();
 
-    expect(screen.getByText('BEMVINDO')).toBeInTheDocument();
+    // Scope to the banner region: the promo code also appears in the pricing callout.
+    const banner = screen.getByRole('region', { name: 'Oferta de lançamento' });
+    expect(banner).toHaveTextContent('BEMVINDO');
 
     fireEvent.click(screen.getByRole('button', { name: 'Fechar aviso' }));
 
-    expect(screen.queryByText('BEMVINDO')).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Oferta de lançamento' })).not.toBeInTheDocument();
     expect(localStorage.getItem('mesaas_promo_dismissed')).toBe('1');
   });
 
