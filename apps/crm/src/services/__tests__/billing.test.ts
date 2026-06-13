@@ -35,6 +35,20 @@ describe('billing service', () => {
     expect(opts.headers.Authorization).toBe('Bearer tok');
   });
 
+  it('startCheckout includes promo_code only when provided', async () => {
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({ url: 'https://checkout.stripe.com/abc' }),
+    });
+    await startCheckout('pro', 'month', 'BEMVINDO');
+    const [, opts] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(JSON.parse(opts.body)).toEqual({
+      plan_id: 'pro',
+      interval: 'month',
+      promo_code: 'BEMVINDO',
+    });
+  });
+
   it('startCheckout throws the server error message on non-ok', async () => {
     (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: false,

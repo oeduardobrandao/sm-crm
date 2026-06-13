@@ -89,6 +89,43 @@
   align-items: center;
   gap: 0.35rem;
 }
+.billing-promo {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.billing-promo label {
+  font-size: 0.78rem;
+  color: var(--text-light);
+}
+.billing-promo input {
+  width: 8.5rem;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--surface-main);
+  color: var(--text-main);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.billing-promo input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+.billing-promo input::placeholder {
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--text-light);
+}
+@media (max-width: 640px) {
+  .billing-promo {
+    margin-left: 0;
+    width: 100%;
+  }
+}
 
 /* Plan grid */
 .plan-grid {

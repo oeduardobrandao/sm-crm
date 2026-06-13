@@ -7,6 +7,12 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const PAID_PLANS = ["start", "pro", "max"];
 
+// Launch promo: typing this code at checkout gives first-time subscribers a free
+// trial (one free month on monthly OR annual — a trial works uniformly across
+// intervals, unlike a %-off coupon which would zero out a full annual invoice).
+// The code is public (shown in the landing banner), so it's a constant, not a secret.
+const LAUNCH_PROMO = { code: "BEMVINDO", trialDays: 30 };
+
 Deno.serve(async (req: Request) => {
   const corsHeaders = buildCorsHeaders(req);
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -30,6 +36,7 @@ Deno.serve(async (req: Request) => {
     const body = await req.json().catch(() => ({}));
     const planId = String(body.plan_id || "");
     const interval = body.interval === "year" ? "year" : "month";
+    const promoCode = String(body.promo_code || "").trim().toUpperCase();
     if (!PAID_PLANS.includes(planId)) return json({ error: "Invalid plan" }, 400, headers);
 
     const { data: plan } = await svc
@@ -42,7 +49,8 @@ Deno.serve(async (req: Request) => {
     // find-or-create Stripe customer for this workspace
     const { data: subRow } = await svc
       .from("workspace_subscriptions")
-      .select("stripe_customer_id").eq("workspace_id", workspaceId).maybeSingle();
+      .select("stripe_customer_id, stripe_subscription_id")
+      .eq("workspace_id", workspaceId).maybeSingle();
 
     let customerId = subRow?.stripe_customer_id as string | undefined;
     if (!customerId) {
@@ -57,17 +65,39 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    // Launch promo → a free trial, but only for first-time subscribers. A wrong or
+    // ineligible code fails loudly so the user can fix it before we redirect to Stripe.
+    const isFirstTimeSubscriber = !subRow?.stripe_subscription_id;
+    let trialDays: number | undefined;
+    if (promoCode) {
+      if (promoCode !== LAUNCH_PROMO.code) {
+        return json({ error: "Código promocional inválido." }, 400, headers);
+      }
+      if (!isFirstTimeSubscriber) {
+        return json(
+          { error: "Este código é válido apenas para novos assinantes." },
+          400,
+          headers,
+        );
+      }
+      trialDays = LAUNCH_PROMO.trialDays;
+    }
+
     const appBaseUrl = resolveAllowedOrigin(req);
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       customer: customerId,
       client_reference_id: workspaceId,
       line_items: [{ price: priceId, quantity: 1 }],
-      subscription_data: { metadata: { workspace_id: workspaceId, plan_id: planId } },
+      subscription_data: {
+        metadata: { workspace_id: workspaceId, plan_id: planId },
+        ...(trialDays ? { trial_period_days: trialDays } : {}),
+      },
       // Allow promotion codes; skip card collection when a 100%-off coupon leaves
-      // nothing due (also lets us run real promos later).
+      // nothing due. With a trial we collect the card upfront so billing succeeds
+      // when the trial ends.
       allow_promotion_codes: true,
-      payment_method_collection: "if_required",
+      payment_method_collection: trialDays ? "always" : "if_required",
       success_url: `${appBaseUrl}/configuracao/cobranca?status=success`,
       cancel_url: `${appBaseUrl}/configuracao/cobranca?status=cancelled`,
     });

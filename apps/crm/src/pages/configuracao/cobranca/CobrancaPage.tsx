@@ -60,6 +60,7 @@ export default function CobrancaPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [interval, setInterval] = useState<BillingInterval>('month');
   const [busy, setBusy] = useState<string | null>(null);
+  const [promo, setPromo] = useState('');
 
   const isOwner = role === 'owner';
   const { data: plans, isLoading: plansLoading } = useQuery({
@@ -137,7 +138,7 @@ export default function CobrancaPage() {
   async function handleUpgrade(planId: string) {
     setBusy(planId);
     try {
-      const url = await startCheckout(planId, interval);
+      const url = await startCheckout(planId, interval, promo.trim() || undefined);
       window.location.assign(url);
     } catch (err) {
       toast.error('Erro ao iniciar checkout: ' + (err as Error).message);
@@ -229,6 +230,18 @@ export default function CobrancaPage() {
             Economize até {annualSavingsPct}% no anual
           </span>
         )}
+        <div className="billing-promo">
+          <label htmlFor="promo-code">Tem um código promocional?</label>
+          <input
+            id="promo-code"
+            type="text"
+            value={promo}
+            onChange={(e) => setPromo(e.target.value)}
+            placeholder="Código"
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </div>
       </div>
 
       <div className="plan-grid">
