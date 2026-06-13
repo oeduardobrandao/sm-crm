@@ -34,6 +34,12 @@ function scrollTo(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
 }
 
+/** Centavos → display string. R$ 0 stays "R$ 0"; otherwise pt-BR currency (e.g. R$ 99,90). */
+function formatPrice(centavos: number): string {
+  if (centavos === 0) return 'R$ 0';
+  return (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
 export default function LandingPage() {
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -140,7 +146,7 @@ function Hero() {
       <div className="lp-container">
         <div className="hero-grid">
           <div>
-            <span className="eyebrow-pill">Beta aberto · 100% gratuito</span>
+            <span className="eyebrow-pill">Comece grátis · Sem cartão de crédito</span>
             <h1 className="hero-title">
               Sua agência de social media <em>sem caos</em>, sem planilha, sem grupo de WhatsApp.
             </h1>
@@ -505,15 +511,22 @@ function Testimonial() {
 }
 
 function Pricing() {
+  const { user } = useAuth();
+  const [period, setPeriod] = useState<'month' | 'year'>('month');
+
+  // Prices in centavos, mirroring the real plan catalog (supabase/seed.sql → DB `plans`).
+  // Annual price is the full yearly charge; the card shows its per-month equivalent.
   const plans = [
     {
+      id: 'free',
       name: 'Free',
-      price: 'R$ 0',
+      monthly: 0,
+      annual: 0,
       tag: 'Para conhecer a plataforma.',
       limits: [
         ['Clientes', '2'],
         ['Usuários', '1'],
-        ['Templates', '2'],
+        ['Templates', '1'],
       ] as const,
       feats: [
         { t: 'Planejamento', y: true },
@@ -525,8 +538,10 @@ function Pricing() {
       highlight: false,
     },
     {
+      id: 'start',
       name: 'Start',
-      price: 'R$ 99,90',
+      monthly: 9990,
+      annual: 95900,
       tag: 'Para freelancers que estão começando.',
       limits: [
         ['Clientes', '5'],
@@ -543,12 +558,14 @@ function Pricing() {
       highlight: false,
     },
     {
+      id: 'pro',
       name: 'Pro',
-      price: 'R$ 139,90',
+      monthly: 13990,
+      annual: 134300,
       tag: 'Para freelancers com carteira consolidada.',
       limits: [
         ['Clientes', '15'],
-        ['Usuários', '2'],
+        ['Usuários', '3'],
         ['Templates', '8'],
       ] as const,
       feats: [
@@ -563,8 +580,10 @@ function Pricing() {
       highlight: true,
     },
     {
-      name: 'Scale',
-      price: 'R$ 199,90',
+      id: 'max',
+      name: 'Max',
+      monthly: 19990,
+      annual: 191900,
       tag: 'Para micro-agências e equipes completas.',
       limits: [
         ['Clientes', 'Ilimitado'],
@@ -579,59 +598,89 @@ function Pricing() {
         { t: 'Agendamento automático', y: true },
         { t: 'Métricas avançadas', y: true },
       ],
-      cta: 'Assinar Scale',
+      cta: 'Assinar Max',
       highlight: false,
     },
   ];
+
+  const isYear = period === 'year';
+
+  // Visitors must sign up before checkout; logged-in owners pick/confirm on Plano & Cobrança.
+  const planHref = (id: string) => {
+    if (id === 'free') return user ? '/dashboard' : '/login?tab=register';
+    return user ? '/configuracao/cobranca' : '/login?tab=register';
+  };
 
   return (
     <section className="lp-pad" id="pricing">
       <div className="lp-container">
         <div className="section-head reveal">
-          <span className="eyebrow-pill">Em breve · Beta 100% grátis</span>
+          <span className="eyebrow-pill">Planos e preços</span>
           <h2>Um plano que cresce junto com a sua agência.</h2>
           <p>
-            Enquanto o Mesaas está em beta, é totalmente gratuito. Estes são os planos que entrarão
-            em vigor nos próximos meses.
+            Comece com o plano Free e mude de plano quando quiser. Sem fidelidade — cancele a
+            qualquer momento.
           </p>
         </div>
+
+        <div className="pricing-toggle-row reveal">
+          <div className="pricing-toggle" role="group" aria-label="Período de cobrança">
+            <button aria-pressed={!isYear} onClick={() => setPeriod('month')}>
+              Mensal
+            </button>
+            <button aria-pressed={isYear} onClick={() => setPeriod('year')}>
+              Anual
+            </button>
+          </div>
+          <span className="pricing-save">Economize 20% no plano anual</span>
+        </div>
+
         <div className="plans-grid">
-          {plans.map((p) => (
-            <div key={p.name} className={`plan-card reveal ${p.highlight ? 'highlight' : ''}`}>
-              {p.highlight && <div className="plan-badge">Mais popular</div>}
-              <h3>{p.name}</h3>
-              <div className="price-row">
-                <span className="price">{p.price}</span>
-                <span className="price-sub">/mês</span>
+          {plans.map((p) => {
+            const amount = isYear ? p.annual / 12 : p.monthly;
+            return (
+              <div key={p.id} className={`plan-card reveal ${p.highlight ? 'highlight' : ''}`}>
+                {p.highlight && <div className="plan-badge">Mais popular</div>}
+                <h3>{p.name}</h3>
+                <div className="price-row">
+                  <span className="price">{formatPrice(amount)}</span>
+                  <span className="price-sub">/mês</span>
+                </div>
+                <div className="price-annual-note">
+                  {isYear && p.annual > 0
+                    ? `cobrado anualmente (${formatPrice(p.annual)}/ano)`
+                    : ' '}
+                </div>
+                <div className="plan-tag">{p.tag}</div>
+                <div className="plan-label">Limites</div>
+                <ul className="plan-list plan-limits">
+                  {p.limits.map(([k, v]) => (
+                    <li key={k}>
+                      <span className="k">{k}</span>
+                      <span className="v">{v}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="plan-label">Features</div>
+                <ul className="plan-list plan-feats">
+                  {p.feats.map((f) => (
+                    <li key={f.t}>
+                      {f.y ? <span className="ck">✓</span> : <span className="xk">✕</span>}
+                      <span className={f.y ? '' : 'strike'}>{f.t}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="plan-cta">
+                  <a
+                    href={planHref(p.id)}
+                    className={`lp-btn ${p.highlight ? 'lp-btn-primary' : 'lp-btn-outline'}`}
+                  >
+                    {p.id === 'free' && user ? 'Acessar painel' : p.cta}
+                  </a>
+                </div>
               </div>
-              <div className="plan-tag">{p.tag}</div>
-              <div className="plan-label">Limites</div>
-              <ul className="plan-list plan-limits">
-                {p.limits.map(([k, v]) => (
-                  <li key={k}>
-                    <span className="k">{k}</span>
-                    <span className="v">{v}</span>
-                  </li>
-                ))}
-              </ul>
-              <div className="plan-label">Features</div>
-              <ul className="plan-list plan-feats">
-                {p.feats.map((f) => (
-                  <li key={f.t}>
-                    {f.y ? <span className="ck">✓</span> : <span className="xk">✕</span>}
-                    <span className={f.y ? '' : 'strike'}>{f.t}</span>
-                  </li>
-                ))}
-              </ul>
-              <div className="plan-cta">
-                {p.highlight ? (
-                  <span className="lp-btn lp-btn-primary">{p.cta} · Em breve</span>
-                ) : (
-                  <span className="soon">{p.cta} · Em breve</span>
-                )}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </section>
@@ -643,8 +692,8 @@ function Faq() {
 
   const items = [
     {
-      q: 'O Mesaas é gratuito mesmo?',
-      a: 'Sim. Durante a fase beta, todas as funcionalidades são 100% gratuitas para todos os usuários. Quando os planos entrarem em vigor, quem já estava dentro recebe condições especiais.',
+      q: 'O Mesaas tem plano gratuito?',
+      a: 'Sim. O plano Free é gratuito para sempre, com limites para você conhecer a plataforma — 2 clientes e 1 usuário. Quando precisar de mais clientes, usuários ou recursos como integração com Instagram e portal do cliente, é só assinar um plano pago, a partir de R$ 99,90/mês.',
     },
     {
       q: 'Preciso instalar alguma coisa?',
@@ -664,7 +713,7 @@ function Faq() {
     },
     {
       q: 'Funciona para freelancer ou só para agência?',
-      a: 'Para os dois. O plano Start atende freelancers começando, e o Scale suporta agências com dezenas de clientes e uma equipe inteira.',
+      a: 'Para os dois. O plano Start atende freelancers começando, e o Max suporta agências com dezenas de clientes e uma equipe inteira.',
     },
     {
       q: 'Posso cancelar quando quiser?',
@@ -748,7 +797,7 @@ function CtaFinal() {
               letterSpacing: '.08em',
             }}
           >
-            BETA ABERTO · 100% GRATUITO
+            COMECE GRÁTIS · SEM CARTÃO DE CRÉDITO
           </div>
         </div>
       </div>

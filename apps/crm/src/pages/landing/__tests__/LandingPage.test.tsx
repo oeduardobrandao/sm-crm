@@ -72,14 +72,15 @@ describe('LandingPage', () => {
       .getAllByRole('link')
       .filter((link) => link.getAttribute('href') === '/login?tab=register');
 
-    expect(registerLinks).toHaveLength(3);
+    // Header + hero + final CTA each link to signup, plus all 4 pricing CTAs while logged out.
+    expect(registerLinks).toHaveLength(7);
     expect(screen.getByRole('link', { name: 'Entrar' })).toHaveAttribute('href', '/login');
   });
 
   it('opens one FAQ answer at a time', () => {
     renderLandingPage();
 
-    const freeQuestion = screen.getByRole('button', { name: 'O Mesaas é gratuito mesmo?' });
+    const freeQuestion = screen.getByRole('button', { name: 'O Mesaas tem plano gratuito?' });
     const installQuestion = screen.getByRole('button', { name: 'Preciso instalar alguma coisa?' });
 
     fireEvent.click(freeQuestion);
@@ -87,7 +88,7 @@ describe('LandingPage', () => {
     expect(freeQuestion).toHaveAttribute('aria-expanded', 'true');
     expect(
       screen.getByText(
-        'Sim. Durante a fase beta, todas as funcionalidades são 100% gratuitas para todos os usuários. Quando os planos entrarem em vigor, quem já estava dentro recebe condições especiais.',
+        'Sim. O plano Free é gratuito para sempre, com limites para você conhecer a plataforma — 2 clientes e 1 usuário. Quando precisar de mais clientes, usuários ou recursos como integração com Instagram e portal do cliente, é só assinar um plano pago, a partir de R$ 99,90/mês.',
       ),
     ).toBeInTheDocument();
 
@@ -95,7 +96,7 @@ describe('LandingPage', () => {
 
     expect(freeQuestion).toHaveAttribute('aria-expanded', 'false');
     expect(installQuestion).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.queryByText(/100% gratuitas para todos/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/gratuito para sempre/i)).not.toBeInTheDocument();
     expect(
       screen.getByText(
         'Não. O Mesaas é 100% web e funciona em qualquer navegador moderno, no computador ou no celular. Nada para baixar, nada para configurar.',

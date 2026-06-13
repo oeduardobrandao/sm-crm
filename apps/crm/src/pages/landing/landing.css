@@ -291,6 +291,13 @@ section.lp-pad-alt{background:#fafbfc;border-top:1px solid rgba(30,36,48,.06);bo
   font-size:.85rem;font-weight:500;cursor:not-allowed;
 }
 .plan-card.highlight .plan-cta .lp-btn{background:#FFBF30;color:#12151a}
+.pricing-toggle-row{display:flex;align-items:center;justify-content:center;gap:16px;margin-top:36px;flex-wrap:wrap}
+.pricing-toggle{display:inline-flex;background:#f1f5f9;border:1px solid rgba(30,36,48,.08);border-radius:10px;padding:3px}
+.pricing-toggle button{appearance:none;border:none;background:transparent;cursor:pointer;font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:.72rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#6b7280;padding:8px 18px;border-radius:8px;transition:color .2s,background .2s}
+.pricing-toggle button:hover{color:#12151a}
+.pricing-toggle button[aria-pressed='true']{background:#fff;color:#12151a;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+.pricing-save{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:.7rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#15a35b}
+.price-annual-note{margin-top:4px;font-size:.72rem;color:#6b7280;min-height:1.1em}
 
 /* ---- FAQ ---- */
 .faqs{max-width:780px;margin:48px auto 0;border:1px solid rgba(30,36,48,.08);background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.04)}
@@ -444,6 +451,12 @@ section.lp-pad-alt{background:#fafbfc;border-top:1px solid rgba(30,36,48,.06);bo
 [data-theme='dark'] .plan-feats li{color:#94a3b8}
 [data-theme='dark'] .plan-feats .strike{color:rgba(148,163,184,.5)}
 [data-theme='dark'] .plan-cta .soon{background:#1a1e26;border-color:rgba(255,255,255,.08);color:#6b7280}
+[data-theme='dark'] .pricing-toggle{background:#1a1e26;border-color:rgba(255,255,255,.08)}
+[data-theme='dark'] .pricing-toggle button{color:#94a3b8}
+[data-theme='dark'] .pricing-toggle button:hover{color:#e8eaf0}
+[data-theme='dark'] .pricing-toggle button[aria-pressed='true']{background:#12151a;color:#e8eaf0}
+[data-theme='dark'] .pricing-save{color:#3ecf8e}
+[data-theme='dark'] .price-annual-note{color:#94a3b8}
 
 /* FAQ */
 [data-theme='dark'] .faqs{background:#12151a;border-color:rgba(255,255,255,.08);box-shadow:0 1px 2px rgba(0,0,0,.2)}
