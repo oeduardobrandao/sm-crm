@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { captureFrameFromElement } from '../../../utils/videoFrame';
+import { encodeImageAsJpeg } from '../../../utils/imageJpeg';
 import { updateVideoThumbnail } from '../../../services/postMedia';
 import type { PostMedia } from '../../../store';
 
@@ -116,10 +117,15 @@ export function ThumbnailPickerDialog({ media, onClose, onUpdated }: ThumbnailPi
                   type="file"
                   accept="image/jpeg,image/png,image/webp"
                   hidden
-                  onChange={(e) => {
+                  onChange={async (e) => {
                     const f = e.target.files?.[0];
-                    if (f) choosePending(f);
                     e.target.value = '';
+                    if (!f) return;
+                    try {
+                      choosePending(await encodeImageAsJpeg(f));
+                    } catch {
+                      toast.error(t('thumbnailEditor.imageError'));
+                    }
                   }}
                 />
               </label>
