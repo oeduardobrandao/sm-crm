@@ -520,7 +520,8 @@ export function HeroDemo() {
       <div
         style={{
           position: 'absolute',
-          top: '46%',
+          // sit lower on desktop so the card clears the "Receita Mensal" value it used to cover
+          top: mobile ? '46%' : '58%',
           left: mobile ? 0 : '-2%',
           width: mobile ? '65%' : 230,
           background: '#fff',

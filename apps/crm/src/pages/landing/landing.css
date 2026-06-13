@@ -128,9 +128,12 @@
 }
 .hero-trust-avatars .hta:first-child{margin-left:0}
 
-.hero-stage{position:relative;min-height:520px;overflow:hidden}
+/* overflow:visible so the intentionally-overhanging floating cards
+   (Reels at left:-2%, toast at right:-2%) aren't clipped; .lp-root's
+   overflow-x:hidden is the page-level horizontal-scroll guard. */
+.hero-stage{position:relative;min-height:520px;overflow:visible}
 @media(max-width:980px){.hero-stage{min-height:480px;margin-top:8px}}
-@media(max-width:640px){.hero-stage{min-height:400px;overflow:visible}}
+@media(max-width:640px){.hero-stage{min-height:400px}}
 
 /* ---- section shells ---- */
 section.lp-pad{padding:clamp(72px,10vw,128px) 0;position:relative}
