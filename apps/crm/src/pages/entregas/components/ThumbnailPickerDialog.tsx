@@ -83,7 +83,9 @@ export function ThumbnailPickerDialog({ media, onClose, onUpdated }: ThumbnailPi
         if (!o) onClose();
       }}
     >
-      <DialogContent className="max-w-lg">
+      {/* z-[9005] keeps the dialog above the WorkflowDrawer (panel z-index 9001),
+          matching the PostMediaLightbox convention. */}
+      <DialogContent className="max-w-lg z-[9005]" overlayClassName="z-[9005]">
         <DialogHeader>
           <DialogTitle>{t('thumbnailEditor.title')}</DialogTitle>
           <DialogDescription>{t('thumbnailEditor.disclaimer')}</DialogDescription>
