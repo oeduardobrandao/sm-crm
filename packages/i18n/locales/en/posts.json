@@ -68,7 +68,7 @@
   },
   "thumbnailEditor": {
     "title": "Video thumbnail",
-    "disclaimer": "The thumbnail is used in the CRM and client portal previews. It does not change the cover of the Reel published on Instagram.",
+    "disclaimer": "This thumbnail becomes the Reel's cover on Instagram and appears in the CRM and client portal previews. (For carousels, Instagram uses the first item as the cover.)",
     "useFrame": "Use this frame",
     "uploadImage": "Upload image",
     "current": "Current thumbnail",
@@ -76,6 +76,7 @@
     "save": "Save thumbnail",
     "saving": "Saving…",
     "captureError": "Could not capture the frame",
+    "imageError": "Could not process the image",
     "updated": "Thumbnail updated"
   }
 }

@@ -68,7 +68,7 @@
   },
   "thumbnailEditor": {
     "title": "Miniatura do vídeo",
-    "disclaimer": "A miniatura aparece na pré-visualização do CRM e do portal do cliente. Ela não altera a capa do Reel publicado no Instagram.",
+    "disclaimer": "Esta miniatura será a capa do Reel no Instagram e aparece nas pré-visualizações do CRM e do portal do cliente. (Em carrosséis, o Instagram usa o primeiro item como capa.)",
     "useFrame": "Usar este frame",
     "uploadImage": "Enviar imagem",
     "current": "Miniatura atual",
@@ -76,6 +76,7 @@
     "save": "Salvar miniatura",
     "saving": "Salvando…",
     "captureError": "Não foi possível capturar o frame",
+    "imageError": "Não foi possível processar a imagem",
     "updated": "Miniatura atualizada"
   }
 }
