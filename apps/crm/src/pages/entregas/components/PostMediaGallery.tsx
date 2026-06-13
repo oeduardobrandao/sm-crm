@@ -2,7 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import JSZip from 'jszip';
-import { Upload, Star, Trash2, AlertTriangle, Download, FolderOpen, Image as ImageIcon } from 'lucide-react';
+import {
+  Upload,
+  Star,
+  Trash2,
+  AlertTriangle,
+  Download,
+  FolderOpen,
+  Image as ImageIcon,
+} from 'lucide-react';
 import { fetchWithRetry } from '@/utils/fetchWithRetry';
 import { UploadHint } from '@/components/help/UploadHint';
 import {
@@ -129,7 +137,9 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
     const items = fileArr.map((file, i) => ({ file, uid: `upload-${stamp}-${i}` }));
     setUploadQueue((prev) => {
       const next = new Map(prev);
-      items.forEach(({ file, uid }) => next.set(uid, { name: file.name, pct: 0, status: 'uploading' }));
+      items.forEach(({ file, uid }) =>
+        next.set(uid, { name: file.name, pct: 0, status: 'uploading' }),
+      );
       return next;
     });
 

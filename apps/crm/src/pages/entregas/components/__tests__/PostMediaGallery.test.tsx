@@ -72,11 +72,14 @@ async function pickFiles(files: File[]) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  uploadPostMediaMock.mockImplementation(async ({ file }) => ({
-    id: Math.floor(Math.random() * 1000),
-    post_id: 42,
-    kind: file.type.startsWith('video/') ? 'video' : 'image',
-  }) as Awaited<ReturnType<typeof uploadPostMedia>>);
+  uploadPostMediaMock.mockImplementation(
+    async ({ file }) =>
+      ({
+        id: Math.floor(Math.random() * 1000),
+        post_id: 42,
+        kind: file.type.startsWith('video/') ? 'video' : 'image',
+      }) as Awaited<ReturnType<typeof uploadPostMedia>>,
+  );
   extractVideoFrameMock.mockResolvedValue(createFile('thumb.jpg', 'image/jpeg'));
 });
 
@@ -114,7 +117,10 @@ describe('PostMediaGallery upload orchestration', () => {
   it('queues undecodable videos for manual thumbnails instead of overwriting', async () => {
     renderGallery();
     extractVideoFrameMock.mockRejectedValue(new Error('decode failed'));
-    const videos = [createFile('um.mov', 'video/quicktime'), createFile('dois.mov', 'video/quicktime')];
+    const videos = [
+      createFile('um.mov', 'video/quicktime'),
+      createFile('dois.mov', 'video/quicktime'),
+    ];
 
     await pickFiles(videos);
 

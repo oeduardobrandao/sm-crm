@@ -6,9 +6,7 @@ const JPEG_QUALITY = 0.85;
 const LOAD_TIMEOUT_MS = 15_000;
 
 type VideoWithFrameCallback = HTMLVideoElement & {
-  requestVideoFrameCallback?: (
-    cb: (now: DOMHighResTimeStamp, metadata: unknown) => void,
-  ) => number;
+  requestVideoFrameCallback?: (cb: (now: DOMHighResTimeStamp, metadata: unknown) => void) => number;
 };
 
 export function captureFrameFromElement(video: HTMLVideoElement): Promise<File> {

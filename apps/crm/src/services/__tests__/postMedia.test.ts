@@ -362,9 +362,9 @@ describe('post media service', () => {
   });
 
   it('rejects unsupported thumbnail mime types before any network call', async () => {
-    await expect(
-      updateVideoThumbnail(7, createFile('anim.gif', 'image/gif', 64)),
-    ).rejects.toThrow('Tipo de arquivo não suportado: image/gif');
+    await expect(updateVideoThumbnail(7, createFile('anim.gif', 'image/gif', 64))).rejects.toThrow(
+      'Tipo de arquivo não suportado: image/gif',
+    );
     expect(fetchHarness.calls).toHaveLength(0);
   });
 });
