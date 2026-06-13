@@ -30,6 +30,7 @@ describe('LandingPage', () => {
   beforeEach(() => {
     document.body.classList.remove('landing-page');
     document.documentElement.removeAttribute('data-theme');
+    localStorage.clear();
   });
 
   it('adds the landing-page body class on mount and removes it on unmount', () => {
@@ -52,6 +53,17 @@ describe('LandingPage', () => {
     expect(document.documentElement).not.toHaveAttribute('data-theme');
   });
 
+  it('shows the promo banner and hides it (persisted) after dismissing', () => {
+    renderLandingPage();
+
+    expect(screen.getByText('BEMVINDO')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar aviso' }));
+
+    expect(screen.queryByText('BEMVINDO')).not.toBeInTheDocument();
+    expect(localStorage.getItem('mesaas_promo_dismissed')).toBe('1');
+  });
+
   it('wires scroll buttons to the right sections and exposes the auth CTAs', () => {
     renderLandingPage();
 
@@ -72,8 +84,8 @@ describe('LandingPage', () => {
       .getAllByRole('link')
       .filter((link) => link.getAttribute('href') === '/login?tab=register');
 
-    // Header + hero + final CTA each link to signup, plus all 4 pricing CTAs while logged out.
-    expect(registerLinks).toHaveLength(7);
+    // Promo banner + header + hero + final CTA each link to signup, plus all 4 pricing CTAs.
+    expect(registerLinks).toHaveLength(8);
     expect(screen.getByRole('link', { name: 'Entrar' })).toHaveAttribute('href', '/login');
   });
 

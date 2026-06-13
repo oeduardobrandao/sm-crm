@@ -63,6 +63,32 @@
 .lp-btn-outline:hover{background:#f8fafc;border-color:rgba(30,36,48,.18)}
 .lp-btn-outline.lg{padding:15px 26px;font-size:1rem;border-radius:12px}
 
+/* ---- promo banner ---- */
+.promo-banner{
+  display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;
+  position:relative;padding:10px 46px 10px 20px;
+  background:linear-gradient(90deg,#FFBF30,#ffd874);
+  color:#12151a;font-size:.86rem;text-align:center;
+}
+.promo-banner-text{line-height:1.4}
+.promo-banner .promo-code{
+  font-family:ui-monospace,'SF Mono',Menlo,monospace;font-weight:700;
+  background:rgba(18,21,26,.12);border:1px solid rgba(18,21,26,.18);
+  padding:1px 8px;border-radius:6px;letter-spacing:.04em;
+}
+.promo-banner-cta{
+  font-weight:700;color:#12151a;text-decoration:underline;text-underline-offset:3px;white-space:nowrap;
+}
+.promo-banner-cta:hover{opacity:.78}
+.promo-banner-close{
+  position:absolute;right:12px;top:50%;transform:translateY(-50%);
+  display:inline-flex;align-items:center;justify-content:center;
+  width:26px;height:26px;border-radius:8px;border:none;background:transparent;
+  color:#12151a;cursor:pointer;transition:background .2s;
+}
+.promo-banner-close:hover{background:rgba(18,21,26,.12)}
+@media(max-width:640px){.promo-banner{font-size:.78rem;padding:9px 42px 9px 14px;gap:8px}}
+
 /* ---- header ---- */
 .site-hdr{
   position:sticky;top:0;z-index:50;

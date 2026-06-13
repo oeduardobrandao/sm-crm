@@ -7,6 +7,7 @@ import {
   LogIn,
   Moon,
   Sun,
+  X,
   Youtube,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
@@ -69,6 +70,7 @@ export default function LandingPage() {
 
   return (
     <div ref={rootRef} className="lp-root">
+      <PromoBanner />
       <Header />
       <Hero />
       <Ticker />
@@ -79,6 +81,37 @@ export default function LandingPage() {
       <Faq />
       <CtaFinal />
       <Footer />
+    </div>
+  );
+}
+
+// Launch promo code — must match LAUNCH_PROMO.code in the billing-checkout edge function.
+const PROMO_CODE = 'BEMVINDO';
+
+function PromoBanner() {
+  const [dismissed, setDismissed] = useState(
+    () => localStorage.getItem('mesaas_promo_dismissed') === '1',
+  );
+  if (dismissed) return null;
+  return (
+    <div className="promo-banner" role="region" aria-label="Oferta de lançamento">
+      <span className="promo-banner-text">
+        🎁 <strong>1º mês grátis</strong> em qualquer plano para novos usuários — use o código{' '}
+        <code className="promo-code">{PROMO_CODE}</code> no checkout.
+      </span>
+      <a href="/login?tab=register" className="promo-banner-cta">
+        Criar conta grátis
+      </a>
+      <button
+        className="promo-banner-close"
+        aria-label="Fechar aviso"
+        onClick={() => {
+          localStorage.setItem('mesaas_promo_dismissed', '1');
+          setDismissed(true);
+        }}
+      >
+        <X size={16} />
+      </button>
     </div>
   );
 }

@@ -98,11 +98,17 @@ export async function getWorkspaceSubscription(): Promise<WorkspaceSubscription 
 }
 
 /** Starts Stripe Checkout; returns the hosted URL to redirect to. */
-export async function startCheckout(planId: string, interval: BillingInterval): Promise<string> {
+export async function startCheckout(
+  planId: string,
+  interval: BillingInterval,
+  promoCode?: string,
+): Promise<string> {
+  const body: Record<string, unknown> = { plan_id: planId, interval };
+  if (promoCode) body.promo_code = promoCode;
   const res = await fetch(`${FUNCTIONS_BASE}/billing-checkout`, {
     method: 'POST',
     headers: await authHeaders(),
-    body: JSON.stringify({ plan_id: planId, interval }),
+    body: JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Erro ${res.status}`);
