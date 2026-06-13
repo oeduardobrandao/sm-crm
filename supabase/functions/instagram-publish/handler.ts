@@ -163,7 +163,7 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
 
         const { data: links } = await svcDb
           .from("post_file_links")
-          .select("sort_order, files!inner(id, kind, r2_key)")
+          .select("sort_order, files!inner(id, kind, r2_key, thumbnail_r2_key)")
           .eq("post_id", postId)
           .order("sort_order", { ascending: true });
 
@@ -171,6 +171,7 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
           id: l.files.id,
           kind: l.files.kind,
           r2_key: l.files.r2_key,
+          thumbnail_r2_key: l.files.thumbnail_r2_key,
           sort_order: l.sort_order,
         }));
 
@@ -179,6 +180,7 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
         const isCarousel = media.length > 1;
         const isSingleVideo = media.length === 1 && media[0].kind === "video";
         let containerId: string;
+        let coverVideoUrl: string | undefined; // set only when a cover was used (enables coverless retry)
 
         if (isCarousel) {
           const childIds: string[] = [];
@@ -191,8 +193,13 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
           containerId = parent.id;
         } else if (isSingleVideo) {
           const url = await signGetUrl(media[0].r2_key, 7200);
-          const container = await createVideoContainer(igUserId, token, url, post.ig_caption);
+          const coverUrl = media[0].thumbnail_r2_key
+            ? await signGetUrl(media[0].thumbnail_r2_key, 7200)
+            : undefined;
+          const container = await createVideoContainer(igUserId, token, url, post.ig_caption, coverUrl);
           containerId = container.id;
+          // Remember the video URL so we can rebuild without the cover on ERROR.
+          if (coverUrl) coverVideoUrl = url;
         } else {
           const url = await signGetUrl(media[0].r2_key, 7200);
           const container = await createSingleImageContainer(igUserId, token, url, post.ig_caption);
@@ -203,7 +210,19 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
           instagram_container_id: containerId,
         }).eq("id", postId);
 
-        const containerStatus = await pollContainerReady(containerId, token, 12, 3000);
+        let containerStatus = await pollContainerReady(containerId, token, 12, 3000);
+
+        // A cover Instagram can't process surfaces as ERROR during async
+        // processing (the Graph cover detail is not exposed). Retry once without
+        // the cover so the Reel still publishes with Instagram's auto-cover.
+        if (containerStatus === "ERROR" && coverVideoUrl) {
+          const retry = await createVideoContainer(igUserId, token, coverVideoUrl, post.ig_caption);
+          containerId = retry.id;
+          await svcDb.from("workflow_posts").update({
+            instagram_container_id: containerId,
+          }).eq("id", postId);
+          containerStatus = await pollContainerReady(containerId, token, 12, 3000);
+        }
 
         if (containerStatus === "ERROR") {
           throw new Error("Container falhou no processamento do Instagram");

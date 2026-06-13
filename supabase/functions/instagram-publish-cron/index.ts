@@ -56,10 +56,10 @@ async function claimPosts(
 async function fetchMediaForPost(
   db: any,
   postId: number,
-): Promise<Array<{ id: number; kind: string; r2_key: string; sort_order: number }>> {
+): Promise<Array<{ id: number; kind: string; r2_key: string; thumbnail_r2_key: string | null; sort_order: number }>> {
   const { data } = await db
     .from("post_file_links")
-    .select("sort_order, files!inner(id, kind, r2_key)")
+    .select("sort_order, files!inner(id, kind, r2_key, thumbnail_r2_key)")
     .eq("post_id", postId)
     .order("sort_order", { ascending: true });
 
@@ -67,6 +67,7 @@ async function fetchMediaForPost(
     id: l.files.id,
     kind: l.files.kind,
     r2_key: l.files.r2_key,
+    thumbnail_r2_key: l.files.thumbnail_r2_key,
     sort_order: l.sort_order,
   }));
 }
@@ -127,8 +128,12 @@ async function processContainerCreation(
     containerId = parent.id;
   } else if (isSingleVideo) {
     const url = await signGetUrl(media[0].r2_key, 7200);
+    // First attempt carries the cover; any retry drops it so a cover Instagram
+    // can't process can't make a scheduled post fail permanently.
+    const thumbKey = post.publish_retry_count === 0 ? media[0].thumbnail_r2_key : null;
+    const coverUrl = thumbKey ? await signGetUrl(thumbKey, 7200) : undefined;
     const container = await createVideoContainer(
-      post.instagram_user_id, token, url, post.ig_caption,
+      post.instagram_user_id, token, url, post.ig_caption, coverUrl,
     );
     containerId = container.id;
   } else {

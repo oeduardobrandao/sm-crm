@@ -10,6 +10,7 @@ import {
   listPostMedia,
   reorderPostMedia,
   setPostMediaCover,
+  updateVideoThumbnail,
   uploadMany,
   uploadPostMedia,
   validateFile,
@@ -318,5 +319,52 @@ describe('post media service', () => {
 
     expect(started).toHaveLength(4);
     expect(finished).toEqual([1, 2, 3, 4]);
+  });
+
+  it('updates a video thumbnail via presign, PUT, then PATCH', async () => {
+    const thumbnail = createFile('nova-capa.jpg', 'image/jpeg', 64);
+
+    fetchHarness.queueResponse({
+      json: {
+        thumbnail_r2_key: 'contas/1/files/novo.thumb.jpg',
+        thumbnail_upload_url: 'https://upload.r2.dev/thumb-new',
+      },
+    });
+    fetchHarness.queueResponse({
+      json: {
+        id: 7,
+        kind: 'video',
+        thumbnail_r2_key: 'contas/1/files/novo.thumb.jpg',
+      },
+    });
+
+    const media = await updateVideoThumbnail(7, thumbnail);
+
+    expect(media).toMatchObject({ id: 7, thumbnail_r2_key: 'contas/1/files/novo.thumb.jpg' });
+
+    expect(fetchHarness.calls).toHaveLength(2);
+    expect(String(fetchHarness.calls[0].input)).toContain('post-media-manage/7/thumbnail');
+    expect(fetchHarness.calls[0].init?.method).toBe('POST');
+    expect(JSON.parse(String(fetchHarness.calls[0].init?.body))).toMatchObject({
+      mime_type: 'image/jpeg',
+    });
+
+    expect(String(fetchHarness.calls[1].input)).toContain('post-media-manage/7');
+    expect(fetchHarness.calls[1].init?.method).toBe('PATCH');
+    expect(JSON.parse(String(fetchHarness.calls[1].init?.body))).toMatchObject({
+      thumbnail_r2_key: 'contas/1/files/novo.thumb.jpg',
+    });
+
+    expect(MockXHR.instances).toHaveLength(1);
+    expect(MockXHR.instances[0].method).toBe('PUT');
+    expect(MockXHR.instances[0].url).toBe('https://upload.r2.dev/thumb-new');
+    expect(MockXHR.instances[0].body).toBe(thumbnail);
+  });
+
+  it('rejects unsupported thumbnail mime types before any network call', async () => {
+    await expect(updateVideoThumbnail(7, createFile('anim.gif', 'image/gif', 64))).rejects.toThrow(
+      'Tipo de arquivo não suportado: image/gif',
+    );
+    expect(fetchHarness.calls).toHaveLength(0);
   });
 });

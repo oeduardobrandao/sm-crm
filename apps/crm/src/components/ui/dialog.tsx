@@ -42,6 +42,8 @@ const DialogContent = React.forwardRef<
     onConfirmClose?: () => void;
     /** When true, closing always prompts; when false/undefined, closes immediately. */
     confirmClose?: boolean;
+    /** Extra classes for the overlay — e.g. a higher z-index when nested above a drawer. */
+    overlayClassName?: string;
   }
 >(
   (
@@ -50,6 +52,7 @@ const DialogContent = React.forwardRef<
       children,
       onConfirmClose,
       confirmClose,
+      overlayClassName,
       onInteractOutside,
       onEscapeKeyDown,
       ...props
@@ -74,7 +77,7 @@ const DialogContent = React.forwardRef<
     return (
       <>
         <DialogPortal>
-          <DialogOverlay />
+          <DialogOverlay className={overlayClassName} />
           <DialogPrimitive.Content
             ref={ref}
             className={cn(

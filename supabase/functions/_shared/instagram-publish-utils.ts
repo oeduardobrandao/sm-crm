@@ -250,13 +250,19 @@ export async function createVideoContainer(
   token: string,
   videoUrl: string,
   caption: string,
+  coverUrl?: string,
 ): Promise<{ id: string }> {
+  const body: Record<string, string> = {
+    video_url: videoUrl,
+    caption,
+    media_type: "REELS",
+    access_token: token,
+  };
+  if (coverUrl) body.cover_url = coverUrl;
   const res = await fetch(`${GRAPH_BASE}/${igUserId}/media`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      video_url: videoUrl, caption, media_type: "REELS", access_token: token,
-    }),
+    body: JSON.stringify(body),
   });
   const data = await res.json();
   if (data.error) throwGraphError(data);
