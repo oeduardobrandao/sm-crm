@@ -41,7 +41,7 @@ export default function DashboardPage() {
             <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">
               {kpi.label}
             </p>
-            <p className="text-3xl font-bold font-['DM_Mono']">{isLoading ? '—' : kpi.value}</p>
+            <p className="text-3xl font-bold font-['DM_Sans']">{isLoading ? '—' : kpi.value}</p>
           </div>
         ))}
       </div>
@@ -112,7 +112,7 @@ export default function DashboardPage() {
                   <span className="text-dim-foreground">—</span>
                 )}
               </span>
-              <span className="hidden md:inline font-['DM_Mono'] text-sm">{ws.member_count}</span>
+              <span className="hidden md:inline font-['DM_Sans'] text-sm">{ws.member_count}</span>
               <span className="hidden md:inline text-muted-foreground text-sm">
                 {new Date(ws.created_at).toLocaleDateString('pt-BR', {
                   day: '2-digit',

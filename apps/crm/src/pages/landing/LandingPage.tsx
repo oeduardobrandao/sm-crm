@@ -830,7 +830,7 @@ function CtaFinal() {
               marginTop: 18,
               fontSize: '.8rem',
               color: '#9ca3af',
-              fontFamily: "ui-monospace,'SF Mono',Menlo,monospace",
+              fontFamily: "-apple-system,'SF Pro Display','Plus Jakarta Sans',system-ui,sans-serif",
               letterSpacing: '.08em',
             }}
           >

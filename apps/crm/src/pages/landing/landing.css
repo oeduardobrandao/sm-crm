@@ -15,17 +15,16 @@
 
 /* ---- typography utilities ---- */
 .eyebrow-micro{
-  font-family:ui-monospace,'SF Mono','JetBrains Mono',Menlo,monospace;
+  font-family:-apple-system,'SF Pro Display','Plus Jakarta Sans',system-ui,sans-serif;
   font-size:.7rem;font-weight:600;letter-spacing:.14em;
-  color:#374151;
+color:#374151;
 }
 .eyebrow-pill{
   display:inline-flex;align-items:center;gap:8px;
   padding:6px 12px 6px 10px;border-radius:9999px;
   background:rgba(255,191,48,.12);border:1px solid rgba(255,191,48,.28);
-  font-family:ui-monospace,'SF Mono',Menlo,monospace;
-  font-size:.7rem;font-weight:600;letter-spacing:.12em;
-  color:#a16207;
+  font-family:-apple-system,'SF Pro Display','Plus Jakarta Sans',system-ui,sans-serif;
+  font-size:.7rem;font-weight:600;letter-spacing:.12em;  color:#a16207;
 }
 .eyebrow-pill::before{
   content:'';width:6px;height:6px;border-radius:9999px;background:#FFBF30;
@@ -72,7 +71,7 @@
 }
 .promo-banner-text{line-height:1.4}
 .promo-banner .promo-code{
-  font-family:ui-monospace,'SF Mono',Menlo,monospace;font-weight:700;
+  font-family:-apple-system,'SF Pro Display','Plus Jakarta Sans',system-ui,sans-serif;font-weight:700;
   background:rgba(18,21,26,.12);border:1px solid rgba(18,21,26,.18);
   padding:1px 8px;border-radius:6px;letter-spacing:.04em;
 }
@@ -212,7 +211,7 @@ section.lp-pad-alt{background:#fafbfc;border-top:1px solid rgba(30,36,48,.06);bo
   padding:18px 0;background:#fff;overflow:hidden;
 }
 .ticker-track{display:flex;gap:56px;animation:ticker-scroll 38s linear infinite;white-space:nowrap;width:max-content}
-.ticker-item{display:inline-flex;align-items:center;gap:10px;font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:.78rem;letter-spacing:.1em;color:#6b7280}
+.ticker-item{display:inline-flex;align-items:center;gap:10px;font-family:-apple-system,'SF Pro Display','Plus Jakarta Sans',system-ui,sans-serif;font-size:.78rem;letter-spacing:.1em;color:#6b7280}
 .ticker-item .bullet{width:4px;height:4px;border-radius:9999px;background:#FFBF30}
 
 /* ---- how-it-works ---- */
@@ -293,21 +292,20 @@ section.lp-pad-alt{background:#fafbfc;border-top:1px solid rgba(30,36,48,.06);bo
 .plan-badge{
   position:absolute;top:-12px;left:50%;transform:translateX(-50%);
   background:#FFBF30;color:#12151a;padding:4px 12px;border-radius:9999px;
-  font-family:ui-monospace,'SF Mono',Menlo,monospace;
-  font-size:.66rem;font-weight:700;letter-spacing:.12em;
-}
+  font-family:-apple-system,'SF Pro Display','Plus Jakarta Sans',system-ui,sans-serif;
+  font-size:.66rem;font-weight:700;letter-spacing:.12em;}
 .plan-card h3{font-size:1.1rem;font-weight:700;color:#12151a;letter-spacing:-.01em}
 .price-row{margin-top:12px;display:flex;align-items:baseline;gap:6px}
 .price{font-size:2rem;font-weight:900;letter-spacing:-.02em;color:#12151a;line-height:1}
 .price-sub{font-size:.82rem;color:#6b7280;font-weight:500}
 .plan-tag{margin-top:10px;font-size:.82rem;color:#4b5563;min-height:2.6em}
 .plan-label{
-  margin-top:22px;font-family:ui-monospace,'SF Mono',Menlo,monospace;
+  margin-top:22px;font-family:-apple-system,'SF Pro Display','Plus Jakarta Sans',system-ui,sans-serif;
   font-size:.66rem;font-weight:700;letter-spacing:.12em;color:#6b7280;
 }
 .plan-list{list-style:none;margin-top:10px;display:flex;flex-direction:column;gap:9px;font-size:.86rem}
 .plan-limits li{display:flex;justify-content:space-between;color:#4b5563}
-.plan-limits li .v{color:#12151a;font-weight:600;font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:.8rem}
+.plan-limits li .v{color:#12151a;font-weight:600;font-family:-apple-system,'SF Pro Display','Plus Jakarta Sans',system-ui,sans-serif;font-size:.8rem}
 .plan-feats li{display:flex;gap:8px;align-items:flex-start;color:#374151;line-height:1.4}
 .plan-feats .ck{color:#3ecf8e;font-weight:700;flex-shrink:0;margin-top:1px}
 .plan-feats .xk{color:rgba(107,114,128,.6);font-weight:500;flex-shrink:0;margin-top:1px}
@@ -322,10 +320,10 @@ section.lp-pad-alt{background:#fafbfc;border-top:1px solid rgba(30,36,48,.06);bo
 .plan-card.highlight .plan-cta .lp-btn{background:#FFBF30;color:#12151a}
 .pricing-toggle-row{display:flex;align-items:center;justify-content:center;gap:16px;margin-top:36px;flex-wrap:wrap}
 .pricing-toggle{display:inline-flex;background:#f1f5f9;border:1px solid rgba(30,36,48,.08);border-radius:10px;padding:3px}
-.pricing-toggle button{appearance:none;border:none;background:transparent;cursor:pointer;font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:.72rem;font-weight:600;letter-spacing:.08em;color:#6b7280;padding:8px 18px;border-radius:8px;transition:color .2s,background .2s}
+.pricing-toggle button{appearance:none;border:none;background:transparent;cursor:pointer;font-family:-apple-system,'SF Pro Display','Plus Jakarta Sans',system-ui,sans-serif;font-size:.72rem;font-weight:600;letter-spacing:.08em;color:#6b7280;padding:8px 18px;border-radius:8px;transition:color .2s,background .2s}
 .pricing-toggle button:hover{color:#12151a}
 .pricing-toggle button[aria-pressed='true']{background:#fff;color:#12151a;box-shadow:0 1px 3px rgba(0,0,0,.1)}
-.pricing-save{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:.7rem;font-weight:600;letter-spacing:.06em;color:#15a35b}
+.pricing-save{font-family:-apple-system,'SF Pro Display','Plus Jakarta Sans',system-ui,sans-serif;font-size:.7rem;font-weight:600;letter-spacing:.06em;color:#15a35b}
 .price-annual-note{margin-top:4px;font-size:.72rem;color:#6b7280;min-height:1.1em}
 .pricing-promo-note{
   margin-top:18px;display:inline-flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;
@@ -335,7 +333,7 @@ section.lp-pad-alt{background:#fafbfc;border-top:1px solid rgba(30,36,48,.06);bo
 }
 .pricing-promo-note strong{color:#12151a}
 .pricing-promo-note .promo-code{
-  font-family:ui-monospace,'SF Mono',Menlo,monospace;font-weight:700;
+  font-family:-apple-system,'SF Pro Display','Plus Jakarta Sans',system-ui,sans-serif;font-weight:700;
   background:#FFBF30;color:#12151a;padding:1px 8px;border-radius:6px;letter-spacing:.04em;
 }
 
@@ -389,7 +387,7 @@ section.lp-pad-alt{background:#fafbfc;border-top:1px solid rgba(30,36,48,.06);bo
 .footer-grid{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:36px}
 @media(max-width:820px){.footer-grid{grid-template-columns:1fr 1fr}}
 @media(max-width:500px){.footer-grid{grid-template-columns:1fr}}
-.footer-col h5{font-size:.72rem;font-weight:700;letter-spacing:.14em;color:#374151;margin-bottom:16px;font-family:ui-monospace,'SF Mono',Menlo,monospace}
+.footer-col h5{font-size:.72rem;font-weight:700;letter-spacing:.14em;color:#374151;margin-bottom:16px;font-family:-apple-system,'SF Pro Display','Plus Jakarta Sans',system-ui,sans-serif}
 .footer-col ul{list-style:none;display:flex;flex-direction:column;gap:10px}
 .footer-col a{color:#4b5563;font-size:.9rem;text-decoration:none}
 .footer-col a:hover{color:#12151a}

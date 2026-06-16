@@ -120,7 +120,7 @@ function Badge({
         borderRadius: 9999,
         background: c.bg,
         color: c.fg,
-        fontFamily: "ui-monospace,'SF Mono',Menlo,monospace",
+        fontFamily: "-apple-system,'SF Pro Display','Plus Jakarta Sans',system-ui,sans-serif",
         fontSize: small ? '.55rem' : '.66rem',
         fontWeight: 600,
         letterSpacing: '.08em',
@@ -132,7 +132,7 @@ function Badge({
   );
 }
 
-const MONO = "ui-monospace,'SF Mono',Menlo,monospace";
+const MONO = "-apple-system,'SF Pro Display','Plus Jakarta Sans',system-ui,sans-serif";
 
 function useIsMobile(breakpoint = 640) {
   const [mobile, setMobile] = useState(() => {

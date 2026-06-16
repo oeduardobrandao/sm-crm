@@ -57,7 +57,7 @@ export function ReachChart({ reachHistory }: ReachChartProps) {
       x: {
         grid: { display: false },
         ticks: {
-          font: { family: 'DM Mono, monospace', size: 10 },
+          font: { family: 'Instrument Sans, sans-serif', size: 10 },
           color: '#9ca3af',
           maxTicksLimit: 8,
         },
@@ -65,7 +65,7 @@ export function ReachChart({ reachHistory }: ReachChartProps) {
       y: {
         grid: { color: 'rgba(255,255,255,0.04)' },
         ticks: {
-          font: { family: 'DM Mono, monospace', size: 10 },
+          font: { family: 'Instrument Sans, sans-serif', size: 10 },
           color: '#9ca3af',
           callback: (value: number | string) => formatAbbrev(Number(value)),
         },
@@ -90,7 +90,7 @@ export function ReachChart({ reachHistory }: ReachChartProps) {
         <Bar data={data} options={options as any} />
       </div>
       <div className="mt-3 flex items-center gap-2">
-        <span className="font-mono text-lg font-bold text-stone-900 dark:text-stone-100">
+        <span className="text-lg font-bold text-stone-900 dark:text-stone-100">
           {formatAbbrev(totalReach)}
         </span>
         <span className="text-[11px] text-stone-500 dark:text-stone-400">total no período</span>

@@ -129,7 +129,7 @@ html, body, #root, .app-container {
   --banner-height: 0px;
   --font-main: 'SF Pro Text', sans-serif;
   --font-heading: 'SF Pro Display', sans-serif;
-  --font-mono: 'SF Pro Mono', monospace;
+  --font-mono: 'SF Pro Text', sans-serif;
   --shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.075);
   --radius: 12px;
   --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -3515,7 +3515,7 @@ body.role-agent input[name="valor_total"] {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-main);
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono, serif);
 }
 
 .board-column-count {
@@ -3526,7 +3526,7 @@ body.role-agent input[name="valor_total"] {
   padding: 0.12rem 0.5rem;
   border-radius: 999px;
   border: 1px solid var(--border-color);
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono, serif);
   min-width: 22px;
   text-align: center;
 }
@@ -3547,7 +3547,7 @@ body.role-agent input[name="valor_total"] {
   color: var(--text-muted);
   padding: 2.5rem 1rem;
   opacity: 0.4;
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono, serif);
   letter-spacing: 0.04em;
 }
 
