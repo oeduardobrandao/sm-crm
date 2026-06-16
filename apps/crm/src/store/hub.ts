@@ -1,4 +1,4 @@
-import { supabase, getContaId } from './core';
+import { supabase, getContaId, getUserId } from './core';
 
 export interface HubBrandRow {
   id?: string;
@@ -33,10 +33,35 @@ export interface HubBriefingQuestionRow {
   id: string;
   cliente_id: number;
   conta_id: string;
+  briefing_id: string | null;
   question: string;
   answer: string | null;
   section: string | null;
   display_order: number;
+  created_at: string;
+}
+
+export interface BriefingRow {
+  id: string;
+  cliente_id: number;
+  conta_id: string;
+  title: string;
+  display_order: number;
+  created_at: string;
+}
+
+export interface BriefingTemplateQuestion {
+  question: string;
+  section: string | null;
+}
+
+export interface BriefingTemplateRow {
+  id: string;
+  conta_id: string;
+  user_id: string;
+  title: string;
+  questions: BriefingTemplateQuestion[];
+  is_default: boolean;
   created_at: string;
 }
 
@@ -203,5 +228,53 @@ export async function updateHubBriefingQuestion(id: string, question: string): P
 
 export async function deleteHubBriefingQuestion(id: string): Promise<void> {
   const { error } = await supabase.from('hub_briefing_questions').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ──────────────────────────────────────────────
+// Briefings (titled containers, one client → many)
+// ──────────────────────────────────────────────
+
+export async function getBriefings(clienteId: number): Promise<BriefingRow[]> {
+  const { data, error } = await supabase
+    .from('briefings')
+    .select('*')
+    .eq('cliente_id', clienteId)
+    .order('display_order')
+    .order('created_at');
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function addBriefing(
+  clienteId: number,
+  contaId: string,
+  title: string,
+): Promise<BriefingRow> {
+  const { data: existing } = await supabase
+    .from('briefings')
+    .select('display_order')
+    .eq('cliente_id', clienteId)
+    .order('display_order', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const nextOrder = (existing?.display_order ?? -1) + 1;
+  const { data, error } = await supabase
+    .from('briefings')
+    .insert({ cliente_id: clienteId, conta_id: contaId, title, display_order: nextOrder })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateBriefingTitle(id: string, title: string): Promise<void> {
+  const { error } = await supabase.from('briefings').update({ title }).eq('id', id);
+  if (error) throw error;
+}
+
+export async function deleteBriefing(id: string): Promise<void> {
+  // hub_briefing_questions rows cascade-delete via FK.
+  const { error } = await supabase.from('briefings').delete().eq('id', id);
   if (error) throw error;
 }

@@ -209,6 +209,48 @@ describe('store hub and ideias helpers', () => {
     });
   });
 
+  it('manages briefings (list, add with order, rename, delete)', async () => {
+    mockedSupabase.__queueSupabaseResult(
+      'briefings',
+      'select',
+      // getBriefings -> list
+      { data: [{ id: 'b1', cliente_id: 14, title: 'Onboarding', display_order: 0 }], error: null },
+      // addBriefing -> max display_order lookup
+      { data: { display_order: 2 }, error: null },
+    );
+    mockedSupabase.__queueSupabaseResult('briefings', 'insert', {
+      data: { id: 'b2', cliente_id: 14, conta_id: 'conta-1', title: 'Campanha', display_order: 3 },
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseResult('briefings', 'update', { data: null, error: null });
+    mockedSupabase.__queueSupabaseResult('briefings', 'delete', { data: null, error: null });
+
+    await expect(store.getBriefings(14)).resolves.toEqual([
+      { id: 'b1', cliente_id: 14, title: 'Onboarding', display_order: 0 },
+    ]);
+    await expect(store.addBriefing(14, 'conta-1', 'Campanha')).resolves.toEqual({
+      id: 'b2',
+      cliente_id: 14,
+      conta_id: 'conta-1',
+      title: 'Campanha',
+      display_order: 3,
+    });
+    await store.updateBriefingTitle('b1', 'Briefing Inicial');
+    await store.deleteBriefing('b1');
+
+    expect(getCalls('briefings', 'insert').at(-1)?.payload).toEqual({
+      cliente_id: 14,
+      conta_id: 'conta-1',
+      title: 'Campanha',
+      display_order: 3,
+    });
+    expect(getCalls('briefings', 'update').at(-1)?.payload).toEqual({ title: 'Briefing Inicial' });
+    expect(getCalls('briefings', 'delete').at(-1)?.modifiers).toContainEqual({
+      method: 'eq',
+      args: ['id', 'b1'],
+    });
+  });
+
   it('filters ideias, updates comments, and toggles reactions on and off', async () => {
     mockedSupabase.__queueSupabaseResult('ideias', 'select', {
       data: [{ id: 'ideia-1', titulo: 'Campanha de Inverno' }],
