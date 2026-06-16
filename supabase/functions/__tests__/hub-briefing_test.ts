@@ -102,3 +102,20 @@ Deno.test("hub-briefing GET coalesces null briefing_id into the first briefing",
   const body = await readJson(await makeHandler(db)(getReq()));
   assertEquals(body.briefings[0].questions.length, 1);
 });
+
+Deno.test("hub-briefing GET surfaces orphan null-briefing_id questions when no briefings exist", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  db.queue("briefings", "select", { data: [], error: null });
+  db.queue("hub_briefing_questions", "select", {
+    data: [
+      { id: "q1", question: "Legacy?", answer: null, section: null, display_order: 0, briefing_id: null },
+    ],
+    error: null,
+  });
+
+  const body = await readJson(await makeHandler(db)(getReq()));
+  assertEquals(body.briefings.length, 1);
+  assertEquals(body.briefings[0].title, "Briefing");
+  assertEquals(body.briefings[0].questions.length, 1);
+});

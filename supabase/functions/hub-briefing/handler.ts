@@ -33,7 +33,8 @@ export function createHubBriefingHandler(deps: HubBriefingHandlerDeps) {
         .from("briefings")
         .select("id, title, display_order")
         .eq("cliente_id", hubToken.cliente_id)
-        .order("display_order");
+        .order("display_order")
+        .order("created_at");
       if (bErr) return json({ error: bErr.message }, 500);
 
       const { data: questions, error: qErr } = await db
@@ -64,6 +65,22 @@ export function createHubBriefingHandler(deps: HubBriefingHandlerDeps) {
           .filter((q) => (q.briefing_id ?? firstId) === b.id)
           .map(({ briefing_id: _briefing_id, ...rest }) => rest),
       }));
+
+      // Backward-compat: a stale CRM bundle can insert questions with briefing_id = NULL for a
+      // client that had no briefing at backfill time, leaving no parent briefing row. Surface
+      // those orphans under a synthetic default briefing so they never disappear from the portal.
+      if (list.length === 0 && qs.length > 0) {
+        return json({
+          briefings: [
+            {
+              id: "__default__",
+              title: "Briefing",
+              display_order: 0,
+              questions: qs.map(({ briefing_id: _briefing_id, ...rest }) => rest),
+            },
+          ],
+        });
+      }
 
       return json({ briefings: grouped });
     }
