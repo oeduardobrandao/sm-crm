@@ -102,16 +102,18 @@ interface WorkflowDrawerProps {
   membros: Membro[];
   onClose: () => void;
   onRefresh: () => void;
+  initialPostId?: number;
 }
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDrawerProps) {
+export function WorkflowDrawer({ card, membros, onClose, onRefresh, initialPostId }: WorkflowDrawerProps) {
   const workflowId = card.workflow.id!;
   const qc = useQueryClient();
 
-  // Expanded post id (accordion)
-  const [expandedId, setExpandedId] = useState<number | null>(null);
+  // Expanded post id (accordion). Seeded from initialPostId when opened from the
+  // calendar; the call site keys the drawer by initialPostId so a new target remounts.
+  const [expandedId, setExpandedId] = useState<number | null>(initialPostId ?? null);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
 
   const [replyText, setReplyText] = useState<Record<number, string>>({});
