@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Save, Star, Pencil } from 'lucide-react';
+import { Plus, Trash2, Save, Star, Pencil, Upload } from 'lucide-react';
 import { toast } from 'sonner';
+import { openCSVSelector } from '@/lib/csv';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -50,6 +51,34 @@ export function BriefingTemplatesModal({
     setQuestions(
       (t.questions ?? []).map((q) => ({ question: q.question, section: q.section ?? null })),
     );
+  }
+
+  function handleImportCSV() {
+    openCSVSelector(
+      (rows) => {
+        const imported = rows
+          .filter((r) => r.pergunta && r.pergunta.trim())
+          .map((r) => ({ question: r.pergunta.trim(), section: r.secao?.trim() || null }));
+        if (imported.length === 0) {
+          toast.error('Nenhuma pergunta válida encontrada. Verifique a coluna "pergunta".');
+          return;
+        }
+        setQuestions((prev) => [...prev, ...imported]);
+        toast.success(
+          `${imported.length} pergunta${imported.length !== 1 ? 's' : ''} importada${
+            imported.length !== 1 ? 's' : ''
+          }.`,
+        );
+      },
+      (err) => toast.error(err.message),
+    );
+  }
+
+  function startNewFromCSV() {
+    setEditing('new');
+    setTitle('');
+    setQuestions([]);
+    handleImportCSV();
   }
 
   function addRow() {
@@ -126,9 +155,14 @@ export function BriefingTemplatesModal({
 
         {editing === null ? (
           <div className="space-y-3">
-            <Button size="sm" onClick={startNew}>
-              <Plus size={14} className="mr-1.5" /> Novo template
-            </Button>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={startNew}>
+                <Plus size={14} className="mr-1.5" /> Novo template
+              </Button>
+              <Button size="sm" variant="outline" onClick={startNewFromCSV}>
+                <Upload size={14} className="mr-1.5" /> Novo via CSV
+              </Button>
+            </div>
             {templates.length === 0 ? (
               <p className="text-sm text-muted-foreground py-4">Nenhum template ainda.</p>
             ) : (
@@ -216,9 +250,15 @@ export function BriefingTemplatesModal({
                   </Button>
                 </div>
               ))}
-              <Button size="sm" variant="outline" onClick={addRow}>
-                <Plus size={14} className="mr-1.5" /> Adicionar pergunta
-              </Button>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button size="sm" variant="outline" onClick={addRow}>
+                  <Plus size={14} className="mr-1.5" /> Adicionar pergunta
+                </Button>
+                <Button size="sm" variant="outline" onClick={handleImportCSV}>
+                  <Upload size={14} className="mr-1.5" /> Importar CSV
+                </Button>
+                <span className="text-xs text-muted-foreground">Colunas: pergunta*, secao</span>
+              </div>
             </div>
             <div className="flex gap-2 pt-2">
               <Button size="sm" onClick={handleSave} disabled={saving}>
