@@ -880,7 +880,7 @@ function BriefingEditor({
                   : 'border-transparent text-muted-foreground hover:text-foreground'
               }`}
             >
-              {b.title}
+              {b.title || <span className="italic opacity-60">Sem título</span>}
             </button>
           ))}
         </div>
@@ -915,7 +915,11 @@ function BriefingEditor({
               </div>
             ) : (
               <>
-                <p className="text-sm font-semibold">{selectedBriefing.title}</p>
+                <p className="text-sm font-semibold">
+                  {selectedBriefing.title || (
+                    <span className="font-normal italic text-muted-foreground">Sem título</span>
+                  )}
+                </p>
                 <div className="flex gap-1">
                   <Button
                     size="sm"

@@ -86,8 +86,10 @@ ALTER TABLE hub_briefing_questions
 ```
 
 **Backfill (same migration):** for each `cliente_id` that already has questions, create one
-briefing titled **"Briefing"** (inheriting the client's `conta_id`) and set `briefing_id` on
-all that client's existing questions.
+briefing with an **empty title** (so the agency can name it later; inheriting the client's
+`conta_id`) and set `briefing_id` on all that client's existing questions. The CRM editor shows
+an empty-title briefing as a muted "Sem título" placeholder (prompting a rename); the client Hub
+falls back to a neutral "Briefing" label so clients never see a blank tab.
 
 `briefing_id` is left **nullable** (no `NOT NULL` constraint in this release) for
 backward-compatibility — see *Migration / Rollout Notes*. A deployed/cached *old* CRM bundle
@@ -324,7 +326,7 @@ bundle that is still inserting briefing questions the pre-change way (without `b
 Ordered steps:
 
 1. **Run migrations** (additive, `briefing_id` stays **nullable**): (a) `briefings` table, (b)
-   `briefing_id` column + backfill existing questions into a default "Briefing" per client, (c)
+   `briefing_id` column + backfill existing questions into one untitled (empty-title) briefing per client, (c)
    `briefing_templates` table + `set_default_briefing_template` RPC. Safe against old CRM
    bundles: their inserts omit `briefing_id` (allowed → `NULL`), and the new readers coalesce
    such rows into the client's first briefing.
@@ -335,7 +337,7 @@ Ordered steps:
    can backfill any straggler `NULL` `briefing_id` rows and add the `NOT NULL` constraint.
 
 - `db push` applies all pending migrations — dry-run first, staging before prod.
-- Existing clients: their current questions land in one auto-created "Briefing"; no data loss.
+- Existing clients: their current questions land in one auto-created untitled briefing (empty title — the agency names it); no data loss.
 
 ## Out of Scope (YAGNI)
 

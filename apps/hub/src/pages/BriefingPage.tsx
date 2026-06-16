@@ -78,7 +78,7 @@ export function BriefingPage() {
                   briefingTab === i ? 'text-stone-900' : 'text-stone-500 hover:text-stone-700'
                 }`}
               >
-                {b.title}
+                {b.title || 'Briefing'}
                 {briefingTab === i && (
                   <span className="absolute left-3 right-3 -bottom-[1px] h-[2px] rounded-full bg-[#FFBF30]" />
                 )}

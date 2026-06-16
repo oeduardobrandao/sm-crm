@@ -115,8 +115,8 @@ ALTER TABLE hub_briefing_questions
 CREATE INDEX IF NOT EXISTS hub_briefing_questions_briefing_id_idx
   ON hub_briefing_questions (briefing_id);
 
--- Backfill: one default "Briefing" per client that already has questions,
--- then point that client's existing questions at it.
+-- Backfill: one untitled briefing per client that already has questions
+-- (empty title so the agency can name it later), then point that client's questions at it.
 DO $$
 DECLARE
   rec RECORD;
@@ -129,7 +129,7 @@ BEGIN
     GROUP BY cliente_id, conta_id
   LOOP
     INSERT INTO briefings (cliente_id, conta_id, title, display_order)
-    VALUES (rec.cliente_id, rec.conta_id, 'Briefing', 0)
+    VALUES (rec.cliente_id, rec.conta_id, '', 0)
     RETURNING id INTO new_briefing_id;
 
     UPDATE hub_briefing_questions
@@ -1592,7 +1592,7 @@ Expected: PASS (no TS errors). If tsc complains that `updateHubBriefingQuestionS
 - [ ] **Step 7: Manual smoke check**
 
 Run: `npm run dev` (CRM), open a client detail page → Hub tab → Briefing. Verify:
-- Existing clients show their questions under a "Briefing" tab (migrated default).
+- Existing clients show their questions under an untitled ("Sem título") tab they can rename (migrated default).
 - "Novo briefing" creates a tab and drops you into rename mode.
 - Adding/editing/deleting questions and sections works within the selected briefing.
 - "Importar CSV" is disabled until a briefing is selected and imports into the selected one.
