@@ -30,6 +30,7 @@ vite.config.ts.timestamp-*
 
 # Supabase CLI local state
 supabase/.temp/
+supabase/.branches/
 
 # Coverage reports (generated, never commit)
 coverage/
