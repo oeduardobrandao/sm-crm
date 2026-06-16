@@ -206,6 +206,12 @@ describe('store hub and ideias helpers', () => {
       section: 'Estratégia',
       answer: null,
     });
+    // The max-order lookup inside addHubBriefingQuestion must be scoped to the briefing.
+    const briefingSelectCalls = getCalls('hub_briefing_questions', 'select');
+    expect(briefingSelectCalls.at(-1)?.modifiers).toContainEqual({
+      method: 'eq',
+      args: ['briefing_id', 'b1'],
+    });
     expect(getCalls('hub_briefing_questions', 'update')[0].payload).toEqual({
       section: 'Mídia paga',
     });

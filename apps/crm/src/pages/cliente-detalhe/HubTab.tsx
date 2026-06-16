@@ -589,6 +589,8 @@ function BriefingEditor({
 
   async function handleDeleteBriefing() {
     if (!selectedId) return;
+    if (!window.confirm('Remover este briefing e todas as suas perguntas? Essa ação não pode ser desfeita.'))
+      return;
     try {
       await deleteBriefing(selectedId);
       setSelectedId(null);
@@ -812,13 +814,19 @@ function BriefingEditor({
 
       {/* Briefing tabs */}
       {briefings.length > 0 && (
-        <div className="flex gap-1 mb-4 border-b overflow-x-auto">
+        <div role="tablist" className="flex gap-1 mb-4 border-b overflow-x-auto">
           {briefings.map((b) => (
             <button
               key={b.id}
+              type="button"
+              role="tab"
+              aria-selected={selectedId === b.id}
               onClick={() => {
                 setSelectedId(b.id);
                 setRenaming(false);
+                setNewQuestions({});
+                setAddingSectionInput(false);
+                setEditingId(null);
               }}
               className={`px-3 py-2 text-sm whitespace-nowrap border-b-2 -mb-px transition-colors ${
                 selectedId === b.id
@@ -873,7 +881,12 @@ function BriefingEditor({
                   >
                     <Pencil size={14} className="mr-1.5" /> Renomear
                   </Button>
-                  <Button size="sm" variant="ghost" onClick={handleDeleteBriefing}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleDeleteBriefing}
+                    aria-label="Remover briefing"
+                  >
                     <Trash2 size={14} />
                   </Button>
                 </div>
