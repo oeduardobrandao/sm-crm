@@ -88,10 +88,11 @@ export function CalendarView({
     : [];
 
   // ── Publicações mode: scheduled posts ──
-  const { byDay, igStatuses, isLoading: postsLoading } = useScheduledPosts(
-    currentDate,
-    mode === 'publicacoes',
-  );
+  const {
+    byDay,
+    igStatuses,
+    isLoading: postsLoading,
+  } = useScheduledPosts(currentDate, mode === 'publicacoes');
   const selectedPosts =
     selectedDay != null ? (byDay.get(`${year}-${month}-${selectedDay}`) ?? []) : [];
   const selectedLabel = selectedDay ? `${selectedDay} de ${monthNames[month]}, ${year}` : null;
@@ -141,10 +142,7 @@ export function CalendarView({
 
   if (mode === 'entregas' && cards.length === 0) {
     return (
-      <div
-        className="animate-up"
-        style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}
-      >
+      <div className="animate-up" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         {toggle}
         <div
           className="card"
@@ -271,9 +269,7 @@ export function CalendarView({
             </div>
             <div className="scheduled-list">
               {selectedEvents.length === 0 ? (
-                <div
-                  style={{ textAlign: 'center', padding: '2rem 0', color: 'var(--text-muted)' }}
-                >
+                <div style={{ textAlign: 'center', padding: '2rem 0', color: 'var(--text-muted)' }}>
                   <p>{selectedDay ? 'Nenhuma entrega neste dia.' : 'Selecione um dia.'}</p>
                 </div>
               ) : (

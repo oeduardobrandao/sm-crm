@@ -107,7 +107,13 @@ interface WorkflowDrawerProps {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export function WorkflowDrawer({ card, membros, onClose, onRefresh, initialPostId }: WorkflowDrawerProps) {
+export function WorkflowDrawer({
+  card,
+  membros,
+  onClose,
+  onRefresh,
+  initialPostId,
+}: WorkflowDrawerProps) {
   const workflowId = card.workflow.id!;
   const qc = useQueryClient();
 

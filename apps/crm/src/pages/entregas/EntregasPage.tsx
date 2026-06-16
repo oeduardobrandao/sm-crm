@@ -98,14 +98,8 @@ export default function EntregasPage() {
 
   // Resolve a post's workflow back to its board card (O(1)) for drawer opening.
   // Built from the UNFILTERED cards so a filtered-out workflow's post is still openable.
-  const cardsByWorkflowId = useMemo(
-    () => new Map(cards.map((c) => [c.workflow.id!, c])),
-    [cards],
-  );
-  const openableWorkflowIds = useMemo(
-    () => new Set(cards.map((c) => c.workflow.id!)),
-    [cards],
-  );
+  const cardsByWorkflowId = useMemo(() => new Map(cards.map((c) => [c.workflow.id!, c])), [cards]);
+  const openableWorkflowIds = useMemo(() => new Set(cards.map((c) => c.workflow.id!)), [cards]);
 
   const handleCardClick = (card: BoardCard) => {
     setDrawerInitialPostId(null);
@@ -248,15 +242,15 @@ export default function EntregasPage() {
 
       {activeView !== 'concluded' &&
         !(activeView === 'calendar' && calendarMode === 'publicacoes') && (
-        <EntregasFilters
-          filters={filters}
-          onChange={setFilters}
-          clientes={clientes}
-          membros={membros}
-          templates={templates}
-          etapaNames={etapaNames}
-        />
-      )}
+          <EntregasFilters
+            filters={filters}
+            onChange={setFilters}
+            clientes={clientes}
+            membros={membros}
+            templates={templates}
+            etapaNames={etapaNames}
+          />
+        )}
 
       {activeView === 'kanban' && (
         <KanbanView

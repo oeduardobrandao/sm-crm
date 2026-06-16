@@ -46,9 +46,21 @@ describe('scheduledPostsUtils', () => {
   });
 
   it('bucketByLocalDay groups posts by local day key', () => {
-    const a = mk({ id: 1, scheduled_at: new Date(2026, 5, 16, 9, 0).toISOString(), status: 'aprovado_cliente' });
-    const b = mk({ id: 2, scheduled_at: new Date(2026, 5, 16, 20, 0).toISOString(), status: 'agendado' });
-    const c = mk({ id: 3, scheduled_at: new Date(2026, 5, 17, 9, 0).toISOString(), status: 'postado' });
+    const a = mk({
+      id: 1,
+      scheduled_at: new Date(2026, 5, 16, 9, 0).toISOString(),
+      status: 'aprovado_cliente',
+    });
+    const b = mk({
+      id: 2,
+      scheduled_at: new Date(2026, 5, 16, 20, 0).toISOString(),
+      status: 'agendado',
+    });
+    const c = mk({
+      id: 3,
+      scheduled_at: new Date(2026, 5, 17, 9, 0).toISOString(),
+      status: 'postado',
+    });
     const map = bucketByLocalDay([a, b, c]);
     expect(map.get('2026-5-16')?.map((p) => p.id)).toEqual([1, 2]);
     expect(map.get('2026-5-17')?.map((p) => p.id)).toEqual([3]);

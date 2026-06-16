@@ -18,9 +18,7 @@ function makeQueryClient() {
 }
 
 function Wrapper({ children }: { children: React.ReactNode }) {
-  return (
-    <QueryClientProvider client={makeQueryClient()}>{children}</QueryClientProvider>
-  );
+  return <QueryClientProvider client={makeQueryClient()}>{children}</QueryClientProvider>;
 }
 
 const defaultProps = {
@@ -136,11 +134,7 @@ describe('CalendarView', () => {
 
     const { container } = render(
       <Wrapper>
-        <CalendarView
-          cards={[cardToday, cardLater]}
-          onCardClick={onCardClick}
-          {...defaultProps}
-        />
+        <CalendarView cards={[cardToday, cardLater]} onCardClick={onCardClick} {...defaultProps} />
       </Wrapper>,
     );
 

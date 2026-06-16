@@ -1,6 +1,10 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { getScheduledPosts, getInstagramAccountStatuses, type IgAccountStatus } from '../../../store';
+import {
+  getScheduledPosts,
+  getInstagramAccountStatuses,
+  type IgAccountStatus,
+} from '../../../store';
 import { monthRangeISO, bucketByLocalDay } from './scheduledPostsUtils';
 
 /**
