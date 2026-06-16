@@ -77,7 +77,7 @@ export function FollowerChart({ followerHistory }: FollowerChartProps) {
       x: {
         grid: { display: false },
         ticks: {
-          font: { family: 'DM Mono, monospace', size: 10 },
+          font: { family: 'Instrument Sans, sans-serif', size: 10 },
           color: '#9ca3af',
           maxTicksLimit: 6,
         },
@@ -85,7 +85,7 @@ export function FollowerChart({ followerHistory }: FollowerChartProps) {
       y: {
         grid: { color: 'rgba(255,255,255,0.04)' },
         ticks: {
-          font: { family: 'DM Mono, monospace', size: 10 },
+          font: { family: 'Instrument Sans, sans-serif', size: 10 },
           color: '#9ca3af',
           callback: (value: number | string) => formatAbbrev(Number(value)),
         },
@@ -110,7 +110,7 @@ export function FollowerChart({ followerHistory }: FollowerChartProps) {
         <Line ref={canvasRef} data={data} options={options as any} />
       </div>
       <div className="mt-3 flex items-center gap-2">
-        <span className="font-mono text-lg font-bold text-stone-900 dark:text-stone-100">
+        <span className="text-lg font-bold text-stone-900 dark:text-stone-100">
           {formatAbbrev(latest)}
         </span>
         {delta !== 0 && (

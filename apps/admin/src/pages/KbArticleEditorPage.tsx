@@ -324,7 +324,7 @@ export default function KbArticleEditorPage() {
               value={slug}
               onChange={(e) => setSlug(e.target.value)}
               placeholder="how-to-add-a-client"
-              className={`w-full px-3 py-2 rounded-lg bg-secondary border text-sm font-['DM_Mono'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary ${slugError ? 'border-destructive' : 'border-transparent'}`}
+              className={`w-full px-3 py-2 rounded-lg bg-secondary border text-sm font-['DM_Sans'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary ${slugError ? 'border-destructive' : 'border-transparent'}`}
             />
             {slugError && <p className="text-xs text-destructive mt-1">{slugError}</p>}
           </div>
@@ -387,7 +387,7 @@ export default function KbArticleEditorPage() {
                 value={coverUrl}
                 onChange={(e) => setCoverUrl(e.target.value)}
                 placeholder="https://... or upload an image"
-                className="flex-1 px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Mono'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
+                className="flex-1 px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Sans'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
               />
               <input
                 ref={coverInputRef}
@@ -446,7 +446,7 @@ export default function KbArticleEditorPage() {
               value={displayOrder}
               onChange={(e) => setDisplayOrder(e.target.value)}
               min={0}
-              className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Mono'] text-foreground focus:outline-none focus:border-primary"
+              className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Sans'] text-foreground focus:outline-none focus:border-primary"
             />
           </div>
           <div>

@@ -83,7 +83,7 @@ export function lineChart(opts: LineChartOptions): string {
       const isStep = i % labelStep === 0;
       if (!isStep && !isLast) return "";
       if (isLast && !isStep && (data.length - 1 - lastStepIdx) < labelStep * 0.6) return "";
-      return `<text x="${toX(i)}" y="${height - 6}" text-anchor="${isLast ? "end" : "middle"}" font-size="9" fill="#9ca3af" font-family="DM Mono, monospace">${d.label}</text>`;
+      return `<text x="${toX(i)}" y="${height - 6}" text-anchor="${isLast ? "end" : "middle"}" font-size="9" fill="#9ca3af" font-family="DM Sans, sans-serif">${d.label}</text>`;
     })
     .filter(Boolean)
     .join("");
@@ -111,7 +111,7 @@ export function lineChart(opts: LineChartOptions): string {
       const y = toY(v);
       const label = v >= 10000 ? `${r(v / 1000, 1)}k` : String(Math.round(v));
       return `<line x1="${PAD_LEFT}" y1="${y}" x2="${r(PAD_LEFT + plotW)}" y2="${y}" stroke="#9ca3af" stroke-width="0.5" opacity="0.3"/>
-    <text x="${PAD_LEFT - 4}" y="${y}" text-anchor="end" font-size="9" fill="#9ca3af" font-family="DM Mono, monospace" dominant-baseline="middle">${label}</text>`;
+    <text x="${PAD_LEFT - 4}" y="${y}" text-anchor="end" font-size="9" fill="#9ca3af" font-family="DM Sans, sans-serif" dominant-baseline="middle">${label}</text>`;
     })
     .join("\n    ");
 
@@ -208,14 +208,14 @@ export function comboChart(opts: ComboChartOptions): string {
     const y = r(baseY - toBarH(val));
     const label = val >= 1000 ? `${r(val / 1000, 1)}k` : String(val);
     return `<line x1="${PAD_LEFT}" y1="${y}" x2="${r(PAD_LEFT + plotW)}" y2="${y}" stroke="#9ca3af" stroke-width="0.5" opacity="0.3"/>
-    <text x="${PAD_LEFT - 4}" y="${y}" text-anchor="end" font-size="9" fill="#9ca3af" font-family="DM Mono, monospace" dominant-baseline="middle">${label}</text>`;
+    <text x="${PAD_LEFT - 4}" y="${y}" text-anchor="end" font-size="9" fill="#9ca3af" font-family="DM Sans, sans-serif" dominant-baseline="middle">${label}</text>`;
   }).join("\n    ");
 
   // Right Y-axis ticks (engagement %)
   const rightTicks = [0, 0.25, 0.5, 0.75, 1].map((pct) => {
     const val = r(lineMax * pct, 1);
     const y = r(baseY - (pct * plotH));
-    return `<text x="${r(PAD_LEFT + plotW + 4)}" y="${y}" text-anchor="start" font-size="9" fill="${lineColor}" font-family="DM Mono, monospace" dominant-baseline="middle">${val}%</text>`;
+    return `<text x="${r(PAD_LEFT + plotW + 4)}" y="${y}" text-anchor="start" font-size="9" fill="${lineColor}" font-family="DM Sans, sans-serif" dominant-baseline="middle">${val}%</text>`;
   }).join("\n    ");
 
   // Line points (computed first for collision detection)
@@ -251,7 +251,7 @@ export function comboChart(opts: ComboChartOptions): string {
         ? r(belowLine)
         : r(Math.max(p.barTopY + 14, aboveLine));
     }
-    return `<text x="${p.cx}" y="${labelY}" text-anchor="middle" font-size="9" font-weight="600" fill="#fff" font-family="DM Mono, monospace">${label}</text>`;
+    return `<text x="${p.cx}" y="${labelY}" text-anchor="middle" font-size="9" font-weight="600" fill="#fff" font-family="DM Sans, sans-serif">${label}</text>`;
   }).join("\n    ");
 
   // Line dot circles (rendered between bars and labels)
@@ -270,7 +270,7 @@ export function comboChart(opts: ComboChartOptions): string {
       labelY = r(p.barTopY - 8);
     }
     return `<rect x="${r(p.cx - pillW / 2)}" y="${r(labelY - pillH / 2)}" width="${pillW}" height="${pillH}" rx="8" fill="${lineColor}"/>
-    <text x="${p.cx}" y="${r(labelY + 1)}" text-anchor="middle" font-size="8.5" font-weight="700" fill="#fff" font-family="DM Mono, monospace" dominant-baseline="middle">${label}</text>`;
+    <text x="${p.cx}" y="${r(labelY + 1)}" text-anchor="middle" font-size="8.5" font-weight="700" fill="#fff" font-family="DM Sans, sans-serif" dominant-baseline="middle">${label}</text>`;
   }).join("\n    ");
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
@@ -355,7 +355,7 @@ export function barChart(opts: BarChartOptions): string {
             ? `${r(v.value / 1000, 1)}k${suffix}`
             : `${r(v.value, 1)}${suffix}`;
           return `<rect x="${bx}" y="${by}" width="${r(barWidth)}" height="${bh}" fill="${v.color}" rx="3"/>
-      <text x="${r(bx + barWidth / 2)}" y="${r(by - 4)}" text-anchor="middle" font-size="9" fill="#9ca3af" font-family="DM Mono, monospace">${labelText}</text>`;
+      <text x="${r(bx + barWidth / 2)}" y="${r(by - 4)}" text-anchor="middle" font-size="9" fill="#9ca3af" font-family="DM Sans, sans-serif">${labelText}</text>`;
         })
         .join("\n      ");
 
@@ -373,7 +373,7 @@ export function barChart(opts: BarChartOptions): string {
       const y = r(baseY - toBarH(val));
       const labelText = val >= 1000 ? `${r(val / 1000, 1)}k` : String(val);
       return `<line x1="${PAD_LEFT}" y1="${y}" x2="${r(PAD_LEFT + plotW)}" y2="${y}" stroke="#9ca3af" stroke-width="0.5" opacity="0.3"/>
-    <text x="${PAD_LEFT - 4}" y="${y}" text-anchor="end" font-size="9" fill="#9ca3af" font-family="DM Mono, monospace" dominant-baseline="middle">${labelText}</text>`;
+    <text x="${PAD_LEFT - 4}" y="${y}" text-anchor="end" font-size="9" fill="#9ca3af" font-family="DM Sans, sans-serif" dominant-baseline="middle">${labelText}</text>`;
     })
     .join("\n    ");
 
@@ -461,7 +461,7 @@ export function heatmapChart(opts: HeatmapOptions): string {
   const hourLabels = HOUR_LABELS.map((label, idx) => {
     const hour = idx * 6;
     const x = r(PAD_LEFT + hour * cellW + cellW / 2);
-    return `<text x="${x}" y="${PAD_TOP - 6}" text-anchor="middle" font-size="9" fill="#9ca3af" font-family="DM Mono, monospace">${label}</text>`;
+    return `<text x="${x}" y="${PAD_TOP - 6}" text-anchor="middle" font-size="9" fill="#9ca3af" font-family="DM Sans, sans-serif">${label}</text>`;
   }).join("");
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
@@ -537,7 +537,7 @@ export function donutChart(opts: DonutChartOptions): string {
     const pctStr = `${Math.round(pct * 100)}%`;
     labels.push(
       `<text x="${r(lp.x)}" y="${r(lp.y - 4)}" text-anchor="${anchor}" font-size="9" fill="#9ca3af" font-family="DM Sans, sans-serif" dominant-baseline="middle">${seg.label}</text>`,
-      `<text x="${r(lp.x)}" y="${r(lp.y + 8)}" text-anchor="${anchor}" font-size="10" font-weight="700" fill="${seg.color}" font-family="DM Mono, monospace" dominant-baseline="middle">${pctStr}</text>`,
+      `<text x="${r(lp.x)}" y="${r(lp.y + 8)}" text-anchor="${anchor}" font-size="10" font-weight="700" fill="${seg.color}" font-family="DM Sans, sans-serif" dominant-baseline="middle">${pctStr}</text>`,
     );
 
     startAngle = endAngle;

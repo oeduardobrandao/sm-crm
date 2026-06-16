@@ -339,7 +339,7 @@ export default function BannersPage() {
                   onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))}
                   required
                   rows={3}
-                  className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Mono'] text-foreground focus:outline-none focus:border-primary resize-none"
+                  className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Sans'] text-foreground focus:outline-none focus:border-primary resize-none"
                 />
               </div>
 
@@ -353,7 +353,7 @@ export default function BannersPage() {
                     value={form.link}
                     onChange={(e) => setForm((f) => ({ ...f, link: e.target.value }))}
                     placeholder="https://..."
-                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Mono'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
+                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Sans'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
                   />
                 </div>
                 <div>
@@ -365,7 +365,7 @@ export default function BannersPage() {
                     value={form.custom_color}
                     onChange={(e) => setForm((f) => ({ ...f, custom_color: e.target.value }))}
                     placeholder="#ff5500"
-                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Mono'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
+                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Sans'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
                   />
                 </div>
               </div>
@@ -508,7 +508,7 @@ export default function BannersPage() {
                     type="datetime-local"
                     value={form.starts_at}
                     onChange={(e) => setForm((f) => ({ ...f, starts_at: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Mono'] text-foreground focus:outline-none focus:border-primary"
+                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Sans'] text-foreground focus:outline-none focus:border-primary"
                   />
                 </div>
                 <div>
@@ -519,7 +519,7 @@ export default function BannersPage() {
                     type="datetime-local"
                     value={form.ends_at}
                     onChange={(e) => setForm((f) => ({ ...f, ends_at: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Mono'] text-foreground focus:outline-none focus:border-primary"
+                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Sans'] text-foreground focus:outline-none focus:border-primary"
                   />
                 </div>
               </div>
