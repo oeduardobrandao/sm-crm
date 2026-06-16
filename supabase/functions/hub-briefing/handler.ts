@@ -28,14 +28,44 @@ export function createHubBriefingHandler(deps: HubBriefingHandlerDeps) {
       const hubToken = await resolveHubToken(db as any, token, deps.now());
       if (!hubToken) return json({ error: "Link inválido." }, 404);
 
-      const { data, error } = await db
-        .from("hub_briefing_questions")
-        .select("id, question, answer, section, display_order")
+      // Parent query: briefings drive the response so empty briefings still render.
+      const { data: briefings, error: bErr } = await db
+        .from("briefings")
+        .select("id, title, display_order")
         .eq("cliente_id", hubToken.cliente_id)
         .order("display_order");
+      if (bErr) return json({ error: bErr.message }, 500);
 
-      if (error) return json({ error: error.message }, 500);
-      return json({ questions: data ?? [] });
+      const { data: questions, error: qErr } = await db
+        .from("hub_briefing_questions")
+        .select("id, question, answer, section, display_order, briefing_id")
+        .eq("cliente_id", hubToken.cliente_id)
+        .order("display_order");
+      if (qErr) return json({ error: qErr.message }, 500);
+
+      const list = (briefings ?? []) as Array<{ id: string; title: string; display_order: number }>;
+      const qs = (questions ?? []) as Array<
+        {
+          id: string;
+          question: string;
+          answer: string | null;
+          section: string | null;
+          display_order: number;
+          briefing_id: string | null;
+        }
+      >;
+      // Legacy rows with a null briefing_id coalesce into the first briefing.
+      const firstId = list[0]?.id ?? null;
+      const grouped = list.map((b) => ({
+        id: b.id,
+        title: b.title,
+        display_order: b.display_order,
+        questions: qs
+          .filter((q) => (q.briefing_id ?? firstId) === b.id)
+          .map(({ briefing_id: _briefing_id, ...rest }) => rest),
+      }));
+
+      return json({ briefings: grouped });
     }
 
     if (req.method === "POST") {
