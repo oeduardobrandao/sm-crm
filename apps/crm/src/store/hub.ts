@@ -323,3 +323,45 @@ export async function setDefaultBriefingTemplate(id: string): Promise<void> {
   const { error } = await supabase.rpc('set_default_briefing_template', { p_template_id: id });
   if (error) throw error;
 }
+
+/**
+ * Creates a new briefing for the client and copies the template's questions into it
+ * (independent copies — no propagation). If the question insert fails, the just-created
+ * briefing is deleted so we never leave an empty briefing behind.
+ */
+export async function applyTemplateToClient(
+  clienteId: number,
+  contaId: string,
+  templateId: string,
+  titleOverride?: string,
+): Promise<BriefingRow> {
+  const { data: template, error: tErr } = await supabase
+    .from('briefing_templates')
+    .select('*')
+    .eq('id', templateId)
+    .single();
+  if (tErr || !template) throw tErr ?? new Error('Template não encontrado.');
+
+  const title = (titleOverride ?? '').trim() || template.title;
+  const briefing = await addBriefing(clienteId, contaId, title);
+
+  const tplQuestions: BriefingTemplateQuestion[] = template.questions ?? [];
+  const rows = tplQuestions.map((q, i) => ({
+    cliente_id: clienteId,
+    conta_id: contaId,
+    briefing_id: briefing.id,
+    question: q.question,
+    section: q.section ?? null,
+    answer: null,
+    display_order: i,
+  }));
+
+  if (rows.length > 0) {
+    const { error } = await supabase.from('hub_briefing_questions').insert(rows);
+    if (error) {
+      await supabase.from('briefings').delete().eq('id', briefing.id);
+      throw error;
+    }
+  }
+  return briefing;
+}

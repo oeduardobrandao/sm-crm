@@ -297,6 +297,81 @@ describe('store hub and ideias helpers', () => {
     expect(rpcCall?.payload).toEqual({ p_template_id: 't2' });
   });
 
+  it('applies a template into a new briefing as independent copies', async () => {
+    // fetch template by id
+    mockedSupabase.__queueSupabaseResult('briefing_templates', 'select', {
+      data: {
+        id: 't1',
+        title: 'Discovery',
+        questions: [
+          { question: 'Metas?', section: 'Estratégia' },
+          { question: 'Concorrentes?', section: 'Estratégia' },
+        ],
+      },
+      error: null,
+    });
+    // addBriefing: max-order lookup, then insert
+    mockedSupabase.__queueSupabaseResult('briefings', 'select', { data: null, error: null });
+    mockedSupabase.__queueSupabaseResult('briefings', 'insert', {
+      data: { id: 'b9', cliente_id: 14, conta_id: 'conta-1', title: 'Discovery', display_order: 0 },
+      error: null,
+    });
+    // bulk question insert
+    mockedSupabase.__queueSupabaseResult('hub_briefing_questions', 'insert', { data: null, error: null });
+
+    await expect(store.applyTemplateToClient(14, 'conta-1', 't1')).resolves.toEqual({
+      id: 'b9',
+      cliente_id: 14,
+      conta_id: 'conta-1',
+      title: 'Discovery',
+      display_order: 0,
+    });
+
+    expect(getCalls('hub_briefing_questions', 'insert').at(-1)?.payload).toEqual([
+      {
+        cliente_id: 14,
+        conta_id: 'conta-1',
+        briefing_id: 'b9',
+        question: 'Metas?',
+        section: 'Estratégia',
+        answer: null,
+        display_order: 0,
+      },
+      {
+        cliente_id: 14,
+        conta_id: 'conta-1',
+        briefing_id: 'b9',
+        question: 'Concorrentes?',
+        section: 'Estratégia',
+        answer: null,
+        display_order: 1,
+      },
+    ]);
+  });
+
+  it('deletes the new briefing if the question insert fails (compensating cleanup)', async () => {
+    mockedSupabase.__queueSupabaseResult('briefing_templates', 'select', {
+      data: { id: 't1', title: 'Discovery', questions: [{ question: 'Metas?', section: null }] },
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseResult('briefings', 'select', { data: null, error: null });
+    mockedSupabase.__queueSupabaseResult('briefings', 'insert', {
+      data: { id: 'b9', cliente_id: 14, conta_id: 'conta-1', title: 'Discovery', display_order: 0 },
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseResult('hub_briefing_questions', 'insert', {
+      data: null,
+      error: { message: 'insert failed' },
+    });
+    mockedSupabase.__queueSupabaseResult('briefings', 'delete', { data: null, error: null });
+
+    await expect(store.applyTemplateToClient(14, 'conta-1', 't1')).rejects.toBeTruthy();
+    expect(getCalls('briefings', 'delete').at(-1)?.modifiers).toContainEqual({
+      method: 'eq',
+      args: ['id', 'b9'],
+    });
+  });
+
   it('filters ideias, updates comments, and toggles reactions on and off', async () => {
     mockedSupabase.__queueSupabaseResult('ideias', 'select', {
       data: [{ id: 'ideia-1', titulo: 'Campanha de Inverno' }],
