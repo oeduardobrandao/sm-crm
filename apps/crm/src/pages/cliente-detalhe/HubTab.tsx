@@ -598,7 +598,11 @@ function BriefingEditor({
 
   async function handleDeleteBriefing() {
     if (!selectedId) return;
-    if (!window.confirm('Remover este briefing e todas as suas perguntas? Essa ação não pode ser desfeita.'))
+    if (
+      !window.confirm(
+        'Remover este briefing e todas as suas perguntas? Essa ação não pode ser desfeita.',
+      )
+    )
       return;
     try {
       await deleteBriefing(selectedId);

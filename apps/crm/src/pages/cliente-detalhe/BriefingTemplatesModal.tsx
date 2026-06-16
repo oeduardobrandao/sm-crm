@@ -4,12 +4,7 @@ import { Plus, Trash2, Save, Star, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
   getBriefingTemplates,
   addBriefingTemplate,
@@ -52,7 +47,9 @@ export function BriefingTemplatesModal({
   function startEdit(t: BriefingTemplateRow) {
     setEditing(t.id);
     setTitle(t.title);
-    setQuestions((t.questions ?? []).map((q) => ({ question: q.question, section: q.section ?? null })));
+    setQuestions(
+      (t.questions ?? []).map((q) => ({ question: q.question, section: q.section ?? null })),
+    );
   }
 
   function addRow() {
@@ -116,7 +113,12 @@ export function BriefingTemplatesModal({
   }
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!saving) onOpenChange(v); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!saving) onOpenChange(v);
+      }}
+    >
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Templates de Briefing</DialogTitle>
@@ -132,7 +134,10 @@ export function BriefingTemplatesModal({
             ) : (
               <div className="space-y-2">
                 {templates.map((t) => (
-                  <div key={t.id} className="flex items-center justify-between border rounded-lg p-3">
+                  <div
+                    key={t.id}
+                    className="flex items-center justify-between border rounded-lg p-3"
+                  >
                     <div className="min-w-0">
                       <p className="text-sm font-medium truncate">
                         {t.title}
@@ -157,10 +162,20 @@ export function BriefingTemplatesModal({
                           className={t.is_default ? 'fill-primary text-primary' : ''}
                         />
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={() => startEdit(t)} aria-label="Editar template">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => startEdit(t)}
+                        aria-label="Editar template"
+                      >
                         <Pencil size={14} />
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={() => handleDelete(t.id)} aria-label="Remover template">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleDelete(t.id)}
+                        aria-label="Remover template"
+                      >
                         <Trash2 size={14} />
                       </Button>
                     </div>
@@ -191,7 +206,12 @@ export function BriefingTemplatesModal({
                     placeholder="Seção (opcional)"
                     className="w-40"
                   />
-                  <Button size="sm" variant="ghost" onClick={() => removeRow(i)} aria-label="Remover pergunta">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => removeRow(i)}
+                    aria-label="Remover pergunta"
+                  >
                     <Trash2 size={14} />
                   </Button>
                 </div>
@@ -204,7 +224,12 @@ export function BriefingTemplatesModal({
               <Button size="sm" onClick={handleSave} disabled={saving}>
                 <Save size={14} className="mr-1.5" /> Salvar template
               </Button>
-              <Button size="sm" variant="outline" onClick={() => setEditing(null)} disabled={saving}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setEditing(null)}
+                disabled={saving}
+              >
                 Cancelar
               </Button>
             </div>

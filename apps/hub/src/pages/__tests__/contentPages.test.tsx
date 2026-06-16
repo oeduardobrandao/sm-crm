@@ -243,7 +243,7 @@ describe('hub content pages', () => {
   });
 
   it('renders the empty briefing state when no questions are available', async () => {
-    mockedFetchBriefing.mockResolvedValue({ questions: [] });
+    mockedFetchBriefing.mockResolvedValue({ briefings: [] });
 
     renderHubPage(
       '/mesaas/hub/token-publico/briefing',
@@ -251,25 +251,32 @@ describe('hub content pages', () => {
       <BriefingPage />,
     );
 
-    expect(await screen.findByText('Nenhuma pergunta disponível ainda.')).toBeInTheDocument();
+    expect(await screen.findByText('Nenhum briefing disponível ainda.')).toBeInTheDocument();
   });
 
   it('switches briefing sections and autosaves answers through the API', async () => {
     mockedFetchBriefing.mockResolvedValue({
-      questions: [
+      briefings: [
         {
-          id: 'q1',
-          question: 'Qual a personalidade da marca?',
-          answer: 'Acolhedora',
-          section: 'Marca',
-          display_order: 1,
-        },
-        {
-          id: 'q2',
-          question: 'Qual o principal objetivo?',
-          answer: null,
-          section: 'Geral',
-          display_order: 2,
+          id: 'b1',
+          title: 'Briefing',
+          display_order: 0,
+          questions: [
+            {
+              id: 'q1',
+              question: 'Qual a personalidade da marca?',
+              answer: 'Acolhedora',
+              section: 'Marca',
+              display_order: 1,
+            },
+            {
+              id: 'q2',
+              question: 'Qual o principal objetivo?',
+              answer: null,
+              section: 'Geral',
+              display_order: 2,
+            },
+          ],
         },
       ],
     });

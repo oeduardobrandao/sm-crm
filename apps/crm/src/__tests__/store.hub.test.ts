@@ -192,7 +192,13 @@ describe('store hub and ideias helpers', () => {
     await expect(store.getHubBriefingQuestions(14)).resolves.toEqual([
       { id: 'q1', question: 'Quais metas vocês têm?', display_order: 0 },
     ]);
-    await store.addHubBriefingQuestion(14, 'conta-1', 'b1', 'Qual é a persona principal?', 'Estratégia');
+    await store.addHubBriefingQuestion(
+      14,
+      'conta-1',
+      'b1',
+      'Qual é a persona principal?',
+      'Estratégia',
+    );
     await store.updateHubBriefingQuestionSection('q1', 'Mídia paga');
     await store.updateHubBriefingQuestion('q1', 'Qual é o orçamento mensal?');
     await store.deleteHubBriefingQuestion('q1');
@@ -278,8 +284,14 @@ describe('store hub and ideias helpers', () => {
       },
       error: null,
     });
-    mockedSupabase.__queueSupabaseResult('briefing_templates', 'update', { data: null, error: null });
-    mockedSupabase.__queueSupabaseResult('briefing_templates', 'delete', { data: null, error: null });
+    mockedSupabase.__queueSupabaseResult('briefing_templates', 'update', {
+      data: null,
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseResult('briefing_templates', 'delete', {
+      data: null,
+      error: null,
+    });
     mockedSupabase.__queueSupabaseRpc('set_default_briefing_template', { data: null, error: null });
 
     await expect(store.getBriefingTemplates()).resolves.toEqual([
@@ -299,7 +311,9 @@ describe('store hub and ideias helpers', () => {
       user_id: 'user-1',
       conta_id: 'conta-1',
     });
-    expect(getCalls('briefing_templates', 'update').at(-1)?.payload).toEqual({ title: 'Discovery v2' });
+    expect(getCalls('briefing_templates', 'update').at(-1)?.payload).toEqual({
+      title: 'Discovery v2',
+    });
     const rpcCall = getCalls('rpc:set_default_briefing_template').at(-1);
     expect(rpcCall?.payload).toEqual({ p_template_id: 't2' });
   });
@@ -324,7 +338,10 @@ describe('store hub and ideias helpers', () => {
       error: null,
     });
     // bulk question insert
-    mockedSupabase.__queueSupabaseResult('hub_briefing_questions', 'insert', { data: null, error: null });
+    mockedSupabase.__queueSupabaseResult('hub_briefing_questions', 'insert', {
+      data: null,
+      error: null,
+    });
 
     await expect(store.applyTemplateToClient(14, 'conta-1', 't1')).resolves.toEqual({
       id: 'b9',
@@ -399,7 +416,10 @@ describe('store hub and ideias helpers', () => {
       data: { id: 'b1', cliente_id: 77, conta_id: 'conta-1', title: 'Discovery', display_order: 0 },
       error: null,
     });
-    mockedSupabase.__queueSupabaseResult('hub_briefing_questions', 'insert', { data: null, error: null });
+    mockedSupabase.__queueSupabaseResult('hub_briefing_questions', 'insert', {
+      data: null,
+      error: null,
+    });
 
     await store.addCliente({
       nome: 'Acme',
@@ -430,7 +450,10 @@ describe('store hub and ideias helpers', () => {
       data: { id: 78, nome: 'NoTpl', conta_id: 'conta-1' },
       error: null,
     });
-    mockedSupabase.__queueSupabaseResult('briefing_templates', 'select', { data: null, error: null });
+    mockedSupabase.__queueSupabaseResult('briefing_templates', 'select', {
+      data: null,
+      error: null,
+    });
 
     await store.addCliente({
       nome: 'NoTpl',
