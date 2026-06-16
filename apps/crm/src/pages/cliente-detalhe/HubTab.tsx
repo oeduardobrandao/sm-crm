@@ -560,7 +560,8 @@ function BriefingEditor({
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [applying, setApplying] = useState(false);
   const [importingCsv, setImportingCsv] = useState(false);
-  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+  // Sections are collapsed by default; this tracks which ones the user has expanded.
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
 
   // Default selection: first briefing once loaded (or when the selected one is deleted).
   useEffect(() => {
@@ -739,12 +740,18 @@ function BriefingEditor({
   }
 
   function toggleSection(name: string) {
-    setCollapsedSections((prev) => {
+    setExpandedSections((prev) => {
       const next = new Set(prev);
       if (next.has(name)) next.delete(name);
       else next.add(name);
       return next;
     });
+  }
+
+  function toggleAllSections() {
+    const allExpanded =
+      namedSections.length > 0 && namedSections.every((s) => expandedSections.has(s.name));
+    setExpandedSections(allExpanded ? new Set() : new Set(namedSections.map((s) => s.name)));
   }
 
   if (isLoading)
@@ -904,7 +911,7 @@ function BriefingEditor({
                 setNewQuestions({});
                 setAddingSectionInput(false);
                 setEditingId(null);
-                setCollapsedSections(new Set());
+                setExpandedSections(new Set());
               }}
               className={`px-3 py-2 text-sm whitespace-nowrap border-b-2 -mb-px transition-colors ${
                 selectedId === b.id
@@ -981,9 +988,24 @@ function BriefingEditor({
             <div className="mb-6">{renderQuestions(unsectioned?.questions ?? [], null)}</div>
           )}
 
+          {/* Expand/collapse all (sections are collapsed by default) */}
+          {namedSections.length > 1 && (
+            <div className="flex justify-end -mt-2 mb-2">
+              <button
+                type="button"
+                onClick={toggleAllSections}
+                className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {namedSections.every((s) => expandedSections.has(s.name))
+                  ? 'Recolher tudo'
+                  : 'Expandir tudo'}
+              </button>
+            </div>
+          )}
+
           {/* Named sections (collapsible) */}
           {namedSections.map((s) => {
-            const isCollapsed = collapsedSections.has(s.name);
+            const isCollapsed = !expandedSections.has(s.name);
             return (
               <div key={s.name} className="mb-6">
                 <button
