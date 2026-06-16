@@ -26,8 +26,10 @@ Inside the existing **Calendário** tab, let the user switch to a **Publicaçõe
 ## Non-goals (v1, YAGNI)
 
 - Publicações mode **ignores the etapa/workflow-oriented top filter bar** (status, etapa,
-  member, template). It is a workspace-wide publish agenda. Client-scoped filtering is a
-  cheap follow-up if wanted.
+  member, template). It is a workspace-wide publish agenda. To avoid showing dead controls,
+  `EntregasPage` **hides** the `EntregasFilters` bar while in Publicações mode (this is why the
+  mode state is owned by `EntregasPage`, not `CalendarView` — see below). Client-scoped
+  filtering is a cheap follow-up if wanted.
 - **No new role gating.** Matches existing `ScheduleButton` behavior — any internal user who
   can open the drawer can schedule/publish.
 - **Reuse `ScheduleButton` as-is** per row rather than building a compact variant. Minor
@@ -78,18 +80,28 @@ ever made live, this range must widen to the full visible grid.
 
 ### `getScheduledPosts(startISO, endISO)` — `store/posts.ts`
 
-Selects from `workflow_posts` joined `workflows!inner(titulo, cliente_id, status)` and
-`clientes(nome)`, filtered to `workflows.status = 'ativo'` and `scheduled_at` in
-`[startISO, endISO)`, ordered by `scheduled_at` asc. RLS enforces `conta_id` (matches
-`getClientePosts`, which does not filter `conta_id` explicitly).
+`workflow_posts` has **only** `workflow_id` as an FK (`migrations/20260402_workflow_posts.sql:14`)
+— there is no direct `clientes` FK — so the client name must be reached **through** `workflows`
+with a nested join, mirroring `getAllActiveEtapas` (`store/workflows.ts:248`). A sibling
+`clientes(nome)` on `workflow_posts` is invalid.
 
-Selects **only** the columns the row UI + `ScheduleButton` need — explicitly **not**
-`conteudo` (the TipTap JSON) — to keep the month payload light:
+Select (own columns explicitly exclude `conteudo`, the TipTap JSON, to keep the month payload
+light), plus the nested workflow/client columns:
 
 ```
 id, workflow_id, titulo, tipo, status, scheduled_at, published_at,
-ig_caption, instagram_permalink, publish_error, ordem, responsavel_id
+ig_caption, instagram_permalink, publish_error, ordem, responsavel_id,
+workflows!inner(titulo, cliente_id, status, clientes!inner(nome))
 ```
+
+Filter to `workflows.status = 'ativo'` and `scheduled_at` in `[startISO, endISO)`, order by
+`scheduled_at` asc. RLS enforces `conta_id` (matches `getClientePosts` / `getAllActiveEtapas`,
+which do not filter `conta_id` explicitly).
+
+Mapping:
+- `workflow_titulo = row.workflows.titulo`
+- `cliente_id      = row.workflows.cliente_id`
+- `cliente_nome    = row.workflows.clientes.nome`
 
 Return type:
 
@@ -140,28 +152,31 @@ loaded range, avoiding a full workspace scan.
 
 ### `hooks/useScheduledPosts.ts`
 
-`useScheduledPosts(month: Date)` →
+`useScheduledPosts(month: Date, enabled: boolean)` →
 `{ byDay: Map<string, ScheduledPost[]>, igStatuses, isLoading }`.
 
+- An explicit `enabled` flag is **required**: `CalendarView` is mounted for the whole Calendar
+  tab regardless of its internal mode, so mounting alone does not gate the fetch. The caller
+  passes `enabled = mode === 'publicacoes'`. Both the posts query and the dependent IG-status
+  query AND with this flag.
 - Computes `startISO`/`endISO` from `month` (local-midnight, above).
 - `useQuery({ queryKey: ['scheduled-posts', startISO, endISO], queryFn: () => getScheduledPosts(startISO, endISO), enabled })`.
 - `byDay` keyed by local day string (`` `${y}-${m}-${d}` ``).
-- Dependent IG-status query as above.
-- `enabled` only when the parent is in Publicações mode (the hook is only mounted/active from
-  CalendarView, which itself only mounts in the Calendar tab).
+- Dependent IG-status query (`enabled: enabled && !postsLoading && clientIds.length > 0`).
 
 ### `views/CalendarView.tsx` (modified)
 
-- New `mode: 'entregas' | 'publicacoes'` state + a small toggle rendered above the
-  `MonthGrid` (left of / near the month nav).
+- Receives `mode` + `onModeChange` as **props** (state lifted to `EntregasPage` so the page can
+  hide the filter bar — see below). Renders the `Entregas / Publicações` toggle above the
+  `MonthGrid` (left of / near the month nav) and calls `onModeChange`.
 - Owns shared `currentDate` / `selectedDay`; the `MonthGrid` instance is shared.
 - `renderCell` branches by mode:
-  - `entregas`: unchanged (etapa pill + conclusão pill).
+  - `entregas`: unchanged (etapa pill + conclusão pill), using the existing `filteredCards`.
   - `publicacoes`: empty for `!isCurrentMonth`; otherwise a primary `📷 N` pill (total posts
     scheduled that day) plus sub-indicators `✓ N` (postado, green) and `⚠ N` (falha, red).
 - Side panel branches by mode: `entregas` keeps the current list; `publicacoes` renders
   `PublicacoesPanel`.
-- Calls `useScheduledPosts(currentDate)` (active only in `publicacoes` mode).
+- Calls `useScheduledPosts(currentDate, mode === 'publicacoes')`.
 
 ### `components/PublicacoesPanel.tsx` (new)
 
@@ -175,19 +190,36 @@ Props: `posts: ScheduledPost[]` (selected day), `igStatuses`, `openableWorkflowI
   duplicating.
 - Builds a `WorkflowPost`-shaped object and renders `ScheduleButton` per row
   (`hasInstagramAccount` = client present in `igStatuses`; `igAccountStatus` from the map;
-  `onStatusChange` bubbles up).
+  `onStatusChange` bubbles up). **When the client has no IG account**, `ScheduleButton` already
+  returns `null` (`ScheduleButton.tsx:49`) — so the row shows **no** schedule/publish actions,
+  just its status chip + `Abrir →`. No `ScheduleButton` change in v1; if inline publish for
+  not-yet-connected clients is ever wanted, that's a separate `ScheduleButton` change.
 - Row click → `onPostClick(workflow_id, id)` **only if** `openableWorkflowIds.has(workflow_id)`;
   otherwise the row is non-clickable and the `Abrir →`/`Ver` affordance is hidden (not a
   dead-looking clickable row).
 
 ## Row click → drawer
 
-- `WorkflowDrawer` gets an optional `initialPostId?: number` prop that seeds
-  `expandedId` (`useState<number | null>(initialPostId ?? null)`). The drawer is mounted fresh
-  each time `drawerCard` is set, so initial state applies; defaults to `null` from Kanban/List.
+- `WorkflowDrawer` gets an optional `initialPostId?: number` prop that seeds `expandedId`
+  (`useState<number | null>(initialPostId ?? null)`). **`useState` only reads its initial
+  value once**: when `drawerCard` changes from one card to another while the drawer stays
+  mounted, the initial value is *not* re-read and the wrong (or no) post would expand. Two
+  acceptable mechanisms — pick one in the plan:
+  1. **Key the element**: `<WorkflowDrawer key={`${drawerCard.workflow.id}:${drawerInitialPostId ?? ''}`} … />`
+     in `EntregasPage`, forcing a remount on target change. Simplest; also resets any
+     in-progress drawer state (acceptable since it's a different target).
+  2. **Sync effect** in the drawer: `useEffect(() => { if (initialPostId != null) setExpandedId(initialPostId); }, [initialPostId])`.
+     Preserves drawer state across unrelated re-renders.
+  Default to (1) (key) for least surprise. Either way, do not rely on "mounted fresh".
 - `EntregasPage`:
-  - Memoizes `cardsByWorkflowId = useMemo(() => new Map(cards.map(c => [c.workflow.id!, c])), [cards])`
+  - Owns the lifted `calendarMode: 'entregas' | 'publicacoes'` state (passed to `CalendarView`
+    as `mode` + `onModeChange`), and **hides** `EntregasFilters` when
+    `activeView === 'calendar' && calendarMode === 'publicacoes'`.
+  - Memoizes from the **unfiltered** `cards` (not `filteredCards`):
+    `cardsByWorkflowId = useMemo(() => new Map(cards.map(c => [c.workflow.id!, c])), [cards])`
     and `openableWorkflowIds = useMemo(() => new Set(cards.map(c => c.workflow.id!)), [cards])`.
+    (Etapa events still use `filteredCards`; only drawer resolution / clickability uses the
+    unfiltered set, so a filtered-out workflow's post is still openable.)
   - `handlePostClick(workflowId, postId)`: O(1) lookup; `setDrawerCard(card)` +
     `setDrawerInitialPostId(postId)`.
   - Passes `openableWorkflowIds` + `handlePostClick` down through CalendarView to
@@ -221,7 +253,16 @@ Props: `posts: ScheduledPost[]` (selected day), `igStatuses`, `openableWorkflowI
   shape mapping (reuse the existing supabase mock harness in `__tests__/store.posts.test.ts`).
 - Hook-level: `byDay` bucketing keys posts by **local** day (including a near-midnight case),
   query key stability across re-renders.
-- Manual: toggle modes; counts match; Agendar/Publicar/Cancelar/Retry act and refresh cells +
-  rows; non-`aprovado_cliente` rows show no action buttons; missing-IG-account row disables
-  publish with the right warning; row without an active card is non-clickable.
+- Manual, per status (must match the bucket table):
+  - `aprovado_cliente` → Agendar + Publicar agora (gated by `scheduled_at` + caption + account).
+  - `agendado` → Agendado + Cancelar.
+  - `falha_publicacao` → Tentar novamente, with `publish_error` shown.
+  - `postado` → no action buttons, Ver permalink.
+  - `not ready` statuses (`rascunho`/`revisao_interna`/`aprovado_interno`/`enviado_cliente`/`correcao_cliente`)
+    → no action buttons, status chip + `Abrir →`.
+  - Client with **no IG account** → no schedule/publish actions (ScheduleButton renders nothing).
+  - Row whose `workflow_id` is not in `openableWorkflowIds` → non-clickable, `Abrir →` hidden.
+- Manual: toggling modes hides/shows the filter bar; cell counts match the day's rows; an
+  action refreshes both cell counts and the open day's rows; opening a row expands the correct
+  post even when a drawer was opened immediately before (key/effect works).
 - `npm run build` (tsc) and `npm run test` green.
