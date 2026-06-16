@@ -20,8 +20,6 @@ import {
   type BriefingTemplateQuestion,
 } from '@/store';
 
-interface DraftQuestion extends BriefingTemplateQuestion {}
-
 export function BriefingTemplatesModal({
   open,
   onOpenChange,
@@ -38,7 +36,7 @@ export function BriefingTemplatesModal({
   // null = list view; 'new' = creating; otherwise editing an existing id.
   const [editing, setEditing] = useState<string | 'new' | null>(null);
   const [title, setTitle] = useState('');
-  const [questions, setQuestions] = useState<DraftQuestion[]>([]);
+  const [questions, setQuestions] = useState<BriefingTemplateQuestion[]>([]);
   const [saving, setSaving] = useState(false);
 
   function refresh() {
@@ -61,7 +59,7 @@ export function BriefingTemplatesModal({
     setQuestions((prev) => [...prev, { question: '', section: null }]);
   }
 
-  function updateRow(i: number, patch: Partial<DraftQuestion>) {
+  function updateRow(i: number, patch: Partial<BriefingTemplateQuestion>) {
     setQuestions((prev) => prev.map((q, idx) => (idx === i ? { ...q, ...patch } : q)));
   }
 
@@ -97,6 +95,7 @@ export function BriefingTemplatesModal({
   }
 
   async function handleDelete(id: string) {
+    if (!window.confirm('Remover este template? Essa ação não pode ser desfeita.')) return;
     try {
       await removeBriefingTemplate(id);
       refresh();
@@ -117,7 +116,7 @@ export function BriefingTemplatesModal({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(v) => { if (!saving) onOpenChange(v); }}>
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Templates de Briefing</DialogTitle>
@@ -158,10 +157,10 @@ export function BriefingTemplatesModal({
                           className={t.is_default ? 'fill-primary text-primary' : ''}
                         />
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={() => startEdit(t)}>
+                      <Button size="sm" variant="ghost" onClick={() => startEdit(t)} aria-label="Editar template">
                         <Pencil size={14} />
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={() => handleDelete(t.id)}>
+                      <Button size="sm" variant="ghost" onClick={() => handleDelete(t.id)} aria-label="Remover template">
                         <Trash2 size={14} />
                       </Button>
                     </div>
@@ -192,7 +191,7 @@ export function BriefingTemplatesModal({
                     placeholder="Seção (opcional)"
                     className="w-40"
                   />
-                  <Button size="sm" variant="ghost" onClick={() => removeRow(i)}>
+                  <Button size="sm" variant="ghost" onClick={() => removeRow(i)} aria-label="Remover pergunta">
                     <Trash2 size={14} />
                   </Button>
                 </div>
@@ -205,7 +204,7 @@ export function BriefingTemplatesModal({
               <Button size="sm" onClick={handleSave} disabled={saving}>
                 <Save size={14} className="mr-1.5" /> Salvar template
               </Button>
-              <Button size="sm" variant="outline" onClick={() => setEditing(null)}>
+              <Button size="sm" variant="outline" onClick={() => setEditing(null)} disabled={saving}>
                 Cancelar
               </Button>
             </div>
