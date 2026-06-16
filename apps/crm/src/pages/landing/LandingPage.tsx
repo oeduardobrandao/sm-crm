@@ -834,7 +834,7 @@ function CtaFinal() {
               letterSpacing: '.08em',
             }}
           >
-            COMECE GRÁTIS · SEM CARTÃO DE CRÉDITO
+            Comece grátis · sem cartão de crédito
           </div>
         </div>
       </div>

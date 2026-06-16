@@ -124,7 +124,6 @@ function Badge({
         fontSize: small ? '.55rem' : '.66rem',
         fontWeight: 600,
         letterSpacing: '.08em',
-        textTransform: 'uppercase',
         whiteSpace: 'nowrap',
       }}
     >
@@ -277,7 +276,7 @@ export function HeroDemo() {
                   animation: 'pulse-dot 2s ease-in-out infinite',
                 }}
               />
-              AO VIVO
+              Ao vivo
             </div>
           </div>
 
@@ -297,7 +296,6 @@ export function HeroDemo() {
                   fontFamily: MONO,
                   fontSize: 9,
                   letterSpacing: '.14em',
-                  textTransform: 'uppercase',
                   color: BRAND.yellow,
                   fontWeight: 700,
                 }}
@@ -348,7 +346,6 @@ export function HeroDemo() {
                   fontFamily: MONO,
                   fontSize: 9,
                   letterSpacing: '.12em',
-                  textTransform: 'uppercase',
                   color: '#374151',
                   fontWeight: 700,
                 }}
@@ -384,7 +381,6 @@ export function HeroDemo() {
                   fontFamily: MONO,
                   fontSize: 9,
                   letterSpacing: '.12em',
-                  textTransform: 'uppercase',
                   color: '#374151',
                   fontWeight: 700,
                 }}
@@ -430,7 +426,6 @@ export function HeroDemo() {
                   fontFamily: MONO,
                   fontSize: 9,
                   letterSpacing: '.12em',
-                  textTransform: 'uppercase',
                   color: '#374151',
                   fontWeight: 700,
                 }}
@@ -614,7 +609,7 @@ export function HeroDemo() {
               letterSpacing: '.06em',
             }}
           >
-            AGORA MESMO
+            Agora mesmo
           </div>
         </div>
       </div>
@@ -691,7 +686,7 @@ export function KanbanVisual() {
               letterSpacing: '.08em',
             }}
           >
-            ATRASADO
+            Atrasado
           </span>
         )}
       </div>
@@ -759,7 +754,6 @@ export function KanbanVisual() {
                 fontSize: 9,
                 fontWeight: 700,
                 letterSpacing: '.1em',
-                textTransform: 'uppercase',
                 color: BRAND.dark,
               }}
             >
@@ -821,7 +815,7 @@ export function KanbanVisual() {
             }}
           >
             <Filter size={11} />
-            FILTRAR
+            Filtrar
           </span>
           {!mobile && (
             <span
@@ -840,7 +834,7 @@ export function KanbanVisual() {
               }}
             >
               <Plus size={11} strokeWidth={3} />
-              NOVA ENTREGA
+              Nova entrega
             </span>
           )}
         </div>
@@ -1012,7 +1006,6 @@ export function InstagramVisual() {
                 color: '#9ca3af',
                 fontFamily: MONO,
                 letterSpacing: '.1em',
-                textTransform: 'uppercase',
               }}
             >
               {m.l}
@@ -1059,7 +1052,6 @@ export function InstagramVisual() {
               color: '#fff',
               fontFamily: MONO,
               letterSpacing: '.1em',
-              textTransform: 'uppercase',
             }}
           >
             Crescimento 12 semanas
@@ -1233,7 +1225,6 @@ export function HubVisual() {
               fontSize: 8,
               fontWeight: 700,
               letterSpacing: '.1em',
-              textTransform: 'uppercase',
               fontFamily: MONO,
             }}
           >
@@ -1316,7 +1307,6 @@ export function HubVisual() {
             fontWeight: 600,
             color: '#78716c',
             letterSpacing: '.14em',
-            textTransform: 'uppercase',
           }}
         >
           Agência Paralela
@@ -1405,7 +1395,6 @@ export function HubVisual() {
                     fontWeight: 700,
                     color: 'rgba(255,255,255,.85)',
                     letterSpacing: '.12em',
-                    textTransform: 'uppercase',
                   }}
                 >
                   Inverno
@@ -1426,7 +1415,7 @@ export function HubVisual() {
                   letterSpacing: '.08em',
                 }}
               >
-                REELS
+                Reels
               </div>
             </div>
             <div style={{ padding: '14px 18px', display: 'flex', flexDirection: 'column' }}>
@@ -1441,7 +1430,6 @@ export function HubVisual() {
                     fontWeight: 600,
                     fontFamily: MONO,
                     letterSpacing: '.08em',
-                    textTransform: 'uppercase',
                   }}
                 >
                   Vence hoje · 18h
@@ -1585,7 +1573,7 @@ export function HubVisual() {
                     letterSpacing: '.06em',
                   }}
                 >
-                  AGUARDANDO
+                  Aguardando
                 </div>
               </div>
             </div>
@@ -1744,7 +1732,6 @@ export function CalendarVisual() {
                 fontSize: 8,
                 fontWeight: 700,
                 letterSpacing: '.08em',
-                textTransform: 'uppercase',
                 color: '#9ca3af',
                 fontFamily: MONO,
                 textAlign: 'center',
@@ -1811,7 +1798,6 @@ export function CalendarVisual() {
             fontSize: 9,
             fontWeight: 700,
             letterSpacing: '.1em',
-            textTransform: 'uppercase',
             color: '#6b7280',
             marginBottom: 10,
           }}
@@ -1878,7 +1864,6 @@ export function CalendarVisual() {
                         color: '#4b5563',
                         fontFamily: MONO,
                         letterSpacing: '.06em',
-                        textTransform: 'uppercase',
                       }}
                     >
                       {item.t}
@@ -1960,7 +1945,6 @@ export function CalendarVisual() {
               fontSize: 9,
               fontWeight: 700,
               letterSpacing: '.1em',
-              textTransform: 'uppercase',
               color: '#9ca3af',
               fontFamily: MONO,
               textAlign: 'center',
@@ -2124,7 +2108,6 @@ export function FinanceVisual() {
                   fontFamily: MONO,
                   fontSize: 9,
                   letterSpacing: '.12em',
-                  textTransform: 'uppercase',
                   color: '#6b7280',
                   fontWeight: 700,
                 }}
@@ -2202,7 +2185,6 @@ export function FinanceVisual() {
                 fontSize: 8.5,
                 fontWeight: 700,
                 letterSpacing: '.1em',
-                textTransform: 'uppercase',
                 color: '#6b7280',
               }}
             >
@@ -2336,7 +2318,7 @@ export function SchedulingVisual() {
               letterSpacing: '.06em',
             }}
           >
-            CONTA CONECTADA
+            Conta conectada
           </div>
         </div>
         <Badge tone="success" small>
@@ -2374,7 +2356,7 @@ export function SchedulingVisual() {
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
               <Badge tone="teal" small>
-                CARROSSEL
+                Carrossel
               </Badge>
               <span style={{ fontSize: '.6rem', color: 'rgba(255,255,255,.35)', fontFamily: MONO }}>
                 3 MÍDIAS
@@ -2449,7 +2431,7 @@ export function SchedulingVisual() {
               }}
             >
               <Send size={11} style={{ marginRight: 4, verticalAlign: '-1px' }} />
-              AGENDAR
+              Agendar
             </div>
           </div>
         )}
@@ -2514,7 +2496,7 @@ export function SchedulingVisual() {
                     color: BRAND.green,
                   }}
                 >
-                  PUBLICADO
+                  Publicado
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginTop: 2 }}>
                   <ExternalLink size={9} color="rgba(255,255,255,.4)" />
@@ -2569,7 +2551,6 @@ export function SchedulingVisual() {
                   letterSpacing: '.08em',
                   color: i <= phase ? s.color : 'rgba(255,255,255,.25)',
                   transition: 'all .4s ease',
-                  textTransform: 'uppercase',
                 }}
               >
                 {s.label}
