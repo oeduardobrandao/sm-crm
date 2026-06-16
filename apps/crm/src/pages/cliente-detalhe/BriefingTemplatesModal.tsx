@@ -34,6 +34,7 @@ export function BriefingTemplatesModal({
   const [title, setTitle] = useState('');
   const [questions, setQuestions] = useState<BriefingTemplateQuestion[]>([]);
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   function refresh() {
     qc.invalidateQueries({ queryKey: ['briefing-templates'] });
@@ -59,6 +60,7 @@ export function BriefingTemplatesModal({
         const imported = rows
           .filter((r) => r.pergunta && r.pergunta.trim())
           .map((r) => ({ question: r.pergunta.trim(), section: r.secao?.trim() || null }));
+        setImporting(false);
         if (imported.length === 0) {
           toast.error('Nenhuma pergunta válida encontrada. Verifique a coluna "pergunta".');
           return;
@@ -70,7 +72,11 @@ export function BriefingTemplatesModal({
           }.`,
         );
       },
-      (err) => toast.error(err.message),
+      (err) => {
+        setImporting(false);
+        toast.error(err.message);
+      },
+      () => setImporting(true),
     );
   }
 
@@ -225,6 +231,9 @@ export function BriefingTemplatesModal({
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Título do template (ex: Onboarding)"
             />
+            {importing && (
+              <div className="csv-progress" role="progressbar" aria-label="Importando CSV" />
+            )}
             <div className="space-y-2">
               {questions.map((q, i) => (
                 <div key={i} className="flex gap-2">
@@ -254,7 +263,7 @@ export function BriefingTemplatesModal({
                 <Button size="sm" variant="outline" onClick={addRow}>
                   <Plus size={14} className="mr-1.5" /> Adicionar pergunta
                 </Button>
-                <Button size="sm" variant="outline" onClick={handleImportCSV}>
+                <Button size="sm" variant="outline" onClick={handleImportCSV} disabled={importing}>
                   <Upload size={14} className="mr-1.5" /> Importar CSV
                 </Button>
                 <span className="text-xs text-muted-foreground">Colunas: pergunta*, secao</span>

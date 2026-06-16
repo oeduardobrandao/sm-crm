@@ -551,6 +551,7 @@ function BriefingEditor({
   });
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [applying, setApplying] = useState(false);
+  const [importingCsv, setImportingCsv] = useState(false);
 
   // Default selection: first briefing once loaded (or when the selected one is deleted).
   useEffect(() => {
@@ -647,8 +648,13 @@ function BriefingEditor({
         } else {
           toast.error('Nenhuma pergunta válida encontrada. Verifique a coluna "pergunta".');
         }
+        setImportingCsv(false);
       },
-      (err) => toast.error(err.message),
+      (err) => {
+        setImportingCsv(false);
+        toast.error(err.message);
+      },
+      () => setImportingCsv(true),
     );
   }
 
@@ -852,11 +858,20 @@ function BriefingEditor({
           <Button size="sm" variant="outline" onClick={() => setTemplatesOpen(true)}>
             Templates
           </Button>
-          <Button size="sm" variant="outline" onClick={handleCSVImport} disabled={!selectedId}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleCSVImport}
+            disabled={!selectedId || importingCsv}
+          >
             <Upload size={14} className="mr-1.5" /> Importar CSV
           </Button>
         </div>
       </div>
+
+      {importingCsv && (
+        <div className="csv-progress mb-3" role="progressbar" aria-label="Importando CSV" />
+      )}
 
       {/* Briefing tabs */}
       {briefings.length > 0 && (

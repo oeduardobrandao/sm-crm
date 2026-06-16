@@ -39,6 +39,7 @@ export function parseCSV(csvText: string): Record<string, string>[] {
 export function openCSVSelector(
   onUpload: (data: Record<string, string>[]) => void,
   onError: (err: Error) => void,
+  onStart?: () => void,
 ) {
   const input = document.createElement('input');
   input.type = 'file';
@@ -48,6 +49,9 @@ export function openCSVSelector(
   input.addEventListener('change', async (e) => {
     const file = (e.target as HTMLInputElement).files?.[0];
     if (!file) return;
+
+    // Signal that a file was actually chosen and read/parse is starting.
+    onStart?.();
 
     try {
       const text = await file.text();

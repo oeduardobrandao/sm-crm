@@ -6906,3 +6906,31 @@ body.landing-page #root {
   height: auto;
   overflow: visible;
 }
+
+/* Indeterminate loading bar (CSV import read/parse) */
+@keyframes csv-indeterminate {
+  0% {
+    left: -40%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+.csv-progress {
+  position: relative;
+  height: 3px;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: var(--surface-hover);
+}
+.csv-progress::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  height: 100%;
+  width: 40%;
+  border-radius: 9999px;
+  background: var(--primary-color);
+  animation: csv-indeterminate 1s ease-in-out infinite;
+}
