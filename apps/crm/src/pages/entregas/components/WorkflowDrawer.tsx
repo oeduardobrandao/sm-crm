@@ -92,80 +92,8 @@ import { DiffView } from './DiffView';
 import { ReadOnlyTipTap } from './ReadOnlyTipTap';
 import { computeWordDiff } from '@/utils/textDiff';
 import { computeTipTapDiff } from '@/utils/tiptapDiff';
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-const TIPO_LABELS: Record<WorkflowPost['tipo'], string> = {
-  feed: 'Feed',
-  reels: 'Reels',
-  stories: 'Stories',
-  carrossel: 'Carrossel',
-};
-
-const STATUS_LABELS: Record<WorkflowPost['status'], string> = {
-  rascunho: 'Rascunho',
-  revisao_interna: 'Em revisão',
-  aprovado_interno: 'Aprovado internamente',
-  enviado_cliente: 'Enviado ao cliente',
-  aprovado_cliente: 'Aprovado pelo cliente',
-  correcao_cliente: 'Correção solicitada',
-  agendado: 'Agendado',
-  postado: 'Postado',
-  falha_publicacao: 'Falha na publicação',
-};
-
-const STATUS_CLASS: Record<WorkflowPost['status'], string> = {
-  rascunho: 'post-status--rascunho',
-  revisao_interna: 'post-status--revisao',
-  aprovado_interno: 'post-status--aprovado-interno',
-  enviado_cliente: 'post-status--enviado',
-  aprovado_cliente: 'post-status--aprovado-cliente',
-  correcao_cliente: 'post-status--correcao',
-  agendado: 'post-status--agendado',
-  postado: 'post-status--postado',
-  falha_publicacao: 'status-danger',
-};
-
-const MESES_ABREV = [
-  'jan',
-  'fev',
-  'mar',
-  'abr',
-  'mai',
-  'jun',
-  'jul',
-  'ago',
-  'set',
-  'out',
-  'nov',
-  'dez',
-];
-
-// Compact pt-BR publish-date label for the collapsed post row, e.g. "8 jun · 14h"
-// or "18 jul · 18h30". Minutes show only when non-zero; the year is appended only
-// when it differs from the current year, so an off-year date never reads ambiguously.
-function formatPostDate(iso: string): string {
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return '';
-  const ano = d.getFullYear() !== new Date().getFullYear() ? ` ${d.getFullYear()}` : '';
-  const hh = String(d.getHours()).padStart(2, '0');
-  const min = d.getMinutes();
-  const hora = min === 0 ? `${hh}h` : `${hh}h${String(min).padStart(2, '0')}`;
-  return `${d.getDate()} ${MESES_ABREV[d.getMonth()]}${ano} · ${hora}`;
-}
-
-// Full, readable form for the row's tooltip, e.g. "8 de junho de 2026, 14:00".
-function formatPostDateFull(iso: string): string {
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return '';
-  return d.toLocaleString('pt-BR', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
+import { TIPO_LABELS, STATUS_LABELS, STATUS_CLASS } from '../postLabels';
+import { formatPostDate, formatPostDateFull } from '@/utils/postDate';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -174,16 +102,24 @@ interface WorkflowDrawerProps {
   membros: Membro[];
   onClose: () => void;
   onRefresh: () => void;
+  initialPostId?: number;
 }
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export function WorkflowDrawer({ card, membros, onClose, onRefresh }: WorkflowDrawerProps) {
+export function WorkflowDrawer({
+  card,
+  membros,
+  onClose,
+  onRefresh,
+  initialPostId,
+}: WorkflowDrawerProps) {
   const workflowId = card.workflow.id!;
   const qc = useQueryClient();
 
-  // Expanded post id (accordion)
-  const [expandedId, setExpandedId] = useState<number | null>(null);
+  // Expanded post id (accordion). Seeded from initialPostId when opened from the
+  // calendar; the call site keys the drawer by initialPostId so a new target remounts.
+  const [expandedId, setExpandedId] = useState<number | null>(initialPostId ?? null);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
 
   const [replyText, setReplyText] = useState<Record<number, string>>({});

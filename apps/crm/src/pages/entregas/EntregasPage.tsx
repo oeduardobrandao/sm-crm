@@ -50,6 +50,8 @@ export default function EntregasPage() {
   const [editCard, setEditCard] = useState<BoardCard | null>(null);
   const [drawerCard, setDrawerCard] = useState<BoardCard | null>(null);
   const [recurringWfId, setRecurringWfId] = useState<number | null>(null);
+  const [calendarMode, setCalendarMode] = useState<'entregas' | 'publicacoes'>('entregas');
+  const [drawerInitialPostId, setDrawerInitialPostId] = useState<number | null>(null);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const {
@@ -93,6 +95,22 @@ export default function EntregasPage() {
     for (const c of cards) names.add(c.etapa.nome);
     return Array.from(names);
   }, [cards]);
+
+  // Resolve a post's workflow back to its board card (O(1)) for drawer opening.
+  // Built from the UNFILTERED cards so a filtered-out workflow's post is still openable.
+  const cardsByWorkflowId = useMemo(() => new Map(cards.map((c) => [c.workflow.id!, c])), [cards]);
+  const openableWorkflowIds = useMemo(() => new Set(cards.map((c) => c.workflow.id!)), [cards]);
+
+  const handleCardClick = (card: BoardCard) => {
+    setDrawerInitialPostId(null);
+    setDrawerCard(card);
+  };
+  const handlePostClick = (workflowId: number, postId: number) => {
+    const card = cardsByWorkflowId.get(workflowId);
+    if (!card) return;
+    setDrawerInitialPostId(postId);
+    setDrawerCard(card);
+  };
 
   // Apply filters
   let filteredCards = cards;
@@ -222,23 +240,24 @@ export default function EntregasPage() {
         ))}
       </div>
 
-      {activeView !== 'concluded' && (
-        <EntregasFilters
-          filters={filters}
-          onChange={setFilters}
-          clientes={clientes}
-          membros={membros}
-          templates={templates}
-          etapaNames={etapaNames}
-        />
-      )}
+      {activeView !== 'concluded' &&
+        !(activeView === 'calendar' && calendarMode === 'publicacoes') && (
+          <EntregasFilters
+            filters={filters}
+            onChange={setFilters}
+            clientes={clientes}
+            membros={membros}
+            templates={templates}
+            etapaNames={etapaNames}
+          />
+        )}
 
       {activeView === 'kanban' && (
         <KanbanView
           cards={filteredCards}
-          onCardClick={setDrawerCard}
+          onCardClick={handleCardClick}
           onEditClick={setEditCard}
-          onPostsClick={setDrawerCard}
+          onPostsClick={handleCardClick}
           onRefresh={refresh}
           onRecurring={setRecurringWfId}
           membros={membros}
@@ -250,14 +269,21 @@ export default function EntregasPage() {
       )}
       {activeView === 'chart' && <ChartView cards={filteredCards} />}
       {activeView === 'calendar' && (
-        <CalendarView cards={filteredCards} onCardClick={setDrawerCard} />
+        <CalendarView
+          cards={filteredCards}
+          onCardClick={handleCardClick}
+          mode={calendarMode}
+          onModeChange={setCalendarMode}
+          openableWorkflowIds={openableWorkflowIds}
+          onPostClick={handlePostClick}
+        />
       )}
       {activeView === 'list' && (
         <ListView
           cards={filteredCards}
           sort={listSort}
           onSortChange={setListSort}
-          onCardClick={setDrawerCard}
+          onCardClick={handleCardClick}
         />
       )}
       {activeView === 'concluded' && <ConcludedView />}
@@ -281,7 +307,7 @@ export default function EntregasPage() {
           onSaved={refresh}
           onDeleted={refresh}
           onOpenPosts={() => {
-            setDrawerCard(editCard);
+            handleCardClick(editCard);
             setEditCard(null);
           }}
         />
@@ -297,9 +323,14 @@ export default function EntregasPage() {
       )}
       {drawerCard && (
         <WorkflowDrawer
+          key={`${drawerCard.workflow.id}:${drawerInitialPostId ?? ''}`}
           card={drawerCard}
+          initialPostId={drawerInitialPostId ?? undefined}
           membros={membros}
-          onClose={() => setDrawerCard(null)}
+          onClose={() => {
+            setDrawerCard(null);
+            setDrawerInitialPostId(null);
+          }}
           onRefresh={refresh}
         />
       )}

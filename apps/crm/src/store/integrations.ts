@@ -71,3 +71,45 @@ export async function toggleIntegracao(
     );
   if (error) throw error;
 }
+
+export interface IgAccountStatus {
+  revoked: boolean;
+  expired: boolean;
+  canPublish: boolean;
+}
+
+/**
+ * Per-client Instagram account status, scoped to the given client ids. Mirrors the
+ * derivation used by WorkflowDrawer's igAccountStatus so inline publish actions gate
+ * identically.
+ */
+export async function getInstagramAccountStatuses(
+  clientIds: number[],
+): Promise<Map<number, IgAccountStatus>> {
+  const result = new Map<number, IgAccountStatus>();
+  if (clientIds.length === 0) return result;
+  const { data, error } = await supabase
+    .from('instagram_accounts')
+    .select('client_id, authorization_status, token_expires_at, permissions')
+    .in('client_id', clientIds);
+  if (error) throw error;
+  const now = Date.now();
+  for (const row of (data || []) as Array<{
+    client_id: number | null;
+    authorization_status: string | null;
+    token_expires_at: string | null;
+    permissions: unknown;
+  }>) {
+    if (row.client_id == null) continue;
+    result.set(row.client_id, {
+      revoked: row.authorization_status === 'revoked',
+      expired:
+        row.authorization_status === 'expired' ||
+        (row.token_expires_at ? new Date(row.token_expires_at).getTime() < now : false),
+      canPublish:
+        Array.isArray(row.permissions) &&
+        row.permissions.includes('instagram_business_content_publish'),
+    });
+  }
+  return result;
+}
