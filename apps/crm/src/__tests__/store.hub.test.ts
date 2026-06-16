@@ -17,6 +17,10 @@ type MockedSupabaseModule = typeof supabaseModule & {
     operation: 'select' | 'insert' | 'update' | 'delete' | 'upsert',
     ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>
   ) => void;
+  __queueSupabaseRpc: (
+    name: string,
+    ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>
+  ) => void;
   __resetSupabaseMock: () => void;
   __setCurrentProfile: (profile: Record<string, unknown> | null) => void;
 };
@@ -188,7 +192,13 @@ describe('store hub and ideias helpers', () => {
     await expect(store.getHubBriefingQuestions(14)).resolves.toEqual([
       { id: 'q1', question: 'Quais metas vocês têm?', display_order: 0 },
     ]);
-    await store.addHubBriefingQuestion(14, 'conta-1', 'Qual é a persona principal?', 'Estratégia');
+    await store.addHubBriefingQuestion(
+      14,
+      'conta-1',
+      'b1',
+      'Qual é a persona principal?',
+      'Estratégia',
+    );
     await store.updateHubBriefingQuestionSection('q1', 'Mídia paga');
     await store.updateHubBriefingQuestion('q1', 'Qual é o orçamento mensal?');
     await store.deleteHubBriefingQuestion('q1');
@@ -196,10 +206,17 @@ describe('store hub and ideias helpers', () => {
     expect(getCalls('hub_briefing_questions', 'insert').at(-1)?.payload).toEqual({
       cliente_id: 14,
       conta_id: 'conta-1',
+      briefing_id: 'b1',
       question: 'Qual é a persona principal?',
       display_order: 4,
       section: 'Estratégia',
       answer: null,
+    });
+    // The max-order lookup inside addHubBriefingQuestion must be scoped to the briefing.
+    const briefingSelectCalls = getCalls('hub_briefing_questions', 'select');
+    expect(briefingSelectCalls.at(-1)?.modifiers).toContainEqual({
+      method: 'eq',
+      args: ['briefing_id', 'b1'],
     });
     expect(getCalls('hub_briefing_questions', 'update')[0].payload).toEqual({
       section: 'Mídia paga',
@@ -207,6 +224,249 @@ describe('store hub and ideias helpers', () => {
     expect(getCalls('hub_briefing_questions', 'update')[1].payload).toEqual({
       question: 'Qual é o orçamento mensal?',
     });
+  });
+
+  it('manages briefings (list, add with order, rename, delete)', async () => {
+    mockedSupabase.__queueSupabaseResult(
+      'briefings',
+      'select',
+      // getBriefings -> list
+      { data: [{ id: 'b1', cliente_id: 14, title: 'Onboarding', display_order: 0 }], error: null },
+      // addBriefing -> max display_order lookup
+      { data: { display_order: 2 }, error: null },
+    );
+    mockedSupabase.__queueSupabaseResult('briefings', 'insert', {
+      data: { id: 'b2', cliente_id: 14, conta_id: 'conta-1', title: 'Campanha', display_order: 3 },
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseResult('briefings', 'update', { data: null, error: null });
+    mockedSupabase.__queueSupabaseResult('briefings', 'delete', { data: null, error: null });
+
+    await expect(store.getBriefings(14)).resolves.toEqual([
+      { id: 'b1', cliente_id: 14, title: 'Onboarding', display_order: 0 },
+    ]);
+    await expect(store.addBriefing(14, 'conta-1', 'Campanha')).resolves.toEqual({
+      id: 'b2',
+      cliente_id: 14,
+      conta_id: 'conta-1',
+      title: 'Campanha',
+      display_order: 3,
+    });
+    await store.updateBriefingTitle('b1', 'Briefing Inicial');
+    await store.deleteBriefing('b1');
+
+    expect(getCalls('briefings', 'insert').at(-1)?.payload).toEqual({
+      cliente_id: 14,
+      conta_id: 'conta-1',
+      title: 'Campanha',
+      display_order: 3,
+    });
+    expect(getCalls('briefings', 'update').at(-1)?.payload).toEqual({ title: 'Briefing Inicial' });
+    expect(getCalls('briefings', 'delete').at(-1)?.modifiers).toContainEqual({
+      method: 'eq',
+      args: ['id', 'b1'],
+    });
+  });
+
+  it('manages briefing templates and sets a default via RPC', async () => {
+    mockedSupabase.__queueSupabaseResult('briefing_templates', 'select', {
+      data: [{ id: 't1', title: 'Discovery', questions: [], is_default: false }],
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseResult('briefing_templates', 'insert', {
+      data: {
+        id: 't2',
+        conta_id: 'conta-1',
+        user_id: 'user-1',
+        title: 'Marca',
+        questions: [{ question: 'Voz da marca?', section: null }],
+        is_default: false,
+      },
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseResult('briefing_templates', 'update', {
+      data: null,
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseResult('briefing_templates', 'delete', {
+      data: null,
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseRpc('set_default_briefing_template', { data: null, error: null });
+
+    await expect(store.getBriefingTemplates()).resolves.toEqual([
+      { id: 't1', title: 'Discovery', questions: [], is_default: false },
+    ]);
+    await store.addBriefingTemplate({
+      title: 'Marca',
+      questions: [{ question: 'Voz da marca?', section: null }],
+    });
+    await store.updateBriefingTemplate('t1', { title: 'Discovery v2' });
+    await store.removeBriefingTemplate('t1');
+    await store.setDefaultBriefingTemplate('t2');
+
+    expect(getCalls('briefing_templates', 'insert').at(-1)?.payload).toEqual({
+      title: 'Marca',
+      questions: [{ question: 'Voz da marca?', section: null }],
+      user_id: 'user-1',
+      conta_id: 'conta-1',
+    });
+    expect(getCalls('briefing_templates', 'update').at(-1)?.payload).toEqual({
+      title: 'Discovery v2',
+    });
+    const rpcCall = getCalls('rpc:set_default_briefing_template').at(-1);
+    expect(rpcCall?.payload).toEqual({ p_template_id: 't2' });
+  });
+
+  it('applies a template into a new briefing as independent copies', async () => {
+    // fetch template by id
+    mockedSupabase.__queueSupabaseResult('briefing_templates', 'select', {
+      data: {
+        id: 't1',
+        title: 'Discovery',
+        questions: [
+          { question: 'Metas?', section: 'Estratégia' },
+          { question: 'Concorrentes?', section: 'Estratégia' },
+        ],
+      },
+      error: null,
+    });
+    // addBriefing: max-order lookup, then insert
+    mockedSupabase.__queueSupabaseResult('briefings', 'select', { data: null, error: null });
+    mockedSupabase.__queueSupabaseResult('briefings', 'insert', {
+      data: { id: 'b9', cliente_id: 14, conta_id: 'conta-1', title: 'Discovery', display_order: 0 },
+      error: null,
+    });
+    // bulk question insert
+    mockedSupabase.__queueSupabaseResult('hub_briefing_questions', 'insert', {
+      data: null,
+      error: null,
+    });
+
+    await expect(store.applyTemplateToClient(14, 'conta-1', 't1')).resolves.toEqual({
+      id: 'b9',
+      cliente_id: 14,
+      conta_id: 'conta-1',
+      title: 'Discovery',
+      display_order: 0,
+    });
+
+    expect(getCalls('hub_briefing_questions', 'insert').at(-1)?.payload).toEqual([
+      {
+        cliente_id: 14,
+        conta_id: 'conta-1',
+        briefing_id: 'b9',
+        question: 'Metas?',
+        section: 'Estratégia',
+        answer: null,
+        display_order: 0,
+      },
+      {
+        cliente_id: 14,
+        conta_id: 'conta-1',
+        briefing_id: 'b9',
+        question: 'Concorrentes?',
+        section: 'Estratégia',
+        answer: null,
+        display_order: 1,
+      },
+    ]);
+  });
+
+  it('deletes the new briefing if the question insert fails (compensating cleanup)', async () => {
+    mockedSupabase.__queueSupabaseResult('briefing_templates', 'select', {
+      data: { id: 't1', title: 'Discovery', questions: [{ question: 'Metas?', section: null }] },
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseResult('briefings', 'select', { data: null, error: null });
+    mockedSupabase.__queueSupabaseResult('briefings', 'insert', {
+      data: { id: 'b9', cliente_id: 14, conta_id: 'conta-1', title: 'Discovery', display_order: 0 },
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseResult('hub_briefing_questions', 'insert', {
+      data: null,
+      error: { message: 'insert failed' },
+    });
+    mockedSupabase.__queueSupabaseResult('briefings', 'delete', { data: null, error: null });
+
+    await expect(store.applyTemplateToClient(14, 'conta-1', 't1')).rejects.toBeTruthy();
+    expect(getCalls('briefings', 'delete').at(-1)?.modifiers).toContainEqual({
+      method: 'eq',
+      args: ['id', 'b9'],
+    });
+  });
+
+  it('auto-seeds a briefing from the default template on addCliente', async () => {
+    mockedSupabase.__queueSupabaseResult('clientes', 'insert', {
+      data: { id: 77, nome: 'Acme', conta_id: 'conta-1' },
+      error: null,
+    });
+    // default-template lookup
+    mockedSupabase.__queueSupabaseResult('briefing_templates', 'select', {
+      data: { id: 't1' },
+      error: null,
+    });
+    // applyTemplateToClient internals
+    mockedSupabase.__queueSupabaseResult('briefing_templates', 'select', {
+      data: { id: 't1', title: 'Discovery', questions: [{ question: 'Metas?', section: null }] },
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseResult('briefings', 'select', { data: null, error: null });
+    mockedSupabase.__queueSupabaseResult('briefings', 'insert', {
+      data: { id: 'b1', cliente_id: 77, conta_id: 'conta-1', title: 'Discovery', display_order: 0 },
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseResult('hub_briefing_questions', 'insert', {
+      data: null,
+      error: null,
+    });
+
+    await store.addCliente({
+      nome: 'Acme',
+      sigla: 'AC',
+      cor: '#fff',
+      plano: 'pro',
+      email: '',
+      telefone: '',
+      status: 'ativo',
+      valor_mensal: 0,
+    });
+
+    expect(getCalls('hub_briefing_questions', 'insert').at(-1)?.payload).toEqual([
+      {
+        cliente_id: 77,
+        conta_id: 'conta-1',
+        briefing_id: 'b1',
+        question: 'Metas?',
+        section: null,
+        answer: null,
+        display_order: 0,
+      },
+    ]);
+  });
+
+  it('addCliente is a no-op for briefings when there is no default template', async () => {
+    mockedSupabase.__queueSupabaseResult('clientes', 'insert', {
+      data: { id: 78, nome: 'NoTpl', conta_id: 'conta-1' },
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseResult('briefing_templates', 'select', {
+      data: null,
+      error: null,
+    });
+
+    await store.addCliente({
+      nome: 'NoTpl',
+      sigla: 'NT',
+      cor: '#fff',
+      plano: 'pro',
+      email: '',
+      telefone: '',
+      status: 'ativo',
+      valor_mensal: 0,
+    });
+
+    expect(getCalls('briefings', 'insert').length).toBe(0);
   });
 
   it('filters ideias, updates comments, and toggles reactions on and off', async () => {

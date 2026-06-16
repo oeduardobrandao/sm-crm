@@ -9,6 +9,7 @@ import type {
   HubPage,
   HubPageFull,
   BriefingQuestion,
+  Briefing,
   HubIdeia,
   IdeiaReaction,
   InstagramFeedData,
@@ -118,7 +119,7 @@ export function fetchPage(token: string, page_id: string) {
 }
 
 export function fetchBriefing(token: string) {
-  return get<{ questions: BriefingQuestion[] }>('hub-briefing', { token });
+  return get<{ briefings: Briefing[] }>('hub-briefing', { token });
 }
 
 export function submitBriefingAnswer(token: string, question_id: string, answer: string) {

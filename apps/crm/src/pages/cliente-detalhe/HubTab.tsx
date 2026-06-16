@@ -40,7 +40,12 @@ import {
   addHubBriefingQuestion,
   updateHubBriefingQuestion,
   deleteHubBriefingQuestion,
-  updateHubBriefingQuestionSection,
+  getBriefings,
+  addBriefing,
+  updateBriefingTitle,
+  deleteBriefing,
+  getBriefingTemplates,
+  applyTemplateToClient,
   getIdeias,
   type Ideia,
   type HubBrandRow,
@@ -50,6 +55,7 @@ import {
 } from '@/store';
 import { IdeiaDrawer } from '@/components/ideias/IdeiaDrawer';
 import { IdeiaStatusBadge } from '@/components/ideias/IdeiaStatusBadge';
+import { BriefingTemplatesModal } from './BriefingTemplatesModal';
 
 interface HubTabProps {
   clienteId: number;
@@ -520,20 +526,100 @@ function BriefingEditor({
   contaId: string;
   onSaved: () => void;
 }) {
+  const qc = useQueryClient();
+  const { data: briefings = [] } = useQuery({
+    queryKey: ['briefings', clienteId],
+    queryFn: () => getBriefings(clienteId),
+  });
   const { data: questions = [], isLoading } = useQuery({
     queryKey: ['hub-briefing-questions', clienteId],
     queryFn: () => getHubBriefingQuestions(clienteId),
   });
 
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
   const [newSectionName, setNewSectionName] = useState('');
   const [addingSectionInput, setAddingSectionInput] = useState(false);
-  // Map of section name -> new question text being typed
   const [newQuestions, setNewQuestions] = useState<Record<string, string>>({});
   const [addingFor, setAddingFor] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState(false);
+  const [renameText, setRenameText] = useState('');
+  const { data: templates = [] } = useQuery({
+    queryKey: ['briefing-templates'],
+    queryFn: getBriefingTemplates,
+  });
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [applying, setApplying] = useState(false);
+
+  // Default selection: first briefing once loaded (or when the selected one is deleted).
+  useEffect(() => {
+    if (briefings.length === 0) {
+      if (selectedId !== null) setSelectedId(null);
+      return;
+    }
+    if (!selectedId || !briefings.find((b) => b.id === selectedId)) {
+      setSelectedId(briefings[0].id);
+    }
+  }, [briefings, selectedId]);
+
+  function refresh() {
+    qc.invalidateQueries({ queryKey: ['briefings', clienteId] });
+    qc.invalidateQueries({ queryKey: ['hub-briefing-questions', clienteId] });
+    onSaved();
+  }
+
+  // Coalesce legacy null-briefing_id questions into the first briefing.
+  const firstId = briefings[0]?.id ?? null;
+  const briefingQuestions = questions.filter((q) => (q.briefing_id ?? firstId) === selectedId);
+
+  async function handleCreateBriefing() {
+    try {
+      const b = await addBriefing(clienteId, contaId, 'Novo briefing');
+      setSelectedId(b.id);
+      setRenaming(true);
+      setRenameText(b.title);
+      refresh();
+    } catch (e: any) {
+      toast.error(e.message ?? 'Erro ao criar briefing.');
+    }
+  }
+
+  async function handleRenameBriefing() {
+    if (!selectedId || !renameText.trim()) return;
+    try {
+      await updateBriefingTitle(selectedId, renameText.trim());
+      setRenaming(false);
+      refresh();
+    } catch (e: any) {
+      toast.error(e.message ?? 'Erro ao renomear briefing.');
+    }
+  }
+
+  async function handleDeleteBriefing() {
+    if (!selectedId) return;
+    if (
+      !window.confirm(
+        'Remover este briefing e todas as suas perguntas? Essa ação não pode ser desfeita.',
+      )
+    )
+      return;
+    try {
+      await deleteBriefing(selectedId);
+      setSelectedId(null);
+      refresh();
+      toast.success('Briefing removido.');
+    } catch (e: any) {
+      toast.error(e.message ?? 'Erro ao remover briefing.');
+    }
+  }
 
   function handleCSVImport() {
+    if (!selectedId) {
+      toast.error('Crie ou selecione um briefing primeiro.');
+      return;
+    }
+    const briefingId = selectedId;
     openCSVSelector(
       async (rows) => {
         let count = 0;
@@ -543,6 +629,7 @@ function BriefingEditor({
             await addHubBriefingQuestion(
               clienteId,
               contaId,
+              briefingId,
               row.pergunta.trim(),
               row.secao?.trim() || null,
               row.resposta?.trim() || null,
@@ -556,7 +643,7 @@ function BriefingEditor({
           toast.success(
             `${count} pergunta${count !== 1 ? 's' : ''} importada${count !== 1 ? 's' : ''} com sucesso!`,
           );
-          onSaved();
+          refresh();
         } else {
           toast.error('Nenhuma pergunta válida encontrada. Verifique a coluna "pergunta".');
         }
@@ -565,27 +652,41 @@ function BriefingEditor({
     );
   }
 
-  // Build ordered list of sections (preserving insertion order)
+  async function handleApplyTemplate(templateId: string) {
+    setApplying(true);
+    try {
+      const b = await applyTemplateToClient(clienteId, contaId, templateId);
+      setSelectedId(b.id);
+      refresh();
+      toast.success('Template aplicado! Ajuste as perguntas como quiser.');
+    } catch (e: any) {
+      toast.error(e.message ?? 'Erro ao aplicar template.');
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  // Build ordered list of sections within the selected briefing.
   const sections: { name: string; questions: HubBriefingQuestionRow[] }[] = [];
-  for (const q of questions) {
+  for (const q of briefingQuestions) {
     const name = q.section ?? '';
     const existing = sections.find((s) => s.name === name);
     if (existing) existing.questions.push(q);
     else sections.push({ name, questions: [q] });
   }
-  // Put unsectioned questions (section='') first if they exist
   const unsectioned = sections.find((s) => s.name === '');
   const namedSections = sections.filter((s) => s.name !== '');
 
   async function handleAddQuestion(section: string | null) {
+    if (!selectedId) return;
     const key = section ?? '';
     const text = (newQuestions[key] ?? '').trim();
     if (!text) return;
     setAddingFor(key);
     try {
-      await addHubBriefingQuestion(clienteId, contaId, text, section);
+      await addHubBriefingQuestion(clienteId, contaId, selectedId, text, section);
       setNewQuestions((prev) => ({ ...prev, [key]: '' }));
-      onSaved();
+      refresh();
     } catch (e: any) {
       toast.error(e.message ?? 'Erro ao adicionar pergunta.');
     } finally {
@@ -598,7 +699,7 @@ function BriefingEditor({
     try {
       await updateHubBriefingQuestion(id, editText.trim());
       setEditingId(null);
-      onSaved();
+      refresh();
     } catch (e: any) {
       toast.error(e.message ?? 'Erro ao salvar pergunta.');
     }
@@ -607,25 +708,19 @@ function BriefingEditor({
   async function handleDelete(id: string) {
     try {
       await deleteHubBriefingQuestion(id);
-      onSaved();
+      refresh();
       toast.success('Pergunta removida.');
     } catch (e: any) {
       toast.error(e.message ?? 'Erro ao remover pergunta.');
     }
   }
 
-  async function handleAddSection() {
+  function handleAddSection() {
     const name = newSectionName.trim();
     if (!name) return;
-    // Section is created implicitly when first question is added to it.
-    // We just add a placeholder question slot by tracking the section name.
-    // Actually: just persist an empty section by adding it to local state only — no DB row yet.
-    // The section is created when the user adds a question to it.
     setNewSectionName('');
     setAddingSectionInput(false);
-    // Add to namedSections tracking via a new question slot
     setNewQuestions((prev) => ({ ...prev, [name]: '' }));
-    // Signal that this section exists (we'll render it from newQuestions keys)
   }
 
   if (isLoading)
@@ -635,7 +730,6 @@ function BriefingEditor({
       </div>
     );
 
-  // Pending sections (typed but not yet saved to DB)
   const pendingSections = Object.keys(newQuestions).filter(
     (k) => k !== '' && !namedSections.find((s) => s.name === k),
   );
@@ -722,11 +816,13 @@ function BriefingEditor({
     );
   }
 
+  const selectedBriefing = briefings.find((b) => b.id === selectedId) ?? null;
+
   return (
     <section>
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="font-semibold">Briefing</h3>
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <h3 className="font-semibold">Briefings</h3>
+        <div className="flex items-center gap-2 flex-wrap">
           <span
             data-tooltip="Colunas: pergunta*, secao, resposta"
             data-tooltip-dir="bottom"
@@ -734,73 +830,184 @@ function BriefingEditor({
           >
             <HelpCircle className="h-4 w-4 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
           </span>
-          <Button size="sm" variant="outline" onClick={handleCSVImport}>
+          <Button size="sm" variant="outline" onClick={handleCreateBriefing}>
+            <Plus size={14} className="mr-1.5" /> Novo briefing
+          </Button>
+          <select
+            className="form-input text-xs h-8"
+            value=""
+            disabled={applying || templates.length === 0}
+            onChange={(e) => {
+              if (e.target.value) handleApplyTemplate(e.target.value);
+              e.currentTarget.value = '';
+            }}
+          >
+            <option value="">Usar template…</option>
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.title} ({(t.questions ?? []).length})
+              </option>
+            ))}
+          </select>
+          <Button size="sm" variant="outline" onClick={() => setTemplatesOpen(true)}>
+            Templates
+          </Button>
+          <Button size="sm" variant="outline" onClick={handleCSVImport} disabled={!selectedId}>
             <Upload size={14} className="mr-1.5" /> Importar CSV
           </Button>
         </div>
       </div>
 
-      {/* Unsectioned questions */}
-      {(unsectioned || namedSections.length === 0) && (
-        <div className="mb-6">{renderQuestions(unsectioned?.questions ?? [], null)}</div>
-      )}
-
-      {/* Named sections */}
-      {namedSections.map((s) => (
-        <div key={s.name} className="mb-6">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-            {s.name}
-          </p>
-          {renderQuestions(s.questions, s.name)}
-        </div>
-      ))}
-
-      {/* Pending (not yet saved) sections */}
-      {pendingSections.map((name) => (
-        <div key={name} className="mb-6">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-            {name}
-          </p>
-          {renderQuestions([], name)}
-        </div>
-      ))}
-
-      {/* Add section */}
-      {addingSectionInput ? (
-        <div className="flex gap-2 mt-2">
-          <Input
-            value={newSectionName}
-            onChange={(e) => setNewSectionName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleAddSection();
-              if (e.key === 'Escape') {
+      {/* Briefing tabs */}
+      {briefings.length > 0 && (
+        <div role="tablist" className="flex gap-1 mb-4 border-b overflow-x-auto">
+          {briefings.map((b) => (
+            <button
+              key={b.id}
+              type="button"
+              role="tab"
+              aria-selected={selectedId === b.id}
+              onClick={() => {
+                setSelectedId(b.id);
+                setRenaming(false);
+                setNewQuestions({});
                 setAddingSectionInput(false);
-                setNewSectionName('');
-              }
-            }}
-            placeholder="Nome da seção..."
-            className="flex-1"
-            autoFocus
-          />
-          <Button size="sm" onClick={handleAddSection} disabled={!newSectionName.trim()}>
-            Criar seção
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              setAddingSectionInput(false);
-              setNewSectionName('');
-            }}
-          >
-            Cancelar
-          </Button>
+                setEditingId(null);
+              }}
+              className={`px-3 py-2 text-sm whitespace-nowrap border-b-2 -mb-px transition-colors ${
+                selectedId === b.id
+                  ? 'border-primary font-semibold text-foreground'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {b.title || <span className="italic opacity-60">Sem título</span>}
+            </button>
+          ))}
         </div>
-      ) : (
-        <Button size="sm" variant="outline" onClick={() => setAddingSectionInput(true)}>
-          <Plus size={14} className="mr-1.5" /> Nova seção
-        </Button>
       )}
+
+      {!selectedBriefing ? (
+        <p className="text-sm text-muted-foreground py-6">
+          Nenhum briefing ainda. Crie um com "Novo briefing".
+        </p>
+      ) : (
+        <>
+          {/* Selected briefing header: rename / delete */}
+          <div className="flex items-center justify-between gap-2 mb-3">
+            {renaming ? (
+              <div className="flex gap-2 flex-1">
+                <Input
+                  value={renameText}
+                  onChange={(e) => setRenameText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleRenameBriefing();
+                    if (e.key === 'Escape') setRenaming(false);
+                  }}
+                  autoFocus
+                  className="flex-1"
+                />
+                <Button size="sm" onClick={handleRenameBriefing}>
+                  <Save size={14} className="mr-1.5" /> Salvar
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setRenaming(false)}>
+                  Cancelar
+                </Button>
+              </div>
+            ) : (
+              <>
+                <p className="text-sm font-semibold">
+                  {selectedBriefing.title || (
+                    <span className="font-normal italic text-muted-foreground">Sem título</span>
+                  )}
+                </p>
+                <div className="flex gap-1">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setRenaming(true);
+                      setRenameText(selectedBriefing.title);
+                    }}
+                  >
+                    <Pencil size={14} className="mr-1.5" /> Renomear
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleDeleteBriefing}
+                    aria-label="Remover briefing"
+                  >
+                    <Trash2 size={14} />
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Unsectioned questions */}
+          {(unsectioned || namedSections.length === 0) && (
+            <div className="mb-6">{renderQuestions(unsectioned?.questions ?? [], null)}</div>
+          )}
+
+          {/* Named sections */}
+          {namedSections.map((s) => (
+            <div key={s.name} className="mb-6">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                {s.name}
+              </p>
+              {renderQuestions(s.questions, s.name)}
+            </div>
+          ))}
+
+          {/* Pending (not yet saved) sections */}
+          {pendingSections.map((name) => (
+            <div key={name} className="mb-6">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                {name}
+              </p>
+              {renderQuestions([], name)}
+            </div>
+          ))}
+
+          {/* Add section */}
+          {addingSectionInput ? (
+            <div className="flex gap-2 mt-2">
+              <Input
+                value={newSectionName}
+                onChange={(e) => setNewSectionName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleAddSection();
+                  if (e.key === 'Escape') {
+                    setAddingSectionInput(false);
+                    setNewSectionName('');
+                  }
+                }}
+                placeholder="Nome da seção..."
+                className="flex-1"
+                autoFocus
+              />
+              <Button size="sm" onClick={handleAddSection} disabled={!newSectionName.trim()}>
+                Criar seção
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setAddingSectionInput(false);
+                  setNewSectionName('');
+                }}
+              >
+                Cancelar
+              </Button>
+            </div>
+          ) : (
+            <Button size="sm" variant="outline" onClick={() => setAddingSectionInput(true)}>
+              <Plus size={14} className="mr-1.5" /> Nova seção
+            </Button>
+          )}
+        </>
+      )}
+      <BriefingTemplatesModal open={templatesOpen} onOpenChange={setTemplatesOpen} />
     </section>
   );
 }

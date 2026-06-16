@@ -291,8 +291,21 @@ Deno.test("hub-briefing returns the client questionnaire for a valid token", asy
     data: { cliente_id: 14, is_active: true, clientes: { conta_id: "conta-1" } },
     error: null,
   });
+  db.queue("briefings", "select", {
+    data: [{ id: "b1", title: "Briefing", display_order: 0 }],
+    error: null,
+  });
   db.queue("hub_briefing_questions", "select", {
-    data: [{ id: "q1", question: "Qual o objetivo principal?" }],
+    data: [
+      {
+        id: "q1",
+        question: "Qual o objetivo principal?",
+        answer: null,
+        section: null,
+        display_order: 0,
+        briefing_id: "b1",
+      },
+    ],
     error: null,
   });
 
@@ -306,7 +319,8 @@ Deno.test("hub-briefing returns the client questionnaire for a valid token", asy
   const body = await readJson(response);
 
   assertEquals(response.status, 200);
-  assertEquals(body.questions.length, 1);
+  assertEquals(body.briefings.length, 1);
+  assertEquals(body.briefings[0].questions.length, 1);
 });
 
 Deno.test("hub-briefing validates required POST fields", async () => {

@@ -28,14 +28,61 @@ export function createHubBriefingHandler(deps: HubBriefingHandlerDeps) {
       const hubToken = await resolveHubToken(db as any, token, deps.now());
       if (!hubToken) return json({ error: "Link inválido." }, 404);
 
-      const { data, error } = await db
+      // Parent query: briefings drive the response so empty briefings still render.
+      const { data: briefings, error: bErr } = await db
+        .from("briefings")
+        .select("id, title, display_order")
+        .eq("cliente_id", hubToken.cliente_id)
+        .order("display_order")
+        .order("created_at");
+      if (bErr) return json({ error: bErr.message }, 500);
+
+      const { data: questions, error: qErr } = await db
         .from("hub_briefing_questions")
-        .select("id, question, answer, section, display_order")
+        .select("id, question, answer, section, display_order, briefing_id")
         .eq("cliente_id", hubToken.cliente_id)
         .order("display_order");
+      if (qErr) return json({ error: qErr.message }, 500);
 
-      if (error) return json({ error: error.message }, 500);
-      return json({ questions: data ?? [] });
+      const list = (briefings ?? []) as Array<{ id: string; title: string; display_order: number }>;
+      const qs = (questions ?? []) as Array<
+        {
+          id: string;
+          question: string;
+          answer: string | null;
+          section: string | null;
+          display_order: number;
+          briefing_id: string | null;
+        }
+      >;
+      // Legacy rows with a null briefing_id coalesce into the first briefing.
+      const firstId = list[0]?.id ?? null;
+      const grouped = list.map((b) => ({
+        id: b.id,
+        title: b.title,
+        display_order: b.display_order,
+        questions: qs
+          .filter((q) => (q.briefing_id ?? firstId) === b.id)
+          .map(({ briefing_id: _briefing_id, ...rest }) => rest),
+      }));
+
+      // Backward-compat: a stale CRM bundle can insert questions with briefing_id = NULL for a
+      // client that had no briefing at backfill time, leaving no parent briefing row. Surface
+      // those orphans under a synthetic default briefing so they never disappear from the portal.
+      if (list.length === 0 && qs.length > 0) {
+        return json({
+          briefings: [
+            {
+              id: "__default__",
+              title: "Briefing",
+              display_order: 0,
+              questions: qs.map(({ briefing_id: _briefing_id, ...rest }) => rest),
+            },
+          ],
+        });
+      }
+
+      return json({ briefings: grouped });
     }
 
     if (req.method === "POST") {
