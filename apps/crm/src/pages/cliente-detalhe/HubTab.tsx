@@ -44,6 +44,8 @@ import {
   addBriefing,
   updateBriefingTitle,
   deleteBriefing,
+  getBriefingTemplates,
+  applyTemplateToClient,
   getIdeias,
   type Ideia,
   type HubBrandRow,
@@ -53,6 +55,7 @@ import {
 } from '@/store';
 import { IdeiaDrawer } from '@/components/ideias/IdeiaDrawer';
 import { IdeiaStatusBadge } from '@/components/ideias/IdeiaStatusBadge';
+import { BriefingTemplatesModal } from './BriefingTemplatesModal';
 
 interface HubTabProps {
   clienteId: number;
@@ -542,6 +545,12 @@ function BriefingEditor({
   const [addingFor, setAddingFor] = useState<string | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [renameText, setRenameText] = useState('');
+  const { data: templates = [] } = useQuery({
+    queryKey: ['briefing-templates'],
+    queryFn: getBriefingTemplates,
+  });
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [applying, setApplying] = useState(false);
 
   // Default selection: first briefing once loaded (or when the selected one is deleted).
   useEffect(() => {
@@ -637,6 +646,20 @@ function BriefingEditor({
       },
       (err) => toast.error(err.message),
     );
+  }
+
+  async function handleApplyTemplate(templateId: string) {
+    setApplying(true);
+    try {
+      const b = await applyTemplateToClient(clienteId, contaId, templateId);
+      setSelectedId(b.id);
+      refresh();
+      toast.success('Template aplicado! Ajuste as perguntas como quiser.');
+    } catch (e: any) {
+      toast.error(e.message ?? 'Erro ao aplicar template.');
+    } finally {
+      setApplying(false);
+    }
   }
 
   // Build ordered list of sections within the selected briefing.
@@ -806,6 +829,25 @@ function BriefingEditor({
           <Button size="sm" variant="outline" onClick={handleCreateBriefing}>
             <Plus size={14} className="mr-1.5" /> Novo briefing
           </Button>
+          <select
+            className="form-input text-xs h-8"
+            value=""
+            disabled={applying || templates.length === 0}
+            onChange={(e) => {
+              if (e.target.value) handleApplyTemplate(e.target.value);
+              e.currentTarget.value = '';
+            }}
+          >
+            <option value="">Usar template…</option>
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.title} ({(t.questions ?? []).length})
+              </option>
+            ))}
+          </select>
+          <Button size="sm" variant="outline" onClick={() => setTemplatesOpen(true)}>
+            Templates
+          </Button>
           <Button size="sm" variant="outline" onClick={handleCSVImport} disabled={!selectedId}>
             <Upload size={14} className="mr-1.5" /> Importar CSV
           </Button>
@@ -957,6 +999,7 @@ function BriefingEditor({
           )}
         </>
       )}
+      <BriefingTemplatesModal open={templatesOpen} onOpenChange={setTemplatesOpen} />
     </section>
   );
 }
