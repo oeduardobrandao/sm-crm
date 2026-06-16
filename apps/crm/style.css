@@ -781,7 +781,6 @@ body {
   font-size: 0.72rem;
   margin-top: 0.5rem;
   letter-spacing: 0.12em;
-  text-transform: uppercase;
 }
 
 .header-actions {
@@ -1105,7 +1104,6 @@ body {
 .dashboard-mini-kpi .label,
 .dashboard-mini-kpi .kpi-label {
   font-size: 0.65rem;
-  text-transform: uppercase;
   color: var(--text-muted);
   font-family: var(--font-mono);
   letter-spacing: 0.5px;
@@ -1145,7 +1143,6 @@ body {
   color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: 0.7rem;
-  text-transform: uppercase;
   letter-spacing: 0.1em;
   border-bottom: 1px solid var(--border-color);
 }
@@ -1170,7 +1167,6 @@ body {
   font-family: var(--font-mono);
   font-size: 0.65rem;
   letter-spacing: 0.08em;
-  text-transform: uppercase;
   font-weight: 500;
   display: inline-block;
   white-space: nowrap;
@@ -1192,7 +1188,6 @@ body {
   font-size: 0.75rem;
   font-weight: 500;
   letter-spacing: 0.1em;
-  text-transform: uppercase;
   cursor: pointer;
   transition: background var(--transition), color var(--transition);
   display: inline-flex;
@@ -1214,7 +1209,6 @@ body {
   font-size: 0.75rem;
   font-weight: 500;
   letter-spacing: 0.1em;
-  text-transform: uppercase;
   cursor: pointer;
   transition: background var(--transition), color var(--transition);
   display: inline-flex;
@@ -1236,7 +1230,6 @@ body {
   font-size: 0.75rem;
   font-weight: 500;
   letter-spacing: 0.1em;
-  text-transform: uppercase;
   cursor: pointer;
   transition: all var(--transition);
   display: inline-flex;
@@ -1290,7 +1283,6 @@ body {
   font-family: var(--font-mono);
   font-size: 0.75rem;
   letter-spacing: 0.1em;
-  text-transform: uppercase;
   padding: 0.4rem 0.9rem;
   border-radius: 2px;
   cursor: pointer;
@@ -1316,7 +1308,6 @@ input.filter-btn {
 input.filter-btn::placeholder {
   color: var(--text-muted);
   font-family: var(--font-mono);
-  text-transform: uppercase;
   letter-spacing: 0.05em;
   font-size: 0.75rem;
 }
@@ -1408,7 +1399,6 @@ select.filter-btn option {
   font-family: var(--font-mono);
   font-size: 0.75rem;
   letter-spacing: 0.1em;
-  text-transform: uppercase;
   outline: none;
   cursor: pointer;
   transition: all 0.2s;
@@ -1426,7 +1416,6 @@ input.form-input {
 input.form-input::placeholder {
   color: var(--text-muted);
   font-family: var(--font-mono);
-  text-transform: uppercase;
   letter-spacing: 0.05em;
   font-size: 0.75rem;
 }
@@ -2523,7 +2512,6 @@ select.form-input option {
   border: none;
   font-family: var(--font-mono);
   font-size: 0.8rem;
-  text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-muted);
   padding: 0.8rem 1.2rem;
@@ -2633,7 +2621,6 @@ select.form-input option {
 .calendar-weekdays > div {
   font-family: var(--font-mono);
   font-size: 0.65rem;
-  text-transform: uppercase;
   letter-spacing: 0.1em;
   color: var(--text-muted);
   padding: 0.5rem;
@@ -2710,7 +2697,6 @@ select.form-input option {
   font-size: 0.55rem;
   font-weight: 600;
   letter-spacing: 0.05em;
-  text-transform: uppercase;
   padding: 3px 6px;
   border-radius: 4px;
   white-space: nowrap;
@@ -2773,7 +2759,6 @@ select.form-input option {
   font-size: 0.75rem;
   color: var(--text-muted);
   margin: 0;
-  text-transform: uppercase;
   letter-spacing: 0.08em;
 }
 
@@ -2851,7 +2836,6 @@ select.form-input option {
 .item-subtitle {
   font-size: 0.72rem;
   font-family: var(--font-mono);
-  text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-muted);
   margin-top: 6px;
@@ -2895,7 +2879,6 @@ select.form-input option {
   font-family: var(--font-mono);
   font-size: 0.7rem;
   letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--text-muted);
 }
 
@@ -2918,7 +2901,6 @@ select.form-input option {
   font-family: var(--font-mono);
   font-size: 0.65rem;
   letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--text-muted);
 }
 
@@ -2973,7 +2955,6 @@ select.form-input option {
   font-family: var(--font-mono);
   font-size: 0.6rem;
   letter-spacing: 0.08em;
-  text-transform: uppercase;
   padding: 0.25rem 0.6rem;
   border-radius: 4px;
   background: rgba(234, 179, 8, 0.1);

@@ -142,7 +142,7 @@ function FolderCards({
               <p className="text-[13px] font-semibold text-[var(--text-main)] leading-tight line-clamp-1">
                 {f.name}
               </p>
-              <p className="font-mono text-[10px] text-[var(--text-muted)] mt-0.5 font-semibold tracking-wide uppercase">
+              <p className="font-mono text-[10px] text-[var(--text-muted)] mt-0.5 font-semibold tracking-wide">
                 {f.file_count ?? 0} arquivos
               </p>
             </div>
@@ -245,7 +245,7 @@ function StorageCard({ storage }: { storage: { used_bytes: number; quota_bytes: 
 
   return (
     <div className="mx-3 mt-4">
-      <p className="font-mono text-[11px] tracking-[.12em] uppercase text-[var(--text-muted)] font-semibold mb-2 px-1">
+      <p className="font-mono text-[11px] tracking-[.12em] text-[var(--text-muted)] font-semibold mb-2 px-1">
         Armazenamento
       </p>
       <div
@@ -616,7 +616,7 @@ export function MobileArquivosView({
 
         {isInsideFolder && (
           <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--border-color)]">
-            <span className="font-mono text-[10px] tracking-[.12em] uppercase text-[var(--text-muted)] font-semibold">
+            <span className="font-mono text-[10px] tracking-[.12em] text-[var(--text-muted)] font-semibold">
               Recentes
             </span>
             <div className="flex gap-1">
@@ -657,7 +657,7 @@ export function MobileArquivosView({
           </div>
         ) : !isInsideFolder ? (
           <>
-            <p className="font-mono text-[11px] tracking-[.12em] uppercase text-[var(--text-muted)] font-semibold mb-2 px-4">
+            <p className="font-mono text-[11px] tracking-[.12em] text-[var(--text-muted)] font-semibold mb-2 px-4">
               Por cliente
             </p>
             <FolderCards
@@ -679,7 +679,7 @@ export function MobileArquivosView({
           <>
             {subfolders.length > 0 && (
               <div className="mb-3">
-                <p className="font-mono text-[11px] tracking-[.12em] uppercase text-[var(--text-muted)] font-semibold mb-2 px-4">
+                <p className="font-mono text-[11px] tracking-[.12em] text-[var(--text-muted)] font-semibold mb-2 px-4">
                   Pastas
                 </p>
                 {viewMode === 'grid' ? (
