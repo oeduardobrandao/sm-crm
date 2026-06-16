@@ -359,7 +359,10 @@ export async function applyTemplateToClient(
   if (rows.length > 0) {
     const { error } = await supabase.from('hub_briefing_questions').insert(rows);
     if (error) {
-      await supabase.from('briefings').delete().eq('id', briefing.id);
+      const { error: cleanupErr } = await supabase.from('briefings').delete().eq('id', briefing.id);
+      if (cleanupErr) {
+        console.warn('[applyTemplateToClient] compensating briefing delete failed:', cleanupErr);
+      }
       throw error;
     }
   }
