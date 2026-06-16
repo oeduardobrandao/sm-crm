@@ -235,6 +235,17 @@ export function BriefingTemplatesModal({
               <div className="csv-progress" role="progressbar" aria-label="Importando CSV" />
             )}
             <div className="space-y-2">
+              {questions.length > 0 && (
+                <div className="flex gap-2 px-0.5">
+                  <span className="flex-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Perguntas
+                  </span>
+                  <span className="w-40 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Seções
+                  </span>
+                  <span className="w-9 shrink-0" aria-hidden="true" />
+                </div>
+              )}
               {questions.map((q, i) => (
                 <div key={i} className="flex gap-2">
                   <Input
