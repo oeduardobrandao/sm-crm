@@ -1,4 +1,5 @@
 import { supabase, getUserId, getContaId } from './core';
+import { applyTemplateToClient } from './hub';
 
 export interface Cliente {
   id?: number;
@@ -66,6 +67,24 @@ export async function addCliente(
     .select()
     .single();
   if (error) throw error;
+
+  // Auto-seed a briefing from the workspace's default template, if one is set.
+  // Best-effort: a failure here must never block client creation.
+  try {
+    const { data: tpl } = await supabase
+      .from('briefing_templates')
+      .select('id')
+      .eq('conta_id', conta_id)
+      .eq('is_default', true)
+      .maybeSingle();
+    if (tpl?.id && data?.id) {
+      await applyTemplateToClient(data.id, conta_id, tpl.id);
+    }
+  } catch (e) {
+    // Browser code — no server-side observability for this.
+    console.warn('[addCliente] auto-seed briefing template failed:', e);
+  }
+
   return data;
 }
 

@@ -372,6 +372,73 @@ describe('store hub and ideias helpers', () => {
     });
   });
 
+  it('auto-seeds a briefing from the default template on addCliente', async () => {
+    mockedSupabase.__queueSupabaseResult('clientes', 'insert', {
+      data: { id: 77, nome: 'Acme', conta_id: 'conta-1' },
+      error: null,
+    });
+    // default-template lookup
+    mockedSupabase.__queueSupabaseResult('briefing_templates', 'select', {
+      data: { id: 't1' },
+      error: null,
+    });
+    // applyTemplateToClient internals
+    mockedSupabase.__queueSupabaseResult('briefing_templates', 'select', {
+      data: { id: 't1', title: 'Discovery', questions: [{ question: 'Metas?', section: null }] },
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseResult('briefings', 'select', { data: null, error: null });
+    mockedSupabase.__queueSupabaseResult('briefings', 'insert', {
+      data: { id: 'b1', cliente_id: 77, conta_id: 'conta-1', title: 'Discovery', display_order: 0 },
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseResult('hub_briefing_questions', 'insert', { data: null, error: null });
+
+    await store.addCliente({
+      nome: 'Acme',
+      sigla: 'AC',
+      cor: '#fff',
+      plano: 'pro',
+      email: '',
+      telefone: '',
+      status: 'ativo',
+      valor_mensal: 0,
+    });
+
+    expect(getCalls('hub_briefing_questions', 'insert').at(-1)?.payload).toEqual([
+      {
+        cliente_id: 77,
+        conta_id: 'conta-1',
+        briefing_id: 'b1',
+        question: 'Metas?',
+        section: null,
+        answer: null,
+        display_order: 0,
+      },
+    ]);
+  });
+
+  it('addCliente is a no-op for briefings when there is no default template', async () => {
+    mockedSupabase.__queueSupabaseResult('clientes', 'insert', {
+      data: { id: 78, nome: 'NoTpl', conta_id: 'conta-1' },
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseResult('briefing_templates', 'select', { data: null, error: null });
+
+    await store.addCliente({
+      nome: 'NoTpl',
+      sigla: 'NT',
+      cor: '#fff',
+      plano: 'pro',
+      email: '',
+      telefone: '',
+      status: 'ativo',
+      valor_mensal: 0,
+    });
+
+    expect(getCalls('briefings', 'insert').length).toBe(0);
+  });
+
   it('filters ideias, updates comments, and toggles reactions on and off', async () => {
     mockedSupabase.__queueSupabaseResult('ideias', 'select', {
       data: [{ id: 'ideia-1', titulo: 'Campanha de Inverno' }],
