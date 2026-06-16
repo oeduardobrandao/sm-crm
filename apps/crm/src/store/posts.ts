@@ -68,6 +68,64 @@ export async function getClientePosts(clienteId: number): Promise<ClientePost[]>
   }));
 }
 
+export interface ScheduledPost {
+  id: number;
+  workflow_id: number;
+  cliente_id: number | null;
+  cliente_nome: string;
+  workflow_titulo: string;
+  titulo: string;
+  tipo: WorkflowPost['tipo'];
+  status: WorkflowPost['status'];
+  scheduled_at: string; // non-null (range-filtered)
+  published_at: string | null;
+  ig_caption: string | null;
+  instagram_permalink: string | null;
+  publish_error: string | null;
+  ordem: number;
+  responsavel_id: number | null;
+}
+
+/**
+ * All posts (across active workflows / all clients) whose scheduled_at falls in
+ * [startISO, endISO). workflow_posts has only workflow_id as an FK, so the client
+ * name is reached through a nested workflows -> clientes join (mirrors
+ * getAllActiveEtapas in store/workflows.ts). RLS enforces conta_id.
+ */
+export async function getScheduledPosts(
+  startISO: string,
+  endISO: string,
+): Promise<ScheduledPost[]> {
+  const { data, error } = await supabase
+    .from('workflow_posts')
+    .select(
+      'id, workflow_id, titulo, tipo, status, scheduled_at, published_at, ig_caption, instagram_permalink, publish_error, ordem, responsavel_id, workflows!inner(titulo, cliente_id, status, clientes!inner(nome))',
+    )
+    .eq('workflows.status', 'ativo')
+    .not('scheduled_at', 'is', null)
+    .gte('scheduled_at', startISO)
+    .lt('scheduled_at', endISO)
+    .order('scheduled_at', { ascending: true });
+  if (error) throw error;
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    workflow_id: row.workflow_id,
+    cliente_id: row.workflows?.cliente_id ?? null,
+    cliente_nome: row.workflows?.clientes?.nome ?? '',
+    workflow_titulo: row.workflows?.titulo ?? '',
+    titulo: row.titulo,
+    tipo: row.tipo,
+    status: row.status,
+    scheduled_at: row.scheduled_at,
+    published_at: row.published_at ?? null,
+    ig_caption: row.ig_caption ?? null,
+    instagram_permalink: row.instagram_permalink ?? null,
+    publish_error: row.publish_error ?? null,
+    ordem: row.ordem,
+    responsavel_id: row.responsavel_id ?? null,
+  }));
+}
+
 export interface PostMedia {
   id: number;
   post_id: number;

@@ -209,6 +209,65 @@ describe('store workflow posts', () => {
     const call = getCalls('post_approvals', 'select').at(-1)!;
     expect(call.modifiers).toContainEqual({ method: 'in', args: ['post_id', [100, 101]] });
   });
+
+  it('getScheduledPosts maps nested workflow/client and filters by range', async () => {
+    mockedSupabase.__queueSupabaseResult('workflow_posts', 'select', {
+      data: [
+        {
+          id: 1,
+          workflow_id: 5,
+          titulo: 'Post A',
+          tipo: 'feed',
+          status: 'aprovado_cliente',
+          scheduled_at: '2026-06-16T17:00:00.000Z',
+          published_at: null,
+          ig_caption: 'Legenda',
+          instagram_permalink: null,
+          publish_error: null,
+          ordem: 0,
+          responsavel_id: 10,
+          workflows: {
+            titulo: 'Posts Junho',
+            cliente_id: 7,
+            status: 'ativo',
+            clientes: { nome: 'Yasmin' },
+          },
+        },
+      ],
+      error: null,
+    });
+
+    const result = await store.getScheduledPosts(
+      '2026-06-01T03:00:00.000Z',
+      '2026-07-01T03:00:00.000Z',
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      id: 1,
+      workflow_id: 5,
+      cliente_id: 7,
+      cliente_nome: 'Yasmin',
+      workflow_titulo: 'Posts Junho',
+      status: 'aprovado_cliente',
+      scheduled_at: '2026-06-16T17:00:00.000Z',
+    });
+    const call = getCalls('workflow_posts', 'select').at(-1)!;
+    expect(call.modifiers).toContainEqual({ method: 'eq', args: ['workflows.status', 'ativo'] });
+    expect(call.modifiers).toContainEqual({
+      method: 'gte',
+      args: ['scheduled_at', '2026-06-01T03:00:00.000Z'],
+    });
+    expect(call.modifiers).toContainEqual({
+      method: 'lt',
+      args: ['scheduled_at', '2026-07-01T03:00:00.000Z'],
+    });
+    expect(call.modifiers).toContainEqual({ method: 'not', args: ['scheduled_at', 'is', null] });
+    expect(call.modifiers).toContainEqual({
+      method: 'order',
+      args: ['scheduled_at', { ascending: true }],
+    });
+  });
 });
 
 describe('getPostStatusEvents', () => {
