@@ -829,18 +829,12 @@ function BriefingEditor({
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <h3 className="font-semibold">Briefings</h3>
         <div className="flex items-center gap-2 flex-wrap">
-          <span
-            data-tooltip="Colunas: pergunta*, secao, resposta"
-            data-tooltip-dir="bottom"
-            style={{ display: 'flex' }}
-          >
-            <HelpCircle className="h-4 w-4 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
-          </span>
           <Button size="sm" variant="outline" onClick={handleCreateBriefing}>
             <Plus size={14} className="mr-1.5" /> Novo briefing
           </Button>
           <select
             className="form-input text-xs h-8"
+            style={{ width: 'auto' }}
             value=""
             disabled={applying || templates.length === 0}
             onChange={(e) => {
@@ -866,6 +860,13 @@ function BriefingEditor({
           >
             <Upload size={14} className="mr-1.5" /> Importar CSV
           </Button>
+          <span
+            data-tooltip="Colunas: pergunta*, secao, resposta"
+            data-tooltip-dir="bottom"
+            style={{ display: 'flex' }}
+          >
+            <HelpCircle className="h-4 w-4 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
+          </span>
         </div>
       </div>
 
