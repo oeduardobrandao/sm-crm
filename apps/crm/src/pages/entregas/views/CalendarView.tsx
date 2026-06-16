@@ -100,6 +100,7 @@ export function CalendarView({
   const handleStatusChange = () => {
     qc.invalidateQueries({ queryKey: ['scheduled-posts'] });
     qc.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
+    qc.invalidateQueries({ queryKey: ['workflow-approved-posts-counts'] });
     qc.invalidateQueries({ queryKey: ['workflow-posts-with-props'] });
   };
 
