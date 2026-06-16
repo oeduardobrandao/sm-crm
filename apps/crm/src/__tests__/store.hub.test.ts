@@ -192,7 +192,7 @@ describe('store hub and ideias helpers', () => {
     await expect(store.getHubBriefingQuestions(14)).resolves.toEqual([
       { id: 'q1', question: 'Quais metas vocês têm?', display_order: 0 },
     ]);
-    await store.addHubBriefingQuestion(14, 'conta-1', 'Qual é a persona principal?', 'Estratégia');
+    await store.addHubBriefingQuestion(14, 'conta-1', 'b1', 'Qual é a persona principal?', 'Estratégia');
     await store.updateHubBriefingQuestionSection('q1', 'Mídia paga');
     await store.updateHubBriefingQuestion('q1', 'Qual é o orçamento mensal?');
     await store.deleteHubBriefingQuestion('q1');
@@ -200,6 +200,7 @@ describe('store hub and ideias helpers', () => {
     expect(getCalls('hub_briefing_questions', 'insert').at(-1)?.payload).toEqual({
       cliente_id: 14,
       conta_id: 'conta-1',
+      briefing_id: 'b1',
       question: 'Qual é a persona principal?',
       display_order: 4,
       section: 'Estratégia',

@@ -182,6 +182,7 @@ export async function getHubBriefingQuestions(
     .from('hub_briefing_questions')
     .select('*')
     .eq('cliente_id', clienteId)
+    .order('briefing_id')
     .order('display_order');
   if (error) throw error;
   return data ?? [];
@@ -190,14 +191,16 @@ export async function getHubBriefingQuestions(
 export async function addHubBriefingQuestion(
   clienteId: number,
   contaId: string,
+  briefingId: string,
   question: string,
   section?: string | null,
   answer?: string | null,
 ): Promise<void> {
+  // display_order is scoped within the briefing, not the whole client.
   const { data: existing } = await supabase
     .from('hub_briefing_questions')
     .select('display_order')
-    .eq('cliente_id', clienteId)
+    .eq('briefing_id', briefingId)
     .order('display_order', { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -205,6 +208,7 @@ export async function addHubBriefingQuestion(
   const { error } = await supabase.from('hub_briefing_questions').insert({
     cliente_id: clienteId,
     conta_id: contaId,
+    briefing_id: briefingId,
     question,
     display_order: nextOrder,
     section: section ?? null,
