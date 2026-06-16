@@ -278,3 +278,48 @@ export async function deleteBriefing(id: string): Promise<void> {
   const { error } = await supabase.from('briefings').delete().eq('id', id);
   if (error) throw error;
 }
+
+// ──────────────────────────────────────────────
+// Briefing templates (reusable question sets, one default per workspace)
+// ──────────────────────────────────────────────
+
+export async function getBriefingTemplates(): Promise<BriefingTemplateRow[]> {
+  const { data, error } = await supabase
+    .from('briefing_templates')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function addBriefingTemplate(
+  t: Pick<BriefingTemplateRow, 'title' | 'questions'>,
+): Promise<BriefingTemplateRow> {
+  const user_id = await getUserId();
+  const conta_id = await getContaId();
+  const { data, error } = await supabase
+    .from('briefing_templates')
+    .insert({ title: t.title, questions: t.questions, user_id, conta_id })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateBriefingTemplate(
+  id: string,
+  t: Partial<Pick<BriefingTemplateRow, 'title' | 'questions'>>,
+): Promise<void> {
+  const { error } = await supabase.from('briefing_templates').update(t).eq('id', id);
+  if (error) throw error;
+}
+
+export async function removeBriefingTemplate(id: string): Promise<void> {
+  const { error } = await supabase.from('briefing_templates').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function setDefaultBriefingTemplate(id: string): Promise<void> {
+  const { error } = await supabase.rpc('set_default_briefing_template', { p_template_id: id });
+  if (error) throw error;
+}

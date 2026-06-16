@@ -17,6 +17,10 @@ type MockedSupabaseModule = typeof supabaseModule & {
     operation: 'select' | 'insert' | 'update' | 'delete' | 'upsert',
     ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>
   ) => void;
+  __queueSupabaseRpc: (
+    name: string,
+    ...responses: Array<{ data?: unknown; error?: unknown; count?: number | null }>
+  ) => void;
   __resetSupabaseMock: () => void;
   __setCurrentProfile: (profile: Record<string, unknown> | null) => void;
 };
@@ -249,6 +253,48 @@ describe('store hub and ideias helpers', () => {
       method: 'eq',
       args: ['id', 'b1'],
     });
+  });
+
+  it('manages briefing templates and sets a default via RPC', async () => {
+    mockedSupabase.__queueSupabaseResult('briefing_templates', 'select', {
+      data: [{ id: 't1', title: 'Discovery', questions: [], is_default: false }],
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseResult('briefing_templates', 'insert', {
+      data: {
+        id: 't2',
+        conta_id: 'conta-1',
+        user_id: 'user-1',
+        title: 'Marca',
+        questions: [{ question: 'Voz da marca?', section: null }],
+        is_default: false,
+      },
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseResult('briefing_templates', 'update', { data: null, error: null });
+    mockedSupabase.__queueSupabaseResult('briefing_templates', 'delete', { data: null, error: null });
+    mockedSupabase.__queueSupabaseRpc('set_default_briefing_template', { data: null, error: null });
+
+    await expect(store.getBriefingTemplates()).resolves.toEqual([
+      { id: 't1', title: 'Discovery', questions: [], is_default: false },
+    ]);
+    await store.addBriefingTemplate({
+      title: 'Marca',
+      questions: [{ question: 'Voz da marca?', section: null }],
+    });
+    await store.updateBriefingTemplate('t1', { title: 'Discovery v2' });
+    await store.removeBriefingTemplate('t1');
+    await store.setDefaultBriefingTemplate('t2');
+
+    expect(getCalls('briefing_templates', 'insert').at(-1)?.payload).toEqual({
+      title: 'Marca',
+      questions: [{ question: 'Voz da marca?', section: null }],
+      user_id: 'user-1',
+      conta_id: 'conta-1',
+    });
+    expect(getCalls('briefing_templates', 'update').at(-1)?.payload).toEqual({ title: 'Discovery v2' });
+    const rpcCall = getCalls('rpc:set_default_briefing_template').at(-1);
+    expect(rpcCall?.payload).toEqual({ p_template_id: 't2' });
   });
 
   it('filters ideias, updates comments, and toggles reactions on and off', async () => {
