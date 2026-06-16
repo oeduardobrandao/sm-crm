@@ -12,6 +12,8 @@ import {
   Upload,
   HelpCircle,
   Pencil,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
@@ -27,6 +29,12 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu';
 import {
   getHubToken,
   createHubToken,
@@ -551,6 +559,9 @@ function BriefingEditor({
   });
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [applying, setApplying] = useState(false);
+  const [importingCsv, setImportingCsv] = useState(false);
+  // Sections are collapsed by default; this tracks which ones the user has expanded.
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
 
   // Default selection: first briefing once loaded (or when the selected one is deleted).
   useEffect(() => {
@@ -647,8 +658,13 @@ function BriefingEditor({
         } else {
           toast.error('Nenhuma pergunta válida encontrada. Verifique a coluna "pergunta".');
         }
+        setImportingCsv(false);
       },
-      (err) => toast.error(err.message),
+      (err) => {
+        setImportingCsv(false);
+        toast.error(err.message);
+      },
+      () => setImportingCsv(true),
     );
   }
 
@@ -721,6 +737,21 @@ function BriefingEditor({
     setNewSectionName('');
     setAddingSectionInput(false);
     setNewQuestions((prev) => ({ ...prev, [name]: '' }));
+  }
+
+  function toggleSection(name: string) {
+    setExpandedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }
+
+  function toggleAllSections() {
+    const allExpanded =
+      namedSections.length > 0 && namedSections.every((s) => expandedSections.has(s.name));
+    setExpandedSections(allExpanded ? new Set() : new Set(namedSections.map((s) => s.name)));
   }
 
   if (isLoading)
@@ -823,6 +854,34 @@ function BriefingEditor({
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <h3 className="font-semibold">Briefings</h3>
         <div className="flex items-center gap-2 flex-wrap">
+          <Button size="sm" variant="outline" onClick={handleCreateBriefing}>
+            <Plus size={14} className="mr-1.5" /> Novo briefing
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="outline" disabled={applying || templates.length === 0}>
+                Usar template <ChevronDown size={14} className="ml-1.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
+              {templates.map((t) => (
+                <DropdownMenuItem key={t.id} onClick={() => handleApplyTemplate(t.id)}>
+                  {t.title} ({(t.questions ?? []).length})
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button size="sm" variant="outline" onClick={() => setTemplatesOpen(true)}>
+            Templates
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleCSVImport}
+            disabled={!selectedId || importingCsv}
+          >
+            <Upload size={14} className="mr-1.5" /> Importar CSV
+          </Button>
           <span
             data-tooltip="Colunas: pergunta*, secao, resposta"
             data-tooltip-dir="bottom"
@@ -830,33 +889,12 @@ function BriefingEditor({
           >
             <HelpCircle className="h-4 w-4 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
           </span>
-          <Button size="sm" variant="outline" onClick={handleCreateBriefing}>
-            <Plus size={14} className="mr-1.5" /> Novo briefing
-          </Button>
-          <select
-            className="form-input text-xs h-8"
-            value=""
-            disabled={applying || templates.length === 0}
-            onChange={(e) => {
-              if (e.target.value) handleApplyTemplate(e.target.value);
-              e.currentTarget.value = '';
-            }}
-          >
-            <option value="">Usar template…</option>
-            {templates.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.title} ({(t.questions ?? []).length})
-              </option>
-            ))}
-          </select>
-          <Button size="sm" variant="outline" onClick={() => setTemplatesOpen(true)}>
-            Templates
-          </Button>
-          <Button size="sm" variant="outline" onClick={handleCSVImport} disabled={!selectedId}>
-            <Upload size={14} className="mr-1.5" /> Importar CSV
-          </Button>
         </div>
       </div>
+
+      {importingCsv && (
+        <div className="csv-progress mb-3" role="progressbar" aria-label="Importando CSV" />
+      )}
 
       {/* Briefing tabs */}
       {briefings.length > 0 && (
@@ -873,6 +911,7 @@ function BriefingEditor({
                 setNewQuestions({});
                 setAddingSectionInput(false);
                 setEditingId(null);
+                setExpandedSections(new Set());
               }}
               className={`px-3 py-2 text-sm whitespace-nowrap border-b-2 -mb-px transition-colors ${
                 selectedId === b.id
@@ -949,15 +988,40 @@ function BriefingEditor({
             <div className="mb-6">{renderQuestions(unsectioned?.questions ?? [], null)}</div>
           )}
 
-          {/* Named sections */}
-          {namedSections.map((s) => (
-            <div key={s.name} className="mb-6">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-                {s.name}
-              </p>
-              {renderQuestions(s.questions, s.name)}
+          {/* Expand/collapse all (sections are collapsed by default) */}
+          {namedSections.length > 1 && (
+            <div className="flex justify-end -mt-2 mb-2">
+              <button
+                type="button"
+                onClick={toggleAllSections}
+                className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {namedSections.every((s) => expandedSections.has(s.name))
+                  ? 'Recolher tudo'
+                  : 'Expandir tudo'}
+              </button>
             </div>
-          ))}
+          )}
+
+          {/* Named sections (collapsible) */}
+          {namedSections.map((s) => {
+            const isCollapsed = !expandedSections.has(s.name);
+            return (
+              <div key={s.name} className="mb-6">
+                <button
+                  type="button"
+                  onClick={() => toggleSection(s.name)}
+                  aria-expanded={!isCollapsed}
+                  className="flex items-center gap-1.5 mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                  {s.name}
+                  <span className="font-normal normal-case opacity-60">({s.questions.length})</span>
+                </button>
+                {!isCollapsed && renderQuestions(s.questions, s.name)}
+              </div>
+            );
+          })}
 
           {/* Pending (not yet saved) sections */}
           {pendingSections.map((name) => (
