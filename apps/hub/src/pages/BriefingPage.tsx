@@ -12,7 +12,8 @@ export function BriefingPage() {
     queryFn: () => fetchBriefing(token),
   });
 
-  const [activeTab, setActiveTab] = useState(0);
+  const [briefingTab, setBriefingTab] = useState(0);
+  const [sectionTab, setSectionTab] = useState(0);
 
   if (isLoading)
     return (
@@ -21,25 +22,28 @@ export function BriefingPage() {
       </div>
     );
 
-  const questions = data?.questions ?? [];
+  const briefings = data?.briefings ?? [];
 
-  if (questions.length === 0)
-    return <div className="py-8 text-stone-500 text-sm">Nenhuma pergunta disponível ainda.</div>;
+  if (briefings.length === 0)
+    return <div className="py-8 text-stone-500 text-sm">Nenhum briefing disponível ainda.</div>;
 
-  // Group by section. Questions with null section go into a default group.
+  const hasBriefingTabs = briefings.length > 1;
+  const activeBriefing = briefings[Math.min(briefingTab, briefings.length - 1)];
+  const questions = activeBriefing?.questions ?? [];
+
+  // Group the active briefing's questions by section.
   const sections: { name: string; questions: BriefingQuestion[] }[] = [];
   for (const q of questions) {
     const name = q.section ?? 'Geral';
     const existing = sections.find((s) => s.name === name);
-    if (existing) {
-      existing.questions.push(q);
-    } else {
-      sections.push({ name, questions: [q] });
-    }
+    if (existing) existing.questions.push(q);
+    else sections.push({ name, questions: [q] });
   }
 
-  const hasTabs = sections.length > 1;
-  const visibleQuestions = hasTabs ? (sections[activeTab]?.questions ?? []) : questions;
+  const hasSectionTabs = sections.length > 1;
+  const visibleQuestions = hasSectionTabs
+    ? (sections[Math.min(sectionTab, sections.length - 1)]?.questions ?? [])
+    : questions;
 
   function handleSave(questionId: string) {
     return async (answer: string) => {
@@ -60,19 +64,22 @@ export function BriefingPage() {
         </h2>
       </header>
 
-      {hasTabs && (
-        <div className="relative mb-8 border-b border-stone-200/80">
+      {hasBriefingTabs && (
+        <div className="relative mb-6 border-b border-stone-200/80">
           <div className="flex gap-1 overflow-x-auto no-scrollbar">
-            {sections.map((s, i) => (
+            {briefings.map((b, i) => (
               <button
-                key={s.name}
-                onClick={() => setActiveTab(i)}
+                key={b.id}
+                onClick={() => {
+                  setBriefingTab(i);
+                  setSectionTab(0);
+                }}
                 className={`relative px-4 py-3 text-[13px] font-semibold whitespace-nowrap transition-colors ${
-                  activeTab === i ? 'text-stone-900' : 'text-stone-500 hover:text-stone-700'
+                  briefingTab === i ? 'text-stone-900' : 'text-stone-500 hover:text-stone-700'
                 }`}
               >
-                {s.name}
-                {activeTab === i && (
+                {b.title}
+                {briefingTab === i && (
                   <span className="absolute left-3 right-3 -bottom-[1px] h-[2px] rounded-full bg-[#FFBF30]" />
                 )}
               </button>
@@ -81,16 +88,41 @@ export function BriefingPage() {
         </div>
       )}
 
-      <div className="space-y-4">
-        {visibleQuestions.map((q) => (
-          <QuestionItem
-            key={q.id}
-            question={q.question}
-            initialAnswer={q.answer}
-            onSave={handleSave(q.id)}
-          />
-        ))}
-      </div>
+      {hasSectionTabs && (
+        <div className="relative mb-8 border-b border-stone-200/80">
+          <div className="flex gap-1 overflow-x-auto no-scrollbar">
+            {sections.map((s, i) => (
+              <button
+                key={s.name}
+                onClick={() => setSectionTab(i)}
+                className={`relative px-4 py-3 text-[13px] font-medium whitespace-nowrap transition-colors ${
+                  sectionTab === i ? 'text-stone-900' : 'text-stone-500 hover:text-stone-700'
+                }`}
+              >
+                {s.name}
+                {sectionTab === i && (
+                  <span className="absolute left-3 right-3 -bottom-[1px] h-[2px] rounded-full bg-stone-400" />
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {visibleQuestions.length === 0 ? (
+        <div className="py-8 text-stone-500 text-sm">Nenhuma pergunta neste briefing ainda.</div>
+      ) : (
+        <div className="space-y-4">
+          {visibleQuestions.map((q) => (
+            <QuestionItem
+              key={q.id}
+              question={q.question}
+              initialAnswer={q.answer}
+              onSave={handleSave(q.id)}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

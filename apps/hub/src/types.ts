@@ -139,6 +139,13 @@ export interface BriefingQuestion {
   display_order: number;
 }
 
+export interface Briefing {
+  id: string;
+  title: string;
+  display_order: number;
+  questions: BriefingQuestion[];
+}
+
 export interface IdeiaReaction {
   id: string;
   membro_id: number;
