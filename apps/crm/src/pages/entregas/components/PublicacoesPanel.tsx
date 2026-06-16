@@ -96,6 +96,7 @@ export function PublicacoesPanel({
                     hasInstagramAccount={hasInstagramAccount}
                     igAccountStatus={igStatus}
                     onStatusChange={onStatusChange}
+                    compact
                   />
                 </div>
 

@@ -24,6 +24,9 @@ interface ScheduleButtonProps {
   hasInstagramAccount: boolean;
   igAccountStatus?: { revoked: boolean; expired: boolean; canPublish: boolean } | null;
   onStatusChange: () => void;
+  /** Use short action labels ("Agendar"/"Publicar") so the buttons fit side-by-side
+   *  in narrow containers like the calendar Publicações panel. */
+  compact?: boolean;
 }
 
 export function ScheduleButton({
@@ -31,6 +34,7 @@ export function ScheduleButton({
   hasInstagramAccount,
   igAccountStatus,
   onStatusChange,
+  compact = false,
 }: ScheduleButtonProps) {
   const [loading, setLoading] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -224,7 +228,7 @@ export function ScheduleButton({
             className="text-xs font-semibold"
             style={canSchedule ? { background: '#eab308', color: '#12151a' } : undefined}
           >
-            <Calendar className="h-3 w-3 mr-1" /> Agendar publicação
+            <Calendar className="h-3 w-3 mr-1" /> {compact ? 'Agendar' : 'Agendar publicação'}
           </Button>
           <Button
             onClick={() => setConfirmOpen(true)}
@@ -233,7 +237,7 @@ export function ScheduleButton({
             className="text-xs font-semibold"
             style={canPublishNow ? { background: '#E1306C', color: 'white' } : undefined}
           >
-            <Send className="h-3 w-3 mr-1" /> Publicar agora
+            <Send className="h-3 w-3 mr-1" /> {compact ? 'Publicar' : 'Publicar agora'}
           </Button>
         </div>
         {!accountWarning && !canPublishNow && missingItems.length > 0 && (
