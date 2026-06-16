@@ -12,6 +12,8 @@ import {
   Upload,
   HelpCircle,
   Pencil,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
@@ -27,6 +29,12 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu';
 import {
   getHubToken,
   createHubToken,
@@ -552,6 +560,7 @@ function BriefingEditor({
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [applying, setApplying] = useState(false);
   const [importingCsv, setImportingCsv] = useState(false);
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
 
   // Default selection: first briefing once loaded (or when the selected one is deleted).
   useEffect(() => {
@@ -729,6 +738,15 @@ function BriefingEditor({
     setNewQuestions((prev) => ({ ...prev, [name]: '' }));
   }
 
+  function toggleSection(name: string) {
+    setCollapsedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }
+
   if (isLoading)
     return (
       <div className="py-8 flex justify-center">
@@ -832,23 +850,20 @@ function BriefingEditor({
           <Button size="sm" variant="outline" onClick={handleCreateBriefing}>
             <Plus size={14} className="mr-1.5" /> Novo briefing
           </Button>
-          <select
-            className="form-input text-xs h-8"
-            style={{ width: 'auto' }}
-            value=""
-            disabled={applying || templates.length === 0}
-            onChange={(e) => {
-              if (e.target.value) handleApplyTemplate(e.target.value);
-              e.currentTarget.value = '';
-            }}
-          >
-            <option value="">Usar template…</option>
-            {templates.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.title} ({(t.questions ?? []).length})
-              </option>
-            ))}
-          </select>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="outline" disabled={applying || templates.length === 0}>
+                Usar template <ChevronDown size={14} className="ml-1.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
+              {templates.map((t) => (
+                <DropdownMenuItem key={t.id} onClick={() => handleApplyTemplate(t.id)}>
+                  {t.title} ({(t.questions ?? []).length})
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button size="sm" variant="outline" onClick={() => setTemplatesOpen(true)}>
             Templates
           </Button>
@@ -889,6 +904,7 @@ function BriefingEditor({
                 setNewQuestions({});
                 setAddingSectionInput(false);
                 setEditingId(null);
+                setCollapsedSections(new Set());
               }}
               className={`px-3 py-2 text-sm whitespace-nowrap border-b-2 -mb-px transition-colors ${
                 selectedId === b.id
@@ -965,15 +981,25 @@ function BriefingEditor({
             <div className="mb-6">{renderQuestions(unsectioned?.questions ?? [], null)}</div>
           )}
 
-          {/* Named sections */}
-          {namedSections.map((s) => (
-            <div key={s.name} className="mb-6">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-                {s.name}
-              </p>
-              {renderQuestions(s.questions, s.name)}
-            </div>
-          ))}
+          {/* Named sections (collapsible) */}
+          {namedSections.map((s) => {
+            const isCollapsed = collapsedSections.has(s.name);
+            return (
+              <div key={s.name} className="mb-6">
+                <button
+                  type="button"
+                  onClick={() => toggleSection(s.name)}
+                  aria-expanded={!isCollapsed}
+                  className="flex items-center gap-1.5 mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                  {s.name}
+                  <span className="font-normal normal-case opacity-60">({s.questions.length})</span>
+                </button>
+                {!isCollapsed && renderQuestions(s.questions, s.name)}
+              </div>
+            );
+          })}
 
           {/* Pending (not yet saved) sections */}
           {pendingSections.map((name) => (
