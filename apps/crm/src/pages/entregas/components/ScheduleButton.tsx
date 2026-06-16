@@ -148,7 +148,7 @@ export function ScheduleButton({
             pode falhar.
           </p>
         )}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div
             className="flex items-center gap-1.5 px-2.5 h-8 rounded-lg text-xs font-semibold"
             style={{ background: 'rgba(62, 207, 142, 0.12)', color: '#3ecf8e' }}
@@ -216,7 +216,7 @@ export function ScheduleButton({
             <AlertCircle className="h-3 w-3 flex-shrink-0" /> {warningMessage}
           </p>
         )}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             onClick={handleSchedule}
             disabled={!canSchedule || loading}
