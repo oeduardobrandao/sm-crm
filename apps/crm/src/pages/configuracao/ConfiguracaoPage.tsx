@@ -1035,7 +1035,7 @@ export default function ConfiguracaoPage() {
             <span className="client-info-label">ID do Usuário</span>
             <span
               className="client-info-value"
-              style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}
+              style={{ fontFamily: "'SF Pro Text', sans-serif", fontSize: '0.8rem' }}
             >
               {user.id.substring(0, 18)}...
             </span>

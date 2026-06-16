@@ -52,7 +52,7 @@ export default function AdminsPage() {
           onChange={(e) => setEmail(e.target.value)}
           placeholder="Email do novo admin..."
           required
-          className="flex-1 px-3 py-2.5 rounded-lg bg-card border border-border text-sm font-['DM_Mono'] text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary transition-colors"
+          className="flex-1 px-3 py-2.5 rounded-lg bg-card border border-border text-sm font-['DM_Sans'] text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary transition-colors"
         />
         <button
           type="submit"

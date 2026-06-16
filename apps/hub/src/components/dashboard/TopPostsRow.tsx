@@ -69,19 +69,19 @@ export function TopPostsRow({ posts }: TopPostsRowProps) {
             <div className="p-3 space-y-1">
               <div className="flex justify-between">
                 <span className="text-[11px] text-stone-500 dark:text-stone-400">Alcance</span>
-                <span className="text-[11px] font-bold font-mono text-stone-900 dark:text-stone-100">
+                <span className="text-[11px] font-bold text-stone-900 dark:text-stone-100">
                   {formatNumber(post.reach)}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-[11px] text-stone-500 dark:text-stone-400">Engajamento</span>
-                <span className="text-[11px] font-bold font-mono text-emerald-500">
+                <span className="text-[11px] font-bold text-emerald-500">
                   {post.engagementRate}%
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-[11px] text-stone-500 dark:text-stone-400">Salvos</span>
-                <span className="text-[11px] font-bold font-mono text-stone-900 dark:text-stone-100">
+                <span className="text-[11px] font-bold text-stone-900 dark:text-stone-100">
                   {post.saved}
                 </span>
               </div>
