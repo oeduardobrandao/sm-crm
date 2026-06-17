@@ -316,6 +316,87 @@ export async function createCarouselParentContainer(
   return { id: data.id };
 }
 
+// --- Container creation for a post (shared by schedule / publish-now / cron) ---
+
+interface PostMediaRow {
+  id: number;
+  kind: string;
+  r2_key: string;
+  thumbnail_r2_key: string | null;
+  sort_order: number;
+}
+
+/** Media files linked to a post, ordered for carousel assembly. */
+export async function fetchPostMedia(db: DbClient, postId: number): Promise<PostMediaRow[]> {
+  const { data } = await db
+    .from("post_file_links")
+    .select("sort_order, files!inner(id, kind, r2_key, thumbnail_r2_key)")
+    .eq("post_id", postId)
+    .order("sort_order", { ascending: true });
+
+  // deno-lint-ignore no-explicit-any
+  return (data ?? []).map((l: any) => ({
+    id: l.files.id,
+    kind: l.files.kind,
+    r2_key: l.files.r2_key,
+    thumbnail_r2_key: l.files.thumbnail_r2_key,
+    sort_order: l.sort_order,
+  }));
+}
+
+export interface ContainerCreationResult {
+  containerId: string;
+  /**
+   * For a single-video post where a cover was applied, the *video* URL — so the
+   * caller can rebuild the container WITHOUT the cover on ERROR (Instagram can
+   * reject an unprocessable cover during async processing). Undefined otherwise.
+   */
+  coverVideoUrl?: string;
+}
+
+/**
+ * Build the Instagram media container for a post and return its id. The caller
+ * decides cover policy via `useCover` and owns persistence + any cover-retry:
+ *   - publish-now passes useCover:true and does an IMMEDIATE coverless retry.
+ *   - cron Phase 1 / schedule pass useCover:(retry_count === 0); the coverless
+ *     retry is DEFERRED to a later cron cycle (where retry_count > 0).
+ * Throws on no media or any Graph API error (callers mark the post failed).
+ */
+export async function createContainerForPost(
+  db: DbClient,
+  opts: { igUserId: string; token: string; postId: number; caption: string; useCover: boolean },
+): Promise<ContainerCreationResult> {
+  const { igUserId, token, postId, caption, useCover } = opts;
+  const media = await fetchPostMedia(db, postId);
+  if (media.length === 0) throw new Error("No media files found");
+
+  const isCarousel = media.length > 1;
+  const isSingleVideo = media.length === 1 && media[0].kind === "video";
+
+  if (isCarousel) {
+    const childIds: string[] = [];
+    for (const m of media) {
+      const url = await signGetUrl(m.r2_key, 7200);
+      const child = await createCarouselChildContainer(igUserId, token, url, m.kind === "video");
+      childIds.push(child.id);
+    }
+    const parent = await createCarouselParentContainer(igUserId, token, childIds, caption);
+    return { containerId: parent.id };
+  }
+
+  if (isSingleVideo) {
+    const url = await signGetUrl(media[0].r2_key, 7200);
+    const thumbKey = useCover ? media[0].thumbnail_r2_key : null;
+    const coverUrl = thumbKey ? await signGetUrl(thumbKey, 7200) : undefined;
+    const container = await createVideoContainer(igUserId, token, url, caption, coverUrl);
+    return { containerId: container.id, coverVideoUrl: coverUrl ? url : undefined };
+  }
+
+  const url = await signGetUrl(media[0].r2_key, 7200);
+  const container = await createSingleImageContainer(igUserId, token, url, caption);
+  return { containerId: container.id };
+}
+
 export async function checkContainerStatus(
   containerId: string,
   token: string,

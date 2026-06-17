@@ -92,7 +92,13 @@ import { DiffView } from './DiffView';
 import { ReadOnlyTipTap } from './ReadOnlyTipTap';
 import { computeWordDiff } from '@/utils/textDiff';
 import { computeTipTapDiff } from '@/utils/tiptapDiff';
-import { TIPO_LABELS, STATUS_LABELS, STATUS_CLASS } from '../postLabels';
+import {
+  TIPO_LABELS,
+  STATUS_LABELS,
+  getPostPublishState,
+  PUBLISH_STATE_LABELS,
+  PUBLISH_STATE_CLASS,
+} from '../postLabels';
 import { formatPostDate, formatPostDateFull } from '@/utils/postDate';
 
 // ── Props ─────────────────────────────────────────────────────────────────────
@@ -148,6 +154,12 @@ export function WorkflowDrawer({
   const { data: posts = [], isLoading } = useQuery({
     queryKey: ['workflow-posts-with-props', workflowId],
     queryFn: () => getWorkflowPostsWithProperties(workflowId),
+    // Poll while a post in this workflow is mid-publishing so the drawer flips
+    // agendado → Publicando… → postado without a manual refresh.
+    refetchInterval: (query) =>
+      (query.state.data ?? []).some((p) => getPostPublishState(p) === 'publicando')
+        ? 15000
+        : false,
   });
 
   // Local ordered list for optimistic DnD reordering
@@ -1013,9 +1025,14 @@ function SortablePostItem({
           ) : (
             <span className="drawer-post-date drawer-post-date--empty">A definir</span>
           )}
-          <span className={`post-status-chip ${STATUS_CLASS[post.status]}`}>
-            {STATUS_LABELS[post.status]}
-          </span>
+          {(() => {
+            const pubState = getPostPublishState(post);
+            return (
+              <span className={`post-status-chip ${PUBLISH_STATE_CLASS[pubState]}`}>
+                {PUBLISH_STATE_LABELS[pubState]}
+              </span>
+            );
+          })()}
           <button className="drawer-delete-btn" onClick={onDelete} title="Remover post">
             <Trash2 className="h-3.5 w-3.5" />
           </button>

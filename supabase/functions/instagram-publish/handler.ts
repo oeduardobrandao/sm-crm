@@ -5,15 +5,12 @@ import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
 import {
   validateForScheduling,
   decryptToken,
-  createSingleImageContainer,
+  createContainerForPost,
   createVideoContainer,
-  createCarouselChildContainer,
-  createCarouselParentContainer,
   pollContainerReady,
   publishContainer,
   fetchPermalink,
 } from "../_shared/instagram-publish-utils.ts";
-import { signGetUrl } from "../_shared/r2.ts";
 
 type DbClient = {
   from: (table: string) => any;
@@ -78,8 +75,9 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
       if (post.status !== "aprovado_cliente") {
         return json({ error: "Post precisa estar aprovado pelo cliente para agendar." }, 422);
       }
+      let validation;
       try {
-        const validation = await validateForScheduling(svcDb, postId);
+        validation = await validateForScheduling(svcDb, postId);
         if (!validation.ok) {
           return json({ error: "Validação falhou", details: validation.errors }, 422);
         }
@@ -93,6 +91,37 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
         p_source: "workspace_user",
         p_actor: actorId,
       });
+
+      // Front-load the Instagram container when the post is due within ~1h so
+      // transcoding starts immediately instead of waiting for the cron's Phase 1
+      // (the cron's container window is also "scheduled_at <= now() + 1 hour").
+      // Best-effort: on any failure leave instagram_container_id null and let the
+      // cron create it later. Mirrors cron Phase 1 cover semantics (deferred
+      // coverless retry via retry_count), NOT publish-now's immediate retry.
+      try {
+        const dueInMs = post.scheduled_at
+          ? new Date(post.scheduled_at).getTime() - Date.now()
+          : Infinity;
+        if (dueInMs <= 3_600_000 && validation.account) {
+          const token = await decryptToken(validation.account.encrypted_access_token);
+          const { containerId } = await createContainerForPost(svcDb, {
+            igUserId: validation.account.instagram_user_id,
+            token,
+            postId,
+            caption: post.ig_caption,
+            useCover: post.publish_retry_count === 0,
+          });
+          await svcDb.from("workflow_posts").update({
+            instagram_container_id: containerId,
+          }).eq("id", postId);
+        }
+      } catch (e) {
+        console.error(
+          `[IG-PUBLISH] schedule front-load failed for post ${postId}:`,
+          (e as Error)?.message,
+        );
+      }
+
       return json({ ok: true, status: "agendado" });
     }
 
@@ -161,50 +190,17 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
         const token = await decryptToken(validation.account!.encrypted_access_token);
         const igUserId = validation.account!.instagram_user_id;
 
-        const { data: links } = await svcDb
-          .from("post_file_links")
-          .select("sort_order, files!inner(id, kind, r2_key, thumbnail_r2_key)")
-          .eq("post_id", postId)
-          .order("sort_order", { ascending: true });
-
-        const media = (links ?? []).map((l: any) => ({
-          id: l.files.id,
-          kind: l.files.kind,
-          r2_key: l.files.r2_key,
-          thumbnail_r2_key: l.files.thumbnail_r2_key,
-          sort_order: l.sort_order,
-        }));
-
-        if (media.length === 0) throw new Error("Post sem mídia");
-
-        const isCarousel = media.length > 1;
-        const isSingleVideo = media.length === 1 && media[0].kind === "video";
-        let containerId: string;
-        let coverVideoUrl: string | undefined; // set only when a cover was used (enables coverless retry)
-
-        if (isCarousel) {
-          const childIds: string[] = [];
-          for (const m of media) {
-            const url = await signGetUrl(m.r2_key, 7200);
-            const child = await createCarouselChildContainer(igUserId, token, url, m.kind === "video");
-            childIds.push(child.id);
-          }
-          const parent = await createCarouselParentContainer(igUserId, token, childIds, post.ig_caption);
-          containerId = parent.id;
-        } else if (isSingleVideo) {
-          const url = await signGetUrl(media[0].r2_key, 7200);
-          const coverUrl = media[0].thumbnail_r2_key
-            ? await signGetUrl(media[0].thumbnail_r2_key, 7200)
-            : undefined;
-          const container = await createVideoContainer(igUserId, token, url, post.ig_caption, coverUrl);
-          containerId = container.id;
-          // Remember the video URL so we can rebuild without the cover on ERROR.
-          if (coverUrl) coverVideoUrl = url;
-        } else {
-          const url = await signGetUrl(media[0].r2_key, 7200);
-          const container = await createSingleImageContainer(igUserId, token, url, post.ig_caption);
-          containerId = container.id;
-        }
+        // publish-now always attaches the cover when present (useCover:true) and does
+        // an IMMEDIATE coverless retry below if Instagram rejects it during processing.
+        const created = await createContainerForPost(svcDb, {
+          igUserId,
+          token,
+          postId,
+          caption: post.ig_caption,
+          useCover: true,
+        });
+        let containerId = created.containerId;
+        const coverVideoUrl = created.coverVideoUrl; // set only when a cover was used
 
         await svcDb.from("workflow_posts").update({
           instagram_container_id: containerId,

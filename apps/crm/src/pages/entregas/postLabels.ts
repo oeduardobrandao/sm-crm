@@ -30,3 +30,29 @@ export const STATUS_CLASS: Record<WorkflowPost['status'], string> = {
   postado: 'post-status--postado',
   falha_publicacao: 'status-danger',
 };
+
+/**
+ * A presentational-only state, NOT a DB status. A post is "publicando" once it is
+ * `agendado` and its scheduled time has passed — the publish cron is actively
+ * working on it. Derived from existing fields (no new columns); kept out of the
+ * `WorkflowPost['status']`-typed maps above so those stay aligned with the DB enum.
+ */
+export type PostPublishState = 'publicando' | WorkflowPost['status'];
+
+export function getPostPublishState(
+  p: { status: WorkflowPost['status']; scheduled_at?: string | null },
+): PostPublishState {
+  return p.status === 'agendado' && !!p.scheduled_at && new Date(p.scheduled_at) <= new Date()
+    ? 'publicando'
+    : p.status;
+}
+
+export const PUBLISH_STATE_LABELS: Record<PostPublishState, string> = {
+  ...STATUS_LABELS,
+  publicando: 'Publicando…',
+};
+
+export const PUBLISH_STATE_CLASS: Record<PostPublishState, string> = {
+  ...STATUS_CLASS,
+  publicando: 'post-status--publicando',
+};
