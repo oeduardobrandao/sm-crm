@@ -26,9 +26,7 @@ export function useScheduledPosts(month: Date, enabled: boolean) {
     // While any post is mid-publishing (agendado + scheduled time passed), poll so
     // the calendar flips to "Postado" on its own. Stops once nothing is publishing.
     refetchInterval: (query) =>
-      (query.state.data ?? []).some((p) => getPostPublishState(p) === 'publicando')
-        ? 15000
-        : false,
+      (query.state.data ?? []).some((p) => getPostPublishState(p) === 'publicando') ? 15000 : false,
   });
 
   const posts = useMemo(() => postsQuery.data ?? [], [postsQuery.data]);

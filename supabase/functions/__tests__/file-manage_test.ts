@@ -358,6 +358,19 @@ Deno.test("file-manage: POST /links creates a link", async () => {
   assertEquals(res.status, 201);
 });
 
+Deno.test("file-manage: POST /links forwards sort_order", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("files", "select", { data: { conta_id: "conta-1", kind: "image" }, error: null });
+  db.queue("workflow_posts", "select", { data: { conta_id: "conta-1" }, error: null });
+  db.queue("post_file_links", "insert", { data: { id: 2, post_id: 50, file_id: 11 }, error: null });
+  const handler = makeHandler(db);
+  const res = await handler(req("POST", "/links", { post_id: 50, file_id: 11, sort_order: 6 }));
+  assertEquals(res.status, 201);
+  const linkCalls = db.calls.filter((c) => c.table === "post_file_links" && c.operation === "insert");
+  assertEquals((linkCalls[linkCalls.length - 1].payload as { sort_order?: number }).sort_order, 6);
+});
+
 Deno.test("file-manage: POST /links missing fields returns 400", async () => {
   const db = createSupabaseQueryMock();
   setupAuth(db);

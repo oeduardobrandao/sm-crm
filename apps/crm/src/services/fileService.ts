@@ -326,11 +326,15 @@ export async function requestZipToken(
 
 // ─── LINK OPERATIONS ────────────────────────────────────────────
 
-export async function linkFileToPost(fileId: number, postId: number): Promise<PostFileLink> {
+export async function linkFileToPost(
+  fileId: number,
+  postId: number,
+  sortOrder?: number,
+): Promise<PostFileLink> {
   return callFn<PostFileLink>(
     'file-manage',
     'POST',
-    { file_id: fileId, post_id: postId },
+    { file_id: fileId, post_id: postId, sort_order: sortOrder },
     undefined,
     '/links',
   );

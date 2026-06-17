@@ -206,6 +206,28 @@ describe('post media service', () => {
     expect(onProgress).toHaveBeenCalledWith({ loaded: 256, total: 256 });
   });
 
+  it('forwards sortOrder into the finalize body so carousel order is deterministic', async () => {
+    const image = createFile('1.png', 'image/png', 128);
+    fetchHarness.queueResponse({
+      json: {
+        file_id: 'file-2',
+        upload_url: 'https://upload.r2.dev/media-2',
+        r2_key: 'contas/1/files/file-2.png',
+        thumbnail_upload_url: 'https://upload.r2.dev/thumb-2',
+        thumbnail_r2_key: 'contas/1/files/file-2.thumb.webp',
+      },
+    });
+    fetchHarness.queueResponse({ json: { id: 2, post_id: 22, kind: 'image' } });
+
+    await uploadPostMedia({ postId: 22, file: image, sortOrder: 3 });
+
+    expect(JSON.parse(String(fetchHarness.calls[1].init?.body))).toMatchObject({
+      post_id: 22,
+      file_id: 'file-2',
+      sort_order: 3,
+    });
+  });
+
   it('requires a thumbnail when uploading videos', async () => {
     await expect(
       uploadPostMedia({

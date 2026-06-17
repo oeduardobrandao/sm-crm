@@ -157,9 +157,7 @@ export function WorkflowDrawer({
     // Poll while a post in this workflow is mid-publishing so the drawer flips
     // agendado → Publicando… → postado without a manual refresh.
     refetchInterval: (query) =>
-      (query.state.data ?? []).some((p) => getPostPublishState(p) === 'publicando')
-        ? 15000
-        : false,
+      (query.state.data ?? []).some((p) => getPostPublishState(p) === 'publicando') ? 15000 : false,
   });
 
   // Local ordered list for optimistic DnD reordering

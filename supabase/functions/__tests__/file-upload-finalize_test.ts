@@ -369,4 +369,21 @@ Deno.test("file-upload-finalize: valid post_id triggers insert and link creation
   assertEquals(rpcCalls.length, 1);
   const linkCalls = db.calls.filter((c) => c.table === "post_file_links" && c.operation === "insert");
   assertEquals(linkCalls.length, 1);
+  // No sort_order supplied -> omitted so the DB default (0) applies.
+  assertEquals((linkCalls[0].payload as { sort_order?: number }).sort_order, undefined);
+});
+
+Deno.test("file-upload-finalize: forwards sort_order to the post_file_links insert", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queue("folders", "select", { data: { id: 7 }, error: null });
+  db.queue("workflow_posts", "select", { data: { conta_id: "conta-1" }, error: null });
+  db.queueRpc("file_insert_with_quota", { data: { id: 43 }, error: null });
+  db.queue("post_file_links", "insert", { data: null, error: null });
+  const handler = makeHandler(db);
+  const res = await handler(authedRequest({ ...baseBody, post_id: 10, sort_order: 4 }));
+  assertEquals(res.status, 200);
+  const linkCalls = db.calls.filter((c) => c.table === "post_file_links" && c.operation === "insert");
+  assertEquals(linkCalls.length, 1);
+  assertEquals((linkCalls[0].payload as { sort_order?: number }).sort_order, 4);
 });

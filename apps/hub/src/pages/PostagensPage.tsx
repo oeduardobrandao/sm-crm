@@ -44,7 +44,10 @@ const LOCKED_STATUSES = new Set(['agendado', 'postado', 'falha_publicacao']);
  * scheduled time already passed is being published right now. Derived from existing
  * fields so the client portal shows "Publicando…" while the cron works on it.
  */
-function getPostPublishState(p: { status: HubPost['status']; scheduled_at: string | null }): string {
+function getPostPublishState(p: {
+  status: HubPost['status'];
+  scheduled_at: string | null;
+}): string {
   return p.status === 'agendado' && !!p.scheduled_at && new Date(p.scheduled_at) <= new Date()
     ? 'publicando'
     : p.status;
