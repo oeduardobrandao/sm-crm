@@ -501,7 +501,7 @@ export function createFileManageHandler(deps: FileManageDeps) {
       // POST /links → link file to post
       if (req.method === "POST") {
         const body = await req.json().catch(() => ({}));
-        const { post_id, file_id } = body as { post_id?: number; file_id?: number };
+        const { post_id, file_id, sort_order } = body as { post_id?: number; file_id?: number; sort_order?: number };
         if (!post_id || !file_id) return json({ error: "post_id and file_id required" }, 400);
 
         const { data: file } = await svc.from("files").select("conta_id, kind").eq("id", file_id).single();
@@ -511,9 +511,12 @@ export function createFileManageHandler(deps: FileManageDeps) {
         const { data: post } = await svc.from("workflow_posts").select("conta_id").eq("id", post_id).single();
         if (!post || post.conta_id !== contaId) return json({ error: "Post not found" }, 404);
 
-        const { data: link, error: linkErr } = await svc.from("post_file_links").insert({
-          post_id, file_id, conta_id: contaId,
-        }).select().single();
+        // sort_order lets the picker append files in the selected order; omitted -> DB default (0).
+        const linkRow: Record<string, unknown> = { post_id, file_id, conta_id: contaId };
+        if (typeof sort_order === "number" && Number.isFinite(sort_order)) {
+          linkRow.sort_order = Math.max(0, Math.trunc(sort_order));
+        }
+        const { data: link, error: linkErr } = await svc.from("post_file_links").insert(linkRow).select().single();
 
         if (linkErr) {
           if (linkErr.message.includes("duplicate")) return json({ error: "Already linked" }, 409);

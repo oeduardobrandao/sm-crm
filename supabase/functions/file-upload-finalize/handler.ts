@@ -51,6 +51,7 @@ export function createFileUploadFinalizeHandler(deps: FileUploadFinalizeDeps) {
       duration_seconds?: number;
       blur_data_url?: string;
       post_id?: number;
+      sort_order?: number;
     };
     try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
 
@@ -134,11 +135,18 @@ export function createFileUploadFinalizeHandler(deps: FileUploadFinalizeDeps) {
     }
 
     if (body.post_id) {
-      const { error: linkErr } = await svc.from("post_file_links").insert({
+      // sort_order is assigned client-side from the upload selection order so
+      // concurrent uploads land in the picked order, not finalize-completion
+      // order. Omitted -> DB default (0), preserving the prior behavior.
+      const link: Record<string, unknown> = {
         post_id: body.post_id,
         file_id: (inserted as any).id,
         conta_id: profile.conta_id,
-      });
+      };
+      if (typeof body.sort_order === "number" && Number.isFinite(body.sort_order)) {
+        link.sort_order = Math.max(0, Math.trunc(body.sort_order));
+      }
+      const { error: linkErr } = await svc.from("post_file_links").insert(link);
       if (linkErr) return json({ error: linkErr.message }, 500);
     }
 

@@ -191,9 +191,10 @@ export async function uploadPostMedia(args: {
   postId: number;
   file: File;
   thumbnail?: File; // required for video
+  sortOrder?: number; // position in the carousel; assigned from selection order
   onProgress?: (p: UploadProgress) => void;
 }): Promise<PostMedia> {
-  const { postId, file, thumbnail, onProgress } = args;
+  const { postId, file, thumbnail, sortOrder, onProgress } = args;
   const kind = detectKind(file);
   validateFile(file, kind);
 
@@ -242,6 +243,7 @@ export async function uploadPostMedia(args: {
     size_bytes: file.size,
     name: file.name,
     post_id: postId,
+    sort_order: sortOrder,
     width,
     height,
     duration_seconds,

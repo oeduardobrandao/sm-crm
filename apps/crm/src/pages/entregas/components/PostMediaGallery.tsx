@@ -101,7 +101,7 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
   const [uploading, setUploading] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
-  const [pendingVideos, setPendingVideos] = useState<File[]>([]);
+  const [pendingVideos, setPendingVideos] = useState<{ file: File; sortOrder: number }[]>([]);
   const [editingMedia, setEditingMedia] = useState<PostMedia | null>(null);
   const [showFilePicker, setShowFilePicker] = useState(false);
   const [uploadQueue, setUploadQueue] = useState<
@@ -135,7 +135,15 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
 
     setUploading(true);
     const stamp = Date.now();
-    const items = fileArr.map((file, i) => ({ file, uid: `upload-${stamp}-${i}` }));
+    // Append after existing media and assign each file a sort_order from its
+    // position in the selection. Without this, concurrent uploads land in
+    // finalize-completion order (effectively random) instead of picked order.
+    const base = media.length;
+    const items = fileArr.map((file, i) => ({
+      file,
+      uid: `upload-${stamp}-${i}`,
+      sortOrder: base + i,
+    }));
     setUploadQueue((prev) => {
       const next = new Map(prev);
       items.forEach(({ file, uid }) =>
@@ -146,7 +154,7 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
 
     let hasError = false;
     let deferredCount = 0;
-    await uploadMany(items, async ({ file, uid }) => {
+    await uploadMany(items, async ({ file, uid, sortOrder }) => {
       try {
         let thumbnail: File | undefined;
         if (detectKind(file) === 'video') {
@@ -157,7 +165,7 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
             // manual thumbnail (finalize rejects videos without one).
             console.warn(`[thumbnail] auto-extraction failed for ${file.name}:`, err);
             deferredCount++;
-            setPendingVideos((prev) => [...prev, file]);
+            setPendingVideos((prev) => [...prev, { file, sortOrder }]);
             setUploadQueue((prev) => {
               const next = new Map(prev);
               next.delete(uid);
@@ -170,6 +178,7 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
           postId,
           file,
           thumbnail,
+          sortOrder,
           onProgress: (p) =>
             setUploadQueue((prev) => {
               const next = new Map(prev);
@@ -220,8 +229,9 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
   }
 
   async function handleVideoThumbnail(rawThumbnail: File) {
-    const video = pendingVideos[0];
-    if (!video) return;
+    const pending = pendingVideos[0];
+    if (!pending) return;
+    const video = pending.file;
     let thumbnail: File;
     try {
       thumbnail = await encodeImageAsJpeg(rawThumbnail);
@@ -242,6 +252,7 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
         postId,
         file: video,
         thumbnail,
+        sortOrder: pending.sortOrder,
         onProgress: (p) =>
           setUploadQueue((prev) => {
             const next = new Map(prev);
@@ -351,8 +362,9 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
   }
 
   async function handlePickFiles(fileIds: number[]) {
+    const base = media.length;
     try {
-      await Promise.all(fileIds.map((fileId) => linkFileToPost(fileId, postId)));
+      await Promise.all(fileIds.map((fileId, i) => linkFileToPost(fileId, postId, base + i)));
       refresh();
       toast.success(`${fileIds.length} arquivo(s) vinculado(s)`);
     } catch (e) {
@@ -495,7 +507,7 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
             <span className="text-[12.5px] font-semibold">{t('mediaGallery.videoThumbnail')}</span>
           </div>
           <span className="text-[12px] text-stone-600">
-            {t('mediaGallery.thumbnailFallback')} <strong>{pendingVideos[0].name}</strong>
+            {t('mediaGallery.thumbnailFallback')} <strong>{pendingVideos[0].file.name}</strong>
           </span>
           {pendingVideos.length > 1 && (
             <span className="text-[11px] text-stone-500">

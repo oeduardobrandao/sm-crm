@@ -120,6 +120,23 @@ describe('PostMediaGallery upload orchestration', () => {
     expect(extractVideoFrameMock).toHaveBeenCalledTimes(1);
   });
 
+  it('assigns each uploaded file a sort_order from its selection position', async () => {
+    renderGallery();
+    const files = [
+      createFile('1.png', 'image/png'),
+      createFile('2.png', 'image/png'),
+      createFile('3.png', 'image/png'),
+    ];
+
+    await pickFiles(files);
+
+    await waitFor(() => expect(uploadPostMediaMock).toHaveBeenCalledTimes(3));
+    // Uploads run concurrently, so sort by the assigned position rather than
+    // call order: every file must carry a distinct 0/1/2 from its index.
+    const sortOrders = uploadPostMediaMock.mock.calls.map((c) => c[0].sortOrder).sort();
+    expect(sortOrders).toEqual([0, 1, 2]);
+  });
+
   it('queues undecodable videos for manual thumbnails instead of overwriting', async () => {
     renderGallery();
     extractVideoFrameMock.mockRejectedValue(new Error('decode failed'));
