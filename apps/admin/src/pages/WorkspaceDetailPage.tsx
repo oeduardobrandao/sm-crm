@@ -237,7 +237,7 @@ export default function WorkspaceDetailPage() {
                 </span>
               </Field>
               <Field label="Valor">
-                <span className="font-['DM_Mono'] text-sm">
+                <span className="font-['DM_Sans'] text-sm">
                   {formatMoney(data.subscription.amount_cents, data.subscription.currency)}
                   {intervalSuffix(data.subscription.interval)}
                 </span>
@@ -458,7 +458,7 @@ function LimitRow({
           type="number"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className={`w-20 px-2 py-1 rounded text-right font-['DM_Mono'] text-sm bg-secondary border focus:outline-none focus:border-primary ${
+          className={`w-20 px-2 py-1 rounded text-right font-['DM_Sans'] text-sm bg-secondary border focus:outline-none focus:border-primary ${
             isOverridden ? 'border-primary/30 text-primary' : 'border-transparent text-foreground'
           }`}
         />

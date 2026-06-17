@@ -220,7 +220,7 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
     font-weight: 800;
     color: var(--text-color);
     line-height: 1.1;
-    font-family: 'DM Mono', monospace, var(--font-main);
+    font-family: var(--font-main), sans-serif;
   }
 
   .kpi-unit {
@@ -238,7 +238,7 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
     margin-top: 4px;
     padding: 2px 8px;
     border-radius: 6px;
-    font-family: 'DM Mono', monospace;
+    font-family: var(--font-main), sans-serif;
   }
 
   .kpi-delta--up {
@@ -309,7 +309,7 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
     font-size: 18px;
     font-weight: 800;
     color: var(--text-color);
-    font-family: 'DM Mono', monospace;
+    font-family: var(--font-main), sans-serif;
   }
 
   .highlight-desc {
@@ -445,7 +445,7 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
   .post-card-stat {
     font-size: 7.5px;
     color: var(--text-muted);
-    font-family: 'DM Mono', monospace;
+    font-family: var(--font-main), sans-serif;
     white-space: nowrap;
   }
 
@@ -538,7 +538,7 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
     font-weight: 700;
     color: var(--text-color);
     width: 36px;
-    font-family: 'DM Mono', monospace;
+    font-family: var(--font-main), sans-serif;
   }
 
   /* ── Location bars ── */

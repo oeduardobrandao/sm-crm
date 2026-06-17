@@ -25,7 +25,7 @@ export function ReportPreview({
 }: ReportPreviewProps) {
   const srcdoc = useMemo(() => {
     const fontParam = GOOGLE_FONTS_MAP[fontFamily] ?? GOOGLE_FONTS_MAP['DM Sans'];
-    const fontImport = `https://fonts.googleapis.com/css2?family=${fontParam}&family=DM+Mono:wght@400;500&display=swap`;
+    const fontImport = `https://fonts.googleapis.com/css2?family=${fontParam}&display=swap`;
 
     return `<!DOCTYPE html>
 <html lang="pt-BR" data-theme="${theme}">
@@ -230,7 +230,7 @@ export function ReportPreview({
     font-weight: 800;
     color: var(--text-color);
     line-height: 1.1;
-    font-family: 'DM Mono', monospace, var(--font-main);
+    font-family: var(--font-main), sans-serif;
   }
 
   .kpi-delta {
@@ -242,7 +242,7 @@ export function ReportPreview({
     margin-top: 4px;
     padding: 2px 8px;
     border-radius: 6px;
-    font-family: 'DM Mono', monospace;
+    font-family: var(--font-main), sans-serif;
     color: #22c55e;
     background: rgba(34,197,94,0.1);
   }
@@ -266,7 +266,7 @@ export function ReportPreview({
     font-size: 18px;
     font-weight: 800;
     color: var(--text-color);
-    font-family: 'DM Mono', monospace;
+    font-family: var(--font-main), sans-serif;
   }
 
   .highlight-desc {
@@ -309,7 +309,7 @@ export function ReportPreview({
     font-weight: 700;
     color: var(--text-color);
     width: 32px;
-    font-family: 'DM Mono', monospace;
+    font-family: var(--font-main), sans-serif;
   }
 
   .page-footer {

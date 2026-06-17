@@ -220,7 +220,7 @@ export default function PlansPage() {
                     value={form.name}
                     onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                     required
-                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Mono'] text-foreground focus:outline-none focus:border-primary"
+                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Sans'] text-foreground focus:outline-none focus:border-primary"
                   />
                 </div>
                 <div className="flex items-end gap-4">
@@ -255,7 +255,7 @@ export default function PlansPage() {
                     value={form.stripe_product_id}
                     onChange={(e) => setForm((f) => ({ ...f, stripe_product_id: e.target.value }))}
                     placeholder="prod_..."
-                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Mono'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
+                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Sans'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
                   />
                 </div>
                 <div>
@@ -267,7 +267,7 @@ export default function PlansPage() {
                     value={form.stripe_price_id}
                     onChange={(e) => setForm((f) => ({ ...f, stripe_price_id: e.target.value }))}
                     placeholder="price_..."
-                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Mono'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
+                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Sans'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
                   />
                 </div>
                 <div>
@@ -281,7 +281,7 @@ export default function PlansPage() {
                       setForm((f) => ({ ...f, stripe_price_id_annual: e.target.value }))
                     }
                     placeholder="price_..."
-                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Mono'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
+                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Sans'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
                   />
                 </div>
               </div>
@@ -420,21 +420,21 @@ function PlanCard({ plan, onEdit }: { plan: Plan; onEdit: (p: Plan) => void }) {
       <div className="flex flex-col gap-0.5 mb-3 text-sm text-muted-foreground">
         <div>
           Clients:{' '}
-          <span className="text-foreground font-['DM_Mono']">{plan.max_clients ?? '∞'}</span>
+          <span className="text-foreground font-['DM_Sans']">{plan.max_clients ?? '∞'}</span>
         </div>
         <div>
           Members:{' '}
-          <span className="text-foreground font-['DM_Mono']">{plan.max_team_members ?? '∞'}</span>
+          <span className="text-foreground font-['DM_Sans']">{plan.max_team_members ?? '∞'}</span>
         </div>
         <div>
           Instagram:{' '}
-          <span className="text-foreground font-['DM_Mono']">
+          <span className="text-foreground font-['DM_Sans']">
             {plan.max_instagram_accounts ?? '∞'}
           </span>
         </div>
         <div>
           Storage:{' '}
-          <span className="text-foreground font-['DM_Mono']">
+          <span className="text-foreground font-['DM_Sans']">
             {plan.storage_quota_bytes != null
               ? `${Math.round(plan.storage_quota_bytes / 1048576)} MB`
               : '∞'}
@@ -493,7 +493,7 @@ function NumberFieldGroup({
                 const v = e.target.value;
                 onChange(key, v === '' ? null : parseInt(v, 10));
               }}
-              className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Mono'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
+              className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Sans'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
             />
           </div>
         ))}
