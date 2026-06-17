@@ -166,6 +166,53 @@ describe('InstagramPostCard', () => {
     expect(onApprovalSubmitted).toHaveBeenCalledTimes(1);
   });
 
+  it('prewarms the post video so the lightbox opens without stutter', () => {
+    const { container } = render(
+      <InstagramPostCard
+        post={makePost({
+          tipo: 'reels',
+          media: [
+            makeMedia({
+              id: 5,
+              kind: 'video',
+              mime_type: 'video/quicktime',
+              url: 'https://cdn.example.com/reel.mov',
+              thumbnail_url: 'https://cdn.example.com/reel-thumb.jpg',
+            }),
+          ],
+        })}
+        token="token-publico"
+        approvals={[]}
+        instagramProfile={profile}
+        isSelected={false}
+        onToggleSelect={vi.fn()}
+        onApprovalSubmitted={vi.fn()}
+      />,
+    );
+
+    // jsdom has no IntersectionObserver, so VideoPrewarm warms immediately.
+    expect(container.querySelector('video')).toHaveAttribute(
+      'src',
+      'https://cdn.example.com/reel.mov',
+    );
+  });
+
+  it('does not prewarm anything for an image-only post', () => {
+    const { container } = render(
+      <InstagramPostCard
+        post={makePost()}
+        token="token-publico"
+        approvals={[]}
+        instagramProfile={profile}
+        isSelected={false}
+        onToggleSelect={vi.fn()}
+        onApprovalSubmitted={vi.fn()}
+      />,
+    );
+
+    expect(container.querySelector('video')).toBeNull();
+  });
+
   it('opens the lightbox when the image is clicked', () => {
     render(
       <InstagramPostCard
