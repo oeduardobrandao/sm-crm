@@ -288,7 +288,12 @@ describe('PostCard', () => {
       );
     });
 
-    expect(replyInput).toHaveValue('');
+    // The handler clears the input and calls onApprovalSubmitted only AFTER the
+    // awaited submitApproval resolves (a later microtask), so the previous
+    // synchronous assertion raced the state flush. Wait for the cleared input.
+    await waitFor(() => {
+      expect(replyInput).toHaveValue('');
+    });
     expect(onApprovalSubmitted).toHaveBeenCalledTimes(1);
   });
 
