@@ -39,9 +39,10 @@ export const STATUS_CLASS: Record<WorkflowPost['status'], string> = {
  */
 export type PostPublishState = 'publicando' | WorkflowPost['status'];
 
-export function getPostPublishState(
-  p: { status: WorkflowPost['status']; scheduled_at?: string | null },
-): PostPublishState {
+export function getPostPublishState(p: {
+  status: WorkflowPost['status'];
+  scheduled_at?: string | null;
+}): PostPublishState {
   return p.status === 'agendado' && !!p.scheduled_at && new Date(p.scheduled_at) <= new Date()
     ? 'publicando'
     : p.status;
