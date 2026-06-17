@@ -22,6 +22,7 @@ const STATUS_COLORS: Record<string, string> = {
   aprovado_cliente: '#3ecf8e',
   correcao_cliente: '#f55a42',
   agendado: '#42c8f5',
+  publicando: '#E1306C',
   postado: '#eab308',
   falha_publicacao: '#f55a42',
 };
@@ -31,11 +32,23 @@ const STATUS_LABELS: Record<string, string> = {
   aprovado_cliente: 'Aprovado',
   correcao_cliente: 'Correção solicitada',
   agendado: 'Agendado',
+  publicando: 'Publicando…',
   postado: 'Publicado',
   falha_publicacao: 'Falha na publicação',
 };
 
 const LOCKED_STATUSES = new Set(['agendado', 'postado', 'falha_publicacao']);
+
+/**
+ * Presentational-only state (not a DB status): a post that is `agendado` with its
+ * scheduled time already passed is being published right now. Derived from existing
+ * fields so the client portal shows "Publicando…" while the cron works on it.
+ */
+function getPostPublishState(p: { status: HubPost['status']; scheduled_at: string | null }): string {
+  return p.status === 'agendado' && !!p.scheduled_at && new Date(p.scheduled_at) <= new Date()
+    ? 'publicando'
+    : p.status;
+}
 
 function StatusTag({ status }: { status: string }) {
   const color = STATUS_COLORS[status] ?? '#94a3b8';
@@ -70,6 +83,12 @@ export function PostagensPage() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['hub-posts', token],
     queryFn: () => fetchPosts(token),
+    // Poll while a post is mid-publishing so the client sees it flip to "Publicado"
+    // on its own; stops once nothing is publishing.
+    refetchInterval: (query) =>
+      (query.state.data?.posts ?? []).some((p) => getPostPublishState(p) === 'publicando')
+        ? 15000
+        : false,
   });
 
   const allPosts = (data?.posts ?? []).filter((p) => VISIBLE_STATUSES.has(p.status));
@@ -182,7 +201,7 @@ export function PostagensPage() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     {withMedia.map((post, i) => (
                       <div key={post.id} className="flex flex-col gap-1.5">
-                        <StatusTag status={post.status} />
+                        <StatusTag status={getPostPublishState(post)} />
                         <InstagramPostCard
                           post={post}
                           token={token}
@@ -203,7 +222,7 @@ export function PostagensPage() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                       {stories.map((post) => (
                         <div key={post.id} className="flex flex-col gap-1.5">
-                          <StatusTag status={post.status} />
+                          <StatusTag status={getPostPublishState(post)} />
                           <StoryPostCard
                             post={post}
                             token={token}
@@ -223,7 +242,7 @@ export function PostagensPage() {
                     <div className="max-w-[640px] space-y-3">
                       {withoutMedia.map((post) => (
                         <div key={post.id} className="flex flex-col gap-1.5">
-                          <StatusTag status={post.status} />
+                          <StatusTag status={getPostPublishState(post)} />
                           <TextPostCard post={post} token={token} approvals={approvals} readOnly />
                         </div>
                       ))}

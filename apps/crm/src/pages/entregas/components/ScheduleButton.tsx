@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
-import { Calendar, AlertCircle, RefreshCw, X, Send } from 'lucide-react';
+import { Calendar, AlertCircle, RefreshCw, X, Send, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog,
@@ -12,6 +12,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import type { WorkflowPost } from '../../../store';
+import { getPostPublishState } from '../postLabels';
 import {
   scheduleInstagramPost,
   cancelInstagramSchedule,
@@ -153,12 +154,21 @@ export function ScheduleButton({
           </p>
         )}
         <div className="flex flex-wrap items-center gap-2">
-          <div
-            className="flex items-center gap-1.5 px-2.5 h-8 rounded-lg text-xs font-semibold"
-            style={{ background: 'rgba(62, 207, 142, 0.12)', color: '#3ecf8e' }}
-          >
-            <Calendar className="h-3.5 w-3.5" /> Agendado
-          </div>
+          {getPostPublishState(post) === 'publicando' ? (
+            <div
+              className="flex items-center gap-1.5 px-2.5 h-8 rounded-lg text-xs font-semibold"
+              style={{ background: 'rgba(225, 48, 108, 0.12)', color: '#E1306C' }}
+            >
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Publicando…
+            </div>
+          ) : (
+            <div
+              className="flex items-center gap-1.5 px-2.5 h-8 rounded-lg text-xs font-semibold"
+              style={{ background: 'rgba(62, 207, 142, 0.12)', color: '#3ecf8e' }}
+            >
+              <Calendar className="h-3.5 w-3.5" /> Agendado
+            </div>
+          )}
           <Button
             variant="outline"
             size="sm"

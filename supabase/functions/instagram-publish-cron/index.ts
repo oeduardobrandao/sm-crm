@@ -6,21 +6,24 @@ import { createPublishCronHandler } from "./handler.ts";
 import { reportCronFailure } from "../_shared/triage.ts";
 import {
   decryptToken,
-  createSingleImageContainer,
-  createVideoContainer,
-  createCarouselChildContainer,
-  createCarouselParentContainer,
-  checkContainerStatus,
+  createContainerForPost,
+  pollContainerReady,
   publishContainer,
   fetchPermalink,
   processBatch,
 } from "../_shared/instagram-publish-utils.ts";
-import { signGetUrl } from "../_shared/r2.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const CRON_SECRET = Deno.env.get("CRON_SECRET") ??
   (() => { throw new Error("CRON_SECRET is required"); })();
+
+// Per-phase claim limits keep a single cron run bounded. The publish/retry phases
+// poll the Instagram container in-run (≤ ~6s each), so they're capped lower than
+// container creation to stay under the edge-function wall-clock at 1-min cadence.
+const CONTAINER_LIMIT = 25;
+const PUBLISH_LIMIT = 10;
+const RETRY_LIMIT = 10;
 
 interface ClaimedPost {
   post_id: number;
@@ -40,36 +43,17 @@ interface ClaimedPost {
 async function claimPosts(
   db: any,
   phase: string,
+  limit: number,
 ): Promise<ClaimedPost[]> {
   const { data, error } = await db.rpc("claim_posts_for_publishing", {
     p_phase: phase,
-    p_limit: 25,
+    p_limit: limit,
   });
   if (error) {
     console.error(`[IG-PUBLISH] claim_posts_for_publishing(${phase}) error:`, error.message);
     return [];
   }
   return data ?? [];
-}
-
-// deno-lint-ignore no-explicit-any
-async function fetchMediaForPost(
-  db: any,
-  postId: number,
-): Promise<Array<{ id: number; kind: string; r2_key: string; thumbnail_r2_key: string | null; sort_order: number }>> {
-  const { data } = await db
-    .from("post_file_links")
-    .select("sort_order, files!inner(id, kind, r2_key, thumbnail_r2_key)")
-    .eq("post_id", postId)
-    .order("sort_order", { ascending: true });
-
-  return (data ?? []).map((l: any) => ({
-    id: l.files.id,
-    kind: l.files.kind,
-    r2_key: l.files.r2_key,
-    thumbnail_r2_key: l.files.thumbnail_r2_key,
-    sort_order: l.sort_order,
-  }));
 }
 
 // deno-lint-ignore no-explicit-any
@@ -105,44 +89,16 @@ async function processContainerCreation(
   post: ClaimedPost,
 ) {
   const token = await decryptToken(post.encrypted_access_token);
-  const media = await fetchMediaForPost(db, post.post_id);
-  if (media.length === 0) throw new Error("No media files found");
-
-  const isCarousel = media.length > 1;
-  const isSingleVideo = media.length === 1 && media[0].kind === "video";
-
-  let containerId: string;
-
-  if (isCarousel) {
-    const childIds: string[] = [];
-    for (const m of media) {
-      const url = await signGetUrl(m.r2_key, 7200);
-      const child = await createCarouselChildContainer(
-        post.instagram_user_id, token, url, m.kind === "video",
-      );
-      childIds.push(child.id);
-    }
-    const parent = await createCarouselParentContainer(
-      post.instagram_user_id, token, childIds, post.ig_caption,
-    );
-    containerId = parent.id;
-  } else if (isSingleVideo) {
-    const url = await signGetUrl(media[0].r2_key, 7200);
-    // First attempt carries the cover; any retry drops it so a cover Instagram
-    // can't process can't make a scheduled post fail permanently.
-    const thumbKey = post.publish_retry_count === 0 ? media[0].thumbnail_r2_key : null;
-    const coverUrl = thumbKey ? await signGetUrl(thumbKey, 7200) : undefined;
-    const container = await createVideoContainer(
-      post.instagram_user_id, token, url, post.ig_caption, coverUrl,
-    );
-    containerId = container.id;
-  } else {
-    const url = await signGetUrl(media[0].r2_key, 7200);
-    const container = await createSingleImageContainer(
-      post.instagram_user_id, token, url, post.ig_caption,
-    );
-    containerId = container.id;
-  }
+  // First attempt carries the cover; any retry drops it (useCover:false) so a cover
+  // Instagram can't process can't make a scheduled post fail permanently. The
+  // coverless retry is deferred to the next cron cycle (publish_retry_count > 0).
+  const { containerId } = await createContainerForPost(db, {
+    igUserId: post.instagram_user_id,
+    token,
+    postId: post.post_id,
+    caption: post.ig_caption,
+    useCover: post.publish_retry_count === 0,
+  });
 
   await db.from("workflow_posts").update({
     instagram_container_id: containerId,
@@ -161,7 +117,10 @@ async function processPublish(
   const token = await decryptToken(post.encrypted_access_token);
   const containerId = post.instagram_container_id!;
 
-  const status = await checkContainerStatus(containerId, token);
+  // Poll briefly in-run so a container that finishes mid-cycle publishes now
+  // instead of waiting a whole cron cycle. Kept short to bound wall-clock; if it
+  // is still processing we bail and the next (1-min) cron run retries.
+  const status = await pollContainerReady(containerId, token, 2, 3000);
   if (status === "IN_PROGRESS") {
     console.log(`[IG-PUBLISH] Container ${containerId} still processing, skipping post ${post.post_id}`);
     await clearLock(db, post.post_id);
@@ -182,7 +141,8 @@ async function processPublish(
     publish_retry_count: 0,
   }).eq("id", post.post_id);
 
-  console.log(`[IG-PUBLISH] Published post ${post.post_id}, media_id: ${result.id}`);
+  const lateS = Math.round((Date.now() - new Date(post.scheduled_at).getTime()) / 1000);
+  console.log(`[IG-PUBLISH] Published post ${post.post_id}, media_id: ${result.id}, late_s: ${lateS}`);
 
   const permalink = await fetchPermalink(result.id, token);
   if (permalink) {
@@ -213,7 +173,7 @@ Deno.serve(createPublishCronHandler({
 
     try {
       // Phase 1: Container Creation
-      const containerPosts = await claimPosts(db, "container");
+      const containerPosts = await claimPosts(db, "container", CONTAINER_LIMIT);
       if (containerPosts.length > 0) {
         console.log(`[IG-PUBLISH] Phase 1: ${containerPosts.length} posts to create containers`);
         const r1 = await processBatch(containerPosts, 5, 1000, async (post) => {
@@ -228,7 +188,7 @@ Deno.serve(createPublishCronHandler({
       }
 
       // Phase 2: Publishing
-      const publishPosts = await claimPosts(db, "publish");
+      const publishPosts = await claimPosts(db, "publish", PUBLISH_LIMIT);
       if (publishPosts.length > 0) {
         console.log(`[IG-PUBLISH] Phase 2: ${publishPosts.length} posts to publish`);
         const r2 = await processBatch(publishPosts, 5, 1000, async (post) => {
@@ -243,7 +203,7 @@ Deno.serve(createPublishCronHandler({
       }
 
       // Phase 3: Retries
-      const retryPosts = await claimPosts(db, "retry");
+      const retryPosts = await claimPosts(db, "retry", RETRY_LIMIT);
       if (retryPosts.length > 0) {
         console.log(`[IG-PUBLISH] Phase 3: ${retryPosts.length} posts to retry`);
         const r3 = await processBatch(retryPosts, 5, 1000, async (post) => {
