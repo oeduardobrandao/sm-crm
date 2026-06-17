@@ -145,6 +145,7 @@ export function PostMediaLightbox({
             src={current.url}
             poster={current.thumbnail_url ?? undefined}
             controls
+            preload="auto"
             onError={() => onStaleUrl?.()}
             className="max-h-[85vh] max-w-[90vw] object-contain"
           />

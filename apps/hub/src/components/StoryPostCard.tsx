@@ -4,6 +4,7 @@ import { submitApproval } from '../api';
 import { formatDate } from './PostCard';
 import { PostMediaLightbox } from './PostMediaLightbox';
 import { OptimizedImage } from './OptimizedImage';
+import { VideoPrewarm } from './VideoPrewarm';
 import type { HubPost, PostApproval, InstagramProfile } from '../types';
 import { useEditSuggestion } from '../hooks/useEditSuggestion';
 
@@ -68,6 +69,7 @@ export function StoryPostCard({
       })();
 
   const currentMedia = media[currentSlide];
+  const prewarmVideoUrl = media.find((m) => m.kind === 'video')?.url ?? null;
 
   async function handleAction(action: 'aprovado' | 'correcao') {
     setSubmitting(true);
@@ -103,6 +105,7 @@ export function StoryPostCard({
           '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
       }}
     >
+      <VideoPrewarm src={prewarmVideoUrl} />
       {/* Story frame */}
       <div
         className="relative bg-[#1a1a1a] rounded-2xl overflow-hidden"

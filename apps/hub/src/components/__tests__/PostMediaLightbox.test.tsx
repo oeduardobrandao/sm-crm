@@ -120,6 +120,26 @@ describe('PostMediaLightbox', () => {
     );
   });
 
+  it('eagerly buffers the open video so playback starts without stutter', () => {
+    render(
+      <PostMediaLightbox
+        media={[
+          makeMedia({
+            id: 9,
+            kind: 'video',
+            mime_type: 'video/quicktime',
+            url: 'https://cdn.example.com/video.mov',
+            thumbnail_url: 'https://cdn.example.com/video-thumb.jpg',
+          }),
+        ]}
+        initialIndex={0}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(document.body.querySelector('video')).toHaveAttribute('preload', 'auto');
+  });
+
   it('calls the stale URL callback when image and video media fail to load', () => {
     const onStaleUrl = vi.fn();
     const onClose = vi.fn();

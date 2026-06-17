@@ -4,6 +4,7 @@ import { submitApproval } from '../api';
 import { formatDate } from './PostCard';
 import { PostMediaLightbox } from './PostMediaLightbox';
 import { OptimizedImage } from './OptimizedImage';
+import { VideoPrewarm } from './VideoPrewarm';
 import type { HubPost, PostApproval, InstagramProfile } from '../types';
 import { useEditSuggestion } from '../hooks/useEditSuggestion';
 
@@ -120,6 +121,7 @@ export function InstagramPostCard({
   }
 
   const currentMedia = media[currentSlide];
+  const prewarmVideoUrl = media.find((m) => m.kind === 'video')?.url ?? null;
 
   return (
     <div
@@ -129,6 +131,7 @@ export function InstagramPostCard({
           '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
       }}
     >
+      <VideoPrewarm src={prewarmVideoUrl} />
       {/* Selection checkbox */}
       {onToggleSelect && (
         <div className="absolute top-2 right-2 z-10">
