@@ -1,6 +1,68 @@
 {
-  "lastMergedAt": "2026-06-12T20:14:43Z",
+  "lastMergedAt": "2026-06-17T23:58:30Z",
   "releases": [
+    {
+      "date": "2026-06-20",
+      "summary": "Melhorias no CRM para social media managers",
+      "items": [
+        {
+          "type": "feature",
+          "area": "Entregas",
+          "title": "Modo de calendário para publicações",
+          "description": "Agora é possível visualizar as publicações agendadas por dia, com ações inline e abertura da gaveta de fluxo de trabalho.",
+          "pr": 117
+        },
+        {
+          "type": "feature",
+          "area": "Briefing",
+          "title": "Modelos de briefing reutilizáveis",
+          "description": "Crie modelos de briefing uma vez e reutilize-os para vários clientes, com a opção de aplicar automaticamente em novos clientes.",
+          "pr": 118
+        },
+        {
+          "type": "feature",
+          "area": "Briefing",
+          "title": "Criação de modelos de briefing a partir de um arquivo CSV",
+          "description": "Agora é possível criar modelos de briefing a partir de um arquivo CSV, facilitando a criação de novos modelos.",
+          "pr": 119
+        },
+        {
+          "type": "improvement",
+          "area": "Instagram",
+          "title": "Redução do atraso na publicação de posts",
+          "description": "Melhorias no cron de publicação para reduzir o atraso na publicação de posts no Instagram.",
+          "pr": 121
+        },
+        {
+          "type": "fix",
+          "area": "Hub",
+          "title": "Correção de problemas de reprodução de vídeos",
+          "description": "Correção de problemas de reprodução de vídeos no Hub, incluindo atrasos e congelamento.",
+          "pr": 126
+        },
+        {
+          "type": "fix",
+          "area": "CRM",
+          "title": "Correção de ordem de carrossel de imagens",
+          "description": "Correção de problemas de ordem de carrossel de imagens após upload.",
+          "pr": 122
+        },
+        {
+          "type": "feature",
+          "area": "Landing",
+          "title": "Preços de planos de assinatura atualizados",
+          "description": "Atualização dos preços de planos de assinatura na página de destino para refletir os planos atuais.",
+          "pr": 116
+        },
+        {
+          "type": "feature",
+          "area": "CRM",
+          "title": "Miniaturas de vídeo automáticas e edição de miniaturas",
+          "description": "Agora é possível criar miniaturas de vídeo automáticas e editá-las após o upload.",
+          "pr": 114
+        }
+      ]
+    },
     {
       "date": "2026-06-13",
       "summary": "Melhorias nos recursos de cobrança e entrega",
