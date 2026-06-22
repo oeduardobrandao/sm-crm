@@ -27,14 +27,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { listMcpKeys, createMcpKey, revokeMcpKey, type McpKey } from '@/services/mcp-keys';
+import { SCOPE_OPTIONS, AGENT_PRESET } from '@/lib/mcp-scopes';
 
-const SCOPE_OPTIONS = [
-  { value: 'clientes:read', label: 'Clientes (leitura)' },
-  { value: 'posts:read', label: 'Posts (leitura)' },
-  { value: 'workflows:read', label: 'Fluxos (leitura)' },
-  { value: 'ideias:read', label: 'Ideias/Pautas (leitura)' },
-];
-const AGENT_PRESET = SCOPE_OPTIONS.map((s) => s.value);
 const MCP_URL = (import.meta.env.VITE_SUPABASE_URL as string) + '/functions/v1/mcp';
 const fmtDate = (s: string) => new Date(s).toLocaleDateString('pt-BR');
 

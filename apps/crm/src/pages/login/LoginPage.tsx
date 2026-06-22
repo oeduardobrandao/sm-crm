@@ -15,7 +15,14 @@ export default function LoginPage() {
   const { t } = useTranslation('auth');
   const navigate = useNavigate();
   const location = useLocation();
-  const from = (location.state as { from?: Location })?.from?.pathname ?? '/dashboard';
+  // Preserve the full intended URL (path + query + hash) so deep links survive the login bounce —
+  // e.g. the OAuth consent page needs its ?authorization_id=… after sign-in.
+  const fromLoc = (
+    location.state as { from?: { pathname?: string; search?: string; hash?: string } }
+  )?.from;
+  const from = fromLoc?.pathname
+    ? `${fromLoc.pathname}${fromLoc.search ?? ''}${fromLoc.hash ?? ''}`
+    : '/dashboard';
   const initialTab: TabKey =
     new URLSearchParams(location.search).get('tab') === 'register' ? 'register' : 'login';
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);

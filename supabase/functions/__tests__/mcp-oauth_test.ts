@@ -1,5 +1,11 @@
 import { assert, assertEquals } from "./assert.ts";
-import { decodeJwtClaim, grantActive } from "../_shared/mcp-oauth.ts";
+import {
+  boundGrantScopes,
+  decodeJwtClaim,
+  grantActive,
+  mcpScopesFromClaim,
+  validateConsentPayload,
+} from "../_shared/mcp-oauth.ts";
 
 function b64url(o: unknown): string {
   return btoa(JSON.stringify(o)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -28,4 +34,57 @@ Deno.test("grantActive gates on existence, revocation, feature and membership", 
   assertEquals(grantActive({ revoked_at: null }, true, false), false); // not a member anymore
   assertEquals(grantActive({ revoked_at: "2026-01-01T00:00:00Z" }, true, true), false); // revoked
   assert(!grantActive(null, true, true)); // no grant
+});
+
+Deno.test("validateConsentPayload accepts a well-formed approve body", () => {
+  const r = validateConsentPayload({
+    authorization_id: "  auth-id  ",
+    conta_id: "conta-uuid",
+    scopes: ["clientes:read", "posts:read"],
+  });
+  assert(r.ok);
+  if (r.ok) {
+    assertEquals(r.value.authorization_id, "auth-id"); // trimmed
+    assertEquals(r.value.conta_id, "conta-uuid");
+    assertEquals(r.value.scopes, ["clientes:read", "posts:read"]);
+  }
+});
+
+Deno.test("validateConsentPayload rejects missing fields and bad scopes", () => {
+  // client_id is NOT accepted from the body — authorization_id is required instead.
+  const noAuth = validateConsentPayload({ conta_id: "c", scopes: ["posts:read"] });
+  assertEquals(noAuth.ok, false);
+  const noConta = validateConsentPayload({ authorization_id: "a", scopes: ["posts:read"] });
+  assertEquals(noConta.ok, false);
+  const emptyScopes = validateConsentPayload({ authorization_id: "a", conta_id: "c", scopes: [] });
+  assertEquals(emptyScopes.ok, false); // non-empty required
+  const badScope = validateConsentPayload({
+    authorization_id: "a",
+    conta_id: "c",
+    scopes: ["posts:write"],
+  });
+  assertEquals(badScope.ok, false); // not in allowlist
+});
+
+Deno.test("mcpScopesFromClaim extracts allowlisted scopes from string or array", () => {
+  assertEquals(mcpScopesFromClaim("openid clientes:read posts:read"), [
+    "clientes:read",
+    "posts:read",
+  ]);
+  assertEquals(mcpScopesFromClaim(["email", "ideias:read", "bogus"]), ["ideias:read"]);
+  assertEquals(mcpScopesFromClaim("openid email"), []); // no MCP scopes named
+  assertEquals(mcpScopesFromClaim(null), []);
+  assertEquals(mcpScopesFromClaim(undefined), []);
+});
+
+Deno.test("boundGrantScopes intersects only when the request named MCP scopes", () => {
+  // request named MCP scopes → grant can't exceed them
+  assertEquals(boundGrantScopes(["clientes:read", "posts:read"], ["clientes:read"]), [
+    "clientes:read",
+  ]);
+  // request named none (generic OAuth) → the user's consent selection stands
+  assertEquals(boundGrantScopes(["clientes:read", "posts:read"], []), [
+    "clientes:read",
+    "posts:read",
+  ]);
 });
