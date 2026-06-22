@@ -24,9 +24,11 @@ ALTER TABLE mcp_api_keys ENABLE ROW LEVEL SECURITY;
 
 -- Workspace members may LIST their workspace's keys. (No insert/update/delete policy:
 -- all writes happen via edge functions using the service role, which bypasses RLS.)
+DROP POLICY IF EXISTS mcp_keys_select ON mcp_api_keys;
 CREATE POLICY mcp_keys_select ON mcp_api_keys
   FOR SELECT USING ( conta_id IN (SELECT public.get_my_conta_id()) );
 
+DROP POLICY IF EXISTS mcp_keys_service_role ON mcp_api_keys;
 CREATE POLICY mcp_keys_service_role ON mcp_api_keys
   FOR ALL TO service_role USING (true) WITH CHECK (true);
 
