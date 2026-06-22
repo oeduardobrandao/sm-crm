@@ -12,6 +12,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -125,6 +135,7 @@ export default function IntegracoesClaudePage() {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [connectKey, setConnectKey] = useState<McpKey | null>(null);
   const [connectToken, setConnectToken] = useState('');
+  const [revokeTarget, setRevokeTarget] = useState<McpKey | null>(null);
 
   const { data: keys = [], isLoading } = useQuery({
     queryKey: ['mcp-keys'],
@@ -261,12 +272,7 @@ export default function IntegracoesClaudePage() {
                       >
                         Conectar
                       </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => revokeMutation.mutate(k.id)}
-                        disabled={revokeMutation.isPending}
-                      >
+                      <Button variant="outline" size="sm" onClick={() => setRevokeTarget(k)}>
                         Revogar
                       </Button>
                     </div>
@@ -424,6 +430,31 @@ export default function IntegracoesClaudePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Revoke confirmation */}
+      <AlertDialog open={!!revokeTarget} onOpenChange={(o) => !o && setRevokeTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Revogar chave?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A chave <strong>{revokeTarget?.name}</strong> deixará de funcionar imediatamente.
+              Agentes conectados perderão o acesso. Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (revokeTarget) revokeMutation.mutate(revokeTarget.id);
+                setRevokeTarget(null);
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Revogar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
