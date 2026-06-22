@@ -18,6 +18,9 @@ import {
   unsetWorkspacePlan,
   setWorkspaceOverrides,
   clearWorkspaceOverrides,
+  listWorkspaceMcpKeys,
+  revokeMcpKey,
+  revokeAllMcpKeys,
   RESOURCE_LIMIT_KEYS,
   RESOURCE_LIMIT_LABELS,
   FEATURE_FLAG_KEYS,
@@ -43,6 +46,30 @@ export default function WorkspaceDetailPage() {
   const { data: plansData } = useQuery({
     queryKey: ['admin', 'plans'],
     queryFn: listPlans,
+  });
+
+  const { data: mcpKeysData } = useQuery({
+    queryKey: ['admin', 'workspace', id, 'mcp-keys'],
+    queryFn: () => listWorkspaceMcpKeys(id!),
+    enabled: !!id,
+  });
+  const mcpKeys = mcpKeysData?.keys;
+
+  const revokeMcpKeyMutation = useMutation({
+    mutationFn: (keyId: string) => revokeMcpKey(id!, keyId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'workspace', id, 'mcp-keys'] });
+      toast.success('Key revoked');
+    },
+    onError: (e: unknown) => toast.error((e as Error).message),
+  });
+  const revokeAllMcpKeysMutation = useMutation({
+    mutationFn: () => revokeAllMcpKeys(id!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'workspace', id, 'mcp-keys'] });
+      toast.success('All keys revoked');
+    },
+    onError: (e: unknown) => toast.error((e as Error).message),
   });
 
   const [resourceEdits, setResourceEdits] = useState<Record<string, string>>({});
@@ -345,6 +372,48 @@ export default function WorkspaceDetailPage() {
             ))}
           </div>
         </div>
+      </div>
+
+      {/* MCP API Keys */}
+      <div className="min-w-0 bg-card border border-border rounded-2xl p-5 mb-6">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="font-semibold">MCP API Keys</h2>
+          {mcpKeys?.some((k) => !k.revoked_at) && (
+            <button
+              onClick={() => revokeAllMcpKeysMutation.mutate()}
+              disabled={revokeAllMcpKeysMutation.isPending}
+              className="text-xs font-medium text-destructive hover:underline disabled:opacity-50"
+            >
+              Revoke all
+            </button>
+          )}
+        </div>
+        {!mcpKeys || mcpKeys.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No keys.</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {mcpKeys.map((k) => (
+              <div key={k.id} className="flex items-center justify-between gap-2 text-sm">
+                <div className="min-w-0 truncate">
+                  <span className="font-medium">{k.name}</span>
+                  <span className="text-muted-foreground"> …{k.token_suffix}</span>
+                  <span className="ml-2 text-xs text-muted-foreground">{k.scopes.join(', ')}</span>
+                </div>
+                {k.revoked_at ? (
+                  <span className="shrink-0 text-xs text-muted-foreground">revoked</span>
+                ) : (
+                  <button
+                    onClick={() => revokeMcpKeyMutation.mutate(k.id)}
+                    disabled={revokeMcpKeyMutation.isPending}
+                    className="shrink-0 text-xs font-medium text-destructive hover:underline disabled:opacity-50"
+                  >
+                    Revoke
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="min-w-0 bg-card border border-border rounded-2xl p-5 mb-6">

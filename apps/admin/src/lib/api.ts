@@ -67,6 +67,7 @@ export interface Plan {
   max_custom_properties_per_template: number | null;
   max_posts_per_workflow: number | null;
   max_workspaces_per_user: number | null;
+  max_mcp_keys: number | null;
   feature_instagram: boolean;
   feature_instagram_ai: boolean;
   feature_analytics_reports: boolean;
@@ -85,6 +86,7 @@ export interface Plan {
   feature_auto_sync_cron: boolean;
   feature_post_tagging: boolean;
   feature_brand_customization: boolean;
+  feature_mcp: boolean;
   rate_instagram_syncs_per_day: number | null;
   rate_ai_analyses_per_month: number | null;
   rate_report_generations_per_month: number | null;
@@ -138,6 +140,7 @@ export const RESOURCE_LIMIT_KEYS = [
   'max_custom_properties_per_template',
   'max_posts_per_workflow',
   'max_workspaces_per_user',
+  'max_mcp_keys',
 ] as const;
 
 export const RESOURCE_LIMIT_LABELS: Record<string, string> = {
@@ -152,6 +155,7 @@ export const RESOURCE_LIMIT_LABELS: Record<string, string> = {
   max_custom_properties_per_template: 'Max Custom Props/Template',
   max_posts_per_workflow: 'Max Posts/Workflow',
   max_workspaces_per_user: 'Max Workspaces/User',
+  max_mcp_keys: 'Max MCP Keys',
 };
 
 export const FEATURE_FLAG_KEYS = [
@@ -173,6 +177,7 @@ export const FEATURE_FLAG_KEYS = [
   'feature_auto_sync_cron',
   'feature_post_tagging',
   'feature_brand_customization',
+  'feature_mcp',
 ] as const;
 
 export const FEATURE_FLAG_LABELS: Record<string, string> = {
@@ -194,6 +199,7 @@ export const FEATURE_FLAG_LABELS: Record<string, string> = {
   feature_auto_sync_cron: 'Auto Sync Cron',
   feature_post_tagging: 'Post Tagging',
   feature_brand_customization: 'Brand Customization',
+  feature_mcp: 'MCP (Claude)',
 };
 
 export const RATE_LIMIT_KEYS = [
@@ -292,6 +298,29 @@ export function setWorkspaceOverrides(params: {
 
 export function clearWorkspaceOverrides(workspace_id: string) {
   return adminApi<{ message: string }>('clear-workspace-overrides', { workspace_id });
+}
+
+export interface McpKeyRow {
+  id: string;
+  name: string;
+  token_suffix: string;
+  scopes: string[];
+  last_used_at: string | null;
+  expires_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+}
+
+export function listWorkspaceMcpKeys(workspace_id: string) {
+  return adminApi<{ keys: McpKeyRow[] }>('list-workspace-mcp-keys', { workspace_id });
+}
+
+export function revokeMcpKey(workspace_id: string, key_id: string) {
+  return adminApi<{ message: string }>('revoke-mcp-key', { workspace_id, key_id });
+}
+
+export function revokeAllMcpKeys(workspace_id: string) {
+  return adminApi<{ message: string; count: number }>('revoke-all-mcp-keys', { workspace_id });
 }
 
 export function listAdmins() {

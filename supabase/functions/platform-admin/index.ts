@@ -105,6 +105,12 @@ Deno.serve(async (req: Request) => {
         return await handleSetWorkspaceOverrides(svc, body, admin.id, headers);
       case "clear-workspace-overrides":
         return await handleClearWorkspaceOverrides(svc, body, admin.id, headers);
+      case "list-workspace-mcp-keys":
+        return await handleListWorkspaceMcpKeys(svc, body, headers);
+      case "revoke-mcp-key":
+        return await handleRevokeMcpKey(svc, body, user.id, headers);
+      case "revoke-all-mcp-keys":
+        return await handleRevokeAllMcpKeys(svc, body, user.id, headers);
       case "list-admins":
         return await handleListAdmins(svc, headers);
       case "invite-admin":
@@ -143,6 +149,57 @@ Deno.serve(async (req: Request) => {
     return new Response(JSON.stringify({ error: "Internal server error" }), { status: 500, headers });
   }
 });
+
+// ─── MCP keys (platform-level observe/revoke; token_hash never selected) ───
+const MCP_KEY_COLS =
+  "id, name, token_suffix, scopes, last_used_at, expires_at, revoked_at, created_at";
+
+async function handleListWorkspaceMcpKeys(
+  svc: ReturnType<typeof createClient>,
+  body: { workspace_id?: string },
+  headers: Record<string, string>,
+) {
+  if (!body.workspace_id) {
+    return new Response(JSON.stringify({ error: "workspace_id is required" }), { status: 400, headers });
+  }
+  const { data, error } = await svc
+    .from("mcp_api_keys").select(MCP_KEY_COLS)
+    .eq("conta_id", body.workspace_id).order("created_at", { ascending: false });
+  if (error) throw error;
+  return new Response(JSON.stringify({ keys: data ?? [] }), { status: 200, headers });
+}
+
+async function handleRevokeMcpKey(
+  svc: ReturnType<typeof createClient>,
+  body: { workspace_id?: string; key_id?: string },
+  revokerUserId: string,
+  headers: Record<string, string>,
+) {
+  if (!body.workspace_id || !body.key_id) {
+    return new Response(JSON.stringify({ error: "workspace_id and key_id are required" }), { status: 400, headers });
+  }
+  const { error } = await svc.from("mcp_api_keys")
+    .update({ revoked_at: new Date().toISOString(), revoked_by: revokerUserId })
+    .eq("id", body.key_id).eq("conta_id", body.workspace_id).is("revoked_at", null);
+  if (error) throw error;
+  return new Response(JSON.stringify({ message: "Key revoked" }), { status: 200, headers });
+}
+
+async function handleRevokeAllMcpKeys(
+  svc: ReturnType<typeof createClient>,
+  body: { workspace_id?: string },
+  revokerUserId: string,
+  headers: Record<string, string>,
+) {
+  if (!body.workspace_id) {
+    return new Response(JSON.stringify({ error: "workspace_id is required" }), { status: 400, headers });
+  }
+  const { data, error } = await svc.from("mcp_api_keys")
+    .update({ revoked_at: new Date().toISOString(), revoked_by: revokerUserId })
+    .eq("conta_id", body.workspace_id).is("revoked_at", null).select("id");
+  if (error) throw error;
+  return new Response(JSON.stringify({ message: "All keys revoked", count: (data ?? []).length }), { status: 200, headers });
+}
 
 // ─── Workspaces ────────────────────────────────────────────────
 

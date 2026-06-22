@@ -173,6 +173,13 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
         icon: 'ph-credit-card',
       },
       {
+        id: 'mcp',
+        route: '/configuracao/mcp',
+        label: 'Claude (MCP)',
+        labelKey: 'nav.mcp',
+        icon: 'ph-plugs-connected',
+      },
+      {
         id: 'politica-de-privacidade',
         route: '/politica-de-privacidade',
         label: 'Privacidade',
@@ -187,6 +194,7 @@ export const PRIMARY_NAV_IDS = ['dashboard', 'clientes', 'analytics', 'entregas'
 
 /** Maps nav item id → feature flag key. If the flag is false, the item is hidden. */
 const NAV_FEATURE: Record<string, string> = {
+  mcp: 'feature_mcp',
   leads: 'feature_leads',
   financeiro: 'feature_financial',
   contratos: 'feature_contracts',
