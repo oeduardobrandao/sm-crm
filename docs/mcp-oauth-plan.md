@@ -60,11 +60,17 @@ enabled), authorize/token endpoints, **PKCE**, refresh-token rotation, and AS di
   }
   ```
 - When a request arrives without a valid token, respond `401` with
-  `WWW-Authenticate: Bearer resource_metadata="<that URL>"` so the client can discover the AS.
+  `WWW-Authenticate: Bearer resource_metadata="<ABSOLUTE url>", scope="clientes:read posts:read …"`.
   (Today the function returns a bare 401 — we add the header + metadata route.)
-- **Spike:** confirm claude.ai follows the `WWW-Authenticate` `resource_metadata` pointer rather
-  than insisting on the domain-root `/.well-known/oauth-protected-resource{path}`. If it insists,
-  fall back to the custom-domain option.
+- **Spike 1 RESOLVED (✅):** spec confirms clients MUST use the `WWW-Authenticate` `resource_metadata`
+  pointer when present, and metadata MAY live at a sub-path of the MCP endpoint — so function-subpath
+  works, no custom domain needed. Hard requirements that fell out:
+  - `resource_metadata` **MUST be an absolute URL** (relative breaks Claude — claude-code #46539).
+  - Include `scope=` in the challenge (spec SHOULD).
+  - Implement **RFC 8707**: accept the `resource` param and **validate token audience** (MUST) — see
+    residual risk #2 below re: Supabase `aud` support.
+  - Residual: claude.ai *web* has discovery flakiness (claude-ai-mcp #217, #34335) — verify
+    empirically once deployed; custom domain remains the fallback.
 
 ### 2. Dual auth resolver (extend `_shared/mcp-token.ts`)
 `resolveCtx(db, authHeader)` → `McpKeyContext`:
@@ -82,9 +88,15 @@ A Mesaas page (CRM, reuses PR 2's scope picker) that Supabase redirects to durin
 - User authenticates (existing Supabase Auth session).
 - Shows "**Claude** quer acessar **workspace X** com permissões **Y**" — a **workspace selector**
   (their memberships) + scope checkboxes (default read-only).
-- On approve → write a **grant row** and hand control back to Supabase's OAuth flow to mint the code.
-- **Spike:** the exact hand-off contract with Supabase's OAuth-server authorize endpoint (how our
-  page signals approval back) — pin against the Supabase OAuth-server docs before building.
+- On approve → write a **grant row** and call Supabase to mint the code.
+- **Spike 2 RESOLVED (✅):** concrete contract —
+  - Configure an **Authorization Path** in Supabase (e.g. `/oauth/consent`); Site URL + path = our
+    page. Supabase redirects there with an `authorization_id`.
+  - `supabase.auth.oauth.getAuthorizationDetails(authorization_id)` → client + requested scopes.
+  - On decision: `supabase.auth.oauth.approveAuthorization(authorization_id)` /
+    `denyAuthorization(authorization_id)` — Supabase generates the code internally.
+  - Issued token is a Supabase JWT with `user_id` + `client_id` → grant lookup by
+    `(user_id, client_id)` (matches §4's table).
 
 ### 4. Grant storage
 The Supabase JWT carries the *user*, not the workspace/scopes — so persist the consent binding:
@@ -124,13 +136,20 @@ Gate behind `feature_mcp` like the rest.
   the discovery 401 + metadata JSON.
 - Keep the PR 1 curl/Inspector harness for the static-key path (regression).
 
-## Open items / spikes
-1. **claude.ai discovery behavior** — does it honor `WWW-Authenticate: resource_metadata`? (decides
-   whether the function-subpath approach is enough or we need the custom domain).
-2. **Supabase authorize-endpoint hand-off** — exact contract for our consent page ↔ Supabase OAuth.
-3. **Token shape** — confirm `client_id`/`azp` + `aud` claims Supabase issues, for grant lookup +
-   audience binding.
-4. **Custom domain (deferred)** — `mcp.mesaas.com.br` for a branded connector URL + root `.well-known`.
+## Spike findings & residual risks (2026-06-22)
+1. ~~**claude.ai discovery behavior**~~ — **RESOLVED ✅**: WWW-Authenticate `resource_metadata` is
+   honored first per spec; function-subpath metadata is allowed. Requirements baked into §1
+   (absolute URL, `scope=`, RFC 8707 audience). Empirical re-check on claude.ai web once deployed.
+2. ~~**Supabase authorize hand-off**~~ — **RESOLVED ✅**: `getAuthorizationDetails` /
+   `approveAuthorization` / `denyAuthorization` via an Authorization Path. See §3.
+
+   **Residual risks to verify before PR B:**
+3. **Supabase OAuth-server maturity** — new feature (supabase discussion #38022); at least one open
+   hosted consent-redirect bug (supabase/auth #2408). Confirm it's enabled + stable on prod.
+4. **Audience binding** — spec MANDATES it, but Supabase `resource`/`aud` support is unconfirmed.
+   If absent, use `client_id` + the grant row as the trust boundary and document the deviation.
+5. **Custom domain (deferred)** — `mcp.mesaas.com.br` for a branded URL + root `.well-known`, the
+   fallback if claude.ai web discovery proves flaky against the subpath.
 
 ## PR slicing (after PR 2)
 1. **PR A** — RS discovery (metadata route + `WWW-Authenticate`) + dual-auth resolver + grant table
