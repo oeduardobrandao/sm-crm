@@ -23,6 +23,18 @@ Deno.serve(async (req) => {
   const cors = buildCorsHeaders(req);
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
+  // Stateless server: no server-initiated SSE stream and no sessions. Per the MCP Streamable
+  // HTTP spec, answer the SSE GET (and session DELETE) with 405 so clients fall back to plain
+  // request/response (POST) mode. Without this, building a fresh transport per request makes the
+  // GET throw → our catch returns 500 → mcp-remote drops the whole connection
+  // ("Failed to open SSE stream: Internal Server Error").
+  if (req.method === "GET" || req.method === "DELETE") {
+    return new Response(JSON.stringify({ error: "Method Not Allowed" }), {
+      status: 405,
+      headers: { ...cors, "Content-Type": "application/json", Allow: "POST, OPTIONS" },
+    });
+  }
+
   // Authorization passes through because the function is deployed --no-verify-jwt.
   const rawToken = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
   const db = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
