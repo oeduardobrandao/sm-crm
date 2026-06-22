@@ -143,11 +143,19 @@ Gate behind `feature_mcp` like the rest.
 2. ~~**Supabase authorize hand-off**~~ — **RESOLVED ✅**: `getAuthorizationDetails` /
    `approveAuthorization` / `denyAuthorization` via an Authorization Path. See §3.
 
-   **Residual risks to verify before PR B:**
-3. **Supabase OAuth-server maturity** — new feature (supabase discussion #38022); at least one open
-   hosted consent-redirect bug (supabase/auth #2408). Confirm it's enabled + stable on prod.
-4. **Audience binding** — spec MANDATES it, but Supabase `resource`/`aud` support is unconfirmed.
-   If absent, use `client_id` + the grant row as the trust boundary and document the deviation.
+   **Residual risks — VERIFIED against prod (2026-06-22):**
+3. **Supabase OAuth-server availability — ⚠️ DISABLED on prod.**
+   `…/.well-known/oauth-authorization-server/auth/v1` → `404 "OAuth server is disabled"` (clean
+   `feature_disabled` → available, just off). **Action: enable it** (dashboard Auth settings /
+   `[auth.oauth_server] enabled = true`) — recommend enabling on a non-prod project first because
+   DCR = open registration. PKCE already advertised (`code_challenge_methods_supported: S256`);
+   `registration_endpoint` (DCR) only appears once enabled.
+4. **Audience binding — ⚠️ likely NO resource binding.** Current OIDC metadata shows
+   `resource_parameter_supported: ABSENT` (and no CIMD) → Supabase probably ignores RFC 8707
+   `resource`, so tokens won't carry our server as `aud`. **Decision: use `client_id` + a matching
+   grant row as the trust boundary** — acceptable because the MCP server is the *only* resource
+   (the cross-resource replay RFC 8707 prevents doesn't apply). Re-confirm against the full AS
+   metadata + a minted token once the server is enabled.
 5. **Custom domain (deferred)** — `mcp.mesaas.com.br` for a branded URL + root `.well-known`, the
    fallback if claude.ai web discovery proves flaky against the subpath.
 
