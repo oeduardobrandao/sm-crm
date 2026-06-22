@@ -1,0 +1,11 @@
+-- Grant MCP to the Lifetime comp plan.
+--
+-- `lifetime` is an internal, never-sold top-tier plan (seeded out-of-band — it is NOT in any
+-- migration or the local seed catalog free/start/pro/max). It predates feature_mcp, so the
+-- 20260622120000 migration's `ADD COLUMN feature_mcp ... DEFAULT false` left the lifetime row false
+-- and the follow-up `UPDATE ... WHERE id = 'max'` skipped it — leaving Lifetime customers unable to
+-- use MCP. Lifetime is top-tier, so it should include MCP like Max. (max_mcp_keys was already
+-- covered: the `WHERE max_mcp_keys IS NULL` backfill set it to 5 for the lifetime row too.)
+--
+-- No-op in any environment where the 'lifetime' row doesn't exist (e.g. local/fresh).
+UPDATE plans SET feature_mcp = true WHERE id = 'lifetime';
