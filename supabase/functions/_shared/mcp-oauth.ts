@@ -19,12 +19,32 @@ export function decodeJwtClaim(token: string, claim: string): string | null {
   }
 }
 
-/** Pure gate: grant exists, not revoked, and the workspace's plan enables MCP. */
+/** Pure gate: grant exists, not revoked, the workspace's plan enables MCP, and the user is
+ * STILL a member of that workspace. Membership is revalidated on every request so that removing
+ * a user from the workspace immediately cuts MCP access, even if the grant wasn't revoked. */
 export function grantActive(
   grant: { revoked_at: string | null } | null,
   featureEnabled: boolean,
+  isMember: boolean,
 ): boolean {
-  return grant !== null && grant.revoked_at === null && featureEnabled === true;
+  return (
+    grant !== null && grant.revoked_at === null && featureEnabled === true && isMember === true
+  );
+}
+
+/** True if the user currently holds a workspace_members row for the workspace. */
+export async function isWorkspaceMember(
+  db: SupabaseClient,
+  userId: string,
+  contaId: string,
+): Promise<boolean> {
+  const { data } = await db
+    .from("workspace_members")
+    .select("user_id")
+    .eq("user_id", userId)
+    .eq("workspace_id", contaId)
+    .maybeSingle();
+  return data !== null;
 }
 
 /**
@@ -52,8 +72,10 @@ export async function resolveOAuthCtx(
     .maybeSingle();
   if (!grant) return null;
 
-  const featureOn = await effectivePlanFeature(db, grant.conta_id as string, "feature_mcp");
-  if (!grantActive(grant as { revoked_at: string | null }, featureOn)) return null;
+  const contaId = grant.conta_id as string;
+  const featureOn = await effectivePlanFeature(db, contaId, "feature_mcp");
+  const isMember = await isWorkspaceMember(db, user.id, contaId);
+  if (!grantActive(grant as { revoked_at: string | null }, featureOn, isMember)) return null;
 
   return {
     conta_id: grant.conta_id as string,

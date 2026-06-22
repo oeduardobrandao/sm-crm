@@ -14,6 +14,11 @@ CREATE TABLE IF NOT EXISTS mcp_oauth_grants (
   revoked_by  uuid REFERENCES auth.users(id),
   created_at  timestamptz NOT NULL DEFAULT now(),
   updated_at  timestamptz NOT NULL DEFAULT now(),
+  -- One active OAuth grant per (user, client). Because the MCP resource URL is shared across
+  -- workspaces and Supabase tokens carry no audience/resource binding (no RFC 8707), a token
+  -- cannot indicate *which* workspace it is for — so a user connects exactly ONE workspace per
+  -- OAuth client (e.g. claude.ai). Re-consenting to a different workspace re-points this row.
+  -- (Per-workspace connectors would require a workspace-specific resource URL — deferred to PR B.)
   UNIQUE (user_id, client_id)
 );
 

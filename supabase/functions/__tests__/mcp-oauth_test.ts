@@ -22,9 +22,10 @@ Deno.test("decodeJwtClaim returns null for malformed / non-string", () => {
   assertEquals(decodeJwtClaim(makeJwt({ client_id: 123 }), "client_id"), null); // number, not string
 });
 
-Deno.test("grantActive gates on existence, revocation and feature", () => {
-  assertEquals(grantActive({ revoked_at: null }, true), true);
-  assertEquals(grantActive({ revoked_at: null }, false), false); // feature off
-  assertEquals(grantActive({ revoked_at: "2026-01-01T00:00:00Z" }, true), false); // revoked
-  assert(!grantActive(null, true)); // no grant
+Deno.test("grantActive gates on existence, revocation, feature and membership", () => {
+  assertEquals(grantActive({ revoked_at: null }, true, true), true);
+  assertEquals(grantActive({ revoked_at: null }, false, true), false); // feature off
+  assertEquals(grantActive({ revoked_at: null }, true, false), false); // not a member anymore
+  assertEquals(grantActive({ revoked_at: "2026-01-01T00:00:00Z" }, true, true), false); // revoked
+  assert(!grantActive(null, true, true)); // no grant
 });

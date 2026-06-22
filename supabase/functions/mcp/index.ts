@@ -23,6 +23,12 @@ function jsonResponse(body: unknown, status: number, cors: Record<string, string
 
 Deno.serve(async (req) => {
   const cors = buildCorsHeaders(req);
+  // MCP Streamable HTTP + OAuth discovery need a few headers beyond the shared default. Localized
+  // here so we don't widen CORS for every edge function. (Anthropic's web connector usually calls
+  // server-side, where CORS is moot — this is defensive for any browser-side client/discovery.)
+  cors["Access-Control-Allow-Headers"] =
+    "authorization, x-client-info, apikey, content-type, mcp-protocol-version, mcp-session-id, last-event-id";
+  cors["Access-Control-Expose-Headers"] = "WWW-Authenticate, mcp-session-id";
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
   const url = new URL(req.url);
@@ -31,6 +37,12 @@ Deno.serve(async (req) => {
 
   // OAuth 2.0 Protected Resource Metadata (RFC 9728), served at a sub-path and advertised via the
   // 401 WWW-Authenticate below. Points OAuth clients (claude.ai web) at Supabase's OAuth 2.1 AS.
+  //
+  // NOTE on discovery: RFC 9728 §3.1 would put this at the *host root*
+  // (/.well-known/oauth-protected-resource/functions/v1/mcp), but Supabase only routes
+  // /functions/v1/<name>/* to this function, so the root path can't reach us. The MCP spec's
+  // discovery flow reads the absolute `resource_metadata` URL from our 401 WWW-Authenticate
+  // challenge instead of constructing the well-known path, so spec-compliant clients still work.
   if (req.method === "GET" && url.pathname.endsWith("/.well-known/oauth-protected-resource")) {
     return jsonResponse(
       {
