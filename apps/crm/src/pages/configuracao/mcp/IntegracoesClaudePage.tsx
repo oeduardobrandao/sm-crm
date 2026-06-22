@@ -69,7 +69,8 @@ function ConnectSnippets({
       <div className="space-y-1 min-w-0">
         <Label>Claude Desktop</Label>
         <p className="text-xs text-muted-foreground">
-          Cole em <code>claude_desktop_config.json</code> e reinicie o app.
+          Configurações → Desenvolvedor → Editar configuração (<code>claude_desktop_config.json</code>
+          ), cole o bloco, salve e reinicie o app.
         </p>
         <div style={{ position: 'relative', minWidth: 0 }}>
           <pre
@@ -103,6 +104,7 @@ function ConnectSnippets({
 
       <div className="space-y-1 min-w-0">
         <Label>Claude Code</Label>
+        <p className="text-xs text-muted-foreground">Rode este comando no terminal.</p>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', minWidth: 0 }}>
           <Input
             readOnly
@@ -208,6 +210,40 @@ export default function IntegracoesClaudePage() {
       </p>
 
       <FeatureGate flag="feature_mcp" label="Integração com Claude (MCP)">
+        <div className="card animate-up" style={{ marginBottom: '1rem' }}>
+          <h3 className="config-title" style={{ margin: 0, marginBottom: '0.75rem' }}>
+            Como conectar
+          </h3>
+          <ol
+            className="text-sm text-muted-foreground"
+            style={{
+              margin: 0,
+              paddingLeft: '1.1rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.4rem',
+            }}
+          >
+            <li>
+              <strong>Crie uma chave</strong> abaixo e copie a configuração (Claude Desktop) ou o
+              comando (Claude Code).
+            </li>
+            <li>
+              Cole no seu cliente Claude — no <strong>Desktop</strong>, em Configurações →
+              Desenvolvedor → Editar configuração, depois reinicie o app; no <strong>Code</strong>,
+              rode o comando no terminal.
+            </li>
+            <li>
+              Peça ao agente: <em>"liste meus clientes ativos"</em> ou{' '}
+              <em>"mostre o post X com métricas"</em>.
+            </li>
+          </ol>
+          <p className="text-xs text-muted-foreground" style={{ marginTop: '0.6rem' }}>
+            Já tem uma chave? Use o botão <strong>Conectar</strong> ao lado dela. O Claude.ai web
+            ainda não suporta chaves estáticas — use Desktop ou Code.
+          </p>
+        </div>
+
         <div className="card animate-up">
           <div
             style={{
