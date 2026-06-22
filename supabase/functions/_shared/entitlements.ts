@@ -4,7 +4,7 @@ export const RESOURCE_COLUMNS = [
   "max_clients", "max_team_members", "max_workflow_templates",
   "max_active_workflows_per_client", "max_instagram_accounts", "max_leads",
   "max_hub_tokens", "storage_quota_bytes", "max_custom_properties_per_template",
-  "max_posts_per_workflow", "max_workspaces_per_user",
+  "max_posts_per_workflow", "max_workspaces_per_user", "max_mcp_keys",
 ] as const;
 export const RATE_COLUMNS = [
   "rate_instagram_syncs_per_day", "rate_ai_analyses_per_month",
@@ -16,7 +16,7 @@ export const FEATURE_COLUMNS = [
   "feature_leads", "feature_financial", "feature_contracts", "feature_ideas",
   "feature_workflow_gantt", "feature_workflow_recurrence", "feature_csv_import",
   "feature_custom_properties", "feature_post_scheduling", "feature_auto_sync_cron",
-  "feature_post_tagging", "feature_brand_customization",
+  "feature_post_tagging", "feature_brand_customization", "feature_mcp",
 ] as const;
 
 type PlanRow = Record<string, unknown>;
