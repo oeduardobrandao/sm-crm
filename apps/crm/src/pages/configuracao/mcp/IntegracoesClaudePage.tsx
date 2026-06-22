@@ -69,7 +69,8 @@ function ConnectSnippets({
       <div className="space-y-1 min-w-0">
         <Label>Claude Desktop</Label>
         <p className="text-xs text-muted-foreground">
-          Configurações → Desenvolvedor → Editar configuração (<code>claude_desktop_config.json</code>
+          Configurações → Desenvolvedor → Editar configuração (
+          <code>claude_desktop_config.json</code>
           ), cole o bloco, salve e reinicie o app.
         </p>
         <div style={{ position: 'relative', minWidth: 0 }}>
@@ -111,7 +112,11 @@ function ConnectSnippets({
             value={claudeCodeCmd}
             style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', flex: 1, minWidth: 0 }}
           />
-          <Button variant="outline" size="sm" onClick={() => copy(claudeCodeCmd, `${idPrefix}-code`)}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => copy(claudeCodeCmd, `${idPrefix}-code`)}
+          >
             {copiedKey === `${idPrefix}-code` ? (
               <Check className="h-4 w-4" />
             ) : (
@@ -181,7 +186,9 @@ export default function IntegracoesClaudePage() {
   });
 
   const toggleScope = (value: string) =>
-    setScopes((prev) => (prev.includes(value) ? prev.filter((s) => s !== value) : [...prev, value]));
+    setScopes((prev) =>
+      prev.includes(value) ? prev.filter((s) => s !== value) : [...prev, value],
+    );
 
   const copy = async (text: string, key: string) => {
     await navigator.clipboard.writeText(text);
@@ -282,7 +289,10 @@ export default function IntegracoesClaudePage() {
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: 600 }}>
                       {k.name}{' '}
-                      <span className="text-muted-foreground" style={{ fontFamily: 'var(--font-mono)' }}>
+                      <span
+                        className="text-muted-foreground"
+                        style={{ fontFamily: 'var(--font-mono)' }}
+                      >
                         …{k.token_suffix}
                       </span>
                     </div>
@@ -339,7 +349,9 @@ export default function IntegracoesClaudePage() {
               />
             </div>
             <div className="space-y-2">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              >
                 <Label>Permissões</Label>
                 <button
                   type="button"
@@ -352,7 +364,12 @@ export default function IntegracoesClaudePage() {
               {SCOPE_OPTIONS.map((s) => (
                 <label
                   key={s.value}
-                  style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    cursor: 'pointer',
+                  }}
                 >
                   <Checkbox
                     checked={scopes.includes(s.value)}
@@ -408,8 +425,16 @@ export default function IntegracoesClaudePage() {
                   value={revealToken ?? ''}
                   style={{ fontFamily: 'var(--font-mono)', flex: 1, minWidth: 0 }}
                 />
-                <Button variant="outline" size="sm" onClick={() => copy(revealToken ?? '', 'token')}>
-                  {copiedKey === 'token' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => copy(revealToken ?? '', 'token')}
+                >
+                  {copiedKey === 'token' ? (
+                    <Check className="h-4 w-4" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
                 </Button>
               </div>
             </div>
