@@ -1,5 +1,11 @@
 import { assert, assertEquals } from "./assert.ts";
-import { decodeJwtClaim, grantActive, validateConsentPayload } from "../_shared/mcp-oauth.ts";
+import {
+  boundGrantScopes,
+  decodeJwtClaim,
+  grantActive,
+  mcpScopesFromClaim,
+  validateConsentPayload,
+} from "../_shared/mcp-oauth.ts";
 
 function b64url(o: unknown): string {
   return btoa(JSON.stringify(o)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -32,25 +38,53 @@ Deno.test("grantActive gates on existence, revocation, feature and membership", 
 
 Deno.test("validateConsentPayload accepts a well-formed approve body", () => {
   const r = validateConsentPayload({
-    client_id: "  client-uuid  ",
+    authorization_id: "  auth-id  ",
     conta_id: "conta-uuid",
     scopes: ["clientes:read", "posts:read"],
   });
   assert(r.ok);
   if (r.ok) {
-    assertEquals(r.value.client_id, "client-uuid"); // trimmed
+    assertEquals(r.value.authorization_id, "auth-id"); // trimmed
     assertEquals(r.value.conta_id, "conta-uuid");
     assertEquals(r.value.scopes, ["clientes:read", "posts:read"]);
   }
 });
 
 Deno.test("validateConsentPayload rejects missing fields and bad scopes", () => {
-  const noClient = validateConsentPayload({ conta_id: "c", scopes: ["posts:read"] });
-  assertEquals(noClient.ok, false);
-  const noConta = validateConsentPayload({ client_id: "x", scopes: ["posts:read"] });
+  // client_id is NOT accepted from the body — authorization_id is required instead.
+  const noAuth = validateConsentPayload({ conta_id: "c", scopes: ["posts:read"] });
+  assertEquals(noAuth.ok, false);
+  const noConta = validateConsentPayload({ authorization_id: "a", scopes: ["posts:read"] });
   assertEquals(noConta.ok, false);
-  const emptyScopes = validateConsentPayload({ client_id: "x", conta_id: "c", scopes: [] });
+  const emptyScopes = validateConsentPayload({ authorization_id: "a", conta_id: "c", scopes: [] });
   assertEquals(emptyScopes.ok, false); // non-empty required
-  const badScope = validateConsentPayload({ client_id: "x", conta_id: "c", scopes: ["posts:write"] });
+  const badScope = validateConsentPayload({
+    authorization_id: "a",
+    conta_id: "c",
+    scopes: ["posts:write"],
+  });
   assertEquals(badScope.ok, false); // not in allowlist
+});
+
+Deno.test("mcpScopesFromClaim extracts allowlisted scopes from string or array", () => {
+  assertEquals(mcpScopesFromClaim("openid clientes:read posts:read"), [
+    "clientes:read",
+    "posts:read",
+  ]);
+  assertEquals(mcpScopesFromClaim(["email", "ideias:read", "bogus"]), ["ideias:read"]);
+  assertEquals(mcpScopesFromClaim("openid email"), []); // no MCP scopes named
+  assertEquals(mcpScopesFromClaim(null), []);
+  assertEquals(mcpScopesFromClaim(undefined), []);
+});
+
+Deno.test("boundGrantScopes intersects only when the request named MCP scopes", () => {
+  // request named MCP scopes → grant can't exceed them
+  assertEquals(boundGrantScopes(["clientes:read", "posts:read"], ["clientes:read"]), [
+    "clientes:read",
+  ]);
+  // request named none (generic OAuth) → the user's consent selection stands
+  assertEquals(boundGrantScopes(["clientes:read", "posts:read"], []), [
+    "clientes:read",
+    "posts:read",
+  ]);
 });

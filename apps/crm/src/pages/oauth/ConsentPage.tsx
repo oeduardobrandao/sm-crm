@@ -66,6 +66,14 @@ export default function ConsentPage() {
       }
       setDetails(data as AuthDetails);
 
+      // Default the scope selection to what the request actually named (when it names MCP scopes);
+      // otherwise offer the full read preset. The edge function re-bounds this server-side.
+      const allowed: string[] = SCOPE_OPTIONS.map((s) => s.value);
+      const requested = ((data as AuthDetails).scope || '')
+        .split(/\s+/)
+        .filter((s) => allowed.includes(s));
+      setScopes(requested.length ? requested : AGENT_PRESET);
+
       try {
         const ws = await listEligibleWorkspaces();
         if (cancelled) return;
@@ -97,10 +105,9 @@ export default function ConsentPage() {
     setPhase('submitting');
     try {
       await recordOAuthGrant({
-        client_id: details.client.id,
+        authorization_id: authorizationId,
         conta_id: selectedWs.id,
         scopes,
-        authorization_id: authorizationId,
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : '';

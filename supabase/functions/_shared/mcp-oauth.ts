@@ -1,44 +1,81 @@
 import { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { effectivePlanFeature } from "./entitlements-rpc.ts";
-import { McpKeyContext, MCP_TOKEN_PREFIX, resolveMcpKey, validateScopes } from "./mcp-token.ts";
+import {
+  MCP_ALLOWED_SCOPES,
+  McpKeyContext,
+  MCP_TOKEN_PREFIX,
+  resolveMcpKey,
+  validateScopes,
+} from "./mcp-token.ts";
 
 export interface ConsentPayload {
-  client_id: string;
+  authorization_id: string;
   conta_id: string;
   scopes: string[];
 }
 
 /**
- * Pure validation of the consent edge function's `approve` body. client_id is the OAuth client
- * UUID (from getAuthorizationDetails), conta_id the chosen workspace, scopes a non-empty subset of
- * the MCP allowlist. Membership/feature checks happen against the DB in the function, not here.
+ * Pure validation of the consent edge function's `approve` body. The OAuth client_id is NOT taken
+ * from the body — the function derives it server-side from the verified authorization_id (so the
+ * browser can't bind a grant to an arbitrary client). conta_id is the chosen workspace; scopes is
+ * the user's non-empty subset of the MCP allowlist (further bounded server-side by the request).
  */
 export function validateConsentPayload(
   body: Record<string, unknown>,
 ): { ok: true; value: ConsentPayload } | { ok: false; error: string } {
-  const client_id = typeof body.client_id === "string" ? body.client_id.trim() : "";
+  const authorization_id = typeof body.authorization_id === "string"
+    ? body.authorization_id.trim()
+    : "";
   const conta_id = typeof body.conta_id === "string" ? body.conta_id.trim() : "";
-  if (!client_id) return { ok: false, error: "client_id required" };
+  if (!authorization_id) return { ok: false, error: "authorization_id required" };
   if (!conta_id) return { ok: false, error: "conta_id required" };
   if (!validateScopes(body.scopes)) return { ok: false, error: "invalid scopes" };
-  return { ok: true, value: { client_id, conta_id, scopes: body.scopes as string[] } };
+  return { ok: true, value: { authorization_id, conta_id, scopes: body.scopes as string[] } };
 }
 
 /**
- * Reads a claim from a JWT payload WITHOUT verifying the signature — the caller validates the
- * token separately (via auth.getUser). Used only to extract the OAuth client_id for grant lookup.
+ * Decodes a JWT payload WITHOUT verifying the signature — the caller validates the token separately
+ * (via auth.getUser). Used to read non-sensitive claims (client_id, granted scope).
  */
-export function decodeJwtClaim(token: string, claim: string): string | null {
+export function decodeJwtPayload(token: string): Record<string, unknown> | null {
   const parts = token.split(".");
   if (parts.length < 2) return null;
   try {
-    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const payload = JSON.parse(atob(b64)) as Record<string, unknown>;
-    const v = payload[claim];
-    return typeof v === "string" ? v : null;
+    return JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/"))) as Record<
+      string,
+      unknown
+    >;
   } catch {
     return null;
   }
+}
+
+/** Reads a single string claim from a JWT payload (null if missing/non-string/malformed). */
+export function decodeJwtClaim(token: string, claim: string): string | null {
+  const v = decodeJwtPayload(token)?.[claim];
+  return typeof v === "string" ? v : null;
+}
+
+/**
+ * Extracts the MCP-domain scopes (allowlist only) from an OAuth `scope` claim, which may be a
+ * space-delimited string ("scope") or a string array ("scopes"). Non-MCP/OIDC scopes are dropped.
+ */
+export function mcpScopesFromClaim(claim: unknown): string[] {
+  let parts: string[] = [];
+  if (typeof claim === "string") parts = claim.split(/\s+/).filter(Boolean);
+  else if (Array.isArray(claim)) parts = claim.filter((s): s is string => typeof s === "string");
+  const allowed = MCP_ALLOWED_SCOPES as readonly string[];
+  return parts.filter((s) => allowed.includes(s));
+}
+
+/**
+ * Bounds the user-approved scopes by what the OAuth request actually named. If the request named
+ * MCP scopes, the grant can't exceed them (intersection). If it named none — the generic-OAuth case
+ * where the client doesn't forward our resource scopes — the user's explicit consent stands.
+ */
+export function boundGrantScopes(approved: string[], requestedMcp: string[]): string[] {
+  if (requestedMcp.length === 0) return approved;
+  return approved.filter((s) => requestedMcp.includes(s));
 }
 
 /** Pure gate: grant exists, not revoked, the workspace's plan enables MCP, and the user is
@@ -99,9 +136,17 @@ export async function resolveOAuthCtx(
   const isMember = await isWorkspaceMember(db, user.id, contaId);
   if (!grantActive(grant as { revoked_at: string | null }, featureOn, isMember)) return null;
 
+  // Enforce the token's granted scopes: when the JWT carries MCP-domain scopes (the client
+  // forwarded our advertised scopes), the effective scopes are grant ∩ token. When it carries none
+  // (generic OAuth), the grant — the user's explicit consent — stands. (Token scope propagation is
+  // to be re-confirmed empirically once Supabase's OAuth server is enabled.)
+  const payload = decodeJwtPayload(token);
+  const tokenMcp = mcpScopesFromClaim(payload?.scope ?? payload?.scopes ?? null);
+  const scopes = boundGrantScopes((grant.scopes as string[]) ?? [], tokenMcp);
+
   return {
-    conta_id: grant.conta_id as string,
-    scopes: (grant.scopes as string[]) ?? [],
+    conta_id: contaId,
+    scopes,
     key_id: `oauth:${clientId}`,
     created_by: user.id as string,
   };

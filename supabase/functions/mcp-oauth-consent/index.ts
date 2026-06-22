@@ -11,7 +11,11 @@ import { buildCorsHeaders } from "../_shared/cors.ts";
 import { insertAuditLog } from "../_shared/audit.ts";
 import { assertPlanFeature, FeatureDisabledError } from "../_shared/entitlements.ts";
 import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
-import { validateConsentPayload } from "../_shared/mcp-oauth.ts";
+import {
+  boundGrantScopes,
+  mcpScopesFromClaim,
+  validateConsentPayload,
+} from "../_shared/mcp-oauth.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -19,6 +23,31 @@ const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 
 function isManager(role: string | null | undefined): boolean {
   return role === "owner" || role === "admin";
+}
+
+/**
+ * Fetches Supabase's OAuth authorization details for a pending authorization, verified with the
+ * USER's bearer token (proves this user is the subject of that request). Returns the registered
+ * client_id + the MCP scopes the request named, or null if invalid / not this user's / consumed.
+ * This is the server-side source of truth for client_id — the browser's value is never trusted.
+ */
+async function fetchAuthorizationDetails(
+  authorizationId: string,
+  authHeader: string,
+): Promise<{ clientId: string; requestedMcp: string[] } | null> {
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/auth/v1/oauth/authorizations/${encodeURIComponent(authorizationId)}`,
+      { headers: { Authorization: authHeader, apikey: ANON_KEY } },
+    );
+    if (!res.ok) return null;
+    const det = await res.json();
+    const clientId = det?.client?.id;
+    if (typeof clientId !== "string" || !clientId) return null;
+    return { clientId, requestedMcp: mcpScopesFromClaim(det?.scope) };
+  } catch (_e) {
+    return null;
+  }
 }
 
 Deno.serve(async (req) => {
@@ -73,7 +102,13 @@ Deno.serve(async (req) => {
     if (action === "approve") {
       const parsed = validateConsentPayload(body);
       if (!parsed.ok) return json({ error: parsed.error }, 400);
-      const { client_id, conta_id, scopes } = parsed.value;
+      const { authorization_id, conta_id, scopes } = parsed.value;
+
+      // Derive the OAuth client + requested scopes from Supabase's verified authorization details —
+      // never from the browser. A mismatched/forged client_id can't bind a grant here.
+      const auth = await fetchAuthorizationDetails(authorization_id, authHeader);
+      if (!auth) return json({ error: "invalid_authorization" }, 400);
+      const { clientId, requestedMcp } = auth;
 
       // Authorize against the CHOSEN workspace (not the active one): must be owner/admin there.
       const { data: membership } = await svc
@@ -95,15 +130,19 @@ Deno.serve(async (req) => {
         throw e;
       }
 
+      // The grant can't exceed what the request asked for (when it named MCP scopes).
+      const grantScopes = boundGrantScopes(scopes, requestedMcp);
+      if (grantScopes.length === 0) return json({ error: "no_scopes_granted" }, 400);
+
       const now = new Date().toISOString();
       const { error } = await svc
         .from("mcp_oauth_grants")
         .upsert(
           {
             user_id: user.id,
-            client_id,
+            client_id: clientId,
             conta_id,
-            scopes,
+            scopes: grantScopes,
             revoked_at: null,
             revoked_by: null,
             updated_at: now,
@@ -117,11 +156,8 @@ Deno.serve(async (req) => {
         actor_user_id: user.id,
         action: "mcp.oauth.grant",
         resource_type: "mcp_oauth_grant",
-        resource_id: client_id,
-        metadata: {
-          scopes,
-          authorization_id: typeof body.authorization_id === "string" ? body.authorization_id : null,
-        },
+        resource_id: clientId,
+        metadata: { scopes: grantScopes, authorization_id },
       });
       return json({ ok: true });
     }

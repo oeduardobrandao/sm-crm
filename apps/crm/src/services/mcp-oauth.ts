@@ -35,12 +35,14 @@ export function listEligibleWorkspaces(): Promise<EligibleWorkspace[]> {
   );
 }
 
-/** Records (or re-points) the consent grant before the browser approves the OAuth authorization. */
+/**
+ * Records (or re-points) the consent grant before the browser approves the OAuth authorization.
+ * The edge function derives the OAuth client_id server-side from authorization_id — we never send it.
+ */
 export function recordOAuthGrant(params: {
-  client_id: string;
+  authorization_id: string;
   conta_id: string;
   scopes: string[];
-  authorization_id?: string;
 }): Promise<{ ok: true }> {
   return call<{ ok: true }>({ action: 'approve', ...params });
 }

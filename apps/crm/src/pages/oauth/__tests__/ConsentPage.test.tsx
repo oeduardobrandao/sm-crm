@@ -75,11 +75,11 @@ describe('ConsentPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Autorizar' }));
 
     await waitFor(() => expect(recordGrant).toHaveBeenCalledTimes(1));
+    // client_id is NOT sent — the edge function derives it from authorization_id server-side.
     expect(recordGrant).toHaveBeenCalledWith({
-      client_id: 'client-1',
+      authorization_id: 'auth-1',
       conta_id: 'conta-1',
       scopes: ['clientes:read', 'posts:read', 'workflows:read', 'ideias:read'],
-      authorization_id: 'auth-1',
     });
     await waitFor(() => expect(approve).toHaveBeenCalledWith('auth-1'));
   });
