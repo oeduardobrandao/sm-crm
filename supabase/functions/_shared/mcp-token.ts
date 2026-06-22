@@ -3,6 +3,23 @@ import { effectivePlanFeature } from "./entitlements-rpc.ts";
 
 export const MCP_TOKEN_PREFIX = "mesaas_sk_";
 
+// Scopes that map to a backing read tool today (PR 1). Write scopes are reserved for PR 3.
+export const MCP_ALLOWED_SCOPES = [
+  "clientes:read", "posts:read", "workflows:read", "ideias:read",
+] as const;
+export type McpScope = (typeof MCP_ALLOWED_SCOPES)[number];
+
+/** Least-privilege preset for a content-writing agent (read-only). */
+export const MCP_AGENT_PRESET: McpScope[] = [
+  "clientes:read", "posts:read", "workflows:read", "ideias:read",
+];
+
+/** True if `scopes` is a non-empty array of allowlisted scope strings. */
+export function validateScopes(scopes: unknown): scopes is string[] {
+  return Array.isArray(scopes) && scopes.length > 0 &&
+    scopes.every((s) => (MCP_ALLOWED_SCOPES as readonly string[]).includes(s as string));
+}
+
 export interface McpKeyRow {
   id: string;
   conta_id: string;
