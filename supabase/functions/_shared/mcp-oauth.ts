@@ -1,6 +1,28 @@
 import { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { effectivePlanFeature } from "./entitlements-rpc.ts";
-import { McpKeyContext, MCP_TOKEN_PREFIX, resolveMcpKey } from "./mcp-token.ts";
+import { McpKeyContext, MCP_TOKEN_PREFIX, resolveMcpKey, validateScopes } from "./mcp-token.ts";
+
+export interface ConsentPayload {
+  client_id: string;
+  conta_id: string;
+  scopes: string[];
+}
+
+/**
+ * Pure validation of the consent edge function's `approve` body. client_id is the OAuth client
+ * UUID (from getAuthorizationDetails), conta_id the chosen workspace, scopes a non-empty subset of
+ * the MCP allowlist. Membership/feature checks happen against the DB in the function, not here.
+ */
+export function validateConsentPayload(
+  body: Record<string, unknown>,
+): { ok: true; value: ConsentPayload } | { ok: false; error: string } {
+  const client_id = typeof body.client_id === "string" ? body.client_id.trim() : "";
+  const conta_id = typeof body.conta_id === "string" ? body.conta_id.trim() : "";
+  if (!client_id) return { ok: false, error: "client_id required" };
+  if (!conta_id) return { ok: false, error: "conta_id required" };
+  if (!validateScopes(body.scopes)) return { ok: false, error: "invalid scopes" };
+  return { ok: true, value: { client_id, conta_id, scopes: body.scopes as string[] } };
+}
 
 /**
  * Reads a claim from a JWT payload WITHOUT verifying the signature — the caller validates the

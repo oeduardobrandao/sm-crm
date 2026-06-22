@@ -14,6 +14,7 @@ import ProtectedRoute from './components/layout/ProtectedRoute';
 const LoginPage = lazy(() => import('./pages/login/LoginPage'));
 const ConfigurarSenhaPage = lazy(() => import('./pages/configurar-senha/ConfigurarSenhaPage'));
 const WorkspaceSetupPage = lazy(() => import('./pages/workspace-setup/WorkspaceSetupPage'));
+const ConsentPage = lazy(() => import('./pages/oauth/ConsentPage'));
 const PoliticaPage = lazy(() => import('./pages/politica-privacidade/PoliticaPage'));
 const TermosPage = lazy(() => import('./pages/termos-de-uso/TermosPage'));
 const LgpdPage = lazy(() => import('./pages/lgpd/LgpdPage'));
@@ -89,12 +90,21 @@ export default function App() {
               <Route path="/lgpd" element={<LgpdPage />} />
               <Route path="/novidades" element={<NovidadesPage />} />
 
-              {/* Protected route without sidebar layout */}
+              {/* Protected routes without sidebar layout */}
               <Route
                 path="/workspace-setup"
                 element={
                   <ProtectedRoute>
                     <WorkspaceSetupPage />
+                  </ProtectedRoute>
+                }
+              />
+              {/* OAuth 2.1 consent — Supabase's Authorization Path redirects here during authorize */}
+              <Route
+                path="/oauth/consent"
+                element={
+                  <ProtectedRoute>
+                    <ConsentPage />
                   </ProtectedRoute>
                 }
               />
