@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { listMcpKeys, createMcpKey, revokeMcpKey } from '@/services/mcp-keys';
+import { listMcpKeys, createMcpKey, revokeMcpKey, type McpKey } from '@/services/mcp-keys';
 
 const SCOPE_OPTIONS = [
   { value: 'clientes:read', label: 'Clientes (leitura)' },
@@ -27,6 +27,89 @@ const SCOPE_OPTIONS = [
 const AGENT_PRESET = SCOPE_OPTIONS.map((s) => s.value);
 const MCP_URL = (import.meta.env.VITE_SUPABASE_URL as string) + '/functions/v1/mcp';
 const fmtDate = (s: string) => new Date(s).toLocaleDateString('pt-BR');
+
+/** Copy-paste connection snippets for a given token (real at creation, or a placeholder/pasted). */
+function ConnectSnippets({
+  token,
+  copy,
+  copiedKey,
+  idPrefix,
+}: {
+  token: string;
+  copy: (text: string, key: string) => void;
+  copiedKey: string | null;
+  idPrefix: string;
+}) {
+  const desktopConfig = JSON.stringify(
+    {
+      mcpServers: {
+        mesaas: {
+          command: 'npx',
+          args: ['-y', 'mcp-remote', MCP_URL, '--header', 'Authorization:${AUTH_HEADER}'],
+          env: { AUTH_HEADER: `Bearer ${token}` },
+        },
+      },
+    },
+    null,
+    2,
+  );
+  const claudeCodeCmd = `claude mcp add --transport http mesaas ${MCP_URL} --header "Authorization: Bearer ${token}"`;
+  return (
+    <>
+      <div className="space-y-1">
+        <Label>Claude Desktop</Label>
+        <p className="text-xs text-muted-foreground">
+          Cole em <code>claude_desktop_config.json</code> e reinicie o app.
+        </p>
+        <div style={{ position: 'relative' }}>
+          <pre
+            style={{
+              background: 'var(--surface-darker)',
+              padding: '0.75rem',
+              borderRadius: '8px',
+              overflowX: 'auto',
+              fontSize: '0.7rem',
+              fontFamily: 'var(--font-mono)',
+              margin: 0,
+            }}
+          >
+            {desktopConfig}
+          </pre>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => copy(desktopConfig, `${idPrefix}-desktop`)}
+            style={{ position: 'absolute', top: '0.4rem', right: '0.4rem' }}
+          >
+            {copiedKey === `${idPrefix}-desktop` ? (
+              <Check className="h-4 w-4" />
+            ) : (
+              <Copy className="h-4 w-4" />
+            )}
+          </Button>
+        </div>
+      </div>
+
+      <div className="space-y-1">
+        <Label>Claude Code</Label>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <Input
+            readOnly
+            value={claudeCodeCmd}
+            style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem' }}
+          />
+          <Button variant="outline" size="sm" onClick={() => copy(claudeCodeCmd, `${idPrefix}-code`)}>
+            {copiedKey === `${idPrefix}-code` ? (
+              <Check className="h-4 w-4" />
+            ) : (
+              <Copy className="h-4 w-4" />
+            )}
+          </Button>
+        </div>
+      </div>
+    </>
+  );
+}
 
 export default function IntegracoesClaudePage() {
   const { role } = useAuth();
@@ -39,6 +122,8 @@ export default function IntegracoesClaudePage() {
   const [expiry, setExpiry] = useState<'never' | '30' | '90'>('never');
   const [revealToken, setRevealToken] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [connectKey, setConnectKey] = useState<McpKey | null>(null);
+  const [connectToken, setConnectToken] = useState('');
 
   const { data: keys = [], isLoading } = useQuery({
     queryKey: ['mcp-keys'],
@@ -89,25 +174,6 @@ export default function IntegracoesClaudePage() {
     setCopiedKey(key);
     setTimeout(() => setCopiedKey(null), 1500);
   };
-
-  const desktopConfig = revealToken
-    ? JSON.stringify(
-        {
-          mcpServers: {
-            mesaas: {
-              command: 'npx',
-              args: ['-y', 'mcp-remote', MCP_URL, '--header', 'Authorization:${AUTH_HEADER}'],
-              env: { AUTH_HEADER: `Bearer ${revealToken}` },
-            },
-          },
-        },
-        null,
-        2,
-      )
-    : '';
-  const claudeCodeCmd = revealToken
-    ? `claude mcp add --transport http mesaas ${MCP_URL} --header "Authorization: Bearer ${revealToken}"`
-    : '';
 
   if (!isOwnerOrAdmin) {
     return (
@@ -183,14 +249,26 @@ export default function IntegracoesClaudePage() {
                       revogada
                     </span>
                   ) : (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => revokeMutation.mutate(k.id)}
-                      disabled={revokeMutation.isPending}
-                    >
-                      Revogar
-                    </Button>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setConnectToken('');
+                          setConnectKey(k);
+                        }}
+                      >
+                        Conectar
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => revokeMutation.mutate(k.id)}
+                        disabled={revokeMutation.isPending}
+                      >
+                        Revogar
+                      </Button>
+                    </div>
                   )}
                 </div>
               ))}
@@ -293,49 +371,12 @@ export default function IntegracoesClaudePage() {
               </div>
             </div>
 
-            <div className="space-y-1">
-              <Label>Claude Desktop</Label>
-              <p className="text-xs text-muted-foreground">
-                Cole em <code>claude_desktop_config.json</code> e reinicie o app.
-              </p>
-              <div style={{ position: 'relative' }}>
-                <pre
-                  style={{
-                    background: 'var(--surface-darker)',
-                    padding: '0.75rem',
-                    borderRadius: '8px',
-                    overflowX: 'auto',
-                    fontSize: '0.7rem',
-                    fontFamily: 'var(--font-mono)',
-                    margin: 0,
-                  }}
-                >
-                  {desktopConfig}
-                </pre>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => copy(desktopConfig, 'desktop')}
-                  style={{ position: 'absolute', top: '0.4rem', right: '0.4rem' }}
-                >
-                  {copiedKey === 'desktop' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                </Button>
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <Label>Claude Code</Label>
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                <Input
-                  readOnly
-                  value={claudeCodeCmd}
-                  style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem' }}
-                />
-                <Button variant="outline" size="sm" onClick={() => copy(claudeCodeCmd, 'code')}>
-                  {copiedKey === 'code' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                </Button>
-              </div>
-            </div>
+            <ConnectSnippets
+              token={revealToken ?? ''}
+              copy={copy}
+              copiedKey={copiedKey}
+              idPrefix="reveal"
+            />
 
             <p className="text-xs text-muted-foreground">
               O Claude.ai web ainda não suporta chaves estáticas — use Desktop ou Code.
@@ -343,6 +384,42 @@ export default function IntegracoesClaudePage() {
           </div>
           <DialogFooter>
             <Button onClick={() => setRevealToken(null)}>Concluído</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Connect an existing key */}
+      <Dialog open={!!connectKey} onOpenChange={(o) => !o && setConnectKey(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Conectar: {connectKey?.name}</DialogTitle>
+            <DialogDescription>
+              Por segurança não armazenamos a chave. Cole a chave que você copiou ao criar — ou use
+              o modelo abaixo substituindo <code>SUA_CHAVE_AQUI</code>.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1">
+              <Label>Sua chave (opcional)</Label>
+              <Input
+                value={connectToken}
+                onChange={(e) => setConnectToken(e.target.value)}
+                placeholder="mesaas_sk_…"
+                style={{ fontFamily: 'var(--font-mono)' }}
+              />
+            </div>
+            <ConnectSnippets
+              token={connectToken.trim() || 'SUA_CHAVE_AQUI'}
+              copy={copy}
+              copiedKey={copiedKey}
+              idPrefix="connect"
+            />
+            <p className="text-xs text-muted-foreground">
+              O Claude.ai web ainda não suporta chaves estáticas — use Desktop ou Code.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setConnectKey(null)}>Fechar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
