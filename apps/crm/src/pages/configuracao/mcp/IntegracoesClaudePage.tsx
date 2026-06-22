@@ -56,18 +56,19 @@ function ConnectSnippets({
   const claudeCodeCmd = `claude mcp add --transport http mesaas ${MCP_URL} --header "Authorization: Bearer ${token}"`;
   return (
     <>
-      <div className="space-y-1">
+      <div className="space-y-1 min-w-0">
         <Label>Claude Desktop</Label>
         <p className="text-xs text-muted-foreground">
           Cole em <code>claude_desktop_config.json</code> e reinicie o app.
         </p>
-        <div style={{ position: 'relative' }}>
+        <div style={{ position: 'relative', minWidth: 0 }}>
           <pre
             style={{
               background: 'var(--surface-darker)',
               padding: '0.75rem',
               borderRadius: '8px',
               overflowX: 'auto',
+              maxWidth: '100%',
               fontSize: '0.7rem',
               fontFamily: 'var(--font-mono)',
               margin: 0,
@@ -90,13 +91,13 @@ function ConnectSnippets({
         </div>
       </div>
 
-      <div className="space-y-1">
+      <div className="space-y-1 min-w-0">
         <Label>Claude Code</Label>
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', minWidth: 0 }}>
           <Input
             readOnly
             value={claudeCodeCmd}
-            style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem' }}
+            style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', flex: 1, minWidth: 0 }}
           />
           <Button variant="outline" size="sm" onClick={() => copy(claudeCodeCmd, `${idPrefix}-code`)}>
             {copiedKey === `${idPrefix}-code` ? (
@@ -286,7 +287,7 @@ export default function IntegracoesClaudePage() {
               Gere uma chave para conectar um agente Claude a este workspace.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-4 min-w-0">
             <div className="space-y-1">
               <Label>Nome</Label>
               <Input
@@ -356,14 +357,14 @@ export default function IntegracoesClaudePage() {
               Por segurança, não mostraremos esta chave novamente.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-1">
+          <div className="space-y-4 min-w-0">
+            <div className="space-y-1 min-w-0">
               <Label>Sua chave</Label>
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', minWidth: 0 }}>
                 <Input
                   readOnly
                   value={revealToken ?? ''}
-                  style={{ fontFamily: 'var(--font-mono)' }}
+                  style={{ fontFamily: 'var(--font-mono)', flex: 1, minWidth: 0 }}
                 />
                 <Button variant="outline" size="sm" onClick={() => copy(revealToken ?? '', 'token')}>
                   {copiedKey === 'token' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
@@ -398,7 +399,7 @@ export default function IntegracoesClaudePage() {
               o modelo abaixo substituindo <code>SUA_CHAVE_AQUI</code>.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-4 min-w-0">
             <div className="space-y-1">
               <Label>Sua chave (opcional)</Label>
               <Input
