@@ -95,7 +95,7 @@ export default function IntegracoesClaudePage() {
     return (
       <div className="card animate-up" style={{ margin: '1.5rem' }}>
         <h1 className="config-title">Claude (MCP)</h1>
-        <p className="text-sm text-muted">
+        <p className="text-sm text-muted-foreground">
           Apenas proprietários e administradores podem gerenciar as chaves de API.
         </p>
       </div>
@@ -107,7 +107,7 @@ export default function IntegracoesClaudePage() {
       <h1 className="config-title" style={{ marginBottom: '0.5rem' }}>
         Claude (MCP)
       </h1>
-      <p className="text-sm text-muted" style={{ marginBottom: '1.5rem' }}>
+      <p className="text-sm text-muted-foreground" style={{ marginBottom: '1.5rem' }}>
         Conecte seus agentes Claude para ler clientes, posts e pautas deste workspace.
       </p>
 
@@ -128,9 +128,9 @@ export default function IntegracoesClaudePage() {
           </div>
 
           {isLoading ? (
-            <p className="text-sm text-muted">Carregando…</p>
+            <p className="text-sm text-muted-foreground">Carregando…</p>
           ) : keys.length === 0 ? (
-            <p className="text-sm text-muted">
+            <p className="text-sm text-muted-foreground">
               Nenhuma chave ainda. Crie uma para conectar um agente.
             </p>
           ) : (
@@ -150,18 +150,18 @@ export default function IntegracoesClaudePage() {
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: 600 }}>
                       {k.name}{' '}
-                      <span className="text-muted" style={{ fontFamily: 'var(--font-mono)' }}>
+                      <span className="text-muted-foreground" style={{ fontFamily: 'var(--font-mono)' }}>
                         …{k.token_suffix}
                       </span>
                     </div>
-                    <div className="text-muted" style={{ fontSize: '0.75rem' }}>
+                    <div className="text-muted-foreground" style={{ fontSize: '0.75rem' }}>
                       {k.scopes.join(', ')}
                       {k.last_used_at ? ` · usada ${fmtDate(k.last_used_at)}` : ' · nunca usada'}
                       {k.expires_at ? ` · expira ${fmtDate(k.expires_at)}` : ''}
                     </div>
                   </div>
                   {k.revoked_at ? (
-                    <span className="text-muted" style={{ fontSize: '0.75rem' }}>
+                    <span className="text-muted-foreground" style={{ fontSize: '0.75rem' }}>
                       revogada
                     </span>
                   ) : (
@@ -267,7 +267,7 @@ export default function IntegracoesClaudePage() {
                 {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
               </Button>
             </div>
-            <div className="text-xs text-muted" style={{ lineHeight: 1.5 }}>
+            <div className="text-xs text-muted-foreground" style={{ lineHeight: 1.5 }}>
               <strong>Servidor MCP:</strong> {MCP_URL}
               <br />
               Use no Claude Desktop / Code com o cabeçalho{' '}
