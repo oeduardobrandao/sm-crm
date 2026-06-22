@@ -12,13 +12,7 @@ ALTER TABLE plans
 -- Default cap for existing plans (decision: 5 per workspace). Overridable per plan/override.
 UPDATE plans SET max_mcp_keys = 5 WHERE max_mcp_keys IS NULL;
 
--- Decision: MCP ships on the TOP-TIER plan only. Pick the highest-priced active plan.
--- NOTE: verify this resolves to the intended plan in each environment; adjust by id if tiering
--- is not strictly price-ordered.
-UPDATE plans SET feature_mcp = true
-WHERE id = (
-  SELECT id FROM plans
-  WHERE is_active
-  ORDER BY price_brl DESC NULLS LAST, sort_order DESC
-  LIMIT 1
-);
+-- Decision: MCP ships on the TOP-TIER plan only. The catalog is free/start/pro/max, so target
+-- 'max' explicitly (a no-op in any environment where that id is absent). Adjust the id here if a
+-- given environment's top plan differs.
+UPDATE plans SET feature_mcp = true WHERE id = 'max';
