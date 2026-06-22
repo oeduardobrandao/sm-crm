@@ -1,0 +1,91 @@
+// Pure, side-effect-free helpers for shaping post content for the agent.
+// Kept separate from DB access so they can be unit-tested without Supabase.
+
+export interface MediaLite {
+  kind: string;
+  duration_seconds?: number | null;
+}
+
+/**
+ * Derive slide count / video duration from the post format + its media, rather than parsing the
+ * (app-defined, undocumented) ProseMirror `conteudo` JSON:
+ *  - carrossel → num_slides = number of image attachments
+ *  - reels/stories → duration_seconds = first video's duration
+ *  - feed → num_slides = image count (usually 1)
+ */
+export function deriveFormatMeta(
+  tipo: string,
+  media: MediaLite[],
+): { num_slides: number | null; duration_seconds: number | null } {
+  const images = media.filter((m) => m.kind === "image").length;
+  const firstVideo = media.find((m) => m.kind === "video");
+  if (tipo === "carrossel") return { num_slides: images || null, duration_seconds: null };
+  if (tipo === "reels" || tipo === "stories") {
+    return { num_slides: null, duration_seconds: firstVideo?.duration_seconds ?? null };
+  }
+  return { num_slides: images > 0 ? images : null, duration_seconds: null };
+}
+
+/** First non-empty line of the plain-text body — a cheap proxy for "slide 1 text". */
+export function firstLine(plain: string | null | undefined): string | null {
+  if (!plain) return null;
+  const line = plain.split(/\r?\n/).map((l) => l.trim()).find((l) => l.length > 0);
+  return line ?? null;
+}
+
+export interface Quartiles {
+  p25: number;
+  p50: number;
+  p75: number;
+}
+
+/** Linear-interpolated quartiles. Returns null for an empty sample. */
+export function quartiles(values: number[]): Quartiles | null {
+  const xs = values
+    .filter((v) => typeof v === "number" && !Number.isNaN(v))
+    .sort((a, b) => a - b);
+  if (xs.length === 0) return null;
+  const at = (p: number): number => {
+    const idx = (xs.length - 1) * p;
+    const lo = Math.floor(idx);
+    const hi = Math.ceil(idx);
+    if (lo === hi) return xs[lo];
+    return xs[lo] + (xs[hi] - xs[lo]) * (idx - lo);
+  };
+  return { p25: at(0.25), p50: at(0.5), p75: at(0.75) };
+}
+
+export type PerformanceTier =
+  | "top_quartile"
+  | "above_median"
+  | "below_median"
+  | "bottom_quartile";
+
+/** Bucket a metric value against a quartile baseline. Null when value or baseline is missing. */
+export function performanceTier(
+  value: number | null | undefined,
+  q: Quartiles | null,
+): PerformanceTier | null {
+  if (q === null || value === null || value === undefined || Number.isNaN(value)) return null;
+  if (value >= q.p75) return "top_quartile";
+  if (value >= q.p50) return "above_median";
+  if (value >= q.p25) return "below_median";
+  return "bottom_quartile";
+}
+
+// Field allowlist for get_client / list_clients — sensitive columns are excluded by default
+// (LGPD/CFM sensitivity; a content agent does not need contact/financial data).
+export const CLIENT_PUBLIC_FIELDS = [
+  "id", "nome", "sigla", "especialidade", "cor", "status",
+] as const;
+export const CLIENT_SENSITIVE_FIELDS = [
+  "email", "telefone", "valor_mensal", "data_pagamento", "notion_page_url", "user_id", "conta_id",
+] as const;
+
+export function allowlistClient(row: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const f of CLIENT_PUBLIC_FIELDS) {
+    if (f in row) out[f] = row[f];
+  }
+  return out;
+}
