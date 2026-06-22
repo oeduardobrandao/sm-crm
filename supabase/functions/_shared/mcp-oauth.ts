@@ -8,6 +8,19 @@ import {
   validateScopes,
 } from "./mcp-token.ts";
 
+/**
+ * The public origin to advertise in OAuth discovery URLs. `req.url` carries Supabase's internal
+ * `http` scheme behind the proxy, so we trust `x-forwarded-proto` when present, else assume `https`
+ * for a public host (localhost stays `http` for `functions serve`). Discovery URLs MUST be https —
+ * Claude rejects/mishandles an http authorization server or resource identifier.
+ */
+export function publicOrigin(reqUrl: string, forwardedProto: string | null): string {
+  const u = new URL(reqUrl);
+  const isLocal = u.hostname === "localhost" || u.hostname === "127.0.0.1";
+  const proto = forwardedProto ?? (isLocal ? "http" : "https");
+  return `${proto}://${u.host}`;
+}
+
 export interface ConsentPayload {
   authorization_id: string;
   conta_id: string;

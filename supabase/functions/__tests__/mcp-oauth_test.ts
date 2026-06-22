@@ -4,6 +4,7 @@ import {
   decodeJwtClaim,
   grantActive,
   mcpScopesFromClaim,
+  publicOrigin,
   validateConsentPayload,
 } from "../_shared/mcp-oauth.ts";
 
@@ -75,6 +76,18 @@ Deno.test("mcpScopesFromClaim extracts allowlisted scopes from string or array",
   assertEquals(mcpScopesFromClaim("openid email"), []); // no MCP scopes named
   assertEquals(mcpScopesFromClaim(null), []);
   assertEquals(mcpScopesFromClaim(undefined), []);
+});
+
+Deno.test("publicOrigin forces https for public hosts, keeps http for localhost", () => {
+  // Supabase passes req.url with the internal http scheme → must become https.
+  assertEquals(
+    publicOrigin("http://wlyzhyfondykzpsiqsce.supabase.co/functions/v1/mcp", null),
+    "https://wlyzhyfondykzpsiqsce.supabase.co",
+  );
+  // x-forwarded-proto wins when present.
+  assertEquals(publicOrigin("http://x.supabase.co/functions/v1/mcp", "https"), "https://x.supabase.co");
+  // Local dev (functions serve) stays http.
+  assertEquals(publicOrigin("http://localhost:54321/functions/v1/mcp", null), "http://localhost:54321");
 });
 
 Deno.test("boundGrantScopes intersects only when the request named MCP scopes", () => {

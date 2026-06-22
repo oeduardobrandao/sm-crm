@@ -7,7 +7,7 @@ import { WebStandardStreamableHTTPServerTransport } from "npm:@modelcontextproto
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { MCP_ALLOWED_SCOPES } from "../_shared/mcp-token.ts";
-import { resolveCtx } from "../_shared/mcp-oauth.ts";
+import { publicOrigin, resolveCtx } from "../_shared/mcp-oauth.ts";
 import { registerTools } from "./tools.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -32,7 +32,9 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
   const url = new URL(req.url);
-  const resourceUrl = `${url.origin}/functions/v1/mcp`;
+  // Force https for the absolute discovery URLs (req.url carries the proxy's internal http scheme).
+  const origin = publicOrigin(req.url, req.headers.get("x-forwarded-proto"));
+  const resourceUrl = `${origin}/functions/v1/mcp`;
   const metadataUrl = `${resourceUrl}/.well-known/oauth-protected-resource`;
 
   // OAuth 2.0 Protected Resource Metadata (RFC 9728), served at a sub-path and advertised via the
@@ -47,7 +49,7 @@ Deno.serve(async (req) => {
     return jsonResponse(
       {
         resource: resourceUrl,
-        authorization_servers: [`${url.origin}/auth/v1`],
+        authorization_servers: [`${origin}/auth/v1`],
         scopes_supported: MCP_ALLOWED_SCOPES,
         bearer_methods_supported: ["header"],
       },
