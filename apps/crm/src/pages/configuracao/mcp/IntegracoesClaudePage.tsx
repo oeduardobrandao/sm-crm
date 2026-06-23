@@ -215,6 +215,10 @@ export default function IntegracoesClaudePage() {
           <h3 className="config-title" style={{ margin: 0, marginBottom: '0.75rem' }}>
             Como conectar
           </h3>
+
+          <p className="text-sm" style={{ fontWeight: 600, margin: 0, marginBottom: '0.4rem' }}>
+            Recomendado — claude.ai e Claude Desktop (sem chave)
+          </p>
           <ol
             className="text-sm text-muted-foreground"
             style={{
@@ -226,22 +230,55 @@ export default function IntegracoesClaudePage() {
             }}
           >
             <li>
-              <strong>Crie uma chave</strong> abaixo e copie a configuração (Claude Desktop) ou o
-              comando (Claude Code).
+              No Claude, abra{' '}
+              <strong>Configurações → Conectores → Adicionar conector personalizado</strong>.
             </li>
             <li>
-              Cole no seu cliente Claude — no <strong>Desktop</strong>, em Configurações →
-              Desenvolvedor → Editar configuração, depois reinicie o app; no <strong>Code</strong>,
-              rode o comando no terminal.
+              Cole a URL abaixo, deixe os campos de OAuth em branco e clique em{' '}
+              <strong>Adicionar</strong>.
             </li>
             <li>
-              Peça ao agente: <em>"liste meus clientes ativos"</em> ou{' '}
-              <em>"mostre o post X com métricas"</em>.
+              Faça login no Mesaas, escolha o workspace e as permissões e clique em{' '}
+              <strong>Autorizar</strong>.
             </li>
           </ol>
-          <p className="text-xs text-muted-foreground" style={{ marginTop: '0.6rem' }}>
-            Já tem uma chave? Use o botão <strong>Conectar</strong> ao lado dela. O Claude.ai web
-            ainda não suporta chaves estáticas — use Desktop ou Code.
+          <div
+            style={{
+              display: 'flex',
+              gap: '0.5rem',
+              alignItems: 'center',
+              minWidth: 0,
+              marginTop: '0.5rem',
+            }}
+          >
+            <Input
+              readOnly
+              value={MCP_URL}
+              style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', flex: 1, minWidth: 0 }}
+            />
+            <Button variant="outline" size="sm" onClick={() => copy(MCP_URL, 'mcp-url')}>
+              {copiedKey === 'mcp-url' ? (
+                <Check className="h-4 w-4" />
+              ) : (
+                <Copy className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
+
+          <p
+            className="text-sm"
+            style={{ fontWeight: 600, margin: 0, marginTop: '1rem', marginBottom: '0.4rem' }}
+          >
+            Claude Code, API ou agentes headless (com chave)
+          </p>
+          <p className="text-sm text-muted-foreground" style={{ margin: 0 }}>
+            Crie uma chave abaixo e copie o comando (Claude Code) ou o bloco de configuração (Claude
+            Desktop sem conector). Já tem uma chave? Use <strong>Conectar</strong> ao lado dela.
+          </p>
+
+          <p className="text-xs text-muted-foreground" style={{ marginTop: '0.75rem' }}>
+            Depois, peça ao agente: <em>"liste meus clientes ativos"</em> ou{' '}
+            <em>"mostre o post X com métricas"</em>.
           </p>
         </div>
 
@@ -441,7 +478,8 @@ export default function IntegracoesClaudePage() {
             />
 
             <p className="text-xs text-muted-foreground">
-              O Claude.ai web ainda não suporta chaves estáticas — use Desktop ou Code.
+              Esta chave é para Claude Code, API ou agentes headless. Em claude.ai ou Desktop,
+              conecte pelo conector (sem chave) — veja “Como conectar”.
             </p>
           </div>
           <DialogFooter>
@@ -477,7 +515,8 @@ export default function IntegracoesClaudePage() {
               idPrefix="connect"
             />
             <p className="text-xs text-muted-foreground">
-              O Claude.ai web ainda não suporta chaves estáticas — use Desktop ou Code.
+              Esta chave é para Claude Code, API ou agentes headless. Em claude.ai ou Desktop,
+              conecte pelo conector (sem chave) — veja “Como conectar”.
             </p>
           </div>
           <DialogFooter>
