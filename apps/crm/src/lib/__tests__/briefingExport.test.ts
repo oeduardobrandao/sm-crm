@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildBriefingExportSections, escapeMarkdown, slugifyTitle } from '../briefingExport';
+import { buildBriefingExportSections, briefingToCSV, escapeMarkdown, slugifyTitle } from '../briefingExport';
+import { parseCSV } from '../csv';
 import type { HubBriefingQuestionRow } from '@/store/hub';
 
 describe('escapeMarkdown', () => {
@@ -87,5 +88,44 @@ describe('buildBriefingExportSections', () => {
     const sections = buildBriefingExportSections(rows, 'b1', 'b1');
     expect(sections.map((s) => s.name)).toEqual(['', 'DADOS', 'AUDIÊNCIA']);
     expect(sections[1].questions.map((x) => x.question)).toEqual(['a', 'd']);
+  });
+});
+
+describe('briefingToCSV', () => {
+  it('emits header and one row per question in section order', () => {
+    const csv = briefingToCSV([
+      { name: '', questions: [{ question: 'Nome?', answer: 'Ana' }] },
+      { name: 'DADOS', questions: [{ question: 'Idade?', answer: null }] },
+    ]);
+    expect(csv).toBe('pergunta,secao,resposta\nNome?,,Ana\nIdade?,DADOS,');
+  });
+
+  it('quotes fields containing commas or quotes and doubles internal quotes', () => {
+    const csv = briefingToCSV([
+      { name: '', questions: [{ question: 'Cores?', answer: 'azul, verde' }] },
+      { name: '', questions: [{ question: 'Apelido?', answer: 'diz "oi"' }] },
+    ]);
+    const lines = csv.split('\n');
+    expect(lines[1]).toBe('Cores?,,"azul, verde"');
+    expect(lines[2]).toBe('Apelido?,,"diz ""oi"""');
+  });
+
+  it('flattens newlines inside a value to a single space', () => {
+    const csv = briefingToCSV([
+      { name: '', questions: [{ question: 'Bio?', answer: 'linha1\nlinha2' }] },
+    ]);
+    expect(csv.split('\n')[1]).toBe('Bio?,,linha1 linha2');
+  });
+
+  it('round-trips through parseCSV for quote-free, newline-free values', () => {
+    const sections = [
+      { name: '', questions: [{ question: 'Nome?', answer: 'Ana' }] },
+      { name: 'DADOS', questions: [{ question: 'Cidade?', answer: 'São Paulo, SP' }] },
+    ];
+    const parsed = parseCSV(briefingToCSV(sections));
+    expect(parsed).toEqual([
+      { pergunta: 'Nome?', secao: '', resposta: 'Ana' },
+      { pergunta: 'Cidade?', secao: 'DADOS', resposta: 'São Paulo, SP' },
+    ]);
   });
 });

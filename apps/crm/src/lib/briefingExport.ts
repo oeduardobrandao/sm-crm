@@ -67,3 +67,23 @@ export function buildBriefingExportSections(
   const named = sections.filter((s) => s.name !== '');
   return [...unsectioned, ...named];
 }
+
+/** Encodes one CSV field: flatten newlines, then RFC-4180 quote if needed. */
+function csvField(value: string): string {
+  const flat = value.replace(/\r\n|\r|\n/g, ' ');
+  return /[",]/.test(flat) ? `"${flat.replace(/"/g, '""')}"` : flat;
+}
+
+/**
+ * CSV with columns pergunta,secao,resposta (importer-compatible). Rows follow
+ * the given section order. No BOM (added only on the download path).
+ */
+export function briefingToCSV(sections: ExportSection[]): string {
+  const rows = ['pergunta,secao,resposta'];
+  for (const section of sections) {
+    for (const q of section.questions) {
+      rows.push([csvField(q.question), csvField(section.name), csvField(q.answer ?? '')].join(','));
+    }
+  }
+  return rows.join('\n');
+}
