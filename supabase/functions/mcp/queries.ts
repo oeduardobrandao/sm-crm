@@ -8,6 +8,7 @@ import {
   CLIENT_PUBLIC_FIELDS,
   deriveFormatMeta,
   firstLine,
+  pageContentToMarkdown,
   performanceTier,
   quartiles,
   Quartiles,
@@ -411,4 +412,26 @@ export async function listIdeas(
   if (args.status) q = q.eq("status", args.status);
   const { data } = await q.order("created_at", { ascending: false });
   return data ?? [];
+}
+
+// ---- pages -------------------------------------------------------------------
+
+export async function listPages(
+  d: Deps,
+  args: { client_id?: number },
+): Promise<any[]> {
+  let q = d.db
+    .from("hub_pages")
+    .select("id, cliente_id, title, content, display_order, created_at")
+    .eq("conta_id", d.ctx.conta_id);
+  if (args.client_id !== undefined) q = q.eq("cliente_id", args.client_id);
+  const { data, error } = await q
+    .order("cliente_id")
+    .order("display_order")
+    .order("created_at");
+  if (error) throw error;
+  return ((data ?? []) as any[]).map((row) => ({
+    ...row,
+    content: pageContentToMarkdown(row.content),
+  }));
 }
