@@ -3,28 +3,91 @@
 // =============================================
 
 /**
+ * Faz o parse de um texto CSV em registros (linhas de campos), seguindo o
+ * RFC 4180: campos entre aspas podem conter vírgulas, quebras de linha e
+ * aspas escapadas (`""`). Lida com terminações de linha `\n` e `\r\n`.
+ */
+function parseCSVRecords(csvText: string): string[][] {
+  // Remove BOM UTF-8 que Excel/Sheets costumam adicionar no início do arquivo.
+  const text = csvText.charCodeAt(0) === 0xfeff ? csvText.slice(1) : csvText;
+
+  const records: string[][] = [];
+  let row: string[] = [];
+  let field = '';
+  let inQuotes = false;
+  let started = false; // há conteúdo pendente (campo ou linha) a ser emitido?
+
+  const endField = () => {
+    row.push(field);
+    field = '';
+  };
+  const endRow = () => {
+    endField();
+    records.push(row);
+    row = [];
+    started = false;
+  };
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') {
+          field += '"'; // aspas escapadas
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        field += ch;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      inQuotes = true;
+      started = true;
+    } else if (ch === ',') {
+      endField();
+      started = true;
+    } else if (ch === '\n') {
+      endRow();
+    } else if (ch === '\r') {
+      if (text[i + 1] === '\n') i++;
+      endRow();
+    } else {
+      field += ch;
+      started = true;
+    }
+  }
+
+  // Emite o último registro se houver conteúdo pendente (sem newline final).
+  if (started || field !== '' || row.length > 0) endRow();
+
+  return records;
+}
+
+/**
  * Converte um arquivo CSV em um array de objetos.
  * Espera que a primeira linha contenha os cabeçalhos.
  */
 export function parseCSV(csvText: string): Record<string, string>[] {
-  const lines = csvText.split('\n').filter((line) => line.trim() !== '');
-  if (lines.length < 2) return [];
+  // Ignora registros totalmente vazios (linhas em branco entre os dados).
+  const records = parseCSVRecords(csvText).filter((cells) =>
+    cells.some((cell) => cell.trim() !== ''),
+  );
+  if (records.length < 2) return [];
 
-  const headers = lines[0].split(',').map((h) => h.trim().toLowerCase());
+  const headers = records[0].map((h) => h.trim().toLowerCase());
   const data: Record<string, string>[] = [];
 
-  for (let i = 1; i < lines.length; i++) {
-    // Regex para lidar com vírgulas dentro de aspas duplas, ex: "Valor,10", outro_campo
-    const values = lines[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+  for (let i = 1; i < records.length; i++) {
+    const values = records[i];
     const row: Record<string, string> = {};
 
     headers.forEach((header, index) => {
-      let val = values[index] ? values[index].trim() : '';
-      // Remove aspas nas extremidades se houver
-      if (val.startsWith('"') && val.endsWith('"')) {
-        val = val.substring(1, val.length - 1);
-      }
-      row[header] = val;
+      row[header] = values[index] != null ? values[index].trim() : '';
     });
 
     data.push(row);

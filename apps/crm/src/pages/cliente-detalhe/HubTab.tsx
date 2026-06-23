@@ -25,6 +25,20 @@ import {
 import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import {
+  DndContext,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  sortableKeyboardCoordinates,
+} from '@dnd-kit/sortable';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -59,6 +73,7 @@ import {
   addBriefing,
   updateBriefingTitle,
   deleteBriefing,
+  reorderBriefingQuestions,
   getBriefingTemplates,
   applyTemplateToClient,
   getIdeias,
@@ -67,10 +82,18 @@ import {
   type HubBrandFileRow,
   type HubPageRow,
   type HubBriefingQuestionRow,
+  type BriefingRow,
 } from '@/store';
 import { IdeiaDrawer } from '@/components/ideias/IdeiaDrawer';
 import { IdeiaStatusBadge } from '@/components/ideias/IdeiaStatusBadge';
 import { BriefingTemplatesModal } from './BriefingTemplatesModal';
+import { SortableQuestion, SortableSection, SECTION_PREFIX } from './BriefingReorder';
+import {
+  reorderQuestionWithinSection,
+  reorderSections,
+  toDisplayOrderUpdates,
+  applyReorderToCache,
+} from '@/lib/briefingReorder';
 
 function downloadTextFile(filename: string, mime: string, text: string) {
   const url = URL.createObjectURL(new Blob([text], { type: mime }));
@@ -605,9 +628,59 @@ function BriefingEditor({
   const firstId = briefings[0]?.id ?? null;
   const briefingQuestions = questions.filter((q) => (q.briefing_id ?? firstId) === selectedId);
 
+  // ── Drag-and-drop reordering ────────────────────────────────────────────────
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  async function persistReorder(orderedIds: string[] | null) {
+    if (!orderedIds) return;
+    const updates = toDisplayOrderUpdates(briefingQuestions, orderedIds);
+    if (updates.length === 0) return;
+    const key = ['hub-briefing-questions', clienteId];
+    // Cancel in-flight refetches so they can't clobber the optimistic order.
+    await qc.cancelQueries({ queryKey: key });
+    qc.setQueryData<HubBriefingQuestionRow[]>(key, (old) =>
+      old ? applyReorderToCache(old, orderedIds) : old,
+    );
+    try {
+      await reorderBriefingQuestions(updates);
+      qc.invalidateQueries({ queryKey: key });
+    } catch {
+      toast.error('Erro ao reordenar.');
+      qc.invalidateQueries({ queryKey: key });
+    }
+  }
+
+  function handleSectionDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const from = String(active.id).slice(SECTION_PREFIX.length);
+    const to = String(over.id).slice(SECTION_PREFIX.length);
+    void persistReorder(reorderSections(briefingQuestions, from, to));
+  }
+
+  function handleQuestionDragEnd(sectionKey: string, event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    void persistReorder(
+      reorderQuestionWithinSection(
+        briefingQuestions,
+        sectionKey,
+        String(active.id),
+        String(over.id),
+      ),
+    );
+  }
+
   async function handleCreateBriefing() {
     try {
       const b = await addBriefing(clienteId, contaId, 'Novo briefing');
+      // Seed the cache so the default-selection effect finds the new briefing
+      // synchronously; otherwise it can't match selectedId against the stale
+      // list and snaps selection back to the first briefing.
+      qc.setQueryData<BriefingRow[]>(['briefings', clienteId], (old) => [...(old ?? []), b]);
       setSelectedId(b.id);
       setRenaming(true);
       setRenameText(b.title);
@@ -693,6 +766,7 @@ function BriefingEditor({
     setApplying(true);
     try {
       const b = await applyTemplateToClient(clienteId, contaId, templateId);
+      qc.setQueryData<BriefingRow[]>(['briefings', clienteId], (old) => [...(old ?? []), b]);
       setSelectedId(b.id);
       refresh();
       toast.success('Template aplicado! Ajuste as perguntas como quiser.');
@@ -789,59 +863,74 @@ function BriefingEditor({
   function renderQuestions(sectionQuestions: HubBriefingQuestionRow[], sectionKey: string | null) {
     return (
       <div className="space-y-2 mb-3">
-        {sectionQuestions.map((q) => (
-          <div key={q.id} className="border rounded-lg p-3">
-            {editingId === q.id ? (
-              <div className="space-y-2">
-                <Input
-                  value={editText}
-                  onChange={(e) => setEditText(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleSaveEdit(q.id);
-                    if (e.key === 'Escape') setEditingId(null);
-                  }}
-                  autoFocus
-                />
-                <div className="flex gap-2">
-                  <Button size="sm" onClick={() => handleSaveEdit(q.id)}>
-                    <Save size={14} className="mr-1.5" /> Salvar
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => setEditingId(null)}>
-                    Cancelar
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{q.question}</p>
-                  {q.answer ? (
-                    <p className="text-sm text-muted-foreground mt-1 whitespace-pre-wrap">
-                      {q.answer}
-                    </p>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={(e) => handleQuestionDragEnd(sectionKey ?? '', e)}
+        >
+          <SortableContext
+            items={sectionQuestions.map((q) => q.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            {sectionQuestions.map((q) => (
+              <SortableQuestion key={q.id} id={q.id} disabled={editingId === q.id}>
+                <div className="border rounded-lg p-3">
+                  {editingId === q.id ? (
+                    <div className="space-y-2">
+                      <Input
+                        value={editText}
+                        onChange={(e) => setEditText(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveEdit(q.id);
+                          if (e.key === 'Escape') setEditingId(null);
+                        }}
+                        autoFocus
+                      />
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={() => handleSaveEdit(q.id)}>
+                          <Save size={14} className="mr-1.5" /> Salvar
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => setEditingId(null)}>
+                          Cancelar
+                        </Button>
+                      </div>
+                    </div>
                   ) : (
-                    <p className="text-xs text-muted-foreground mt-1 italic">Sem resposta ainda</p>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium">{q.question}</p>
+                        {q.answer ? (
+                          <p className="text-sm text-muted-foreground mt-1 whitespace-pre-wrap">
+                            {q.answer}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-muted-foreground mt-1 italic">
+                            Sem resposta ainda
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex gap-1 shrink-0">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setEditingId(q.id);
+                            setEditText(q.question);
+                          }}
+                        >
+                          Editar
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => handleDelete(q.id)}>
+                          <Trash2 size={14} />
+                        </Button>
+                      </div>
+                    </div>
                   )}
                 </div>
-                <div className="flex gap-1 shrink-0">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      setEditingId(q.id);
-                      setEditText(q.question);
-                    }}
-                  >
-                    Editar
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => handleDelete(q.id)}>
-                    <Trash2 size={14} />
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
+              </SortableQuestion>
+            ))}
+          </SortableContext>
+        </DndContext>
         <div className="flex gap-2">
           <Input
             value={newQuestions[sectionKey ?? ''] ?? ''}
@@ -1077,25 +1166,43 @@ function BriefingEditor({
             </div>
           )}
 
-          {/* Named sections (collapsible) */}
-          {namedSections.map((s) => {
-            const isCollapsed = !expandedSections.has(s.name);
-            return (
-              <div key={s.name} className="mb-6">
-                <button
-                  type="button"
-                  onClick={() => toggleSection(s.name)}
-                  aria-expanded={!isCollapsed}
-                  className="flex items-center gap-1.5 mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-                  {s.name}
-                  <span className="font-normal normal-case opacity-60">({s.questions.length})</span>
-                </button>
-                {!isCollapsed && renderQuestions(s.questions, s.name)}
-              </div>
-            );
-          })}
+          {/* Named sections (collapsible, drag to reorder) */}
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleSectionDragEnd}
+          >
+            <SortableContext
+              items={namedSections.map((s) => SECTION_PREFIX + s.name)}
+              strategy={verticalListSortingStrategy}
+            >
+              {namedSections.map((s) => {
+                const isCollapsed = !expandedSections.has(s.name);
+                return (
+                  <SortableSection
+                    key={s.name}
+                    id={SECTION_PREFIX + s.name}
+                    header={
+                      <button
+                        type="button"
+                        onClick={() => toggleSection(s.name)}
+                        aria-expanded={!isCollapsed}
+                        className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                        {s.name}
+                        <span className="font-normal normal-case opacity-60">
+                          ({s.questions.length})
+                        </span>
+                      </button>
+                    }
+                  >
+                    {!isCollapsed && renderQuestions(s.questions, s.name)}
+                  </SortableSection>
+                );
+              })}
+            </SortableContext>
+          </DndContext>
 
           {/* Pending (not yet saved) sections */}
           {pendingSections.map((name) => (

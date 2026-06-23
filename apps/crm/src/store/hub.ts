@@ -277,6 +277,27 @@ export async function updateBriefingTitle(id: string, title: string): Promise<vo
   if (error) throw error;
 }
 
+/**
+ * Persist a reordered set of briefing questions. Each entry is updated by id;
+ * pass only the rows whose display_order changed. Mirrors `reorderWorkflowPosts`.
+ */
+export async function reorderBriefingQuestions(
+  updates: { id: string; display_order: number }[],
+): Promise<void> {
+  if (updates.length === 0) return;
+  await Promise.all(
+    updates.map(({ id, display_order }) =>
+      supabase
+        .from('hub_briefing_questions')
+        .update({ display_order })
+        .eq('id', id)
+        .then(({ error }) => {
+          if (error) throw error;
+        }),
+    ),
+  );
+}
+
 export async function deleteBriefing(id: string): Promise<void> {
   // hub_briefing_questions rows cascade-delete via FK.
   const { error } = await supabase.from('briefings').delete().eq('id', id);
