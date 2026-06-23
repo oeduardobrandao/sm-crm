@@ -55,15 +55,13 @@ The briefing editor lives in `apps/crm/src/pages/cliente-detalhe/HubTab.tsx` in 
   function selects questions ordered by `display_order`
   (`supabase/functions/hub-briefing/handler.ts:44`), and `BriefingPage.tsx`
   (`apps/hub/src/pages/BriefingPage.tsx:34`) groups by section in first-seen order.
-  So as long as we keep each section's questions **contiguous** in `display_order`,
-  reordering in the CRM moves both questions and section tabs on the client side.
-  **No Hub or edge-function changes are required.**
+  Since both within-section question order and section (first-appearance) order are
+  derived from `display_order`, reordering in the CRM moves both questions and
+  section tabs on the client side. **No Hub or edge-function changes are required.**
 
 ## Data model & reorder math
 
-We keep one invariant for a briefing's questions: they are globally ordered by
-`display_order`, and questions of the same section are **contiguous**. The visual
-flat order is:
+The desired persisted flat order is:
 
 ```
 [ unsectioned questions… , section A questions… , section B questions… , … ]
@@ -76,21 +74,38 @@ flat order is:
 - **Question reordering** permutes questions within a single block (unsectioned or
   a named section).
 
-A pure helper computes the new persisted order:
+**Do not assume the input is contiguous.** Existing mutation paths can leave a
+briefing's `display_order` non-contiguous per section — `addHubBriefingQuestion`
+always appends `max(display_order)+1` (`store/hub.ts:199`), and CSV import /
+template apply can interleave repeated section labels. This is *not* user-visible:
+both the CRM editor (`HubTab.tsx:712`) and the Hub (`BriefingPage.tsx:34`) group
+by section **first-appearance**, not by contiguity, so a question added to a
+middle section still renders at the bottom of its own section on both sides. We
+therefore **do not change add/import/template**; instead the reorder helpers
+tolerate non-contiguous input and normalize it.
+
+A pure helper computes the new persisted order. It mirrors the render's grouping
+(group by `section ?? ''` in first-appearance order, questions kept in input
+order within each group), applies the move, flattens back to the canonical flat
+order above, assigns `display_order = index`, and so **heals non-contiguity as a
+side effect of any reorder**:
 
 ```ts
 // apps/crm/src/lib/briefingReorder.ts
 type Q = { id: string; section: string | null; display_order: number };
 
 // Reorder questions within one section (sectionKey === '' for unsectioned).
+// Groups `questions` by first-appearance; no-op (returns []) if from/to are in
+// different sections or fromId === toId.
 function reorderQuestionWithinSection(
-  questions: Q[],        // all questions of the briefing, current visual order
+  questions: Q[],        // all questions of the briefing, current array order
   sectionKey: string,    // '' for unsectioned
   fromId: string,
   toId: string,
 ): { id: string; display_order: number }[];
 
-// Reorder whole section blocks (named sections only).
+// Reorder whole section blocks (named sections only). `from`/`to` are raw section
+// names; current section order is derived by first-appearance.
 function reorderSections(
   questions: Q[],
   fromSection: string,
@@ -99,9 +114,8 @@ function reorderSections(
 ```
 
 Both rebuild the flat order, assign `display_order = index`, and return **only the
-rows whose `display_order` changed** (minimal write set). Cross-section question
-moves are a no-op (guarded): if `fromId` and `toId` are in different sections, the
-within-section helper returns `[]`.
+rows whose `display_order` changed** (minimal write set; matches the
+`reorderWorkflowPosts` precedent which also persists a renumbered list).
 
 ## Persistence
 
@@ -115,9 +129,24 @@ export async function reorderBriefingQuestions(
 
 Implementation: `await Promise.all(updates.map(u =>
 supabase.from('hub_briefing_questions').update({ display_order: u.display_order })
-.eq('id', u.id)))`, throwing on the first error. Briefings are small (tens of
-questions), so per-row updates are acceptable and avoid the upsert/NOT-NULL
-pitfalls of bulk upsert. Skip the call entirely when `updates` is empty.
+.eq('id', u.id).then(({ error }) => { if (error) throw error; })))`. Skip the call
+entirely when `updates` is empty.
+
+This intentionally mirrors the existing reorder precedent `reorderWorkflowPosts`
+(`store/posts.ts:397`), which persists workflow-post order the same way — per-row
+`Promise.all` updates with optimistic UI and invalidate-on-error — even though the
+Workflow UI also orders by the persisted column.
+
+**On atomicity (considered, declined):** a partial `Promise.all` failure (e.g.
+mid-batch network drop) could transiently leave duplicate `display_order` values,
+and since the Hub orders by `display_order` (`hub-briefing/handler.ts:44`) ties
+break arbitrarily until the next successful reorder. A Postgres RPC/transaction
+would make the write atomic, but it diverges from the established pattern and adds
+a migration + RLS surface for a failure that is transient, non-corrupting (section
+grouping is first-appearance based, so questions never leave their section), and
+self-healing: `onError` invalidates and refetches the server truth, and any
+subsequent reorder renumbers the whole affected set. We follow the precedent; an
+RPC can be revisited if instability is observed in practice.
 
 ## UI / dnd structure
 
@@ -125,21 +154,36 @@ Extract two small sortable components into a new file
 `apps/crm/src/pages/cliente-detalhe/BriefingReorder.tsx` to avoid growing
 `HubTab.tsx` (~1150 lines):
 
-- `SortableQuestion` — wraps a question card with `useSortable({ id: q.id })`,
-  exposing a `GripVertical` drag handle (handle-scoped `listeners`/`attributes`)
-  so the existing Editar/Trash buttons keep working. Renders its children
-  (the existing card markup is passed in / replicated).
+- `SortableQuestion` — wraps a question card with `useSortable({ id: q.id })`
+  (raw question uuid). Renders its children (existing card markup) plus a
+  `GripVertical` drag handle.
 - `SortableSection` — wraps a named-section block with
   `useSortable({ id: 'section:' + name })`, exposing a grip handle next to the
   collapse toggle so dragging the section never triggers collapse.
 
+**Sortable IDs (must match between `items` and `useSortable`):**
+
+- Section items are **prefixed**: the outer `SortableContext` is
+  `items={namedSections.map(s => 'section:' + s.name)}` and each `SortableSection`
+  uses `useSortable({ id: 'section:' + s.name })`. `onDragEnd` strips the
+  `'section:'` prefix to recover the raw name before calling `reorderSections`.
+- Question items are **raw uuids**: each inner `SortableContext` is
+  `items={s.questions.map(q => q.id)}` and each `SortableQuestion` uses
+  `useSortable({ id: q.id })`. uuids never collide with the `section:` namespace.
+
+**Drag handle (keyboard-accessible):** the grip handle is a focusable
+`<button type="button">` that receives **both** `{...attributes}` and
+`{...listeners}` from `useSortable` (handle-scoped — not on the whole card/header),
+so pointer drag and `KeyboardSensor` both work and the existing
+Editar/Trash/collapse controls keep their own click behavior.
+
 **Nested dnd contexts** to enforce "no cross-section":
 
-- An **outer** `DndContext` + `SortableContext` (items = named section names) for
-  section reordering. `onDragEnd` → `reorderSections(...)`.
+- An **outer** `DndContext` + `SortableContext` (the prefixed section items above)
+  for section reordering. `onDragEnd` → strip prefix → `reorderSections(...)`.
 - An **inner** `DndContext` + `SortableContext` **per section** (and one for the
-  unsectioned block) (items = that section's question ids) for question
-  reordering. `onDragEnd` → `reorderQuestionWithinSection(...)`.
+  unsectioned block) over that section's question ids, for question reordering.
+  `onDragEnd` → `reorderQuestionWithinSection(...)`.
 
 Because each question's sortable context is scoped to its own section, dragging a
 question into another section is structurally impossible — matching the chosen
@@ -147,7 +191,8 @@ scope and keeping each piece independently reasoned about. Handle-scoped listene
 prevent pointer-sensor conflicts between the nested contexts.
 
 Sensors: `PointerSensor` (with a small activation distance so taps still click)
-and `KeyboardSensor` for accessibility, mirroring `WorkflowModals.tsx`.
+and `KeyboardSensor` (`sortableKeyboardCoordinates`) for accessibility, mirroring
+`WorkflowModals.tsx`.
 
 ## Optimistic update flow
 
@@ -155,20 +200,25 @@ On a successful drag:
 
 1. Compute `updates` via the pure helper.
 2. If empty, do nothing.
-3. Optimistically rewrite the React Query cache
+3. `await qc.cancelQueries({ queryKey: ['hub-briefing-questions', clienteId] })`
+   so an in-flight refetch cannot overwrite the optimistic order while the
+   mutation is pending.
+4. Optimistically rewrite the React Query cache
    `['hub-briefing-questions', clienteId]` so the affected briefing's questions
    appear **in the new array order** (and their `display_order` fields match).
    **Reordering the array is required, not just patching `display_order`** — the
    editor renders in array order and never re-sorts by `display_order`
    (`briefingQuestions` is a `.filter()` of the cached list, `HubTab.tsx:606`).
    Questions of other briefings in the cache are left untouched.
-4. `await reorderBriefingQuestions(updates)`.
-5. On error: `toast.error(...)` and
-   `qc.invalidateQueries(['hub-briefing-questions', clienteId])` to resync.
+5. `await reorderBriefingQuestions(updates)`.
+6. On error: `toast.error(...)` and
+   `qc.invalidateQueries({ queryKey: ['hub-briefing-questions', clienteId] })` to
+   resync (v5 object form, matching `HubTab.tsx:599`).
 
 This mirrors the optimistic-cache approach already used for the new-briefing
-selection fix. A small cache helper (e.g. `applyReorderToCache(list, briefingId,
-orderedIds)`) keeps this logic testable.
+selection fix. A small **pure** cache helper
+`applyReorderToCache(list, briefingId, orderedIds)` performs step 4 and is unit
+tested (see below).
 
 ## Behavior notes
 
@@ -182,14 +232,23 @@ orderedIds)`) keeps this logic testable.
 
 ## Testing
 
-- **`apps/crm/src/lib/__tests__/briefingReorder.test.ts`** (pure, no rendering):
+- **`apps/crm/src/lib/__tests__/briefingReorder.test.ts`** — reorder math (pure,
+  no rendering):
   - reorder a question down/up within a section → correct minimal `updates`,
-    `display_order` contiguous, sections stay contiguous.
+    output `display_order` contiguous.
   - reorder unsectioned questions among themselves.
   - reorder sections (move B above A) → whole block moves, `display_order`
     renumbered, only changed rows returned.
   - cross-section question move → returns `[]` (guarded no-op).
   - no-op move (`fromId === toId`) → returns `[]`.
+  - **non-contiguous input** (e.g. section A at `display_order` 0,1,4 and B at 2,3)
+    → reorder still groups by first-appearance and the output is normalized to a
+    contiguous flat order (proves helpers tolerate + heal non-contiguity).
+- **`apps/crm/src/lib/__tests__/briefingReorder.test.ts`** (same file) —
+  `applyReorderToCache`: given the full client questions list, reorders the target
+  briefing's questions into `orderedIds` order **and leaves questions of other
+  briefings untouched** (covers the UI-critical array-reorder requirement that the
+  pure reorder math alone won't catch).
 - **Store test** for `reorderBriefingQuestions` (mock supabase) — calls update per
   changed row, throws on error, no call when empty. Follow existing store test
   setup under `apps/crm/src/__tests__/`.
@@ -197,7 +256,8 @@ orderedIds)`) keeps this logic testable.
 
 ## Files touched
 
-- `apps/crm/src/lib/briefingReorder.ts` — new, pure reorder helpers.
+- `apps/crm/src/lib/briefingReorder.ts` — new, pure reorder helpers
+  (`reorderQuestionWithinSection`, `reorderSections`, `applyReorderToCache`).
 - `apps/crm/src/lib/__tests__/briefingReorder.test.ts` — new tests.
 - `apps/crm/src/store/hub.ts` — new `reorderBriefingQuestions`.
 - `apps/crm/src/pages/cliente-detalhe/BriefingReorder.tsx` — new sortable
