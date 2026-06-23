@@ -323,6 +323,27 @@ export function revokeAllMcpKeys(workspace_id: string) {
   return adminApi<{ message: string; count: number }>('revoke-all-mcp-keys', { workspace_id });
 }
 
+export interface OAuthGrantRow {
+  id: string;
+  client_id: string;
+  scopes: string[];
+  created_at: string;
+  revoked_at: string | null;
+  connected_by: string | null;
+}
+
+export function listWorkspaceOAuthGrants(workspace_id: string) {
+  return adminApi<{ grants: OAuthGrantRow[] }>('list-workspace-oauth-grants', { workspace_id });
+}
+
+export function revokeOAuthGrant(workspace_id: string, grant_id: string) {
+  return adminApi<{ message: string }>('revoke-oauth-grant', { workspace_id, grant_id });
+}
+
+export function revokeAllOAuthGrants(workspace_id: string) {
+  return adminApi<{ message: string; count: number }>('revoke-all-oauth-grants', { workspace_id });
+}
+
 export function listAdmins() {
   return adminApi<{ admins: PlatformAdmin[] }>('list-admins');
 }

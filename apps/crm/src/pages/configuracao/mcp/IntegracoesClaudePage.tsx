@@ -27,6 +27,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { listMcpKeys, createMcpKey, revokeMcpKey, type McpKey } from '@/services/mcp-keys';
+import { listOAuthGrants, revokeOAuthGrant, type OAuthGrant } from '@/services/mcp-oauth';
 import { SCOPE_OPTIONS, AGENT_PRESET } from '@/lib/mcp-scopes';
 
 const MCP_URL = (import.meta.env.VITE_SUPABASE_URL as string) + '/functions/v1/mcp';
@@ -137,12 +138,20 @@ export default function IntegracoesClaudePage() {
   const [connectKey, setConnectKey] = useState<McpKey | null>(null);
   const [connectToken, setConnectToken] = useState('');
   const [revokeTarget, setRevokeTarget] = useState<McpKey | null>(null);
+  const [revokeGrantTarget, setRevokeGrantTarget] = useState<OAuthGrant | null>(null);
 
   const { data: keys = [], isLoading } = useQuery({
     queryKey: ['mcp-keys'],
     queryFn: listMcpKeys,
     enabled: isOwnerOrAdmin,
   });
+
+  const { data: grants = [] } = useQuery({
+    queryKey: ['mcp-oauth-grants'],
+    queryFn: listOAuthGrants,
+    enabled: isOwnerOrAdmin,
+  });
+  const activeGrants = grants.filter((g) => !g.revoked_at);
 
   const createMutation = useMutation({
     mutationFn: () => {
@@ -177,6 +186,15 @@ export default function IntegracoesClaudePage() {
       toast.success('Chave revogada.');
     },
     onError: (e: unknown) => toast.error('Erro ao revogar: ' + (e as Error).message),
+  });
+
+  const revokeGrantMutation = useMutation({
+    mutationFn: (id: string) => revokeOAuthGrant(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['mcp-oauth-grants'] });
+      toast.success('Conexão revogada.');
+    },
+    onError: (e: unknown) => toast.error('Erro ao desconectar: ' + (e as Error).message),
   });
 
   const toggleScope = (value: string) =>
@@ -280,6 +298,52 @@ export default function IntegracoesClaudePage() {
             Depois, peça ao agente: <em>"liste meus clientes ativos"</em> ou{' '}
             <em>"mostre o post X com métricas"</em>.
           </p>
+        </div>
+
+        <div className="card animate-up" style={{ marginBottom: '1rem' }}>
+          <h3 className="config-title" style={{ margin: 0, marginBottom: '0.25rem' }}>
+            Conexões Claude
+          </h3>
+          <p
+            className="text-xs text-muted-foreground"
+            style={{ margin: 0, marginBottom: '0.75rem' }}
+          >
+            Conexões via conector (claude.ai/Desktop). Desconecte para revogar o acesso na hora.
+          </p>
+          {activeGrants.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhuma conexão ativa.</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {activeGrants.map((g) => (
+                <div
+                  key={g.id}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: '1rem',
+                    borderTop: '1px solid var(--border-color)',
+                    paddingTop: '0.75rem',
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 600 }}>{g.connected_by ?? 'Conexão Claude'}</div>
+                    <div className="text-muted-foreground" style={{ fontSize: '0.75rem' }}>
+                      {g.scopes.join(', ')} · conectada {fmtDate(g.created_at)}
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    style={{ flexShrink: 0 }}
+                    onClick={() => setRevokeGrantTarget(g)}
+                  >
+                    Desconectar
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="card animate-up">
@@ -545,6 +609,41 @@ export default function IntegracoesClaudePage() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Revogar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Revoke OAuth connection confirmation */}
+      <AlertDialog
+        open={!!revokeGrantTarget}
+        onOpenChange={(o) => !o && setRevokeGrantTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Desconectar Claude?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A conexão{' '}
+              {revokeGrantTarget?.connected_by ? (
+                <>
+                  de <strong>{revokeGrantTarget.connected_by}</strong>
+                </>
+              ) : (
+                'do Claude'
+              )}{' '}
+              perderá o acesso imediatamente. Para reconectar, será necessário autorizar novamente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (revokeGrantTarget) revokeGrantMutation.mutate(revokeGrantTarget.id);
+                setRevokeGrantTarget(null);
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Desconectar
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
