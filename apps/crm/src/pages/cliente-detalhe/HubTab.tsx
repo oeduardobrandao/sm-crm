@@ -67,6 +67,7 @@ import {
   type HubBrandFileRow,
   type HubPageRow,
   type HubBriefingQuestionRow,
+  type BriefingRow,
 } from '@/store';
 import { IdeiaDrawer } from '@/components/ideias/IdeiaDrawer';
 import { IdeiaStatusBadge } from '@/components/ideias/IdeiaStatusBadge';
@@ -608,6 +609,10 @@ function BriefingEditor({
   async function handleCreateBriefing() {
     try {
       const b = await addBriefing(clienteId, contaId, 'Novo briefing');
+      // Seed the cache so the default-selection effect finds the new briefing
+      // synchronously; otherwise it can't match selectedId against the stale
+      // list and snaps selection back to the first briefing.
+      qc.setQueryData<BriefingRow[]>(['briefings', clienteId], (old) => [...(old ?? []), b]);
       setSelectedId(b.id);
       setRenaming(true);
       setRenameText(b.title);
@@ -693,6 +698,7 @@ function BriefingEditor({
     setApplying(true);
     try {
       const b = await applyTemplateToClient(clienteId, contaId, templateId);
+      qc.setQueryData<BriefingRow[]>(['briefings', clienteId], (old) => [...(old ?? []), b]);
       setSelectedId(b.id);
       refresh();
       toast.success('Template aplicado! Ajuste as perguntas como quiser.');
