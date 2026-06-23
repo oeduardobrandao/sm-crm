@@ -91,7 +91,21 @@ Deno.serve(async (req) => {
   }
 
   // Per-request server: tools are bound to THIS key's workspace + scopes (stateless).
-  const server = new McpServer({ name: "mesaas", version: "0.1.0" });
+  // serverInfo metadata (MCP spec): title + icons let clients show a branded connector.
+  const server = new McpServer({
+    name: "mesaas",
+    version: "0.1.0",
+    title: "Mesaas",
+    websiteUrl: "https://www.mesaas.com.br",
+    icons: [
+      { src: "https://www.mesaas.com.br/icon.svg", mimeType: "image/svg+xml", sizes: ["any"] },
+      {
+        src: "https://www.mesaas.com.br/mesaas-icon-192.png",
+        mimeType: "image/png",
+        sizes: ["192x192"],
+      },
+    ],
+  });
   registerTools(server, { db, ctx });
 
   const transport = new WebStandardStreamableHTTPServerTransport();
