@@ -6,13 +6,16 @@ import { McpServer } from "npm:@modelcontextprotocol/sdk@1.25.3/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "npm:@modelcontextprotocol/sdk@1.25.3/server/webStandardStreamableHttp.js";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
-import { MCP_ALLOWED_SCOPES } from "../_shared/mcp-token.ts";
 import { publicOrigin, resolveCtx } from "../_shared/mcp-oauth.ts";
 import { registerTools } from "./tools.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const SCOPES = MCP_ALLOWED_SCOPES.join(" ");
+// The OAuth scope we advertise to clients. Supabase's AS only supports OIDC scopes
+// (openid/profile/email/phone), so advertising our MCP scopes here makes Claude request them at
+// /authorize, which Supabase rejects ("unsupported scope: clientes:read"). MCP scopes are enforced
+// AFTER the token via the consent grant + requireScope in the tools — never as OAuth scopes.
+const OAUTH_SCOPE = "openid";
 
 function jsonResponse(body: unknown, status: number, cors: Record<string, string>): Response {
   return new Response(JSON.stringify(body), {
@@ -50,7 +53,7 @@ Deno.serve(async (req) => {
       {
         resource: resourceUrl,
         authorization_servers: [`${origin}/auth/v1`],
-        scopes_supported: MCP_ALLOWED_SCOPES,
+        scopes_supported: [OAUTH_SCOPE],
         bearer_methods_supported: ["header"],
       },
       200,
@@ -82,7 +85,7 @@ Deno.serve(async (req) => {
       headers: {
         ...cors,
         "Content-Type": "application/json",
-        "WWW-Authenticate": `Bearer resource_metadata="${metadataUrl}", scope="${SCOPES}"`,
+        "WWW-Authenticate": `Bearer resource_metadata="${metadataUrl}", scope="${OAUTH_SCOPE}"`,
       },
     });
   }
