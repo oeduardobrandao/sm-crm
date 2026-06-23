@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { escapeMarkdown, slugifyTitle } from '../briefingExport';
+import { buildBriefingExportSections, escapeMarkdown, slugifyTitle } from '../briefingExport';
+import type { HubBriefingQuestionRow } from '@/store/hub';
 
 describe('escapeMarkdown', () => {
   it('escapes inline metacharacters', () => {
@@ -42,5 +43,49 @@ describe('slugifyTitle', () => {
   it('falls back to "briefing" when empty', () => {
     expect(slugifyTitle('   ')).toBe('briefing');
     expect(slugifyTitle('!!!')).toBe('briefing');
+  });
+});
+
+function q(partial: Partial<HubBriefingQuestionRow>): HubBriefingQuestionRow {
+  return {
+    id: partial.id ?? 'id',
+    cliente_id: 1,
+    conta_id: 'c',
+    briefing_id: partial.briefing_id ?? 'b1',
+    question: partial.question ?? 'Q',
+    answer: partial.answer ?? null,
+    section: partial.section ?? null,
+    display_order: partial.display_order ?? 0,
+    created_at: '2026-01-01',
+  };
+}
+
+describe('buildBriefingExportSections', () => {
+  it("returns only the selected briefing's questions", () => {
+    const rows = [
+      q({ id: '1', briefing_id: 'b1', question: 'keep' }),
+      q({ id: '2', briefing_id: 'b2', question: 'drop' }),
+    ];
+    const sections = buildBriefingExportSections(rows, 'b1', 'b1');
+    const questions = sections.flatMap((s) => s.questions.map((x) => x.question));
+    expect(questions).toEqual(['keep']);
+  });
+
+  it('treats null briefing_id as the first briefing', () => {
+    const rows = [q({ id: '1', briefing_id: null, question: 'orphan' })];
+    const sections = buildBriefingExportSections(rows, 'b1', 'b1');
+    expect(sections.flatMap((s) => s.questions.map((x) => x.question))).toEqual(['orphan']);
+  });
+
+  it("orders the unsectioned bucket first, then named sections first-seen", () => {
+    const rows = [
+      q({ id: '1', section: 'DADOS', question: 'a' }),
+      q({ id: '2', section: null, question: 'b' }),
+      q({ id: '3', section: 'AUDIÊNCIA', question: 'c' }),
+      q({ id: '4', section: 'DADOS', question: 'd' }),
+    ];
+    const sections = buildBriefingExportSections(rows, 'b1', 'b1');
+    expect(sections.map((s) => s.name)).toEqual(['', 'DADOS', 'AUDIÊNCIA']);
+    expect(sections[1].questions.map((x) => x.question)).toEqual(['a', 'd']);
   });
 });

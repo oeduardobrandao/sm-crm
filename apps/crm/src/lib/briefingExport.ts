@@ -1,3 +1,5 @@
+import type { HubBriefingQuestionRow } from '@/store/hub';
+
 // =============================================
 // Briefing export — pure formatters (no React/DOM)
 // =============================================
@@ -40,4 +42,28 @@ export function slugifyTitle(title: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
   return slug || 'briefing';
+}
+
+/**
+ * Filters questions to the selected briefing and groups them into sections in
+ * CRM visual order: the unsectioned ('') bucket first, then named sections in
+ * first-seen order. Mirrors HubTab.tsx:585 (selection) and :687/:987 (order).
+ */
+export function buildBriefingExportSections(
+  allQuestions: HubBriefingQuestionRow[],
+  selectedId: string | null,
+  firstId: string | null,
+): ExportSection[] {
+  const selected = allQuestions.filter((q) => (q.briefing_id ?? firstId) === selectedId);
+  const sections: ExportSection[] = [];
+  for (const q of selected) {
+    const name = q.section ?? '';
+    const item: ExportQuestion = { question: q.question, answer: q.answer };
+    const existing = sections.find((s) => s.name === name);
+    if (existing) existing.questions.push(item);
+    else sections.push({ name, questions: [item] });
+  }
+  const unsectioned = sections.filter((s) => s.name === '');
+  const named = sections.filter((s) => s.name !== '');
+  return [...unsectioned, ...named];
 }
