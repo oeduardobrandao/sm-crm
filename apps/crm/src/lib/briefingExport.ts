@@ -87,3 +87,21 @@ export function briefingToCSV(sections: ExportSection[]): string {
   }
   return rows.join('\n');
 }
+
+/**
+ * Escaped-plain-text Markdown. Unsectioned questions render under the H1 with no
+ * heading; each named section emits a `## {name}` heading. Answer line breaks
+ * are preserved; blank answers render as _(sem resposta)_.
+ */
+export function briefingToMarkdown(title: string, sections: ExportSection[]): string {
+  const trimmed = title.trim();
+  const blocks: string[] = [trimmed ? `# Briefing — ${escapeMarkdown(trimmed)}` : '# Briefing'];
+  for (const section of sections) {
+    if (section.name !== '') blocks.push(`## ${escapeMarkdown(section.name)}`);
+    for (const q of section.questions) {
+      const answer = q.answer && q.answer.trim() ? escapeMarkdown(q.answer) : '_(sem resposta)_';
+      blocks.push(`**${escapeMarkdown(q.question)}**\n${answer}`);
+    }
+  }
+  return blocks.join('\n\n') + '\n';
+}

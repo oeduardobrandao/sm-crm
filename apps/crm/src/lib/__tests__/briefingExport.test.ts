@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildBriefingExportSections, briefingToCSV, escapeMarkdown, slugifyTitle } from '../briefingExport';
+import { buildBriefingExportSections, briefingToCSV, briefingToMarkdown, escapeMarkdown, slugifyTitle } from '../briefingExport';
 import { parseCSV } from '../csv';
 import type { HubBriefingQuestionRow } from '@/store/hub';
 
@@ -127,5 +127,33 @@ describe('briefingToCSV', () => {
       { pergunta: 'Nome?', secao: '', resposta: 'Ana' },
       { pergunta: 'Cidade?', secao: 'DADOS', resposta: 'São Paulo, SP' },
     ]);
+  });
+});
+
+describe('briefingToMarkdown', () => {
+  it('renders title H1, unsectioned-first, headings, and blank-answer marker', () => {
+    const md = briefingToMarkdown('Briefing Ana', [
+      { name: '', questions: [{ question: 'Nome?', answer: 'Ana' }] },
+      { name: 'DADOS', questions: [{ question: 'Idade?', answer: null }] },
+    ]);
+    expect(md).toBe(
+      '# Briefing — Briefing Ana\n\n' +
+        '**Nome?**\nAna\n\n' +
+        '## DADOS\n\n' +
+        '**Idade?**\n_(sem resposta)_\n',
+    );
+  });
+
+  it('omits the title suffix when title is blank', () => {
+    const md = briefingToMarkdown('  ', [{ name: '', questions: [{ question: 'Q?', answer: 'A' }] }]);
+    expect(md.startsWith('# Briefing\n\n')).toBe(true);
+  });
+
+  it('escapes metacharacters in questions and answers', () => {
+    const md = briefingToMarkdown('T', [
+      { name: '', questions: [{ question: '# heading?', answer: 'use *bold*' }] },
+    ]);
+    expect(md).toContain('**\\# heading?**');
+    expect(md).toContain('use \\*bold\\*');
   });
 });
