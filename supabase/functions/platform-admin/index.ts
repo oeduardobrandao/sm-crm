@@ -111,6 +111,12 @@ Deno.serve(async (req: Request) => {
         return await handleRevokeMcpKey(svc, body, user.id, headers);
       case "revoke-all-mcp-keys":
         return await handleRevokeAllMcpKeys(svc, body, user.id, headers);
+      case "list-workspace-oauth-grants":
+        return await handleListWorkspaceOAuthGrants(svc, body, headers);
+      case "revoke-oauth-grant":
+        return await handleRevokeOAuthGrant(svc, body, user.id, headers);
+      case "revoke-all-oauth-grants":
+        return await handleRevokeAllOAuthGrants(svc, body, user.id, headers);
       case "list-admins":
         return await handleListAdmins(svc, headers);
       case "invite-admin":
@@ -199,6 +205,69 @@ async function handleRevokeAllMcpKeys(
     .eq("conta_id", body.workspace_id).is("revoked_at", null).select("id");
   if (error) throw error;
   return new Response(JSON.stringify({ message: "All keys revoked", count: (data ?? []).length }), { status: 200, headers });
+}
+
+// ─── MCP OAuth grants (Claude connections; platform-level observe/revoke) ───
+async function handleListWorkspaceOAuthGrants(
+  svc: ReturnType<typeof createClient>,
+  body: { workspace_id?: string },
+  headers: Record<string, string>,
+) {
+  if (!body.workspace_id) {
+    return new Response(JSON.stringify({ error: "workspace_id is required" }), { status: 400, headers });
+  }
+  const { data: grants, error } = await svc
+    .from("mcp_oauth_grants")
+    .select("id, client_id, scopes, created_at, revoked_at, user_id")
+    .eq("conta_id", body.workspace_id).order("created_at", { ascending: false });
+  if (error) throw error;
+  const rows = (grants ?? []) as Array<{ user_id: string; [k: string]: unknown }>;
+  const userIds = [...new Set(rows.map((g) => g.user_id))];
+  const { data: profs } = userIds.length
+    ? await svc.from("profiles").select("id, nome").in("id", userIds)
+    : { data: [] as Array<{ id: string; nome: string }> };
+  const nameById = new Map((profs ?? []).map((p: { id: string; nome: string }) => [p.id, p.nome]));
+  const out = rows.map((g) => ({
+    id: g.id,
+    client_id: g.client_id,
+    scopes: g.scopes,
+    created_at: g.created_at,
+    revoked_at: g.revoked_at,
+    connected_by: nameById.get(g.user_id) ?? null,
+  }));
+  return new Response(JSON.stringify({ grants: out }), { status: 200, headers });
+}
+
+async function handleRevokeOAuthGrant(
+  svc: ReturnType<typeof createClient>,
+  body: { workspace_id?: string; grant_id?: string },
+  revokerUserId: string,
+  headers: Record<string, string>,
+) {
+  if (!body.workspace_id || !body.grant_id) {
+    return new Response(JSON.stringify({ error: "workspace_id and grant_id are required" }), { status: 400, headers });
+  }
+  const { error } = await svc.from("mcp_oauth_grants")
+    .update({ revoked_at: new Date().toISOString(), revoked_by: revokerUserId })
+    .eq("id", body.grant_id).eq("conta_id", body.workspace_id).is("revoked_at", null);
+  if (error) throw error;
+  return new Response(JSON.stringify({ message: "Connection revoked" }), { status: 200, headers });
+}
+
+async function handleRevokeAllOAuthGrants(
+  svc: ReturnType<typeof createClient>,
+  body: { workspace_id?: string },
+  revokerUserId: string,
+  headers: Record<string, string>,
+) {
+  if (!body.workspace_id) {
+    return new Response(JSON.stringify({ error: "workspace_id is required" }), { status: 400, headers });
+  }
+  const { data, error } = await svc.from("mcp_oauth_grants")
+    .update({ revoked_at: new Date().toISOString(), revoked_by: revokerUserId })
+    .eq("conta_id", body.workspace_id).is("revoked_at", null).select("id");
+  if (error) throw error;
+  return new Response(JSON.stringify({ message: "All connections revoked", count: (data ?? []).length }), { status: 200, headers });
 }
 
 // ─── Workspaces ────────────────────────────────────────────────

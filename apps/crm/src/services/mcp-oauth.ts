@@ -46,3 +46,22 @@ export function recordOAuthGrant(params: {
 }): Promise<{ ok: true }> {
   return call<{ ok: true }>({ action: 'approve', ...params });
 }
+
+export interface OAuthGrant {
+  id: string;
+  client_id: string;
+  scopes: string[];
+  created_at: string;
+  revoked_at: string | null;
+  connected_by: string | null;
+}
+
+/** Active + revoked Claude OAuth connections for the current workspace (owner/admin). */
+export function listOAuthGrants(): Promise<OAuthGrant[]> {
+  return call<{ grants: OAuthGrant[] }>({ action: 'list-grants' }).then((d) => d.grants);
+}
+
+/** Revokes a Claude OAuth connection — MCP access is cut immediately. */
+export function revokeOAuthGrant(grant_id: string): Promise<{ ok: true }> {
+  return call<{ ok: true }>({ action: 'revoke-grant', grant_id });
+}

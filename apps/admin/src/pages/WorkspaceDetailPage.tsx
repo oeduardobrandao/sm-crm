@@ -21,6 +21,9 @@ import {
   listWorkspaceMcpKeys,
   revokeMcpKey,
   revokeAllMcpKeys,
+  listWorkspaceOAuthGrants,
+  revokeOAuthGrant,
+  revokeAllOAuthGrants,
   RESOURCE_LIMIT_KEYS,
   RESOURCE_LIMIT_LABELS,
   FEATURE_FLAG_KEYS,
@@ -68,6 +71,30 @@ export default function WorkspaceDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'workspace', id, 'mcp-keys'] });
       toast.success('All keys revoked');
+    },
+    onError: (e: unknown) => toast.error((e as Error).message),
+  });
+
+  const { data: oauthGrantsData } = useQuery({
+    queryKey: ['admin', 'workspace', id, 'oauth-grants'],
+    queryFn: () => listWorkspaceOAuthGrants(id!),
+    enabled: !!id,
+  });
+  const oauthGrants = oauthGrantsData?.grants;
+
+  const revokeOAuthGrantMutation = useMutation({
+    mutationFn: (grantId: string) => revokeOAuthGrant(id!, grantId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'workspace', id, 'oauth-grants'] });
+      toast.success('Connection revoked');
+    },
+    onError: (e: unknown) => toast.error((e as Error).message),
+  });
+  const revokeAllOAuthGrantsMutation = useMutation({
+    mutationFn: () => revokeAllOAuthGrants(id!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'workspace', id, 'oauth-grants'] });
+      toast.success('All connections revoked');
     },
     onError: (e: unknown) => toast.error((e as Error).message),
   });
@@ -405,6 +432,47 @@ export default function WorkspaceDetailPage() {
                   <button
                     onClick={() => revokeMcpKeyMutation.mutate(k.id)}
                     disabled={revokeMcpKeyMutation.isPending}
+                    className="shrink-0 text-xs font-medium text-destructive hover:underline disabled:opacity-50"
+                  >
+                    Revoke
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* MCP OAuth Connections (Claude) */}
+      <div className="min-w-0 bg-card border border-border rounded-2xl p-5 mb-6">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="font-semibold">MCP OAuth Connections</h2>
+          {oauthGrants?.some((g) => !g.revoked_at) && (
+            <button
+              onClick={() => revokeAllOAuthGrantsMutation.mutate()}
+              disabled={revokeAllOAuthGrantsMutation.isPending}
+              className="text-xs font-medium text-destructive hover:underline disabled:opacity-50"
+            >
+              Revoke all
+            </button>
+          )}
+        </div>
+        {!oauthGrants || oauthGrants.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No connections.</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {oauthGrants.map((g) => (
+              <div key={g.id} className="flex items-center justify-between gap-2 text-sm">
+                <div className="min-w-0 truncate">
+                  <span className="font-medium">{g.connected_by ?? 'Claude'}</span>
+                  <span className="ml-2 text-xs text-muted-foreground">{g.scopes.join(', ')}</span>
+                </div>
+                {g.revoked_at ? (
+                  <span className="shrink-0 text-xs text-muted-foreground">revoked</span>
+                ) : (
+                  <button
+                    onClick={() => revokeOAuthGrantMutation.mutate(g.id)}
+                    disabled={revokeOAuthGrantMutation.isPending}
                     className="shrink-0 text-xs font-medium text-destructive hover:underline disabled:opacity-50"
                   >
                     Revoke

@@ -162,6 +162,65 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
 
+    // List / revoke the workspace's Claude OAuth connections — owner/admin of the ACTIVE workspace.
+    if (action === "list-grants" || action === "revoke-grant") {
+      const { data: profile } = await svc
+        .from("profiles")
+        .select("role, conta_id")
+        .eq("id", user.id)
+        .single();
+      if (!profile || !isManager(profile.role as string)) {
+        return json({ error: "Insufficient permissions" }, 403);
+      }
+      const contaId = profile.conta_id as string;
+
+      if (action === "list-grants") {
+        const { data: grants } = await svc
+          .from("mcp_oauth_grants")
+          .select("id, client_id, scopes, created_at, revoked_at, user_id")
+          .eq("conta_id", contaId)
+          .order("created_at", { ascending: false });
+        const rows = (grants ?? []) as any[];
+        const userIds = [...new Set(rows.map((g) => g.user_id as string))];
+        const { data: profs } = userIds.length
+          ? await svc.from("profiles").select("id, nome").in("id", userIds)
+          : { data: [] as any[] };
+        const nameById = new Map((profs ?? []).map((p: any) => [p.id, p.nome]));
+        const out = rows.map((g) => ({
+          id: g.id,
+          client_id: g.client_id,
+          scopes: g.scopes,
+          created_at: g.created_at,
+          revoked_at: g.revoked_at,
+          connected_by: nameById.get(g.user_id) ?? null,
+        }));
+        return json({ grants: out });
+      }
+
+      // revoke-grant
+      const grantId = typeof body.grant_id === "string" ? body.grant_id : "";
+      if (!grantId) return json({ error: "grant_id required" }, 400);
+      const { data, error } = await svc
+        .from("mcp_oauth_grants")
+        .update({ revoked_at: new Date().toISOString(), revoked_by: user.id })
+        .eq("id", grantId)
+        .eq("conta_id", contaId)
+        .is("revoked_at", null)
+        .select("id, client_id")
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) return json({ error: "not found" }, 404);
+      await insertAuditLog(svc, {
+        conta_id: contaId,
+        actor_user_id: user.id,
+        action: "mcp.oauth.revoke",
+        resource_type: "mcp_oauth_grant",
+        resource_id: data.client_id as string,
+        metadata: {},
+      });
+      return json({ ok: true });
+    }
+
     return json({ error: "unknown action" }, 400);
   } catch (e) {
     console.error("[mcp-oauth-consent] error:", e);
