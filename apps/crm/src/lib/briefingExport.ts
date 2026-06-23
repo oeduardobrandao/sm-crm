@@ -37,7 +37,7 @@ export function escapeMarkdown(text: string): string {
 export function slugifyTitle(title: string): string {
   const slug = title
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');

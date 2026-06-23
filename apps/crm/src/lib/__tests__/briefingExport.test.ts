@@ -145,8 +145,9 @@ describe('briefingToMarkdown', () => {
   });
 
   it('omits the title suffix when title is blank', () => {
-    const md = briefingToMarkdown('  ', [{ name: '', questions: [{ question: 'Q?', answer: 'A' }] }]);
-    expect(md.startsWith('# Briefing\n\n')).toBe(true);
+    expect(briefingToMarkdown('  ', [{ name: '', questions: [{ question: 'Q?', answer: 'A' }] }])).toBe(
+      '# Briefing\n\n**Q?**\nA\n',
+    );
   });
 
   it('escapes metacharacters in questions and answers', () => {
@@ -155,5 +156,13 @@ describe('briefingToMarkdown', () => {
     ]);
     expect(md).toContain('**\\# heading?**');
     expect(md).toContain('use \\*bold\\*');
+  });
+
+  it('escapes metacharacters in the title and section name', () => {
+    expect(
+      briefingToMarkdown('Plano *2025*', [
+        { name: 'A * B', questions: [{ question: 'Q?', answer: 'A' }] },
+      ]),
+    ).toBe('# Briefing — Plano \\*2025\\*\n\n## A \\* B\n\n**Q?**\nA\n');
   });
 });
