@@ -89,3 +89,46 @@ export function allowlistClient(row: Record<string, unknown>): Record<string, un
   }
   return out;
 }
+
+/**
+ * Flatten the JSONB `hub_pages.content` block array into a single markdown string
+ * for agent consumption. Boundary-safe: `content` is JSONB (`unknown`), so this
+ * trusts neither the top-level value nor the shape of any block, and fails closed
+ * (returns "") on anything malformed. Unknown block types fall back to rendering
+ * their text as a paragraph, mirroring the Hub page renderer's default case
+ * (apps/hub/src/pages/PaginaPage.tsx).
+ */
+export function pageContentToMarkdown(content: unknown): string {
+  if (!Array.isArray(content)) return "";
+  const parts: string[] = [];
+  for (const block of content) {
+    if (typeof block !== "object" || block === null) continue;
+    const b = block as Record<string, unknown>;
+    const type = typeof b.type === "string" ? b.type : "";
+    const text = typeof b.content === "string" ? b.content : "";
+    const href = typeof b.href === "string" ? b.href : "";
+    switch (type) {
+      case "markdown":
+      case "paragraph":
+        if (text) parts.push(text);
+        break;
+      case "heading": {
+        if (!text) break;
+        const lvl = Math.min(3, Math.max(1, Math.trunc(Number(b.level)) || 1));
+        parts.push(`${"#".repeat(lvl)} ${text}`);
+        break;
+      }
+      case "link":
+        if (text) parts.push(href ? `[${text}](${href})` : text);
+        break;
+      case "image":
+        if (text) parts.push(`![](${text})`);
+        break;
+      default:
+        // Unknown type → render text as a paragraph (mirror Hub fallback).
+        if (text) parts.push(text);
+        break;
+    }
+  }
+  return parts.join("\n\n").trim();
+}

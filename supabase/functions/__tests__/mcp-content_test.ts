@@ -3,6 +3,7 @@ import {
   allowlistClient,
   deriveFormatMeta,
   firstLine,
+  pageContentToMarkdown,
   performanceTier,
   quartiles,
 } from "../mcp/content.ts";
@@ -47,4 +48,58 @@ Deno.test("allowlistClient drops sensitive fields", () => {
   assert(!("email" in out));
   assert(!("valor_mensal" in out));
   assert(!("conta_id" in out));
+});
+
+Deno.test("pageContentToMarkdown renders block types", () => {
+  // markdown passthrough
+  assertEquals(
+    pageContentToMarkdown([{ type: "markdown", content: "## Estratégia\n- um" }]),
+    "## Estratégia\n- um",
+  );
+  // heading levels + clamp
+  assertEquals(pageContentToMarkdown([{ type: "heading", content: "T", level: 1 }]), "# T");
+  assertEquals(pageContentToMarkdown([{ type: "heading", content: "T", level: 2 }]), "## T");
+  assertEquals(pageContentToMarkdown([{ type: "heading", content: "T", level: 3 }]), "### T");
+  assertEquals(pageContentToMarkdown([{ type: "heading", content: "T" }]), "# T"); // absent → 1
+  assertEquals(pageContentToMarkdown([{ type: "heading", content: "T", level: 0 }]), "# T"); // clamp low
+  assertEquals(pageContentToMarkdown([{ type: "heading", content: "T", level: 7 }]), "### T"); // clamp high
+  // link with/without href
+  assertEquals(
+    pageContentToMarkdown([{ type: "link", content: "Brief", href: "https://x" }]),
+    "[Brief](https://x)",
+  );
+  assertEquals(pageContentToMarkdown([{ type: "link", content: "Brief" }]), "Brief");
+  // image (content is the URL)
+  assertEquals(
+    pageContentToMarkdown([{ type: "image", content: "https://img/x.png" }]),
+    "![](https://img/x.png)",
+  );
+  // paragraph + blank-line join
+  assertEquals(
+    pageContentToMarkdown([
+      { type: "paragraph", content: "um" },
+      { type: "paragraph", content: "dois" },
+    ]),
+    "um\n\ndois",
+  );
+  // unknown type → paragraph fallback (mirrors Hub renderer default case)
+  assertEquals(pageContentToMarkdown([{ type: "callout", content: "nota" }]), "nota");
+});
+
+Deno.test("pageContentToMarkdown fails closed on bad input", () => {
+  // empty / non-array top-level
+  assertEquals(pageContentToMarkdown([]), "");
+  assertEquals(pageContentToMarkdown(null), "");
+  assertEquals(pageContentToMarkdown(undefined), "");
+  assertEquals(pageContentToMarkdown("nope"), "");
+  assertEquals(pageContentToMarkdown(42), "");
+  // malformed blocks: non-object skipped, non-string content contributes nothing
+  assertEquals(
+    pageContentToMarkdown(["str", 1, null, { type: "paragraph", content: 5 }]),
+    "",
+  );
+  // non-string type → falls back to paragraph branch, renders its text
+  assertEquals(pageContentToMarkdown([{ type: 123, content: "texto" }]), "texto");
+  // empty image content skipped
+  assertEquals(pageContentToMarkdown([{ type: "image", content: "" }]), "");
 });
