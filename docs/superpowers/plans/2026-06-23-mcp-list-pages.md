@@ -264,8 +264,11 @@ The query helper has no unit test by codebase convention (matches `listIdeas` et
 
 Run:
 ```bash
-deno check supabase/functions/mcp/index.ts
+deno check --node-modules-dir=auto supabase/functions/mcp/index.ts
 ```
+(The `--node-modules-dir=auto` flag is required — without it, plain `deno check`
+fails resolving `npm:@modelcontextprotocol/sdk`, a pre-existing environment quirk
+the repo's `test:functions` script works around the same way.)
 Expected: no output / exit 0 (no type errors). `index.ts` imports `tools.ts` → `queries.ts` → `content.ts`, so this checks all changed files.
 
 - [ ] **Step 4: Run the full edge-function test suite**
