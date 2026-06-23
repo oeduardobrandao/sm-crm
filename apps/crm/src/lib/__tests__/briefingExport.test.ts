@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildBriefingExportSections, briefingToCSV, briefingToMarkdown, escapeMarkdown, slugifyTitle } from '../briefingExport';
+import {
+  buildBriefingExportSections,
+  briefingToCSV,
+  briefingToMarkdown,
+  escapeMarkdown,
+  slugifyTitle,
+} from '../briefingExport';
 import { parseCSV } from '../csv';
 import type { HubBriefingQuestionRow } from '@/store/hub';
 
@@ -78,7 +84,7 @@ describe('buildBriefingExportSections', () => {
     expect(sections.flatMap((s) => s.questions.map((x) => x.question))).toEqual(['orphan']);
   });
 
-  it("orders the unsectioned bucket first, then named sections first-seen", () => {
+  it('orders the unsectioned bucket first, then named sections first-seen', () => {
     const rows = [
       q({ id: '1', section: 'DADOS', question: 'a' }),
       q({ id: '2', section: null, question: 'b' }),
@@ -145,9 +151,9 @@ describe('briefingToMarkdown', () => {
   });
 
   it('omits the title suffix when title is blank', () => {
-    expect(briefingToMarkdown('  ', [{ name: '', questions: [{ question: 'Q?', answer: 'A' }] }])).toBe(
-      '# Briefing\n\n**Q?**\nA\n',
-    );
+    expect(
+      briefingToMarkdown('  ', [{ name: '', questions: [{ question: 'Q?', answer: 'A' }] }]),
+    ).toBe('# Briefing\n\n**Q?**\nA\n');
   });
 
   it('escapes metacharacters in questions and answers', () => {
