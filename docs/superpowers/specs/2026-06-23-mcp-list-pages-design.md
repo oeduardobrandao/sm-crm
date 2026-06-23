@@ -56,7 +56,10 @@ list_pages(client_id?: number) → Page[]
 - **Input shape:** `{ client_id: z.number().int().optional() }`. Optional —
   filters to a single client; omitted returns every page in the workspace.
   Mirrors `list_ideas` / `list_posts`.
-- **Output:** array ordered by `display_order`, each item:
+- **Output:** array ordered by `cliente_id`, then `display_order`, then
+  `created_at` (deterministic — `display_order` defaults to `0` and the CRM save
+  path does not reassign it, so it alone is not a stable order, especially across
+  clients in the workspace-wide case). Each item:
 
   ```jsonc
   {
@@ -82,18 +85,35 @@ list_pages(client_id?: number) → Page[]
 export function pageContentToMarkdown(content: unknown): string
 ```
 
+**Defensive all the way down.** `content` is JSONB (`unknown`), so the helper
+must not trust the top-level type *or* the shape of any block:
+
 - **Signature is `unknown`, not `unknown[]`.** First line guards:
   `if (!Array.isArray(content)) return "";` — fails closed on `null` or any
-  non-array JSONB value. This is boundary code, so it must not assume shape.
+  non-array JSONB value.
+- **Per-block guards** (each element is also `unknown`):
+  - Skip any block that is not a non-null object.
+  - Coerce text fields to string defensively. Treat `content` as
+    `typeof block.content === "string" ? block.content : ""`; same for `href`.
+    A block whose rendered text is empty contributes nothing.
+  - Read `type` defensively (`typeof block.type === "string" ? block.type : ""`).
 - Renders each block by `type`:
-  - `markdown` → `content` as-is
-  - `heading` → `'#'.repeat(block.level ?? 1) + ' ' + content`
-  - `paragraph` → `content`
-  - `link` → `[content](href)` when `href` is present, otherwise bare `content`
-  - `image` → `![](content)` (`content` is the image URL; there is no alt field)
-  - unknown / unrecognised `type` → skipped
-- Joins rendered blocks with a blank line (`\n\n`) and `.trim()`s the final
-  result, so an empty/`[]` array yields `""`.
+  - `markdown` → `content` string as-is
+  - `heading` → `'#'.repeat(level) + ' ' + content`, where
+    `level = clamp(block.level, 1, 3)` — coerce via `Number(block.level)`,
+    fall back to `1` for `NaN`/missing, and clamp into `1 | 2 | 3`
+  - `link` → `[content](href)` when `href` is a non-empty string, otherwise
+    bare `content`
+  - `image` → `![](content)` (`content` is the image URL; no alt field). Skip
+    when `content` is empty.
+  - `paragraph` **and any unknown / unrecognised `type`** → `content` as plain
+    text. This intentionally **mirrors the Hub page renderer**, whose `default`
+    case renders `block.content` as a paragraph
+    (`apps/hub/src/pages/PaginaPage.tsx:156`). The MCP output therefore matches
+    "what the client sees in the Hub" rather than silently dropping content.
+- Joins rendered (non-empty) blocks with a blank line (`\n\n`) and `.trim()`s the
+  final result, so an empty/`[]` array — or an array of only-empty blocks —
+  yields `""`.
 
 Lives alongside the other pure helpers (`deriveFormatMeta`, `quartiles`,
 `allowlistClient`) so it is unit-testable without a database.
@@ -110,7 +130,10 @@ export async function listPages(
     .select("id, cliente_id, title, content, display_order, created_at")
     .eq("conta_id", d.ctx.conta_id);
   if (args.client_id !== undefined) q = q.eq("cliente_id", args.client_id);
-  const { data, error } = await q.order("display_order");
+  const { data, error } = await q
+    .order("cliente_id")
+    .order("display_order")
+    .order("created_at");
   if (error) throw error;
   return (data ?? []).map((row) => ({
     ...row,
@@ -122,7 +145,8 @@ export async function listPages(
 - Selects **only** the six output columns (no `conta_id` in the projection).
 - Filters `conta_id = d.ctx.conta_id` (workspace isolation, identical to every
   other query helper).
-- Optional `cliente_id` filter; orders by `display_order`.
+- Optional `cliente_id` filter; orders by `cliente_id`, `display_order`,
+  `created_at` for a deterministic result.
 - **Destructures `{ data, error }` and `throw`s on `error`** — many existing
   helpers only destructure `{ data }`, so this is the explicit choice that makes
   "query failures surface as generic MCP errors" actually true. The thrown error
@@ -160,16 +184,21 @@ Unit tests for `pageContentToMarkdown` in
 `supabase/functions/__tests__/mcp-content_test.ts`:
 
 1. single `markdown` block → passthrough of the markdown string
-2. `heading` blocks render `#` / `##` / `###` by `level` (and default to `#`
-   when `level` is absent)
+2. `heading` blocks render `#` / `##` / `###` by `level`; absent `level` → `#`;
+   out-of-range `level` (e.g. `0`, `7`) → clamped into `1`/`3`
 3. `link` block → `[text](href)`; `link` without `href` → bare text
 4. `image` block → `![](url)` using `content` as the URL
 5. `paragraph` block → text; multiple blocks joined with a blank line
-6. unknown `type` → skipped
+6. **unknown `type` → rendered as a paragraph (mirrors the Hub fallback)**
 7. `[]` → `""`
-8. **non-array / `null` content → `""`** (the fail-closed guard)
+8. **non-array / `null` content → `""`** (top-level fail-closed guard)
+9. **malformed blocks → safe**: a non-object element (string / number / `null`)
+   is skipped; a block with a non-string `content` contributes nothing; a block
+   with a non-string `type` falls back to the paragraph branch
 
-Run with `deno test supabase/functions/`.
+Run with `npm run test:functions`
+(`deno test --no-check --node-modules-dir=auto --allow-env --allow-read
+--allow-net --allow-sys supabase/functions/`).
 
 `listPages` and the `tools.ts` registration follow the existing
 untested-by-convention pattern (matching `listIdeas` et al.), so no query-level
