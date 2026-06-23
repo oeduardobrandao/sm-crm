@@ -1,5 +1,11 @@
 import { useState, useEffect } from 'react';
 import { openCSVSelector } from '@/lib/csv';
+import {
+  buildBriefingExportSections,
+  briefingToCSV,
+  briefingToMarkdown,
+  slugifyTitle,
+} from '@/lib/briefingExport';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Copy,
@@ -10,6 +16,7 @@ import {
   Trash2,
   Save,
   Upload,
+  Download,
   HelpCircle,
   Pencil,
   ChevronDown,
@@ -64,6 +71,20 @@ import {
 import { IdeiaDrawer } from '@/components/ideias/IdeiaDrawer';
 import { IdeiaStatusBadge } from '@/components/ideias/IdeiaStatusBadge';
 import { BriefingTemplatesModal } from './BriefingTemplatesModal';
+
+function downloadTextFile(filename: string, mime: string, text: string) {
+  const url = URL.createObjectURL(new Blob([text], { type: mime }));
+  try {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
 
 interface HubTabProps {
   clienteId: number;
@@ -849,6 +870,40 @@ function BriefingEditor({
 
   const selectedBriefing = briefings.find((b) => b.id === selectedId) ?? null;
 
+  const canExport = !!selectedBriefing && briefingQuestions.length > 0;
+
+  async function handleCopyMarkdown() {
+    const sections = buildBriefingExportSections(questions, selectedId, firstId);
+    const md = briefingToMarkdown(selectedBriefing?.title ?? '', sections);
+    try {
+      await navigator.clipboard.writeText(md);
+      toast.success('Briefing copiado como Markdown!');
+    } catch {
+      toast.error('Não foi possível copiar.');
+    }
+  }
+
+  async function handleCopyCSV() {
+    const sections = buildBriefingExportSections(questions, selectedId, firstId);
+    try {
+      await navigator.clipboard.writeText(briefingToCSV(sections));
+      toast.success('Briefing copiado como CSV!');
+    } catch {
+      toast.error('Não foi possível copiar.');
+    }
+  }
+
+  function handleDownloadCSV() {
+    const sections = buildBriefingExportSections(questions, selectedId, firstId);
+    const csv = '﻿' + briefingToCSV(sections); // BOM so Excel reads accents
+    downloadTextFile(
+      `briefing-${slugifyTitle(selectedBriefing?.title ?? '')}.csv`,
+      'text/csv;charset=utf-8',
+      csv,
+    );
+    toast.success('CSV exportado!');
+  }
+
   return (
     <section>
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
@@ -889,6 +944,25 @@ function BriefingEditor({
           >
             <HelpCircle className="h-4 w-4 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
           </span>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="outline" disabled={!canExport}>
+                <Download size={14} className="mr-1.5" /> Exportar
+                <ChevronDown size={14} className="ml-1.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={handleCopyMarkdown}>
+                <Copy size={14} className="mr-2" /> Copiar como Markdown
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleCopyCSV}>
+                <Copy size={14} className="mr-2" /> Copiar como CSV
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleDownloadCSV}>
+                <Download size={14} className="mr-2" /> Baixar CSV
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
