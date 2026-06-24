@@ -132,3 +132,126 @@ export function pageContentToMarkdown(content: unknown): string {
   }
   return parts.join("\n\n").trim();
 }
+
+// ---- post feedback (list_post_feedback) -------------------------------------
+
+/** Normalized feedback row (one post_approvals row joined to its post). */
+export interface FeedbackRow {
+  post_id: number;
+  titulo: string;
+  status: string;
+  cliente_id: number;
+  action: string;
+  comentario: string | null;
+  is_workspace_user: boolean;
+  created_at: string;
+}
+
+/** Normalized status-transition row (one post_status_events row). */
+export interface StatusEventRow {
+  post_id: number;
+  from_status: string | null;
+  to_status: string;
+  source: string;
+  actor_name: string | null;
+  created_at: string;
+}
+
+export interface PostFeedbackItem {
+  post_id: number;
+  titulo: string;
+  cliente_id: number;
+  status: string;
+  latest_feedback_at: string;
+  feedback: {
+    action: string;
+    comentario: string | null;
+    author: "client" | "workspace";
+    created_at: string;
+  }[];
+  timeline: {
+    from_status: string | null;
+    to_status: string;
+    source: string;
+    actor_name: string | null;
+    created_at: string;
+  }[];
+}
+
+/**
+ * Distinct post_ids in first-seen order, capped at `limit`. Input is expected in
+ * the desired order (newest-first). Duplicate post_ids do NOT consume a slot, so
+ * one chatty post cannot crowd out other posts within the in-memory list.
+ */
+export function topDistinctPostIds(rows: { post_id: number }[], limit: number): number[] {
+  const seen = new Set<number>();
+  const out: number[] = [];
+  for (const r of rows) {
+    if (seen.has(r.post_id)) continue;
+    seen.add(r.post_id);
+    out.push(r.post_id);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+/**
+ * Group feedback rows by post into PostFeedbackItem[]: feedback newest-first,
+ * timeline oldest->newest, `author` derived from is_workspace_user, and posts
+ * ordered by latest_feedback_at desc. ISO-8601 timestamps compare lexicographically.
+ */
+export function buildPostFeedback(
+  feedbackRows: FeedbackRow[],
+  statusEvents: StatusEventRow[],
+): PostFeedbackItem[] {
+  const eventsByPost = new Map<number, StatusEventRow[]>();
+  for (const e of statusEvents) {
+    const arr = eventsByPost.get(e.post_id) ?? [];
+    arr.push(e);
+    eventsByPost.set(e.post_id, arr);
+  }
+
+  const byPost = new Map<number, { meta: FeedbackRow; rows: FeedbackRow[] }>();
+  for (const r of feedbackRows) {
+    const g = byPost.get(r.post_id);
+    if (g) g.rows.push(r);
+    else byPost.set(r.post_id, { meta: r, rows: [r] });
+  }
+
+  const items: PostFeedbackItem[] = [];
+  for (const { meta, rows } of byPost.values()) {
+    const feedback = rows
+      .slice()
+      .sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0))
+      .map((r) => ({
+        action: r.action,
+        comentario: r.comentario,
+        author: (r.is_workspace_user ? "workspace" : "client") as "client" | "workspace",
+        created_at: r.created_at,
+      }));
+    const timeline = (eventsByPost.get(meta.post_id) ?? [])
+      .slice()
+      .sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0))
+      .map((e) => ({
+        from_status: e.from_status,
+        to_status: e.to_status,
+        source: e.source,
+        actor_name: e.actor_name,
+        created_at: e.created_at,
+      }));
+    items.push({
+      post_id: meta.post_id,
+      titulo: meta.titulo,
+      cliente_id: meta.cliente_id,
+      status: meta.status,
+      latest_feedback_at: feedback[0]?.created_at ?? meta.created_at,
+      feedback,
+      timeline,
+    });
+  }
+
+  items.sort((a, b) =>
+    a.latest_feedback_at < b.latest_feedback_at ? 1 : a.latest_feedback_at > b.latest_feedback_at ? -1 : 0
+  );
+  return items;
+}
