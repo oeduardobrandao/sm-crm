@@ -277,6 +277,65 @@ export function buildTiptapDoc(
   return { type: "doc", content };
 }
 
+/** Pull the string `id`s out of a select/status/multiselect definition's `config.options`.
+ *  Fully defensive: config / options / element / id may be malformed. */
+export function extractTemplateOptionIds(config: unknown): string[] {
+  if (!config || typeof config !== "object" || Array.isArray(config)) return [];
+  const options = (config as Record<string, unknown>).options;
+  if (!Array.isArray(options)) return [];
+  const ids: string[] = [];
+  for (const opt of options) {
+    if (opt && typeof opt === "object" && !Array.isArray(opt)) {
+      const id = (opt as Record<string, unknown>).id;
+      if (typeof id === "string") ids.push(id);
+    }
+  }
+  return ids;
+}
+
+const SETTABLE_PROPERTY_TYPES = new Set([
+  "text", "url", "email", "phone", "number", "date", "checkbox", "select", "status", "multiselect",
+]);
+
+/** Validate a property value against its definition type. Returns a caller-safe
+ *  error message, or null if valid. `null` clears any settable type. */
+export function validatePropertyValue(
+  type: string,
+  value: unknown,
+  allowedOptionIds: Set<string>,
+): string | null {
+  if (!SETTABLE_PROPERTY_TYPES.has(type)) {
+    return `Tipo de propriedade '${type}' não pode ser definido pelo agente.`;
+  }
+  if (value === null) return null; // clear
+  switch (type) {
+    case "text":
+    case "url":
+    case "email":
+    case "phone":
+      return typeof value === "string" ? null : "O valor deve ser um texto.";
+    case "number":
+      return typeof value === "number" ? null : "O valor deve ser um número.";
+    case "checkbox":
+      return typeof value === "boolean" ? null : "O valor deve ser booleano (true/false).";
+    case "date":
+      return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
+        ? null
+        : "O valor deve ser uma data no formato AAAA-MM-DD.";
+    case "select":
+    case "status":
+      return typeof value === "string" && allowedOptionIds.has(value)
+        ? null
+        : "Opção inválida para esta propriedade.";
+    case "multiselect":
+      return Array.isArray(value) && value.every((v) => typeof v === "string" && allowedOptionIds.has(v))
+        ? null
+        : "Uma ou mais opções são inválidas para esta propriedade.";
+    default:
+      return `Tipo de propriedade '${type}' não pode ser definido pelo agente.`;
+  }
+}
+
 /**
  * Project a workflow template's `etapas` JSONB array into the agent-facing shape.
  * Fails closed on malformed JSONB, skips non-object elements, drops the internal

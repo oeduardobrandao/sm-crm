@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "./assert.ts";
-import { createPost, createWorkflow, updatePost } from "../mcp/queries.ts";
+import { createPost, createWorkflow, setPostProperty, updatePost } from "../mcp/queries.ts";
 import type { Deps } from "../mcp/queries.ts";
 import { registerTools } from "../mcp/tools.ts";
 import { McpInputError, type McpKeyContext } from "../_shared/mcp-token.ts";
@@ -17,7 +17,7 @@ function makeFakeDb(responses: Record<string, Resp[]>) {
     // deno-lint-ignore no-explicit-any
     const rec: any = {};
     const next = (): Resp => (queues[table] ?? []).shift() ?? { data: null, error: null };
-    for (const m of ["select", "eq", "in", "gte", "order", "limit", "insert", "update", "delete"]) {
+    for (const m of ["select", "eq", "in", "gte", "order", "limit", "insert", "update", "upsert", "delete"]) {
       rec[m] = (...args: unknown[]) => { calls.push({ table, method: m, args }); return rec; };
     }
     rec.single = () => { calls.push({ table, method: "single", args: [] }); return Promise.resolve(next()); };
@@ -38,6 +38,10 @@ function insertPayload(calls: Call[], table: string): Record<string, unknown> | 
 }
 function updatePayload(calls: Call[], table: string): Record<string, unknown> | undefined {
   const c = calls.find((x) => x.table === table && x.method === "update");
+  return c?.args[0] as Record<string, unknown> | undefined;
+}
+function upsertPayload(calls: Call[], table: string): Record<string, unknown> | undefined {
+  const c = calls.find((x) => x.table === table && x.method === "upsert");
   return c?.args[0] as Record<string, unknown> | undefined;
 }
 function has(calls: Call[], table: string, method: string, args: unknown[]): boolean {
@@ -308,5 +312,143 @@ Deno.test("update_post tool redacts body/ig_caption from the audit log", async (
   assert(!meta.includes("CAPTION_SECRETO"), "raw ig_caption must not be logged");
   assert(meta.includes("body_len"), "logs body_len instead");
   assert(meta.includes("ig_caption_len"), "logs ig_caption_len instead");
+  assertEquals((auditInsert!.args[0] as Record<string, unknown>).resource_id, "7");
+});
+
+Deno.test("setPostProperty: tenant+template scoped, select option, upsert with d.now", async () => {
+  const { db, calls } = makeFakeDb({
+    workflow_posts: [{ data: { id: 7, status: "rascunho", workflow_id: 3, workflows: { template_id: 9, conta_id: "workspace-A" } }, error: null }],
+    template_property_definitions: [{ data: { id: 45, template_id: 9, name: "modo", type: "select", config: { options: [{ id: "t1" }] } }, error: null }],
+    workflow_select_options: [{ data: [{ option_id: "w1" }], error: null }],
+    post_property_values: [{ data: null, error: null }],
+  });
+  const deps = { db, ctx: CTX, now: () => "T" } as unknown as Deps;
+  const out = await setPostProperty(deps, { post_id: 7, property_id: 45, value: "w1" });
+
+  assert(has(calls, "workflow_posts", "eq", ["conta_id", "workspace-A"]), "post tenant-scoped");
+  assert(has(calls, "workflow_posts", "eq", ["workflows.conta_id", "workspace-A"]), "embedded workflow tenant-scoped");
+  assert(has(calls, "template_property_definitions", "eq", ["conta_id", "workspace-A"]), "def tenant-scoped");
+  assert(has(calls, "workflow_select_options", "eq", ["workflow_id", 3]), "options workflow-scoped");
+  assert(has(calls, "workflow_select_options", "eq", ["property_definition_id", 45]), "options def-scoped");
+  const payload = upsertPayload(calls, "post_property_values")!;
+  assertEquals(payload.post_id, 7);
+  assertEquals(payload.property_definition_id, 45);
+  assertEquals(payload.value, "w1");                 // valid workflow option
+  assertEquals(payload.updated_at, "T");             // d.now injected
+  assertEquals(out.status, "rascunho");
+});
+
+Deno.test("setPostProperty: missing post -> McpInputError, no upsert", async () => {
+  const { db, calls } = makeFakeDb({ workflow_posts: [{ data: null, error: null }] });
+  const deps = { db, ctx: CTX } as unknown as Deps;
+  let err: unknown;
+  try { await setPostProperty(deps, { post_id: 7, property_id: 45, value: "x" }); } catch (e) { err = e; }
+  assert(err instanceof McpInputError, "throws McpInputError");
+  assert(!calls.some((c) => c.table === "post_property_values" && c.method === "upsert"), "no upsert");
+});
+
+Deno.test("setPostProperty: non-editable status -> McpInputError, no upsert", async () => {
+  const { db, calls } = makeFakeDb({
+    workflow_posts: [{ data: { id: 7, status: "postado", workflow_id: 3, workflows: { template_id: 9, conta_id: "workspace-A" } }, error: null }],
+  });
+  const deps = { db, ctx: CTX } as unknown as Deps;
+  let err: unknown;
+  try { await setPostProperty(deps, { post_id: 7, property_id: 45, value: "x" }); } catch (e) { err = e; }
+  assert(err instanceof McpInputError, "throws McpInputError");
+  assert(!calls.some((c) => c.table === "post_property_values" && c.method === "upsert"), "no upsert");
+});
+
+Deno.test("setPostProperty: workflow without template -> McpInputError, no upsert", async () => {
+  const { db, calls } = makeFakeDb({
+    workflow_posts: [{ data: { id: 7, status: "rascunho", workflow_id: 3, workflows: { template_id: null, conta_id: "workspace-A" } }, error: null }],
+  });
+  const deps = { db, ctx: CTX } as unknown as Deps;
+  let err: unknown;
+  try { await setPostProperty(deps, { post_id: 7, property_id: 45, value: "x" }); } catch (e) { err = e; }
+  assert(err instanceof McpInputError, "throws McpInputError");
+  assert(!calls.some((c) => c.table === "post_property_values" && c.method === "upsert"), "no upsert");
+});
+
+Deno.test("setPostProperty: property from another template -> McpInputError, no upsert", async () => {
+  const { db, calls } = makeFakeDb({
+    workflow_posts: [{ data: { id: 7, status: "rascunho", workflow_id: 3, workflows: { template_id: 9, conta_id: "workspace-A" } }, error: null }],
+    template_property_definitions: [{ data: { id: 45, template_id: 99, name: "x", type: "text", config: {} }, error: null }], // 99 != 9
+  });
+  const deps = { db, ctx: CTX } as unknown as Deps;
+  let err: unknown;
+  try { await setPostProperty(deps, { post_id: 7, property_id: 45, value: "x" }); } catch (e) { err = e; }
+  assert(err instanceof McpInputError, "throws McpInputError");
+  assert(!calls.some((c) => c.table === "post_property_values" && c.method === "upsert"), "no upsert");
+});
+
+Deno.test("setPostProperty: invalid select option -> McpInputError, no upsert", async () => {
+  const { db, calls } = makeFakeDb({
+    workflow_posts: [{ data: { id: 7, status: "rascunho", workflow_id: 3, workflows: { template_id: 9, conta_id: "workspace-A" } }, error: null }],
+    template_property_definitions: [{ data: { id: 45, template_id: 9, name: "modo", type: "select", config: { options: [{ id: "t1" }] } }, error: null }],
+    workflow_select_options: [{ data: [{ option_id: "w1" }], error: null }],
+  });
+  const deps = { db, ctx: CTX } as unknown as Deps;
+  let err: unknown;
+  try { await setPostProperty(deps, { post_id: 7, property_id: 45, value: "nope" }); } catch (e) { err = e; }
+  assert(err instanceof McpInputError, "throws McpInputError");
+  assert(!calls.some((c) => c.table === "post_property_values" && c.method === "upsert"), "no upsert");
+});
+
+Deno.test("setPostProperty: correcao_cliente moves to revisao_interna BEFORE the upsert", async () => {
+  const { db, calls } = makeFakeDb({
+    workflow_posts: [
+      { data: { id: 7, status: "correcao_cliente", workflow_id: 3, workflows: { template_id: 9, conta_id: "workspace-A" } }, error: null }, // fetch
+      { data: { id: 7 }, error: null }, // guarded move result
+    ],
+    template_property_definitions: [{ data: { id: 45, template_id: 9, name: "anot", type: "text", config: {} }, error: null }],
+    post_property_values: [{ data: null, error: null }],
+  });
+  const deps = { db, ctx: CTX, now: () => "T" } as unknown as Deps;
+  const out = await setPostProperty(deps, { post_id: 7, property_id: 45, value: "nota" });
+
+  assert(has(calls, "workflow_posts", "update", [{ status: "revisao_interna" }]), "moves to revisao_interna");
+  assert(has(calls, "workflow_posts", "eq", ["status", "correcao_cliente"]), "guarded on correcao_cliente");
+  const moveIdx = calls.findIndex((c) => c.table === "workflow_posts" && c.method === "update");
+  const upsertIdx = calls.findIndex((c) => c.table === "post_property_values" && c.method === "upsert");
+  assert(moveIdx >= 0 && upsertIdx >= 0 && moveIdx < upsertIdx, "status move happens before the upsert");
+  assertEquals(out.status, "revisao_interna");
+});
+
+Deno.test("setPostProperty: correcao_cliente move returns null (race) -> McpInputError, no upsert", async () => {
+  const { db, calls } = makeFakeDb({
+    workflow_posts: [
+      { data: { id: 7, status: "correcao_cliente", workflow_id: 3, workflows: { template_id: 9, conta_id: "workspace-A" } }, error: null },
+      { data: null, error: null }, // guarded move matched nothing
+    ],
+    template_property_definitions: [{ data: { id: 45, template_id: 9, name: "anot", type: "text", config: {} }, error: null }],
+  });
+  const deps = { db, ctx: CTX } as unknown as Deps;
+  let err: unknown;
+  try { await setPostProperty(deps, { post_id: 7, property_id: 45, value: "nota" }); } catch (e) { err = e; }
+  assert(err instanceof McpInputError, "throws McpInputError");
+  assert(!calls.some((c) => c.table === "post_property_values" && c.method === "upsert"), "no upsert after a failed move");
+});
+
+Deno.test("set_post_property tool redacts the raw value from the audit log", async () => {
+  const { db, calls } = makeFakeDb({
+    workflow_posts: [{ data: { id: 7, status: "rascunho", workflow_id: 3, workflows: { template_id: 9, conta_id: "workspace-A" } }, error: null }],
+    template_property_definitions: [{ data: { id: 45, template_id: 9, name: "anot", type: "text", config: {} }, error: null }],
+    post_property_values: [{ data: null, error: null }],
+    audit_log: [{ data: null, error: null }],
+  });
+  const deps = { db, ctx: CTX, now: () => "T" } as unknown as Deps;
+  const server = {
+    handlers: {} as Record<string, (a: unknown) => Promise<unknown>>,
+    // deno-lint-ignore no-explicit-any
+    tool(name: string, _d: any, _s: any, h: any) { this.handlers[name] = h; },
+  };
+  // deno-lint-ignore no-explicit-any
+  registerTools(server as any, deps);
+  await server.handlers["set_post_property"]({ post_id: 7, property_id: 45, value: "ANOTACAO_SECRETA" });
+  const auditInsert = calls.find((c) => c.table === "audit_log" && c.method === "insert");
+  assert(auditInsert, "audit_log insert happened");
+  const meta = JSON.stringify(auditInsert!.args[0]);
+  assert(!meta.includes("ANOTACAO_SECRETA"), "raw value must not be logged");
+  assert(meta.includes("value_kind"), "logs value_kind instead");
   assertEquals((auditInsert!.args[0] as Record<string, unknown>).resource_id, "7");
 });

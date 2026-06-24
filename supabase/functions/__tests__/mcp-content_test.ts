@@ -4,12 +4,14 @@ import {
   buildPostFeedback,
   buildTiptapDoc,
   deriveFormatMeta,
+  extractTemplateOptionIds,
   firstLine,
   pageContentToMarkdown,
   performanceTier,
   projectTemplateEtapas,
   quartiles,
   topDistinctPostIds,
+  validatePropertyValue,
 } from "../mcp/content.ts";
 
 Deno.test("deriveFormatMeta by tipo", () => {
@@ -203,4 +205,42 @@ Deno.test("projectTemplateEtapas fails closed on non-array and skips non-objects
   assertEquals(projectTemplateEtapas([null, "nope", 3, ["inner"], { nome: "ok" }]), [
     { nome: "ok", prazo_dias: 0, tipo_prazo: "corridos", tipo: "padrao" },
   ]);
+});
+
+Deno.test("extractTemplateOptionIds pulls string ids from config.options, defensive", () => {
+  assertEquals(extractTemplateOptionIds({ options: [{ id: "a", label: "A" }, { id: "b" }] }), ["a", "b"]);
+  assertEquals(extractTemplateOptionIds({ options: [{ label: "no id" }, { id: 5 }, "x", null] }), []);
+  assertEquals(extractTemplateOptionIds({ options: [{ id: "a" }, { id: 5 }, { id: "b" }, "x", { id: "c" }] }), ["a", "b", "c"]);
+  assertEquals(extractTemplateOptionIds({}), []);
+  assertEquals(extractTemplateOptionIds(null), []);
+  assertEquals(extractTemplateOptionIds([{ id: "a" }]), []); // array config, not object-with-options
+  assertEquals(extractTemplateOptionIds("x"), []);
+});
+
+Deno.test("validatePropertyValue: settable types, null clear, non-settable rejection, options", () => {
+  const opts = new Set(["o1", "o2"]);
+  // null clears any settable type
+  assertEquals(validatePropertyValue("text", null, opts), null);
+  assertEquals(validatePropertyValue("select", null, opts), null);
+  // non-settable rejected even for null
+  assert(validatePropertyValue("person", null, opts) !== null);
+  assert(validatePropertyValue("created_time", "2026-01-01", opts) !== null);
+  assert(validatePropertyValue("bogus", "x", opts) !== null);
+  // scalars: happy + mismatch
+  assertEquals(validatePropertyValue("text", "hi", opts), null);
+  assert(validatePropertyValue("text", 5, opts) !== null);
+  assertEquals(validatePropertyValue("number", 5, opts), null);
+  assert(validatePropertyValue("number", "5", opts) !== null);
+  assertEquals(validatePropertyValue("checkbox", true, opts), null);
+  assert(validatePropertyValue("checkbox", "true", opts) !== null);
+  assertEquals(validatePropertyValue("date", "2026-06-24", opts), null);
+  assert(validatePropertyValue("date", "24/06/2026", opts) !== null);
+  // select/status option membership
+  assertEquals(validatePropertyValue("select", "o1", opts), null);
+  assert(validatePropertyValue("select", "nope", opts) !== null);
+  assertEquals(validatePropertyValue("status", "o2", opts), null);
+  // multiselect
+  assertEquals(validatePropertyValue("multiselect", ["o1", "o2"], opts), null);
+  assert(validatePropertyValue("multiselect", ["o1", "nope"], opts) !== null);
+  assert(validatePropertyValue("multiselect", "o1", opts) !== null); // not an array
 });

@@ -5,6 +5,7 @@ import { McpInputError, McpScopeError, requireScope } from "../_shared/mcp-token
 import {
   createPost,
   createWorkflow,
+  setPostProperty,
   updatePost,
   Deps,
   getBrandProfile,
@@ -187,4 +188,23 @@ export function registerTools(server: any, deps: Deps): void {
       has_ig_caption: Object.hasOwn(a, "ig_caption"),
       ig_caption_len: a.ig_caption?.length ?? 0,
     }));
+
+  register(server, deps, "set_post_property", "posts:write",
+    "Define o valor de uma propriedade personalizada de um post (ex.: modo, anotação). A propriedade deve pertencer ao modelo do fluxo do post; status, mídia e publicação não são afetados.",
+    {
+      post_id: z.number().int().positive(),
+      property_id: z.number().int().positive(),
+      value: z.union([z.string(), z.number(), z.boolean(), z.array(z.string()), z.null()]),
+    },
+    (a) => setPostProperty(deps, a),
+    (a) => {
+      const v = a.value;
+      return {
+        post_id: a.post_id,
+        property_id: a.property_id,
+        value_kind: v === null ? "null" : Array.isArray(v) ? "array" : typeof v,
+        value_len: typeof v === "string" ? v.length : undefined,
+        value_count: Array.isArray(v) ? v.length : undefined,
+      };
+    });
 }
