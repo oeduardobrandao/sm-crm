@@ -279,3 +279,32 @@ Deno.test("updatePost: editing a rascunho post does not auto-set status", async 
   const payload = updatePayload(calls, "workflow_posts")!;
   assert(!Object.hasOwn(payload, "status"), "status not auto-set for rascunho");
 });
+
+Deno.test("update_post tool redacts body/ig_caption from the audit log", async () => {
+  const { db, calls } = makeFakeDb({
+    workflow_posts: [
+      { data: { id: 7, status: "rascunho" }, error: null }, // prefetch
+      { data: { id: 7, status: "rascunho" }, error: null }, // guarded update
+    ],
+    audit_log: [{ data: null, error: null }],
+  });
+  const deps = { db, ctx: CTX } as unknown as Deps;
+  const server = {
+    handlers: {} as Record<string, (a: unknown) => Promise<unknown>>,
+    // deno-lint-ignore no-explicit-any
+    tool(name: string, _d: any, _s: any, h: any) { this.handlers[name] = h; },
+  };
+  // deno-lint-ignore no-explicit-any
+  registerTools(server as any, deps);
+  await server.handlers["update_post"]({
+    post_id: 7, titulo: "T",
+    body: "ROTEIRO_SECRETO", ig_caption: "CAPTION_SECRETO",
+  });
+  const auditInsert = calls.find((c) => c.table === "audit_log" && c.method === "insert");
+  assert(auditInsert, "audit_log insert happened");
+  const meta = JSON.stringify(auditInsert!.args[0]);
+  assert(!meta.includes("ROTEIRO_SECRETO"), "raw body must not be logged");
+  assert(!meta.includes("CAPTION_SECRETO"), "raw ig_caption must not be logged");
+  assert(meta.includes("body_len"), "logs body_len instead");
+  assertEquals((auditInsert!.args[0] as Record<string, unknown>).resource_id, "7");
+});
