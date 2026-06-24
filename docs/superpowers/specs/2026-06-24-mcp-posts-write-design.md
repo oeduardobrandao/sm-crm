@@ -143,7 +143,9 @@ identical posture to the read tools' `conta_id` filters.
   use explicit projections, not `select('*')`).
 - **CRM badge:** add `created_via` to the `Workflow`/`WorkflowPost` TS types (CRM
   reads use `select('*')`, so the column arrives automatically) and render a small
-  **"IA" badge** on the entregas post card and `WorkflowCard` when `created_via==='agent'`.
+  **"IA" badge** on the entregas board card (`WorkflowCard`) when
+  `created_via==='agent'`. The per-post badge inside the `WorkflowDrawer` is
+  **deferred to a fast-follow** — this slice badges the board "kanban card" only.
 
 ## Audit redaction (write tools must not log payload)
 
@@ -199,7 +201,7 @@ id isn't known pre-insert; acceptable — the redacted args still record the cal
 - **`apps/crm/src/lib/mcp-scopes.ts`** — `posts:write` option + explicit read-only
   `AGENT_PRESET`.
 - **CRM** — `created_via` on `Workflow`/`WorkflowPost` types + "IA" badge on the
-  entregas post card and `WorkflowCard`.
+  entregas board card (`WorkflowCard`). (Per-post drawer badge deferred — fast-follow.)
 
 ## Testing
 
