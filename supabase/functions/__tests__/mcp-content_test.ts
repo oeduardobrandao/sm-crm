@@ -7,6 +7,7 @@ import {
   firstLine,
   pageContentToMarkdown,
   performanceTier,
+  projectTemplateEtapas,
   quartiles,
   topDistinctPostIds,
 } from "../mcp/content.ts";
@@ -180,4 +181,26 @@ Deno.test("buildTiptapDoc builds core-node paragraphs", () => {
   // empty / undefined -> a doc with a single empty paragraph
   assertEquals(buildTiptapDoc(""), { type: "doc", content: [{ type: "paragraph" }] });
   assertEquals(buildTiptapDoc(undefined), { type: "doc", content: [{ type: "paragraph" }] });
+});
+
+Deno.test("projectTemplateEtapas projects, drops responsavel_id, applies defaults", () => {
+  const raw = [
+    { nome: "Conteúdo", prazo_dias: 0, tipo_prazo: "corridos", tipo: "padrao", responsavel_id: 9 },
+    { nome: "Aprovação", prazo_dias: 2, tipo_prazo: "uteis", tipo: "aprovacao_cliente" },
+    { nome: "Sem tipo" }, // missing prazo_dias/tipo_prazo/tipo -> defaults
+  ];
+  assertEquals(projectTemplateEtapas(raw), [
+    { nome: "Conteúdo", prazo_dias: 0, tipo_prazo: "corridos", tipo: "padrao" },
+    { nome: "Aprovação", prazo_dias: 2, tipo_prazo: "uteis", tipo: "aprovacao_cliente" },
+    { nome: "Sem tipo", prazo_dias: 0, tipo_prazo: "corridos", tipo: "padrao" },
+  ]);
+});
+
+Deno.test("projectTemplateEtapas fails closed on non-array and skips non-objects", () => {
+  assertEquals(projectTemplateEtapas(null), []);
+  assertEquals(projectTemplateEtapas({}), []);
+  assertEquals(projectTemplateEtapas("x"), []);
+  assertEquals(projectTemplateEtapas([null, "nope", 3, { nome: "ok" }]), [
+    { nome: "ok", prazo_dias: 0, tipo_prazo: "corridos", tipo: "padrao" },
+  ]);
 });
