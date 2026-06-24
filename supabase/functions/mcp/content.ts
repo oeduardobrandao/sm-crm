@@ -276,3 +276,26 @@ export function buildTiptapDoc(
   );
   return { type: "doc", content };
 }
+
+/**
+ * Project a workflow template's `etapas` JSONB array into the agent-facing shape.
+ * Fails closed on malformed JSONB, skips non-object elements, drops the internal
+ * `responsavel_id`, and applies the system defaults for tipo_prazo/tipo.
+ */
+export function projectTemplateEtapas(
+  raw: unknown,
+): { nome: string; prazo_dias: number; tipo_prazo: "uteis" | "corridos"; tipo: "padrao" | "aprovacao_cliente" }[] {
+  if (!Array.isArray(raw)) return [];
+  const out: { nome: string; prazo_dias: number; tipo_prazo: "uteis" | "corridos"; tipo: "padrao" | "aprovacao_cliente" }[] = [];
+  for (const e of raw) {
+    if (!e || typeof e !== "object" || Array.isArray(e)) continue;
+    const o = e as Record<string, unknown>;
+    out.push({
+      nome: typeof o.nome === "string" ? o.nome : "",
+      prazo_dias: typeof o.prazo_dias === "number" ? o.prazo_dias : 0,
+      tipo_prazo: o.tipo_prazo === "uteis" ? "uteis" : "corridos",
+      tipo: o.tipo === "aprovacao_cliente" ? "aprovacao_cliente" : "padrao",
+    });
+  }
+  return out;
+}

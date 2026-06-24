@@ -13,6 +13,7 @@ import {
   firstLine,
   pageContentToMarkdown,
   performanceTier,
+  projectTemplateEtapas,
   quartiles,
   Quartiles,
   StatusEventRow,
@@ -440,6 +441,52 @@ export async function listPages(
   return ((data ?? []) as any[]).map((row) => ({
     ...row,
     content: pageContentToMarkdown(row.content),
+  }));
+}
+
+// ---- workflow templates ------------------------------------------------------
+
+export async function listWorkflowTemplates(d: Deps, _args: Record<string, never>): Promise<any[]> {
+  const { data: templates, error } = await d.db
+    .from("workflow_templates")
+    .select("id, nome, modo_prazo, etapas")
+    .eq("conta_id", d.ctx.conta_id)
+    .order("nome", { ascending: true })
+    .order("id", { ascending: true });
+  if (error) throw error;
+  const rows = (templates ?? []) as any[];
+  if (rows.length === 0) return [];
+
+  const templateIds = rows.map((t) => t.id);
+  const { data: defs, error: defErr } = await d.db
+    .from("template_property_definitions")
+    .select("id, template_id, name, type, config, portal_visible, display_order")
+    .eq("conta_id", d.ctx.conta_id)
+    .in("template_id", templateIds)
+    .order("display_order", { ascending: true })
+    .order("id", { ascending: true });
+  if (defErr) throw defErr;
+
+  const propsByTemplate = new Map<number, any[]>();
+  for (const def of (defs ?? []) as any[]) {
+    const list = propsByTemplate.get(def.template_id) ?? [];
+    list.push({
+      id: def.id,
+      name: def.name,
+      type: def.type,
+      config: def.config && typeof def.config === "object" && !Array.isArray(def.config) ? def.config : {},
+      portal_visible: def.portal_visible,
+      display_order: def.display_order,
+    });
+    propsByTemplate.set(def.template_id, list);
+  }
+
+  return rows.map((t) => ({
+    id: t.id,
+    nome: t.nome,
+    modo_prazo: t.modo_prazo ?? null,
+    etapas: projectTemplateEtapas(t.etapas),
+    properties: propsByTemplate.get(t.id) ?? [],
   }));
 }
 

@@ -16,6 +16,7 @@ import {
   listPages,
   listPostFeedback,
   listPosts,
+  listWorkflowTemplates,
   listWorkflows,
 } from "./queries.ts";
 
@@ -137,6 +138,11 @@ export function registerTools(server: any, deps: Deps): void {
     "Lista as páginas de conteúdo (estratégia, materiais) dos clientes do workspace.",
     { client_id: z.number().int().optional() },
     (a) => listPages(deps, a));
+
+  register(server, deps, "list_workflow_templates", "workflows:read",
+    "Lista os modelos de fluxo (workflow templates) do workspace: etapas e o esquema de propriedades personalizadas de cada um.",
+    {},
+    () => listWorkflowTemplates(deps, {}));
 
   register(server, deps, "create_workflow", "posts:write",
     "Cria um fluxo de produção (necessário para criar posts). Retorna o fluxo criado.",
