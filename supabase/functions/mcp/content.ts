@@ -288,7 +288,7 @@ export function projectTemplateEtapas(
   if (!Array.isArray(raw)) return [];
   const out: { nome: string; prazo_dias: number; tipo_prazo: "uteis" | "corridos"; tipo: "padrao" | "aprovacao_cliente" }[] = [];
   for (const e of raw) {
-    if (!e || typeof e !== "object") continue;
+    if (!e || typeof e !== "object" || Array.isArray(e)) continue;
     const o = e as Record<string, unknown>;
     out.push({
       nome: typeof o.nome === "string" ? o.nome : "",

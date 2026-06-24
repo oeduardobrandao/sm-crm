@@ -200,7 +200,7 @@ Deno.test("projectTemplateEtapas fails closed on non-array and skips non-objects
   assertEquals(projectTemplateEtapas(null), []);
   assertEquals(projectTemplateEtapas({}), []);
   assertEquals(projectTemplateEtapas("x"), []);
-  assertEquals(projectTemplateEtapas([null, "nope", 3, { nome: "ok" }]), [
+  assertEquals(projectTemplateEtapas([null, "nope", 3, ["inner"], { nome: "ok" }]), [
     { nome: "ok", prazo_dias: 0, tipo_prazo: "corridos", tipo: "padrao" },
   ]);
 });
