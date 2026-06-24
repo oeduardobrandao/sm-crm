@@ -11,5 +11,8 @@ export const SCOPE_OPTIONS = [
 
 /** Least-privilege preset for a content agent — read scopes only. Write is opt-in. */
 export const AGENT_PRESET: string[] = [
-  'clientes:read', 'posts:read', 'workflows:read', 'ideias:read',
+  'clientes:read',
+  'posts:read',
+  'workflows:read',
+  'ideias:read',
 ];
