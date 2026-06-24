@@ -11,6 +11,7 @@ import {
   listClients,
   listIdeas,
   listPages,
+  listPostFeedback,
   listPosts,
   listWorkflows,
 } from "./queries.ts";
@@ -112,6 +113,17 @@ export function registerTools(server: any, deps: Deps): void {
     "Lista o backlog de pautas (ideias) do workspace.",
     { client_id: z.number().int().optional(), status: z.enum(["nova", "em_analise", "aprovada", "descartada"]).optional() },
     (a) => listIdeas(deps, a));
+
+  register(server, deps, "list_post_feedback", "posts:read",
+    "Lista o feedback dos clientes nos posts (aprovações, correções, mensagens) com a linha do tempo de status.",
+    {
+      post_id: z.number().int().optional(),
+      client_id: z.number().int().optional(),
+      action: z.enum(["aprovado", "correcao", "mensagem"]).optional(),
+      since: z.string().optional(),
+      limit: z.number().int().optional(),
+    },
+    (a) => listPostFeedback(deps, a));
 
   register(server, deps, "list_pages", "clientes:read",
     "Lista as páginas de conteúdo (estratégia, materiais) dos clientes do workspace.",
