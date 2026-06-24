@@ -255,3 +255,24 @@ export function buildPostFeedback(
   );
   return items;
 }
+
+// ---- post body (create_post) ------------------------------------------------
+
+/**
+ * Build a minimal TipTap/ProseMirror doc from plain text for `workflow_posts.conteudo`.
+ * Uses ONLY core doc/paragraph/text nodes — a missing node/mark type silently blanks
+ * the whole post body in the Hub. One paragraph per line; a blank line becomes an
+ * empty paragraph; empty/undefined input becomes a doc with one empty paragraph.
+ * `body` is plain text (markdown syntax would appear literally).
+ */
+export function buildTiptapDoc(
+  plain: string | undefined | null,
+): { type: "doc"; content: ({ type: "paragraph"; content?: { type: "text"; text: string }[] })[] } {
+  const text = typeof plain === "string" ? plain : "";
+  const content = text.split("\n").map((line) =>
+    line.length > 0
+      ? { type: "paragraph" as const, content: [{ type: "text" as const, text: line }] }
+      : { type: "paragraph" as const }
+  );
+  return { type: "doc", content };
+}
