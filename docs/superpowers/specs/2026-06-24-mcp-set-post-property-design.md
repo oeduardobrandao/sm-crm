@@ -59,24 +59,27 @@ One property per call.
 
 1. **Fetch post + its template (tenant-scoped):**
    ```ts
-   const { data: post } = await d.db
+   const { data: post, error: postErr } = await d.db
      .from("workflow_posts")
-     .select("id, status, workflow_id, workflows!inner(template_id)")
+     .select("id, status, workflow_id, workflows!inner(template_id, conta_id)")
      .eq("conta_id", d.ctx.conta_id)
+     .eq("workflows.conta_id", d.ctx.conta_id)   // defense-in-depth (service-role bypasses RLS)
      .eq("id", args.post_id)
      .maybeSingle();
+   if (postErr) throw postErr;
    ```
    - not found → `McpInputError("Post não encontrado neste workspace.")`
    - `status ∉ EDITABLE_STATUSES` (`["rascunho","revisao_interna","correcao_cliente"]`, reused from slice 2b) → `McpInputError("Post em estado '<status>' não pode ser editado pelo agente.")`
    - `post.workflows.template_id` is null → `McpInputError("O fluxo deste post não usa um modelo, então não há propriedades para definir.")`
 2. **Fetch the definition + verify it belongs to the post's template:**
    ```ts
-   const { data: def } = await d.db
+   const { data: def, error: defErr } = await d.db
      .from("template_property_definitions")
      .select("id, template_id, name, type, config")
      .eq("conta_id", d.ctx.conta_id)
      .eq("id", args.property_id)
      .maybeSingle();
+   if (defErr) throw defErr;
    ```
    - not found → `McpInputError("Propriedade não encontrada neste workspace.")`
    - `def.template_id !== post.workflows.template_id` → `McpInputError("Esta propriedade não pertence ao modelo do fluxo deste post.")` ← the template constraint
@@ -84,12 +87,13 @@ One property per call.
    ```ts
    const allowed = new Set(extractTemplateOptionIds(def.config));
    if (["select","status","multiselect"].includes(def.type)) {
-     const { data: wso } = await d.db
+     const { data: wso, error: wsoErr } = await d.db
        .from("workflow_select_options")
        .select("option_id")
        .eq("conta_id", d.ctx.conta_id)
        .eq("workflow_id", post.workflow_id)
        .eq("property_definition_id", args.property_id);
+     if (wsoErr) throw wsoErr;
      for (const o of wso ?? []) allowed.add(o.option_id);
    }
    ```
@@ -100,12 +104,14 @@ One property per call.
    if (err) throw new McpInputError(err);
    ```
    This rejects `person`/`created_time`/unknown types, type-mismatches, and
-   invalid/unknown option ids. `value: null` is always accepted (clear).
+   invalid/unknown option ids. **`null` clears any *settable* property type;
+   non-settable types (`person`/`created_time`/unknown) cannot be set or cleared
+   by the agent** (the non-settable check runs before the null-clear shortcut).
 5. **Write — status-first for `correcao_cliente`, then upsert** (see "Write atomicity"):
    ```ts
    let status = post.status;
    if (post.status === "correcao_cliente") {
-     const { data: moved } = await d.db
+     const { data: moved, error: moveErr } = await d.db
        .from("workflow_posts")
        .update({ status: "revisao_interna" })
        .eq("conta_id", d.ctx.conta_id)
@@ -113,6 +119,7 @@ One property per call.
        .eq("status", "correcao_cliente")     // guarded; abort if it changed
        .select("id")
        .maybeSingle();
+     if (moveErr) throw moveErr;
      if (!moved) throw new McpInputError("O status do post mudou; tente novamente.");
      status = "revisao_interna";
    }
@@ -164,7 +171,8 @@ validatePropertyValue(type: string, value: unknown, allowedOptionIds: Set<string
 Returns a caller-safe error message, or `null` if valid.
 - Non-settable `type` (`person`, `created_time`, or anything not in the settable
   set) → `"Tipo de propriedade '<type>' não pode ser definido pelo agente."`
-  (checked **before** the null-clear shortcut, so `created_time` can't be cleared).
+  (checked **before** the null-clear shortcut, so a non-settable type cannot be
+  set *or* cleared).
 - `value === null` → `null` (valid clear) for any settable type.
 - `text`/`url`/`email`/`phone` → must be a string.
 - `number` → must be a number.
@@ -180,10 +188,14 @@ Settable set: `text,url,email,phone,number,date,checkbox,select,status,multisele
 ## Scope & tenant security
 
 - Reuses **`posts:write`**. Every read/write is `conta_id`-scoped (service-role
-  client → app-level filters are the sole boundary); the option lookup is also
+  client → app-level filters are the sole boundary). The post fetch additionally
+  filters the embedded `workflows.conta_id` (defense-in-depth against an
+  inconsistent row, since RLS is bypassed); the option lookup is also
   `workflow_id`- and `property_definition_id`-scoped; the value write is
   template-constrained (step 2). The `correcao_cliente` move is guarded on
-  `conta_id`+`id`+`status`.
+  `conta_id`+`id`+`status`. Every read/write/move re-throws its DB `error` (mapped
+  to a generic message by `errorResult`); only the app-level guard failures throw
+  `McpInputError`.
 
 ## Audit redaction
 
