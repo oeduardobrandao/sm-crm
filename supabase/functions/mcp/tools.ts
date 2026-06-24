@@ -5,6 +5,7 @@ import { McpInputError, McpScopeError, requireScope } from "../_shared/mcp-token
 import {
   createPost,
   createWorkflow,
+  updatePost,
   Deps,
   getBrandProfile,
   getClient,
@@ -157,5 +158,27 @@ export function registerTools(server: any, deps: Deps): void {
       workflow_id: a.workflow_id, tipo: a.tipo, titulo: a.titulo,
       has_body: !!a.body, body_len: a.body?.length ?? 0,
       has_ig_caption: !!a.ig_caption, ig_caption_len: a.ig_caption?.length ?? 0,
+    }));
+
+  register(server, deps, "update_post", "posts:write",
+    "Edita um post existente (título, formato, corpo, legenda) e pode avançar o status apenas para rascunho ou revisão interna. O agente nunca envia ao cliente nem publica.",
+    {
+      post_id: z.number().int().positive(),
+      titulo: z.string().trim().min(1).max(200).optional(),
+      tipo: z.enum(["feed", "reels", "stories", "carrossel"]).optional(),
+      body: z.string().max(10000).optional(),
+      ig_caption: z.string().max(2200).optional(),
+      status: z.enum(["rascunho", "revisao_interna"]).optional(),
+    },
+    (a) => updatePost(deps, a),
+    (a) => ({
+      post_id: a.post_id,
+      has_titulo: Object.hasOwn(a, "titulo"),
+      tipo: a.tipo,
+      status: a.status,
+      has_body: Object.hasOwn(a, "body"),
+      body_len: a.body?.length ?? 0,
+      has_ig_caption: Object.hasOwn(a, "ig_caption"),
+      ig_caption_len: a.ig_caption?.length ?? 0,
     }));
 }
