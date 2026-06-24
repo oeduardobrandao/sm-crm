@@ -178,14 +178,17 @@ payload. No change to `register()`.
 
 ## Testing
 
-New file `supabase/functions/__tests__/mcp-templates_test.ts`, run with
-`npm run test:functions`.
+Run with `npm run test:functions`.
 
-- **`projectTemplateEtapas` (unit):** array of well-formed etapas → projected
+- **`projectTemplateEtapas` (unit — added to the existing
+  `supabase/functions/__tests__/mcp-content_test.ts`, where the other `content.ts`
+  pure-helper tests live):** array of well-formed etapas → projected
   `{nome, prazo_dias, tipo_prazo, tipo}` in order, `responsavel_id` dropped;
   missing `tipo`/`tipo_prazo` → defaults `padrao`/`corridos`; non-array input
   (`null`, `{}`, `"x"`) → `[]`; non-object elements skipped.
-- **`listWorkflowTemplates` (recording fake `db`):**
+- **`listWorkflowTemplates` (new file
+  `supabase/functions/__tests__/mcp-templates_test.ts`, recording fake `db`
+  modeled on `mcp-feedback_test.ts`):**
   - Templates read is scoped `.eq("conta_id", "workspace-A")`; properties read is
     scoped `.eq("conta_id", "workspace-A")` **and** `.in("template_id", [...])`
     with exactly the returned template ids.
