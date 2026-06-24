@@ -6,7 +6,10 @@ export const SCOPE_OPTIONS = [
   { value: 'posts:read', label: 'Posts (leitura)' },
   { value: 'workflows:read', label: 'Fluxos (leitura)' },
   { value: 'ideias:read', label: 'Ideias/Pautas (leitura)' },
+  { value: 'posts:write', label: 'Posts (escrita)' },
 ] as const;
 
-/** Least-privilege preset for a content-writing agent — every read scope. */
-export const AGENT_PRESET: string[] = SCOPE_OPTIONS.map((s) => s.value);
+/** Least-privilege preset for a content agent — read scopes only. Write is opt-in. */
+export const AGENT_PRESET: string[] = [
+  'clientes:read', 'posts:read', 'workflows:read', 'ideias:read',
+];
