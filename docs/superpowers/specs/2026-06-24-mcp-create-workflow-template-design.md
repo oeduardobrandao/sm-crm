@@ -98,7 +98,8 @@ omitted) so the contract is stable.
    const rows = source.map((e) => ({ ...e, workflow_id: wf.id }));
    const { error: etErr } = await d.db.from("workflow_etapas").insert(rows);
    if (etErr) {
-     await d.db.from("workflows").delete().eq("id", wf.id);  // compensating cleanup
+     await d.db.from("workflows").delete()
+       .eq("conta_id", d.ctx.conta_id).eq("id", wf.id);  // compensating cleanup (tenant-scoped)
      throw etErr;
    }
    return wf;
@@ -126,16 +127,29 @@ instantiateTemplateEtapas(rawEtapas: unknown, now: string): {
 - Fail closed: `!Array.isArray(rawEtapas)` → `[]`.
 - Filter to object elements (skip non-objects); assign **contiguous** `ordem`
   `0..n-1` by position in the filtered list (no gaps).
-- Per element: `nome` (string or `""`), `prazo_dias` (number or `0`), `tipo_prazo`
+- Per element: `nome` (string or `""`), `prazo_dias`
+  (`Number.isInteger(x) ? x : 0` — the column is `integer`), `tipo_prazo`
   (`"uteis"` else `"corridos"`), `tipo` (`"aprovacao_cliente"` else `"padrao"`),
-  **`responsavel_id`** (number or `null` — kept, unlike the read projection),
-  `status` (`i===0 ? "ativo" : "pendente"`), `iniciado_em` (`i===0 ? now : null`),
-  `concluido_em: null`, `data_limite: null`. **No `workflow_id`** — `createWorkflow`
-  attaches it.
+  **`responsavel_id`** (`Number.isInteger(x) ? x : null` — the column is a `bigint`
+  FK; kept, unlike the read projection), `status` (`i===0 ? "ativo" : "pendente"`),
+  `iniciado_em` (`i===0 ? now : null`), `concluido_em: null`, `data_limite: null`.
+  **No `workflow_id`** — `createWorkflow` attaches it.
+- `Number.isInteger` (stricter than `projectTemplateEtapas`' `typeof === "number"`)
+  guards the integer columns: a malformed float/non-number in template JSON becomes
+  `0`/`null` rather than failing the batch insert and triggering cleanup.
 - It is a **separate** helper from `projectTemplateEtapas` (2c-1) on purpose: the
   read projection drops `responsavel_id` and omits the etapa-lifecycle fields,
   whereas instantiation keeps `responsavel_id` (real execution data) and adds the
   lifecycle fields.
+
+**`responsavel_id` trust (accepted — mirror CRM):** the template stores
+`responsavel_id` in JSON with no DB constraint beyond the etapa FK
+(`membros(id)`), which is not `conta`-scoped. We copy it verbatim, exactly as the
+CRM's own create-from-template path does. A corrupted/cross-tenant template could
+therefore assign a foreign `membros` id — but the workflow itself is tenant-scoped
+(RLS / `conta_id`), so the worst case is a dangling assignment a foreign member
+can't see, not a data leak. We deliberately do **not** add a per-create
+membership-validation query (the CRM doesn't, and the blast radius is contained).
 
 ## Scope plumbing & audit
 
@@ -184,6 +198,9 @@ Run with `npm run test:functions`.
     **no `workflow_id`** key.
   - Non-array (`null`, `{}`, `"x"`) → `[]`; non-object elements skipped with
     contiguous `ordem` on the survivors.
+  - **Integer guards:** a non-integer `prazo_dias` (e.g. `1.5`, `"3"`) → `0`; a
+    non-integer `responsavel_id` (e.g. `2.7`, `"x"`) → `null` (the columns are
+    `integer`/`bigint`).
 - **`createWorkflow` (recording fake `db`, `mcp-writes_test.ts`):**
   - **Updated existing default-etapa test** — no `template_id`: the
     `workflow_etapas` insert payload is now an **array**; assert `rows[0].ordem===0`,
