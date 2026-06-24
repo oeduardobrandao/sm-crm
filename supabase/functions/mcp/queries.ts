@@ -5,13 +5,17 @@ import { McpKeyContext } from "../_shared/mcp-token.ts";
 import { MCP_PROP_MODO, MCP_PROP_ANOTACAO } from "./seed.ts";
 import {
   allowlistClient,
+  buildPostFeedback,
   CLIENT_PUBLIC_FIELDS,
   deriveFormatMeta,
+  FeedbackRow,
   firstLine,
   pageContentToMarkdown,
   performanceTier,
   quartiles,
   Quartiles,
+  StatusEventRow,
+  topDistinctPostIds,
 } from "./content.ts";
 
 const METRIC_KEYS = ["reach", "saved", "shares", "comments", "likes"] as const;
@@ -434,4 +438,102 @@ export async function listPages(
     ...row,
     content: pageContentToMarkdown(row.content),
   }));
+}
+
+// ---- post feedback -----------------------------------------------------------
+
+const FEEDBACK_SCAN_CAP = 2000;
+
+export async function listPostFeedback(
+  d: Deps,
+  args: { post_id?: number; client_id?: number; action?: string; since?: string; limit?: number },
+): Promise<any[]> {
+  const limit = Math.min(Math.max(1, args.limit ?? 25), 100);
+
+  let wfIds: number[] | null = null;
+  if (args.client_id !== undefined) {
+    wfIds = await clientWorkflowIds(d, args.client_id);
+    if (wfIds.length === 0) return [];
+  }
+
+  // Shared tenant + content filters, applied to BOTH post_approvals reads.
+  const applyFilters = (q: any) => {
+    q = q.eq("workflow_posts.conta_id", d.ctx.conta_id); // never read post_approvals by bare post_id
+    if (args.post_id !== undefined) q = q.eq("post_id", args.post_id);
+    if (wfIds) q = q.in("workflow_posts.workflow_id", wfIds);
+    if (args.action) q = q.eq("action", args.action);
+    if (args.since) q = q.gte("created_at", args.since);
+    return q;
+  };
+
+  // Phase 1 — pick post ids (capped scan).
+  const { data: scanData, error: scanErr } = await applyFilters(
+    d.db.from("post_approvals").select("post_id, created_at, workflow_posts!inner(conta_id)"),
+  ).order("created_at", { ascending: false }).limit(FEEDBACK_SCAN_CAP);
+  if (scanErr) throw scanErr;
+  const scanRows = (scanData ?? []) as any[];
+  if (scanRows.length === FEEDBACK_SCAN_CAP) {
+    console.warn(`[mcp] list_post_feedback hit SCAN_CAP=${FEEDBACK_SCAN_CAP} for conta ${d.ctx.conta_id}`);
+  }
+  const chosenIds = topDistinctPostIds(scanRows, limit);
+  if (chosenIds.length === 0) return [];
+
+  // Phase 2a (feedback) + 2b (timeline), in parallel.
+  const feedbackP = applyFilters(
+    d.db.from("post_approvals").select(
+      "post_id, action, comentario, is_workspace_user, created_at, " +
+      "workflow_posts!inner(workflow_id, titulo, status, conta_id)",
+    ),
+  ).in("post_id", chosenIds);
+  const eventsP = d.db.from("post_status_events")
+    .select("post_id, from_status, to_status, source, actor_name, created_at")
+    .eq("conta_id", d.ctx.conta_id)
+    .in("post_id", chosenIds)
+    .order("created_at", { ascending: true });
+  const [{ data: fbData, error: fbErr }, { data: evData, error: evErr }] = await Promise.all([feedbackP, eventsP]);
+  if (fbErr) throw fbErr;
+  if (evErr) throw evErr;
+
+  // Resolve cliente_id via workflow_id -> cliente_id.
+  const fbRaw = (fbData ?? []) as any[];
+  const wfPresent = [...new Set(fbRaw.map((r) => r.workflow_posts.workflow_id))];
+  const clienteByWf = new Map<number, number>();
+  if (wfPresent.length > 0) {
+    const { data: wfData, error: wfErr } = await d.db
+      .from("workflows").select("id, cliente_id")
+      .eq("conta_id", d.ctx.conta_id).in("id", wfPresent);
+    if (wfErr) throw wfErr;
+    for (const w of (wfData ?? []) as any[]) clienteByWf.set(w.id, w.cliente_id);
+  }
+
+  const feedbackRows: FeedbackRow[] = [];
+  for (const r of fbRaw) {
+    const wfId = r.workflow_posts.workflow_id;
+    const cliente_id = clienteByWf.get(wfId);
+    if (cliente_id === undefined) {
+      console.warn(`[mcp] list_post_feedback: workflow ${wfId} missing cliente_id (conta ${d.ctx.conta_id}); dropping row`);
+      continue;
+    }
+    feedbackRows.push({
+      post_id: r.post_id,
+      titulo: r.workflow_posts.titulo,
+      status: r.workflow_posts.status,
+      cliente_id,
+      action: r.action,
+      comentario: r.comentario ?? null,
+      is_workspace_user: r.is_workspace_user,
+      created_at: r.created_at,
+    });
+  }
+
+  const statusEvents: StatusEventRow[] = ((evData ?? []) as any[]).map((e) => ({
+    post_id: e.post_id,
+    from_status: e.from_status ?? null,
+    to_status: e.to_status,
+    source: e.source,
+    actor_name: e.actor_name ?? null,
+    created_at: e.created_at,
+  }));
+
+  return buildPostFeedback(feedbackRows, statusEvents);
 }

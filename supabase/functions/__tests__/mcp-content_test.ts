@@ -1,11 +1,13 @@
 import { assert, assertEquals } from "./assert.ts";
 import {
   allowlistClient,
+  buildPostFeedback,
   deriveFormatMeta,
   firstLine,
   pageContentToMarkdown,
   performanceTier,
   quartiles,
+  topDistinctPostIds,
 } from "../mcp/content.ts";
 
 Deno.test("deriveFormatMeta by tipo", () => {
@@ -102,4 +104,60 @@ Deno.test("pageContentToMarkdown fails closed on bad input", () => {
   assertEquals(pageContentToMarkdown([{ type: 123, content: "texto" }]), "texto");
   // empty image content skipped
   assertEquals(pageContentToMarkdown([{ type: "image", content: "" }]), "");
+});
+
+Deno.test("topDistinctPostIds: distinct in first-seen order; dups don't consume limit", () => {
+  assertEquals(
+    topDistinctPostIds(
+      [{ post_id: 1 }, { post_id: 1 }, { post_id: 1 }, { post_id: 2 }, { post_id: 3 }],
+      2,
+    ),
+    [1, 2], // the three "1" rows do not crowd out 2
+  );
+  assertEquals(topDistinctPostIds([{ post_id: 5 }, { post_id: 6 }], 10), [5, 6]); // fewer than limit
+  assertEquals(topDistinctPostIds([], 5), []); // empty
+});
+
+Deno.test("buildPostFeedback groups, derives author, orders feedback/timeline/posts", () => {
+  const feedback = [
+    { post_id: 10, titulo: "A", status: "correcao_cliente", cliente_id: 1,
+      action: "mensagem", comentario: "oi", is_workspace_user: true, created_at: "2026-06-01T10:00:00Z" },
+    { post_id: 10, titulo: "A", status: "correcao_cliente", cliente_id: 1,
+      action: "correcao", comentario: "muito clínico", is_workspace_user: false, created_at: "2026-06-02T10:00:00Z" },
+    { post_id: 20, titulo: "B", status: "aprovado_cliente", cliente_id: 2,
+      action: "aprovado", comentario: null, is_workspace_user: false, created_at: "2026-06-03T10:00:00Z" },
+  ];
+  const events = [
+    { post_id: 10, from_status: "enviado_cliente", to_status: "correcao_cliente",
+      source: "client", actor_name: null, created_at: "2026-06-02T10:00:00Z" },
+    { post_id: 10, from_status: "rascunho", to_status: "enviado_cliente",
+      source: "workspace_user", actor_name: "Ana", created_at: "2026-06-01T09:00:00Z" },
+  ];
+  const out = buildPostFeedback(feedback, events);
+
+  // post 20 first: its latest feedback (06-03) is newer than post 10's (06-02)
+  assertEquals(out.map((p) => p.post_id), [20, 10]);
+
+  // post 20: aprovado w/ null comment, author client, no events -> timeline []
+  assertEquals(out[0], {
+    post_id: 20, titulo: "B", cliente_id: 2, status: "aprovado_cliente",
+    latest_feedback_at: "2026-06-03T10:00:00Z",
+    feedback: [{ action: "aprovado", comentario: null, author: "client", created_at: "2026-06-03T10:00:00Z" }],
+    timeline: [],
+  });
+
+  // post 10: feedback newest-first; author derived; timeline oldest->newest
+  assertEquals(out[1].latest_feedback_at, "2026-06-02T10:00:00Z");
+  assertEquals(out[1].feedback, [
+    { action: "correcao", comentario: "muito clínico", author: "client", created_at: "2026-06-02T10:00:00Z" },
+    { action: "mensagem", comentario: "oi", author: "workspace", created_at: "2026-06-01T10:00:00Z" },
+  ]);
+  assertEquals(out[1].timeline, [
+    { from_status: "rascunho", to_status: "enviado_cliente", source: "workspace_user", actor_name: "Ana", created_at: "2026-06-01T09:00:00Z" },
+    { from_status: "enviado_cliente", to_status: "correcao_cliente", source: "client", actor_name: null, created_at: "2026-06-02T10:00:00Z" },
+  ]);
+});
+
+Deno.test("buildPostFeedback empty input -> []", () => {
+  assertEquals(buildPostFeedback([], []), []);
 });
