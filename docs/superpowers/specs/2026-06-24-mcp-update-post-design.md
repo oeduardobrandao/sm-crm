@@ -30,7 +30,7 @@ round-trips and the attack surface for no benefit.
 
 ## The status model (existing)
 
-`workflow_posts.status` lifecycle (CHECK constraint, `20260406_workflow_posts_status_agendado.sql`):
+`workflow_posts.status` lifecycle (final CHECK constraint, `20260427000001_instagram_publishing.sql`):
 
 ```
 rascunho → revisao_interna → aprovado_interno → enviado_cliente
@@ -65,11 +65,17 @@ and can never *edit* a post currently in `enviado_cliente`, `aprovado_cliente`,
 scheduled/published). A human always performs internal approval, sending to the
 client, scheduling, and publishing.
 
-**`correcao_cliente` semantics (explicit):** the agent may revise a
-`correcao_cliente` post. An edit leaves the post in `correcao_cliente` **unless**
-the agent also passes `status: "revisao_interna"` to resubmit it — an edit never
-silently changes status. The board therefore keeps showing "client requested
-correction" until someone advances the post, which is accurate.
+**`correcao_cliente` is client-visible — edits auto-move it out of view.** A
+`correcao_cliente` post is live in the client portal (`PostagensPage`
+`VISIBLE_STATUSES` includes it, and `hub-posts/handler.ts` returns posts
+unfiltered by status), so the agent must never leave an in-progress edit visible
+to the client. Therefore: when the target post is in `correcao_cliente` and the
+call does **not** include an explicit `status`, `updatePost` sets
+`status = "revisao_interna"` automatically, pulling the post out of the client's
+view. An explicit `status` (`rascunho` or `revisao_interna`) is honored as-is.
+This is the one place an edit changes status on its own, and it is the only safe
+behavior — editing a client-visible correction post always requires removing it
+from view first.
 
 **Ownership, not authorship:** the agent may edit any post in an editable status
 regardless of `created_via` (human or agent). The status guard is the boundary,
@@ -135,7 +141,14 @@ required.
    if (Object.hasOwn(args, "ig_caption")) payload.ig_caption = args.ig_caption; // "" stored as-is, renders empty
    if (Object.hasOwn(args, "status"))     payload.status = args.status;
    ```
-5. **Atomic guarded update** (re-checks tenant + editability so a status race
+5. **Auto-move client-visible corrections out of view.** A `correcao_cliente`
+   post is live in the client portal, so an edit without an explicit status must
+   pull it out (uses the prefetched `existing.status`):
+   ```ts
+   if (existing.status === "correcao_cliente" && !Object.hasOwn(args, "status"))
+     payload.status = "revisao_interna";
+   ```
+6. **Atomic guarded update** (re-checks tenant + editability so a status race
    between prefetch and write cannot slip a now-client-facing post through):
    ```ts
    const { data, error } = await d.db
@@ -261,6 +274,12 @@ All in `__tests__/mcp-writes_test.ts`, run with `npm run test:functions`.
   `AGENT_SETTABLE_STATUSES` (e.g. `enviado_cliente`) → `McpInputError`, no
   payload constructed / no `update` recorded. The happy-path payload only ever
   carries an allowlisted status.
+- **Correction-loop auto-move** — editing a `correcao_cliente` post with `body`
+  and **no** `status` builds an `update` payload with `status: "revisao_interna"`
+  (pulled out of client view); passing an explicit `status: "rascunho"` on a
+  `correcao_cliente` post is honored (payload `status: "rascunho"`, not
+  overridden); editing a `rascunho` post with no `status` builds a payload with
+  **no** `status` field (not auto-moved).
 - **Audit redaction (tool-wrapper test)** — register `update_post` against a fake
   `server` + fake `db` with `ctx.scopes=['posts:write']`; invoke the captured
   handler with `body`/`ig_caption`; assert the recorded `audit` insert's
@@ -294,6 +313,8 @@ Typecheck: `deno check --node-modules-dir=auto supabase/functions/mcp/index.ts`.
    the staging SQL editor **before** deploying `mcp` to staging.
 4. Smoke-test: a `posts:write` key runs `create_post` → `update_post` (edit body,
    set `status: "revisao_interna"`); confirm the draft changes in entregas and a
-   `system` status event appears in the timeline; confirm `update_post` on an
+   `system` status event appears in the timeline; confirm editing a
+   `correcao_cliente` post (no status arg) moves it to `revisao_interna` and it
+   disappears from the client Hub; confirm `update_post` on an
    `enviado_cliente`/`postado` post returns the `McpInputError`; confirm a
    `posts:read`-only key gets permission-denied.
