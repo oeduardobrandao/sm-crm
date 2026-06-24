@@ -428,3 +428,27 @@ Deno.test("setPostProperty: correcao_cliente move returns null (race) -> McpInpu
   assert(err instanceof McpInputError, "throws McpInputError");
   assert(!calls.some((c) => c.table === "post_property_values" && c.method === "upsert"), "no upsert after a failed move");
 });
+
+Deno.test("set_post_property tool redacts the raw value from the audit log", async () => {
+  const { db, calls } = makeFakeDb({
+    workflow_posts: [{ data: { id: 7, status: "rascunho", workflow_id: 3, workflows: { template_id: 9, conta_id: "workspace-A" } }, error: null }],
+    template_property_definitions: [{ data: { id: 45, template_id: 9, name: "anot", type: "text", config: {} }, error: null }],
+    post_property_values: [{ data: null, error: null }],
+    audit_log: [{ data: null, error: null }],
+  });
+  const deps = { db, ctx: CTX, now: () => "T" } as unknown as Deps;
+  const server = {
+    handlers: {} as Record<string, (a: unknown) => Promise<unknown>>,
+    // deno-lint-ignore no-explicit-any
+    tool(name: string, _d: any, _s: any, h: any) { this.handlers[name] = h; },
+  };
+  // deno-lint-ignore no-explicit-any
+  registerTools(server as any, deps);
+  await server.handlers["set_post_property"]({ post_id: 7, property_id: 45, value: "ANOTACAO_SECRETA" });
+  const auditInsert = calls.find((c) => c.table === "audit_log" && c.method === "insert");
+  assert(auditInsert, "audit_log insert happened");
+  const meta = JSON.stringify(auditInsert!.args[0]);
+  assert(!meta.includes("ANOTACAO_SECRETA"), "raw value must not be logged");
+  assert(meta.includes("value_kind"), "logs value_kind instead");
+  assertEquals((auditInsert!.args[0] as Record<string, unknown>).resource_id, "7");
+});
