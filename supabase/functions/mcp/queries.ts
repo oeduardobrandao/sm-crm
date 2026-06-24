@@ -636,3 +636,71 @@ export async function createPost(
   if (error) throw error;
   return post;
 }
+
+const EDITABLE_STATUSES: string[] = ["rascunho", "revisao_interna", "correcao_cliente"];
+const AGENT_SETTABLE_STATUSES: string[] = ["rascunho", "revisao_interna"];
+
+export async function updatePost(
+  d: Deps,
+  args: { post_id: number; titulo?: string; tipo?: string; body?: string; ig_caption?: string; status?: string },
+): Promise<any> {
+  // At least one updatable field.
+  const FIELDS = ["titulo", "tipo", "body", "ig_caption", "status"];
+  if (!FIELDS.some((f) => Object.hasOwn(args, f))) {
+    throw new McpInputError("Informe ao menos um campo para atualizar.");
+  }
+
+  // Defensive destination-status validation (the zod enum is the first line; this guards
+  // any caller that bypasses it, e.g. tests).
+  if (Object.hasOwn(args, "status") && !AGENT_SETTABLE_STATUSES.includes(args.status as string)) {
+    throw new McpInputError("Status inválido para edição pelo agente.");
+  }
+
+  // Prefetch for granular errors (distinguish not-found from not-editable).
+  const { data: existing } = await d.db
+    .from("workflow_posts")
+    .select("id, status")
+    .eq("conta_id", d.ctx.conta_id)
+    .eq("id", args.post_id)
+    .maybeSingle();
+  if (!existing) {
+    throw new McpInputError("Post não encontrado neste workspace.");
+  }
+  const currentStatus = (existing as any).status as string;
+  if (!EDITABLE_STATUSES.includes(currentStatus)) {
+    throw new McpInputError(`Post em estado '${currentStatus}' não pode ser editado pelo agente.`);
+  }
+
+  // Build payload with presence checks so "" clears (never ignored).
+  const payload: Record<string, unknown> = {};
+  if (Object.hasOwn(args, "titulo")) payload.titulo = args.titulo;
+  if (Object.hasOwn(args, "tipo")) payload.tipo = args.tipo;
+  if (Object.hasOwn(args, "body")) {
+    payload.conteudo = buildTiptapDoc(args.body); // "" -> valid empty doc
+    payload.conteudo_plain = args.body ?? "";
+  }
+  if (Object.hasOwn(args, "ig_caption")) payload.ig_caption = args.ig_caption;
+  if (Object.hasOwn(args, "status")) payload.status = args.status;
+
+  // correcao_cliente is live in the client portal — an edit with no explicit status
+  // must pull the post out of the client's view.
+  if (currentStatus === "correcao_cliente" && !Object.hasOwn(args, "status")) {
+    payload.status = "revisao_interna";
+  }
+
+  // Atomic guarded update: re-check tenant + editability so a status race between
+  // the prefetch and the write cannot slip a now-client-facing post through.
+  const { data, error } = await d.db
+    .from("workflow_posts")
+    .update(payload)
+    .eq("conta_id", d.ctx.conta_id)
+    .eq("id", args.post_id)
+    .in("status", EDITABLE_STATUSES)
+    .select("id, workflow_id, titulo, tipo, status, ig_caption, created_via, updated_at")
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) {
+    throw new McpInputError("Post não pôde ser atualizado (estado alterado). Tente novamente.");
+  }
+  return data;
+}
