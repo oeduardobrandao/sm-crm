@@ -336,6 +336,37 @@ export function validatePropertyValue(
   }
 }
 
+/** Instantiate a workflow template's `etapas` JSONB into workflow_etapa rows
+ *  (WITHOUT workflow_id — the caller attaches it). Fail-closed on malformed JSONB,
+ *  skips non-object elements (contiguous ordem), keeps responsavel_id, and uses
+ *  Number.isInteger for the integer/bigint columns. First step is ativo+iniciado_em. */
+export function instantiateTemplateEtapas(
+  rawEtapas: unknown,
+  now: string,
+): {
+  ordem: number; nome: string; prazo_dias: number; tipo_prazo: "uteis" | "corridos";
+  tipo: "padrao" | "aprovacao_cliente"; responsavel_id: number | null;
+  status: "ativo" | "pendente"; iniciado_em: string | null;
+  concluido_em: null; data_limite: null;
+}[] {
+  if (!Array.isArray(rawEtapas)) return [];
+  const objs = rawEtapas.filter(
+    (e) => e && typeof e === "object" && !Array.isArray(e),
+  ) as Record<string, unknown>[];
+  return objs.map((o, i) => ({
+    ordem: i,
+    nome: typeof o.nome === "string" ? o.nome : "",
+    prazo_dias: Number.isInteger(o.prazo_dias) ? (o.prazo_dias as number) : 0,
+    tipo_prazo: o.tipo_prazo === "uteis" ? "uteis" : "corridos",
+    tipo: o.tipo === "aprovacao_cliente" ? "aprovacao_cliente" : "padrao",
+    responsavel_id: Number.isInteger(o.responsavel_id) ? (o.responsavel_id as number) : null,
+    status: i === 0 ? "ativo" : "pendente",
+    iniciado_em: i === 0 ? now : null,
+    concluido_em: null,
+    data_limite: null,
+  }));
+}
+
 /**
  * Project a workflow template's `etapas` JSONB array into the agent-facing shape.
  * Fails closed on malformed JSONB, skips non-object elements, drops the internal
