@@ -210,6 +210,7 @@ Deno.test("projectTemplateEtapas fails closed on non-array and skips non-objects
 Deno.test("extractTemplateOptionIds pulls string ids from config.options, defensive", () => {
   assertEquals(extractTemplateOptionIds({ options: [{ id: "a", label: "A" }, { id: "b" }] }), ["a", "b"]);
   assertEquals(extractTemplateOptionIds({ options: [{ label: "no id" }, { id: 5 }, "x", null] }), []);
+  assertEquals(extractTemplateOptionIds({ options: [{ id: "a" }, { id: 5 }, { id: "b" }, "x", { id: "c" }] }), ["a", "b", "c"]);
   assertEquals(extractTemplateOptionIds({}), []);
   assertEquals(extractTemplateOptionIds(null), []);
   assertEquals(extractTemplateOptionIds([{ id: "a" }]), []); // array config, not object-with-options
