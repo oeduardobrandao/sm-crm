@@ -2,6 +2,7 @@ import { assert, assertEquals } from "./assert.ts";
 import {
   allowlistClient,
   buildPostFeedback,
+  buildTiptapDoc,
   deriveFormatMeta,
   firstLine,
   pageContentToMarkdown,
@@ -160,4 +161,23 @@ Deno.test("buildPostFeedback groups, derives author, orders feedback/timeline/po
 
 Deno.test("buildPostFeedback empty input -> []", () => {
   assertEquals(buildPostFeedback([], []), []);
+});
+
+Deno.test("buildTiptapDoc builds core-node paragraphs", () => {
+  assertEquals(buildTiptapDoc("Olá mundo"), {
+    type: "doc",
+    content: [{ type: "paragraph", content: [{ type: "text", text: "Olá mundo" }] }],
+  });
+  // one paragraph per line; a blank line -> empty paragraph
+  assertEquals(buildTiptapDoc("linha 1\n\nlinha 3"), {
+    type: "doc",
+    content: [
+      { type: "paragraph", content: [{ type: "text", text: "linha 1" }] },
+      { type: "paragraph" },
+      { type: "paragraph", content: [{ type: "text", text: "linha 3" }] },
+    ],
+  });
+  // empty / undefined -> a doc with a single empty paragraph
+  assertEquals(buildTiptapDoc(""), { type: "doc", content: [{ type: "paragraph" }] });
+  assertEquals(buildTiptapDoc(undefined), { type: "doc", content: [{ type: "paragraph" }] });
 });

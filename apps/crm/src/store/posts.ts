@@ -33,6 +33,7 @@ export interface WorkflowPost {
   instagram_media_id?: string | null;
   created_at?: string;
   updated_at?: string;
+  created_via?: 'human' | 'agent';
 }
 
 export interface ClientePost {

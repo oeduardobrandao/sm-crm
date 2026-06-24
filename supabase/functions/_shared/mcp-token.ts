@@ -3,9 +3,9 @@ import { effectivePlanFeature } from "./entitlements-rpc.ts";
 
 export const MCP_TOKEN_PREFIX = "mesaas_sk_";
 
-// Scopes that map to a backing read tool today (PR 1). Write scopes are reserved for PR 3.
+// Scopes that map to a backing tool. Read scopes (PR 1) + posts:write (write tools).
 export const MCP_ALLOWED_SCOPES = [
-  "clientes:read", "posts:read", "workflows:read", "ideias:read",
+  "clientes:read", "posts:read", "workflows:read", "ideias:read", "posts:write",
 ] as const;
 export type McpScope = (typeof MCP_ALLOWED_SCOPES)[number];
 
@@ -79,6 +79,13 @@ export class McpScopeError extends Error {
     super(`scope_required:${scope}`);
   }
 }
+
+/**
+ * A safe, caller-facing validation error. Its message IS returned to the client
+ * (it only describes the caller's own workspace) — unlike internal errors, which
+ * stay generic.
+ */
+export class McpInputError extends Error {}
 
 /** Throws McpScopeError if `ctx` lacks `scope`. */
 export function requireScope(ctx: McpKeyContext, scope: string): void {

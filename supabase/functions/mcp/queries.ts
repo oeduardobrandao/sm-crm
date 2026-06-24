@@ -1,11 +1,12 @@
 // deno-lint-ignore-file no-explicit-any
 import { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { signGetUrl } from "../_shared/r2.ts";
-import { McpKeyContext } from "../_shared/mcp-token.ts";
+import { McpKeyContext, McpInputError } from "../_shared/mcp-token.ts";
 import { MCP_PROP_MODO, MCP_PROP_ANOTACAO } from "./seed.ts";
 import {
   allowlistClient,
   buildPostFeedback,
+  buildTiptapDoc,
   CLIENT_PUBLIC_FIELDS,
   deriveFormatMeta,
   FeedbackRow,
@@ -206,7 +207,7 @@ function metricsFor(
 // ---- posts -------------------------------------------------------------------
 
 const POST_COLS =
-  "id, workflow_id, titulo, tipo, status, ig_caption, conteudo_plain, " +
+  "id, workflow_id, titulo, tipo, status, ig_caption, conteudo_plain, created_via, " +
   "instagram_media_id, instagram_permalink, scheduled_at, published_at, created_at";
 
 async function clientWorkflowIds(d: Deps, clientId: number): Promise<number[]> {
@@ -271,6 +272,7 @@ export async function listPosts(
       published: p.published_at !== null,
       published_at: p.published_at,
       instagram_permalink: p.instagram_permalink ?? null,
+      created_via: p.created_via,
       metrics,
     };
   });
@@ -340,6 +342,7 @@ export async function getPost(d: Deps, args: { post_id: number }): Promise<any |
     published_at: p.published_at,
     scheduled_at: p.scheduled_at,
     instagram_permalink: p.instagram_permalink ?? null,
+    created_via: p.created_via,
     metrics: metricsFor(p, metricMaps),
   };
 }
@@ -396,7 +399,7 @@ export async function listWorkflows(
 ): Promise<any[]> {
   let q = d.db
     .from("workflows")
-    .select("id, cliente_id, titulo, status, etapa_atual, created_at")
+    .select("id, cliente_id, titulo, status, etapa_atual, created_via, created_at")
     .eq("conta_id", d.ctx.conta_id);
   if (args.client_id !== undefined) q = q.eq("cliente_id", args.client_id);
   if (args.status) q = q.eq("status", args.status);
@@ -536,4 +539,100 @@ export async function listPostFeedback(
   }));
 
   return buildPostFeedback(feedbackRows, statusEvents);
+}
+
+// ---- writes ------------------------------------------------------------------
+
+async function verifyActiveWorkflow(d: Deps, workflowId: number): Promise<any | null> {
+  const { data } = await d.db
+    .from("workflows")
+    .select("id")
+    .eq("conta_id", d.ctx.conta_id)
+    .eq("id", workflowId)
+    .eq("status", "ativo")
+    .maybeSingle();
+  return data ?? null;
+}
+
+export async function createWorkflow(
+  d: Deps,
+  args: { client_id: number; titulo: string },
+): Promise<any> {
+  const client = await verifyClient(d, args.client_id);
+  if (!client) throw new McpInputError("Cliente não encontrado neste workspace.");
+
+  const { data: wf, error: wfErr } = await d.db
+    .from("workflows")
+    .insert({
+      conta_id: d.ctx.conta_id,
+      user_id: d.ctx.created_by,
+      cliente_id: args.client_id,
+      titulo: args.titulo,
+      status: "ativo",
+      etapa_atual: 0,
+      recorrente: false,
+      modo_prazo: "padrao",
+      created_via: "agent",
+    })
+    .select("id, cliente_id, titulo, status, etapa_atual, created_via, created_at")
+    .single();
+  if (wfErr) throw wfErr;
+
+  const now = d.now?.() ?? new Date().toISOString();
+  const { error: etErr } = await d.db.from("workflow_etapas").insert({
+    workflow_id: wf.id,
+    ordem: 0,
+    nome: "Conteúdo",
+    prazo_dias: 0,
+    tipo_prazo: "corridos",
+    tipo: "padrao",
+    status: "ativo",
+    iniciado_em: now,
+    responsavel_id: null,
+    concluido_em: null,
+    data_limite: null,
+  });
+  if (etErr) {
+    // Compensating cleanup: a zero-etapa fluxo renders broken on the board.
+    await d.db.from("workflows").delete().eq("id", wf.id);
+    throw etErr;
+  }
+  return wf;
+}
+
+export async function createPost(
+  d: Deps,
+  args: { workflow_id: number; titulo: string; tipo?: string; body?: string; ig_caption?: string },
+): Promise<any> {
+  const wf = await verifyActiveWorkflow(d, args.workflow_id);
+  if (!wf) throw new McpInputError("Fluxo não encontrado, ou inativo, neste workspace.");
+
+  const { data: last } = await d.db
+    .from("workflow_posts")
+    .select("ordem")
+    .eq("conta_id", d.ctx.conta_id)
+    .eq("workflow_id", args.workflow_id)
+    .order("ordem", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const ordem = ((last?.ordem as number | undefined) ?? -1) + 1;
+
+  const { data: post, error } = await d.db
+    .from("workflow_posts")
+    .insert({
+      workflow_id: args.workflow_id,
+      conta_id: d.ctx.conta_id,
+      titulo: args.titulo,
+      tipo: args.tipo ?? "feed",
+      conteudo: buildTiptapDoc(args.body),
+      conteudo_plain: args.body ?? "",
+      ig_caption: args.ig_caption ?? null,
+      ordem,
+      status: "rascunho",
+      created_via: "agent",
+    })
+    .select("id, workflow_id, titulo, tipo, status, ig_caption, created_via, created_at")
+    .single();
+  if (error) throw error;
+  return post;
 }

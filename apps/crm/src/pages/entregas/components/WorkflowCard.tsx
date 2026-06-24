@@ -277,6 +277,24 @@ export function WorkflowCard({
         }}
       >
         {card.workflow.titulo}
+        {card.workflow.created_via === 'agent' && (
+          <span
+            title="Criado por agente de IA"
+            style={{
+              marginLeft: '0.4rem',
+              padding: '0.05rem 0.35rem',
+              borderRadius: '4px',
+              fontSize: '0.6rem',
+              fontWeight: 700,
+              letterSpacing: '0.04em',
+              background: 'rgba(234, 179, 8, 0.15)',
+              color: 'var(--primary-color)',
+              verticalAlign: 'middle',
+            }}
+          >
+            IA
+          </span>
+        )}
       </div>
 
       {/* Deadline badge + prazo type */}

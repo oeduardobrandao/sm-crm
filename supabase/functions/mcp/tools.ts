@@ -1,8 +1,10 @@
 // deno-lint-ignore-file no-explicit-any
 import { z } from "npm:zod@3";
 import { insertAuditLog } from "../_shared/audit.ts";
-import { McpScopeError, requireScope } from "../_shared/mcp-token.ts";
+import { McpInputError, McpScopeError, requireScope } from "../_shared/mcp-token.ts";
 import {
+  createPost,
+  createWorkflow,
   Deps,
   getBrandProfile,
   getClient,
@@ -23,9 +25,13 @@ function jsonResult(data: unknown) {
 function errorResult(e: unknown) {
   const message = e instanceof McpScopeError
     ? `Permission denied: missing scope '${e.scope}'.`
+    : e instanceof McpInputError
+    ? e.message
     : "Internal error.";
-  // Never leak raw error details to the client (logged internally instead).
-  if (!(e instanceof McpScopeError)) console.error("[mcp] tool error:", e);
+  // Never leak raw error details (logged internally instead).
+  if (!(e instanceof McpScopeError) && !(e instanceof McpInputError)) {
+    console.error("[mcp] tool error:", e);
+  }
   return { content: [{ type: "text" as const, text: JSON.stringify({ error: message }) }], isError: true };
 }
 
@@ -35,7 +41,7 @@ async function audit(deps: Deps, name: string, args: Record<string, unknown>) {
     actor_user_id: deps.ctx.created_by,
     action: `mcp.${name}`,
     resource_type: "mcp",
-    resource_id: String((args.post_id ?? args.client_id ?? "") || ""),
+    resource_id: String((args.post_id ?? args.client_id ?? args.workflow_id ?? "") || ""),
     metadata: { key_id: deps.ctx.key_id, tool: name, args }, // args = ids/filters only, no payload
   });
 }
@@ -49,12 +55,13 @@ function register(
   description: string,
   shape: z.ZodRawShape,
   run: (args: any) => Promise<unknown>,
+  auditArgs?: (args: any) => Record<string, unknown>,
 ) {
   server.tool(name, description, shape, async (args: any) => {
     try {
       requireScope(deps.ctx, scope);
       const data = await run(args ?? {});
-      await audit(deps, name, args ?? {});
+      await audit(deps, name, (auditArgs ?? ((a: any) => a))(args ?? {}));
       return jsonResult(data);
     } catch (e) {
       return errorResult(e);
@@ -129,4 +136,26 @@ export function registerTools(server: any, deps: Deps): void {
     "Lista as páginas de conteúdo (estratégia, materiais) dos clientes do workspace.",
     { client_id: z.number().int().optional() },
     (a) => listPages(deps, a));
+
+  register(server, deps, "create_workflow", "posts:write",
+    "Cria um fluxo de produção (necessário para criar posts). Retorna o fluxo criado.",
+    { client_id: z.number().int().positive(), titulo: z.string().trim().min(1).max(200) },
+    (a) => createWorkflow(deps, a),
+    (a) => ({ client_id: a.client_id, titulo: a.titulo }));
+
+  register(server, deps, "create_post", "posts:write",
+    "Cria um post em rascunho dentro de um fluxo ativo. O agente nunca publica nem envia ao cliente.",
+    {
+      workflow_id: z.number().int().positive(),
+      titulo: z.string().trim().min(1).max(200),
+      tipo: z.enum(["feed", "reels", "stories", "carrossel"]).optional(),
+      body: z.string().max(10000).optional(),
+      ig_caption: z.string().max(2200).optional(),
+    },
+    (a) => createPost(deps, a),
+    (a) => ({
+      workflow_id: a.workflow_id, tipo: a.tipo, titulo: a.titulo,
+      has_body: !!a.body, body_len: a.body?.length ?? 0,
+      has_ig_caption: !!a.ig_caption, ig_caption_len: a.ig_caption?.length ?? 0,
+    }));
 }

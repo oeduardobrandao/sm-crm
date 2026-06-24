@@ -126,6 +126,7 @@ export interface Workflow {
   link_drive?: string | null;
   position?: number;
   created_at?: string;
+  created_via?: 'human' | 'agent';
 }
 
 export async function getWorkflows(): Promise<Workflow[]> {
