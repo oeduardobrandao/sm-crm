@@ -29,7 +29,7 @@ targeting `post_approvals`.
 | --- | --- | --- |
 | `id` | bigserial | PK |
 | `post_id` | bigint | FK → `workflow_posts(id)` ON DELETE CASCADE |
-| `token` | text | hub token (NOT exposed by this tool) |
+| `token` | text | hub token, **nullable** (made nullable for workspace replies — migration `20260429000002`); NOT exposed by this tool |
 | `action` | text | `aprovado` \| `correcao` \| `mensagem` |
 | `comentario` | text | the client's words (nullable) |
 | `is_workspace_user` | boolean | `false` = client, `true` = agency reply |
@@ -115,60 +115,79 @@ list_post_feedback({ post_id?, client_id?, action?, since?, limit? }) → PostFe
 ## Scoping & query approach (security-critical)
 
 `post_approvals` has no `conta_id`; it is read **only** through the inner join on
-`workflow_posts.conta_id`. Steps:
+`workflow_posts.conta_id` — never by bare `post_id`. The read is **two-phase** so
+SCAN_CAP can only affect *which posts* are picked, never the completeness of a
+selected post's `feedback[]`:
 
-1. **Feedback scan** — query `post_approvals` with an inner join:
-   ```
-   post_approvals
-     .select("post_id, action, comentario, is_workspace_user, created_at,
-              workflow_posts!inner(workflow_id, titulo, status, conta_id)")
-     .eq("workflow_posts.conta_id", d.ctx.conta_id)
-   ```
-   Conditional filters:
-   - `post_id` given → `.eq("post_id", post_id)`
-   - `client_id` given → `wfIds = await clientWorkflowIds(d, client_id)`; if
-     `wfIds.length === 0` return `[]`; else `.in("workflow_posts.workflow_id", wfIds)`
-   - `action` given → `.eq("action", action)`
-   - `since` given → `.gte("created_at", since)`
+**Phase 1 — pick the post ids** (lightweight capped scan):
+```
+post_approvals
+  .select("post_id, created_at, workflow_posts!inner(conta_id)")
+  .eq("workflow_posts.conta_id", d.ctx.conta_id)
+```
+Conditional filters (all **conjunctive**):
+- `post_id` given → `.eq("post_id", post_id)`
+- `client_id` given → `wfIds = await clientWorkflowIds(d, client_id)`; if
+  `wfIds.length === 0` return `[]` (no `post_approvals` query); else
+  `.in("workflow_posts.workflow_id", wfIds)`
+- `action` given → `.eq("action", action)`
+- `since` given → `.gte("created_at", since)`
 
-   Then `.order("created_at", { ascending: false }).limit(SCAN_CAP)`.
+Then `.order("created_at", { ascending: false }).limit(SCAN_CAP)`, and
+`chosenIds = topDistinctPostIds(rows, limit)` (distinct `post_id`s in first-seen
+desc order, capped at `limit`). If `chosenIds` is empty, return `[]`.
 
-   **`cliente_id` resolution:** the join yields `workflow_id` per row, not
-   `cliente_id`. Resolve via one query over the distinct workflow ids present:
-   `workflows.select("id, cliente_id").eq("conta_id", d.ctx.conta_id).in("id", ids)`,
-   build a `workflow_id → cliente_id` map, and stamp each normalized row.
+**Phase 2a — fetch the complete feedback for the chosen posts** (re-scoped, same
+content filters, **uncapped**):
+```
+post_approvals
+  .select("post_id, action, comentario, is_workspace_user, created_at,
+           workflow_posts!inner(workflow_id, titulo, status, conta_id)")
+  .eq("workflow_posts.conta_id", d.ctx.conta_id)   // re-asserted — never bare post_id
+  .in("post_id", chosenIds)
+```
+plus the same `action` / `since` filters as Phase 1. No cap is needed (bounded by
+≤ `limit` posts), and **this is what guarantees `feedback[]` is never truncated**:
+every matching approval row for each chosen post is returned.
 
-   Normalize each scanned row into the explicit shape the helper consumes:
-   `FeedbackRow = { post_id, titulo, status, cliente_id, action, comentario,
-   is_workspace_user, created_at }`.
+**`cliente_id` resolution:** Phase 2a yields `workflow_id` per row, not
+`cliente_id`. Resolve via one query over the distinct workflow ids present:
+`workflows.select("id, cliente_id").eq("conta_id", d.ctx.conta_id).in("id", ids)`,
+build a `workflow_id → cliente_id` map, and stamp each normalized row. **On a map
+miss** (anomalous — inconsistent data or a race): **drop that row and
+`console.warn`** (never surfaced to the client). `cliente_id` is therefore always
+non-null in the contract; a post left with zero feedback after drops is omitted.
 
-2. **Pick posts** — `topDistinctPostIds(feedbackRows, limit)`: walk the
-   desc-ordered rows, collect distinct `post_id`s in first-seen order, cap at
-   `limit`.
+Normalize Phase 2a rows into the explicit shape the helper consumes:
+`FeedbackRow = { post_id, titulo, status, cliente_id, action, comentario,
+is_workspace_user, created_at }`.
 
-3. **Timeline fetch** — only for the chosen post ids:
-   ```
-   post_status_events
-     .select("post_id, from_status, to_status, source, actor_name, created_at")
-     .eq("conta_id", d.ctx.conta_id)        // second, independent tenant check
-     .in("post_id", chosenIds)
-     .order("created_at", { ascending: true })
-   ```
-   Normalize into `StatusEventRow = { post_id, from_status, to_status, source,
-   actor_name, created_at }`.
+**Phase 2b — timeline fetch** for the chosen post ids (may run in parallel with
+2a via `Promise.all`):
+```
+post_status_events
+  .select("post_id, from_status, to_status, source, actor_name, created_at")
+  .eq("conta_id", d.ctx.conta_id)          // direct, independent tenant check
+  .in("post_id", chosenIds)
+  .order("created_at", { ascending: true })
+```
+Normalize into `StatusEventRow = { post_id, from_status, to_status, source,
+actor_name, created_at }`.
 
-4. **Shape** — `buildPostFeedback(feedbackRowsForChosenPosts, statusEventRows)`
-   groups by post, derives `author`, keeps `feedback` newest-first, attaches the
-   full `timeline` oldest→newest, computes `latest_feedback_at` (max feedback
-   `created_at`), and orders posts by `latest_feedback_at` desc.
+**Shape** — `buildPostFeedback(feedbackRows, statusEventRows)` groups by post,
+derives `author`, keeps `feedback` newest-first, attaches the full `timeline`
+oldest→newest, computes `latest_feedback_at` (max feedback `created_at`), and
+orders posts by `latest_feedback_at` desc.
 
 ### SCAN_CAP — bounded overfetch (known limitation)
-`SCAN_CAP = 2000`. Because the feedback scan is row-capped, "`limit` = distinct
-posts" is **best-effort**: if a single post had more than `SCAN_CAP` matching
-feedback rows newer than the limit-th post's latest feedback, tail posts could be
-crowded out. This is effectively unreachable at agency scale (a post receives a
-handful of correction rounds, not thousands of approval rows), so slice 1 accepts
-it as a documented trade-off:
+`SCAN_CAP = 2000`, applied **only to the Phase-1 post-id scan**. Because Phase 2a
+re-fetches feedback for the chosen posts uncapped, a selected post's `feedback[]`
+is always complete — SCAN_CAP can only affect *which posts* are picked. That
+selection is therefore **best-effort**: if a single post had more than `SCAN_CAP`
+Phase-1 rows newer than the limit-th post's latest feedback, tail posts could be
+crowded out of the selection. This is effectively unreachable at agency scale (a
+post receives a handful of correction rounds, not thousands of rows), so slice 1
+accepts it as a documented trade-off:
 
 - **Log when the cap is hit** (`console.warn` with `conta_id` + count) for
   observability — never returned to the client.
@@ -187,9 +206,13 @@ it as a documented trade-off:
   - `topDistinctPostIds(rows: { post_id: number }[], limit: number): number[]`
   - `buildPostFeedback(feedbackRows: FeedbackRow[], statusEvents: StatusEventRow[]): PostFeedbackItem[]`
     (plus the `FeedbackRow`, `StatusEventRow`, `PostFeedbackItem` types).
-- **`mcp/queries.ts`** — `listPostFeedback(d, args)`: the two scoped queries +
-  `cliente_id` map + clamp + SCAN_CAP log, wired into the helpers. Reuses
-  `clientWorkflowIds`. Destructures `{ data, error }` and throws on error.
+- **`mcp/queries.ts`** — `listPostFeedback(d, args)`: the phased scoped reads
+  (Phase 1 id scan, Phase 2a feedback fetch, Phase 2b timeline fetch) + the
+  `workflow_id → cliente_id` map (drop+warn on miss) + `limit` clamp + SCAN_CAP
+  log, wired into the helpers. Reuses `clientWorkflowIds`. Destructures
+  `{ data, error }` and throws on error.
+- **`supabase/functions/__tests__/mcp-feedback_test.ts`** — new file: the
+  mocked-db scoping test for `listPostFeedback` (see Testing).
 - **`mcp/tools.ts`** — register `list_post_feedback` under `posts:read`, Portuguese
   description ("Lista o feedback dos clientes nos posts (aprovações, correções,
   mensagens) com a linha do tempo de status."), shape
@@ -223,14 +246,37 @@ Unit tests for the pure helpers in `supabase/functions/__tests__/mcp-content_tes
 9. fewer distinct posts than `limit` → returns all
 10. empty input → `[]`
 
+### Security / scoping test for `listPostFeedback` (mocked db)
+
+This tool's core risk is **tenant scoping**, not grouping, so — unlike the other
+query helpers — `listPostFeedback` gets a dedicated test in a new file
+`supabase/functions/__tests__/mcp-feedback_test.ts`. Use a small **recording fake
+`db`**: a chainable stub whose `.from/.select/.eq/.in/.gte/.order/.limit` record
+their arguments and whose `await` resolves to canned `{ data, error }` from a
+per-table queue (handles the multiple `workflows` and `post_approvals` reads in
+order). No real Supabase. Build `Deps` with `ctx.conta_id = "workspace-A"` and a
+matching `ctx.scopes`. Assert:
+
+11. **Every `post_approvals` read (Phase 1 and Phase 2a)** uses a `select`
+    containing `workflow_posts!inner` AND an
+    `.eq("workflow_posts.conta_id", "workspace-A")` — no `post_approvals` query
+    ever omits the conta_id join filter (the load-bearing tenant boundary).
+12. **Conjunctive `post_id` + `client_id`:** both `.eq("post_id", X)` and
+    `.in("workflow_posts.workflow_id", wfIds)` are applied on Phase 1.
+13. **`client_id` whose `clientWorkflowIds` → `[]`** returns `[]` and issues **no**
+    `post_approvals` query at all.
+14. **Timeline fetch** calls `.from("post_status_events")` with both
+    `.eq("conta_id", "workspace-A")` and `.in("post_id", chosenIds)`.
+15. **`since` / `action`** are applied on the feedback reads
+    (`.gte("created_at", since)`, `.eq("action", action)`).
+
+Only the one-line `tools.ts` `register(...)` wiring remains untested, consistent
+with the other tools.
+
 Run with `npm run test:functions`
 (`deno test --no-check --node-modules-dir=auto --allow-env --allow-read
 --allow-net --allow-sys supabase/functions/`). Typecheck the module graph with
 `deno check --node-modules-dir=auto supabase/functions/mcp/index.ts`.
-
-`listPostFeedback` and the `tools.ts` registration follow the existing
-untested-by-convention pattern (DB query helpers are not unit-tested), so the
-testable logic is deliberately concentrated in the two pure helpers.
 
 ## Out of scope (YAGNI)
 
