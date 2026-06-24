@@ -157,6 +157,7 @@ Deno.test("updatePost: ownership-scoped prefetch + guarded update, TipTap body",
   const payload = updatePayload(calls, "workflow_posts")!;
   assertEquals((payload.conteudo as { type: string }).type, "doc"); // not a raw string
   assertEquals(payload.conteudo_plain, "nova linha");
+  assert(!Object.hasOwn(payload, "created_via"), "created_via not written on edit");
   assertEquals(out.id, 7);
 });
 
@@ -306,5 +307,6 @@ Deno.test("update_post tool redacts body/ig_caption from the audit log", async (
   assert(!meta.includes("ROTEIRO_SECRETO"), "raw body must not be logged");
   assert(!meta.includes("CAPTION_SECRETO"), "raw ig_caption must not be logged");
   assert(meta.includes("body_len"), "logs body_len instead");
+  assert(meta.includes("ig_caption_len"), "logs ig_caption_len instead");
   assertEquals((auditInsert!.args[0] as Record<string, unknown>).resource_id, "7");
 });
