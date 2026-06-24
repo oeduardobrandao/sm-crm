@@ -51,6 +51,7 @@ Deno.test("createWorkflow: ownership-checked, agent-stamped, with default etapa"
   const out = await createWorkflow(deps, { client_id: 5, titulo: "X" });
 
   assert(has(calls, "clientes", "eq", ["conta_id", "workspace-A"]), "client ownership scoped");
+  assert(has(calls, "clientes", "eq", ["id", 5]), "client ownership checks the id");
   const wf = insertPayload(calls, "workflows")!;
   assertEquals(wf.created_via, "agent");
   assertEquals(wf.status, "ativo");
@@ -84,6 +85,7 @@ Deno.test("createPost: active-fluxo ownership, rascunho, agent, ordem max+1, Tip
 
   assert(has(calls, "workflows", "eq", ["conta_id", "workspace-A"]), "workflow ownership scoped");
   assert(has(calls, "workflows", "eq", ["status", "ativo"]), "workflow must be ativo");
+  assert(has(calls, "workflows", "eq", ["id", 99]), "workflow ownership checks the id");
   const post = insertPayload(calls, "workflow_posts")!;
   assertEquals(post.status, "rascunho");
   assertEquals(post.created_via, "agent");
@@ -129,4 +131,5 @@ Deno.test("create_post tool redacts body/ig_caption from the audit log", async (
   assert(!meta.includes("ROTEIRO_SECRETO"), "raw body must not be logged");
   assert(!meta.includes("CAPTION_SECRETO"), "raw ig_caption must not be logged");
   assert(meta.includes("body_len"), "logs body_len instead");
+  assertEquals((auditInsert!.args[0] as Record<string, unknown>).resource_id, "99");
 });
