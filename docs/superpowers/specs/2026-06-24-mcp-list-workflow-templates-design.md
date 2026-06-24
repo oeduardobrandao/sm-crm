@@ -96,7 +96,14 @@ No arguments — templates are workspace-global and few; the tool lists them all
 4. **Group properties by `template_id`** into a `Map<number, Property[]>`,
    projecting each def to `{ id, name, type, config, portal_visible, display_order }`
    (drops `template_id`/`conta_id`/`created_at`). Order is preserved from the
-   query (display_order, then id).
+   query (display_order, then id). **Normalize `config`** so the contract always
+   returns an object (jsonb has no DB constraint that it is one, and the app
+   treats it as `Record<string, unknown>`):
+   ```ts
+   config: row.config && typeof row.config === "object" && !Array.isArray(row.config)
+     ? row.config
+     : {},
+   ```
 5. **Assemble** one object per template, preserving the templates' query order:
    ```ts
    return rows.map((t) => ({
@@ -132,7 +139,10 @@ config shape is not yet fully normalized). Passing it through verbatim is
 faithful and robust, and it is exactly what slice C (`set_post_property`) will
 read to validate values. Normalizing now would create a second contract to
 maintain before C exists. Each property also carries its **`id`** — the handle
-C writes against (`post_property_values.property_definition_id`).
+C writes against (`post_property_values.property_definition_id`). The only
+massaging is a defensive normalization: a `config` that is not a plain object
+(null / array / scalar) is returned as `{}`, so the contract is always an
+object — no normalization of the object's *contents*.
 
 ## Tenant security
 
@@ -181,6 +191,9 @@ New file `supabase/functions/__tests__/mcp-templates_test.ts`, run with
     with exactly the returned template ids.
   - Properties are grouped onto the correct template by `template_id`; each
     property keeps `id` and `config` (verbatim object), drops `template_id`.
+  - **`config` normalization:** a property whose `config` is a non-object
+    (`null`, an array, or a scalar) is returned with `config: {}`; a real object
+    config is passed through unchanged.
   - `etapas` are projected (no `responsavel_id`) and preserve order.
   - **Empty fast-path:** zero templates → returns `[]` and the
     `template_property_definitions` table is **never queried** (assert no `from`
