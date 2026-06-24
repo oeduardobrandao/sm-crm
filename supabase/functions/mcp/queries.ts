@@ -9,6 +9,7 @@ import {
   buildTiptapDoc,
   CLIENT_PUBLIC_FIELDS,
   deriveFormatMeta,
+  extractTemplateOptionIds,
   FeedbackRow,
   firstLine,
   pageContentToMarkdown,
@@ -18,6 +19,7 @@ import {
   Quartiles,
   StatusEventRow,
   topDistinctPostIds,
+  validatePropertyValue,
 } from "./content.ts";
 
 const METRIC_KEYS = ["reach", "saved", "shares", "comments", "likes"] as const;
@@ -750,4 +752,92 @@ export async function updatePost(
     throw new McpInputError("Post não pôde ser atualizado (estado alterado). Tente novamente.");
   }
   return data;
+}
+
+const OPTION_TYPES = ["select", "status", "multiselect"];
+
+export async function setPostProperty(
+  d: Deps,
+  args: { post_id: number; property_id: number; value: unknown },
+): Promise<{ post_id: number; property_id: number; value: unknown; status: string }> {
+  // 1. Fetch post + its template (tenant-scoped, + embedded workflow tenant check).
+  const { data: post, error: postErr } = await d.db
+    .from("workflow_posts")
+    .select("id, status, workflow_id, workflows!inner(template_id, conta_id)")
+    .eq("conta_id", d.ctx.conta_id)
+    .eq("workflows.conta_id", d.ctx.conta_id)
+    .eq("id", args.post_id)
+    .maybeSingle();
+  if (postErr) throw postErr;
+  if (!post) throw new McpInputError("Post não encontrado neste workspace.");
+  const p = post as any;
+  if (!EDITABLE_STATUSES.includes(p.status)) {
+    throw new McpInputError(`Post em estado '${p.status}' não pode ser editado pelo agente.`);
+  }
+  const templateId = p.workflows?.template_id ?? null;
+  if (templateId === null) {
+    throw new McpInputError("O fluxo deste post não usa um modelo, então não há propriedades para definir.");
+  }
+
+  // 2. Fetch the definition + verify it belongs to the post's template.
+  const { data: def, error: defErr } = await d.db
+    .from("template_property_definitions")
+    .select("id, template_id, name, type, config")
+    .eq("conta_id", d.ctx.conta_id)
+    .eq("id", args.property_id)
+    .maybeSingle();
+  if (defErr) throw defErr;
+  if (!def) throw new McpInputError("Propriedade não encontrada neste workspace.");
+  const dfn = def as any;
+  if (dfn.template_id !== templateId) {
+    throw new McpInputError("Esta propriedade não pertence ao modelo do fluxo deste post.");
+  }
+
+  // 3. Build allowed option ids (only for option types).
+  const allowed = new Set(extractTemplateOptionIds(dfn.config));
+  if (OPTION_TYPES.includes(dfn.type)) {
+    const { data: wso, error: wsoErr } = await d.db
+      .from("workflow_select_options")
+      .select("option_id")
+      .eq("conta_id", d.ctx.conta_id)
+      .eq("workflow_id", p.workflow_id)
+      .eq("property_definition_id", args.property_id);
+    if (wsoErr) throw wsoErr;
+    for (const o of (wso ?? []) as any[]) allowed.add(o.option_id);
+  }
+
+  // 4. Validate the value against the definition type.
+  const verr = validatePropertyValue(dfn.type, args.value, allowed);
+  if (verr) throw new McpInputError(verr);
+
+  // 5. Write — status-first for correcao_cliente (pull out of client view), then upsert.
+  let status = p.status as string;
+  if (status === "correcao_cliente") {
+    const { data: moved, error: moveErr } = await d.db
+      .from("workflow_posts")
+      .update({ status: "revisao_interna" })
+      .eq("conta_id", d.ctx.conta_id)
+      .eq("id", args.post_id)
+      .eq("status", "correcao_cliente")
+      .select("id")
+      .maybeSingle();
+    if (moveErr) throw moveErr;
+    if (!moved) throw new McpInputError("O status do post mudou; tente novamente.");
+    status = "revisao_interna";
+  }
+
+  const { error: upErr } = await d.db
+    .from("post_property_values")
+    .upsert(
+      {
+        post_id: args.post_id,
+        property_definition_id: args.property_id,
+        value: args.value,
+        updated_at: d.now?.() ?? new Date().toISOString(),
+      },
+      { onConflict: "post_id,property_definition_id" },
+    );
+  if (upErr) throw upErr;
+
+  return { post_id: args.post_id, property_id: args.property_id, value: args.value, status };
 }
