@@ -29,7 +29,8 @@ machinery (that lives in the next slice, with `update_post`).
 - `set_post_property`, media upload/attach, scheduling.
 - A separate `workflows:write` scope — `create_workflow` rides on `posts:write`
   (the fluxo is scaffolding for the post). Split later if finer granularity is wanted.
-- Atomicity across the workflow+etapa inserts (see Default etapa).
+- A DB transaction/RPC for the workflow+etapa pair — failure is handled by
+  compensating cleanup instead (see `create_workflow`).
 
 ## Data model (existing, + one migration)
 
@@ -78,8 +79,11 @@ create_workflow({ client_id: int>0, titulo: string(trim,1..200) }) →
    fluxo with zero etapas renders broken.
 4. Return the workflow row (so the agent gets `id` to chain into `create_post`).
 
-`now = d.now?.() ?? new Date().toISOString()`. The two inserts are **non-atomic**
-(no cross-statement transaction; matches Express Post). Documented limitation.
+`now = d.now?.() ?? new Date().toISOString()`. **Compensating cleanup:** the two
+inserts aren't in a transaction, and a zero-etapa fluxo renders broken on the board,
+so if the etapa insert fails the just-created workflow is deleted
+(`workflows` delete by `id`) before re-throwing — matching the CRM duplicate path's
+behavior (`workflows.ts:449`). This prevents an orphaned, board-invisible fluxo.
 
 ### `create_post`
 ```
@@ -91,8 +95,12 @@ create_post({
   ig_caption?: string(max 2200),   // Instagram's caption limit
 }) → { id, workflow_id, titulo, tipo, status: "rascunho", ig_caption, created_via: "agent", created_at }
 ```
-1. **Ownership check:** `workflows` where `id=workflow_id AND conta_id=ctx.conta_id`
-   (`maybeSingle`); if absent → `McpInputError("Fluxo não encontrado neste workspace.")`.
+1. **Ownership + state check:** `workflows` where `id=workflow_id AND
+   conta_id=ctx.conta_id AND status='ativo'` (`maybeSingle`); if absent →
+   `McpInputError("Fluxo não encontrado, ou inativo, neste workspace.")`. Drafting
+   into an `arquivado`/`concluido` fluxo is almost always a mistake, so inactive
+   fluxos are rejected (the agent's own freshly-created fluxo is `ativo`, so chaining
+   `create_workflow` → `create_post` works).
 2. `ordem` = `max(ordem)+1` over the fluxo's posts (`0` if none). Race-duplicate
    `ordem` acceptable for v1 (no RPC) — documented.
 3. Insert `workflow_posts`: `{ workflow_id, conta_id: ctx.conta_id, titulo,
@@ -206,10 +214,19 @@ id isn't known pre-insert; acceptable — the redacted args still record the cal
     workflow insert payload has `created_via:'agent'`, `status:'ativo'`,
     `conta_id:'workspace-A'`, `user_id` = `ctx.created_by`; a default etapa is inserted
     with `ordem:0`, `status:'ativo'`.
-  - `create_post`: ownership check queries `workflows` with `.eq("conta_id","workspace-A")`;
-    missing workflow → `McpInputError` (no insert); post insert payload has
-    `status:'rascunho'`, `created_via:'agent'`, `conta_id:'workspace-A'`,
-    `conteudo` is a TipTap doc (not a raw string); `ordem` = max+1.
+  - `create_post`: ownership check queries `workflows` with
+    `.eq("conta_id","workspace-A")` **and** `.eq("status","ativo")`; missing/inactive
+    workflow → `McpInputError` (no insert); post insert payload has `status:'rascunho'`,
+    `created_via:'agent'`, `conta_id:'workspace-A'`, `conteudo` is a TipTap doc (not a
+    raw string); `ordem` = max+1.
+- **Audit redaction (tool-wrapper test, `mcp-writes_test.ts`)** — register
+  `create_post` against a fake `server` (capture the handler) + the fake `db`, with
+  `ctx.scopes=['posts:write']`; invoke the captured handler with a `body`/`ig_caption`
+  payload; assert the `audit`-table insert the fake `db` recorded has
+  `metadata.args` that **excludes the raw `body` and `ig_caption` strings** and instead
+  carries `body_len`/`ig_caption_len` + `titulo`. This guards the highest-risk privacy
+  behavior at the layer where it lives (`register()`), so it can't regress while
+  query tests stay green.
 - Run: `npm run test:functions`. Typecheck: `deno check --node-modules-dir=auto
   supabase/functions/mcp/index.ts`. Frontend: `npm run build` (CRM badge/types).
 
@@ -219,7 +236,8 @@ id isn't known pre-insert; acceptable — the redacted args still record the cal
    editor (the `db push` to staging is flaky per project notes; the `ADD COLUMN IF
    NOT EXISTS … DEFAULT` is safe/idempotent).
 2. Deploy the function: `npx supabase functions deploy mcp --no-verify-jwt
-   --project-ref <prod>` (and staging), then restore `deno.lock` + `npm ci`.
+   --project-ref <prod>` (and staging), then restore **both** lock files
+   (`git checkout deno.lock supabase/functions/deno.lock`) + `npm ci`.
 3. Deploy the CRM (Vercel) for the badge.
 4. Smoke-test: a key/connection with `posts:write` runs `create_workflow` →
    `create_post`; confirm the draft appears in entregas as `rascunho` with an "IA"
