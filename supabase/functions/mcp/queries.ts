@@ -12,6 +12,7 @@ import {
   extractTemplateOptionIds,
   FeedbackRow,
   firstLine,
+  instantiateTemplateEtapas,
   pageContentToMarkdown,
   performanceTier,
   projectTemplateEtapas,
@@ -603,12 +604,33 @@ async function verifyActiveWorkflow(d: Deps, workflowId: number): Promise<any | 
   return data ?? null;
 }
 
+function defaultEtapa(now: string) {
+  return {
+    ordem: 0, nome: "Conteúdo", prazo_dias: 0, tipo_prazo: "corridos", tipo: "padrao",
+    status: "ativo", iniciado_em: now, responsavel_id: null, concluido_em: null, data_limite: null,
+  };
+}
+
 export async function createWorkflow(
   d: Deps,
-  args: { client_id: number; titulo: string },
+  args: { client_id: number; titulo: string; template_id?: number },
 ): Promise<any> {
   const client = await verifyClient(d, args.client_id);
   if (!client) throw new McpInputError("Cliente não encontrado neste workspace.");
+
+  // Optional template (tenant-scoped); DB error re-thrown before the not-found check.
+  let template: any = null;
+  if (args.template_id !== undefined) {
+    const { data, error } = await d.db
+      .from("workflow_templates")
+      .select("id, etapas")
+      .eq("conta_id", d.ctx.conta_id)
+      .eq("id", args.template_id)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) throw new McpInputError("Modelo (template) não encontrado neste workspace.");
+    template = data;
+  }
 
   const { data: wf, error: wfErr } = await d.db
     .from("workflows")
@@ -622,28 +644,20 @@ export async function createWorkflow(
       recorrente: false,
       modo_prazo: "padrao",
       created_via: "agent",
+      template_id: args.template_id ?? null,
     })
-    .select("id, cliente_id, titulo, status, etapa_atual, created_via, created_at")
+    .select("id, cliente_id, titulo, status, etapa_atual, template_id, created_via, created_at")
     .single();
   if (wfErr) throw wfErr;
 
   const now = d.now?.() ?? new Date().toISOString();
-  const { error: etErr } = await d.db.from("workflow_etapas").insert({
-    workflow_id: wf.id,
-    ordem: 0,
-    nome: "Conteúdo",
-    prazo_dias: 0,
-    tipo_prazo: "corridos",
-    tipo: "padrao",
-    status: "ativo",
-    iniciado_em: now,
-    responsavel_id: null,
-    concluido_em: null,
-    data_limite: null,
-  });
+  const base = template ? instantiateTemplateEtapas(template.etapas, now) : [];
+  const source = base.length > 0 ? base : [defaultEtapa(now)];
+  const rows = source.map((e) => ({ ...e, workflow_id: wf.id }));
+  const { error: etErr } = await d.db.from("workflow_etapas").insert(rows);
   if (etErr) {
     // Compensating cleanup: a zero-etapa fluxo renders broken on the board.
-    await d.db.from("workflows").delete().eq("id", wf.id);
+    await d.db.from("workflows").delete().eq("conta_id", d.ctx.conta_id).eq("id", wf.id);
     throw etErr;
   }
   return wf;
