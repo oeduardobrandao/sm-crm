@@ -62,7 +62,7 @@ Deno.test("validateConsentPayload rejects missing fields and bad scopes", () => 
   const badScope = validateConsentPayload({
     authorization_id: "a",
     conta_id: "c",
-    scopes: ["posts:write"],
+    scopes: ["admin:delete"],
   });
   assertEquals(badScope.ok, false); // not in allowlist
 });
