@@ -6,6 +6,7 @@ import {
   deriveFormatMeta,
   extractTemplateOptionIds,
   firstLine,
+  instantiateTemplateEtapas,
   pageContentToMarkdown,
   performanceTier,
   projectTemplateEtapas,
@@ -215,6 +216,37 @@ Deno.test("extractTemplateOptionIds pulls string ids from config.options, defens
   assertEquals(extractTemplateOptionIds(null), []);
   assertEquals(extractTemplateOptionIds([{ id: "a" }]), []); // array config, not object-with-options
   assertEquals(extractTemplateOptionIds("x"), []);
+});
+
+Deno.test("instantiateTemplateEtapas: contiguous ordem, responsavel_id kept, lifecycle fields, no workflow_id", () => {
+  const rows = instantiateTemplateEtapas([
+    { nome: "Roteiro", prazo_dias: 2, tipo_prazo: "uteis", tipo: "padrao", responsavel_id: 8 },
+    { nome: "Aprovação", prazo_dias: 1, tipo_prazo: "corridos", tipo: "aprovacao_cliente" },
+  ], "T");
+  assertEquals(rows, [
+    { ordem: 0, nome: "Roteiro", prazo_dias: 2, tipo_prazo: "uteis", tipo: "padrao", responsavel_id: 8, status: "ativo", iniciado_em: "T", concluido_em: null, data_limite: null },
+    { ordem: 1, nome: "Aprovação", prazo_dias: 1, tipo_prazo: "corridos", tipo: "aprovacao_cliente", responsavel_id: null, status: "pendente", iniciado_em: null, concluido_em: null, data_limite: null },
+  ]);
+  assert(!Object.hasOwn(rows[0], "workflow_id"), "no workflow_id key");
+});
+
+Deno.test("instantiateTemplateEtapas: fail-closed, skip non-objects, integer guards, defaults", () => {
+  assertEquals(instantiateTemplateEtapas(null, "T"), []);
+  assertEquals(instantiateTemplateEtapas({}, "T"), []);
+  assertEquals(instantiateTemplateEtapas("x", "T"), []);
+  const rows = instantiateTemplateEtapas(
+    [null, "nope", { prazo_dias: 1.5, responsavel_id: 2.7 }, ["arr"], { nome: "ok" }],
+    "T",
+  );
+  assertEquals(rows.length, 2);                  // 2 object elements survive
+  assertEquals(rows[0].ordem, 0);
+  assertEquals(rows[0].prazo_dias, 0);           // 1.5 (non-integer) -> 0
+  assertEquals(rows[0].responsavel_id, null);    // 2.7 (non-integer) -> null
+  assertEquals(rows[0].nome, "");                // missing -> ""
+  assertEquals(rows[0].tipo_prazo, "corridos");  // default
+  assertEquals(rows[0].tipo, "padrao");          // default
+  assertEquals(rows[1].ordem, 1);                // contiguous after skips
+  assertEquals(rows[1].nome, "ok");
 });
 
 Deno.test("validatePropertyValue: settable types, null clear, non-settable rejection, options", () => {

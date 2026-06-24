@@ -146,10 +146,14 @@ export function registerTools(server: any, deps: Deps): void {
     () => listWorkflowTemplates(deps, {}));
 
   register(server, deps, "create_workflow", "posts:write",
-    "Cria um fluxo de produção (necessário para criar posts). Retorna o fluxo criado.",
-    { client_id: z.number().int().positive(), titulo: z.string().trim().min(1).max(200) },
+    "Cria um fluxo de produção (necessário para criar posts). Opcionalmente instancia um modelo (template) com suas etapas. Retorna o fluxo criado.",
+    {
+      client_id: z.number().int().positive(),
+      titulo: z.string().trim().min(1).max(200),
+      template_id: z.number().int().positive().optional(),
+    },
     (a) => createWorkflow(deps, a),
-    (a) => ({ client_id: a.client_id, titulo: a.titulo }));
+    (a) => ({ client_id: a.client_id, titulo: a.titulo, template_id: a.template_id }));
 
   register(server, deps, "create_post", "posts:write",
     "Cria um post em rascunho dentro de um fluxo ativo. O agente nunca publica nem envia ao cliente.",

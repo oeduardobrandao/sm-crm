@@ -49,25 +49,31 @@ function has(calls: Call[], table: string, method: string, args: unknown[]): boo
     JSON.stringify(c.args) === JSON.stringify(args));
 }
 
-Deno.test("createWorkflow: ownership-checked, agent-stamped, with default etapa", async () => {
+Deno.test("createWorkflow: ownership-checked, agent-stamped, default etapa (no template)", async () => {
   const { db, calls } = makeFakeDb({
-    clientes: [{ data: { id: 5 }, error: null }],                       // verifyClient
-    workflows: [{ data: { id: 99, cliente_id: 5, titulo: "X", status: "ativo", etapa_atual: 0, created_via: "agent", created_at: "t" }, error: null }],
+    clientes: [{ data: { id: 5 }, error: null }],
+    workflows: [{ data: { id: 99, cliente_id: 5, titulo: "X", status: "ativo", etapa_atual: 0, template_id: null, created_via: "agent", created_at: "t" }, error: null }],
     workflow_etapas: [{ data: null, error: null }],
   });
-  const deps = { db, ctx: CTX } as unknown as Deps;
+  const deps = { db, ctx: CTX, now: () => "T" } as unknown as Deps;
   const out = await createWorkflow(deps, { client_id: 5, titulo: "X" });
 
   assert(has(calls, "clientes", "eq", ["conta_id", "workspace-A"]), "client ownership scoped");
   assert(has(calls, "clientes", "eq", ["id", 5]), "client ownership checks the id");
+  assert(!calls.some((c) => c.table === "workflow_templates"), "no template fetch when template_id omitted");
   const wf = insertPayload(calls, "workflows")!;
   assertEquals(wf.created_via, "agent");
   assertEquals(wf.status, "ativo");
   assertEquals(wf.conta_id, "workspace-A");
   assertEquals(wf.user_id, "user-1");
-  const et = insertPayload(calls, "workflow_etapas")!;
-  assertEquals(et.ordem, 0);
-  assertEquals(et.status, "ativo");
+  assertEquals(wf.template_id, null);                 // explicit null for the old path
+  const rows = insertPayload(calls, "workflow_etapas") as Record<string, unknown>[];
+  assert(Array.isArray(rows), "etapas inserted as an array");
+  assertEquals(rows.length, 1);
+  assertEquals(rows[0].ordem, 0);
+  assertEquals(rows[0].nome, "Conteúdo");
+  assertEquals(rows[0].status, "ativo");
+  assertEquals(rows[0].workflow_id, 99);
   assertEquals(out.id, 99);
 });
 
@@ -451,4 +457,74 @@ Deno.test("set_post_property tool redacts the raw value from the audit log", asy
   assert(!meta.includes("ANOTACAO_SECRETA"), "raw value must not be logged");
   assert(meta.includes("value_kind"), "logs value_kind instead");
   assertEquals((auditInsert!.args[0] as Record<string, unknown>).resource_id, "7");
+});
+
+Deno.test("createWorkflow: with template instantiates its etapas + records template_id", async () => {
+  const { db, calls } = makeFakeDb({
+    clientes: [{ data: { id: 5 }, error: null }],
+    workflow_templates: [{ data: { id: 12, etapas: [
+      { nome: "Roteiro", prazo_dias: 2, tipo_prazo: "uteis", tipo: "padrao", responsavel_id: 8 },
+      { nome: "Aprovação", prazo_dias: 1, tipo_prazo: "corridos", tipo: "aprovacao_cliente" },
+    ] }, error: null }],
+    workflows: [{ data: { id: 99, cliente_id: 5, titulo: "X", status: "ativo", etapa_atual: 0, template_id: 12, created_via: "agent", created_at: "t" }, error: null }],
+    workflow_etapas: [{ data: null, error: null }],
+  });
+  const deps = { db, ctx: CTX, now: () => "T" } as unknown as Deps;
+  const out = await createWorkflow(deps, { client_id: 5, titulo: "X", template_id: 12 });
+
+  assert(has(calls, "workflow_templates", "eq", ["conta_id", "workspace-A"]), "template tenant-scoped");
+  assert(has(calls, "workflow_templates", "eq", ["id", 12]), "template id checked");
+  const wf = insertPayload(calls, "workflows")!;
+  assertEquals(wf.template_id, 12);
+  const rows = insertPayload(calls, "workflow_etapas") as Record<string, unknown>[];
+  assertEquals(rows.length, 2);
+  assertEquals(rows[0].nome, "Roteiro");
+  assertEquals(rows[0].responsavel_id, 8);            // preserved
+  assertEquals(rows[0].status, "ativo");
+  assertEquals(rows[0].workflow_id, 99);
+  assertEquals(rows[1].nome, "Aprovação");
+  assertEquals(rows[1].status, "pendente");
+  assertEquals(rows[1].workflow_id, 99);
+  assertEquals(out.id, 99);
+});
+
+Deno.test("createWorkflow: template not found -> McpInputError, no workflow insert", async () => {
+  const { db, calls } = makeFakeDb({
+    clientes: [{ data: { id: 5 }, error: null }],
+    workflow_templates: [{ data: null, error: null }],
+  });
+  const deps = { db, ctx: CTX } as unknown as Deps;
+  let err: unknown;
+  try { await createWorkflow(deps, { client_id: 5, titulo: "X", template_id: 12 }); } catch (e) { err = e; }
+  assert(err instanceof McpInputError, "throws McpInputError");
+  assert(!calls.some((c) => c.table === "workflows" && c.method === "insert"), "no workflow insert");
+});
+
+Deno.test("createWorkflow: template with empty etapas falls back to the default step", async () => {
+  const { db, calls } = makeFakeDb({
+    clientes: [{ data: { id: 5 }, error: null }],
+    workflow_templates: [{ data: { id: 12, etapas: [] }, error: null }],
+    workflows: [{ data: { id: 99, cliente_id: 5, titulo: "X", status: "ativo", etapa_atual: 0, template_id: 12, created_via: "agent", created_at: "t" }, error: null }],
+    workflow_etapas: [{ data: null, error: null }],
+  });
+  const deps = { db, ctx: CTX, now: () => "T" } as unknown as Deps;
+  await createWorkflow(deps, { client_id: 5, titulo: "X", template_id: 12 });
+  const rows = insertPayload(calls, "workflow_etapas") as Record<string, unknown>[];
+  assertEquals(rows.length, 1);
+  assertEquals(rows[0].nome, "Conteúdo");
+  assertEquals(rows[0].workflow_id, 99);
+});
+
+Deno.test("createWorkflow: template with malformed (non-array) etapas falls back to default", async () => {
+  const { db, calls } = makeFakeDb({
+    clientes: [{ data: { id: 5 }, error: null }],
+    workflow_templates: [{ data: { id: 12, etapas: null }, error: null }],
+    workflows: [{ data: { id: 99, cliente_id: 5, titulo: "X", status: "ativo", etapa_atual: 0, template_id: 12, created_via: "agent", created_at: "t" }, error: null }],
+    workflow_etapas: [{ data: null, error: null }],
+  });
+  const deps = { db, ctx: CTX, now: () => "T" } as unknown as Deps;
+  await createWorkflow(deps, { client_id: 5, titulo: "X", template_id: 12 });
+  const rows = insertPayload(calls, "workflow_etapas") as Record<string, unknown>[];
+  assertEquals(rows.length, 1);
+  assertEquals(rows[0].nome, "Conteúdo");
 });
