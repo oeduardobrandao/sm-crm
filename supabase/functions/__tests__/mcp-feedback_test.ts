@@ -97,6 +97,9 @@ Deno.test("listPostFeedback scopes every read to the workspace", async () => {
   assert(has(calls, "post_approvals", "eq", ["post_id", 123]), "post_id filter applied");
   assert(has(calls, "post_approvals", "in", ["workflow_posts.workflow_id", [55]]), "client workflow filter applied");
 
+  // (12b) Phase 2a constrains post_id to the chosen ids
+  assert(has(calls, "post_approvals", "in", ["post_id", [123]]), "phase 2a post_id filter");
+
   // (14) timeline fetch scoped by conta_id + chosen post ids
   assert(has(calls, "post_status_events", "eq", ["conta_id", "workspace-A"]), "timeline conta filter");
   assert(has(calls, "post_status_events", "in", ["post_id", [123]]), "timeline post filter");
