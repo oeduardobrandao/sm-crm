@@ -1234,7 +1234,8 @@ function SortablePostItem({
 
           {isStoryPost ? (
             <p className="mt-3 text-xs" style={{ color: 'var(--text-light)' }}>
-              Stories: 1 mídia, sem legenda, formato vertical 9:16.
+              Stories: uma ou mais mídias (cada uma vira um segmento), sem legenda, formato vertical
+              9:16.
             </p>
           ) : hasInstagramAccount ? (
             <InstagramCaptionField
