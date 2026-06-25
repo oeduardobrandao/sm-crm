@@ -5,7 +5,7 @@ export const MCP_TOKEN_PREFIX = "mesaas_sk_";
 
 // Scopes that map to a backing tool. Read scopes (PR 1) + posts:write (write tools).
 export const MCP_ALLOWED_SCOPES = [
-  "clientes:read", "posts:read", "workflows:read", "ideias:read", "posts:write",
+  "clientes:read", "posts:read", "workflows:read", "ideias:read", "posts:write", "templates:write",
 ] as const;
 export type McpScope = (typeof MCP_ALLOWED_SCOPES)[number];
 

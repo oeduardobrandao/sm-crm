@@ -618,3 +618,25 @@ Deno.test("createWorkflowTemplate: duplicate property names -> McpInputError, no
   assert(err instanceof McpInputError, "validation error");
   assert(!calls.some((c) => c.table === "workflow_templates"), "no template insert");
 });
+
+Deno.test("create_workflow_template tool redacts etapa/option detail from the audit log", async () => {
+  const { db, calls } = makeFakeDb({
+    workflow_templates: [{ data: { id: 50, nome: "Modelo", modo_prazo: "padrao" }, error: null }],
+    audit_log: [{ data: null, error: null }],
+  });
+  const deps = { db, ctx: { ...CTX, scopes: ["templates:write"] }, genId: () => "o" } as unknown as Deps;
+  const server = {
+    handlers: {} as Record<string, (a: unknown) => Promise<unknown>>,
+    // deno-lint-ignore no-explicit-any
+    tool(name: string, _d: any, _s: any, h: any) { this.handlers[name] = h; },
+  };
+  // deno-lint-ignore no-explicit-any
+  registerTools(server as any, deps);
+  await server.handlers["create_workflow_template"]({ nome: "Modelo", etapas: [{ nome: "ETAPA_SECRETA" }] });
+  const auditInsert = calls.find((c) => c.table === "audit_log" && c.method === "insert");
+  assert(auditInsert, "audit_log insert happened");
+  const meta = JSON.stringify(auditInsert!.args[0]);
+  assert(!meta.includes("ETAPA_SECRETA"), "etapa detail must not be logged");
+  assert(meta.includes("etapa_count"), "logs etapa_count instead");
+  assertEquals((auditInsert!.args[0] as Record<string, unknown>).resource_id, "");
+});
