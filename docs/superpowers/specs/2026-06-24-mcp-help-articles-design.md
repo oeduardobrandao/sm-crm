@@ -43,7 +43,8 @@ articles need the label to display a friendly section name.
 
 ### Files
 
-- **Create** `supabase/migrations/20260624000001_seed_kb_mcp_articles.sql`
+- **Create** `supabase/migrations/20260624000002_seed_kb_mcp_articles.sql`
+  (`…000001` is taken by `mcp_created_via.sql`)
   - Helper builders: `_kb_mcp_text`, `_kb_mcp_p`, `_kb_mcp_h`, `_kb_mcp_ul`,
     `_kb_mcp_ol`, `_kb_mcp_callout`, `_kb_mcp_doc`, `_kb_mcp_plain` (identical
     semantics to the expand-migration helpers).
