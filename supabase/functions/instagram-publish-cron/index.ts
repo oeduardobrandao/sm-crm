@@ -98,6 +98,7 @@ async function processContainerCreation(
     postId: post.post_id,
     caption: post.ig_caption,
     useCover: post.publish_retry_count === 0,
+    tipo: post.tipo,
   });
 
   await db.from("workflow_posts").update({

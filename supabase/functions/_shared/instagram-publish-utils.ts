@@ -70,14 +70,20 @@ const IMAGE_MAX_BYTES = 8 * 1024 * 1024;
 const VIDEO_MAX_BYTES = 250 * 1024 * 1024;
 const IMAGE_MIN_DIM = 320;
 const IMAGE_AR_MIN = 3 / 4;
+const STORY_IMAGE_AR_MIN = 9 / 16;
 const IMAGE_AR_MAX = 1.91;
 const VIDEO_AR_MIN = 9 / 16;
 const VIDEO_AR_MAX = 1.25;
 const VIDEO_MIN_DURATION = 3;
 const VIDEO_MAX_DURATION = 90;
+const STORY_VIDEO_MAX_DURATION = 60;
 
-export function validateMedia(files: MediaFile[]): ValidationError[] {
+export function validateMedia(files: MediaFile[], opts?: { forStories?: boolean }): ValidationError[] {
   const errors: ValidationError[] = [];
+  const imageArMin = opts?.forStories ? STORY_IMAGE_AR_MIN : IMAGE_AR_MIN;
+  const imageArLabel = opts?.forStories ? "9:16 a 1.91:1" : "3:4 a 1.91:1";
+  const videoMaxDuration = opts?.forStories ? STORY_VIDEO_MAX_DURATION : VIDEO_MAX_DURATION;
+  const videoDurationLabel = opts?.forStories ? "3–60 segundos" : "3–90 segundos";
   for (const f of files) {
     if (f.kind === "image") {
       if (!ALLOWED_IMAGE_MIMES.has(f.mime_type)) {
@@ -92,8 +98,8 @@ export function validateMedia(files: MediaFile[]): ValidationError[] {
           errors.push({ file_id: f.id, message: "Imagem muito pequena (mínimo 320×320)" });
         }
         const ar = f.width / f.height;
-        if (ar < IMAGE_AR_MIN || ar > IMAGE_AR_MAX) {
-          errors.push({ file_id: f.id, message: "Proporção da imagem fora do permitido (3:4 a 1.91:1)" });
+        if (ar < imageArMin || ar > IMAGE_AR_MAX) {
+          errors.push({ file_id: f.id, message: `Proporção da imagem fora do permitido (${imageArLabel})` });
         }
       }
     } else if (f.kind === "video") {
@@ -105,8 +111,8 @@ export function validateMedia(files: MediaFile[]): ValidationError[] {
         errors.push({ file_id: f.id, message: "Vídeo excede 250 MB (limite do Instagram)" });
       }
       if (f.duration_seconds != null) {
-        if (f.duration_seconds < VIDEO_MIN_DURATION || f.duration_seconds > VIDEO_MAX_DURATION) {
-          errors.push({ file_id: f.id, message: "Duração do vídeo fora do permitido (3–90 segundos)" });
+        if (f.duration_seconds < VIDEO_MIN_DURATION || f.duration_seconds > videoMaxDuration) {
+          errors.push({ file_id: f.id, message: `Duração do vídeo fora do permitido (${videoDurationLabel})` });
         }
       }
       if (f.width && f.height) {
@@ -140,10 +146,11 @@ export async function validateForScheduling(
 
   const { data: post } = await db
     .from("workflow_posts")
-    .select("id, scheduled_at, ig_caption, workflow_id")
+    .select("id, scheduled_at, ig_caption, workflow_id, tipo")
     .eq("id", postId)
     .single();
   if (!post) return { ok: false, errors: ["Post não encontrado."] };
+  const isStory = post.tipo === "stories";
 
   if (!opts?.skipDateCheck) {
     if (!post.scheduled_at) {
@@ -152,7 +159,7 @@ export async function validateForScheduling(
       errors.push("Data de publicação deve ser pelo menos 10 minutos no futuro.");
     }
   }
-  if (!post.ig_caption?.trim()) errors.push("Legenda do Instagram não definida.");
+  if (!isStory && !post.ig_caption?.trim()) errors.push("Legenda do Instagram não definida.");
 
   const { data: links } = await db
     .from("post_file_links")
@@ -165,10 +172,12 @@ export async function validateForScheduling(
     sort_order: l.sort_order,
   }));
 
-  if (mediaFiles.length === 0) {
+  if (isStory && mediaFiles.length !== 1) {
+    errors.push("Stories aceitam apenas uma mídia.");
+  } else if (mediaFiles.length === 0) {
     errors.push("Post precisa de pelo menos uma mídia.");
   } else {
-    const mediaErrors = validateMedia(mediaFiles);
+    const mediaErrors = validateMedia(mediaFiles, { forStories: isStory });
     for (const e of mediaErrors) errors.push(e.message);
   }
 
@@ -263,6 +272,44 @@ export async function createVideoContainer(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (data.error) throwGraphError(data);
+  return { id: data.id };
+}
+
+export async function createStoryImageContainer(
+  igUserId: string,
+  token: string,
+  imageUrl: string,
+): Promise<{ id: string }> {
+  const res = await fetch(`${GRAPH_BASE}/${igUserId}/media`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      media_type: "STORIES",
+      image_url: imageUrl,
+      access_token: token,
+    }),
+  });
+  const data = await res.json();
+  if (data.error) throwGraphError(data);
+  return { id: data.id };
+}
+
+export async function createStoryVideoContainer(
+  igUserId: string,
+  token: string,
+  videoUrl: string,
+): Promise<{ id: string }> {
+  const res = await fetch(`${GRAPH_BASE}/${igUserId}/media`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      media_type: "STORIES",
+      video_url: videoUrl,
+      access_token: token,
+    }),
   });
   const data = await res.json();
   if (data.error) throwGraphError(data);
@@ -364,10 +411,21 @@ export interface ContainerCreationResult {
  */
 export async function createContainerForPost(
   db: DbClient,
-  opts: { igUserId: string; token: string; postId: number; caption: string; useCover: boolean },
+  opts: { igUserId: string; token: string; postId: number; caption: string; useCover: boolean; tipo?: string },
 ): Promise<ContainerCreationResult> {
-  const { igUserId, token, postId, caption, useCover } = opts;
+  const { igUserId, token, postId, caption, useCover, tipo } = opts;
   const media = await fetchPostMedia(db, postId);
+
+  if (tipo === "stories") {
+    if (media.length !== 1) throw new Error("Stories require exactly one media file");
+
+    const url = await signGetUrl(media[0].r2_key, 7200);
+    const container = media[0].kind === "video"
+      ? await createStoryVideoContainer(igUserId, token, url)
+      : await createStoryImageContainer(igUserId, token, url);
+    return { containerId: container.id };
+  }
+
   if (media.length === 0) throw new Error("No media files found");
 
   const isCarousel = media.length > 1;

@@ -55,7 +55,7 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
     // Verify post exists and user has access (via RLS)
     const { data: post } = await userDb
       .from("workflow_posts")
-      .select("id, status, workflow_id, scheduled_at, ig_caption, instagram_container_id, publish_retry_count")
+      .select("id, status, workflow_id, scheduled_at, ig_caption, instagram_container_id, publish_retry_count, tipo")
       .eq("id", postId)
       .single();
 
@@ -108,8 +108,9 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
             igUserId: validation.account.instagram_user_id,
             token,
             postId,
-            caption: post.ig_caption,
+            caption: post.ig_caption ?? "",
             useCover: post.publish_retry_count === 0,
+            tipo: post.tipo,
           });
           await svcDb.from("workflow_posts").update({
             instagram_container_id: containerId,
@@ -196,8 +197,9 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
           igUserId,
           token,
           postId,
-          caption: post.ig_caption,
+          caption: post.ig_caption ?? "",
           useCover: true,
+          tipo: post.tipo,
         });
         let containerId = created.containerId;
         const coverVideoUrl = created.coverVideoUrl; // set only when a cover was used
