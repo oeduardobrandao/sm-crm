@@ -9,18 +9,22 @@ import {
   buildPropertyDefinitions,
   buildTiptapDoc,
   CLIENT_PUBLIC_FIELDS,
+  computeRates,
   deriveFormatMeta,
   extractTemplateOptionIds,
   FeedbackRow,
   firstLine,
+  IG_RATE_WEIGHTS,
   instantiateTemplateEtapas,
   isPlanLimitExceeded,
+  MIN_SAMPLE,
   normalizeTemplateEtapas,
   pageContentToMarkdown,
   performanceTier,
   projectTemplateEtapas,
   quartiles,
   Quartiles,
+  type RateKey,
   StatusEventRow,
   topDistinctPostIds,
   validatePropertyValue,
@@ -29,6 +33,11 @@ import {
 const METRIC_KEYS = ["reach", "saved", "shares", "comments", "likes"] as const;
 type MetricKey = (typeof METRIC_KEYS)[number];
 export type Metrics = Record<MetricKey, number>;
+
+export interface PostMetricRow {
+  reach: number; saved: number; shares: number; comments: number; likes: number;
+  impressions: number; unavailable: string[]; media_type: string;
+}
 
 export interface Deps {
   db: SupabaseClient;
@@ -170,11 +179,11 @@ async function loadMediaLite(
 async function loadMetrics(
   d: Deps,
   posts: { instagram_media_id: string | null; instagram_permalink: string | null }[],
-): Promise<{ byMediaId: Map<string, Metrics>; byPermalink: Map<string, Metrics> }> {
+): Promise<{ byMediaId: Map<string, PostMetricRow>; byPermalink: Map<string, PostMetricRow> }> {
   const mediaIds = posts.map((p) => p.instagram_media_id).filter((x): x is string => !!x);
   const permalinks = posts.map((p) => p.instagram_permalink).filter((x): x is string => !!x);
-  const byMediaId = new Map<string, Metrics>();
-  const byPermalink = new Map<string, Metrics>();
+  const byMediaId = new Map<string, PostMetricRow>();
+  const byPermalink = new Map<string, PostMetricRow>();
   if (mediaIds.length === 0 && permalinks.length === 0) return { byMediaId, byPermalink };
 
   // Tenant scope: instagram_posts has no conta_id column, so scope through the
@@ -183,13 +192,15 @@ async function loadMetrics(
   // (UNIQUE(instagram_post_id)), but the permalink path has no DB-level
   // uniqueness, so this closes any cross-tenant permalink collision.
   const cols =
-    "instagram_post_id, permalink, reach, saved, shares, comments, likes, " +
+    "instagram_post_id, permalink, reach, saved, shares, comments, likes, impressions, unavailable_metrics, media_type, " +
     "instagram_accounts!inner(clientes!inner(conta_id))";
   const collect = (rows: any[]) => {
     for (const r of rows ?? []) {
-      const m: Metrics = {
+      const m: PostMetricRow = {
         reach: r.reach ?? 0, saved: r.saved ?? 0, shares: r.shares ?? 0,
-        comments: r.comments ?? 0, likes: r.likes ?? 0,
+        comments: r.comments ?? 0, likes: r.likes ?? 0, impressions: r.impressions ?? 0,
+        unavailable: Array.isArray(r.unavailable_metrics) ? r.unavailable_metrics : [],
+        media_type: r.media_type ?? "UNKNOWN",
       };
       if (r.instagram_post_id) byMediaId.set(r.instagram_post_id, m);
       if (r.permalink) byPermalink.set(r.permalink, m);
@@ -216,8 +227,8 @@ async function loadMetrics(
 
 function metricsFor(
   post: { instagram_media_id: string | null; instagram_permalink: string | null },
-  maps: { byMediaId: Map<string, Metrics>; byPermalink: Map<string, Metrics> },
-): Metrics | null {
+  maps: { byMediaId: Map<string, PostMetricRow>; byPermalink: Map<string, PostMetricRow> },
+): PostMetricRow | null {
   if (post.instagram_media_id && maps.byMediaId.has(post.instagram_media_id)) {
     return maps.byMediaId.get(post.instagram_media_id)!;
   }
@@ -279,7 +290,10 @@ export async function listPosts(
   let result = rows.map((p) => {
     const pm = props.get(p.id) ?? { modo: null, anotacao: null };
     const fmt = deriveFormatMeta(p.tipo, media.get(p.id) ?? []);
-    const metrics = metricsFor(p, metricMaps);
+    const mrow = metricsFor(p, metricMaps);
+    const rates = mrow
+      ? computeRates(mrow, mrow.unavailable)
+      : { share_rate: null, like_rate: null, save_rate: null, comment_rate: null };
     return {
       id: p.id,
       workflow_id: p.workflow_id,
@@ -296,7 +310,10 @@ export async function listPosts(
       published_at: p.published_at,
       instagram_permalink: p.instagram_permalink ?? null,
       created_via: p.created_via,
-      metrics,
+      metrics: mrow,
+      views: mrow?.impressions ?? null,
+      ...rates,
+      ig_score: null,
     };
   });
 
@@ -346,6 +363,10 @@ export async function getPost(d: Deps, args: { post_id: number }): Promise<any |
 
   const pm = props.get(p.id) ?? { modo: null, anotacao: null };
   const fmt = deriveFormatMeta(p.tipo, media.map((m) => ({ kind: m.kind, duration_seconds: m.duration_seconds })));
+  const mrow = metricsFor(p, metricMaps);
+  const rates = mrow
+    ? computeRates(mrow, mrow.unavailable)
+    : { share_rate: null, like_rate: null, save_rate: null, comment_rate: null };
 
   return {
     id: p.id,
@@ -366,7 +387,10 @@ export async function getPost(d: Deps, args: { post_id: number }): Promise<any |
     scheduled_at: p.scheduled_at,
     instagram_permalink: p.instagram_permalink ?? null,
     created_via: p.created_via,
-    metrics: metricsFor(p, metricMaps),
+    metrics: mrow,
+    views: mrow?.impressions ?? null,
+    ...rates,
+    ig_score: null,
   };
 }
 
@@ -404,6 +428,65 @@ export async function getPerformanceBaseline(
   }
 
   return { sample_size: rows.length, overall: baselineFor(rows), by_format: byFormat };
+}
+
+// ---- rate distributions ------------------------------------------------------
+
+export type DistBuckets = Record<RateKey, number[]> & { reach: number[] };
+
+function emptyBuckets(): DistBuckets {
+  return { share_rate: [], like_rate: [], save_rate: [], comment_rate: [], reach: [] };
+}
+
+/** Load a client's per-format and overall rate (+raw reach) distributions. */
+export async function loadClientRateDistributions(
+  d: Deps,
+  clientId: number,
+): Promise<{ sampleSize: number; overall: DistBuckets; byFormat: Record<string, DistBuckets> }> {
+  const { data: accounts } = await d.db
+    .from("instagram_accounts").select("id").eq("client_id", clientId);
+  const accountIds = (accounts ?? []).map((a: any) => a.id);
+  const overall = emptyBuckets();
+  const byFormat: Record<string, DistBuckets> = {};
+  if (accountIds.length === 0) return { sampleSize: 0, overall, byFormat };
+
+  const { data: posts } = await d.db
+    .from("instagram_posts")
+    .select("media_type, reach, impressions, saved, shares, likes, comments, unavailable_metrics")
+    .in("instagram_account_id", accountIds);
+  const rows = (posts ?? []) as any[];
+
+  for (const p of rows) {
+    const unavailable = Array.isArray(p.unavailable_metrics) ? p.unavailable_metrics : [];
+    const rates = computeRates(
+      { shares: p.shares ?? 0, likes: p.likes ?? 0, saved: p.saved ?? 0, comments: p.comments ?? 0, impressions: p.impressions ?? 0 },
+      unavailable,
+    );
+    const fmt = p.media_type ?? "UNKNOWN";
+    byFormat[fmt] ??= emptyBuckets();
+    for (const key of Object.keys(IG_RATE_WEIGHTS) as RateKey[]) {
+      const v = rates[key];
+      if (v !== null) { overall[key].push(v); byFormat[fmt][key].push(v); }
+    }
+    if (!unavailable.includes("reach") && typeof p.reach === "number") {
+      overall.reach.push(p.reach); byFormat[fmt].reach.push(p.reach);
+    }
+  }
+  return { sampleSize: rows.length, overall, byFormat };
+}
+
+/** Pick, per rate, the format sample if it has >= MIN_SAMPLE, else the overall sample. */
+export function selectRateSamples(
+  format: string,
+  dists: { overall: DistBuckets; byFormat: Record<string, DistBuckets> },
+): Record<RateKey, number[]> {
+  const fmt = dists.byFormat[format];
+  const out = {} as Record<RateKey, number[]>;
+  for (const key of Object.keys(IG_RATE_WEIGHTS) as RateKey[]) {
+    const f = fmt?.[key] ?? [];
+    out[key] = f.length >= MIN_SAMPLE ? f : (dists.overall[key] ?? []);
+  }
+  return out;
 }
 
 /** Tier a post's `saved` metric against its client's baseline (for that format). */
