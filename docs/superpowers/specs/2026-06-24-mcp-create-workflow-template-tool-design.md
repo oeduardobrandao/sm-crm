@@ -101,8 +101,11 @@ Cross-field rules and duplicate checks live in `buildPropertyDefinitions`.
        .insert(rows)
        .select("id, name, type, config, portal_visible, display_order");
      if (pErr) {
-       await d.db.from("workflow_templates").delete()
-         .eq("id", tpl.id).eq("conta_id", d.ctx.conta_id);   // compensating cleanup
+       // Best-effort compensating cleanup — must NOT mask the original insert error.
+       try {
+         await d.db.from("workflow_templates").delete()
+           .eq("id", tpl.id).eq("conta_id", d.ctx.conta_id);
+       } catch (_) { /* swallow: the original pErr is the response */ }
        if (isPlanLimitExceeded(pErr, "max_custom_properties_per_template"))
          throw new McpInputError("Limite de propriedades personalizadas do plano foi atingido.");
        throw pErr;
@@ -118,8 +121,10 @@ Cross-field rules and duplicate checks live in `buildPropertyDefinitions`.
 - `!Array.isArray` → `[]` (defensive; Zod guarantees the real path). Skip non-object
   elements. Per element: `nome` (string or `""`), `prazo_dias`
   (`Number.isInteger(x) ? x : 0`), `tipo_prazo` (`"uteis"` else `"corridos"`),
-  `tipo` (`"aprovacao_cliente"` else `"padrao"`). No `ordem`, no `responsavel_id`
-  (template etapas JSONB has neither; instantiation in slice B assigns `ordem`).
+  `tipo` (`"aprovacao_cliente"` else `"padrao"`). No `ordem` (instantiation in
+  slice B assigns it). **Agent-created template etapas omit `responsavel_id`** —
+  existing CRM templates may carry it, but the agent doesn't assign team members,
+  so the field is simply left out of the etapas it writes.
 
 ### `buildPropertyDefinitions(properties, genId): { error: string } | { defs: {name,type,config,portal_visible,display_order}[] }`
 - **Reject duplicate property names** (exact, post-trim) →
@@ -152,6 +157,13 @@ Cross-field rules and duplicate checks live in `buildPropertyDefinitions`.
 
 Redactor logs the template name + structure sizes, never the full etapa/option
 detail: `{ nome, etapa_count: etapas?.length ?? 0, property_count: properties?.length ?? 0 }`.
+
+`audit()` derives `resource_id` from `args.post_id ?? args.client_id ??
+args.workflow_id` (`tools.ts:39`). A template has none of those in its args, and
+the new template id is not known pre-insert, so **`resource_id` is blank for
+`create_workflow_template`** — accepted (the audit row still records the action,
+the redacted args, and `key_id`). Deriving `resource_id` from the *result* would
+require threading the return through the audit path for all tools; deferred.
 
 ## Tenant security & errors
 
@@ -238,6 +250,9 @@ Run with `npm run test:functions`.
   - **Property insert failure → compensating delete** of the template
     (`.eq("id", …).eq("conta_id", "workspace-A")` recorded) then throw; a
     `max_custom_properties_per_template` error → friendly `McpInputError`.
+  - **Cleanup is best-effort:** when the property insert fails AND the compensating
+    delete itself errors, the original insert error (friendly cap message) is still
+    thrown — the cleanup failure does not mask it.
   - `buildPropertyDefinitions` validation error (e.g. dup names) → `McpInputError`,
     no template insert.
   - **Audit redaction (tool-wrapper test):** invoking the handler logs
