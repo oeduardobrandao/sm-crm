@@ -327,6 +327,23 @@ export function KanbanView({
     setForwardTarget(card);
   }, []);
 
+  const advanceEtapa = useCallback(
+    async (card: BoardCard, successMessage: string) => {
+      try {
+        const result = await completeEtapa(card.workflow.id!, card.etapa.id!);
+        if (result.workflow.status === 'concluido' && card.workflow.recorrente) {
+          onRecurring(card.workflow.id!);
+        } else {
+          toast.success(successMessage);
+        }
+        onRefresh();
+      } catch (err: unknown) {
+        toast.error((err as Error).message || 'Erro ao avançar etapa');
+      }
+    },
+    [onRefresh, onRecurring],
+  );
+
   const executeForward = useCallback(
     (card: BoardCard) => {
       const wfId = card.workflow.id!;
@@ -337,22 +354,10 @@ export function KanbanView({
       if (card.etapa.tipo === 'aprovacao_cliente' && !allApproved) {
         setApprovalChoiceCard(card);
       } else {
-        (async () => {
-          try {
-            const result = await completeEtapa(card.workflow.id!, card.etapa.id!);
-            if (result.workflow.status === 'concluido' && card.workflow.recorrente) {
-              onRecurring(card.workflow.id!);
-            } else {
-              toast.success('Etapa concluída!');
-            }
-            onRefresh();
-          } catch (err: unknown) {
-            toast.error((err as Error).message || 'Erro ao avançar etapa');
-          }
-        })();
+        advanceEtapa(card, 'Etapa concluída!');
       }
     },
-    [onRefresh, onRecurring, postsCounts, approvedPostsCounts],
+    [advanceEtapa, postsCounts, approvedPostsCounts],
   );
 
   const handleForwardConfirm = () => {
@@ -391,6 +396,13 @@ export function KanbanView({
     } catch (err: unknown) {
       toast.error((err as Error).message || 'Erro ao enviar ao portal');
     }
+  };
+
+  const handleAdvanceWithoutApproval = () => {
+    if (!approvalChoiceCard) return;
+    const card = approvalChoiceCard;
+    setApprovalChoiceCard(null);
+    advanceEtapa(card, 'Etapa avançada — status dos posts mantidos.');
   };
 
   const handleRevertConfirm = async () => {
@@ -514,6 +526,7 @@ export function KanbanView({
         workflowTitle={approvalChoiceCard?.workflow.titulo || ''}
         onApproveInternally={handleApproveInternally}
         onSendToPortal={handleSendToPortal}
+        onAdvanceWithoutChanges={handleAdvanceWithoutApproval}
         onCancel={() => setApprovalChoiceCard(null)}
       />
     </>

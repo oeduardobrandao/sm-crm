@@ -1561,6 +1561,7 @@ interface ClientApprovalChoiceDialogProps {
   workflowTitle: string;
   onApproveInternally: () => void;
   onSendToPortal: () => void;
+  onAdvanceWithoutChanges: () => void;
   onCancel: () => void;
 }
 export function ClientApprovalChoiceDialog({
@@ -1568,6 +1569,7 @@ export function ClientApprovalChoiceDialog({
   workflowTitle,
   onApproveInternally,
   onSendToPortal,
+  onAdvanceWithoutChanges,
   onCancel,
 }: ClientApprovalChoiceDialogProps) {
   return (
@@ -1590,6 +1592,9 @@ export function ClientApprovalChoiceDialog({
           </Button>
           <Button className="w-full" variant="outline" onClick={onSendToPortal}>
             Enviar ao portal do cliente
+          </Button>
+          <Button className="w-full" variant="secondary" onClick={onAdvanceWithoutChanges}>
+            Avançar etapa sem alterar posts
           </Button>
           <Button className="w-full" variant="ghost" onClick={onCancel}>
             Cancelar

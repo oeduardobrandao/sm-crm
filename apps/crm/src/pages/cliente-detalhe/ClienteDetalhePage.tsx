@@ -594,6 +594,23 @@ export default function ClienteDetalhePage() {
     }
   };
 
+  const handleAdvanceWithoutApproval = async () => {
+    const card = approvalChoiceCard;
+    setApprovalChoiceCard(null);
+    if (!card) return;
+    try {
+      const { workflow: updatedWf } = await completeEtapa(card.workflow.id!, card.etapa.id!);
+      if (updatedWf.status === 'concluido' && card.workflow.recorrente) {
+        setRecurringWfId(card.workflow.id!);
+      } else {
+        refreshCards();
+        toast.success('Etapa avançada — status dos posts mantidos.');
+      }
+    } catch (err: unknown) {
+      toast.error(t('detail.stepError', { error: (err as Error).message }));
+    }
+  };
+
   const handleRevertClick = (card: BoardCard) => setRevertTarget(card);
 
   const handleRevertConfirm = async () => {
@@ -2274,6 +2291,7 @@ export default function ClienteDetalhePage() {
         workflowTitle={approvalChoiceCard?.workflow.titulo ?? ''}
         onApproveInternally={handleApproveInternally}
         onSendToPortal={handleSendToPortal}
+        onAdvanceWithoutChanges={handleAdvanceWithoutApproval}
         onCancel={() => setApprovalChoiceCard(null)}
       />
     </div>
