@@ -44,6 +44,10 @@ REVOKE ALL ON FUNCTION set_story_segment_field(bigint, int, text, text) FROM pub
 GRANT EXECUTE ON FUNCTION set_story_segment_field(bigint, int, text, text) TO service_role;
 
 -- 4. Story-aware claim. Non-story predicates unchanged; stories keyed off segments.
+-- DROP first: CREATE OR REPLACE cannot change a function's RETURNS TABLE shape
+-- (we add the story_segments column), which raises 42P13. Safe — only the cron
+-- calls this via RPC; no view/trigger depends on it.
+DROP FUNCTION IF EXISTS claim_posts_for_publishing(text, integer);
 CREATE OR REPLACE FUNCTION claim_posts_for_publishing(
   p_phase text,
   p_limit int DEFAULT 25
