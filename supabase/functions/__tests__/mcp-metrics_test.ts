@@ -2,6 +2,7 @@ import { assert, assertEquals } from "./assert.ts";
 import { getPost, getPerformanceBaseline, listPosts, loadClientRateDistributions } from "../mcp/queries.ts";
 import type { Deps } from "../mcp/queries.ts";
 import type { McpKeyContext } from "../_shared/mcp-token.ts";
+import { McpInputError } from "../_shared/mcp-token.ts";
 
 type Resp = { data: unknown; error: unknown };
 type Call = { table: string; method: string; args: unknown[] };
@@ -294,6 +295,170 @@ Deno.test("distributions: unavailable reach -> excluded from reach bucket", asyn
 });
 
 // ---- Task 6: getPerformanceBaseline -> rate-based {n, quartiles} ---------------
+
+// ---- Task 7: ig_score + tiers in get_post/list_posts; sort options ---------------
+
+// Helper: 5 identical ig posts with known rates (impressions=1000, likes=100 => like_rate=0.1)
+const igDistPost = (over: Record<string, unknown> = {}) => ({
+  media_type: "IMAGE",
+  reach: 500,
+  impressions: 1000,
+  saved: 50,
+  shares: 20,
+  likes: 100,
+  comments: 10,
+  unavailable_metrics: [],
+  ...over,
+});
+
+Deno.test("getPost: ig_score + tiers computed when client has >=5 sample", async () => {
+  // Sequence of DB calls in getPost:
+  // 1. workflow_posts -> maybeSingle (post)
+  // 2. loadPostProps: post_property_values -> then (empty)
+  // 3. loadMetrics: instagram_posts -> then (metric, media_id="m10")
+  // 4. post_file_links -> then (empty, no media)
+  // 5. workflows -> maybeSingle (cliente_id: 99)
+  // 6. loadClientRateDistributions:
+  //    a. clientes -> maybeSingle (owned)
+  //    b. instagram_accounts -> then (account)
+  //    c. instagram_posts -> then (5 dist posts)
+  const { db } = makeFakeDb({
+    workflow_posts: [{ data: postRow({ id: 10, workflow_id: 20, instagram_media_id: "m10" }), error: null }],
+    post_property_values: [{ data: [], error: null }],
+    instagram_posts: [
+      // loadMetrics: the post's own metric
+      { data: [metricRow({ instagram_post_id: "m10", impressions: 1000, likes: 100, saved: 50, shares: 20, comments: 10, media_type: "IMAGE" })], error: null },
+      // loadClientRateDistributions: 5 historical posts
+      {
+        data: [
+          igDistPost(), igDistPost(), igDistPost(), igDistPost(), igDistPost(),
+        ],
+        error: null,
+      },
+    ],
+    post_file_links: [{ data: [], error: null }],
+    workflows: [{ data: { cliente_id: 99 }, error: null }],
+    clientes: [{ data: { id: 99, especialidade: null, cor: null }, error: null }],
+    instagram_accounts: [{ data: [{ id: 77 }], error: null }],
+  });
+  const deps = { db, ctx: CTX, signUrl: (k: string) => Promise.resolve(`signed:${k}`) } as unknown as Deps;
+
+  const out = await getPost(deps, { post_id: 10 });
+
+  assert(out !== null, "post should not be null");
+  assert(typeof out.ig_score === "number", `ig_score should be numeric, got ${out.ig_score}`);
+  assert(out.ig_score >= 0 && out.ig_score <= 100, `ig_score should be 0-100, got ${out.ig_score}`);
+  assert(out.tiers !== null, "tiers should not be null when sample is sufficient");
+  // Each tier should be a valid string or null
+  for (const key of ["share_rate", "like_rate", "save_rate", "comment_rate"]) {
+    const t = out.tiers[key];
+    assert(
+      t === null || ["top_quartile", "above_median", "below_median", "bottom_quartile"].includes(t),
+      `tiers.${key} should be a valid tier string or null, got ${t}`,
+    );
+  }
+});
+
+Deno.test("getPost: ig_score null when no metric row (no media_id)", async () => {
+  const { db } = makeFakeDb({
+    workflow_posts: [{ data: postRow({ id: 11, workflow_id: 21, instagram_media_id: null, instagram_permalink: null }), error: null }],
+    post_property_values: [{ data: [], error: null }],
+    post_file_links: [{ data: [], error: null }],
+    workflows: [{ data: { cliente_id: 99 }, error: null }],
+    // Even with a valid client, no mrow means no scoring
+    clientes: [{ data: { id: 99, especialidade: null, cor: null }, error: null }],
+    instagram_accounts: [{ data: [{ id: 77 }], error: null }],
+    instagram_posts: [
+      { data: [], error: null }, // loadMetrics — no matching post
+    ],
+  });
+  const deps = { db, ctx: CTX, signUrl: (k: string) => Promise.resolve(`signed:${k}`) } as unknown as Deps;
+
+  const out = await getPost(deps, { post_id: 11 });
+
+  assert(out !== null, "post should not be null");
+  assertEquals(out.ig_score, null, "ig_score null when no metric row");
+  assertEquals(out.tiers, null, "tiers null when no metric row");
+});
+
+Deno.test("list_posts: ig_score sort without client_id throws McpInputError", async () => {
+  const { db } = makeFakeDb({});
+  const deps = { db, ctx: CTX } as unknown as Deps;
+
+  let threw = false;
+  try {
+    await listPosts(deps, { sort_by_metric: "ig_score" });
+  } catch (e) {
+    assert(e instanceof McpInputError, `Expected McpInputError, got ${e}`);
+    assert((e as McpInputError).message.includes("ig_score"), `Error message should mention ig_score`);
+    threw = true;
+  }
+  assert(threw, "listPosts should throw McpInputError when sort_by_metric=ig_score and no client_id");
+});
+
+Deno.test("list_posts: derived sort (like_rate) orders by rate, slices after sort", async () => {
+  // Seed 3 posts for client 5:
+  //   post A (id=1): like_rate=0.20 (likes=200, impressions=1000), published_at oldest
+  //   post B (id=2): like_rate=0.05 (likes=50, impressions=1000),  published_at newest
+  //   post C (id=3): like_rate=0.10 (likes=100, impressions=1000), published_at middle
+  // With limit=2, published_at order would give [B,C] (newest first).
+  // With like_rate sort, should give [A,C] after slice(0,2) — A is top-rate despite oldest.
+  const makePost = (id: number, mediaId: string, pub: string) =>
+    postRow({ id, workflow_id: 30, instagram_media_id: mediaId, published_at: pub });
+  const makeMetric = (mediaId: string, likes: number) =>
+    metricRow({ instagram_post_id: mediaId, likes, impressions: 1000, saved: 20, shares: 5, comments: 3, media_type: "IMAGE" });
+
+  // DB call sequence for listPosts with derived sort + client_id=5:
+  // 1. clientWorkflowIds: workflows -> then ([{id:30}])
+  // 2. workflow_posts -> then (3 posts, .limit(500))
+  // 3. post_property_values -> then (empty)
+  // 4. post_file_links -> then (empty)
+  // 5. instagram_posts -> then (3 metrics)
+  // 6. loadClientRateDistributions:
+  //    a. clientes -> maybeSingle (owned)
+  //    b. instagram_accounts -> then ([{id:88}])
+  //    c. instagram_posts -> then (5 dist posts for distributions)
+  const { db } = makeFakeDb({
+    workflows: [{ data: [{ id: 30 }], error: null }],
+    workflow_posts: [{
+      data: [
+        makePost(1, "mA", "2026-01-01T00:00:00Z"),
+        makePost(2, "mB", "2026-03-01T00:00:00Z"),
+        makePost(3, "mC", "2026-02-01T00:00:00Z"),
+      ],
+      error: null,
+    }],
+    post_property_values: [{ data: [], error: null }],
+    post_file_links: [{ data: [], error: null }],
+    instagram_posts: [
+      // loadMetrics: metrics for the 3 posts
+      {
+        data: [
+          makeMetric("mA", 200), // like_rate=0.20 (top)
+          makeMetric("mB", 50),  // like_rate=0.05 (bottom)
+          makeMetric("mC", 100), // like_rate=0.10 (middle)
+        ],
+        error: null,
+      },
+      // loadClientRateDistributions: 5 posts for distributions
+      { data: [igDistPost(), igDistPost(), igDistPost(), igDistPost(), igDistPost()], error: null },
+    ],
+    clientes: [{ data: { id: 5, especialidade: null, cor: null }, error: null }],
+    instagram_accounts: [{ data: [{ id: 88 }], error: null }],
+  });
+  const deps = { db, ctx: CTX } as unknown as Deps;
+
+  const result = await listPosts(deps, { client_id: 5, sort_by_metric: "like_rate", limit: 2 });
+
+  // Derived sort → returns { posts, truncated, cap }
+  assert(typeof result === "object" && !Array.isArray(result), "derived sort should return an object, not an array");
+  const { posts, truncated, cap } = result as { posts: any[]; truncated: boolean; cap: number };
+  assertEquals(posts.length, 2, "should return limit=2 posts after slice");
+  assertEquals(posts[0].id, 1, "top-by-like_rate (post A, id=1) should be first despite oldest published_at");
+  assertEquals(posts[1].id, 3, "second-by-like_rate (post C, id=3) should be second");
+  assertEquals(truncated, false, "truncated=false (3 rows < cap=500)");
+  assertEquals(cap, 500, "cap should be 500");
+});
 
 Deno.test("baseline: like_rate gets quartiles when n>=5, share_rate null when n<5", async () => {
   // 5 CAROUSEL posts with shares unavailable -> like_rate bucket has 5 entries

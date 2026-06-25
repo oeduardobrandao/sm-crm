@@ -14,6 +14,7 @@ import {
   extractTemplateOptionIds,
   FeedbackRow,
   firstLine,
+  igAlignedScore,
   IG_RATE_WEIGHTS,
   instantiateTemplateEtapas,
   isPlanLimitExceeded,
@@ -33,6 +34,12 @@ import {
 const METRIC_KEYS = ["reach", "saved", "shares", "comments", "likes"] as const;
 type MetricKey = (typeof METRIC_KEYS)[number];
 export type Metrics = Record<MetricKey, number>;
+
+const DERIVED_SORT_KEYS = ["share_rate", "like_rate", "save_rate", "comment_rate", "ig_score"] as const;
+type DerivedSortKey = (typeof DERIVED_SORT_KEYS)[number];
+type SortKey = MetricKey | DerivedSortKey;
+
+const DERIVED_SORT_CAP = 500;
 
 export interface PostMetricRow {
   reach: number; saved: number; shares: number; comments: number; likes: number;
@@ -260,25 +267,42 @@ export async function listPosts(
     formato?: string;
     modo?: string;
     published_since?: string;
-    sort_by_metric?: MetricKey;
+    sort_by_metric?: SortKey;
     limit?: number;
   },
-): Promise<any[]> {
+): Promise<any[] | { posts: any[]; truncated: boolean; cap: number }> {
   const limit = Math.min(Math.max(1, args.limit ?? 50), 200);
+
+  // Derived sort = a rate key or ig_score (requires in-memory sort after fetching a larger cap).
+  const derived = args.sort_by_metric !== undefined &&
+    (DERIVED_SORT_KEYS as readonly string[]).includes(args.sort_by_metric);
+
+  if (args.sort_by_metric === "ig_score" && args.client_id === undefined) {
+    throw new McpInputError("ig_score sort requires client_id");
+  }
+
   let q = d.db.from("workflow_posts").select(POST_COLS).eq("conta_id", d.ctx.conta_id);
 
   if (args.client_id !== undefined) {
     const wfIds = await clientWorkflowIds(d, args.client_id);
-    if (wfIds.length === 0) return [];
+    if (wfIds.length === 0) return derived ? { posts: [], truncated: false, cap: DERIVED_SORT_CAP } : [];
     q = q.in("workflow_id", wfIds);
   }
   if (args.formato) q = q.eq("tipo", args.formato);
   if (args.published_since) q = q.gte("published_at", args.published_since);
-  q = q.order("published_at", { ascending: false, nullsFirst: false }).limit(limit);
+
+  if (derived) {
+    // Skip the early published_at order+limit; fetch up to the cap for in-memory sort.
+    q = q.limit(DERIVED_SORT_CAP);
+  } else {
+    q = q.order("published_at", { ascending: false, nullsFirst: false }).limit(limit);
+  }
 
   const { data: posts } = await q;
   const rows = (posts ?? []) as any[];
-  if (rows.length === 0) return [];
+  const truncated = derived && rows.length >= DERIVED_SORT_CAP;
+
+  if (rows.length === 0) return derived ? { posts: [], truncated: false, cap: DERIVED_SORT_CAP } : [];
 
   const ids = rows.map((p) => p.id);
   const [props, media, metricMaps] = await Promise.all([
@@ -287,6 +311,11 @@ export async function listPosts(
     loadMetrics(d, rows),
   ]);
 
+  // Load distributions once if client_id is provided (needed for ig_score).
+  const dists = args.client_id !== undefined
+    ? await loadClientRateDistributions(d, args.client_id)
+    : null;
+
   let result = rows.map((p) => {
     const pm = props.get(p.id) ?? { modo: null, anotacao: null };
     const fmt = deriveFormatMeta(p.tipo, media.get(p.id) ?? []);
@@ -294,6 +323,11 @@ export async function listPosts(
     const rates = mrow
       ? computeRates(mrow, mrow.unavailable)
       : { share_rate: null, like_rate: null, save_rate: null, comment_rate: null };
+    let ig_score: number | null = null;
+    if (dists && mrow) {
+      const samples = selectRateSamples(mrow.media_type, dists);
+      ig_score = igAlignedScore(rates, samples);
+    }
     return {
       id: p.id,
       workflow_id: p.workflow_id,
@@ -313,14 +347,26 @@ export async function listPosts(
       metrics: mrow,
       views: mrow?.impressions ?? null,
       ...rates,
-      ig_score: null,
+      ig_score,
     };
   });
 
   if (args.modo) result = result.filter((r) => r.modo === args.modo);
+
   if (args.sort_by_metric) {
     const k = args.sort_by_metric;
-    result.sort((a, b) => (b.metrics?.[k] ?? -1) - (a.metrics?.[k] ?? -1));
+    const val = (r: any): number => {
+      if ((METRIC_KEYS as readonly string[]).includes(k)) return r.metrics?.[k] ?? -Infinity;
+      if (k === "ig_score") return r.ig_score ?? -Infinity;
+      // rate key
+      return r[k] ?? -Infinity;
+    };
+    result.sort((a, b) => val(b) - val(a));
+  }
+
+  if (derived) {
+    result = result.slice(0, limit);
+    return { posts: result, truncated, cap: DERIVED_SORT_CAP };
   }
   return result;
 }
@@ -368,6 +414,24 @@ export async function getPost(d: Deps, args: { post_id: number }): Promise<any |
     ? computeRates(mrow, mrow.unavailable)
     : { share_rate: null, like_rate: null, save_rate: null, comment_rate: null };
 
+  let ig_score: number | null = null;
+  let tiers: Record<RateKey, ReturnType<typeof performanceTier>> | null = null;
+  {
+    const { data: wf } = await d.db.from("workflows")
+      .select("cliente_id").eq("conta_id", d.ctx.conta_id).eq("id", p.workflow_id).maybeSingle();
+    const clientId = (wf as any)?.cliente_id;
+    if (clientId && mrow) {
+      const dists = await loadClientRateDistributions(d, clientId);
+      const samples = selectRateSamples(mrow.media_type, dists);
+      ig_score = igAlignedScore(rates, samples);
+      tiers = {} as Record<RateKey, ReturnType<typeof performanceTier>>;
+      for (const key of Object.keys(IG_RATE_WEIGHTS) as RateKey[]) {
+        const s = samples[key];
+        tiers[key] = s.length >= MIN_SAMPLE ? performanceTier(rates[key], quartiles(s)) : null;
+      }
+    }
+  }
+
   return {
     id: p.id,
     workflow_id: p.workflow_id,
@@ -390,7 +454,8 @@ export async function getPost(d: Deps, args: { post_id: number }): Promise<any |
     metrics: mrow,
     views: mrow?.impressions ?? null,
     ...rates,
-    ig_score: null,
+    ig_score,
+    tiers,
   };
 }
 

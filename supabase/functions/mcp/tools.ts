@@ -75,7 +75,10 @@ function register(
 
 const STATUS_CLIENTE = z.enum(["ativo", "pausado", "encerrado"]);
 const FORMATO = z.enum(["feed", "reels", "stories", "carrossel"]);
-const METRIC = z.enum(["reach", "saved", "shares", "comments", "likes"]);
+const METRIC = z.enum([
+  "reach", "saved", "shares", "comments", "likes",
+  "share_rate", "like_rate", "save_rate", "comment_rate", "ig_score",
+]);
 const PROPERTY_TYPE = z.enum([
   "text", "url", "email", "phone", "number", "date", "checkbox", "select", "status", "multiselect",
 ]);
@@ -97,7 +100,7 @@ export function registerTools(server: any, deps: Deps): void {
     (a) => getBrandProfile(deps, a));
 
   register(server, deps, "list_posts", "posts:read",
-    "Lista posts (pipeline) com modo, anotação, formato e métricas publicadas quando disponíveis.",
+    "Lista posts (pipeline) com modo, anotação, formato, métricas, taxas (share_rate/like_rate/save_rate/comment_rate) e ig_score quando disponíveis. Ordenação por métricas brutas ou taxas; ig_score exige client_id.",
     {
       client_id: z.number().int().optional(),
       formato: FORMATO.optional(),
@@ -109,7 +112,7 @@ export function registerTools(server: any, deps: Deps): void {
     (a) => listPosts(deps, a));
 
   register(server, deps, "get_post", "posts:read",
-    "Detalhe completo de um post, com mídia assinada (1h) e métricas quando publicado.",
+    "Detalhe completo de um post, com mídia assinada (1h), métricas, taxas (share_rate/like_rate/save_rate/comment_rate), ig_score e tiers de desempenho (top_quartile/above_median/below_median/bottom_quartile) quando publicado.",
     { post_id: z.number().int() },
     (a) => getPost(deps, a));
 
