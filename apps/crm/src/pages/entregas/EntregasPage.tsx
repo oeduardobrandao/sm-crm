@@ -63,6 +63,7 @@ export default function EntregasPage() {
     postsCounts,
     approvedPostsCounts,
     revisaoInternaCounts,
+    awaitingClienteCounts,
     postResponsaveis,
     isLoading,
     refresh,
@@ -265,6 +266,7 @@ export default function EntregasPage() {
           postsCounts={postsCounts}
           approvedPostsCounts={approvedPostsCounts}
           revisaoInternaCounts={revisaoInternaCounts}
+          awaitingClienteCounts={awaitingClienteCounts}
         />
       )}
       {activeView === 'chart' && <ChartView cards={filteredCards} />}

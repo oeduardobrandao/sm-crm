@@ -64,6 +64,8 @@ interface WorkflowCardProps {
   approvedPostsCount?: number;
   /** Number of posts in revisao_interna status */
   revisaoInternaCount?: number;
+  /** Number of posts still awaiting client approval (status enviado_cliente) */
+  awaitingClienteCount?: number;
 }
 
 export function WorkflowCard({
@@ -80,6 +82,7 @@ export function WorkflowCard({
   postsCount,
   approvedPostsCount,
   revisaoInternaCount,
+  awaitingClienteCount,
 }: WorkflowCardProps) {
   const navigate = useNavigate();
   const [assignDropdownOpen, setAssignDropdownOpen] = useState(false);

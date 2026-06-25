@@ -46,6 +46,7 @@ interface KanbanViewProps {
   postsCounts: Map<number, number>;
   approvedPostsCounts: Map<number, number>;
   revisaoInternaCounts: Map<number, number>;
+  awaitingClienteCounts: Map<number, number>;
 }
 
 interface BoardRow {
@@ -113,6 +114,7 @@ function SortableCard({
   postsCount,
   approvedPostsCount,
   revisaoInternaCount,
+  awaitingClienteCount,
 }: {
   card: BoardCard;
   onCardClick: (c: BoardCard) => void;
@@ -125,6 +127,7 @@ function SortableCard({
   postsCount: number;
   approvedPostsCount: number;
   revisaoInternaCount: number;
+  awaitingClienteCount: number;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: String(card.workflow.id),
@@ -150,6 +153,7 @@ function SortableCard({
         postsCount={postsCount}
         approvedPostsCount={approvedPostsCount}
         revisaoInternaCount={revisaoInternaCount}
+        awaitingClienteCount={awaitingClienteCount}
       />
     </div>
   );
@@ -170,6 +174,7 @@ export function KanbanView({
   postsCounts,
   approvedPostsCounts,
   revisaoInternaCounts,
+  awaitingClienteCounts,
 }: KanbanViewProps) {
   const [localCards, setLocalCards] = useState<BoardCard[]>(cards);
   const [activeCard, setActiveCard] = useState<BoardCard | null>(null);
@@ -460,6 +465,7 @@ export function KanbanView({
                               postsCount={postsCounts.get(card.workflow.id!) ?? 0}
                               approvedPostsCount={approvedPostsCounts.get(card.workflow.id!) ?? 0}
                               revisaoInternaCount={revisaoInternaCounts.get(card.workflow.id!) ?? 0}
+                              awaitingClienteCount={awaitingClienteCounts.get(card.workflow.id!) ?? 0}
                             />
                           ))
                         )}
@@ -479,6 +485,7 @@ export function KanbanView({
               postsCount={postsCounts.get(activeCard.workflow.id!) ?? 0}
               approvedPostsCount={approvedPostsCounts.get(activeCard.workflow.id!) ?? 0}
               revisaoInternaCount={revisaoInternaCounts.get(activeCard.workflow.id!) ?? 0}
+              awaitingClienteCount={awaitingClienteCounts.get(activeCard.workflow.id!) ?? 0}
             />
           )}
         </DragOverlay>
