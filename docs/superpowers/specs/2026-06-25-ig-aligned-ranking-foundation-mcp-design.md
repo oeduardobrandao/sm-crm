@@ -89,15 +89,27 @@ quartile tiers drive the human label.)
 
 ## Data model (one migration)
 
-Add `instagram_posts.unavailable_metrics text[] NOT NULL DEFAULT '{}'`.
+`instagram_posts` count columns (`reach`, `impressions`, `saved`, `shares`,
+`likes`, `comments`) are `integer DEFAULT 0` and **nullable** — `DEFAULT 0` with
+no `NOT NULL` (`20260301_baseline_schema.sql:200-205`). We keep them numeric
+(never write `NULL`) so the existing Analytics consumers (`instagram-analytics`,
+`instagram-report-generator`, the CRM Analytics pages, `hub-posts`) are
+unaffected, and add a separate marker column as the single source of truth for
+availability.
 
-Tokens use the DB column names: `reach`, `impressions`, `saved`, `shares`,
-`likes`, `comments`. A token in the array means "the API did not return this
-metric at the last sync, and the stored count is a preserved/default value, not a
-fresh `0`." Count columns stay `NOT NULL DEFAULT 0`, so the existing Analytics
-consumers (`instagram-analytics`, `instagram-report-generator`, the CRM Analytics
-pages, `hub-posts`) are **unaffected** — they keep reading numbers. Only the
-MCP rate layer consults `unavailable_metrics`.
+The migration:
+1. Adds `instagram_posts.unavailable_metrics text[] NOT NULL DEFAULT '{}'`.
+   Tokens use the DB column names above. A token means "the API did not return
+   this metric at the last sync; the stored count is a preserved/last-known value
+   (or `0` for a brand-new row), not a fresh `0`." Only the MCP rate layer reads
+   it; it is the source of truth for `null`-vs-`0`.
+2. **Backfills historical rows** so old data doesn't poison baselines: the old
+   sync fetched `shares` only for `media_type = 'VIDEO'`
+   (`instagram-integration/index.ts:355-356`), so existing image/carousel rows have
+   a real-looking `shares = 0`. Mark them unavailable:
+   `UPDATE instagram_posts SET unavailable_metrics = array_append(unavailable_metrics, 'shares') WHERE media_type <> 'VIDEO' AND NOT ('shares' = ANY(unavailable_metrics));`
+   (Other metrics were fetched for all media types historically, so only `shares`
+   needs backfilling.)
 
 ## Sync changes
 
@@ -108,22 +120,34 @@ way:
 - `instagram-sync-cron/index.ts:276` (cron, batch `allPostData`)
 
 Changes:
-1. **Fetch `shares` for all media types**, not just `VIDEO` (carousels/images are
-   most of the content; share rate is IG's #2 signal). Request
-   `reach,views,saved,shares` for every post.
+1. **Fetch `shares` for all media types, with a fallback.** Request
+   `reach,views,saved,shares` for every post (carousels/images are most of the
+   content; share rate is IG's #2 signal). If the call is rejected because `shares`
+   is unsupported for that media type, **retry with `reach,views,saved`** and mark
+   only `shares` unavailable — a shares-only rejection must never cost us
+   reach/views/saved.
 2. **Track availability.** Begin with the insight metrics assumed unavailable;
    remove each from the unavailable set as it is parsed from the response.
    `likes`/`comments` come from the media node (`like_count`/`comments_count`) —
    mark unavailable only if the field is absent.
-3. **Never overwrite with `0` on failure.** When a metric is not returned (per-type
-   API rejection, or the whole insights call throwing), **omit that count column
-   from the upsert payload** so the previous value is preserved on conflict-update
-   (a brand-new row falls back to the column default `0`), and add the metric's
-   token to `unavailable_metrics`. Always write `unavailable_metrics`.
+3. **Preserve previous; never overwrite with `0`; write complete payloads.**
+   Omitting a column is *not* a reliable way to preserve it here: the count columns
+   are only `DEFAULT 0` (not `NOT NULL`), and in PostgREST **bulk** upserts a key
+   present in some rows but absent in others is unioned across the batch and filled
+   with `null`/default (governed by `defaultToNull`), not preserved. Instead: read
+   the existing rows for the batch's `instagram_post_id`s and build **complete
+   payloads with explicit numeric values** for every count column — freshly-fetched
+   value if available, else the previous value, else `0` (new row) — plus the
+   computed `unavailable_metrics`. No omitted columns ⇒ no `defaultToNull`
+   ambiguity, and an unavailable metric never clobbers a real previous value. Same
+   logic for the single upsert (`instagram-integration:369`) and the two bulk
+   upserts (`instagram-integration:614`, `instagram-sync-cron:276`).
 
-Existing rows carry `unavailable_metrics = '{}'` until re-synced; the daily cron
-heals them (no data backfill migration). Pre-fix carousel `shares` stay `0` but
-get marked unavailable / repopulated on the next sync.
+The migration's backfill marks historical non-video `shares` unavailable
+immediately (no wait for re-sync); the daily cron keeps `unavailable_metrics`
+current thereafter. **Tests:** a conflict-update preserves a previous value when
+its metric is unavailable this sync; a brand-new row inserts `0` and marks the
+metric unavailable.
 
 ## MCP surface changes (`queries.ts`, `tools.ts`)
 
@@ -138,10 +162,14 @@ and quartile functions consume. It is client-scoped via the client's
 so rates can be computed for `list_posts`/`get_post` rows.
 
 - **`get_performance_baseline`** → quartiles computed on the four **rates**
-  (overall + per format, `MIN_SAMPLE`-gated) instead of raw counts. Payload also
-  includes `weights` (the heuristic) with the "not Instagram's published weights"
-  note, and keeps `reach` raw quartiles as context outside the score. *Contract
-  change* — update its tests and the MCP help article.
+  (overall + per format) instead of raw counts. Each bucket is reported as
+  `{ n, quartiles }`, where `n` = the count of non-`null` rate values in that
+  bucket and `quartiles` is `null` when `n < MIN_SAMPLE` — so a consumer can
+  distinguish "no posts" / "metric missing" / "under-sampled" instead of guessing
+  at a bare `null`. Payload also includes `weights` (the heuristic) with the "not
+  Instagram's published weights" note, and keeps `reach` (raw) as `{ n, quartiles }`
+  context outside the score. *Contract change* — update its tests and the MCP help
+  article.
 - **`get_post`** → adds `views`, the four rates, `ig_score`, and the per-rate
   quartile tier (resolves the post's `client_id` via its workflow, then uses
   `loadClientRateDistributions`).
@@ -151,6 +179,15 @@ so rates can be computed for `list_posts`/`get_post` rows.
   `sort_by_metric` gains `share_rate | like_rate | save_rate | comment_rate |
   ig_score` (existing raw-count keys kept for back-compat). Rate sorts:
   descending, `null` last.
+  **Derived-metric sorts limit *after* sorting.** Today the DB query applies
+  `order(published_at).limit(limit)` *before* the in-memory metric sort
+  (`queries.ts:251`), so a derived sort would rank only within the recency window
+  and miss the true top-by-score posts. When `sort_by_metric` is any rate or
+  `ig_score`, fetch the full matching set up to a safe cap (`DERIVED_SORT_CAP =
+  500`, no early `published_at` limit), compute and sort, then slice to `limit`;
+  if the cap truncated the set, surface that in the result rather than capping
+  silently. Non-metric/default ordering keeps the existing `published_at` + `limit`
+  path.
   **`ig_score` sort requires `client_id`** — without it, raise
   `McpInputError("ig_score sort requires client_id")` (no silent raw-rate
   fallback, which would undermine the normalization). With `client_id`, load the
@@ -175,10 +212,11 @@ that the baseline is now rate-based. One small migration upsert; no new article.
 - **`queries.ts`**: `loadClientRateDistributions`, baseline/list/get wiring;
   extend `mcp-metrics_test.ts` for the new row shapes + the `ig_score`-without-
   `client_id` rejection.
-- **Deploy:** migration (`unavailable_metrics`); `mcp`, `instagram-integration`,
-  `instagram-sync-cron` via `--use-api` (the Docker bundler is broken on CLI
-  2.108.0); prod + staging. `instagram-integration`/`instagram-sync-cron` keep
-  their existing deploy flags. Restore `deno.lock` + `npm ci` after.
+- **Deploy:** migration (`unavailable_metrics` column **+ historical non-video
+  `shares` backfill**); `mcp`, `instagram-integration`, `instagram-sync-cron` via
+  `--use-api` (the Docker bundler is broken on CLI 2.108.0); prod + staging.
+  `instagram-integration`/`instagram-sync-cron` keep their existing deploy flags.
+  Restore `deno.lock` + `npm ci` after.
 
 ## Out of scope (Project 2)
 
@@ -189,9 +227,17 @@ that the baseline is now rate-based. One small migration upsert; no new article.
 
 ## Testing summary
 
-- Deno unit tests for all `content.ts` helpers (ties, zero views, missing
-  metrics, small samples) + extended `mcp-metrics_test.ts`.
+- Deno unit tests for all `content.ts` helpers — `percentileRank` ties (midrank),
+  `computeRates` zero views and missing-metric (`null` vs `0`), `igAlignedScore`
+  small-sample fallback (format → all-formats → `null`) and component
+  renormalization.
+- Sync tests: conflict-update preserves a previous value when its metric is
+  unavailable this sync; brand-new row inserts `0` + marks unavailable; the
+  `shares`-rejection retry keeps reach/views/saved.
+- `mcp-metrics_test.ts` extended: rate fields + `views` on rows; `{ n, quartiles }`
+  baseline shape; `ig_score` sort without `client_id` rejected (`McpInputError`);
+  derived-sort fetches up to the cap and slices after sorting.
 - `deno check` on changed edge functions; `npm run build` green.
 - Post-deploy live check via the prod MCP tools: `get_performance_baseline`
-  returns rate quartiles; `list_posts` `sort_by_metric=ig_score` (with
-  `client_id`) ranks; `get_post` returns rates + score + tiers.
+  returns `{ n, quartiles }` rate buckets; `list_posts` `sort_by_metric=ig_score`
+  (with `client_id`) ranks; `get_post` returns rates + score + tiers.
