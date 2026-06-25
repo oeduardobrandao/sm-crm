@@ -78,6 +78,11 @@ const VIDEO_MIN_DURATION = 3;
 const VIDEO_MAX_DURATION = 90;
 const STORY_VIDEO_MAX_DURATION = 60;
 
+/** Instagram Content Publishing API caps carousels at 10 items.
+ *  (The native app allows 20, but the Graph API does not.) Stories are exempt
+ *  — they publish as sequential segments, not a single carousel container. */
+export const CAROUSEL_MAX_ITEMS = 10;
+
 export function validateMedia(files: MediaFile[], opts?: { forStories?: boolean }): ValidationError[] {
   const errors: ValidationError[] = [];
   const imageArMin = opts?.forStories ? STORY_IMAGE_AR_MIN : IMAGE_AR_MIN;
@@ -175,6 +180,13 @@ export async function validateForScheduling(
   if (mediaFiles.length === 0) {
     errors.push("Post precisa de pelo menos uma mídia.");
   } else {
+    if (!isStory && mediaFiles.length > CAROUSEL_MAX_ITEMS) {
+      errors.push(
+        `Carrossel do Instagram aceita no máximo ${CAROUSEL_MAX_ITEMS} itens ` +
+          `(este post tem ${mediaFiles.length}). Reduza para ${CAROUSEL_MAX_ITEMS} ou menos. ` +
+          `O app do Instagram permite 20, mas a publicação via API é limitada a ${CAROUSEL_MAX_ITEMS}.`,
+      );
+    }
     const mediaErrors = validateMedia(mediaFiles, { forStories: isStory });
     for (const e of mediaErrors) errors.push(e.message);
   }
@@ -534,6 +546,13 @@ export async function createContainerForPost(
   }
 
   if (media.length === 0) throw new Error("No media files found");
+  if (media.length > CAROUSEL_MAX_ITEMS) {
+    throw new Error(
+      `Carrossel do Instagram aceita no máximo ${CAROUSEL_MAX_ITEMS} itens ` +
+        `(este post tem ${media.length}). Reduza para ${CAROUSEL_MAX_ITEMS} ou menos. ` +
+        `O app do Instagram permite 20, mas a publicação via API é limitada a ${CAROUSEL_MAX_ITEMS}.`,
+    );
+  }
 
   const isCarousel = media.length > 1;
   const isSingleVideo = media.length === 1 && media[0].kind === "video";

@@ -176,3 +176,28 @@ Deno.test("createContainerForPost: no media → throws", async () => {
   }
   assert(threw, "must throw when the post has no media");
 });
+
+Deno.test("createContainerForPost: >10 media → throws before any Graph call", async () => {
+  const f = stubFetch();
+  try {
+    const eleven = Array.from({ length: 11 }, (_, i) => ({
+      kind: "image",
+      r2_key: `img/${i}.jpg`,
+    }));
+    const db = dbWithMedia(eleven);
+    let threw = false;
+    try {
+      await createContainerForPost(db, { ...base, useCover: false });
+    } catch (e) {
+      threw = true;
+      assert(
+        (e as Error).message.includes("máximo 10"),
+        "error should mention the 10-item carousel cap",
+      );
+    }
+    assert(threw, "must throw when the post has more than 10 media");
+    assertEquals(f.calls.length, 0); // no child/parent container call was made
+  } finally {
+    f.restore();
+  }
+});

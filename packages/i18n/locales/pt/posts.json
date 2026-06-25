@@ -64,7 +64,9 @@
     "videoThumbnail": "Miniatura do vídeo",
     "thumbnailHint": "Vídeos ganham uma miniatura automática (um frame do vídeo). Você pode ajustá-la depois pelo ícone de imagem no vídeo.",
     "thumbnailFallback": "Não foi possível gerar a miniatura automaticamente. Selecione uma imagem de capa para",
-    "remainingVideos": "{{count}} vídeo(s) aguardando miniatura"
+    "remainingVideos": "{{count}} vídeo(s) aguardando miniatura",
+    "carouselLimit": "Carrossel acima do limite do Instagram",
+    "carouselLimitDesc": "Carrosséis publicados via Instagram aceitam no máximo {{max}} itens (este post tem {{count}}). O app permite 20, mas a publicação automática é limitada a {{max}}."
   },
   "thumbnailEditor": {
     "title": "Miniatura do vídeo",

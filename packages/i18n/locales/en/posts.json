@@ -64,7 +64,9 @@
     "videoThumbnail": "Video thumbnail",
     "thumbnailHint": "Videos get an automatic thumbnail (a frame from the video). You can adjust it later via the image icon on the video.",
     "thumbnailFallback": "Could not generate a thumbnail automatically. Select a cover image for",
-    "remainingVideos": "{{count}} video(s) awaiting a thumbnail"
+    "remainingVideos": "{{count}} video(s) awaiting a thumbnail",
+    "carouselLimit": "Carousel exceeds Instagram's limit",
+    "carouselLimitDesc": "Carousels published via Instagram allow at most {{max}} items (this post has {{count}}). The app allows 20, but automatic publishing is limited to {{max}}."
   },
   "thumbnailEditor": {
     "title": "Video thumbnail",

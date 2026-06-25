@@ -49,6 +49,11 @@ interface PostMediaGalleryProps {
   onChange?: (media: PostMedia[]) => void;
 }
 
+// Mirror of CAROUSEL_MAX_ITEMS in
+// supabase/functions/_shared/instagram-publish-utils.ts — keep in sync.
+// Instagram's Content Publishing API caps carousels at 10 (the native app allows 20).
+const CAROUSEL_MAX_ITEMS = 10;
+
 export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostMediaGalleryProps) {
   const { t } = useTranslation('posts');
   const { t: tc } = useTranslation();
@@ -406,6 +411,20 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
 
   return (
     <div className="space-y-3">
+      {media.length > CAROUSEL_MAX_ITEMS && (
+        <div className="flex items-start gap-2 rounded-xl bg-amber-50 ring-1 ring-amber-200/60 px-3 py-2.5 text-amber-900">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500 mt-0.5" />
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[12.5px] font-semibold">{t('mediaGallery.carouselLimit')}</span>
+            <span className="text-[12px] text-stone-600">
+              {t('mediaGallery.carouselLimitDesc', {
+                max: CAROUSEL_MAX_ITEMS,
+                count: media.length,
+              })}
+            </span>
+          </div>
+        </div>
+      )}
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={media.map((m) => m.id)} strategy={rectSortingStrategy}>
           <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
