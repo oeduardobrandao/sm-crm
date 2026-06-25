@@ -65,7 +65,7 @@ Everything else currently on the dashboard (Leads, Entregas, Contratos, Equipe, 
 | **reachTrend** — reach in current 28d vs prior 28d | `instagram_posts` reach, split into two 28d windows (56d fetch) |
 | **recency** — days since last post | latest `instagram_posts.posted_at` |
 | **pipeline** — queued / in-production / agent / failed | `workflow_posts` of the client's active workflows |
-| **connection/sync** — connected & fresh | presence of `instagram_accounts` row + `last_synced_at` |
+| **connection/sync** — connected, authorized, fresh | `instagram_accounts` presence + `authorization_status` + `token_expires_at` + `last_synced_at` |
 
 ### Sub-score normalization (each → 0–100)
 
@@ -93,10 +93,14 @@ score = round(0.35·growthScore + 0.30·engagementScore
 
 ### Override statuses (evaluated first, in priority order — skip the score)
 
-1. **Desconectado** — no `instagram_accounts` row for the client. (A setup gap; itself a health signal. Card CTA: "Conectar Instagram".)
-2. **Sem sincronizar** — connected but `last_synced_at` is null or older than **3 days** (sync/token problem; data is stale, not necessarily declining). Card CTA: "Reconectar".
-3. **Sem dados** — connected & syncing, but insufficient history to score (no posts in 56d **and** < 2 follower-history points, e.g. a brand-new account). Neutral; avoids a misleading "Em queda" on new accounts.
-4. **Inativo** — has history but dormant: no post in **21 days** **and** pipeline empty (0 queued, 0 in production).
+Connection state must distinguish **authorization** problems from **sync/data** problems — they have different meaning and different fixes. The existing codebase already separates these: `authorization_status ∈ {'revoked','expired'}` and `token_expires_at < now` are reconnect signals (InstagramOverviewCard.ts:28–31, integrations.ts:105–108), while `last_synced_at === null` means *initial sync in progress*, not stale (ClienteDetalhePage.tsx:2459).
+
+1. **Desconectado** — no `instagram_accounts` row for the client. A setup gap. Card CTA: "Conectar Instagram".
+2. **Reconectar** — `authorization_status = 'revoked'` **or** `'expired'` **or** `token_expires_at < now`. Authorization is broken; data can't refresh until the user re-auths. **Danger** styling. Card CTA: "Reconectar".
+3. **Sincronizando** — account exists and is authorized, but `last_synced_at IS NULL` (first sync hasn't completed yet). Neutral/transient; **not** an alarm. No CTA beyond a subtle spinner/label.
+4. **Sem sincronizar** — authorized and has synced before, but `last_synced_at` is older than **3 days** (cron/data-flow problem; data is stale, not necessarily declining). Indigo. CTA: "Sincronizar agora".
+5. **Sem dados** — syncing fine, but insufficient history to score (no posts in 56d **and** < 2 follower-history points, e.g. a brand-new connected account). Neutral; avoids a misleading "Em queda" on new accounts.
+6. **Inativo** — has history but dormant: no post in **21 days** **and** pipeline empty (0 queued, 0 in production).
 
 If none apply, the score-based tier is used.
 
@@ -134,17 +138,26 @@ interface ClientHealth {
   profile_picture_url: string | null;
   connected: boolean;
   follower_count: number;
-  follower_delta: number;          // 28d
-  follower_series: number[];       // ~30d, for Sparkline
+  follower_delta: number;          // 28d, ABSOLUTE follower count change (for display) — matches analytics.ts
+  follower_delta_pct: number;      // 28d, PERCENT change (drives growthScore) — never conflate with the absolute
+  follower_series: number[];       // downsampled ~8–12 points over 30d, for Sparkline
   engagement_rate: number;         // %
   reach_28d: number;
   reach_trend_pct: number;
   days_since_last_post: number | null;
   pipeline: { agendados: number; em_producao: number; agente: number; falha: number };
+  // connection inputs (drive the override states)
+  authorization_status: string | null;  // 'active' | 'expired' | 'revoked' | null
+  token_expires_at: string | null;
+  last_synced_at: string | null;
   status: HealthStatus;            // tier or override
   score: number | null;            // null for override/no-data states
-  last_synced_at: string | null;
 }
+
+// HealthStatus =
+//   'em_alta' | 'saudavel' | 'estavel' | 'atencao' | 'em_queda'   (score tiers)
+//   | 'inativo' | 'sem_dados' | 'sincronizando'
+//   | 'sem_sincronizar' | 'reconectar' | 'desconectado'           (overrides)
 
 interface ClientHealthMonitorResult {
   clients: ClientHealth[];
@@ -153,22 +166,29 @@ interface ClientHealthMonitorResult {
     atencao: number;     // Em queda + Atenção + Inativo
     saudaveis: number;   // Em alta + Saudável
     estaveis: number;    // Estável
-    semSync: number;     // Sem sincronizar + Desconectado + Sem dados
-    precisamAtencao: number; // headline: Em queda + Inativo + Sem sincronizar + Desconectado
+    conexao: number;     // Desconectado + Reconectar + Sem sincronizar + Sincronizando + Sem dados
+    precisamAtencao: number; // headline (actionable now): Em queda + Inativo + Reconectar + Sem sincronizar + Desconectado
   };
 }
 ```
 
-The service runs ~4 batched Supabase queries (RLS-scoped to the conta) over all `status='ativo'` clients:
+> Units caveat (review finding): `follower_delta` is an **absolute** count (consistent with `getPortfolioSummary`, analytics.ts:341); `growthScore` is computed from **`follower_delta_pct`**. Keeping them as separate fields prevents scoring an absolute follower gain as if it were a percentage.
 
-1. clients + their `instagram_accounts`.
-2. `instagram_follower_history` last ~30–56d → delta + sparkline series.
-3. `instagram_posts` last 56d → engagement, reach (split into two 28d windows for trend), last-post date.
-4. `workflow_posts` of active workflows, grouped by client + status → pipeline counts.
+**Aggregation must happen server-side — raw row reads do not scale (review finding, High).** Postgres/PostgREST caps result sets (default `db-max-rows` = 1000). Aggregating in the client the way `getPortfolioSummary` does (analytics.ts:296–315 reads raw `instagram_posts`, follower history, and an unbounded `latestPosts`) silently truncates at scale — e.g. follower history alone is ≈ accounts × 56 days (30 accounts ≈ 1,680 rows > 1,000), so deltas, recency, trend, and pipeline counts would be computed from a partial set and be **wrong without erroring**. (This is a pre-existing latent bug in `getPortfolioSummary`; noted for follow-up below, out of scope here.)
 
-This reuses the query logic already present in `services/analytics.ts` `getPortfolioSummary`. Shared helpers/types are extracted/reused rather than duplicated; `getPortfolioSummary` and the analytics pages keep working unchanged.
+The service therefore calls a dedicated **Postgres RPC** that returns exactly one row per active client, with all aggregation done in SQL:
 
-`scoreClient()` is pure and lives in **`lib/health/score.ts`** (no I/O) so it is unit-tested and tuned in isolation. The service maps each client's signals through it.
+```
+get_client_health_aggregates(p_window_days int default 28)
+  → one row per clientes WHERE status='ativo' (RLS-scoped to conta), LEFT JOIN instagram_accounts
+```
+
+Each row provides: account presence + `authorization_status`, `token_expires_at`, `last_synced_at`; follower first/last in window (→ absolute delta + pct) and a downsampled `follower_series` array (~8–12 points); engagement and reach aggregated over current vs prior 28d windows (→ engagement_rate, reach_28d, reach_trend_pct); `max(posted_at)` (→ days_since_last_post, null if none); and `workflow_posts` counts grouped by status class (agendados / em_producao / agente / falha). One round trip, bounded payload, correct regardless of post volume.
+
+- **Build the client list from `clientes` (all `status='ativo'`), LEFT-joined to accounts** — NOT from `PortfolioSummary.accounts`, which returns only *connected* accounts (analytics.ts:274) and would drop **Desconectado** clients entirely. Reuse from `analytics.ts` means shared **types/helpers**, not its result shape.
+- `getPortfolioSummary` and the analytics pages are untouched by this work.
+
+`scoreClient()` is pure and lives in **`lib/health/score.ts`** (no I/O) so it is unit-tested and tuned in isolation. The service maps each RPC row's signals through it to derive `status` + `score`.
 
 TanStack Query `staleTime` ~5 min (data is cron-synced ~daily, so frequent refetch is wasteful).
 
@@ -177,8 +197,8 @@ TanStack Query `staleTime` ~5 min (data is cron-synced ~daily, so frequent refet
 ## Filtering & sort (client-side, no refetch)
 
 - **Chips** filter the in-memory list; counts come from `summary`:
-  - Todos · ⚠ Atenção `{Em queda, Atenção, Inativo}` · ▲ Saudáveis `{Em alta, Saudável}` · ● Estáveis `{Estável}` · ⟳ Sem sync `{Sem sincronizar, Desconectado, Sem dados}`.
-- **Sort** options: **Precisam de atenção primeiro** (score asc, override-states first) [default] · Maior engajamento · Último post (mais antigo) · Mais seguidores · Nome (A–Z).
+  - Todos · ⚠ Atenção `{Em queda, Atenção, Inativo}` · ▲ Saudáveis `{Em alta, Saudável}` · ● Estáveis `{Estável}` · 🔌 Conexão `{Desconectado, Reconectar, Sem sincronizar, Sincronizando, Sem dados}`.
+- **Sort** options: **Precisam de atenção primeiro** (default) · Maior engajamento · Último post (mais antigo) · Mais seguidores · Nome (A–Z). For the default, actionable override states (Reconectar, Sem sincronizar, Desconectado, Inativo) sort to the top, then score ascending; transient/neutral states (Sincronizando, Sem dados) sort after the scored tiers.
 - **Search** matches client name + @username.
 
 ---
@@ -187,7 +207,7 @@ TanStack Query `staleTime` ~5 min (data is cron-synced ~daily, so frequent refet
 
 - **Analytics** → `/analytics/:client_id` (per-client analytics page).
 - **Detalhe** → `/clientes/:id` (client detail).
-- **Desconectado / Sem sincronizar** → primary CTA "Conectar" / "Reconectar" pointing at the client's Instagram connect flow.
+- **Desconectado** → "Conectar Instagram"; **Reconectar** (revoked/expired) → "Reconectar" (re-auth flow); **Sem sincronizar** → "Sincronizar agora". All point at the client's existing Instagram connect/sync actions.
 
 ---
 
@@ -203,9 +223,11 @@ TanStack Query `staleTime` ~5 min (data is cron-synced ~daily, so frequent refet
 ## Files
 
 **New**
+- `supabase/migrations/<ts>_client_health_aggregates.sql` — `get_client_health_aggregates(p_window_days)` RPC (SQL-side aggregation, RLS-scoped via `conta_id`; `SECURITY INVOKER` so RLS applies).
 - `apps/crm/src/lib/health/score.ts` — pure `scoreClient()`, `HealthStatus` type, weight/threshold constants.
 - `apps/crm/src/lib/health/score.test.ts` — unit tests.
-- `apps/crm/src/services/clientHealth.ts` — `getClientHealthMonitor()`.
+- `apps/crm/src/services/clientHealth.ts` — `getClientHealthMonitor()` (calls the RPC, maps rows through `scoreClient`).
+- `apps/crm/src/services/clientHealth.test.ts` — service tests (mocked RPC rows).
 - `apps/crm/src/pages/dashboard/components/ClientHealthMonitor.tsx`
 - `apps/crm/src/pages/dashboard/components/ClientHealthGrid.tsx`
 - `apps/crm/src/pages/dashboard/components/ClientHealthCard.tsx`
@@ -224,8 +246,9 @@ TanStack Query `staleTime` ~5 min (data is cron-synced ~daily, so frequent refet
 
 ## Testing
 
-- **Unit (TDD) — `lib/health/score.ts`:** tier boundaries; override priority (Desconectado > Sem sync > Sem dados > Inativo > score); normalization edge cases (zero start followers, no posts, negative growth, stale sync, falha flag); composite rounding.
-- **Component (RTL):** `ClientHealthCard` renders correct badge/metrics/pipeline; `HealthFilterBar` filtering + sort; grid loading/empty/error/none-connected states.
+- **Unit (TDD) — `lib/health/score.ts`:** tier boundaries; override priority (Desconectado > Reconectar > Sincronizando > Sem sincronizar > Sem dados > Inativo > score); reconnect detection (`revoked` / `expired` / `token_expires_at < now`) vs `last_synced_at === null` initial-sync vs >3d stale; normalization edge cases (zero start followers, no posts, negative growth %, falha flag); growth uses `follower_delta_pct` not the absolute; composite rounding.
+- **Service — `services/clientHealth.test.ts` (mocked RPC rows, review finding):** disconnected clients are **included** (not dropped); revoked/expired → Reconectar; `last_synced_at` null → Sincronizando; stale → Sem sincronizar; no-post / null `max(posted_at)` → days_since_last_post null & Sem dados/Inativo as appropriate; pipeline status grouping (agendados / em_producao / agente / falha); aggregates correct for large row counts (the RPC returns one row per client regardless of underlying post/follower volume — assert no truncation behavior).
+- **Component (RTL):** `ClientHealthCard` renders correct badge/metrics/pipeline and the right CTA per connection state; `HealthFilterBar` filtering + sort; grid loading/empty/error/none-connected states.
 - **Verification:** `npm run build` (tsc), `npm run test`, plus CI gates (eslint, prettier `format:check`, coverage) before pushing. Update any existing dashboard tests that assert the old card layout (grep both app test suites).
 
 ---
@@ -238,6 +261,7 @@ TanStack Query `staleTime` ~5 min (data is cron-synced ~daily, so frequent refet
 
 ## Future (out of scope)
 
+- **Fix the latent truncation in `getPortfolioSummary`** (analytics.ts) — same row-cap risk this spec avoids via the RPC; the `/analytics` portfolio page still uses the client-side aggregation. Track separately; could reuse the new RPC.
 - AI health narrative / "what to do" suggestions on the monitor.
 - Health-over-time trend and change alerts (e.g. "dropped from Saudável to Atenção this week").
 - Surfacing agent-created content volume as a first-class metric.
