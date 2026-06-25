@@ -73,6 +73,91 @@ export function performanceTier(
   return "bottom_quartile";
 }
 
+// ---- IG-aligned engagement rates & score -------------------------------------
+// Rank posts by per-view engagement rates in Instagram's order of importance.
+// The weights below are an INTERNAL heuristic informed by public guidance that
+// emphasizes shares/sends — NOT Instagram's published weights (Meta publishes none).
+
+export type RateKey = "share_rate" | "like_rate" | "save_rate" | "comment_rate";
+export type Rates = Record<RateKey, number | null>;
+
+export const IG_RATE_WEIGHTS: Record<RateKey, number> = {
+  share_rate: 0.40,
+  like_rate: 0.30,
+  save_rate: 0.20,
+  comment_rate: 0.10,
+};
+
+/** Minimum non-null sample for a usable distribution (percentile / quartiles). */
+export const MIN_SAMPLE = 5;
+
+// Each rate's numerator maps to a DB-column token; views is the `impressions` column.
+const RATE_NUMERATOR: Record<RateKey, "shares" | "likes" | "saved" | "comments"> = {
+  share_rate: "shares",
+  like_rate: "likes",
+  save_rate: "saved",
+  comment_rate: "comments",
+};
+
+/**
+ * Per-view rates. `0` is a real rate; a numerator listed in `unavailable` (or
+ * `views`/`impressions` unavailable or 0) yields `null`, never `0`.
+ */
+export function computeRates(
+  counts: { shares: number; likes: number; saved: number; comments: number; impressions: number },
+  unavailable: Iterable<string> = [],
+): Rates {
+  const u = new Set(unavailable);
+  const views = counts.impressions;
+  const viewsOk = !u.has("impressions") && typeof views === "number" && views > 0;
+  const out = {} as Rates;
+  for (const key of Object.keys(IG_RATE_WEIGHTS) as RateKey[]) {
+    const token = RATE_NUMERATOR[key];
+    const num = counts[token];
+    out[key] = !viewsOk || u.has(token) || typeof num !== "number" || Number.isNaN(num)
+      ? null
+      : num / views;
+  }
+  return out;
+}
+
+/** Midrank percentile of `value` within `sample` (0..1). null if sample empty or value null. */
+export function percentileRank(value: number | null | undefined, sample: number[]): number | null {
+  if (value === null || value === undefined || Number.isNaN(value)) return null;
+  const xs = sample.filter((v) => typeof v === "number" && !Number.isNaN(v));
+  if (xs.length === 0) return null;
+  let less = 0;
+  for (const x of xs) {
+    if (x < value) less++;
+  }
+  return Math.min(1, (less + 0.5) / xs.length);
+}
+
+/**
+ * Composite 0–100 score: each non-null rate is placed at its percentile within
+ * its (already format-or-overall selected) distribution, weighted by the IG
+ * heuristic. Components whose sample is < MIN_SAMPLE are excluded; weights
+ * renormalize over what's present. null when no component is usable.
+ */
+export function igAlignedScore(
+  rates: Rates,
+  distributions: Record<RateKey, number[]>,
+): number | null {
+  let acc = 0, wsum = 0;
+  for (const key of Object.keys(IG_RATE_WEIGHTS) as RateKey[]) {
+    const v = rates[key];
+    if (v === null || v === undefined) continue;
+    const sample = distributions[key] ?? [];
+    if (sample.length < MIN_SAMPLE) continue;
+    const pct = percentileRank(v, sample);
+    if (pct === null) continue;
+    acc += IG_RATE_WEIGHTS[key] * pct;
+    wsum += IG_RATE_WEIGHTS[key];
+  }
+  if (wsum === 0) return null;
+  return Math.round((acc / wsum) * 100);
+}
+
 // Field allowlist for get_client / list_clients — sensitive columns are excluded by default
 // (LGPD/CFM sensitivity; a content agent does not need contact/financial data).
 export const CLIENT_PUBLIC_FIELDS = [

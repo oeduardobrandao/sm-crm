@@ -17,6 +17,9 @@ import {
   topDistinctPostIds,
   validatePropertyValue,
 } from "../mcp/content.ts";
+import {
+  computeRates, percentileRank, igAlignedScore, IG_RATE_WEIGHTS, MIN_SAMPLE,
+} from "../mcp/content.ts";
 
 Deno.test("deriveFormatMeta by tipo", () => {
   assertEquals(
@@ -329,4 +332,53 @@ Deno.test("isPlanLimitExceeded: keyed match only", () => {
   assertEquals(isPlanLimitExceeded(err, "max_custom_properties_per_template"), false);
   assertEquals(isPlanLimitExceeded({ message: "other" }, "max_workflow_templates"), false);
   assertEquals(isPlanLimitExceeded(null, "max_workflow_templates"), false);
+});
+
+Deno.test("computeRates: 0 is real, missing is null, views 0/missing -> null", () => {
+  // views>0, likes 0 returned -> like_rate 0; shares not returned -> null
+  const r = computeRates(
+    { shares: 0, likes: 0, saved: 4, comments: 2, impressions: 100 },
+    ["shares"],
+  );
+  assertEquals(r.like_rate, 0);          // returned 0 => real 0
+  assertEquals(r.save_rate, 0.04);
+  assertEquals(r.comment_rate, 0.02);
+  assertEquals(r.share_rate, null);      // unavailable => null, not 0
+  // views == 0 -> all null
+  const z = computeRates({ shares: 1, likes: 1, saved: 1, comments: 1, impressions: 0 });
+  assertEquals(z, { share_rate: null, like_rate: null, save_rate: null, comment_rate: null });
+  // views unavailable -> all null even if numerators returned
+  const v = computeRates({ shares: 1, likes: 1, saved: 1, comments: 1, impressions: 50 }, ["impressions"]);
+  assertEquals(v.like_rate, null);
+});
+
+Deno.test("percentileRank: midrank for ties; null for empty/null", () => {
+  assertEquals(percentileRank(5, []), null);
+  assertEquals(percentileRank(null, [1, 2, 3]), null);
+  // sample [10,10,20,30], value 10 -> (0 + 0.5*2)/4 = 0.125 (midrank)
+  assertEquals(percentileRank(10, [10, 10, 20, 30]), 0.125);
+  // value above all -> (3 + 0.5*1)/4? value 30: less=3, equal=1 -> 3.5/4 = 0.875
+  assertEquals(percentileRank(30, [10, 10, 20, 30]), 0.875);
+});
+
+Deno.test("igAlignedScore: weights present components, renormalizes, small-sample excluded", () => {
+  const big = Array.from({ length: 5 }, (_, i) => i / 100); // 5 values 0..0.04
+  // all four rates present, each at top of its sample -> score 100
+  const dist = { share_rate: big, like_rate: big, save_rate: big, comment_rate: big };
+  const top = igAlignedScore(
+    { share_rate: 0.05, like_rate: 0.05, save_rate: 0.05, comment_rate: 0.05 }, dist,
+  );
+  assertEquals(top, 100);
+  // share_rate null -> dropped, others renormalize (still 100 at top)
+  const noShare = igAlignedScore(
+    { share_rate: null, like_rate: 0.05, save_rate: 0.05, comment_rate: 0.05 }, dist,
+  );
+  assertEquals(noShare, 100);
+  // sample under MIN_SAMPLE -> that component excluded; no usable -> null
+  const tiny = { share_rate: [0.01], like_rate: [0.01], save_rate: [0.01], comment_rate: [0.01] };
+  assertEquals(
+    igAlignedScore({ share_rate: 0.02, like_rate: 0.02, save_rate: 0.02, comment_rate: 0.02 }, tiny),
+    null,
+  );
+  assertEquals(MIN_SAMPLE, 5);
 });
