@@ -76,6 +76,10 @@ const VIDEO_AR_MAX = 1.25;
 const VIDEO_MIN_DURATION = 3;
 const VIDEO_MAX_DURATION = 90;
 
+/** Instagram Content Publishing API caps carousels at 10 items.
+ *  (The native app allows 20, but the Graph API does not.) */
+export const CAROUSEL_MAX_ITEMS = 10;
+
 export function validateMedia(files: MediaFile[]): ValidationError[] {
   const errors: ValidationError[] = [];
   for (const f of files) {
@@ -369,6 +373,13 @@ export async function createContainerForPost(
   const { igUserId, token, postId, caption, useCover } = opts;
   const media = await fetchPostMedia(db, postId);
   if (media.length === 0) throw new Error("No media files found");
+  if (media.length > CAROUSEL_MAX_ITEMS) {
+    throw new Error(
+      `Carrossel do Instagram aceita no máximo ${CAROUSEL_MAX_ITEMS} itens ` +
+        `(este post tem ${media.length}). Reduza para ${CAROUSEL_MAX_ITEMS} ou menos. ` +
+        `O app do Instagram permite 20, mas a publicação via API é limitada a ${CAROUSEL_MAX_ITEMS}.`,
+    );
+  }
 
   const isCarousel = media.length > 1;
   const isSingleVideo = media.length === 1 && media[0].kind === "video";
