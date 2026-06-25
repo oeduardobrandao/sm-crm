@@ -391,6 +391,39 @@ export async function fetchPostMedia(db: DbClient, postId: number): Promise<Post
   }));
 }
 
+export interface StorySegment {
+  file_id: number;
+  container_id: string | null;
+  media_id: string | null;
+}
+
+/**
+ * Idempotently ensure a story post has a `story_segments` array (one entry per
+ * media, ordered). Returns the existing array unchanged if already present,
+ * preserving any persisted container_id/media_id. Only the single-writer holding
+ * the publish_processing_at lock should call this.
+ */
+export async function ensureStorySegments(db: DbClient, postId: number): Promise<StorySegment[]> {
+  const { data: post } = await db
+    .from("workflow_posts")
+    .select("story_segments")
+    .eq("id", postId)
+    .single();
+
+  const existing = (post?.story_segments ?? null) as StorySegment[] | null;
+  if (existing && existing.length > 0) return existing;
+
+  const media = await fetchPostMedia(db, postId);
+  const segments: StorySegment[] = media.map((m) => ({
+    file_id: m.id,
+    container_id: null,
+    media_id: null,
+  }));
+
+  await db.from("workflow_posts").update({ story_segments: segments }).eq("id", postId);
+  return segments;
+}
+
 export interface ContainerCreationResult {
   containerId: string;
   /**
