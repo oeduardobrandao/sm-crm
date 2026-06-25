@@ -430,12 +430,13 @@ async function setSegmentField(
   value: string | null,
 ): Promise<void> {
   // deno-lint-ignore no-explicit-any
-  await (db as any).rpc("set_story_segment_field", {
+  const { error } = await (db as any).rpc("set_story_segment_field", {
     p_post_id: postId,
     p_index: index,
     p_field: field,
     p_value: value,
   });
+  if (error) throw new Error(`Failed to persist story segment ${field}: ${error.message ?? error}`);
 }
 
 /** Create a STORIES container for every segment that lacks one; persist each id. */
@@ -480,14 +481,15 @@ export async function publishReadyStorySegments(
     if (seg.media_id) continue;
     if (!seg.container_id) break; // a container is still missing; container phase first
 
-    const status = await pollContainerReady(seg.container_id, token, maxPolls, intervalMs);
+    const containerId = seg.container_id; // narrowed: non-null past the guard above
+    const status = await pollContainerReady(containerId, token, maxPolls, intervalMs);
     if (status === "IN_PROGRESS") break; // try again next cycle
     if (status === "ERROR") {
       seg.container_id = null;
       await setSegmentField(db, postId, i, "container_id", null);
       throw new Error(`Story segment ${i + 1} falhou no processamento do Instagram`);
     }
-    const result = await publishContainer(igUserId, token, seg.container_id);
+    const result = await publishContainer(igUserId, token, containerId);
     seg.media_id = result.id;
     await setSegmentField(db, postId, i, "media_id", result.id);
   }
