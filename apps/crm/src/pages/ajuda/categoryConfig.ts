@@ -1,5 +1,6 @@
 export const CATEGORY_LABELS: Record<string, string> = {
   'primeiros-passos': 'Primeiros Passos',
+  'claude-e-ia': 'Claude & IA',
   clientes: 'Clientes',
   equipe: 'Equipe',
   'entregas-e-fluxos': 'Entregas & Fluxos',
