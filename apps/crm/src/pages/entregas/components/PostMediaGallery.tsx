@@ -417,7 +417,10 @@ export function PostMediaGallery({ postId, disabled, maxFiles, onChange }: PostM
           <div className="flex flex-col gap-0.5">
             <span className="text-[12.5px] font-semibold">{t('mediaGallery.carouselLimit')}</span>
             <span className="text-[12px] text-stone-600">
-              {t('mediaGallery.carouselLimitDesc', { max: CAROUSEL_MAX_ITEMS, count: media.length })}
+              {t('mediaGallery.carouselLimitDesc', {
+                max: CAROUSEL_MAX_ITEMS,
+                count: media.length,
+              })}
             </span>
           </div>
         </div>
