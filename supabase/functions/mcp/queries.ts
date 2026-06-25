@@ -6,6 +6,7 @@ import { MCP_PROP_MODO, MCP_PROP_ANOTACAO } from "./seed.ts";
 import {
   allowlistClient,
   buildPostFeedback,
+  buildPropertyDefinitions,
   buildTiptapDoc,
   CLIENT_PUBLIC_FIELDS,
   deriveFormatMeta,
@@ -13,6 +14,8 @@ import {
   FeedbackRow,
   firstLine,
   instantiateTemplateEtapas,
+  isPlanLimitExceeded,
+  normalizeTemplateEtapas,
   pageContentToMarkdown,
   performanceTier,
   projectTemplateEtapas,
@@ -32,6 +35,7 @@ export interface Deps {
   ctx: McpKeyContext;
   signUrl?: (key: string) => Promise<string>;
   now?: () => string;
+  genId?: () => string;
 }
 
 const sign = (d: Deps) => d.signUrl ?? ((key: string) => signGetUrl(key, 3600));
@@ -854,4 +858,64 @@ export async function setPostProperty(
   if (upErr) throw upErr;
 
   return { post_id: args.post_id, property_id: args.property_id, value: args.value, status };
+}
+
+export async function createWorkflowTemplate(
+  d: Deps,
+  args: {
+    nome: string;
+    modo_prazo?: string;
+    etapas: Array<{ nome: string; prazo_dias?: number; tipo_prazo?: string; tipo?: string }>;
+    properties?: Array<{ name: string; type: string; portal_visible?: boolean; options?: string[] }>;
+  },
+): Promise<any> {
+  const etapas = normalizeTemplateEtapas(args.etapas);
+
+  let defs: { name: string; type: string; config: Record<string, unknown>; portal_visible: boolean; display_order: number }[] = [];
+  if (args.properties && args.properties.length > 0) {
+    const genId = d.genId ?? (() => crypto.randomUUID());
+    const built = buildPropertyDefinitions(args.properties, genId);
+    if ("error" in built) throw new McpInputError(built.error);
+    defs = built.defs;
+  }
+
+  const { data: tpl, error: tErr } = await d.db
+    .from("workflow_templates")
+    .insert({
+      conta_id: d.ctx.conta_id,
+      user_id: d.ctx.created_by,
+      nome: args.nome,
+      etapas,
+      modo_prazo: args.modo_prazo ?? "padrao",
+    })
+    .select("id, nome, modo_prazo")
+    .single();
+  if (tErr) {
+    if (isPlanLimitExceeded(tErr, "max_workflow_templates")) {
+      throw new McpInputError("Limite de modelos (templates) do plano foi atingido.");
+    }
+    throw tErr;
+  }
+
+  let properties: any[] = [];
+  if (defs.length > 0) {
+    const rows = defs.map((p) => ({ ...p, template_id: tpl.id, conta_id: d.ctx.conta_id }));
+    const { data: inserted, error: pErr } = await d.db
+      .from("template_property_definitions")
+      .insert(rows)
+      .select("id, name, type, config, portal_visible, display_order");
+    if (pErr) {
+      // Best-effort compensating cleanup — must NOT mask the original insert error.
+      try {
+        await d.db.from("workflow_templates").delete().eq("id", tpl.id).eq("conta_id", d.ctx.conta_id);
+      } catch (_) { /* swallow: the original pErr is the response */ }
+      if (isPlanLimitExceeded(pErr, "max_custom_properties_per_template")) {
+        throw new McpInputError("Limite de propriedades personalizadas do plano foi atingido.");
+      }
+      throw pErr;
+    }
+    properties = ((inserted ?? []) as any[]).sort((a, b) => a.display_order - b.display_order);
+  }
+
+  return { id: tpl.id, nome: tpl.nome, modo_prazo: tpl.modo_prazo ?? null, etapas, properties };
 }
