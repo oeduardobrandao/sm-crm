@@ -115,18 +115,35 @@ Deno.test("validateForScheduling: story with no caption and valid connected acco
   assertEquals(result.account?.instagram_user_id, "ig-user");
 });
 
-Deno.test("validateForScheduling: story with two media is rejected", async () => {
+Deno.test("validateForScheduling: multi-media story validates each segment (no count cap)", async () => {
   const db = createSupabaseQueryMock();
-  queueSchedulingReads(db, {
+  await queueSchedulingReads(db, {
+    tipo: "stories",
     igCaption: null,
     links: [
-      { sort_order: 0, files: media({ id: 1, sort_order: undefined }) },
-      { sort_order: 1, files: media({ id: 2, r2_key: "media/2.jpg", sort_order: undefined }) },
+      { sort_order: 0, files: media({ id: 1, width: 1080, height: 1920 }) },
+      { sort_order: 1, files: media({ id: 2, width: 1080, height: 1920 }) },
     ],
+    encryptedAccessToken: await encryptedToken(),
   });
+  // deno-lint-ignore no-explicit-any
+  const res = await validateForScheduling(db as any, 1);
+  assert(res.ok, `expected ok, got: ${res.errors.join("; ")}`);
+});
 
-  const result = await validateForScheduling(db as never, 1);
-  assertEquals(result.ok, false);
-  assert(result.errors.includes("Stories aceitam apenas uma mídia."));
-  assert(!result.errors.includes("Legenda do Instagram não definida."));
+Deno.test("validateForScheduling: multi-media story rejects a bad segment", async () => {
+  const db = createSupabaseQueryMock();
+  await queueSchedulingReads(db, {
+    tipo: "stories",
+    igCaption: null,
+    links: [
+      { sort_order: 0, files: media({ id: 1, width: 1080, height: 1920 }) },
+      { sort_order: 1, files: media({ id: 2, mime_type: "image/gif" }) }, // bad MIME
+    ],
+    encryptedAccessToken: await encryptedToken(),
+  });
+  // deno-lint-ignore no-explicit-any
+  const res = await validateForScheduling(db as any, 1);
+  assert(!res.ok);
+  assert(res.errors.some((e) => e.includes("JPEG")), res.errors.join("; "));
 });

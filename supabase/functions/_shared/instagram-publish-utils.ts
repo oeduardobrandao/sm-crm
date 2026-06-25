@@ -172,9 +172,7 @@ export async function validateForScheduling(
     sort_order: l.sort_order,
   }));
 
-  if (isStory && mediaFiles.length !== 1) {
-    errors.push("Stories aceitam apenas uma mídia.");
-  } else if (mediaFiles.length === 0) {
+  if (mediaFiles.length === 0) {
     errors.push("Post precisa de pelo menos uma mídia.");
   } else {
     const mediaErrors = validateMedia(mediaFiles, { forStories: isStory });
