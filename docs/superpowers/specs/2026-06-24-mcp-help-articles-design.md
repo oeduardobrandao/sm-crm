@@ -57,8 +57,9 @@ articles need the label to display a friendly section name.
   - Three `SELECT _kb_mcp_link('/configuracao/mcp', <slug>, NULL, <order>)` calls.
   - `DROP FUNCTION IF EXISTS` for every helper at the end.
 - **Modify** `apps/crm/src/pages/ajuda/categoryConfig.ts`
-  - Append `'claude-e-ia': 'Claude & IA'` to `CATEGORY_LABELS` (last entry, so the
-    section appears at the end of the page).
+  - Insert `'claude-e-ia': 'Claude & IA'` into `CATEGORY_LABELS` immediately after
+    `'primeiros-passos'`, so the section renders **second** on the page (the
+    landing-page section order follows `Object.keys(CATEGORY_LABELS)`).
 
 ### Identifiers & ordering
 
@@ -68,7 +69,9 @@ articles need the label to display a friendly section name.
   - `bbbbbbbb-0001-4000-b000-000000000001` — Como conectar o Claude (MCP)
   - `bbbbbbbb-0002-4000-b000-000000000002` — O que o agente pode fazer
   - `bbbbbbbb-0003-4000-b000-000000000003` — Limites e segurança
-- `display_order`: 90, 91, 92 (after Financeiro = 70; keeps the category last).
+- `display_order`: 5, 6, 7 (after Primeiros Passos = 1, 2; intra-section order
+  how-to → can-do → limits, and globally near the top to match the second-section
+  placement).
 - Context links on `/configuracao/mcp`, `display_order` 0 (how-to), 1 (can-do),
   2 (limits).
 
@@ -81,7 +84,7 @@ the live UI (`IntegracoesClaudePage.tsx`), the tool registry
 
 ### Article 1 — "Como conectar o Claude (MCP)"
 
-- slug `como-conectar-o-claude-mcp`, category `claude-e-ia`, order 90.
+- slug `como-conectar-o-claude-mcp`, category `claude-e-ia`, order 5.
 - excerpt: "Conecte um agente Claude ao seu workspace por conector (sem chave) ou
   por chave de API."
 - Sections:
@@ -105,7 +108,7 @@ the live UI (`IntegracoesClaudePage.tsx`), the tool registry
 
 ### Article 2 — "O que o agente pode fazer"
 
-- slug `o-que-o-agente-pode-fazer`, category `claude-e-ia`, order 91.
+- slug `o-que-o-agente-pode-fazer`, category `claude-e-ia`, order 6.
 - excerpt: "As ferramentas de leitura e escrita disponíveis e o fluxo completo de
   criação de conteúdo."
 - Sections:
@@ -124,7 +127,7 @@ the live UI (`IntegracoesClaudePage.tsx`), the tool registry
 
 ### Article 3 — "Limites e segurança"
 
-- slug `limites-e-seguranca-do-agente`, category `claude-e-ia`, order 92.
+- slug `limites-e-seguranca-do-agente`, category `claude-e-ia`, order 7.
 - excerpt: "O que o agente nunca faz — publicação, envio ao cliente, exclusões e
   isolamento de dados."
 - Sections:
