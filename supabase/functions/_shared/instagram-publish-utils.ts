@@ -70,18 +70,25 @@ const IMAGE_MAX_BYTES = 8 * 1024 * 1024;
 const VIDEO_MAX_BYTES = 250 * 1024 * 1024;
 const IMAGE_MIN_DIM = 320;
 const IMAGE_AR_MIN = 3 / 4;
+const STORY_IMAGE_AR_MIN = 9 / 16;
 const IMAGE_AR_MAX = 1.91;
 const VIDEO_AR_MIN = 9 / 16;
 const VIDEO_AR_MAX = 1.25;
 const VIDEO_MIN_DURATION = 3;
 const VIDEO_MAX_DURATION = 90;
+const STORY_VIDEO_MAX_DURATION = 60;
 
 /** Instagram Content Publishing API caps carousels at 10 items.
- *  (The native app allows 20, but the Graph API does not.) */
+ *  (The native app allows 20, but the Graph API does not.) Stories are exempt
+ *  — they publish as sequential segments, not a single carousel container. */
 export const CAROUSEL_MAX_ITEMS = 10;
 
-export function validateMedia(files: MediaFile[]): ValidationError[] {
+export function validateMedia(files: MediaFile[], opts?: { forStories?: boolean }): ValidationError[] {
   const errors: ValidationError[] = [];
+  const imageArMin = opts?.forStories ? STORY_IMAGE_AR_MIN : IMAGE_AR_MIN;
+  const imageArLabel = opts?.forStories ? "9:16 a 1.91:1" : "3:4 a 1.91:1";
+  const videoMaxDuration = opts?.forStories ? STORY_VIDEO_MAX_DURATION : VIDEO_MAX_DURATION;
+  const videoDurationLabel = opts?.forStories ? "3–60 segundos" : "3–90 segundos";
   for (const f of files) {
     if (f.kind === "image") {
       if (!ALLOWED_IMAGE_MIMES.has(f.mime_type)) {
@@ -96,8 +103,8 @@ export function validateMedia(files: MediaFile[]): ValidationError[] {
           errors.push({ file_id: f.id, message: "Imagem muito pequena (mínimo 320×320)" });
         }
         const ar = f.width / f.height;
-        if (ar < IMAGE_AR_MIN || ar > IMAGE_AR_MAX) {
-          errors.push({ file_id: f.id, message: "Proporção da imagem fora do permitido (3:4 a 1.91:1)" });
+        if (ar < imageArMin || ar > IMAGE_AR_MAX) {
+          errors.push({ file_id: f.id, message: `Proporção da imagem fora do permitido (${imageArLabel})` });
         }
       }
     } else if (f.kind === "video") {
@@ -109,8 +116,8 @@ export function validateMedia(files: MediaFile[]): ValidationError[] {
         errors.push({ file_id: f.id, message: "Vídeo excede 250 MB (limite do Instagram)" });
       }
       if (f.duration_seconds != null) {
-        if (f.duration_seconds < VIDEO_MIN_DURATION || f.duration_seconds > VIDEO_MAX_DURATION) {
-          errors.push({ file_id: f.id, message: "Duração do vídeo fora do permitido (3–90 segundos)" });
+        if (f.duration_seconds < VIDEO_MIN_DURATION || f.duration_seconds > videoMaxDuration) {
+          errors.push({ file_id: f.id, message: `Duração do vídeo fora do permitido (${videoDurationLabel})` });
         }
       }
       if (f.width && f.height) {
@@ -144,10 +151,11 @@ export async function validateForScheduling(
 
   const { data: post } = await db
     .from("workflow_posts")
-    .select("id, scheduled_at, ig_caption, workflow_id")
+    .select("id, scheduled_at, ig_caption, workflow_id, tipo")
     .eq("id", postId)
     .single();
   if (!post) return { ok: false, errors: ["Post não encontrado."] };
+  const isStory = post.tipo === "stories";
 
   if (!opts?.skipDateCheck) {
     if (!post.scheduled_at) {
@@ -156,7 +164,7 @@ export async function validateForScheduling(
       errors.push("Data de publicação deve ser pelo menos 10 minutos no futuro.");
     }
   }
-  if (!post.ig_caption?.trim()) errors.push("Legenda do Instagram não definida.");
+  if (!isStory && !post.ig_caption?.trim()) errors.push("Legenda do Instagram não definida.");
 
   const { data: links } = await db
     .from("post_file_links")
@@ -172,14 +180,14 @@ export async function validateForScheduling(
   if (mediaFiles.length === 0) {
     errors.push("Post precisa de pelo menos uma mídia.");
   } else {
-    if (mediaFiles.length > CAROUSEL_MAX_ITEMS) {
+    if (!isStory && mediaFiles.length > CAROUSEL_MAX_ITEMS) {
       errors.push(
         `Carrossel do Instagram aceita no máximo ${CAROUSEL_MAX_ITEMS} itens ` +
           `(este post tem ${mediaFiles.length}). Reduza para ${CAROUSEL_MAX_ITEMS} ou menos. ` +
           `O app do Instagram permite 20, mas a publicação via API é limitada a ${CAROUSEL_MAX_ITEMS}.`,
       );
     }
-    const mediaErrors = validateMedia(mediaFiles);
+    const mediaErrors = validateMedia(mediaFiles, { forStories: isStory });
     for (const e of mediaErrors) errors.push(e.message);
   }
 
@@ -280,6 +288,44 @@ export async function createVideoContainer(
   return { id: data.id };
 }
 
+export async function createStoryImageContainer(
+  igUserId: string,
+  token: string,
+  imageUrl: string,
+): Promise<{ id: string }> {
+  const res = await fetch(`${GRAPH_BASE}/${igUserId}/media`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      media_type: "STORIES",
+      image_url: imageUrl,
+      access_token: token,
+    }),
+  });
+  const data = await res.json();
+  if (data.error) throwGraphError(data);
+  return { id: data.id };
+}
+
+export async function createStoryVideoContainer(
+  igUserId: string,
+  token: string,
+  videoUrl: string,
+): Promise<{ id: string }> {
+  const res = await fetch(`${GRAPH_BASE}/${igUserId}/media`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      media_type: "STORIES",
+      video_url: videoUrl,
+      access_token: token,
+    }),
+  });
+  const data = await res.json();
+  if (data.error) throwGraphError(data);
+  return { id: data.id };
+}
+
 export async function createCarouselChildContainer(
   igUserId: string,
   token: string,
@@ -355,6 +401,115 @@ export async function fetchPostMedia(db: DbClient, postId: number): Promise<Post
   }));
 }
 
+export interface StorySegment {
+  file_id: number;
+  container_id: string | null;
+  media_id: string | null;
+}
+
+/**
+ * Idempotently ensure a story post has a `story_segments` array (one entry per
+ * media, ordered). Returns the existing array unchanged if already present,
+ * preserving any persisted container_id/media_id. Only the single-writer holding
+ * the publish_processing_at lock should call this.
+ */
+export async function ensureStorySegments(db: DbClient, postId: number): Promise<StorySegment[]> {
+  const { data: post } = await db
+    .from("workflow_posts")
+    .select("story_segments")
+    .eq("id", postId)
+    .single();
+
+  const existing = (post?.story_segments ?? null) as StorySegment[] | null;
+  if (existing && existing.length > 0) return existing;
+
+  const media = await fetchPostMedia(db, postId);
+  const segments: StorySegment[] = media.map((m) => ({
+    file_id: m.id,
+    container_id: null,
+    media_id: null,
+  }));
+
+  await db.from("workflow_posts").update({ story_segments: segments }).eq("id", postId);
+  return segments;
+}
+
+async function setSegmentField(
+  db: DbClient,
+  postId: number,
+  index: number,
+  field: "container_id" | "media_id",
+  value: string | null,
+): Promise<void> {
+  // deno-lint-ignore no-explicit-any
+  const { error } = await (db as any).rpc("set_story_segment_field", {
+    p_post_id: postId,
+    p_index: index,
+    p_field: field,
+    p_value: value,
+  });
+  if (error) throw new Error(`Failed to persist story segment ${field}: ${error.message ?? error}`);
+}
+
+/** Create a STORIES container for every segment that lacks one; persist each id. */
+export async function createMissingStorySegmentContainers(
+  db: DbClient,
+  opts: { postId: number; igUserId: string; token: string },
+): Promise<StorySegment[]> {
+  const { postId, igUserId, token } = opts;
+  const segments = await ensureStorySegments(db, postId);
+  const media = await fetchPostMedia(db, postId);
+  const byFileId = new Map(media.map((m) => [m.id, m]));
+
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    if (seg.container_id) continue;
+    const file = byFileId.get(seg.file_id);
+    if (!file) throw new Error(`Story segment ${i}: media file ${seg.file_id} not found`);
+    const url = await signGetUrl(file.r2_key, 7200);
+    const container = file.kind === "video"
+      ? await createStoryVideoContainer(igUserId, token, url)
+      : await createStoryImageContainer(igUserId, token, url);
+    seg.container_id = container.id;
+    await setSegmentField(db, postId, i, "container_id", container.id);
+  }
+  return segments;
+}
+
+/**
+ * Publish any segment whose container is FINISHED. On ERROR, clear that segment's
+ * container_id (so the next container phase recreates it) and throw. On IN_PROGRESS,
+ * stop and leave the rest for the next cron cycle. allDone = all segments posted.
+ */
+export async function publishReadyStorySegments(
+  db: DbClient,
+  opts: { postId: number; igUserId: string; token: string; maxPolls?: number; intervalMs?: number },
+): Promise<{ segments: StorySegment[]; allDone: boolean }> {
+  const { postId, igUserId, token, maxPolls = 2, intervalMs = 3000 } = opts;
+  const segments = await ensureStorySegments(db, postId);
+
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    if (seg.media_id) continue;
+    if (!seg.container_id) break; // a container is still missing; container phase first
+
+    const containerId = seg.container_id; // narrowed: non-null past the guard above
+    const status = await pollContainerReady(containerId, token, maxPolls, intervalMs);
+    if (status === "IN_PROGRESS") break; // try again next cycle
+    if (status === "ERROR") {
+      seg.container_id = null;
+      await setSegmentField(db, postId, i, "container_id", null);
+      throw new Error(`Story segment ${i + 1} falhou no processamento do Instagram`);
+    }
+    const result = await publishContainer(igUserId, token, containerId);
+    seg.media_id = result.id;
+    await setSegmentField(db, postId, i, "media_id", result.id);
+  }
+
+  const allDone = segments.length > 0 && segments.every((s) => !!s.media_id);
+  return { segments, allDone };
+}
+
 export interface ContainerCreationResult {
   containerId: string;
   /**
@@ -375,10 +530,21 @@ export interface ContainerCreationResult {
  */
 export async function createContainerForPost(
   db: DbClient,
-  opts: { igUserId: string; token: string; postId: number; caption: string; useCover: boolean },
+  opts: { igUserId: string; token: string; postId: number; caption: string; useCover: boolean; tipo?: string },
 ): Promise<ContainerCreationResult> {
-  const { igUserId, token, postId, caption, useCover } = opts;
+  const { igUserId, token, postId, caption, useCover, tipo } = opts;
   const media = await fetchPostMedia(db, postId);
+
+  if (tipo === "stories") {
+    if (media.length !== 1) throw new Error("Stories require exactly one media file");
+
+    const url = await signGetUrl(media[0].r2_key, 7200);
+    const container = media[0].kind === "video"
+      ? await createStoryVideoContainer(igUserId, token, url)
+      : await createStoryImageContainer(igUserId, token, url);
+    return { containerId: container.id };
+  }
+
   if (media.length === 0) throw new Error("No media files found");
   if (media.length > CAROUSEL_MAX_ITEMS) {
     throw new Error(

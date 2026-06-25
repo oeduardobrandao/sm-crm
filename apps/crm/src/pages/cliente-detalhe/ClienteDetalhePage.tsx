@@ -77,6 +77,7 @@ import {
   getWorkflowPostsCounts,
   getWorkflowApprovedPostsCounts,
   getWorkflowRevisaoInternaCounts,
+  getWorkflowAwaitingClientePostsCounts,
   getClienteEnderecos,
   addClienteEndereco,
   updateClienteEndereco,
@@ -335,6 +336,11 @@ export default function ClienteDetalhePage() {
     queryFn: () => getWorkflowRevisaoInternaCounts(activeWorkflowIds),
     enabled: activeWorkflowIds.length > 0,
   });
+  const { data: awaitingClienteCounts = new Map<number, number>() } = useQuery({
+    queryKey: ['workflow-awaiting-cliente-counts', activeWorkflowIds.join(',')],
+    queryFn: () => getWorkflowAwaitingClientePostsCounts(activeWorkflowIds),
+    enabled: activeWorkflowIds.length > 0,
+  });
   const { data: workflowCovers } = useQuery({
     queryKey: ['workflow-covers', activeWorkflowIds.join(',')],
     queryFn: () => getWorkflowCovers(activeWorkflowIds),
@@ -516,6 +522,7 @@ export default function ClienteDetalhePage() {
     queryClient.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
     queryClient.invalidateQueries({ queryKey: ['workflow-approved-posts-counts'] });
     queryClient.invalidateQueries({ queryKey: ['workflow-revisao-interna-counts'] });
+    queryClient.invalidateQueries({ queryKey: ['workflow-awaiting-cliente-counts'] });
     queryClient.invalidateQueries({ queryKey: ['workflow-covers'] });
     queryClient.invalidateQueries({ queryKey: ['concluded-by-cliente', clienteId] });
     queryClient.invalidateQueries({ queryKey: ['concluded-summaries-cliente'] });
@@ -591,6 +598,23 @@ export default function ClienteDetalhePage() {
       refreshCards();
     } catch (err: unknown) {
       toast.error((err as Error).message);
+    }
+  };
+
+  const handleAdvanceWithoutApproval = async () => {
+    const card = approvalChoiceCard;
+    setApprovalChoiceCard(null);
+    if (!card) return;
+    try {
+      const { workflow: updatedWf } = await completeEtapa(card.workflow.id!, card.etapa.id!);
+      if (updatedWf.status === 'concluido' && card.workflow.recorrente) {
+        setRecurringWfId(card.workflow.id!);
+      } else {
+        refreshCards();
+        toast.success('Etapa avançada — status dos posts mantidos.');
+      }
+    } catch (err: unknown) {
+      toast.error(t('detail.stepError', { error: (err as Error).message }));
     }
   };
 
@@ -1013,6 +1037,7 @@ export default function ClienteDetalhePage() {
                 postsCount={postsCounts.get(card.workflow.id!) ?? 0}
                 approvedPostsCount={approvedPostsCounts.get(card.workflow.id!) ?? 0}
                 revisaoInternaCount={revisaoInternaCounts.get(card.workflow.id!) ?? 0}
+                awaitingClienteCount={awaitingClienteCounts.get(card.workflow.id!) ?? 0}
               />
             ))}
           </div>
@@ -2274,6 +2299,7 @@ export default function ClienteDetalhePage() {
         workflowTitle={approvalChoiceCard?.workflow.titulo ?? ''}
         onApproveInternally={handleApproveInternally}
         onSendToPortal={handleSendToPortal}
+        onAdvanceWithoutChanges={handleAdvanceWithoutApproval}
         onCancel={() => setApprovalChoiceCard(null)}
       />
     </div>

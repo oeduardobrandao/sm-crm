@@ -20,7 +20,7 @@ interface PublicacoesPanelProps {
   onStatusChange: () => void;
 }
 
-// ScheduleButton only reads id/status/scheduled_at/ig_caption/publish_error; the
+// ScheduleButton only reads id/status/tipo/scheduled_at/ig_caption/publish_error; the
 // rest are filled with inert defaults so we never fetch the heavy `conteudo`.
 function toWorkflowPost(p: ScheduledPost): WorkflowPost {
   return {

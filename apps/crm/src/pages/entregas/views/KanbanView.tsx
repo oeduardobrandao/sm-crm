@@ -46,6 +46,7 @@ interface KanbanViewProps {
   postsCounts: Map<number, number>;
   approvedPostsCounts: Map<number, number>;
   revisaoInternaCounts: Map<number, number>;
+  awaitingClienteCounts: Map<number, number>;
 }
 
 interface BoardRow {
@@ -113,6 +114,7 @@ function SortableCard({
   postsCount,
   approvedPostsCount,
   revisaoInternaCount,
+  awaitingClienteCount,
 }: {
   card: BoardCard;
   onCardClick: (c: BoardCard) => void;
@@ -125,6 +127,7 @@ function SortableCard({
   postsCount: number;
   approvedPostsCount: number;
   revisaoInternaCount: number;
+  awaitingClienteCount: number;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: String(card.workflow.id),
@@ -150,6 +153,7 @@ function SortableCard({
         postsCount={postsCount}
         approvedPostsCount={approvedPostsCount}
         revisaoInternaCount={revisaoInternaCount}
+        awaitingClienteCount={awaitingClienteCount}
       />
     </div>
   );
@@ -170,6 +174,7 @@ export function KanbanView({
   postsCounts,
   approvedPostsCounts,
   revisaoInternaCounts,
+  awaitingClienteCounts,
 }: KanbanViewProps) {
   const [localCards, setLocalCards] = useState<BoardCard[]>(cards);
   const [activeCard, setActiveCard] = useState<BoardCard | null>(null);
@@ -322,6 +327,23 @@ export function KanbanView({
     setForwardTarget(card);
   }, []);
 
+  const advanceEtapa = useCallback(
+    async (card: BoardCard, successMessage: string) => {
+      try {
+        const result = await completeEtapa(card.workflow.id!, card.etapa.id!);
+        if (result.workflow.status === 'concluido' && card.workflow.recorrente) {
+          onRecurring(card.workflow.id!);
+        } else {
+          toast.success(successMessage);
+        }
+        onRefresh();
+      } catch (err: unknown) {
+        toast.error((err as Error).message || 'Erro ao avançar etapa');
+      }
+    },
+    [onRefresh, onRecurring],
+  );
+
   const executeForward = useCallback(
     (card: BoardCard) => {
       const wfId = card.workflow.id!;
@@ -332,22 +354,10 @@ export function KanbanView({
       if (card.etapa.tipo === 'aprovacao_cliente' && !allApproved) {
         setApprovalChoiceCard(card);
       } else {
-        (async () => {
-          try {
-            const result = await completeEtapa(card.workflow.id!, card.etapa.id!);
-            if (result.workflow.status === 'concluido' && card.workflow.recorrente) {
-              onRecurring(card.workflow.id!);
-            } else {
-              toast.success('Etapa concluída!');
-            }
-            onRefresh();
-          } catch (err: unknown) {
-            toast.error((err as Error).message || 'Erro ao avançar etapa');
-          }
-        })();
+        advanceEtapa(card, 'Etapa concluída!');
       }
     },
-    [onRefresh, onRecurring, postsCounts, approvedPostsCounts],
+    [advanceEtapa, postsCounts, approvedPostsCounts],
   );
 
   const handleForwardConfirm = () => {
@@ -386,6 +396,13 @@ export function KanbanView({
     } catch (err: unknown) {
       toast.error((err as Error).message || 'Erro ao enviar ao portal');
     }
+  };
+
+  const handleAdvanceWithoutApproval = () => {
+    if (!approvalChoiceCard) return;
+    const card = approvalChoiceCard;
+    setApprovalChoiceCard(null);
+    advanceEtapa(card, 'Etapa avançada — status dos posts mantidos.');
   };
 
   const handleRevertConfirm = async () => {
@@ -460,6 +477,9 @@ export function KanbanView({
                               postsCount={postsCounts.get(card.workflow.id!) ?? 0}
                               approvedPostsCount={approvedPostsCounts.get(card.workflow.id!) ?? 0}
                               revisaoInternaCount={revisaoInternaCounts.get(card.workflow.id!) ?? 0}
+                              awaitingClienteCount={
+                                awaitingClienteCounts.get(card.workflow.id!) ?? 0
+                              }
                             />
                           ))
                         )}
@@ -479,6 +499,7 @@ export function KanbanView({
               postsCount={postsCounts.get(activeCard.workflow.id!) ?? 0}
               approvedPostsCount={approvedPostsCounts.get(activeCard.workflow.id!) ?? 0}
               revisaoInternaCount={revisaoInternaCounts.get(activeCard.workflow.id!) ?? 0}
+              awaitingClienteCount={awaitingClienteCounts.get(activeCard.workflow.id!) ?? 0}
             />
           )}
         </DragOverlay>
@@ -507,6 +528,7 @@ export function KanbanView({
         workflowTitle={approvalChoiceCard?.workflow.titulo || ''}
         onApproveInternally={handleApproveInternally}
         onSendToPortal={handleSendToPortal}
+        onAdvanceWithoutChanges={handleAdvanceWithoutApproval}
         onCancel={() => setApprovalChoiceCard(null)}
       />
     </>

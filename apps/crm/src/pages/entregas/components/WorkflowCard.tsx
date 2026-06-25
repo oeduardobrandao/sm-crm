@@ -64,6 +64,8 @@ interface WorkflowCardProps {
   approvedPostsCount?: number;
   /** Number of posts in revisao_interna status */
   revisaoInternaCount?: number;
+  /** Number of posts still awaiting client approval (status enviado_cliente) */
+  awaitingClienteCount?: number;
 }
 
 export function WorkflowCard({
@@ -80,6 +82,7 @@ export function WorkflowCard({
   postsCount,
   approvedPostsCount,
   revisaoInternaCount,
+  awaitingClienteCount,
 }: WorkflowCardProps) {
   const navigate = useNavigate();
   const [assignDropdownOpen, setAssignDropdownOpen] = useState(false);
@@ -522,6 +525,30 @@ export function WorkflowCard({
             </div>
           </div>
         )}
+
+      {(() => {
+        const approvalOrdem = card.allEtapas.find((e) => e.tipo === 'aprovacao_cliente')?.ordem;
+        const showAwaiting =
+          approvalOrdem != null &&
+          card.etapa.ordem > approvalOrdem &&
+          (awaitingClienteCount ?? 0) > 0;
+        if (!showAwaiting) return null;
+        return (
+          <div className="board-card-approval">
+            <div
+              className="board-card-approval-badge"
+              style={{
+                borderRadius: '999px',
+                padding: '0.2rem 0.65rem',
+                fontSize: '0.68rem',
+                letterSpacing: '0.02em',
+              }}
+            >
+              ⏳ {awaitingClienteCount} aguardando cliente
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Current etapa + Progress bar */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>

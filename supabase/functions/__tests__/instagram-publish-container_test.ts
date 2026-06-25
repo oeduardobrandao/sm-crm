@@ -73,6 +73,39 @@ Deno.test("createContainerForPost: single image → image container, no cover", 
   }
 });
 
+Deno.test("createContainerForPost: story image → STORIES image container without caption", async () => {
+  const f = stubFetch();
+  try {
+    const db = dbWithMedia([{ kind: "image", r2_key: "img/story.jpg" }]);
+    const res = await createContainerForPost(db, { ...base, tipo: "stories", useCover: false });
+    assertEquals(f.calls.length, 1);
+    assertEquals(f.calls[0].body.media_type, "STORIES");
+    assert(f.calls[0].body.image_url, "image_url must be present");
+    assert(!("caption" in f.calls[0].body), "story image must not send caption");
+    assertEquals(res.containerId, "c-1");
+    assertEquals(res.coverVideoUrl, undefined);
+  } finally {
+    f.restore();
+  }
+});
+
+Deno.test("createContainerForPost: story video → STORIES video container without cover", async () => {
+  const f = stubFetch();
+  try {
+    const db = dbWithMedia([{ kind: "video", r2_key: "v/story.mp4", thumbnail_r2_key: "v/story.jpg" }]);
+    const res = await createContainerForPost(db, { ...base, tipo: "stories", useCover: true });
+    assertEquals(f.calls.length, 1);
+    assertEquals(f.calls[0].body.media_type, "STORIES");
+    assert(f.calls[0].body.video_url, "video_url must be present");
+    assert(!("caption" in f.calls[0].body), "story video must not send caption");
+    assert(!("cover_url" in f.calls[0].body), "story video must not send a cover");
+    assertEquals(res.containerId, "c-1");
+    assertEquals(res.coverVideoUrl, undefined);
+  } finally {
+    f.restore();
+  }
+});
+
 Deno.test("createContainerForPost: single video useCover:true + thumbnail → cover_url + coverVideoUrl", async () => {
   const f = stubFetch();
   try {

@@ -554,6 +554,9 @@ export function WorkflowDrawer({
   // ── Stats ─────────────────────────────────────────────────────────────────
 
   const approvedCount = orderedPosts.filter((p) => p.status === 'aprovado_cliente').length;
+  const clientFacingCount = orderedPosts.filter((p) =>
+    ['enviado_cliente', 'aprovado_cliente', 'correcao_cliente'].includes(p.status),
+  ).length;
   const readyToSend = orderedPosts.filter((p) => p.status === 'aprovado_interno').length;
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -614,9 +617,9 @@ export function WorkflowDrawer({
               <div className="drawer-section-header">
                 <span className="drawer-section-title">
                   Posts
-                  {posts.length > 0 && (
+                  {clientFacingCount > 0 && (
                     <span className="drawer-post-count">
-                      {approvedCount}/{posts.length} aprovados
+                      {approvedCount} de {clientFacingCount} aprovados pelo cliente
                     </span>
                   )}
                 </span>
@@ -960,6 +963,7 @@ function SortablePostItem({
     post.status === 'postado' ||
     post.status === 'falha_publicacao';
   const isScheduleLocked = post.status === 'agendado';
+  const isStoryPost = post.tipo === 'stories';
 
   // Publish date shown in the collapsed row: once a post is actually live the real
   // published_at wins, otherwise fall back to the scheduled "Data de postagem".
@@ -1228,14 +1232,18 @@ function SortablePostItem({
             />
           )}
 
-          {hasInstagramAccount && (
+          {isStoryPost ? (
+            <p className="mt-3 text-xs" style={{ color: 'var(--text-light)' }}>
+              Stories: 1 mídia, sem legenda, formato vertical 9:16.
+            </p>
+          ) : hasInstagramAccount ? (
             <InstagramCaptionField
               value={post.ig_caption ?? ''}
               onChange={(val) => onFieldChange('ig_caption', val)}
               disabled={isScheduleLocked}
               lockedMessage="Cancelar agendamento para editar"
             />
-          )}
+          ) : null}
 
           <ScheduleButton
             post={post}
