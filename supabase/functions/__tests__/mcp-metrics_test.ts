@@ -188,7 +188,8 @@ Deno.test("list_posts: no metrics -> all rates null, views null", async () => {
 
 function makeDistFakeDb(accountRows: unknown[], postRows: unknown[]) {
   return makeFakeDb({
-    clientes: [{ data: null, error: null }],
+    // verifyClient (conta-ownership guard) must pass — seed an owned client.
+    clientes: [{ data: { id: 1, especialidade: null, cor: null }, error: null }],
     instagram_accounts: [{ data: accountRows, error: null }],
     instagram_posts: [{ data: postRows, error: null }],
   });
@@ -234,6 +235,7 @@ Deno.test("distributions: buckets non-null rates per media_type and overall", as
 
 Deno.test("distributions: no accounts -> empty result", async () => {
   const { db } = makeFakeDb({
+    clientes: [{ data: { id: 1, especialidade: null, cor: null }, error: null }],
     instagram_accounts: [{ data: [], error: null }],
   });
   const deps = { db, ctx: CTX } as unknown as Deps;
@@ -243,6 +245,35 @@ Deno.test("distributions: no accounts -> empty result", async () => {
   assertEquals(dists.sampleSize, 0);
   assertEquals(dists.overall.like_rate, []);
   assertEquals(Object.keys(dists.byFormat).length, 0);
+});
+
+Deno.test("distributions: client not owned by workspace -> short-circuits, no leak", async () => {
+  // verifyClient miss (data: null) must yield empty buckets WITHOUT touching
+  // instagram_accounts / instagram_posts (no cross-tenant read).
+  const { db, calls } = makeFakeDb({
+    clientes: [{ data: null, error: null }],
+    instagram_accounts: [{ data: [{ id: 1 }], error: null }],
+    instagram_posts: [{ data: [igPost()], error: null }],
+  });
+  const deps = { db, ctx: CTX } as unknown as Deps;
+
+  const dists = await loadClientRateDistributions(deps, 12345);
+
+  assertEquals(dists.sampleSize, 0);
+  assertEquals(dists.overall, {
+    share_rate: [], like_rate: [], save_rate: [], comment_rate: [], reach: [],
+  });
+  assertEquals(dists.byFormat, {});
+
+  // Short-circuit: neither downstream table was queried.
+  assert(
+    !calls.some((c) => c.table === "instagram_accounts"),
+    "instagram_accounts not read for a non-owned client",
+  );
+  assert(
+    !calls.some((c) => c.table === "instagram_posts"),
+    "instagram_posts not read for a non-owned client",
+  );
 });
 
 Deno.test("distributions: unavailable reach -> excluded from reach bucket", async () => {

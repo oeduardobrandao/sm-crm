@@ -443,6 +443,11 @@ export async function loadClientRateDistributions(
   d: Deps,
   clientId: number,
 ): Promise<{ sampleSize: number; overall: DistBuckets; byFormat: Record<string, DistBuckets> }> {
+  // Workspace-ownership guard: callers pass an agent-supplied client_id, so a
+  // non-owned/unknown client must yield empty buckets (no cross-tenant leak).
+  const client = await verifyClient(d, clientId);
+  if (!client) return { sampleSize: 0, overall: emptyBuckets(), byFormat: {} };
+
   const { data: accounts } = await d.db
     .from("instagram_accounts").select("id").eq("client_id", clientId);
   const accountIds = (accounts ?? []).map((a: any) => a.id);
