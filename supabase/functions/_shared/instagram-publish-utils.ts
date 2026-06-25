@@ -172,6 +172,13 @@ export async function validateForScheduling(
   if (mediaFiles.length === 0) {
     errors.push("Post precisa de pelo menos uma mídia.");
   } else {
+    if (mediaFiles.length > CAROUSEL_MAX_ITEMS) {
+      errors.push(
+        `Carrossel do Instagram aceita no máximo ${CAROUSEL_MAX_ITEMS} itens ` +
+          `(este post tem ${mediaFiles.length}). Reduza para ${CAROUSEL_MAX_ITEMS} ou menos. ` +
+          `O app do Instagram permite 20, mas a publicação via API é limitada a ${CAROUSEL_MAX_ITEMS}.`,
+      );
+    }
     const mediaErrors = validateMedia(mediaFiles);
     for (const e of mediaErrors) errors.push(e.message);
   }
