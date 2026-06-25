@@ -554,6 +554,9 @@ export function WorkflowDrawer({
   // ── Stats ─────────────────────────────────────────────────────────────────
 
   const approvedCount = orderedPosts.filter((p) => p.status === 'aprovado_cliente').length;
+  const clientFacingCount = orderedPosts.filter((p) =>
+    ['enviado_cliente', 'aprovado_cliente', 'correcao_cliente'].includes(p.status),
+  ).length;
   const readyToSend = orderedPosts.filter((p) => p.status === 'aprovado_interno').length;
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -614,9 +617,9 @@ export function WorkflowDrawer({
               <div className="drawer-section-header">
                 <span className="drawer-section-title">
                   Posts
-                  {posts.length > 0 && (
+                  {clientFacingCount > 0 && (
                     <span className="drawer-post-count">
-                      {approvedCount}/{posts.length} aprovados
+                      {approvedCount} de {clientFacingCount} aprovados pelo cliente
                     </span>
                   )}
                 </span>

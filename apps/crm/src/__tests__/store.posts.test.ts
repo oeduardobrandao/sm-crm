@@ -119,6 +119,24 @@ describe('store workflow posts', () => {
     expect(counts.size).toBe(0);
   });
 
+  it('getWorkflowAwaitingClientePostsCounts returns an empty map when no workflow ids are given', async () => {
+    const result = await store.getWorkflowAwaitingClientePostsCounts([]);
+    expect(result.size).toBe(0);
+  });
+
+  it('getWorkflowAwaitingClientePostsCounts counts enviado_cliente posts per workflow', async () => {
+    mockedSupabase.__queueSupabaseResult('workflow_posts', 'select', {
+      data: [{ workflow_id: 1 }, { workflow_id: 1 }, { workflow_id: 2 }],
+      error: null,
+    });
+    const result = await store.getWorkflowAwaitingClientePostsCounts([1, 2]);
+    expect(result.get(1)).toBe(2);
+    expect(result.get(2)).toBe(1);
+    const call = getCalls('workflow_posts', 'select').at(-1)!;
+    expect(call.modifiers).toContainEqual({ method: 'in', args: ['workflow_id', [1, 2]] });
+    expect(call.modifiers).toContainEqual({ method: 'eq', args: ['status', 'enviado_cliente'] });
+  });
+
   it('sendPostsToCliente updates aprovado_interno posts to enviado_cliente', async () => {
     mockedSupabase.__queueSupabaseResult('workflow_posts', 'update', { data: null, error: null });
 
