@@ -10,6 +10,8 @@ import {
   pollContainerReady,
   publishContainer,
   fetchPermalink,
+  createMissingStorySegmentContainers,
+  publishReadyStorySegments,
 } from "../_shared/instagram-publish-utils.ts";
 
 type DbClient = {
@@ -55,7 +57,7 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
     // Verify post exists and user has access (via RLS)
     const { data: post } = await userDb
       .from("workflow_posts")
-      .select("id, status, workflow_id, scheduled_at, ig_caption, instagram_container_id, publish_retry_count")
+      .select("id, status, workflow_id, scheduled_at, ig_caption, instagram_container_id, publish_retry_count, tipo")
       .eq("id", postId)
       .single();
 
@@ -102,14 +104,15 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
         const dueInMs = post.scheduled_at
           ? new Date(post.scheduled_at).getTime() - Date.now()
           : Infinity;
-        if (dueInMs <= 3_600_000 && validation.account) {
+        if (dueInMs <= 3_600_000 && validation.account && post.tipo !== "stories") {
           const token = await decryptToken(validation.account.encrypted_access_token);
           const { containerId } = await createContainerForPost(svcDb, {
             igUserId: validation.account.instagram_user_id,
             token,
             postId,
-            caption: post.ig_caption,
+            caption: post.ig_caption ?? "",
             useCover: post.publish_retry_count === 0,
+            tipo: post.tipo,
           });
           await svcDb.from("workflow_posts").update({
             instagram_container_id: containerId,
@@ -190,14 +193,52 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
         const token = await decryptToken(validation.account!.encrypted_access_token);
         const igUserId = validation.account!.instagram_user_id;
 
+        if (post.tipo === "stories") {
+          await createMissingStorySegmentContainers(svcDb, { postId, igUserId, token });
+          const { segments, allDone } = await publishReadyStorySegments(svcDb, {
+            postId, igUserId, token, maxPolls: 12, intervalMs: 3000,
+          });
+          if (!allDone) {
+            await svcDb.from("workflow_posts").update({
+              scheduled_at: new Date().toISOString(),
+              publish_processing_at: null,
+            }).eq("id", postId);
+            return json({
+              ok: true,
+              status: "agendado",
+              message: "Stories ainda processando no Instagram. Os segmentos restantes serão publicados em instantes.",
+            });
+          }
+          const firstMediaId = segments[0]?.media_id ?? null;
+          await svcDb.rpc("record_post_status_change", {
+            p_post_id: postId,
+            p_new_status: "postado",
+            p_source: "workspace_user",
+            p_actor: actorId,
+            p_fields: {
+              instagram_media_id: firstMediaId,
+              published_at: new Date().toISOString(),
+              publish_processing_at: null,
+              publish_error: null,
+              publish_retry_count: 0,
+            },
+          });
+          const permalink = firstMediaId ? await fetchPermalink(firstMediaId, token) : null;
+          if (permalink) {
+            await svcDb.from("workflow_posts").update({ instagram_permalink: permalink }).eq("id", postId);
+          }
+          return json({ ok: true, status: "postado", instagram_permalink: permalink });
+        }
+
         // publish-now always attaches the cover when present (useCover:true) and does
         // an IMMEDIATE coverless retry below if Instagram rejects it during processing.
         const created = await createContainerForPost(svcDb, {
           igUserId,
           token,
           postId,
-          caption: post.ig_caption,
+          caption: post.ig_caption ?? "",
           useCover: true,
+          tipo: post.tipo,
         });
         let containerId = created.containerId;
         const coverVideoUrl = created.coverVideoUrl; // set only when a cover was used

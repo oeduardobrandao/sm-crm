@@ -214,11 +214,13 @@ export function ScheduleButton({
   }
 
   if (post.status === 'aprovado_cliente') {
-    const canSchedule = !!post.scheduled_at && !!post.ig_caption?.trim() && !accountWarning;
-    const canPublishNow = !!post.ig_caption?.trim() && !accountWarning;
+    const isStoryPost = post.tipo === 'stories';
+    const hasRequiredCaption = isStoryPost || !!post.ig_caption?.trim();
+    const canSchedule = !!post.scheduled_at && hasRequiredCaption && !accountWarning;
+    const canPublishNow = hasRequiredCaption && !accountWarning;
     const missingItems: string[] = [];
     if (!post.scheduled_at) missingItems.push('data de publicação');
-    if (!post.ig_caption?.trim()) missingItems.push('legenda do Instagram');
+    if (!isStoryPost && !post.ig_caption?.trim()) missingItems.push('legenda do Instagram');
 
     return (
       <div className="mt-3">

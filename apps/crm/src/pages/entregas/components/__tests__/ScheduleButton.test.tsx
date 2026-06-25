@@ -98,6 +98,17 @@ describe('ScheduleButton', () => {
       expect(publishBtn.hasAttribute('disabled')).toBe(true);
     });
 
+    it('does not require caption for stories', () => {
+      render(
+        <ScheduleButton post={makePost({ tipo: 'stories', ig_caption: null })} {...defaultProps} />,
+      );
+      const scheduleBtn = screen.getByText('Agendar publicação').closest('button')!;
+      const publishBtn = screen.getByText('Publicar agora').closest('button')!;
+      expect(scheduleBtn.hasAttribute('disabled')).toBe(false);
+      expect(publishBtn.hasAttribute('disabled')).toBe(false);
+      expect(screen.queryByText(/legenda do Instagram/)).toBeNull();
+    });
+
     it('shows missing items hint when caption is empty', () => {
       render(
         <ScheduleButton
