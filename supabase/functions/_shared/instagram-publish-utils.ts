@@ -494,7 +494,7 @@ export async function publishReadyStorySegments(
     await setSegmentField(db, postId, i, "media_id", result.id);
   }
 
-  const allDone = segments.every((s) => !!s.media_id);
+  const allDone = segments.length > 0 && segments.every((s) => !!s.media_id);
   return { segments, allDone };
 }
 

@@ -156,6 +156,19 @@ Deno.test("publishReadyStorySegments publishes ready segments and reports allDon
   assertEquals(mediaSets.length, 2);
 });
 
+Deno.test("publishReadyStorySegments returns allDone=false for empty segments array", async () => {
+  // story_segments is [] — no media linked, ensureStorySegments returns [] from DB
+  const ctx = makeRpcDb({ segments: [], media: [] });
+  let fetchCalled = false;
+  const restore = stubFetch((_url, _body, _n) => { fetchCalled = true; return {}; });
+  let result;
+  try {
+    result = await publishReadyStorySegments(ctx.db, { postId: 1, igUserId: "ig", token: "t", maxPolls: 1, intervalMs: 1 });
+  } finally { restore(); }
+  assertEquals(result.allDone, false, "empty segments must not report allDone=true");
+  assert(!fetchCalled, "no media-publish call must occur for empty segments");
+});
+
 Deno.test("publishReadyStorySegments clears container_id and throws on ERROR", async () => {
   const ctx = makeRpcDb({ segments: [{ file_id: 11, container_id: "c1", media_id: null }] });
   const restore = stubFetch((_url) => ({ status_code: "ERROR" }));
