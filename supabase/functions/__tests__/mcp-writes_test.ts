@@ -640,3 +640,18 @@ Deno.test("create_workflow_template tool redacts etapa/option detail from the au
   assert(meta.includes("etapa_count"), "logs etapa_count instead");
   assertEquals((auditInsert!.args[0] as Record<string, unknown>).resource_id, "");
 });
+
+Deno.test("createWorkflowTemplate: non-cap DB error on template insert is re-thrown raw (not McpInputError)", async () => {
+  const { db } = makeFakeDb({
+    workflow_templates: [{ data: null, error: { message: "some db error" } }],
+  });
+  const deps = { db, ctx: CTX } as unknown as Deps;
+  let err: unknown;
+  try {
+    await createWorkflowTemplate(deps, { nome: "M", etapas: [{ nome: "E1" }] });
+  } catch (e) {
+    err = e;
+  }
+  assert(err !== undefined, "throws");
+  assert(!(err instanceof McpInputError), "a non-cap DB error is re-thrown raw, not mapped to a friendly McpInputError");
+});
