@@ -177,7 +177,14 @@ async function loadMetrics(
   const byPermalink = new Map<string, Metrics>();
   if (mediaIds.length === 0 && permalinks.length === 0) return { byMediaId, byPermalink };
 
-  const cols = "instagram_post_id, permalink, reach, saved, shares, comments, likes";
+  // Tenant scope: instagram_posts has no conta_id column, so scope through the
+  // account chain (instagram_posts -> instagram_accounts -> clientes.conta_id)
+  // via inner joins. Defense-in-depth: the media-id path is already airtight
+  // (UNIQUE(instagram_post_id)), but the permalink path has no DB-level
+  // uniqueness, so this closes any cross-tenant permalink collision.
+  const cols =
+    "instagram_post_id, permalink, reach, saved, shares, comments, likes, " +
+    "instagram_accounts!inner(clientes!inner(conta_id))";
   const collect = (rows: any[]) => {
     for (const r of rows ?? []) {
       const m: Metrics = {
@@ -189,11 +196,19 @@ async function loadMetrics(
     }
   };
   if (mediaIds.length) {
-    const { data } = await d.db.from("instagram_posts").select(cols).in("instagram_post_id", mediaIds);
+    const { data } = await d.db
+      .from("instagram_posts")
+      .select(cols)
+      .in("instagram_post_id", mediaIds)
+      .eq("instagram_accounts.clientes.conta_id", d.ctx.conta_id);
     collect(data ?? []);
   }
   if (permalinks.length) {
-    const { data } = await d.db.from("instagram_posts").select(cols).in("permalink", permalinks);
+    const { data } = await d.db
+      .from("instagram_posts")
+      .select(cols)
+      .in("permalink", permalinks)
+      .eq("instagram_accounts.clientes.conta_id", d.ctx.conta_id);
     collect(data ?? []);
   }
   return { byMediaId, byPermalink };
