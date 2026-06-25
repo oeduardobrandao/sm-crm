@@ -104,7 +104,7 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
         const dueInMs = post.scheduled_at
           ? new Date(post.scheduled_at).getTime() - Date.now()
           : Infinity;
-        if (dueInMs <= 3_600_000 && validation.account) {
+        if (dueInMs <= 3_600_000 && validation.account && post.tipo !== "stories") {
           const token = await decryptToken(validation.account.encrypted_access_token);
           const { containerId } = await createContainerForPost(svcDb, {
             igUserId: validation.account.instagram_user_id,
