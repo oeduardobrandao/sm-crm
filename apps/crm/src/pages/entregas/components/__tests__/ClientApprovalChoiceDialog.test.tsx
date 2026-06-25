@@ -53,9 +53,7 @@ describe('ClientApprovalChoiceDialog', () => {
 
   it('fires only onAdvanceWithoutChanges when that button is clicked', () => {
     const { onAdvanceWithoutChanges, onApproveInternally, onSendToPortal } = setup();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Avançar etapa sem alterar posts' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Avançar etapa sem alterar posts' }));
     expect(onAdvanceWithoutChanges).toHaveBeenCalledTimes(1);
     expect(onApproveInternally).not.toHaveBeenCalled();
     expect(onSendToPortal).not.toHaveBeenCalled();

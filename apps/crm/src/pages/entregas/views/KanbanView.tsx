@@ -477,7 +477,9 @@ export function KanbanView({
                               postsCount={postsCounts.get(card.workflow.id!) ?? 0}
                               approvedPostsCount={approvedPostsCounts.get(card.workflow.id!) ?? 0}
                               revisaoInternaCount={revisaoInternaCounts.get(card.workflow.id!) ?? 0}
-                              awaitingClienteCount={awaitingClienteCounts.get(card.workflow.id!) ?? 0}
+                              awaitingClienteCount={
+                                awaitingClienteCounts.get(card.workflow.id!) ?? 0
+                              }
                             />
                           ))
                         )}
