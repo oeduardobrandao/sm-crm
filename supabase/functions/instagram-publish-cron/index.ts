@@ -11,6 +11,8 @@ import {
   publishContainer,
   fetchPermalink,
   processBatch,
+  createMissingStorySegmentContainers,
+  publishReadyStorySegments,
 } from "../_shared/instagram-publish-utils.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -37,6 +39,7 @@ interface ClaimedPost {
   encrypted_access_token: string;
   instagram_user_id: string;
   client_id: number;
+  story_segments: Array<{ file_id: number; container_id: string | null; media_id: string | null }> | null;
 }
 
 // deno-lint-ignore no-explicit-any
@@ -89,6 +92,18 @@ async function processContainerCreation(
   post: ClaimedPost,
 ) {
   const token = await decryptToken(post.encrypted_access_token);
+
+  if (post.tipo === "stories") {
+    await createMissingStorySegmentContainers(db, {
+      postId: post.post_id,
+      igUserId: post.instagram_user_id,
+      token,
+    });
+    await db.from("workflow_posts").update({ publish_processing_at: null }).eq("id", post.post_id);
+    console.log(`[IG-PUBLISH] Story containers ensured for post ${post.post_id}`);
+    return;
+  }
+
   // First attempt carries the cover; any retry drops it (useCover:false) so a cover
   // Instagram can't process can't make a scheduled post fail permanently. The
   // coverless retry is deferred to the next cron cycle (publish_retry_count > 0).
@@ -116,6 +131,35 @@ async function processPublish(
   post: ClaimedPost,
 ) {
   const token = await decryptToken(post.encrypted_access_token);
+
+  if (post.tipo === "stories") {
+    const { segments, allDone } = await publishReadyStorySegments(db, {
+      postId: post.post_id,
+      igUserId: post.instagram_user_id,
+      token,
+    });
+    if (!allDone) {
+      await clearLock(db, post.post_id);
+      console.log(`[IG-PUBLISH] Story post ${post.post_id} partially published, will continue next cycle`);
+      return;
+    }
+    const firstMediaId = segments[0]?.media_id ?? null;
+    await db.from("workflow_posts").update({
+      instagram_media_id: firstMediaId,
+      status: "postado",
+      published_at: new Date().toISOString(),
+      publish_processing_at: null,
+      publish_error: null,
+      publish_retry_count: 0,
+    }).eq("id", post.post_id);
+    console.log(`[IG-PUBLISH] Published story post ${post.post_id} (${segments.length} segments)`);
+    const permalink = firstMediaId ? await fetchPermalink(firstMediaId, token) : null;
+    if (permalink) {
+      await db.from("workflow_posts").update({ instagram_permalink: permalink }).eq("id", post.post_id);
+    }
+    return;
+  }
+
   const containerId = post.instagram_container_id!;
 
   // Poll briefly in-run so a container that finishes mid-cycle publishes now
@@ -157,6 +201,33 @@ async function processRetry(
   db: any,
   post: ClaimedPost,
 ) {
+  if (post.tipo === "stories") {
+    const token = await decryptToken(post.encrypted_access_token);
+    await createMissingStorySegmentContainers(db, {
+      postId: post.post_id,
+      igUserId: post.instagram_user_id,
+      token,
+    });
+    const { segments, allDone } = await publishReadyStorySegments(db, {
+      postId: post.post_id,
+      igUserId: post.instagram_user_id,
+      token,
+    });
+    if (allDone) {
+      await db.from("workflow_posts").update({
+        instagram_media_id: segments[0]?.media_id ?? null,
+        status: "postado",
+        published_at: new Date().toISOString(),
+        publish_processing_at: null,
+        publish_error: null,
+        publish_retry_count: 0,
+      }).eq("id", post.post_id);
+    } else {
+      await db.from("workflow_posts").update({ status: "agendado", publish_processing_at: null }).eq("id", post.post_id);
+    }
+    return;
+  }
+
   if (!post.instagram_container_id) {
     await processContainerCreation(db, post);
     await db.from("workflow_posts").update({ status: "agendado" }).eq("id", post.post_id);
