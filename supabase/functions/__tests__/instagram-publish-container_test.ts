@@ -158,7 +158,7 @@ Deno.test("createContainerForPost: >10 media → throws before any Graph call", 
     } catch (e) {
       threw = true;
       assert(
-        String((e as Error).message).includes("máximo 10"),
+        (e as Error).message.includes("máximo 10"),
         "error should mention the 10-item carousel cap",
       );
     }

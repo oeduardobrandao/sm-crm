@@ -61,4 +61,5 @@ Deno.test("validateForScheduling: exactly 10 media → no carousel error", async
     !res.errors.some((e) => e.includes("máximo 10")),
     "10 items must not produce the carousel error",
   );
+  assert(res.ok, "a well-formed 10-item post must fully validate");
 });
