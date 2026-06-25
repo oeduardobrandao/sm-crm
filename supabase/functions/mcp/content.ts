@@ -126,11 +126,12 @@ export function percentileRank(value: number | null | undefined, sample: number[
   if (value === null || value === undefined || Number.isNaN(value)) return null;
   const xs = sample.filter((v) => typeof v === "number" && !Number.isNaN(v));
   if (xs.length === 0) return null;
-  let less = 0;
+  let less = 0, equal = 0;
   for (const x of xs) {
     if (x < value) less++;
+    else if (x === value) equal++;
   }
-  return Math.min(1, (less + 0.5) / xs.length);
+  return (less + 0.5 * equal) / xs.length;
 }
 
 /**

@@ -355,8 +355,8 @@ Deno.test("computeRates: 0 is real, missing is null, views 0/missing -> null", (
 Deno.test("percentileRank: midrank for ties; null for empty/null", () => {
   assertEquals(percentileRank(5, []), null);
   assertEquals(percentileRank(null, [1, 2, 3]), null);
-  // sample [10,10,20,30], value 10 -> (0 + 0.5*2)/4 = 0.125 (midrank)
-  assertEquals(percentileRank(10, [10, 10, 20, 30]), 0.125);
+  // sample [10,10,20,30], value 10 -> (0 + 0.5*2)/4 = 0.25 (midrank)
+  assertEquals(percentileRank(10, [10, 10, 20, 30]), 0.25);
   // value above all -> (3 + 0.5*1)/4? value 30: less=3, equal=1 -> 3.5/4 = 0.875
   assertEquals(percentileRank(30, [10, 10, 20, 30]), 0.875);
 });
