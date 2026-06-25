@@ -60,8 +60,11 @@ import {
   addWorkflow,
   addWorkflowEtapa,
   addWorkflowPost,
+  updateWorkflowPost,
+  updateWorkflow,
   removeWorkflow,
 } from '../../../store';
+import { publishInstagramPostNow } from '../../../services/instagram';
 
 function renderWithProviders(ui: React.ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -180,5 +183,73 @@ describe('ExpressPostPage', () => {
     const { unmount } = renderWithProviders(<ExpressPostPage />);
     unmount();
     expect(removeWorkflow).not.toHaveBeenCalled();
+  });
+
+  async function selectClientAndAwaitDraft() {
+    await waitFor(() => expect(screen.getByText('Client A')).toBeTruthy());
+    fireEvent.change(screen.getByDisplayValue('Selecionar cliente...'), { target: { value: '1' } });
+    // Draft creation makes the media gallery (and its upload simulator) appear.
+    await waitFor(() => expect(screen.getByText('Simulate Upload')).toBeTruthy());
+  }
+
+  it('Stories mode hides the caption field and enables publishing without a caption', async () => {
+    renderWithProviders(<ExpressPostPage />);
+    await selectClientAndAwaitDraft();
+
+    // Caption field is present in the default "Publicação" mode.
+    expect(screen.queryByPlaceholderText('Escreva a legenda do post aqui...')).toBeTruthy();
+
+    // Switch the format toggle to Stories.
+    fireEvent.click(screen.getByRole('button', { name: 'Stories' }));
+
+    // Caption field disappears (stories carry no caption).
+    expect(screen.queryByPlaceholderText('Escreva a legenda do post aqui...')).toBeNull();
+
+    // Add a single media, no caption typed.
+    fireEvent.click(screen.getByText('Simulate Upload'));
+
+    // Publish is enabled despite the empty caption.
+    const publishBtn = screen.getByText('Publicar Stories').closest('button')!;
+    expect(publishBtn.hasAttribute('disabled')).toBe(false);
+  });
+
+  it('publishing a Story sends tipo "stories" with an empty caption', async () => {
+    vi.mocked(updateWorkflowPost).mockResolvedValue({
+      id: 30,
+      workflow_id: 10,
+      titulo: 'Post Express',
+      conteudo: null,
+      conteudo_plain: '',
+      tipo: 'stories',
+      ordem: 0,
+      status: 'aprovado_cliente',
+    });
+    vi.mocked(updateWorkflow).mockResolvedValue({
+      id: 10,
+      cliente_id: 1,
+      titulo: 'Post Express',
+      status: 'concluido',
+      etapa_atual: 0,
+      recorrente: false,
+    });
+    vi.mocked(publishInstagramPostNow).mockResolvedValue({ status: 'postado' } as any);
+
+    renderWithProviders(<ExpressPostPage />);
+    await selectClientAndAwaitDraft();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Stories' }));
+    fireEvent.click(screen.getByText('Simulate Upload'));
+
+    // Open the confirm dialog and confirm.
+    fireEvent.click(screen.getByText('Publicar Stories').closest('button')!);
+    fireEvent.click(screen.getByRole('button', { name: 'Publicar' }));
+
+    await waitFor(() =>
+      expect(updateWorkflowPost).toHaveBeenCalledWith(
+        30,
+        expect.objectContaining({ tipo: 'stories', ig_caption: '' }),
+      ),
+    );
+    await waitFor(() => expect(publishInstagramPostNow).toHaveBeenCalledWith(30));
   });
 });

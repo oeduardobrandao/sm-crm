@@ -18,6 +18,7 @@
   },
   "publish": {
     "button": "Publicar agora",
+    "buttonStories": "Publicar Stories",
     "note": "O post será publicado imediatamente no Instagram",
     "confirmTitle": "Publicar agora?",
     "publishingTitle": "Publicando…",
@@ -38,7 +39,17 @@
   "postType": {
     "feed": "Feed",
     "reels": "Reels",
+    "stories": "Stories",
     "carrossel": "Carrossel"
+  },
+  "format": {
+    "label": "Formato",
+    "post": "Publicação",
+    "stories": "Stories"
+  },
+  "story": {
+    "captionHidden": "Stories não usam legenda.",
+    "segments": "{{count}} segmentos"
   },
   "captionPlaceholder": "Escreva a legenda do post aqui...",
   "publish_action": "Publicar",
