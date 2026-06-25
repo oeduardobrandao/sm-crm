@@ -18,6 +18,7 @@
   },
   "publish": {
     "button": "Publish now",
+    "buttonStories": "Publish Story",
     "note": "The post will be published immediately on Instagram",
     "confirmTitle": "Publish now?",
     "publishingTitle": "Publishing…",
@@ -38,7 +39,17 @@
   "postType": {
     "feed": "Feed",
     "reels": "Reels",
+    "stories": "Stories",
     "carrossel": "Carousel"
+  },
+  "format": {
+    "label": "Format",
+    "post": "Post",
+    "stories": "Stories"
+  },
+  "story": {
+    "captionHidden": "Stories don't use a caption.",
+    "segments": "{{count}} segments"
   },
   "captionPlaceholder": "Write the post caption here...",
   "publish_action": "Publish",

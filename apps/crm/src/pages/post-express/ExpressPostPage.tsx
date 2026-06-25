@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
-import { Send, AlertCircle, Image, Film, Images } from 'lucide-react';
+import { Send, AlertCircle, Image, Film, Images, Layers } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { PrerequisiteAlert } from '@/components/help/PrerequisiteAlert';
 import { EmptyStateGuide } from '@/components/help/EmptyStateGuide';
@@ -52,7 +52,7 @@ function detectPostType(media: PostMedia[]): 'feed' | 'reels' | 'carrossel' | nu
 }
 
 function getTypeLabel(
-  type: 'feed' | 'reels' | 'carrossel',
+  type: 'feed' | 'reels' | 'carrossel' | 'stories',
   t: (key: string) => string,
 ): { label: string; color: string; bg: string; icon: typeof Image } {
   switch (type) {
@@ -77,6 +77,13 @@ function getTypeLabel(
         bg: 'rgba(66,200,245,0.12)',
         icon: Images,
       };
+    case 'stories':
+      return {
+        label: t('postType.stories'),
+        color: '#E1306C',
+        bg: 'rgba(225,48,108,0.12)',
+        icon: Layers,
+      };
   }
 }
 
@@ -87,6 +94,7 @@ export default function ExpressPostPage() {
   const { t } = useTranslation('posts');
   const { t: tc } = useTranslation();
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
+  const [isStory, setIsStory] = useState(false);
   const [caption, setCaption] = useState('');
   const [mediaList, setMediaList] = useState<PostMedia[]>([]);
   const [draft, setDraft] = useState<DraftState | null>(null);
@@ -177,8 +185,12 @@ export default function ExpressPostPage() {
   }
 
   const detectedType = detectPostType(mediaList);
+  // Stories override media-shape detection; the rest of the page keys off effectiveType.
+  const effectiveType: 'feed' | 'reels' | 'carrossel' | 'stories' | null = isStory
+    ? 'stories'
+    : detectedType;
   const canPublish =
-    !!draft && !!caption.trim() && mediaList.length > 0 && !accountWarning && !loading;
+    !!draft && (isStory || !!caption.trim()) && mediaList.length > 0 && !accountWarning && !loading;
 
   async function createDraft(clientId: number, clientName: string) {
     setCreatingDraft(true);
@@ -260,7 +272,7 @@ export default function ExpressPostPage() {
   }, []);
 
   const handlePublishNow = async () => {
-    if (!draft || !detectedType) return;
+    if (!draft || !effectiveType) return;
 
     setPublishing(true);
     setPublishPct(0);
@@ -275,8 +287,8 @@ export default function ExpressPostPage() {
     try {
       await updateWorkflowPost(draft.postId, {
         status: 'aprovado_cliente',
-        ig_caption: caption.trim(),
-        tipo: detectedType,
+        ig_caption: isStory ? '' : caption.trim(),
+        tipo: effectiveType,
       });
 
       const result = await publishInstagramPostNow(draft.postId);
@@ -302,6 +314,7 @@ export default function ExpressPostPage() {
       setSelectedClientId(null);
       setCaption('');
       setMediaList([]);
+      setIsStory(false);
     } catch (err: unknown) {
       stopProgressTimer();
       setConfirmOpen(false);
@@ -371,6 +384,47 @@ export default function ExpressPostPage() {
       >
         {/* LEFT COLUMN */}
         <div className="flex flex-col gap-4">
+          {/* Format toggle: Publicação vs Stories */}
+          <div
+            style={{
+              background: 'var(--card-bg)',
+              borderRadius: '8px',
+              padding: '1.25rem',
+              border: '1px solid var(--border-color)',
+            }}
+          >
+            <label
+              className="block text-xs font-semibold uppercase tracking-wider mb-2"
+              style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}
+            >
+              {t('format.label')}
+            </label>
+            <div
+              className="grid grid-cols-2 gap-1 p-1 rounded-lg"
+              style={{ background: 'var(--surface-darker)' }}
+            >
+              {([false, true] as const).map((story) => {
+                const active = isStory === story;
+                return (
+                  <button
+                    key={String(story)}
+                    type="button"
+                    onClick={() => setIsStory(story)}
+                    disabled={loading}
+                    className="py-2 text-sm font-semibold rounded-md transition-colors"
+                    style={
+                      active
+                        ? { background: '#E1306C', color: '#fff' }
+                        : { background: 'transparent', color: 'var(--text-muted)' }
+                    }
+                  >
+                    {story ? t('format.stories') : t('format.post')}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Client Picker */}
           <div
             style={{
@@ -459,22 +513,28 @@ export default function ExpressPostPage() {
               </label>
               <PostMediaGallery
                 postId={draft.postId}
-                maxFiles={detectedType === 'carrossel' || mediaList.length > 1 ? undefined : 1}
+                maxFiles={
+                  isStory || detectedType === 'carrossel' || mediaList.length > 1 ? undefined : 1
+                }
                 onChange={handleMediaChange}
               />
 
               {/* Detected type badge */}
-              {detectedType && (
+              {effectiveType && (
                 <div className="mt-3">
                   {(() => {
-                    const typeInfo = getTypeLabel(detectedType, t);
+                    const typeInfo = getTypeLabel(effectiveType, t);
                     const Icon = typeInfo.icon;
+                    const label =
+                      isStory && mediaList.length > 1
+                        ? `${typeInfo.label} · ${t('story.segments', { count: mediaList.length })}`
+                        : typeInfo.label;
                     return (
                       <span
                         className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold"
                         style={{ color: typeInfo.color, background: typeInfo.bg }}
                       >
-                        <Icon className="h-3.5 w-3.5" /> {typeInfo.label}
+                        <Icon className="h-3.5 w-3.5" /> {label}
                       </span>
                     );
                   })()}
@@ -502,41 +562,55 @@ export default function ExpressPostPage() {
 
         {/* RIGHT COLUMN */}
         <div className="flex flex-col gap-4">
-          {/* Caption */}
-          <div
-            style={{
-              background: 'var(--card-bg)',
-              borderRadius: '8px',
-              padding: '1.25rem',
-              border: '1px solid var(--border-color)',
-            }}
-          >
-            <label
-              className="block text-xs font-semibold uppercase tracking-wider mb-2"
-              style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}
-            >
-              {t('labels.caption')}
-            </label>
-            <textarea
-              value={caption}
-              onChange={(e) => setCaption(e.target.value.slice(0, MAX_CAPTION))}
-              placeholder={t('captionPlaceholder')}
-              disabled={!draft || loading}
-              rows={8}
-              className="w-full rounded px-3 py-2.5 text-sm resize-none border"
+          {/* Caption — hidden for stories, which carry no caption */}
+          {isStory ? (
+            <div
+              className="flex items-center gap-2 rounded-lg px-4 py-3 text-xs"
               style={{
-                fontFamily: 'var(--font-main)',
-                background: 'var(--surface-main)',
-                borderColor: 'var(--border-color)',
-                color: 'var(--text-main)',
+                color: 'var(--text-muted)',
+                background: 'var(--surface-hover)',
+                border: '1px dashed var(--border-color)',
               }}
-            />
-            <div className="flex justify-end mt-1">
-              <span className="text-xs tabular-nums" style={{ color: 'var(--text-muted)' }}>
-                {caption.length} / {MAX_CAPTION}
-              </span>
+            >
+              <AlertCircle className="h-4 w-4 flex-shrink-0" />
+              <span>{t('story.captionHidden')}</span>
             </div>
-          </div>
+          ) : (
+            <div
+              style={{
+                background: 'var(--card-bg)',
+                borderRadius: '8px',
+                padding: '1.25rem',
+                border: '1px solid var(--border-color)',
+              }}
+            >
+              <label
+                className="block text-xs font-semibold uppercase tracking-wider mb-2"
+                style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}
+              >
+                {t('labels.caption')}
+              </label>
+              <textarea
+                value={caption}
+                onChange={(e) => setCaption(e.target.value.slice(0, MAX_CAPTION))}
+                placeholder={t('captionPlaceholder')}
+                disabled={!draft || loading}
+                rows={8}
+                className="w-full rounded px-3 py-2.5 text-sm resize-none border"
+                style={{
+                  fontFamily: 'var(--font-main)',
+                  background: 'var(--surface-main)',
+                  borderColor: 'var(--border-color)',
+                  color: 'var(--text-main)',
+                }}
+              />
+              <div className="flex justify-end mt-1">
+                <span className="text-xs tabular-nums" style={{ color: 'var(--text-muted)' }}>
+                  {caption.length} / {MAX_CAPTION}
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* Instagram Preview */}
           {draft && igAccount && (
@@ -585,12 +659,58 @@ export default function ExpressPostPage() {
                   className="rounded-lg overflow-hidden"
                   style={{
                     background: '#1a1e26',
-                    aspectRatio: '1',
+                    aspectRatio: isStory ? '9 / 16' : '1',
+                    maxWidth: isStory ? '180px' : undefined,
+                    margin: isStory ? '0 auto' : undefined,
+                    position: 'relative',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}
                 >
+                  {/* Story segment progress bars + counter */}
+                  {isStory && mediaList.length > 1 && (
+                    <>
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: 6,
+                          left: 6,
+                          right: 6,
+                          display: 'flex',
+                          gap: 3,
+                          zIndex: 2,
+                        }}
+                      >
+                        {mediaList.map((m, i) => (
+                          <span
+                            key={m.id}
+                            style={{
+                              flex: 1,
+                              height: 2.5,
+                              borderRadius: 2,
+                              background: i === 0 ? '#fff' : 'rgba(255,255,255,0.35)',
+                            }}
+                          />
+                        ))}
+                      </div>
+                      <span
+                        style={{
+                          position: 'absolute',
+                          top: 12,
+                          right: 8,
+                          zIndex: 2,
+                          color: '#fff',
+                          fontSize: '0.6rem',
+                          background: 'rgba(0,0,0,0.5)',
+                          padding: '1px 6px',
+                          borderRadius: 8,
+                        }}
+                      >
+                        1/{mediaList.length}
+                      </span>
+                    </>
+                  )}
                   {mediaList.length > 0 && mediaList[0].url ? (
                     mediaList[0].kind === 'video' ? (
                       <video
@@ -612,7 +732,7 @@ export default function ExpressPostPage() {
                     </span>
                   )}
                 </div>
-                {caption && (
+                {!isStory && caption && (
                   <p className="mt-2 text-xs leading-relaxed" style={{ color: '#9ca3af' }}>
                     <strong style={{ color: '#e8eaf0' }}>@{igAccount.username ?? 'conta'}</strong>{' '}
                     {caption.length > 100 ? caption.slice(0, 100) + '...' : caption}
@@ -633,7 +753,8 @@ export default function ExpressPostPage() {
                 : { borderRadius: '8px' }
             }
           >
-            <Send className="h-4 w-4 mr-2" /> {t('publish.button')}
+            <Send className="h-4 w-4 mr-2" />{' '}
+            {t(isStory ? 'publish.buttonStories' : 'publish.button')}
           </Button>
           {draft && (
             <p className="text-center text-xs" style={{ color: 'var(--text-muted)' }}>
