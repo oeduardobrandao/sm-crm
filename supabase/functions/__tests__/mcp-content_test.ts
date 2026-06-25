@@ -2,11 +2,14 @@ import { assert, assertEquals } from "./assert.ts";
 import {
   allowlistClient,
   buildPostFeedback,
+  buildPropertyDefinitions,
   buildTiptapDoc,
   deriveFormatMeta,
   extractTemplateOptionIds,
   firstLine,
   instantiateTemplateEtapas,
+  isPlanLimitExceeded,
+  normalizeTemplateEtapas,
   pageContentToMarkdown,
   performanceTier,
   projectTemplateEtapas,
@@ -275,4 +278,55 @@ Deno.test("validatePropertyValue: settable types, null clear, non-settable rejec
   assertEquals(validatePropertyValue("multiselect", ["o1", "o2"], opts), null);
   assert(validatePropertyValue("multiselect", ["o1", "nope"], opts) !== null);
   assert(validatePropertyValue("multiselect", "o1", opts) !== null); // not an array
+});
+
+Deno.test("normalizeTemplateEtapas: defaults, integer guard, skip non-objects, no extra fields", () => {
+  assertEquals(normalizeTemplateEtapas([
+    { nome: "Roteiro", prazo_dias: 2, tipo_prazo: "uteis", tipo: "aprovacao_cliente" },
+    { nome: "Sem campos" },
+  ]), [
+    { nome: "Roteiro", prazo_dias: 2, tipo_prazo: "uteis", tipo: "aprovacao_cliente" },
+    { nome: "Sem campos", prazo_dias: 0, tipo_prazo: "corridos", tipo: "padrao" },
+  ]);
+  assertEquals(normalizeTemplateEtapas(null), []);
+  assertEquals(normalizeTemplateEtapas([null, "x", { prazo_dias: 1.5, nome: "ok" }]), [
+    { nome: "ok", prazo_dias: 0, tipo_prazo: "corridos", tipo: "padrao" },
+  ]);
+});
+
+Deno.test("buildPropertyDefinitions: select options get generated ids, defaults, display_order", () => {
+  let n = 0;
+  const genId = () => "opt-" + (++n);
+  const out = buildPropertyDefinitions(
+    [
+      { name: "modo", type: "select", options: ["A", "B"], portal_visible: true },
+      { name: "nota", type: "text" },
+    ],
+    genId,
+  );
+  assertEquals("defs" in out, true);
+  if ("defs" in out) {
+    assertEquals(out.defs[0], {
+      name: "modo", type: "select",
+      config: { options: [{ id: "opt-1", label: "A", color: "#94a3b8" }, { id: "opt-2", label: "B", color: "#94a3b8" }] },
+      portal_visible: true, display_order: 0,
+    });
+    assertEquals(out.defs[1], { name: "nota", type: "text", config: {}, portal_visible: false, display_order: 1 });
+  }
+});
+
+Deno.test("buildPropertyDefinitions: validation errors", () => {
+  const g = () => "x";
+  assertEquals("error" in buildPropertyDefinitions([{ name: "a", type: "select" }], g), true);            // option type w/o options
+  assertEquals("error" in buildPropertyDefinitions([{ name: "a", type: "text", options: ["x"] }], g), true); // non-option w/ options
+  assertEquals("error" in buildPropertyDefinitions([{ name: "a", type: "text" }, { name: "a", type: "text" }], g), true); // dup names
+  assertEquals("error" in buildPropertyDefinitions([{ name: "a", type: "select", options: ["x", "x"] }], g), true); // dup options
+});
+
+Deno.test("isPlanLimitExceeded: keyed match only", () => {
+  const err = { message: "plan_limit_exceeded:max_workflow_templates" };
+  assertEquals(isPlanLimitExceeded(err, "max_workflow_templates"), true);
+  assertEquals(isPlanLimitExceeded(err, "max_custom_properties_per_template"), false);
+  assertEquals(isPlanLimitExceeded({ message: "other" }, "max_workflow_templates"), false);
+  assertEquals(isPlanLimitExceeded(null, "max_workflow_templates"), false);
 });
