@@ -7,6 +7,7 @@ export const SCOPE_OPTIONS = [
   { value: 'workflows:read', label: 'Fluxos (leitura)' },
   { value: 'ideias:read', label: 'Ideias/Pautas (leitura)' },
   { value: 'posts:write', label: 'Posts (escrita)' },
+  { value: 'templates:write', label: 'Modelos (escrita)' },
 ] as const;
 
 /** Least-privilege preset for a content agent — read scopes only. Write is opt-in. */

@@ -4,11 +4,12 @@ import { MCP_AGENT_PRESET, MCP_ALLOWED_SCOPES, validateScopes } from "../_shared
 Deno.test("validateScopes accepts non-empty allowlisted scopes", () => {
   assertEquals(validateScopes(["clientes:read", "posts:read"]), true);
   assertEquals(validateScopes([...MCP_AGENT_PRESET]), true);
+  assertEquals(validateScopes(["templates:write"]), true);
 });
 
 Deno.test("validateScopes rejects empty / unknown / non-array", () => {
   assertEquals(validateScopes([]), false);
-  assertEquals(validateScopes(["clientes:write"]), false); // write reserved for PR 3
+  assertEquals(validateScopes(["clientes:write"]), false); // clientes:write is not a granted scope
   assertEquals(validateScopes(["bogus"]), false);
   assertEquals(validateScopes("posts:read"), false);
   assertEquals(validateScopes(null), false);

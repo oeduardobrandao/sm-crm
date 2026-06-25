@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "./assert.ts";
-import { createPost, createWorkflow, setPostProperty, updatePost } from "../mcp/queries.ts";
+import { createPost, createWorkflow, createWorkflowTemplate, setPostProperty, updatePost } from "../mcp/queries.ts";
 import type { Deps } from "../mcp/queries.ts";
 import { registerTools } from "../mcp/tools.ts";
 import { McpInputError, type McpKeyContext } from "../_shared/mcp-token.ts";
@@ -527,4 +527,131 @@ Deno.test("createWorkflow: template with malformed (non-array) etapas falls back
   const rows = insertPayload(calls, "workflow_etapas") as Record<string, unknown>[];
   assertEquals(rows.length, 1);
   assertEquals(rows[0].nome, "Conteúdo");
+});
+
+Deno.test("createWorkflowTemplate: inserts template + property defs with generated option ids", async () => {
+  const { db, calls } = makeFakeDb({
+    workflow_templates: [{ data: { id: 50, nome: "Modelo", modo_prazo: "padrao" }, error: null }],
+    template_property_definitions: [{ data: [
+      { id: 77, name: "modo", type: "select", config: { options: [{ id: "opt-1", label: "A", color: "#94a3b8" }] }, portal_visible: false, display_order: 0 },
+    ], error: null }],
+  });
+  let n = 0;
+  const deps = { db, ctx: CTX, genId: () => "opt-" + (++n) } as unknown as Deps;
+  const out = await createWorkflowTemplate(deps, {
+    nome: "Modelo",
+    etapas: [{ nome: "Roteiro", prazo_dias: 2, tipo_prazo: "uteis", tipo: "padrao" }],
+    properties: [{ name: "modo", type: "select", options: ["A"] }],
+  });
+
+  const tpl = insertPayload(calls, "workflow_templates")!;
+  assertEquals(tpl.conta_id, "workspace-A");
+  assertEquals(tpl.user_id, "user-1");
+  assertEquals(tpl.nome, "Modelo");
+  assertEquals(tpl.modo_prazo, "padrao");
+  assertEquals((tpl.etapas as any[])[0], { nome: "Roteiro", prazo_dias: 2, tipo_prazo: "uteis", tipo: "padrao" });
+  const defRows = insertPayload(calls, "template_property_definitions") as Record<string, unknown>[];
+  assertEquals(defRows[0].template_id, 50);
+  assertEquals(defRows[0].conta_id, "workspace-A");
+  assertEquals((defRows[0].config as any).options[0].id, "opt-1");
+  assertEquals(out.id, 50);
+  assertEquals(out.properties[0].id, 77);
+});
+
+Deno.test("createWorkflowTemplate: modo_prazo honored; no properties -> no defs insert", async () => {
+  const { db, calls } = makeFakeDb({
+    workflow_templates: [{ data: { id: 50, nome: "M", modo_prazo: "data_fixa" }, error: null }],
+  });
+  const deps = { db, ctx: CTX } as unknown as Deps;
+  const out = await createWorkflowTemplate(deps, { nome: "M", modo_prazo: "data_fixa", etapas: [{ nome: "E1" }] });
+  assertEquals(insertPayload(calls, "workflow_templates")!.modo_prazo, "data_fixa");
+  assert(!calls.some((c) => c.table === "template_property_definitions"), "no property defs insert");
+  assertEquals(out.properties, []);
+});
+
+Deno.test("createWorkflowTemplate: template cap -> friendly McpInputError, no defs insert", async () => {
+  const { db, calls } = makeFakeDb({
+    workflow_templates: [{ data: null, error: { message: "plan_limit_exceeded:max_workflow_templates" } }],
+  });
+  const deps = { db, ctx: CTX } as unknown as Deps;
+  let err: unknown;
+  try { await createWorkflowTemplate(deps, { nome: "M", etapas: [{ nome: "E1" }], properties: [{ name: "p", type: "text" }] }); } catch (e) { err = e; }
+  assert(err instanceof McpInputError, "friendly cap error");
+  assert(!calls.some((c) => c.table === "template_property_definitions"), "no property defs insert");
+});
+
+Deno.test("createWorkflowTemplate: property cap -> compensating delete + friendly McpInputError", async () => {
+  const { db, calls } = makeFakeDb({
+    workflow_templates: [
+      { data: { id: 50, nome: "M", modo_prazo: "padrao" }, error: null },  // template insert
+      { data: null, error: null },                                          // compensating delete result
+    ],
+    template_property_definitions: [{ data: null, error: { message: "plan_limit_exceeded:max_custom_properties_per_template" } }],
+  });
+  const deps = { db, ctx: CTX, genId: () => "o" } as unknown as Deps;
+  let err: unknown;
+  try { await createWorkflowTemplate(deps, { nome: "M", etapas: [{ nome: "E1" }], properties: [{ name: "p", type: "select", options: ["A"] }] }); } catch (e) { err = e; }
+  assert(err instanceof McpInputError, "friendly cap error");
+  assert(has(calls, "workflow_templates", "eq", ["id", 50]) && has(calls, "workflow_templates", "eq", ["conta_id", "workspace-A"]), "compensating delete scoped to id+conta");
+  assert(calls.some((c) => c.table === "workflow_templates" && c.method === "delete"), "compensating delete happened");
+});
+
+Deno.test("createWorkflowTemplate: cleanup best-effort — delete error does not mask the original error", async () => {
+  const { db } = makeFakeDb({
+    workflow_templates: [
+      { data: { id: 50, nome: "M", modo_prazo: "padrao" }, error: null },          // template insert
+      { data: null, error: { message: "delete blew up" } },                         // delete returns its own error
+    ],
+    template_property_definitions: [{ data: null, error: { message: "plan_limit_exceeded:max_custom_properties_per_template" } }],
+  });
+  const deps = { db, ctx: CTX, genId: () => "o" } as unknown as Deps;
+  let err: unknown;
+  try { await createWorkflowTemplate(deps, { nome: "M", etapas: [{ nome: "E1" }], properties: [{ name: "p", type: "select", options: ["A"] }] }); } catch (e) { err = e; }
+  assert(err instanceof McpInputError, "original friendly cap error still thrown, not the delete error");
+});
+
+Deno.test("createWorkflowTemplate: duplicate property names -> McpInputError, no template insert", async () => {
+  const { db, calls } = makeFakeDb({});
+  const deps = { db, ctx: CTX } as unknown as Deps;
+  let err: unknown;
+  try { await createWorkflowTemplate(deps, { nome: "M", etapas: [{ nome: "E1" }], properties: [{ name: "x", type: "text" }, { name: "x", type: "text" }] }); } catch (e) { err = e; }
+  assert(err instanceof McpInputError, "validation error");
+  assert(!calls.some((c) => c.table === "workflow_templates"), "no template insert");
+});
+
+Deno.test("create_workflow_template tool redacts etapa/option detail from the audit log", async () => {
+  const { db, calls } = makeFakeDb({
+    workflow_templates: [{ data: { id: 50, nome: "Modelo", modo_prazo: "padrao" }, error: null }],
+    audit_log: [{ data: null, error: null }],
+  });
+  const deps = { db, ctx: { ...CTX, scopes: ["templates:write"] }, genId: () => "o" } as unknown as Deps;
+  const server = {
+    handlers: {} as Record<string, (a: unknown) => Promise<unknown>>,
+    // deno-lint-ignore no-explicit-any
+    tool(name: string, _d: any, _s: any, h: any) { this.handlers[name] = h; },
+  };
+  // deno-lint-ignore no-explicit-any
+  registerTools(server as any, deps);
+  await server.handlers["create_workflow_template"]({ nome: "Modelo", etapas: [{ nome: "ETAPA_SECRETA" }] });
+  const auditInsert = calls.find((c) => c.table === "audit_log" && c.method === "insert");
+  assert(auditInsert, "audit_log insert happened");
+  const meta = JSON.stringify(auditInsert!.args[0]);
+  assert(!meta.includes("ETAPA_SECRETA"), "etapa detail must not be logged");
+  assert(meta.includes("etapa_count"), "logs etapa_count instead");
+  assertEquals((auditInsert!.args[0] as Record<string, unknown>).resource_id, "");
+});
+
+Deno.test("createWorkflowTemplate: non-cap DB error on template insert is re-thrown raw (not McpInputError)", async () => {
+  const { db } = makeFakeDb({
+    workflow_templates: [{ data: null, error: { message: "some db error" } }],
+  });
+  const deps = { db, ctx: CTX } as unknown as Deps;
+  let err: unknown;
+  try {
+    await createWorkflowTemplate(deps, { nome: "M", etapas: [{ nome: "E1" }] });
+  } catch (e) {
+    err = e;
+  }
+  assert(err !== undefined, "throws");
+  assert(!(err instanceof McpInputError), "a non-cap DB error is re-thrown raw, not mapped to a friendly McpInputError");
 });

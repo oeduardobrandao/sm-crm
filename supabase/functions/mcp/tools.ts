@@ -5,6 +5,7 @@ import { McpInputError, McpScopeError, requireScope } from "../_shared/mcp-token
 import {
   createPost,
   createWorkflow,
+  createWorkflowTemplate,
   setPostProperty,
   updatePost,
   Deps,
@@ -75,6 +76,9 @@ function register(
 const STATUS_CLIENTE = z.enum(["ativo", "pausado", "encerrado"]);
 const FORMATO = z.enum(["feed", "reels", "stories", "carrossel"]);
 const METRIC = z.enum(["reach", "saved", "shares", "comments", "likes"]);
+const PROPERTY_TYPE = z.enum([
+  "text", "url", "email", "phone", "number", "date", "checkbox", "select", "status", "multiselect",
+]);
 
 export function registerTools(server: any, deps: Deps): void {
   register(server, deps, "list_clients", "clientes:read",
@@ -211,4 +215,25 @@ export function registerTools(server: any, deps: Deps): void {
         value_count: Array.isArray(v) ? v.length : undefined,
       };
     });
+
+  register(server, deps, "create_workflow_template", "templates:write",
+    "Cria um modelo de fluxo (template): etapas e, opcionalmente, o esquema de propriedades personalizadas. Retorna o modelo criado.",
+    {
+      nome: z.string().trim().min(1).max(120),
+      modo_prazo: z.enum(["padrao", "data_fixa", "data_entrega"]).optional(),
+      etapas: z.array(z.object({
+        nome: z.string().trim().min(1).max(120),
+        prazo_dias: z.number().int().min(0).optional(),
+        tipo_prazo: z.enum(["uteis", "corridos"]).optional(),
+        tipo: z.enum(["padrao", "aprovacao_cliente"]).optional(),
+      })).min(1).max(50),
+      properties: z.array(z.object({
+        name: z.string().trim().min(1).max(120),
+        type: PROPERTY_TYPE,
+        portal_visible: z.boolean().optional(),
+        options: z.array(z.string().trim().min(1).max(120)).min(1).max(50).optional(),
+      })).max(50).optional(),
+    },
+    (a) => createWorkflowTemplate(deps, a),
+    (a) => ({ nome: a.nome, etapa_count: a.etapas?.length ?? 0, property_count: a.properties?.length ?? 0 }));
 }

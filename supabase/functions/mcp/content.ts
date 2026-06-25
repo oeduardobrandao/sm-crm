@@ -367,6 +367,72 @@ export function instantiateTemplateEtapas(
   }));
 }
 
+/** Normalize agent-supplied template etapas into the template etapas JSONB shape
+ *  (no ordem, no responsavel_id). Fail-closed; integer-guarded prazo_dias. */
+export function normalizeTemplateEtapas(
+  etapas: unknown,
+): { nome: string; prazo_dias: number; tipo_prazo: "uteis" | "corridos"; tipo: "padrao" | "aprovacao_cliente" }[] {
+  if (!Array.isArray(etapas)) return [];
+  const out: { nome: string; prazo_dias: number; tipo_prazo: "uteis" | "corridos"; tipo: "padrao" | "aprovacao_cliente" }[] = [];
+  for (const e of etapas) {
+    if (!e || typeof e !== "object" || Array.isArray(e)) continue;
+    const o = e as Record<string, unknown>;
+    out.push({
+      nome: typeof o.nome === "string" ? o.nome : "",
+      prazo_dias: Number.isInteger(o.prazo_dias) ? (o.prazo_dias as number) : 0,
+      tipo_prazo: o.tipo_prazo === "uteis" ? "uteis" : "corridos",
+      tipo: o.tipo === "aprovacao_cliente" ? "aprovacao_cliente" : "padrao",
+    });
+  }
+  return out;
+}
+
+const OPTION_PROPERTY_TYPES = ["select", "status", "multiselect"];
+
+/** Build template_property_definitions rows (without template_id/conta_id) from
+ *  agent input. Generates {id,label,color} option configs; rejects dup names,
+ *  dup option labels, and options-vs-type mismatches. Returns {error} or {defs}. */
+export function buildPropertyDefinitions(
+  properties: Array<{ name: string; type: string; portal_visible?: boolean; options?: string[] }>,
+  genId: () => string,
+):
+  | { error: string }
+  | { defs: { name: string; type: string; config: Record<string, unknown>; portal_visible: boolean; display_order: number }[] } {
+  const seenNames = new Set<string>();
+  const defs: { name: string; type: string; config: Record<string, unknown>; portal_visible: boolean; display_order: number }[] = [];
+  for (let i = 0; i < properties.length; i++) {
+    const p = properties[i];
+    const name = p.name.trim();
+    if (seenNames.has(name)) return { error: `Nomes de propriedade duplicados: '${name}'.` };
+    seenNames.add(name);
+
+    let config: Record<string, unknown> = {};
+    if (OPTION_PROPERTY_TYPES.includes(p.type)) {
+      const opts = p.options ?? [];
+      if (opts.length === 0) return { error: `A propriedade '${name}' (${p.type}) exige 'options'.` };
+      const seenOpt = new Set<string>();
+      const options: { id: string; label: string; color: string }[] = [];
+      for (const raw of opts) {
+        const label = raw.trim();
+        if (seenOpt.has(label)) return { error: `Opções duplicadas na propriedade '${name}'.` };
+        seenOpt.add(label);
+        options.push({ id: genId(), label, color: "#94a3b8" });
+      }
+      config = { options };
+    } else if (p.options && p.options.length > 0) {
+      return { error: `A propriedade '${name}' (${p.type}) não aceita 'options'.` };
+    }
+    defs.push({ name, type: p.type, config, portal_visible: p.portal_visible ?? false, display_order: i });
+  }
+  return { defs };
+}
+
+/** True if a DB error is the plan-count trigger raising for THIS limit key. */
+export function isPlanLimitExceeded(error: unknown, limitKey: string): boolean {
+  const msg = (error as { message?: unknown } | null)?.message;
+  return typeof msg === "string" && msg.includes("plan_limit_exceeded:" + limitKey);
+}
+
 /**
  * Project a workflow template's `etapas` JSONB array into the agent-facing shape.
  * Fails closed on malformed JSONB, skips non-object elements, drops the internal
