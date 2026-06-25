@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "./assert.ts";
-import { getPost, listPosts, loadClientRateDistributions } from "../mcp/queries.ts";
+import { getPost, getPerformanceBaseline, listPosts, loadClientRateDistributions } from "../mcp/queries.ts";
 import type { Deps } from "../mcp/queries.ts";
 import type { McpKeyContext } from "../_shared/mcp-token.ts";
 
@@ -291,4 +291,71 @@ Deno.test("distributions: unavailable reach -> excluded from reach bucket", asyn
   // Only the first post's reach should be in the bucket
   assertEquals(dists.overall.reach.length, 1, "reach bucket excludes unavailable rows");
   assertEquals(dists.overall.reach[0], 300);
+});
+
+// ---- Task 6: getPerformanceBaseline -> rate-based {n, quartiles} ---------------
+
+Deno.test("baseline: like_rate gets quartiles when n>=5, share_rate null when n<5", async () => {
+  // 5 CAROUSEL posts with shares unavailable -> like_rate bucket has 5 entries
+  // (>= MIN_SAMPLE=5, so quartiles computed), share_rate bucket has 0 entries
+  // (< MIN_SAMPLE, so quartiles null).
+  // getPerformanceBaseline calls verifyClient, then loadClientRateDistributions
+  // which calls verifyClient again -> need TWO clientes responses in the queue.
+  const carouselPost = (likes: number) => igPost({
+    media_type: "CAROUSEL_ALBUM",
+    impressions: 1000,
+    likes,
+    saved: 20,
+    comments: 5,
+    shares: 0,
+    unavailable_metrics: ["shares"],
+  });
+
+  const { db } = makeFakeDb({
+    // verifyClient call from getPerformanceBaseline
+    clientes: [
+      { data: { id: 1, especialidade: null, cor: null }, error: null },
+      // verifyClient call from loadClientRateDistributions (called internally)
+      { data: { id: 1, especialidade: null, cor: null }, error: null },
+    ],
+    instagram_accounts: [{ data: [{ id: 55 }], error: null }],
+    instagram_posts: [{
+      data: [
+        carouselPost(100),
+        carouselPost(80),
+        carouselPost(60),
+        carouselPost(120),
+        carouselPost(90),
+      ],
+      error: null,
+    }],
+  });
+  const deps = { db, ctx: CTX } as unknown as Deps;
+
+  const result = await getPerformanceBaseline(deps, { client_id: 1 });
+
+  assert(result !== null, "result should not be null for an owned client");
+
+  // sample_size matches the number of posts seeded
+  assertEquals(result.sample_size, 5, "sample_size is 5");
+
+  // weights should be present
+  assert(result.weights !== undefined, "weights key present");
+  assert(typeof result.weights_note === "string", "weights_note is a string");
+
+  // like_rate: 5 posts with impressions=1000 -> 5 rate values -> quartiles computed
+  const lr = result.overall.like_rate;
+  assert(lr.n >= 5, `overall.like_rate.n should be >=5, got ${lr.n}`);
+  assert(lr.quartiles !== null, "overall.like_rate.quartiles should not be null when n>=MIN_SAMPLE");
+  assert(typeof lr.quartiles.p25 === "number", "p25 is a number");
+  assert(typeof lr.quartiles.p50 === "number", "p50 is a number");
+  assert(typeof lr.quartiles.p75 === "number", "p75 is a number");
+
+  // share_rate: shares unavailable on all posts -> 0 entries -> quartiles null
+  const sr = result.overall.share_rate;
+  assert(sr.n < 5, `overall.share_rate.n should be <5, got ${sr.n}`);
+  assertEquals(sr.quartiles, null, "overall.share_rate.quartiles is null when n<MIN_SAMPLE");
+
+  // by_format should have CAROUSEL_ALBUM bucket
+  assert(result.by_format["CAROUSEL_ALBUM"] !== undefined, "CAROUSEL_ALBUM format bucket present");
 });

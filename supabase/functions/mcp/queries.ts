@@ -403,31 +403,26 @@ export async function getPerformanceBaseline(
   const client = await verifyClient(d, args.client_id);
   if (!client) return null;
 
-  const { data: accounts } = await d.db
-    .from("instagram_accounts")
-    .select("id")
-    .eq("client_id", args.client_id);
-  const accountIds = (accounts ?? []).map((a: any) => a.id);
-  if (accountIds.length === 0) return { sample_size: 0, overall: {}, by_format: {} };
-
-  const { data: posts } = await d.db
-    .from("instagram_posts")
-    .select("media_type, reach, saved, shares, comments, likes")
-    .in("instagram_account_id", accountIds);
-  const rows = (posts ?? []) as any[];
-
-  const baselineFor = (subset: any[]): Record<string, Quartiles | null> => {
-    const out: Record<string, Quartiles | null> = {};
-    for (const k of METRIC_KEYS) out[k] = quartiles(subset.map((r) => r[k] ?? 0));
+  const dists = await loadClientRateDistributions(d, args.client_id);
+  const METRICS: (RateKey | "reach")[] = ["share_rate", "like_rate", "save_rate", "comment_rate", "reach"];
+  const bucketStats = (b: DistBuckets) => {
+    const out: Record<string, { n: number; quartiles: ReturnType<typeof quartiles> }> = {};
+    for (const m of METRICS) {
+      const xs = b[m] ?? [];
+      out[m] = { n: xs.length, quartiles: xs.length >= MIN_SAMPLE ? quartiles(xs) : null };
+    }
     return out;
   };
+  const by_format: Record<string, ReturnType<typeof bucketStats>> = {};
+  for (const [fmt, b] of Object.entries(dists.byFormat)) by_format[fmt] = bucketStats(b);
 
-  const byFormat: Record<string, Record<string, Quartiles | null>> = {};
-  for (const fmt of new Set(rows.map((r) => r.media_type).filter(Boolean))) {
-    byFormat[fmt] = baselineFor(rows.filter((r) => r.media_type === fmt));
-  }
-
-  return { sample_size: rows.length, overall: baselineFor(rows), by_format: byFormat };
+  return {
+    sample_size: dists.sampleSize,
+    weights: IG_RATE_WEIGHTS,
+    weights_note: "Internal IG-aligned heuristic (shares>likes>saves>comments), not Instagram's published weights.",
+    overall: bucketStats(dists.overall),
+    by_format,
+  };
 }
 
 // ---- rate distributions ------------------------------------------------------
