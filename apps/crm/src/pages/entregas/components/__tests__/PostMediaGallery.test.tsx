@@ -44,7 +44,8 @@ vi.mock('../../../../services/fileService', () => ({
   unlinkFileFromPost: vi.fn(),
 }));
 
-import { uploadPostMedia } from '../../../../services/postMedia';
+import { listPostMedia, uploadPostMedia } from '../../../../services/postMedia';
+import type { PostMedia } from '../../../../store';
 import { extractVideoFrame } from '../../../../utils/videoFrame';
 import { encodeImageAsJpeg } from '../../../../utils/imageJpeg';
 import { PostMediaGallery } from '../PostMediaGallery';
@@ -196,5 +197,52 @@ describe('PostMediaGallery upload orchestration', () => {
     await waitFor(() =>
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['workflow-covers'] }),
     );
+  });
+});
+
+function makeMedia(n: number): PostMedia[] {
+  return Array.from({ length: n }, (_, i) => ({
+    id: i + 1,
+    post_id: 1,
+    conta_id: 'c',
+    r2_key: `img/${i}.jpg`,
+    thumbnail_r2_key: null,
+    kind: 'image' as const,
+    mime_type: 'image/jpeg',
+    size_bytes: 1000,
+    original_filename: `img${i}.jpg`,
+    width: 1080,
+    height: 1080,
+    duration_seconds: null,
+    is_cover: i === 0,
+    sort_order: i,
+    uploaded_by: null,
+    created_at: '2026-01-01T00:00:00Z',
+    url: `https://example.test/img/${i}.jpg`,
+  }));
+}
+
+describe('carousel 10-item warning', () => {
+  it('shows the warning when there are 11 media items', async () => {
+    vi.mocked(listPostMedia).mockResolvedValueOnce(makeMedia(11));
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <PostMediaGallery postId={1} />
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText(/Carrossel acima do limite/i)).toBeInTheDocument();
+  });
+
+  it('does not show the warning at exactly 10 media items', async () => {
+    vi.mocked(listPostMedia).mockResolvedValueOnce(makeMedia(10));
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <PostMediaGallery postId={1} />
+      </QueryClientProvider>,
+    );
+    await screen.findByText('Adicionar'); // wait for the query to resolve
+    expect(screen.queryByText(/Carrossel acima do limite/i)).not.toBeInTheDocument();
   });
 });
