@@ -92,9 +92,9 @@ CRM-side pure glue (built on the above):
 ### Per-client page (`AnalyticsContaPage.tsx`)
 
 **Query wiring** (current posts query at lines 1040-1042):
-- Add `const baselineQuery = useQuery({ queryKey: ['client-rate-baseline', clientId], queryFn: () => getClientRateBaseline(clientId) })` — keyed by `clientId` only (full history, **not** period). Reused for both scoring and the baseline card.
-- Posts query: thread `baselineQuery.data?.dists` into `getPostsAnalytics(clientId, days, sort.col, sort.dir, dateRange, baselineQuery.data?.dists)`; add `baselineQuery.data?.sampleSize` to its `queryKey` (so an `ig_score` sort recomputes when dists arrive); gate with `enabled: baselineQuery.isFetched` (fires on success **or** error) so an `ig_score` sort isn't a no-op on first paint and the page still renders if the baseline read fails (`dists` undefined → `ig_score` null → sort falls back to `posted_at`).
-- The existing sync handler's `invalidateQueries` list adds `['client-rate-baseline', clientId]`.
+- Add `const baselineQuery = useQuery({ queryKey: ['client-rate-baseline', clientId], queryFn: () => getClientRateBaseline(clientId), retry: false })` — keyed by `clientId` only (full history, **not** period). Reused for both scoring and the baseline card. **`retry: false`** because the baseline is non-critical: a slow retry chain must not delay the posts query (finding 3), and the page must render without it.
+- Posts query: thread `baselineQuery.data?.dists` into `getPostsAnalytics(clientId, days, sort.col, sort.dir, dateRange, baselineQuery.data?.dists)`; key it on **`baselineQuery.dataUpdatedAt`** (not `sampleSize`) — `dataUpdatedAt` changes on **every** successful baseline fetch, so after a sync (which invalidates both queries) the posts refetch against the **fresh** dists even when the post count is unchanged but `impressions`/`shares` moved (finding 1). `sampleSize` alone would miss that case. Gate with `enabled: baselineQuery.isSuccess || baselineQuery.isError` (with `retry: false`, the error state is reached immediately, so an `ig_score` sort isn't a no-op on first paint and a baseline failure doesn't block posts; `dists` undefined → `ig_score` null → sort falls back to `posted_at`).
+- The existing sync handler's `invalidateQueries` list adds `['client-rate-baseline', clientId]`. With `dataUpdatedAt` in the posts key, the baseline refetch then drives a posts refetch against the new dists automatically.
 
 **Baseline Instagram card (Variant B)** — placed near "Desempenho por Tipo" (the format-performance section, ~line 1805):
 - Title "Baseline Instagram" + subtitle "Histórico completo · {sampleSize} posts · por visualização".
@@ -119,19 +119,21 @@ CRM-side pure glue (built on the above):
 - Each drawer row (lines 1799-1849) shows the matching per-view rate (formatted) next to the existing Alcance / Eng. / counts.
 - Top-5 "Melhores Posts" / "Precisam de Atenção" cards stay reach-ranked. No `ig_score` anywhere on this page.
 
+**Known limitation — reach-capped sample (finding 2).** `allRankedPosts` is built from `topPostsRaw`, which is ordered by `reach DESC` and **limited to 200** with `reach > 0` (analytics.ts:394-403). So a rate sort reorders only the top-200-by-reach subset of the period — a low-reach / high-share-rate post can be excluded entirely. This is consistent with decision 3 (the portfolio is the *approximate* surface; the per-client page is the complete one — `getPostsAnalytics` has **no** limit, so per-client rate sorting covers the full period). To avoid overstating coverage, when the active drawer sort is a rate (not reach), the drawer subtitle reads **"Top 200 por alcance, reordenado por {taxa}"**. Fetching the full unbiased period set for the portfolio drawer is recorded as a future enhancement (Out of scope), not done here — it would make every portfolio load heavier for a secondary surface.
+
 ## Rate display format
 
 Render raw fractions as **percentage of views** with appropriate precision: `share/save/comment` rates are small, so show 1 decimal (e.g. `0.018 → "1,8%"`); a `null` rate (metric unavailable or 0 views) → "—". Centralize formatting in a tiny helper (`formatRate(value: number | null): string`) used by both pages, PT-BR locale.
 
 ## Error handling
 
-- All scoring is pure and null-safe. Missing `impressions`/`unavailable` → `computeRates` yields `null` rates → excluded from distributions and shown as "—".
+- All scoring is pure and null-safe. **`computeRates` null semantics (match `content.ts:106-122` exactly):** a missing/non-array `unavailable_metrics` normalizes to `[]` (rates computed normally — **not** all-null); missing or `≤ 0` **`impressions`** (views), or `impressions` listed in `unavailable_metrics`, → **all** rates `null`; a specific numerator listed in `unavailable_metrics` (e.g. `shares` on an older carousel) → that one rate `null`; a real `0` count with views present → `0` (a genuine value, kept in distributions). `null` rates are excluded from distributions and shown as "—". The port and `buildRateDistributions` must coerce `Array.isArray(unavailable_metrics) ? unavailable_metrics : []` (mirror `queries.ts:525`) since the DB column can come back `null`.
 - `getClientRateBaseline` failure: posts query still runs (gated on `isFetched`); `ig_score` column shows "—"; baseline card hidden. No thrown error reaches the user; internal `console.error` only (consistent with the existing service functions).
 - No raw error details surfaced (consistent with existing analytics service behavior).
 
 ## Testing
 
-- **`apps/crm/src/lib/__tests__/ig-rates.test.ts`** — drift guard pinning the same values asserted by the Deno `content_test.ts`: `percentileRank` midrank `0.25` case, `igAlignedScore` renormalization over present components, `< MIN_SAMPLE` → `null`, `computeRates` 0-vs-`null` (real 0 stays 0; unavailable → null; 0 views → all null), `quartiles` linear interpolation.
+- **`apps/crm/src/lib/__tests__/ig-rates.test.ts`** — drift guard pinning the same values asserted by the Deno `content_test.ts`: `percentileRank` midrank `0.25` case, `igAlignedScore` renormalization over present components, `< MIN_SAMPLE` → `null`, `computeRates` 0-vs-`null` (real 0 stays 0; numerator in `unavailable` → null; `≤0`/unavailable views → all null; **missing/non-array `unavailable` → `[]`, rates computed normally**), `quartiles` linear interpolation, and `buildRateDistributions` coercing a `null` `unavailable_metrics` row.
 - **`getClientRateBaseline` service test** — shape mirrors MCP `get_performance_baseline` (`sample_size`, `weights`, `weights_note`, `overall`, `by_format`; quartiles gated by `MIN_SAMPLE`); `dists` present for scoring.
 - **Extend `apps/crm/src/pages/analytics/__tests__/AnalyticsPage.test.tsx`** — new rate sort options work; drawer rows render rates; fixtures updated for the added `views`/`rates`/`unavailable_metrics` fields.
 - **Extend `apps/crm/src/pages/analytics-conta/__tests__/AnalyticsContaPage.test.tsx`** — baseline card renders (and hides at `sampleSize 0`); `ig_score` column + sort; "—" for under-sampled; fixtures updated.
@@ -139,6 +141,7 @@ Render raw fractions as **percentage of views** with appropriate precision: `sha
 
 ## Out of scope (future)
 
+- **Full unbiased period-set fetch for the portfolio drawer** so rate sorts cover all period posts (not just top-200-by-reach). Deferred per finding 2 — labeled instead. Would mean a separate larger/lazy query for the portfolio.
 - Edge functions `instagram-analytics` / `instagram-report-generator` (PDF/email reports) — not changed here.
 - AI portfolio/account analysis prompts consuming `ig_score` — separate follow-up.
 - Reels watch-time as a skip-rate proxy — separate follow-up.
