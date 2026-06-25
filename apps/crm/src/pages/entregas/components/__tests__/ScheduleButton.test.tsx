@@ -100,10 +100,7 @@ describe('ScheduleButton', () => {
 
     it('does not require caption for stories', () => {
       render(
-        <ScheduleButton
-          post={makePost({ tipo: 'stories', ig_caption: null })}
-          {...defaultProps}
-        />,
+        <ScheduleButton post={makePost({ tipo: 'stories', ig_caption: null })} {...defaultProps} />,
       );
       const scheduleBtn = screen.getByText('Agendar publicação').closest('button')!;
       const publishBtn = screen.getByText('Publicar agora').closest('button')!;
