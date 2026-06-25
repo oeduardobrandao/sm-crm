@@ -4,6 +4,7 @@ import { createInstagramSyncCronHandler } from "./handler.ts";
 import { reportCronFailure } from "../_shared/triage.ts";
 import { runPool } from "./pool.ts";
 import { buildSnapshotRow } from "./snapshot.ts";
+import { buildMetricFields, fetchPostInsights } from "../_shared/instagram-metrics.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -225,27 +226,25 @@ async function syncAccount(
     );
 
     if (recentPosts.length > 0) {
+      const existingByPostId = new Map<string, any>();
+      {
+        const ids = recentPosts.map((p: any) => p.id);
+        if (ids.length) {
+          const { data: existingRows } = await supabase
+            .from('instagram_posts')
+            .select('instagram_post_id, reach, impressions, saved, shares, likes, comments')
+            .in('instagram_post_id', ids) as { data: any[] | null };
+          for (const r of existingRows ?? []) existingByPostId.set(r.instagram_post_id, r);
+        }
+      }
       const allPostData: any[] = [];
       const BATCH_SIZE = 10;
 
       for (let i = 0; i < recentPosts.length; i += BATCH_SIZE) {
         const batch = recentPosts.slice(i, i + BATCH_SIZE);
         const batchResults = await Promise.all(batch.map(async (post: any) => {
-          let reach = 0, impressions = 0, saved = 0, shares = 0;
-          try {
-            let metrics = 'reach,views,saved';
-            if (post.media_type === 'VIDEO') metrics += ',shares';
-            const postInsightsRes = await fetch(`https://graph.instagram.com/${post.id}/insights?metric=${metrics}&access_token=${accessToken}`);
-            const postInsightsData = await postInsightsRes.json();
-            if (postInsightsData.data) {
-              for (const insight of postInsightsData.data) {
-                if (insight.name === 'reach') reach = insight.values[0].value;
-                if (insight.name === 'views') impressions = insight.values[0].value;
-                if (insight.name === 'saved') saved = insight.values[0].value;
-                if (insight.name === 'shares') shares = insight.values[0].value;
-              }
-            }
-          } catch (_) { /* ignore per-post insight errors */ }
+          const insights = await fetchPostInsights(fetch, post.id, accessToken);
+          const m = buildMetricFields(existingByPostId.get(post.id) ?? null, insights, post);
 
           let thumbUrl = post.thumbnail_url || post.media_url || null;
           if (!thumbUrl && post.media_type === 'CAROUSEL_ALBUM') {
@@ -264,9 +263,9 @@ async function syncAccount(
             thumbnail_url: thumbUrl,
             permalink: post.permalink,
             posted_at: post.timestamp,
-            likes: post.like_count || 0,
-            comments: post.comments_count || 0,
-            reach, impressions, saved, shares,
+            likes: m.likes, comments: m.comments,
+            reach: m.reach, impressions: m.impressions, saved: m.saved, shares: m.shares,
+            unavailable_metrics: m.unavailable_metrics,
             synced_at: new Date().toISOString()
           };
         }));
