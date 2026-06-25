@@ -422,6 +422,80 @@ export async function ensureStorySegments(db: DbClient, postId: number): Promise
   return segments;
 }
 
+async function setSegmentField(
+  db: DbClient,
+  postId: number,
+  index: number,
+  field: "container_id" | "media_id",
+  value: string | null,
+): Promise<void> {
+  // deno-lint-ignore no-explicit-any
+  await (db as any).rpc("set_story_segment_field", {
+    p_post_id: postId,
+    p_index: index,
+    p_field: field,
+    p_value: value,
+  });
+}
+
+/** Create a STORIES container for every segment that lacks one; persist each id. */
+export async function createMissingStorySegmentContainers(
+  db: DbClient,
+  opts: { postId: number; igUserId: string; token: string },
+): Promise<StorySegment[]> {
+  const { postId, igUserId, token } = opts;
+  const segments = await ensureStorySegments(db, postId);
+  const media = await fetchPostMedia(db, postId);
+  const byFileId = new Map(media.map((m) => [m.id, m]));
+
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    if (seg.container_id) continue;
+    const file = byFileId.get(seg.file_id);
+    if (!file) throw new Error(`Story segment ${i}: media file ${seg.file_id} not found`);
+    const url = await signGetUrl(file.r2_key, 7200);
+    const container = file.kind === "video"
+      ? await createStoryVideoContainer(igUserId, token, url)
+      : await createStoryImageContainer(igUserId, token, url);
+    seg.container_id = container.id;
+    await setSegmentField(db, postId, i, "container_id", container.id);
+  }
+  return segments;
+}
+
+/**
+ * Publish any segment whose container is FINISHED. On ERROR, clear that segment's
+ * container_id (so the next container phase recreates it) and throw. On IN_PROGRESS,
+ * stop and leave the rest for the next cron cycle. allDone = all segments posted.
+ */
+export async function publishReadyStorySegments(
+  db: DbClient,
+  opts: { postId: number; igUserId: string; token: string; maxPolls?: number; intervalMs?: number },
+): Promise<{ segments: StorySegment[]; allDone: boolean }> {
+  const { postId, igUserId, token, maxPolls = 2, intervalMs = 3000 } = opts;
+  const segments = await ensureStorySegments(db, postId);
+
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    if (seg.media_id) continue;
+    if (!seg.container_id) break; // a container is still missing; container phase first
+
+    const status = await pollContainerReady(seg.container_id, token, maxPolls, intervalMs);
+    if (status === "IN_PROGRESS") break; // try again next cycle
+    if (status === "ERROR") {
+      seg.container_id = null;
+      await setSegmentField(db, postId, i, "container_id", null);
+      throw new Error(`Story segment ${i + 1} falhou no processamento do Instagram`);
+    }
+    const result = await publishContainer(igUserId, token, seg.container_id);
+    seg.media_id = result.id;
+    await setSegmentField(db, postId, i, "media_id", result.id);
+  }
+
+  const allDone = segments.every((s) => !!s.media_id);
+  return { segments, allDone };
+}
+
 export interface ContainerCreationResult {
   containerId: string;
   /**
