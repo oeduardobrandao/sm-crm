@@ -21,9 +21,9 @@ function link(i: number) {
 
 // Queue the four selects validateForScheduling makes, in any order (keyed by table).
 // account has no encrypted token + active status, so no decrypt/network happens.
-function seed(db: ReturnType<typeof createSupabaseQueryMock>, count: number) {
+function seed(db: ReturnType<typeof createSupabaseQueryMock>, count: number, tipo?: string) {
   db.queue("workflow_posts", "select", {
-    data: { id: 1, scheduled_at: null, ig_caption: "cap", workflow_id: 9 },
+    data: { id: 1, scheduled_at: null, ig_caption: "cap", workflow_id: 9, tipo },
     error: null,
   });
   db.queue("post_file_links", "select", {
@@ -62,4 +62,16 @@ Deno.test("validateForScheduling: exactly 10 media → no carousel error", async
     "10 items must not produce the carousel error",
   );
   assert(res.ok, "a well-formed 10-item post must fully validate");
+});
+
+Deno.test("validateForScheduling: story with >10 media is exempt from the carousel cap", async () => {
+  const db = createSupabaseQueryMock();
+  // Stories publish as sequential segments, not one carousel container, so the
+  // 10-item Graph carousel cap must NOT apply to them.
+  seed(db, 11, "stories");
+  const res = await validateForScheduling(db as never, 1, { skipDateCheck: true });
+  assert(
+    !res.errors.some((e) => e.includes("máximo 10")),
+    "stories must not be blocked by the 10-item carousel cap",
+  );
 });
