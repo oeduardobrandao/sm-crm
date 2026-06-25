@@ -4,6 +4,7 @@ import { insertAuditLog } from "../_shared/audit.ts";
 import { checkRateLimit } from "../_shared/rate-limit.ts";
 import { createSignedState, verifySignedState } from "./oauth-state.ts";
 import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
+import { buildMetricFields, fetchPostInsights } from "../_shared/instagram-metrics.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const META_APP_ID = Deno.env.get("META_APP_ID")!;
@@ -349,22 +350,20 @@ Deno.serve(async (req) => {
 
             if (mediaData.data) {
                 let savedCount = 0;
+                const existingByPostId = new Map<string, any>();
+                {
+                    const ids = (mediaData.data ?? []).map((p: any) => p.id);
+                    if (ids.length) {
+                        const { data: existingRows } = await serviceClient
+                            .from('instagram_posts')
+                            .select('instagram_post_id, reach, impressions, saved, shares, likes, comments')
+                            .in('instagram_post_id', ids);
+                        for (const r of existingRows ?? []) existingByPostId.set(r.instagram_post_id, r);
+                    }
+                }
                 for (const post of mediaData.data) {
-                    let reach = 0, impressions = 0, saved = 0, shares = 0;
-                    try {
-                        let metrics = 'reach,views,saved';
-                        if (post.media_type === 'VIDEO') metrics += ',shares';
-                        const postInsightsRes = await fetch(`https://graph.instagram.com/${post.id}/insights?metric=${metrics}&access_token=${longLivedToken}`);
-                        const postInsightsData = await postInsightsRes.json();
-                        if (postInsightsData.data) {
-                            for (const insight of postInsightsData.data) {
-                                if (insight.name === 'reach') reach = insight.values[0].value;
-                                if (insight.name === 'views') impressions = insight.values[0].value;
-                                if (insight.name === 'saved') saved = insight.values[0].value;
-                                if (insight.name === 'shares') shares = insight.values[0].value;
-                            }
-                        }
-                    } catch (_) { /* ignore per-post insight errors */ }
+                    const insights = await fetchPostInsights(fetch, post.id, longLivedToken!);
+                    const m = buildMetricFields(existingByPostId.get(post.id) ?? null, insights, post);
 
                     const { error: postErr } = await serviceClient.from('instagram_posts').upsert({
                         instagram_account_id: accountId,
@@ -374,9 +373,9 @@ Deno.serve(async (req) => {
                         thumbnail_url: post.thumbnail_url || post.media_url || null,
                         permalink: post.permalink,
                         posted_at: post.timestamp,
-                        likes: post.like_count || 0,
-                        comments: post.comments_count || 0,
-                        reach, impressions, saved, shares,
+                        likes: m.likes, comments: m.comments,
+                        reach: m.reach, impressions: m.impressions, saved: m.saved, shares: m.shares,
+                        unavailable_metrics: m.unavailable_metrics,
                         synced_at: new Date().toISOString()
                     }, { onConflict: 'instagram_post_id' });
                     if (!postErr) savedCount++;
@@ -563,26 +562,24 @@ Deno.serve(async (req) => {
 
             // 3.2 Fetch Post Insights — batched parallel (10 at a time)
             if (mediaData.data) {
+                const existingByPostId = new Map<string, any>();
+                {
+                    const ids = (mediaData.data ?? []).map((p: any) => p.id);
+                    if (ids.length) {
+                        const { data: existingRows } = await serviceClient
+                            .from('instagram_posts')
+                            .select('instagram_post_id, reach, impressions, saved, shares, likes, comments')
+                            .in('instagram_post_id', ids);
+                        for (const r of existingRows ?? []) existingByPostId.set(r.instagram_post_id, r);
+                    }
+                }
                 const allPostData: any[] = [];
                 const BATCH_SIZE = 10;
                 for (let i = 0; i < mediaData.data.length; i += BATCH_SIZE) {
                     const batch = mediaData.data.slice(i, i + BATCH_SIZE);
                     const batchResults = await Promise.all(batch.map(async (post: any) => {
-                        let reach = 0, impressions = 0, saved = 0, shares = 0;
-                        try {
-                            let metrics = 'reach,views,saved';
-                            if (post.media_type === 'VIDEO') metrics += ',shares';
-                            const postInsightsRes = await fetch(`https://graph.instagram.com/${post.id}/insights?metric=${metrics}&access_token=${accessToken}`);
-                            const postInsightsData = await postInsightsRes.json();
-                            if (postInsightsData.data) {
-                                for (const insight of postInsightsData.data) {
-                                    if (insight.name === 'reach') reach = insight.values[0].value;
-                                    if (insight.name === 'views') impressions = insight.values[0].value;
-                                    if (insight.name === 'saved') saved = insight.values[0].value;
-                                    if (insight.name === 'shares') shares = insight.values[0].value;
-                                }
-                            }
-                        } catch (_) { /* ignore per-post insight errors */ }
+                        const insights = await fetchPostInsights(fetch, post.id, accessToken);
+                        const m = buildMetricFields(existingByPostId.get(post.id) ?? null, insights, post);
 
                         // Get thumbnail: VIDEO has thumbnail_url, IMAGE has media_url, CAROUSEL needs first child
                         let thumbUrl = post.thumbnail_url || post.media_url || null;
@@ -602,9 +599,9 @@ Deno.serve(async (req) => {
                             thumbnail_url: thumbUrl,
                             permalink: post.permalink,
                             posted_at: post.timestamp,
-                            likes: post.like_count || 0,
-                            comments: post.comments_count || 0,
-                            reach, impressions, saved, shares,
+                            likes: m.likes, comments: m.comments,
+                            reach: m.reach, impressions: m.impressions, saved: m.saved, shares: m.shares,
+                            unavailable_metrics: m.unavailable_metrics,
                             synced_at: new Date().toISOString()
                         };
                     }));
