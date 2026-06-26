@@ -243,6 +243,9 @@ export async function removeIdeiaImage(a: RemoveArgs): Promise<IdeiaMediaResult>
 
   const { error } = await a.db.from("ideia_files").delete()
     .eq("ideia_id", a.ideia_id).eq("file_id", a.file_id);
-  if (error) return { status: 500, body: { error: "delete failed" } };
+  if (error) {
+    console.error("ideia_file remove error:", (error as { message?: string } | null)?.message ?? error);
+    return { status: 500, body: { error: "delete failed" } };
+  }
   return { status: 200, body: { ok: true } };
 }

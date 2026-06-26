@@ -82,6 +82,22 @@ Deno.test("hub-ideias: DELETE /:id/files/:fileId removes an image", async () => 
   assertEquals(res.status, 200);
 });
 
+Deno.test("hub-ideias: PATCH on a locked idea still returns 409 (text lock intact)", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  // Locked because status != 'nova'.
+  db.queue("ideias", "select", { data: { status: "em_analise", comentario_agencia: null }, error: null });
+  const res = await makeHandler(db)(new Request(
+    "https://x.test/hub-ideias/11111111-1111-1111-1111-111111111111?token=t",
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: "t", titulo: "novo titulo" }),
+    },
+  ));
+  assertEquals(res.status, 409);
+});
+
 Deno.test("hub-ideias: invalid token returns 404", async () => {
   const db = createSupabaseQueryMock();
   db.queue("client_hub_tokens", "select", { data: null, error: null });

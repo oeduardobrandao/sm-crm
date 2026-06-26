@@ -79,6 +79,7 @@ function IdeiaImages({
   }
 
   async function remove(fileId: number) {
+    setErr(null);
     setBusy(true);
     try {
       await deleteIdeiaImage(token, ideiaId, fileId);
