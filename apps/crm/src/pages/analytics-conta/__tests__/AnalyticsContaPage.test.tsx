@@ -92,6 +92,7 @@ vi.mock('../../../services/analytics', () => ({
   getClientReports: vi.fn(),
   getAccountAIAnalysis: accountAIMock,
   upsertManualFollowerCount: vi.fn(),
+  getClientRateBaseline: vi.fn(),
 }));
 
 vi.mock('@/components/ui/button', () => ({
@@ -230,6 +231,7 @@ import {
   getFollowerHistory,
   getPostsAnalytics,
   getAnalyticsOverview,
+  getClientRateBaseline,
 } from '../../../services/analytics';
 import { getClientes, getCurrentWorkspace } from '../../../store';
 import { getInstagramSummary } from '../../../services/instagram';
@@ -245,6 +247,7 @@ const mockedGetAudienceDemographics = vi.mocked(getAudienceDemographics);
 const mockedGetBestPostingTimes = vi.mocked(getBestPostingTimes);
 const mockedGetCurrentWorkspace = vi.mocked(getCurrentWorkspace);
 const mockedGetAccountAIAnalysis = vi.mocked(getAccountAIAnalysis);
+const mockedGetClientRateBaseline = vi.mocked(getClientRateBaseline);
 
 function resetQueryState() {
   for (const key of Object.keys(queryState)) delete queryState[key];
@@ -258,6 +261,7 @@ function seedCommonAnalyticsData() {
   };
 
   queryState.clientes = { data: [client] };
+  queryState['client-rate-baseline'] = { data: undefined };
   queryState['ig-summary'] = { data: { account } };
   queryState['analytics-overview'] = {
     data: {
@@ -406,6 +410,7 @@ beforeEach(() => {
   mockedGetBestPostingTimes.mockReset();
   mockedGetCurrentWorkspace.mockReset();
   mockedGetAccountAIAnalysis.mockReset();
+  mockedGetClientRateBaseline.mockReset();
   chartCalls.length = 0;
 
   mockedGetClientes.mockResolvedValue([{ id: 42, nome: 'Clinica Aurora' }]);
@@ -423,6 +428,11 @@ beforeEach(() => {
   mockedGetAccountAIAnalysis.mockResolvedValue({
     analysis: {},
     generatedAt: '2026-04-18T12:00:00Z',
+  });
+  mockedGetClientRateBaseline.mockResolvedValue({
+    sampleSize: 0,
+    dists: { overall: {}, byFormat: {} },
+    baseline: { sample_size: 0, weights: {}, weights_note: '', overall: {}, by_format: {} },
   });
 });
 
@@ -516,6 +526,72 @@ describe('AnalyticsContaPage', () => {
     expect(await screen.findByText('82')).toBeTruthy();
     expect(screen.getByText('Conta saudável e consistente.')).toBeTruthy();
     expect(screen.getByText('Publicar mais reels')).toBeTruthy();
+  });
+
+  it('renders the Baseline Instagram card and an ig_score badge', () => {
+    const q = { p25: 0.01, p50: 0.02, p75: 0.03 };
+    const bucket = {
+      share_rate: { n: 6, quartiles: q },
+      like_rate: { n: 6, quartiles: q },
+      save_rate: { n: 6, quartiles: q },
+      comment_rate: { n: 6, quartiles: q },
+      reach: { n: 6, quartiles: { p25: 50, p50: 100, p75: 150 } },
+    };
+    seedCommonAnalyticsData();
+    queryState['client-rate-baseline'] = {
+      data: {
+        sampleSize: 6,
+        dists: { overall: {}, byFormat: {} },
+        baseline: {
+          sample_size: 6,
+          weights: { share_rate: 0.4, like_rate: 0.3, save_rate: 0.2, comment_rate: 0.1 },
+          weights_note:
+            "Internal IG-aligned heuristic (shares>likes>saves>comments), not Instagram's published weights.",
+          overall: bucket,
+          by_format: { VIDEO: bucket },
+        },
+      },
+    };
+    queryState['analytics-posts'] = {
+      data: {
+        posts: [
+          {
+            id: 1,
+            instagram_post_id: 'x',
+            caption: '',
+            media_type: 'VIDEO',
+            permalink: 'https://x',
+            posted_at: '2026-06-20T00:00:00Z',
+            likes: 10,
+            comments: 1,
+            reach: 90,
+            impressions: 100,
+            saved: 2,
+            shares: 3,
+            thumbnail_url: null,
+            engagement_rate: 5,
+            saves_rate: 2,
+            views: 100,
+            unavailable_metrics: [],
+            rates: { share_rate: 0.03, like_rate: 0.1, save_rate: 0.02, comment_rate: 0.01 },
+            ig_score: 80,
+            tags: [],
+          },
+        ],
+      },
+    };
+    render(<AnalyticsContaPage />);
+    expect(screen.getByText('Baseline Instagram')).toBeInTheDocument();
+    expect(screen.getByText(/não são os pesos oficiais/)).toBeInTheDocument();
+    expect(screen.getByText('IG Score')).toBeInTheDocument();
+    expect(screen.getByText('80')).toBeInTheDocument();
+  });
+
+  it('hides the Baseline Instagram card when there is no baseline data', () => {
+    seedCommonAnalyticsData();
+    queryState['client-rate-baseline'] = { data: undefined };
+    render(<AnalyticsContaPage />);
+    expect(screen.queryByText('Baseline Instagram')).not.toBeInTheDocument();
   });
 
   it('opens the reach-ranked posts drawer using only this client account posts', () => {
