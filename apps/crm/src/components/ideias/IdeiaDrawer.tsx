@@ -1,5 +1,8 @@
-import { useState } from 'react';
-import { ExternalLink, Save, Loader2 } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { ExternalLink, Save, Loader2, ImagePlus, X } from 'lucide-react';
+import {
+  listIdeiaImages, uploadIdeiaImage, removeIdeiaImage, type CrmIdeiaImage,
+} from '@/services/ideiaMedia';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -53,6 +56,48 @@ export function IdeiaDrawer({ ideia, queryKey, onClose }: IdeiaDrawerProps) {
     queryFn: getMembros,
   });
   const membroId: number | undefined = membros.find((m: any) => m.user_id === profile?.id)?.id;
+
+  const MAX_IMAGES = 10;
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [imgBusy, setImgBusy] = useState(false);
+
+  const { data: images = [] } = useQuery({
+    queryKey: ['ideia-images', ideia.id],
+    queryFn: () => listIdeiaImages(ideia.id),
+  });
+
+  async function handleImageFiles(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setImgBusy(true);
+    const slots = MAX_IMAGES - images.length;
+    const chosen = Array.from(files).slice(0, slots);
+    try {
+      for (let i = 0; i < chosen.length; i++) {
+        await uploadIdeiaImage(ideia.id, chosen[i], images.length + i);
+      }
+      qc.invalidateQueries({ queryKey: ['ideia-images', ideia.id] });
+      qc.invalidateQueries({ queryKey });
+      toast.success('Imagem adicionada.');
+    } catch (e: any) {
+      toast.error(e.message ?? 'Erro ao enviar imagem.');
+    } finally {
+      setImgBusy(false);
+      if (inputRef.current) inputRef.current.value = '';
+    }
+  }
+
+  async function handleRemoveImage(fileId: number) {
+    setImgBusy(true);
+    try {
+      await removeIdeiaImage(ideia.id, fileId);
+      qc.invalidateQueries({ queryKey: ['ideia-images', ideia.id] });
+      qc.invalidateQueries({ queryKey });
+    } catch (e: any) {
+      toast.error(e.message ?? 'Erro ao remover imagem.');
+    } finally {
+      setImgBusy(false);
+    }
+  }
 
   const [statusSaving, setStatusSaving] = useState(false);
   const [comentario, setComentario] = useState(ideia.comentario_agencia ?? '');
@@ -163,6 +208,55 @@ export function IdeiaDrawer({ ideia, queryKey, onClose }: IdeiaDrawerProps) {
               </div>
             </div>
           )}
+
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+              Imagens
+            </p>
+            {images.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-2">
+                {images.map((img: CrmIdeiaImage) => (
+                  <div key={img.file_id} className="relative group">
+                    <a href={img.url} target="_blank" rel="noopener noreferrer">
+                      <img
+                        src={img.thumbnail_url ?? img.url}
+                        alt=""
+                        className="h-16 w-16 rounded-md object-cover border border-border bg-muted"
+                      />
+                    </a>
+                    <button
+                      onClick={() => handleRemoveImage(img.file_id)}
+                      disabled={imgBusy}
+                      aria-label="Remover imagem"
+                      className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full bg-foreground text-background opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {images.length < MAX_IMAGES && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={imgBusy}
+                onClick={() => inputRef.current?.click()}
+              >
+                {imgBusy ? <Loader2 size={13} className="animate-spin mr-1.5" /> : <ImagePlus size={13} className="mr-1.5" />}
+                Adicionar imagem
+              </Button>
+            )}
+            <input
+              ref={inputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              multiple
+              className="hidden"
+              onChange={(e) => handleImageFiles(e.target.files)}
+            />
+          </div>
 
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
