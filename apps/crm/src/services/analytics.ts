@@ -4,7 +4,10 @@
 // Edge function calls only for Instagram API data.
 // =============================================
 import { supabase, getCurrentProfile } from '../lib/supabase';
-import { computeRates, type Rates } from '../lib/ig-rates';
+import {
+  computeRates, scorePost, buildRateDistributions, buildBaseline, postRateSortValue,
+  type Rates, type RateDistributions, type Baseline, type PostMetricRow,
+} from '../lib/ig-rates';
 
 const EDGE_URL = import.meta.env.VITE_SUPABASE_URL + '/functions/v1/instagram-analytics';
 
@@ -112,6 +115,10 @@ export interface PostAnalytics {
   impressions: number;
   saved: number;
   shares: number;
+  views: number;
+  rates: Rates;
+  unavailable_metrics: string[];
+  ig_score: number | null;
   thumbnail_url: string | null;
   engagement_rate: number;
   saves_rate: number;
@@ -586,6 +593,7 @@ export async function getPostsAnalytics(
   sort = 'posted_at',
   dir = 'desc',
   dateRange?: { start: string; end: string },
+  dists?: RateDistributions,
 ): Promise<{ posts: PostAnalytics[]; total: number }> {
   const account = await getAccountByClientId(clientId);
 
@@ -627,38 +635,67 @@ export async function getPostsAnalytics(
     }
   }
 
-  // Compute engagement + sort
+  // Compute engagement + per-view rates + ig_score
   const enriched: PostAnalytics[] = allPosts.map((p) => {
     const interactions = (p.likes || 0) + (p.comments || 0) + (p.saved || 0) + (p.shares || 0);
     const engRate = p.reach > 0 ? (interactions / p.reach) * 100 : 0;
     const savesRate = p.reach > 0 ? ((p.saved || 0) / p.reach) * 100 : 0;
+    const unavailable = Array.isArray(p.unavailable_metrics) ? p.unavailable_metrics : [];
+    const rates = computeRates(
+      { shares: p.shares ?? 0, likes: p.likes ?? 0, saved: p.saved ?? 0, comments: p.comments ?? 0, impressions: p.impressions ?? 0 },
+      unavailable,
+    );
     return {
       ...p,
       engagement_rate: Math.round(engRate * 100) / 100,
       saves_rate: Math.round(savesRate * 100) / 100,
+      views: p.impressions ?? 0,
+      rates,
+      unavailable_metrics: unavailable,
+      ig_score: dists ? scorePost({ media_type: p.media_type, rates }, dists) : null,
       tags: tagMap[p.id] || [],
     };
   });
 
   const validCols = [
-    'posted_at',
-    'reach',
-    'impressions',
-    'engagement_rate',
-    'saves_rate',
-    'saved',
-    'likes',
-    'comments',
-    'shares',
+    'posted_at', 'reach', 'impressions', 'engagement_rate', 'saves_rate', 'saved', 'likes', 'comments', 'shares',
   ];
-  const col = validCols.includes(sort) ? sort : 'posted_at';
-  enriched.sort((a: any, b: any) => {
-    const va = a[col] ?? 0;
-    const vb = b[col] ?? 0;
+  const derivedCols = new Set(['share_rate', 'like_rate', 'save_rate', 'comment_rate', 'ig_score']);
+  const col = validCols.includes(sort) || derivedCols.has(sort) ? sort : 'posted_at';
+  enriched.sort((a, b) => {
+    if (derivedCols.has(col)) {
+      const va = postRateSortValue(a, col);
+      const vb = postRateSortValue(b, col);
+      if (va === null && vb === null) return 0;
+      if (va === null) return 1; // nulls always last, regardless of dir
+      if (vb === null) return -1;
+      return dir === 'asc' ? va - vb : vb - va;
+    }
+    const va = (a as any)[col] ?? 0;
+    const vb = (b as any)[col] ?? 0;
     return dir === 'asc' ? (va > vb ? 1 : -1) : va < vb ? 1 : -1;
   });
 
   return { posts: enriched, total: enriched.length };
+}
+
+/**
+ * Full-history per-view rate distributions + MCP-shaped baseline for a client.
+ * Single-account scoped (matches getPostsAnalytics); RLS through the user
+ * session is the tenant boundary. See ig-rates.ts for the math (mirrors the
+ * MCP loadClientRateDistributions + getPerformanceBaseline).
+ */
+export async function getClientRateBaseline(
+  clientId: number,
+): Promise<{ sampleSize: number; dists: RateDistributions; baseline: Baseline }> {
+  const account = await getAccountByClientId(clientId);
+  const { data: posts } = await supabase
+    .from('instagram_posts')
+    .select('media_type, reach, impressions, saved, shares, likes, comments, unavailable_metrics')
+    .eq('instagram_account_id', account.id);
+  const rows = (posts ?? []) as PostMetricRow[];
+  const dists = buildRateDistributions(rows);
+  return { sampleSize: rows.length, dists, baseline: buildBaseline(dists, rows.length) };
 }
 
 export async function getFollowerHistory(
