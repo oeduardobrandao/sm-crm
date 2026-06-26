@@ -126,6 +126,9 @@ verify_jwt = false
 [functions.instagram-report-generator-v2]
 verify_jwt = false
 
+[functions.ideia-media-manage]
+verify_jwt = false
+
 # Local-dev only: the analytics/vector container can't bind-mount the Docker
 # socket under colima/headless Docker. Disabling it keeps `supabase start`
 # working; does not affect the hosted project.
