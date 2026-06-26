@@ -97,9 +97,16 @@ function PostPill({
           tabIndex={0}
           aria-label="Mover post (arraste, ou foque e use as setas)"
           style={{ display: 'inline-flex', cursor: 'grab' }}
-          onClick={(e) => e.stopPropagation()}
-          onKeyDown={(e) => e.stopPropagation()}
           {...listeners}
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => {
+            // Let dnd-kit's keyboard sensor activate a drag from the handle,
+            // then stop the event so it doesn't bubble to the pill's select handler.
+            (listeners as Record<string, ((ev: KeyboardEvent) => void) | undefined>)?.onKeyDown?.(
+              e,
+            );
+            e.stopPropagation();
+          }}
         >
           <GripVertical className="h-2.5 w-2.5" style={{ flexShrink: 0, opacity: 0.7 }} />
         </span>
