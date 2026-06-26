@@ -225,6 +225,32 @@ describe('IdeiasPage', () => {
     });
   });
 
+  it('portals the modal out of the transformed .hub-fade-up wrapper', async () => {
+    mockedFetchIdeias.mockResolvedValue({ ideias: [] } as never);
+
+    const { container } = renderHubPage(
+      '/mesaas/hub/token-publico/ideias',
+      '/:workspace/hub/:token/ideias',
+      <IdeiasPage />,
+    );
+
+    await screen.findByText('Nenhuma ideia ainda');
+
+    // The page content lives inside `.hub-fade-up`, which keeps a persistent CSS
+    // transform (animation fill `both` ends on translateY(0)). A transformed
+    // ancestor becomes the containing block for `position: fixed` descendants, so
+    // an inline modal's `fixed inset-0` overlay is clipped to the wrapper and its
+    // top scrolls off-screen unreachable. The modal MUST be portaled to body.
+    const wrapper = container.querySelector('.hub-fade-up');
+    expect(wrapper).not.toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Adicionar ideia' }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toBeInTheDocument();
+    expect(wrapper!.contains(dialog)).toBe(false);
+  });
+
   it('allows editing a mutable ideia and keeps immutable ideias read-only', async () => {
     mockedFetchIdeias.mockResolvedValue({
       ideias: [
