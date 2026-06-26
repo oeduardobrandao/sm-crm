@@ -101,6 +101,7 @@ function makeIdeia(
     created_at: '2026-04-18T10:00:00.000Z',
     updated_at: '2026-04-18T10:00:00.000Z',
     ideia_reactions: [],
+    images: [],
     ...overrides,
   };
 }
@@ -199,7 +200,7 @@ describe('IdeiasPage', () => {
     await screen.findByText('Nenhuma ideia ainda');
 
     fireEvent.click(screen.getByRole('button', { name: 'Adicionar ideia' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Enviar ideia' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar e adicionar imagens' }));
 
     expect(screen.getByText('Título obrigatório')).toBeInTheDocument();
     expect(screen.getByText('Descrição obrigatória')).toBeInTheDocument();
@@ -214,7 +215,7 @@ describe('IdeiasPage', () => {
     fireEvent.change(screen.getByPlaceholderText('https://...'), {
       target: { value: '  https://www.notion.so/campanha-junho  ' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Enviar ideia' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar e adicionar imagens' }));
 
     await waitFor(() => {
       expect(mockedCreateIdeia).toHaveBeenCalledWith('token-publico', {
@@ -270,6 +271,10 @@ describe('IdeiasPage', () => {
         }),
       ],
     } as never);
+    // Two-phase modal destructures `{ ideia }` from updateIdeia on edit-save.
+    mockedUpdateIdeia.mockResolvedValue({
+      ideia: makeIdeia({ id: 'idea-mutable', titulo: 'Ideia mutável ajustada' }),
+    } as never);
 
     renderHubPage(
       '/mesaas/hub/token-publico/ideias',
@@ -280,12 +285,16 @@ describe('IdeiasPage', () => {
     const mutableHeading = await screen.findByRole('heading', { name: 'Ideia mutável' });
     const mutableCard = mutableHeading.closest('.hub-card');
     expect(mutableCard).not.toBeNull();
-    expect(within(mutableCard as HTMLElement).getAllByRole('button')).toHaveLength(2);
+    // Mutable card: edit + delete (text controls) plus the always-available image-add button.
+    expect(within(mutableCard as HTMLElement).getAllByRole('button')).toHaveLength(3);
 
     const immutableHeading = screen.getByRole('heading', { name: 'Ideia travada' });
     const immutableCard = immutableHeading.closest('.hub-card');
     expect(immutableCard).not.toBeNull();
-    expect(within(immutableCard as HTMLElement).queryAllByRole('button')).toHaveLength(0);
+    // Locked card: no edit/delete text controls, but image add/remove is lock-independent.
+    const immutableButtons = within(immutableCard as HTMLElement).getAllByRole('button');
+    expect(immutableButtons).toHaveLength(1);
+    expect(immutableButtons[0]).toHaveTextContent('Adicionar imagem');
 
     const links = within(immutableCard as HTMLElement).getAllByRole('link');
     expect(links[0]).toHaveAttribute('href', '#');
