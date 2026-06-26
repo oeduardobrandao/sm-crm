@@ -466,4 +466,36 @@ describe('analytics service', () => {
       'Falha ao gerar PDF para a cliente Clínica Aurora',
     );
   });
+
+  it('attaches per-view rates to portfolio ranked posts', async () => {
+    mockedSupabase.__queueSupabaseResult('clientes', 'select', {
+      data: [{ id: 1, nome: 'Clínica Aurora', sigla: 'CA', cor: '#db2777', especialidade: 'Derm', status: 'ativo' }],
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseResult('instagram_accounts', 'select', {
+      data: [{ id: 10, client_id: 1, username: 'aurora', follower_count: 1000, reach_28d: 5000 }],
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseResult('instagram_posts', 'select', { data: [], error: null }); // allRecentPosts
+    mockedSupabase.__queueSupabaseResult('instagram_follower_history', 'select', { data: [], error: null });
+    mockedSupabase.__queueSupabaseResult('instagram_posts', 'select', { data: [], error: null }); // latestPosts
+    mockedSupabase.__queueSupabaseResult('instagram_posts', 'select', {
+      data: [
+        { id: 100, instagram_account_id: 10, media_type: 'VIDEO', permalink: 'https://x', posted_at: '2026-06-20T00:00:00Z',
+          likes: 30, comments: 3, reach: 180, saved: 6, shares: 4, impressions: 200, unavailable_metrics: [] },
+        { id: 101, instagram_account_id: 10, media_type: 'CAROUSEL_ALBUM', permalink: 'https://y', posted_at: '2026-06-19T00:00:00Z',
+          likes: 10, comments: 1, reach: 90, saved: 2, shares: 0, impressions: 100, unavailable_metrics: ['shares'] },
+      ],
+      error: null,
+    });
+
+    const summary = await getPortfolioSummary(28);
+    const p100 = summary.allRankedPosts.find((p) => p.id === 100)!;
+    expect(p100.views).toBe(200);
+    expect(p100.rates.share_rate).toBe(0.02); // 4/200
+    expect(p100.rates.like_rate).toBe(0.15);  // 30/200
+    const p101 = summary.allRankedPosts.find((p) => p.id === 101)!;
+    expect(p101.rates.share_rate).toBeNull(); // shares unavailable -> null, not 0
+    expect(p101.rates.save_rate).toBe(0.02);  // 2/100
+  });
 });

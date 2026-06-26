@@ -4,6 +4,7 @@
 // Edge function calls only for Instagram API data.
 // =============================================
 import { supabase, getCurrentProfile } from '../lib/supabase';
+import { computeRates, type Rates } from '../lib/ig-rates';
 
 const EDGE_URL = import.meta.env.VITE_SUPABASE_URL + '/functions/v1/instagram-analytics';
 
@@ -166,6 +167,9 @@ export interface PortfolioTopPost {
   reach: number;
   saved: number;
   shares: number;
+  views: number;
+  rates: Rates;
+  unavailable_metrics: string[];
   engagement_rate: number;
   client_name: string;
   client_id: number;
@@ -394,7 +398,7 @@ export async function getPortfolioSummary(days = 28): Promise<PortfolioSummary> 
   const { data: topPostsRaw } = await supabase
     .from('instagram_posts')
     .select(
-      'id, instagram_account_id, thumbnail_url, media_type, permalink, posted_at, likes, comments, reach, saved, shares',
+      'id, instagram_account_id, thumbnail_url, media_type, permalink, posted_at, likes, comments, reach, saved, shares, impressions, unavailable_metrics',
     )
     .in('instagram_account_id', accountIds)
     .gte('posted_at', periodAgo)
@@ -413,9 +417,17 @@ export async function getPortfolioSummary(days = 28): Promise<PortfolioSummary> 
       const interactions = (p.likes || 0) + (p.comments || 0) + (p.saved || 0) + (p.shares || 0);
       const engagement_rate = p.reach > 0 ? Math.round((interactions / p.reach) * 10000) / 100 : 0;
       const info = accountToClient[p.instagram_account_id];
+      const unavailable = Array.isArray(p.unavailable_metrics) ? p.unavailable_metrics : [];
+      const rates = computeRates(
+        { shares: p.shares ?? 0, likes: p.likes ?? 0, saved: p.saved ?? 0, comments: p.comments ?? 0, impressions: p.impressions ?? 0 },
+        unavailable,
+      );
       return {
         ...p,
         engagement_rate,
+        views: p.impressions ?? 0,
+        rates,
+        unavailable_metrics: unavailable,
         client_name: info?.client_name || '',
         client_id: info?.client_id || 0,
       };
