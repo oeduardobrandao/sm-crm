@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Pencil, ExternalLink, X, Loader2 } from 'lucide-react';
 import { useHub } from '../HubContext';
@@ -308,9 +309,16 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
     }
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6 space-y-4">
+  // Rendered via a portal to <body>: the page content lives inside `.hub-fade-up`,
+  // whose persistent CSS transform would otherwise make this `fixed` overlay
+  // position relative to that wrapper (clipping the modal's top off-screen).
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+    >
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6 space-y-4 max-h-[calc(100dvh-2rem)] overflow-y-auto">
         <div className="flex items-center justify-between">
           <h2 className="font-display text-lg font-semibold text-stone-900">
             {editing ? 'Editar ideia' : 'Nova ideia'}
@@ -403,6 +411,7 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
