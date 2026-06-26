@@ -189,7 +189,10 @@ export function CalendarPostDetailPanel({
           </button>
         )}
         {canEdit && (
-          <button className="calendar-detail-btn calendar-detail-btn--danger" onClick={onRemoveDate}>
+          <button
+            className="calendar-detail-btn calendar-detail-btn--danger"
+            onClick={onRemoveDate}
+          >
             <Trash2 className="h-4 w-4" /> Remover data
           </button>
         )}

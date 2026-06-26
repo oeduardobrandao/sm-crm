@@ -243,10 +243,7 @@ describe('WorkflowCalendarView', () => {
     expect(await screen.findByRole('heading', { name: 'Post Agendado B' })).toBeTruthy();
 
     // Simulate a refetch where the post lost its date (now in the "Sem data" sidebar)
-    qc.setQueryData(
-      ['clientePosts', baseProps.clienteId],
-      [{ ...scheduled, scheduled_at: null }],
-    );
+    qc.setQueryData(['clientePosts', baseProps.clienteId], [{ ...scheduled, scheduled_at: null }]);
     await waitFor(() =>
       expect(screen.queryByRole('heading', { name: 'Post Agendado B' })).toBeNull(),
     );

@@ -34,7 +34,9 @@ const post: ClientePost = {
   workflow_titulo: 'Posts Julho - Marina',
 };
 
-function renderPanel(overrides: Partial<React.ComponentProps<typeof CalendarPostDetailPanel>> = {}) {
+function renderPanel(
+  overrides: Partial<React.ComponentProps<typeof CalendarPostDetailPanel>> = {},
+) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
