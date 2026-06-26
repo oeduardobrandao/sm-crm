@@ -37,13 +37,26 @@ New join table `ideia_files`, mirroring `post_file_links` but treating images as
 
 ```sql
 -- supabase/migrations/20260626000001_ideia_files.sql
+
+-- Prerequisite UNIQUE constraints so the composite FKs below can reference them.
+-- (Postgres FKs require a UNIQUE/PK constraint, not merely a unique index.)
+-- `id` is already each table's PK, so these composite uniques are cheap and always hold.
+ALTER TABLE ideias ADD CONSTRAINT ideias_id_workspace_uq UNIQUE (id, workspace_id);
+ALTER TABLE files  ADD CONSTRAINT files_id_conta_uq       UNIQUE (id, conta_id);
+
 CREATE TABLE ideia_files (
   id          bigserial PRIMARY KEY,
-  ideia_id    uuid   NOT NULL REFERENCES ideias(id)     ON DELETE CASCADE,
-  file_id     bigint NOT NULL REFERENCES files(id)      ON DELETE CASCADE,
+  ideia_id    uuid   NOT NULL,
+  file_id     bigint NOT NULL,
   conta_id    uuid   NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   sort_order  int    NOT NULL DEFAULT 0,
-  created_at  timestamptz NOT NULL DEFAULT now()
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  -- Composite FKs pin the idea AND the file to the link's own workspace, making
+  -- cross-tenant links structurally impossible (defense-in-depth beyond RLS).
+  CONSTRAINT ideia_files_ideia_fk
+    FOREIGN KEY (ideia_id, conta_id) REFERENCES ideias(id, workspace_id) ON DELETE CASCADE,
+  CONSTRAINT ideia_files_file_fk
+    FOREIGN KEY (file_id, conta_id)  REFERENCES files(id, conta_id)      ON DELETE CASCADE
 );
 
 CREATE UNIQUE INDEX ideia_files_unique ON ideia_files (ideia_id, file_id);
@@ -52,13 +65,20 @@ CREATE INDEX ideia_files_ideia_idx ON ideia_files (ideia_id);
 ALTER TABLE ideia_files ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY ideia_files_tenant_all ON ideia_files
-  FOR ALL USING (conta_id IN (SELECT public.get_my_conta_id()));
+  FOR ALL USING (conta_id IN (SELECT public.get_my_conta_id()))
+  WITH CHECK (conta_id IN (SELECT public.get_my_conta_id()));
 
 CREATE POLICY ideia_files_service_role_bypass ON ideia_files
   FOR ALL TO service_role USING (true) WITH CHECK (true);
 ```
 
 Notes:
+- **Cross-tenant guard (Finding 3):** RLS's `conta_id IN get_my_conta_id()` only validates
+  the caller's *own* `conta_id` — it would still permit a row whose `ideia_id`/`file_id`
+  belong to another workspace. The composite FKs `(ideia_id, conta_id) → ideias(id,
+  workspace_id)` and `(file_id, conta_id) → files(id, conta_id)` make that impossible at the
+  database level, independent of RLS or the service-role edge-function path. The
+  `WITH CHECK` clause is added for completeness on the tenant policy.
 - `file_id ... ON DELETE CASCADE` (vs `post_file_links`' `ON DELETE RESTRICT`) because
   idea images are owned by the idea; deleting the underlying file row should clean up the
   link too.
@@ -121,39 +141,86 @@ also be linked to a post (it won't be deleted out from under the post).
 Same 3-step R2 pattern already used for post media:
 
 ```
-1. request presigned PUT URL  (server: quota check + r2_key allocation)
+1. request presigned PUT URL   (server: best-effort quota pre-check + key allocation)
 2. PUT file (+ thumbnail) directly to R2
-3. finalize: file_insert_with_quota + insert ideia_files link  →  returns signed GET URL
+3. finalize: ONE transactional RPC  →  returns signed GET URL
 ```
+
+> **Atomicity is the core hardening over the post-media flow.** The existing post path
+> (`file_insert_with_quota` then a *separate* `post_file_links` insert) is non-atomic, which
+> makes the cap raceable (Finding 1) and leaks committed `files` rows + quota if the link
+> insert fails (Finding 2). For ideas we do **not** reuse that two-step pattern. We are not
+> refactoring the post flow here — only doing better for the new code.
+
+### Finalize is a single transactional RPC
+
+`ideia_file_insert_with_quota(p jsonb)` (SECURITY DEFINER) does everything in one
+transaction so there is no committed-but-unlinked intermediate state:
+
+```text
+1. SELECT ... FROM ideias  WHERE id = ideia_id AND workspace_id = conta_id  FOR UPDATE
+     → verifies ownership AND serializes concurrent finalizes for the same idea (Finding 1)
+     → not found ⇒ RAISE 'ideia_not_found'
+2. SELECT count(*) FROM ideia_files WHERE ideia_id = ideia_id
+     → >= 10 ⇒ RAISE 'image_limit'                         (cap is now race-safe, Finding 1)
+3. SELECT storage_quota_bytes, storage_used_bytes FROM workspaces WHERE id = conta_id FOR UPDATE
+     → quota check counts file_size + thumbnail_size (Finding 5) ; over ⇒ RAISE 'quota_exceeded'
+4. INSERT INTO files (... folder_id NULL ...) RETURNING id   → the real bigint files.id
+5. INSERT INTO ideia_files (ideia_id, file_id = new files.id, conta_id, sort_order)
+6. UPDATE workspaces SET storage_used_bytes += file_size + thumbnail_size
+RETURNING the files row.
+```
+
+Lock order is fixed (idea row, then workspace row) to avoid deadlocks. Because the file
+insert and the link insert share one transaction, a failure rolls back both — no orphaned
+`files` row, no double-charged quota (Finding 2). The `ideia_files` INSERT also fires the
+reused `file_update_reference_count` trigger, so `reference_count` starts at 1.
 
 Constraints enforced server-side:
 - MIME in `{image/jpeg, image/png, image/webp, image/gif}` → else 415.
 - `0 < size_bytes <= 25 MB` → else 400.
-- Workspace storage quota (`effectivePlanLimit(..., 'storage_quota_bytes')`) → else 413
-  `quota_exceeded` (reuses `file_insert_with_quota` + the pre-check from `file-upload-url`).
-- Per-idea count: reject the presign/finalize if the idea already has 10 images → 409.
+- **Thumbnail (Finding 5):** required for every idea image, `mime_type = image/webp`
+  (the client generates WebP), `0 < size_bytes <= 512 KB` → else 400. In `finalize`,
+  `headObject` the thumbnail key and verify it exists and matches the declared size/type
+  (the existing finalizer only HEAD-checks thumbnails for *videos*; we check images too).
+  Thumbnail bytes **count toward quota** and `storage_used_bytes`, consistent with the
+  presign pre-check (the existing `file_insert_with_quota` omits this — we fix it for ideas).
+- Workspace storage quota via the RPC above (authoritative) plus a best-effort pre-check in
+  `buildPresign` (`effectivePlanLimit(..., 'storage_quota_bytes')`) for an early, friendly
+  413 before the client uploads bytes.
+- Per-idea count enforced authoritatively in the RPC (race-safe); `buildPresign` also does a
+  best-effort early 409 to avoid a wasted upload.
 
 Client-side (both apps): generate a WebP thumbnail + blur placeholder before upload, exactly
 like `apps/crm/src/services/postMedia.ts` (`generateImageThumbnail`, `generateBlurDataUrl`,
-`probeImage`).
+`probeImage`). All client-supplied dimensions/sizes are **untrusted**; the server re-derives
+truth from the R2 `headObject` and the declared values it can verify.
 
 ### Auth split — shared core, two thin wrappers
 
 The Hub is **token-authed** (no Supabase user); the CRM is **JWT-authed**. Core logic is
 factored into a shared module so the two auth contexts don't duplicate it:
 
+> **Naming (Finding 4):** the value `buildPresign` returns is the **UUID key component**,
+> not a `files.id`. It is named `upload_id` everywhere (request → PUT → finalize). The real
+> `files.id` is a bigint minted by the RPC at finalize and is the *only* thing called
+> `file_id`. `IdeiaImage.file_id` is therefore always the bigint from the inserted row.
+
 **`supabase/functions/_shared/ideia-media.ts`** (pure logic, given `{conta_id, cliente_id}`):
 - `buildPresign({ db, conta_id, cliente_id, ideia_id, filename, mime_type, size_bytes, thumbnail })`
-  — validates mime/size, enforces the 10-image cap, runs the quota pre-check, allocates the
-  `contas/{conta_id}/files/{uuid}.{ext}` key(s), returns presigned PUT URL(s) + `file_id` + `r2_key`(s).
-- `finalizeUpload({ db, conta_id, cliente_id, ideia_id, file_id, r2_key, ... })`
-  — verifies the idea belongs to the client/workspace, `headObject` size/type check,
-  `file_insert_with_quota` (folder_id NULL), inserts the `ideia_files` link, persists
-  `blur_data_url`, returns the signed GET URL.
-- `listIdeiaImages({ db, ideia_id, signUrl })` — returns `[{ id (link id), file_id, url,
-  thumbnail_url, blur_data_url, width, height, sort_order }]`.
+  — validates mime/size + thumbnail mime/size, runs the best-effort quota + cap pre-checks,
+  allocates `contas/{conta_id}/files/{upload_id}.{ext}` and the matching `.thumb.webp` key,
+  returns `{ upload_id, upload_url, r2_key, thumbnail_upload_url, thumbnail_r2_key }`.
+- `finalizeUpload({ db, conta_id, cliente_id, ideia_id, r2_key, thumbnail_r2_key, mime_type,
+  size_bytes, thumbnail_size_bytes, name, width, height, blur_data_url, sort_order })`
+  — `headObject` checks both the main key and the thumbnail key, then calls the single
+  `ideia_file_insert_with_quota` RPC (which mints `files.id`, links it, charges quota — all
+  atomic), persists `blur_data_url`, and returns the signed GET URL. The link's `file_id`
+  comes solely from the RPC's returned row.
+- `listIdeiaImages({ db, ideia_id, signUrl })` — returns `IdeiaImage[]`
+  (`{ id: link id, file_id: bigint, url, thumbnail_url, blur_data_url, width, height, sort_order }`).
 - `removeIdeiaImage({ db, conta_id, cliente_id, ideia_id, file_id })` — verifies ownership,
-  deletes the `ideia_files` row (cleanup trigger handles the rest).
+  deletes the `ideia_files` row (cleanup trigger handles file row + R2 + quota).
 
 **Hub wrapper — extend `supabase/functions/hub-ideias/handler.ts`** (token-authed, resolves
 `conta_id`/`cliente_id` from `resolveHubToken`):
@@ -230,8 +297,13 @@ interface IdeiaImage {
 - CORS via `buildCorsHeaders(req)` (never `*`).
 - Hub: every image op re-resolves the token and checks the idea's `cliente_id` +
   `conta_id` match the token. CRM: checks the idea's `conta_id` matches the profile.
-- `r2_key` must start with `contas/{conta_id}/files/` (reuse the existing prefix check).
-- No raw error details returned to clients; log internally, return generic messages.
+- Both `r2_key` and `thumbnail_r2_key` must start with `contas/{conta_id}/files/`
+  (reuse the existing prefix check).
+- Cross-tenant links are structurally impossible via the composite FKs (§1), independent of
+  the auth path — belt-and-suspenders with the token/profile ownership checks above.
+- No raw error details returned to clients; log internally, return generic messages. The
+  RPC's `RAISE` codes (`ideia_not_found`, `image_limit`, `quota_exceeded`) map to
+  404/409/413 generic messages.
 - Image ops bypass the lock by design; the text PATCH lock is untouched.
 
 ---
@@ -239,8 +311,9 @@ interface IdeiaImage {
 ## 5. Testing
 
 **Deno (`supabase/functions/__tests__/`):**
-- `_shared/ideia-media` helper: mime reject (415), size reject (>25 MB → 400), 10-image cap
-  (409), quota_exceeded (413), ownership mismatch (wrong client/workspace → 404).
+- `_shared/ideia-media` helper: mime reject (415), main-file size reject (>25 MB → 400),
+  thumbnail reject (wrong mime / >512 KB → 400), 10-image cap (409), quota_exceeded (413),
+  ownership mismatch (wrong client/workspace → 404).
 - `hub-ideias`: upload-url / finalize / delete happy paths under token auth; image ops
   succeed on a locked idea (status != `nova` or has agency comment) — proving
   lock-independence; GET returns signed `images`.
@@ -248,6 +321,17 @@ interface IdeiaImage {
 - Trigger behavior (DB-level or via handler test): removing the last `ideia_files` link
   deletes the `files` row and enqueues a `file_deletions` entry; an image also linked to a
   post is **not** deleted.
+
+**DB / RPC hardening (verify the review findings, ideally at the SQL layer):**
+- **Cap race (Finding 1):** two finalizes against a 9-image idea — the idea-row `FOR UPDATE`
+  serializes them; exactly one succeeds, the other gets `image_limit`. Ends at 10, not 11.
+- **Atomic finalize (Finding 2):** force the link insert to fail inside
+  `ideia_file_insert_with_quota` → assert no `files` row persists and `storage_used_bytes`
+  is unchanged (full rollback; no leak).
+- **Cross-tenant guard (Finding 3):** inserting an `ideia_files` row whose `ideia_id` or
+  `file_id` belongs to a different workspace than `conta_id` is rejected by the composite FK.
+- **Thumbnail accounting (Finding 5):** quota charge equals `file_size + thumbnail_size`;
+  finalize fails if the thumbnail object is missing from R2.
 
 **Frontend (Vitest):**
 - Hub `ideiaMedia` service: validation (mime/size), and the presign→PUT→finalize call
