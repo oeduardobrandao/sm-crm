@@ -582,6 +582,17 @@ Deno.test("finalize: RPC quota_exceeded -> 413", async () => {
   assertEquals(res.status, 413);
 });
 
+Deno.test("finalize: unexpected RPC error -> 500 with generic message (no leak)", async () => {
+  const db = createSupabaseQueryMock();
+  db.queueRpc("ideia_file_insert_with_quota", {
+    data: null,
+    error: { message: 'duplicate key value violates unique constraint "files_pkey"' },
+  });
+  const res = await finalizeIdeiaImage(finalizeArgs(db));
+  assertEquals(res.status, 500);
+  assertEquals(res.body.error, "internal error"); // raw DB message must NOT leak
+});
+
 Deno.test("finalize: happy path returns signed IdeiaImage from inserted row", async () => {
   const db = createSupabaseQueryMock();
   db.queueRpc("ideia_file_insert_with_quota", {
@@ -678,7 +689,14 @@ export async function finalizeIdeiaImage(a: FinalizeArgs): Promise<IdeiaMediaRes
 
   if (error || !inserted) {
     const msg = (error as { message?: string } | null)?.message ?? "insert failed";
-    return { status: rpcErrorStatus(msg), body: { error: msg } };
+    const status = rpcErrorStatus(msg);
+    // Known domain codes are safe to surface; the 500 fallback may carry raw
+    // DB internals — log it, return a generic message (security rule).
+    if (status === 500) {
+      console.error("ideia_file finalize error:", msg);
+      return { status: 500, body: { error: "internal error" } };
+    }
+    return { status, body: { error: msg } };
   }
 
   const file = inserted as Record<string, unknown>;
