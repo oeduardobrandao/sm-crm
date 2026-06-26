@@ -89,23 +89,20 @@ export function ClientHealthCard({ client: c }: { client: ClientHealth }) {
             )}
           </div>
         </div>
-        {/* Hide badge in states where the CTA already communicates status */}
-        {!isConnectState && !isReconnectState && (
-          <span
-            style={{
-              fontSize: '0.6rem',
-              fontWeight: 700,
-              letterSpacing: '0.5px',
-              textTransform: 'uppercase',
-              padding: '2px 7px',
-              borderRadius: 3,
-              background: tone.bg,
-              color: tone.fg,
-            }}
-          >
-            {t(`health.status.${c.status}`)}
-          </span>
-        )}
+        <span
+          style={{
+            fontSize: '0.6rem',
+            fontWeight: 700,
+            letterSpacing: '0.5px',
+            textTransform: 'uppercase',
+            padding: '2px 7px',
+            borderRadius: 3,
+            background: tone.bg,
+            color: tone.fg,
+          }}
+        >
+          {t(`health.status.${c.status}`)}
+        </span>
       </div>
 
       {showMetrics ? (

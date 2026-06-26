@@ -59,7 +59,8 @@ describe('ClientHealthCard', () => {
 
   it('shows the reconnect CTA for a reconectar client', () => {
     renderCard(mk({ status: 'reconectar', score: null }));
-    expect(screen.getByText('Reconectar')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Reconectar' })).toBeTruthy(); // the CTA
+    expect(screen.getAllByText('Reconectar')).toHaveLength(2); // badge + CTA button both render
   });
 
   it('shows the connect CTA for a disconnected client', () => {
