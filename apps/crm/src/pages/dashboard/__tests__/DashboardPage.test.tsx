@@ -3,14 +3,12 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { useAuthMock, useQueriesMock, useQueryMock, onboardingBannerMock } = vi.hoisted(
-  () => ({
-    useAuthMock: vi.fn(),
-    useQueriesMock: vi.fn(),
-    useQueryMock: vi.fn(),
-    onboardingBannerMock: vi.fn(),
-  }),
-);
+const { useAuthMock, useQueriesMock, useQueryMock, onboardingBannerMock } = vi.hoisted(() => ({
+  useAuthMock: vi.fn(),
+  useQueriesMock: vi.fn(),
+  useQueryMock: vi.fn(),
+  onboardingBannerMock: vi.fn(),
+}));
 
 vi.mock('@tanstack/react-query', () => ({
   useQueries: useQueriesMock,
@@ -68,14 +66,16 @@ function makeQueryResult<T>(data: T, isLoading = false) {
 }
 
 // New useQueries order: [statsRes, membrosRes, clientesRes, workflowsRes, leadsRes, portfolioRes]
-function makeDefaultUseQueries(overrides: Partial<Record<number, ReturnType<typeof makeQueryResult<unknown>>>> = {}) {
+function makeDefaultUseQueries(
+  overrides: Partial<Record<number, ReturnType<typeof makeQueryResult<unknown>>>> = {},
+) {
   const defaults = [
-    makeQueryResult(null),                              // 0: dashboardStats
-    makeQueryResult([]),                                // 1: membros
-    makeQueryResult([]),                                // 2: clientes
-    makeQueryResult([]),                                // 3: workflows
-    makeQueryResult([]),                                // 4: leads
-    makeQueryResult({ accounts: [], summary: {} }),     // 5: portfolioSummary
+    makeQueryResult(null), // 0: dashboardStats
+    makeQueryResult([]), // 1: membros
+    makeQueryResult([]), // 2: clientes
+    makeQueryResult([]), // 3: workflows
+    makeQueryResult([]), // 4: leads
+    makeQueryResult({ accounts: [], summary: {} }), // 5: portfolioSummary
   ];
   return Object.entries(overrides).reduce((acc, [idx, val]) => {
     acc[Number(idx)] = val;
@@ -121,7 +121,13 @@ describe('DashboardPage', () => {
       makeDefaultUseQueries({
         0: makeQueryResult({
           transacoes: [
-            { id: 'tx-1', tipo: 'entrada', status: 'agendado', valor: 1200, descricao: 'Receita A' },
+            {
+              id: 'tx-1',
+              tipo: 'entrada',
+              status: 'agendado',
+              valor: 1200,
+              descricao: 'Receita A',
+            },
           ],
           receitaMensal: 0,
           despesaTotal: 0,
@@ -133,7 +139,14 @@ describe('DashboardPage', () => {
           { id: 'mem-1', nome: 'Membro 1', tipo: 'clt', custo_mensal: 5000, data_pagamento: 18 },
         ]),
         2: makeQueryResult([
-          { id: 'cli-1', nome: 'Cliente 1', status: 'ativo', cor: '#111', data_pagamento: 18, data_aniversario: '04-18' },
+          {
+            id: 'cli-1',
+            nome: 'Cliente 1',
+            status: 'ativo',
+            cor: '#111',
+            data_pagamento: 18,
+            data_aniversario: '04-18',
+          },
         ]),
         3: makeQueryResult([]),
         4: makeQueryResult([]),
@@ -161,9 +174,21 @@ describe('DashboardPage', () => {
       makeDefaultUseQueries({
         0: makeQueryResult({
           transacoes: [
-            { id: 'tx-1', tipo: 'entrada', status: 'agendado', valor: 1200, descricao: 'Receita A' },
+            {
+              id: 'tx-1',
+              tipo: 'entrada',
+              status: 'agendado',
+              valor: 1200,
+              descricao: 'Receita A',
+            },
             { id: 'tx-2', tipo: 'saida', status: 'agendado', valor: 450, descricao: 'Despesa B' },
-            { id: 'tx-3', tipo: 'entrada', status: 'concluido', valor: 300, descricao: 'Receita antiga' },
+            {
+              id: 'tx-3',
+              tipo: 'entrada',
+              status: 'concluido',
+              valor: 300,
+              descricao: 'Receita antiga',
+            },
           ],
           receitaMensal: 1800,
           despesaTotal: 450,
@@ -175,8 +200,22 @@ describe('DashboardPage', () => {
           { id: 'mem-1', nome: 'Ana', tipo: 'clt', custo_mensal: 5000, data_pagamento: 18 },
         ]),
         2: makeQueryResult([
-          { id: 'cli-1', nome: 'Cliente Hoje', status: 'ativo', cor: '#111', data_pagamento: 18, data_aniversario: '04-18' },
-          { id: 'cli-2', nome: 'Cliente Futuro', status: 'ativo', cor: '#222', data_pagamento: 25, data_aniversario: '01-01' },
+          {
+            id: 'cli-1',
+            nome: 'Cliente Hoje',
+            status: 'ativo',
+            cor: '#111',
+            data_pagamento: 18,
+            data_aniversario: '04-18',
+          },
+          {
+            id: 'cli-2',
+            nome: 'Cliente Futuro',
+            status: 'ativo',
+            cor: '#222',
+            data_pagamento: 25,
+            data_aniversario: '01-01',
+          },
         ]),
         3: makeQueryResult([]),
         4: makeQueryResult([]),
@@ -186,7 +225,9 @@ describe('DashboardPage', () => {
 
     mockedUseQuery.mockImplementation(({ queryKey }: { queryKey: readonly unknown[] }) => {
       if (queryKey[0] === 'allClienteDatas') {
-        return makeQueryResult([{ id: 'data-1', titulo: 'Lançamento', data: '2026-04-18', cliente_id: 'cli-1' }]);
+        return makeQueryResult([
+          { id: 'data-1', titulo: 'Lançamento', data: '2026-04-18', cliente_id: 'cli-1' },
+        ]);
       }
       if (queryKey[0] === 'calendar-deadlines') {
         return makeQueryResult([]);

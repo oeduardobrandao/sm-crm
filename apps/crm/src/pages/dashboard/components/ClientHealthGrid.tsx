@@ -1,6 +1,10 @@
 import { useTranslation } from 'react-i18next';
 import type { ClientHealth } from '../../../services/clientHealth';
-import { filterAndSortClients, type HealthFilterKey, type HealthSort } from '../../../lib/health/filter';
+import {
+  filterAndSortClients,
+  type HealthFilterKey,
+  type HealthSort,
+} from '../../../lib/health/filter';
 import { ClientHealthCard } from './ClientHealthCard';
 
 interface Props {

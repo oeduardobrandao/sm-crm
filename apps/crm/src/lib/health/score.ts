@@ -95,7 +95,15 @@ export function scoreClient(s: HealthSignals): HealthResult {
   );
 
   const status: HealthStatus =
-    score >= 80 ? 'em_alta' : score >= 60 ? 'saudavel' : score >= 40 ? 'estavel' : score >= 20 ? 'atencao' : 'em_queda';
+    score >= 80
+      ? 'em_alta'
+      : score >= 60
+        ? 'saudavel'
+        : score >= 40
+          ? 'estavel'
+          : score >= 20
+            ? 'atencao'
+            : 'em_queda';
 
   return { status, score };
 }

@@ -47,7 +47,10 @@ describe('downsample', () => {
     expect(downsample([1, 2, 3], 12)).toEqual([1, 2, 3]);
   });
   it('reduces a long series to at most max points, keeping first and last', () => {
-    const out = downsample(Array.from({ length: 100 }, (_, i) => i), 12);
+    const out = downsample(
+      Array.from({ length: 100 }, (_, i) => i),
+      12,
+    );
     expect(out.length).toBeLessThanOrEqual(12);
     expect(out[0]).toBe(0);
     expect(out[out.length - 1]).toBe(99);
@@ -69,7 +72,17 @@ describe('getClientHealthMonitor', () => {
 
   it('includes disconnected clients (not dropped)', async () => {
     mocked.__queueSupabaseRpc('get_client_health_aggregates', {
-      data: [row({ client_id: 9, connected: false, username: null, last_synced_at: null, follower_first: 0, follower_points: 0, posts_56d: 0 })],
+      data: [
+        row({
+          client_id: 9,
+          connected: false,
+          username: null,
+          last_synced_at: null,
+          follower_first: 0,
+          follower_points: 0,
+          posts_56d: 0,
+        }),
+      ],
       error: null,
     });
     const res = await getClientHealthMonitor();
@@ -111,7 +124,12 @@ describe('getClientHealthMonitor', () => {
       data: [
         row({ client_id: 1 }), // healthy/em_alta-ish → saudaveis bucket region
         row({ client_id: 2, connected: false }), // conexao
-        row({ client_id: 3, last_post_at: new Date(Date.now() - 40 * 86400000).toISOString(), pl_agendados: 0, pl_em_producao: 0 }), // inativo → atencao
+        row({
+          client_id: 3,
+          last_post_at: new Date(Date.now() - 40 * 86400000).toISOString(),
+          pl_agendados: 0,
+          pl_em_producao: 0,
+        }), // inativo → atencao
       ],
       error: null,
     });
@@ -122,7 +140,10 @@ describe('getClientHealthMonitor', () => {
   });
 
   it('returns empty result on RPC error without throwing', async () => {
-    mocked.__queueSupabaseRpc('get_client_health_aggregates', { data: null, error: { message: 'boom' } });
+    mocked.__queueSupabaseRpc('get_client_health_aggregates', {
+      data: null,
+      error: { message: 'boom' },
+    });
     const res = await getClientHealthMonitor();
     expect(res.clients).toEqual([]);
     expect(res.summary.total).toBe(0);

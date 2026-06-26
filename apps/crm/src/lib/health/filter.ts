@@ -12,7 +12,12 @@ const GROUPS: Record<Exclude<HealthFilterKey, 'todos'>, HealthStatus[]> = {
 };
 
 // Actionable override states sort to the very top under the default sort.
-const ATTENTION_OVERRIDES: HealthStatus[] = ['reconectar', 'sem_sincronizar', 'desconectado', 'inativo'];
+const ATTENTION_OVERRIDES: HealthStatus[] = [
+  'reconectar',
+  'sem_sincronizar',
+  'desconectado',
+  'inativo',
+];
 // Transient/neutral states sort after the scored tiers.
 const NEUTRAL_OVERRIDES: HealthStatus[] = ['sincronizando', 'sem_dados'];
 // assumes health scores are 0–100
@@ -37,9 +42,7 @@ export function filterAndSortClients(
   const filtered = clients.filter((c) => {
     if (!matchesFilter(c.status, opts.filter)) return false;
     if (!q) return true;
-    return (
-      c.client_name.toLowerCase().includes(q) || (c.username ?? '').toLowerCase().includes(q)
-    );
+    return c.client_name.toLowerCase().includes(q) || (c.username ?? '').toLowerCase().includes(q);
   });
 
   const byName = (a: ClientHealth, b: ClientHealth) =>
@@ -56,7 +59,9 @@ export function filterAndSortClients(
     case 'ultimo_post':
       // most stale first; nulls (no posts) treated as most stale
       sorted.sort(
-        (a, b) => (b.days_since_last_post ?? Infinity) - (a.days_since_last_post ?? Infinity) || byName(a, b), // both-null → Infinity - Infinity = NaN, falls through to byName
+        (a, b) =>
+          (b.days_since_last_post ?? Infinity) - (a.days_since_last_post ?? Infinity) ||
+          byName(a, b), // both-null → Infinity - Infinity = NaN, falls through to byName
       );
       break;
     case 'seguidores':

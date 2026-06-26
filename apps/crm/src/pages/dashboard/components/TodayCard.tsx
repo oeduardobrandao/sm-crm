@@ -41,7 +41,10 @@ export function TodayCard({ events }: { events: TodayEvent[] }) {
             {events.map((e, i) => (
               <div key={i} className="dashboard-hub-row">
                 <span style={{ fontSize: '0.85rem' }}>
-                  <i className={ICON[e.kind].icon} style={{ color: ICON[e.kind].color, marginRight: 4 }} />
+                  <i
+                    className={ICON[e.kind].icon}
+                    style={{ color: ICON[e.kind].color, marginRight: 4 }}
+                  />
                   {e.label}
                 </span>
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{e.sublabel}</span>

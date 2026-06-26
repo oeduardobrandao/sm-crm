@@ -22,7 +22,14 @@ export function Sparkline({ values, width = 72, height = 24 }: SparklineProps) {
 
   return (
     <svg width={width} height={height} aria-hidden="true" style={{ overflow: 'visible' }}>
-      <polyline points={points} fill="none" stroke={stroke} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+      <polyline
+        points={points}
+        fill="none"
+        stroke={stroke}
+        strokeWidth={2}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }

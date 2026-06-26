@@ -119,7 +119,12 @@ export function ClientHealthCard({ client: c }: { client: ClientHealth }) {
               <Metric label={t('health.metric.seguidores')}>
                 {nfmt(c.follower_count, locale)}{' '}
                 {c.follower_delta !== 0 && (
-                  <span style={{ color: c.follower_delta > 0 ? 'var(--success)' : 'var(--danger)', fontWeight: 700 }}>
+                  <span
+                    style={{
+                      color: c.follower_delta > 0 ? 'var(--success)' : 'var(--danger)',
+                      fontWeight: 700,
+                    }}
+                  >
                     {c.follower_delta > 0 ? '▲' : '▼'}
                     {Math.abs(c.follower_delta)}
                   </span>

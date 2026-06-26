@@ -4,7 +4,14 @@ import { FinanceKpiStrip } from '../FinanceKpiStrip';
 
 describe('FinanceKpiStrip', () => {
   it('renders the four KPI labels and formatted BRL values', () => {
-    render(<FinanceKpiStrip aReceber={18400} aPagar={7100} saldoProjetado={11300} receitaMensal={24000} />);
+    render(
+      <FinanceKpiStrip
+        aReceber={18400}
+        aPagar={7100}
+        saldoProjetado={11300}
+        receitaMensal={24000}
+      />,
+    );
     // i18n values are uppercase in dashboard.json: kpi.aReceber="A RECEBER", kpi.aPagar="A PAGAR"
     expect(screen.getByText('A RECEBER')).toBeTruthy();
     expect(screen.getByText('A PAGAR')).toBeTruthy();

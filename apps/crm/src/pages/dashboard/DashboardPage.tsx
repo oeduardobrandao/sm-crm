@@ -32,7 +32,12 @@ export default function DashboardPage() {
       { queryKey: ['clientes'], queryFn: getClientes, retry: 1 },
       { queryKey: ['workflows'], queryFn: getWorkflows, retry: 1 },
       { queryKey: ['leads'], queryFn: getLeads, retry: 1 },
-      { queryKey: ['portfolioSummary'], queryFn: () => getPortfolioSummary(), retry: 1 },
+      {
+        queryKey: ['portfolioSummary'],
+        queryFn: () => getPortfolioSummary(),
+        retry: 1,
+        enabled: !isAgent,
+      },
     ],
   });
   const [statsRes, membrosRes, clientesRes, workflowsRes, leadsRes, portfolioRes] = results;
@@ -70,7 +75,11 @@ export default function DashboardPage() {
           deadlineDate.setDate(deadlineDate.getDate() + activeEtapa.prazo_dias);
         }
         const cliente = clientes.find((c) => c.id === w.cliente_id);
-        events.push({ etapaNome: activeEtapa.nome, clienteNome: cliente?.nome || '—', deadlineDate });
+        events.push({
+          etapaNome: activeEtapa.nome,
+          clienteNome: cliente?.nome || '—',
+          deadlineDate,
+        });
       });
       return events;
     },
@@ -89,21 +98,29 @@ export default function DashboardPage() {
   if (!isAgent) {
     clientes
       .filter((c) => c.data_pagamento === todayDay && c.status === 'ativo')
-      .forEach((c) => todayEvents.push({ kind: 'income', label: c.nome, sublabel: t('events.recebimento') }));
+      .forEach((c) =>
+        todayEvents.push({ kind: 'income', label: c.nome, sublabel: t('events.recebimento') }),
+      );
     membros
       .filter((m) => m.data_pagamento === todayDay)
-      .forEach((m) => todayEvents.push({ kind: 'expense', label: m.nome, sublabel: t('events.despesa') }));
+      .forEach((m) =>
+        todayEvents.push({ kind: 'expense', label: m.nome, sublabel: t('events.despesa') }),
+      );
   }
   deadlineEvents
     .filter((d) => sameDay(d.deadlineDate))
-    .forEach((d) => todayEvents.push({ kind: 'deadline', label: d.etapaNome, sublabel: d.clienteNome }));
+    .forEach((d) =>
+      todayEvents.push({ kind: 'deadline', label: d.etapaNome, sublabel: d.clienteNome }),
+    );
   clientes
     .filter((c) => {
       if (!c.data_aniversario) return false;
       const [mm, dd] = c.data_aniversario.split('-').map(Number);
       return mm - 1 === todayMonth && dd === todayDay;
     })
-    .forEach((c) => todayEvents.push({ kind: 'birthday', label: c.nome, sublabel: t('events.aniversario') }));
+    .forEach((c) =>
+      todayEvents.push({ kind: 'birthday', label: c.nome, sublabel: t('events.aniversario') }),
+    );
   datasImportantes
     .filter((d) => sameDay(new Date(d.data + 'T00:00:00')))
     .forEach((d) =>

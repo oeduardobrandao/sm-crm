@@ -148,8 +148,20 @@ function mapRow(r: AggRow, nowMs: number): ClientHealth {
 
 const ATENCAO: HealthStatus[] = ['em_queda', 'atencao', 'inativo'];
 const SAUDAVEIS: HealthStatus[] = ['em_alta', 'saudavel'];
-const CONEXAO: HealthStatus[] = ['desconectado', 'reconectar', 'sem_sincronizar', 'sincronizando', 'sem_dados'];
-const PRECISAM: HealthStatus[] = ['em_queda', 'inativo', 'reconectar', 'sem_sincronizar', 'desconectado'];
+const CONEXAO: HealthStatus[] = [
+  'desconectado',
+  'reconectar',
+  'sem_sincronizar',
+  'sincronizando',
+  'sem_dados',
+];
+const PRECISAM: HealthStatus[] = [
+  'em_queda',
+  'inativo',
+  'reconectar',
+  'sem_sincronizar',
+  'desconectado',
+];
 
 function summarize(clients: ClientHealth[]): ClientHealthSummary {
   const has = (set: HealthStatus[], s: HealthStatus) => set.includes(s);

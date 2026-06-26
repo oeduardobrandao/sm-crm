@@ -22,7 +22,15 @@ const CHIPS: { key: HealthFilterKey; countKey: keyof ClientHealthSummary | null 
 
 const SORTS: HealthSort[] = ['atencao', 'engajamento', 'ultimo_post', 'seguidores', 'nome'];
 
-export function HealthFilterBar({ summary, filter, onFilter, search, onSearch, sort, onSort }: Props) {
+export function HealthFilterBar({
+  summary,
+  filter,
+  onFilter,
+  search,
+  onSearch,
+  sort,
+  onSort,
+}: Props) {
   const { t } = useTranslation('dashboard');
   return (
     <div

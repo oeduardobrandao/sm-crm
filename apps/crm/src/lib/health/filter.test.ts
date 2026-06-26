@@ -46,13 +46,39 @@ describe('matchesFilter', () => {
 
 describe('filterAndSortClients', () => {
   const list = [
-    mk({ client_id: 1, client_name: 'Bravo', status: 'saudavel', score: 70, engagement_rate: 2, follower_count: 100, days_since_last_post: 1 }),
-    mk({ client_id: 2, client_name: 'Alpha', status: 'em_queda', score: 10, engagement_rate: 5, follower_count: 300, days_since_last_post: 20 }),
-    mk({ client_id: 3, client_name: 'Charlie', status: 'reconectar', score: null, engagement_rate: 0, follower_count: 50, days_since_last_post: 5 }),
+    mk({
+      client_id: 1,
+      client_name: 'Bravo',
+      status: 'saudavel',
+      score: 70,
+      engagement_rate: 2,
+      follower_count: 100,
+      days_since_last_post: 1,
+    }),
+    mk({
+      client_id: 2,
+      client_name: 'Alpha',
+      status: 'em_queda',
+      score: 10,
+      engagement_rate: 5,
+      follower_count: 300,
+      days_since_last_post: 20,
+    }),
+    mk({
+      client_id: 3,
+      client_name: 'Charlie',
+      status: 'reconectar',
+      score: null,
+      engagement_rate: 0,
+      follower_count: 50,
+      days_since_last_post: 5,
+    }),
   ];
 
   it('search matches name and @username', () => {
-    expect(filterAndSortClients(list, { filter: 'todos', search: 'alph', sort: 'nome' })).toHaveLength(1);
+    expect(
+      filterAndSortClients(list, { filter: 'todos', search: 'alph', sort: 'nome' }),
+    ).toHaveLength(1);
   });
 
   it('filter narrows to a status group', () => {

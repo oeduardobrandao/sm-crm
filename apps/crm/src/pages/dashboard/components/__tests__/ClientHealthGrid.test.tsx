@@ -82,7 +82,10 @@ describe('ClientHealthGrid', () => {
 
   it('renders a card per client and applies the filter', () => {
     renderGrid({
-      clients: [mk({ client_id: 1, client_name: 'Alpha', status: 'saudavel' }), mk({ client_id: 2, client_name: 'Bravo', status: 'em_queda' })],
+      clients: [
+        mk({ client_id: 1, client_name: 'Alpha', status: 'saudavel' }),
+        mk({ client_id: 2, client_name: 'Bravo', status: 'em_queda' }),
+      ],
       filter: 'atencao',
     });
     expect(screen.queryByText('Alpha')).toBeNull();

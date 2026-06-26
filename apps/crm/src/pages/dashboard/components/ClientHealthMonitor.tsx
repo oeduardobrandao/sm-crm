@@ -36,7 +36,11 @@ export function ClientHealthMonitor() {
       <div style={{ marginBottom: 12 }}>
         <h1>{t('health.title')}</h1>
         <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>
-          {t('health.subtitle', { count: summary.total, total: summary.total, attention: summary.precisamAtencao })}
+          {t('health.subtitle', {
+            count: summary.total,
+            total: summary.total,
+            attention: summary.precisamAtencao,
+          })}
         </p>
       </div>
       <HealthFilterBar
