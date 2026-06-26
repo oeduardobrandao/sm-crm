@@ -149,7 +149,14 @@ export async function finalizeIdeiaImage(a: FinalizeArgs): Promise<IdeiaMediaRes
 
   if (error || !inserted) {
     const msg = (error as { message?: string } | null)?.message ?? "insert failed";
-    return { status: rpcErrorStatus(msg), body: { error: msg } };
+    const status = rpcErrorStatus(msg);
+    // Known domain codes are safe to surface; the 500 fallback may carry raw
+    // DB internals — log it, return a generic message (security rule).
+    if (status === 500) {
+      console.error("ideia_file finalize error:", msg);
+      return { status: 500, body: { error: "internal error" } };
+    }
+    return { status, body: { error: msg } };
   }
 
   const file = inserted as Record<string, unknown>;

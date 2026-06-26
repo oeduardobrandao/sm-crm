@@ -155,6 +155,17 @@ Deno.test("finalize: RPC quota_exceeded -> 413", async () => {
   assertEquals(res.status, 413);
 });
 
+Deno.test("finalize: unexpected RPC error -> 500 with generic message (no leak)", async () => {
+  const db = createSupabaseQueryMock();
+  db.queueRpc("ideia_file_insert_with_quota", {
+    data: null,
+    error: { message: 'duplicate key value violates unique constraint "files_pkey"' },
+  });
+  const res = await finalizeIdeiaImage(finalizeArgs(db));
+  assertEquals(res.status, 500);
+  assertEquals(res.body.error, "internal error"); // raw DB message must NOT leak
+});
+
 Deno.test("finalize: happy path returns signed IdeiaImage from inserted row", async () => {
   const db = createSupabaseQueryMock();
   db.queueRpc("ideia_file_insert_with_quota", {
