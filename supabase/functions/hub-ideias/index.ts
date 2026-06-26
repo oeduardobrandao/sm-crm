@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
+import { signPutUrl, signGetUrl, headObject } from "../_shared/r2.ts";
 import { createHubIdeiasHandler } from "./handler.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -9,4 +10,7 @@ Deno.serve(createHubIdeiasHandler({
   buildCorsHeaders,
   createDb: () => createClient(SUPABASE_URL, SERVICE_ROLE_KEY),
   now: () => new Date().toISOString(),
+  signPutUrl,
+  signGetUrl,
+  headObject,
 }));
