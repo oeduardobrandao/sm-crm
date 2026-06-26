@@ -251,13 +251,15 @@ Both wrappers must verify workspace/client ownership before any read or mutation
 - `hub-ideias` GET: extend the select to join `ideia_files → files`, and sign each
   `r2_key`/`thumbnail_r2_key` with `signGetUrl(key, 3600)` (same as `hub-posts`). Returns an
   `images` array per idea.
-- CRM `apps/crm/src/store/ideias.ts` `getIdeias`: rather than signing client-side (the CRM
-  has no R2 creds), fetch signed URLs via `ideia-media-manage` GET per idea (or batch).
-  Simplest v1: the `IdeiaDrawer` calls `listIdeiaImages` for the open idea via TanStack Query.
+- CRM `apps/crm/src/store/ideias.ts` `getIdeias`: per **O2 (drawer-only)**, do **not** sign
+  URLs for the list. Add a cheap `image_count` (e.g. `ideia_files(count)` in the select). The
+  open `IdeiaDrawer` fetches signed URLs via `ideia-media-manage` GET (`listIdeiaImages`)
+  through TanStack Query keyed by `ideia_id`.
 
 ### Frontend types
 - Hub `apps/hub/src/types.ts`: add `images: IdeiaImage[]` to `HubIdeia`.
-- CRM `Ideia` type (in `@/store`): add an `images`/image-count field as needed.
+- CRM `Ideia` type (in `@/store`): add `image_count: number` (for the list badge); the
+  drawer holds the full `IdeiaImage[]` from its own query.
 
 ```ts
 interface IdeiaImage {
@@ -278,8 +280,10 @@ interface IdeiaImage {
   Because images are **not** lock-gated, the card shows an "add image" affordance and
   per-image remove buttons **even when `isMutable(ideia)` is false** — these are independent
   of the text edit/delete controls (which stay gated).
-- `IdeiaModal`: in create/edit, an image picker that uploads on selection (or on save for a
-  new idea — see open question O1), with thumbnail previews and remove.
+- `IdeiaModal`: **two-phase per O1** — a brand-new idea saves its text first; on success the
+  modal switches to edit mode for the real `ideia_id` and reveals the image picker. Editing
+  an existing idea shows the picker immediately. Uploads happen on selection, with thumbnail
+  previews and remove.
 - New Hub upload service `apps/hub/src/services/ideiaMedia.ts` mirroring the relevant parts
   of `postMedia.ts` (validate, probe, thumbnail, blur, presign → PUT → finalize), but
   token-authed against `hub-ideias` and image-only.
@@ -344,13 +348,19 @@ pushing. CI also enforces eslint + prettier `format:check` + coverage + deno tes
 
 ---
 
-## Open questions (resolve during planning)
+## Resolved decisions (were open questions)
 
-- **O1 — Upload timing for a *new* idea:** A new idea has no `id` until it's created, so its
-  images can't be linked yet. Two options: (a) create the idea first, then upload (simplest:
-  the modal saves the idea, then enables the image picker); (b) upload to a temp area and
-  link on create. Recommend **(a)** for v1 — on "Nova ideia", save text first, then reveal
-  the image picker; editing an existing idea uploads immediately.
-- **O2 — CRM signed-URL read path:** confirm whether `getIdeias` should embed images for the
-  list view or only the open drawer fetches them. Recommend **drawer-only** fetch for v1 to
-  avoid signing URLs for every idea on every list load.
+- **O1 — Upload timing for a *new* idea → "create-then-upload".** A new idea has no `id`
+  until created, so images can't be linked yet. The Hub `IdeiaModal` is **two-phase**: for a
+  brand-new idea, the primary button first saves the text (`createIdeia`), and on success the
+  modal stays open, switches into "edit" mode for the now-real idea, and reveals the image
+  picker. Editing an existing idea shows the picker immediately and uploads on selection.
+  This avoids a temp-staging area and keeps every upload tied to a real `ideia_id`.
+  - UX detail: button label goes `Enviar ideia` → (after save) `Concluir`; a hint explains
+    "Adicione imagens abaixo" once the idea exists. Closing after the text save is fine —
+    the idea persists with zero images.
+- **O2 — CRM signed-URL read path → "drawer-only".** `getIdeias` does **not** embed signed
+  image URLs for the list view (would sign N×images URLs on every load). Instead the list
+  shows a lightweight image **count** (cheap `ideia_files` count, joinable in `getIdeias`),
+  and the open `IdeiaDrawer` fetches full signed URLs via `ideia-media-manage` GET
+  (`listIdeiaImages`) through TanStack Query keyed by `ideia_id`.
