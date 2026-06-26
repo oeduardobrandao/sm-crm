@@ -183,3 +183,61 @@ Deno.test("finalize: happy path returns signed IdeiaImage from inserted row", as
   assertEquals(res.body.url, "https://get.example.com/contas/conta-1/files/uuid-1.png");
   assertEquals(res.body.thumbnail_url, "https://get.example.com/contas/conta-1/files/uuid-1.thumb.webp");
 });
+
+import { listIdeiaImages, removeIdeiaImage } from "../_shared/ideia-media.ts";
+
+Deno.test("list: 404 when idea not owned by this workspace/client", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("ideias", "select", { data: null, error: null }); // ownership lookup misses
+  const res = await listIdeiaImages({
+    db: db as never, conta_id: "conta-1", cliente_id: 14,
+    ideia_id: "11111111-1111-1111-1111-111111111111", signGetUrl,
+  });
+  assertEquals(res.status, 404);
+});
+
+Deno.test("list: returns signed images ordered for an owned idea", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("ideias", "select", { data: { id: "i1", cliente_id: 14, workspace_id: "conta-1" }, error: null });
+  db.queue("ideia_files", "select", {
+    data: [
+      { id: 7, file_id: 42, sort_order: 0,
+        files: { r2_key: "contas/conta-1/files/a.png", thumbnail_r2_key: "contas/conta-1/files/a.thumb.webp",
+                 blur_data_url: "data:...", width: 800, height: 600 } },
+    ],
+    error: null,
+  });
+  const res = await listIdeiaImages({
+    db: db as never, conta_id: "conta-1", cliente_id: 14,
+    ideia_id: "i1", signGetUrl,
+  });
+  assertEquals(res.status, 200);
+  const images = res.body.images as Array<Record<string, unknown>>;
+  assertEquals(images.length, 1);
+  assertEquals(images[0].file_id, 42);
+  assertEquals(images[0].url, "https://get.example.com/contas/conta-1/files/a.png");
+});
+
+Deno.test("remove: 404 when link not found for owned idea", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("ideias", "select", { data: { id: "i1", cliente_id: 14, workspace_id: "conta-1" }, error: null });
+  db.queue("ideia_files", "select", { data: null, error: null }); // link lookup misses
+  const res = await removeIdeiaImage({
+    db: db as never, conta_id: "conta-1", cliente_id: 14, ideia_id: "i1", file_id: 42,
+  });
+  assertEquals(res.status, 404);
+});
+
+Deno.test("remove: deletes the link and returns ok", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("ideias", "select", { data: { id: "i1", cliente_id: 14, workspace_id: "conta-1" }, error: null });
+  db.queue("ideia_files", "select", { data: { id: 7 }, error: null });
+  db.queue("ideia_files", "delete", { data: null, error: null });
+  const res = await removeIdeiaImage({
+    db: db as never, conta_id: "conta-1", cliente_id: 14, ideia_id: "i1", file_id: 42,
+  });
+  assertEquals(res.status, 200);
+  assertEquals(res.body.ok, true);
+  const del = db.calls.filter((c) => c.table === "ideia_files" && c.operation === "delete");
+  assertEquals(del.length, 1);
+});

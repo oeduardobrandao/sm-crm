@@ -178,3 +178,71 @@ export async function finalizeIdeiaImage(a: FinalizeArgs): Promise<IdeiaMediaRes
     },
   };
 }
+
+async function ownsIdeia(
+  db: IdeiaMediaDb, conta_id: string, cliente_id: number | null | undefined, ideia_id: string,
+): Promise<boolean> {
+  let q = db.from("ideias").select("id, cliente_id, workspace_id")
+    .eq("id", ideia_id).eq("workspace_id", conta_id);
+  if (cliente_id !== undefined && cliente_id !== null) q = q.eq("cliente_id", cliente_id);
+  const { data } = await q.maybeSingle();
+  return !!data;
+}
+
+export interface ListArgs {
+  db: IdeiaMediaDb;
+  conta_id: string;
+  cliente_id?: number | null;
+  ideia_id: string;
+  signGetUrl: (key: string) => Promise<string>;
+}
+
+export async function listIdeiaImages(a: ListArgs): Promise<IdeiaMediaResult> {
+  if (!(await ownsIdeia(a.db, a.conta_id, a.cliente_id, a.ideia_id))) {
+    return { status: 404, body: { error: "Ideia não encontrada." } };
+  }
+  const { data: rows } = await a.db.from("ideia_files")
+    .select("id, file_id, sort_order, files(r2_key, thumbnail_r2_key, blur_data_url, width, height)")
+    .eq("ideia_id", a.ideia_id)
+    .order("sort_order", { ascending: true })
+    .order("id", { ascending: true });
+
+  const images = [];
+  for (const row of (rows ?? []) as Array<Record<string, any>>) {
+    const f = row.files;
+    if (!f) continue;
+    images.push({
+      id: row.id,
+      file_id: row.file_id,
+      url: await a.signGetUrl(f.r2_key),
+      thumbnail_url: f.thumbnail_r2_key ? await a.signGetUrl(f.thumbnail_r2_key) : null,
+      blur_data_url: f.blur_data_url ?? null,
+      width: f.width ?? null,
+      height: f.height ?? null,
+      sort_order: row.sort_order ?? 0,
+    });
+  }
+  return { status: 200, body: { images } };
+}
+
+export interface RemoveArgs {
+  db: IdeiaMediaDb;
+  conta_id: string;
+  cliente_id?: number | null;
+  ideia_id: string;
+  file_id: number;
+}
+
+export async function removeIdeiaImage(a: RemoveArgs): Promise<IdeiaMediaResult> {
+  if (!(await ownsIdeia(a.db, a.conta_id, a.cliente_id, a.ideia_id))) {
+    return { status: 404, body: { error: "Ideia não encontrada." } };
+  }
+  const { data: link } = await a.db.from("ideia_files")
+    .select("id").eq("ideia_id", a.ideia_id).eq("file_id", a.file_id).maybeSingle();
+  if (!link) return { status: 404, body: { error: "Imagem não encontrada." } };
+
+  const { error } = await a.db.from("ideia_files").delete()
+    .eq("ideia_id", a.ideia_id).eq("file_id", a.file_id);
+  if (error) return { status: 500, body: { error: "delete failed" } };
+  return { status: 200, body: { ok: true } };
+}
