@@ -66,5 +66,6 @@ describe('ClientHealthCard', () => {
   it('shows the connect CTA for a disconnected client', () => {
     renderCard(mk({ status: 'desconectado', score: null, connected: false, username: null }));
     expect(screen.getByText('Conectar Instagram')).toBeTruthy();
+    expect(screen.getByText('Desconectado')).toBeTruthy();
   });
 });

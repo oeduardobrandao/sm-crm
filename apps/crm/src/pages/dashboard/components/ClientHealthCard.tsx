@@ -51,7 +51,7 @@ export function ClientHealthCard({ client: c }: { client: ClientHealth }) {
     setBusy(true);
     try {
       await syncInstagramData(c.client_id);
-      toast.success(t('health.cta.sincronizar'));
+      toast.success(t('health.success.sincronizar'));
     } catch {
       toast.error(t('health.error'));
     } finally {

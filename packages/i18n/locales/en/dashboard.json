@@ -130,6 +130,9 @@
       "reconectar": "Reconnect",
       "sincronizar": "Sync now"
     },
+    "success": {
+      "sincronizar": "Sync started"
+    },
     "syncStale": "Data {{count}} days stale.",
     "reconectarMsg": "Authorization expired or revoked — reconnect to resume syncing.",
     "empty": {

@@ -130,6 +130,9 @@
       "reconectar": "Reconectar",
       "sincronizar": "Sincronizar agora"
     },
+    "success": {
+      "sincronizar": "Sincronização iniciada"
+    },
     "syncStale": "Dados desatualizados há {{count}} dias.",
     "reconectarMsg": "Autorização expirada ou revogada — reconecte para retomar a sincronização.",
     "empty": {
