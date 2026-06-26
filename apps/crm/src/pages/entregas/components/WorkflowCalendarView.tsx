@@ -14,8 +14,9 @@ import {
 } from '@dnd-kit/core';
 import { parseISO } from 'date-fns';
 import { X } from 'lucide-react';
-import { getClientePosts, updateWorkflowPost, type ClientePost } from '@/store';
-import { CalendarGrid } from './CalendarGrid';
+import { getClientePosts, updateWorkflowPost, type ClientePost, type Membro } from '@/store';
+import { CalendarGrid, LOCKED_STATUSES, LOCKED_TOOLTIPS } from './CalendarGrid';
+import { CalendarPostDetailPanel } from './CalendarPostDetailPanel';
 import { UnscheduledPostsSidebar } from './UnscheduledPostsSidebar';
 import { TimePickerPopover } from './TimePickerPopover';
 
@@ -32,6 +33,8 @@ interface WorkflowCalendarViewProps {
   currentWorkflowId: number;
   currentWorkflowTitulo: string;
   onBack: () => void;
+  membros?: Membro[];
+  onOpenPost?: (postId: number) => void;
 }
 
 interface PendingDrop {
@@ -46,6 +49,8 @@ export function WorkflowCalendarView({
   currentWorkflowId,
   currentWorkflowTitulo,
   onBack,
+  membros = [],
+  onOpenPost,
 }: WorkflowCalendarViewProps) {
   const qc = useQueryClient();
   const [currentMonth, setCurrentMonth] = useState(
@@ -53,6 +58,7 @@ export function WorkflowCalendarView({
   );
   const [pendingDrop, setPendingDrop] = useState<PendingDrop | null>(null);
   const [activePost, setActivePost] = useState<ClientePost | null>(null);
+  const [selectedPostId, setSelectedPostId] = useState<number | null>(null);
   const [hintDismissed, setHintDismissed] = useState(
     () => localStorage.getItem('calendarHintDismissed') === 'true',
   );
@@ -69,6 +75,10 @@ export function WorkflowCalendarView({
 
   const scheduledPosts = allPosts.filter((p) => p.scheduled_at != null);
   const unscheduledPosts = allPosts.filter((p) => p.scheduled_at == null);
+
+  const selectedPost = scheduledPosts.find((p) => p.id === selectedPostId) ?? null;
+  const selectedIsCurrentWorkflow = selectedPost?.workflow_id === currentWorkflowId;
+  const selectedIsLocked = selectedPost ? LOCKED_STATUSES.has(selectedPost.status) : false;
 
   const invalidateQueries = useCallback(() => {
     qc.invalidateQueries({ queryKey: ['clientePosts', clienteId] });
@@ -149,6 +159,35 @@ export function WorkflowCalendarView({
     setPendingDrop(null);
   }, []);
 
+  const handlePanelReschedule = useCallback(
+    async (datetime: Date) => {
+      if (!selectedPostId) return;
+      try {
+        await updateWorkflowPost(selectedPostId, { scheduled_at: datetime.toISOString() });
+        invalidateQueries();
+        toast.success(
+          `Post reagendado para ${datetime.toLocaleDateString('pt-BR')} às ${String(datetime.getHours()).padStart(2, '0')}:${String(datetime.getMinutes()).padStart(2, '0')}`,
+        );
+      } catch {
+        toast.error('Erro ao reagendar post');
+      }
+    },
+    [selectedPostId, invalidateQueries],
+  );
+
+  const handlePanelRemoveDate = useCallback(async () => {
+    if (!selectedPostId) return;
+    const id = selectedPostId;
+    setSelectedPostId(null);
+    try {
+      await updateWorkflowPost(id, { scheduled_at: null });
+      invalidateQueries();
+      toast.success('Data removida do post');
+    } catch {
+      toast.error('Erro ao remover data do post');
+    }
+  }, [selectedPostId, invalidateQueries]);
+
   const dismissHint = () => {
     setHintDismissed(true);
     localStorage.setItem('calendarHintDismissed', 'true');
@@ -187,9 +226,25 @@ export function WorkflowCalendarView({
               currentMonth={currentMonth}
               scheduledPosts={scheduledPosts}
               currentWorkflowId={currentWorkflowId}
+              selectedPostId={selectedPostId}
+              onSelectPost={(post) => setSelectedPostId(post.id)}
               onMonthChange={setCurrentMonth}
             />
           </div>
+          {selectedPost && (
+            <CalendarPostDetailPanel
+              key={selectedPost.id}
+              post={selectedPost}
+              membros={membros}
+              isCurrentWorkflow={selectedIsCurrentWorkflow}
+              isLocked={selectedIsLocked}
+              lockReason={selectedIsLocked ? LOCKED_TOOLTIPS[selectedPost.status] : undefined}
+              onClose={() => setSelectedPostId(null)}
+              onReschedule={handlePanelReschedule}
+              onRemoveDate={handlePanelRemoveDate}
+              onOpenPost={() => onOpenPost?.(selectedPost.id)}
+            />
+          )}
         </div>
 
         {/* Drag overlay */}

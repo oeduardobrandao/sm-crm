@@ -610,6 +610,11 @@ export function WorkflowDrawer({
               clienteNome={card.cliente?.nome || '—'}
               currentWorkflowId={workflowId}
               currentWorkflowTitulo={card.workflow.titulo}
+              membros={membros}
+              onOpenPost={(postId) => {
+                setShowCalendar(false);
+                setExpandedId(postId);
+              }}
               onBack={() => setShowCalendar(false)}
             />
           ) : (
