@@ -62,6 +62,7 @@ import {
   generateReport,
   sendReportEmail,
   getReportDownloadUrl,
+  getClientRateBaseline,
   type KpiDelta,
   type PostAnalytics,
   type PostTag,
@@ -71,6 +72,7 @@ import {
 } from '../../services/analytics';
 import { getInstagramSummary, syncInstagramData } from '../../services/instagram';
 import { sanitizeUrl } from '../../utils/security';
+import { formatRate, IG_RATE_WEIGHTS, type Baseline, type Quartiles, type RateKey } from '../../lib/ig-rates';
 
 Chart.register(...registerables);
 
@@ -397,7 +399,12 @@ type RankedPostOrderBy =
   | 'comments'
   | 'saved'
   | 'shares'
-  | 'date';
+  | 'date'
+  | 'ig_score'
+  | 'share_rate'
+  | 'like_rate'
+  | 'save_rate'
+  | 'comment_rate';
 
 // ---- KPI Card ----
 function KpiCard({
@@ -1037,9 +1044,15 @@ function AnalyticsContent({
     queryKey: ['analytics-overview', clientId, overviewDays, periodStart, periodEnd],
     queryFn: () => getAnalyticsOverview(clientId, overviewDays, dateRange),
   });
+  const baselineQuery = useQuery({
+    queryKey: ['client-rate-baseline', clientId],
+    queryFn: () => getClientRateBaseline(clientId),
+    retry: false, // non-critical: never block/delay the posts query
+  });
   const { data: postsRes, isLoading: loadingPosts } = useQuery({
-    queryKey: ['analytics-posts', clientId, days, sort.col, sort.dir, periodStart, periodEnd],
-    queryFn: () => getPostsAnalytics(clientId, days, sort.col, sort.dir, dateRange),
+    queryKey: ['analytics-posts', clientId, days, sort.col, sort.dir, periodStart, periodEnd, baselineQuery.dataUpdatedAt],
+    queryFn: () => getPostsAnalytics(clientId, days, sort.col, sort.dir, dateRange, baselineQuery.data?.dists),
+    enabled: baselineQuery.isSuccess || baselineQuery.isError,
   });
   const { data: historyRes } = useQuery({
     queryKey: ['analytics-history', clientId, days, periodStart, periodEnd],
@@ -1125,6 +1138,31 @@ function AnalyticsContent({
           (a, b) => (new Date(a.posted_at).getTime() - new Date(b.posted_at).getTime()) * dir,
         );
         break;
+      case 'ig_score':
+        next.sort((a, b) => {
+          const va = (a as PostAnalytics).ig_score;
+          const vb = (b as PostAnalytics).ig_score;
+          if (va === null && vb === null) return 0;
+          if (va === null) return 1;
+          if (vb === null) return -1;
+          return (va - vb) * dir;
+        });
+        break;
+      case 'share_rate':
+      case 'like_rate':
+      case 'save_rate':
+      case 'comment_rate': {
+        const key = rankedOrderBy as RateKey;
+        next.sort((a, b) => {
+          const va = (a as PostAnalytics).rates[key];
+          const vb = (b as PostAnalytics).rates[key];
+          if (va === null && vb === null) return 0;
+          if (va === null) return 1;
+          if (vb === null) return -1;
+          return (va - vb) * dir;
+        });
+        break;
+      }
     }
 
     return next;
@@ -1180,6 +1218,7 @@ function AnalyticsContent({
       qc.invalidateQueries({ queryKey: ['analytics-overview', clientId] });
       qc.invalidateQueries({ queryKey: ['analytics-posts', clientId] });
       qc.invalidateQueries({ queryKey: ['analytics-history', clientId] });
+      qc.invalidateQueries({ queryKey: ['client-rate-baseline', clientId] });
     } catch (err: any) {
       if (err.message === 'TOKEN_EXPIRED') {
         toast.error('Token expirado. Por favor, reconecte a conta.');
@@ -1600,6 +1639,7 @@ function AnalyticsContent({
                     { col: 'reach', label: 'Alcance' },
                     { col: 'impressions', label: 'Impressões' },
                     { col: 'engagement_rate', label: 'Eng.' },
+                    { col: 'ig_score', label: 'IG Score' },
                     { col: 'likes', label: 'Curtidas' },
                     { col: 'saved', label: 'Salvos' },
                     { col: 'comments', label: 'Coment.' },
@@ -1675,6 +1715,17 @@ function AnalyticsContent({
                         >
                           {p.engagement_rate.toFixed(1)}%
                         </span>
+                      </td>
+                      <td data-label="IG Score">
+                        {(p as PostAnalytics).ig_score === null || (p as PostAnalytics).ig_score === undefined ? (
+                          <span title="amostra insuficiente (<5)" style={{ color: 'var(--text-muted)' }}>—</span>
+                        ) : (
+                          <span
+                            className={`badge ${(p as PostAnalytics).ig_score! >= 75 ? 'badge-success' : (p as PostAnalytics).ig_score! >= 40 ? 'badge-neutral' : 'badge-danger'}`}
+                          >
+                            {(p as PostAnalytics).ig_score}
+                          </span>
+                        )}
                       </td>
                       <td data-label="Curtidas">{(p.likes || 0).toLocaleString('pt-BR')}</td>
                       <td data-label="Salvos">{p.saved}</td>
@@ -1798,6 +1849,8 @@ function AnalyticsContent({
 
       {/* AI Analysis */}
       <AISection clientId={clientId} days={days} />
+
+      {baselineQuery.data && <BaselineCard baseline={baselineQuery.data.baseline} />}
 
       {/* Type + Topic */}
       <div className="widgets-grid animate-up">
@@ -2295,6 +2348,11 @@ function AnalyticsContent({
                 <option value="saved">Salvos</option>
                 <option value="shares">Compart.</option>
                 <option value="date">Data</option>
+                <option value="ig_score">IG Score</option>
+                <option value="share_rate">Compart./view</option>
+                <option value="like_rate">Curt./view</option>
+                <option value="save_rate">Salvos/view</option>
+                <option value="comment_rate">Coment./view</option>
               </select>
               <Button
                 variant="outline"
@@ -2858,6 +2916,89 @@ function buildReportHtml(data: {
       </script>
     </body>
   </html>`;
+}
+
+// ---- Baseline Card ----
+const RATE_STRIP_LABELS: Record<RateKey, string> = {
+  share_rate: 'Compartilhamentos',
+  like_rate: 'Curtidas',
+  save_rate: 'Salvos',
+  comment_rate: 'Comentários',
+};
+const FORMAT_LABELS: Record<string, string> = {
+  VIDEO: 'Reels',
+  CAROUSEL_ALBUM: 'Carrossel',
+  IMAGE: 'Imagem',
+};
+
+function BaselineCard({ baseline }: { baseline: Baseline }) {
+  if (baseline.sample_size === 0) return null;
+  const strip = (key: RateKey) => {
+    const stat = baseline.overall[key];
+    const q: Quartiles | null = stat.quartiles;
+    const scaleMax = q ? (q.p75 || 0) * 1.5 || 1 : 1;
+    const pct = (v: number) => Math.max(0, Math.min(100, (v / scaleMax) * 100));
+    const perFormat = Object.entries(baseline.by_format)
+      .map(([fmt, m]) => {
+        const fq = m[key].quartiles;
+        return `${FORMAT_LABELS[fmt] ?? fmt} ${fq ? formatRate(fq.p50) : 'n<5'}`;
+      })
+      .join(' · ');
+    return (
+      <div key={key} style={{ marginBottom: '0.85rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: '0.78rem' }}>
+          <span style={{ fontWeight: 600 }}>
+            {RATE_STRIP_LABELS[key]}{' '}
+            <span style={{ color: 'var(--primary-color)', fontSize: '0.62rem' }}>
+              peso {Math.round(IG_RATE_WEIGHTS[key] * 100)}%
+            </span>
+          </span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>
+            {q ? formatRate(q.p50) : '—'}{' '}
+            <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: '0.65rem' }}>mediana</span>
+          </span>
+        </div>
+        <div style={{ position: 'relative', height: 8, background: 'var(--surface-darker)', borderRadius: 4, marginTop: 5 }}>
+          {q && (
+            <>
+              <div
+                style={{
+                  position: 'absolute',
+                  left: `${pct(q.p25)}%`,
+                  width: `${Math.max(0, pct(q.p75) - pct(q.p25))}%`,
+                  top: 0,
+                  bottom: 0,
+                  background: 'rgba(234,179,8,0.33)',
+                  borderRadius: 4,
+                }}
+              />
+              <div style={{ position: 'absolute', left: `${pct(q.p50)}%`, top: -2, width: 3, height: 12, background: 'var(--primary-color)', borderRadius: 2 }} />
+            </>
+          )}
+        </div>
+        <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginTop: 3, fontFamily: 'var(--font-mono)' }}>
+          {q ? `p25 ${formatRate(q.p25)} · p75 ${formatRate(q.p75)} — ` : 'amostra insuficiente — '}
+          {perFormat}
+        </div>
+      </div>
+    );
+  };
+  return (
+    <div className="card animate-up">
+      <div className="dashboard-hub-card-header" style={{ marginBottom: '0.25rem' }}>
+        <h3>Baseline Instagram</h3>
+      </div>
+      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+        Histórico completo · {baseline.sample_size} posts · por visualização · pontuado vs. histórico completo do
+        cliente — igual ao que o agente vê.
+      </div>
+      {(['share_rate', 'like_rate', 'save_rate', 'comment_rate'] as RateKey[]).map(strip)}
+      <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', borderTop: '1px solid var(--border-color)', paddingTop: '0.6rem', lineHeight: 1.5 }}>
+        Heurística interna alinhada ao IG (compart.&gt;curt.&gt;salvos&gt;coment.) — não são os pesos oficiais do
+        Instagram. Taxa de skip e repost não estão na API.
+      </div>
+    </div>
+  );
 }
 
 // ---- Main Page ----
