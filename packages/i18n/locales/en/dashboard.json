@@ -70,5 +70,76 @@
     "clt": "CLT",
     "mensal": "Monthly",
     "demanda": "On demand"
+  },
+  "health": {
+    "title": "Client health",
+    "subtitle_one": "{{total}} active client · {{attention}} need attention",
+    "subtitle_other": "{{total}} active clients · {{attention}} need attention",
+    "search": "Search client…",
+    "sortLabel": "Sort",
+    "sort": {
+      "atencao": "Needs attention first",
+      "engajamento": "Highest engagement",
+      "ultimo_post": "Last post",
+      "seguidores": "Most followers",
+      "nome": "Name (A–Z)"
+    },
+    "chips": {
+      "todos": "All",
+      "atencao": "Attention",
+      "saudaveis": "Healthy",
+      "estaveis": "Stable",
+      "conexao": "Connection"
+    },
+    "status": {
+      "em_alta": "Thriving",
+      "saudavel": "Healthy",
+      "estavel": "Stable",
+      "atencao": "Attention",
+      "em_queda": "Declining",
+      "inativo": "Inactive",
+      "sem_dados": "No data",
+      "sincronizando": "Syncing",
+      "sem_sincronizar": "Out of sync",
+      "reconectar": "Reconnect",
+      "desconectado": "Disconnected"
+    },
+    "metric": {
+      "seguidores": "Followers",
+      "engajamento": "Eng.",
+      "alcance": "Reach",
+      "ultimoPost": "Last post"
+    },
+    "pipeline": {
+      "agendados": "{{count}} scheduled",
+      "em_producao": "{{count}} in production",
+      "agente": "{{count}} by agent",
+      "falha": "{{count}} failed",
+      "parado": "Pipeline idle",
+      "sem_atividade": "No activity"
+    },
+    "lastPost": {
+      "days": "{{count}}d ago",
+      "never": "no posts",
+      "noneDays": "no post {{count}}d"
+    },
+    "cta": {
+      "analytics": "Analytics",
+      "detalhe": "Details",
+      "conectar": "Connect Instagram",
+      "reconectar": "Reconnect",
+      "sincronizar": "Sync now"
+    },
+    "success": {
+      "sincronizar": "Sync started"
+    },
+    "syncStale": "Data {{count}} days stale.",
+    "reconectarMsg": "Authorization expired or revoked — reconnect to resume syncing.",
+    "empty": {
+      "noClients": "No active clients yet.",
+      "noneConnected": "No Instagram account connected. Connect one to see client health.",
+      "filtered": "No clients in this filter."
+    },
+    "error": "Could not load client health."
   }
 }
