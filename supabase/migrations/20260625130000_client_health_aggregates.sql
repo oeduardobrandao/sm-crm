@@ -54,7 +54,7 @@ fh AS (
          array_agg(h.follower_count ORDER BY h.date)::int[] AS follower_series
   FROM instagram_follower_history h
   WHERE h.instagram_account_id IN (SELECT account_id FROM acc)
-    AND h.date >= (current_date - (p_window_days * interval '1 day'))
+    AND h.date::date >= current_date - p_window_days
   GROUP BY h.instagram_account_id
 ),
 pc AS (
@@ -79,11 +79,18 @@ pp AS (
 pall AS (
   -- Posts over 2 × p_window_days (posts_56d is "2× the window", 56 days at default)
   SELECT p.instagram_account_id AS account_id,
-         max(p.posted_at) AS last_post_at,
          count(*)::int AS posts_56d
   FROM instagram_posts p
   WHERE p.instagram_account_id IN (SELECT account_id FROM acc)
     AND p.posted_at >= (now() - (2 * p_window_days * interval '1 day'))
+  GROUP BY p.instagram_account_id
+),
+plast AS (
+  -- Unbounded last post per account — not capped to the window so Inativo detection works
+  SELECT p.instagram_account_id AS account_id,
+         max(p.posted_at) AS last_post_at
+  FROM instagram_posts p
+  WHERE p.instagram_account_id IN (SELECT account_id FROM acc)
   GROUP BY p.instagram_account_id
 ),
 pipe AS (
@@ -102,7 +109,7 @@ SELECT
   cli.nome,
   cli.sigla,
   cli.cor,
-  (acc.account_id IS NOT NULL) AS connected,
+  (acc.account_id IS NOT NULL AND acc.authorization_status IS DISTINCT FROM 'disconnected') AS connected,
   acc.username,
   acc.profile_picture_url,
   coalesce(acc.follower_count, 0)::int,
@@ -117,7 +124,7 @@ SELECT
   coalesce(pc.posts_cur, 0)::int,
   coalesce(pp.reach_prev, 0)::bigint,
   coalesce(pall.posts_56d, 0)::int,
-  pall.last_post_at,
+  plast.last_post_at,
   coalesce(pipe.pl_agendados, 0)::int,
   coalesce(pipe.pl_em_producao, 0)::int,
   coalesce(pipe.pl_agente, 0)::int,
@@ -127,8 +134,9 @@ LEFT JOIN acc  ON acc.client_id = cli.id
 LEFT JOIN fh   ON fh.account_id = acc.account_id
 LEFT JOIN pc   ON pc.account_id = acc.account_id
 LEFT JOIN pp   ON pp.account_id = acc.account_id
-LEFT JOIN pall ON pall.account_id = acc.account_id
-LEFT JOIN pipe ON pipe.client_id = cli.id
+LEFT JOIN pall  ON pall.account_id  = acc.account_id
+LEFT JOIN plast ON plast.account_id = acc.account_id
+LEFT JOIN pipe  ON pipe.client_id   = cli.id
 ORDER BY cli.nome;
 $$;
 
