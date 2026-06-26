@@ -143,7 +143,6 @@ DECLARE
   v_cliente_id  int    := NULLIF(p->>'cliente_id', '')::int;
   v_ideia_id    uuid   := (p->>'ideia_id')::uuid;
   v_size        bigint := (p->>'size_bytes')::bigint;
-  v_thumb       bigint := COALESCE(NULLIF(p->>'thumbnail_bytes','')::bigint, 0);
   v_idea_owner  int;
   v_count       int;
   v_quota       bigint;
@@ -165,11 +164,14 @@ BEGIN
   SELECT count(*) INTO v_count FROM ideia_files WHERE ideia_id = v_ideia_id;
   IF v_count >= 10 THEN RAISE EXCEPTION 'image_limit' USING errcode = 'P0001'; END IF;
 
-  -- 3. Quota (file + thumbnail). Plan-driven via effective_plan_limit (NULL = unlimited),
-  --    matching file_insert_with_quota. Lock the workspace row for the used-bytes read.
+  -- 3. Quota. Plan-driven via effective_plan_limit (NULL = unlimited). Charges
+  --    size_bytes only — matching the live file_insert_with_quota so the charge
+  --    here is symmetric with the size_bytes-only refund in file_update_used_bytes
+  --    (counting the thumbnail would leak its bytes on delete). Thumbnails are tiny
+  --    (<=512KB) and uncounted, same as the post path. Lock the workspace row.
   SELECT storage_used_bytes INTO v_used FROM workspaces WHERE id = v_conta_id FOR UPDATE;
   v_quota := effective_plan_limit(v_conta_id, 'storage_quota_bytes');
-  IF v_quota IS NOT NULL AND COALESCE(v_used, 0) + v_size + v_thumb > v_quota THEN
+  IF v_quota IS NOT NULL AND COALESCE(v_used, 0) + v_size > v_quota THEN
     RAISE EXCEPTION 'quota_exceeded' USING errcode = 'P0001';
   END IF;
 
@@ -189,8 +191,8 @@ BEGIN
   VALUES (v_ideia_id, v_row.id, v_conta_id,
           COALESCE(NULLIF(p->>'sort_order','')::int, 0));
 
-  -- 6. Charge quota (file + thumbnail).
-  UPDATE workspaces SET storage_used_bytes = storage_used_bytes + v_size + v_thumb
+  -- 6. Charge quota (size_bytes only — symmetric with the delete-time refund).
+  UPDATE workspaces SET storage_used_bytes = storage_used_bytes + v_size
    WHERE id = v_conta_id;
 
   RETURN v_row;
@@ -666,7 +668,6 @@ export async function finalizeIdeiaImage(a: FinalizeArgs): Promise<IdeiaMediaRes
       name: a.name,
       mime_type: a.mime_type,
       size_bytes: a.size_bytes,
-      thumbnail_bytes: a.thumbnail_bytes,
       width: a.width ?? "",
       height: a.height ?? "",
       blur_data_url: a.blur_data_url ?? "",

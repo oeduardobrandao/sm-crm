@@ -164,10 +164,10 @@ transaction so there is no committed-but-unlinked intermediate state:
 2. SELECT count(*) FROM ideia_files WHERE ideia_id = ideia_id
      → >= 10 ⇒ RAISE 'image_limit'                         (cap is now race-safe, Finding 1)
 3. v_used := storage_used_bytes (workspaces row, FOR UPDATE) ; v_quota := effective_plan_limit(conta_id, 'storage_quota_bytes')
-     → plan-driven quota (NULL = unlimited), matching the live file_insert_with_quota; counts file_size + thumbnail_size (Finding 5) ; over ⇒ RAISE 'quota_exceeded' (errcode P0001)
+     → plan-driven quota (NULL = unlimited), matching the live file_insert_with_quota; charges size_bytes only (symmetric with the size-only refund — see Finding 5) ; over ⇒ RAISE 'quota_exceeded' (errcode P0001)
 4. INSERT INTO files (... folder_id NULL ...) RETURNING id   → the real bigint files.id
 5. INSERT INTO ideia_files (ideia_id, file_id = new files.id, conta_id, sort_order)
-6. UPDATE workspaces SET storage_used_bytes += file_size + thumbnail_size
+6. UPDATE workspaces SET storage_used_bytes += file_size   (size_bytes only; symmetric with the delete-time refund)
 RETURNING the files row.
 ```
 
@@ -183,8 +183,11 @@ Constraints enforced server-side:
   (the client generates WebP), `0 < size_bytes <= 512 KB` → else 400. In `finalize`,
   `headObject` the thumbnail key and verify it exists and matches the declared size/type
   (the existing finalizer only HEAD-checks thumbnails for *videos*; we check images too).
-  Thumbnail bytes **count toward quota** and `storage_used_bytes`, consistent with the
-  presign pre-check (the existing `file_insert_with_quota` omits this — we fix it for ideas).
+  Thumbnail bytes are **not** counted in the authoritative quota charge: the RPC charges
+  `size_bytes` only, matching the live `file_insert_with_quota` so the charge is symmetric
+  with the size-only refund in `file_update_used_bytes` (counting the thumbnail would leak
+  its bytes into the quota counter on delete). The presign pre-check may still add the
+  thumbnail size as a conservative early gate, mirroring the live `file-upload-url` pre-check.
 - Workspace storage quota via the RPC above (authoritative) plus a best-effort pre-check in
   `buildPresign` (`effectivePlanLimit(..., 'storage_quota_bytes')`) for an early, friendly
   413 before the client uploads bytes.
@@ -334,8 +337,9 @@ interface IdeiaImage {
   is unchanged (full rollback; no leak).
 - **Cross-tenant guard (Finding 3):** inserting an `ideia_files` row whose `ideia_id` or
   `file_id` belongs to a different workspace than `conta_id` is rejected by the composite FK.
-- **Thumbnail accounting (Finding 5):** quota charge equals `file_size + thumbnail_size`;
-  finalize fails if the thumbnail object is missing from R2.
+- **Thumbnail accounting (Finding 5):** quota charge equals `size_bytes` only (symmetric
+  with the size-only delete refund — no counter drift); finalize still fails if the
+  thumbnail object is missing from R2.
 
 **Frontend (Vitest):**
 - Hub `ideiaMedia` service: validation (mime/size), and the presign→PUT→finalize call
