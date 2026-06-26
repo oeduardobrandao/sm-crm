@@ -55,7 +55,7 @@ export function detectKind(file: File): 'image' | 'video' {
 const THUMB_SIZE = 128;
 const BLUR_SIZE = 16;
 
-function generateBlurDataUrl(file: File): Promise<string> {
+export function generateBlurDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
@@ -82,7 +82,7 @@ function generateBlurDataUrl(file: File): Promise<string> {
   });
 }
 
-function generateImageThumbnail(file: File): Promise<File> {
+export function generateImageThumbnail(file: File): Promise<File> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
