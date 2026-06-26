@@ -33,16 +33,18 @@ export function ClientHealthMonitor() {
 
   return (
     <section style={{ marginBottom: '1.5rem' }}>
-      <div style={{ marginBottom: 12 }}>
-        <h1>{t('health.title')}</h1>
-        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>
-          {t('health.subtitle', {
-            count: summary.total,
-            total: summary.total,
-            attention: summary.precisamAtencao,
-          })}
-        </p>
-      </div>
+      <header className="header animate-up">
+        <div className="header-title">
+          <h1>{t('health.title')}</h1>
+          <p>
+            {t('health.subtitle', {
+              count: summary.total,
+              total: summary.total,
+              attention: summary.precisamAtencao,
+            })}
+          </p>
+        </div>
+      </header>
       <HealthFilterBar
         summary={summary}
         filter={filter}
