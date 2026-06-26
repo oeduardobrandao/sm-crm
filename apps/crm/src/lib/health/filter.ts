@@ -15,6 +15,7 @@ const GROUPS: Record<Exclude<HealthFilterKey, 'todos'>, HealthStatus[]> = {
 const ATTENTION_OVERRIDES: HealthStatus[] = ['reconectar', 'sem_sincronizar', 'desconectado', 'inativo'];
 // Transient/neutral states sort after the scored tiers.
 const NEUTRAL_OVERRIDES: HealthStatus[] = ['sincronizando', 'sem_dados'];
+// assumes health scores are 0–100
 
 export function matchesFilter(status: HealthStatus, key: HealthFilterKey): boolean {
   if (key === 'todos') return true;
@@ -55,7 +56,7 @@ export function filterAndSortClients(
     case 'ultimo_post':
       // most stale first; nulls (no posts) treated as most stale
       sorted.sort(
-        (a, b) => (b.days_since_last_post ?? Infinity) - (a.days_since_last_post ?? Infinity) || byName(a, b),
+        (a, b) => (b.days_since_last_post ?? Infinity) - (a.days_since_last_post ?? Infinity) || byName(a, b), // both-null → Infinity - Infinity = NaN, falls through to byName
       );
       break;
     case 'seguidores':

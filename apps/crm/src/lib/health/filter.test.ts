@@ -75,4 +75,44 @@ describe('filterAndSortClients', () => {
     const r = filterAndSortClients(list, { filter: 'todos', search: '', sort: 'nome' });
     expect(r.map((c) => c.client_name)).toEqual(['Alpha', 'Bravo', 'Charlie']);
   });
+
+  it('search matches @username', () => {
+    const testList = [mk({ client_id: 50, client_name: 'Nomatch', username: 'zebra' })];
+    const r = filterAndSortClients(testList, { filter: 'todos', search: 'zeb', sort: 'nome' });
+    expect(r).toHaveLength(1);
+  });
+
+  it('atencao sort: override states first, then score, then neutral-last', () => {
+    const testList = [
+      mk({ client_id: 1, status: 'saudavel', score: 70 }),
+      mk({ client_id: 2, status: 'em_queda', score: 10 }),
+      mk({ client_id: 3, status: 'reconectar', score: null }),
+      mk({ client_id: 4, status: 'sincronizando', score: null }),
+    ];
+    const r = filterAndSortClients(testList, { filter: 'todos', search: '', sort: 'atencao' });
+    expect(r.map((c) => c.client_id)).toEqual([3, 2, 1, 4]);
+  });
+
+  it('sort by engajamento is descending', () => {
+    const r = filterAndSortClients(list, { filter: 'todos', search: '', sort: 'engajamento' });
+    // id2: 5, id1: 2, id3: 0
+    expect(r.map((c) => c.client_id)).toEqual([2, 1, 3]);
+  });
+
+  it('sort by ultimo_post: most stale first, nulls treated as most stale', () => {
+    const testList = [
+      mk({ client_id: 1, days_since_last_post: 1 }),
+      mk({ client_id: 2, days_since_last_post: 20 }),
+      mk({ client_id: 3, days_since_last_post: null }),
+    ];
+    const r = filterAndSortClients(testList, { filter: 'todos', search: '', sort: 'ultimo_post' });
+    expect(r.map((c) => c.client_id)).toEqual([3, 2, 1]);
+  });
+
+  it('matchesFilter: saudaveis and estaveis groups', () => {
+    expect(matchesFilter('em_alta', 'saudaveis')).toBe(true);
+    expect(matchesFilter('estavel', 'saudaveis')).toBe(false);
+    expect(matchesFilter('estavel', 'estaveis')).toBe(true);
+    expect(matchesFilter('atencao', 'atencao')).toBe(true);
+  });
 });
