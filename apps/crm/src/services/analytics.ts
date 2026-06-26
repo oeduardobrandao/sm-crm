@@ -689,10 +689,11 @@ export async function getClientRateBaseline(
   clientId: number,
 ): Promise<{ sampleSize: number; dists: RateDistributions; baseline: Baseline }> {
   const account = await getAccountByClientId(clientId);
-  const { data: posts } = await supabase
+  const { data: posts, error } = await supabase
     .from('instagram_posts')
     .select('media_type, reach, impressions, saved, shares, likes, comments, unavailable_metrics')
     .eq('instagram_account_id', account.id);
+  if (error) console.error('Analytics: Error fetching baseline posts:', error);
   const rows = (posts ?? []) as PostMetricRow[];
   const dists = buildRateDistributions(rows);
   return { sampleSize: rows.length, dists, baseline: buildBaseline(dists, rows.length) };

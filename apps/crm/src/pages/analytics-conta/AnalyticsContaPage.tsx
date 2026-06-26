@@ -2349,10 +2349,10 @@ function AnalyticsContent({
                 <option value="shares">Compart.</option>
                 <option value="date">Data</option>
                 <option value="ig_score">IG Score</option>
-                <option value="share_rate">Compart./view</option>
-                <option value="like_rate">Curt./view</option>
-                <option value="save_rate">Salvos/view</option>
-                <option value="comment_rate">Coment./view</option>
+                <option value="share_rate">Compart./visualização</option>
+                <option value="like_rate">Curt./visualização</option>
+                <option value="save_rate">Salvos/visualização</option>
+                <option value="comment_rate">Coment./visualização</option>
               </select>
               <Button
                 variant="outline"

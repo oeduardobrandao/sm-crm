@@ -1856,7 +1856,7 @@ export default function AnalyticsPage() {
                     {['share_rate', 'like_rate', 'save_rate', 'comment_rate'].includes(drawerOrderBy) && (
                       <span>
                         {{ share_rate: 'Compart.', like_rate: 'Curt.', save_rate: 'Salvos', comment_rate: 'Coment.' }[drawerOrderBy]}
-                        /view{' '}
+                        /visualização{' '}
                         <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>
                           {formatRate(post.rates[drawerOrderBy as 'share_rate' | 'like_rate' | 'save_rate' | 'comment_rate'])}
                         </strong>
