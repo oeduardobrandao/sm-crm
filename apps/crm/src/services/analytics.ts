@@ -5,8 +5,15 @@
 // =============================================
 import { supabase, getCurrentProfile } from '../lib/supabase';
 import {
-  computeRates, scorePost, buildRateDistributions, buildBaseline, postRateSortValue,
-  type Rates, type RateDistributions, type Baseline, type PostMetricRow,
+  computeRates,
+  scorePost,
+  buildRateDistributions,
+  buildBaseline,
+  postRateSortValue,
+  type Rates,
+  type RateDistributions,
+  type Baseline,
+  type PostMetricRow,
 } from '../lib/ig-rates';
 
 const EDGE_URL = import.meta.env.VITE_SUPABASE_URL + '/functions/v1/instagram-analytics';
@@ -426,7 +433,13 @@ export async function getPortfolioSummary(days = 28): Promise<PortfolioSummary> 
       const info = accountToClient[p.instagram_account_id];
       const unavailable = Array.isArray(p.unavailable_metrics) ? p.unavailable_metrics : [];
       const rates = computeRates(
-        { shares: p.shares ?? 0, likes: p.likes ?? 0, saved: p.saved ?? 0, comments: p.comments ?? 0, impressions: p.impressions ?? 0 },
+        {
+          shares: p.shares ?? 0,
+          likes: p.likes ?? 0,
+          saved: p.saved ?? 0,
+          comments: p.comments ?? 0,
+          impressions: p.impressions ?? 0,
+        },
         unavailable,
       );
       return {
@@ -642,7 +655,13 @@ export async function getPostsAnalytics(
     const savesRate = p.reach > 0 ? ((p.saved || 0) / p.reach) * 100 : 0;
     const unavailable = Array.isArray(p.unavailable_metrics) ? p.unavailable_metrics : [];
     const rates = computeRates(
-      { shares: p.shares ?? 0, likes: p.likes ?? 0, saved: p.saved ?? 0, comments: p.comments ?? 0, impressions: p.impressions ?? 0 },
+      {
+        shares: p.shares ?? 0,
+        likes: p.likes ?? 0,
+        saved: p.saved ?? 0,
+        comments: p.comments ?? 0,
+        impressions: p.impressions ?? 0,
+      },
       unavailable,
     );
     return {
@@ -658,7 +677,15 @@ export async function getPostsAnalytics(
   });
 
   const validCols = [
-    'posted_at', 'reach', 'impressions', 'engagement_rate', 'saves_rate', 'saved', 'likes', 'comments', 'shares',
+    'posted_at',
+    'reach',
+    'impressions',
+    'engagement_rate',
+    'saves_rate',
+    'saved',
+    'likes',
+    'comments',
+    'shares',
   ];
   const derivedCols = new Set(['share_rate', 'like_rate', 'save_rate', 'comment_rate', 'ig_score']);
   const col = validCols.includes(sort) || derivedCols.has(sort) ? sort : 'posted_at';

@@ -72,7 +72,13 @@ import {
 } from '../../services/analytics';
 import { getInstagramSummary, syncInstagramData } from '../../services/instagram';
 import { sanitizeUrl } from '../../utils/security';
-import { formatRate, IG_RATE_WEIGHTS, type Baseline, type Quartiles, type RateKey } from '../../lib/ig-rates';
+import {
+  formatRate,
+  IG_RATE_WEIGHTS,
+  type Baseline,
+  type Quartiles,
+  type RateKey,
+} from '../../lib/ig-rates';
 
 Chart.register(...registerables);
 
@@ -1050,8 +1056,18 @@ function AnalyticsContent({
     retry: false, // non-critical: never block/delay the posts query
   });
   const { data: postsRes, isLoading: loadingPosts } = useQuery({
-    queryKey: ['analytics-posts', clientId, days, sort.col, sort.dir, periodStart, periodEnd, baselineQuery.dataUpdatedAt],
-    queryFn: () => getPostsAnalytics(clientId, days, sort.col, sort.dir, dateRange, baselineQuery.data?.dists),
+    queryKey: [
+      'analytics-posts',
+      clientId,
+      days,
+      sort.col,
+      sort.dir,
+      periodStart,
+      periodEnd,
+      baselineQuery.dataUpdatedAt,
+    ],
+    queryFn: () =>
+      getPostsAnalytics(clientId, days, sort.col, sort.dir, dateRange, baselineQuery.data?.dists),
     enabled: baselineQuery.isSuccess || baselineQuery.isError,
   });
   const { data: historyRes } = useQuery({
@@ -1717,8 +1733,14 @@ function AnalyticsContent({
                         </span>
                       </td>
                       <td data-label="IG Score">
-                        {(p as PostAnalytics).ig_score === null || (p as PostAnalytics).ig_score === undefined ? (
-                          <span title="amostra insuficiente (<5)" style={{ color: 'var(--text-muted)' }}>—</span>
+                        {(p as PostAnalytics).ig_score === null ||
+                        (p as PostAnalytics).ig_score === undefined ? (
+                          <span
+                            title="amostra insuficiente (<5)"
+                            style={{ color: 'var(--text-muted)' }}
+                          >
+                            —
+                          </span>
                         ) : (
                           <span
                             className={`badge ${(p as PostAnalytics).ig_score! >= 75 ? 'badge-success' : (p as PostAnalytics).ig_score! >= 40 ? 'badge-neutral' : 'badge-danger'}`}
@@ -2946,7 +2968,14 @@ function BaselineCard({ baseline }: { baseline: Baseline }) {
       .join(' · ');
     return (
       <div key={key} style={{ marginBottom: '0.85rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: '0.78rem' }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'baseline',
+            fontSize: '0.78rem',
+          }}
+        >
           <span style={{ fontWeight: 600 }}>
             {RATE_STRIP_LABELS[key]}{' '}
             <span style={{ color: 'var(--primary-color)', fontSize: '0.62rem' }}>
@@ -2955,10 +2984,20 @@ function BaselineCard({ baseline }: { baseline: Baseline }) {
           </span>
           <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>
             {q ? formatRate(q.p50) : '—'}{' '}
-            <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: '0.65rem' }}>mediana</span>
+            <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: '0.65rem' }}>
+              mediana
+            </span>
           </span>
         </div>
-        <div style={{ position: 'relative', height: 8, background: 'var(--surface-darker)', borderRadius: 4, marginTop: 5 }}>
+        <div
+          style={{
+            position: 'relative',
+            height: 8,
+            background: 'var(--surface-darker)',
+            borderRadius: 4,
+            marginTop: 5,
+          }}
+        >
           {q && (
             <>
               <div
@@ -2972,11 +3011,28 @@ function BaselineCard({ baseline }: { baseline: Baseline }) {
                   borderRadius: 4,
                 }}
               />
-              <div style={{ position: 'absolute', left: `${pct(q.p50)}%`, top: -2, width: 3, height: 12, background: 'var(--primary-color)', borderRadius: 2 }} />
+              <div
+                style={{
+                  position: 'absolute',
+                  left: `${pct(q.p50)}%`,
+                  top: -2,
+                  width: 3,
+                  height: 12,
+                  background: 'var(--primary-color)',
+                  borderRadius: 2,
+                }}
+              />
             </>
           )}
         </div>
-        <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginTop: 3, fontFamily: 'var(--font-mono)' }}>
+        <div
+          style={{
+            fontSize: '0.6rem',
+            color: 'var(--text-muted)',
+            marginTop: 3,
+            fontFamily: 'var(--font-mono)',
+          }}
+        >
           {q ? `p25 ${formatRate(q.p25)} · p75 ${formatRate(q.p75)} — ` : 'amostra insuficiente — '}
           {perFormat}
         </div>
@@ -2989,13 +3045,21 @@ function BaselineCard({ baseline }: { baseline: Baseline }) {
         <h3>Baseline Instagram</h3>
       </div>
       <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
-        Histórico completo · {baseline.sample_size} posts · por visualização · pontuado vs. histórico completo do
-        cliente — igual ao que o agente vê.
+        Histórico completo · {baseline.sample_size} posts · por visualização · pontuado vs.
+        histórico completo do cliente — igual ao que o agente vê.
       </div>
       {(['share_rate', 'like_rate', 'save_rate', 'comment_rate'] as RateKey[]).map(strip)}
-      <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', borderTop: '1px solid var(--border-color)', paddingTop: '0.6rem', lineHeight: 1.5 }}>
-        Heurística interna alinhada ao IG (compart.&gt;curt.&gt;salvos&gt;coment.) — não são os pesos oficiais do
-        Instagram. Taxa de skip e repost não estão na API.
+      <div
+        style={{
+          fontSize: '0.62rem',
+          color: 'var(--text-muted)',
+          borderTop: '1px solid var(--border-color)',
+          paddingTop: '0.6rem',
+          lineHeight: 1.5,
+        }}
+      >
+        Heurística interna alinhada ao IG (compart.&gt;curt.&gt;salvos&gt;coment.) — não são os
+        pesos oficiais do Instagram. Taxa de skip e repost não estão na API.
       </div>
     </div>
   );

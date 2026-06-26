@@ -429,7 +429,11 @@ beforeEach(() => {
     analysis: {},
     generatedAt: '2026-04-18T12:00:00Z',
   });
-  mockedGetClientRateBaseline.mockResolvedValue({ sampleSize: 0, dists: { overall: {}, byFormat: {} }, baseline: { sample_size: 0, weights: {}, weights_note: '', overall: {}, by_format: {} } });
+  mockedGetClientRateBaseline.mockResolvedValue({
+    sampleSize: 0,
+    dists: { overall: {}, byFormat: {} },
+    baseline: { sample_size: 0, weights: {}, weights_note: '', overall: {}, by_format: {} },
+  });
 });
 
 describe('AnalyticsContaPage', () => {
@@ -527,8 +531,10 @@ describe('AnalyticsContaPage', () => {
   it('renders the Baseline Instagram card and an ig_score badge', () => {
     const q = { p25: 0.01, p50: 0.02, p75: 0.03 };
     const bucket = {
-      share_rate: { n: 6, quartiles: q }, like_rate: { n: 6, quartiles: q },
-      save_rate: { n: 6, quartiles: q }, comment_rate: { n: 6, quartiles: q },
+      share_rate: { n: 6, quartiles: q },
+      like_rate: { n: 6, quartiles: q },
+      save_rate: { n: 6, quartiles: q },
+      comment_rate: { n: 6, quartiles: q },
       reach: { n: 6, quartiles: { p25: 50, p50: 100, p75: 150 } },
     };
     seedCommonAnalyticsData();
@@ -539,7 +545,8 @@ describe('AnalyticsContaPage', () => {
         baseline: {
           sample_size: 6,
           weights: { share_rate: 0.4, like_rate: 0.3, save_rate: 0.2, comment_rate: 0.1 },
-          weights_note: "Internal IG-aligned heuristic (shares>likes>saves>comments), not Instagram's published weights.",
+          weights_note:
+            "Internal IG-aligned heuristic (shares>likes>saves>comments), not Instagram's published weights.",
           overall: bucket,
           by_format: { VIDEO: bucket },
         },
@@ -547,12 +554,30 @@ describe('AnalyticsContaPage', () => {
     };
     queryState['analytics-posts'] = {
       data: {
-        posts: [{
-          id: 1, instagram_post_id: 'x', caption: '', media_type: 'VIDEO', permalink: 'https://x',
-          posted_at: '2026-06-20T00:00:00Z', likes: 10, comments: 1, reach: 90, impressions: 100, saved: 2, shares: 3,
-          thumbnail_url: null, engagement_rate: 5, saves_rate: 2, views: 100, unavailable_metrics: [],
-          rates: { share_rate: 0.03, like_rate: 0.1, save_rate: 0.02, comment_rate: 0.01 }, ig_score: 80, tags: [],
-        }],
+        posts: [
+          {
+            id: 1,
+            instagram_post_id: 'x',
+            caption: '',
+            media_type: 'VIDEO',
+            permalink: 'https://x',
+            posted_at: '2026-06-20T00:00:00Z',
+            likes: 10,
+            comments: 1,
+            reach: 90,
+            impressions: 100,
+            saved: 2,
+            shares: 3,
+            thumbnail_url: null,
+            engagement_rate: 5,
+            saves_rate: 2,
+            views: 100,
+            unavailable_metrics: [],
+            rates: { share_rate: 0.03, like_rate: 0.1, save_rate: 0.02, comment_rate: 0.01 },
+            ig_score: 80,
+            tags: [],
+          },
+        ],
       },
     };
     render(<AnalyticsContaPage />);

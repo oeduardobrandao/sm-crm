@@ -34,7 +34,10 @@ export function quartiles(values: number[]): Quartiles | null {
 export type PerformanceTier = 'top_quartile' | 'above_median' | 'below_median' | 'bottom_quartile';
 
 /** Bucket a metric value against a quartile baseline. Null when value or baseline is missing. */
-export function performanceTier(value: number | null | undefined, q: Quartiles | null): PerformanceTier | null {
+export function performanceTier(
+  value: number | null | undefined,
+  q: Quartiles | null,
+): PerformanceTier | null {
   if (q === null || value === null || value === undefined || Number.isNaN(value)) return null;
   if (value >= q.p75) return 'top_quartile';
   if (value >= q.p50) return 'above_median';
@@ -95,7 +98,10 @@ export function percentileRank(value: number | null | undefined, sample: number[
 }
 
 /** Composite 0–100 score: each non-null rate placed at its percentile, weighted, renormalized. */
-export function igAlignedScore(rates: Rates, distributions: Record<RateKey, number[]>): number | null {
+export function igAlignedScore(
+  rates: Rates,
+  distributions: Record<RateKey, number[]>,
+): number | null {
   let acc = 0;
   let wsum = 0;
   for (const key of Object.keys(IG_RATE_WEIGHTS) as RateKey[]) {
@@ -143,7 +149,13 @@ export function buildRateDistributions(rows: PostMetricRow[]): RateDistributions
   for (const p of rows) {
     const unavailable = Array.isArray(p.unavailable_metrics) ? p.unavailable_metrics : [];
     const rates = computeRates(
-      { shares: p.shares ?? 0, likes: p.likes ?? 0, saved: p.saved ?? 0, comments: p.comments ?? 0, impressions: p.impressions ?? 0 },
+      {
+        shares: p.shares ?? 0,
+        likes: p.likes ?? 0,
+        saved: p.saved ?? 0,
+        comments: p.comments ?? 0,
+        impressions: p.impressions ?? 0,
+      },
       unavailable,
     );
     const fmt = p.media_type ?? 'UNKNOWN';
@@ -164,7 +176,10 @@ export function buildRateDistributions(rows: PostMetricRow[]): RateDistributions
 }
 
 /** Per rate, use the format sample if it has >= MIN_SAMPLE, else the overall sample. */
-export function selectRateSamples(format: string, dists: RateDistributions): Record<RateKey, number[]> {
+export function selectRateSamples(
+  format: string,
+  dists: RateDistributions,
+): Record<RateKey, number[]> {
   const fmt = dists.byFormat[format];
   const out = {} as Record<RateKey, number[]>;
   for (const key of Object.keys(IG_RATE_WEIGHTS) as RateKey[]) {
@@ -175,7 +190,10 @@ export function selectRateSamples(format: string, dists: RateDistributions): Rec
 }
 
 /** ig_score for a single post against its client's distributions. */
-export function scorePost(post: { media_type: string | null; rates: Rates }, dists: RateDistributions): number | null {
+export function scorePost(
+  post: { media_type: string | null; rates: Rates },
+  dists: RateDistributions,
+): number | null {
   return igAlignedScore(post.rates, selectRateSamples(post.media_type ?? 'UNKNOWN', dists));
 }
 
@@ -195,7 +213,13 @@ export interface Baseline {
 export const WEIGHTS_NOTE =
   "Internal IG-aligned heuristic (shares>likes>saves>comments), not Instagram's published weights.";
 
-const BASELINE_METRICS: MetricKey[] = ['share_rate', 'like_rate', 'save_rate', 'comment_rate', 'reach'];
+const BASELINE_METRICS: MetricKey[] = [
+  'share_rate',
+  'like_rate',
+  'save_rate',
+  'comment_rate',
+  'reach',
+];
 
 function bucketStats(b: DistBuckets): Record<MetricKey, BucketStat> {
   const out = {} as Record<MetricKey, BucketStat>;
@@ -222,13 +246,19 @@ export function buildBaseline(dists: RateDistributions, sampleSize: number): Bas
 /** Format a raw fraction as a pt-BR percentage of views; null -> em dash. */
 export function formatRate(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) return '—';
-  return (value * 100).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
+  return (
+    (value * 100).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) +
+    '%'
+  );
 }
 
 const RATE_KEYS = new Set<string>(['share_rate', 'like_rate', 'save_rate', 'comment_rate']);
 
 /** Numeric value for a rate/ig_score sort column; null for unknown columns (caller sinks nulls). */
-export function postRateSortValue(post: { rates: Rates; ig_score: number | null }, col: string): number | null {
+export function postRateSortValue(
+  post: { rates: Rates; ig_score: number | null },
+  col: string,
+): number | null {
   if (col === 'ig_score') return post.ig_score;
   if (RATE_KEYS.has(col)) return post.rates[col as RateKey];
   return null;

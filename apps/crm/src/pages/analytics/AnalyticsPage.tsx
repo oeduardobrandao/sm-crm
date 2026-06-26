@@ -1636,7 +1636,14 @@ export default function AnalyticsPage() {
                 : (data?.allRankedPosts?.length ?? 0)}{' '}
               posts
               {['share_rate', 'like_rate', 'save_rate', 'comment_rate'].includes(drawerOrderBy) && (
-                <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                <span
+                  style={{
+                    display: 'block',
+                    fontSize: '0.7rem',
+                    color: 'var(--text-muted)',
+                    marginTop: 2,
+                  }}
+                >
                   Top 200 por alcance, reordenado por taxa
                 </span>
               )}
@@ -1853,12 +1860,31 @@ export default function AnalyticsPage() {
                         {post.engagement_rate.toFixed(2)}%
                       </strong>
                     </span>
-                    {['share_rate', 'like_rate', 'save_rate', 'comment_rate'].includes(drawerOrderBy) && (
+                    {['share_rate', 'like_rate', 'save_rate', 'comment_rate'].includes(
+                      drawerOrderBy,
+                    ) && (
                       <span>
-                        {{ share_rate: 'Compart.', like_rate: 'Curt.', save_rate: 'Salvos', comment_rate: 'Coment.' }[drawerOrderBy]}
+                        {
+                          {
+                            share_rate: 'Compart.',
+                            like_rate: 'Curt.',
+                            save_rate: 'Salvos',
+                            comment_rate: 'Coment.',
+                          }[drawerOrderBy]
+                        }
                         /visualização{' '}
-                        <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>
-                          {formatRate(post.rates[drawerOrderBy as 'share_rate' | 'like_rate' | 'save_rate' | 'comment_rate'])}
+                        <strong
+                          style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}
+                        >
+                          {formatRate(
+                            post.rates[
+                              drawerOrderBy as
+                                | 'share_rate'
+                                | 'like_rate'
+                                | 'save_rate'
+                                | 'comment_rate'
+                            ],
+                          )}
                         </strong>
                       </span>
                     )}

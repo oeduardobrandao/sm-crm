@@ -709,20 +709,57 @@ describe('AnalyticsPage', () => {
     const summary = makeSummary(
       [
         makeAccount({
-          client_id: 1, client_name: 'Alpha', client_sigla: 'AL', client_cor: '#000', client_especialidade: 'Derm',
-          instagram_account_id: 1, username: 'alpha', profile_picture_url: '', follower_count: 1000, follower_delta: 0,
-          reach_28d: 5000, impressions_28d: 6000, profile_views_28d: 0, website_clicks_28d: 0, media_count: 10,
-          last_synced_at: '', last_post_at: '2026-06-20T00:00:00.000Z', posts_last_30d: 5, engagement_rate_avg: 2,
+          client_id: 1,
+          client_name: 'Alpha',
+          client_sigla: 'AL',
+          client_cor: '#000',
+          client_especialidade: 'Derm',
+          instagram_account_id: 1,
+          username: 'alpha',
+          profile_picture_url: '',
+          follower_count: 1000,
+          follower_delta: 0,
+          reach_28d: 5000,
+          impressions_28d: 6000,
+          profile_views_28d: 0,
+          website_clicks_28d: 0,
+          media_count: 10,
+          last_synced_at: '',
+          last_post_at: '2026-06-20T00:00:00.000Z',
+          posts_last_30d: 5,
+          engagement_rate_avg: 2,
         }),
       ],
       [
-        makeRankedPost({ id: 1, client_name: 'Alpha', client_id: 1, reach: 500, engagement_rate: 1, views: 500,
-          rates: { share_rate: 0.01, like_rate: 0.1, save_rate: 0.01, comment_rate: 0 } }),
-        makeRankedPost({ id: 2, client_name: 'Bravo', client_id: 2, reach: 100, engagement_rate: 5, views: 100,
-          rates: { share_rate: 0.05, like_rate: 0.1, save_rate: 0.02, comment_rate: 0 } }),
+        makeRankedPost({
+          id: 1,
+          client_name: 'Alpha',
+          client_id: 1,
+          reach: 500,
+          engagement_rate: 1,
+          views: 500,
+          rates: { share_rate: 0.01, like_rate: 0.1, save_rate: 0.01, comment_rate: 0 },
+        }),
+        makeRankedPost({
+          id: 2,
+          client_name: 'Bravo',
+          client_id: 2,
+          reach: 100,
+          engagement_rate: 5,
+          views: 100,
+          rates: { share_rate: 0.05, like_rate: 0.1, save_rate: 0.02, comment_rate: 0 },
+        }),
         ...Array.from({ length: 5 }, (_, i) =>
-          makeRankedPost({ id: 10 + i, client_name: `Fill ${i}`, client_id: 9, reach: 40 - i, engagement_rate: 1, views: 50,
-            rates: { share_rate: 0.001, like_rate: 0.01, save_rate: 0.001, comment_rate: 0 } })),
+          makeRankedPost({
+            id: 10 + i,
+            client_name: `Fill ${i}`,
+            client_id: 9,
+            reach: 40 - i,
+            engagement_rate: 1,
+            views: 50,
+            rates: { share_rate: 0.001, like_rate: 0.01, save_rate: 0.001, comment_rate: 0 },
+          }),
+        ),
       ],
     );
     setQueryFixture(28, summary);
@@ -735,7 +772,9 @@ describe('AnalyticsPage', () => {
     // change the order <select> (first select in the drawer) to share_rate
     const orderSelect = within(drawer).getAllByRole('combobox')[0];
     fireEvent.change(orderSelect, { target: { value: 'share_rate' } });
-    expect(within(drawer).getByText('Top 200 por alcance, reordenado por taxa')).toBeInTheDocument();
+    expect(
+      within(drawer).getByText('Top 200 por alcance, reordenado por taxa'),
+    ).toBeInTheDocument();
     expect(within(drawer).getByText('5,0%')).toBeInTheDocument(); // Bravo's share_rate 0.05 rendered
   });
 });
