@@ -1,4 +1,5 @@
 import type { KeyboardEvent } from 'react';
+import { useState } from 'react';
 import { useDroppable, useDraggable } from '@dnd-kit/core';
 import { parseISO, format, isSameDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -131,8 +132,9 @@ function DayPostsPopover({
   currentWorkflowId: number;
   onSelectPost: (post: ClientePost) => void;
 }) {
+  const [open, setOpen] = useState(false);
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button type="button" className="cell-overflow" onClick={(e) => e.stopPropagation()}>
           +{overflow} mais
@@ -151,7 +153,10 @@ function DayPostsPopover({
                 key={post.id}
                 type="button"
                 className="calendar-day-popover-row"
-                onClick={() => onSelectPost(post)}
+                onClick={() => {
+                  onSelectPost(post);
+                  setOpen(false);
+                }}
               >
                 <span className="calendar-day-popover-dot" style={{ background: dot }} />
                 <span className="calendar-day-popover-tipo">{TIPO_LABELS[post.tipo]}</span>

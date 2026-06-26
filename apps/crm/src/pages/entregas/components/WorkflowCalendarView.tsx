@@ -219,7 +219,7 @@ export function WorkflowCalendarView({
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className={`calendar-content${selectedPost ? ' calendar-content--with-panel' : ''}`}>
+        <div className="calendar-content">
           <UnscheduledPostsSidebar posts={unscheduledPosts} currentWorkflowId={currentWorkflowId} />
           <div className="calendar-grid-container">
             <CalendarGrid
