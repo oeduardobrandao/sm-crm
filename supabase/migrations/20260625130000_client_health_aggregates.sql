@@ -45,7 +45,7 @@ acc AS (
     a.follower_count, a.authorization_status, a.token_expires_at, a.last_synced_at
   FROM instagram_accounts a
   WHERE a.client_id IN (SELECT id FROM cli)
-  ORDER BY a.client_id, a.id
+  ORDER BY a.client_id, a.last_synced_at DESC NULLS LAST, a.id
 ),
 fh AS (
   SELECT h.instagram_account_id AS account_id,
@@ -54,7 +54,7 @@ fh AS (
          array_agg(h.follower_count ORDER BY h.date)::int[] AS follower_series
   FROM instagram_follower_history h
   WHERE h.instagram_account_id IN (SELECT account_id FROM acc)
-    AND h.date >= (current_date - (p_window_days || ' days')::interval)
+    AND h.date >= (current_date - (p_window_days * interval '1 day'))
   GROUP BY h.instagram_account_id
 ),
 pc AS (
@@ -64,7 +64,7 @@ pc AS (
          count(*)::int AS posts_cur
   FROM instagram_posts p
   WHERE p.instagram_account_id IN (SELECT account_id FROM acc)
-    AND p.posted_at >= (now() - (p_window_days || ' days')::interval)
+    AND p.posted_at >= (now() - (p_window_days * interval '1 day'))
   GROUP BY p.instagram_account_id
 ),
 pp AS (
@@ -72,17 +72,18 @@ pp AS (
          sum(coalesce(p.reach,0))::bigint AS reach_prev
   FROM instagram_posts p
   WHERE p.instagram_account_id IN (SELECT account_id FROM acc)
-    AND p.posted_at >= (now() - ((2*p_window_days) || ' days')::interval)
-    AND p.posted_at <  (now() - (p_window_days || ' days')::interval)
+    AND p.posted_at >= (now() - (2 * p_window_days * interval '1 day'))
+    AND p.posted_at <  (now() - (p_window_days * interval '1 day'))
   GROUP BY p.instagram_account_id
 ),
 pall AS (
+  -- Posts over 2 × p_window_days (posts_56d is "2× the window", 56 days at default)
   SELECT p.instagram_account_id AS account_id,
          max(p.posted_at) AS last_post_at,
          count(*)::int AS posts_56d
   FROM instagram_posts p
   WHERE p.instagram_account_id IN (SELECT account_id FROM acc)
-    AND p.posted_at >= (now() - ((2*p_window_days) || ' days')::interval)
+    AND p.posted_at >= (now() - (2 * p_window_days * interval '1 day'))
   GROUP BY p.instagram_account_id
 ),
 pipe AS (
