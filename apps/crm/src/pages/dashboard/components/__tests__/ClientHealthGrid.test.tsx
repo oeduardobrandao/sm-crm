@@ -54,7 +54,7 @@ const renderGrid = (props: Partial<typeof base>) =>
 describe('ClientHealthGrid', () => {
   it('shows skeletons while loading', () => {
     const { container } = renderGrid({ isLoading: true });
-    expect(container.querySelectorAll('[data-testid="health-skeleton"]').length).toBeGreaterThan(0);
+    expect(container.querySelectorAll('[data-testid="health-skeleton"]')).toHaveLength(6);
   });
 
   it('shows an error message on error', () => {
@@ -65,6 +65,19 @@ describe('ClientHealthGrid', () => {
   it('shows the no-clients empty state', () => {
     renderGrid({ clients: [] });
     expect(screen.getByText(/Nenhum cliente ativo/)).toBeTruthy();
+  });
+
+  it('shows the none-connected empty state when no client is connected', () => {
+    renderGrid({ clients: [mk({ client_id: 1, connected: false, status: 'desconectado' })] });
+    expect(screen.getByText(/Nenhuma conta do Instagram conectada/)).toBeTruthy();
+  });
+
+  it('shows the filtered-empty message when the filter excludes all clients', () => {
+    renderGrid({
+      clients: [mk({ client_id: 1, connected: true, status: 'saudavel' })],
+      filter: 'conexao',
+    });
+    expect(screen.getByText(/Nenhum cliente neste filtro/)).toBeTruthy();
   });
 
   it('renders a card per client and applies the filter', () => {
