@@ -163,8 +163,8 @@ transaction so there is no committed-but-unlinked intermediate state:
      → not found ⇒ RAISE 'ideia_not_found'
 2. SELECT count(*) FROM ideia_files WHERE ideia_id = ideia_id
      → >= 10 ⇒ RAISE 'image_limit'                         (cap is now race-safe, Finding 1)
-3. SELECT storage_quota_bytes, storage_used_bytes FROM workspaces WHERE id = conta_id FOR UPDATE
-     → quota check counts file_size + thumbnail_size (Finding 5) ; over ⇒ RAISE 'quota_exceeded'
+3. v_used := storage_used_bytes (workspaces row, FOR UPDATE) ; v_quota := effective_plan_limit(conta_id, 'storage_quota_bytes')
+     → plan-driven quota (NULL = unlimited), matching the live file_insert_with_quota; counts file_size + thumbnail_size (Finding 5) ; over ⇒ RAISE 'quota_exceeded' (errcode P0001)
 4. INSERT INTO files (... folder_id NULL ...) RETURNING id   → the real bigint files.id
 5. INSERT INTO ideia_files (ideia_id, file_id = new files.id, conta_id, sort_order)
 6. UPDATE workspaces SET storage_used_bytes += file_size + thumbnail_size

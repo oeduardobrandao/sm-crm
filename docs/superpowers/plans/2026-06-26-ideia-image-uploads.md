@@ -134,9 +134,10 @@ CREATE TRIGGER trg_ideia_file_cleanup_orphan
   FOR EACH ROW EXECUTE FUNCTION ideia_file_cleanup_orphan();
 
 -- Atomic finalize: ownership lock + cap + quota + file insert + link insert.
--- Returns the inserted files row.
+-- Returns the inserted files row. Quota is plan-driven (effective_plan_limit),
+-- matching the live file_insert_with_quota (migration 20260611150001).
 CREATE OR REPLACE FUNCTION ideia_file_insert_with_quota(p jsonb) RETURNS files
-LANGUAGE plpgsql SECURITY DEFINER AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
   v_conta_id    uuid   := (p->>'conta_id')::uuid;
   v_cliente_id  int    := NULLIF(p->>'cliente_id', '')::int;
@@ -155,20 +156,21 @@ BEGIN
     FROM ideias
    WHERE id = v_ideia_id AND workspace_id = v_conta_id
    FOR UPDATE;
-  IF NOT FOUND THEN RAISE EXCEPTION 'ideia_not_found'; END IF;
+  IF NOT FOUND THEN RAISE EXCEPTION 'ideia_not_found' USING errcode = 'P0001'; END IF;
   IF v_cliente_id IS NOT NULL AND v_idea_owner <> v_cliente_id THEN
-    RAISE EXCEPTION 'ideia_not_found';
+    RAISE EXCEPTION 'ideia_not_found' USING errcode = 'P0001';
   END IF;
 
   -- 2. Cap (now serialized by the lock above).
   SELECT count(*) INTO v_count FROM ideia_files WHERE ideia_id = v_ideia_id;
-  IF v_count >= 10 THEN RAISE EXCEPTION 'image_limit'; END IF;
+  IF v_count >= 10 THEN RAISE EXCEPTION 'image_limit' USING errcode = 'P0001'; END IF;
 
-  -- 3. Quota (file + thumbnail).
-  SELECT storage_quota_bytes, storage_used_bytes INTO v_quota, v_used
-    FROM workspaces WHERE id = v_conta_id FOR UPDATE;
-  IF v_quota IS NOT NULL AND v_used + v_size + v_thumb > v_quota THEN
-    RAISE EXCEPTION 'quota_exceeded';
+  -- 3. Quota (file + thumbnail). Plan-driven via effective_plan_limit (NULL = unlimited),
+  --    matching file_insert_with_quota. Lock the workspace row for the used-bytes read.
+  SELECT storage_used_bytes INTO v_used FROM workspaces WHERE id = v_conta_id FOR UPDATE;
+  v_quota := effective_plan_limit(v_conta_id, 'storage_quota_bytes');
+  IF v_quota IS NOT NULL AND COALESCE(v_used, 0) + v_size + v_thumb > v_quota THEN
+    RAISE EXCEPTION 'quota_exceeded' USING errcode = 'P0001';
   END IF;
 
   -- 4. Insert the file (folder_id NULL: idea images are not file-manager assets).
@@ -244,9 +246,10 @@ BEGIN
     INSERT INTO ideia_files (ideia_id, file_id, conta_id) VALUES (v_idea, v_file, v_other);
     RAISE EXCEPTION 'A3 FAIL: cross-tenant insert was allowed';
   EXCEPTION WHEN foreign_key_violation THEN
+    -- The failed INSERT is unwound automatically by this exception subtransaction;
+    -- no explicit ROLLBACK (illegal inside a DO block).
     RAISE NOTICE 'A3 PASS: cross-tenant link rejected';
   END;
-  ROLLBACK;
 END $$;
 ```
 
