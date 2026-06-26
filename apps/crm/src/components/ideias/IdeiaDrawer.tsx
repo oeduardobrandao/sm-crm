@@ -1,7 +1,10 @@
 import { useRef, useState } from 'react';
 import { ExternalLink, Save, Loader2, ImagePlus, X } from 'lucide-react';
 import {
-  listIdeiaImages, uploadIdeiaImage, removeIdeiaImage, type CrmIdeiaImage,
+  listIdeiaImages,
+  uploadIdeiaImage,
+  removeIdeiaImage,
+  type CrmIdeiaImage,
 } from '@/services/ideiaMedia';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -244,7 +247,11 @@ export function IdeiaDrawer({ ideia, queryKey, onClose }: IdeiaDrawerProps) {
                 disabled={imgBusy}
                 onClick={() => inputRef.current?.click()}
               >
-                {imgBusy ? <Loader2 size={13} className="animate-spin mr-1.5" /> : <ImagePlus size={13} className="mr-1.5" />}
+                {imgBusy ? (
+                  <Loader2 size={13} className="animate-spin mr-1.5" />
+                ) : (
+                  <ImagePlus size={13} className="mr-1.5" />
+                )}
                 Adicionar imagem
               </Button>
             )}

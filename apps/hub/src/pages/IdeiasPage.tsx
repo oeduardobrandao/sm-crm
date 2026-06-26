@@ -101,7 +101,11 @@ function IdeiaImages({
                   src={img.thumbnail_url ?? img.url}
                   alt=""
                   className="h-16 w-16 rounded-lg object-cover border border-stone-200 bg-stone-100"
-                  style={img.blur_data_url ? { backgroundImage: `url(${img.blur_data_url})`, backgroundSize: 'cover' } : undefined}
+                  style={
+                    img.blur_data_url
+                      ? { backgroundImage: `url(${img.blur_data_url})`, backgroundSize: 'cover' }
+                      : undefined
+                  }
                 />
               </a>
               <button
@@ -334,12 +338,7 @@ function IdeiaCard({
       )}
 
       {/* Images (not lock-gated — always manageable) */}
-      <IdeiaImages
-        token={token}
-        ideiaId={ideia.id}
-        images={ideia.images}
-        onChanged={onChanged}
-      />
+      <IdeiaImages token={token} ideiaId={ideia.id} images={ideia.images} onChanged={onChanged} />
 
       {/* Reactions */}
       {reactionMap.size > 0 && (
@@ -406,12 +405,16 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
     try {
       if (current) {
         const { ideia } = await updateIdeia(token, current.id, {
-          titulo: titulo.trim(), descricao: descricao.trim(), links: cleanLinks,
+          titulo: titulo.trim(),
+          descricao: descricao.trim(),
+          links: cleanLinks,
         });
         setCurrent({ ...current, ...ideia });
       } else {
         const { ideia } = await createIdeia(token, {
-          titulo: titulo.trim(), descricao: descricao.trim(), links: cleanLinks,
+          titulo: titulo.trim(),
+          descricao: descricao.trim(),
+          links: cleanLinks,
         });
         // New idea has no images yet; keep modal open in edit mode so the
         // user can add images against the real ideia_id.
@@ -429,10 +432,12 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
     qc.invalidateQueries({ queryKey: ['hub-ideias', token] });
     if (current) {
       // Re-read this idea's images from the refreshed cache after invalidation.
-      fetchIdeias(token).then((d) => {
-        const fresh = d.ideias.find((x) => x.id === current.id);
-        if (fresh) setCurrent(fresh);
-      }).catch(() => {});
+      fetchIdeias(token)
+        .then((d) => {
+          const fresh = d.ideias.find((x) => x.id === current.id);
+          if (fresh) setCurrent(fresh);
+        })
+        .catch(() => {});
     }
   }
 
@@ -548,7 +553,9 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
             {current ? 'Salvar alterações' : 'Salvar e adicionar imagens'}
           </button>
           <button
-            onClick={() => { onSaved(); }}
+            onClick={() => {
+              onSaved();
+            }}
             className="px-4 py-2.5 rounded-lg border border-stone-200 text-sm text-stone-600 hover:bg-stone-50 transition-colors"
           >
             {current ? 'Concluir' : 'Cancelar'}

@@ -16,8 +16,15 @@ export interface CrmIdeiaImage {
   sort_order: number;
 }
 
-async function callFn<T>(method: 'GET' | 'POST' | 'DELETE', pathSuffix = '', body?: unknown, query?: Record<string, string>): Promise<T> {
-  const { data: { session } } = await supabase.auth.getSession();
+async function callFn<T>(
+  method: 'GET' | 'POST' | 'DELETE',
+  pathSuffix = '',
+  body?: unknown,
+  query?: Record<string, string>,
+): Promise<T> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
   if (!session) throw new Error('Não autenticado');
   const url = new URL(`${SUPABASE_URL}/functions/v1/ideia-media-manage${pathSuffix}`);
   if (query) Object.entries(query).forEach(([k, v]) => url.searchParams.set(k, v));
@@ -43,7 +50,9 @@ function putToR2(url: string, file: File): Promise<void> {
     xhr.open('PUT', url);
     xhr.setRequestHeader('Content-Type', file.type);
     xhr.onload = () =>
-      xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Upload falhou: ${xhr.status}`));
+      xhr.status >= 200 && xhr.status < 300
+        ? resolve()
+        : reject(new Error(`Upload falhou: ${xhr.status}`));
     xhr.onerror = () => reject(new Error('Erro de rede no upload'));
     xhr.send(file);
   });
@@ -55,12 +64,16 @@ export function validateIdeiaImage(file: File) {
 }
 
 export async function listIdeiaImages(ideiaId: string): Promise<CrmIdeiaImage[]> {
-  const { images } = await callFn<{ images: CrmIdeiaImage[] }>('GET', '', undefined, { ideia_id: ideiaId });
+  const { images } = await callFn<{ images: CrmIdeiaImage[] }>('GET', '', undefined, {
+    ideia_id: ideiaId,
+  });
   return images;
 }
 
 export async function uploadIdeiaImage(
-  ideiaId: string, file: File, sortOrder?: number,
+  ideiaId: string,
+  file: File,
+  sortOrder?: number,
 ): Promise<CrmIdeiaImage> {
   validateIdeiaImage(file);
   const [{ width, height }, thumb, blur] = await Promise.all([
@@ -70,14 +83,23 @@ export async function uploadIdeiaImage(
   ]);
 
   const signed = await callFn<{
-    upload_id: string; upload_url: string; r2_key: string;
-    thumbnail_upload_url: string; thumbnail_r2_key: string;
+    upload_id: string;
+    upload_url: string;
+    r2_key: string;
+    thumbnail_upload_url: string;
+    thumbnail_r2_key: string;
   }>('POST', '/upload-url', {
-    ideia_id: ideiaId, filename: file.name, mime_type: file.type, size_bytes: file.size,
+    ideia_id: ideiaId,
+    filename: file.name,
+    mime_type: file.type,
+    size_bytes: file.size,
     thumbnail: { mime_type: 'image/webp', size_bytes: thumb.size },
   });
 
-  await Promise.all([putToR2(signed.upload_url, file), putToR2(signed.thumbnail_upload_url, thumb)]);
+  await Promise.all([
+    putToR2(signed.upload_url, file),
+    putToR2(signed.thumbnail_upload_url, thumb),
+  ]);
 
   return callFn<CrmIdeiaImage>('POST', `/${ideiaId}/files`, {
     r2_key: signed.r2_key,
@@ -86,7 +108,10 @@ export async function uploadIdeiaImage(
     size_bytes: file.size,
     thumbnail_bytes: thumb.size,
     name: file.name,
-    width, height, blur_data_url: blur, sort_order: sortOrder,
+    width,
+    height,
+    blur_data_url: blur,
+    sort_order: sortOrder,
   });
 }
 

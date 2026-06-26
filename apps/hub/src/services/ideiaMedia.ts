@@ -24,7 +24,10 @@ function probeImage(file: File): Promise<{ width: number; height: number }> {
       URL.revokeObjectURL(url);
       resolve({ width: img.naturalWidth, height: img.naturalHeight });
     };
-    img.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
+    img.onerror = (e) => {
+      URL.revokeObjectURL(url);
+      reject(e);
+    };
     img.src = url;
   });
 }
@@ -39,16 +42,22 @@ function generateThumbnail(file: File): Promise<File> {
       const w = Math.max(1, Math.round(img.naturalWidth * scale));
       const h = Math.max(1, Math.round(img.naturalHeight * scale));
       const canvas = document.createElement('canvas');
-      canvas.width = w; canvas.height = h;
+      canvas.width = w;
+      canvas.height = h;
       canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
       canvas.toBlob(
-        (blob) => blob
-          ? resolve(new File([blob], 'thumb.webp', { type: 'image/webp' }))
-          : reject(new Error('thumbnail failed')),
-        'image/webp', 0.7,
+        (blob) =>
+          blob
+            ? resolve(new File([blob], 'thumb.webp', { type: 'image/webp' }))
+            : reject(new Error('thumbnail failed')),
+        'image/webp',
+        0.7,
       );
     };
-    img.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
+    img.onerror = (e) => {
+      URL.revokeObjectURL(url);
+      reject(e);
+    };
     img.src = url;
   });
 }
@@ -63,11 +72,15 @@ function generateBlur(file: File): Promise<string> {
       const w = ratio >= 1 ? BLUR_SIZE : Math.round(BLUR_SIZE * ratio);
       const h = ratio >= 1 ? Math.round(BLUR_SIZE / ratio) : BLUR_SIZE;
       const canvas = document.createElement('canvas');
-      canvas.width = w; canvas.height = h;
+      canvas.width = w;
+      canvas.height = h;
       canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
       resolve(canvas.toDataURL('image/webp', 0.2));
     };
-    img.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
+    img.onerror = (e) => {
+      URL.revokeObjectURL(url);
+      reject(e);
+    };
     img.src = url;
   });
 }
@@ -78,7 +91,9 @@ function putToR2(url: string, file: File): Promise<void> {
     xhr.open('PUT', url);
     xhr.setRequestHeader('Content-Type', file.type);
     xhr.onload = () =>
-      xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Upload falhou: ${xhr.status}`));
+      xhr.status >= 200 && xhr.status < 300
+        ? resolve()
+        : reject(new Error(`Upload falhou: ${xhr.status}`));
     xhr.onerror = () => reject(new Error('Erro de rede no upload'));
     xhr.send(file);
   });
