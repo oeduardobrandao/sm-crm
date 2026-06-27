@@ -28,6 +28,7 @@ import {
   type ClienteData,
 } from '../../store';
 import { useAuth } from '../../context/AuthContext';
+import { formatDeadlineStatus } from './deadlineStatus';
 
 // ---- Types ----
 interface DeadlineEvent {
@@ -1176,11 +1177,7 @@ function FinanceiroCalendar({
                 })}
 
                 {selectedDeadlines.map((d, i) => {
-                  const statusLabel = d.estourado
-                    ? `${Math.abs(d.diasRestantes)}d atrasado`
-                    : d.diasRestantes === 0
-                      ? 'Vence hoje'
-                      : `${d.diasRestantes}d restante${d.diasRestantes > 1 ? 's' : ''}`;
+                  const statusLabel = formatDeadlineStatus(d.diasRestantes, d.estourado);
                   return (
                     <div key={i} className="scheduled-item">
                       <div className="item-top">
