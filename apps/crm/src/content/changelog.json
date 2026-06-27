@@ -1,6 +1,47 @@
 {
-  "lastMergedAt": "2026-06-17T23:58:30Z",
+  "lastMergedAt": "2026-06-27T01:01:04Z",
   "releases": [
+    {
+      "date": "2026-06-27",
+      "summary": "Melhorias e correções em várias áreas do Mesaas",
+      "items": [
+        {
+          "type": "feature",
+          "area": "Ideias",
+          "title": "Upload de imagens para ideias",
+          "description": "Agora é possível anexar até 10 imagens por ideia no Hub e no CRM",
+          "pr": 166
+        },
+        {
+          "type": "improvement",
+          "area": "Painel de Controle",
+          "title": "Monitor de Saúde do Cliente",
+          "description": "Um novo recurso que permite monitorar a saúde dos clientes de forma mais eficaz",
+          "pr": 161
+        },
+        {
+          "type": "fix",
+          "area": "Calendário",
+          "title": "Correção de exibição de prazos",
+          "description": "Correção de um problema que causava a exibição de 'UNDEFINED' em lugar do prazo",
+          "pr": 167
+        },
+        {
+          "type": "feature",
+          "area": "Publicações",
+          "title": "Publicação de Stories no Instagram",
+          "description": "Agora é possível publicar stories no Instagram diretamente do Mesaas",
+          "pr": 160
+        },
+        {
+          "type": "feature",
+          "area": "MCP",
+          "title": "Integração com o Claude",
+          "description": "Nova integração com o Claude para permitir a criação de conteúdo de forma mais eficaz",
+          "pr": 152
+        }
+      ]
+    },
     {
       "date": "2026-06-20",
       "summary": "Melhorias no CRM para social media managers",
