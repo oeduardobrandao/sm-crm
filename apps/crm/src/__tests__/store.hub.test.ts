@@ -490,7 +490,7 @@ describe('store hub and ideias helpers', () => {
     mockedSupabase.__queueSupabaseResult('ideia_reactions', 'delete', { data: null, error: null });
 
     await expect(store.getIdeias({ cliente_id: 14 })).resolves.toEqual([
-      { id: 'ideia-1', titulo: 'Campanha de Inverno' },
+      { id: 'ideia-1', titulo: 'Campanha de Inverno', image_count: 0 },
     ]);
     await store.updateIdeiaStatus('ideia-1', 'em_analise');
     await store.upsertIdeiaComentario('ideia-1', 'Boa base, mas vamos reforçar a oferta.', 7);

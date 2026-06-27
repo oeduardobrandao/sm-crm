@@ -25,6 +25,7 @@ export interface Ideia {
   clientes: { nome: string };
   comentario_autor: { nome: string } | null;
   ideia_reactions: IdeiaReaction[];
+  image_count: number;
 }
 
 export async function getIdeias(filters: { cliente_id?: number } = {}): Promise<Ideia[]> {
@@ -36,7 +37,8 @@ export async function getIdeias(filters: { cliente_id?: number } = {}): Promise<
       comentario_agencia, comentario_autor_id, comentario_at, created_at, updated_at,
       clientes(nome),
       comentario_autor:membros!comentario_autor_id(nome),
-      ideia_reactions(id, ideia_id, membro_id, emoji, created_at, membros(nome))
+      ideia_reactions(id, ideia_id, membro_id, emoji, created_at, membros(nome)),
+      ideia_files(count)
     `,
     )
     .order('created_at', { ascending: false });
@@ -45,7 +47,10 @@ export async function getIdeias(filters: { cliente_id?: number } = {}): Promise<
 
   const { data, error } = await q;
   if (error) throw new Error(error.message);
-  return (data ?? []) as unknown as Ideia[];
+  return (data ?? []).map((row: any) => ({
+    ...row,
+    image_count: row.ideia_files?.[0]?.count ?? 0,
+  })) as unknown as Ideia[];
 }
 
 export async function updateIdeiaStatus(ideiaId: string, status: Ideia['status']): Promise<void> {

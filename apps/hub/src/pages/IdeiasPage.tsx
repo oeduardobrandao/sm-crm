@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Pencil, ExternalLink, X, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Pencil, ExternalLink, X, Loader2, ImagePlus } from 'lucide-react';
 import { useHub } from '../HubContext';
-import { fetchIdeias, createIdeia, updateIdeia, deleteIdeia } from '../api';
-import type { HubIdeia } from '../types';
+import { fetchIdeias, createIdeia, updateIdeia, deleteIdeia, deleteIdeiaImage } from '../api';
+import { uploadIdeiaImage } from '../services/ideiaMedia';
+import type { HubIdeia, IdeiaImage } from '../types';
 
 const ALLOWED_EMOJI = ['👍', '❤️', '🔥', '💡', '🎯'] as const;
 
@@ -38,6 +39,109 @@ function sanitizeUrl(href: string): string {
     /* fall through */
   }
   return '#';
+}
+
+const MAX_IMAGES = 10;
+
+function IdeiaImages({
+  token,
+  ideiaId,
+  images,
+  onChanged,
+}: {
+  token: string;
+  ideiaId: string;
+  images: IdeiaImage[];
+  onChanged: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const atCap = images.length >= MAX_IMAGES;
+
+  async function handleFiles(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setErr(null);
+    setBusy(true);
+    const slots = MAX_IMAGES - images.length;
+    const chosen = Array.from(files).slice(0, slots);
+    try {
+      for (let i = 0; i < chosen.length; i++) {
+        await uploadIdeiaImage({ token, ideiaId, file: chosen[i], sortOrder: images.length + i });
+      }
+      onChanged();
+    } catch (e) {
+      setErr((e as Error).message ?? 'Erro ao enviar imagem.');
+    } finally {
+      setBusy(false);
+      if (inputRef.current) inputRef.current.value = '';
+    }
+  }
+
+  async function remove(fileId: number) {
+    setErr(null);
+    setBusy(true);
+    try {
+      await deleteIdeiaImage(token, ideiaId, fileId);
+      onChanged();
+    } catch (e) {
+      setErr((e as Error).message ?? 'Erro ao remover imagem.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      {images.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {images.map((img) => (
+            <div key={img.file_id} className="relative group">
+              <a href={img.url} target="_blank" rel="noopener noreferrer">
+                <img
+                  src={img.thumbnail_url ?? img.url}
+                  alt=""
+                  className="h-16 w-16 rounded-lg object-cover border border-stone-200 bg-stone-100"
+                  style={
+                    img.blur_data_url
+                      ? { backgroundImage: `url(${img.blur_data_url})`, backgroundSize: 'cover' }
+                      : undefined
+                  }
+                />
+              </a>
+              <button
+                onClick={() => remove(img.file_id)}
+                disabled={busy}
+                aria-label="Remover imagem"
+                className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full bg-stone-900 text-white opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {!atCap && (
+        <button
+          onClick={() => inputRef.current?.click()}
+          disabled={busy}
+          className="inline-flex items-center gap-1.5 text-[12px] text-stone-500 hover:text-stone-800 transition-colors disabled:opacity-50"
+        >
+          {busy ? <Loader2 size={13} className="animate-spin" /> : <ImagePlus size={13} />}
+          Adicionar imagem
+        </button>
+      )}
+      {err && <p className="text-xs text-red-500">{err}</p>}
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif"
+        multiple
+        className="hidden"
+        onChange={(e) => handleFiles(e.target.files)}
+      />
+    </div>
+  );
 }
 
 export function IdeiasPage() {
@@ -132,6 +236,8 @@ export function IdeiasPage() {
             <IdeiaCard
               key={ideia.id}
               ideia={ideia}
+              token={token}
+              onChanged={() => qc.invalidateQueries({ queryKey: ['hub-ideias', token] })}
               onEdit={() => openEdit(ideia)}
               onDelete={() => {
                 deleteIdeia(token, ideia.id)
@@ -160,10 +266,14 @@ export function IdeiasPage() {
 
 function IdeiaCard({
   ideia,
+  token,
+  onChanged,
   onEdit,
   onDelete,
 }: {
   ideia: HubIdeia;
+  token: string;
+  onChanged: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -228,6 +338,9 @@ function IdeiaCard({
         </div>
       )}
 
+      {/* Images (not lock-gated — always manageable) */}
+      <IdeiaImages token={token} ideiaId={ideia.id} images={ideia.images} onChanged={onChanged} />
+
       {/* Reactions */}
       {reactionMap.size > 0 && (
         <div className="flex flex-wrap gap-2">
@@ -269,11 +382,14 @@ interface ModalProps {
 }
 
 function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
+  const qc = useQueryClient();
   const [titulo, setTitulo] = useState(editing?.titulo ?? '');
   const [descricao, setDescricao] = useState(editing?.descricao ?? '');
   const [links, setLinks] = useState<string[]>(editing?.links.length ? editing.links : ['']);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<{ titulo?: string; descricao?: string }>({});
+  // The idea this modal is editing: the existing one, or the one we just created.
+  const [current, setCurrent] = useState<HubIdeia | null>(editing);
 
   function validate() {
     const e: typeof errors = {};
@@ -283,29 +399,46 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
     return Object.keys(e).length === 0;
   }
 
-  async function handleSave() {
+  async function handleSaveText() {
     if (!validate()) return;
     setSaving(true);
     const cleanLinks = links.map((l) => l.trim()).filter(Boolean);
     try {
-      if (editing) {
-        await updateIdeia(token, editing.id, {
+      if (current) {
+        const { ideia } = await updateIdeia(token, current.id, {
           titulo: titulo.trim(),
           descricao: descricao.trim(),
           links: cleanLinks,
         });
+        setCurrent({ ...current, ...ideia });
       } else {
-        await createIdeia(token, {
+        const { ideia } = await createIdeia(token, {
           titulo: titulo.trim(),
           descricao: descricao.trim(),
           links: cleanLinks,
         });
+        // New idea has no images yet; keep modal open in edit mode so the
+        // user can add images against the real ideia_id.
+        setCurrent({ ...ideia, images: [], ideia_reactions: [] } as HubIdeia);
       }
-      onSaved();
+      qc.invalidateQueries({ queryKey: ['hub-ideias', token] });
     } catch (err: unknown) {
       alert((err as Error).message ?? 'Erro ao salvar.');
     } finally {
       setSaving(false);
+    }
+  }
+
+  function refreshCurrent() {
+    qc.invalidateQueries({ queryKey: ['hub-ideias', token] });
+    if (current) {
+      // Re-read this idea's images from the refreshed cache after invalidation.
+      fetchIdeias(token)
+        .then((d) => {
+          const fresh = d.ideias.find((x) => x.id === current.id);
+          if (fresh) setCurrent(fresh);
+        })
+        .catch(() => {});
     }
   }
 
@@ -392,22 +525,41 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
               + Adicionar outro link
             </button>
           </div>
+
+          {current && (
+            <div>
+              <label className="text-[12px] font-semibold text-stone-600 uppercase tracking-wide mb-1 block">
+                Imagens{' '}
+                <span className="text-stone-400 normal-case tracking-normal font-normal">
+                  (até 10)
+                </span>
+              </label>
+              <IdeiaImages
+                token={token}
+                ideiaId={current.id}
+                images={current.images}
+                onChanged={refreshCurrent}
+              />
+            </div>
+          )}
         </div>
 
         <div className="flex gap-2 pt-2">
           <button
-            onClick={handleSave}
+            onClick={handleSaveText}
             disabled={saving}
             className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg bg-stone-900 text-white text-sm font-semibold hover:bg-stone-800 disabled:opacity-50 transition-colors"
           >
             {saving && <Loader2 size={15} className="animate-spin" />}
-            {editing ? 'Salvar alterações' : 'Enviar ideia'}
+            {current ? 'Salvar alterações' : 'Salvar e adicionar imagens'}
           </button>
           <button
-            onClick={onClose}
+            onClick={() => {
+              onSaved();
+            }}
             className="px-4 py-2.5 rounded-lg border border-stone-200 text-sm text-stone-600 hover:bg-stone-50 transition-colors"
           >
-            Cancelar
+            {current ? 'Concluir' : 'Cancelar'}
           </button>
         </div>
       </div>
