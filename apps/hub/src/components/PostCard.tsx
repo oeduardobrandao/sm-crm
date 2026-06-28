@@ -508,7 +508,7 @@ export function PostCard({
                     <button
                       onClick={() => handleAction('aprovado')}
                       disabled={submitting || approvalBlocked}
-                      className="flex-1 flex items-center justify-center gap-2 bg-stone-900 text-white rounded-full py-3 text-[13.5px] font-semibold hover:bg-stone-800 disabled:opacity-50 transition-colors shadow-sm"
+                      className="flex-1 flex items-center justify-center gap-2 bg-stone-900 text-white rounded-full py-3 min-h-[44px] text-[13.5px] font-semibold hover:bg-stone-800 disabled:opacity-50 transition-colors shadow-sm"
                     >
                       <CheckCircle size={15} />{' '}
                       {saveState === 'saving' ? 'Salvando sugestão...' : 'Aprovar'}
@@ -516,7 +516,7 @@ export function PostCard({
                     <button
                       onClick={() => handleAction('correcao')}
                       disabled={submitting || approvalBlocked}
-                      className="flex-1 flex items-center justify-center gap-2 border border-stone-200/80 bg-white text-stone-800 rounded-full py-3 text-[13.5px] font-semibold hover:border-stone-300 hover:bg-stone-50 disabled:opacity-50 transition-colors"
+                      className="flex-1 flex items-center justify-center gap-2 border border-stone-200/80 bg-white text-stone-800 rounded-full py-3 min-h-[44px] text-[13.5px] font-semibold hover:border-stone-300 hover:bg-stone-50 disabled:opacity-50 transition-colors"
                     >
                       <AlertCircle size={15} /> Solicitar correção
                     </button>

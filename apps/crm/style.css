@@ -2371,6 +2371,33 @@ select.form-input option {
     padding: 0.35rem 0.65rem;
   }
 
+  /* Mobile audit (#1): prevent iOS Safari auto-zoom on focus.
+     Editable form controls must render at >=16px on phones. The qualified
+     selectors (e.g. input.filter-btn) out-specify the utility rules above. */
+  input.form-input,
+  textarea.form-input,
+  select.form-input,
+  input.filter-btn,
+  select.filter-btn,
+  .drawer-input,
+  .drawer-select,
+  .comment-add-input,
+  .post-editor-link-input,
+  .portal-approval-comment textarea,
+  .search-bar input {
+    font-size: 16px;
+  }
+
+  /* Mobile audit (#2): 44px minimum touch target for icon action buttons
+     (data-table row actions, pagination, Instagram table links). */
+  .btn-icon {
+    min-width: 44px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
   /* Integrations grid on mobile */
   .integrations-grid {
     grid-template-columns: 1fr;

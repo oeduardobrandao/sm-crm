@@ -180,7 +180,7 @@ export function TextPostCard({
                     <button
                       onClick={() => handleAction('aprovado')}
                       disabled={submitting || approvalBlocked}
-                      className="flex-1 flex items-center justify-center gap-1.5 bg-stone-900 text-white rounded py-2.5 text-[13px] font-semibold hover:bg-stone-800 disabled:opacity-50 transition-colors"
+                      className="flex-1 flex items-center justify-center gap-1.5 bg-stone-900 text-white rounded py-2.5 min-h-[44px] text-[13px] font-semibold hover:bg-stone-800 disabled:opacity-50 transition-colors"
                     >
                       <CheckCircle size={14} /> {saveState === 'saving' ? 'Salvando...' : 'Aprovar'}
                     </button>
@@ -192,7 +192,7 @@ export function TextPostCard({
                           ? 'Deixe um comentário para solicitar correção'
                           : undefined
                       }
-                      className="flex-1 flex items-center justify-center gap-1.5 border border-stone-200 bg-white text-stone-800 rounded py-2.5 text-[13px] font-semibold hover:bg-stone-50 disabled:opacity-50 transition-colors"
+                      className="flex-1 flex items-center justify-center gap-1.5 border border-stone-200 bg-white text-stone-800 rounded py-2.5 min-h-[44px] text-[13px] font-semibold hover:bg-stone-50 disabled:opacity-50 transition-colors"
                     >
                       <AlertCircle size={14} /> Solicitar correção
                     </button>

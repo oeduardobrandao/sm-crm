@@ -134,27 +134,32 @@ export function InstagramPostCard({
       <VideoPrewarm src={prewarmVideoUrl} />
       {/* Selection checkbox */}
       {onToggleSelect && (
-        <div className="absolute top-2 right-2 z-10">
+        <div className="absolute top-0 right-0 z-10">
           <button
             type="button"
             role="checkbox"
             aria-checked={isSelected}
+            aria-label="Selecionar publicação"
             onClick={(e) => {
               e.stopPropagation();
               onToggleSelect(post.id);
             }}
-            className={`w-5 h-5 rounded-full flex items-center justify-center cursor-pointer shadow-md ${isSelected ? 'bg-[#0095f6]' : 'bg-black/30 dark:bg-white/20 border-2 border-white dark:border-white/60'}`}
+            className="w-11 h-11 flex items-start justify-end p-2 cursor-pointer"
           >
-            <svg
-              width="10"
-              height="10"
-              fill="none"
-              stroke="#fff"
-              strokeWidth="2.5"
-              viewBox="0 0 24 24"
+            <span
+              className={`w-6 h-6 rounded-full flex items-center justify-center shadow-md ${isSelected ? 'bg-[#0095f6]' : 'bg-black/30 dark:bg-white/20 border-2 border-white dark:border-white/60'}`}
             >
-              <path d="M5 13l4 4L19 7" />
-            </svg>
+              <svg
+                width="12"
+                height="12"
+                fill="none"
+                stroke="#fff"
+                strokeWidth="2.5"
+                viewBox="0 0 24 24"
+              >
+                <path d="M5 13l4 4L19 7" />
+              </svg>
+            </span>
           </button>
         </div>
       )}
@@ -220,35 +225,41 @@ export function InstagramPostCard({
         {isCarousel && currentSlide > 0 && (
           <button
             onClick={prevSlide}
-            className="absolute left-1.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/80 dark:bg-black/60 flex items-center justify-center shadow-sm text-[#262626] dark:text-white opacity-0 group-hover/carousel:opacity-100 transition-opacity"
+            aria-label="Slide anterior"
+            className="absolute left-0 top-1/2 -translate-y-1/2 w-11 h-11 flex items-center justify-center text-[#262626] dark:text-white opacity-100 md:opacity-0 md:group-hover/carousel:opacity-100 transition-opacity"
           >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-            >
-              <path d="M15 18l-6-6 6-6" />
-            </svg>
+            <span className="w-7 h-7 rounded-full bg-white/80 dark:bg-black/60 flex items-center justify-center shadow-sm">
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+              >
+                <path d="M15 18l-6-6 6-6" />
+              </svg>
+            </span>
           </button>
         )}
         {isCarousel && currentSlide < media.length - 1 && (
           <button
             onClick={nextSlide}
-            className="absolute right-1.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/80 dark:bg-black/60 flex items-center justify-center shadow-sm text-[#262626] dark:text-white opacity-0 group-hover/carousel:opacity-100 transition-opacity"
+            aria-label="Próximo slide"
+            className="absolute right-0 top-1/2 -translate-y-1/2 w-11 h-11 flex items-center justify-center text-[#262626] dark:text-white opacity-100 md:opacity-0 md:group-hover/carousel:opacity-100 transition-opacity"
           >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-            >
-              <path d="M9 18l6-6-6-6" />
-            </svg>
+            <span className="w-7 h-7 rounded-full bg-white/80 dark:bg-black/60 flex items-center justify-center shadow-sm">
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+              >
+                <path d="M9 18l6-6-6-6" />
+              </svg>
+            </span>
           </button>
         )}
       </div>
@@ -472,9 +483,9 @@ export function InstagramPostCard({
                 <button
                   onClick={() => handleAction('aprovado')}
                   disabled={submitting || approvalBlocked}
-                  className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-[4px] bg-stone-900 text-white text-[11px] font-semibold hover:bg-stone-800 disabled:opacity-50 transition-colors"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 min-h-[44px] rounded-[4px] bg-stone-900 text-white text-[13px] font-semibold hover:bg-stone-800 disabled:opacity-50 transition-colors"
                 >
-                  <CheckCircle size={12} /> {saveState === 'saving' ? 'Salvando...' : 'Aprovar'}
+                  <CheckCircle size={16} /> {saveState === 'saving' ? 'Salvando...' : 'Aprovar'}
                 </button>
                 <button
                   onClick={() => handleAction('correcao')}
@@ -482,9 +493,9 @@ export function InstagramPostCard({
                   title={
                     !comentario.trim() ? 'Deixe um comentário para solicitar correção' : undefined
                   }
-                  className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-[4px] border border-stone-200 dark:border-stone-700 bg-white dark:bg-transparent text-stone-700 dark:text-stone-300 text-[11px] font-medium hover:bg-stone-50 dark:hover:bg-stone-800 disabled:opacity-50 transition-colors"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 min-h-[44px] rounded-[4px] border border-stone-200 dark:border-stone-700 bg-white dark:bg-transparent text-stone-700 dark:text-stone-300 text-[13px] font-medium hover:bg-stone-50 dark:hover:bg-stone-800 disabled:opacity-50 transition-colors"
                 >
-                  <AlertCircle size={12} /> Correção
+                  <AlertCircle size={16} /> Correção
                 </button>
               </div>
             </>
