@@ -317,7 +317,7 @@ export function StoryPostCard({
               <textarea
                 value={comentario}
                 onChange={(e) => setComentario(e.target.value)}
-                placeholder="Comentário (necessário para correção)…"
+                placeholder="Comente aqui ou corrija o texto diretamente no campo acima"
                 className="w-full rounded border border-stone-200 dark:border-[#333] px-2.5 py-1.5 text-[11px] resize-none min-h-[48px] bg-white dark:bg-[#0a0a0a] text-stone-900 dark:text-[#f5f5f5] placeholder:text-stone-400 dark:placeholder:text-[#666] focus:outline-none focus:border-stone-300 dark:focus:border-[#555] transition-all"
               />
               <div className="flex gap-1.5">

@@ -173,7 +173,7 @@ export function TextPostCard({
                   <textarea
                     value={comentario}
                     onChange={(e) => setComentario(e.target.value)}
-                    placeholder="Comentário (necessário para solicitar correção)…"
+                    placeholder="Comente aqui ou corrija o texto diretamente no campo acima"
                     className="w-full rounded border border-stone-200 px-4 py-3 text-[13px] resize-none min-h-[70px] bg-white text-stone-900 placeholder:text-stone-400 focus:outline-none focus:border-stone-300 focus:ring-4 focus:ring-[#FFBF30]/15 transition-all"
                   />
                   <div className="flex gap-2">
