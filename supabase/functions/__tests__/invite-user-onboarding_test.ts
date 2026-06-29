@@ -16,11 +16,13 @@ Deno.test("classifyExistingUser: onboardingComplete wins even if profile lookup 
   );
 });
 
-Deno.test("classifyExistingUser: confirmed-but-passwordless user (with profile) is re-invited (the wrong-password trap)", () => {
-  // Clicked the invite link (email confirmed) but never set a password.
+Deno.test("classifyExistingUser: confirmed-but-passwordless user gets a non-destructive resend-link", () => {
+  // Clicked the invite link (email confirmed) but never set a password. Re-send
+  // a fresh link to the SAME user instead of deleting + recreating them (which
+  // would invalidate the prior link and nuke an in-flight set-password session).
   assertEquals(
     classifyExistingUser({ emailConfirmed: true, hasProfile: true, onboardingComplete: false }),
-    "reinvite",
+    "resend-link",
   );
 });
 
