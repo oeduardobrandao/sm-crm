@@ -489,7 +489,7 @@ export default function ConfiguracaoPage() {
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || `Erro ${res.status}`);
       refetchInvites();
-      toast.success('Convite reenviado!');
+      toast.success(result.message || 'Convite reenviado!');
     } catch (err: unknown) {
       toast.error('Erro: ' + (err as Error).message);
     }
