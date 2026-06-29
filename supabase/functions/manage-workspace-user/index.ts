@@ -79,6 +79,19 @@ Deno.serve(async (req: Request) => {
       // Ignore unique constraint violation (user already a member)
       if (memberErr && !memberErr.message?.includes("duplicate key")) throw memberErr;
 
+      // Mark onboarding complete: reaching accept-invite means the user has set
+      // a password (configurar-senha calls updateUser before this). This is the
+      // server-authoritative signal that the invitee is fully onboarded, so a
+      // later re-invite adds them directly instead of wiping & re-inviting.
+      // Must succeed — a member row with onboarding_complete=false would be
+      // wiped by a subsequent re-invite, so surface the error and let the
+      // client retry rather than swallowing it.
+      const { error: onboardingErr } = await serviceClient
+        .from("profiles")
+        .update({ onboarding_complete: true })
+        .eq("id", user.id);
+      if (onboardingErr) throw onboardingErr;
+
       await insertAuditLog(serviceClient, {
         conta_id: callerProfile.conta_id,
         actor_user_id: user.id,

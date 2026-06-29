@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { seatsAvailable } from "./seats.ts";
+import { classifyExistingUser } from "./onboarding.ts";
 import { effectivePlanLimit } from "../_shared/entitlements-rpc.ts";
 
 async function findAuthUserByEmail(adminClient: any, email: string) {
@@ -21,7 +22,22 @@ async function findAuthUserByEmail(adminClient: any, email: string) {
 async function deleteUnconfirmedInvitedUser(adminClient: any, email: string) {
   const authUser = await findAuthUserByEmail(adminClient, email);
   if (!authUser) return;
-  if (authUser.email_confirmed_at) return;
+
+  // Key cleanup off onboarding completion, not email_confirmed_at: a user who
+  // clicked the invite link is confirmed but may never have set a password.
+  // Only skip deletion for a fully-onboarded user, or the anomalous
+  // confirmed-with-no-profile state (never auto-delete that).
+  const { data: profile } = await adminClient
+    .from('profiles')
+    .select('onboarding_complete')
+    .eq('id', authUser.id)
+    .maybeSingle();
+  const action = classifyExistingUser({
+    emailConfirmed: !!authUser.email_confirmed_at,
+    hasProfile: !!profile,
+    onboardingComplete: profile?.onboarding_complete === true,
+  });
+  if (action !== 'reinvite') return;
 
   await adminClient.from('profiles').delete().eq('id', authUser.id);
   await adminClient.from('workspace_members').delete().eq('user_id', authUser.id);
@@ -143,14 +159,41 @@ Deno.serve(async (req) => {
     const existingUser = await findAuthUserByEmail(adminClient, email);
 
     if (existingUser) {
-      if (!existingUser.email_confirmed_at) {
-        // Stale invited user who never confirmed — delete and re-invite fresh
+      // A user who clicked the invite link has their e-mail confirmed but may
+      // never have set a password ("confirmed-with-no-password"). Branch on
+      // whether they actually completed onboarding, not on email_confirmed_at,
+      // so a half-finished invitee is re-invited with a fresh set-password link
+      // instead of being silently marked "accepted" (which left them unable to
+      // log in — the "wrong password" symptom).
+      const { data: existingOnboarding } = await adminClient
+        .from('profiles')
+        .select('onboarding_complete')
+        .eq('id', existingUser.id)
+        .maybeSingle();
+
+      const action = classifyExistingUser({
+        emailConfirmed: !!existingUser.email_confirmed_at,
+        hasProfile: !!existingOnboarding,
+        onboardingComplete: existingOnboarding?.onboarding_complete === true,
+      });
+
+      if (action === 'blocked-anomalous') {
+        // Confirmed auth user with no profile row — impossible by design.
+        // Refuse to auto-wipe; surface for manual support intervention.
+        throw new Error(
+          'Conta com e-mail confirmado mas sem perfil. Não foi possível reenviar o convite automaticamente — contate o suporte.',
+        );
+      }
+
+      if (action === 'reinvite') {
+        // Never-onboarded user (never confirmed, or confirmed-but-passwordless)
+        // — delete and re-invite fresh so they receive a working set-password link.
         await adminClient.from('profiles').delete().eq('id', existingUser.id);
         await adminClient.from('workspace_members').delete().eq('user_id', existingUser.id);
         await adminClient.auth.admin.deleteUser(existingUser.id);
         // Fall through to "new user" path below
       } else {
-        // --- Confirmed user: add to this workspace directly ---
+        // --- Fully onboarded user: add to this workspace directly ---
         const { data: existingMembership } = await adminClient
           .from('workspace_members')
           .select('id')
@@ -188,6 +231,7 @@ Deno.serve(async (req) => {
               role,
               nome: existingUser.user_metadata?.nome || email.split('@')[0],
               active_workspace_id: profile.conta_id,
+              onboarding_complete: true,
             });
           if (insertErr) throw insertErr;
         }
