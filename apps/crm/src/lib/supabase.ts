@@ -157,6 +157,11 @@ export async function healPendingInvite() {
     if (!user?.email) return;
     const profile = await getCurrentProfile();
     if (!profile?.conta_id) return;
+    // Only heal users who actually completed onboarding (set a password).
+    // A confirmed-but-passwordless invitee who merely opened an invite/recovery
+    // link has a session but no password — they must NOT be auto-added to the
+    // workspace (and must not be marked onboarded by accept-invite).
+    if (!profile.onboarding_complete) return;
 
     const { data: membership } = await supabase
       .from('workspace_members')
