@@ -83,6 +83,13 @@ describe('LoginPage', () => {
     expect(screen.getByRole('button', { name: 'Criar Conta' })).toBeInTheDocument();
   });
 
+  it('opens the forgot-password flow directly from the query string', () => {
+    renderLoginPage('/login?tab=forgot');
+
+    expect(screen.getByText(/Informe seu e-mail para receber um link/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Criar Conta' })).not.toBeInTheDocument();
+  });
+
   it('shows the translated login error when Supabase rejects the credentials', async () => {
     mockedSignIn.mockResolvedValue({
       error: { message: 'Invalid login credentials' },
@@ -102,7 +109,9 @@ describe('LoginPage', () => {
     await waitFor(() => {
       expect(mockedSignIn).toHaveBeenCalledWith('ana@mesaas.com', 'senha-segura');
     });
-    expect(mockedToastError).toHaveBeenCalledWith('E-mail ou senha incorretos.');
+    expect(mockedToastError).toHaveBeenCalledWith(
+      'Não foi possível entrar. Se você foi convidado, use o link do e-mail ou "Esqueci minha senha" para definir sua senha.',
+    );
     expect(screen.getByTestId('current-path')).toHaveTextContent('/login');
   });
 

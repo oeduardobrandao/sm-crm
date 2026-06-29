@@ -23,8 +23,9 @@ export default function LoginPage() {
   const from = fromLoc?.pathname
     ? `${fromLoc.pathname}${fromLoc.search ?? ''}${fromLoc.hash ?? ''}`
     : '/dashboard';
+  const tabParam = new URLSearchParams(location.search).get('tab');
   const initialTab: TabKey =
-    new URLSearchParams(location.search).get('tab') === 'register' ? 'register' : 'login';
+    tabParam === 'register' ? 'register' : tabParam === 'forgot' ? 'forgot' : 'login';
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
   const [loading, setLoading] = useState(false);
 
