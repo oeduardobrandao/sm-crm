@@ -2,7 +2,7 @@ import { fireEvent, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createSupabaseQueryMock } from '../../../../../test/shared/supabaseMock';
 
-type SessionUser = { id: string } | null;
+type SessionUser = { id: string; email?: string } | null;
 
 function createMockClient(initialUser: SessionUser = { id: 'user-1' }) {
   const queryMock = createSupabaseQueryMock();
@@ -253,5 +253,44 @@ describe('supabase helpers', () => {
       redirectTo: `${window.location.origin}/configurar-senha`,
     });
     expect(auth.signOut).toHaveBeenCalled();
+  });
+});
+
+describe('healPendingInvite', () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  it('does NOT heal a confirmed-but-passwordless user (no password set yet)', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true } as Response);
+    const { module, queryMock } = await loadSupabaseModule({ id: 'user-1', email: 'novo@x.com' });
+    queryMock.queue('profiles', 'select', {
+      data: { id: 'user-1', conta_id: 'w-1', onboarding_complete: false },
+      error: null,
+    });
+    queryMock.queue('workspace_members', 'select', { data: null, error: null });
+
+    await module.healPendingInvite();
+
+    // Merely opening an invite/recovery link must not enrol the user.
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('heals an onboarded user whose membership row is missing', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true } as Response);
+    const { module, queryMock } = await loadSupabaseModule({ id: 'user-1', email: 'novo@x.com' });
+    queryMock.queue('profiles', 'select', {
+      data: { id: 'user-1', conta_id: 'w-1', onboarding_complete: true },
+      error: null,
+    });
+    queryMock.queue('workspace_members', 'select', { data: null, error: null });
+
+    await module.healPendingInvite();
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url, opts] = fetchSpy.mock.calls[0];
+    expect(String(url)).toContain('manage-workspace-user');
+    expect(JSON.parse(String((opts as RequestInit).body)).action).toBe('accept-invite');
   });
 });
