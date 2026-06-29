@@ -137,8 +137,22 @@ export default function ConfigurarSenhaPage() {
       return;
     }
 
-    if (isInvite && nome && session.user.id) {
-      await supabase.from('profiles').update({ nome }).eq('id', session.user.id);
+    if (isInvite && session.user.id) {
+      // Mark onboarding complete the moment the password is set, so a later
+      // re-invite never wipes a user who already has a working password
+      // (belt-and-suspenders alongside the server-side flag set in accept-invite).
+      const profileUpdate: { onboarding_complete: boolean; nome?: string } = {
+        onboarding_complete: true,
+      };
+      if (nome) profileUpdate.nome = nome;
+      const { error: profileErr } = await supabase
+        .from('profiles')
+        .update(profileUpdate)
+        .eq('id', session.user.id);
+      if (profileErr) {
+        // Non-fatal: accept-invite sets onboarding_complete server-side too.
+        console.warn('[configurar-senha] onboarding_complete update failed:', profileErr.message);
+      }
     }
 
     if (isInvite && email) {
