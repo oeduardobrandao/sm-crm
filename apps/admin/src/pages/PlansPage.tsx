@@ -314,7 +314,9 @@ export default function PlansPage() {
                   <input
                     type="text"
                     value={form.stripe_price_id_seat}
-                    onChange={(e) => setForm((f) => ({ ...f, stripe_price_id_seat: e.target.value }))}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, stripe_price_id_seat: e.target.value }))
+                    }
                     placeholder="price_..."
                     className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Sans'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
                   />

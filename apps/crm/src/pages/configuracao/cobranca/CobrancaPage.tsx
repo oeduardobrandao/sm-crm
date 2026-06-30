@@ -278,9 +278,7 @@ export default function CobrancaPage() {
 
           {seats != null && (
             <div className="seat-selector" data-testid="active-seat-selector">
-              <span className="seat-selector__label">
-                Usuários ({seats.used} em uso)
-              </span>
+              <span className="seat-selector__label">Usuários ({seats.used} em uso)</span>
               <div className="seat-selector__control">
                 <button
                   type="button"
@@ -422,7 +420,9 @@ export default function CobrancaPage() {
                     (() => {
                       const selected = seatsFor(p);
                       const base =
-                        isYear && p.price_brl_annual != null ? p.price_brl_annual : (p.price_brl ?? 0);
+                        isYear && p.price_brl_annual != null
+                          ? p.price_brl_annual
+                          : (p.price_brl ?? 0);
                       const cost = computeSeatCost({
                         basePriceCentavos: base,
                         includedSeats: p.included_seats,
@@ -470,8 +470,8 @@ export default function CobrancaPage() {
                               <div className="plan-cost-breakdown__row">
                                 <span>
                                   {cost.extraSeats}{' '}
-                                  {cost.extraSeats === 1 ? 'usuário extra' : 'usuários extras'}{' '}
-                                  × {formatBRL(p.seat_addon_brl ?? 0)}
+                                  {cost.extraSeats === 1 ? 'usuário extra' : 'usuários extras'} ×{' '}
+                                  {formatBRL(p.seat_addon_brl ?? 0)}
                                 </span>
                                 <span data-testid="seat-extra-cost">
                                   {formatBRL(cost.extraCostCentavos)}

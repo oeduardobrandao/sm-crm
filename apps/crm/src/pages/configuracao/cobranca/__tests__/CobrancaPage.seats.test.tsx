@@ -26,7 +26,10 @@ vi.mock('@/context/AuthContext', () => ({
 }));
 
 // confirm() backs the proration confirmation on the active-subscriber control.
-vi.stubGlobal('confirm', vi.fn(() => true));
+vi.stubGlobal(
+  'confirm',
+  vi.fn(() => true),
+);
 
 import CobrancaPage from '../CobrancaPage';
 
@@ -69,7 +72,10 @@ describe('CobrancaPage seats', () => {
     getWorkspaceSeats.mockReset().mockResolvedValue(null);
     listActivePlans.mockReset().mockResolvedValue([AGENCY]);
     (globalThis.confirm as ReturnType<typeof vi.fn>).mockReset?.();
-    vi.stubGlobal('confirm', vi.fn(() => true));
+    vi.stubGlobal(
+      'confirm',
+      vi.fn(() => true),
+    );
     // jsdom: stub navigation used by handleUpgrade
     Object.defineProperty(window, 'location', {
       value: { assign: vi.fn() },
