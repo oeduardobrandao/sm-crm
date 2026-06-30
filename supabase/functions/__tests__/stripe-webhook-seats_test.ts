@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "./assert.ts";
-import { resolveSyncTarget } from "../stripe-webhook/index.ts";
+import { resolveSyncTarget } from "../_shared/billing-logic.ts";
 import type { PlanPriceRow } from "../_shared/billing-logic.ts";
 
 const PLANS: PlanPriceRow[] = [

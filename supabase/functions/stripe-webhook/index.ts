@@ -2,10 +2,10 @@ import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2";
 import Stripe from "npm:stripe@17";
 import { stripe, cryptoProvider } from "../_shared/stripe.ts";
 import {
-  resolvePlanFromPriceId,
-  resolveSubscriptionSeats,
+  resolveSyncTarget,
   statusToPlanId,
   type PlanPriceRow,
+  type SubItem,
 } from "../_shared/billing-logic.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -15,83 +15,6 @@ const STRIPE_WEBHOOK_SECRET =
   (() => {
     throw new Error("STRIPE_WEBHOOK_SECRET environment variable is required");
   })();
-
-export interface SubItem {
-  price?: { id?: string | null } | null;
-  quantity?: number | null;
-  current_period_end?: number | null;
-}
-
-/**
- * Pure decision logic for syncSubscription. Classifies all subscription items
- * by price_id (never by array index), resolves the tier item, computes purchased
- * seats, and derives the period-end from the resolved tier item.
- *
- *  - `planIdToWrite`: value for statusToPlanId's subscribedPlanId path — null means
- *    "no tier resolved, leave workspaces.plan_id unchanged" (kills the silent default fallback).
- *  - `mirrorPlanId`: value for workspace_subscriptions.plan_id — the resolved tier, or the
- *    prior mirror value when nothing resolves (never overwritten with null).
- *  - `purchasedSeats`: Stripe seat quantity, forced to 0 unless status is active/trialing.
- *  - `periodEndUnix`: current_period_end from the resolved tier item (basil fallback), or null.
- *  - `mustThrow`: true when an ACTIVE/TRIALING sub has a seat item but no resolvable tier —
- *    the caller must throw 5xx so Stripe redelivers (a shared seat price cannot identify a tier).
- */
-export function resolveSyncTarget(args: {
-  items: SubItem[];
-  status: string;
-  plans: PlanPriceRow[];
-  priorPlanId: string | null;
-}): {
-  planIdToWrite: string | null;
-  mirrorPlanId: string | null;
-  billingInterval: "month" | "year" | null;
-  purchasedSeats: number;
-  periodEndUnix: number | null;
-  mustThrow: boolean;
-} {
-  const { items, status, plans, priorPlanId } = args;
-
-  // 1. Resolve the TIER item by scanning every item (order-independent).
-  let resolved: { plan_id: string; interval: "month" | "year" } | null = null;
-  let tierItem: SubItem | null = null;
-  for (const it of items) {
-    const pid = it?.price?.id ?? null;
-    if (!pid) continue;
-    const r = resolvePlanFromPriceId(pid, plans);
-    if (r) {
-      resolved = r;
-      tierItem = it;
-      break;
-    }
-  }
-
-  // 2. Purchased seats from the seat item(s), status-aware.
-  // Cast to billing-logic's SubItem shape; resolveSubscriptionSeats guards null price internally.
-  const seats = resolveSubscriptionSeats(
-    items as Parameters<typeof resolveSubscriptionSeats>[0],
-    plans,
-  );
-  const seatsLive = status === "active" || status === "trialing";
-  const purchasedSeats = seatsLive ? seats.purchased_seats : 0;
-
-  // 3. Did a seat item exist at all? Presence-based (independent of quantity).
-  const hasSeatItem = seats.has_seat_item;
-
-  // 4. Active/trialing sub with a seat item but no tier -> unrecoverable; force redelivery.
-  const mustThrow = seatsLive && tierItem === null && hasSeatItem;
-
-  // 5. period-end: prefer the resolved tier item; else fall back to the first item present.
-  const periodEndUnix = (tierItem?.current_period_end ?? items?.[0]?.current_period_end) ?? null;
-
-  return {
-    planIdToWrite: resolved?.plan_id ?? null,
-    mirrorPlanId: resolved?.plan_id ?? priorPlanId ?? null,
-    billingInterval: resolved?.interval ?? null,
-    purchasedSeats,
-    periodEndUnix,
-    mustThrow,
-  };
-}
 
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
