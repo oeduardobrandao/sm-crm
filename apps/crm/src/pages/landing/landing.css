@@ -108,7 +108,7 @@ color:#374151;
 }
 .hdr-nav button:hover{color:#12151a;background:rgba(30,36,48,.04)}
 .hdr-actions{display:flex;align-items:center;gap:10px}
-.hdr-actions .link{color:#374151;font-size:.88rem;font-weight:500;text-decoration:none;padding:8px 12px}
+.hdr-actions .link{display:inline-flex;align-items:center;gap:5px;color:#374151;font-size:.88rem;font-weight:500;text-decoration:none;padding:8px 12px}
 .hdr-actions .link:hover{color:#12151a}
 
 @media(max-width:820px){

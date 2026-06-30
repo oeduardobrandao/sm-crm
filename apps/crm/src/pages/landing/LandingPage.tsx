@@ -161,7 +161,7 @@ function Header() {
             ) : (
               <>
                 <a href="/login" className="link">
-                  <LogIn size={15} style={{ marginRight: 4, verticalAlign: '-2px' }} />
+                  <LogIn size={15} />
                   Entrar
                 </a>
                 <a href="/login?tab=register" className="lp-btn lp-btn-primary">
