@@ -16,92 +16,19 @@ import {
   RATE_LIMIT_LABELS,
 } from '../lib/api';
 import { getPlanColor } from '../lib/plan-colors';
-
-const DEFAULT_RESOURCES: Record<string, number> = {
-  max_clients: 5,
-  max_team_members: 3,
-  max_instagram_accounts: 1,
-  storage_quota_bytes: 524288000,
-  max_leads: 100,
-  max_hub_tokens: 3,
-  max_workflow_templates: 5,
-  max_active_workflows_per_client: 3,
-  max_custom_properties_per_template: 5,
-  max_posts_per_workflow: 20,
-  max_workspaces_per_user: 1,
-};
-
-const DEFAULT_FEATURES: Record<string, boolean> = Object.fromEntries(
-  FEATURE_FLAG_KEYS.map((k) => [k, false]),
-);
-
-const DEFAULT_RATES: Record<string, number> = {
-  rate_instagram_syncs_per_day: 5,
-  rate_ai_analyses_per_month: 10,
-  rate_report_generations_per_month: 10,
-};
-
-interface FormState {
-  name: string;
-  resources: Record<string, number | null>;
-  features: Record<string, boolean>;
-  rates: Record<string, number | null>;
-  is_default: boolean;
-  is_active: boolean;
-  stripe_product_id: string;
-  stripe_price_id: string;
-  stripe_price_id_annual: string;
-}
-
-function planToForm(plan: Plan): FormState {
-  const resources: Record<string, number | null> = {};
-  for (const k of RESOURCE_LIMIT_KEYS) resources[k] = plan[k] as number | null;
-  const features: Record<string, boolean> = {};
-  for (const k of FEATURE_FLAG_KEYS) features[k] = (plan[k] as boolean) ?? false;
-  const rates: Record<string, number | null> = {};
-  for (const k of RATE_LIMIT_KEYS) rates[k] = plan[k] as number | null;
-  return {
-    name: plan.name,
-    resources,
-    features,
-    rates,
-    is_default: plan.is_default,
-    is_active: plan.is_active,
-    stripe_product_id: plan.stripe_product_id ?? '',
-    stripe_price_id: plan.stripe_price_id ?? '',
-    stripe_price_id_annual: plan.stripe_price_id_annual ?? '',
-  };
-}
-
-function formToPayload(form: FormState): Record<string, unknown> {
-  return {
-    name: form.name,
-    is_default: form.is_default,
-    is_active: form.is_active,
-    stripe_product_id: form.stripe_product_id || null,
-    stripe_price_id: form.stripe_price_id || null,
-    stripe_price_id_annual: form.stripe_price_id_annual || null,
-    ...form.resources,
-    ...form.features,
-    ...form.rates,
-  };
-}
+import {
+  type FormState,
+  emptyFormState,
+  planToForm,
+  formToPayload,
+  parseIntInput,
+} from './plan-form';
 
 export default function PlansPage() {
   const queryClient = useQueryClient();
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState<FormState>({
-    name: '',
-    resources: { ...DEFAULT_RESOURCES },
-    features: { ...DEFAULT_FEATURES },
-    rates: { ...DEFAULT_RATES },
-    is_default: false,
-    is_active: true,
-    stripe_product_id: '',
-    stripe_price_id: '',
-    stripe_price_id_annual: '',
-  });
+  const [form, setForm] = useState<FormState>(emptyFormState);
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'plans'],
@@ -140,17 +67,7 @@ export default function PlansPage() {
 
   const openCreate = () => {
     setEditingPlan(null);
-    setForm({
-      name: '',
-      resources: { ...DEFAULT_RESOURCES },
-      features: { ...DEFAULT_FEATURES },
-      rates: { ...DEFAULT_RATES },
-      is_default: false,
-      is_active: true,
-      stripe_product_id: '',
-      stripe_price_id: '',
-      stripe_price_id_annual: '',
-    });
+    setForm(emptyFormState());
     setShowForm(true);
   };
 
@@ -242,6 +159,53 @@ export default function PlansPage() {
                     />
                     Active
                   </label>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                    Monthly price (R$)
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={form.price_brl_input}
+                    onChange={(e) => setForm((f) => ({ ...f, price_brl_input: e.target.value }))}
+                    placeholder="99.90"
+                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Sans'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                    Annual price (R$)
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={form.price_brl_annual_input}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, price_brl_annual_input: e.target.value }))
+                    }
+                    placeholder="959.00"
+                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Sans'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                    Sort order
+                  </label>
+                  <input
+                    type="number"
+                    step="1"
+                    min="0"
+                    value={form.sort_order ?? ''}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, sort_order: parseIntInput(e.target.value) }))
+                    }
+                    placeholder="0"
+                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Sans'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
+                  />
                 </div>
               </div>
 
