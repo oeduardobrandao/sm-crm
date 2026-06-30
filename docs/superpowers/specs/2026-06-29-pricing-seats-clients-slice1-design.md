@@ -1,7 +1,7 @@
 # Pricing migration — Slice 1: Core seats + clients model
 
 **Date:** 2026-06-29
-**Status:** Draft for review (brainstormed → multi-agent design + adversarial-verify pass)
+**Status:** Approved (user-reviewed 2026-06-29; all §9 questions resolved) — pending implementation plan
 **Branch:** `docs/pricing-seats-clients-spec` (spec); implementation lands on `feat/pricing-seats-clients` off `main`
 **Related:** [`2026-06-09-stripe-payments-money-in-design.md`](2026-06-09-stripe-payments-money-in-design.md) (money-in loop) · [`2026-06-11-paywall-feature-gating-design.md`](2026-06-11-paywall-feature-gating-design.md) (paywall enforcement)
 
@@ -63,6 +63,7 @@ No client packs, no usage-overage billing. More clients = upgrade to the next ti
 |---|---|
 | Flip `free`/`start`/`pro`/`max` to `is_active=false`; grandfather-display generalization in `plan-display.ts` | **Slice 4** |
 | One-click add-seat / upgrade-tier when `plan_limit_exceeded` fires (contextual upsell) | **Slice 2** |
+| Downgrade grace/urgency: on tier downgrade drop the extra-seat billing, let over-cap members keep working on borrowed time, show a "seats at risk — upgrade to keep them" warning, + the revocation/grace policy | **Slice 2** |
 | 14-day no-card trial; moving `is_default` off `free` | **Slice 3** (BEMVINDO 30-day promo stays byte-for-byte untouched) |
 | Retiring feature-gating / removing the 24 `FeatureGate` call-sites | **Slice 5** (only flip `feature_*` TRUE on new rows here) |
 | AI cap scaling beyond setting the column values; storage abuse ceiling | catalog data / separate guard, not Stripe plumbing |
@@ -260,16 +261,18 @@ Existing live subs have **one** line item, so order is moot and `purchased_seats
 
 **CI gates:** run `npm run build` (tsc), `npm run test`, `deno test supabase/functions/`, the entitlements SQL suite, plus the repo's eslint + prettier `format:check` + coverage ratchet before pushing.
 
-## 9. Open questions for the user
+## 9. Resolved decisions (user review, 2026-06-29)
 
-1. **Seat price scope:** one shared seat Price across all three tiers (assumed — keeps proration simple and `resolveSubscriptionSeats` tier-agnostic), or per-tier seat prices?
-2. **Annual seat price:** 10× monthly (2 months free, mirrors the tier rule — recommended) or full 12×?
-3. **Scale seat add-ons:** Scale has unlimited clients but base 10 seats — confirm a Scale customer can buy seat 11+ (assumed yes; affects no math since base is finite).
-4. **Tier downgrade with held extra seats** (e.g. Agency base 5 → Starter base 2 with extras): Slice 1 keeps `extra_seats` unchanged (total drops by 3). Confirm, or product wants auto-re-leveling.
-5. **Comp + purchased seats:** confirmed policy is **comp override wins outright, seats not stacked**. Confirm this is the intended product behavior for comped workspaces that also hold a Stripe sub.
-6. **`used` definition for the selector:** server computes `used = members + pending invites` (matches the invite gate). Confirm the selector floors on members+pending, not members-only.
-7. **`PAID_PLANS` approach:** DB-driven validation (recommended — Slice 4's `is_active` flip auto-removes old tiers) vs keeping a hardcoded array.
-8. **Final BRL numbers:** `11000`/`17900`/`27900` + `2500` seat are placeholders pending the willingness-to-pay pass — OK to ship as illustrative and re-tune later?
+All open questions were resolved during spec review:
+
+1. **Seat price scope:** ✅ One shared seat Price across all three tiers (`resolveSubscriptionSeats` stays tier-agnostic).
+2. **Annual seat price:** ✅ 10× monthly (2 months free, mirrors the tier rule).
+3. **Scale seat add-ons:** ✅ Scale customers can buy seat 11+.
+4. **Tier downgrade with held extra seats:** ✅ **Slice 1 keeps `extra_seats` unchanged** — no special logic; the seat line item rides along on the subscription, total capacity drops only by the base-seat delta. The product intent (on downgrade, *stop* the extra-seat billing, let over-capacity members keep working on borrowed time, and show a "seats at risk — upgrade to keep them" warning for urgency) is a **downgrade-experience behavior deferred to Slice 2** — it owns dropping the seat item, the warning UI, and the revocation/grace policy. Slice 1 implements **no** grace/revocation.
+5. **Comp + purchased seats:** ✅ Comp override wins outright; seats are **not** stacked on a comp.
+6. **`used` for the selector:** ✅ Server computes `used = members + pending invites` (matches the invite gate).
+7. **`PAID_PLANS`:** ✅ DB-driven validation (plan exists + `is_active=true` + has `stripe_price_id`).
+8. **Final BRL numbers:** ✅ Confirmed launch numbers `11000`/`17900`/`27900`¢ + `2500`¢ seat (re-tunable later; code is centavos-agnostic).
 
 ---
 
