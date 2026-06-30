@@ -51,9 +51,13 @@ interface FormState {
   stripe_product_id: string;
   stripe_price_id: string;
   stripe_price_id_annual: string;
+  stripe_price_id_seat: string;
+  stripe_price_id_seat_annual: string;
+  seat_addon_brl: number | null;
+  seat_addon_brl_annual: number | null;
 }
 
-function planToForm(plan: Plan): FormState {
+export function planToForm(plan: Plan): FormState {
   const resources: Record<string, number | null> = {};
   for (const k of RESOURCE_LIMIT_KEYS) resources[k] = plan[k] as number | null;
   const features: Record<string, boolean> = {};
@@ -70,10 +74,14 @@ function planToForm(plan: Plan): FormState {
     stripe_product_id: plan.stripe_product_id ?? '',
     stripe_price_id: plan.stripe_price_id ?? '',
     stripe_price_id_annual: plan.stripe_price_id_annual ?? '',
+    stripe_price_id_seat: plan.stripe_price_id_seat ?? '',
+    stripe_price_id_seat_annual: plan.stripe_price_id_seat_annual ?? '',
+    seat_addon_brl: plan.seat_addon_brl ?? null,
+    seat_addon_brl_annual: plan.seat_addon_brl_annual ?? null,
   };
 }
 
-function formToPayload(form: FormState): Record<string, unknown> {
+export function formToPayload(form: FormState): Record<string, unknown> {
   return {
     name: form.name,
     is_default: form.is_default,
@@ -81,6 +89,10 @@ function formToPayload(form: FormState): Record<string, unknown> {
     stripe_product_id: form.stripe_product_id || null,
     stripe_price_id: form.stripe_price_id || null,
     stripe_price_id_annual: form.stripe_price_id_annual || null,
+    stripe_price_id_seat: form.stripe_price_id_seat || null,
+    stripe_price_id_seat_annual: form.stripe_price_id_seat_annual || null,
+    seat_addon_brl: form.seat_addon_brl ?? null,
+    seat_addon_brl_annual: form.seat_addon_brl_annual ?? null,
     ...form.resources,
     ...form.features,
     ...form.rates,
@@ -150,6 +162,10 @@ export default function PlansPage() {
       stripe_product_id: '',
       stripe_price_id: '',
       stripe_price_id_annual: '',
+      stripe_price_id_seat: '',
+      stripe_price_id_seat_annual: '',
+      seat_addon_brl: null,
+      seat_addon_brl_annual: null,
     });
     setShowForm(true);
   };
@@ -281,6 +297,68 @@ export default function PlansPage() {
                       setForm((f) => ({ ...f, stripe_price_id_annual: e.target.value }))
                     }
                     placeholder="price_..."
+                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Sans'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                    Seat Price ID (monthly)
+                  </label>
+                  <input
+                    type="text"
+                    value={form.stripe_price_id_seat}
+                    onChange={(e) => setForm((f) => ({ ...f, stripe_price_id_seat: e.target.value }))}
+                    placeholder="price_..."
+                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Sans'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                    Seat Price ID (annual)
+                  </label>
+                  <input
+                    type="text"
+                    value={form.stripe_price_id_seat_annual}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, stripe_price_id_seat_annual: e.target.value }))
+                    }
+                    placeholder="price_..."
+                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Sans'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                    Seat Price (monthly, centavos)
+                  </label>
+                  <input
+                    type="number"
+                    value={form.seat_addon_brl ?? ''}
+                    placeholder="2500"
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setForm((f) => ({ ...f, seat_addon_brl: v === '' ? null : parseInt(v, 10) }));
+                    }}
+                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Sans'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                    Seat Price (annual, centavos)
+                  </label>
+                  <input
+                    type="number"
+                    value={form.seat_addon_brl_annual ?? ''}
+                    placeholder="25000"
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setForm((f) => ({
+                        ...f,
+                        seat_addon_brl_annual: v === '' ? null : parseInt(v, 10),
+                      }));
+                    }}
                     className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Sans'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
                   />
                 </div>

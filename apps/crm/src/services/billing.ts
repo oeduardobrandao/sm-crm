@@ -7,6 +7,8 @@ export interface BillingPlan {
   name: string;
   price_brl: number | null;
   price_brl_annual: number | null;
+  seat_addon_brl: number | null;
+  seat_addon_brl_annual: number | null;
   sort_order: number;
   max_clients: number | null;
   max_team_members: number | null;
@@ -41,12 +43,23 @@ export async function listActivePlans(): Promise<BillingPlan[]> {
   const { data, error } = await supabase
     .from('plans')
     .select(
-      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members, storage_quota_bytes, feature_hub_portal, feature_analytics_reports, feature_brand_customization',
+      'id, name, price_brl, price_brl_annual, seat_addon_brl, seat_addon_brl_annual, sort_order, max_clients, max_team_members, storage_quota_bytes, feature_hub_portal, feature_analytics_reports, feature_brand_customization',
     )
     .eq('is_active', true)
     .order('sort_order', { ascending: true });
   if (error) throw new Error(error.message);
   return (data ?? []) as BillingPlan[];
+}
+
+/** Per-seat cost (centavos) for `seats` seats at the given billing interval. */
+export function computeSeatCost(
+  plan: BillingPlan,
+  interval: BillingInterval,
+  seats: number,
+): number {
+  const seatAddonCentavos =
+    interval === 'year' ? plan.seat_addon_brl_annual : plan.seat_addon_brl;
+  return (seatAddonCentavos ?? 0) * seats;
 }
 
 /**

@@ -56,6 +56,10 @@ export interface Plan {
   stripe_product_id: string | null;
   stripe_price_id: string | null;
   stripe_price_id_annual: string | null;
+  stripe_price_id_seat: string | null;
+  stripe_price_id_seat_annual: string | null;
+  seat_addon_brl: number | null;
+  seat_addon_brl_annual: number | null;
   max_clients: number | null;
   max_team_members: number | null;
   max_workflow_templates: number | null;
