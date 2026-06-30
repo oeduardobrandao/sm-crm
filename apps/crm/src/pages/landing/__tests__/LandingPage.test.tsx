@@ -70,11 +70,15 @@ describe('LandingPage', () => {
     renderLandingPage();
 
     const featuresScroll = mockSectionScroll('features');
+    const agenteScroll = mockSectionScroll('agente');
     const pricingScroll = mockSectionScroll('pricing');
     const faqScroll = mockSectionScroll('faq');
 
     fireEvent.click(screen.getByRole('button', { name: /Ver como funciona/i }));
     expect(featuresScroll).toHaveBeenCalledWith({ behavior: 'smooth' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Agente IA' }));
+    expect(agenteScroll).toHaveBeenCalledWith({ behavior: 'smooth' });
 
     fireEvent.click(screen.getByRole('button', { name: 'Preços' }));
     expect(pricingScroll).toHaveBeenCalledWith({ behavior: 'smooth' });
@@ -86,8 +90,9 @@ describe('LandingPage', () => {
       .getAllByRole('link')
       .filter((link) => link.getAttribute('href') === '/login?tab=register');
 
-    // Promo banner + header + hero + final CTA each link to signup, plus all 4 pricing CTAs.
-    expect(registerLinks).toHaveLength(8);
+    // Promo banner + header + hero + agent section + final CTA each link to signup,
+    // plus all 4 pricing CTAs.
+    expect(registerLinks).toHaveLength(9);
     expect(screen.getByRole('link', { name: 'Entrar' })).toHaveAttribute('href', '/login');
   });
 

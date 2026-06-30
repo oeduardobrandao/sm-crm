@@ -6,6 +6,7 @@ import {
   Linkedin,
   LogIn,
   Moon,
+  Sparkles,
   Sun,
   X,
   Youtube,
@@ -13,6 +14,7 @@ import {
 import { useAuth } from '@/context/AuthContext';
 
 import {
+  AgentVisual,
   CalendarVisual,
   Calendar as CalendarIcon,
   CircleDollarSign,
@@ -75,6 +77,7 @@ export default function LandingPage() {
       <Hero />
       <Ticker />
       <Features />
+      <AgentSection />
       <HowItWorks />
       <Testimonial />
       <Pricing />
@@ -141,6 +144,7 @@ function Header() {
         </a>
         <nav className="hdr-nav">
           <button onClick={() => scrollTo('features')}>Funcionalidades</button>
+          <button onClick={() => scrollTo('agente')}>Agente IA</button>
           <button onClick={() => scrollTo('how')}>Como funciona</button>
           <button onClick={() => scrollTo('pricing')}>Preços</button>
           <button onClick={() => scrollTo('faq')}>FAQ</button>
@@ -157,7 +161,7 @@ function Header() {
             ) : (
               <>
                 <a href="/login" className="link">
-                  <LogIn size={15} style={{ marginRight: 4, verticalAlign: '-2px' }} />
+                  <LogIn size={15} />
                   Entrar
                 </a>
                 <a href="/login?tab=register" className="lp-btn lp-btn-primary">
@@ -473,6 +477,48 @@ function Features() {
           </div>
           <div className="feat-visual">
             <FinanceVisual />
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function AgentSection() {
+  return (
+    <section className="agent-wrap" id="agente">
+      <div className="lp-container">
+        <div className="agent-grid reveal">
+          <div className="agent-copy">
+            <span className="agent-eyebrow">
+              <Sparkles size={14} /> Novo · Agente de IA
+            </span>
+            <h2>Um agente de conteúdo que escreve com a voz de cada cliente.</h2>
+            <p>
+              Conecte seu Mesaas ao Claude e gere carrosséis, roteiros de Reels e legendas sob
+              medida — a partir do briefing, da marca e dos posts que mais performaram. Sem sair do
+              seu fluxo.
+            </p>
+            <ul className="agent-bullets">
+              <li>
+                <span className="check">✓</span>
+                <span>Aprende o briefing e a identidade de cada marca</span>
+              </li>
+              <li>
+                <span className="check">✓</span>
+                <span>Usa o que já performou como referência</span>
+              </li>
+              <li>
+                <span className="check">✓</span>
+                <span>Conecta com claude.ai, Claude Desktop ou API</span>
+              </li>
+            </ul>
+            <a href="/login?tab=register" className="lp-btn lp-btn-primary lg">
+              Criar conta grátis <ArrowRight size={16} />
+            </a>
+          </div>
+          <div className="agent-visual">
+            <AgentVisual />
           </div>
         </div>
       </div>

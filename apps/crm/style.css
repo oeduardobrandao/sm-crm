@@ -1648,6 +1648,14 @@ select.form-input option {
   display: inline !important;
 }
 
+.auth-logo a {
+  transition: opacity var(--transition);
+}
+
+.auth-logo a:hover {
+  opacity: 0.7;
+}
+
 .auth-logo-sub {
   font-size: 0.6rem;
   font-weight: 700;
@@ -1661,21 +1669,26 @@ select.form-input option {
   display: flex;
   gap: 0;
   margin-bottom: 2rem;
-  background: #f1f5f9;
+  background: #12151a;
   border-radius: 10px;
-  padding: 4px;
+  padding: 3px;
+  /* Match the 36px height of the inputs and submit button. */
+  height: 36px;
 }
 
 .auth-tab {
   flex: 1;
-  padding: 0.6rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.6rem;
   border: none;
   background: transparent;
-  border-radius: 8px;
+  border-radius: 7px;
   font-weight: 600;
   font-size: 0.88rem;
   cursor: pointer;
-  color: var(--text-muted);
+  color: #9ca3af;
   transition: all var(--transition);
   font-family: inherit;
 }
@@ -1731,6 +1744,9 @@ select.form-input option {
   width: 100%;
   padding: 0.75rem;
   font-size: 0.95rem;
+  letter-spacing: 0.02em;
+  /* Match the inputs' radius (rounded-md → 10px) so fields and buttons align. */
+  border-radius: 10px;
   margin-top: 0.5rem;
   justify-content: center;
 }
@@ -1740,6 +1756,314 @@ select.form-input option {
   font-size: 0.75rem;
   color: var(--text-light);
   margin-top: 2rem;
+}
+
+/* ===== Auth split-screen (desktop) + Claude (MCP) showcase panel ===== */
+/* Left form pane. On mobile this is a benign wrapper that keeps the card centered
+   exactly as before; the showcase panel is hidden below the desktop breakpoint. */
+.auth-pane {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.auth-showcase {
+  display: none;
+}
+
+@media (min-width: 901px) {
+  /* Switch to a two-column split: white form pane left, dark showcase right.
+     The brand gradient is dropped here (it stays on mobile). */
+  .auth-wrapper,
+  [data-theme='dark'] .auth-wrapper {
+    flex-direction: row;
+    align-items: stretch;
+    padding: 0;
+    background: #ffffff;
+  }
+
+  .auth-pane {
+    flex: 1 1 48%;
+    padding: 2rem clamp(2rem, 5vw, 4rem);
+    overflow-y: auto;
+  }
+
+  /* Strip the card chrome on the clean white pane (no shadow/border/bg). */
+  .auth-pane .auth-card {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    border-radius: 0;
+    padding: 0;
+    max-width: 380px;
+  }
+
+  .auth-showcase {
+    flex: 1 1 52%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    background: #12151a;
+    color: #f8fafc;
+    /* Bigger left padding, smaller right padding so the content spreads
+       further toward the right edge of the page. */
+    padding: clamp(2.5rem, 5vw, 4.5rem) clamp(1.75rem, 3vw, 2.75rem) clamp(2.5rem, 5vw, 4.5rem)
+      clamp(2.75rem, 6vw, 5rem);
+    overflow: hidden;
+  }
+}
+
+.auth-showcase-inner {
+  max-width: 560px;
+}
+
+.auth-showcase-gallery {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 1.75rem;
+}
+
+.auth-thumb {
+  flex: 1;
+  background: #1a1e26;
+  border: 1px solid #2a2f3a;
+  border-radius: 14px;
+  padding: 0.6rem;
+}
+
+.auth-thumb-media {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 56px;
+  border-radius: 10px;
+  margin-bottom: 0.6rem;
+  color: #ffffff;
+}
+
+.auth-thumb-media--carousel {
+  background: linear-gradient(135deg, #3462ee 0%, #42c8f5 100%);
+}
+
+.auth-thumb-media--reel {
+  background: linear-gradient(135deg, #f542c8 0%, #f55a42 100%);
+}
+
+.auth-thumb-media--post {
+  background: linear-gradient(135deg, #eab308 0%, #3ecf8e 100%);
+}
+
+.auth-thumb-line {
+  display: block;
+  height: 5px;
+  border-radius: 3px;
+  background: #2a2f3a;
+  margin-bottom: 5px;
+}
+
+.auth-thumb-line--short {
+  width: 60%;
+  margin-bottom: 0;
+}
+
+.auth-showcase-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: rgba(234, 179, 8, 0.14);
+  border: 1px solid rgba(234, 179, 8, 0.35);
+  color: #eab308;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  margin-bottom: 1.5rem;
+}
+
+.auth-showcase-title {
+  font-family: var(--font-heading);
+  font-size: clamp(1.8rem, 2.6vw, 2.6rem);
+  font-weight: 700;
+  line-height: 1.12;
+  color: #f8fafc;
+  margin: 0 0 0.9rem;
+}
+
+.auth-showcase-desc {
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: #9ca3af;
+  max-width: 30rem;
+  margin: 0 0 2.5rem;
+}
+
+.auth-showcase-collage {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 290px;
+}
+
+/* Out-of-focus backdrop that composes the scene behind the agent card —
+   dimmed and blurred so the white card stays the focal point. */
+.auth-collage-bg {
+  position: absolute;
+  inset: 0;
+  filter: blur(2px);
+  opacity: 0.6;
+}
+
+.auth-frag {
+  position: absolute;
+  background: #1a1e26;
+  border: 1px solid #2a2f3a;
+  border-radius: 14px;
+  padding: 0.7rem;
+}
+
+.auth-frag-line {
+  display: block;
+  height: 6px;
+  border-radius: 3px;
+  background: #2a2f3a;
+  margin-bottom: 6px;
+}
+
+.auth-frag-line--short {
+  width: 55%;
+  margin-bottom: 0;
+}
+
+.auth-frag-media {
+  height: 58px;
+  border-radius: 9px;
+  margin-bottom: 0.6rem;
+}
+
+.auth-frag-media--a {
+  background: linear-gradient(135deg, #3462ee 0%, #42c8f5 100%);
+}
+
+.auth-frag-media--b {
+  background: linear-gradient(135deg, #f542c8 0%, #f55a42 100%);
+}
+
+.auth-frag-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 5px;
+  height: 40px;
+  margin-top: 0.5rem;
+}
+
+.auth-frag-bars span {
+  flex: 1;
+  background: #3a4150;
+  border-radius: 3px;
+}
+
+.auth-frag-swatches {
+  display: flex;
+  gap: 6px;
+  margin-top: 0.5rem;
+}
+
+.auth-frag-swatches span {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+}
+
+.auth-frag-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #eab308 0%, #3ecf8e 100%);
+  margin-bottom: 0.5rem;
+}
+
+.auth-frag--post-a {
+  top: 6px;
+  left: 0;
+  width: 128px;
+}
+
+.auth-frag--chart {
+  top: 26px;
+  right: 4px;
+  width: 150px;
+}
+
+.auth-frag--palette {
+  bottom: 4px;
+  left: 16px;
+  width: 138px;
+}
+
+.auth-frag--client {
+  bottom: 0;
+  right: 20px;
+  width: 138px;
+}
+
+.auth-frag--post-b {
+  top: 0;
+  left: 50%;
+  width: 116px;
+  transform: translateX(-32%);
+}
+
+.auth-chat-card {
+  position: relative;
+  z-index: 2;
+  width: 280px;
+  background: #ffffff;
+  border-radius: 18px;
+  padding: 1rem 1.05rem;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+}
+
+.auth-chat-prompt {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #12151a;
+  margin: 0 0 0.8rem;
+}
+
+.auth-chat-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.auth-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.82rem;
+  color: #12151a;
+}
+
+.auth-chip svg {
+  color: #cbd5e1;
+  flex-shrink: 0;
+}
+
+.auth-chip-agent {
+  border-color: #eab308;
+  color: #94a3b8;
+  justify-content: flex-start;
+}
+
+.auth-chip-agent svg {
+  color: #eab308;
 }
 
 /* ===== Config Page ===== */
