@@ -31,7 +31,9 @@ export function refreshLiquidGL(): void {
     renderer.captureSnapshot();
     return;
   }
-  // Defensive fallback via the returned instance (brief's original approach)
+  // Defensive fallback via the returned instance (source-confirmed EXPECTED-DEAD for pinned commit dbb6e54:
+  // window.liquidGL() returns a lens, not the renderer; these branches are retained only as a defensive
+  // fallback in case a future library version changes the public surface).
   const handle = _instance as
     | { captureSnapshot?: () => void; renderer?: { captureSnapshot?: () => void } }
     | null;
