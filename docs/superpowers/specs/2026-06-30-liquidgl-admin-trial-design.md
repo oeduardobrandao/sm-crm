@@ -4,6 +4,8 @@
 **Branch:** `feat/liquidgl-admin-trial`
 **Status:** Approved (design), revised after adversarial multi-agent review (verified against the real liquidGL source + actual admin code)
 
+> **⚠️ Superseded during the live trial.** The real WebGL liquidGL library turned out to be a decorative refraction _overlay_ — it sets any element it targets to `opacity:0` (hiding its content) and, by the author's own demo, has no pattern for readable content on the glass. The shipped implementation **pivoted to CSS frosted glass** (`backdrop-filter`) over the same backdrop, which keeps content readable and lets the toggle work instantly. This document records the original WebGL design and the reasoning that led there; the PR description covers the pivot. The implementation plan below is likewise historical.
+
 ## Goal
 
 Apply the [liquidGL](https://github.com/naughtyduk/liquidGL) "Apple Liquid Glass" aesthetic to the **admin portal** (`apps/admin/`) as a contained, internal-only trial. The admin app is a safe, non-user-facing sandbox. The purpose is to let the owner evaluate the *real* effect in their own app and then decide whether to roll it out to the user-facing CRM and Hub apps later. **This is a visual trial, not a production commitment** — but it must show the *genuine* refraction, or it cannot inform the rollout decision.

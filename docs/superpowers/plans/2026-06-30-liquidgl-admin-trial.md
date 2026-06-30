@@ -1,5 +1,7 @@
 # liquidGL Admin Trial Implementation Plan
 
+> **⚠️ Historical.** This plan implemented the real WebGL liquidGL library. During the live trial that approach proved unworkable for UI (liquidGL hides any element it targets via `opacity:0` and is a decorative overlay only), so the shipped result **pivoted to CSS frosted glass** (`backdrop-filter`). Tasks 1–8 below are kept as a record; the final code retired the WebGL machinery. See the PR description.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Trial the real WebGL liquidGL "liquid glass" aesthetic on the internal admin portal (`apps/admin/`), behind a toggle, so the owner can decide whether to roll it out app-wide.
