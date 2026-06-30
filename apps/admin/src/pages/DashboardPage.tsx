@@ -37,7 +37,7 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         {kpis.map((kpi) => (
-          <div key={kpi.label} className="bg-card border border-border rounded-2xl p-5">
+          <div key={kpi.label} className="liquidGL bg-card border border-border rounded-2xl p-5">
             <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">
               {kpi.label}
             </p>
@@ -46,7 +46,7 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      <div className="bg-card border border-border rounded-2xl p-5">
+      <div className="liquidGL bg-card border border-border rounded-2xl p-5">
         <h2 className="font-semibold mb-4">Recent Workspaces</h2>
 
         {/* Desktop table header */}
