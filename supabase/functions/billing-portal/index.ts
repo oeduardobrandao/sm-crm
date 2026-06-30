@@ -29,6 +29,11 @@ Deno.serve(async (req: Request) => {
       .select("stripe_customer_id").eq("workspace_id", profile.conta_id).maybeSingle();
     if (!subRow?.stripe_customer_id) return json({ error: "No subscription" }, 400, headers);
 
+    // NOTE: seat changes do NOT go through the Stripe billing portal — they are
+    // validated and applied by the `billing-seats` edge function (the single writer
+    // that floors the requested total against members + pending invites). The Stripe
+    // portal configuration MUST disable quantity edits on the seat product (see the
+    // deploy checklist) so this portal never becomes a second, unvalidated seat writer.
     const portal = await stripe.billingPortal.sessions.create({
       customer: subRow.stripe_customer_id,
       return_url: `${resolveAllowedOrigin(req)}/configuracao/cobranca`,
