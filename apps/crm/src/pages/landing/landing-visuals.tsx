@@ -5,6 +5,7 @@ import {
   CalendarClock,
   Check,
   CheckCircle2,
+  ChevronRight,
   CircleDollarSign,
   Clock,
   ExternalLink,
@@ -17,6 +18,7 @@ import {
   MousePointer2,
   Plus,
   Send,
+  Sparkles,
   Users,
 } from 'lucide-react';
 
@@ -2571,6 +2573,131 @@ export function SchedulingVisual() {
             )}
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Decorative "content agent" composition for the landing MCP section: a sharp white
+ * agent card centered over a blurred, out-of-focus backdrop of content fragments.
+ * Mirrors the login page showcase. Purely visual — no interactivity.
+ */
+export function AgentVisual() {
+  const frag = (extra: React.CSSProperties): React.CSSProperties => ({
+    position: 'absolute',
+    background: '#1a1e26',
+    border: '1px solid #2a2f3a',
+    borderRadius: 14,
+    padding: 10,
+    ...extra,
+  });
+  const line = (w?: string): React.CSSProperties => ({
+    display: 'block',
+    height: 6,
+    borderRadius: 3,
+    background: '#2a2f3a',
+    width: w,
+    marginBottom: w ? 0 : 6,
+  });
+  const chip: React.CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    border: '1px solid #e2e8f0',
+    borderRadius: 10,
+    padding: '9px 11px',
+    fontSize: 13,
+    color: BRAND.dark,
+  };
+  return (
+    <div style={{ position: 'relative', width: '100%', minHeight: 360, overflow: 'hidden' }}>
+      <div style={{ position: 'absolute', inset: 0, filter: 'blur(2px)', opacity: 0.55 }}>
+        <div style={frag({ top: 26, left: 16, width: 150 })}>
+          <div
+            style={{
+              height: 70,
+              borderRadius: 10,
+              marginBottom: 10,
+              background: `linear-gradient(135deg,${BRAND.blue},${BRAND.teal})`,
+            }}
+          />
+          <span style={line()} />
+          <span style={line('55%')} />
+        </div>
+        <div style={frag({ top: 46, right: 12, width: 168 })}>
+          <span style={line('50%')} />
+          <div
+            style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 46, marginTop: 10 }}
+          >
+            {[50, 75, 45, 90, 65].map((h, i) => (
+              <span
+                key={i}
+                style={{ flex: 1, height: `${h}%`, background: '#3a4150', borderRadius: 3 }}
+              />
+            ))}
+          </div>
+        </div>
+        <div style={frag({ bottom: 34, left: 0, width: 150 })}>
+          <span style={line('50%')} />
+          <div style={{ display: 'flex', gap: 7, marginTop: 10 }}>
+            {[BRAND.blue, BRAND.yellow, BRAND.green, BRAND.pink].map((c) => (
+              <span key={c} style={{ width: 22, height: 22, borderRadius: '50%', background: c }} />
+            ))}
+          </div>
+        </div>
+        <div style={frag({ bottom: 18, right: 24, width: 150 })}>
+          <div
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: '50%',
+              marginBottom: 8,
+              background: `linear-gradient(135deg,${BRAND.yellow},${BRAND.green})`,
+            }}
+          />
+          <span style={line()} />
+          <span style={line('55%')} />
+        </div>
+      </div>
+
+      <div
+        style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%,-50%)',
+          width: 300,
+          maxWidth: '88%',
+          background: '#fff',
+          borderRadius: 18,
+          padding: 16,
+          boxShadow: '0 24px 60px rgba(0,0,0,.55)',
+        }}
+      >
+        <p style={{ margin: '0 0 12px', fontSize: 15, fontWeight: 600, color: BRAND.dark }}>
+          No que vamos trabalhar hoje?
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {['Criar carrossel', 'Roteiro de Reels'].map((opt) => (
+            <div key={opt} style={chip}>
+              <span>{opt}</span>
+              <ChevronRight size={15} color="#cbd5e1" />
+            </div>
+          ))}
+          <div
+            style={{
+              ...chip,
+              justifyContent: 'flex-start',
+              gap: 8,
+              border: `1px solid ${BRAND.yellow}`,
+              color: '#94a3b8',
+            }}
+          >
+            <Sparkles size={14} color={BRAND.yellow} />
+            <span>Peça ao agente…</span>
+          </div>
+        </div>
       </div>
     </div>
   );
