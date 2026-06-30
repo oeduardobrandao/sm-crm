@@ -59,6 +59,7 @@ import {
   type PortfolioTopPost,
 } from '../../services/analytics';
 import { sanitizeUrl } from '../../utils/security';
+import { formatRate } from '../../lib/ig-rates';
 import { syncInstagramData } from '../../services/instagram';
 import { HelpTooltip } from '../../components/help/HelpTooltip';
 
@@ -460,6 +461,21 @@ export default function AnalyticsPage() {
       case 'saved':
         posts.sort((a, b) => (a.saved - b.saved) * dir);
         break;
+      case 'share_rate':
+      case 'like_rate':
+      case 'save_rate':
+      case 'comment_rate': {
+        const key = drawerOrderBy as 'share_rate' | 'like_rate' | 'save_rate' | 'comment_rate';
+        posts.sort((a, b) => {
+          const va = a.rates[key];
+          const vb = b.rates[key];
+          if (va === null && vb === null) return 0;
+          if (va === null) return 1; // nulls last regardless of dir
+          if (vb === null) return -1;
+          return (va - vb) * dir;
+        });
+        break;
+      }
       case 'reach':
         posts.sort((a, b) => (a.reach - b.reach) * dir);
         break;
@@ -1619,6 +1635,18 @@ export default function AnalyticsPage() {
                 ? matureReachRankedPosts.length
                 : (data?.allRankedPosts?.length ?? 0)}{' '}
               posts
+              {['share_rate', 'like_rate', 'save_rate', 'comment_rate'].includes(drawerOrderBy) && (
+                <span
+                  style={{
+                    display: 'block',
+                    fontSize: '0.7rem',
+                    color: 'var(--text-muted)',
+                    marginTop: 2,
+                  }}
+                >
+                  Top 200 por alcance, reordenado por taxa
+                </span>
+              )}
             </SheetDescription>
           </SheetHeader>
 
@@ -1634,6 +1662,10 @@ export default function AnalyticsPage() {
                   <SelectItem value="likes">Curtidas</SelectItem>
                   <SelectItem value="comments">Comentários</SelectItem>
                   <SelectItem value="saved">Salvos</SelectItem>
+                  <SelectItem value="share_rate">Compart./visualização</SelectItem>
+                  <SelectItem value="like_rate">Curt./visualização</SelectItem>
+                  <SelectItem value="save_rate">Salvos/visualização</SelectItem>
+                  <SelectItem value="comment_rate">Coment./visualização</SelectItem>
                   <SelectItem value="date">Data</SelectItem>
                 </SelectContent>
               </Select>
@@ -1828,6 +1860,34 @@ export default function AnalyticsPage() {
                         {post.engagement_rate.toFixed(2)}%
                       </strong>
                     </span>
+                    {['share_rate', 'like_rate', 'save_rate', 'comment_rate'].includes(
+                      drawerOrderBy,
+                    ) && (
+                      <span>
+                        {
+                          {
+                            share_rate: 'Compart.',
+                            like_rate: 'Curt.',
+                            save_rate: 'Salvos',
+                            comment_rate: 'Coment.',
+                          }[drawerOrderBy]
+                        }
+                        /visualização{' '}
+                        <strong
+                          style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}
+                        >
+                          {formatRate(
+                            post.rates[
+                              drawerOrderBy as
+                                | 'share_rate'
+                                | 'like_rate'
+                                | 'save_rate'
+                                | 'comment_rate'
+                            ],
+                          )}
+                        </strong>
+                      </span>
+                    )}
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
                       <Heart className="h-3 w-3" />{' '}
                       <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-main)' }}>

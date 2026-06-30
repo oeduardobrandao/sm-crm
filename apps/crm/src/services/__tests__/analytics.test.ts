@@ -8,6 +8,7 @@ import * as supabaseModule from '../../lib/supabase';
 import {
   generateReport,
   getAnalyticsOverview,
+  getClientRateBaseline,
   getPortfolioSummary,
   getPostsAnalytics,
 } from '../analytics';
@@ -465,5 +466,162 @@ describe('analytics service', () => {
     await expect(generateReport(7, '2026-03')).rejects.toThrow(
       'Falha ao gerar PDF para a cliente Clínica Aurora',
     );
+  });
+
+  it('attaches per-view rates to portfolio ranked posts', async () => {
+    mockedSupabase.__queueSupabaseResult('clientes', 'select', {
+      data: [
+        {
+          id: 1,
+          nome: 'Clínica Aurora',
+          sigla: 'CA',
+          cor: '#db2777',
+          especialidade: 'Derm',
+          status: 'ativo',
+        },
+      ],
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseResult('instagram_accounts', 'select', {
+      data: [{ id: 10, client_id: 1, username: 'aurora', follower_count: 1000, reach_28d: 5000 }],
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseResult('instagram_posts', 'select', { data: [], error: null }); // allRecentPosts
+    mockedSupabase.__queueSupabaseResult('instagram_follower_history', 'select', {
+      data: [],
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseResult('instagram_posts', 'select', { data: [], error: null }); // latestPosts
+    mockedSupabase.__queueSupabaseResult('instagram_posts', 'select', {
+      data: [
+        {
+          id: 100,
+          instagram_account_id: 10,
+          media_type: 'VIDEO',
+          permalink: 'https://x',
+          posted_at: '2026-06-20T00:00:00Z',
+          likes: 30,
+          comments: 3,
+          reach: 180,
+          saved: 6,
+          shares: 4,
+          impressions: 200,
+          unavailable_metrics: [],
+        },
+        {
+          id: 101,
+          instagram_account_id: 10,
+          media_type: 'CAROUSEL_ALBUM',
+          permalink: 'https://y',
+          posted_at: '2026-06-19T00:00:00Z',
+          likes: 10,
+          comments: 1,
+          reach: 90,
+          saved: 2,
+          shares: 0,
+          impressions: 100,
+          unavailable_metrics: ['shares'],
+        },
+      ],
+      error: null,
+    });
+
+    const summary = await getPortfolioSummary(28);
+    const p100 = summary.allRankedPosts.find((p) => p.id === 100)!;
+    expect(p100.views).toBe(200);
+    expect(p100.rates.share_rate).toBe(0.02); // 4/200
+    expect(p100.rates.like_rate).toBe(0.15); // 30/200
+    const p101 = summary.allRankedPosts.find((p) => p.id === 101)!;
+    expect(p101.rates.share_rate).toBeNull(); // shares unavailable -> null, not 0
+    expect(p101.rates.save_rate).toBe(0.02); // 2/100
+  });
+
+  it('getClientRateBaseline returns MCP-shaped baseline + dists from full history', async () => {
+    mockedSupabase.__queueSupabaseResult('instagram_accounts', 'select', {
+      data: [{ id: 10, client_id: 1, username: 'a' }],
+      error: null,
+    }); // getAccountByClientId
+    mockedSupabase.__queueSupabaseResult('instagram_posts', 'select', {
+      data: Array.from({ length: 6 }, (_, i) => ({
+        media_type: 'VIDEO',
+        reach: 100 + i,
+        impressions: 100,
+        saved: i,
+        shares: i,
+        likes: 10 + i,
+        comments: 1,
+        unavailable_metrics: [],
+      })),
+      error: null,
+    });
+    const res = await getClientRateBaseline(1);
+    expect(res.sampleSize).toBe(6);
+    expect(res.baseline.weights).toEqual({
+      share_rate: 0.4,
+      like_rate: 0.3,
+      save_rate: 0.2,
+      comment_rate: 0.1,
+    });
+    expect(res.baseline.overall.like_rate.n).toBe(6);
+    expect(res.baseline.overall.like_rate.quartiles).not.toBeNull(); // n=6 >= 5
+    expect(res.dists.byFormat.VIDEO.like_rate.length).toBe(6);
+  });
+
+  it('getPostsAnalytics computes rates, ig_score (with dists), and sorts ig_score nulls last', async () => {
+    // dists where like_rate has a usable sample so ig_score is non-null for liked posts
+    const dists = {
+      overall: {
+        share_rate: [],
+        like_rate: [0.05, 0.06, 0.07, 0.08, 0.09],
+        save_rate: [],
+        comment_rate: [],
+        reach: [],
+      },
+      byFormat: {},
+    } as never;
+    mockedSupabase.__queueSupabaseResult('instagram_accounts', 'select', {
+      data: [{ id: 10, client_id: 1 }],
+      error: null,
+    }); // getAccountByClientId
+    mockedSupabase.__queueSupabaseResult('instagram_posts', 'select', {
+      data: [
+        {
+          id: 1,
+          instagram_account_id: 10,
+          media_type: 'IMAGE',
+          posted_at: '2026-06-20T00:00:00Z',
+          likes: 8,
+          comments: 0,
+          reach: 90,
+          saved: 1,
+          shares: 0,
+          impressions: 100,
+          unavailable_metrics: [],
+        },
+        {
+          id: 2,
+          instagram_account_id: 10,
+          media_type: 'IMAGE',
+          posted_at: '2026-06-21T00:00:00Z',
+          likes: 0,
+          comments: 0,
+          reach: 0,
+          saved: 0,
+          shares: 0,
+          impressions: 0,
+          unavailable_metrics: [],
+        }, // 0 views -> rates null -> ig_score null
+      ],
+      error: null,
+    });
+    mockedSupabase.__queueSupabaseResult('instagram_post_tag_assignments', 'select', {
+      data: [],
+      error: null,
+    });
+    const { posts } = await getPostsAnalytics(1, 30, 'ig_score', 'desc', undefined, dists);
+    expect(posts[0].id).toBe(1); // scored post first
+    expect(posts[0].rates.like_rate).toBe(0.08);
+    expect(posts[0].ig_score).not.toBeNull();
+    expect(posts[1].ig_score).toBeNull(); // null sinks to bottom even desc
   });
 });
