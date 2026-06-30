@@ -127,3 +127,34 @@ export function resolveSubscriptionSeats(
   }
   return { purchased_seats, has_seat_item };
 }
+
+/** Stripe `subscriptions.update` `items` payload for an in-app seat change. */
+export type SeatItemUpdate =
+  | { kind: "noop" }
+  | { kind: "update"; items: [{ id: string; quantity: number }] }
+  | { kind: "remove"; items: [{ id: string; deleted: true }] }
+  | { kind: "add"; items: [{ price: string; quantity: number }] };
+
+/**
+ * Four-way branch on (seatItemExists, N=extraSeats) for `subscriptions.update`.
+ * Hard rule: never emit `quantity: 0` — Stripe rejects it; removal uses `{ deleted: true }`.
+ *   exists & N>0  → update quantity
+ *   exists & N==0 → remove via deleted:true
+ *   !exists & N>0 → add the seat price line
+ *   !exists & N==0 → no-op
+ */
+export function decideSeatItemUpdate(args: {
+  seatItemId: string | null;
+  seatPriceId: string | null;
+  extraSeats: number;
+}): SeatItemUpdate {
+  const n = Math.max(0, Math.trunc(args.extraSeats));
+  if (args.seatItemId) {
+    return n > 0
+      ? { kind: "update", items: [{ id: args.seatItemId, quantity: n }] }
+      : { kind: "remove", items: [{ id: args.seatItemId, deleted: true }] };
+  }
+  return n > 0
+    ? { kind: "add", items: [{ price: args.seatPriceId as string, quantity: n }] }
+    : { kind: "noop" };
+}
