@@ -5,7 +5,6 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 
 function fireLoad(id: string) {
   const el = document.getElementById(id) as HTMLScriptElement;
-  el.dataset.loaded = 'true';
   el.dispatchEvent(new Event('load'));
 }
 
