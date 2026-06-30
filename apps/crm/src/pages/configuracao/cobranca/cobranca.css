@@ -273,6 +273,84 @@
   color: var(--primary-color);
 }
 
+/* Seat selector (stepper) + cost breakdown — shared by the upgrade cards and the
+   active-subscription seat control */
+.seat-selector {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0;
+  border-top: 1px solid var(--border-color);
+}
+.seat-selector__label {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-light);
+}
+.seat-selector__control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.seat-selector__btn {
+  appearance: none;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--surface-main);
+  color: var(--text-main);
+  cursor: pointer;
+  transition:
+    border-color var(--transition),
+    color var(--transition);
+}
+.seat-selector__btn:hover:not(:disabled) {
+  border-color: var(--primary-color);
+  color: var(--primary-hover);
+}
+.seat-selector__btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.seat-selector__readout {
+  min-width: 2ch;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.plan-cost-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-top: 0.2rem;
+  padding-top: 0.6rem;
+  border-top: 1px dashed var(--border-color);
+}
+.plan-cost-breakdown__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-light);
+}
+.plan-cost-breakdown__total {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
 /* CTA */
 .plan-cta {
   margin-top: auto;

@@ -1,31 +1,28 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
 import {
   listActivePlans,
   getWorkspaceSubscription,
   getEffectivePlanId,
+  getWorkspaceSeats,
   startCheckout,
+  changeSeats,
   openBillingPortal,
   type BillingInterval,
   type BillingPlan,
 } from '@/services/billing';
 import { isInternalPlan, resolveCurrentPlanId, isPlanVisible, canUpgradeTo } from './plan-display';
+import { computeSeatCost, clampSeats } from './seat-pricing';
 import './cobranca.css';
 
-const RECOMMENDED_ID = 'pro';
+const RECOMMENDED_ID = 'agency';
 
 /** plans.price_brl is stored in centavos (e.g. 9990 = R$ 99,90). */
 function formatBRL(centavos: number): string {
   return (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
-
-function formatStorage(bytes: number): string {
-  const gb = bytes / 1024 ** 3;
-  if (gb >= 1) return `${Number.isInteger(gb) ? gb : gb.toFixed(1)} GB`;
-  return `${Math.round(bytes / 1024 ** 2)} MB`;
 }
 
 function formatDate(iso: string | null): string {
@@ -36,31 +33,34 @@ function formatDate(iso: string | null): string {
 }
 
 function planFeatures(p: BillingPlan): string[] {
-  const out: string[] = [];
+  const out: string[] = ['Tudo incluído'];
   out.push(
     p.max_clients == null
       ? 'Clientes ilimitados'
       : `${p.max_clients} ${p.max_clients === 1 ? 'cliente' : 'clientes'}`,
   );
+  const seats = p.included_seats;
   out.push(
-    p.max_team_members == null
+    seats == null
       ? 'Usuários ilimitados'
-      : `${p.max_team_members} ${p.max_team_members === 1 ? 'usuário' : 'usuários'}`,
+      : `${seats} ${seats === 1 ? 'usuário incluído' : 'usuários incluídos'}`,
   );
-  if (p.storage_quota_bytes != null)
-    out.push(`${formatStorage(p.storage_quota_bytes)} de armazenamento`);
-  if (p.feature_hub_portal) out.push('Portal de aprovação do cliente');
-  if (p.feature_analytics_reports) out.push('Relatórios de desempenho');
-  if (p.feature_brand_customization) out.push('Personalização de marca');
+  const addon = p.seat_addon_brl;
+  if (addon != null && addon > 0) out.push(`+${formatBRL(addon)}/usuário extra`);
   return out;
 }
 
 export default function CobrancaPage() {
   const { role } = useAuth();
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [interval, setInterval] = useState<BillingInterval>('month');
   const [busy, setBusy] = useState<string | null>(null);
   const [promo, setPromo] = useState('');
+  // Per-plan selected TOTAL seats on the upgrade cards (keyed by plan id).
+  const [seatSel, setSeatSel] = useState<Record<string, number>>({});
+  // Selected TOTAL seats on the active-subscription control. null = default to current.
+  const [activeSeats, setActiveSeats] = useState<number | null>(null);
 
   const isOwner = role === 'owner';
   const { data: plans, isLoading: plansLoading } = useQuery({
@@ -78,6 +78,14 @@ export default function CobrancaPage() {
   const { data: effectivePlanId, refetch: refetchEffectivePlan } = useQuery({
     queryKey: ['billing', 'effective-plan'],
     queryFn: getEffectivePlanId,
+    enabled: isOwner,
+  });
+
+  // Server-computed seat block (included/purchased/effective/used) — the floor for
+  // the in-app remove path and the backing for the active-subscriber control.
+  const { data: seats } = useQuery({
+    queryKey: ['workspace-limits', 'seats'],
+    queryFn: getWorkspaceSeats,
     enabled: isOwner,
   });
 
@@ -135,13 +143,68 @@ export default function CobrancaPage() {
   const currentPlan = plans?.find((p) => p.id === currentPlanId);
   const visiblePlans = (plans ?? []).filter((p) => isPlanVisible(p.id, currentPlanId));
 
+  function seatsFor(p: BillingPlan): number {
+    const floor = p.included_seats ?? 0;
+    return seatSel[p.id] ?? floor;
+  }
+
+  function adjustSeats(p: BillingPlan, delta: number) {
+    setSeatSel((prev) => {
+      const current = prev[p.id] ?? p.included_seats ?? 0;
+      // At checkout there is no existing sub, so the currentSeats floor is 0;
+      // clampSeats keeps the value at or above the included base.
+      const next = clampSeats(current + delta, p.included_seats, 0);
+      return { ...prev, [p.id]: next };
+    });
+  }
+
   async function handleUpgrade(planId: string) {
+    const plan = plans?.find((p) => p.id === planId);
+    const extraSeats = plan ? Math.max(0, seatsFor(plan) - (plan.included_seats ?? 0)) : 0;
     setBusy(planId);
     try {
-      const url = await startCheckout(planId, interval, promo.trim() || undefined);
+      const url = await startCheckout(planId, interval, promo.trim() || undefined, extraSeats);
       window.location.assign(url);
     } catch (err) {
       toast.error('Erro ao iniciar checkout: ' + (err as Error).message);
+      setBusy(null);
+    }
+  }
+
+  // Active-subscriber TOTAL seats. effective = included + purchased; default the
+  // stepper to that, with the remove-floor at max(included, used) so you can never
+  // drop below seats already in use.
+  const includedSeats = seats?.included ?? null;
+  const totalSeats = seats?.effective ?? (seats ? (seats.included ?? 0) + seats.purchased : 0);
+  const seatFloor = Math.max(includedSeats ?? 0, seats?.used ?? 0);
+  const selectedActiveSeats = activeSeats ?? totalSeats;
+
+  function adjustActiveSeats(delta: number) {
+    setActiveSeats((prev) => {
+      const current = prev ?? totalSeats;
+      // floor = max(included, used): never below what's already in use.
+      return clampSeats(current + delta, includedSeats, seats?.used ?? 0);
+    });
+  }
+
+  async function handleSeatChange() {
+    const extra = Math.max(0, selectedActiveSeats - (includedSeats ?? 0));
+    const delta = selectedActiveSeats - totalSeats;
+    if (delta === 0) return;
+    const verb = delta > 0 ? 'adicionar' : 'remover';
+    const ok = window.confirm(
+      `Você vai ${verb} ${Math.abs(delta)} assento(s). O valor será ajustado proporcionalmente (pró-rata) no seu próximo ciclo. Confirmar?`,
+    );
+    if (!ok) return;
+    setBusy('seats');
+    try {
+      await changeSeats(extra);
+      await queryClient.invalidateQueries({ queryKey: ['workspace-limits', 'seats'] });
+      setActiveSeats(null);
+      toast.success('Assentos atualizados.');
+    } catch (err) {
+      toast.error('Erro ao atualizar assentos: ' + (err as Error).message);
+    } finally {
       setBusy(null);
     }
   }
@@ -212,6 +275,49 @@ export default function CobrancaPage() {
               {busy === 'portal' ? 'Aguarde…' : 'Gerenciar assinatura'}
             </button>
           </div>
+
+          {seats != null && (
+            <div className="seat-selector" data-testid="active-seat-selector">
+              <span className="seat-selector__label">
+                Usuários ({seats.used} em uso)
+              </span>
+              <div className="seat-selector__control">
+                <button
+                  type="button"
+                  className="seat-selector__btn"
+                  aria-label="Remover assento"
+                  onClick={() => adjustActiveSeats(-1)}
+                  disabled={selectedActiveSeats <= seatFloor || busy === 'seats'}
+                >
+                  <i className="ph ph-minus" aria-hidden="true" />
+                </button>
+                <span
+                  className="seat-selector__readout"
+                  data-testid="active-seat-count"
+                  aria-live="polite"
+                >
+                  {selectedActiveSeats}
+                </span>
+                <button
+                  type="button"
+                  className="seat-selector__btn"
+                  aria-label="Adicionar assento"
+                  onClick={() => adjustActiveSeats(1)}
+                  disabled={busy === 'seats'}
+                >
+                  <i className="ph ph-plus" aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={handleSeatChange}
+                  disabled={busy === 'seats' || selectedActiveSeats === totalSeats}
+                >
+                  {busy === 'seats' ? 'Aguarde…' : 'Atualizar assentos'}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -311,6 +417,77 @@ export default function CobrancaPage() {
                       </li>
                     ))}
                   </ul>
+
+                  {canUpgradeTo(p.id, currentPlanId, hasActiveSub) &&
+                    (() => {
+                      const selected = seatsFor(p);
+                      const base =
+                        isYear && p.price_brl_annual != null ? p.price_brl_annual : (p.price_brl ?? 0);
+                      const cost = computeSeatCost({
+                        basePriceCentavos: base,
+                        includedSeats: p.included_seats,
+                        selectedSeats: selected,
+                        seatAddonCentavos: p.seat_addon_brl ?? 0,
+                        interval,
+                      });
+                      return (
+                        <>
+                          <div className="seat-selector" data-testid="seat-selector">
+                            <span className="seat-selector__label">Usuários</span>
+                            <div className="seat-selector__control">
+                              <button
+                                type="button"
+                                className="seat-selector__btn"
+                                aria-label="Remover assento"
+                                onClick={() => adjustSeats(p, -1)}
+                                disabled={selected <= (p.included_seats ?? 0)}
+                              >
+                                <i className="ph ph-minus" aria-hidden="true" />
+                              </button>
+                              <span
+                                className="seat-selector__readout"
+                                data-testid="seat-count"
+                                aria-live="polite"
+                              >
+                                {selected}
+                              </span>
+                              <button
+                                type="button"
+                                className="seat-selector__btn"
+                                aria-label="Adicionar assento"
+                                onClick={() => adjustSeats(p, 1)}
+                              >
+                                <i className="ph ph-plus" aria-hidden="true" />
+                              </button>
+                            </div>
+                          </div>
+                          <div className="plan-cost-breakdown">
+                            <div className="plan-cost-breakdown__row">
+                              <span>Base</span>
+                              <span>{formatBRL(base)}</span>
+                            </div>
+                            {cost.extraSeats > 0 && (
+                              <div className="plan-cost-breakdown__row">
+                                <span>
+                                  {cost.extraSeats}{' '}
+                                  {cost.extraSeats === 1 ? 'usuário extra' : 'usuários extras'}{' '}
+                                  × {formatBRL(p.seat_addon_brl ?? 0)}
+                                </span>
+                                <span data-testid="seat-extra-cost">
+                                  {formatBRL(cost.extraCostCentavos)}
+                                </span>
+                              </div>
+                            )}
+                            <div className="plan-cost-breakdown__row plan-cost-breakdown__total">
+                              <span>Total{isYear ? '/ano' : '/mês'}</span>
+                              <span data-testid="plan-total-cost">
+                                {formatBRL(cost.totalCentavos)}
+                              </span>
+                            </div>
+                          </div>
+                        </>
+                      );
+                    })()}
 
                   <div className="plan-cta">{renderCta(p)}</div>
                 </div>
