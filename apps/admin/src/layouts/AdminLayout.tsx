@@ -77,7 +77,15 @@ export default function AdminLayout() {
         <aside
           className={`w-[220px] border-r border-[#1e2430] flex flex-col fixed inset-y-0 left-0 z-50 transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:transform-none`}
         >
-          <div className="liquidGL md:[&]:bg-transparent bg-[#12151a] flex flex-col flex-1 min-h-0">
+          {/* Glass backing layer (desktop only): liquidGL sets this element to
+              opacity:0 and paints WebGL glass at its rect; the content layer sits
+              above it so the nav stays readable. */}
+          <div className="liquidGL hidden md:block absolute inset-0" aria-hidden="true" />
+          {/* Content layer — readable above the glass. Transparent on desktop when
+              glass is ON so the glass shows through; solid dark otherwise. */}
+          <div
+            className={`relative z-10 flex flex-col flex-1 min-h-0 ${glassEnabled ? 'bg-[#12151a] md:bg-transparent' : 'bg-[#12151a]'}`}
+          >
             <div className="px-5 pt-6 pb-4 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <svg
@@ -209,10 +217,14 @@ export default function AdminLayout() {
         </aside>
 
         <main className="md:ml-[220px] flex-1 min-h-screen">
-          <div
-            className={`liquidGL sticky top-0 z-30 mx-4 mt-4 md:mx-8 md:mt-6 rounded-2xl py-3 pl-14 pr-5 md:px-5 flex items-center ${glassEnabled ? '' : 'bg-card border border-border'}`}
-          >
-            <h1 className="text-sm font-medium tracking-wide text-foreground">{pageTitle}</h1>
+          <div className="sticky top-0 z-30 mx-4 mt-4 md:mx-8 md:mt-6">
+            {/* Glass backing layer; the title is overlaid above it. */}
+            <div className="liquidGL absolute inset-0 rounded-2xl" aria-hidden="true" />
+            <div
+              className={`relative z-10 rounded-2xl py-3 pl-14 pr-5 md:px-5 flex items-center ${glassEnabled ? '' : 'bg-card border border-border'}`}
+            >
+              <h1 className="text-sm font-medium tracking-wide text-foreground">{pageTitle}</h1>
+            </div>
           </div>
           <div className="p-4 pt-6 md:p-8">
             <Outlet />
