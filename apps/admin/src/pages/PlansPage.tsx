@@ -92,7 +92,7 @@ export default function PlansPage() {
     <div>
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
         <div>
-          <h1 className="font-['Playfair_Display'] text-2xl font-bold mb-1">Plans</h1>
+          <h1 className="font-sf text-2xl font-bold mb-1">Plans</h1>
           <p className="text-sm text-muted-foreground">Manage plan templates</p>
         </div>
         <button
@@ -122,7 +122,7 @@ export default function PlansPage() {
             className="bg-card border border-border rounded-2xl p-5 md:p-8 w-full max-w-2xl max-h-[85vh] overflow-y-auto mx-4 md:mx-0"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="font-['Playfair_Display'] text-lg font-bold mb-6">
+            <h2 className="font-sf text-lg font-bold mb-6">
               {editingPlan ? `Edit: ${editingPlan.name}` : 'New Plan'}
             </h2>
 
@@ -137,7 +137,7 @@ export default function PlansPage() {
                     value={form.name}
                     onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                     required
-                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Sans'] text-foreground focus:outline-none focus:border-primary"
+                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-sf text-foreground focus:outline-none focus:border-primary"
                   />
                 </div>
                 <div className="flex items-end gap-4">
@@ -173,7 +173,7 @@ export default function PlansPage() {
                     value={form.price_brl_input}
                     onChange={(e) => setForm((f) => ({ ...f, price_brl_input: e.target.value }))}
                     placeholder="99.90"
-                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Sans'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
+                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-sf text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
                   />
                 </div>
                 <div>
@@ -188,7 +188,7 @@ export default function PlansPage() {
                       setForm((f) => ({ ...f, price_brl_annual_input: e.target.value }))
                     }
                     placeholder="959.00"
-                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Sans'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
+                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-sf text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
                   />
                 </div>
                 <div>
@@ -204,7 +204,7 @@ export default function PlansPage() {
                       setForm((f) => ({ ...f, sort_order: parseIntInput(e.target.value) }))
                     }
                     placeholder="0"
-                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Sans'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
+                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-sf text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
                   />
                 </div>
               </div>
@@ -219,7 +219,7 @@ export default function PlansPage() {
                     value={form.stripe_product_id}
                     onChange={(e) => setForm((f) => ({ ...f, stripe_product_id: e.target.value }))}
                     placeholder="prod_..."
-                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Sans'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
+                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-sf text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
                   />
                 </div>
                 <div>
@@ -231,7 +231,7 @@ export default function PlansPage() {
                     value={form.stripe_price_id}
                     onChange={(e) => setForm((f) => ({ ...f, stripe_price_id: e.target.value }))}
                     placeholder="price_..."
-                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Sans'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
+                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-sf text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
                   />
                 </div>
                 <div>
@@ -245,7 +245,7 @@ export default function PlansPage() {
                       setForm((f) => ({ ...f, stripe_price_id_annual: e.target.value }))
                     }
                     placeholder="price_..."
-                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Sans'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
+                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-sf text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
                   />
                 </div>
               </div>
@@ -383,22 +383,18 @@ function PlanCard({ plan, onEdit }: { plan: Plan; onEdit: (p: Plan) => void }) {
       </p>
       <div className="flex flex-col gap-0.5 mb-3 text-sm text-muted-foreground">
         <div>
-          Clients:{' '}
-          <span className="text-foreground font-['DM_Sans']">{plan.max_clients ?? '∞'}</span>
+          Clients: <span className="text-foreground font-sf">{plan.max_clients ?? '∞'}</span>
         </div>
         <div>
-          Members:{' '}
-          <span className="text-foreground font-['DM_Sans']">{plan.max_team_members ?? '∞'}</span>
+          Members: <span className="text-foreground font-sf">{plan.max_team_members ?? '∞'}</span>
         </div>
         <div>
           Instagram:{' '}
-          <span className="text-foreground font-['DM_Sans']">
-            {plan.max_instagram_accounts ?? '∞'}
-          </span>
+          <span className="text-foreground font-sf">{plan.max_instagram_accounts ?? '∞'}</span>
         </div>
         <div>
           Storage:{' '}
-          <span className="text-foreground font-['DM_Sans']">
+          <span className="text-foreground font-sf">
             {plan.storage_quota_bytes != null
               ? `${Math.round(plan.storage_quota_bytes / 1048576)} MB`
               : '∞'}
@@ -457,7 +453,7 @@ function NumberFieldGroup({
                 const v = e.target.value;
                 onChange(key, v === '' ? null : parseInt(v, 10));
               }}
-              className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Sans'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
+              className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-sf text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
             />
           </div>
         ))}

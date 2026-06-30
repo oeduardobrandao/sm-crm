@@ -47,7 +47,7 @@ export default function KbArticlesPage() {
     <div>
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
         <div>
-          <h1 className="font-['Playfair_Display'] text-2xl font-bold mb-1">Knowledge Base</h1>
+          <h1 className="font-sf text-2xl font-bold mb-1">Knowledge Base</h1>
           <p className="text-sm text-muted-foreground">Manage help articles for CRM users</p>
         </div>
         <button

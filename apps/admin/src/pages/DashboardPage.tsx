@@ -32,7 +32,7 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <h1 className="font-['Playfair_Display'] text-2xl font-bold mb-1">Dashboard</h1>
+      <h1 className="font-sf text-2xl font-bold mb-1">Dashboard</h1>
       <p className="text-sm text-muted-foreground mb-8">Platform overview</p>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
@@ -44,7 +44,7 @@ export default function DashboardPage() {
             <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">
               {kpi.label}
             </p>
-            <p className="text-3xl font-bold font-['DM_Sans']">{isLoading ? '—' : kpi.value}</p>
+            <p className="text-3xl font-bold font-sf">{isLoading ? '—' : kpi.value}</p>
           </div>
         ))}
       </div>
@@ -115,7 +115,7 @@ export default function DashboardPage() {
                   <span className="text-dim-foreground">—</span>
                 )}
               </span>
-              <span className="hidden md:inline font-['DM_Sans'] text-sm">{ws.member_count}</span>
+              <span className="hidden md:inline font-sf text-sm">{ws.member_count}</span>
               <span className="hidden md:inline text-muted-foreground text-sm">
                 {new Date(ws.created_at).toLocaleDateString('pt-BR', {
                   day: '2-digit',

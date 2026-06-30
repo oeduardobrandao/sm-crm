@@ -274,9 +274,7 @@ export default function KbArticleEditorPage() {
           >
             <ArrowLeft size={18} />
           </button>
-          <h1 className="font-['Playfair_Display'] text-xl font-bold">
-            {isEdit ? 'Edit Article' : 'New Article'}
-          </h1>
+          <h1 className="font-sf text-xl font-bold">{isEdit ? 'Edit Article' : 'New Article'}</h1>
         </div>
         <div className="flex items-center gap-2">
           {isEdit && (
@@ -324,7 +322,7 @@ export default function KbArticleEditorPage() {
               value={slug}
               onChange={(e) => setSlug(e.target.value)}
               placeholder="how-to-add-a-client"
-              className={`w-full px-3 py-2 rounded-lg bg-secondary border text-sm font-['DM_Sans'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary ${slugError ? 'border-destructive' : 'border-transparent'}`}
+              className={`w-full px-3 py-2 rounded-lg bg-secondary border text-sm font-sf text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary ${slugError ? 'border-destructive' : 'border-transparent'}`}
             />
             {slugError && <p className="text-xs text-destructive mt-1">{slugError}</p>}
           </div>
@@ -387,7 +385,7 @@ export default function KbArticleEditorPage() {
                 value={coverUrl}
                 onChange={(e) => setCoverUrl(e.target.value)}
                 placeholder="https://... or upload an image"
-                className="flex-1 px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Sans'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
+                className="flex-1 px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-sf text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
               />
               <input
                 ref={coverInputRef}
@@ -446,7 +444,7 @@ export default function KbArticleEditorPage() {
               value={displayOrder}
               onChange={(e) => setDisplayOrder(e.target.value)}
               min={0}
-              className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Sans'] text-foreground focus:outline-none focus:border-primary"
+              className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-sf text-foreground focus:outline-none focus:border-primary"
             />
           </div>
           <div>

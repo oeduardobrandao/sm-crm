@@ -45,7 +45,7 @@ export default function LoginPage() {
     >
       <div className="w-full max-w-[400px] bg-white rounded-3xl p-10 shadow-xl">
         <div className="text-center mb-8">
-          <h1 className="font-['Playfair_Display'] text-2xl font-black text-[#12151a]">mesaas</h1>
+          <h1 className="font-sf text-2xl font-black text-[#12151a]">mesaas</h1>
           <p className="text-sm text-[#4b5563] mt-1 uppercase tracking-widest font-medium">admin</p>
         </div>
 
@@ -59,7 +59,7 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full px-3 py-2.5 rounded-lg border border-[#e5e7eb] text-sm font-['DM_Sans'] text-[#12151a] focus:outline-none focus:border-[#eab308] transition-colors"
+              className="w-full px-3 py-2.5 rounded-lg border border-[#e5e7eb] text-sm font-sf text-[#12151a] focus:outline-none focus:border-[#eab308] transition-colors"
             />
           </div>
 
@@ -72,7 +72,7 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="w-full px-3 py-2.5 rounded-lg border border-[#e5e7eb] text-sm font-['DM_Sans'] text-[#12151a] focus:outline-none focus:border-[#eab308] transition-colors"
+              className="w-full px-3 py-2.5 rounded-lg border border-[#e5e7eb] text-sm font-sf text-[#12151a] focus:outline-none focus:border-[#eab308] transition-colors"
             />
           </div>
 

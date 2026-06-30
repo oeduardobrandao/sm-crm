@@ -56,7 +56,13 @@
 }
 
 body {
-  font-family: 'DM Sans', sans-serif;
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    'SF Pro Display',
+    'SF Pro Text',
+    system-ui,
+    sans-serif;
   font-weight: 400;
   background-color: hsl(var(--background));
   color: hsl(var(--foreground));
