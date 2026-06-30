@@ -1,0 +1,44 @@
+/* ── Liquid glass trial (admin) ─────────────────────────────────────────── */
+
+/* Non-fixed backdrop: the thing liquidGL refracts. Sits behind all content. */
+.liquid-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-color: #0a0c0f;
+  background-image:
+    radial-gradient(42rem 42rem at 12% 18%, rgba(234, 179, 8, 0.30), transparent 60%),
+    radial-gradient(38rem 38rem at 85% 22%, rgba(57, 132, 255, 0.28), transparent 60%),
+    radial-gradient(40rem 40rem at 75% 88%, rgba(245, 66, 200, 0.22), transparent 60%),
+    radial-gradient(36rem 36rem at 22% 82%, rgba(106, 201, 208, 0.22), transparent 60%);
+  background-repeat: no-repeat;
+}
+
+/* Animation is OFF by default (CSS @keyframes is html2canvas's perf cliff).
+   Opt in by setting data-liquid-anim="on" on <html>, and only when the user
+   has not asked to reduce motion. */
+@media (prefers-reduced-motion: no-preference) {
+  html[data-liquid-anim='on'] .liquid-backdrop {
+    animation: liquid-drift 36s ease-in-out infinite alternate;
+  }
+}
+
+@keyframes liquid-drift {
+  0% { background-position: 0 0, 0 0, 0 0, 0 0; }
+  100% { background-position: 3% 4%, -3% 2%, 2% -3%, -2% -2%; }
+}
+
+/* Content must sit ABOVE the backdrop. The snapshot wrapper is the stacking root. */
+#admin-snapshot { position: relative; }
+#admin-snapshot > .liquid-content { position: relative; z-index: 1; }
+
+/* Geometry only — the WebGL render provides the actual glass fill when ON.
+   liquidGL overwrites background-image/backdrop-filter to none and sets
+   pointer-events:none on each lens, so do NOT rely on CSS for the ON look. */
+.liquidGL { border-radius: 1rem; }
+
+/* Glass-OFF fallback: existing Tailwind classes already render solid cards/
+   chrome, so panes look normal when the toggle is off. Nothing needed here
+   beyond keeping geometry. (Hook for future tweaks:) */
+html[data-liquid-glass='off'] .liquid-backdrop { display: none; }
