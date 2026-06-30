@@ -31,6 +31,28 @@ begin
   exception when sqlstate 'P0001' then v_blocked := true; end;
   assert v_blocked, 'second seat must block on free';
 
+  -- SEATS + purchased_seats: starter base max_team_members = 2; +1 purchased seat => 3 allowed.
+  -- 2 members succeed (base 2), the 3rd succeeds (base 2 + 1 purchased), the 4th must block.
+  v_ws := et_make_workspace('starter');
+  perform et_seed_subscription(v_ws, 1, 'active');
+  declare
+    v_u1 uuid := gen_random_uuid();
+    v_u2 uuid := gen_random_uuid();
+    v_u3 uuid := gen_random_uuid();
+    v_u4 uuid := gen_random_uuid();
+  begin
+    insert into auth.users (id) values (v_u1), (v_u2), (v_u3), (v_u4);
+    insert into workspace_members (user_id, workspace_id, role) values (v_u1, v_ws, 'owner');
+    insert into workspace_members (user_id, workspace_id, role) values (v_u2, v_ws, 'agent');
+    -- 3rd seat allowed (base 2 + 1 purchased = 3)
+    insert into workspace_members (user_id, workspace_id, role) values (v_u3, v_ws, 'agent');
+    -- 4th must block
+    v_blocked := false;
+    begin insert into workspace_members (user_id, workspace_id, role) values (v_u4, v_ws, 'agent');
+    exception when sqlstate 'P0001' then v_blocked := true; end;
+    assert v_blocked, 'seat over (base+purchased) must block';
+  end;
+
   -- INSTAGRAM (via clientes join): free max_instagram_accounts = 1
   v_ws := et_make_workspace('free');
   insert into clientes (user_id, conta_id, nome, sigla, cor) values (v_uid, v_ws, 'C', 'C', '#000') returning id into v_cli;
