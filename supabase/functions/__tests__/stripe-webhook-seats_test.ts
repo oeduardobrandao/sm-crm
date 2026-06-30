@@ -67,7 +67,7 @@ Deno.test("resolveSyncTarget: tier-only sub yields 0 purchased seats", () => {
   assertEquals(r.mustThrow, false);
 });
 
-Deno.test("resolveSyncTarget: canceled status forces purchased seats to 0 and downgrades plan write to null mirror", () => {
+Deno.test("resolveSyncTarget: canceled status forces purchased seats to 0, mirror keeps the resolved tier", () => {
   const r = resolveSyncTarget({
     items: [
       { price: { id: "price_agency_m" }, quantity: 1, current_period_end: 222 },
@@ -104,6 +104,21 @@ Deno.test("resolveSyncTarget: active sub with seat item but no resolvable tier -
     items: [
       { price: { id: "price_seat_m" }, quantity: 2, current_period_end: 700 },
       { price: { id: "price_grandfathered_unknown" }, quantity: 1, current_period_end: 700 },
+    ],
+    status: "active",
+    plans: PLANS,
+    priorPlanId: "agency",
+  });
+  assert(r.mustThrow === true);
+});
+
+Deno.test("resolveSyncTarget: active sub with seat item quantity 0 and no resolvable tier -> mustThrow (presence-based)", () => {
+  // quantity: 0 on the seat item — quantity-based detection would miss this as hasSeatItem=false.
+  // Presence-based detection must still flag mustThrow because the seat price id IS present.
+  const r = resolveSyncTarget({
+    items: [
+      { price: { id: "price_seat_m" }, quantity: 0, current_period_end: 800 },
+      { price: { id: "price_grandfathered_unknown" }, quantity: 1, current_period_end: 800 },
     ],
     status: "active",
     plans: PLANS,

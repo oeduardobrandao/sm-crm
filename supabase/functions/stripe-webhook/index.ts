@@ -67,15 +67,15 @@ export function resolveSyncTarget(args: {
 
   // 2. Purchased seats from the seat item(s), status-aware.
   // Cast to billing-logic's SubItem shape; resolveSubscriptionSeats guards null price internally.
-  const rawSeats = resolveSubscriptionSeats(
+  const seats = resolveSubscriptionSeats(
     items as Parameters<typeof resolveSubscriptionSeats>[0],
     plans,
-  ).purchased_seats;
+  );
   const seatsLive = status === "active" || status === "trialing";
-  const purchasedSeats = seatsLive ? rawSeats : 0;
+  const purchasedSeats = seatsLive ? seats.purchased_seats : 0;
 
-  // 3. Did a seat item exist at all?
-  const hasSeatItem = rawSeats > 0;
+  // 3. Did a seat item exist at all? Presence-based (independent of quantity).
+  const hasSeatItem = seats.has_seat_item;
 
   // 4. Active/trialing sub with a seat item but no tier -> unrecoverable; force redelivery.
   const mustThrow = seatsLive && tierItem === null && hasSeatItem;

@@ -57,9 +57,9 @@ Deno.test("resolvePlanFromPriceId: a seat price resolves to null-as-tier", () =>
   assert(resolvePlanFromPriceId("price_seat_y", SEAT_PLANS) === null);
 });
 
-Deno.test("resolveSubscriptionSeats: tier-only subscription has 0 purchased seats", () => {
+Deno.test("resolveSubscriptionSeats: tier-only subscription has 0 purchased seats and no seat item", () => {
   const items = [{ price: { id: "price_a_m" }, quantity: 1 }];
-  assertEquals(resolveSubscriptionSeats(items, SEAT_PLANS), { purchased_seats: 0 });
+  assertEquals(resolveSubscriptionSeats(items, SEAT_PLANS), { purchased_seats: 0, has_seat_item: false });
 });
 
 Deno.test("resolveSubscriptionSeats: tier+seat, [tier, seat] order", () => {
@@ -67,7 +67,7 @@ Deno.test("resolveSubscriptionSeats: tier+seat, [tier, seat] order", () => {
     { price: { id: "price_a_m" }, quantity: 1 },
     { price: { id: "price_seat_m" }, quantity: 3 },
   ];
-  assertEquals(resolveSubscriptionSeats(items, SEAT_PLANS), { purchased_seats: 3 });
+  assertEquals(resolveSubscriptionSeats(items, SEAT_PLANS), { purchased_seats: 3, has_seat_item: true });
 });
 
 Deno.test("resolveSubscriptionSeats: tier+seat, [seat, tier] order (order-independent)", () => {
@@ -75,7 +75,7 @@ Deno.test("resolveSubscriptionSeats: tier+seat, [seat, tier] order (order-indepe
     { price: { id: "price_seat_m" }, quantity: 3 },
     { price: { id: "price_a_m" }, quantity: 1 },
   ];
-  assertEquals(resolveSubscriptionSeats(items, SEAT_PLANS), { purchased_seats: 3 });
+  assertEquals(resolveSubscriptionSeats(items, SEAT_PLANS), { purchased_seats: 3, has_seat_item: true });
 });
 
 Deno.test("resolveSubscriptionSeats: annual seat price id is recognized", () => {
@@ -83,7 +83,7 @@ Deno.test("resolveSubscriptionSeats: annual seat price id is recognized", () => 
     { price: { id: "price_a_y" }, quantity: 1 },
     { price: { id: "price_seat_y" }, quantity: 2 },
   ];
-  assertEquals(resolveSubscriptionSeats(items, SEAT_PLANS), { purchased_seats: 2 });
+  assertEquals(resolveSubscriptionSeats(items, SEAT_PLANS), { purchased_seats: 2, has_seat_item: true });
 });
 
 Deno.test("resolveSubscriptionSeats: missing/null quantity counts as 0, null price ignored", () => {
@@ -92,5 +92,21 @@ Deno.test("resolveSubscriptionSeats: missing/null quantity counts as 0, null pri
     { price: { id: "price_seat_m" } },
     { price: null, quantity: 5 },
   ];
-  assertEquals(resolveSubscriptionSeats(items, SEAT_PLANS), { purchased_seats: 0 });
+  // null price items are ignored (no seat item from them); seat items with null/missing quantity
+  // still register as has_seat_item: true but contribute 0 to purchased_seats
+  assertEquals(resolveSubscriptionSeats(items, SEAT_PLANS), { purchased_seats: 0, has_seat_item: true });
+});
+
+Deno.test("resolveSubscriptionSeats: seat item with quantity 0 sets has_seat_item true but purchased_seats 0", () => {
+  const items = [
+    { price: { id: "price_seat_m" }, quantity: 0 },
+  ];
+  assertEquals(resolveSubscriptionSeats(items, SEAT_PLANS), { purchased_seats: 0, has_seat_item: true });
+});
+
+Deno.test("resolveSubscriptionSeats: seat item with quantity null sets has_seat_item true but purchased_seats 0", () => {
+  const items = [
+    { price: { id: "price_seat_y" }, quantity: null },
+  ];
+  assertEquals(resolveSubscriptionSeats(items, SEAT_PLANS), { purchased_seats: 0, has_seat_item: true });
 });
