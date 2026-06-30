@@ -57,6 +57,7 @@ const REQUIRED_FUNCTIONS = [
   // Billing (manual auth: user-JWT or Stripe signature)
   "billing-checkout",
   "billing-portal",
+  "billing-seats",
   "stripe-webhook",
 ];
 
