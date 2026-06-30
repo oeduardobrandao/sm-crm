@@ -113,6 +113,10 @@ export default function PlansPage() {
     stripe_product_id: '',
     stripe_price_id: '',
     stripe_price_id_annual: '',
+    stripe_price_id_seat: '',
+    stripe_price_id_seat_annual: '',
+    seat_addon_brl: null,
+    seat_addon_brl_annual: null,
   });
 
   const { data, isLoading } = useQuery({
