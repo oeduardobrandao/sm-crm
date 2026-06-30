@@ -74,7 +74,7 @@ export default function AdminLayout() {
 
         {/* Sidebar — always dark */}
         <aside
-          className={`w-[220px] border-r border-[#1e2430] flex flex-col fixed inset-y-0 left-0 z-50 transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}
+          className={`w-[220px] border-r border-[#1e2430] flex flex-col fixed inset-y-0 left-0 z-50 transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:transform-none`}
         >
           <div className="liquidGL md:[&]:bg-transparent bg-[#12151a] flex flex-col flex-1 min-h-0">
             <div className="px-5 pt-6 pb-4 flex items-center justify-between">
