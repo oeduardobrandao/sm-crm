@@ -66,7 +66,11 @@ export function resolveSyncTarget(args: {
   }
 
   // 2. Purchased seats from the seat item(s), status-aware.
-  const rawSeats = resolveSubscriptionSeats(items, plans).purchased_seats;
+  // Cast to billing-logic's SubItem shape; resolveSubscriptionSeats guards null price internally.
+  const rawSeats = resolveSubscriptionSeats(
+    items as Parameters<typeof resolveSubscriptionSeats>[0],
+    plans,
+  ).purchased_seats;
   const seatsLive = status === "active" || status === "trialing";
   const purchasedSeats = seatsLive ? rawSeats : 0;
 
@@ -158,38 +162,58 @@ async function syncSubscription(
   const workspaceId = await resolveWorkspaceId(svc, sub, session);
   if (!workspaceId) throw new Error(`Could not resolve workspace for subscription ${sub.id}`);
 
-  const priceId = sub.items?.data?.[0]?.price?.id ?? null;
   const plans = await loadPlanPriceRows(svc);
-  const resolved = priceId ? resolvePlanFromPriceId(priceId, plans) : null;
   const defaultPlanId = await getDefaultPlanId(svc);
-  const subscribedPlanId = resolved?.plan_id ?? defaultPlanId;
   const customerId = typeof sub.customer === "string" ? sub.customer : sub.customer.id;
 
-  // current_period_end lives on the subscription root in older API versions (acacia) and
-  // on the first subscription item in basil (2025-03-31)+. Webhook payloads use the account's
-  // API version regardless of the SDK pin, so read whichever is present.
-  const subPeriod = sub as unknown as {
-    current_period_end?: number;
-    items?: { data?: Array<{ current_period_end?: number }> };
-  };
-  const periodEndUnix = subPeriod.current_period_end
-    ?? subPeriod.items?.data?.[0]?.current_period_end
-    ?? null;
+  // Read the prior mirror plan_id so we never overwrite it with null when no tier resolves.
+  const { data: priorRow } = await svc
+    .from("workspace_subscriptions").select("plan_id")
+    .eq("workspace_id", workspaceId).maybeSingle();
+  const priorPlanId = (priorRow?.plan_id as string | null) ?? null;
+
+  // Classify ALL items by price_id (never index 0); current_period_end lives on the item
+  // in basil (2025-03-31)+. The subscription-root value (acacia) is preferred when present.
+  const subPeriod = sub as unknown as { current_period_end?: number };
+  const items = (sub.items?.data ?? []) as unknown as SubItem[];
+
+  const target = resolveSyncTarget({
+    items,
+    status: sub.status,
+    plans,
+    priorPlanId,
+  });
+
+  if (target.mustThrow) {
+    // Active sub with a seat item but no resolvable tier: a shared seat price cannot
+    // identify a tier, so the default fallback cannot recover it. Throw 5xx for redelivery.
+    console.error(
+      `[stripe-webhook] active subscription ${sub.id} has a seat item but no resolvable tier price`,
+    );
+    throw new Error("Unresolvable tier on active subscription with seat item");
+  }
+
+  const periodEndUnix = subPeriod.current_period_end ?? target.periodEndUnix ?? null;
 
   await svc.from("workspace_subscriptions").upsert({
     workspace_id: workspaceId,
     stripe_customer_id: customerId,
     stripe_subscription_id: sub.id,
     status: sub.status,
-    plan_id: resolved?.plan_id ?? null,
-    billing_interval: resolved?.interval ?? null,
+    plan_id: target.mirrorPlanId,
+    billing_interval: target.billingInterval,
+    purchased_seats: target.purchasedSeats,
     current_period_end: periodEndUnix
       ? new Date(periodEndUnix * 1000).toISOString() : null,
     cancel_at_period_end: sub.cancel_at_period_end ?? false,
     updated_at: new Date().toISOString(),
   }, { onConflict: "workspace_id" });
 
-  const targetPlanId = statusToPlanId(sub.status, subscribedPlanId, defaultPlanId);
+  // No tier resolved -> leave workspaces.plan_id unchanged (skip writeWorkspacePlan),
+  // matching past_due/incomplete null semantics. Never write the default on an unresolved tier.
+  if (target.planIdToWrite === null) return;
+
+  const targetPlanId = statusToPlanId(sub.status, target.planIdToWrite, defaultPlanId);
   if (targetPlanId !== null) {
     await writeWorkspacePlan(svc, workspaceId, targetPlanId);
   }
@@ -245,7 +269,9 @@ async function resolveWorkspaceId(
 
 async function loadPlanPriceRows(svc: SupabaseClient): Promise<PlanPriceRow[]> {
   const { data } = await svc.from("plans")
-    .select("id, stripe_price_id, stripe_price_id_annual");
+    .select(
+      "id, stripe_price_id, stripe_price_id_annual, stripe_price_id_seat, stripe_price_id_seat_annual",
+    );
   return (data ?? []) as PlanPriceRow[];
 }
 
