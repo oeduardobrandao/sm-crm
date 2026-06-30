@@ -47,6 +47,51 @@ export function resolvePlanFromPriceId(
   return null;
 }
 
+/** Coerces an untrusted seat input to a non-negative integer (default 0). */
+export function clampExtraSeats(input: unknown): number {
+  const n = typeof input === "number" ? input : Number(input);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.floor(n);
+}
+
+/**
+ * Builds Stripe checkout line items for a tier + optional seat add-on.
+ * - extraSeats <= 0 → just the tier item (never a quantity-0 seat line).
+ * - extraSeats > 0  → tier item plus a seat item { price: seatPriceId, quantity: extraSeats }.
+ * - extraSeats > 0 with a falsy seatPriceId → error (caller must 400 before any Stripe call,
+ *   because a missing interval-matched seat price means Stripe would get mixed intervals).
+ */
+export function buildLineItems(args: {
+  tierPriceId: string;
+  seatPriceId: string | null;
+  extraSeats: number;
+}):
+  | { ok: true; lineItems: Array<{ price: string; quantity: number }> }
+  | { ok: false; error: string } {
+  const lineItems: Array<{ price: string; quantity: number }> = [
+    { price: args.tierPriceId, quantity: 1 },
+  ];
+  if (args.extraSeats > 0) {
+    if (!args.seatPriceId) {
+      return { ok: false, error: "Seat price not configured for this interval" };
+    }
+    lineItems.push({ price: args.seatPriceId, quantity: args.extraSeats });
+  }
+  return { ok: true, lineItems };
+}
+
+/**
+ * DB-driven paid-plan check: the plan must exist, be active, and have an
+ * interval-matched tier price id. Replaces the hardcoded PAID_PLANS allowlist so
+ * the catalog is the single source of truth.
+ */
+export function validatePaidPlan(
+  plan: { is_active?: boolean | null; tierPriceId?: string | null } | null,
+): boolean {
+  return !!plan && plan.is_active === true && typeof plan.tierPriceId === "string" &&
+    plan.tierPriceId.length > 0;
+}
+
 /** Shape of a Stripe subscription item, narrowed to the fields we read. */
 export interface SubItem {
   price: { id: string | null } | null;
