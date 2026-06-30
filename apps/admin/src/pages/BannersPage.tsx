@@ -198,7 +198,7 @@ export default function BannersPage() {
     <div>
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
         <div>
-          <h1 className="font-['Playfair_Display'] text-2xl font-bold mb-1">Banners</h1>
+          <h1 className="font-sf text-2xl font-bold mb-1">Banners</h1>
           <p className="text-sm text-muted-foreground">Manage global announcements</p>
         </div>
         <button
@@ -280,12 +280,14 @@ export default function BannersPage() {
                 </div>
                 {/* Desktop row */}
                 <div className="hidden md:grid grid-cols-[2fr_0.7fr_1fr_1fr_0.7fr_0.5fr] gap-2 items-center">
-                  <div>
+                  <div className="min-w-0">
                     <div className="text-sm font-medium truncate">
                       {b.content.slice(0, 80)}
                       {b.content.length > 80 ? '...' : ''}
                     </div>
-                    <div className="text-xs text-muted-foreground mt-0.5">{getTargetLabel(b)}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5 truncate">
+                      {getTargetLabel(b)}
+                    </div>
                   </div>
                   <span
                     className="text-[0.65rem] font-semibold uppercase px-1.5 py-0.5 rounded-sm w-fit"
@@ -325,7 +327,7 @@ export default function BannersPage() {
             className="bg-card border border-border rounded-2xl p-5 md:p-8 w-full max-w-2xl max-h-[85vh] overflow-y-auto mx-4 md:mx-0"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="font-['Playfair_Display'] text-lg font-bold mb-6">
+            <h2 className="font-sf text-lg font-bold mb-6">
               {editingBanner ? 'Edit Banner' : 'New Banner'}
             </h2>
 
@@ -339,7 +341,7 @@ export default function BannersPage() {
                   onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))}
                   required
                   rows={3}
-                  className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Sans'] text-foreground focus:outline-none focus:border-primary resize-none"
+                  className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-sf text-foreground focus:outline-none focus:border-primary resize-none"
                 />
               </div>
 
@@ -353,7 +355,7 @@ export default function BannersPage() {
                     value={form.link}
                     onChange={(e) => setForm((f) => ({ ...f, link: e.target.value }))}
                     placeholder="https://..."
-                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Sans'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
+                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-sf text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
                   />
                 </div>
                 <div>
@@ -365,7 +367,7 @@ export default function BannersPage() {
                     value={form.custom_color}
                     onChange={(e) => setForm((f) => ({ ...f, custom_color: e.target.value }))}
                     placeholder="#ff5500"
-                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Sans'] text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
+                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-sf text-foreground placeholder-dim-foreground focus:outline-none focus:border-primary"
                   />
                 </div>
               </div>
@@ -508,7 +510,7 @@ export default function BannersPage() {
                     type="datetime-local"
                     value={form.starts_at}
                     onChange={(e) => setForm((f) => ({ ...f, starts_at: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Sans'] text-foreground focus:outline-none focus:border-primary"
+                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-sf text-foreground focus:outline-none focus:border-primary"
                   />
                 </div>
                 <div>
@@ -519,7 +521,7 @@ export default function BannersPage() {
                     type="datetime-local"
                     value={form.ends_at}
                     onChange={(e) => setForm((f) => ({ ...f, ends_at: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-['DM_Sans'] text-foreground focus:outline-none focus:border-primary"
+                    className="w-full px-3 py-2 rounded-lg bg-secondary border border-transparent text-sm font-sf text-foreground focus:outline-none focus:border-primary"
                   />
                 </div>
               </div>

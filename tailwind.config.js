@@ -58,6 +58,14 @@ module.exports = {
       },
       fontFamily: {
         mono: ["SF Pro Text", "sans-serif"],
+        sf: [
+          "-apple-system",
+          "BlinkMacSystemFont",
+          "SF Pro Display",
+          "SF Pro Text",
+          "system-ui",
+          "sans-serif",
+        ],
       },
     },
   },

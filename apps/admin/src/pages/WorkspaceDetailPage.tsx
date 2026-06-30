@@ -216,9 +216,7 @@ export default function WorkspaceDetailPage() {
             {data.workspace.name.charAt(0).toUpperCase()}
           </div>
           <div className="min-w-0">
-            <h1 className="font-['Playfair_Display'] text-xl font-bold break-words">
-              {data.workspace.name}
-            </h1>
+            <h1 className="font-sf text-xl font-bold break-words">{data.workspace.name}</h1>
             <p className="text-sm text-muted-foreground truncate">
               Owner: {data.owner?.email || '—'} · Created{' '}
               {new Date(data.workspace.created_at).toLocaleDateString('pt-BR')}
@@ -291,7 +289,7 @@ export default function WorkspaceDetailPage() {
                 </span>
               </Field>
               <Field label="Valor">
-                <span className="font-['DM_Sans'] text-sm">
+                <span className="font-sf text-sm">
                   {formatMoney(data.subscription.amount_cents, data.subscription.currency)}
                   {intervalSuffix(data.subscription.interval)}
                 </span>
@@ -595,7 +593,7 @@ function LimitRow({
           type="number"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className={`w-20 px-2 py-1 rounded text-right font-['DM_Sans'] text-sm bg-secondary border focus:outline-none focus:border-primary ${
+          className={`w-20 px-2 py-1 rounded text-right font-sf text-sm bg-secondary border focus:outline-none focus:border-primary ${
             isOverridden ? 'border-primary/30 text-primary' : 'border-transparent text-foreground'
           }`}
         />

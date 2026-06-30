@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Outlet, NavLink } from 'react-router-dom';
+import { Outlet, NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
   Building2,
@@ -11,8 +11,11 @@ import {
   Moon,
   Megaphone,
   BookOpen,
+  Sparkles,
 } from 'lucide-react';
 import { useAdminAuth } from '../context/AdminAuthContext';
+import { LiquidBackdrop } from '../liquidglass/LiquidBackdrop';
+import { useLiquidGlassContext } from '../liquidglass/LiquidGlassProvider';
 
 const NAV_ITEMS = [
   { to: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
@@ -30,13 +33,27 @@ export default function AdminLayout() {
     return (localStorage.getItem('admin-theme') as 'light' | 'dark') || 'dark';
   });
 
+  const { enabled: glassEnabled, toggle: toggleGlass } = useLiquidGlassContext();
+  const location = useLocation();
+  const pageTitle =
+    NAV_ITEMS.find((i) =>
+      i.to === '/admin' ? location.pathname === '/admin' : location.pathname.startsWith(i.to),
+    )?.label ?? 'Admin';
+
+  // Apply theme to the DOM. While glass is ON the trial forces dark for the best
+  // presentation, but does NOT persist it — the user's saved 'admin-theme' is
+  // preserved and restored when glass is turned OFF.
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('admin-theme', theme);
-  }, [theme]);
+    const effectiveTheme = glassEnabled ? 'dark' : theme;
+    document.documentElement.setAttribute('data-theme', effectiveTheme);
+    if (!glassEnabled) {
+      localStorage.setItem('admin-theme', theme);
+    }
+  }, [theme, glassEnabled]);
 
   return (
     <div className="flex min-h-screen">
+      <LiquidBackdrop />
       {/* Mobile hamburger */}
       <button
         onClick={() => setSidebarOpen(true)}
@@ -53,9 +70,9 @@ export default function AdminLayout() {
         />
       )}
 
-      {/* Sidebar — always dark */}
+      {/* Sidebar — frosted glass when ON, solid dark when OFF */}
       <aside
-        className={`w-[220px] bg-[#12151a] border-r border-[#1e2430] flex flex-col fixed inset-y-0 left-0 z-50 transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}
+        className={`glass-surface glass-surface--sidebar w-[220px] bg-[#12151a] border-r border-[#1e2430] flex flex-col fixed inset-y-0 left-0 z-50 transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:transform-none`}
       >
         <div className="px-5 pt-6 pb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -154,13 +171,28 @@ export default function AdminLayout() {
         <div className="px-4 py-4 border-t border-[#1e2430] mt-auto">
           <div className="flex items-center justify-between mb-1">
             <p className="text-sm text-[#9ca3af] truncate">{adminEmail}</p>
-            <button
-              onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
-              className="p-1.5 rounded-lg text-[#9ca3af] hover:text-[#eab308] hover:bg-[#1e2430] transition-colors"
-              title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
-            >
-              {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
-            </button>
+            <div className="flex items-center gap-1">
+              {!glassEnabled && (
+                <button
+                  onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+                  className="p-1.5 rounded-lg text-[#9ca3af] hover:text-[#eab308] hover:bg-[#1e2430] transition-colors"
+                  title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+                >
+                  {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
+                </button>
+              )}
+              <button
+                onClick={toggleGlass}
+                className={`p-1.5 rounded-lg transition-colors ${glassEnabled ? 'text-[#eab308]' : 'text-[#9ca3af]'} hover:bg-[#1e2430]`}
+                title={
+                  glassEnabled
+                    ? 'Liquid Glass: ON (click to disable)'
+                    : 'Liquid Glass: OFF (click to enable)'
+                }
+              >
+                <Sparkles size={14} />
+              </button>
+            </div>
           </div>
           <button
             onClick={signOut}
@@ -171,8 +203,13 @@ export default function AdminLayout() {
         </div>
       </aside>
 
-      <main className="md:ml-[220px] flex-1 p-4 pt-16 md:p-8 min-h-screen">
-        <Outlet />
+      <main className="md:ml-[220px] flex-1 min-h-screen">
+        <div className="glass-surface sticky top-0 z-30 mx-4 mt-4 md:mx-8 md:mt-6 rounded-2xl py-3 pl-14 pr-5 md:px-5 flex items-center bg-card border border-border">
+          <h1 className="text-sm font-medium tracking-wide text-foreground">{pageTitle}</h1>
+        </div>
+        <div className="p-4 pt-6 md:p-8">
+          <Outlet />
+        </div>
       </main>
     </div>
   );

@@ -42,7 +42,7 @@ export default function AdminsPage() {
 
   return (
     <div>
-      <h1 className="font-['Playfair_Display'] text-2xl font-bold mb-1">Admins</h1>
+      <h1 className="font-sf text-2xl font-bold mb-1">Admins</h1>
       <p className="text-sm text-muted-foreground mb-6">Platform administrators</p>
 
       <form onSubmit={handleInvite} className="flex flex-col sm:flex-row gap-3 mb-8">
@@ -52,7 +52,7 @@ export default function AdminsPage() {
           onChange={(e) => setEmail(e.target.value)}
           placeholder="Email do novo admin..."
           required
-          className="flex-1 px-3 py-2.5 rounded-lg bg-card border border-border text-sm font-['DM_Sans'] text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary transition-colors"
+          className="flex-1 px-3 py-2.5 rounded-lg bg-card border border-border text-sm font-sf text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary transition-colors"
         />
         <button
           type="submit"

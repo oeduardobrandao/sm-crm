@@ -1,0 +1,44 @@
+/* ── Liquid Glass (CSS) — admin trial ────────────────────────────────────
+   Frosted-glass surfaces using backdrop-filter, layered over a colorful
+   backdrop. Toggled via html[data-liquid-glass='on'|'off'] (set by
+   LiquidGlassProvider). Surfaces also keep a solid Tailwind background
+   (bg-card / bg-[#12151a]) as the OFF fallback; the rules below override it
+   only when glass is ON. */
+
+/* Colorful backdrop the frosted glass blurs + tints. Fixed, behind everything. */
+.liquid-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-color: #0a0c0f;
+  background-image:
+    radial-gradient(48rem 48rem at 8% 10%, rgba(234, 179, 8, 0.32), transparent 60%),
+    radial-gradient(44rem 44rem at 90% 16%, rgba(57, 132, 255, 0.3), transparent 60%),
+    radial-gradient(46rem 46rem at 80% 94%, rgba(245, 66, 200, 0.24), transparent 60%),
+    radial-gradient(40rem 40rem at 16% 88%, rgba(106, 201, 208, 0.24), transparent 62%);
+  background-repeat: no-repeat;
+}
+
+html[data-liquid-glass='off'] .liquid-backdrop {
+  display: none;
+}
+
+/* Frosted glass surface. Activated only under html[data-liquid-glass='on']. */
+[data-liquid-glass='on'] .glass-surface {
+  background-color: rgba(17, 21, 28, 0.45);
+  backdrop-filter: blur(22px) saturate(1.7);
+  -webkit-backdrop-filter: blur(22px) saturate(1.7);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.1),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.02),
+    0 16px 40px -16px rgba(0, 0, 0, 0.6);
+}
+
+/* Stronger frost for the full-height sidebar surface. */
+[data-liquid-glass='on'] .glass-surface--sidebar {
+  background-color: rgba(13, 16, 22, 0.55);
+  backdrop-filter: blur(26px) saturate(1.6);
+  -webkit-backdrop-filter: blur(26px) saturate(1.6);
+}

@@ -41,7 +41,7 @@ export default function WorkspacesPage() {
 
   return (
     <div>
-      <h1 className="font-['Playfair_Display'] text-2xl font-bold mb-1">Workspaces</h1>
+      <h1 className="font-sf text-2xl font-bold mb-1">Workspaces</h1>
       <p className="text-sm text-muted-foreground mb-6">All registered workspaces</p>
 
       <div className="flex flex-col sm:flex-row gap-3 mb-6">
@@ -58,7 +58,7 @@ export default function WorkspacesPage() {
               setSearch(e.target.value);
               setPage(0);
             }}
-            className="w-full pl-9 pr-3 py-2.5 rounded-lg bg-card border border-border text-sm font-['DM_Sans'] text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary transition-colors"
+            className="w-full pl-9 pr-3 py-2.5 rounded-lg bg-card border border-border text-sm font-sf text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary transition-colors"
           />
         </div>
         <select
@@ -175,7 +175,7 @@ export default function WorkspacesPage() {
                     >
                       {ws.subscription.plan_name ?? 'Stripe'}
                     </span>
-                    <span className="whitespace-nowrap font-['DM_Sans'] text-xs text-muted-foreground">
+                    <span className="whitespace-nowrap font-sf text-xs text-muted-foreground">
                       {formatMoney(ws.subscription.amount_cents, ws.subscription.currency)}
                       {intervalSuffix(ws.subscription.interval)}
                     </span>
@@ -189,8 +189,8 @@ export default function WorkspacesPage() {
                   <span className="text-dim-foreground">—</span>
                 )}
               </span>
-              <span className="hidden md:inline font-['DM_Sans'] text-sm">{ws.client_count}</span>
-              <span className="hidden md:inline font-['DM_Sans'] text-sm">{ws.member_count}</span>
+              <span className="hidden md:inline font-sf text-sm">{ws.client_count}</span>
+              <span className="hidden md:inline font-sf text-sm">{ws.member_count}</span>
               <span className="hidden md:inline text-muted-foreground text-sm">
                 {new Date(ws.created_at).toLocaleDateString('pt-BR', {
                   day: '2-digit',
