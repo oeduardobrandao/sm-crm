@@ -69,6 +69,34 @@ export async function getClientePosts(clienteId: number): Promise<ClientePost[]>
   }));
 }
 
+export interface PostPreview {
+  conteudo_plain: string;
+  responsavel_id: number | null;
+  ig_caption: string | null;
+  published_at: string | null;
+  instagram_permalink: string | null;
+}
+
+/**
+ * Detail fields for a single post, lazy-loaded by the calendar detail panel.
+ * RLS scopes by conta_id; no explicit conta filter needed (mirrors updateWorkflowPost).
+ */
+export async function getPostPreview(postId: number): Promise<PostPreview> {
+  const { data, error } = await supabase
+    .from('workflow_posts')
+    .select('conteudo_plain, responsavel_id, ig_caption, published_at, instagram_permalink')
+    .eq('id', postId)
+    .single();
+  if (error) throw error;
+  return {
+    conteudo_plain: data.conteudo_plain ?? '',
+    responsavel_id: data.responsavel_id ?? null,
+    ig_caption: data.ig_caption ?? null,
+    published_at: data.published_at ?? null,
+    instagram_permalink: data.instagram_permalink ?? null,
+  };
+}
+
 export interface ScheduledPost {
   id: number;
   workflow_id: number;

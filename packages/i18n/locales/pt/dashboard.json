@@ -70,5 +70,76 @@
     "clt": "CLT",
     "mensal": "Mensal",
     "demanda": "Demanda"
+  },
+  "health": {
+    "title": "Saúde dos clientes",
+    "subtitle_one": "{{total}} cliente ativo · {{attention}} precisam de atenção",
+    "subtitle_other": "{{total}} clientes ativos · {{attention}} precisam de atenção",
+    "search": "Buscar cliente…",
+    "sortLabel": "Ordenar",
+    "sort": {
+      "atencao": "Precisam de atenção primeiro",
+      "engajamento": "Maior engajamento",
+      "ultimo_post": "Último post",
+      "seguidores": "Mais seguidores",
+      "nome": "Nome (A–Z)"
+    },
+    "chips": {
+      "todos": "Todos",
+      "atencao": "Atenção",
+      "saudaveis": "Saudáveis",
+      "estaveis": "Estáveis",
+      "conexao": "Conexão"
+    },
+    "status": {
+      "em_alta": "Em alta",
+      "saudavel": "Saudável",
+      "estavel": "Estável",
+      "atencao": "Atenção",
+      "em_queda": "Em queda",
+      "inativo": "Inativo",
+      "sem_dados": "Sem dados",
+      "sincronizando": "Sincronizando",
+      "sem_sincronizar": "Sem sincronizar",
+      "reconectar": "Reconectar",
+      "desconectado": "Desconectado"
+    },
+    "metric": {
+      "seguidores": "Seguidores",
+      "engajamento": "Engaj.",
+      "alcance": "Alcance",
+      "ultimoPost": "Últ. post"
+    },
+    "pipeline": {
+      "agendados": "{{count}} agendados",
+      "em_producao": "{{count}} em produção",
+      "agente": "{{count}} por agente",
+      "falha": "{{count}} falha",
+      "parado": "Pipeline parado",
+      "sem_atividade": "Sem atividade"
+    },
+    "lastPost": {
+      "days": "há {{count}}d",
+      "never": "sem posts",
+      "noneDays": "sem post {{count}}d"
+    },
+    "cta": {
+      "analytics": "Analytics",
+      "detalhe": "Detalhe",
+      "conectar": "Conectar Instagram",
+      "reconectar": "Reconectar",
+      "sincronizar": "Sincronizar agora"
+    },
+    "success": {
+      "sincronizar": "Sincronização iniciada"
+    },
+    "syncStale": "Dados desatualizados há {{count}} dias.",
+    "reconectarMsg": "Autorização expirada ou revogada — reconecte para retomar a sincronização.",
+    "empty": {
+      "noClients": "Nenhum cliente ativo ainda.",
+      "noneConnected": "Nenhuma conta do Instagram conectada. Conecte uma conta para ver a saúde dos clientes.",
+      "filtered": "Nenhum cliente neste filtro."
+    },
+    "error": "Não foi possível carregar a saúde dos clientes."
   }
 }

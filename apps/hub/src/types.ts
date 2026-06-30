@@ -153,6 +153,17 @@ export interface IdeiaReaction {
   membros: { nome: string };
 }
 
+export interface IdeiaImage {
+  id: number;
+  file_id: number;
+  url: string;
+  thumbnail_url: string | null;
+  blur_data_url: string | null;
+  width: number | null;
+  height: number | null;
+  sort_order: number;
+}
+
 export interface HubIdeia {
   id: string;
   titulo: string;
@@ -166,6 +177,7 @@ export interface HubIdeia {
   created_at: string;
   updated_at: string;
   ideia_reactions: IdeiaReaction[];
+  images: IdeiaImage[];
 }
 
 export interface InstagramProfile {

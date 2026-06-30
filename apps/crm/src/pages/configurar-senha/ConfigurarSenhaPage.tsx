@@ -43,9 +43,20 @@ export default function ConfigurarSenhaPage() {
   useEffect(() => {
     const sessionReceived = { current: false };
     const mounted = { current: true };
-    const timeout = setTimeout(() => {
-      if (!sessionReceived.current) setTokenError(true);
-    }, 8000);
+    // A valid invite/recovery link carries the session in the URL. When a token
+    // is present, the session is on its way — give it a generous grace period
+    // so a slow network is never mistaken for an expired link. With no token in
+    // the URL there is nothing to wait for, so fail fast.
+    const hasUrlToken =
+      /access_token=|refresh_token=|[?&]code=|type=(invite|recovery|signup|magiclink)/.test(
+        window.location.hash + window.location.search,
+      );
+    const timeout = setTimeout(
+      () => {
+        if (!sessionReceived.current) setTokenError(true);
+      },
+      hasUrlToken ? 20000 : 8000,
+    );
 
     const processSession = async (session: {
       user: { email?: string; user_metadata?: Record<string, unknown> };
@@ -137,8 +148,22 @@ export default function ConfigurarSenhaPage() {
       return;
     }
 
-    if (isInvite && nome && session.user.id) {
-      await supabase.from('profiles').update({ nome }).eq('id', session.user.id);
+    if (isInvite && session.user.id) {
+      // Mark onboarding complete the moment the password is set, so a later
+      // re-invite never wipes a user who already has a working password
+      // (belt-and-suspenders alongside the server-side flag set in accept-invite).
+      const profileUpdate: { onboarding_complete: boolean; nome?: string } = {
+        onboarding_complete: true,
+      };
+      if (nome) profileUpdate.nome = nome;
+      const { error: profileErr } = await supabase
+        .from('profiles')
+        .update(profileUpdate)
+        .eq('id', session.user.id);
+      if (profileErr) {
+        // Non-fatal: accept-invite sets onboarding_complete server-side too.
+        console.warn('[configurar-senha] onboarding_complete update failed:', profileErr.message);
+      }
     }
 
     if (isInvite && email) {
@@ -299,7 +324,7 @@ export default function ConfigurarSenhaPage() {
               Este link é inválido ou já expirou. Solicite um novo link de redefinição de senha.
             </p>
             <Button
-              onClick={() => navigate('/login')}
+              onClick={() => navigate('/login?tab=forgot')}
               className="w-full"
               style={{
                 height: 46,

@@ -1,6 +1,8 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { seatsAvailable } from "./seats.ts";
+import { classifyExistingUser } from "./onboarding.ts";
+import { sendInviteEmail } from "../_shared/invite-email.ts";
 import { effectivePlanLimit } from "../_shared/entitlements-rpc.ts";
 
 async function findAuthUserByEmail(adminClient: any, email: string) {
@@ -21,7 +23,22 @@ async function findAuthUserByEmail(adminClient: any, email: string) {
 async function deleteUnconfirmedInvitedUser(adminClient: any, email: string) {
   const authUser = await findAuthUserByEmail(adminClient, email);
   if (!authUser) return;
-  if (authUser.email_confirmed_at) return;
+
+  // Cancelling an invite removes the invitee entirely, so delete any
+  // not-onboarded user (whether they'd otherwise be re-invited or resent a
+  // link). Only skip a fully-onboarded user, or the anomalous
+  // confirmed-with-no-profile state (never auto-delete those).
+  const { data: profile } = await adminClient
+    .from('profiles')
+    .select('onboarding_complete')
+    .eq('id', authUser.id)
+    .maybeSingle();
+  const action = classifyExistingUser({
+    emailConfirmed: !!authUser.email_confirmed_at,
+    hasProfile: !!profile,
+    onboardingComplete: profile?.onboarding_complete === true,
+  });
+  if (action !== 'reinvite' && action !== 'resend-link') return;
 
   await adminClient.from('profiles').delete().eq('id', authUser.id);
   await adminClient.from('workspace_members').delete().eq('user_id', authUser.id);
@@ -143,14 +160,83 @@ Deno.serve(async (req) => {
     const existingUser = await findAuthUserByEmail(adminClient, email);
 
     if (existingUser) {
-      if (!existingUser.email_confirmed_at) {
-        // Stale invited user who never confirmed — delete and re-invite fresh
+      // A user who clicked the invite link has their e-mail confirmed but may
+      // never have set a password ("confirmed-with-no-password"). Branch on
+      // whether they actually completed onboarding, not on email_confirmed_at,
+      // so a half-finished invitee is re-invited with a fresh set-password link
+      // instead of being silently marked "accepted" (which left them unable to
+      // log in — the "wrong password" symptom).
+      const { data: existingOnboarding } = await adminClient
+        .from('profiles')
+        .select('onboarding_complete')
+        .eq('id', existingUser.id)
+        .maybeSingle();
+
+      const action = classifyExistingUser({
+        emailConfirmed: !!existingUser.email_confirmed_at,
+        hasProfile: !!existingOnboarding,
+        onboardingComplete: existingOnboarding?.onboarding_complete === true,
+      });
+
+      if (action === 'blocked-anomalous') {
+        // Confirmed auth user with no profile row — impossible by design.
+        // Refuse to auto-wipe; surface for manual support intervention.
+        throw new Error(
+          'Conta com e-mail confirmado mas sem perfil. Não foi possível reenviar o convite automaticamente — contate o suporte.',
+        );
+      }
+
+      if (action === 'resend-link') {
+        // Confirmed-but-passwordless invitee: re-send a fresh set-password link
+        // to the SAME auth user (no delete → the prior link and any in-flight
+        // set-password session are untouched). generateLink does not send mail,
+        // so deliver it via Resend. The user still carries conta_id in their
+        // metadata from the original invite, so the link lands in invite mode.
+        const redirectBase = Deno.env.get('OAUTH_REDIRECT_BASE') || 'http://localhost:5173';
+        const { data: linkData, error: linkErr } = await adminClient.auth.admin.generateLink({
+          type: 'recovery',
+          email: email.toLowerCase(),
+          options: { redirectTo: redirectBase + '/configurar-senha' },
+        });
+        if (linkErr || !linkData?.properties?.action_link) {
+          console.error('[invite-user] generateLink error:', linkErr?.message);
+          throw new Error('Não foi possível gerar o link de acesso.');
+        }
+
+        const { data: conta } = await adminClient
+          .from('contas').select('nome').eq('id', profile.conta_id).maybeSingle();
+
+        await sendInviteEmail({
+          to: email.toLowerCase(),
+          actionLink: linkData.properties.action_link,
+          workspaceName: conta?.nome || 'seu workspace',
+        });
+
+        // Refresh the invite record (prior pending/expired rows were deleted
+        // at the top of this handler).
+        await adminClient.from('invites').insert({
+          conta_id: profile.conta_id,
+          email: email.toLowerCase(),
+          role,
+          invited_by: user.id,
+          status: 'pending',
+        });
+
+        return new Response(
+          JSON.stringify({ success: true, message: `Novo link de acesso enviado para ${email}.` }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 },
+        );
+      }
+
+      if (action === 'reinvite') {
+        // Never-confirmed user — nothing in-flight to destroy, so delete and
+        // re-invite fresh so they receive a working set-password link.
         await adminClient.from('profiles').delete().eq('id', existingUser.id);
         await adminClient.from('workspace_members').delete().eq('user_id', existingUser.id);
         await adminClient.auth.admin.deleteUser(existingUser.id);
         // Fall through to "new user" path below
       } else {
-        // --- Confirmed user: add to this workspace directly ---
+        // --- Fully onboarded user: add to this workspace directly ---
         const { data: existingMembership } = await adminClient
           .from('workspace_members')
           .select('id')
@@ -188,6 +274,7 @@ Deno.serve(async (req) => {
               role,
               nome: existingUser.user_metadata?.nome || email.split('@')[0],
               active_workspace_id: profile.conta_id,
+              onboarding_complete: true,
             });
           if (insertErr) throw insertErr;
         }

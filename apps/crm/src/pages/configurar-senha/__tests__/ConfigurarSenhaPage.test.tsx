@@ -200,6 +200,29 @@ describe('ConfigurarSenhaPage', () => {
         expect(screen.getByText('Você foi convidado')).toBeInTheDocument();
       });
     });
+
+    it('does not show error at 8s while a token is still present in the URL (slow network)', async () => {
+      // A valid invite/recovery link carries the session in the URL hash. On a
+      // slow network the session can take >8s to establish; we must not declare
+      // the link expired prematurely. The error only appears after a longer
+      // last-resort grace period.
+      window.location.hash = '#access_token=abc&type=invite';
+      try {
+        renderPage();
+
+        act(() => {
+          vi.advanceTimersByTime(8000);
+        });
+        expect(screen.queryByText('Link inválido ou expirado')).not.toBeInTheDocument();
+
+        act(() => {
+          vi.advanceTimersByTime(12000); // 20s total
+        });
+        expect(screen.getByText('Link inválido ou expirado')).toBeInTheDocument();
+      } finally {
+        window.location.hash = '';
+      }
+    });
   });
 
   // --- Form submission ---

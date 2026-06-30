@@ -11,6 +11,7 @@ import type {
   BriefingQuestion,
   Briefing,
   HubIdeia,
+  IdeiaImage,
   IdeiaReaction,
   InstagramFeedData,
   HubPostsResponse,
@@ -176,6 +177,56 @@ export function updateIdeia(
 
 export function deleteIdeia(token: string, id: string) {
   return del<{ ok: boolean }>('hub-ideias', id, token);
+}
+
+export function presignIdeiaImage(
+  token: string,
+  payload: {
+    ideia_id: string;
+    filename: string;
+    mime_type: string;
+    size_bytes: number;
+    thumbnail: { mime_type: string; size_bytes: number };
+  },
+) {
+  return post<{
+    upload_id: string;
+    upload_url: string;
+    r2_key: string;
+    thumbnail_upload_url: string;
+    thumbnail_r2_key: string;
+  }>('hub-ideias/upload-url', { token, ...payload });
+}
+
+export function finalizeIdeiaImage(
+  token: string,
+  ideiaId: string,
+  payload: {
+    r2_key: string;
+    thumbnail_r2_key: string;
+    mime_type: string;
+    size_bytes: number;
+    thumbnail_bytes: number;
+    name: string;
+    width?: number;
+    height?: number;
+    blur_data_url?: string;
+    sort_order?: number;
+  },
+) {
+  return post<IdeiaImage>(`hub-ideias/${ideiaId}/files`, { token, ...payload });
+}
+
+export async function deleteIdeiaImage(token: string, ideiaId: string, fileId: number) {
+  const res = await fetch(
+    `${BASE}/functions/v1/hub-ideias/${ideiaId}/files/${fileId}?token=${encodeURIComponent(token)}`,
+    { method: 'DELETE', headers: { apikey: ANON } },
+  );
+  if (!res.ok) {
+    const b = await res.json().catch(() => ({}));
+    throw new Error((b as { error?: string }).error ?? `HTTP ${res.status}`);
+  }
+  return res.json() as Promise<{ ok: boolean }>;
 }
 
 export function fetchDashboard(token: string, period: number) {

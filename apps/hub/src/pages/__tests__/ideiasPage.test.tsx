@@ -101,6 +101,7 @@ function makeIdeia(
     created_at: '2026-04-18T10:00:00.000Z',
     updated_at: '2026-04-18T10:00:00.000Z',
     ideia_reactions: [],
+    images: [],
     ...overrides,
   };
 }
@@ -199,7 +200,7 @@ describe('IdeiasPage', () => {
     await screen.findByText('Nenhuma ideia ainda');
 
     fireEvent.click(screen.getByRole('button', { name: 'Adicionar ideia' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Enviar ideia' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar e adicionar imagens' }));
 
     expect(screen.getByText('Título obrigatório')).toBeInTheDocument();
     expect(screen.getByText('Descrição obrigatória')).toBeInTheDocument();
@@ -214,7 +215,7 @@ describe('IdeiasPage', () => {
     fireEvent.change(screen.getByPlaceholderText('https://...'), {
       target: { value: '  https://www.notion.so/campanha-junho  ' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Enviar ideia' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar e adicionar imagens' }));
 
     await waitFor(() => {
       expect(mockedCreateIdeia).toHaveBeenCalledWith('token-publico', {
@@ -223,6 +224,32 @@ describe('IdeiasPage', () => {
         links: ['https://www.notion.so/campanha-junho'],
       });
     });
+  });
+
+  it('portals the modal out of the transformed .hub-fade-up wrapper', async () => {
+    mockedFetchIdeias.mockResolvedValue({ ideias: [] } as never);
+
+    const { container } = renderHubPage(
+      '/mesaas/hub/token-publico/ideias',
+      '/:workspace/hub/:token/ideias',
+      <IdeiasPage />,
+    );
+
+    await screen.findByText('Nenhuma ideia ainda');
+
+    // The page content lives inside `.hub-fade-up`, which keeps a persistent CSS
+    // transform (animation fill `both` ends on translateY(0)). A transformed
+    // ancestor becomes the containing block for `position: fixed` descendants, so
+    // an inline modal's `fixed inset-0` overlay is clipped to the wrapper and its
+    // top scrolls off-screen unreachable. The modal MUST be portaled to body.
+    const wrapper = container.querySelector('.hub-fade-up');
+    expect(wrapper).not.toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Adicionar ideia' }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toBeInTheDocument();
+    expect(wrapper!.contains(dialog)).toBe(false);
   });
 
   it('allows editing a mutable ideia and keeps immutable ideias read-only', async () => {
@@ -244,6 +271,10 @@ describe('IdeiasPage', () => {
         }),
       ],
     } as never);
+    // Two-phase modal destructures `{ ideia }` from updateIdeia on edit-save.
+    mockedUpdateIdeia.mockResolvedValue({
+      ideia: makeIdeia({ id: 'idea-mutable', titulo: 'Ideia mutável ajustada' }),
+    } as never);
 
     renderHubPage(
       '/mesaas/hub/token-publico/ideias',
@@ -254,12 +285,16 @@ describe('IdeiasPage', () => {
     const mutableHeading = await screen.findByRole('heading', { name: 'Ideia mutável' });
     const mutableCard = mutableHeading.closest('.hub-card');
     expect(mutableCard).not.toBeNull();
-    expect(within(mutableCard as HTMLElement).getAllByRole('button')).toHaveLength(2);
+    // Mutable card: edit + delete (text controls) plus the always-available image-add button.
+    expect(within(mutableCard as HTMLElement).getAllByRole('button')).toHaveLength(3);
 
     const immutableHeading = screen.getByRole('heading', { name: 'Ideia travada' });
     const immutableCard = immutableHeading.closest('.hub-card');
     expect(immutableCard).not.toBeNull();
-    expect(within(immutableCard as HTMLElement).queryAllByRole('button')).toHaveLength(0);
+    // Locked card: no edit/delete text controls, but image add/remove is lock-independent.
+    const immutableButtons = within(immutableCard as HTMLElement).getAllByRole('button');
+    expect(immutableButtons).toHaveLength(1);
+    expect(immutableButtons[0]).toHaveTextContent('Adicionar imagem');
 
     const links = within(immutableCard as HTMLElement).getAllByRole('link');
     expect(links[0]).toHaveAttribute('href', '#');

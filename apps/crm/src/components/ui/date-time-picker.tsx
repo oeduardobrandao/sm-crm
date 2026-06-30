@@ -140,7 +140,7 @@ export function DateTimePicker({
         <div className="border-t px-3 py-2 flex items-center gap-2">
           <span className="text-xs text-muted-foreground font-medium">Horário:</span>
           <select
-            className="h-8 rounded-md border bg-background px-2 text-sm"
+            className="h-9 rounded-md border bg-background px-2 text-base md:text-sm"
             value={hours}
             onChange={(e) => handleTimeChange(parseInt(e.target.value, 10), minutes)}
           >
@@ -152,7 +152,7 @@ export function DateTimePicker({
           </select>
           <span className="text-sm text-muted-foreground">:</span>
           <select
-            className="h-8 rounded-md border bg-background px-2 text-sm"
+            className="h-9 rounded-md border bg-background px-2 text-base md:text-sm"
             value={minutes}
             onChange={(e) => handleTimeChange(hours, parseInt(e.target.value, 10))}
           >

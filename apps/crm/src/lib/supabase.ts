@@ -151,13 +151,17 @@ const INVITE_HEAL_KEY = 'mesaas_invite_heal';
 
 export async function healPendingInvite() {
   if (sessionStorage.getItem(INVITE_HEAL_KEY)) return;
-  sessionStorage.setItem(INVITE_HEAL_KEY, '1');
 
   try {
     const user = await getCurrentUser();
     if (!user?.email) return;
     const profile = await getCurrentProfile();
     if (!profile?.conta_id) return;
+    // Only heal users who actually completed onboarding (set a password).
+    // A confirmed-but-passwordless invitee who merely opened an invite/recovery
+    // link has a session but no password — they must NOT be auto-added to the
+    // workspace (and must not be marked onboarded by accept-invite).
+    if (!profile.onboarding_complete) return;
 
     const { data: membership } = await supabase
       .from('workspace_members')
@@ -166,14 +170,19 @@ export async function healPendingInvite() {
       .eq('workspace_id', profile.conta_id)
       .maybeSingle();
 
-    if (membership) return;
+    if (membership) {
+      // Already a member — nothing to heal. Mark done so we don't re-check
+      // every load this session.
+      sessionStorage.setItem(INVITE_HEAL_KEY, '1');
+      return;
+    }
 
     const {
       data: { session },
     } = await supabase.auth.getSession();
     if (!session) return;
 
-    await fetch(`${SUPABASE_URL}/functions/v1/manage-workspace-user`, {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/manage-workspace-user`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -182,9 +191,15 @@ export async function healPendingInvite() {
       body: JSON.stringify({ action: 'accept-invite', email: user.email.toLowerCase() }),
     });
 
-    cachedProfile = null;
+    // Only mark healed when the server actually accepted it. A transient
+    // failure leaves the guard unset so the next load retries, instead of
+    // permanently giving up membership after a single failed attempt.
+    if (res.ok) {
+      sessionStorage.setItem(INVITE_HEAL_KEY, '1');
+      cachedProfile = null;
+    }
   } catch {
-    /* best-effort */
+    /* best-effort; will retry on the next load */
   }
 }
 

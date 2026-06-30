@@ -173,14 +173,14 @@ export function TextPostCard({
                   <textarea
                     value={comentario}
                     onChange={(e) => setComentario(e.target.value)}
-                    placeholder="Comentário (necessário para solicitar correção)…"
+                    placeholder="Comente aqui ou corrija o texto diretamente no campo acima"
                     className="w-full rounded border border-stone-200 px-4 py-3 text-[13px] resize-none min-h-[70px] bg-white text-stone-900 placeholder:text-stone-400 focus:outline-none focus:border-stone-300 focus:ring-4 focus:ring-[#FFBF30]/15 transition-all"
                   />
                   <div className="flex gap-2">
                     <button
                       onClick={() => handleAction('aprovado')}
                       disabled={submitting || approvalBlocked}
-                      className="flex-1 flex items-center justify-center gap-1.5 bg-stone-900 text-white rounded py-2.5 text-[13px] font-semibold hover:bg-stone-800 disabled:opacity-50 transition-colors"
+                      className="flex-1 flex items-center justify-center gap-1.5 bg-stone-900 text-white rounded py-2.5 min-h-[44px] text-[13px] font-semibold hover:bg-stone-800 disabled:opacity-50 transition-colors"
                     >
                       <CheckCircle size={14} /> {saveState === 'saving' ? 'Salvando...' : 'Aprovar'}
                     </button>
@@ -192,7 +192,7 @@ export function TextPostCard({
                           ? 'Deixe um comentário para solicitar correção'
                           : undefined
                       }
-                      className="flex-1 flex items-center justify-center gap-1.5 border border-stone-200 bg-white text-stone-800 rounded py-2.5 text-[13px] font-semibold hover:bg-stone-50 disabled:opacity-50 transition-colors"
+                      className="flex-1 flex items-center justify-center gap-1.5 border border-stone-200 bg-white text-stone-800 rounded py-2.5 min-h-[44px] text-[13px] font-semibold hover:bg-stone-50 disabled:opacity-50 transition-colors"
                     >
                       <AlertCircle size={14} /> Solicitar correção
                     </button>

@@ -317,16 +317,16 @@ export function StoryPostCard({
               <textarea
                 value={comentario}
                 onChange={(e) => setComentario(e.target.value)}
-                placeholder="Comentário (necessário para correção)…"
+                placeholder="Comente aqui ou corrija o texto diretamente no campo acima"
                 className="w-full rounded border border-stone-200 dark:border-[#333] px-2.5 py-1.5 text-[11px] resize-none min-h-[48px] bg-white dark:bg-[#0a0a0a] text-stone-900 dark:text-[#f5f5f5] placeholder:text-stone-400 dark:placeholder:text-[#666] focus:outline-none focus:border-stone-300 dark:focus:border-[#555] transition-all"
               />
               <div className="flex gap-1.5">
                 <button
                   onClick={() => handleAction('aprovado')}
                   disabled={submitting || approvalBlocked}
-                  className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-[4px] bg-stone-900 text-white text-[11px] font-semibold hover:bg-stone-800 disabled:opacity-50 transition-colors"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 min-h-[44px] rounded-[4px] bg-stone-900 text-white text-[13px] font-semibold hover:bg-stone-800 disabled:opacity-50 transition-colors"
                 >
-                  <CheckCircle size={12} /> {saveState === 'saving' ? 'Salvando...' : 'Aprovar'}
+                  <CheckCircle size={16} /> {saveState === 'saving' ? 'Salvando...' : 'Aprovar'}
                 </button>
                 <button
                   onClick={() => handleAction('correcao')}
@@ -334,9 +334,9 @@ export function StoryPostCard({
                   title={
                     !comentario.trim() ? 'Deixe um comentário para solicitar correção' : undefined
                   }
-                  className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-[4px] border border-stone-200 dark:border-stone-700 bg-white dark:bg-transparent text-stone-700 dark:text-stone-300 text-[11px] font-medium hover:bg-stone-50 dark:hover:bg-stone-800 disabled:opacity-50 transition-colors"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 min-h-[44px] rounded-[4px] border border-stone-200 dark:border-stone-700 bg-white dark:bg-transparent text-stone-700 dark:text-stone-300 text-[13px] font-medium hover:bg-stone-50 dark:hover:bg-stone-800 disabled:opacity-50 transition-colors"
                 >
-                  <AlertCircle size={12} /> Correção
+                  <AlertCircle size={16} /> Correção
                 </button>
               </div>
             </>

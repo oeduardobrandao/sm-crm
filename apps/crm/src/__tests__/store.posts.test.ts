@@ -119,6 +119,48 @@ describe('store workflow posts', () => {
     expect(counts.size).toBe(0);
   });
 
+  it('getPostPreview selects detail fields by id', async () => {
+    mockedSupabase.__queueSupabaseResult('workflow_posts', 'select', {
+      data: {
+        conteudo_plain: 'Texto do post',
+        responsavel_id: 9,
+        ig_caption: 'Legenda IG',
+        published_at: null,
+        instagram_permalink: null,
+      },
+      error: null,
+    });
+
+    const preview = await store.getPostPreview(100);
+
+    expect(preview).toEqual({
+      conteudo_plain: 'Texto do post',
+      responsavel_id: 9,
+      ig_caption: 'Legenda IG',
+      published_at: null,
+      instagram_permalink: null,
+    });
+    const call = getCalls('workflow_posts', 'select').at(-1)!;
+    expect(call.modifiers).toContainEqual({ method: 'eq', args: ['id', 100] });
+  });
+
+  it('getPostPreview coerces nulls to safe defaults', async () => {
+    mockedSupabase.__queueSupabaseResult('workflow_posts', 'select', {
+      data: {
+        conteudo_plain: null,
+        responsavel_id: null,
+        ig_caption: null,
+        published_at: null,
+        instagram_permalink: null,
+      },
+      error: null,
+    });
+
+    const preview = await store.getPostPreview(7);
+    expect(preview.conteudo_plain).toBe('');
+    expect(preview.responsavel_id).toBeNull();
+  });
+
   it('getWorkflowAwaitingClientePostsCounts returns an empty map when no workflow ids are given', async () => {
     const result = await store.getWorkflowAwaitingClientePostsCounts([]);
     expect(result.size).toBe(0);
