@@ -10,7 +10,6 @@ export const LIQUID_GL_OPTIONS = {
   shadow: true,
   specular: true,
   reveal: 'fade',
-  tilt: true,
-  tiltFactor: 4,
+  tilt: false,
   magnify: 1.05,
 } as const;
