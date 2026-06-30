@@ -1,11 +1,14 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders, resolveAllowedOrigin } from "../_shared/cors.ts";
 import { stripe } from "../_shared/stripe.ts";
+import {
+  buildLineItems,
+  clampExtraSeats,
+  validatePaidPlan,
+} from "../_shared/billing-logic.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-const PAID_PLANS = ["start", "pro", "max"];
 
 // Launch promo: typing this code at checkout gives first-time subscribers a free
 // trial (one free month on monthly OR annual — a trial works uniformly across
@@ -37,14 +40,39 @@ Deno.serve(async (req: Request) => {
     const planId = String(body.plan_id || "");
     const interval = body.interval === "year" ? "year" : "month";
     const promoCode = String(body.promo_code || "").trim().toUpperCase();
-    if (!PAID_PLANS.includes(planId)) return json({ error: "Invalid plan" }, 400, headers);
+    const extraSeats = clampExtraSeats(body.extra_seats);
 
     const { data: plan } = await svc
       .from("plans")
-      .select("id, stripe_price_id, stripe_price_id_annual")
+      .select(
+        "id, is_active, stripe_price_id, stripe_price_id_annual, stripe_price_id_seat, stripe_price_id_seat_annual",
+      )
       .eq("id", planId).single();
     const priceId = interval === "year" ? plan?.stripe_price_id_annual : plan?.stripe_price_id;
-    if (!priceId) return json({ error: "Plan price not configured" }, 400, headers);
+
+    // DB-driven validation: the plan must exist, be active, and have an
+    // interval-matched tier price. This replaces the old hardcoded PAID_PLANS
+    // allowlist so the catalog is the single source of truth.
+    if (!validatePaidPlan({ is_active: plan?.is_active, tierPriceId: priceId })) {
+      return json({ error: "Plan price not configured" }, 400, headers);
+    }
+
+    const seatPriceId = (interval === "year"
+      ? plan?.stripe_price_id_seat_annual
+      : plan?.stripe_price_id_seat) ?? null;
+
+    // Build line items up front so we can 400 BEFORE any Stripe call if a seat was
+    // requested on an interval with no matching seat price (Stripe rejects mixed
+    // intervals). priceId is guaranteed non-empty by validatePaidPlan above.
+    const lineItemsResult = buildLineItems({
+      tierPriceId: priceId as string,
+      seatPriceId,
+      extraSeats,
+    });
+    if (!lineItemsResult.ok) {
+      return json({ error: lineItemsResult.error }, 400, headers);
+    }
+    const lineItems = lineItemsResult.lineItems;
 
     // find-or-create Stripe customer for this workspace
     const { data: subRow } = await svc
@@ -88,9 +116,12 @@ Deno.serve(async (req: Request) => {
       mode: "subscription",
       customer: customerId,
       client_reference_id: workspaceId,
-      line_items: [{ price: priceId, quantity: 1 }],
+      line_items: lineItems,
       subscription_data: {
-        metadata: { workspace_id: workspaceId, plan_id: planId },
+        // seats is AUDIT-ONLY: metadata is client-influenced and must NEVER be read
+        // as an entitlement source. The webhook derives purchased seats from the
+        // Stripe line-item quantity, never from this value.
+        metadata: { workspace_id: workspaceId, plan_id: planId, seats: String(extraSeats) },
         ...(trialDays ? { trial_period_days: trialDays } : {}),
       },
       // Allow promotion codes; skip card collection when a 100%-off coupon leaves
