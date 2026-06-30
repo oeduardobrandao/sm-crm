@@ -1,44 +1,44 @@
-/* ── Liquid glass trial (admin) ─────────────────────────────────────────── */
+/* ── Liquid Glass (CSS) — admin trial ────────────────────────────────────
+   Frosted-glass surfaces using backdrop-filter, layered over a colorful
+   backdrop. Toggled via html[data-liquid-glass='on'|'off'] (set by
+   LiquidGlassProvider). Surfaces also keep a solid Tailwind background
+   (bg-card / bg-[#12151a]) as the OFF fallback; the rules below override it
+   only when glass is ON. */
 
-/* Non-fixed backdrop: the thing liquidGL refracts. Sits behind all content. */
+/* Colorful backdrop the frosted glass blurs + tints. Fixed, behind everything. */
 .liquid-backdrop {
-  position: absolute;
+  position: fixed;
   inset: 0;
-  z-index: 0;
+  z-index: -1;
   pointer-events: none;
   background-color: #0a0c0f;
   background-image:
-    radial-gradient(42rem 42rem at 12% 18%, rgba(234, 179, 8, 0.30), transparent 60%),
-    radial-gradient(38rem 38rem at 85% 22%, rgba(57, 132, 255, 0.28), transparent 60%),
-    radial-gradient(40rem 40rem at 75% 88%, rgba(245, 66, 200, 0.22), transparent 60%),
-    radial-gradient(36rem 36rem at 22% 82%, rgba(106, 201, 208, 0.22), transparent 60%);
+    radial-gradient(48rem 48rem at 8% 10%, rgba(234, 179, 8, 0.32), transparent 60%),
+    radial-gradient(44rem 44rem at 90% 16%, rgba(57, 132, 255, 0.3), transparent 60%),
+    radial-gradient(46rem 46rem at 80% 94%, rgba(245, 66, 200, 0.24), transparent 60%),
+    radial-gradient(40rem 40rem at 16% 88%, rgba(106, 201, 208, 0.24), transparent 62%);
   background-repeat: no-repeat;
 }
 
-/* Animation is OFF by default (CSS @keyframes is html2canvas's perf cliff).
-   Opt in by setting data-liquid-anim="on" on <html>, and only when the user
-   has not asked to reduce motion. */
-@media (prefers-reduced-motion: no-preference) {
-  html[data-liquid-anim='on'] .liquid-backdrop {
-    animation: liquid-drift 36s ease-in-out infinite alternate;
-  }
+html[data-liquid-glass='off'] .liquid-backdrop {
+  display: none;
 }
 
-@keyframes liquid-drift {
-  0% { background-position: 0 0, 0 0, 0 0, 0 0; }
-  100% { background-position: 3% 4%, -3% 2%, 2% -3%, -2% -2%; }
+/* Frosted glass surface. Activated only under html[data-liquid-glass='on']. */
+[data-liquid-glass='on'] .glass-surface {
+  background-color: rgba(17, 21, 28, 0.45);
+  backdrop-filter: blur(22px) saturate(1.7);
+  -webkit-backdrop-filter: blur(22px) saturate(1.7);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.1),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.02),
+    0 16px 40px -16px rgba(0, 0, 0, 0.6);
 }
 
-/* Content must sit ABOVE the backdrop. The snapshot wrapper is the stacking root. */
-#admin-snapshot { position: relative; }
-#admin-snapshot > .liquid-content { position: relative; z-index: 1; }
-
-/* Geometry only — the WebGL render provides the actual glass fill when ON.
-   liquidGL overwrites background-image/backdrop-filter to none and sets
-   pointer-events:none on each lens, so do NOT rely on CSS for the ON look. */
-.liquidGL { border-radius: 1rem; }
-
-/* Glass-OFF fallback: existing Tailwind classes already render solid cards/
-   chrome, so panes look normal when the toggle is off. Nothing needed here
-   beyond keeping geometry. (Hook for future tweaks:) */
-html[data-liquid-glass='off'] .liquid-backdrop { display: none; }
+/* Stronger frost for the full-height sidebar surface. */
+[data-liquid-glass='on'] .glass-surface--sidebar {
+  background-color: rgba(13, 16, 22, 0.55);
+  backdrop-filter: blur(26px) saturate(1.6);
+  -webkit-backdrop-filter: blur(26px) saturate(1.6);
+}

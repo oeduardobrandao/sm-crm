@@ -1,46 +1,27 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { readEnabled, writeEnabled } from './storage';
-import { loadVendorScripts } from './loadVendorScripts';
 
 interface LiquidGlassContextValue {
   enabled: boolean;
-  ready: boolean; // vendor scripts loaded
   toggle: () => void;
 }
 
 const LiquidGlassContext = createContext<LiquidGlassContextValue | null>(null);
 
 export function LiquidGlassProvider({ children }: { children: ReactNode }) {
-  // Fixed for the session: toggling reloads the page (the library has no teardown).
-  const [enabled] = useState(() => readEnabled(window.localStorage));
-  const [ready, setReady] = useState(false);
+  // CSS-based glass: toggling is instant (no WebGL context to tear down).
+  const [enabled, setEnabled] = useState(() => readEnabled(window.localStorage));
 
-  // Expose the on/off state to CSS (glass-off fallback + dark-only-when-on).
+  // Drive the CSS (glass on/off) + persist the choice.
   useEffect(() => {
     document.documentElement.dataset.liquidGlass = enabled ? 'on' : 'off';
+    writeEnabled(window.localStorage, enabled);
   }, [enabled]);
 
-  // Lazy-load vendor scripts only when enabled (zero cost before first activation).
-  useEffect(() => {
-    if (!enabled) return;
-    let active = true;
-    loadVendorScripts()
-      .then(() => {
-        if (active) setReady(true);
-      })
-      .catch((err) => console.error('[liquidGL] vendor load failed', err));
-    return () => {
-      active = false;
-    };
-  }, [enabled]);
-
-  const toggle = () => {
-    writeEnabled(window.localStorage, !enabled);
-    window.location.reload(); // only way to reclaim the WebGL context / stop the rAF loop
-  };
+  const toggle = () => setEnabled((e) => !e);
 
   return (
-    <LiquidGlassContext.Provider value={{ enabled, ready, toggle }}>
+    <LiquidGlassContext.Provider value={{ enabled, toggle }}>
       {children}
     </LiquidGlassContext.Provider>
   );
