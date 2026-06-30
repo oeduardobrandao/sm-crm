@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useLiquidGlassContext } from './LiquidGlassProvider';
 import { stripBoundAndTagNew } from './dedupe';
@@ -11,6 +11,7 @@ let didInit = false;
 export function useLiquidGlass(): void {
   const { enabled, ready } = useLiquidGlassContext();
   const location = useLocation();
+  const lastPathRef = useRef<string | null>(null);
 
   // One-time init after vendor scripts are ready.
   useEffect(() => {
@@ -23,8 +24,16 @@ export function useLiquidGlass(): void {
   }, [enabled, ready]);
 
   // Route change: bind any newly-mounted tiles (deduped) and re-snapshot.
+  // Guarded so it fires only on an actual pathname change, not on the
+  // init-time enabled/ready flip (which shares this effect's deps).
   useEffect(() => {
     if (!enabled || !ready || !didInit) return;
+    if (lastPathRef.current === null) {
+      lastPathRef.current = location.pathname; // first eligible run = init-time; record, don't refresh
+      return;
+    }
+    if (location.pathname === lastPathRef.current) return;
+    lastPathRef.current = location.pathname;
     doubleRaf(() => {
       const fresh = stripBoundAndTagNew(document); // strip chrome, tag new tiles
       if (fresh > 0) initLiquidGL(); // re-scan binds only the new tiles
