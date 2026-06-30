@@ -199,7 +199,7 @@ export default function CobrancaPage() {
     setBusy('seats');
     try {
       await changeSeats(extra);
-      await queryClient.invalidateQueries({ queryKey: ['workspace-limits', 'seats'] });
+      await queryClient.invalidateQueries({ queryKey: ['workspace-limits'] });
       setActiveSeats(null);
       toast.success('Assentos atualizados.');
     } catch (err) {
