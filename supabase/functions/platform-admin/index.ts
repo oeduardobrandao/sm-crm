@@ -27,6 +27,13 @@ const RATE_COLUMNS = [
   "rate_report_generations_per_month",
 ] as const;
 
+// Exported for unit tests — every scalar column that plan create/update accepts.
+export const PLAN_SCALAR_COLUMNS = [
+  "name", "is_default", "price_brl", "price_brl_annual", "sort_order", "is_active",
+  "stripe_product_id", "stripe_price_id", "stripe_price_id_annual",
+  "stripe_price_id_seat", "stripe_price_id_seat_annual", "seat_addon_brl", "seat_addon_brl_annual",
+] as const;
+
 type PlanRow = Record<string, unknown>;
 
 function extractLimits(plan: PlanRow): Record<string, number | null> {
@@ -794,6 +801,10 @@ async function handleCreatePlan(
   if (rest.stripe_product_id !== undefined) insert.stripe_product_id = rest.stripe_product_id;
   if (rest.stripe_price_id !== undefined) insert.stripe_price_id = rest.stripe_price_id;
   if (rest.stripe_price_id_annual !== undefined) insert.stripe_price_id_annual = rest.stripe_price_id_annual;
+  if (rest.stripe_price_id_seat !== undefined) insert.stripe_price_id_seat = rest.stripe_price_id_seat;
+  if (rest.stripe_price_id_seat_annual !== undefined) insert.stripe_price_id_seat_annual = rest.stripe_price_id_seat_annual;
+  if (rest.seat_addon_brl !== undefined) insert.seat_addon_brl = rest.seat_addon_brl;
+  if (rest.seat_addon_brl_annual !== undefined) insert.seat_addon_brl_annual = rest.seat_addon_brl_annual;
 
   const { data, error } = await svc
     .from("plans")
@@ -821,11 +832,7 @@ async function handleUpdatePlan(
 
   const updatePayload: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
-  const allowedScalar = [
-    "name", "is_default", "price_brl", "price_brl_annual", "sort_order", "is_active",
-    "stripe_product_id", "stripe_price_id", "stripe_price_id_annual",
-  ];
-  for (const key of allowedScalar) {
+  for (const key of PLAN_SCALAR_COLUMNS) {
     if (rest[key] !== undefined) updatePayload[key] = rest[key];
   }
 
