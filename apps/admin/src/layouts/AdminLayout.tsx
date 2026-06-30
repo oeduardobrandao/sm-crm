@@ -34,11 +34,6 @@ export default function AdminLayout() {
     return (localStorage.getItem('admin-theme') as 'light' | 'dark') || 'dark';
   });
 
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('admin-theme', theme);
-  }, [theme]);
-
   useLiquidGlass();
   const { enabled: glassEnabled, toggle: toggleGlass } = useLiquidGlassContext();
   const location = useLocation();
@@ -47,10 +42,16 @@ export default function AdminLayout() {
       i.to === '/admin' ? location.pathname === '/admin' : location.pathname.startsWith(i.to),
     )?.label ?? 'Admin';
 
-  // The trial is tuned for dark; force dark while glass is on.
+  // Apply theme to the DOM. While glass is ON the trial forces dark for the best
+  // presentation, but does NOT persist it — the user's saved 'admin-theme' is
+  // preserved and restored when glass is turned OFF.
   useEffect(() => {
-    if (glassEnabled) setTheme('dark');
-  }, [glassEnabled]);
+    const effectiveTheme = glassEnabled ? 'dark' : theme;
+    document.documentElement.setAttribute('data-theme', effectiveTheme);
+    if (!glassEnabled) {
+      localStorage.setItem('admin-theme', theme);
+    }
+  }, [theme, glassEnabled]);
 
   return (
     <div id="admin-snapshot" className="relative min-h-screen">
@@ -208,7 +209,9 @@ export default function AdminLayout() {
         </aside>
 
         <main className="md:ml-[220px] flex-1 min-h-screen">
-          <div className="liquidGL sticky top-0 z-30 mx-4 mt-4 md:mx-8 md:mt-6 rounded-2xl py-3 pl-14 pr-5 md:px-5 flex items-center">
+          <div
+            className={`liquidGL sticky top-0 z-30 mx-4 mt-4 md:mx-8 md:mt-6 rounded-2xl py-3 pl-14 pr-5 md:px-5 flex items-center ${glassEnabled ? '' : 'bg-card border border-border'}`}
+          >
             <h1 className="text-sm font-medium tracking-wide text-foreground">{pageTitle}</h1>
           </div>
           <div className="p-4 pt-6 md:p-8">
