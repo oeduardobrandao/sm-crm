@@ -41,10 +41,18 @@ export interface FeatureFlags {
   feature_brand_customization: boolean;
 }
 
+export interface WorkspaceSeats {
+  included: number | null;
+  purchased: number;
+  effective: number | null;
+  used: number;
+}
+
 interface WorkspaceLimitsResponse {
   plan_name: string | null;
   limits: ResourceLimits | null;
   features: FeatureFlags | null;
+  seats?: WorkspaceSeats;
 }
 
 async function fetchWorkspaceLimits(): Promise<WorkspaceLimitsResponse> {
@@ -83,6 +91,7 @@ export function useWorkspaceLimits() {
     limits: data?.limits ?? null,
     features: data?.features ?? null,
     planName: data?.plan_name ?? null,
+    seats: data?.seats,
     isLoading,
     isUnlimited: !isLoading && data?.limits === null,
   };
