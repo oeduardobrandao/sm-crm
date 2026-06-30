@@ -99,6 +99,27 @@ export interface SubItem {
   current_period_end?: number | null;
 }
 
+/** Shape of a subscription item as returned by `Stripe.subscriptions.retrieve` with `expand: ["items.data.price"]`. */
+export interface SubItemWithAmount {
+  quantity?: number | null;
+  price?: { unit_amount?: number | null } | null;
+}
+
+/**
+ * Sums `unit_amount × quantity` across ALL subscription items.
+ * Missing or null `unit_amount` and `quantity` are each treated as 0.
+ * Returns the total gross in the smallest currency unit (cents).
+ */
+export function sumSubscriptionGross(items: SubItemWithAmount[]): number {
+  let total = 0;
+  for (const item of items) {
+    const unitAmount = item.price?.unit_amount ?? 0;
+    const quantity = item.quantity ?? 0;
+    total += unitAmount * quantity;
+  }
+  return total;
+}
+
 /**
  * Sums the quantity of subscription items whose price id matches a known seat
  * price id (monthly or annual, across all plans). Returns 0 when no seat item

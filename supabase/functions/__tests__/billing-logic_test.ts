@@ -3,6 +3,7 @@ import {
   statusToPlanId,
   resolvePlanFromPriceId,
   resolveSubscriptionSeats,
+  sumSubscriptionGross,
 } from "../_shared/billing-logic.ts";
 
 Deno.test("statusToPlanId: active/trialing grant the subscribed plan", () => {
@@ -109,4 +110,64 @@ Deno.test("resolveSubscriptionSeats: seat item with quantity null sets has_seat_
     { price: { id: "price_seat_y" }, quantity: null },
   ];
   assertEquals(resolveSubscriptionSeats(items, SEAT_PLANS), { purchased_seats: 0, has_seat_item: true });
+});
+
+// ─── sumSubscriptionGross ──────────────────────────────────────────────────────
+
+type RawItem = { quantity?: number | null; unit_amount?: number | null };
+
+function makeItems(raw: RawItem[]) {
+  return raw.map((r) => ({
+    quantity: r.quantity,
+    price: { unit_amount: r.unit_amount },
+  }));
+}
+
+Deno.test("sumSubscriptionGross: single item, basic multiplication", () => {
+  // 1 × 4900 = 4900
+  assertEquals(sumSubscriptionGross(makeItems([{ quantity: 1, unit_amount: 4900 }])), 4900);
+});
+
+Deno.test("sumSubscriptionGross: tier + seat two items are both summed", () => {
+  // tier: 1 × 4900 = 4900; seat: 3 × 1000 = 3000 → 7900
+  assertEquals(
+    sumSubscriptionGross(makeItems([
+      { quantity: 1, unit_amount: 4900 },
+      { quantity: 3, unit_amount: 1000 },
+    ])),
+    7900,
+  );
+});
+
+Deno.test("sumSubscriptionGross: quantity > 1 on a single item is multiplied", () => {
+  // 5 × 990 = 4950
+  assertEquals(sumSubscriptionGross(makeItems([{ quantity: 5, unit_amount: 990 }])), 4950);
+});
+
+Deno.test("sumSubscriptionGross: null unit_amount treated as 0", () => {
+  // null unit_amount contributes 0; other item 1 × 2000 = 2000
+  assertEquals(
+    sumSubscriptionGross(makeItems([
+      { quantity: 1, unit_amount: null },
+      { quantity: 1, unit_amount: 2000 },
+    ])),
+    2000,
+  );
+});
+
+Deno.test("sumSubscriptionGross: null quantity treated as 0", () => {
+  // null quantity → 0 × 4900 = 0
+  assertEquals(sumSubscriptionGross(makeItems([{ quantity: null, unit_amount: 4900 }])), 0);
+});
+
+Deno.test("sumSubscriptionGross: missing unit_amount and quantity both treated as 0", () => {
+  // undefined quantity and unit_amount → 0
+  assertEquals(
+    sumSubscriptionGross([{ price: {} }] as Parameters<typeof sumSubscriptionGross>[0]),
+    0,
+  );
+});
+
+Deno.test("sumSubscriptionGross: empty items array returns 0", () => {
+  assertEquals(sumSubscriptionGross([]), 0);
 });

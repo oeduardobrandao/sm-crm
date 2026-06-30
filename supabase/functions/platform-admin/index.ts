@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { revertPlanTarget } from "./revert-target.ts";
+import { sumSubscriptionGross } from "../_shared/billing-logic.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -628,14 +629,15 @@ async function fetchStripeAmount(
     livemode?: boolean;
     items?: {
       data?: Array<{
-        quantity?: number;
+        quantity?: number | null;
         price?: { unit_amount?: number | null; currency?: string; recurring?: { interval?: string } };
       }>;
     };
   };
-  const item = s.items?.data?.[0];
-  const qty = item?.quantity ?? 1;
-  const gross = (item?.price?.unit_amount ?? 0) * qty;
+  const allItems = s.items?.data ?? [];
+  // Use the first item only for metadata (currency, interval) — amount is summed across all.
+  const firstItem = allItems[0];
+  const gross = sumSubscriptionGross(allItems);
   const coupon = extractCoupon(sub);
   let net = gross;
   let discountLabel: string | null = null;
@@ -651,8 +653,8 @@ async function fetchStripeAmount(
   return {
     amount_cents: net,
     gross_cents: net !== gross ? gross : null,
-    currency: item?.price?.currency ?? "brl",
-    interval: item?.price?.recurring?.interval ?? fallbackInterval,
+    currency: firstItem?.price?.currency ?? "brl",
+    interval: firstItem?.price?.recurring?.interval ?? fallbackInterval,
     discount_label: discountLabel,
     livemode: s.livemode ?? true,
   };
