@@ -1,0 +1,8 @@
+liquidGL — MIT © NaughtyDuk
+Source: https://github.com/naughtyduk/liquidGL
+Pinned commit: dbb6e54eec72994407d5fb7a6e0b7790af30cb92
+The README states: "liquidGL is free to use for both non-commercial and
+commercial purposes." Released under the MIT License.
+
+Bundled dependency: html2canvas — MIT © Niklas von Hertzen
+https://github.com/niklasvh/html2canvas
