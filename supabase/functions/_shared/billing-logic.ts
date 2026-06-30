@@ -31,6 +31,8 @@ export interface PlanPriceRow {
   id: string;
   stripe_price_id: string | null;
   stripe_price_id_annual: string | null;
+  stripe_price_id_seat: string | null;
+  stripe_price_id_seat_annual: string | null;
 }
 
 /** Resolves a Stripe price id to a plan id + billing interval, or null if unknown. */
@@ -43,4 +45,34 @@ export function resolvePlanFromPriceId(
     if (p.stripe_price_id_annual === priceId) return { plan_id: p.id, interval: "year" };
   }
   return null;
+}
+
+/** Shape of a Stripe subscription item, narrowed to the fields we read. */
+export interface SubItem {
+  price: { id: string | null } | null;
+  quantity?: number | null;
+}
+
+/**
+ * Sums the quantity of subscription items whose price id matches a known seat
+ * price id (monthly or annual, across all plans). Returns 0 when no seat item
+ * is present. Order-independent — iterates every item.
+ */
+export function resolveSubscriptionSeats(
+  subItems: SubItem[],
+  plans: PlanPriceRow[],
+): { purchased_seats: number } {
+  const seatPriceIds = new Set<string>();
+  for (const p of plans) {
+    if (p.stripe_price_id_seat) seatPriceIds.add(p.stripe_price_id_seat);
+    if (p.stripe_price_id_seat_annual) seatPriceIds.add(p.stripe_price_id_seat_annual);
+  }
+  let purchased_seats = 0;
+  for (const item of subItems) {
+    const priceId = item.price?.id;
+    if (priceId && seatPriceIds.has(priceId)) {
+      purchased_seats += item.quantity ?? 0;
+    }
+  }
+  return { purchased_seats };
 }
