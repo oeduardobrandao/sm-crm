@@ -21,6 +21,7 @@ import {
 } from '../../../store';
 import { supabase } from '../../../lib/supabase';
 import { getWorkflowCovers } from '../../../services/postMedia';
+import { buildUsableTokenMap } from '../../../lib/hubTokenMap';
 
 export interface BoardCard {
   workflow: Workflow;
@@ -291,13 +292,10 @@ export function useEntregasData() {
     queryFn: async () => {
       const { data } = await supabase
         .from('client_hub_tokens')
-        .select('cliente_id, token, is_active')
+        .select('cliente_id, token, expires_at, is_active')
         .in('cliente_id', clienteIds)
         .eq('is_active', true);
-      const map = new Map<number, string>();
-      if (data)
-        for (const row of data) if (row.cliente_id && row.token) map.set(row.cliente_id, row.token);
-      return map;
+      return buildUsableTokenMap(data ?? [], new Date().toISOString());
     },
     enabled: clienteIds.length > 0,
   });
