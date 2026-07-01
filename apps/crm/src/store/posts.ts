@@ -355,6 +355,37 @@ export async function getWorkflowApprovedPostsCounts(
   return counts;
 }
 
+/**
+ * Post statuses that mean the post has cleared client approval — either the
+ * client approved it (`aprovado_cliente`) or it moved further down the pipeline
+ * (scheduled / posted / publish-failed, all of which happen only after client
+ * approval). Used to decide when a client-approval etapa is fully cleared, so a
+ * workflow whose posts are already scheduled/posted still counts as approved.
+ */
+export const CLIENT_CLEARED_STATUSES = [
+  'aprovado_cliente',
+  'agendado',
+  'postado',
+  'falha_publicacao',
+] as const;
+
+export async function getWorkflowClearedClientePostsCounts(
+  workflowIds: number[],
+): Promise<Map<number, number>> {
+  const counts = new Map<number, number>();
+  if (workflowIds.length === 0) return counts;
+  const { data, error } = await supabase
+    .from('workflow_posts')
+    .select('workflow_id')
+    .in('workflow_id', workflowIds)
+    .in('status', CLIENT_CLEARED_STATUSES as unknown as string[]);
+  if (error) throw error;
+  for (const row of (data ?? []) as { workflow_id: number }[]) {
+    counts.set(row.workflow_id, (counts.get(row.workflow_id) ?? 0) + 1);
+  }
+  return counts;
+}
+
 export async function getWorkflowAwaitingClientePostsCounts(
   workflowIds: number[],
 ): Promise<Map<number, number>> {

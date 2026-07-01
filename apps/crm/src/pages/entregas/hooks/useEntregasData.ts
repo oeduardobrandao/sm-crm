@@ -8,6 +8,7 @@ import {
   getDeadlineInfo,
   getWorkflowPostsCounts,
   getWorkflowApprovedPostsCounts,
+  getWorkflowClearedClientePostsCounts,
   getWorkflowRevisaoInternaCounts,
   getWorkflowAwaitingClientePostsCounts,
   getWorkflowPostResponsaveis,
@@ -243,6 +244,12 @@ export function useEntregasData() {
     enabled: activeWorkflowIds.length > 0,
   });
   const approvedPostsCounts: Map<number, number> = approvedCountsData ?? new Map();
+  const { data: clearedClienteCountsData } = useQuery({
+    queryKey: ['workflow-cleared-cliente-counts', activeWorkflowIds.join(',')],
+    queryFn: () => getWorkflowClearedClientePostsCounts(activeWorkflowIds),
+    enabled: activeWorkflowIds.length > 0,
+  });
+  const clearedClienteCounts: Map<number, number> = clearedClienteCountsData ?? new Map();
   const { data: revisaoInternaCountsData } = useQuery({
     queryKey: ['workflow-revisao-interna-counts', activeWorkflowIds.join(',')],
     queryFn: () => getWorkflowRevisaoInternaCounts(activeWorkflowIds),
@@ -343,6 +350,7 @@ export function useEntregasData() {
     qc.invalidateQueries({ queryKey: ['workflow-covers'] });
     qc.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
     qc.invalidateQueries({ queryKey: ['workflow-approved-posts-counts'] });
+    qc.invalidateQueries({ queryKey: ['workflow-cleared-cliente-counts'] });
     qc.invalidateQueries({ queryKey: ['workflow-revisao-interna-counts'] });
     qc.invalidateQueries({ queryKey: ['workflow-awaiting-cliente-counts'] });
     qc.invalidateQueries({ queryKey: ['workflow-post-responsaveis'] });
@@ -360,6 +368,7 @@ export function useEntregasData() {
     cards,
     postsCounts,
     approvedPostsCounts,
+    clearedClienteCounts,
     revisaoInternaCounts,
     awaitingClienteCounts,
     postResponsaveis,

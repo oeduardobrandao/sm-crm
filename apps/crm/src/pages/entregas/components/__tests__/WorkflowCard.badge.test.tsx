@@ -72,7 +72,7 @@ describe('WorkflowCard awaiting-client badge', () => {
         <WorkflowCard card={makeCard(1)} awaitingClienteCount={2} postsCount={5} />
       </MemoryRouter>,
     );
-    expect(screen.getByText(/2 aguardando cliente/i)).toBeInTheDocument();
+    expect(screen.getByText(/2 posts com o cliente/i)).toBeInTheDocument();
   });
 
   it('hides the badge when awaitingClienteCount is 0', () => {
@@ -81,17 +81,52 @@ describe('WorkflowCard awaiting-client badge', () => {
         <WorkflowCard card={makeCard(1)} awaitingClienteCount={0} postsCount={5} />
       </MemoryRouter>,
     );
-    expect(screen.queryByText(/aguardando cliente/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/posts com o cliente/i)).not.toBeInTheDocument();
   });
 
   it('does not show the post-approval-etapa badge while still in the approval etapa', () => {
-    // ordem 0 == approval etapa itself; the new badge must NOT render here
-    // (the existing in-stage "Aguardando cliente" branch handles that case).
+    // ordem 0 == approval etapa itself; the count badge must NOT render here
+    // (the in-stage "Aguardando aprovação do cliente" branch handles that case).
     render(
       <MemoryRouter>
         <WorkflowCard card={makeCard(0)} awaitingClienteCount={2} postsCount={5} />
       </MemoryRouter>,
     );
-    expect(screen.queryByText(/2 aguardando cliente/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/2 posts com o cliente/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('WorkflowCard client-approval badge', () => {
+  // makeCard(0) is the aprovacao_cliente etapa, so the approval badge renders.
+  it('flips to "Aprovado pelo cliente" when every post has cleared client approval', () => {
+    // 1 aprovado_cliente + 2 already scheduled/posted → all 3 have cleared,
+    // even though only 1 is literally aprovado_cliente.
+    render(
+      <MemoryRouter>
+        <WorkflowCard
+          card={makeCard(0)}
+          postsCount={3}
+          approvedPostsCount={1}
+          clearedClienteCount={3}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText(/Aprovado pelo cliente/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Aguardando aprovação do cliente/i)).not.toBeInTheDocument();
+  });
+
+  it('stays "Aguardando aprovação do cliente" when some posts are still behind approval', () => {
+    render(
+      <MemoryRouter>
+        <WorkflowCard
+          card={makeCard(0)}
+          postsCount={3}
+          approvedPostsCount={1}
+          clearedClienteCount={2}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText(/Aguardando aprovação do cliente/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Aprovado pelo cliente/i)).not.toBeInTheDocument();
   });
 });

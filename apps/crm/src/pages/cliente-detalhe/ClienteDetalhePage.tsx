@@ -76,6 +76,7 @@ import {
   duplicateWorkflow,
   getWorkflowPostsCounts,
   getWorkflowApprovedPostsCounts,
+  getWorkflowClearedClientePostsCounts,
   getWorkflowRevisaoInternaCounts,
   getWorkflowAwaitingClientePostsCounts,
   getClienteEnderecos,
@@ -331,6 +332,11 @@ export default function ClienteDetalhePage() {
     queryFn: () => getWorkflowApprovedPostsCounts(activeWorkflowIds),
     enabled: activeWorkflowIds.length > 0,
   });
+  const { data: clearedClienteCounts = new Map<number, number>() } = useQuery({
+    queryKey: ['workflow-cleared-cliente-counts', activeWorkflowIds.join(',')],
+    queryFn: () => getWorkflowClearedClientePostsCounts(activeWorkflowIds),
+    enabled: activeWorkflowIds.length > 0,
+  });
   const { data: revisaoInternaCounts = new Map<number, number>() } = useQuery({
     queryKey: ['workflow-revisao-interna-counts', activeWorkflowIds.join(',')],
     queryFn: () => getWorkflowRevisaoInternaCounts(activeWorkflowIds),
@@ -521,6 +527,7 @@ export default function ClienteDetalhePage() {
     queryClient.invalidateQueries({ queryKey: ['workflowsByCliente', clienteId] });
     queryClient.invalidateQueries({ queryKey: ['workflow-posts-counts'] });
     queryClient.invalidateQueries({ queryKey: ['workflow-approved-posts-counts'] });
+    queryClient.invalidateQueries({ queryKey: ['workflow-cleared-cliente-counts'] });
     queryClient.invalidateQueries({ queryKey: ['workflow-revisao-interna-counts'] });
     queryClient.invalidateQueries({ queryKey: ['workflow-awaiting-cliente-counts'] });
     queryClient.invalidateQueries({ queryKey: ['workflow-covers'] });
@@ -549,10 +556,13 @@ export default function ClienteDetalhePage() {
     if (!card) return;
 
     const total = postsCounts.get(card.workflow.id!) ?? 0;
-    const approved = approvedPostsCounts.get(card.workflow.id!) ?? 0;
-    const allApproved = total > 0 && approved === total;
+    // "Cleared" (approved / scheduled / posted / publish-failed), not just
+    // aprovado_cliente — a workflow whose approved posts are already scheduled
+    // should advance without prompting the approval dialog.
+    const cleared = clearedClienteCounts.get(card.workflow.id!) ?? 0;
+    const allCleared = total > 0 && cleared === total;
 
-    if (card.etapa.tipo === 'aprovacao_cliente' && !allApproved) {
+    if (card.etapa.tipo === 'aprovacao_cliente' && !allCleared) {
       setApprovalChoiceCard(card);
       return;
     }
@@ -1036,6 +1046,7 @@ export default function ClienteDetalhePage() {
                 membros={membros}
                 postsCount={postsCounts.get(card.workflow.id!) ?? 0}
                 approvedPostsCount={approvedPostsCounts.get(card.workflow.id!) ?? 0}
+                clearedClienteCount={clearedClienteCounts.get(card.workflow.id!) ?? 0}
                 revisaoInternaCount={revisaoInternaCounts.get(card.workflow.id!) ?? 0}
                 awaitingClienteCount={awaitingClienteCounts.get(card.workflow.id!) ?? 0}
               />
