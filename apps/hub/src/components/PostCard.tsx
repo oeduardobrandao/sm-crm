@@ -21,7 +21,8 @@ export const STATUS_LABEL: Record<string, string> = {
   agendado: 'Agendado',
   publicado: 'Publicado',
   rascunho: 'Rascunho',
-  em_producao: 'Em produção',
+  revisao_interna: 'Revisão interna',
+  aprovado_interno: 'Aprovado interno',
 };
 
 export function formatDate(d: string | null) {

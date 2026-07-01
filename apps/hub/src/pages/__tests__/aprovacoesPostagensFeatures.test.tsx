@@ -916,7 +916,7 @@ describe('PostagensPage — status filtering', () => {
     expect(screen.getByText('Falha')).toBeInTheDocument();
   });
 
-  it('filters out rascunho and em_producao statuses', async () => {
+  it('filters out rascunho and revisao_interna statuses', async () => {
     mockedFetchPosts.mockResolvedValue(
       makeResponse({
         posts: [
@@ -930,7 +930,7 @@ describe('PostagensPage — status filtering', () => {
           makePost({
             id: 2,
             titulo: 'Produção',
-            status: 'em_producao',
+            status: 'revisao_interna',
             workflow_id: 1,
             workflow_titulo: 'W',
           }),

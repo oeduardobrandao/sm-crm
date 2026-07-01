@@ -32,7 +32,8 @@ export interface HubPost {
   tipo: 'feed' | 'reels' | 'stories' | 'carrossel';
   status:
     | 'rascunho'
-    | 'em_producao'
+    | 'revisao_interna'
+    | 'aprovado_interno'
     | 'enviado_cliente'
     | 'aprovado_cliente'
     | 'correcao_cliente'

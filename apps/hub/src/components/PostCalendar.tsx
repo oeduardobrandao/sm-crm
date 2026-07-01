@@ -35,7 +35,8 @@ const TIPO_LABEL: Record<string, string> = {
 
 const STATUS_LABEL: Record<string, string> = {
   rascunho: 'Rascunho',
-  em_producao: 'Em produção',
+  revisao_interna: 'Revisão interna',
+  aprovado_interno: 'Aprovado interno',
   enviado_cliente: 'Aguardando aprovação',
   aprovado_cliente: 'Aprovado',
   correcao_cliente: 'Correção',
