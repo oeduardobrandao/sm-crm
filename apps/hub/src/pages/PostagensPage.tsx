@@ -7,15 +7,7 @@ import { InstagramPostCard } from '../components/InstagramPostCard';
 import { StoryPostCard } from '../components/StoryPostCard';
 import { TextPostCard } from '../components/TextPostCard';
 import type { HubPost } from '../types';
-
-const VISIBLE_STATUSES = new Set<HubPost['status']>([
-  'enviado_cliente',
-  'aprovado_cliente',
-  'correcao_cliente',
-  'agendado',
-  'postado',
-  'falha_publicacao',
-]);
+import { VISIBLE_STATUSES } from '../lib/postView';
 
 const STATUS_COLORS: Record<string, string> = {
   enviado_cliente: '#f5a342',
