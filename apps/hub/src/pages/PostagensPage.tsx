@@ -105,7 +105,19 @@ export function PostagensPage() {
 
   // Only feed-compatible posts (media, not stories) can be selected for the preview.
   const feedSelectable = allPosts.filter((p) => p.media.length > 0 && p.tipo !== 'stories');
-  const selectedPosts = feedSelectable.filter((p) => selectedIds.has(p.id));
+  // Memoized on the query data + selection so the preview modal isn't handed a fresh
+  // array reference (which would reset an in-progress reorder) on every background refetch.
+  const selectedPosts = useMemo(
+    () =>
+      (data?.posts ?? []).filter(
+        (p) =>
+          VISIBLE_STATUSES.has(p.status) &&
+          p.media.length > 0 &&
+          p.tipo !== 'stories' &&
+          selectedIds.has(p.id),
+      ),
+    [data?.posts, selectedIds],
+  );
 
   function handleToggleSelect(postId: number) {
     setSelectedIds((prev) => {

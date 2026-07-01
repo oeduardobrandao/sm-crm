@@ -62,16 +62,34 @@ export function HubNav() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const maisButtonRef = useRef<HTMLButtonElement>(null);
   const firstSheetItemRef = useRef<HTMLAnchorElement>(null);
+  const sheetRef = useRef<HTMLDivElement>(null);
 
   const maisActive = MOBILE_OVERFLOW.some((item) => pathname.startsWith(`${base}${item.path}`));
 
-  // While the sheet is open: close on Escape, lock body scroll, move focus in
-  // and restore it to the trigger on close.
+  // While the sheet is open: close on Escape, trap Tab focus inside the dialog,
+  // lock body scroll, move focus in, and restore it to the trigger on close.
   useEffect(() => {
     if (!sheetOpen) return;
     const trigger = maisButtonRef.current;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setSheetOpen(false);
+      if (e.key === 'Escape') {
+        setSheetOpen(false);
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const focusables = sheetRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled])',
+      );
+      if (!focusables || focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener('keydown', onKey);
     const prevOverflow = document.body.style.overflow;
@@ -240,6 +258,7 @@ export function HubNav() {
             onClick={() => setSheetOpen(false)}
           />
           <div
+            ref={sheetRef}
             role="dialog"
             aria-modal="true"
             aria-label={t('nav.mais', 'Mais')}
@@ -252,7 +271,7 @@ export function HubNav() {
               <button
                 type="button"
                 onClick={() => setSheetOpen(false)}
-                aria-label={t('common.close', 'Fechar')}
+                aria-label={t('actions.close', 'Fechar')}
                 className="w-8 h-8 flex items-center justify-center rounded-full text-stone-400 hover:bg-stone-100 dark:hover:bg-white/10 transition-colors"
               >
                 <X size={18} />

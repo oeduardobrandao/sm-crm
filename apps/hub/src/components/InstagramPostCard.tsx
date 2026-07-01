@@ -104,6 +104,10 @@ export function InstagramPostCard({
   }
 
   function onPointerDown(e: React.PointerEvent) {
+    // A fresh gesture must never start pre-suppressed: if a previous drag ended
+    // without the browser synthesizing a click (e.g. released outside a slide),
+    // the flag could otherwise latch and swallow this tap.
+    suppressClickRef.current = false;
     if (media.length <= 1) return;
     dragRef.current = {
       pointerId: e.pointerId,

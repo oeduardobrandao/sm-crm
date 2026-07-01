@@ -42,6 +42,13 @@ export function TopPostsRow({ posts }: TopPostsRowProps) {
     trackRef.current?.scrollTo?.({ left: 0 });
   }, [posts]);
 
+  // Cancel any queued scroll frame if the row unmounts (e.g. dashboard period change).
+  useEffect(() => {
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
+
   function handleScroll() {
     if (rafRef.current) return;
     rafRef.current = requestAnimationFrame(() => {
@@ -159,12 +166,16 @@ export function TopPostsRow({ posts }: TopPostsRowProps) {
                 aria-label={`Ir para post ${i + 1}`}
                 aria-current={active}
                 onClick={() => scrollToCard(i)}
-                className={`h-1.5 rounded-full transition-all ${
-                  active
-                    ? 'w-4 bg-stone-800 dark:bg-stone-200'
-                    : 'w-1.5 bg-stone-300 dark:bg-stone-600'
-                }`}
-              />
+                className="flex items-center justify-center py-2.5 px-1.5 -my-2"
+              >
+                <span
+                  className={`h-1.5 rounded-full transition-all ${
+                    active
+                      ? 'w-4 bg-stone-800 dark:bg-stone-200'
+                      : 'w-1.5 bg-stone-300 dark:bg-stone-600'
+                  }`}
+                />
+              </button>
             );
           })}
         </div>

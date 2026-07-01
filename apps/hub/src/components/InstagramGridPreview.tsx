@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { CheckCircle, AlertCircle } from 'lucide-react';
 import { reorderPostSchedules } from '../api';
+import { crossedDragThreshold } from '../lib/carouselGesture';
 import type { HubPost, InstagramFeedProfile, InstagramFeedPost } from '../types';
 
 interface GridItem {
@@ -81,10 +82,28 @@ export function InstagramGridPreview({
   const [saved, setSaved] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const touchRef = useRef<{ startX: number; startY: number; idx: number } | null>(null);
+  const touchRef = useRef<{
+    startX: number;
+    startY: number;
+    idx: number;
+    dragging: boolean;
+  } | null>(null);
   const initialSchedulesRef = useRef<Map<number, string | null>>(new Map());
+  const lastSignatureRef = useRef<string | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // `selectedPosts` is a fresh array on every parent render (unmemoized filter),
+    // and the parent background-refetches (15s poll while publishing, refetch-on-focus).
+    // Only rebuild — discarding any in-progress reorder — when the underlying content
+    // actually changes, not on every re-render.
+    const signature =
+      selectedPosts.map((p) => `${p.id}:${p.scheduled_at ?? ''}:${p.status}`).join('|') +
+      '#' +
+      livePosts.map((p) => p.id).join(',');
+    if (signature === lastSignatureRef.current) return;
+    lastSignatureRef.current = signature;
+
     const scheduleMap = new Map<number, string | null>();
     const livePermalinks = new Set(livePosts.map((p) => p.permalink));
 
@@ -149,14 +168,35 @@ export function InstagramGridPreview({
   }, [selectedPosts, livePosts]);
 
   useEffect(() => {
-    function handleEscape(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      // Trap focus within the dialog.
+      const focusables = dialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      if (!focusables || focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
     }
-    document.addEventListener('keydown', handleEscape);
+    document.addEventListener('keydown', handleKey);
     document.body.style.overflow = 'hidden';
+    dialogRef.current?.querySelector<HTMLElement>('button')?.focus();
     return () => {
-      document.removeEventListener('keydown', handleEscape);
+      document.removeEventListener('keydown', handleKey);
       document.body.style.overflow = '';
+      previouslyFocused?.focus?.();
     };
   }, [onClose]);
 
@@ -182,9 +222,20 @@ export function InstagramGridPreview({
         const src = prev[from];
         const tgt = prev[to];
         if (!src || !tgt || src.mobility !== 'movable' || tgt.mobility !== 'movable') return prev;
+        // A scheduled (agendado) post can only take a still-future slot — mirror the
+        // backend rule client-side so the whole save isn't rejected with a 400.
+        const isFuture = (d: string | null) => !!d && new Date(d).getTime() > Date.now() + 600_000;
+        if (
+          (src.status === 'agendado' && !isFuture(tgt.scheduledAt)) ||
+          (tgt.status === 'agendado' && !isFuture(src.scheduledAt))
+        ) {
+          setSaveError('Posts agendados só podem trocar de data com outro post de data futura.');
+          return prev;
+        }
         const next = [...prev];
         next[from] = { ...tgt, scheduledAt: src.scheduledAt };
         next[to] = { ...src, scheduledAt: tgt.scheduledAt };
+        setSaveError(null);
         checkForChanges(next);
         return next;
       });
@@ -220,20 +271,41 @@ export function InstagramGridPreview({
     (e: React.TouchEvent, idx: number) => {
       if (gridItems[idx]?.mobility !== 'movable') return;
       const touch = e.touches[0];
-      touchRef.current = { startX: touch.clientX, startY: touch.clientY, idx };
+      touchRef.current = { startX: touch.clientX, startY: touch.clientY, idx, dragging: false };
     },
     [gridItems],
   );
 
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    const t = touchRef.current;
+    if (!t) return;
+    const touch = e.touches[0];
+    const dx = touch.clientX - t.startX;
+    const dy = touch.clientY - t.startY;
+    if (!t.dragging) {
+      // Only claim the gesture as a reorder once it's a deliberate horizontal drag;
+      // a vertical gesture stays a scroll and must never swap dates.
+      if (!crossedDragThreshold(dx, dy)) return;
+      t.dragging = true;
+      setDragIdx(t.idx);
+    }
+    if (e.cancelable) e.preventDefault();
+    const cell = document
+      .elementFromPoint(touch.clientX, touch.clientY)
+      ?.closest('[data-grid-idx]');
+    setDragOverIdx(cell ? parseInt(cell.getAttribute('data-grid-idx')!, 10) : null);
+  }, []);
+
   const handleTouchEnd = useCallback(
     (e: React.TouchEvent) => {
-      if (!touchRef.current) return;
-      const touch = e.changedTouches[0];
-      const el = document.elementFromPoint(touch.clientX, touch.clientY);
-      const gridCell = el?.closest('[data-grid-idx]');
-      if (gridCell) {
-        const targetIdx = parseInt(gridCell.getAttribute('data-grid-idx')!, 10);
-        swapItems(touchRef.current.idx, targetIdx);
+      const t = touchRef.current;
+      // Swap only after a real horizontal drag that lands on a different cell.
+      if (t?.dragging) {
+        const touch = e.changedTouches[0];
+        const cell = document
+          .elementFromPoint(touch.clientX, touch.clientY)
+          ?.closest('[data-grid-idx]');
+        if (cell) swapItems(t.idx, parseInt(cell.getAttribute('data-grid-idx')!, 10));
       }
       touchRef.current = null;
       setDragIdx(null);
@@ -313,7 +385,11 @@ export function InstagramGridPreview({
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl w-[420px] max-h-[92vh] flex flex-col relative"
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Pré-visualização do feed de ${displayName || 'Instagram'}`}
+        className="bg-white rounded-2xl w-[min(420px,calc(100vw-2rem))] max-h-[92vh] flex flex-col relative"
         style={{
           fontFamily:
             '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
@@ -489,6 +565,7 @@ export function InstagramGridPreview({
                     setDragOverIdx(null);
                   }}
                   onTouchStart={(e) => handleTouchStart(e, idx)}
+                  onTouchMove={handleTouchMove}
                   onTouchEnd={handleTouchEnd}
                   className={`aspect-[4/5] relative overflow-hidden bg-[#efefef] ${
                     movable

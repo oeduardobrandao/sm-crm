@@ -229,6 +229,38 @@ describe('InstagramGridPreview', () => {
     expect(byId[3]).toBeUndefined(); // the published post is never rescheduled
   });
 
+  it('blocks swapping a scheduled (agendado) post onto a post without a valid future date', async () => {
+    mockedReorder.mockClear();
+
+    const agendado = makePost({
+      id: 1,
+      status: 'agendado',
+      scheduled_at: '2027-01-01T10:00:00.000Z',
+    });
+    const noDate = makePost({ id: 2, status: 'enviado_cliente', scheduled_at: null });
+
+    render(
+      <InstagramGridPreview
+        selectedPosts={[agendado, noDate]}
+        feedProfile={profile}
+        livePosts={[]}
+        token="test-token"
+        onClose={vi.fn()}
+      />,
+    );
+
+    // The future agendado post sorts first; the date-less post sorts last.
+    const cells = document.body.querySelectorAll('[data-grid-idx]');
+    fireEvent.dragStart(cells[0]);
+    fireEvent.dragOver(cells[1]);
+    fireEvent.drop(cells[1]);
+
+    expect(await screen.findByText(/agendados só podem trocar/i)).toBeInTheDocument();
+    // The swap was refused, so there is nothing to save and the RPC is never hit.
+    expect(screen.queryByRole('button', { name: /salvar agendamento/i })).not.toBeInTheDocument();
+    expect(mockedReorder).not.toHaveBeenCalled();
+  });
+
   it('keeps the modal dirty and shows the error when the save fails', async () => {
     mockedReorder.mockClear();
     mockedReorder.mockRejectedValue(new Error('Não é possível reagendar posts em publicação.'));

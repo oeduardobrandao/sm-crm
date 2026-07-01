@@ -9,7 +9,7 @@
 
 CREATE OR REPLACE FUNCTION hub_reorder_post_schedules(
   p_cliente_id bigint,
-  p_conta_id   text,
+  p_conta_id   uuid,
   p_updates    jsonb
 ) RETURNS jsonb
 LANGUAGE plpgsql
@@ -143,5 +143,5 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION hub_reorder_post_schedules(bigint, text, jsonb) FROM public, anon, authenticated;
-GRANT EXECUTE ON FUNCTION hub_reorder_post_schedules(bigint, text, jsonb) TO service_role;
+REVOKE ALL ON FUNCTION hub_reorder_post_schedules(bigint, uuid, jsonb) FROM public, anon, authenticated;
+GRANT EXECUTE ON FUNCTION hub_reorder_post_schedules(bigint, uuid, jsonb) TO service_role;
