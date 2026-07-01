@@ -72,7 +72,7 @@ describe('WorkflowCard awaiting-client badge', () => {
         <WorkflowCard card={makeCard(1)} awaitingClienteCount={2} postsCount={5} />
       </MemoryRouter>,
     );
-    expect(screen.getByText(/2 aguardando cliente/i)).toBeInTheDocument();
+    expect(screen.getByText(/2 posts com o cliente/i)).toBeInTheDocument();
   });
 
   it('hides the badge when awaitingClienteCount is 0', () => {
@@ -81,17 +81,17 @@ describe('WorkflowCard awaiting-client badge', () => {
         <WorkflowCard card={makeCard(1)} awaitingClienteCount={0} postsCount={5} />
       </MemoryRouter>,
     );
-    expect(screen.queryByText(/aguardando cliente/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/posts com o cliente/i)).not.toBeInTheDocument();
   });
 
   it('does not show the post-approval-etapa badge while still in the approval etapa', () => {
-    // ordem 0 == approval etapa itself; the new badge must NOT render here
-    // (the existing in-stage "Aguardando cliente" branch handles that case).
+    // ordem 0 == approval etapa itself; the count badge must NOT render here
+    // (the in-stage "Aguardando aprovação do cliente" branch handles that case).
     render(
       <MemoryRouter>
         <WorkflowCard card={makeCard(0)} awaitingClienteCount={2} postsCount={5} />
       </MemoryRouter>,
     );
-    expect(screen.queryByText(/2 aguardando cliente/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/2 posts com o cliente/i)).not.toBeInTheDocument();
   });
 });

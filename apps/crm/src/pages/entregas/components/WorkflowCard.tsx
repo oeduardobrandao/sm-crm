@@ -501,7 +501,7 @@ export function WorkflowCard({
                 letterSpacing: '0.02em',
               }}
             >
-              ⏳ Aguardando cliente
+              ⏳ Aguardando aprovação do cliente
             </div>
           )}
         </div>
@@ -544,7 +544,7 @@ export function WorkflowCard({
                 letterSpacing: '0.02em',
               }}
             >
-              ⏳ {awaitingClienteCount} aguardando cliente
+              ⏳ {awaitingClienteCount} post{awaitingClienteCount === 1 ? '' : 's'} com o cliente
             </div>
           </div>
         );
