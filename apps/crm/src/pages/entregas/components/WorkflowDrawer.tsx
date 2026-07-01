@@ -88,6 +88,7 @@ import { ScheduleButton } from './ScheduleButton';
 import { DateTimePicker } from '@/components/ui/date-time-picker';
 import { supabase } from '@/lib/supabase';
 import { WorkflowCalendarView } from './WorkflowCalendarView';
+import { CopyPostLinkButton } from '@/components/CopyPostLinkButton';
 import { DiffView } from './DiffView';
 import { ReadOnlyTipTap } from './ReadOnlyTipTap';
 import { computeWordDiff } from '@/utils/textDiff';
@@ -611,6 +612,7 @@ export function WorkflowDrawer({
               currentWorkflowId={workflowId}
               currentWorkflowTitulo={card.workflow.titulo}
               membros={membros}
+              hubUrl={card.hubUrl}
               onOpenPost={(postId) => {
                 setShowCalendar(false);
                 setExpandedId(postId);
@@ -654,6 +656,7 @@ export function WorkflowDrawer({
                         <SortablePostItem
                           key={post.id}
                           post={post}
+                          hubUrl={card.hubUrl}
                           templateId={card.workflow.template_id}
                           workflowId={workflowId}
                           isExpanded={expandedId === post.id}
@@ -800,6 +803,7 @@ export function WorkflowDrawer({
 
 interface SortablePostItemProps {
   post: WorkflowPost & { property_values?: PostPropertyValue[] };
+  hubUrl?: string;
   templateId: number | null | undefined;
   workflowId: number;
   isExpanded: boolean;
@@ -837,6 +841,7 @@ interface SortablePostItemProps {
 
 function SortablePostItem({
   post,
+  hubUrl,
   templateId,
   workflowId,
   isExpanded,
@@ -1040,6 +1045,7 @@ function SortablePostItem({
               </span>
             );
           })()}
+          <CopyPostLinkButton hubUrl={hubUrl} postId={post.id!} />
           <button className="drawer-delete-btn" onClick={onDelete} title="Remover post">
             <Trash2 className="h-3.5 w-3.5" />
           </button>

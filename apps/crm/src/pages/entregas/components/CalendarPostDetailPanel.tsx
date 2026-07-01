@@ -16,6 +16,7 @@ import { getPostPreview, type ClientePost, type Membro } from '@/store';
 import { listPostMedia } from '@/services/postMedia';
 import { DateTimePicker } from '@/components/ui/date-time-picker';
 import { sanitizeUrl } from '@/utils/security';
+import { CopyPostLinkButton } from '@/components/CopyPostLinkButton';
 import {
   TIPO_LABELS,
   getPostPublishState,
@@ -32,6 +33,7 @@ const TIPO_COLORS: Record<ClientePost['tipo'], string> = {
 
 export interface CalendarPostDetailPanelProps {
   post: ClientePost;
+  hubUrl?: string;
   membros: Membro[];
   isCurrentWorkflow: boolean;
   isLocked: boolean;
@@ -44,6 +46,7 @@ export interface CalendarPostDetailPanelProps {
 
 export function CalendarPostDetailPanel({
   post,
+  hubUrl,
   membros,
   isCurrentWorkflow,
   isLocked,
@@ -188,6 +191,7 @@ export function CalendarPostDetailPanel({
             <ExternalLink className="h-4 w-4" /> Abrir post completo
           </button>
         )}
+        <CopyPostLinkButton hubUrl={hubUrl} postId={post.id} />
         {canEdit && (
           <button
             className="calendar-detail-btn calendar-detail-btn--danger"

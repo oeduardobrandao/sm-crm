@@ -35,6 +35,7 @@ interface WorkflowCalendarViewProps {
   onBack: () => void;
   membros?: Membro[];
   onOpenPost?: (postId: number) => void;
+  hubUrl?: string;
 }
 
 interface PendingDrop {
@@ -51,6 +52,7 @@ export function WorkflowCalendarView({
   onBack,
   membros = [],
   onOpenPost,
+  hubUrl,
 }: WorkflowCalendarViewProps) {
   const qc = useQueryClient();
   const [currentMonth, setCurrentMonth] = useState(
@@ -235,6 +237,7 @@ export function WorkflowCalendarView({
             <CalendarPostDetailPanel
               key={selectedPost.id}
               post={selectedPost}
+              hubUrl={hubUrl}
               membros={membros}
               isCurrentWorkflow={selectedIsCurrentWorkflow}
               isLocked={selectedIsLocked}

@@ -10,6 +10,7 @@ import { PostagensPage } from './pages/PostagensPage';
 import { IdeiasPage } from './pages/IdeiasPage';
 import { RelatoriosPage } from './pages/Relatorios';
 import { RelatorioViewPage } from './pages/RelatorioView';
+import { PostagemFocoPage } from './pages/PostagemFocoPage';
 
 export const router = createBrowserRouter([
   {
@@ -19,6 +20,7 @@ export const router = createBrowserRouter([
       { index: true, element: <HomePage /> },
       { path: 'aprovacoes', element: <AprovacoesPage /> },
       { path: 'postagens', element: <PostagensPage /> },
+      { path: 'postagens/:postId', element: <PostagemFocoPage /> },
       { path: 'marca', element: <MarcaPage /> },
       { path: 'paginas', element: <PaginasPage /> },
       { path: 'paginas/:pageId', element: <PaginaPage /> },

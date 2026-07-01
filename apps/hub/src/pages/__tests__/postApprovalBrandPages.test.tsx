@@ -176,7 +176,7 @@ function makePost(
     titulo: string;
     status:
       | 'rascunho'
-      | 'em_producao'
+      | 'revisao_interna'
       | 'enviado_cliente'
       | 'aprovado_cliente'
       | 'correcao_cliente'
@@ -354,7 +354,7 @@ describe('hub approval, posts, and brand pages', () => {
       mockedFetchPosts.mockResolvedValue({
         posts: [
           makePost({ id: 20, titulo: 'Rascunho oculto', status: 'rascunho' }),
-          makePost({ id: 21, titulo: 'Produção interna', status: 'em_producao' }),
+          makePost({ id: 21, titulo: 'Produção interna', status: 'revisao_interna' }),
         ],
         postApprovals: [],
         propertyValues: [],
