@@ -953,3 +953,61 @@ describe('PostagensPage — status filtering', () => {
     expect(screen.queryByText('Produção')).not.toBeInTheDocument();
   });
 });
+
+describe('PostagensPage — feed preview and selection', () => {
+  beforeEach(() => {
+    mockedFetchPosts.mockReset();
+    mockedFetchInstagramFeed.mockReset();
+  });
+
+  it('hides the feed preview button without an instagramProfile', async () => {
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({
+        posts: [makePost({ id: 1, workflow_id: 1, workflow_titulo: 'G' })],
+        instagramProfile: null,
+      }),
+    );
+
+    renderHubPage(POSTAGENS_PATH, POSTAGENS_ROUTE, <PostagensPage />);
+
+    await screen.findByTestId('instagram-post-card');
+    expect(screen.queryByTestId('feed-preview-btn')).not.toBeInTheDocument();
+  });
+
+  it('selects feed posts and opens the grid preview; stories are not selectable', async () => {
+    mockedFetchPosts.mockResolvedValue(
+      makeResponse({
+        posts: [
+          makePost({ id: 1, titulo: 'Feed', tipo: 'feed', workflow_id: 1, workflow_titulo: 'G' }),
+          makePost({ id: 2, titulo: 'Story', tipo: 'stories', workflow_id: 1, workflow_titulo: 'G' }),
+        ],
+        instagramProfile: { username: 'clinica', profilePictureUrl: null },
+      }),
+    );
+    mockedFetchInstagramFeed.mockResolvedValue({
+      profile: {
+        username: 'clinica',
+        profilePictureUrl: null,
+        followerCount: 10,
+        followingCount: 5,
+        mediaCount: 3,
+      },
+      recentPosts: [],
+    });
+
+    renderHubPage(POSTAGENS_PATH, POSTAGENS_ROUTE, <PostagensPage />);
+
+    await screen.findByTestId('feed-preview-btn');
+    expect(screen.getByText('Preview (0)')).toBeInTheDocument();
+
+    // Stories get no selection control.
+    expect(screen.queryByRole('button', { name: 'Select 2' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Select 1' }));
+    expect(screen.getByText('Preview (1)')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('feed-preview-btn'));
+    const grid = await screen.findByTestId('instagram-grid-preview');
+    expect(within(grid).getByTestId('grid-selected-count')).toHaveTextContent('1');
+  });
+});
