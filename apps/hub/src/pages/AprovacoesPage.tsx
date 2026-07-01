@@ -8,6 +8,7 @@ import { TextPostCard } from '../components/TextPostCard';
 import { FeedPreviewButton } from '../components/FeedPreviewButton';
 import { InstagramGridPreview } from '../components/InstagramGridPreview';
 import { formatDate } from '../components/PostCard';
+import { SharePostButton } from '../components/SharePostButton';
 
 export function AprovacoesPage() {
   const { token, bootstrap } = useHub();
@@ -104,9 +105,10 @@ export function AprovacoesPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {withMedia.map((post, i) => (
               <div key={post.id} className="flex flex-col">
-                <p className="text-[11px] text-stone-400 mb-1.5 pl-0.5">
-                  {formatDate(post.scheduled_at)}
-                </p>
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <p className="text-[11px] text-stone-400 pl-0.5">{formatDate(post.scheduled_at)}</p>
+                  <SharePostButton postId={post.id} />
+                </div>
                 <InstagramPostCard
                   post={post}
                   token={token}
@@ -136,9 +138,10 @@ export function AprovacoesPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {stories.map((post) => (
               <div key={post.id}>
-                <p className="text-[11px] text-stone-400 mb-1.5 pl-0.5">
-                  {formatDate(post.scheduled_at)}
-                </p>
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <p className="text-[11px] text-stone-400 pl-0.5">{formatDate(post.scheduled_at)}</p>
+                  <SharePostButton postId={post.id} />
+                </div>
                 <StoryPostCard
                   post={post}
                   token={token}
@@ -168,9 +171,10 @@ export function AprovacoesPage() {
           <div className="max-w-[640px] space-y-3">
             {withoutMedia.map((post) => (
               <div key={post.id}>
-                <p className="text-[11px] text-stone-400 mb-1.5 pl-0.5">
-                  {formatDate(post.scheduled_at)}
-                </p>
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <p className="text-[11px] text-stone-400 pl-0.5">{formatDate(post.scheduled_at)}</p>
+                  <SharePostButton postId={post.id} />
+                </div>
                 <TextPostCard
                   post={post}
                   token={token}

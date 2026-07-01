@@ -7,6 +7,7 @@ import { isClientVisible, pickPostCardKind } from '../lib/postView';
 import { InstagramPostCard } from '../components/InstagramPostCard';
 import { StoryPostCard } from '../components/StoryPostCard';
 import { TextPostCard } from '../components/TextPostCard';
+import { SharePostButton } from '../components/SharePostButton';
 
 export function PostagemFocoPage() {
   const { token, workspace, bootstrap } = useHub();
@@ -66,6 +67,9 @@ export function PostagemFocoPage() {
   return (
     <div className="max-w-3xl mx-auto hub-fade-up">
       {backLink}
+      <div className="flex items-center justify-between mb-2">
+        <SharePostButton postId={post.id} />
+      </div>
       <div className="flex flex-col gap-1.5">
         {kind === 'instagram' && (
           <InstagramPostCard

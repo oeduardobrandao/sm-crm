@@ -8,6 +8,7 @@ import { StoryPostCard } from '../components/StoryPostCard';
 import { TextPostCard } from '../components/TextPostCard';
 import type { HubPost } from '../types';
 import { VISIBLE_STATUSES } from '../lib/postView';
+import { SharePostButton } from '../components/SharePostButton';
 
 const STATUS_COLORS: Record<string, string> = {
   enviado_cliente: '#f5a342',
@@ -196,7 +197,10 @@ export function PostagensPage() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     {withMedia.map((post, i) => (
                       <div key={post.id} className="flex flex-col gap-1.5">
-                        <StatusTag status={getPostPublishState(post)} />
+                        <div className="flex items-center justify-between gap-2">
+                          <StatusTag status={getPostPublishState(post)} />
+                          <SharePostButton postId={post.id} />
+                        </div>
                         <InstagramPostCard
                           post={post}
                           token={token}
@@ -217,7 +221,10 @@ export function PostagensPage() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                       {stories.map((post) => (
                         <div key={post.id} className="flex flex-col gap-1.5">
-                          <StatusTag status={getPostPublishState(post)} />
+                          <div className="flex items-center justify-between gap-2">
+                            <StatusTag status={getPostPublishState(post)} />
+                            <SharePostButton postId={post.id} />
+                          </div>
                           <StoryPostCard
                             post={post}
                             token={token}
@@ -237,7 +244,10 @@ export function PostagensPage() {
                     <div className="max-w-[640px] space-y-3">
                       {withoutMedia.map((post) => (
                         <div key={post.id} className="flex flex-col gap-1.5">
-                          <StatusTag status={getPostPublishState(post)} />
+                          <div className="flex items-center justify-between gap-2">
+                            <StatusTag status={getPostPublishState(post)} />
+                            <SharePostButton postId={post.id} />
+                          </div>
                           <TextPostCard post={post} token={token} approvals={approvals} readOnly />
                         </div>
                       ))}
