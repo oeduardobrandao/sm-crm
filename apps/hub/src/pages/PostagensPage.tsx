@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown } from 'lucide-react';
 import { useHub } from '../HubContext';
@@ -131,6 +131,8 @@ export function PostagensPage() {
   function handleInvalidate() {
     qc.invalidateQueries({ queryKey: ['hub-posts', token] });
   }
+
+  const handleCloseGrid = useCallback(() => setShowGrid(false), []);
 
   const groups = useMemo(
     () =>
@@ -345,7 +347,7 @@ export function PostagensPage() {
           feedProfile={feedData.profile}
           livePosts={feedData.recentPosts}
           token={token}
-          onClose={() => setShowGrid(false)}
+          onClose={handleCloseGrid}
           onScheduleUpdated={handleInvalidate}
         />
       )}

@@ -167,8 +167,20 @@ export function InstagramGridPreview({
     setSaveError(null);
   }, [selectedPosts, livePosts]);
 
+  // Mount/unmount only: lock scroll, move focus in, restore focus to the trigger on
+  // close. Kept out of the keydown effect so a changing onClose (parent re-render)
+  // can never re-steal focus mid-interaction.
   useEffect(() => {
     const previouslyFocused = document.activeElement as HTMLElement | null;
+    document.body.style.overflow = 'hidden';
+    dialogRef.current?.querySelector<HTMLElement>('button')?.focus();
+    return () => {
+      document.body.style.overflow = '';
+      previouslyFocused?.focus?.();
+    };
+  }, []);
+
+  useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (e.key === 'Escape') {
         onClose();
@@ -191,13 +203,7 @@ export function InstagramGridPreview({
       }
     }
     document.addEventListener('keydown', handleKey);
-    document.body.style.overflow = 'hidden';
-    dialogRef.current?.querySelector<HTMLElement>('button')?.focus();
-    return () => {
-      document.removeEventListener('keydown', handleKey);
-      document.body.style.overflow = '';
-      previouslyFocused?.focus?.();
-    };
+    return () => document.removeEventListener('keydown', handleKey);
   }, [onClose]);
 
   const checkForChanges = useCallback((items: GridItem[]) => {
