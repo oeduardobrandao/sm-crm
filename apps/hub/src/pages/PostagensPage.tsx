@@ -181,7 +181,10 @@ export function PostagensPage() {
             Postagens
           </h2>
           {instagramProfile && (
-            <FeedPreviewButton selectedCount={selectedPosts.length} onClick={() => setShowGrid(true)} />
+            <FeedPreviewButton
+              selectedCount={selectedPosts.length}
+              onClick={() => setShowGrid(true)}
+            />
           )}
         </div>
         {instagramProfile && feedSelectable.length > 0 && selectedPosts.length === 0 && (

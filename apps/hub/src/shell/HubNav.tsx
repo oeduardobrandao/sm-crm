@@ -69,6 +69,7 @@ export function HubNav() {
   // and restore it to the trigger on close.
   useEffect(() => {
     if (!sheetOpen) return;
+    const trigger = maisButtonRef.current;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setSheetOpen(false);
     };
@@ -79,7 +80,7 @@ export function HubNav() {
     return () => {
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = prevOverflow;
-      maisButtonRef.current?.focus();
+      trigger?.focus();
     };
   }, [sheetOpen]);
 
@@ -268,7 +269,9 @@ export function HubNav() {
                     ref={i === 0 ? firstSheetItemRef : undefined}
                     onClick={() => setSheetOpen(false)}
                     className={`flex items-center gap-3 px-3 py-3.5 rounded-2xl transition-colors ${
-                      active ? 'bg-stone-100 dark:bg-white/10' : 'hover:bg-stone-50 dark:hover:bg-white/[0.04]'
+                      active
+                        ? 'bg-stone-100 dark:bg-white/10'
+                        : 'hover:bg-stone-50 dark:hover:bg-white/[0.04]'
                     }`}
                   >
                     <span className="flex items-center justify-center w-9 h-9 rounded-xl bg-stone-100 dark:bg-white/[0.06] text-stone-700 dark:text-stone-200">

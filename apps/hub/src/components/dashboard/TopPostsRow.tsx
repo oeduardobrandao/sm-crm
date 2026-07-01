@@ -128,7 +128,9 @@ export function TopPostsRow({ posts }: TopPostsRowProps) {
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-[11px] text-stone-500 dark:text-stone-400">Engajamento</span>
+                  <span className="text-[11px] text-stone-500 dark:text-stone-400">
+                    Engajamento
+                  </span>
                   <span className="text-[11px] font-bold text-emerald-500">
                     {post.engagementRate}%
                   </span>

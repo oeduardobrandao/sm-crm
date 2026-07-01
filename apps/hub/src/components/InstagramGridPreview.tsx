@@ -537,7 +537,9 @@ export function InstagramGridPreview({
                   )}
 
                   {item.isCarousel && (
-                    <span className="absolute top-1.5 right-1.5 drop-shadow-md">{carouselIcon}</span>
+                    <span className="absolute top-1.5 right-1.5 drop-shadow-md">
+                      {carouselIcon}
+                    </span>
                   )}
                   {item.mediaType === 'VIDEO' && !item.isCarousel && (
                     <span className="absolute top-1.5 right-1.5 drop-shadow-md">{reelsIcon}</span>

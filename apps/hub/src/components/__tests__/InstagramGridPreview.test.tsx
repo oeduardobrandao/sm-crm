@@ -178,8 +178,16 @@ describe('InstagramGridPreview', () => {
     mockedReorder.mockClear();
     mockedReorder.mockResolvedValue({ ok: true, updated: 2 } as never);
 
-    const postA = makePost({ id: 1, status: 'enviado_cliente', scheduled_at: '2026-05-02T10:00:00.000Z' });
-    const postB = makePost({ id: 2, status: 'enviado_cliente', scheduled_at: '2026-05-01T10:00:00.000Z' });
+    const postA = makePost({
+      id: 1,
+      status: 'enviado_cliente',
+      scheduled_at: '2026-05-02T10:00:00.000Z',
+    });
+    const postB = makePost({
+      id: 2,
+      status: 'enviado_cliente',
+      scheduled_at: '2026-05-01T10:00:00.000Z',
+    });
     const published = makePost({
       id: 3,
       status: 'postado',
@@ -210,7 +218,10 @@ describe('InstagramGridPreview', () => {
     fireEvent.click(saveBtn);
 
     await waitFor(() => expect(mockedReorder).toHaveBeenCalledTimes(1));
-    const updates = mockedReorder.mock.calls[0][1] as { post_id: number; scheduled_at: string | null }[];
+    const updates = mockedReorder.mock.calls[0][1] as {
+      post_id: number;
+      scheduled_at: string | null;
+    }[];
     const byId = Object.fromEntries(updates.map((u) => [u.post_id, u.scheduled_at]));
     expect(updates).toHaveLength(2);
     expect(byId[1]).toBe('2026-05-01T10:00:00.000Z'); // post A took B's date
@@ -222,8 +233,16 @@ describe('InstagramGridPreview', () => {
     mockedReorder.mockClear();
     mockedReorder.mockRejectedValue(new Error('Não é possível reagendar posts em publicação.'));
 
-    const postA = makePost({ id: 1, status: 'enviado_cliente', scheduled_at: '2026-05-02T10:00:00.000Z' });
-    const postB = makePost({ id: 2, status: 'enviado_cliente', scheduled_at: '2026-05-01T10:00:00.000Z' });
+    const postA = makePost({
+      id: 1,
+      status: 'enviado_cliente',
+      scheduled_at: '2026-05-02T10:00:00.000Z',
+    });
+    const postB = makePost({
+      id: 2,
+      status: 'enviado_cliente',
+      scheduled_at: '2026-05-01T10:00:00.000Z',
+    });
 
     render(
       <InstagramGridPreview

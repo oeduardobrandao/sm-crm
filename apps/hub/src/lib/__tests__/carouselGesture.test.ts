@@ -10,20 +10,22 @@ const W = 300;
 
 describe('resolveTarget', () => {
   it('advances forward when distance exceeds 18% of width', () => {
-    expect(resolveTarget({ currentIndex: 0, count: 3, deltaX: -60, width: W, velocity: 0 })).toBe(1);
+    expect(resolveTarget({ currentIndex: 0, count: 3, deltaX: -60, width: W, velocity: 0 })).toBe(
+      1,
+    );
   });
   it('advances backward on a rightward drag past threshold', () => {
     expect(resolveTarget({ currentIndex: 1, count: 3, deltaX: 60, width: W, velocity: 0 })).toBe(0);
   });
   it('advances on velocity even when distance is small', () => {
-    expect(resolveTarget({ currentIndex: 0, count: 3, deltaX: -12, width: W, velocity: -0.6 })).toBe(
-      1,
-    );
+    expect(
+      resolveTarget({ currentIndex: 0, count: 3, deltaX: -12, width: W, velocity: -0.6 }),
+    ).toBe(1);
   });
   it('returns current index below both thresholds', () => {
-    expect(resolveTarget({ currentIndex: 1, count: 3, deltaX: -10, width: W, velocity: -0.1 })).toBe(
-      1,
-    );
+    expect(
+      resolveTarget({ currentIndex: 1, count: 3, deltaX: -10, width: W, velocity: -0.1 }),
+    ).toBe(1);
   });
   it('clamps at the last slide', () => {
     expect(resolveTarget({ currentIndex: 2, count: 3, deltaX: -200, width: W, velocity: -2 })).toBe(
@@ -31,7 +33,9 @@ describe('resolveTarget', () => {
     );
   });
   it('clamps at the first slide', () => {
-    expect(resolveTarget({ currentIndex: 0, count: 3, deltaX: 200, width: W, velocity: 2 })).toBe(0);
+    expect(resolveTarget({ currentIndex: 0, count: 3, deltaX: 200, width: W, velocity: 2 })).toBe(
+      0,
+    );
   });
 });
 

@@ -979,7 +979,13 @@ describe('PostagensPage — feed preview and selection', () => {
       makeResponse({
         posts: [
           makePost({ id: 1, titulo: 'Feed', tipo: 'feed', workflow_id: 1, workflow_titulo: 'G' }),
-          makePost({ id: 2, titulo: 'Story', tipo: 'stories', workflow_id: 1, workflow_titulo: 'G' }),
+          makePost({
+            id: 2,
+            titulo: 'Story',
+            tipo: 'stories',
+            workflow_id: 1,
+            workflow_titulo: 'G',
+          }),
         ],
         instagramProfile: { username: 'clinica', profilePictureUrl: null },
       }),
