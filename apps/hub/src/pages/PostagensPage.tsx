@@ -9,6 +9,7 @@ import { TextPostCard } from '../components/TextPostCard';
 import type { HubPost } from '../types';
 import { VISIBLE_STATUSES } from '../lib/postView';
 import { SharePostButton } from '../components/SharePostButton';
+import { OpenPostLink } from '../components/OpenPostLink';
 
 const STATUS_COLORS: Record<string, string> = {
   enviado_cliente: '#f5a342',
@@ -199,7 +200,10 @@ export function PostagensPage() {
                       <div key={post.id} className="flex flex-col gap-1.5">
                         <div className="flex items-center justify-between gap-2">
                           <StatusTag status={getPostPublishState(post)} />
-                          <SharePostButton postId={post.id} />
+                          <span className="flex items-center gap-3">
+                            <OpenPostLink postId={post.id} />
+                            <SharePostButton postId={post.id} />
+                          </span>
                         </div>
                         <InstagramPostCard
                           post={post}
@@ -223,7 +227,10 @@ export function PostagensPage() {
                         <div key={post.id} className="flex flex-col gap-1.5">
                           <div className="flex items-center justify-between gap-2">
                             <StatusTag status={getPostPublishState(post)} />
-                            <SharePostButton postId={post.id} />
+                            <span className="flex items-center gap-3">
+                              <OpenPostLink postId={post.id} />
+                              <SharePostButton postId={post.id} />
+                            </span>
                           </div>
                           <StoryPostCard
                             post={post}
@@ -246,7 +253,10 @@ export function PostagensPage() {
                         <div key={post.id} className="flex flex-col gap-1.5">
                           <div className="flex items-center justify-between gap-2">
                             <StatusTag status={getPostPublishState(post)} />
-                            <SharePostButton postId={post.id} />
+                            <span className="flex items-center gap-3">
+                              <OpenPostLink postId={post.id} />
+                              <SharePostButton postId={post.id} />
+                            </span>
                           </div>
                           <TextPostCard post={post} token={token} approvals={approvals} readOnly />
                         </div>

@@ -9,6 +9,7 @@ import { FeedPreviewButton } from '../components/FeedPreviewButton';
 import { InstagramGridPreview } from '../components/InstagramGridPreview';
 import { formatDate } from '../components/PostCard';
 import { SharePostButton } from '../components/SharePostButton';
+import { OpenPostLink } from '../components/OpenPostLink';
 
 export function AprovacoesPage() {
   const { token, bootstrap } = useHub();
@@ -109,7 +110,10 @@ export function AprovacoesPage() {
                   <p className="text-[11px] text-stone-400 pl-0.5">
                     {formatDate(post.scheduled_at)}
                   </p>
-                  <SharePostButton postId={post.id} />
+                  <span className="flex items-center gap-3">
+                    <OpenPostLink postId={post.id} />
+                    <SharePostButton postId={post.id} />
+                  </span>
                 </div>
                 <InstagramPostCard
                   post={post}
@@ -144,7 +148,10 @@ export function AprovacoesPage() {
                   <p className="text-[11px] text-stone-400 pl-0.5">
                     {formatDate(post.scheduled_at)}
                   </p>
-                  <SharePostButton postId={post.id} />
+                  <span className="flex items-center gap-3">
+                    <OpenPostLink postId={post.id} />
+                    <SharePostButton postId={post.id} />
+                  </span>
                 </div>
                 <StoryPostCard
                   post={post}
@@ -179,7 +186,10 @@ export function AprovacoesPage() {
                   <p className="text-[11px] text-stone-400 pl-0.5">
                     {formatDate(post.scheduled_at)}
                   </p>
-                  <SharePostButton postId={post.id} />
+                  <span className="flex items-center gap-3">
+                    <OpenPostLink postId={post.id} />
+                    <SharePostButton postId={post.id} />
+                  </span>
                 </div>
                 <TextPostCard
                   post={post}
