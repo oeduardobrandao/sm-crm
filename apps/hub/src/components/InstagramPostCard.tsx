@@ -8,6 +8,9 @@ import { VideoPrewarm } from './VideoPrewarm';
 import type { HubPost, PostApproval, InstagramProfile } from '../types';
 import { useEditSuggestion } from '../hooks/useEditSuggestion';
 
+/** Caption length (chars) above which we collapse it behind a "mais"/"ver menos" toggle (~2 lines). */
+const CAPTION_CLAMP_CHARS = 140;
+
 interface InstagramPostCardProps {
   post: HubPost;
   token: string;
@@ -42,6 +45,7 @@ export function InstagramPostCard({
   const [result, setResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const [liked, setLiked] = useState(false);
+  const [captionExpanded, setCaptionExpanded] = useState(false);
   const touchStartX = useRef(0);
   const touchDelta = useRef(0);
 
@@ -165,17 +169,39 @@ export function InstagramPostCard({
       )}
 
       {/* Profile header */}
-      <div className="flex items-center px-2.5 py-2 gap-2 relative">
-        {profilePic ? (
-          <img src={profilePic} alt={displayName} className="w-6 h-6 rounded-full object-cover" />
-        ) : (
-          <div className="w-6 h-6 rounded-full bg-stone-200 dark:bg-stone-700 flex items-center justify-center text-[9px] font-bold text-stone-500 dark:text-stone-300">
-            {displayName.charAt(0).toUpperCase()}
-          </div>
-        )}
-        <span className="text-[11px] font-semibold text-[#262626] dark:text-[#f5f5f5] truncate">
+      <div className="flex items-center px-3 py-2.5 gap-2.5 relative">
+        <span className="shrink-0 rounded-full bg-gradient-to-tr from-[#feda75] via-[#d62976] to-[#4f5bd5] p-[2px]">
+          <span className="block rounded-full bg-white dark:bg-[#1a1a1a] p-[2px]">
+            {profilePic ? (
+              <img
+                src={profilePic}
+                alt={displayName}
+                className="w-8 h-8 rounded-full object-cover"
+              />
+            ) : (
+              <span className="w-8 h-8 rounded-full bg-stone-200 dark:bg-stone-700 flex items-center justify-center text-[11px] font-bold text-stone-500 dark:text-stone-300">
+                {displayName.charAt(0).toUpperCase()}
+              </span>
+            )}
+          </span>
+        </span>
+        <span className="text-[14px] font-semibold text-[#262626] dark:text-[#f5f5f5] truncate leading-none">
           {displayName}
         </span>
+        {!onToggleSelect && (
+          <svg
+            className="ml-auto text-[#262626] dark:text-[#f5f5f5]"
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            aria-hidden="true"
+          >
+            <circle cx="5" cy="12" r="1.6" />
+            <circle cx="12" cy="12" r="1.6" />
+            <circle cx="19" cy="12" r="1.6" />
+          </svg>
+        )}
       </div>
 
       {/* Image area */}
@@ -265,63 +291,64 @@ export function InstagramPostCard({
       </div>
 
       {/* Carousel dots (fixed height so feed and carousel cards match) */}
-      <div className="flex justify-center gap-0.5 py-1.5 min-h-[18px]">
+      <div className="flex justify-center gap-1 py-2 min-h-[20px]">
         {isCarousel &&
           media.map((_, i) => (
             <div
               key={i}
               data-carousel-dot
-              className={`w-1 h-1 rounded-full ${i === currentSlide ? 'bg-[#0095f6]' : 'bg-[#c7c7c7] dark:bg-[#555]'}`}
+              className={`w-1.5 h-1.5 rounded-full ${i === currentSlide ? 'bg-[#0095f6]' : 'bg-[#c7c7c7] dark:bg-[#555]'}`}
             />
           ))}
       </div>
 
       {/* Action icons */}
-      <div className={`px-2.5 ${isCarousel ? 'pt-0' : 'pt-1.5'} pb-0.5`}>
-        <div className="flex items-center gap-2.5 text-[#262626] dark:text-[#f5f5f5]">
+      <div className={`px-3 ${isCarousel ? 'pt-0.5' : 'pt-2'} pb-1`}>
+        <div className="flex items-center gap-4 text-[#262626] dark:text-[#f5f5f5]">
           <button
             type="button"
+            aria-label="Curtir"
             onClick={() => setLiked((l) => !l)}
             className="transition-transform active:scale-125"
           >
             <svg
-              width="18"
-              height="18"
+              width="24"
+              height="24"
               fill={liked ? '#ed4956' : 'none'}
               stroke={liked ? '#ed4956' : 'currentColor'}
-              strokeWidth="1.8"
+              strokeWidth="1.7"
               viewBox="0 0 24 24"
             >
               <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
             </svg>
           </button>
           <svg
-            width="18"
-            height="18"
+            width="24"
+            height="24"
             fill="none"
             stroke="currentColor"
-            strokeWidth="1.8"
+            strokeWidth="1.7"
             viewBox="0 0 24 24"
           >
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
           <svg
-            width="18"
-            height="18"
+            width="24"
+            height="24"
             fill="none"
             stroke="currentColor"
-            strokeWidth="1.8"
+            strokeWidth="1.7"
             viewBox="0 0 24 24"
           >
             <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
           </svg>
           <svg
             className="ml-auto"
-            width="18"
-            height="18"
+            width="24"
+            height="24"
             fill="none"
             stroke="currentColor"
-            strokeWidth="1.8"
+            strokeWidth="1.7"
             viewBox="0 0 24 24"
           >
             <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
@@ -362,17 +389,25 @@ export function InstagramPostCard({
             )}
           </div>
         ) : (
-          <div
-            className="flex-1 max-h-[72px] overflow-y-auto overscroll-contain"
-            style={{ scrollbarWidth: 'thin' }}
-          >
-            <p className="text-[11px] text-[#262626] dark:text-[#f5f5f5] leading-[1.4]">
+          <div className="flex-1">
+            <p
+              className={`text-[14px] text-[#262626] dark:text-[#f5f5f5] leading-[1.35] whitespace-pre-wrap ${captionExpanded ? '' : 'line-clamp-2'}`}
+            >
               <span className="font-semibold">{displayName}</span> {caption}
             </p>
+            {caption.length > CAPTION_CLAMP_CHARS && (
+              <button
+                type="button"
+                onClick={() => setCaptionExpanded((v) => !v)}
+                className="mt-0.5 text-[14px] text-[#8e8e8e] hover:text-[#5a5a5a] dark:hover:text-[#c7c7c7] transition-colors"
+              >
+                {captionExpanded ? 'ver menos' : '… mais'}
+              </button>
+            )}
           </div>
         )}
-        <p className="text-[10px] text-[#737373] dark:text-[#a8a8a8] mt-1">
-          Agendado: {formatDate(post.scheduled_at)}
+        <p className="text-[10px] uppercase tracking-wide text-[#8e8e8e] dark:text-[#a8a8a8] mt-1.5">
+          Agendado · {formatDate(post.scheduled_at)}
         </p>
       </div>
 

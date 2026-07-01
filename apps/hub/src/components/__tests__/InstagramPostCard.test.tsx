@@ -230,4 +230,46 @@ describe('InstagramPostCard', () => {
     fireEvent.click(img);
     expect(screen.getByTestId('post-media-lightbox')).toBeInTheDocument();
   });
+
+  it('collapses a long caption behind a "mais" toggle that expands and collapses', () => {
+    const longCaption =
+      'A maternidade transforma, mas ela não deveria exigir que você deixasse de existir. ' +
+      'Se você sentiu falta de si mesma ao ler essas falas, se você se identificou, este post é para você.';
+
+    render(
+      <InstagramPostCard
+        post={makePost({ status: 'aprovado_cliente', ig_caption: longCaption })}
+        token="token-publico"
+        approvals={[]}
+        instagramProfile={profile}
+        readOnly
+      />,
+    );
+
+    const moreBtn = screen.getByRole('button', { name: /^…?\s*mais$/i });
+    expect(moreBtn).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /ver menos/i })).not.toBeInTheDocument();
+
+    fireEvent.click(moreBtn);
+    const lessBtn = screen.getByRole('button', { name: /ver menos/i });
+    expect(lessBtn).toBeInTheDocument();
+
+    fireEvent.click(lessBtn);
+    expect(screen.getByRole('button', { name: /^…?\s*mais$/i })).toBeInTheDocument();
+  });
+
+  it('does not show a caption toggle for a short caption', () => {
+    render(
+      <InstagramPostCard
+        post={makePost({ status: 'aprovado_cliente', ig_caption: 'Legenda curta.' })}
+        token="token-publico"
+        approvals={[]}
+        instagramProfile={profile}
+        readOnly
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: /mais/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /ver menos/i })).not.toBeInTheDocument();
+  });
 });
