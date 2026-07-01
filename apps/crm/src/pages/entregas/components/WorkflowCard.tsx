@@ -62,6 +62,10 @@ interface WorkflowCardProps {
   postsCount?: number;
   /** Number of posts approved by client */
   approvedPostsCount?: number;
+  /** Number of posts that have cleared client approval — approved, scheduled,
+   *  posted, or publish-failed. Flips the approval badge to "Aprovado pelo
+   *  cliente" even when approved posts have already moved past approval. */
+  clearedClienteCount?: number;
   /** Number of posts in revisao_interna status */
   revisaoInternaCount?: number;
   /** Number of posts still awaiting client approval (status enviado_cliente) */
@@ -81,6 +85,7 @@ export function WorkflowCard({
   onPostsClick,
   postsCount,
   approvedPostsCount,
+  clearedClienteCount,
   revisaoInternaCount,
   awaitingClienteCount,
 }: WorkflowCardProps) {
@@ -477,7 +482,9 @@ export function WorkflowCard({
       {/* Status badges */}
       {card.etapa.tipo === 'aprovacao_cliente' && (
         <div className="board-card-approval">
-          {postsCount != null && postsCount > 0 && approvedPostsCount === postsCount ? (
+          {postsCount != null &&
+          postsCount > 0 &&
+          (clearedClienteCount ?? approvedPostsCount) === postsCount ? (
             <div
               className="board-card-approval-badge"
               style={{

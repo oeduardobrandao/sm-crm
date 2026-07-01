@@ -66,6 +66,7 @@ vi.mock('../../../../store', async (importOriginal) => {
       ]),
     ),
     getWorkflowApprovedPostsCounts: vi.fn().mockResolvedValue(new Map<number, number>()),
+    getWorkflowClearedClientePostsCounts: vi.fn().mockResolvedValue(new Map<number, number>()),
     getWorkflowPostResponsaveis: vi.fn().mockResolvedValue(
       new Map<number, number[]>([
         [1, [10, 20]],
@@ -243,6 +244,9 @@ describe('useEntregasData', () => {
       ]),
     );
     (store.getWorkflowApprovedPostsCounts as any).mockResolvedValue(new Map<number, number>());
+    (store.getWorkflowClearedClientePostsCounts as any).mockResolvedValue(
+      new Map<number, number>(),
+    );
     (store.getWorkflowPostResponsaveis as any).mockResolvedValue(
       new Map<number, number[]>([
         [1, [10, 20]],

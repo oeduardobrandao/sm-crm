@@ -62,6 +62,7 @@ export default function EntregasPage() {
     activeWorkflows,
     postsCounts,
     approvedPostsCounts,
+    clearedClienteCounts,
     revisaoInternaCounts,
     awaitingClienteCounts,
     postResponsaveis,
@@ -265,6 +266,7 @@ export default function EntregasPage() {
           templates={templates}
           postsCounts={postsCounts}
           approvedPostsCounts={approvedPostsCounts}
+          clearedClienteCounts={clearedClienteCounts}
           revisaoInternaCounts={revisaoInternaCounts}
           awaitingClienteCounts={awaitingClienteCounts}
         />

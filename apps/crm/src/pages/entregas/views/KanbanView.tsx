@@ -45,6 +45,7 @@ interface KanbanViewProps {
   templates: WorkflowTemplate[];
   postsCounts: Map<number, number>;
   approvedPostsCounts: Map<number, number>;
+  clearedClienteCounts: Map<number, number>;
   revisaoInternaCounts: Map<number, number>;
   awaitingClienteCounts: Map<number, number>;
 }
@@ -113,6 +114,7 @@ function SortableCard({
   onForwardClick,
   postsCount,
   approvedPostsCount,
+  clearedClienteCount,
   revisaoInternaCount,
   awaitingClienteCount,
 }: {
@@ -126,6 +128,7 @@ function SortableCard({
   onForwardClick: () => void;
   postsCount: number;
   approvedPostsCount: number;
+  clearedClienteCount: number;
   revisaoInternaCount: number;
   awaitingClienteCount: number;
 }) {
@@ -152,6 +155,7 @@ function SortableCard({
         onForwardClick={onForwardClick}
         postsCount={postsCount}
         approvedPostsCount={approvedPostsCount}
+        clearedClienteCount={clearedClienteCount}
         revisaoInternaCount={revisaoInternaCount}
         awaitingClienteCount={awaitingClienteCount}
       />
@@ -173,6 +177,7 @@ export function KanbanView({
   templates,
   postsCounts,
   approvedPostsCounts,
+  clearedClienteCounts,
   revisaoInternaCounts,
   awaitingClienteCounts,
 }: KanbanViewProps) {
@@ -348,16 +353,19 @@ export function KanbanView({
     (card: BoardCard) => {
       const wfId = card.workflow.id!;
       const total = postsCounts.get(wfId) ?? 0;
-      const approved = approvedPostsCounts.get(wfId) ?? 0;
-      const allApproved = total > 0 && approved === total;
+      // "Cleared" (approved / scheduled / posted / publish-failed), not just
+      // aprovado_cliente — otherwise a workflow whose approved posts are already
+      // scheduled would wrongly prompt the approval dialog on advance.
+      const cleared = clearedClienteCounts.get(wfId) ?? 0;
+      const allCleared = total > 0 && cleared === total;
 
-      if (card.etapa.tipo === 'aprovacao_cliente' && !allApproved) {
+      if (card.etapa.tipo === 'aprovacao_cliente' && !allCleared) {
         setApprovalChoiceCard(card);
       } else {
         advanceEtapa(card, 'Etapa concluída!');
       }
     },
-    [advanceEtapa, postsCounts, approvedPostsCounts],
+    [advanceEtapa, postsCounts, clearedClienteCounts],
   );
 
   const handleForwardConfirm = () => {
@@ -476,6 +484,7 @@ export function KanbanView({
                               onForwardClick={() => handleForwardCard(card)}
                               postsCount={postsCounts.get(card.workflow.id!) ?? 0}
                               approvedPostsCount={approvedPostsCounts.get(card.workflow.id!) ?? 0}
+                              clearedClienteCount={clearedClienteCounts.get(card.workflow.id!) ?? 0}
                               revisaoInternaCount={revisaoInternaCounts.get(card.workflow.id!) ?? 0}
                               awaitingClienteCount={
                                 awaitingClienteCounts.get(card.workflow.id!) ?? 0
@@ -498,6 +507,7 @@ export function KanbanView({
               isDragOverlay
               postsCount={postsCounts.get(activeCard.workflow.id!) ?? 0}
               approvedPostsCount={approvedPostsCounts.get(activeCard.workflow.id!) ?? 0}
+              clearedClienteCount={clearedClienteCounts.get(activeCard.workflow.id!) ?? 0}
               revisaoInternaCount={revisaoInternaCounts.get(activeCard.workflow.id!) ?? 0}
               awaitingClienteCount={awaitingClienteCounts.get(activeCard.workflow.id!) ?? 0}
             />
