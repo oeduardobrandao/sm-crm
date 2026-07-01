@@ -132,6 +132,111 @@ Deno.test("hub-posts rejects missing tokens", async () => {
   assertEquals(response.status, 400);
 });
 
+function hubPostsPatchHandler(db: ReturnType<typeof createSupabaseQueryMock>) {
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, conta_id: "conta-1", is_active: true },
+    error: null,
+  });
+  return createHubPostsHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    signGetUrl: async () => "https://signed.example",
+  });
+}
+
+function patchRequest(updates: unknown) {
+  return new Request("https://example.test/hub-posts", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: "hub-123", updates }),
+  });
+}
+
+Deno.test("hub-posts PATCH rejects a malformed updates payload before calling the RPC", async () => {
+  const db = createSupabaseQueryMock();
+  const handler = hubPostsPatchHandler(db);
+
+  const response = await handler(patchRequest([{ post_id: "not-a-number", scheduled_at: null }]));
+
+  assertEquals(response.status, 400);
+  assert(
+    !db.calls.some((c: { table: string }) => c.table === "rpc:hub_reorder_post_schedules"),
+    "RPC must not run for a malformed payload",
+  );
+});
+
+Deno.test("hub-posts PATCH maps an RPC ownership error to 403", async () => {
+  const db = createSupabaseQueryMock();
+  db.queueRpc("hub_reorder_post_schedules", {
+    data: null,
+    error: { message: "FORBIDDEN: post outside token scope" },
+  });
+  const handler = hubPostsPatchHandler(db);
+
+  const response = await handler(patchRequest([{ post_id: 1, scheduled_at: "2026-05-01T10:00:00Z" }]));
+
+  assertEquals(response.status, 403);
+});
+
+Deno.test("hub-posts PATCH maps an RPC lock error to 409 with the locked ids", async () => {
+  const db = createSupabaseQueryMock();
+  db.queueRpc("hub_reorder_post_schedules", {
+    data: null,
+    error: { message: "LOCKED: forbidden status: {5,7}" },
+  });
+  const handler = hubPostsPatchHandler(db);
+
+  const response = await handler(
+    patchRequest([
+      { post_id: 5, scheduled_at: null },
+      { post_id: 7, scheduled_at: null },
+    ]),
+  );
+  const body = await readJson(response);
+
+  assertEquals(response.status, 409);
+  assertEquals(body.locked_post_ids, [5, 7]);
+});
+
+Deno.test("hub-posts PATCH maps an RPC validation error to 400", async () => {
+  const db = createSupabaseQueryMock();
+  db.queueRpc("hub_reorder_post_schedules", {
+    data: null,
+    error: { message: "BAD_REQUEST: agendado needs a future date" },
+  });
+  const handler = hubPostsPatchHandler(db);
+
+  const response = await handler(patchRequest([{ post_id: 5, scheduled_at: "2020-01-01T00:00:00Z" }]));
+
+  assertEquals(response.status, 400);
+});
+
+Deno.test("hub-posts PATCH swaps dates through the RPC scoped to the token's client/account", async () => {
+  const db = createSupabaseQueryMock();
+  db.queueRpc("hub_reorder_post_schedules", { data: { ok: true, updated: 2 }, error: null });
+  const handler = hubPostsPatchHandler(db);
+
+  const updates = [
+    { post_id: 5, scheduled_at: "2026-05-02T10:00:00Z" },
+    { post_id: 7, scheduled_at: "2026-05-01T10:00:00Z" },
+  ];
+  const response = await handler(patchRequest(updates));
+  const body = await readJson(response);
+
+  assertEquals(response.status, 200);
+  assertEquals(body.updated, 2);
+  const rpcCall = db.calls.find(
+    (c: { table: string }) => c.table === "rpc:hub_reorder_post_schedules",
+  );
+  assert(rpcCall, "reorder RPC should be called");
+  assertEquals(rpcCall.payload, {
+    p_cliente_id: 14,
+    p_conta_id: "conta-1",
+    p_updates: updates,
+  });
+});
+
 Deno.test("hub-approve stores an approval for a valid client post", async () => {
   const db = createSupabaseQueryMock();
   db.queue("client_hub_tokens", "select", { data: { cliente_id: 14, is_active: true }, error: null });

@@ -54,4 +54,24 @@ describe('TopPostsRow', () => {
 
     expect(screen.getByText(/Nenhum post no período/)).toBeInTheDocument();
   });
+
+  it('renders one carousel dot per post (mobile navigation)', () => {
+    const posts = [makePost({ id: 'a' }), makePost({ id: 'b' }), makePost({ id: 'c' })];
+    render(<TopPostsRow posts={posts} />);
+
+    expect(screen.getAllByRole('button', { name: /ir para post/i })).toHaveLength(3);
+  });
+
+  it('does not render dots for a single post', () => {
+    render(<TopPostsRow posts={[makePost()]} />);
+
+    expect(screen.queryByRole('button', { name: /ir para post/i })).not.toBeInTheDocument();
+  });
+
+  it('keeps the desktop grid layout classes', () => {
+    const { container } = render(<TopPostsRow posts={[makePost()]} />);
+
+    expect(container.querySelector('.sm\\:grid-cols-3')).toBeTruthy();
+    expect(container.querySelector('.md\\:grid-cols-5')).toBeTruthy();
+  });
 });

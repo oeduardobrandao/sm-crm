@@ -1,12 +1,15 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { InstagramGridPreview } from '../InstagramGridPreview';
+import { reorderPostSchedules } from '../../api';
 import type { HubPost, HubPostMedia, InstagramFeedProfile, InstagramFeedPost } from '../../types';
 
 vi.mock('../../api', () => ({
   fetchInstagramFeed: vi.fn(),
   reorderPostSchedules: vi.fn().mockResolvedValue({ ok: true, updated: 0 }),
 }));
+
+const mockedReorder = vi.mocked(reorderPostSchedules);
 
 function makeMedia(overrides: Partial<HubPostMedia> = {}): HubPostMedia {
   return {
@@ -169,5 +172,129 @@ describe('InstagramGridPreview', () => {
 
     const placeholders = document.body.querySelectorAll('[data-grid-placeholder]');
     expect(placeholders.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('swaps dates between two movable posts and excludes a published post from the save', async () => {
+    mockedReorder.mockClear();
+    mockedReorder.mockResolvedValue({ ok: true, updated: 2 } as never);
+
+    const postA = makePost({
+      id: 1,
+      status: 'enviado_cliente',
+      scheduled_at: '2026-05-02T10:00:00.000Z',
+    });
+    const postB = makePost({
+      id: 2,
+      status: 'enviado_cliente',
+      scheduled_at: '2026-05-01T10:00:00.000Z',
+    });
+    const published = makePost({
+      id: 3,
+      status: 'postado',
+      scheduled_at: '2026-04-01T10:00:00.000Z',
+      published_at: '2026-04-01T10:00:00.000Z',
+      instagram_permalink: 'https://ig/p/own',
+    });
+
+    render(
+      <InstagramGridPreview
+        selectedPosts={[postA, postB, published]}
+        feedProfile={profile}
+        livePosts={[]}
+        token="test-token"
+        onClose={vi.fn()}
+        onScheduleUpdated={vi.fn()}
+      />,
+    );
+
+    // Newest-first order: [0]=A (05-02), [1]=B (05-01), [2]=published (04-01).
+    const cells = document.body.querySelectorAll('[data-grid-idx]');
+    expect(cells[2].getAttribute('draggable')).toBe('false'); // published is fixed
+    fireEvent.dragStart(cells[0]);
+    fireEvent.dragOver(cells[1]);
+    fireEvent.drop(cells[1]);
+
+    const saveBtn = await screen.findByRole('button', { name: /salvar agendamento/i });
+    fireEvent.click(saveBtn);
+
+    await waitFor(() => expect(mockedReorder).toHaveBeenCalledTimes(1));
+    const updates = mockedReorder.mock.calls[0][1] as {
+      post_id: number;
+      scheduled_at: string | null;
+    }[];
+    const byId = Object.fromEntries(updates.map((u) => [u.post_id, u.scheduled_at]));
+    expect(updates).toHaveLength(2);
+    expect(byId[1]).toBe('2026-05-01T10:00:00.000Z'); // post A took B's date
+    expect(byId[2]).toBe('2026-05-02T10:00:00.000Z'); // post B took A's date
+    expect(byId[3]).toBeUndefined(); // the published post is never rescheduled
+  });
+
+  it('blocks swapping a scheduled (agendado) post onto a post without a valid future date', async () => {
+    mockedReorder.mockClear();
+
+    const agendado = makePost({
+      id: 1,
+      status: 'agendado',
+      scheduled_at: '2027-01-01T10:00:00.000Z',
+    });
+    const noDate = makePost({ id: 2, status: 'enviado_cliente', scheduled_at: null });
+
+    render(
+      <InstagramGridPreview
+        selectedPosts={[agendado, noDate]}
+        feedProfile={profile}
+        livePosts={[]}
+        token="test-token"
+        onClose={vi.fn()}
+      />,
+    );
+
+    // The future agendado post sorts first; the date-less post sorts last.
+    const cells = document.body.querySelectorAll('[data-grid-idx]');
+    fireEvent.dragStart(cells[0]);
+    fireEvent.dragOver(cells[1]);
+    fireEvent.drop(cells[1]);
+
+    expect(await screen.findByText(/agendados só podem trocar/i)).toBeInTheDocument();
+    // The swap was refused, so there is nothing to save and the RPC is never hit.
+    expect(screen.queryByRole('button', { name: /salvar agendamento/i })).not.toBeInTheDocument();
+    expect(mockedReorder).not.toHaveBeenCalled();
+  });
+
+  it('keeps the modal dirty and shows the error when the save fails', async () => {
+    mockedReorder.mockClear();
+    mockedReorder.mockRejectedValue(new Error('Não é possível reagendar posts em publicação.'));
+
+    const postA = makePost({
+      id: 1,
+      status: 'enviado_cliente',
+      scheduled_at: '2026-05-02T10:00:00.000Z',
+    });
+    const postB = makePost({
+      id: 2,
+      status: 'enviado_cliente',
+      scheduled_at: '2026-05-01T10:00:00.000Z',
+    });
+
+    render(
+      <InstagramGridPreview
+        selectedPosts={[postA, postB]}
+        feedProfile={profile}
+        livePosts={[]}
+        token="test-token"
+        onClose={vi.fn()}
+      />,
+    );
+
+    const cells = document.body.querySelectorAll('[data-grid-idx]');
+    fireEvent.dragStart(cells[0]);
+    fireEvent.dragOver(cells[1]);
+    fireEvent.drop(cells[1]);
+
+    fireEvent.click(await screen.findByRole('button', { name: /salvar agendamento/i }));
+
+    expect(await screen.findByText(/não é possível reagendar/i)).toBeInTheDocument();
+    // Still dirty → the save button remains available for a retry.
+    expect(screen.getByRole('button', { name: /salvar agendamento/i })).toBeInTheDocument();
   });
 });

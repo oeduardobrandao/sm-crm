@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useHub } from '../HubContext';
 import { fetchPosts, fetchInstagramFeed } from '../api';
@@ -50,6 +50,8 @@ export function AprovacoesPage() {
   function handleInvalidate() {
     qc.invalidateQueries({ queryKey: ['hub-posts', token] });
   }
+
+  const handleCloseGrid = useCallback(() => setShowGrid(false), []);
 
   if (isLoading)
     return (
@@ -209,7 +211,7 @@ export function AprovacoesPage() {
           feedProfile={feedData.profile}
           livePosts={feedData.recentPosts}
           token={token}
-          onClose={() => setShowGrid(false)}
+          onClose={handleCloseGrid}
           onScheduleUpdated={handleInvalidate}
         />
       )}

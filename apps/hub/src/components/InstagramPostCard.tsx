@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { CheckCircle, AlertCircle } from 'lucide-react';
 import { submitApproval } from '../api';
 import { formatDate } from './PostCard';
@@ -7,9 +7,21 @@ import { OptimizedImage } from './OptimizedImage';
 import { VideoPrewarm } from './VideoPrewarm';
 import type { HubPost, PostApproval, InstagramProfile } from '../types';
 import { useEditSuggestion } from '../hooks/useEditSuggestion';
+import { resolveTarget, applyEdgeResistance, crossedDragThreshold } from '../lib/carouselGesture';
 
 /** Caption length (chars) above which we collapse it behind a "mais"/"ver menos" toggle (~2 lines). */
 const CAPTION_CLAMP_CHARS = 140;
+
+/** Snap animation duration for the media carousel, disabled under reduced-motion / active drag. */
+const SNAP_MS = 260;
+
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
+}
 
 interface InstagramPostCardProps {
   post: HubPost;
@@ -40,14 +52,30 @@ export function InstagramPostCard({
   autoPublishOnApproval = false,
 }: InstagramPostCardProps) {
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [dragOffset, setDragOffset] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
   const [comentario, setComentario] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const [liked, setLiked] = useState(false);
   const [captionExpanded, setCaptionExpanded] = useState(false);
-  const touchStartX = useRef(0);
-  const touchDelta = useRef(0);
+  const [captionMode, setCaptionMode] = useState<'preview' | 'edit'>('preview');
+  const [captionDraft, setCaptionDraft] = useState<string | null>(null);
+
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef({
+    pointerId: -1,
+    startX: 0,
+    startY: 0,
+    lastX: 0,
+    lastT: 0,
+    width: 0,
+    velocity: 0,
+    active: false,
+    decided: false,
+  });
+  const suppressClickRef = useRef(false);
 
   const isPending = !readOnly && post.status === 'enviado_cliente';
   const media = post.media ?? [];
@@ -69,22 +97,91 @@ export function InstagramPostCard({
   });
   const isEditable = canEdit && !readOnly;
 
-  const onTouchStart = useCallback((e: React.TouchEvent) => {
-    touchStartX.current = e.touches[0].clientX;
-    touchDelta.current = 0;
-  }, []);
-  const onTouchMove = useCallback((e: React.TouchEvent) => {
-    touchDelta.current = e.touches[0].clientX - touchStartX.current;
-  }, []);
-  const onTouchEnd = useCallback(() => {
-    const MIN_SWIPE = 40;
-    if (touchDelta.current < -MIN_SWIPE) nextSlide();
-    else if (touchDelta.current > MIN_SWIPE) prevSlide();
-  }, []);
+  function goToSlide(target: number) {
+    setCurrentSlide(Math.max(0, Math.min(media.length - 1, target)));
+    setDragOffset(0);
+    setIsDragging(false);
+  }
+
+  function onPointerDown(e: React.PointerEvent) {
+    // A fresh gesture must never start pre-suppressed: if a previous drag ended
+    // without the browser synthesizing a click (e.g. released outside a slide),
+    // the flag could otherwise latch and swallow this tap.
+    suppressClickRef.current = false;
+    if (media.length <= 1) return;
+    dragRef.current = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      lastX: e.clientX,
+      lastT: e.timeStamp,
+      width: viewportRef.current?.clientWidth ?? 0,
+      velocity: 0,
+      active: true,
+      decided: false,
+    };
+  }
+
+  function onPointerMove(e: React.PointerEvent) {
+    const d = dragRef.current;
+    if (!d.active || e.pointerId !== d.pointerId) return;
+    const dx = e.clientX - d.startX;
+    const dy = e.clientY - d.startY;
+    if (!d.decided) {
+      // Let a clearly vertical gesture fall through to page scroll; wait for horizontal intent.
+      if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 8) {
+        d.active = false;
+        return;
+      }
+      if (!crossedDragThreshold(dx, dy)) return;
+      d.decided = true;
+      setIsDragging(true);
+      viewportRef.current?.setPointerCapture?.(e.pointerId);
+    }
+    d.velocity = (e.clientX - d.lastX) / Math.max(1, e.timeStamp - d.lastT);
+    d.lastX = e.clientX;
+    d.lastT = e.timeStamp;
+    setDragOffset(applyEdgeResistance(dx, currentSlide, media.length));
+  }
+
+  function endPointer(e: React.PointerEvent, cancelled: boolean) {
+    const d = dragRef.current;
+    if (!d.active || e.pointerId !== d.pointerId) return;
+    d.active = false;
+    if (!d.decided) {
+      setDragOffset(0);
+      setIsDragging(false);
+      return;
+    }
+    // A drag happened — swallow the click that browsers synthesize after pointerup.
+    suppressClickRef.current = true;
+    if (cancelled) {
+      goToSlide(currentSlide);
+      return;
+    }
+    goToSlide(
+      resolveTarget({
+        currentIndex: currentSlide,
+        count: media.length,
+        deltaX: e.clientX - d.startX,
+        width: d.width,
+        velocity: d.velocity,
+      }),
+    );
+  }
+
+  function openLightboxAt(index: number) {
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
+      return;
+    }
+    setLightboxIdx(index);
+  }
+
   const displayName = instagramProfile?.username ?? workspaceName ?? '';
   const profilePic = instagramProfile?.profilePictureUrl;
   const effectiveIgCaption = isEditable ? draftIgCaption : post.ig_caption;
-  const caption = effectiveIgCaption
+  const serverCaption = effectiveIgCaption
     ? effectiveIgCaption
     : (() => {
         const rawText = post.conteudo_plain || '';
@@ -96,6 +193,24 @@ export function InstagramPostCard({
               .trim()
           : rawText;
       })();
+  // Locally-controlled draft keeps the preview stable while the debounced save/refetch is in flight.
+  const caption = captionDraft ?? serverCaption;
+
+  // Adopt a fresh server caption only when it actually changes and the client is
+  // not mid-edit — so "Concluir" keeps showing the local draft until the debounced
+  // save round-trips (avoids a flash of the pre-edit text).
+  const lastSyncedCaption = useRef<string | null>(null);
+  useEffect(() => {
+    if (lastSyncedCaption.current !== serverCaption) {
+      lastSyncedCaption.current = serverCaption;
+      if (captionMode !== 'edit') setCaptionDraft(null);
+    }
+  }, [serverCaption, captionMode]);
+
+  // A card that becomes read-only after approval must never stay in edit mode.
+  useEffect(() => {
+    if (readOnly || !canEdit) setCaptionMode('preview');
+  }, [readOnly, canEdit]);
 
   async function handleAction(action: 'aprovado' | 'correcao') {
     setSubmitting(true);
@@ -118,14 +233,18 @@ export function InstagramPostCard({
   }
 
   function prevSlide() {
-    setCurrentSlide((i) => Math.max(0, i - 1));
+    goToSlide(currentSlide - 1);
   }
   function nextSlide() {
-    setCurrentSlide((i) => Math.min(media.length - 1, i + 1));
+    goToSlide(currentSlide + 1);
   }
 
-  const currentMedia = media[currentSlide];
   const prewarmVideoUrl = media.find((m) => m.kind === 'video')?.url ?? null;
+  const viewportWidth = viewportRef.current?.clientWidth ?? 0;
+  // Fractional position drives the dots so the next dot lights up mid-drag.
+  const fractionalSlide =
+    isDragging && viewportWidth > 0 ? currentSlide - dragOffset / viewportWidth : currentSlide;
+  const reduceMotion = prefersReducedMotion();
 
   return (
     <div
@@ -204,49 +323,63 @@ export function InstagramPostCard({
         )}
       </div>
 
-      {/* Image area */}
+      {/* Image area — finger-following carousel track */}
       <div
-        className="relative aspect-[4/5] bg-stone-100 dark:bg-stone-900 group/carousel"
-        onTouchStart={isCarousel ? onTouchStart : undefined}
-        onTouchMove={isCarousel ? onTouchMove : undefined}
-        onTouchEnd={isCarousel ? onTouchEnd : undefined}
+        ref={viewportRef}
+        className="relative aspect-[4/5] bg-stone-100 dark:bg-stone-900 overflow-hidden group/carousel"
+        style={{ touchAction: 'pan-y' }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={(e) => endPointer(e, false)}
+        onPointerCancel={(e) => endPointer(e, true)}
       >
-        {currentMedia && (
-          <button
-            type="button"
-            onClick={() => setLightboxIdx(currentSlide)}
-            className="w-full h-full"
-          >
-            {currentMedia.kind === 'image' ? (
-              <OptimizedImage
-                src={currentMedia.url}
-                alt=""
-                width={currentMedia.width ?? undefined}
-                height={currentMedia.height ?? undefined}
-                blurDataURL={currentMedia.blur_data_url ?? undefined}
-                sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
-                priority={priority && currentSlide === 0}
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <img
-                src={currentMedia.thumbnail_url ?? ''}
-                alt=""
-                className="w-full h-full object-cover"
-              />
-            )}
-          </button>
-        )}
-
-        {currentMedia?.kind === 'video' && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="w-12 h-12 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
-                <path d="M8 5v14l11-7z" />
-              </svg>
-            </div>
-          </div>
-        )}
+        <div
+          className="flex h-full"
+          style={{
+            transform: `translateX(calc(${-currentSlide * 100}% + ${dragOffset}px))`,
+            transition: isDragging || reduceMotion ? 'none' : `transform ${SNAP_MS}ms ease-out`,
+          }}
+        >
+          {media.map((m, i) => (
+            <button
+              key={m.id}
+              type="button"
+              aria-label={`Abrir mídia ${i + 1}`}
+              onClick={() => openLightboxAt(i)}
+              draggable={false}
+              className="relative flex-none w-full h-full"
+            >
+              {m.kind === 'image' ? (
+                <OptimizedImage
+                  src={m.url}
+                  alt=""
+                  width={m.width ?? undefined}
+                  height={m.height ?? undefined}
+                  blurDataURL={m.blur_data_url ?? undefined}
+                  sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+                  priority={priority && i === 0}
+                  className="w-full h-full object-cover pointer-events-none"
+                />
+              ) : (
+                <img
+                  src={m.thumbnail_url ?? ''}
+                  alt=""
+                  draggable={false}
+                  className="w-full h-full object-cover pointer-events-none"
+                />
+              )}
+              {m.kind === 'video' && (
+                <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <span className="w-12 h-12 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+                      <path d="M8 5v14l11-7z" />
+                    </svg>
+                  </span>
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
 
         {isCarousel && currentSlide > 0 && (
           <button
@@ -293,13 +426,20 @@ export function InstagramPostCard({
       {/* Carousel dots (fixed height so feed and carousel cards match) */}
       <div className="flex justify-center gap-1 py-2 min-h-[20px]">
         {isCarousel &&
-          media.map((_, i) => (
-            <div
-              key={i}
-              data-carousel-dot
-              className={`w-1.5 h-1.5 rounded-full ${i === currentSlide ? 'bg-[#0095f6]' : 'bg-[#c7c7c7] dark:bg-[#555]'}`}
-            />
-          ))}
+          media.map((_, i) => {
+            const distance = Math.min(1, Math.abs(i - fractionalSlide));
+            const active = distance < 0.5;
+            return (
+              <div
+                key={i}
+                data-carousel-dot
+                className={`h-1.5 rounded-full transition-[width,background-color] ${
+                  active ? 'w-2 bg-[#0095f6]' : 'w-1.5 bg-[#c7c7c7] dark:bg-[#555]'
+                }`}
+                style={{ opacity: 0.5 + (1 - distance) * 0.5 }}
+              />
+            );
+          })}
       </div>
 
       {/* Action icons */}
@@ -356,9 +496,9 @@ export function InstagramPostCard({
         </div>
       </div>
 
-      {/* Caption */}
+      {/* Caption — read-first, with an opt-in inline editor for pending posts */}
       <div className="flex-1 flex flex-col px-2.5 py-1">
-        {isEditable ? (
+        {isEditable && captionMode === 'edit' ? (
           <div className="flex-1">
             <p
               className={`text-[10px] mb-0.5 ${wasRejected ? 'text-amber-600' : 'text-stone-400'}`}
@@ -368,14 +508,16 @@ export function InstagramPostCard({
                 : '✏️ Edite a legenda abaixo'}
             </p>
             <textarea
-              defaultValue={caption}
+              aria-label="Legenda do post"
+              value={caption}
               onChange={(e) => {
+                setCaptionDraft(e.target.value);
                 saveSuggestion(draftConteudo, post.conteudo_plain, e.target.value);
               }}
-              className="w-full text-[11px] text-[#262626] dark:text-[#f5f5f5] leading-[1.4] border border-dashed border-stone-300 dark:border-stone-600 rounded px-2 py-1.5 resize-none min-h-[48px] max-h-[96px] bg-transparent focus:outline-none focus:border-stone-400 focus:border-solid transition-colors"
+              className="w-full text-[14px] text-[#262626] dark:text-[#f5f5f5] leading-[1.4] border border-dashed border-stone-300 dark:border-stone-600 rounded px-2 py-1.5 resize-none min-h-[72px] max-h-[160px] bg-transparent focus:outline-none focus:border-stone-400 focus:border-solid transition-colors"
             />
-            {saveState !== 'idle' && (
-              <div className="flex items-center gap-1 mt-0.5">
+            <div className="flex items-center justify-between mt-0.5">
+              <span className="flex items-center gap-1 min-h-[16px]">
                 {saveState === 'saving' && (
                   <span className="text-[10px] text-stone-400">Salvando...</span>
                 )}
@@ -385,8 +527,15 @@ export function InstagramPostCard({
                     <span className="text-[10px] text-emerald-600 font-medium">Sugestão salva</span>
                   </>
                 )}
-              </div>
-            )}
+              </span>
+              <button
+                type="button"
+                onClick={() => setCaptionMode('preview')}
+                className="text-[13px] font-semibold text-[#0095f6] hover:text-[#0081d6] transition-colors"
+              >
+                Concluir
+              </button>
+            </div>
           </div>
         ) : (
           <div className="flex-1">
@@ -402,6 +551,15 @@ export function InstagramPostCard({
                 className="mt-0.5 text-[14px] text-[#8e8e8e] hover:text-[#5a5a5a] dark:hover:text-[#c7c7c7] transition-colors"
               >
                 {captionExpanded ? 'ver menos' : '… mais'}
+              </button>
+            )}
+            {isEditable && (
+              <button
+                type="button"
+                onClick={() => setCaptionMode('edit')}
+                className="mt-1 self-start text-[13px] font-medium text-[#0095f6] hover:text-[#0081d6] transition-colors"
+              >
+                Editar legenda
               </button>
             )}
           </div>
