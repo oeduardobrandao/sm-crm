@@ -2,7 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { isClientVisible, pickPostCardKind, VISIBLE_STATUSES } from '../postView';
 import type { HubPost } from '../../types';
 
-const base = { id: 1, titulo: 't', ordem: 0, conteudo: null, conteudo_plain: '', scheduled_at: null, ig_caption: null, instagram_permalink: null, media: [] } as unknown as HubPost;
+const base = {
+  id: 1,
+  titulo: 't',
+  ordem: 0,
+  conteudo: null,
+  conteudo_plain: '',
+  scheduled_at: null,
+  ig_caption: null,
+  instagram_permalink: null,
+  media: [],
+} as unknown as HubPost;
 
 describe('isClientVisible', () => {
   it('accepts client-visible statuses', () => {
@@ -24,11 +34,17 @@ describe('pickPostCardKind (media-first)', () => {
     expect(pickPostCardKind({ ...base, tipo: 'stories', media: [] })).toBe('text');
   });
   it('stories with media render as story', () => {
-    expect(pickPostCardKind({ ...base, tipo: 'stories', media: [{}] } as unknown as HubPost)).toBe('story');
+    expect(pickPostCardKind({ ...base, tipo: 'stories', media: [{}] } as unknown as HubPost)).toBe(
+      'story',
+    );
   });
   it('feed/carrossel with media render as instagram', () => {
-    expect(pickPostCardKind({ ...base, tipo: 'feed', media: [{}] } as unknown as HubPost)).toBe('instagram');
-    expect(pickPostCardKind({ ...base, tipo: 'carrossel', media: [{}] } as unknown as HubPost)).toBe('instagram');
+    expect(pickPostCardKind({ ...base, tipo: 'feed', media: [{}] } as unknown as HubPost)).toBe(
+      'instagram',
+    );
+    expect(
+      pickPostCardKind({ ...base, tipo: 'carrossel', media: [{}] } as unknown as HubPost),
+    ).toBe('instagram');
   });
   it('media-less feed renders as text', () => {
     expect(pickPostCardKind({ ...base, tipo: 'feed', media: [] })).toBe('text');

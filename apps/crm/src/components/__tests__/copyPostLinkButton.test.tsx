@@ -18,7 +18,9 @@ describe('CopyPostLinkButton', () => {
   it('copies the per-post link and toasts on success', async () => {
     render(<CopyPostLinkButton hubUrl="https://app.mesaas.com.br/acme/hub/tok" postId={5} />);
     fireEvent.click(screen.getByRole('button', { name: /copiar link/i }));
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith('https://app.mesaas.com.br/acme/hub/tok/postagens/5'));
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith('https://app.mesaas.com.br/acme/hub/tok/postagens/5'),
+    );
     expect(toast.success).toHaveBeenCalledWith('Link copiado!');
   });
 });

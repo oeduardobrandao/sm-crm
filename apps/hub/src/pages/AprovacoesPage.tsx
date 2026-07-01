@@ -106,7 +106,9 @@ export function AprovacoesPage() {
             {withMedia.map((post, i) => (
               <div key={post.id} className="flex flex-col">
                 <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <p className="text-[11px] text-stone-400 pl-0.5">{formatDate(post.scheduled_at)}</p>
+                  <p className="text-[11px] text-stone-400 pl-0.5">
+                    {formatDate(post.scheduled_at)}
+                  </p>
                   <SharePostButton postId={post.id} />
                 </div>
                 <InstagramPostCard
@@ -139,7 +141,9 @@ export function AprovacoesPage() {
             {stories.map((post) => (
               <div key={post.id}>
                 <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <p className="text-[11px] text-stone-400 pl-0.5">{formatDate(post.scheduled_at)}</p>
+                  <p className="text-[11px] text-stone-400 pl-0.5">
+                    {formatDate(post.scheduled_at)}
+                  </p>
                   <SharePostButton postId={post.id} />
                 </div>
                 <StoryPostCard
@@ -172,7 +176,9 @@ export function AprovacoesPage() {
             {withoutMedia.map((post) => (
               <div key={post.id}>
                 <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <p className="text-[11px] text-stone-400 pl-0.5">{formatDate(post.scheduled_at)}</p>
+                  <p className="text-[11px] text-stone-400 pl-0.5">
+                    {formatDate(post.scheduled_at)}
+                  </p>
                   <SharePostButton postId={post.id} />
                 </div>
                 <TextPostCard

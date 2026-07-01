@@ -3,7 +3,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HubContext } from '../../HubContext';
 import { SharePostButton } from '../SharePostButton';
 
-const hubValue = { bootstrap: { workspace: { name: 'Mesaas' } }, token: 'token-publico', workspace: 'mesaas' } as never;
+const hubValue = {
+  bootstrap: { workspace: { name: 'Mesaas' } },
+  token: 'token-publico',
+  workspace: 'mesaas',
+} as never;
 const writeText = vi.fn().mockResolvedValue(undefined);
 Object.assign(navigator, { clipboard: { writeText } });
 

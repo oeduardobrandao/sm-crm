@@ -8,6 +8,8 @@ describe('buildHubPostLink (crm)', () => {
     );
   });
   it('trims a trailing slash', () => {
-    expect(buildHubPostLink('https://x/acme/hub/tok/', 3)).toBe('https://x/acme/hub/tok/postagens/3');
+    expect(buildHubPostLink('https://x/acme/hub/tok/', 3)).toBe(
+      'https://x/acme/hub/tok/postagens/3',
+    );
   });
 });

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { HubContext } from '../../HubContext';
@@ -22,9 +22,18 @@ const hubValue = {
 
 function makePost(over: Record<string, unknown> = {}) {
   return {
-    id: 42, titulo: 'Post de teste', tipo: 'feed', status: 'enviado_cliente', ordem: 0,
-    conteudo: null, conteudo_plain: 'Corpo do post', scheduled_at: null, ig_caption: null,
-    instagram_permalink: null, media: [], ...over,
+    id: 42,
+    titulo: 'Post de teste',
+    tipo: 'feed',
+    status: 'enviado_cliente',
+    ordem: 0,
+    conteudo: null,
+    conteudo_plain: 'Corpo do post',
+    scheduled_at: null,
+    ig_caption: null,
+    instagram_permalink: null,
+    media: [],
+    ...over,
   };
 }
 
@@ -49,17 +58,35 @@ afterEach(() => vi.clearAllMocks());
 
 describe('PostagemFocoPage', () => {
   it('renders the focused post when present and client-visible', async () => {
-    renderAt('42', { posts: [makePost()], postApprovals: [], propertyValues: [], workflowSelectOptions: [], instagramProfile: null });
+    renderAt('42', {
+      posts: [makePost()],
+      postApprovals: [],
+      propertyValues: [],
+      workflowSelectOptions: [],
+      instagramProfile: null,
+    });
     expect(await screen.findByText('Post de teste')).toBeInTheDocument();
   });
 
   it('shows not-available for an internal-status post', async () => {
-    renderAt('42', { posts: [makePost({ status: 'revisao_interna' })], postApprovals: [], propertyValues: [], workflowSelectOptions: [], instagramProfile: null });
+    renderAt('42', {
+      posts: [makePost({ status: 'revisao_interna' })],
+      postApprovals: [],
+      propertyValues: [],
+      workflowSelectOptions: [],
+      instagramProfile: null,
+    });
     expect(await screen.findByText(/não está disponível/i)).toBeInTheDocument();
   });
 
   it('shows not-available for a missing id', async () => {
-    renderAt('999', { posts: [makePost()], postApprovals: [], propertyValues: [], workflowSelectOptions: [], instagramProfile: null });
+    renderAt('999', {
+      posts: [makePost()],
+      postApprovals: [],
+      propertyValues: [],
+      workflowSelectOptions: [],
+      instagramProfile: null,
+    });
     expect(await screen.findByText(/não está disponível/i)).toBeInTheDocument();
   });
 
