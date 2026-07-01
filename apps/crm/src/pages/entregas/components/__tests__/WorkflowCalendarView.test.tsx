@@ -1,5 +1,5 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi, beforeEach, beforeAll } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach, beforeAll } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WorkflowCalendarView } from '../WorkflowCalendarView';
 
@@ -62,6 +62,11 @@ const baseProps = {
 describe('WorkflowCalendarView', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Pin "today" to June 2026 so the calendar opens on the month the fixtures
+    // schedule posts in. Fake only `Date` so testing-library's real timers
+    // (findBy/waitFor polling) keep working.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-06-15T12:00:00.000Z'));
     localStorage.clear();
     mockPreview.mockResolvedValue({
       conteudo_plain: 'Conteúdo',
@@ -72,6 +77,10 @@ describe('WorkflowCalendarView', () => {
     });
     mockMedia.mockResolvedValue([]);
     mockUpdate.mockResolvedValue({} as never);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('shows loading state', () => {
