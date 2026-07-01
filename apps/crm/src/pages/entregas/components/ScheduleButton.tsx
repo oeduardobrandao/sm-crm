@@ -156,14 +156,14 @@ export function ScheduleButton({
         <div className="flex flex-wrap items-center gap-2">
           {getPostPublishState(post) === 'publicando' ? (
             <div
-              className="flex items-center gap-1.5 px-2.5 h-8 rounded-lg text-xs font-semibold"
+              className="inline-flex items-center gap-1.5 px-3 h-8 mb-2 rounded-md text-xs font-semibold"
               style={{ background: 'rgba(225, 48, 108, 0.12)', color: '#E1306C' }}
             >
               <Loader2 className="h-3.5 w-3.5 animate-spin" /> Publicando…
             </div>
           ) : (
             <div
-              className="flex items-center gap-1.5 px-2.5 h-8 rounded-lg text-xs font-semibold"
+              className="inline-flex items-center gap-1.5 px-3 h-8 mb-2 rounded-md text-xs font-semibold"
               style={{ background: 'rgba(62, 207, 142, 0.12)', color: '#3ecf8e' }}
             >
               <Calendar className="h-3.5 w-3.5" /> Agendado
