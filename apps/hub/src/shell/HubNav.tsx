@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import {
   Home,
@@ -6,6 +7,11 @@ import {
   FileText,
   BookOpen,
   LayoutList,
+  Lightbulb,
+  FileBarChart,
+  MoreHorizontal,
+  ChevronRight,
+  X,
   Sun,
   Moon,
 } from 'lucide-react';
@@ -20,6 +26,7 @@ const LANGUAGE_FLAGS: Record<Language, string> = {
   en: '\u{1F1FA}\u{1F1F8}',
 };
 
+/** Desktop navigation — unchanged (six direct links). */
 const NAV_ITEMS = [
   { label: 'Home', labelKey: 'nav.home', icon: Home, path: '' },
   { label: 'Aprovacoes', labelKey: 'nav.aprovacoes', icon: CheckSquare, path: '/aprovacoes' },
@@ -27,6 +34,15 @@ const NAV_ITEMS = [
   { label: 'Marca', labelKey: 'nav.marca', icon: Palette, path: '/marca' },
   { label: 'Paginas', labelKey: 'nav.paginas', icon: FileText, path: '/paginas' },
   { label: 'Briefing', labelKey: 'nav.briefing', icon: BookOpen, path: '/briefing' },
+];
+
+/** Mobile bottom bar: five direct destinations + a "Mais" overflow control. */
+const MOBILE_PRIMARY = NAV_ITEMS.slice(0, 5);
+/** Everything reachable from the "Mais" sheet (keeps existing routes without crowding the bar). */
+const MOBILE_OVERFLOW = [
+  { label: 'Briefing', labelKey: 'nav.briefing', icon: BookOpen, path: '/briefing' },
+  { label: 'Ideias', labelKey: 'nav.ideias', icon: Lightbulb, path: '/ideias' },
+  { label: 'Relatórios', labelKey: 'nav.relatorios', icon: FileBarChart, path: '/relatorios' },
 ];
 
 function cycleLanguage(current: string) {
@@ -42,6 +58,30 @@ export function HubNav() {
   const base = `/${workspace}/hub/${token}`;
   const { theme, toggleTheme } = useTheme();
   const { t, i18n } = useTranslation();
+
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const maisButtonRef = useRef<HTMLButtonElement>(null);
+  const firstSheetItemRef = useRef<HTMLAnchorElement>(null);
+
+  const maisActive = MOBILE_OVERFLOW.some((item) => pathname.startsWith(`${base}${item.path}`));
+
+  // While the sheet is open: close on Escape, lock body scroll, move focus in
+  // and restore it to the trigger on close.
+  useEffect(() => {
+    if (!sheetOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSheetOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    firstSheetItemRef.current?.focus();
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+      maisButtonRef.current?.focus();
+    };
+  }, [sheetOpen]);
 
   return (
     <>
@@ -139,7 +179,7 @@ export function HubNav() {
       {/* Mobile bottom tab bar */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-20 border-t border-stone-200/80 bg-white/95 backdrop-blur-md pb-[env(safe-area-inset-bottom)]">
         <div className="flex">
-          {NAV_ITEMS.map(({ label, labelKey, icon: Icon, path }) => {
+          {MOBILE_PRIMARY.map(({ label, labelKey, icon: Icon, path }) => {
             const href = `${base}${path}`;
             const active = path === '' ? pathname === base : pathname.startsWith(`${base}${path}`);
             return (
@@ -164,8 +204,87 @@ export function HubNav() {
               </Link>
             );
           })}
+          <button
+            type="button"
+            ref={maisButtonRef}
+            data-active={maisActive ? 'true' : 'false'}
+            aria-haspopup="dialog"
+            aria-expanded={sheetOpen}
+            onClick={() => setSheetOpen(true)}
+            className="relative flex-1 flex flex-col items-center justify-center py-2.5 gap-1 text-[10px]"
+          >
+            {maisActive && (
+              <span className="absolute top-0 left-1/2 -translate-x-1/2 h-[2px] w-8 rounded-full bg-[#FFBF30]" />
+            )}
+            <MoreHorizontal
+              size={19}
+              strokeWidth={maisActive ? 2.25 : 1.75}
+              className={maisActive ? 'text-stone-900' : 'text-stone-400'}
+            />
+            <span
+              className={maisActive ? 'text-stone-900 font-semibold' : 'text-stone-500 font-medium'}
+            >
+              {t('nav.mais', 'Mais')}
+            </span>
+          </button>
         </div>
       </nav>
+
+      {/* Mobile "Mais" overflow sheet */}
+      {sheetOpen && (
+        <div className="md:hidden fixed inset-0 z-30">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+            aria-hidden="true"
+            onClick={() => setSheetOpen(false)}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('nav.mais', 'Mais')}
+            className="hub-fade-up absolute bottom-0 left-0 right-0 rounded-t-3xl bg-white dark:bg-[#12151a] shadow-[0_-8px_32px_rgba(0,0,0,0.18)] pb-[calc(env(safe-area-inset-bottom)+0.5rem)]"
+          >
+            <div className="flex items-center justify-between px-5 pt-4 pb-2">
+              <span className="font-display text-[15px] font-semibold tracking-tight text-stone-900 dark:text-stone-100">
+                {t('nav.mais', 'Mais')}
+              </span>
+              <button
+                type="button"
+                onClick={() => setSheetOpen(false)}
+                aria-label={t('common.close', 'Fechar')}
+                className="w-8 h-8 flex items-center justify-center rounded-full text-stone-400 hover:bg-stone-100 dark:hover:bg-white/10 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="px-3 pb-3">
+              {MOBILE_OVERFLOW.map(({ label, labelKey, icon: Icon, path }, i) => {
+                const href = `${base}${path}`;
+                const active = pathname.startsWith(`${base}${path}`);
+                return (
+                  <Link
+                    key={path}
+                    to={href}
+                    ref={i === 0 ? firstSheetItemRef : undefined}
+                    onClick={() => setSheetOpen(false)}
+                    className={`flex items-center gap-3 px-3 py-3.5 rounded-2xl transition-colors ${
+                      active ? 'bg-stone-100 dark:bg-white/10' : 'hover:bg-stone-50 dark:hover:bg-white/[0.04]'
+                    }`}
+                  >
+                    <span className="flex items-center justify-center w-9 h-9 rounded-xl bg-stone-100 dark:bg-white/[0.06] text-stone-700 dark:text-stone-200">
+                      <Icon size={18} strokeWidth={1.9} />
+                    </span>
+                    <span className="flex-1 text-[15px] font-medium text-stone-900 dark:text-stone-100">
+                      {t(labelKey, label)}
+                    </span>
+                    <ChevronRight size={16} className="text-stone-300 dark:text-stone-600" />
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
