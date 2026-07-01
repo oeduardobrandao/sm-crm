@@ -62,7 +62,7 @@ Add one child route mirroring the existing `paginas/:pageId` drill-in, in `apps/
 
 **Usable-token rule (P1).** A shareable link must be built only from a **usable** token: `is_active === true` AND `expires_at > now`, AND a non-null workspace slug. Where we surface the copy action:
 
-- Extend the token selects that feed the copy affordance to include `expires_at`, and treat inactive/expired/absent as **"no shareable link"** → the action is **disabled** with a tooltip/hint pointing to the client's *Acesso* tab (`HubTab`) to regenerate. (This also quietly tightens the existing `HubTab` "Copiar" and `card.hubUrl` builders, which today can copy expired links.)
+- Extend the token selects that feed the copy affordance to include `expires_at`, and treat inactive/expired/absent as **"no shareable link"** → the action simply does not render (the button is `null`) for a client with no usable token; regenerating the token in the *Acesso* tab (`HubTab`) restores it. **Delivered scope:** only the share path was tightened — the Entregas batch query (`useEntregasData`) now builds `card.hubUrl` from usable (active + unexpired) tokens only, so every new copy affordance inherits the gate. `HubTab`/`getHubToken` (the token **management** surface) is intentionally left as-is: an expired link there sits next to the reactivate/regenerate controls, so surfacing it is useful rather than a bug. Tightening those management-tab builders is a separate, optional follow-up, not part of this feature.
 - Prefer **reusing the already-built base URL** rather than re-deriving it: append `/postagens/${post.id}` to the client's base hub URL.
 
 **Where the action lives / data path (P2):**

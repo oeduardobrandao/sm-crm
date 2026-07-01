@@ -24,7 +24,7 @@ export function PostagemFocoPage() {
   const backLink = (
     <Link
       to={`${base}/postagens`}
-      className="inline-flex items-center gap-1.5 text-[13px] text-stone-500 hover:text-stone-900 mb-8 group transition-colors"
+      className="inline-flex items-center gap-1.5 text-[13px] text-stone-500 hover:text-stone-900 group transition-colors"
     >
       <ArrowLeft size={15} className="group-hover:-translate-x-0.5 transition-transform" /> Ver
       todas as postagens
@@ -67,8 +67,8 @@ export function PostagemFocoPage() {
 
   return (
     <div className="max-w-3xl mx-auto hub-fade-up">
-      {backLink}
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-8">
+        {backLink}
         <SharePostButton postId={post.id} />
       </div>
       <div className="flex flex-col gap-1.5">
