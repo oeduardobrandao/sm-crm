@@ -15,6 +15,7 @@ export default defineConfig({
         __dirname,
         '../../supabase/functions/_shared/design-doc.ts',
       ),
+      '@mesaas/fonts': path.resolve(__dirname, '../../supabase/functions/_shared/fonts'),
     },
   },
   server: {

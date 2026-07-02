@@ -28,6 +28,7 @@
     "test:coverage": "vitest run --coverage",
     "coverage:check": "vitest run --coverage --config vitest.coverage.config.ts",
     "test:functions": "deno test --no-check --node-modules-dir=auto --allow-env --allow-read --allow-net --allow-sys supabase/functions/",
+    "fonts:build": "node scripts/fonts/build.mjs",
     "test:db": "bash scripts/test-entitlements.sh",
     "test:e2e": "playwright test",
     "test:e2e:crm": "playwright test --project=crm",
@@ -106,6 +107,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@aws-sdk/client-s3": "^3.637.0",
     "@eslint/js": "^9.39.4",
     "@playwright/test": "^1.59.1",
     "@testing-library/jest-dom": "^6.9.1",
@@ -125,6 +127,7 @@
     "postcss": "^8.5.8",
     "prettier": "^3.8.3",
     "shadcn": "^4.0.8",
+    "subset-font": "^2.5.0",
     "tailwindcss": "^3.4.19",
     "tsx": "^4.22.4",
     "typescript": "^5.2.2",

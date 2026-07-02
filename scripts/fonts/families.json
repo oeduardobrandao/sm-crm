@@ -1,0 +1,306 @@
+{
+  "version": 1,
+  "fallbackKey": "inter",
+  "groups": {
+    "elegante": "Elegante",
+    "moderna": "Moderna",
+    "impacto": "Impacto",
+    "manuscrita": "Manuscrita"
+  },
+  "families": [
+    {
+      "key": "playfair-display",
+      "fontsourceId": "playfair-display",
+      "name": "Playfair Display",
+      "group": "elegante",
+      "cssFallback": "serif",
+      "aliases": ["playfair"],
+      "variants": [
+        { "weight": 400, "style": "normal" },
+        { "weight": 700, "style": "normal" },
+        { "weight": 400, "style": "italic" }
+      ]
+    },
+    {
+      "key": "fraunces",
+      "fontsourceId": "fraunces",
+      "name": "Fraunces",
+      "group": "elegante",
+      "cssFallback": "serif",
+      "aliases": [],
+      "variants": [
+        { "weight": 400, "style": "normal" },
+        { "weight": 600, "style": "normal" },
+        { "weight": 400, "style": "italic" }
+      ]
+    },
+    {
+      "key": "dm-serif-display",
+      "fontsourceId": "dm-serif-display",
+      "name": "DM Serif Display",
+      "group": "elegante",
+      "cssFallback": "serif",
+      "aliases": ["dm serif"],
+      "variants": [
+        { "weight": 400, "style": "normal" },
+        { "weight": 400, "style": "italic" }
+      ]
+    },
+    {
+      "key": "cormorant-garamond",
+      "fontsourceId": "cormorant-garamond",
+      "name": "Cormorant Garamond",
+      "group": "elegante",
+      "cssFallback": "serif",
+      "aliases": ["cormorant", "garamond"],
+      "variants": [
+        { "weight": 500, "style": "normal" },
+        { "weight": 700, "style": "normal" },
+        { "weight": 500, "style": "italic" }
+      ]
+    },
+    {
+      "key": "libre-caslon-text",
+      "fontsourceId": "libre-caslon-text",
+      "name": "Libre Caslon Text",
+      "group": "elegante",
+      "cssFallback": "serif",
+      "aliases": ["caslon"],
+      "variants": [
+        { "weight": 400, "style": "normal" },
+        { "weight": 700, "style": "normal" },
+        { "weight": 400, "style": "italic" }
+      ]
+    },
+    {
+      "key": "instrument-serif",
+      "fontsourceId": "instrument-serif",
+      "name": "Instrument Serif",
+      "group": "elegante",
+      "cssFallback": "serif",
+      "aliases": ["instrument"],
+      "variants": [
+        { "weight": 400, "style": "normal" },
+        { "weight": 400, "style": "italic" }
+      ]
+    },
+    {
+      "key": "marcellus",
+      "fontsourceId": "marcellus",
+      "name": "Marcellus",
+      "group": "elegante",
+      "cssFallback": "serif",
+      "aliases": [],
+      "variants": [{ "weight": 400, "style": "normal" }]
+    },
+    {
+      "key": "montserrat",
+      "fontsourceId": "montserrat",
+      "name": "Montserrat",
+      "group": "moderna",
+      "cssFallback": "sans-serif",
+      "aliases": [],
+      "variants": [
+        { "weight": 400, "style": "normal" },
+        { "weight": 600, "style": "normal" },
+        { "weight": 800, "style": "normal" }
+      ]
+    },
+    {
+      "key": "poppins",
+      "fontsourceId": "poppins",
+      "name": "Poppins",
+      "group": "moderna",
+      "cssFallback": "sans-serif",
+      "aliases": [],
+      "variants": [
+        { "weight": 400, "style": "normal" },
+        { "weight": 600, "style": "normal" },
+        { "weight": 800, "style": "normal" }
+      ]
+    },
+    {
+      "key": "plus-jakarta-sans",
+      "fontsourceId": "plus-jakarta-sans",
+      "name": "Plus Jakarta Sans",
+      "group": "moderna",
+      "cssFallback": "sans-serif",
+      "aliases": ["jakarta", "plusjakarta"],
+      "variants": [
+        { "weight": 400, "style": "normal" },
+        { "weight": 700, "style": "normal" }
+      ]
+    },
+    {
+      "key": "outfit",
+      "fontsourceId": "outfit",
+      "name": "Outfit",
+      "group": "moderna",
+      "cssFallback": "sans-serif",
+      "aliases": [],
+      "variants": [
+        { "weight": 400, "style": "normal" },
+        { "weight": 700, "style": "normal" }
+      ]
+    },
+    {
+      "key": "dm-sans",
+      "fontsourceId": "dm-sans",
+      "name": "DM Sans",
+      "group": "moderna",
+      "cssFallback": "sans-serif",
+      "aliases": [],
+      "variants": [
+        { "weight": 400, "style": "normal" },
+        { "weight": 700, "style": "normal" }
+      ]
+    },
+    {
+      "key": "inter",
+      "fontsourceId": "inter",
+      "name": "Inter",
+      "group": "moderna",
+      "cssFallback": "sans-serif",
+      "aliases": [],
+      "variants": [
+        { "weight": 400, "style": "normal" },
+        { "weight": 700, "style": "normal" }
+      ]
+    },
+    {
+      "key": "sora",
+      "fontsourceId": "sora",
+      "name": "Sora",
+      "group": "moderna",
+      "cssFallback": "sans-serif",
+      "aliases": [],
+      "variants": [
+        { "weight": 400, "style": "normal" },
+        { "weight": 700, "style": "normal" }
+      ]
+    },
+    {
+      "key": "bricolage-grotesque",
+      "fontsourceId": "bricolage-grotesque",
+      "name": "Bricolage Grotesque",
+      "group": "moderna",
+      "cssFallback": "sans-serif",
+      "aliases": ["bricolage", "grotesque"],
+      "variants": [
+        { "weight": 400, "style": "normal" },
+        { "weight": 800, "style": "normal" }
+      ]
+    },
+    {
+      "key": "bebas-neue",
+      "fontsourceId": "bebas-neue",
+      "name": "Bebas Neue",
+      "group": "impacto",
+      "cssFallback": "sans-serif",
+      "aliases": ["bebas"],
+      "variants": [{ "weight": 400, "style": "normal" }]
+    },
+    {
+      "key": "oswald",
+      "fontsourceId": "oswald",
+      "name": "Oswald",
+      "group": "impacto",
+      "cssFallback": "sans-serif",
+      "aliases": [],
+      "variants": [
+        { "weight": 400, "style": "normal" },
+        { "weight": 600, "style": "normal" }
+      ]
+    },
+    {
+      "key": "anton",
+      "fontsourceId": "anton",
+      "name": "Anton",
+      "group": "impacto",
+      "cssFallback": "sans-serif",
+      "aliases": [],
+      "variants": [{ "weight": 400, "style": "normal" }]
+    },
+    {
+      "key": "archivo-black",
+      "fontsourceId": "archivo-black",
+      "name": "Archivo Black",
+      "group": "impacto",
+      "cssFallback": "sans-serif",
+      "aliases": ["archivo"],
+      "variants": [{ "weight": 400, "style": "normal" }]
+    },
+    {
+      "key": "barlow-condensed",
+      "fontsourceId": "barlow-condensed",
+      "name": "Barlow Condensed",
+      "group": "impacto",
+      "cssFallback": "sans-serif",
+      "aliases": ["barlow"],
+      "variants": [
+        { "weight": 500, "style": "normal" },
+        { "weight": 700, "style": "normal" }
+      ]
+    },
+    {
+      "key": "dancing-script",
+      "fontsourceId": "dancing-script",
+      "name": "Dancing Script",
+      "group": "manuscrita",
+      "cssFallback": "cursive",
+      "aliases": ["dancing"],
+      "variants": [
+        { "weight": 400, "style": "normal" },
+        { "weight": 700, "style": "normal" }
+      ]
+    },
+    {
+      "key": "great-vibes",
+      "fontsourceId": "great-vibes",
+      "name": "Great Vibes",
+      "group": "manuscrita",
+      "cssFallback": "cursive",
+      "aliases": [],
+      "variants": [{ "weight": 400, "style": "normal" }]
+    },
+    {
+      "key": "pacifico",
+      "fontsourceId": "pacifico",
+      "name": "Pacifico",
+      "group": "manuscrita",
+      "cssFallback": "cursive",
+      "aliases": [],
+      "variants": [{ "weight": 400, "style": "normal" }]
+    },
+    {
+      "key": "caveat",
+      "fontsourceId": "caveat",
+      "name": "Caveat",
+      "group": "manuscrita",
+      "cssFallback": "cursive",
+      "aliases": [],
+      "variants": [
+        { "weight": 400, "style": "normal" },
+        { "weight": 700, "style": "normal" }
+      ]
+    },
+    {
+      "key": "sacramento",
+      "fontsourceId": "sacramento",
+      "name": "Sacramento",
+      "group": "manuscrita",
+      "cssFallback": "cursive",
+      "aliases": [],
+      "variants": [{ "weight": 400, "style": "normal" }]
+    },
+    {
+      "key": "lobster",
+      "fontsourceId": "lobster",
+      "name": "Lobster",
+      "group": "manuscrita",
+      "cssFallback": "cursive",
+      "aliases": [],
+      "variants": [{ "weight": 400, "style": "normal" }]
+    }
+  ]
+}
