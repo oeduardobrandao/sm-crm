@@ -226,6 +226,25 @@ describe('store hub and ideias helpers', () => {
     });
   });
 
+  it('renames every question in a briefing section with one update', async () => {
+    mockedSupabase.__queueSupabaseResult('hub_briefing_questions', 'update', {
+      data: null,
+      error: null,
+    });
+
+    await store.renameHubBriefingSection(['q1', 'q2'], 'Público-alvo');
+
+    const call = getCalls('hub_briefing_questions', 'update')[0];
+    expect(call.payload).toEqual({ section: 'Público-alvo' });
+    expect(call.modifiers).toContainEqual({ method: 'in', args: ['id', ['q1', 'q2']] });
+  });
+
+  it('does not issue an update when renaming an empty section', async () => {
+    await store.renameHubBriefingSection([], 'Público-alvo');
+
+    expect(getCalls('hub_briefing_questions', 'update')).toHaveLength(0);
+  });
+
   it('manages briefings (list, add with order, rename, delete)', async () => {
     mockedSupabase.__queueSupabaseResult(
       'briefings',

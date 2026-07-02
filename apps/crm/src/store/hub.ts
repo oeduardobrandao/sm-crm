@@ -225,6 +225,18 @@ export async function updateHubBriefingQuestionSection(
   if (error) throw error;
 }
 
+export async function renameHubBriefingSection(
+  questionIds: string[],
+  section: string,
+): Promise<void> {
+  if (questionIds.length === 0) return;
+  const { error } = await supabase
+    .from('hub_briefing_questions')
+    .update({ section })
+    .in('id', questionIds);
+  if (error) throw error;
+}
+
 export async function updateHubBriefingQuestion(id: string, question: string): Promise<void> {
   const { error } = await supabase.from('hub_briefing_questions').update({ question }).eq('id', id);
   if (error) throw error;

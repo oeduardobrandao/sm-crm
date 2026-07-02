@@ -68,6 +68,7 @@ import {
   getHubBriefingQuestions,
   addHubBriefingQuestion,
   updateHubBriefingQuestion,
+  renameHubBriefingSection,
   deleteHubBriefingQuestion,
   getBriefings,
   addBriefing,
@@ -591,6 +592,9 @@ function BriefingEditor({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
+  const [editingSectionName, setEditingSectionName] = useState<string | null>(null);
+  const [sectionNameText, setSectionNameText] = useState('');
+  const [savingSectionName, setSavingSectionName] = useState(false);
   const [newSectionName, setNewSectionName] = useState('');
   const [addingSectionInput, setAddingSectionInput] = useState(false);
   const [newQuestions, setNewQuestions] = useState<Record<string, string>>({});
@@ -823,6 +827,50 @@ function BriefingEditor({
       toast.success('Pergunta removida.');
     } catch (e: any) {
       toast.error(e.message ?? 'Erro ao remover pergunta.');
+    }
+  }
+
+  async function handleRenameSection(section: {
+    name: string;
+    questions: HubBriefingQuestionRow[];
+  }) {
+    const nextName = sectionNameText.trim();
+    if (!nextName || savingSectionName) return;
+    if (nextName === section.name) {
+      setEditingSectionName(null);
+      return;
+    }
+    if (namedSections.some((candidate) => candidate.name === nextName)) {
+      toast.error('Já existe uma seção com esse nome.');
+      return;
+    }
+
+    setSavingSectionName(true);
+    try {
+      await renameHubBriefingSection(
+        section.questions.map((question) => question.id),
+        nextName,
+      );
+      setExpandedSections((prev) => {
+        if (!prev.has(section.name)) return prev;
+        const next = new Set(prev);
+        next.delete(section.name);
+        next.add(nextName);
+        return next;
+      });
+      setNewQuestions((prev) => {
+        if (!(section.name in prev)) return prev;
+        const next = { ...prev, [nextName]: prev[section.name] };
+        delete next[section.name];
+        return next;
+      });
+      setEditingSectionName(null);
+      refresh();
+      toast.success('Seção renomeada.');
+    } catch (e: any) {
+      toast.error(e.message ?? 'Erro ao renomear seção.');
+    } finally {
+      setSavingSectionName(false);
     }
   }
 
@@ -1074,6 +1122,7 @@ function BriefingEditor({
                 setNewQuestions({});
                 setAddingSectionInput(false);
                 setEditingId(null);
+                setEditingSectionName(null);
                 setExpandedSections(new Set());
               }}
               className={`px-3 py-2 text-sm whitespace-nowrap border-b-2 -mb-px transition-colors ${
@@ -1178,23 +1227,68 @@ function BriefingEditor({
             >
               {namedSections.map((s) => {
                 const isCollapsed = !expandedSections.has(s.name);
+                const isEditingSection = editingSectionName === s.name;
                 return (
                   <SortableSection
                     key={s.name}
                     id={SECTION_PREFIX + s.name}
                     header={
-                      <button
-                        type="button"
-                        onClick={() => toggleSection(s.name)}
-                        aria-expanded={!isCollapsed}
-                        className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-                        {s.name}
-                        <span className="font-normal normal-case opacity-60">
-                          ({s.questions.length})
-                        </span>
-                      </button>
+                      isEditingSection ? (
+                        <div className="flex flex-1 items-center gap-2">
+                          <Input
+                            value={sectionNameText}
+                            onChange={(e) => setSectionNameText(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') void handleRenameSection(s);
+                              if (e.key === 'Escape') setEditingSectionName(null);
+                            }}
+                            aria-label="Nome da seção"
+                            className="h-8 flex-1"
+                            autoFocus
+                          />
+                          <Button
+                            size="sm"
+                            onClick={() => void handleRenameSection(s)}
+                            disabled={!sectionNameText.trim() || savingSectionName}
+                          >
+                            <Save size={14} className="mr-1.5" /> Salvar
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setEditingSectionName(null)}
+                            disabled={savingSectionName}
+                          >
+                            Cancelar
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                          <button
+                            type="button"
+                            onClick={() => toggleSection(s.name)}
+                            aria-expanded={!isCollapsed}
+                            className="flex min-w-0 items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground transition-colors"
+                          >
+                            {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                            <span className="truncate">{s.name}</span>
+                            <span className="font-normal normal-case opacity-60">
+                              ({s.questions.length})
+                            </span>
+                          </button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            aria-label={`Renomear seção ${s.name}`}
+                            onClick={() => {
+                              setEditingSectionName(s.name);
+                              setSectionNameText(s.name);
+                            }}
+                          >
+                            <Pencil size={14} />
+                          </Button>
+                        </div>
+                      )
                     }
                   >
                     {!isCollapsed && renderQuestions(s.questions, s.name)}
