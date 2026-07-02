@@ -11,6 +11,10 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
       '@mesaas/i18n': path.resolve(__dirname, '../../packages/i18n/index.ts'),
+      '@mesaas/design-doc': path.resolve(
+        __dirname,
+        '../../supabase/functions/_shared/design-doc.ts',
+      ),
     },
   },
   server: {
