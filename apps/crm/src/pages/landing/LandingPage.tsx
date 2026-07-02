@@ -944,7 +944,7 @@ function Footer() {
           © 2025 Mesaas. Todos os direitos reservados. · CNPJ 63.758.902/0001-01 — EBS IT SOLUTIONS
         </span>
         <div className="footer-socials">
-          <a href="#">
+          <a href="https://www.instagram.com/mesaas.com.br/">
             <Instagram size={18} />
           </a>
           <a href="#">
