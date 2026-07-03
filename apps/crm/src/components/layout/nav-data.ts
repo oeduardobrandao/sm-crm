@@ -83,6 +83,13 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
         icon: 'ph-paper-plane-tilt',
       },
       {
+        id: 'estudio',
+        route: '/estudio',
+        label: 'Estúdio',
+        labelKey: 'nav.estudio',
+        icon: 'ph-magic-wand',
+      },
+      {
         id: 'arquivos',
         route: '/arquivos',
         label: 'Arquivos',

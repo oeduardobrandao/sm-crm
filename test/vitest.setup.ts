@@ -16,10 +16,28 @@ import ptPosts from '../packages/i18n/locales/pt/posts.json';
 import enPosts from '../packages/i18n/locales/en/posts.json';
 import ptAuth from '../packages/i18n/locales/pt/auth.json';
 import enAuth from '../packages/i18n/locales/en/auth.json';
+import ptEstudio from '../packages/i18n/locales/pt/estudio.json';
+import enEstudio from '../packages/i18n/locales/en/estudio.json';
 
 initI18n({
-  pt: { common: ptCommon, dashboard: ptDashboard, clients: ptClients, leads: ptLeads, posts: ptPosts, auth: ptAuth },
-  en: { common: enCommon, dashboard: enDashboard, clients: enClients, leads: enLeads, posts: enPosts, auth: enAuth },
+  pt: {
+    common: ptCommon,
+    dashboard: ptDashboard,
+    clients: ptClients,
+    leads: ptLeads,
+    posts: ptPosts,
+    auth: ptAuth,
+    estudio: ptEstudio,
+  },
+  en: {
+    common: enCommon,
+    dashboard: enDashboard,
+    clients: enClients,
+    leads: enLeads,
+    posts: enPosts,
+    auth: enAuth,
+    estudio: enEstudio,
+  },
 });
 
 Object.defineProperty(window, 'matchMedia', {

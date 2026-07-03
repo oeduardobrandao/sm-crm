@@ -1,6 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import {
   X,
   Plus,
@@ -12,6 +14,7 @@ import {
   GripVertical,
   ImageIcon,
   Calendar as CalendarIcon,
+  Wand2,
 } from 'lucide-react';
 import {
   AlertDialog,
@@ -879,6 +882,8 @@ function SortablePostItem({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: post.id!,
   });
+  const navigate = useNavigate();
+  const { t } = useTranslation('estudio');
 
   // Local state for title to avoid input lag / letter-replacement from the
   // round-trip through updateWorkflowPost + refresh on every keystroke.
@@ -1149,6 +1154,22 @@ function SortablePostItem({
               propertyValues={post.property_values ?? []}
               membros={membros}
             />
+          )}
+
+          {post.tipo !== 'stories' && (
+            <button
+              type="button"
+              onClick={() => navigate(`/estudio/${post.id}`)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors"
+              style={{
+                background: 'rgba(234,179,8,0.12)',
+                color: 'var(--primary-hover)',
+                width: 'fit-content',
+                marginBottom: '0.75rem',
+              }}
+            >
+              <Wand2 className="h-3.5 w-3.5" /> {t('openInEstudio')}
+            </button>
           )}
 
           <PostMediaGallery postId={post.id!} />

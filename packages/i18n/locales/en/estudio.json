@@ -1,0 +1,28 @@
+{
+  "title": "Studio",
+  "subtitle": "Design your posts right inside Mesaas.",
+  "picker": {
+    "clientLabel": "Client",
+    "selectClient": "Select a client",
+    "postLabel": "Post",
+    "selectPost": "Select an existing post",
+    "noEditablePosts": "No editable posts for this client yet.",
+    "createNew": "Create new design",
+    "creating": "Preparing your design...",
+    "openExisting": "Open"
+  },
+  "editor": {
+    "loading": "Loading design...",
+    "notFound": "Design not found.",
+    "loadError": "Could not load the design.",
+    "pageCount": "{{count}} page",
+    "pageCount_other": "{{count}} pages",
+    "layerCount": "{{count}} layer",
+    "layerCount_other": "{{count}} layers",
+    "canvasComingSoon": "The editing canvas ships in the next update."
+  },
+  "openInEstudio": "Open in Studio",
+  "toast": {
+    "createError": "Could not create the design: {{error}}"
+  }
+}
