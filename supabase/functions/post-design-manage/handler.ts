@@ -20,6 +20,7 @@ import {
   type FontVariantLookup,
   type ValidationContext,
 } from "../_shared/design-doc.ts";
+import type { MaterializeLogoResult } from "../_shared/brand-logo.ts";
 import type { RenderPageInfo } from "../_shared/design-render-status.ts";
 
 // Mirrors EDITABLE_STATUSES in supabase/functions/mcp/queries.ts and the SQL copy inside
@@ -110,6 +111,14 @@ export interface PostDesignManageDeps {
   // per-request), so it takes contaId explicitly; the handler closes over it per-request when
   // building ValidationContext.checkFileIds below.
   checkFileIds: (ids: number[], contaId: string) => Promise<Set<number>>;
+  // POST /brand-logo (§5.4 / T3.2) — tenancy check + the SSRF-hardened import, injected so the
+  // route tests never touch the network.
+  clienteExists: (clienteId: number, contaId: string) => Promise<boolean>;
+  materializeBrandLogo: (args: {
+    contaId: string;
+    clienteId: number;
+    uploadedBy: string;
+  }) => Promise<MaterializeLogoResult>;
   fonts: FontVariantLookup;
   getRenderPages: (
     postId: number,
@@ -184,6 +193,52 @@ export function createPostDesignManageHandler(deps: PostDesignManageDeps) {
 
     if (!(await deps.isFeatureEnabled(contaId))) {
       return json({ error: "feature_disabled", feature: "feature_estudio" }, 403);
+    }
+
+    if (req.method === "POST") {
+      // Path-based sub-route (the post-media-manage precedent): POST /brand-logo is the ONLY
+      // POST this function serves — lazy logo materialization, §5.4.
+      const parts = new URL(req.url).pathname.split("/").filter(Boolean);
+      const sub = parts[parts.indexOf("post-design-manage") + 1];
+      if (sub !== "brand-logo") return json({ error: "not_found" }, 404);
+
+      let body: { cliente_id?: unknown };
+      try {
+        body = await req.json();
+      } catch {
+        return json({ error: "invalid_json" }, 400);
+      }
+      const clienteId = typeof body.cliente_id === "number" ? body.cliente_id : NaN;
+      if (isNaN(clienteId)) return json({ error: "invalid_cliente_id" }, 400);
+
+      if (!(await deps.clienteExists(clienteId, contaId))) {
+        return json({ error: "cliente_not_found" }, 404);
+      }
+
+      let result: MaterializeLogoResult;
+      try {
+        result = await deps.materializeBrandLogo({ contaId, clienteId, uploadedBy: user.id });
+      } catch (e) {
+        // Only infra failures throw (R2 / unexpected DB) — expected outcomes come back as
+        // `reason` codes. Never leak internals (security rule).
+        deps.logError("post-design-manage:brand-logo", e);
+        return json({ error: "internal_error" }, 500);
+      }
+
+      if (result.logo_file_id !== null) {
+        if (result.created) {
+          await deps.insertAuditLog({
+            conta_id: contaId,
+            actor_user_id: user.id,
+            action: "brand_logo_materialize",
+            resource_type: "hub_brand",
+            resource_id: String(clienteId),
+            metadata: { cliente_id: clienteId, logo_file_id: result.logo_file_id },
+          });
+        }
+        return json({ logo_file_id: result.logo_file_id });
+      }
+      return json({ logo_file_id: null, reason: result.reason });
     }
 
     if (req.method === "GET") {

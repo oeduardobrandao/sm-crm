@@ -11,6 +11,7 @@ import type { DesignDoc } from "../_shared/design-doc.ts";
 const CONTA_ID = "11111111-1111-1111-1111-111111111111";
 const USER_ID = "22222222-2222-2222-2222-222222222222";
 const POST_ID = 42;
+const CLIENTE_ID = 7;
 
 function makeDoc(overrides: Partial<DesignDoc> = {}): DesignDoc {
   return {
@@ -47,6 +48,7 @@ interface DepsSpy {
   waitUntilCalls: Promise<unknown>[];
   auditCalls: Array<Record<string, unknown>>;
   loggedErrors: Array<{ context: string; error: unknown }>;
+  materializeCalls: Array<{ contaId: string; clienteId: number; uploadedBy: string }>;
 }
 
 function makeDeps(
@@ -60,6 +62,7 @@ function makeDeps(
     waitUntilCalls: [],
     auditCalls: [],
     loggedErrors: [],
+    materializeCalls: [],
   };
 
   const deps: PostDesignManageDeps = {
@@ -84,6 +87,11 @@ function makeDeps(
       spy.deleteCalls.push({ contaId, postId });
     },
     checkFileIds: async (ids) => new Set(ids.filter((id) => id === 812 || id === 900)),
+    clienteExists: async (clienteId, contaId) => clienteId === CLIENTE_ID && contaId === CONTA_ID,
+    materializeBrandLogo: async (args) => {
+      spy.materializeCalls.push(args);
+      return { logo_file_id: 77, created: true };
+    },
     fonts: fakeFonts,
     getRenderPages: async () => [],
     triggerRender: async (designId, rev) => {
@@ -573,4 +581,106 @@ Deno.test("GET: a reels post with video media still creates its starter design n
   const handler = createPostDesignManageHandler(deps);
   const res = await handler(makeReq("GET", { search: `?post_id=${POST_ID}` }));
   assertEquals(res.status, 200);
+});
+
+// ============================================================
+// POST /brand-logo (T3.2, design §5.4)
+// ============================================================
+
+Deno.test("POST /brand-logo: happy path materializes, audits, returns logo_file_id", async () => {
+  const { deps, spy } = makeDeps();
+  const handler = createPostDesignManageHandler(deps);
+  const res = await handler(
+    makeReq("POST", { search: "/brand-logo", body: { cliente_id: CLIENTE_ID } }),
+  );
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), { logo_file_id: 77 });
+  assertEquals(spy.materializeCalls, [
+    { contaId: CONTA_ID, clienteId: CLIENTE_ID, uploadedBy: USER_ID },
+  ]);
+  assertEquals(spy.auditCalls.length, 1);
+  assertEquals(spy.auditCalls[0].action, "brand_logo_materialize");
+  assertEquals(spy.auditCalls[0].resource_type, "hub_brand");
+});
+
+Deno.test("POST /brand-logo: idempotent hit (created=false) is NOT audited again", async () => {
+  const { deps, spy } = makeDeps({
+    materializeBrandLogo: async () => ({ logo_file_id: 77, created: false }),
+  });
+  const handler = createPostDesignManageHandler(deps);
+  const res = await handler(
+    makeReq("POST", { search: "/brand-logo", body: { cliente_id: CLIENTE_ID } }),
+  );
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), { logo_file_id: 77 });
+  assertEquals(spy.auditCalls.length, 0);
+});
+
+Deno.test("POST /brand-logo: soft failure passes the reason through as 200", async () => {
+  const { deps, spy } = makeDeps({
+    materializeBrandLogo: async () => ({ logo_file_id: null, reason: "private_address" }),
+  });
+  const handler = createPostDesignManageHandler(deps);
+  const res = await handler(
+    makeReq("POST", { search: "/brand-logo", body: { cliente_id: CLIENTE_ID } }),
+  );
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), { logo_file_id: null, reason: "private_address" });
+  assertEquals(spy.auditCalls.length, 0);
+});
+
+Deno.test("POST /brand-logo: cliente from another workspace is 404, never materialized", async () => {
+  const { deps, spy } = makeDeps();
+  const handler = createPostDesignManageHandler(deps);
+  const res = await handler(
+    makeReq("POST", { search: "/brand-logo", body: { cliente_id: 999 } }),
+  );
+  assertEquals(res.status, 404);
+  assertEquals((await res.json()).error, "cliente_not_found");
+  assertEquals(spy.materializeCalls.length, 0);
+});
+
+Deno.test("POST /brand-logo: non-numeric cliente_id is 400", async () => {
+  const { deps, spy } = makeDeps();
+  const handler = createPostDesignManageHandler(deps);
+  const res = await handler(
+    makeReq("POST", { search: "/brand-logo", body: { cliente_id: "7" } }),
+  );
+  assertEquals(res.status, 400);
+  assertEquals((await res.json()).error, "invalid_cliente_id");
+  assertEquals(spy.materializeCalls.length, 0);
+});
+
+Deno.test("POST /brand-logo: infra throw maps to generic 500 and logs internally", async () => {
+  const { deps, spy } = makeDeps({
+    materializeBrandLogo: async () => {
+      throw new Error("R2 PUT failed: 503 with internal details");
+    },
+  });
+  const handler = createPostDesignManageHandler(deps);
+  const res = await handler(
+    makeReq("POST", { search: "/brand-logo", body: { cliente_id: CLIENTE_ID } }),
+  );
+  assertEquals(res.status, 500);
+  assertEquals(await res.json(), { error: "internal_error" }); // no internals leaked
+  assertEquals(spy.loggedErrors.length, 1);
+});
+
+Deno.test("POST to any other path is 404", async () => {
+  const { deps, spy } = makeDeps();
+  const handler = createPostDesignManageHandler(deps);
+  const res = await handler(makeReq("POST", { body: { cliente_id: CLIENTE_ID } }));
+  assertEquals(res.status, 404);
+  assertEquals(spy.materializeCalls.length, 0);
+});
+
+Deno.test("POST /brand-logo: feature gate applies (same as every other route)", async () => {
+  const { deps, spy } = makeDeps({ isFeatureEnabled: async () => false });
+  const handler = createPostDesignManageHandler(deps);
+  const res = await handler(
+    makeReq("POST", { search: "/brand-logo", body: { cliente_id: CLIENTE_ID } }),
+  );
+  assertEquals(res.status, 403);
+  assertEquals((await res.json()).error, "feature_disabled");
+  assertEquals(spy.materializeCalls.length, 0);
 });

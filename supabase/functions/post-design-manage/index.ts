@@ -5,7 +5,8 @@ import { insertAuditLog } from "../_shared/audit.ts";
 import { fetchPostMedia } from "../_shared/instagram-publish-utils.ts";
 import { manifestFontLookup } from "../_shared/fonts/lookup.ts";
 import { getRenderPages as computeRenderPages } from "../_shared/design-render-status.ts";
-import { signGetUrl } from "../_shared/r2.ts";
+import { materializeBrandLogo, type HubBrandLogoRow } from "../_shared/brand-logo.ts";
+import { deleteObject, putObject, signGetUrl } from "../_shared/r2.ts";
 import { signMediaUrl, isMediaProxyEnabled } from "../_shared/media-url.ts";
 import { createPostDesignManageHandler, DOC_VERSION, type DesignRow, type PostRow } from "./handler.ts";
 
@@ -113,6 +114,53 @@ Deno.serve(createPostDesignManageHandler({
     });
     if (error) throw error;
   },
+
+  clienteExists: async (clienteId, contaId) => {
+    const { data } = await svc
+      .from("clientes")
+      .select("id")
+      .eq("id", clienteId)
+      .eq("conta_id", contaId)
+      .maybeSingle();
+    return !!data;
+  },
+
+  materializeBrandLogo: (args) =>
+    materializeBrandLogo({
+      getBrand: async (clienteId) => {
+        const { data } = await svc
+          .from("hub_brand")
+          .select("logo_url, logo_file_id")
+          .eq("cliente_id", clienteId)
+          .maybeSingle();
+        return data as HubBrandLogoRow | null;
+      },
+      resolveDns: (hostname, recordType) => Deno.resolveDns(hostname, recordType),
+      fetchUrl: (url, init) => fetch(url, init),
+      putObject,
+      deleteObject,
+      insertFile: async (p) => {
+        const { data, error } = await svc.rpc("file_insert_with_quota", { p }).single();
+        if (error || !data) throw new Error(error?.message ?? "file insert failed");
+        return { id: (data as { id: number }).id };
+      },
+      claimLogoFileId: async (clienteId, fileId) => {
+        const { data, error } = await svc
+          .from("hub_brand")
+          .update({ logo_file_id: fileId })
+          .eq("cliente_id", clienteId)
+          .is("logo_file_id", null)
+          .select("id");
+        if (error) throw error;
+        return (data ?? []).length > 0;
+      },
+      deleteFileRow: async (fileId) => {
+        const { error } = await svc.from("files").delete().eq("id", fileId);
+        if (error) throw error;
+      },
+      randomUUID: () => crypto.randomUUID(),
+      logError: (context, error) => console.error(`[${context}]`, error),
+    }, args),
 
   checkFileIds: async (ids, contaId) => {
     if (ids.length === 0) return new Set();
