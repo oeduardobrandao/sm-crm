@@ -22,7 +22,9 @@
     "canvasComingSoon": "The editing canvas ships in the next update.",
     "rendering": "Rendering...",
     "renderError": "Could not render this design.",
-    "safeZoneToggle": "Safe-zone guides"
+    "safeZoneToggle": "Safe-zone guides",
+    "reelVideoNotice": "Add the reel video to the post — Estúdio only creates the cover, and rendering needs the video.",
+    "videoMediaBlocked": "This post has video media — Estúdio cannot create a feed/carousel design for it."
   },
   "openInEstudio": "Open in Studio",
   "dock": {
@@ -74,5 +76,6 @@
   },
   "toast": {
     "createError": "Could not create the design: {{error}}"
-  }
+  },
+  "featureBlocked": "Estúdio is not available on your current plan. Contact support to upgrade."
 }

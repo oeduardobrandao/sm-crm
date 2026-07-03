@@ -9,17 +9,29 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { getClientes } from '@/store/clients';
 import { getClientePosts } from '@/store/posts';
+import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { useEstudioEntryFlow } from '../../hooks/useEstudioEntryFlow';
 
 // Must mirror post-design-manage/handler.ts's EDITABLE_STATUSES — posts outside this set are
 // hidden from the picker rather than surfaced only to fail on open with `post_not_editable`.
 const EDITABLE_STATUSES = new Set(['rascunho', 'revisao_interna', 'correcao_cliente']);
 
+// Mirrors the handler's starterFormatForTipo: 'stories' posts have no design format and open
+// only to fail with `unsupported_post_tipo` — hide them instead of dead-ending.
+const INELIGIBLE_TIPOS = new Set(['stories']);
+
 export default function PostPicker() {
   const navigate = useNavigate();
   const { t } = useTranslation('estudio');
+  const { features } = useWorkspaceLimits();
   const { createFromScratch, creating } = useEstudioEntryFlow();
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
+
+  // Same convention as nav-data.ts's NAV_FEATURE gate: block only when the flag is EXPLICITLY
+  // false (fail-open while entitlements load). The nav item is already hidden for these
+  // workspaces — this covers direct-URL entry, which otherwise reached a fully interactive
+  // picker whose "Criar novo" created real workflow/post rows before the editor's 403.
+  const featureBlocked = features?.feature_estudio === false;
 
   const { data: clientes = [] } = useQuery({ queryKey: ['clientes'], queryFn: getClientes });
   const sortedClientes = [...clientes].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
@@ -27,16 +39,41 @@ export default function PostPicker() {
   const { data: posts = [] } = useQuery({
     queryKey: ['clientePosts', selectedClientId],
     queryFn: () => getClientePosts(selectedClientId!),
-    enabled: selectedClientId !== null,
+    enabled: selectedClientId !== null && !featureBlocked,
   });
-  const editablePosts = posts.filter((p) => EDITABLE_STATUSES.has(p.status));
+  const editablePosts = posts.filter(
+    (p) => EDITABLE_STATUSES.has(p.status) && !INELIGIBLE_TIPOS.has(p.tipo),
+  );
+
+  if (featureBlocked) {
+    return (
+      <div className="animate-up" style={{ padding: 'clamp(1.25rem, 3vw, 2.5rem)', maxWidth: 560 }}>
+        <h1
+          style={{
+            fontFamily: 'var(--font-heading)',
+            fontSize: 'clamp(2rem, 4vw, 3.2rem)',
+            fontWeight: 900,
+          }}
+        >
+          {t('title')}
+        </h1>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '0.5rem' }}>
+          {t('featureBlocked')}
+        </p>
+      </div>
+    );
+  }
 
   async function handleCreateNew() {
     const client = clientes.find((c) => c.id === selectedClientId);
     if (!client?.id) return;
     try {
       const draft = await createFromScratch(client.id, client.nome);
-      navigate(`/estudio/${draft.postId}`);
+      // The state marker scopes T2.3's abandonment cleanup to drafts THIS flow created — the
+      // editor deletes the synthetic workflow/post again if the user leaves with zero layers.
+      navigate(`/estudio/${draft.postId}`, {
+        state: { estudioSyntheticDraft: { workflowId: draft.workflowId, postId: draft.postId } },
+      });
     } catch (err: unknown) {
       toast.error(
         t('toast.createError', { error: err instanceof Error ? err.message : String(err) }),

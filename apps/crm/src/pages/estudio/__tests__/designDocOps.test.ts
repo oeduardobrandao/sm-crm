@@ -36,6 +36,52 @@ describe('designDocOps layers', () => {
     expect(next).toBe(doc);
   });
 
+  it('updateLayer is a no-op (same reference) for a value-identical patch — no phantom undo step', () => {
+    // Regression: a zero-movement click/drag committed {x, y} equal to the layer's current
+    // position; the new doc reference made the reducer push an undo entry and clear the redo
+    // stack for a change that changed nothing.
+    const doc = makeDoc();
+    const { x, y } = doc.pages[0].layers[0];
+    expect(ops.updateLayer(doc, 'page-1', 'layer-1', { x, y })).toBe(doc);
+  });
+
+  it('updateLayer treats a structurally-equal runs patch as a no-op too', () => {
+    const runs = [{ text: 'Olá', font_weight: 700 as const }];
+    const doc = makeDoc({
+      pages: [makePage({ layers: [makeTextLayer({ id: 'layer-1', text: undefined, runs })] })],
+    });
+    const next = ops.updateLayer(doc, 'page-1', 'layer-1', {
+      runs: [{ text: 'Olá', font_weight: 700 }],
+    });
+    expect(next).toBe(doc);
+  });
+
+  it('updateLayer enforces text XOR runs: a { text } patch clears stale runs', () => {
+    // Regression: a de-styling TextEditOverlay commit ({ text }) shallow-merged over a layer
+    // that still had runs — runs win at render, so the edit visibly reverted.
+    const doc = makeDoc({
+      pages: [
+        makePage({
+          layers: [
+            makeTextLayer({ id: 'layer-1', text: undefined, runs: [{ text: 'estilizado' }] }),
+          ],
+        }),
+      ],
+    });
+    const next = ops.updateLayer(doc, 'page-1', 'layer-1', { text: 'simples' });
+    const layer = next.pages[0].layers[0] as { text?: string; runs?: unknown };
+    expect(layer.text).toBe('simples');
+    expect('runs' in layer).toBe(false);
+  });
+
+  it('updateLayer enforces text XOR runs: a { runs } patch clears stale text', () => {
+    const doc = makeDoc();
+    const next = ops.updateLayer(doc, 'page-1', 'layer-1', { runs: [{ text: 'com estilo' }] });
+    const layer = next.pages[0].layers[0] as { text?: string; runs?: unknown };
+    expect(layer.runs).toEqual([{ text: 'com estilo' }]);
+    expect('text' in layer).toBe(false);
+  });
+
   it('removeLayer removes the matching layer', () => {
     const doc = makeDoc({
       pages: [makePage({ layers: [makeTextLayer({ id: 'a' }), makeTextLayer({ id: 'b' })] })],

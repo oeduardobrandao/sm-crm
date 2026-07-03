@@ -2,9 +2,12 @@
 // PR 2.C wires up the full editor chrome: LeftToolDock (T2.9), ContextualToolbar (T2.12),
 // SlideStrip (T2.10), and TextEditOverlay (T2.8, wired inside CanvasStage/InteractionOverlay).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useLocation, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useQuery } from '@tanstack/react-query';
 import { FilePickerModal } from '@/pages/arquivos/components/FilePickerModal';
+import { listPostMedia } from '@/services/postMedia';
+import { cleanupAbandonedDraft } from './hooks/useEstudioEntryFlow';
 import PostPicker from './components/PostPicker';
 import { CanvasStage } from './components/Canvas/CanvasStage';
 import { LeftToolDock } from './components/Dock';
@@ -61,6 +64,28 @@ function EstudioEditorShell({ postId }: { postId: number }) {
     if (query.data) state.load(query.data.design);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query.data]);
+
+  // T2.3 abandonment cleanup: this post/workflow pair was synthesized by the picker's
+  // "Criar novo" moments ago (router-state marker) — if the user leaves the editor having added
+  // ZERO layers, delete it again instead of leaving a junk workflow behind. Layer count comes
+  // through a ref so the unmount cleanup sees the LATEST doc, not the mount-time one.
+  const location = useLocation();
+  const syntheticDraft = (
+    location.state as {
+      estudioSyntheticDraft?: { workflowId: number; postId: number };
+    } | null
+  )?.estudioSyntheticDraft;
+  const layerCountRef = useRef(0);
+  useEffect(() => {
+    layerCountRef.current = state.doc.pages.reduce((n, p) => n + p.layers.length, 0);
+  }, [state.doc]);
+  useEffect(() => {
+    if (!syntheticDraft || syntheticDraft.postId !== postId) return;
+    return () => {
+      if (layerCountRef.current > 0) return;
+      void cleanupAbandonedDraft(syntheticDraft.postId, syntheticDraft.workflowId);
+    };
+  }, [syntheticDraft, postId]);
 
   const activePageIndex = Math.max(
     0,
@@ -157,6 +182,17 @@ function EstudioEditorShell({ postId }: { postId: number }) {
     [],
   );
 
+  // Plan T2.9: the reels-format editor must warn when the post has no video link yet — the
+  // server render composites the cover onto the reel video's thumbnail and fails without one.
+  const isReelCover = query.data?.design.format === 'reel_cover';
+  const mediaQuery = useQuery({
+    queryKey: ['estudio-post-media', postId],
+    queryFn: () => listPostMedia(postId),
+    enabled: isReelCover,
+  });
+  const showReelVideoNotice =
+    isReelCover && mediaQuery.isSuccess && !mediaQuery.data.some((m) => m.kind === 'video');
+
   if (query.isLoading) {
     return (
       <div className="page-full-bleed flex items-center justify-center">
@@ -167,10 +203,15 @@ function EstudioEditorShell({ postId }: { postId: number }) {
 
   if (query.isError) {
     const err = query.error;
+    const code = err instanceof PostDesignError ? err.code : undefined;
     const message =
-      err instanceof PostDesignError && err.code === 'post_not_found'
+      code === 'post_not_found'
         ? t('editor.notFound')
-        : t('editor.loadError');
+        : code === 'feature_disabled'
+          ? t('featureBlocked')
+          : code === 'post_has_video_media'
+            ? t('editor.videoMediaBlocked')
+            : t('editor.loadError');
     return (
       <div className="page-full-bleed flex items-center justify-center">
         <p style={{ color: 'var(--danger)' }}>{message}</p>
@@ -195,6 +236,22 @@ function EstudioEditorShell({ postId }: { postId: number }) {
           {t('editor.layerCount', { count: layerCount })}
         </span>
       </div>
+      {showReelVideoNotice && (
+        <div
+          role="status"
+          data-testid="reel-video-notice"
+          style={{
+            padding: '0.5rem clamp(1.25rem, 3vw, 2.5rem)',
+            background: 'rgba(245, 163, 66, 0.12)',
+            borderBottom: '1px solid rgba(245, 163, 66, 0.4)',
+            color: 'var(--text-main)',
+            fontSize: '0.8rem',
+            flexShrink: 0,
+          }}
+        >
+          {t('editor.reelVideoNotice')}
+        </div>
+      )}
       <ContextualToolbar
         layer={selectedLayer}
         onUpdateLayer={onUpdateLayer}
@@ -207,7 +264,16 @@ function EstudioEditorShell({ postId }: { postId: number }) {
           onAddLayer={onAddLayer}
           pasteEnabled={!isTextEditing}
         />
-        <div style={{ flex: 1, minHeight: 0, minWidth: 0 }}>
+        <div
+          style={{ flex: 1, minHeight: 0, minWidth: 0 }}
+          // A dropped file outside the dock's drop zone would hit the browser default (navigate
+          // to the file), discarding the whole editor session. Swallow it — the dock rail is the
+          // designed drop target for inserts (design leaves the drop surface open; a canvas-wide
+          // insert can layer on later without this guard changing).
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => e.preventDefault()}
+          data-testid="estudio-canvas-area"
+        >
           <CanvasStage
             doc={state.doc}
             pageIndex={activePageIndex}

@@ -66,7 +66,15 @@ export function addLayer(
 
 /** Shallow-merges `patch` into the layer matching `layerId`. No-op if the page or layer doesn't
  * exist — a stale dispatch racing a concurrent removal shouldn't throw and abort an in-flight
- * gesture, and shouldn't leave a phantom undo entry either. */
+ * gesture, and shouldn't leave a phantom undo entry either.
+ *
+ * Also a no-op when `patch` is value-identical to the layer's current fields (zero-movement
+ * gestures, unchanged text-edit commits): the same doc reference back tells the reducer to skip
+ * the undo push, so phantom undo steps never destroy the redo stack.
+ *
+ * For text layers, enforces the schema's `text` XOR `runs` rule at this funnel: a patch setting
+ * one clears the other, so a de-styling edit ({ text }) can never leave stale `runs` behind
+ * (which would win at render and visibly revert the edit). */
 export function updateLayer(
   doc: DesignDoc,
   pageId: string,
@@ -74,12 +82,36 @@ export function updateLayer(
   patch: Partial<NormalizedLayer>,
 ): DesignDoc {
   return updatePage(doc, pageId, (page) => {
-    if (!page.layers.some((l) => l.id === layerId)) return page;
+    const target = page.layers.find((l) => l.id === layerId);
+    if (!target) return page;
+
+    const isNoop = Object.entries(patch).every(([key, value]) => {
+      const current = (target as unknown as Record<string, unknown>)[key];
+      if (Object.is(current, value)) return true;
+      // Structural values (runs arrays, highlight objects) are rebuilt by callers on every
+      // commit — compare by content, not reference.
+      return (
+        typeof value === 'object' &&
+        value !== null &&
+        typeof current === 'object' &&
+        current !== null &&
+        JSON.stringify(current) === JSON.stringify(value)
+      );
+    });
+    if (isNoop) return page;
+
     return {
       ...page,
-      layers: page.layers.map((layer) =>
-        layer.id === layerId ? ({ ...layer, ...patch } as NormalizedLayer) : layer,
-      ),
+      layers: page.layers.map((layer) => {
+        if (layer.id !== layerId) return layer;
+        const merged = { ...layer, ...patch } as NormalizedLayer;
+        if (layer.type === 'text') {
+          const asText = merged as { text?: string; runs?: unknown };
+          if ('text' in patch && !('runs' in patch)) delete asText.runs;
+          else if ('runs' in patch && !('text' in patch)) delete asText.text;
+        }
+        return merged;
+      }),
     };
   });
 }

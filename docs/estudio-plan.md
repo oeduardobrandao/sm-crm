@@ -30,10 +30,10 @@ Provenance: 7-drafter + 1-verifier workflow (`wf_cdaebfe4-abc`), then an externa
 | 1 | 1.5 | Render chaining (waitUntil) + sweep cron + migration 000004 |
 | 1 | 1.6 | `post-design-manage` fn + staging rollout + seeded-doc DoD + R1 load test |
 | 2 | 2.A | Deps, route/nav/i18n, doc-state core, picker + entry flow (T2.5 measurement spike runs FIRST) |
-| 2 | 2.B1 | Browser satori (standalone) + font loading + measurement cache + zoom/pan |
+| 2 | 2.B1 | Browser satori (standalone) + font loading + measurement cache + useCanvasTransform (fit-only) |
 | 2 | 2.B2 | Selection/drag/resize + snapping + IG safe-zone guides |
 | 2 | 2.C | ContextualToolbar + TipTap text overlay + image insert paths + SlideStrip |
-| 2 | 2.D | Autosave protocol + conflict banner + stash + **parity fixture** + integration tests |
+| 2 | 2.D | Autosave protocol + conflict banner + stash + **parity fixture** + integration tests + TopToolbar (save pill, undo/redo, zoom control) + zoom/pan gestures |
 | 3 | 3.A | Logo materialization (`POST post-design-manage/brand-logo`, full SSRF contract) |
 | 3 | 3.B | FontPicker + ColorPicker + BrandPanel + HubTab BrandEditor upgrade |
 | 4 | 4.A | Edge: design-readiness gate + publish-cron re-check + stale re-trigger + `origin` in post-media-manage |

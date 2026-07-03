@@ -36,7 +36,8 @@ import { Italic } from '@tiptap/extension-italic';
 import { TextStyle } from '@tiptap/extension-text-style';
 import Color from '@tiptap/extension-color';
 import Highlight from '@tiptap/extension-highlight';
-import { findFontFile } from '../../hooks/useFontManifest';
+import { Slice, Fragment, type Node as PMNode } from '@tiptap/pm/model';
+import { findFamily, findFontFile } from '../../hooks/useFontManifest';
 import {
   clampPatchToAvailableFonts,
   layerToTiptapDoc,
@@ -46,6 +47,51 @@ import {
 import type { CanvasPoint } from '../../hooks/useCanvasTransform';
 import type { LayerBBox } from '../../lib/layerGeometry';
 import type { NormalizedRun, NormalizedTextLayer } from '../../types';
+
+// The doc schema is single-paragraph only — stock Document (`block+`) would let a multi-line
+// paste create additional paragraphs that the commit mapping (doc.content[0]) silently drops.
+const SingleParagraphDocument = Document.extend({ content: 'paragraph' });
+
+// Bold with the run's REAL weight riding along (runsMapping.ts's `runToMarks` emits
+// `{ type: 'bold', attrs: { weight } }`): without a declared attribute TipTap strips unknown
+// attrs on load, collapsing a 600/800 bold run to the hardcoded default and silently restyling
+// it on the next commit. `renderHTML` also makes the editable text show its true weight.
+const BoldWithWeight = Bold.extend({
+  addAttributes() {
+    return {
+      weight: {
+        default: null,
+        parseHTML: (element: HTMLElement) => {
+          const w = parseInt(element.style.fontWeight || '', 10);
+          return Number.isFinite(w) ? w : null;
+        },
+        renderHTML: (attributes: { weight?: number | null }) =>
+          attributes.weight ? { style: `font-weight: ${attributes.weight}` } : {},
+      },
+    };
+  },
+});
+
+/** Flattens a pasted slice's textblocks into one hardBreak-joined inline sequence, so a
+ * multi-paragraph paste becomes visual line breaks inside the single allowed paragraph instead
+ * of blocks the schema can't hold (ProseMirror would otherwise join them with NO separator,
+ * gluing lines together). Inline-only slices (ordinary within-paragraph copy) pass through via
+ * the textblock walk too — a single block just contributes its content with no separator. */
+function flattenPastedBlocks(slice: Slice, hardBreak: () => PMNode): Slice {
+  const inline: PMNode[] = [];
+  let sawTextblock = false;
+  slice.content.descendants((node) => {
+    if (node.isTextblock) {
+      if (sawTextblock) inline.push(hardBreak());
+      sawTextblock = true;
+      node.content.forEach((child) => inline.push(child));
+      return false;
+    }
+    return true;
+  });
+  if (!sawTextblock) return slice;
+  return new Slice(Fragment.from(inline), 0, 0);
+}
 
 export interface TextEditOverlayProps {
   layer: NormalizedTextLayer;
@@ -114,21 +160,36 @@ export function TextEditOverlay({
     layer.font_style ?? 'normal',
   );
 
+  // Family-aware weight for a bold mark freshly toggled via Mod-b (no `weight` attr yet): the
+  // smallest shipped normal-style weight bolder than the layer's base. Families whose bold is
+  // 600 or 800 get THAT instead of a hardcoded 700 they may not ship; a family with nothing
+  // bolder resolves undefined and bold becomes a no-op rather than an unrenderable override.
+  const boldWeight = useMemo(() => {
+    const family = findFamily(layer.font_key);
+    if (!family) return undefined;
+    return family.variants
+      .filter((v) => v.style === 'normal' && v.weight > layer.font_weight)
+      .map((v) => v.weight as NormalizedTextLayer['font_weight'])
+      .sort((a, b) => a - b)[0];
+  }, [layer.font_key, layer.font_weight]);
+
   // TipTap's Bold/Italic marks (Mod-b/Mod-i) have no awareness of which variants `layer.font_key`
   // actually ships — clamping here, right before the patch ever reaches onCommit/the reducer,
   // prevents an unrenderable per-run (weight, style) combo from ever being saved (design-doc.ts's
   // validation only checks the LAYER's own font_weight/font_style, never per-run overrides — see
   // runsMapping.ts's clampPatchToAvailableFonts header comment for the full crash scenario this
   // prevents).
-  const commit = (doc: TiptapDoc) => {
-    if (settledRef.current) return;
-    settledRef.current = true;
-    const patch = clampPatchToAvailableFonts(
-      tiptapDocToLayerPatch(doc),
+  const buildPatch = (doc: TiptapDoc) =>
+    clampPatchToAvailableFonts(
+      tiptapDocToLayerPatch(doc, { boldWeight }),
       layer,
       (weight, style) => findFontFile(layer.font_key, weight, style) !== undefined,
     );
-    onCommit(patch);
+
+  const commit = (doc: TiptapDoc) => {
+    if (settledRef.current) return;
+    settledRef.current = true;
+    onCommit(buildPatch(doc));
   };
 
   const cancel = () => {
@@ -140,11 +201,11 @@ export function TextEditOverlay({
   const editor = useEditor(
     {
       extensions: [
-        Document,
+        SingleParagraphDocument,
         Paragraph,
         Text,
         HardBreak,
-        Bold,
+        BoldWithWeight,
         Italic,
         TextStyle,
         Color,
@@ -156,6 +217,8 @@ export function TextEditOverlay({
         attributes: {
           'data-testid': 'text-edit-overlay-editor',
         },
+        transformPasted: (slice, view) =>
+          flattenPastedBlocks(slice, () => view.state.schema.nodes.hardBreak.create()),
         handleKeyDown: (view, event) => {
           if (event.key === 'Enter' && !event.shiftKey) {
             event.preventDefault();
@@ -196,12 +259,7 @@ export function TextEditOverlay({
     return () => {
       if (settledRef.current || !editor) return;
       settledRef.current = true;
-      const patch = clampPatchToAvailableFonts(
-        tiptapDocToLayerPatch(editor.state.doc.toJSON() as TiptapDoc),
-        layer,
-        (weight, style) => findFontFile(layer.font_key, weight, style) !== undefined,
-      );
-      onCommit(patch);
+      onCommit(buildPatch(editor.state.doc.toJSON() as TiptapDoc));
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor]);

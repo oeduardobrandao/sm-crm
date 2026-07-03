@@ -5,9 +5,11 @@
 // by the parent as local component state (NOT persisted this PR — that's plan task T7.5).
 //
 // Exact numbers per §6.6 (do not invent different ones):
-//  - format 'feed' | 'carrossel' (canvas 1080x1350): a top danger zone ~150px tall (username
-//    chip) and a bottom danger zone ~250px tall (caption/CTA), both measured from their
-//    respective canvas edge.
+//  - format 'feed' | 'carrossel' AT 4:5 ONLY (canvas 1080x1350): a top danger zone ~150px tall
+//    (username chip) and a bottom danger zone ~250px tall (caption/CTA), both measured from
+//    their respective canvas edge. §6.6 scopes these values to the 4:5 display (they derive
+//    from IG's chrome placement over a 1350px-tall image) — a 1:1 canvas gets NO zones rather
+//    than misleading ones the spec never defined.
 //  - format 'carrossel' additionally shows a carousel-dots strip guide near the very bottom.
 //    §6.6 gives no exact px value for this one — JUDGMENT CALL (flagged for review): a 40px
 //    strip, visually distinct from (and inside/overlapping) the 250px caption/CTA zone, since
@@ -79,7 +81,10 @@ export function SafeZoneGuides({ format, canvasHeight, visible, scale }: SafeZon
     );
   }
 
-  // feed | carrossel
+  // feed | carrossel — §6.6's zones are defined for the 4:5 (1080x1350) display only; on a 1:1
+  // canvas the 4:5-derived pixel bands don't correspond to real IG chrome, so show nothing.
+  if (canvasHeight !== 1350) return null;
+
   return (
     <div
       style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}

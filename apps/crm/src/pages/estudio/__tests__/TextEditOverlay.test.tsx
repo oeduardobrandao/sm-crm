@@ -227,4 +227,23 @@ describe('TextEditOverlay', () => {
       expect(run.font_style).not.toBe('italic');
     }
   });
+
+  it('opens a layer whose text has blank lines/trailing newlines NON-empty and commits it losslessly', async () => {
+    // Regression: layerToTiptapDoc used to emit empty text nodes for "a\n\nb" — ProseMirror
+    // rejects those, TipTap silently fell back to EMPTY content, and this exact flow (open, then
+    // Enter without typing) wiped the layer's text.
+    const onCommit = vi.fn();
+    renderOverlay({ text: 'linha 1\n\nlinha 2\n' }, { onCommit });
+    const el = getEditableEl();
+
+    expect(el.textContent).toContain('linha 1');
+    expect(el.textContent).toContain('linha 2');
+
+    await act(async () => {
+      fireEvent.keyDown(el, { key: 'Enter' });
+    });
+
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    expect(onCommit.mock.calls[0][0]).toEqual({ text: 'linha 1\n\nlinha 2\n' });
+  });
 });

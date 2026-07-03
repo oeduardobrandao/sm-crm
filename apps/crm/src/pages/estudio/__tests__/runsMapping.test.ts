@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   clampPatchToAvailableFonts,
   layerToTiptapDoc,
+  normalizeHexColor,
   tiptapDocToLayerPatch,
   type TiptapDoc,
 } from '../lib/runsMapping';
@@ -43,16 +44,28 @@ describe('layerToTiptapDoc', () => {
     ]);
   });
 
-  it('splits multiple consecutive newlines into multiple hardBreaks with empty text between', () => {
+  it('splits consecutive newlines into consecutive hardBreaks with NO empty text nodes (ProseMirror forbids them)', () => {
+    // Regression: an empty text node here made TipTap's createNodeFromContent throw internally
+    // and silently fall back to EMPTY content — the layer opened as a blank editor and the next
+    // commit wiped its text.
     const layer = makeTextLayer({ text: 'a\n\nb' }) as NormalizedTextLayer;
     const doc = layerToTiptapDoc(layer);
     expect(doc.content[0].content).toEqual([
       { type: 'text', text: 'a' },
       { type: 'hardBreak' },
-      { type: 'text', text: '' },
       { type: 'hardBreak' },
       { type: 'text', text: 'b' },
     ]);
+  });
+
+  it('emits no empty text nodes for leading/trailing newlines, and they round-trip losslessly', () => {
+    for (const text of ['texto\n', '\ntexto', 'a\n\nb', '\n', 'linha 1\n\nlinha 2\n']) {
+      const layer = makeTextLayer({ text }) as NormalizedTextLayer;
+      const doc = layerToTiptapDoc(layer);
+      const nodes = doc.content[0].content ?? [];
+      expect(nodes.every((n) => n.type === 'hardBreak' || n.text !== '')).toBe(true);
+      expect(tiptapDocToLayerPatch(doc)).toEqual({ text });
+    }
   });
 
   it('maps a bold run (font_weight strictly greater than layer base) to a bold mark', () => {
@@ -63,7 +76,7 @@ describe('layerToTiptapDoc', () => {
     }) as NormalizedTextLayer;
     const doc = layerToTiptapDoc(layer);
     expect(doc.content[0].content).toEqual([
-      { type: 'text', text: 'bold text', marks: [{ type: 'bold' }] },
+      { type: 'text', text: 'bold text', marks: [{ type: 'bold', attrs: { weight: 700 } }] },
     ]);
   });
 
@@ -148,7 +161,7 @@ describe('layerToTiptapDoc', () => {
         type: 'text',
         text: 'combo',
         marks: [
-          { type: 'bold' },
+          { type: 'bold', attrs: { weight: 800 } },
           { type: 'italic' },
           { type: 'textStyle', attrs: { color: '#00ff00' } },
           { type: 'highlight', attrs: { color: '#0000ff' } },
@@ -165,9 +178,9 @@ describe('layerToTiptapDoc', () => {
     }) as NormalizedTextLayer;
     const doc = layerToTiptapDoc(layer);
     expect(doc.content[0].content).toEqual([
-      { type: 'text', text: 'line one', marks: [{ type: 'bold' }] },
+      { type: 'text', text: 'line one', marks: [{ type: 'bold', attrs: { weight: 700 } }] },
       { type: 'hardBreak' },
-      { type: 'text', text: 'line two', marks: [{ type: 'bold' }] },
+      { type: 'text', text: 'line two', marks: [{ type: 'bold', attrs: { weight: 700 } }] },
     ]);
   });
 
@@ -180,7 +193,7 @@ describe('layerToTiptapDoc', () => {
     const doc = layerToTiptapDoc(layer);
     expect(doc.content[0].content).toEqual([
       { type: 'text', text: 'plain ' },
-      { type: 'text', text: 'bold', marks: [{ type: 'bold' }] },
+      { type: 'text', text: 'bold', marks: [{ type: 'bold', attrs: { weight: 700 } }] },
       { type: 'text', text: ' plain again' },
     ]);
   });
@@ -529,6 +542,100 @@ describe('clampPatchToAvailableFonts', () => {
     );
     expect(patch).toEqual({
       runs: [{ text: 'colored', font_weight: undefined, color: '#ff0000' }],
+    });
+  });
+});
+
+describe('normalizeHexColor', () => {
+  it('passes 6- and 8-digit hex through lowercased', () => {
+    expect(normalizeHexColor('#F5C343')).toBe('#f5c343');
+    expect(normalizeHexColor('#f5c34380')).toBe('#f5c34380');
+  });
+
+  it('expands 3- and 4-digit hex shorthand', () => {
+    expect(normalizeHexColor('#abc')).toBe('#aabbcc');
+    expect(normalizeHexColor('#abcd')).toBe('#aabbccdd');
+  });
+
+  it('converts rgb()/rgba() (the CSSOM serialization of pasted colors) to hex', () => {
+    expect(normalizeHexColor('rgb(245, 195, 67)')).toBe('#f5c343');
+    expect(normalizeHexColor('rgba(0, 0, 0, 0.5)')).toBe('#00000080');
+    expect(normalizeHexColor('rgba(255, 255, 255, 1)')).toBe('#ffffff');
+  });
+
+  it('rejects named colors, gradients and anything else non-normalizable', () => {
+    expect(normalizeHexColor('red')).toBeUndefined();
+    expect(normalizeHexColor('var(--primary)')).toBeUndefined();
+    expect(normalizeHexColor('linear-gradient(#000, #fff)')).toBeUndefined();
+    expect(normalizeHexColor('')).toBeUndefined();
+  });
+});
+
+describe('tiptapDocToLayerPatch — pasted-color normalization (schema hex contract)', () => {
+  it('normalizes rgb() textStyle/highlight colors to hex instead of writing schema-invalid runs', () => {
+    const doc = makeDoc([
+      {
+        type: 'text',
+        text: 'colado',
+        marks: [
+          { type: 'textStyle', attrs: { color: 'rgb(245, 195, 67)' } },
+          { type: 'highlight', attrs: { color: 'rgba(0, 0, 0, 0.25)' } },
+        ],
+      },
+    ]);
+    expect(tiptapDocToLayerPatch(doc)).toEqual({
+      runs: [{ text: 'colado', color: '#f5c343', highlight: { color: '#00000040' } }],
+    });
+  });
+
+  it('drops un-normalizable colors entirely (run falls back to the layer base color)', () => {
+    const doc = makeDoc([
+      {
+        type: 'text',
+        text: 'nomeado',
+        marks: [{ type: 'textStyle', attrs: { color: 'red' } }, { type: 'italic' }],
+      },
+    ]);
+    expect(tiptapDocToLayerPatch(doc)).toEqual({
+      runs: [{ text: 'nomeado', font_style: 'italic' }],
+    });
+  });
+});
+
+describe('tiptapDocToLayerPatch — family-aware bold weight', () => {
+  it('prefers the weight the bold mark itself carries (600/800 bold rounds-trip unchanged)', () => {
+    const doc = makeDoc([
+      { type: 'text', text: 'oito', marks: [{ type: 'bold', attrs: { weight: 800 } }] },
+    ]);
+    expect(tiptapDocToLayerPatch(doc, { boldWeight: 600 })).toEqual({
+      runs: [{ text: 'oito', font_weight: 800 }],
+    });
+  });
+
+  it('falls back to the caller-resolved family bold weight for attr-less marks (fresh Mod-b)', () => {
+    const doc = makeDoc([{ type: 'text', text: 'novo', marks: [{ type: 'bold' }] }]);
+    expect(tiptapDocToLayerPatch(doc, { boldWeight: 600 })).toEqual({
+      runs: [{ text: 'novo', font_weight: 600 }],
+    });
+  });
+
+  it('falls back to 700 when no family weight was resolved (legacy contract)', () => {
+    const doc = makeDoc([{ type: 'text', text: 'padrao', marks: [{ type: 'bold' }] }]);
+    expect(tiptapDocToLayerPatch(doc)).toEqual({
+      runs: [{ text: 'padrao', font_weight: 700 }],
+    });
+  });
+
+  it('does NOT coalesce adjacent bold segments of different weights into one run', () => {
+    const doc = makeDoc([
+      { type: 'text', text: 'seis', marks: [{ type: 'bold', attrs: { weight: 600 } }] },
+      { type: 'text', text: 'oito', marks: [{ type: 'bold', attrs: { weight: 800 } }] },
+    ]);
+    expect(tiptapDocToLayerPatch(doc)).toEqual({
+      runs: [
+        { text: 'seis', font_weight: 600 },
+        { text: 'oito', font_weight: 800 },
+      ],
     });
   });
 });

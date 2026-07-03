@@ -377,7 +377,7 @@ pages/estudio/
                              # useEstudioEntryFlow, useSatoriRenderer, useFontManifest,
                              # useCanvasTransform, useSelection, useSnapping
   components/
-    PostPicker/              # client → workflow → post cascade, or "Criar novo"
+    PostPicker/              # client → post list (workflow shown per row), or "Criar novo"
     Toolbar/                 # TopToolbar (save pill, undo/redo, zoom, Gerar arte) + ContextualToolbar (per layer type)
     Dock/                    # LeftToolDock (add text/image/shape/AI/brand) + BrandPanel
     Canvas/                  # CanvasStage (+ toggleable IG safe-zone guides), SatoriPreview (SVG), InteractionOverlay, LayerHandles, TextEditOverlay

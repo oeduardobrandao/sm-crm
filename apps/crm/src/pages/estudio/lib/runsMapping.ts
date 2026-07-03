@@ -4,7 +4,9 @@
 // "pure, testable in isolation" style of `lib/layerGeometry.ts` / `lib/snapMath.ts`.
 //
 // Mark shapes (confirmed by reading the installed extension source, not guessed):
-//   - `@tiptap/extension-bold`   -> mark `{ type: 'bold' }` (no attrs)
+//   - `@tiptap/extension-bold`   -> mark `{ type: 'bold' }` (no attrs upstream; the overlay
+//     extends it with a `weight` attr so non-700 bold runs survive the round trip — see
+//     `runToMarks`/`marksToRunFields`)
 //   - `@tiptap/extension-italic` -> mark `{ type: 'italic' }` (no attrs)
 //   - `@tiptap/extension-text-style` + `@tiptap/extension-color` -> mark
 //     `{ type: 'textStyle', attrs: { color } }` (Color is a thin global-attribute extension on
@@ -31,7 +33,7 @@ import type { FontWeight, NormalizedRun, NormalizedTextLayer } from '../types';
 
 export interface TiptapMark {
   type: 'bold' | 'italic' | 'textStyle' | 'highlight';
-  attrs?: { color?: string | null };
+  attrs?: { color?: string | null; weight?: FontWeight | null };
 }
 
 export interface TiptapTextNode {
@@ -65,20 +67,24 @@ export type TextLayerPatch = { text: string } | { runs: NormalizedRun[] };
 // ============================================================
 
 /** Splits a string on literal "\n" into inline nodes: plain text segments interleaved with
- * hardBreak nodes (one per newline). A run/layer text of "" produces a single empty text node
- * (never zero nodes) so marks/coalescing has something to attach to; callers that don't want an
- * empty text node (e.g. a fully-empty layer) special-case that themselves. `marks` (if any) is
- * attached to every text segment produced, not to the hardBreak nodes (hardBreak nodes never
- * carry marks in this mapping — matching how design-render-tree.ts applies run-level styling to
- * the whole run string, newlines included, so re-attaching marks per segment on the way back in
- * keeps round-tripping stable). */
+ * hardBreak nodes (one per newline). Empty segments (leading/trailing/consecutive "\n") emit NO
+ * text node — ProseMirror forbids empty text nodes ("Empty text nodes are not allowed"), and
+ * TipTap's createNodeFromContent reacts to that by silently falling back to EMPTY content, so a
+ * single empty node here would open the whole layer as a blank editor and the next commit would
+ * wipe its text. The hardBreaks alone round-trip the newlines (tiptapDocToLayerPatch appends "\n"
+ * per hardBreak). `marks` (if any) is attached to every text segment produced, not to the
+ * hardBreak nodes (hardBreak nodes never carry marks in this mapping — matching how
+ * design-render-tree.ts applies run-level styling to the whole run string, newlines included, so
+ * re-attaching marks per segment on the way back in keeps round-tripping stable). */
 function splitIntoInlineNodes(text: string, marks: TiptapMark[] | undefined): TiptapInlineNode[] {
   const parts = text.split('\n');
   const nodes: TiptapInlineNode[] = [];
   parts.forEach((part, i) => {
-    const node: TiptapTextNode = { type: 'text', text: part };
-    if (marks && marks.length > 0) node.marks = marks;
-    nodes.push(node);
+    if (part !== '') {
+      const node: TiptapTextNode = { type: 'text', text: part };
+      if (marks && marks.length > 0) node.marks = marks;
+      nodes.push(node);
+    }
     if (i < parts.length - 1) nodes.push({ type: 'hardBreak' });
   });
   return nodes;
@@ -100,7 +106,12 @@ function splitIntoInlineNodes(text: string, marks: TiptapMark[] | undefined): Ti
 function runToMarks(run: NormalizedRun, layer: NormalizedTextLayer): TiptapMark[] {
   const marks: TiptapMark[] = [];
   if (run.font_weight != null && run.font_weight > layer.font_weight) {
-    marks.push({ type: 'bold' });
+    // The run's ACTUAL weight rides along as a mark attr so a family whose bold is 600 or 800
+    // round-trips unchanged instead of collapsing to a hardcoded 700 (which some families don't
+    // even ship — the clamp pass would then strip it and silently un-bold the run). The overlay's
+    // Bold extension declares this attr so TipTap preserves it through editing; a NEW bold mark
+    // toggled via Mod-b has no attr and falls back to the caller-resolved family default.
+    marks.push({ type: 'bold', attrs: { weight: run.font_weight } });
   }
   if (run.font_style === 'italic') {
     marks.push({ type: 'italic' });
@@ -146,24 +157,71 @@ export function layerToTiptapDoc(layer: NormalizedTextLayer): TiptapDoc {
  * coalescing. */
 function markSetKey(marks: TiptapMark[] | undefined): string {
   if (!marks || marks.length === 0) return '';
-  return [...marks]
-    .sort((a, b) => a.type.localeCompare(b.type))
-    .map((m) => `${m.type}:${m.attrs?.color ?? ''}`)
-    .join('|');
+  return (
+    [...marks]
+      .sort((a, b) => a.type.localeCompare(b.type))
+      // `weight` participates so two adjacent bold segments of DIFFERENT weights (600 vs 800)
+      // never coalesce into one run.
+      .map((m) => `${m.type}:${m.attrs?.color ?? ''}:${m.attrs?.weight ?? ''}`)
+      .join('|')
+  );
+}
+
+/** Normalizes a TipTap mark color to the doc schema's `#rrggbb[aa]` contract, or `undefined`
+ * when it can't be expressed as one. TipTap's Color/Highlight extensions parse pasted HTML
+ * through CSSOM, which serializes colors as `rgb(...)`/`rgba(...)` even when the source markup
+ * was hex — written verbatim into a run those values fail design-doc.ts's hex regex and 400 the
+ * whole PUT. Un-normalizable values (named colors, gradients, var()) are DROPPED rather than
+ * guessed: the run falls back to the layer's base color. */
+export function normalizeHexColor(value: string): string | undefined {
+  const v = value.trim().toLowerCase();
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/.exec(v);
+  if (hex) {
+    const h = hex[1];
+    if (h.length === 6 || h.length === 8) return `#${h}`;
+    return `#${[...h].map((c) => c + c).join('')}`;
+  }
+  const rgb =
+    /^rgba?\(\s*(\d{1,3})\s*[, ]\s*(\d{1,3})\s*[, ]\s*(\d{1,3})\s*(?:[,/]\s*([\d.]+%?)\s*)?\)$/.exec(
+      v,
+    );
+  if (rgb) {
+    const to2 = (n: number) =>
+      Math.max(0, Math.min(255, Math.round(n)))
+        .toString(16)
+        .padStart(2, '0');
+    const channels =
+      to2(parseInt(rgb[1], 10)) + to2(parseInt(rgb[2], 10)) + to2(parseInt(rgb[3], 10));
+    if (rgb[4] === undefined) return `#${channels}`;
+    const alpha = rgb[4].endsWith('%') ? parseFloat(rgb[4]) / 100 : parseFloat(rgb[4]);
+    if (Number.isNaN(alpha)) return undefined;
+    const a = Math.max(0, Math.min(255, Math.round(alpha * 255)));
+    return a >= 255 ? `#${channels}` : `#${channels}${to2(a)}`;
+  }
+  return undefined;
 }
 
 function marksToRunFields(
   marks: TiptapMark[] | undefined,
+  boldWeight: FontWeight | undefined,
 ): Pick<NormalizedRun, 'font_weight' | 'font_style' | 'color' | 'highlight'> {
   const fields: Pick<NormalizedRun, 'font_weight' | 'font_style' | 'color' | 'highlight'> = {};
   for (const mark of marks ?? []) {
-    if (mark.type === 'bold') fields.font_weight = 700;
-    else if (mark.type === 'italic') fields.font_style = 'italic';
-    else if (mark.type === 'textStyle' && mark.attrs?.color) fields.color = mark.attrs.color;
-    else if (mark.type === 'highlight' && mark.attrs?.color) {
+    if (mark.type === 'bold') {
+      // Precedence: the weight the mark itself carries (a pre-existing bold run round-tripping
+      // its real 600/800) -> the caller-resolved family default for marks freshly toggled via
+      // Mod-b -> 700 (the generic CSS bold) for callers that resolve nothing. An unrenderable
+      // final value is still the clamp pass's problem, as before.
+      fields.font_weight = mark.attrs?.weight ?? boldWeight ?? 700;
+    } else if (mark.type === 'italic') fields.font_style = 'italic';
+    else if (mark.type === 'textStyle' && mark.attrs?.color) {
+      const color = normalizeHexColor(mark.attrs.color);
+      if (color) fields.color = color;
+    } else if (mark.type === 'highlight' && mark.attrs?.color) {
       // padding_x/radius are never reconstructed here — see the matching comment in
       // `runToMarks` above; this is the read-back half of that same documented lossy edge.
-      fields.highlight = { color: mark.attrs.color };
+      const color = normalizeHexColor(mark.attrs.color);
+      if (color) fields.highlight = { color };
     }
   }
   return fields;
@@ -178,7 +236,15 @@ function marksToRunFields(
  * marks anywhere, returns `{ text }` (flattened, hardBreaks -> "\n") instead of a single-run
  * `runs` array — matching how a freshly-typed, never-styled layer should round-trip. An empty
  * paragraph (no content, or content with no text) returns `{ text: '' }`. */
-export function tiptapDocToLayerPatch(doc: TiptapDoc): TextLayerPatch {
+export function tiptapDocToLayerPatch(
+  doc: TiptapDoc,
+  opts?: {
+    /** Family-aware weight a freshly-toggled bold mark (no `weight` attr) resolves to — the
+     * caller looks up the layer's font in the manifest (e.g. smallest shipped weight bolder than
+     * the layer's base). Absent -> bold marks without an attr produce no weight override. */
+    boldWeight?: FontWeight;
+  },
+): TextLayerPatch {
   const paragraph = doc.content[0];
   const inlineNodes = paragraph?.content ?? [];
 
@@ -202,7 +268,7 @@ export function tiptapDocToLayerPatch(doc: TiptapDoc): TextLayerPatch {
 
   const flushRun = () => {
     if (!hasOpenRun) return;
-    runs.push({ text: currentText, ...marksToRunFields(currentMarks) });
+    runs.push({ text: currentText, ...marksToRunFields(currentMarks, opts?.boldWeight) });
     currentText = '';
     currentMarks = undefined;
     hasOpenRun = false;

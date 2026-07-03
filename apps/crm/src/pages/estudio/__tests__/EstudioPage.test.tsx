@@ -116,6 +116,23 @@ vi.mock('@/pages/arquivos/components/FilePickerModal', () => ({
   FilePickerModal: () => null,
 }));
 
+// Controllable per-test post media (reels notice — plan T2.9's "no video link" condition).
+let mockPostMedia: Array<{ kind: string }> = [];
+vi.mock('@/services/postMedia', () => ({
+  listPostMedia: vi.fn(() => Promise.resolve(mockPostMedia)),
+}));
+
+const cleanupAbandonedDraft = vi.fn();
+vi.mock('../hooks/useEstudioEntryFlow', async () => {
+  const actual = await vi.importActual<typeof import('../hooks/useEstudioEntryFlow')>(
+    '../hooks/useEstudioEntryFlow',
+  );
+  return {
+    ...actual,
+    cleanupAbandonedDraft: (...args: unknown[]) => cleanupAbandonedDraft(...args),
+  };
+});
+
 const usePostDesignQuery = vi.fn();
 vi.mock('../hooks/usePostDesignQuery', async () => {
   const actual = await vi.importActual<typeof import('../hooks/usePostDesignQuery')>(
@@ -130,11 +147,11 @@ import { PostDesignError } from '../hooks/usePostDesignQuery';
 // EstudioPage now also drives `useTextMeasurement` (T2.6/T2.7) directly, which calls
 // `useFontManifest`'s `useQuery` — needs a real QueryClientProvider even though
 // `usePostDesignQuery` itself is mocked out above.
-function renderAt(path: string) {
+function renderAt(path: string, state?: unknown) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[path]}>
+      <MemoryRouter initialEntries={[state === undefined ? path : { pathname: path, state }]}>
         <Routes>
           <Route path="/estudio" element={<EstudioPage />} />
           <Route path="/estudio/:postId" element={<EstudioPage />} />
@@ -206,6 +223,112 @@ describe('EstudioPage', () => {
     });
     renderAt('/estudio/42');
     expect(screen.getByText('Não foi possível carregar o design.')).toBeInTheDocument();
+  });
+
+  it('shows the plan-blocked message for a feature_disabled error, not the generic one', () => {
+    usePostDesignQuery.mockReturnValue({
+      isLoading: false,
+      isError: true,
+      error: new PostDesignError('feature_disabled', 403, null),
+    });
+    renderAt('/estudio/42');
+    expect(screen.getByText(/não está disponível no seu plano/i)).toBeInTheDocument();
+  });
+
+  it('shows the video-media explanation for a post_has_video_media error', () => {
+    usePostDesignQuery.mockReturnValue({
+      isLoading: false,
+      isError: true,
+      error: new PostDesignError('post_has_video_media', 400, null),
+    });
+    renderAt('/estudio/42');
+    expect(screen.getByText(/este post tem vídeo/i)).toBeInTheDocument();
+  });
+
+  it('shows the "adicione o vídeo do reel" notice on a reel_cover design whose post has no video link', async () => {
+    mockPostMedia = [{ kind: 'image' }];
+    const doc = makeDoc({ format: 'reel_cover' });
+    usePostDesignQuery.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: { design: doc, rev: 1, render: { status: 'pending', pages: [] } },
+    });
+    renderAt('/estudio/42');
+    expect(await screen.findByTestId('reel-video-notice')).toBeInTheDocument();
+  });
+
+  it('cleans up a synthetic "Criar novo" draft abandoned with zero layers (T2.3)', () => {
+    cleanupAbandonedDraft.mockClear();
+    usePostDesignQuery.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        design: makeDoc({ pages: [makePage({ layers: [] })] }),
+        rev: 1,
+        render: { status: 'pending', pages: [] },
+      },
+    });
+    const { unmount } = renderAt('/estudio/42', {
+      estudioSyntheticDraft: { workflowId: 5, postId: 42 },
+    });
+    unmount();
+    expect(cleanupAbandonedDraft).toHaveBeenCalledWith(42, 5);
+  });
+
+  it('does NOT clean up when the user added a layer, or when the editor was not entered via "Criar novo"', () => {
+    cleanupAbandonedDraft.mockClear();
+    usePostDesignQuery.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        design: makeDoc({ pages: [makePage({ layers: [] })] }),
+        rev: 1,
+        render: { status: 'pending', pages: [] },
+      },
+    });
+
+    // Layer added during the session -> the draft is no longer "abandoned".
+    const withLayer = renderAt('/estudio/42', {
+      estudioSyntheticDraft: { workflowId: 5, postId: 42 },
+    });
+    fireEvent.click(screen.getByText('stub-add-layer'));
+    withLayer.unmount();
+    expect(cleanupAbandonedDraft).not.toHaveBeenCalled();
+
+    // No router-state marker (existing post opened from the picker) -> never cleaned up.
+    const noMarker = renderAt('/estudio/42');
+    noMarker.unmount();
+    expect(cleanupAbandonedDraft).not.toHaveBeenCalled();
+  });
+
+  it('hides the reel-video notice once the post has a video link, and for non-reel formats', async () => {
+    mockPostMedia = [{ kind: 'video' }];
+    const doc = makeDoc({ format: 'reel_cover' });
+    usePostDesignQuery.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: { design: doc, rev: 1, render: { status: 'pending', pages: [] } },
+    });
+    const { unmount } = renderAt('/estudio/42');
+    // The media query resolves async — settle it, then assert absence.
+    await screen.findByText(/canvas-stage-stub/);
+    await Promise.resolve();
+    expect(screen.queryByTestId('reel-video-notice')).not.toBeInTheDocument();
+    unmount();
+
+    mockPostMedia = [];
+    usePostDesignQuery.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        design: makeDoc({ format: 'feed' }),
+        rev: 1,
+        render: { status: 'pending', pages: [] },
+      },
+    });
+    renderAt('/estudio/43');
+    await screen.findByText(/canvas-stage-stub/);
+    expect(screen.queryByTestId('reel-video-notice')).not.toBeInTheDocument();
   });
 
   it('renders the page/layer summary once the design loads', () => {

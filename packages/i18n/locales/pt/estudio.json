@@ -22,7 +22,9 @@
     "canvasComingSoon": "O canvas de edição chega na próxima atualização.",
     "rendering": "Renderizando...",
     "renderError": "Não foi possível renderizar este design.",
-    "safeZoneToggle": "Guias de área segura"
+    "safeZoneToggle": "Guias de área segura",
+    "reelVideoNotice": "Adicione o vídeo do reel ao post — o Estúdio cria apenas a capa, e a renderização precisa do vídeo.",
+    "videoMediaBlocked": "Este post tem vídeo — o Estúdio não pode criar um design de feed/carrossel para ele."
   },
   "openInEstudio": "Abrir no Estúdio",
   "dock": {
@@ -74,5 +76,6 @@
   },
   "toast": {
     "createError": "Não foi possível criar o design: {{error}}"
-  }
+  },
+  "featureBlocked": "O Estúdio não está disponível no seu plano atual. Fale com o suporte para fazer upgrade."
 }

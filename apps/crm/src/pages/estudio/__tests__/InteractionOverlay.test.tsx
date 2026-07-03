@@ -371,7 +371,7 @@ describe('SafeZoneGuides toggle', () => {
   });
 
   it('safe-zone guides are visible by default and toggle off/on via the corner button', () => {
-    renderStage();
+    renderStage({ canvasHeight: 1350 });
     expect(screen.getByTestId('safe-zone-guides')).toBeInTheDocument();
 
     const toggle = screen.getByRole('button');
@@ -382,19 +382,26 @@ describe('SafeZoneGuides toggle', () => {
     expect(screen.getByTestId('safe-zone-guides')).toBeInTheDocument();
   });
 
-  it('renders top/bottom danger zones (no carousel strip) for feed format', () => {
-    renderStage({ format: 'feed' });
+  it('renders top/bottom danger zones (no carousel strip) for feed format at 4:5', () => {
+    renderStage({ format: 'feed', canvasHeight: 1350 });
     expect(screen.getByTestId('safe-zone-top')).toBeInTheDocument();
     expect(screen.getByTestId('safe-zone-bottom')).toBeInTheDocument();
     expect(screen.queryByTestId('safe-zone-carousel-dots')).not.toBeInTheDocument();
     expect(screen.queryByTestId('safe-zone-reel-crop')).not.toBeInTheDocument();
   });
 
-  it('renders an additional carousel-dots strip guide for carrossel format', () => {
-    renderStage({ format: 'carrossel' });
+  it('renders an additional carousel-dots strip guide for carrossel format at 4:5', () => {
+    renderStage({ format: 'carrossel', canvasHeight: 1350 });
     expect(screen.getByTestId('safe-zone-top')).toBeInTheDocument();
     expect(screen.getByTestId('safe-zone-bottom')).toBeInTheDocument();
     expect(screen.getByTestId('safe-zone-carousel-dots')).toBeInTheDocument();
+  });
+
+  it('renders NO danger zones on a 1:1 canvas — §6.6 scopes the zones to the 4:5 display', () => {
+    // Regression: the 150/250px bands derive from IG chrome over a 1350px-tall image; rendering
+    // them on 1080x1080 covered ~37% of the canvas with zones the design never defined.
+    renderStage({ format: 'feed', canvasHeight: 1080 });
+    expect(screen.queryByTestId('safe-zone-guides')).not.toBeInTheDocument();
   });
 
   it('renders the center 3:4 grid-crop box (not top/bottom danger zones) for reel_cover format', () => {
@@ -406,17 +413,24 @@ describe('SafeZoneGuides toggle', () => {
   });
 
   it('renders the danger zones at their exact canvas-space pixel size when scale is 1', () => {
-    // stubContainerAndBoxGeometry's 1064x1064 container against a 1000x1000 doc canvas resolves
-    // to scale===1 (see that helper's own comment) — this pins down the un-scaled baseline before
-    // the next test proves the values genuinely scale down at a smaller fit.
-    renderStage({ format: 'feed' });
+    // A 1500x1500 container against the 1000x1350 doc canvas resolves to scale===1 — this pins
+    // down the un-scaled baseline before the next test proves the values genuinely scale down.
+    Object.defineProperty(HTMLDivElement.prototype, 'clientWidth', {
+      value: 1500,
+      configurable: true,
+    });
+    Object.defineProperty(HTMLDivElement.prototype, 'clientHeight', {
+      value: 1500,
+      configurable: true,
+    });
+    renderStage({ format: 'feed', canvasHeight: 1350 });
     expect(screen.getByTestId('safe-zone-top')).toHaveStyle({ height: '150px' });
     expect(screen.getByTestId('safe-zone-bottom')).toHaveStyle({ height: '250px' });
   });
 
   it('scales every safe-zone pixel value by the actual fit scale, not the raw canvas-space constant', () => {
-    // A 500x500 container against a 1000x1000 doc canvas: availableWidth/Height = 500 - 64 = 436,
-    // fitScale = min(436/1000, 436/1000, 1) = 0.436. SafeZoneGuides is rendered inside a canvas-box
+    // A 500x500 container against a 1000x1350 doc canvas: availableWidth/Height = 500 - 64 = 436,
+    // fitScale = min(436/1000, 436/1350, 1) = 436/1350. SafeZoneGuides is rendered inside a canvas-box
     // wrapper sized at `doc.canvas.width * scale` (screen space) — every one of its own
     // canvas-space pixel constants (150/250/40/1080/1440) must be multiplied by that SAME scale,
     // or the guides render at their native, un-scaled size regardless of how small the box actually
@@ -430,9 +444,9 @@ describe('SafeZoneGuides toggle', () => {
       value: 500,
       configurable: true,
     });
-    const expectedScale = 436 / 1000;
+    const expectedScale = 436 / 1350;
 
-    renderStage({ format: 'feed' });
+    renderStage({ format: 'feed', canvasHeight: 1350 });
     const top = screen.getByTestId('safe-zone-top');
     const bottom = screen.getByTestId('safe-zone-bottom');
     expect(top.style.height).toBe(`${150 * expectedScale}px`);
@@ -451,9 +465,9 @@ describe('SafeZoneGuides toggle', () => {
       value: 500,
       configurable: true,
     });
-    const expectedScale = 436 / 1000; // 1000x1000 doc canvas (renderStage's default)
+    const expectedScale = 436 / 1350; // 1000x1350 doc canvas (4:5 — the only height with zones)
 
-    renderStage({ format: 'carrossel' });
+    renderStage({ format: 'carrossel', canvasHeight: 1350 });
     expect(screen.getByTestId('safe-zone-carousel-dots').style.height).toBe(
       `${40 * expectedScale}px`,
     );

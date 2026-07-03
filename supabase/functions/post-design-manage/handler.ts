@@ -204,10 +204,19 @@ export function createPostDesignManageHandler(deps: PostDesignManageDeps) {
         const format = starterFormatForTipo(post.tipo);
         if (!format) return json({ error: "unsupported_post_tipo" }, 400);
 
+        const postHasVideoMedia = await deps.hasVideoMedia(postId);
+        // Designed blocked state, not an internal bug: a feed/carrossel post with video media
+        // can never hold a design (design §5.4 post_has_video_media). Surface it as itself —
+        // funneling it into the starter-doc validation below masked it as a 500 internal_error
+        // and the editor showed a generic load failure with no way for the user to understand.
+        if (format !== "reel_cover" && postHasVideoMedia) {
+          return json({ error: "post_has_video_media" }, 400);
+        }
+
         const coverFileId = format === "reel_cover" ? null : await deps.getCoverFileId(postId, contaId);
         const ctx: ValidationContext = {
           postTipo: post.tipo,
-          postHasVideoMedia: await deps.hasVideoMedia(postId),
+          postHasVideoMedia,
           fonts: deps.fonts,
           checkFileIds: (ids) => deps.checkFileIds(ids, contaId),
         };

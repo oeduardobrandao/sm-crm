@@ -546,3 +546,31 @@ Deno.test("DELETE: a successful delete calls the RPC and audits minimal metadata
   assertEquals(spy.auditCalls[0].action, "delete");
   assertEquals(spy.auditCalls[0].metadata, { post_id: POST_ID });
 });
+
+Deno.test("GET: a feed post with video media surfaces post_has_video_media (not a masked 500)", async () => {
+  // Regression: this designed blocked state (design §5.4) used to fall through to the
+  // starter-doc validation, which reported it as internal_error 500 — the editor showed a
+  // generic load failure with no explanation.
+  const { deps, spy } = makeDeps({
+    getPost: async () => makePostRow({ tipo: "feed" }),
+    hasVideoMedia: async () => true,
+  });
+  const handler = createPostDesignManageHandler(deps);
+  const res = await handler(makeReq("GET", { search: `?post_id=${POST_ID}` }));
+  assertEquals(res.status, 400);
+  const body = await res.json();
+  assertEquals(body, { error: "post_has_video_media" });
+  // Not an internal bug — nothing should be error-logged, and no design row gets created.
+  assertEquals(spy.loggedErrors.length, 0);
+  assertEquals(spy.auditCalls.length, 0);
+});
+
+Deno.test("GET: a reels post with video media still creates its starter design normally", async () => {
+  const { deps } = makeDeps({
+    getPost: async () => makePostRow({ tipo: "reels" }),
+    hasVideoMedia: async () => true,
+  });
+  const handler = createPostDesignManageHandler(deps);
+  const res = await handler(makeReq("GET", { search: `?post_id=${POST_ID}` }));
+  assertEquals(res.status, 200);
+});
