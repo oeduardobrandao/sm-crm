@@ -12,7 +12,7 @@
 // (`inset: 0`) siblings. A pointer event's position relative to that box's own
 // `getBoundingClientRect()` then feeds directly into `screenToCanvas` (divide by scale, no extra
 // offset math needed).
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSatoriRenderer } from '../../hooks/useSatoriRenderer';
 import { useCanvasTransform } from '../../hooks/useCanvasTransform';
@@ -40,6 +40,10 @@ export interface CanvasStageProps {
   /** Passed straight through to InteractionOverlay's own `onEditingChange` — see that prop's doc
    * comment. Optional: callers that don't need the signal (e.g. existing tests) simply omit it. */
   onEditingChange?: (isEditing: boolean) => void;
+  /** Reports the live view state (effective scale + a stable reset) upward so the TopToolbar's
+   * zoom control — which lives OUTSIDE this component (design §6.1) — can display and reset it
+   * without lifting the whole transform out of the stage. Optional: tests omit it. */
+  onViewChange?: (view: { scale: number; resetView: () => void }) => void;
 }
 
 export function CanvasStage({
@@ -50,14 +54,17 @@ export function CanvasStage({
   onUpdateLayer,
   getTextHeight,
   onEditingChange,
+  onViewChange,
 }: CanvasStageProps) {
   const { t } = useTranslation('estudio');
   const { svg, error } = useSatoriRenderer(doc, pageIndex);
-  const { containerRef, scale, screenToCanvas, canvasToScreen } = useCanvasTransform(
-    doc.canvas.width,
-    doc.canvas.height,
-  );
+  const { containerRef, scale, offset, screenToCanvas, canvasToScreen, resetView } =
+    useCanvasTransform(doc.canvas.width, doc.canvas.height);
   const [safeZonesVisible, setSafeZonesVisible] = useState(true);
+
+  useEffect(() => {
+    onViewChange?.({ scale, resetView });
+  }, [scale, resetView, onViewChange]);
 
   const layers = doc.pages[pageIndex]?.layers ?? [];
 
@@ -84,6 +91,12 @@ export function CanvasStage({
             width: doc.canvas.width * scale,
             height: doc.canvas.height * scale,
             flexShrink: 0,
+            // Pan is a pure translate of the (still flex-centered) box — inner coordinate math
+            // is box-relative and never sees it. No transition: panning must track 1:1.
+            transform:
+              offset.x !== 0 || offset.y !== 0
+                ? `translate(${offset.x}px, ${offset.y}px)`
+                : undefined,
           }}
         >
           <SatoriPreview svg={svg} />

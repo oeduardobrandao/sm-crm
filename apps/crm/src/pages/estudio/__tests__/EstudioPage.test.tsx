@@ -1,6 +1,6 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { makeDoc, makePage, makeTextLayer } from './fixtures';
 import type { NormalizedLayer } from '../types';
@@ -76,6 +76,36 @@ vi.mock('../components/Dock', () => ({
 }));
 
 vi.mock('../components/Toolbar', () => ({
+  TopToolbar: ({
+    title,
+    summary,
+    saveStatus,
+    canUndo,
+    canRedo,
+    onUndo,
+    onRedo,
+  }: {
+    title: string;
+    summary: string;
+    saveStatus: string;
+    canUndo: boolean;
+    canRedo: boolean;
+    onUndo: () => void;
+    onRedo: () => void;
+  }) => (
+    <div>
+      top-toolbar-stub {title} {summary}
+      <span data-testid="estudio-save-pill" data-status={saveStatus}>
+        {saveStatus}
+      </span>
+      <button disabled={!canUndo} onClick={onUndo}>
+        stub-undo
+      </button>
+      <button disabled={!canRedo} onClick={onRedo}>
+        stub-redo
+      </button>
+    </div>
+  ),
   default: ({
     layer,
     onReplaceImage,
@@ -134,31 +164,48 @@ vi.mock('../hooks/useEstudioEntryFlow', async () => {
 });
 
 const usePostDesignQuery = vi.fn();
+const savePostDesign = vi.fn(async (_postId: number, doc: unknown, _rev: number) => ({
+  design: doc,
+  rev: 99,
+  warnings: [],
+}));
 vi.mock('../hooks/usePostDesignQuery', async () => {
   const actual = await vi.importActual<typeof import('../hooks/usePostDesignQuery')>(
     '../hooks/usePostDesignQuery',
   );
-  return { ...actual, usePostDesignQuery: (...args: unknown[]) => usePostDesignQuery(...args) };
+  return {
+    ...actual,
+    usePostDesignQuery: (...args: unknown[]) => usePostDesignQuery(...args),
+    savePostDesign: (...args: unknown[]) =>
+      (savePostDesign as (...a: unknown[]) => unknown)(...args),
+  };
 });
 
 import EstudioPage, { fitReplacementImageSize } from '../EstudioPage';
 import { PostDesignError } from '../hooks/usePostDesignQuery';
+import { clearEstudioStash, readEstudioStash } from '../lib/estudioStash';
 
 // EstudioPage now also drives `useTextMeasurement` (T2.6/T2.7) directly, which calls
 // `useFontManifest`'s `useQuery` — needs a real QueryClientProvider even though
 // `usePostDesignQuery` itself is mocked out above.
 function renderAt(path: string, state?: unknown) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  // Data router (createMemoryRouter), mirroring main.tsx's RouterProvider migration — the
+  // editor's dirty-navigation useBlocker throws under a plain <MemoryRouter>.
+  const router = createMemoryRouter(
+    [
+      { path: '/estudio', element: <EstudioPage /> },
+      { path: '/estudio/:postId', element: <EstudioPage /> },
+      { path: '/outra', element: <div>outra-pagina</div> },
+    ],
+    { initialEntries: [state === undefined ? path : { pathname: path, state }] },
+  );
+  const utils = render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[state === undefined ? path : { pathname: path, state }]}>
-        <Routes>
-          <Route path="/estudio" element={<EstudioPage />} />
-          <Route path="/estudio/:postId" element={<EstudioPage />} />
-        </Routes>
-      </MemoryRouter>
+      <RouterProvider router={router} />
     </QueryClientProvider>,
   );
+  return { ...utils, router };
 }
 
 describe('fitReplacementImageSize', () => {
@@ -442,6 +489,78 @@ describe('EstudioPage', () => {
 
       expect(screen.getByText(/2 páginas/)).toBeInTheDocument();
       expect(screen.getByText(/1 camada\b/)).toBeInTheDocument();
+    });
+  });
+  describe('T2.11 autosave wiring (blocker + conflict banner)', () => {
+    function loadCleanDoc() {
+      const doc = makeDoc({ pages: [makePage({ layers: [] })] });
+      usePostDesignQuery.mockReturnValue({
+        isLoading: false,
+        isError: false,
+        isSuccess: true,
+        data: { design: doc, rev: 1, render: { status: 'pending', pages: [] } },
+        refetch: vi.fn(),
+      });
+    }
+
+    it('holds departure while dirty, flushes, and proceeds once saved (blocker engagement)', async () => {
+      savePostDesign.mockClear();
+      loadCleanDoc();
+      const { router } = renderAt('/estudio/42');
+
+      fireEvent.click(screen.getByText('stub-add-layer'));
+      expect(screen.getByTestId('estudio-save-pill').dataset.status).toBe('dirty');
+
+      await act(async () => {
+        void router.navigate('/outra');
+      });
+      // The blocker flushes; the (immediately-resolving) save lands and departure proceeds.
+      await waitFor(() => expect(router.state.location.pathname).toBe('/outra'));
+      expect(savePostDesign).toHaveBeenCalledTimes(1);
+      const savedDoc = savePostDesign.mock.calls[0][1] as { pages: { layers: unknown[] }[] };
+      expect(savedDoc.pages[0].layers).toHaveLength(1);
+    });
+
+    it('does not hold departure when the doc is clean', async () => {
+      savePostDesign.mockClear();
+      loadCleanDoc();
+      const { router } = renderAt('/estudio/42');
+
+      await act(async () => {
+        void router.navigate('/outra');
+      });
+      await waitFor(() => expect(router.state.location.pathname).toBe('/outra'));
+      expect(savePostDesign).not.toHaveBeenCalled();
+    });
+
+    it('rev_conflict surfaces the banner, stashes the local doc, and Recarregar refetches', async () => {
+      savePostDesign.mockClear();
+      clearEstudioStash(42);
+      savePostDesign.mockRejectedValueOnce(
+        new PostDesignError('rev_conflict', 409, { error: 'rev_conflict', current_rev: 5 }),
+      );
+      const refetch = vi.fn();
+      const doc = makeDoc({ pages: [makePage({ layers: [] })] });
+      usePostDesignQuery.mockReturnValue({
+        isLoading: false,
+        isError: false,
+        isSuccess: true,
+        data: { design: doc, rev: 1, render: { status: 'pending', pages: [] } },
+        refetch,
+      });
+      renderAt('/estudio/42');
+
+      fireEvent.click(screen.getByText('stub-add-layer'));
+      // Real timers: the 800ms debounce fires, the save rejects with rev_conflict.
+      const banner = await screen.findByTestId('estudio-conflict-banner', undefined, {
+        timeout: 3000,
+      });
+      expect(banner).toBeInTheDocument();
+      expect(screen.getByTestId('estudio-save-pill').dataset.status).toBe('conflict');
+      expect(readEstudioStash(42)?.doc.pages[0].layers).toHaveLength(1);
+
+      fireEvent.click(screen.getByText('Recarregar'));
+      expect(refetch).toHaveBeenCalled();
     });
   });
 });

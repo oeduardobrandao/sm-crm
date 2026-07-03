@@ -60,6 +60,49 @@ async function fetchPostDesign(postId: number): Promise<PostDesignQueryResult> {
   return body as PostDesignQueryResult;
 }
 
+/** Strips the two normalization-OUTPUT keys (`canvas`, `fileIds`) the authoring schema's
+ * `.strict()` rejects as unknown input — a doc read from GET (or the local state built from it)
+ * always carries both, so PUTting it back verbatim would 400 with `unrecognized_keys`. */
+export function toPutPayloadDoc(doc: DesignDoc): Omit<DesignDoc, 'canvas' | 'fileIds'> {
+  const { canvas: _canvas, fileIds: _fileIds, ...payload } = doc;
+  return payload;
+}
+
+/** PUT the doc with optimistic concurrency (§5.4). Resolves with the server-normalized doc, the
+ * new rev, and non-fatal validation warnings. Rejects with PostDesignError — notably
+ * `rev_conflict` (409, `.detail.current_rev`) when another writer (MCP agent, second tab) saved
+ * first; the autosave protocol pauses on that one instead of retrying. */
+export async function savePostDesign(
+  postId: number,
+  doc: DesignDoc,
+  expectedRev: number,
+): Promise<{ design: DesignDoc; rev: number; warnings: unknown[] }> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session) throw new PostDesignError('unauthorized', 401, null);
+
+  const url = import.meta.env.VITE_SUPABASE_URL as string;
+  const res = await fetch(`${url}/functions/v1/post-design-manage`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ post_id: postId, doc: toPutPayloadDoc(doc), expected_rev: expectedRev }),
+  });
+
+  const body: unknown = await res.json().catch(() => null);
+  if (!res.ok) {
+    const code =
+      body && typeof body === 'object' && 'error' in body
+        ? String((body as { error: unknown }).error)
+        : 'unknown_error';
+    throw new PostDesignError(code, res.status, body);
+  }
+  return body as { design: DesignDoc; rev: number; warnings: unknown[] };
+}
+
 export function postDesignQueryKey(postId: number | undefined) {
   return ['post-design', postId] as const;
 }

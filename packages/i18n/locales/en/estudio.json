@@ -24,7 +24,20 @@
     "renderError": "Could not render this design.",
     "safeZoneToggle": "Safe-zone guides",
     "reelVideoNotice": "Add the reel video to the post — Estúdio only creates the cover, and rendering needs the video.",
-    "videoMediaBlocked": "This post has video media — Estúdio cannot create a feed/carousel design for it."
+    "videoMediaBlocked": "This post has video media — Estúdio cannot create a feed/carousel design for it.",
+    "saveError": "Could not save the design.",
+    "conflictBanner": "This design was changed by another source —",
+    "reload": "Reload",
+    "savePill": {
+      "saved": "Saved",
+      "saving": "Saving…",
+      "dirty": "Unsaved changes",
+      "conflict": "Conflict"
+    },
+    "undo": "Undo",
+    "redo": "Redo",
+    "zoomReset": "Fit to screen",
+    "zoomLabel": "Zoom"
   },
   "openInEstudio": "Open in Studio",
   "dock": {

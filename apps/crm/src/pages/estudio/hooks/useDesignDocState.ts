@@ -32,6 +32,11 @@ export type DesignDocAction =
   | { type: 'select'; selection: string[] }
   | { type: 'activePage/set'; pageId: string }
   | { type: 'load'; doc: DesignDoc }
+  /** Autosave's server-normalized doc adoption (design §6.2): swaps the doc IN PLACE — no undo
+   * entry (normalization is not a user edit), history/selection/active page all preserved. The
+   * exact `action.doc` reference is stored so the autosave hook can recognize its own adoption
+   * (`state.doc === adoptedDoc`) and not count it as a new local generation. */
+  | { type: 'doc/adopt'; doc: DesignDoc }
   | { type: 'undo' }
   | { type: 'redo' };
 
@@ -92,6 +97,19 @@ export function designDocReducer(state: DesignDocState, action: DesignDocAction)
   switch (action.type) {
     case 'load':
       return initDesignDocState(action.doc);
+    case 'doc/adopt':
+      return {
+        ...state,
+        doc: action.doc,
+        // Stale ids are impossible in practice (normalization never adds/removes layers or
+        // pages), but filter defensively so a bad adoption can't leave phantom selection.
+        selection: state.selection.filter((id) =>
+          action.doc.pages.some((p) => p.layers.some((l) => l.id === id)),
+        ),
+        activePageId: action.doc.pages.some((p) => p.id === state.activePageId)
+          ? state.activePageId
+          : (action.doc.pages[0]?.id ?? ''),
+      };
     case 'select':
       return { ...state, selection: action.selection };
     case 'activePage/set':

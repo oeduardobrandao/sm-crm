@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter } from 'react-router-dom';
+import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import { initSentry } from '@/lib/sentry';
 import { initI18n } from '@mesaas/i18n';
 import ptCommon from '../../../packages/i18n/locales/pt/common.json';
@@ -43,8 +43,10 @@ initI18n({
   },
 });
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <BrowserRouter>
-    <App />
-  </BrowserRouter>,
-);
+// Minimal DATA router (single splat route; App keeps its own descendant <Routes>) — a plain
+// <BrowserRouter> gives `useBlocker` no data-router context, and the Estúdio autosave's
+// dirty-navigation blocker (design §6.2) needs it. Route matching/links are unchanged: every
+// internal link in this app navigates by absolute path.
+const router = createBrowserRouter([{ path: '*', element: <App /> }]);
+
+ReactDOM.createRoot(document.getElementById('root')!).render(<RouterProvider router={router} />);

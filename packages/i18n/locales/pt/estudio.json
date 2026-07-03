@@ -24,7 +24,20 @@
     "renderError": "Não foi possível renderizar este design.",
     "safeZoneToggle": "Guias de área segura",
     "reelVideoNotice": "Adicione o vídeo do reel ao post — o Estúdio cria apenas a capa, e a renderização precisa do vídeo.",
-    "videoMediaBlocked": "Este post tem vídeo — o Estúdio não pode criar um design de feed/carrossel para ele."
+    "videoMediaBlocked": "Este post tem vídeo — o Estúdio não pode criar um design de feed/carrossel para ele.",
+    "saveError": "Não foi possível salvar o design.",
+    "conflictBanner": "Este design foi alterado por outra fonte —",
+    "reload": "Recarregar",
+    "savePill": {
+      "saved": "Salvo",
+      "saving": "Salvando…",
+      "dirty": "Alterações pendentes",
+      "conflict": "Conflito"
+    },
+    "undo": "Desfazer",
+    "redo": "Refazer",
+    "zoomReset": "Ajustar à tela",
+    "zoomLabel": "Zoom"
   },
   "openInEstudio": "Abrir no Estúdio",
   "dock": {

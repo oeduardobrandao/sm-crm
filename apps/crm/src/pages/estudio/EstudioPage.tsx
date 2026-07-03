@@ -2,12 +2,14 @@
 // PR 2.C wires up the full editor chrome: LeftToolDock (T2.9), ContextualToolbar (T2.12),
 // SlideStrip (T2.10), and TextEditOverlay (T2.8, wired inside CanvasStage/InteractionOverlay).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation, useParams } from 'react-router-dom';
+import { useBlocker, useLocation, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { FilePickerModal } from '@/pages/arquivos/components/FilePickerModal';
 import { listPostMedia } from '@/services/postMedia';
 import { cleanupAbandonedDraft } from './hooks/useEstudioEntryFlow';
+import { useAutosave } from './hooks/useAutosave';
+import { TopToolbar } from './components/Toolbar';
 import PostPicker from './components/PostPicker';
 import { CanvasStage } from './components/Canvas/CanvasStage';
 import { LeftToolDock } from './components/Dock';
@@ -60,10 +62,50 @@ function EstudioEditorShell({ postId }: { postId: number }) {
     },
   );
 
+  // T2.11 autosave (design §6.2): the full concurrency protocol lives in useAutosave; this shell
+  // wires the reducer adoption path, re-baselines on every fresh server doc (initial load AND
+  // the conflict banner's Recarregar refetch), renders the conflict banner, and holds departure
+  // while dirty via the router blocker below.
+  const adoptNormalized = useCallback(
+    (doc: NonNullable<typeof query.data>['design']) => state.dispatch({ type: 'doc/adopt', doc }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+  const autosave = useAutosave({
+    postId,
+    doc: state.doc,
+    adoptNormalized,
+    enabled: query.isSuccess,
+  });
+
   useEffect(() => {
-    if (query.data) state.load(query.data.design);
+    if (query.data) {
+      state.load(query.data.design);
+      autosave.reset(query.data.design, query.data.rev);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query.data]);
+
+  // Dirty-navigation blocker (design §6.2: "a React Router navigation blocker holds departure
+  // while dirty"). While blocked: flush; departure proceeds when the save lands ('saved' flips
+  // shouldBlock off). If the save can never succeed (deterministic 4xx) the work is stashed and
+  // departure allowed — trapping the user on a page whose save always 400s helps no one.
+  const shouldBlock = autosave.status === 'dirty' || autosave.status === 'saving';
+  const blocker = useBlocker(shouldBlock);
+  useEffect(() => {
+    if (blocker.state !== 'blocked') return;
+    if (!shouldBlock) {
+      blocker.proceed();
+      return;
+    }
+    if (autosave.lastFailureWasDeterministic()) {
+      autosave.stashNow();
+      blocker.proceed();
+      return;
+    }
+    void autosave.flush();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blocker.state, shouldBlock, autosave.status]);
 
   // T2.3 abandonment cleanup: this post/workflow pair was synthesized by the picker's
   // "Criar novo" moments ago (router-state marker) — if the user leaves the editor having added
@@ -182,6 +224,10 @@ function EstudioEditorShell({ postId }: { postId: number }) {
     [],
   );
 
+  // Live view state reported by CanvasStage (effective zoom scale + reset) for the TopToolbar's
+  // zoom control — the transform itself stays inside the stage (canvas-box contract).
+  const [view, setView] = useState<{ scale: number; resetView: () => void } | null>(null);
+
   // Plan T2.9: the reels-format editor must warn when the post has no video link yet — the
   // server render composites the cover onto the reel video's thumbnail and fails without one.
   const isReelCover = query.data?.design.format === 'reel_cover';
@@ -223,19 +269,44 @@ function EstudioEditorShell({ postId }: { postId: number }) {
 
   return (
     <div className="page-full-bleed" style={{ display: 'flex', flexDirection: 'column' }}>
-      <div
-        style={{
-          padding: '0.75rem clamp(1.25rem, 3vw, 2.5rem)',
-          borderBottom: '1px solid var(--border-color)',
-          flexShrink: 0,
-        }}
-      >
-        <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 900 }}>{t('title')}</span>
-        <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginLeft: '0.75rem' }}>
-          {t('editor.pageCount', { count: state.doc.pages.length })} ·{' '}
-          {t('editor.layerCount', { count: layerCount })}
-        </span>
-      </div>
+      <TopToolbar
+        title={t('title')}
+        summary={`${t('editor.pageCount', { count: state.doc.pages.length })} · ${t('editor.layerCount', { count: layerCount })}`}
+        saveStatus={autosave.status}
+        canUndo={state.canUndo}
+        canRedo={state.canRedo}
+        onUndo={state.undo}
+        onRedo={state.redo}
+        zoom={view?.scale}
+        onZoomReset={view?.resetView}
+      />
+      {autosave.status === 'conflict' && (
+        <div
+          role="alert"
+          data-testid="estudio-conflict-banner"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            padding: '0.5rem clamp(1.25rem, 3vw, 2.5rem)',
+            background: 'rgba(245, 90, 66, 0.12)',
+            borderBottom: '1px solid rgba(245, 90, 66, 0.4)',
+            color: 'var(--text-main)',
+            fontSize: '0.8rem',
+            flexShrink: 0,
+          }}
+        >
+          <span>{t('editor.conflictBanner')}</span>
+          <button
+            type="button"
+            onClick={() => void query.refetch()}
+            className="btn-secondary"
+            style={{ padding: '0.15rem 0.6rem', borderRadius: 8, fontSize: '0.75rem' }}
+          >
+            {t('editor.reload')}
+          </button>
+        </div>
+      )}
       {showReelVideoNotice && (
         <div
           role="status"
@@ -282,6 +353,7 @@ function EstudioEditorShell({ postId }: { postId: number }) {
             onUpdateLayer={onUpdateLayer}
             getTextHeight={getTextHeight}
             onEditingChange={setIsTextEditing}
+            onViewChange={setView}
           />
         </div>
       </div>
