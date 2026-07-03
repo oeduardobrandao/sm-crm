@@ -21,7 +21,8 @@
     "layerCount_other": "{{count}} layers",
     "canvasComingSoon": "The editing canvas ships in the next update.",
     "rendering": "Rendering...",
-    "renderError": "Could not render this design."
+    "renderError": "Could not render this design.",
+    "safeZoneToggle": "Safe-zone guides"
   },
   "openInEstudio": "Open in Studio",
   "toast": {

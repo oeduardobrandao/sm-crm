@@ -2,13 +2,15 @@
 // The full editor chrome (Toolbar/Dock/SlideStrip — T2.6 onward) doesn't exist yet; this PR wires
 // the picker, the entry flows, the get-or-create query, and the actual satori-rendered canvas
 // (T2.4) end to end. Always shows page 0 — page switching is T2.10's SlideStrip.
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import PostPicker from './components/PostPicker';
 import { CanvasStage } from './components/Canvas/CanvasStage';
 import { usePostDesignQuery, PostDesignError } from './hooks/usePostDesignQuery';
 import { useDesignDocState } from './hooks/useDesignDocState';
+import { useTextMeasurement } from './hooks/useTextMeasurement';
+import type { NormalizedLayer, NormalizedTextLayer } from './types';
 
 function EstudioEditorShell({ postId }: { postId: number }) {
   const { t } = useTranslation('estudio');
@@ -28,6 +30,24 @@ function EstudioEditorShell({ postId }: { postId: number }) {
     if (query.data) state.load(query.data.design);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query.data]);
+
+  const activePageIndex = Math.max(
+    0,
+    state.doc.pages.findIndex((p) => p.id === state.activePageId),
+  );
+  const measurement = useTextMeasurement(state.doc, activePageIndex);
+  const getTextHeight = useCallback(
+    (layer: NormalizedTextLayer) =>
+      measurement.heights.get(layer.id)?.height ?? layer.font_size * layer.line_height,
+    [measurement.heights],
+  );
+  const onUpdateLayer = useCallback(
+    (layerId: string, patch: Partial<NormalizedLayer>) => {
+      state.dispatch({ type: 'layer/update', pageId: state.activePageId, layerId, patch });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state.activePageId],
+  );
 
   if (query.isLoading) {
     return (
@@ -68,7 +88,14 @@ function EstudioEditorShell({ postId }: { postId: number }) {
         </span>
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>
-        <CanvasStage doc={state.doc} pageIndex={0} />
+        <CanvasStage
+          doc={state.doc}
+          pageIndex={activePageIndex}
+          selection={state.selection}
+          select={state.select}
+          onUpdateLayer={onUpdateLayer}
+          getTextHeight={getTextHeight}
+        />
       </div>
     </div>
   );

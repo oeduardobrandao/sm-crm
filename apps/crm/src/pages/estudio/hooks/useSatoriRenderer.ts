@@ -15,12 +15,16 @@ import { useImageUrls } from './useImageUrls';
 
 const RENDER_DEBOUNCE_MS = 150;
 
-type SatoriStandalone = typeof import('satori/standalone');
+export type SatoriStandalone = typeof import('satori/standalone');
 
 let satoriModulePromise: Promise<SatoriStandalone> | null = null;
 let yogaInitPromise: Promise<void> | null = null;
 
-async function ensureSatoriReady(): Promise<SatoriStandalone> {
+/** Lazily initializes satori/standalone + satori/yoga.wasm exactly ONCE per browser tab
+ * (module-scope singleton, reset-on-failure). Exported so other hooks that also need a satori
+ * render pass (e.g. `useTextMeasurement`) reuse this exact instance rather than spinning up a
+ * second satori/yoga WASM init — see this file's header comment. */
+export async function ensureSatoriReady(): Promise<SatoriStandalone> {
   if (!satoriModulePromise) {
     satoriModulePromise = import('satori/standalone');
   }

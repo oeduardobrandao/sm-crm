@@ -1,4 +1,10 @@
-import type { DesignDoc, NormalizedLayer, NormalizedPage } from '../types';
+import type {
+  DesignDoc,
+  NormalizedImageLayer,
+  NormalizedLayer,
+  NormalizedPage,
+  NormalizedShapeLayer,
+} from '../types';
 
 export function makeTextLayer(overrides: Partial<NormalizedLayer> = {}): NormalizedLayer {
   return {
@@ -21,6 +27,45 @@ export function makeTextLayer(overrides: Partial<NormalizedLayer> = {}): Normali
     align: 'left',
     ...overrides,
   } as NormalizedLayer;
+}
+
+export function makeImageLayer(
+  overrides: Partial<NormalizedImageLayer> = {},
+): NormalizedImageLayer {
+  return {
+    id: 'layer-img-1',
+    name: 'Imagem 1',
+    type: 'image',
+    x: 10,
+    y: 10,
+    w: 200,
+    h: 150,
+    rotation: 0,
+    opacity: 1,
+    locked: false,
+    file_id: 1,
+    fit: 'cover',
+    ...overrides,
+  };
+}
+
+export function makeShapeLayer(
+  overrides: Partial<NormalizedShapeLayer> = {},
+): NormalizedShapeLayer {
+  return {
+    id: 'layer-shape-1',
+    name: 'Forma 1',
+    type: 'shape',
+    x: 10,
+    y: 10,
+    w: 200,
+    h: 150,
+    rotation: 0,
+    opacity: 1,
+    locked: false,
+    shape: 'rect',
+    ...overrides,
+  };
 }
 
 export function makePage(overrides: Partial<NormalizedPage> = {}): NormalizedPage {

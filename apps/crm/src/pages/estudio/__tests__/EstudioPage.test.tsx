@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { makeDoc, makePage, makeTextLayer } from './fixtures';
@@ -26,14 +27,20 @@ vi.mock('../hooks/usePostDesignQuery', async () => {
 import EstudioPage from '../EstudioPage';
 import { PostDesignError } from '../hooks/usePostDesignQuery';
 
+// EstudioPage now also drives `useTextMeasurement` (T2.6/T2.7) directly, which calls
+// `useFontManifest`'s `useQuery` — needs a real QueryClientProvider even though
+// `usePostDesignQuery` itself is mocked out above.
 function renderAt(path: string) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <MemoryRouter initialEntries={[path]}>
-      <Routes>
-        <Route path="/estudio" element={<EstudioPage />} />
-        <Route path="/estudio/:postId" element={<EstudioPage />} />
-      </Routes>
-    </MemoryRouter>,
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route path="/estudio" element={<EstudioPage />} />
+          <Route path="/estudio/:postId" element={<EstudioPage />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
