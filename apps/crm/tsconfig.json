@@ -8,10 +8,10 @@
       "@mesaas/design-render-tree": ["../../supabase/functions/_shared/design-render-tree.ts"],
       "@mesaas/fonts/*": ["../../supabase/functions/_shared/fonts/*"]
     },
-    "target": "ES2020",
+    "target": "ES2021",
     "useDefineForClassFields": true,
     "module": "ESNext",
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "lib": ["ES2021", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
     "skipLibCheck": true,
     "moduleResolution": "bundler",

@@ -7,6 +7,14 @@ vi.mock('../components/PostPicker', () => ({
   default: () => <div>picker-stub</div>,
 }));
 
+// CanvasStage owns the real satori/yoga render pipeline (useSatoriRenderer.test.tsx's concern) —
+// stubbed here so this file stays focused on EstudioPage's own routing/loading/error logic.
+vi.mock('../components/Canvas/CanvasStage', () => ({
+  CanvasStage: ({ doc }: { doc: { pages: unknown[] } }) => (
+    <div>canvas-stage-stub pages={doc.pages.length}</div>
+  ),
+}));
+
 const usePostDesignQuery = vi.fn();
 vi.mock('../hooks/usePostDesignQuery', async () => {
   const actual = await vi.importActual<typeof import('../hooks/usePostDesignQuery')>(
@@ -81,5 +89,6 @@ describe('EstudioPage', () => {
     renderAt('/estudio/42');
     expect(screen.getByText(/2 páginas/)).toBeInTheDocument();
     expect(screen.getByText(/2 camadas/)).toBeInTheDocument();
+    expect(screen.getByText(/canvas-stage-stub/)).toBeInTheDocument();
   });
 });

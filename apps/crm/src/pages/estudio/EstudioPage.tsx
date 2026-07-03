@@ -1,15 +1,16 @@
 // Route entry (docs/estudio-design.md §6.1): /estudio (picker) + /estudio/:postId (editor).
-// The editor canvas itself (Canvas/Toolbar/Dock — T2.4 onward) doesn't exist yet; this PR wires
-// the picker, the entry flows, and the get-or-create query end to end, with a minimal read-only
-// summary standing in for the canvas until it lands.
+// The full editor chrome (Toolbar/Dock/SlideStrip — T2.6 onward) doesn't exist yet; this PR wires
+// the picker, the entry flows, the get-or-create query, and the actual satori-rendered canvas
+// (T2.4) end to end. Always shows page 0 — page switching is T2.10's SlideStrip.
 import { useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import PostPicker from './components/PostPicker';
+import { CanvasStage } from './components/Canvas/CanvasStage';
 import { usePostDesignQuery, PostDesignError } from './hooks/usePostDesignQuery';
 import { useDesignDocState } from './hooks/useDesignDocState';
 
-function EstudioEditorStub({ postId }: { postId: number }) {
+function EstudioEditorShell({ postId }: { postId: number }) {
   const { t } = useTranslation('estudio');
   const query = usePostDesignQuery(postId);
   const state = useDesignDocState(
@@ -52,17 +53,23 @@ function EstudioEditorStub({ postId }: { postId: number }) {
   const layerCount = state.doc.pages.reduce((n, p) => n + p.layers.length, 0);
 
   return (
-    <div className="page-full-bleed" style={{ padding: 'clamp(1.25rem, 3vw, 2.5rem)' }}>
-      <h1 style={{ fontFamily: 'var(--font-heading)', fontSize: '1.8rem', fontWeight: 900 }}>
-        {t('title')}
-      </h1>
-      <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.5rem' }}>
-        {t('editor.pageCount', { count: state.doc.pages.length })} ·{' '}
-        {t('editor.layerCount', { count: layerCount })}
-      </p>
-      <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '1rem' }}>
-        {t('editor.canvasComingSoon')}
-      </p>
+    <div className="page-full-bleed" style={{ display: 'flex', flexDirection: 'column' }}>
+      <div
+        style={{
+          padding: '0.75rem clamp(1.25rem, 3vw, 2.5rem)',
+          borderBottom: '1px solid var(--border-color)',
+          flexShrink: 0,
+        }}
+      >
+        <span style={{ fontFamily: 'var(--font-heading)', fontWeight: 900 }}>{t('title')}</span>
+        <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginLeft: '0.75rem' }}>
+          {t('editor.pageCount', { count: state.doc.pages.length })} ·{' '}
+          {t('editor.layerCount', { count: layerCount })}
+        </span>
+      </div>
+      <div style={{ flex: 1, minHeight: 0 }}>
+        <CanvasStage doc={state.doc} pageIndex={0} />
+      </div>
     </div>
   );
 }
@@ -75,5 +82,5 @@ export default function EstudioPage() {
   const postId = parseInt(postIdParam, 10);
   if (isNaN(postId)) return <PostPicker />;
 
-  return <EstudioEditorStub postId={postId} />;
+  return <EstudioEditorShell postId={postId} />;
 }

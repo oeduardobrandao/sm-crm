@@ -19,7 +19,9 @@
     "pageCount_other": "{{count}} pages",
     "layerCount": "{{count}} layer",
     "layerCount_other": "{{count}} layers",
-    "canvasComingSoon": "The editing canvas ships in the next update."
+    "canvasComingSoon": "The editing canvas ships in the next update.",
+    "rendering": "Rendering...",
+    "renderError": "Could not render this design."
   },
   "openInEstudio": "Open in Studio",
   "toast": {

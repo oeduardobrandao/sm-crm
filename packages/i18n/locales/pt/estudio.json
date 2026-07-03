@@ -19,7 +19,9 @@
     "pageCount_other": "{{count}} páginas",
     "layerCount": "{{count}} camada",
     "layerCount_other": "{{count}} camadas",
-    "canvasComingSoon": "O canvas de edição chega na próxima atualização."
+    "canvasComingSoon": "O canvas de edição chega na próxima atualização.",
+    "rendering": "Renderizando...",
+    "renderError": "Não foi possível renderizar este design."
   },
   "openInEstudio": "Abrir no Estúdio",
   "toast": {
