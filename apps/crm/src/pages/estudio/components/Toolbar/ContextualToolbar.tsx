@@ -1,8 +1,8 @@
-// T2.12 ContextualToolbar (docs/estudio-plan.md line 151, docs/estudio-design.md §6.4). A stopgap
-// property panel for the currently-selected layer — real FontPicker/ColorPicker components land in
-// slice 3, so this uses plain HTML form controls styled inline via the CSS-var design tokens
-// (DESIGN_SYSTEM.md), matching PostPicker's inline-style convention rather than pulling in a new
-// design-system component for a UI that's going to be replaced anyway.
+// T2.12 ContextualToolbar (docs/estudio-plan.md line 151, docs/estudio-design.md §6.4). The
+// property panel for the currently-selected layer. Slice 3 (T3.4/T3.5) replaced the stopgap
+// font <select> and hex inputs with the real shared FontPicker/ColorPicker (brand-aware via the
+// brandFonts/brandColors props); the remaining discrete controls (weight, size, align, toggles)
+// keep the original plain-HTML-styled-by-CSS-vars convention.
 //
 // COMMIT BOUNDARY (see InteractionOverlay.tsx's header comment for the general "why this matters"
 // reasoning — drag/resize gestures buffer a transient delta and dispatch exactly once on
@@ -14,7 +14,8 @@
 // keystroke.
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { findFamily, familiesByGroup } from '../../hooks/useFontManifest';
+import { findFamily, buildFontFamilyPatch } from '../../hooks/useFontManifest';
+import { ColorPicker, FontPicker, type BrandFontEntry } from '../shared';
 import type {
   FontWeight,
   NormalizedImageLayer,
@@ -27,13 +28,11 @@ export interface ContextualToolbarProps {
   layer: NormalizedLayer | null;
   onUpdateLayer: (layerId: string, patch: Partial<NormalizedLayer>) => void;
   onReplaceImage?: (layerId: string) => void;
+  /** Client brand hexes, pinned as the ColorPicker's "Marca" swatches. */
+  brandColors?: string[];
+  /** Client brand fonts (matcher-resolved), pinned as the FontPicker's "Marca" group. */
+  brandFonts?: BrandFontEntry[];
 }
-
-// 6-digit-only for this stopgap UI. The schema (design-doc.ts's `Hex` regex) also accepts an
-// optional 2-digit alpha suffix (#rrggbbaa), but plumbing an alpha control through this UI is
-// deferred to the real slice-3 ColorPicker — this input rejects/ignores anything that isn't
-// exactly #rrggbb rather than silently truncating a valid 8-digit value the user might paste.
-const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 
 const DEFAULT_SHADOW = { x: 2, y: 2, blur: 4, color: '#00000080' };
 const DEFAULT_PILL = { color: '#000000', padding_x: 16, padding_y: 8, radius: 8 };
@@ -173,12 +172,15 @@ function ToolbarShell({ children }: { children: React.ReactNode }) {
 function TextVariant({
   layer,
   onUpdateLayer,
+  brandColors,
+  brandFonts,
 }: {
   layer: NormalizedTextLayer;
   onUpdateLayer: ContextualToolbarProps['onUpdateLayer'];
+  brandColors?: string[];
+  brandFonts?: BrandFontEntry[];
 }) {
   const { t } = useTranslation('estudio');
-  const groups = familiesByGroup();
   const currentFamily = findFamily(layer.font_key);
   const style = layer.font_style ?? 'normal';
   // Restrict the weight <select> to the variants the currently-selected font actually ships,
@@ -198,44 +200,16 @@ function TextVariant({
         <label style={labelStyle} htmlFor="toolbar-font-key">
           {t('toolbar.text.font')}
         </label>
-        <select
+        <FontPicker
           id="toolbar-font-key"
-          style={inputStyle}
           value={layer.font_key}
-          onChange={(e) => {
-            const nextFamily = findFamily(e.target.value);
-            const nextFamilyStyles = new Set((nextFamily?.variants ?? []).map((v) => v.style));
-            // If the new family doesn't ship the layer's CURRENT font_style (e.g. switching an
-            // italic layer to one of the many manifest families with no italic variant at all —
-            // scripts/fonts/families.json deliberately cuts sans italics), fall back to 'normal'.
-            // Every family in the manifest ships at least one normal-style variant, so this is a
-            // real fallback, not a guess — without it, switching families could silently leave
-            // font_style pointing at a (weight, style) combo the new family doesn't have, which
-            // only surfaces as an `unsupported_font_variant` error at save time.
-            const nextStyle = nextFamilyStyles.has(style) ? style : 'normal';
-            const nextWeights = (nextFamily?.variants ?? [])
-              .filter((v) => v.style === nextStyle)
-              .map((v) => v.weight as FontWeight);
-            const nextWeight = nextWeights.includes(layer.font_weight)
-              ? layer.font_weight
-              : (nextWeights[0] ?? layer.font_weight);
-            onUpdateLayer(layer.id, {
-              font_key: e.target.value,
-              font_weight: nextWeight,
-              ...(nextStyle !== style ? { font_style: nextStyle } : {}),
-            });
-          }}
-        >
-          {groups.map((g) => (
-            <optgroup key={g.group} label={g.label}>
-              {g.families.map((f) => (
-                <option key={f.key} value={f.key}>
-                  {f.name}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
+          brandFonts={brandFonts}
+          onSelect={(key) =>
+            // buildFontFamilyPatch owns the weight/style fallback so a family switch never
+            // leaves (font_key, font_weight, font_style) pointing at a nonexistent variant.
+            onUpdateLayer(layer.id, buildFontFamilyPatch(key, layer))
+          }
+        />
       </div>
 
       <div style={rowStyle}>
@@ -275,16 +249,12 @@ function TextVariant({
       </div>
 
       <div style={rowStyle}>
-        <label style={labelStyle} htmlFor="toolbar-color">
-          {t('toolbar.text.color')}
-        </label>
-        <CommitInput
-          id="toolbar-color"
+        <span style={labelStyle}>{t('toolbar.text.color')}</span>
+        <ColorPicker
           value={layer.color}
-          style={{ width: 100 }}
-          onCommit={(v) => {
-            if (HEX_COLOR_RE.test(v)) onUpdateLayer(layer.id, { color: v });
-          }}
+          label={t('toolbar.text.color')}
+          brandColors={brandColors}
+          onChange={(hex) => onUpdateLayer(layer.id, { color: hex })}
         />
       </div>
 
@@ -419,32 +389,29 @@ function ImageVariant({
 function ShapeVariant({
   layer,
   onUpdateLayer,
+  brandColors,
 }: {
   layer: NormalizedShapeLayer;
   onUpdateLayer: ContextualToolbarProps['onUpdateLayer'];
+  brandColors?: string[];
 }) {
   const { t } = useTranslation('estudio');
   const hasStroke = !!layer.stroke;
   // Solid color only for v1 — editing a gradient fill (NormalizedFillGradient) needs a
-  // multi-stop gradient editor that doesn't exist yet (slice 3's ColorPicker territory); a
-  // shape whose fill is already a gradient just doesn't show a color value here.
+  // multi-stop gradient editor that doesn't exist yet; a shape whose fill is already a
+  // gradient just doesn't show a color value here.
   const fillColor = layer.fill?.type === 'solid' ? layer.fill.color : '#000000';
   const radiusDisabled = layer.shape === 'ellipse';
 
   return (
     <>
       <div style={rowStyle}>
-        <label style={labelStyle} htmlFor="toolbar-shape-fill">
-          {t('toolbar.shape.fill')}
-        </label>
-        <CommitInput
-          id="toolbar-shape-fill"
+        <span style={labelStyle}>{t('toolbar.shape.fill')}</span>
+        <ColorPicker
           value={fillColor}
-          style={{ width: 100 }}
-          onCommit={(v) => {
-            if (HEX_COLOR_RE.test(v))
-              onUpdateLayer(layer.id, { fill: { type: 'solid', color: v } });
-          }}
+          label={t('toolbar.shape.fill')}
+          brandColors={brandColors}
+          onChange={(hex) => onUpdateLayer(layer.id, { fill: { type: 'solid', color: hex } })}
         />
       </div>
 
@@ -492,6 +459,8 @@ export default function ContextualToolbar({
   layer,
   onUpdateLayer,
   onReplaceImage,
+  brandColors,
+  brandFonts,
 }: ContextualToolbarProps) {
   if (!layer) return null;
 
@@ -504,7 +473,13 @@ export default function ContextualToolbar({
           for layer A with layer B's value. Forcing a real unmount here is what makes CommitInput's
           unmount-flush safety net (see that component) actually fire. */}
       {layer.type === 'text' && (
-        <TextVariant key={layer.id} layer={layer} onUpdateLayer={onUpdateLayer} />
+        <TextVariant
+          key={layer.id}
+          layer={layer}
+          onUpdateLayer={onUpdateLayer}
+          brandColors={brandColors}
+          brandFonts={brandFonts}
+        />
       )}
       {layer.type === 'image' && (
         <ImageVariant
@@ -515,7 +490,12 @@ export default function ContextualToolbar({
         />
       )}
       {layer.type === 'shape' && (
-        <ShapeVariant key={layer.id} layer={layer} onUpdateLayer={onUpdateLayer} />
+        <ShapeVariant
+          key={layer.id}
+          layer={layer}
+          onUpdateLayer={onUpdateLayer}
+          brandColors={brandColors}
+        />
       )}
     </ToolbarShell>
   );

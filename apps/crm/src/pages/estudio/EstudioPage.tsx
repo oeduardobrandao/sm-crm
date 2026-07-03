@@ -12,13 +12,15 @@ import { useAutosave } from './hooks/useAutosave';
 import { TopToolbar } from './components/Toolbar';
 import PostPicker from './components/PostPicker';
 import { CanvasStage } from './components/Canvas/CanvasStage';
-import { LeftToolDock } from './components/Dock';
+import { LeftToolDock, BrandPanel } from './components/Dock';
 import ContextualToolbar from './components/Toolbar';
 import { SlideStrip } from './components/SlideStrip';
 import { usePostDesignQuery, PostDesignError } from './hooks/usePostDesignQuery';
 import { useDesignDocState } from './hooks/useDesignDocState';
 import { useTextMeasurement } from './hooks/useTextMeasurement';
 import { useImageInsert } from './hooks/useImageInsert';
+import { usePostBrand } from './hooks/usePostBrand';
+import { buildFontFamilyPatch } from './hooks/useFontManifest';
 import { generateDesignId } from './types';
 import type { NormalizedLayer, NormalizedPage, NormalizedTextLayer } from './types';
 import type { UploadedEstudioImage } from './lib/uploadEstudioImage';
@@ -212,6 +214,53 @@ function EstudioEditorShell({ postId }: { postId: number }) {
     [replaceImageInsert],
   );
 
+  // T3.6 brand kit — shares HubTab's query key/cache; see usePostBrand.
+  const brand = usePostBrand(postId);
+  const onApplyBrandColor = useCallback(
+    (hex: string) => {
+      if (!selectedLayer) return;
+      if (selectedLayer.type === 'text') {
+        onUpdateLayer(selectedLayer.id, { color: hex });
+      } else if (selectedLayer.type === 'shape') {
+        onUpdateLayer(selectedLayer.id, { fill: { type: 'solid', color: hex } });
+      }
+    },
+    [selectedLayer, onUpdateLayer],
+  );
+  const onApplyBrandFont = useCallback(
+    (familyKey: string) => {
+      if (selectedLayer?.type !== 'text') return;
+      onUpdateLayer(selectedLayer.id, buildFontFamilyPatch(familyKey, selectedLayer));
+    },
+    [selectedLayer, onUpdateLayer],
+  );
+  const onInsertLogo = useCallback(
+    (fileId: number, natural: { width: number; height: number } | null) => {
+      // Longer side capped at 40% of the canvas's shorter dimension — a logo is an accent, not
+      // a background. `natural` comes from the panel's already-decoded thumbnail; when absent
+      // (files.width/height can be null and the <img> may not be loaded), a square box is fine:
+      // fit:'contain' letterboxes inside it without distorting the logo.
+      const cap = Math.round(Math.min(state.doc.canvas.width, state.doc.canvas.height) * 0.4);
+      const { w, h } = fitReplacementImageSize(natural?.width ?? cap, natural?.height ?? cap, cap);
+      onAddLayer({
+        id: generateDesignId('layer'),
+        name: 'Logo',
+        type: 'image',
+        w,
+        h,
+        x: (state.doc.canvas.width - w) / 2,
+        y: (state.doc.canvas.height - h) / 2,
+        rotation: 0,
+        opacity: 1,
+        locked: false,
+        file_id: fileId,
+        fit: 'contain',
+      });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state.doc.canvas.width, state.doc.canvas.height, onAddLayer],
+  );
+
   const pageDispatchHandlers = useMemo(
     () => ({
       onAddPage: () => state.dispatch({ type: 'page/add', page: buildBlankPage() }),
@@ -327,6 +376,8 @@ function EstudioEditorShell({ postId }: { postId: number }) {
         layer={selectedLayer}
         onUpdateLayer={onUpdateLayer}
         onReplaceImage={onReplaceImage}
+        brandColors={brand.brandColors}
+        brandFonts={brand.brandFonts}
       />
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
         <LeftToolDock
@@ -334,6 +385,15 @@ function EstudioEditorShell({ postId }: { postId: number }) {
           canvasHeight={state.doc.canvas.height}
           onAddLayer={onAddLayer}
           pasteEnabled={!isTextEditing}
+          brandPanel={
+            <BrandPanel
+              brand={brand}
+              selectedLayerType={selectedLayer?.type ?? null}
+              onApplyColor={onApplyBrandColor}
+              onApplyFont={onApplyBrandFont}
+              onInsertLogo={onInsertLogo}
+            />
+          }
         />
         <div
           style={{ flex: 1, minHeight: 0, minWidth: 0 }}

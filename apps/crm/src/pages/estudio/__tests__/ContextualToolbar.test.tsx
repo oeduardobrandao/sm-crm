@@ -1,8 +1,28 @@
 import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import ContextualToolbar from '../components/Toolbar/ContextualToolbar';
 import { makeTextLayer, makeImageLayer, makeShapeLayer } from './fixtures';
 import type { NormalizedLayer } from '../types';
+
+// The T3.4 FontPicker is a cmdk Command — cmdk scrolls the selected option into view, and
+// jsdom has no scrollIntoView.
+beforeAll(() => {
+  Element.prototype.scrollIntoView = vi.fn();
+});
+
+/** Picks a family through the T3.4 FontPicker (replaced the stopgap <select>). */
+function pickFont(familyName: string) {
+  fireEvent.click(screen.getByTestId('estudio-font-trigger'));
+  fireEvent.click(screen.getByText(familyName));
+}
+
+/** Commits a hex through the T3.5 ColorPicker (replaced the stopgap CommitInput). */
+function commitColor(text: string) {
+  fireEvent.click(screen.getByTestId('estudio-color-trigger'));
+  const field = screen.getByTestId('estudio-color-hex');
+  fireEvent.change(field, { target: { value: text } });
+  fireEvent.blur(field);
+}
 
 describe('ContextualToolbar', () => {
   it('renders nothing when layer is null', () => {
@@ -47,9 +67,8 @@ describe('ContextualToolbar', () => {
 
     it('commits font_key change immediately and resets font_weight if unsupported', () => {
       const { onUpdateLayer } = renderText({ font_key: 'dm-sans', font_weight: 700 });
-      const fontSelect = screen.getByLabelText(/fonte/i) as HTMLSelectElement;
       // dm-serif-display only ships 400/normal -> should fall back to its first normal weight (400)
-      fireEvent.change(fontSelect, { target: { value: 'dm-serif-display' } });
+      pickFont('DM Serif Display');
       expect(onUpdateLayer).toHaveBeenCalledWith('layer-1', {
         font_key: 'dm-serif-display',
         font_weight: 400,
@@ -64,8 +83,7 @@ describe('ContextualToolbar', () => {
         font_weight: 400,
         font_style: 'italic',
       });
-      const fontSelect = screen.getByLabelText(/fonte/i) as HTMLSelectElement;
-      fireEvent.change(fontSelect, { target: { value: 'bebas-neue' } });
+      pickFont('Bebas Neue');
       expect(onUpdateLayer).toHaveBeenCalledWith('layer-1', {
         font_key: 'bebas-neue',
         font_weight: 400,
@@ -79,8 +97,7 @@ describe('ContextualToolbar', () => {
         font_weight: 400,
         font_style: 'normal',
       });
-      const fontSelect = screen.getByLabelText(/fonte/i) as HTMLSelectElement;
-      fireEvent.change(fontSelect, { target: { value: 'dm-serif-display' } });
+      pickFont('DM Serif Display');
       const [, patch] = onUpdateLayer.mock.calls[0];
       expect(patch).not.toHaveProperty('font_style');
     });
@@ -134,17 +151,13 @@ describe('ContextualToolbar', () => {
 
     it('commits a valid 6-digit hex color on blur', () => {
       const { onUpdateLayer } = renderText({ color: '#000000' });
-      const colorInput = screen.getByLabelText(/^cor$/i);
-      fireEvent.change(colorInput, { target: { value: '#ff00aa' } });
-      fireEvent.blur(colorInput);
+      commitColor('#ff00aa');
       expect(onUpdateLayer).toHaveBeenCalledWith('layer-1', { color: '#ff00aa' });
     });
 
     it('does not commit an invalid hex color', () => {
       const { onUpdateLayer } = renderText({ color: '#000000' });
-      const colorInput = screen.getByLabelText(/^cor$/i);
-      fireEvent.change(colorInput, { target: { value: 'not-a-color' } });
-      fireEvent.blur(colorInput);
+      commitColor('not-a-color');
       expect(onUpdateLayer).not.toHaveBeenCalled();
     });
 
@@ -270,9 +283,7 @@ describe('ContextualToolbar', () => {
 
     it('commits a solid fill color on blur', () => {
       const { onUpdateLayer } = renderShape({ shape: 'rect' });
-      const fillInput = screen.getByLabelText(/preenchimento/i);
-      fireEvent.change(fillInput, { target: { value: '#123456' } });
-      fireEvent.blur(fillInput);
+      commitColor('#123456');
       expect(onUpdateLayer).toHaveBeenCalledWith('layer-shape-1', {
         fill: { type: 'solid', color: '#123456' },
       });

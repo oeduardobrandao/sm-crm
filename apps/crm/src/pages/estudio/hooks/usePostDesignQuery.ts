@@ -103,6 +103,40 @@ export async function savePostDesign(
   return body as { design: DesignDoc; rev: number; warnings: unknown[] };
 }
 
+/** POST /brand-logo (§5.4, T3.2): server-side, SSRF-hardened import of the client's
+ * hub_brand.logo_url into a real `files` row. Idempotent — an already-materialized logo returns
+ * its id. A `reason` (never both) means the import couldn't happen for an EXPECTED cause
+ * (no/invalid URL, blocked address, too large, quota, …) — the caller translates it; hard
+ * failures reject with PostDesignError like every other route. */
+export async function importBrandLogo(
+  clienteId: number,
+): Promise<{ logo_file_id: number | null; reason?: string }> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session) throw new PostDesignError('unauthorized', 401, null);
+
+  const url = import.meta.env.VITE_SUPABASE_URL as string;
+  const res = await fetch(`${url}/functions/v1/post-design-manage/brand-logo`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ cliente_id: clienteId }),
+  });
+
+  const body: unknown = await res.json().catch(() => null);
+  if (!res.ok) {
+    const code =
+      body && typeof body === 'object' && 'error' in body
+        ? String((body as { error: unknown }).error)
+        : 'unknown_error';
+    throw new PostDesignError(code, res.status, body);
+  }
+  return body as { logo_file_id: number | null; reason?: string };
+}
+
 export function postDesignQueryKey(postId: number | undefined) {
   return ['post-design', postId] as const;
 }

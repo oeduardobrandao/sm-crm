@@ -1,7 +1,11 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { collectDocFontVariants, useFontManifest } from '../hooks/useFontManifest';
+import {
+  buildFontFamilyPatch,
+  collectDocFontVariants,
+  useFontManifest,
+} from '../hooks/useFontManifest';
 import { makeDoc, makePage, makeTextLayer } from './fixtures';
 
 describe('collectDocFontVariants', () => {
@@ -126,5 +130,37 @@ describe('useFontManifest', () => {
     expect(result.current.error).toMatchObject({
       message: expect.stringContaining('not-a-real-font'),
     });
+  });
+});
+
+describe('buildFontFamilyPatch (T3.4 — single ownership of the family-switch fallback)', () => {
+  it('keeps the current weight when the new family ships it at the current style', () => {
+    expect(buildFontFamilyPatch('playfair-display', { font_weight: 700 })).toEqual({
+      font_key: 'playfair-display',
+      font_weight: 700,
+    });
+  });
+
+  it('falls back to the first available weight when the current one is unsupported', () => {
+    // dm-serif-display ships only 400/normal.
+    expect(buildFontFamilyPatch('dm-serif-display', { font_weight: 700 })).toEqual({
+      font_key: 'dm-serif-display',
+      font_weight: 400,
+    });
+  });
+
+  it("resets font_style to normal when the new family doesn't ship the current style", () => {
+    // bebas-neue ships no italic at all.
+    expect(buildFontFamilyPatch('bebas-neue', { font_weight: 400, font_style: 'italic' })).toEqual({
+      font_key: 'bebas-neue',
+      font_weight: 400,
+      font_style: 'normal',
+    });
+  });
+
+  it('does NOT touch font_style when the new family ships it', () => {
+    expect(
+      buildFontFamilyPatch('playfair-display', { font_weight: 400, font_style: 'italic' }),
+    ).toEqual({ font_key: 'playfair-display', font_weight: 400 });
   });
 });

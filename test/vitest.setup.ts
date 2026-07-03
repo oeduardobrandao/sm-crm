@@ -40,6 +40,16 @@ initI18n({
   },
 });
 
+// jsdom has no ResizeObserver — cmdk (FontPicker) and other floating-ui consumers observe
+// their anchors with it. A no-op implementation is enough for tests.
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+}
+
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
   value: (query: string) => ({

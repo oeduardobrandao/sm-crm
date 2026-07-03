@@ -3,11 +3,12 @@
 // its own — a later integration pass may additionally wire a canvas-wide drop zone, but
 // this component never depends on that.
 //
-// OUT OF SCOPE for this PR (later slices, per the brief): no AI-generation button, no Brand
-// panel affordance, not even as a disabled placeholder.
+// Slice 3 (T3.6) added the Brand affordance as a SLOT (`brandPanel`) rather than dock-owned
+// logic — the dock stays a self-contained rail with no brand/query knowledge; EstudioPage
+// passes the connected <BrandPanel/>. Still out of scope: the AI-generation button (slice 6).
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Type, Square, Circle, Upload, FolderOpen, Shapes } from 'lucide-react';
+import { Type, Square, Circle, Upload, FolderOpen, Shapes, Palette } from 'lucide-react';
 import rawManifest from '@mesaas/fonts/manifest.json';
 import type { FontManifest } from '@mesaas/fonts/types';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -43,6 +44,9 @@ export interface LeftToolDockProps {
    * pass `false` while some other part of the editor (e.g. a text layer being edited) owns
    * paste. */
   pasteEnabled?: boolean;
+  /** Connected BrandPanel content (T3.6). When present, the dock shows a "Marca" button whose
+   * popover renders this node. */
+  brandPanel?: React.ReactNode;
 }
 
 function buildTextLayer(canvasWidth: number, canvasHeight: number, text: string): NormalizedLayer {
@@ -163,6 +167,7 @@ export function LeftToolDock({
   canvasHeight,
   onAddLayer,
   pasteEnabled = true,
+  brandPanel,
 }: LeftToolDockProps) {
   const { t } = useTranslation('estudio');
   const [shapePopoverOpen, setShapePopoverOpen] = useState(false);
@@ -242,6 +247,28 @@ export function LeftToolDock({
       <DockButton label={t('dock.openArquivos')} onClick={imageInsert.openArquivosPicker}>
         <FolderOpen size={20} />
       </DockButton>
+
+      {brandPanel && (
+        <Popover>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              title={t('dock.brand')}
+              aria-label={t('dock.brand')}
+              data-testid="estudio-dock-brand"
+              className="flex items-center justify-center transition-colors"
+              style={{ width: 44, height: 44, borderRadius: 10, color: 'var(--text-main)' }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              <Palette size={20} />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent side="right" align="start" className="w-auto p-4">
+            {brandPanel}
+          </PopoverContent>
+        </Popover>
+      )}
 
       <input
         ref={imageInsert.fileInputRef}

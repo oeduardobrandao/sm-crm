@@ -73,6 +73,20 @@ vi.mock('../components/Dock', () => ({
       </button>
     </div>
   ),
+  BrandPanel: () => <div>brand-panel-stub</div>,
+}));
+
+// usePostBrand queries supabase (post -> cliente -> hub_brand) — irrelevant to these tests,
+// stubbed to an empty brand so no network is attempted.
+vi.mock('../hooks/usePostBrand', () => ({
+  usePostBrand: () => ({
+    clienteId: null,
+    brand: null,
+    brandColors: [],
+    brandFonts: [],
+    logoFileId: null,
+    logoUrl: null,
+  }),
 }));
 
 vi.mock('../components/Toolbar', () => ({

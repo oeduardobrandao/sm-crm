@@ -8,7 +8,7 @@ import { supabase } from '@/lib/supabase';
 import { collectDocFileIds } from '../lib/imageResolution';
 import type { DesignDoc } from '../types';
 
-async function resolveImageUrls(fileIds: number[]): Promise<Map<number, string>> {
+export async function resolveImageUrls(fileIds: number[]): Promise<Map<number, string>> {
   if (fileIds.length === 0) return new Map();
 
   const { data: files, error } = await supabase
@@ -41,6 +41,18 @@ async function resolveImageUrls(fileIds: number[]): Promise<Map<number, string>>
     if (signed) map.set(file.id, signed);
   }
   return map;
+}
+
+/** Signed display URL for ONE file id (e.g. the brand-logo thumbnail) — same two-step
+ * resolution as the doc-wide hook below, same expiry-safe staleTime. */
+export function useFileUrl(fileId: number | null | undefined) {
+  return useQuery({
+    queryKey: ['estudio-file-url', fileId],
+    queryFn: async () => (await resolveImageUrls([fileId!])).get(fileId!) ?? null,
+    enabled: typeof fileId === 'number',
+    staleTime: 30 * 60 * 1000,
+    retry: false,
+  });
 }
 
 export function useImageUrls(doc: DesignDoc | undefined) {

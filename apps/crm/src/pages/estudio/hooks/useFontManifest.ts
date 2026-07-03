@@ -98,6 +98,34 @@ export function familiesByGroup(): Array<{ group: string; label: string; familie
   }));
 }
 
+/** The safe family-switch patch (single ownership — FontPicker, BrandPanel and any other
+ * family-changing UI must produce IDENTICAL fallbacks): if the new family doesn't ship the
+ * layer's current font_style, fall back to 'normal' (every manifest family has at least one
+ * normal variant); keep the current font_weight when the new family ships it at that style,
+ * else take the family's first available weight. Without this, switching families could leave
+ * (font_key, font_weight, font_style) pointing at a variant that doesn't exist — which only
+ * surfaces as an `unsupported_font_variant` error at save time. */
+export function buildFontFamilyPatch(
+  nextKey: string,
+  current: { font_weight: FontWeight; font_style?: 'normal' | 'italic' },
+): { font_key: string; font_weight: FontWeight; font_style?: 'normal' | 'italic' } {
+  const style = current.font_style ?? 'normal';
+  const nextFamily = findFamily(nextKey);
+  const nextFamilyStyles = new Set((nextFamily?.variants ?? []).map((v) => v.style));
+  const nextStyle = nextFamilyStyles.has(style) ? style : 'normal';
+  const nextWeights = (nextFamily?.variants ?? [])
+    .filter((v) => v.style === nextStyle)
+    .map((v) => v.weight as FontWeight);
+  const nextWeight = nextWeights.includes(current.font_weight)
+    ? current.font_weight
+    : (nextWeights[0] ?? current.font_weight);
+  return {
+    font_key: nextKey,
+    font_weight: nextWeight,
+    ...(nextStyle !== style ? { font_style: nextStyle } : {}),
+  };
+}
+
 function findVariant(v: VariantKey): { family: FontFamily; files: FontFile[] } {
   const family = FONT_MANIFEST.families.find((f) => f.key === v.fontKey);
   const variant = family?.variants.find((fv) => fv.weight === v.weight && fv.style === v.style);

@@ -47,7 +47,49 @@
     "addRectangle": "Retângulo",
     "addEllipse": "Elipse",
     "uploadImage": "Enviar imagem",
-    "openArquivos": "Arquivos"
+    "openArquivos": "Arquivos",
+    "brand": "Marca"
+  },
+  "colorPicker": {
+    "open": "Escolher cor",
+    "native": "Seletor de cor",
+    "hex": "Cor em hexadecimal",
+    "brand": "Marca",
+    "recents": "Recentes",
+    "empty": "Sem cor"
+  },
+  "fontPicker": {
+    "open": "Escolher fonte",
+    "search": "Buscar fonte…",
+    "empty": "Nenhuma fonte encontrada.",
+    "brand": "Marca",
+    "notIncluded": "não incluída no Estúdio"
+  },
+  "brandPanel": {
+    "colors": "Cores",
+    "fonts": "Fontes",
+    "logo": "Logo",
+    "apply": "Aplicar",
+    "insertLogo": "Inserir logo",
+    "importLogo": "Importar logo",
+    "importing": "Importando…",
+    "importSuccess": "Logo importado!",
+    "noBrand": "Nenhuma marca cadastrada para este cliente. Configure em Clientes → Hub → Marca.",
+    "noColors": "Nenhuma cor cadastrada.",
+    "noFonts": "Nenhuma fonte cadastrada.",
+    "noLogo": "Nenhum logo cadastrado.",
+    "selectColorTarget": "Selecione um texto ou forma para aplicar.",
+    "selectFontTarget": "Selecione uma camada de texto",
+    "importReason": {
+      "noLogoUrl": "Este cliente não tem URL de logo cadastrada.",
+      "invalidUrl": "A URL do logo é inválida — use um endereço https válido.",
+      "blocked": "A URL do logo foi bloqueada por segurança.",
+      "unreachable": "Não foi possível acessar a URL do logo.",
+      "notImage": "A URL do logo não aponta para uma imagem válida.",
+      "tooLarge": "O logo é maior que 5 MB.",
+      "quota": "Limite de armazenamento do seu plano atingido.",
+      "generic": "Não foi possível importar o logo."
+    }
   },
   "slideStrip": {
     "pageLabel": "Página {{number}}",
