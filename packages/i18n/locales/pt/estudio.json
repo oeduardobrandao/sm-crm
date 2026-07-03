@@ -25,6 +25,53 @@
     "safeZoneToggle": "Guias de área segura"
   },
   "openInEstudio": "Abrir no Estúdio",
+  "dock": {
+    "addText": "Adicionar texto",
+    "defaultText": "Seu texto aqui",
+    "addShape": "Adicionar forma",
+    "addRectangle": "Retângulo",
+    "addEllipse": "Elipse",
+    "uploadImage": "Enviar imagem",
+    "openArquivos": "Arquivos"
+  },
+  "slideStrip": {
+    "pageLabel": "Página {{number}}",
+    "addPage": "Adicionar página",
+    "maxPagesReached": "Limite de {{max}} páginas atingido",
+    "duplicatePage": "Duplicar página",
+    "removePage": "Remover página",
+    "cannotRemoveLastPage": "Não é possível remover a única página"
+  },
+  "toolbar": {
+    "on": "Ativado",
+    "off": "Desativado",
+    "text": {
+      "font": "Fonte",
+      "weight": "Peso",
+      "size": "Tamanho",
+      "color": "Cor",
+      "align": "Alinhamento",
+      "align_left": "Esquerda",
+      "align_center": "Centro",
+      "align_right": "Direita",
+      "shadow": "Sombra",
+      "pill": "Fundo em pílula"
+    },
+    "image": {
+      "fit": "Ajuste",
+      "fitCover": "Preencher",
+      "fitContain": "Conter",
+      "radius": "Raio da borda",
+      "border": "Borda",
+      "replace": "Substituir imagem"
+    },
+    "shape": {
+      "fill": "Preenchimento",
+      "stroke": "Contorno",
+      "radius": "Raio da borda",
+      "radiusDisabledHint": "Raio só se aplica a retângulos"
+    }
+  },
   "toast": {
     "createError": "Não foi possível criar o design: {{error}}"
   }

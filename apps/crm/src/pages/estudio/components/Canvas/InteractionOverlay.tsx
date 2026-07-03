@@ -22,8 +22,9 @@ import type { CanvasPoint } from '../../hooks/useCanvasTransform';
 import { useSelection } from '../../hooks/useSelection';
 import { useSnapping } from '../../hooks/useSnapping';
 import { LayerHandles } from './LayerHandles';
+import { TextEditOverlay } from './TextEditOverlay';
 import type { GetTextHeight } from '../../lib/layerGeometry';
-import type { NormalizedLayer } from '../../types';
+import type { NormalizedLayer, NormalizedRun, NormalizedTextLayer } from '../../types';
 import type { SnapLine } from '../../lib/snapMath';
 
 export interface InteractionOverlayProps {
@@ -37,6 +38,11 @@ export interface InteractionOverlayProps {
   scale: number;
   screenToCanvas: (screenX: number, screenY: number) => CanvasPoint;
   canvasToScreen: (canvasX: number, canvasY: number) => CanvasPoint;
+  /** Notified whenever this overlay enters/exits text-edit mode for some layer — lets
+   * `EstudioEditorShell` gate things that shouldn't run while a text layer is being typed into
+   * (e.g. `LeftToolDock`'s window-level paste-to-insert listener, per T2.9's `pasteEnabled` prop).
+   * Optional: tests/callers that don't care about this signal simply omit it. */
+  onEditingChange?: (isEditing: boolean) => void;
 }
 
 type Gesture =
@@ -88,18 +94,45 @@ export function InteractionOverlay({
   scale,
   screenToCanvas,
   canvasToScreen,
+  onEditingChange,
 }: InteractionOverlayProps) {
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const [gesture, setGesture] = useState<Gesture | null>(null);
   const [ghost, setGhost] = useState<GhostState | null>(null);
   const gestureRef = useRef<Gesture | null>(null);
   const ghostRef = useRef<GhostState | null>(null);
+  // Which layer (if any) is currently in TextEditOverlay's modal text-edit takeover — set by a
+  // double-click on the selected text layer's body, cleared on commit/cancel. While set, the
+  // normal drag hit-area/LayerHandles for THAT layer render nothing; TextEditOverlay renders
+  // instead (see render() below) so no drag/resize gesture can be started on it mid-edit.
+  const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
 
   const { selectAtPoint, hitTest } = useSelection({ layers, getTextHeight, select });
   const { snap } = useSnapping({ layers, canvasWidth, canvasHeight, getTextHeight, scale });
 
   const selectedLayer =
     selection.length === 1 ? (layers.find((l) => l.id === selection[0]) ?? null) : null;
+
+  const editingLayer =
+    editingLayerId != null
+      ? ((layers.find((l) => l.id === editingLayerId) ?? null) as NormalizedTextLayer | null)
+      : null;
+
+  // Defensive cleanup mirroring the reducer's own selection-pruning-on-removal behavior (see
+  // designDocState.ts's mutating-action branch: "Drop any selected id that no longer exists"): if
+  // the layer being edited gets deselected or removed from OUTSIDE this component (e.g. undo,
+  // another user's dispatch, the layer/remove action pruning selection), exit edit mode rather
+  // than continuing to render a TextEditOverlay for a layer that's no longer selected/present.
+  useEffect(() => {
+    if (!editingLayerId) return;
+    const stillSelected = selection.length === 1 && selection[0] === editingLayerId;
+    const stillExists = layers.some((l) => l.id === editingLayerId);
+    if (!stillSelected || !stillExists) setEditingLayerId(null);
+  }, [editingLayerId, selection, layers]);
+
+  useEffect(() => {
+    onEditingChange?.(editingLayerId != null);
+  }, [editingLayerId, onEditingChange]);
 
   const clientPointToCanvas = useCallback(
     (clientX: number, clientY: number): CanvasPoint => {
@@ -173,6 +206,10 @@ export function InteractionOverlay({
   const handleLayerBodyPointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (!selectedLayer) return;
+      // The selected layer is in TextEditOverlay's modal text-edit takeover — no drag gesture may
+      // start on it (TextEditOverlay itself already renders INSTEAD of this hit-area/LayerHandles
+      // while editing, per render() below, so this branch is defense-in-depth, not the only guard).
+      if (editingLayerId === selectedLayer.id) return;
       e.stopPropagation();
       const point = clientPointToCanvas(e.clientX, e.clientY);
       // Only start a drag if the pointerdown actually landed on the selected layer's own body —
@@ -186,8 +223,38 @@ export function InteractionOverlay({
       }
       beginDrag(selectedLayer, e);
     },
-    [selectedLayer, clientPointToCanvas, hitTest, selectAtPoint, beginDrag],
+    [selectedLayer, editingLayerId, clientPointToCanvas, hitTest, selectAtPoint, beginDrag],
   );
+
+  const handleLayerBodyDoubleClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (!selectedLayer || selectedLayer.type !== 'text') return;
+      e.stopPropagation();
+      const point = clientPointToCanvas(e.clientX, e.clientY);
+      const hit = hitTest(point);
+      if (!hit || hit.id !== selectedLayer.id) return;
+      // Entering edit mode ends any in-flight drag/resize gesture first (defensive — a double-
+      // click fires after two full pointerdown/up cycles, so a gesture shouldn't normally still
+      // be active here, but this keeps the invariant "never editing AND dragging at once" airtight
+      // even under an unusual event ordering).
+      endGesture(false);
+      setEditingLayerId(selectedLayer.id);
+    },
+    [selectedLayer, clientPointToCanvas, hitTest, endGesture],
+  );
+
+  const handleTextEditCommit = useCallback(
+    (patch: { text: string } | { runs: NormalizedRun[] }) => {
+      if (!editingLayerId) return;
+      onUpdateLayer(editingLayerId, patch as Partial<NormalizedLayer>);
+      setEditingLayerId(null);
+    },
+    [editingLayerId, onUpdateLayer],
+  );
+
+  const handleTextEditCancel = useCallback(() => {
+    setEditingLayerId(null);
+  }, []);
 
   const handleResizePointerDown = useCallback(
     (handle: ResizeHandle, e: React.PointerEvent) => {
@@ -303,10 +370,17 @@ export function InteractionOverlay({
       ref={overlayRef}
       data-testid="interaction-overlay"
       style={{ position: 'absolute', inset: 0, cursor: selectedLayer ? 'move' : 'default' }}
-      onPointerDown={selectedLayer ? handleLayerBodyPointerDown : handleBackgroundPointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerCancel={() => endGesture(false)}
+      onPointerDown={
+        editingLayerId
+          ? undefined
+          : selectedLayer
+            ? handleLayerBodyPointerDown
+            : handleBackgroundPointerDown
+      }
+      onDoubleClick={editingLayerId ? undefined : handleLayerBodyDoubleClick}
+      onPointerMove={editingLayerId ? undefined : handlePointerMove}
+      onPointerUp={editingLayerId ? undefined : handlePointerUp}
+      onPointerCancel={editingLayerId ? undefined : () => endGesture(false)}
     >
       {ghost && gesture && (
         <div
@@ -347,7 +421,21 @@ export function InteractionOverlay({
           />
         );
       })}
-      {selectedLayer && displayBBox && (
+      {/* While a layer is being text-edited, TextEditOverlay renders INSTEAD OF the normal drag
+          hit-area/LayerHandles for it — the gesture machinery above is already inert for it (see
+          the `editingLayerId` guards on the pointer handlers/JSX above), and rendering
+          LayerHandles underneath would just be a confusing, functionally-dead selection outline. */}
+      {editingLayer && editingLayerId && (
+        <TextEditOverlay
+          layer={editingLayer}
+          bbox={getLayerBBox(editingLayer, getTextHeight)}
+          scale={scale}
+          canvasToScreen={canvasToScreen}
+          onCommit={handleTextEditCommit}
+          onCancel={handleTextEditCancel}
+        />
+      )}
+      {selectedLayer && displayBBox && editingLayerId !== selectedLayer.id && (
         <LayerHandles
           bbox={displayBBox}
           rotation={selectedLayer.rotation}

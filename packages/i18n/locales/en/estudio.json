@@ -25,6 +25,53 @@
     "safeZoneToggle": "Safe-zone guides"
   },
   "openInEstudio": "Open in Studio",
+  "dock": {
+    "addText": "Add text",
+    "defaultText": "Your text here",
+    "addShape": "Add shape",
+    "addRectangle": "Rectangle",
+    "addEllipse": "Ellipse",
+    "uploadImage": "Upload image",
+    "openArquivos": "Files"
+  },
+  "slideStrip": {
+    "pageLabel": "Page {{number}}",
+    "addPage": "Add page",
+    "maxPagesReached": "{{max}}-page limit reached",
+    "duplicatePage": "Duplicate page",
+    "removePage": "Remove page",
+    "cannotRemoveLastPage": "Can't remove the only page"
+  },
+  "toolbar": {
+    "on": "On",
+    "off": "Off",
+    "text": {
+      "font": "Font",
+      "weight": "Weight",
+      "size": "Size",
+      "color": "Color",
+      "align": "Align",
+      "align_left": "Left",
+      "align_center": "Center",
+      "align_right": "Right",
+      "shadow": "Shadow",
+      "pill": "Pill background"
+    },
+    "image": {
+      "fit": "Fit",
+      "fitCover": "Cover",
+      "fitContain": "Contain",
+      "radius": "Corner radius",
+      "border": "Border",
+      "replace": "Replace image"
+    },
+    "shape": {
+      "fill": "Fill",
+      "stroke": "Stroke",
+      "radius": "Corner radius",
+      "radiusDisabledHint": "Radius only applies to rectangles"
+    }
+  },
   "toast": {
     "createError": "Could not create the design: {{error}}"
   }

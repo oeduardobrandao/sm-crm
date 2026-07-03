@@ -37,6 +37,9 @@ export interface CanvasStageProps {
   /** Resolves a text layer's emergent height (design-doc.ts: text has no schema `h`) — threaded
    * down from `useTextMeasurement` at the call site so this component stays measurement-agnostic. */
   getTextHeight: GetTextHeight;
+  /** Passed straight through to InteractionOverlay's own `onEditingChange` — see that prop's doc
+   * comment. Optional: callers that don't need the signal (e.g. existing tests) simply omit it. */
+  onEditingChange?: (isEditing: boolean) => void;
 }
 
 export function CanvasStage({
@@ -46,6 +49,7 @@ export function CanvasStage({
   select,
   onUpdateLayer,
   getTextHeight,
+  onEditingChange,
 }: CanvasStageProps) {
   const { t } = useTranslation('estudio');
   const { svg, error } = useSatoriRenderer(doc, pageIndex);
@@ -100,6 +104,7 @@ export function CanvasStage({
             scale={scale}
             screenToCanvas={screenToCanvas}
             canvasToScreen={canvasToScreen}
+            onEditingChange={onEditingChange}
           />
         </div>
       ) : (

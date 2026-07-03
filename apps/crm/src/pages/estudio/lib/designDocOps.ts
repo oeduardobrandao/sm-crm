@@ -127,7 +127,21 @@ export function reorderLayer(
 // Pages
 // ============================================================
 
+// design-doc.ts Stage 1: format !== 'carrossel' locks a doc to exactly 1 page (feed/reel_cover),
+// and the authoring schema caps every doc at `pages: z.array(Page).min(1).max(10)` regardless of
+// format. Both invariants were previously enforced ONLY by SlideStrip's button visibility — a UI
+// concern, not a data-layer one — leaving `addPage`/`duplicatePage` reachable from any future
+// caller (a keyboard shortcut, a future MCP-driven op, a bug in the UI gating) with no guard
+// against producing a schema-violating doc. Enforced here too, at the one place every mutation
+// path funnels through, so it's impossible to bypass regardless of caller.
+const MAX_PAGES = 10;
+
+function canAddPage(doc: DesignDoc): boolean {
+  return doc.format === 'carrossel' && doc.pages.length < MAX_PAGES;
+}
+
 export function addPage(doc: DesignDoc, page: NormalizedPage, index?: number): DesignDoc {
+  if (!canAddPage(doc)) return doc;
   const pages = [...doc.pages];
   const at = index === undefined ? pages.length : Math.max(0, Math.min(index, pages.length));
   pages.splice(at, 0, page);
@@ -136,8 +150,10 @@ export function addPage(doc: DesignDoc, page: NormalizedPage, index?: number): D
 
 /** Deep-clones a page with a fresh page id AND fresh layer ids (so the clone never collides
  * with the original under the schema's per-doc id-uniqueness rule), inserted right after it.
- * No-op if `pageId` doesn't exist. */
+ * No-op if `pageId` doesn't exist, or if `canAddPage` disallows growing the doc by one page (see
+ * comment above `MAX_PAGES`). */
 export function duplicatePage(doc: DesignDoc, pageId: string): DesignDoc {
+  if (!canAddPage(doc)) return doc;
   const index = doc.pages.findIndex((p) => p.id === pageId);
   if (index === -1) return doc;
   const source = doc.pages[index];

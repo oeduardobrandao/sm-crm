@@ -1,16 +1,47 @@
 // Route entry (docs/estudio-design.md §6.1): /estudio (picker) + /estudio/:postId (editor).
-// The full editor chrome (Toolbar/Dock/SlideStrip — T2.6 onward) doesn't exist yet; this PR wires
-// the picker, the entry flows, the get-or-create query, and the actual satori-rendered canvas
-// (T2.4) end to end. Always shows page 0 — page switching is T2.10's SlideStrip.
-import { useCallback, useEffect } from 'react';
+// PR 2.C wires up the full editor chrome: LeftToolDock (T2.9), ContextualToolbar (T2.12),
+// SlideStrip (T2.10), and TextEditOverlay (T2.8, wired inside CanvasStage/InteractionOverlay).
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { FilePickerModal } from '@/pages/arquivos/components/FilePickerModal';
 import PostPicker from './components/PostPicker';
 import { CanvasStage } from './components/Canvas/CanvasStage';
+import { LeftToolDock } from './components/Dock';
+import ContextualToolbar from './components/Toolbar';
+import { SlideStrip } from './components/SlideStrip';
 import { usePostDesignQuery, PostDesignError } from './hooks/usePostDesignQuery';
 import { useDesignDocState } from './hooks/useDesignDocState';
 import { useTextMeasurement } from './hooks/useTextMeasurement';
-import type { NormalizedLayer, NormalizedTextLayer } from './types';
+import { useImageInsert } from './hooks/useImageInsert';
+import { generateDesignId } from './types';
+import type { NormalizedLayer, NormalizedPage, NormalizedTextLayer } from './types';
+import type { UploadedEstudioImage } from './lib/uploadEstudioImage';
+
+/** Scales `{width,height}` so the longer side is capped at `maxSide` (floored at 100px to avoid a
+ * degenerate near-zero layer on odd metadata), preserving the source aspect ratio. Mirrors
+ * LeftToolDock.tsx's own `fitInsertedImageSize`, except the cap here is the layer's EXISTING `w`
+ * (see `handleReplaceImage` below) rather than a fixed constant — replacing an image should not
+ * wildly resize a layer the user has already carefully placed/sized. */
+export function fitReplacementImageSize(
+  width: number,
+  height: number,
+  maxSide: number,
+): { w: number; h: number } {
+  const longer = Math.max(width, height, 1);
+  const scale = Math.min(1, maxSide / longer);
+  const w = Math.max(100, Math.round(width * scale));
+  const h = Math.max(100, Math.round(height * scale));
+  return { w, h };
+}
+
+function buildBlankPage(): NormalizedPage {
+  return {
+    id: generateDesignId('page'),
+    background: { type: 'solid', color: '#ffffff' },
+    layers: [],
+  };
+}
 
 function EstudioEditorShell({ postId }: { postId: number }) {
   const { t } = useTranslation('estudio');
@@ -47,6 +78,83 @@ function EstudioEditorShell({ postId }: { postId: number }) {
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [state.activePageId],
+  );
+  const onAddLayer = useCallback(
+    (layer: NormalizedLayer) => {
+      state.dispatch({ type: 'layer/add', pageId: state.activePageId, layer });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state.activePageId],
+  );
+
+  // TextEditOverlay's modal takeover (InteractionOverlay's `editingLayerId` !== null) is the
+  // cleanest available "is the user currently typing into a text layer" signal — lifted up via
+  // CanvasStage's `onEditingChange` passthrough so LeftToolDock's window-level paste-to-insert
+  // listener can be disabled while it's active (JUDGMENT CALL: a slightly looser signal than
+  // "some contenteditable somewhere has focus" would also work, but this one is exact and doesn't
+  // require guessing at focus events from outside the editor component tree).
+  const [isTextEditing, setIsTextEditing] = useState(false);
+
+  const selection = state.selection;
+  const activePage = state.doc.pages[activePageIndex];
+  const selectedLayer =
+    selection.length === 1 ? (activePage?.layers.find((l) => l.id === selection[0]) ?? null) : null;
+
+  // Second, independent `useImageInsert` instance dedicated to ContextualToolbar's "Substituir
+  // imagem" action — LeftToolDock owns its own instance for ADDING new layers; this one PATCHES
+  // an existing image layer's `file_id`/`w`/`h` instead. `replaceTargetRef` captures which layer
+  // id the replacement is for at the moment the user triggers it (button click / Arquivos picker
+  // open), since `onInsert` fires asynchronously afterward and by then `selectedLayer` may have
+  // already changed (e.g. the picker modal briefly steals focus/selection state elsewhere).
+  const replaceTargetRef = useRef<string | null>(null);
+  const handleReplaceInsert = useCallback(
+    (files: UploadedEstudioImage[]) => {
+      const targetId = replaceTargetRef.current;
+      const file = files[0];
+      if (!targetId || !file) return;
+      const targetLayer = activePage?.layers.find((l) => l.id === targetId);
+      if (!targetLayer || targetLayer.type !== 'image') return;
+      // Cap the replacement image's longer side at the EXISTING layer's own longer side (w OR h,
+      // whichever is bigger) — capping against `w` alone (the original implementation) let a
+      // portrait replacement swapped into a wide-but-short layer balloon `h` far past the layer's
+      // own footprint, since only `w` was ever bounded. Using max(w,h) as the budget keeps the
+      // "don't wildly resize a layer the user already sized" intent correct regardless of the
+      // existing layer's own orientation — documented per the brief's explicit ask.
+      const { w, h } = fitReplacementImageSize(
+        file.width,
+        file.height,
+        Math.max(targetLayer.w, targetLayer.h),
+      );
+      onUpdateLayer(targetId, { file_id: file.file_id, w, h });
+    },
+    [activePage, onUpdateLayer],
+  );
+  const replaceImageInsert = useImageInsert({
+    onInsert: handleReplaceInsert,
+    // Paste is LeftToolDock's job (and is itself gated on `!isTextEditing`) — this instance only
+    // ever inserts via its Arquivos picker/file dialog, both explicitly user-triggered, so its own
+    // paste listener would be redundant (and a second global paste listener racing LeftToolDock's
+    // would double-insert on a single paste). Always disabled.
+    enabled: false,
+  });
+  const onReplaceImage = useCallback(
+    (layerId: string) => {
+      replaceTargetRef.current = layerId;
+      replaceImageInsert.openArquivosPicker();
+    },
+    [replaceImageInsert],
+  );
+
+  const pageDispatchHandlers = useMemo(
+    () => ({
+      onAddPage: () => state.dispatch({ type: 'page/add', page: buildBlankPage() }),
+      onDuplicatePage: (pageId: string) => state.dispatch({ type: 'page/duplicate', pageId }),
+      onRemovePage: (pageId: string) => state.dispatch({ type: 'page/remove', pageId }),
+      onReorderPages: (fromIndex: number, toIndex: number) =>
+        state.dispatch({ type: 'page/reorder', fromIndex, toIndex }),
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
   );
 
   if (query.isLoading) {
@@ -87,18 +195,65 @@ function EstudioEditorShell({ postId }: { postId: number }) {
           {t('editor.layerCount', { count: layerCount })}
         </span>
       </div>
-      <div style={{ flex: 1, minHeight: 0 }}>
-        <CanvasStage
-          doc={state.doc}
-          pageIndex={activePageIndex}
-          selection={state.selection}
-          select={state.select}
-          onUpdateLayer={onUpdateLayer}
-          getTextHeight={getTextHeight}
+      <ContextualToolbar
+        layer={selectedLayer}
+        onUpdateLayer={onUpdateLayer}
+        onReplaceImage={onReplaceImage}
+      />
+      <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+        <LeftToolDock
+          canvasWidth={state.doc.canvas.width}
+          canvasHeight={state.doc.canvas.height}
+          onAddLayer={onAddLayer}
+          pasteEnabled={!isTextEditing}
         />
+        <div style={{ flex: 1, minHeight: 0, minWidth: 0 }}>
+          <CanvasStage
+            doc={state.doc}
+            pageIndex={activePageIndex}
+            selection={state.selection}
+            select={state.select}
+            onUpdateLayer={onUpdateLayer}
+            getTextHeight={getTextHeight}
+            onEditingChange={setIsTextEditing}
+          />
+        </div>
       </div>
+      <SlideStrip
+        doc={state.doc}
+        activePageId={state.activePageId}
+        setActivePage={state.setActivePage}
+        {...pageDispatchHandlers}
+      />
+      {/* Hidden file input + FilePickerModal for the "Substituir imagem" flow live inside
+          `useImageInsert`'s own consumer contract (see LeftToolDock.tsx for the established
+          pattern) — but that hook only returns callbacks/refs, it doesn't render anything itself,
+          so this shell renders the modal directly for its dedicated replace-image instance. */}
+      <input
+        ref={replaceImageInsert.fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={replaceImageInsert.onFileInputChange}
+      />
+      {replaceImageInsert.isArquivosPickerOpen && (
+        <ReplaceImagePickerModal
+          onClose={replaceImageInsert.closeArquivosPicker}
+          onSelect={replaceImageInsert.onArquivosPickerSelect}
+        />
+      )}
     </div>
   );
+}
+
+function ReplaceImagePickerModal({
+  onClose,
+  onSelect,
+}: {
+  onClose: () => void;
+  onSelect: (fileIds: number[]) => void;
+}) {
+  return <FilePickerModal open onClose={onClose} onSelect={onSelect} filterKind={['image']} />;
 }
 
 export default function EstudioPage() {

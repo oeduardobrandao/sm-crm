@@ -7,6 +7,7 @@ export type {
   DesignFormat,
   DesignIssue,
   DesignWarning,
+  FontWeight,
   NormalizedFill,
   NormalizedFillGradient,
   NormalizedFillImage,

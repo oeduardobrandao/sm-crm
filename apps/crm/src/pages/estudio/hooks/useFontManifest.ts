@@ -78,6 +78,26 @@ function fetchFontBytes(file: FontFile): Promise<ArrayBuffer> {
   return cached;
 }
 
+/** Pure manifest lookup by key only (no weight/style) — exported for UI callers (e.g.
+ * ContextualToolbar's font/weight selects) that need family metadata to populate controls, per
+ * this module's "single ownership of manifest lookups" convention. Returns undefined for an
+ * unknown key rather than throwing — a `<select>`'s currently-stored font_key can transiently be
+ * stale/unknown (e.g. mid-edit), and UI code should degrade gracefully, unlike the satori-loading
+ * path below which treats an unknown variant as a hard error. */
+export function findFamily(fontKey: string): FontFamily | undefined {
+  return FONT_MANIFEST.families.find((f) => f.key === fontKey);
+}
+
+/** All families grouped by `family.group`, in the manifest's own group order — the exact
+ * grouping ContextualToolbar's font <select> needs for its <optgroup>s. */
+export function familiesByGroup(): Array<{ group: string; label: string; families: FontFamily[] }> {
+  return Object.entries(FONT_MANIFEST.groups).map(([group, label]) => ({
+    group,
+    label,
+    families: FONT_MANIFEST.families.filter((f) => f.group === group),
+  }));
+}
+
 function findVariant(v: VariantKey): { family: FontFamily; files: FontFile[] } {
   const family = FONT_MANIFEST.families.find((f) => f.key === v.fontKey);
   const variant = family?.variants.find((fv) => fv.weight === v.weight && fv.style === v.style);
@@ -88,6 +108,25 @@ function findVariant(v: VariantKey): { family: FontFamily; files: FontFile[] } {
     family,
     files: [variant.files.latin, variant.files.latinExt].filter((f): f is FontFile => !!f),
   };
+}
+
+/** Pure (family, weight, style) -> `FontFile` lookup, built from the same manifest search
+ * `findVariant` uses internally — exported per this module's "single ownership of manifest
+ * lookups" convention (e.g. TextEditOverlay's `@font-face` needs the SAME variant resolution the
+ * satori-loading path uses, so the contenteditable visually matches the render). Returns
+ * `undefined` (never throws) for an unknown key/weight/style combo — a text layer's stored
+ * (font_key, font_weight, font_style) can point at a variant the manifest doesn't have (e.g. an
+ * older manifest version), and callers here are visual-fidelity-only, not correctness-critical
+ * like the satori loading path. Prefers the `latin` file (matches `loadVariantEntries`'s own
+ * per-variant ordering); falls back to `latinExt` if `latin` is absent. */
+export function findFontFile(
+  fontKey: string,
+  weight: FontWeight,
+  style: 'normal' | 'italic',
+): FontFile | undefined {
+  const family = FONT_MANIFEST.families.find((f) => f.key === fontKey);
+  const variant = family?.variants.find((fv) => fv.weight === weight && fv.style === style);
+  return variant?.files.latin ?? variant?.files.latinExt;
 }
 
 async function loadVariantEntries(v: VariantKey): Promise<SatoriFontEntry[]> {

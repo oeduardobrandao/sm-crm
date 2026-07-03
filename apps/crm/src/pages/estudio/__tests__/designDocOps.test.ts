@@ -109,14 +109,30 @@ describe('designDocOps layers', () => {
 
 describe('designDocOps pages', () => {
   it('addPage inserts at the end by default', () => {
-    const doc = makeDoc();
+    const doc = makeDoc({ format: 'carrossel' });
     const page2 = makePage({ id: 'page-2' });
     const next = ops.addPage(doc, page2);
     expect(next.pages.map((p) => p.id)).toEqual(['page-1', 'page-2']);
   });
 
+  it('addPage is a no-op for a non-carrossel format (feed/reel_cover are locked to exactly 1 page)', () => {
+    const doc = makeDoc({ format: 'feed' });
+    const next = ops.addPage(doc, makePage({ id: 'page-2' }));
+    expect(next).toBe(doc);
+  });
+
+  it('addPage is a no-op once the doc already has 10 pages (design-doc.ts schema cap)', () => {
+    const doc = makeDoc({
+      format: 'carrossel',
+      pages: Array.from({ length: 10 }, (_, i) => makePage({ id: `page-${i}` })),
+    });
+    const next = ops.addPage(doc, makePage({ id: 'page-11' }));
+    expect(next).toBe(doc);
+  });
+
   it('duplicatePage clones with fresh page and layer ids, inserted right after the source', () => {
     const doc = makeDoc({
+      format: 'carrossel',
       pages: [
         makePage({ id: 'page-1' }),
         makePage({ id: 'page-2', layers: [makeTextLayer({ id: 'x' })] }),
@@ -131,8 +147,14 @@ describe('designDocOps pages', () => {
   });
 
   it('duplicatePage is a no-op for a nonexistent page id', () => {
-    const doc = makeDoc();
+    const doc = makeDoc({ format: 'carrossel' });
     const next = ops.duplicatePage(doc, 'missing-page');
+    expect(next).toBe(doc);
+  });
+
+  it('duplicatePage is a no-op for a non-carrossel format', () => {
+    const doc = makeDoc({ format: 'feed' });
+    const next = ops.duplicatePage(doc, 'page-1');
     expect(next).toBe(doc);
   });
 
@@ -170,6 +192,7 @@ describe('designDocOps pages', () => {
 
   it('background image fill keeps fileIds in sync after page removal', () => {
     const doc = makeDoc({
+      format: 'carrossel',
       pages: [
         makePage({ id: 'page-1' }),
         makePage({

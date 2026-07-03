@@ -31,6 +31,28 @@ if (
   window.PointerEvent = PointerEventPolyfill;
 }
 
+// ProseMirror (TipTap's engine, now reachable via TextEditOverlay once a double-click enters edit
+// mode) needs a handful of DOM range/rect APIs jsdom doesn't implement — same minimal stand-ins as
+// TextEditOverlay.test.tsx, scoped here too since this file now transitively mounts it.
+if (!('getClientRects' in Range.prototype)) {
+  // @ts-expect-error jsdom-only polyfill
+  Range.prototype.getClientRects = () => [];
+}
+Range.prototype.getBoundingClientRect = () =>
+  ({
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: 0,
+    height: 0,
+    x: 0,
+    y: 0,
+    toJSON() {},
+  }) as DOMRect;
+// @ts-expect-error jsdom-only polyfill — ProseMirror's view.dom querying uses this in a few paths.
+document.elementFromPoint = () => null;
+
 const satoriRendererState: { svg: string | null; error: Error | null } = {
   svg: '<svg width="1000" height="1000"></svg>',
   error: null,
@@ -264,6 +286,80 @@ describe('CanvasStage / InteractionOverlay', () => {
   it('does not render LayerHandles when nothing is selected', () => {
     renderStage({ layers: [makeTextLayer({ id: 'a' })], selection: [] });
     expect(screen.queryByTestId('layer-handles')).not.toBeInTheDocument();
+  });
+});
+
+describe('InteractionOverlay text-edit mode (T2.8)', () => {
+  beforeEach(() => {
+    stubContainerAndBoxGeometry();
+    satoriRendererState.svg = '<svg width="1000" height="1000"></svg>';
+    satoriRendererState.error = null;
+  });
+
+  it('double-clicking a selected text layer enters edit mode (TextEditOverlay renders) and hides LayerHandles for it', async () => {
+    const layer = makeTextLayer({ id: 'a', x: 100, y: 100, w: 200 });
+    renderStage({ layers: [layer], selection: ['a'] });
+
+    expect(screen.getByTestId('layer-handles')).toBeInTheDocument();
+    expect(screen.queryByTestId('text-edit-overlay')).not.toBeInTheDocument();
+
+    const overlay = screen.getByTestId('interaction-overlay');
+    fireEvent.doubleClick(overlay, { clientX: 150, clientY: 125 });
+
+    expect(await screen.findByTestId('text-edit-overlay')).toBeInTheDocument();
+    expect(screen.queryByTestId('layer-handles')).not.toBeInTheDocument();
+  });
+
+  it('a pointerdown/drag on the layer while editing does NOT start a drag gesture (no gesture-ghost renders)', async () => {
+    const onUpdateLayer = vi.fn();
+    const layer = makeTextLayer({ id: 'a', x: 100, y: 100, w: 200 });
+    renderStage({ layers: [layer], selection: ['a'], onUpdateLayer });
+
+    const overlay = screen.getByTestId('interaction-overlay');
+    fireEvent.doubleClick(overlay, { clientX: 150, clientY: 125 });
+    await screen.findByTestId('text-edit-overlay');
+
+    fireEvent.pointerDown(overlay, { clientX: 150, clientY: 125 });
+    fireEvent.pointerMove(overlay, { clientX: 260, clientY: 150 });
+    fireEvent.pointerUp(overlay, { clientX: 260, clientY: 150 });
+
+    expect(screen.queryByTestId('gesture-ghost')).not.toBeInTheDocument();
+    expect(onUpdateLayer).not.toHaveBeenCalled();
+  });
+
+  it('committing (Enter) exits edit mode and calls onUpdateLayer with the right patch', async () => {
+    const onUpdateLayer = vi.fn();
+    const layer = makeTextLayer({ id: 'a', x: 100, y: 100, w: 200, text: 'Olá' });
+    renderStage({ layers: [layer], selection: ['a'], onUpdateLayer });
+
+    const overlay = screen.getByTestId('interaction-overlay');
+    fireEvent.doubleClick(overlay, { clientX: 150, clientY: 125 });
+    await screen.findByTestId('text-edit-overlay');
+
+    const editable = screen.getByTestId('text-edit-overlay-editor');
+    fireEvent.keyDown(editable, { key: 'Enter' });
+
+    expect(onUpdateLayer).toHaveBeenCalledTimes(1);
+    const [calledLayerId, patch] = onUpdateLayer.mock.calls[0];
+    expect(calledLayerId).toBe('a');
+    expect(patch).toHaveProperty('text');
+    expect(screen.queryByTestId('text-edit-overlay')).not.toBeInTheDocument();
+  });
+
+  it('Escape while editing exits without calling onUpdateLayer', async () => {
+    const onUpdateLayer = vi.fn();
+    const layer = makeTextLayer({ id: 'a', x: 100, y: 100, w: 200, text: 'Olá' });
+    renderStage({ layers: [layer], selection: ['a'], onUpdateLayer });
+
+    const overlay = screen.getByTestId('interaction-overlay');
+    fireEvent.doubleClick(overlay, { clientX: 150, clientY: 125 });
+    await screen.findByTestId('text-edit-overlay');
+
+    const editable = screen.getByTestId('text-edit-overlay-editor');
+    fireEvent.keyDown(editable, { key: 'Escape' });
+
+    expect(onUpdateLayer).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('text-edit-overlay')).not.toBeInTheDocument();
   });
 });
 
