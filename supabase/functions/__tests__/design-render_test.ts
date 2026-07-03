@@ -61,6 +61,8 @@ interface DepsSpy {
   queueFileDeletionCalls: string[];
   putObjectCalls: Array<{ key: string; bytes: number; contentType: string }>;
   loggedErrors: unknown[];
+  selfInvokeCalls: Array<{ designId: number; rev: number; pageIndex: number }>;
+  waitUntilCalls: Array<Promise<unknown>>;
 }
 
 function makeDeps(
@@ -73,6 +75,8 @@ function makeDeps(
     queueFileDeletionCalls: [],
     putObjectCalls: [],
     loggedErrors: [],
+    selfInvokeCalls: [],
+    waitUntilCalls: [],
   };
 
   const deps: DesignRenderDeps = {
@@ -106,6 +110,12 @@ function makeDeps(
     },
     logError: (_context, error) => {
       spy.loggedErrors.push(error);
+    },
+    selfInvoke: async (designId, rev, pageIndex) => {
+      spy.selfInvokeCalls.push({ designId, rev, pageIndex });
+    },
+    waitUntil: (promise) => {
+      spy.waitUntilCalls.push(promise);
     },
     ...overrides,
   };
@@ -197,7 +207,7 @@ Deno.test("single-page doc renders, uploads, and finalizes in one call", async (
   assertEquals(spy.finalizeCalls[0].manifest[0].page_id, "p1");
 });
 
-Deno.test("multi-page doc renders page 0 only and does not finalize yet (PR 1.5 owns chaining)", async () => {
+Deno.test("multi-page doc renders page 0 only, writes the manifest, and does not finalize yet", async () => {
   const { deps, spy } = makeDeps({
     claimDesignRender: async () => makeClaimed({ doc: makeDoc(3) }),
   });
@@ -210,6 +220,66 @@ Deno.test("multi-page doc renders page 0 only and does not finalize yet (PR 1.5 
   assertEquals(body.pages_total, 3);
   assertEquals(spy.finalizeCalls.length, 0);
   assertEquals(spy.writeManifestCalls[0].manifest.length, 1);
+});
+
+// ============================================================
+// Chaining (PR 1.5) — a non-last page self-invokes page_index+1, wrapped in waitUntil so the
+// chain survives past this call's response.
+// ============================================================
+
+Deno.test("a non-last page self-invokes the next page_index via waitUntil", async () => {
+  const { deps, spy } = makeDeps({
+    claimDesignRender: async () => makeClaimed({ doc: makeDoc(3) }),
+  });
+  const handler = createDesignRenderHandler(deps);
+  await handler(makeReq({ design_id: 1, rev: 3 }));
+  assertEquals(spy.waitUntilCalls.length, 1);
+  await spy.waitUntilCalls[0]; // the handler's own .catch means this never rejects
+  assertEquals(spy.selfInvokeCalls, [{ designId: 1, rev: 3, pageIndex: 1 }]);
+});
+
+Deno.test("a chunked continuation on a non-last page also chains to the next page_index", async () => {
+  const priorManifest: ManifestEntry[] = [
+    { page_id: "p1", r2_key: "contas/x/designs/1/3/p1.jpg", bytes: 100, width: 1080, height: 1080 },
+  ];
+  const { deps, spy } = makeDeps({
+    readDesignRow: async () =>
+      makeRow({
+        rev: 3,
+        render_status: "rendering",
+        render_manifest: priorManifest,
+        doc: makeDoc(3),
+      }),
+  });
+  const handler = createDesignRenderHandler(deps);
+  await handler(makeReq({ design_id: 1, rev: 3, page_index: 1 }));
+  await spy.waitUntilCalls[0];
+  assertEquals(spy.selfInvokeCalls, [{ designId: 1, rev: 3, pageIndex: 2 }]);
+});
+
+Deno.test("the last page never self-invokes", async () => {
+  const { deps, spy } = makeDeps({
+    claimDesignRender: async () => makeClaimed({ doc: makeDoc(1) }),
+  });
+  const handler = createDesignRenderHandler(deps);
+  await handler(makeReq({ design_id: 1, rev: 3 }));
+  assertEquals(spy.waitUntilCalls.length, 0);
+  assertEquals(spy.selfInvokeCalls.length, 0);
+});
+
+Deno.test("a self-invoke failure is caught and logged, not thrown into the response path", async () => {
+  const selfInvokeError = new Error("network unreachable");
+  const { deps, spy } = makeDeps({
+    claimDesignRender: async () => makeClaimed({ doc: makeDoc(3) }),
+    selfInvoke: async () => {
+      throw selfInvokeError;
+    },
+  });
+  const handler = createDesignRenderHandler(deps);
+  const res = await handler(makeReq({ design_id: 1, rev: 3 }));
+  assertEquals(res.status, 200); // the response already went out; chaining is fire-and-forget
+  await spy.waitUntilCalls[0];
+  assertEquals(spy.loggedErrors, [selfInvokeError]);
 });
 
 Deno.test("finalize returning 'stale' queues every manifest key for deletion and returns 204", async () => {

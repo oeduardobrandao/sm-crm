@@ -30,6 +30,7 @@ const REQUIRED_FUNCTIONS = [
   "analytics-report-cron",
   "invite-expire-cron",
   "design-render",
+  "design-render-sweep-cron",
   // Token/internal auth
   "instagram-integration",
   "hub-bootstrap",

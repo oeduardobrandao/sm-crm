@@ -4,6 +4,9 @@ verify_jwt = false
 [functions.design-render]
 verify_jwt = false
 
+[functions.design-render-sweep-cron]
+verify_jwt = false
+
 [functions.post-media-cleanup-cron]
 verify_jwt = false
 

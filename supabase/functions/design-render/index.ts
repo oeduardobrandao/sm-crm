@@ -100,4 +100,16 @@ Deno.serve(createDesignRenderHandler({
     // fail_design_render carries only the sanitized message passed alongside this call.
     console.error(`[${context}]`, error);
   },
+
+  selfInvoke: async (designId, rev, pageIndex) => {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/design-render`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-cron-secret": CRON_SECRET },
+      body: JSON.stringify({ design_id: designId, rev, page_index: pageIndex }),
+    });
+    if (!res.ok) throw new Error(`design-render self-invoke returned ${res.status}`);
+  },
+
+  // deno-lint-ignore no-undef -- EdgeRuntime is a Supabase Edge Runtime global, not a module import.
+  waitUntil: (promise) => { EdgeRuntime.waitUntil(promise); },
 }));

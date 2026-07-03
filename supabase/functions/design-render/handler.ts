@@ -2,14 +2,12 @@
 // Callers: MCP design tools, post-design-manage (editor saves), the pre-schedule hook, and the
 // sweep cron — never the CRM directly.
 //
-// PR 1.4 scope (per docs/estudio-plan.md T1.5 — "design-render fn (single page)"): renders
-// exactly the page in the request (`page_index ?? 0`), appends to `render_manifest`, and
-// finalizes immediately IF that was the doc's last page. Self-invocation for the next page of a
-// multi-page doc (`EdgeRuntime.waitUntil`) is PR 1.5's job — a multi-page doc rendered here stops
-// after page 0 with `{status: 'partial'}` and stays `render_status = 'rendering'` until PR 1.5's
-// chaining or sweep cron continues it. The re-read/abort logic for a chunked call (`page_index >
-// 0`) is implemented and tested now even though nothing sends such a request yet, because it's
-// page-index-agnostic and PR 1.5 must not need to touch this file to wire the chain in.
+// PR 1.5 adds chaining (per T1.6): a multi-page doc's non-last page self-invokes the next
+// `page_index` via `deps.selfInvoke`, fire-and-forget-wrapped in `deps.waitUntil` (backed by
+// `EdgeRuntime.waitUntil` in production — Supabase kills work that outlives the response unless
+// registered this way) so the chain continues after this call returns. The self-invoke's own
+// failure (network error, non-2xx) is caught and logged, never rethrown — a dead chain just
+// leaves the row `rendering` with a stale `render_started_at`, which the sweep cron reaps.
 
 import { createJsonResponder } from "../_shared/http.ts";
 import type { DesignDoc } from "../_shared/design-doc.ts";
@@ -84,6 +82,8 @@ export interface DesignRenderDeps {
   resolveFontBytes: FontBytesResolver;
   putObject: (key: string, bytes: Uint8Array, contentType: string) => Promise<void>;
   logError: (context: string, error: unknown) => void;
+  selfInvoke: (designId: number, rev: number, pageIndex: number) => Promise<void>;
+  waitUntil: (promise: Promise<unknown>) => void;
 }
 
 const NO_CONTENT = (cors: Record<string, string>) =>
@@ -198,8 +198,11 @@ export function createDesignRenderHandler(deps: DesignRenderDeps) {
 
       const isLastPage = effectivePageIndex === doc.pages.length - 1;
       if (!isLastPage) {
-        // PR 1.5 adds the EdgeRuntime.waitUntil self-invoke for page_index+1 here.
         await deps.writeManifest(design_id, manifest);
+        deps.waitUntil(
+          deps.selfInvoke(design_id, rev, effectivePageIndex + 1)
+            .catch((e) => deps.logError("design-render:chain", e)),
+        );
         return json({
           status: "partial",
           page_index: effectivePageIndex,
