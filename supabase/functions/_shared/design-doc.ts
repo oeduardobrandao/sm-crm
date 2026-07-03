@@ -188,6 +188,7 @@ const Layer = z.discriminatedUnion("type", [TextLayer, ImageLayer, ShapeLayer])
       const hasRuns = layer.runs != null;
       if (hasText === hasRuns) {
         ctx.addIssue({
+          code: "custom",
           message: "text layers must set exactly one of `text` or `runs`",
           path: ["text"],
         });

@@ -23,6 +23,11 @@ export function getR2(): S3Client {
         secretAccessKey: getEnvOrThrow("R2_SECRET_ACCESS_KEY"),
       },
       forcePathStyle: true,
+      // Without this, a stalled connection to R2 hangs for the AWS SDK's own much longer
+      // default rather than failing fast. This is a per-socket idle timeout (resets on any
+      // activity), so it's safe for legitimately slow-but-progressing operations like a large
+      // getObjectBytes or listOrphanKeys page — it only fires on a genuine stall.
+      requestHandler: { requestTimeout: 10_000 },
     });
   }
   return _r2Client;
@@ -85,4 +90,34 @@ export async function getObject(key: string): Promise<ReadableStream<Uint8Array>
   } catch {
     return null;
   }
+}
+
+// getObjectBytes/putObject (sole owner — design-render-core.ts's font loading and the
+// design-render function's page-upload path both go through these, never a second
+// S3Client instance).
+
+export async function getObjectBytes(key: string): Promise<Uint8Array | null> {
+  const res = await getR2().send(
+    new GetObjectCommand({ Bucket: getBucket(), Key: key }),
+  ).catch(() => null);
+  if (!res?.Body) return null;
+  // AWS SDK v3's Body has a `transformToByteArray()` helper on every supported runtime
+  // (browser/Node/web streams) — avoids hand-rolling a ReadableStream reader/concat.
+  return await (res.Body as { transformToByteArray(): Promise<Uint8Array> })
+    .transformToByteArray();
+}
+
+export async function putObject(
+  key: string,
+  bytes: Uint8Array,
+  contentType: string,
+): Promise<void> {
+  await getR2().send(
+    new PutObjectCommand({
+      Bucket: getBucket(),
+      Key: key,
+      Body: bytes,
+      ContentType: contentType,
+    }),
+  );
 }
