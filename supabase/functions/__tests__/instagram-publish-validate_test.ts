@@ -19,8 +19,10 @@ function link(i: number) {
   };
 }
 
-// Queue the four selects validateForScheduling makes, in any order (keyed by table).
+// Queue the five selects validateForScheduling makes, in any order (keyed by table).
 // account has no encrypted token + active status, so no decrypt/network happens.
+// post_designs MUST be seeded null (no design): the mock's default select is `[]`, which is
+// truthy and would read as a design row with undefined fields, tripping the T4.1 gate.
 function seed(db: ReturnType<typeof createSupabaseQueryMock>, count: number, tipo?: string) {
   db.queue("workflow_posts", "select", {
     data: { id: 1, scheduled_at: null, ig_caption: "cap", workflow_id: 9, tipo },
@@ -30,6 +32,7 @@ function seed(db: ReturnType<typeof createSupabaseQueryMock>, count: number, tip
     data: Array.from({ length: count }, (_, i) => link(i)),
     error: null,
   });
+  db.queue("post_designs", "select", { data: null, error: null });
   db.queue("workflows", "select", { data: { cliente_id: 5 }, error: null });
   db.queue("instagram_accounts", "select", {
     data: {

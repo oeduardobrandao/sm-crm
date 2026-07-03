@@ -148,6 +148,9 @@ Deno.test("post-media-manage: GET with post_id returns media in legacy format", 
   assertEquals(body.media[0].id, 1);
   assertEquals(body.media[0].original_filename, "img.png");
   assertEquals(body.media[0].is_cover, true);
+  // T4.1: origin surfaces in the legacy shape so the CRM can tell design tiles from uploads;
+  // a link without the column (pre-migration fixture) defaults to 'manual'.
+  assertEquals(body.media[0].origin, "manual");
 });
 
 Deno.test("post-media-manage: GET without post_id or workflow_ids returns 400", async () => {

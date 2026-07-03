@@ -13,6 +13,7 @@ import {
   processBatch,
   createMissingStorySegmentContainers,
   publishReadyStorySegments,
+  checkDesignReadiness,
 } from "../_shared/instagram-publish-utils.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -91,6 +92,21 @@ async function processContainerCreation(
   db: any,
   post: ClaimedPost,
 ) {
+  // Estúdio re-check (T4.2, design §5.3): the scheduling gate (validateForScheduling) already
+  // enforced this, but the design can go stale/failed BETWEEN scheduling and this cron cycle
+  // (an edit in the editor, an MCP write, a failed re-render). pending/rendering/stale →
+  // release the lock and let the next cycle retry once the render lands (saves/opens
+  // auto-trigger renders, so this converges); failed → throw → markFailed with a visible error.
+  const readiness = await checkDesignReadiness(db, post.post_id);
+  if (!readiness.ready && readiness.design) {
+    if (readiness.design.render_status === "failed") {
+      throw new Error("Arte do Estúdio falhou ao renderizar — publicação bloqueada.");
+    }
+    await clearLock(db, post.post_id);
+    console.log(`[IG-PUBLISH] Post ${post.post_id} deferred: design not rendered yet.`);
+    return;
+  }
+
   const token = await decryptToken(post.encrypted_access_token);
 
   if (post.tipo === "stories") {

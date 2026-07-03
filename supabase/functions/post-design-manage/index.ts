@@ -6,6 +6,7 @@ import { fetchPostMedia } from "../_shared/instagram-publish-utils.ts";
 import { manifestFontLookup } from "../_shared/fonts/lookup.ts";
 import { getRenderPages as computeRenderPages } from "../_shared/design-render-status.ts";
 import { materializeBrandLogo, type HubBrandLogoRow } from "../_shared/brand-logo.ts";
+import { createDesignRenderTrigger } from "../_shared/design-render-trigger.ts";
 import { deleteObject, putObject, signGetUrl } from "../_shared/r2.ts";
 import { signMediaUrl, isMediaProxyEnabled } from "../_shared/media-url.ts";
 import { createPostDesignManageHandler, DOC_VERSION, type DesignRow, type PostRow } from "./handler.ts";
@@ -210,16 +211,7 @@ Deno.serve(createPostDesignManageHandler({
       signUrl,
     }, { postId, contaId, tipo, doc }),
 
-  triggerRender: async (designId, rev) => {
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/design-render`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-cron-secret": CRON_SECRET },
-      body: JSON.stringify({ design_id: designId, rev }),
-    });
-    if (!res.ok && res.status !== 409 && res.status !== 204) {
-      throw new Error(`design-render trigger returned ${res.status}`);
-    }
-  },
+  triggerRender: createDesignRenderTrigger(SUPABASE_URL, CRON_SECRET),
 
   // deno-lint-ignore no-undef -- EdgeRuntime is a Supabase Edge Runtime global, not a module import.
   waitUntil: (promise) => { EdgeRuntime.waitUntil(promise); },

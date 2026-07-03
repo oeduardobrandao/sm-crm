@@ -11,6 +11,10 @@ interface HubApproveHandlerDeps {
   buildCorsHeaders: (req: Request) => Record<string, string>;
   createDb: () => DbClient;
   now: () => string;
+  /** Fire-and-forget design-render kick when auto-publish blocked on a stale/failed design
+   * (T4.1) — optional; without it the silent skip stands (accepted backlog behavior). */
+  triggerDesignRender?: (designId: number, rev: number) => Promise<void>;
+  waitUntil?: (promise: Promise<unknown>) => void;
 }
 
 export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
@@ -88,6 +92,18 @@ export function createHubApproveHandler(deps: HubApproveHandlerDeps) {
             p_source: "system",
           });
           scheduled = true;
+        } else if (
+          validation.designBlocked && deps.triggerDesignRender &&
+          (validation.designBlocked.render_status === "failed" || validation.designBlocked.is_stale)
+        ) {
+          // The approval itself succeeded (silent auto-publish skip is the accepted behavior);
+          // kick the render so the agency's manual schedule finds the design ready.
+          const kick = deps
+            .triggerDesignRender(validation.designBlocked.id, validation.designBlocked.rev)
+            .catch((e) =>
+              console.error("[hub-approve] design re-trigger failed:", (e as Error)?.message)
+            );
+          if (deps.waitUntil) deps.waitUntil(kick);
         }
       }
     }

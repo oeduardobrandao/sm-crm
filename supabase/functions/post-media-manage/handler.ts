@@ -36,6 +36,9 @@ function toLegacy(link: any, file: any, url: string, thumbnailUrl: string | null
     duration_seconds: file.duration_seconds,
     is_cover: link.is_cover,
     sort_order: link.sort_order,
+    // 'manual' | 'design' (T4.1) — lets the CRM distinguish Estúdio-rendered tiles from user
+    // uploads (design §5.2 read paths; the column existed but was invisible to clients).
+    origin: link.origin ?? "manual",
     uploaded_by: file.uploaded_by,
     created_at: file.created_at,
     blur_data_url: file.blur_data_url ?? null,
