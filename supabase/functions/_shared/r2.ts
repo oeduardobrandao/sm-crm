@@ -95,16 +95,32 @@ export async function getObject(key: string): Promise<ReadableStream<Uint8Array>
 // getObjectBytes/putObject (sole owner — design-render-core.ts's font loading and the
 // design-render function's page-upload path both go through these, never a second
 // S3Client instance).
+//
+// Both go through presign + plain fetch instead of `getR2().send(...)`: on the Supabase edge
+// runtime the aws-sdk's fetch handler HANGS INDEFINITELY on PutObject (100% reproducible —
+// zero bytes back, worker burns to the wall-clock kill, so callers like design-render die
+// without ever reaching their catch block and leave rows stuck 'rendering') and
+// intermittently on GetObject body streaming. The `requestHandler.requestTimeout` client
+// option demonstrably does not apply there. Presigning is pure local crypto (no network),
+// and a plain fetch with AbortSignal.timeout can always fail fast instead of hanging.
+
+const OBJECT_FETCH_TIMEOUT_MS = 30_000;
 
 export async function getObjectBytes(key: string): Promise<Uint8Array | null> {
-  const res = await getR2().send(
-    new GetObjectCommand({ Bucket: getBucket(), Key: key }),
-  ).catch(() => null);
-  if (!res?.Body) return null;
-  // AWS SDK v3's Body has a `transformToByteArray()` helper on every supported runtime
-  // (browser/Node/web streams) — avoids hand-rolling a ReadableStream reader/concat.
-  return await (res.Body as { transformToByteArray(): Promise<Uint8Array> })
-    .transformToByteArray();
+  try {
+    const url = await signGetUrl(key, 300);
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(OBJECT_FETCH_TIMEOUT_MS),
+    });
+    if (!res.ok) {
+      // Drain so the connection can be reused; body is small (error XML) or absent.
+      await res.body?.cancel();
+      return null;
+    }
+    return new Uint8Array(await res.arrayBuffer());
+  } catch {
+    return null;
+  }
 }
 
 export async function putObject(
@@ -112,12 +128,15 @@ export async function putObject(
   bytes: Uint8Array,
   contentType: string,
 ): Promise<void> {
-  await getR2().send(
-    new PutObjectCommand({
-      Bucket: getBucket(),
-      Key: key,
-      Body: bytes,
-      ContentType: contentType,
-    }),
-  );
+  const url = await signPutUrl(key, contentType, 300);
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: { "Content-Type": contentType },
+    body: bytes,
+    signal: AbortSignal.timeout(OBJECT_FETCH_TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    await res.body?.cancel();
+    throw new Error(`R2 PUT failed for ${key}: ${res.status}`);
+  }
 }

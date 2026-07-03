@@ -15,6 +15,9 @@ Deno.test("buildCorsHeaders echoes allowlisted origins and falls back for non-br
   assertEquals(allowed["Access-Control-Allow-Origin"], "https://hub.mesaas.com");
   assertEquals(fallback["Access-Control-Allow-Origin"], "https://app.mesaas.com");
   assert(allowed["Access-Control-Allow-Methods"].includes("OPTIONS"));
+  // PUT must stay allowlisted: post-design-manage's browser-issued PUT (Estúdio autosave)
+  // fails CORS preflight without it.
+  assert(allowed["Access-Control-Allow-Methods"].includes("PUT"));
 });
 
 Deno.test("checkRateLimit delegates to the rate-limit RPC and fails open on errors", async () => {
