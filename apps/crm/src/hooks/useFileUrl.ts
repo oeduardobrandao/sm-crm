@@ -1,18 +1,9 @@
-// Resolves a design doc's referenced `file_id`s to browser-displayable URLs for satori's
-// `resolveImageSrc` callback (§6.3) — background images + image layers.
-//
-// The URLs handed out are **blob: URLs**, not the raw signed R2 URLs. Satori resolves image
-// srcs with fetch(), and the R2 bucket only serves CORS headers for the production origins —
-// a signed URL that displays fine in <img> renders a silent white hole in the editor canvas
-// from any other origin (localhost dev being the everyday case). So this module fetches the
-// bytes ONCE per file (direct from R2 where the origin allows it, else through the
-// sign-r2-urls GET byte-proxy, which speaks app-origin CORS) and mints a blob URL: satori's
-// fetch then hits memory, every re-render and thumbnail reuses it, and expiry stops mattering
-// (blob URLs outlive the 1h signature).
+// Blob-URL resolution for file ids (brand-logo thumbnails etc.). Extracted from the v1
+// Estúdio editor's useImageUrls when the editor UI was removed (Estúdio v2) — HubTab's brand
+// kit still needs exactly this: files-table lookup -> sign-r2-urls -> blob URL with the
+// byte-proxy fallback (R2 bucket CORS only covers prod origins).
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
-import { collectDocFileIds } from '../lib/imageResolution';
-import type { DesignDoc } from '../types';
 
 // file bytes are immutable per file_id, so a blob URL made once is valid all session.
 const blobUrls = new Map<number, string>();
@@ -128,19 +119,6 @@ export function useFileUrl(fileId: number | null | undefined) {
     queryFn: async () => (await resolveImageUrls([fileId!])).get(fileId!) ?? null,
     enabled: typeof fileId === 'number',
     staleTime: Infinity,
-    retry: false,
-  });
-}
-
-export function useImageUrls(doc: DesignDoc | undefined) {
-  const fileIds = doc ? collectDocFileIds(doc) : [];
-  const queryKey = [...fileIds].sort((a, b) => a - b).join(',');
-
-  return useQuery({
-    queryKey: ['estudio-image-urls', queryKey],
-    queryFn: () => resolveImageUrls(fileIds),
-    enabled: !!doc,
-    staleTime: Infinity, // blob URLs are session-stable; the module cache dedupes re-fetches
     retry: false,
   });
 }

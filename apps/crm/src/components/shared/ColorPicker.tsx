@@ -11,9 +11,11 @@
 // committed. `onChange` is therefore guaranteed to only ever emit schema-valid hex.
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { HEX_COLOR_RE } from '@mesaas/design-doc';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
+// Schema-shaped hex (#rrggbb[aa]) — inlined from the retired design-doc schema when the v1
+// editor was removed; this picker is now the only consumer.
+export const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/;
 const HEX_6_RE = /^#[0-9a-fA-F]{6}$/;
 
 export const RECENT_COLORS_KEY = 'estudio-recent-colors';

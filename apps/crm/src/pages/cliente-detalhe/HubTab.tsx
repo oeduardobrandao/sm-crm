@@ -88,8 +88,8 @@ import {
 import { IdeiaDrawer } from '@/components/ideias/IdeiaDrawer';
 import { IdeiaStatusBadge } from '@/components/ideias/IdeiaStatusBadge';
 // Estúdio's shared brand-aware controls (T3.5/T3.7 — one picker for canvas AND brand editing).
-import { ColorPicker } from '@/pages/estudio/components/shared';
-import { useFileUrl } from '@/pages/estudio/hooks/useImageUrls';
+import { ColorPicker } from '@/components/shared/ColorPicker';
+import { useFileUrl } from '@/hooks/useFileUrl';
 import { uploadFile } from '@/services/fileService';
 import { BriefingTemplatesModal } from './BriefingTemplatesModal';
 import { SortableQuestion, SortableSection, SECTION_PREFIX } from './BriefingReorder';

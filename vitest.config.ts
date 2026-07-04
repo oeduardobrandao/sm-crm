@@ -9,10 +9,6 @@ export default defineConfig({
       '@': path.resolve(__dirname, 'apps/crm/src'),
       '@mesaas/i18n': path.resolve(__dirname, 'packages/i18n/index.ts'),
       '@mesaas/design-doc': path.resolve(__dirname, 'supabase/functions/_shared/design-doc.ts'),
-      '@mesaas/design-render-tree': path.resolve(
-        __dirname,
-        'supabase/functions/_shared/design-render-tree.ts',
-      ),
       '@mesaas/fonts': path.resolve(__dirname, 'supabase/functions/_shared/fonts'),
     },
   },

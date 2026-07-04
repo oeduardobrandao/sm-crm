@@ -4,8 +4,6 @@
     "paths": {
       "@/*": ["./src/*"],
       "@mesaas/i18n": ["../../packages/i18n/index.ts"],
-      "@mesaas/design-doc": ["../../supabase/functions/_shared/design-doc.ts"],
-      "@mesaas/design-render-tree": ["../../supabase/functions/_shared/design-render-tree.ts"],
       "@mesaas/fonts/*": ["../../supabase/functions/_shared/fonts/*"]
     },
     "target": "ES2021",
