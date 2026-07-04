@@ -36,3 +36,11 @@ Package: `@open-pencil/core@0.13.2` (npm, bundles scene-graph/io/layout/text/too
 - `imageHash` MUST be a hex digest (writer calls `hexToBytes`); Figma-style sha1-of-bytes works. Image swap = add bytes under new sha1 + `updateNode(rectId, {fills: [{...fill, imageHash: newHash}]})`.
 - The .fig writer/reader injects a default empty "Page 1"; our content page must be found by name, not index.
 - Mutations verified persisted across serialize/reload: `updateNode(textId, {text})`, image swap, both re-read correctly.
+
+### 02-export.mjs — PASS (Proof 3b)
+
+- `initCanvasKit()`: **25ms** in plain Node (wasm bundled in canvaskit-wasm pkg, no locateFile needed).
+- Frame exports (1080×1080, JPG q90): **~85ms/frame** warm; first export 336ms (includes per-family font resolution). Visual output verified: real bold Inter glyphs, correct wrap/clip, image fill painted.
+- **Fonts:** `fontManager.markLoaded(family, styleName, arrayBuffer)` BEFORE export = fully offline + deterministic. Must register every (family, style) the doc uses — style names via `weightToStyle(weight)` ('Regular', 'Bold', ...). If a style is missing they fall back to network (Google Fonts fetch — 6.8s first export when we let it) and a broken `fetchBundledFont` path (ERR_PACKAGE_PATH_NOT_EXPORTED in Node — non-fatal noise). Render was byte-identical between our repo TTF and their Google-fetched copy.
+- Mutation-visibility: text change → re-export → bytes differ, text visibly updated. ✔
+- **KNOWN GAP — emoji:** headless render shows a "NO GLYPH" box for emoji (`out/emoji.jpg`). Their fallback scripts are only `'cjk' | 'arabic'` (no emoji), and headless has no OS emoji font. Mitigations for the doc-service slice: register a color-emoji font and wire it into the fallback chain (possibly upstream a `'emoji'` FontFallbackScript — they're active), or reuse v1's twemoji-substitution idea. Editor-side emoji rendering to be sanity-checked in Task 4 (browser has system fonts).
