@@ -1,5 +1,20 @@
 # OpenPencil spike — running notes
 
+## Slice 3 (doc service) live verification — 2026-07-04, prod
+
+Post 1041, full pipeline: PUT 1-frame doc ("ESTÚDIO V2 🔥") → rev 4 → design-render claimed →
+estudio-render service → rendered JPEG 1080×1350 with COLOR EMOJI visible → finalize swapped
+origin='design' link → render_status rendered / is_stale false. Then PUT 2-frame doc → rev 5 →
+2 ordered links → **tipo auto-flipped feed→carrossel** (frame-derived sync). Sanitized-failure
+path also proven live: an invalid doc (no publishable frames) → render_error "Nenhum frame com
+proporção 1:1, 4:5 ou 9:16." and no uploads.
+**GOTCHA for the MCP slice:** loading a .fig with readDocument and re-exporting with
+writeDocument('fig') LOSES frame nodes (kiwi round-trip state; the editor's exportFigFile path
+with renderer+currentPageId is fine). Headless doc MUTATION must not naively write-after-read —
+investigate exportFigFile args or rebuild-graph strategies before building update_design.
+Vercel service: mesaas-estudio-render.vercel.app (bearer auth, SSO off), cold 1.8s/warm 1.0s.
+supabase secrets CLI: --env-file only accepts RELATIVE paths (absolute → "node: not found").
+
 ## Slice 2 (endpoint) live verification — 2026-07-04, prod
 
 Post 1041 (DK TESTE, feed, rascunho), all from the CRM page origin with the real user token:
