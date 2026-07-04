@@ -123,20 +123,28 @@ describe('useSatoriRenderer', () => {
     expect(result.current.error).toMatchObject({ message: 'unknown font variant' });
   });
 
-  it('surfaces an unresolved-image error thrown from the resolveImageSrc callback', async () => {
-    const doc = makeDoc({
-      pages: [
-        {
-          id: 'page-1',
-          background: { type: 'image', file_id: 999, fit: 'cover' },
-          layers: [],
-        },
-      ],
-    });
-    imageUrlsState.data = new Map(); // 999 deliberately unresolved
-    const { result } = renderHook(() => useSatoriRenderer(doc, 0));
-    await advance(150);
-    expect(result.current.error).toMatchObject({ message: expect.stringContaining('999') });
-    expect(satoriDefault).not.toHaveBeenCalled();
+  it('degrades gracefully on an unresolved image: renders WITH a transparent stand-in instead of dying', async () => {
+    // The strict throw lives in the SERVER render — the editor must keep the rest of the page
+    // alive and editable when one image can't be resolved (fetch failed on every route).
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const doc = makeDoc({
+        pages: [
+          {
+            id: 'page-1',
+            background: { type: 'image', file_id: 999, fit: 'cover' },
+            layers: [],
+          },
+        ],
+      });
+      imageUrlsState.data = new Map(); // 999 deliberately unresolved
+      const { result } = renderHook(() => useSatoriRenderer(doc, 0));
+      await advance(150);
+      expect(result.current.error).toBeNull();
+      expect(satoriDefault).toHaveBeenCalled(); // render proceeded
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('999'));
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

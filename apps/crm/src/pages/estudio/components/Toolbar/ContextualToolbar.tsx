@@ -24,6 +24,8 @@ import {
   AlignCenter,
   AlignRight,
   Contrast,
+  Minus,
+  Plus,
   RectangleHorizontal,
   Frame,
   Square,
@@ -43,7 +45,14 @@ import type {
 
 export interface ContextualToolbarProps {
   layer: NormalizedLayer | null;
-  onUpdateLayer: (layerId: string, patch: Partial<NormalizedLayer>) => void;
+  /** `opts.coalesceKey` flows into the reducer's `layer/update` coalescing — high-frequency
+   * commit sources (color drags, stepper bursts) share a key per session so a whole burst is
+   * ONE undo entry. Discrete commits pass no key. */
+  onUpdateLayer: (
+    layerId: string,
+    patch: Partial<NormalizedLayer>,
+    opts?: { coalesceKey?: string },
+  ) => void;
   onReplaceImage?: (layerId: string) => void;
   /** Client brand hexes, pinned as the ColorPicker's "Marca" swatches. */
   brandColors?: string[];
@@ -72,8 +81,9 @@ const FONT_WEIGHT_LABELS: Record<FontWeight, string> = {
 const rowStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
-  gap: '0.25rem',
-  minWidth: 120,
+  gap: '0.2rem',
+  // No squishing inside the fixed-height, nowrap shell — overflow scrolls instead.
+  flexShrink: 0,
 };
 
 const labelStyle: React.CSSProperties = {
@@ -117,79 +127,170 @@ function toggleButtonStyle(active: boolean): React.CSSProperties {
   };
 }
 
-/** Free-text/number "commit on blur or Enter" input — local draft state so keystrokes don't
- * dispatch, matching this component's commit-boundary discipline (see header comment). */
-function CommitInput({
+/** Fixed toolbar height — the shell renders at this height whether or not a layer is selected,
+ * so selecting/deselecting NEVER resizes the canvas container (which would re-fit the zoom and
+ * read as the whole UI "zooming in/out" on every selection). Wide variants scroll horizontally
+ * inside the fixed row instead of wrapping taller. */
+export const CONTEXTUAL_TOOLBAR_HEIGHT = 64;
+
+// Distinct per stepper burst across all NumberField instances (mirrors ColorPicker's drag
+// sessions): a burst of ±steps shares one coalesce key → one undo entry; after the idle window
+// the next step opens a fresh entry.
+let numberStepSessionCounter = 0;
+const STEP_COALESCE_IDLE_MS = 600;
+
+/** Numeric control with real stepper buttons and arrow-key support. Steps COMMIT IMMEDIATELY
+ * (burst-coalesced) — the old bare `<input type=number>` let the native spinner change the
+ * visible value without ever dispatching, which read as "font size only works when I press
+ * Return". Typed edits keep the commit-on-blur/Enter discipline (a half-typed "4" of "48" must
+ * not flash 4px text on canvas). */
+function NumberField({
+  id,
   value,
   onCommit,
-  type = 'text',
-  style,
-  ...rest
+  min = 0,
+  max = 10000,
+  step = 1,
+  disabled,
+  title,
+  decrementLabel,
+  incrementLabel,
 }: {
-  value: string;
-  onCommit: (value: string) => void;
-  type?: string;
-  style?: React.CSSProperties;
-} & Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'onBlur' | 'type'>) {
-  const [draft, setDraft] = useState(value);
-
-  // Keep the draft in sync when the underlying layer value changes from outside this input
-  // (undo/redo, or an external patch to the SAME still-selected layer).
+  id?: string;
+  value: number;
+  onCommit: (next: number, opts?: { coalesceKey?: string }) => void;
+  min?: number;
+  max?: number;
+  step?: number;
+  disabled?: boolean;
+  title?: string;
+  decrementLabel: string;
+  incrementLabel: string;
+}) {
+  const [draft, setDraft] = useState(String(value));
   useEffect(() => {
-    setDraft(value);
+    setDraft(String(value));
   }, [value]);
 
-  function commit() {
-    if (draft !== value) onCommit(draft);
-  }
+  const sessionRef = useRef<{ key: string; timer: ReturnType<typeof setTimeout> } | null>(null);
+  const clamp = (n: number) => Math.min(max, Math.max(min, n));
 
-  // Flush an uncommitted draft on unmount rather than silently discarding it. Without this, the
-  // effect above (`setDraft(value)`) would ALSO fire when a DIFFERENT layer becomes selected and
-  // this exact control gets reused for it (e.g. font_size's CommitInput is the same mounted DOM
-  // node regardless of which layer is selected) — overwriting an in-progress, never-committed
-  // edit with the new layer's value with no warning and no dispatch. The caller (ContextualToolbar,
-  // below) forces a real unmount/remount on layer switch via `key={layer.id}` on each variant, so
-  // this cleanup is what actually flushes the stale draft — using refs (updated every render,
-  // read only from the unmount cleanup) rather than effect dependencies, since a cleanup tied to
-  // `[]` only runs once, on the real unmount, and must not read stale closed-over values.
-  const latestRef = useRef({ draft, value, onCommit });
-  latestRef.current = { draft, value, onCommit };
+  const stepBy = (delta: number) => {
+    const base = Number(draft);
+    const next = clamp((Number.isFinite(base) ? base : value) + delta);
+    setDraft(String(next));
+    if (sessionRef.current) clearTimeout(sessionRef.current.timer);
+    const key = sessionRef.current?.key ?? `numfield:${++numberStepSessionCounter}`;
+    sessionRef.current = {
+      key,
+      timer: setTimeout(() => {
+        sessionRef.current = null;
+      }, STEP_COALESCE_IDLE_MS),
+    };
+    onCommit(next, { coalesceKey: key });
+  };
+
+  const commitTyped = () => {
+    const n = Number(draft);
+    if (draft.trim() !== '' && Number.isFinite(n)) {
+      const clamped = clamp(n);
+      setDraft(String(clamped));
+      if (clamped !== value) onCommit(clamped);
+    } else {
+      setDraft(String(value)); // unparseable → revert, never dispatch garbage
+    }
+  };
+
+  // Unmount-flush: a typed-but-uncommitted draft flushes instead of being silently discarded
+  // when the variant remounts for another layer (`key={layer.id}` in the default export forces
+  // that remount). Refs, not effect deps — the `[]` cleanup must read live values on unmount.
+  const latestRef = useRef({ draft, value, commitTyped });
+  latestRef.current = { draft, value, commitTyped };
   useEffect(() => {
     return () => {
       const latest = latestRef.current;
-      if (latest.draft !== latest.value) latest.onCommit(latest.draft);
+      if (latest.draft !== String(latest.value)) latest.commitTyped();
     };
   }, []);
 
+  const stepButtonStyle: React.CSSProperties = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 26,
+    alignSelf: 'stretch',
+    border: '1px solid var(--border-color)',
+    borderRadius: 6,
+    background: 'var(--surface-main)',
+    color: 'var(--text-main)',
+    cursor: disabled ? 'default' : 'pointer',
+    opacity: disabled ? 0.5 : 1,
+    padding: 0,
+  };
+
   return (
-    <input
-      {...rest}
-      type={type}
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') {
-          e.currentTarget.blur();
-        } else if (e.key === 'Escape') {
-          setDraft(value);
-          e.currentTarget.blur();
-        }
-      }}
-      style={{ ...inputStyle, ...style }}
-    />
+    <div style={{ display: 'flex', gap: '0.2rem', alignItems: 'stretch' }} title={title}>
+      <button
+        type="button"
+        aria-label={decrementLabel}
+        title={decrementLabel}
+        disabled={disabled || value <= min}
+        style={stepButtonStyle}
+        onClick={(e) => stepBy(-(e.shiftKey ? step * 10 : step))}
+      >
+        <Minus size={12} />
+      </button>
+      <input
+        id={id}
+        type="text"
+        inputMode="decimal"
+        disabled={disabled}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commitTyped}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.currentTarget.blur();
+          } else if (e.key === 'Escape') {
+            setDraft(String(value));
+            e.currentTarget.blur();
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            stepBy(e.shiftKey ? step * 10 : step);
+          } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            stepBy(-(e.shiftKey ? step * 10 : step));
+          }
+        }}
+        style={{ ...inputStyle, width: 56, textAlign: 'center', opacity: disabled ? 0.5 : 1 }}
+      />
+      <button
+        type="button"
+        aria-label={incrementLabel}
+        title={incrementLabel}
+        disabled={disabled || value >= max}
+        style={stepButtonStyle}
+        onClick={(e) => stepBy(e.shiftKey ? step * 10 : step)}
+      >
+        <Plus size={12} />
+      </button>
+    </div>
   );
 }
 
 function ToolbarShell({ children }: { children: React.ReactNode }) {
   return (
     <div
+      data-testid="contextual-toolbar"
       style={{
         display: 'flex',
-        flexWrap: 'wrap',
-        alignItems: 'flex-end',
+        flexWrap: 'nowrap',
+        alignItems: 'center',
         gap: '1rem',
-        padding: '0.75rem clamp(1.25rem, 3vw, 2.5rem)',
+        height: CONTEXTUAL_TOOLBAR_HEIGHT,
+        padding: '0 clamp(1.25rem, 3vw, 2.5rem)',
+        overflowX: 'auto',
+        overflowY: 'hidden',
         borderBottom: '1px solid var(--border-color)',
         background: 'var(--card-bg)',
         flexShrink: 0,
@@ -271,15 +372,14 @@ function TextVariant({
         <label style={labelStyle} htmlFor="toolbar-font-size">
           {t('toolbar.text.size')}
         </label>
-        <CommitInput
+        <NumberField
           id="toolbar-font-size"
-          value={String(layer.font_size)}
-          type="number"
-          style={{ width: 80 }}
-          onCommit={(v) => {
-            const n = Number(v);
-            if (Number.isFinite(n) && n > 0) onUpdateLayer(layer.id, { font_size: n });
-          }}
+          value={layer.font_size}
+          min={1}
+          max={1000}
+          decrementLabel={t('toolbar.stepDown')}
+          incrementLabel={t('toolbar.stepUp')}
+          onCommit={(n, opts) => onUpdateLayer(layer.id, { font_size: n }, opts)}
         />
       </div>
 
@@ -289,7 +389,7 @@ function TextVariant({
           value={layer.color}
           label={t('toolbar.text.color')}
           brandColors={brandColors}
-          onChange={(hex) => onUpdateLayer(layer.id, { color: hex })}
+          onChange={(hex, opts) => onUpdateLayer(layer.id, { color: hex }, opts)}
         />
       </div>
 
@@ -341,7 +441,9 @@ function TextVariant({
               value={shadow.color}
               label={t('toolbar.text.shadowColor')}
               brandColors={brandColors}
-              onChange={(hex) => onUpdateLayer(layer.id, { shadow: { ...shadow, color: hex } })}
+              onChange={(hex, opts) =>
+                onUpdateLayer(layer.id, { shadow: { ...shadow, color: hex } }, opts)
+              }
             />
           )}
         </div>
@@ -365,7 +467,9 @@ function TextVariant({
               value={pill.color}
               label={t('toolbar.text.pillColor')}
               brandColors={brandColors}
-              onChange={(hex) => onUpdateLayer(layer.id, { pill: { ...pill, color: hex } })}
+              onChange={(hex, opts) =>
+                onUpdateLayer(layer.id, { pill: { ...pill, color: hex } }, opts)
+              }
             />
           )}
         </div>
@@ -412,15 +516,14 @@ function ImageVariant({
         <label style={labelStyle} htmlFor="toolbar-image-radius">
           {t('toolbar.image.radius')}
         </label>
-        <CommitInput
+        <NumberField
           id="toolbar-image-radius"
-          value={String(layer.radius ?? 0)}
-          type="number"
-          style={{ width: 80 }}
-          onCommit={(v) => {
-            const n = Number(v);
-            if (Number.isFinite(n) && n >= 0) onUpdateLayer(layer.id, { radius: n });
-          }}
+          value={layer.radius ?? 0}
+          min={0}
+          max={1000}
+          decrementLabel={t('toolbar.stepDown')}
+          incrementLabel={t('toolbar.stepUp')}
+          onCommit={(n, opts) => onUpdateLayer(layer.id, { radius: n }, opts)}
         />
       </div>
 
@@ -444,7 +547,9 @@ function ImageVariant({
               value={border.color}
               label={t('toolbar.image.borderColor')}
               brandColors={brandColors}
-              onChange={(hex) => onUpdateLayer(layer.id, { border: { ...border, color: hex } })}
+              onChange={(hex, opts) =>
+                onUpdateLayer(layer.id, { border: { ...border, color: hex } }, opts)
+              }
             />
           )}
         </div>
@@ -492,7 +597,9 @@ function ShapeVariant({
           value={fillColor}
           label={t('toolbar.shape.fill')}
           brandColors={brandColors}
-          onChange={(hex) => onUpdateLayer(layer.id, { fill: { type: 'solid', color: hex } })}
+          onChange={(hex, opts) =>
+            onUpdateLayer(layer.id, { fill: { type: 'solid', color: hex } }, opts)
+          }
         />
       </div>
 
@@ -516,7 +623,9 @@ function ShapeVariant({
               value={stroke.color}
               label={t('toolbar.shape.strokeColor')}
               brandColors={brandColors}
-              onChange={(hex) => onUpdateLayer(layer.id, { stroke: { ...stroke, color: hex } })}
+              onChange={(hex, opts) =>
+                onUpdateLayer(layer.id, { stroke: { ...stroke, color: hex } }, opts)
+              }
             />
           )}
         </div>
@@ -530,17 +639,16 @@ function ShapeVariant({
         >
           {t('toolbar.shape.radius')}
         </label>
-        <CommitInput
+        <NumberField
           id="toolbar-shape-radius"
-          value={String(layer.radius ?? 0)}
-          type="number"
+          value={layer.radius ?? 0}
+          min={0}
+          max={1000}
           disabled={radiusDisabled}
-          style={{ width: 80, opacity: radiusDisabled ? 0.5 : 1 }}
           title={radiusDisabled ? t('toolbar.shape.radiusDisabledHint') : undefined}
-          onCommit={(v) => {
-            const n = Number(v);
-            if (Number.isFinite(n) && n >= 0) onUpdateLayer(layer.id, { radius: n });
-          }}
+          decrementLabel={t('toolbar.stepDown')}
+          incrementLabel={t('toolbar.stepUp')}
+          onCommit={(n, opts) => onUpdateLayer(layer.id, { radius: n }, opts)}
         />
       </div>
     </>
@@ -613,15 +721,28 @@ export default function ContextualToolbar({
   canvasHeight,
   getTextHeight,
 }: ContextualToolbarProps) {
-  if (!layer) return null;
+  const { t } = useTranslation('estudio');
+
+  // The shell ALWAYS renders at its fixed height (see CONTEXTUAL_TOOLBAR_HEIGHT) — an empty
+  // toolbar disappearing/reappearing with selection is exactly the canvas-container resize that
+  // read as the UI "zooming" on select/deselect.
+  if (!layer) {
+    return (
+      <ToolbarShell>
+        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+          {t('toolbar.emptyHint')}
+        </span>
+      </ToolbarShell>
+    );
+  }
 
   return (
     <ToolbarShell>
       {/* `key={layer.id}` forces a full unmount/remount of the active variant when the SELECTED
           LAYER changes (not just when one of its field values changes) — without this, switching
-          from layer A to layer B reuses the same mounted CommitInput DOM nodes, and their own
+          from layer A to layer B reuses the same mounted NumberField DOM nodes, and their own
           `useEffect(() => setDraft(value), [value])` would silently overwrite an uncommitted draft
-          for layer A with layer B's value. Forcing a real unmount here is what makes CommitInput's
+          for layer A with layer B's value. Forcing a real unmount here is what makes NumberField's
           unmount-flush safety net (see that component) actually fire. */}
       {layer.type === 'text' && (
         <TextVariant

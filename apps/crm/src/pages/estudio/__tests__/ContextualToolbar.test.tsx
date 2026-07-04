@@ -34,9 +34,11 @@ function commitColorNamed(triggerName: string, text: string) {
 }
 
 describe('ContextualToolbar', () => {
-  it('renders nothing when layer is null', () => {
-    const { container } = render(<ContextualToolbar layer={null} onUpdateLayer={vi.fn()} />);
-    expect(container).toBeEmptyDOMElement();
+  it('renders an EMPTY fixed-height shell (with a hint) when layer is null — the shell must never appear/disappear with selection, or the canvas container resizes and the fit-zoom jumps', () => {
+    render(<ContextualToolbar layer={null} onUpdateLayer={vi.fn()} />);
+    const shell = screen.getByTestId('contextual-toolbar');
+    expect(shell).toBeInTheDocument();
+    expect(screen.getByText('Selecione um elemento para editar')).toBeInTheDocument();
   });
 
   describe('text variant', () => {
@@ -111,7 +113,7 @@ describe('ContextualToolbar', () => {
       expect(patch).not.toHaveProperty('font_style');
     });
 
-    it('flushes an uncommitted CommitInput draft when the SELECTED LAYER changes (unmount) instead of silently discarding it — regression: switching layers mid-edit previously overwrote the draft via the value-sync effect with no commit and no warning', () => {
+    it('flushes an uncommitted NumberField draft when the SELECTED LAYER changes (unmount) instead of silently discarding it — regression: switching layers mid-edit previously overwrote the draft via the value-sync effect with no commit and no warning', () => {
       const onUpdateLayer = vi.fn();
       const layerA = makeTextLayer({ id: 'a', font_size: 32 }) as Extract<
         NormalizedLayer,
@@ -130,7 +132,41 @@ describe('ContextualToolbar', () => {
 
       rerender(<ContextualToolbar layer={layerB} onUpdateLayer={onUpdateLayer} />);
 
-      expect(onUpdateLayer).toHaveBeenCalledWith('a', { font_size: 99 });
+      expect(onUpdateLayer).toHaveBeenCalledWith('a', { font_size: 99 }, undefined);
+    });
+
+    it('steppers commit IMMEDIATELY with a burst-shared coalesceKey (the old native spinner changed the visible value without ever dispatching)', () => {
+      const { onUpdateLayer } = renderText({ font_size: 32 });
+      const plus = screen.getAllByRole('button', { name: 'Aumentar' })[0];
+      fireEvent.click(plus);
+      expect(onUpdateLayer).toHaveBeenCalledWith(
+        'layer-1',
+        { font_size: 33 },
+        { coalesceKey: expect.any(String) },
+      );
+      fireEvent.click(plus);
+      const [, , opts1] = onUpdateLayer.mock.calls[0];
+      const [, patch2, opts2] = onUpdateLayer.mock.calls[1];
+      expect(patch2).toEqual({ font_size: 34 });
+      // Same rapid burst → same key → ONE undo entry once it reaches the reducer.
+      expect(opts2.coalesceKey).toBe(opts1.coalesceKey);
+    });
+
+    it('ArrowUp/ArrowDown step and commit immediately (Shift = ×10)', () => {
+      const { onUpdateLayer } = renderText({ font_size: 32 });
+      const sizeInput = screen.getByLabelText(/tamanho/i);
+      fireEvent.keyDown(sizeInput, { key: 'ArrowUp' });
+      expect(onUpdateLayer).toHaveBeenCalledWith(
+        'layer-1',
+        { font_size: 33 },
+        { coalesceKey: expect.any(String) },
+      );
+      fireEvent.keyDown(sizeInput, { key: 'ArrowDown', shiftKey: true });
+      expect(onUpdateLayer).toHaveBeenLastCalledWith(
+        'layer-1',
+        { font_size: 23 },
+        { coalesceKey: expect.any(String) },
+      );
     });
 
     it('commits font_weight change immediately', () => {
@@ -146,7 +182,7 @@ describe('ContextualToolbar', () => {
       fireEvent.change(sizeInput, { target: { value: '48' } });
       expect(onUpdateLayer).not.toHaveBeenCalled();
       fireEvent.blur(sizeInput);
-      expect(onUpdateLayer).toHaveBeenCalledWith('layer-1', { font_size: 48 });
+      expect(onUpdateLayer).toHaveBeenCalledWith('layer-1', { font_size: 48 }, undefined);
     });
 
     it('commits font_size on Enter', () => {
@@ -155,13 +191,13 @@ describe('ContextualToolbar', () => {
       sizeInput.focus();
       fireEvent.change(sizeInput, { target: { value: '20' } });
       fireEvent.keyDown(sizeInput, { key: 'Enter' });
-      expect(onUpdateLayer).toHaveBeenCalledWith('layer-1', { font_size: 20 });
+      expect(onUpdateLayer).toHaveBeenCalledWith('layer-1', { font_size: 20 }, undefined);
     });
 
     it('commits a valid 6-digit hex color on blur', () => {
       const { onUpdateLayer } = renderText({ color: '#000000' });
       commitColor('#ff00aa');
-      expect(onUpdateLayer).toHaveBeenCalledWith('layer-1', { color: '#ff00aa' });
+      expect(onUpdateLayer).toHaveBeenCalledWith('layer-1', { color: '#ff00aa' }, undefined);
     });
 
     it('does not commit an invalid hex color', () => {
@@ -230,9 +266,11 @@ describe('ContextualToolbar', () => {
         />,
       );
       commitColorNamed('Cor do fundo em pílula', '#ff0000');
-      expect(onUpdateLayer).toHaveBeenCalledWith('layer-1', {
-        pill: { color: '#ff0000', padding_x: 16, padding_y: 8, radius: 8 },
-      });
+      expect(onUpdateLayer).toHaveBeenCalledWith(
+        'layer-1',
+        { pill: { color: '#ff0000', padding_x: 16, padding_y: 8, radius: 8 } },
+        undefined,
+      );
     });
 
     it('recolors the text shadow without dropping its offsets/blur', () => {
@@ -248,9 +286,11 @@ describe('ContextualToolbar', () => {
         />,
       );
       commitColorNamed('Cor da sombra', '#112233');
-      expect(onUpdateLayer).toHaveBeenCalledWith('layer-1', {
-        shadow: { x: 3, y: 5, blur: 7, color: '#112233' },
-      });
+      expect(onUpdateLayer).toHaveBeenCalledWith(
+        'layer-1',
+        { shadow: { x: 3, y: 5, blur: 7, color: '#112233' } },
+        undefined,
+      );
     });
   });
 
@@ -289,7 +329,7 @@ describe('ContextualToolbar', () => {
       fireEvent.change(radiusInput, { target: { value: '12' } });
       expect(onUpdateLayer).not.toHaveBeenCalled();
       fireEvent.blur(radiusInput);
-      expect(onUpdateLayer).toHaveBeenCalledWith('layer-img-1', { radius: 12 });
+      expect(onUpdateLayer).toHaveBeenCalledWith('layer-img-1', { radius: 12 }, undefined);
     });
 
     it('toggles border on with a default patch and off with undefined', () => {
@@ -304,9 +344,11 @@ describe('ContextualToolbar', () => {
     it('recolors the border without dropping its width', () => {
       const { onUpdateLayer } = renderImage({ border: { width: 4, color: '#ffffff' } });
       commitColorNamed('Cor da borda', '#00ff00');
-      expect(onUpdateLayer).toHaveBeenCalledWith('layer-img-1', {
-        border: { width: 4, color: '#00ff00' },
-      });
+      expect(onUpdateLayer).toHaveBeenCalledWith(
+        'layer-img-1',
+        { border: { width: 4, color: '#00ff00' } },
+        undefined,
+      );
     });
 
     it('calls onReplaceImage with the layer id when Replace is clicked', () => {
@@ -343,9 +385,11 @@ describe('ContextualToolbar', () => {
     it('commits a solid fill color on blur', () => {
       const { onUpdateLayer } = renderShape({ shape: 'rect' });
       commitColor('#123456');
-      expect(onUpdateLayer).toHaveBeenCalledWith('layer-shape-1', {
-        fill: { type: 'solid', color: '#123456' },
-      });
+      expect(onUpdateLayer).toHaveBeenCalledWith(
+        'layer-shape-1',
+        { fill: { type: 'solid', color: '#123456' } },
+        undefined,
+      );
     });
 
     it('toggles stroke on with a default patch and off with undefined', () => {
@@ -360,9 +404,11 @@ describe('ContextualToolbar', () => {
     it('recolors the stroke without dropping its width', () => {
       const { onUpdateLayer } = renderShape({ stroke: { width: 3, color: '#000000' } });
       commitColorNamed('Cor do contorno', '#abcdef');
-      expect(onUpdateLayer).toHaveBeenCalledWith('layer-shape-1', {
-        stroke: { width: 3, color: '#abcdef' },
-      });
+      expect(onUpdateLayer).toHaveBeenCalledWith(
+        'layer-shape-1',
+        { stroke: { width: 3, color: '#abcdef' } },
+        undefined,
+      );
     });
 
     it('commits radius on blur for a rect shape', () => {
@@ -371,7 +417,7 @@ describe('ContextualToolbar', () => {
       expect(radiusInput).not.toBeDisabled();
       fireEvent.change(radiusInput, { target: { value: '10' } });
       fireEvent.blur(radiusInput);
-      expect(onUpdateLayer).toHaveBeenCalledWith('layer-shape-1', { radius: 10 });
+      expect(onUpdateLayer).toHaveBeenCalledWith('layer-shape-1', { radius: 10 }, undefined);
     });
 
     it('disables the radius input for an ellipse shape', () => {

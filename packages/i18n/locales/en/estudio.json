@@ -130,6 +130,9 @@
   "toolbar": {
     "on": "On",
     "off": "Off",
+    "emptyHint": "Select an element to edit",
+    "stepDown": "Decrease",
+    "stepUp": "Increase",
     "text": {
       "font": "Font",
       "weight": "Weight",

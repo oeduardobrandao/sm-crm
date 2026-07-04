@@ -145,8 +145,16 @@ function EstudioEditorShell({ postId }: { postId: number }) {
     [measurement.heights],
   );
   const onUpdateLayer = useCallback(
-    (layerId: string, patch: Partial<NormalizedLayer>) => {
-      state.dispatch({ type: 'layer/update', pageId: state.activePageId, layerId, patch });
+    (layerId: string, patch: Partial<NormalizedLayer>, opts?: { coalesceKey?: string }) => {
+      state.dispatch({
+        type: 'layer/update',
+        pageId: state.activePageId,
+        layerId,
+        patch,
+        // High-frequency commit sources (toolbar color drags, stepper bursts) pass a session
+        // key so the whole burst lands as ONE undo entry (reducer coalescing, T7.3).
+        coalesceKey: opts?.coalesceKey,
+      });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [state.activePageId],

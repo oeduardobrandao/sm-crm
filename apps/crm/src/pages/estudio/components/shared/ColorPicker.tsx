@@ -55,8 +55,10 @@ export function normalizeHexInput(raw: string): string | null {
 export interface ColorPickerProps {
   /** Current color — ideally #rrggbb[aa], but tolerated as arbitrary text (see header). */
   value: string;
-  /** Called ONLY with schema-valid hex. */
-  onChange: (hex: string) => void;
+  /** Called ONLY with schema-valid hex. Native-picker drags fire this LIVE, once per tick, each
+   * carrying the same per-drag `coalesceKey` — undo-aware callers (the editor) collapse the burst
+   * into one undo entry; callers without an undo stack (BrandEditor) just ignore the 2nd arg. */
+  onChange: (hex: string, opts?: { coalesceKey?: string }) => void;
   /** Pinned "Marca" swatches (already-validated hex, invalid entries are the caller's to drop). */
   brandColors?: string[];
   /** Accept the 8-digit #rrggbbaa form in the hex field (default true — the schema allows it). */
@@ -64,6 +66,10 @@ export interface ColorPickerProps {
   label?: string;
   disabled?: boolean;
 }
+
+// Distinct per drag session ACROSS all picker instances, so two separate drags on the same
+// control never share a coalesce key (each drag = its own undo entry).
+let colorDragSessionCounter = 0;
 
 function Swatch({
   hex,
@@ -151,17 +157,33 @@ export function ColorPicker({
 
   const validRe = allowAlpha ? HEX_COLOR_RE : HEX_6_RE;
 
-  // Commit-on-close for the native input: `input` fires continuously while the user drags
-  // around the OS color wheel — committing each tick would flood the undo stack (the CommitInput
-  // discipline, same reasoning). Track the latest pick and commit once on popover close.
-  const pendingNativeRef = useRef<string | null>(null);
+  // The native input commits LIVE, per tick. The original design buffered picks and committed
+  // once on popover close — but on macOS the OS color panel is a separate window, and anything
+  // that closes the popover before/during the pick (interact-outside, focus loss) unmounted this
+  // component with the pick still buffered: "picking a new color doesn't work". Live commits
+  // make the canvas follow the drag (Figma behavior) and can't be lost to a close. The undo
+  // flood is handled by `coalesceKey`: every tick of one drag shares a key, so undo-aware
+  // callers store the whole drag as ONE entry.
+  const dragSessionRef = useRef<string | null>(null);
+  // Last live-committed hex — pushed to recents ONCE when the popover closes (recents per tick
+  // would churn the list with every intermediate drag color).
+  const lastNativeHexRef = useRef<string | null>(null);
+
+  const commitLive = (raw: string) => {
+    const normalized = normalizeHexInput(raw);
+    if (!normalized || !validRe.test(normalized)) return;
+    dragSessionRef.current ??= `colorpicker:${++colorDragSessionCounter}`;
+    lastNativeHexRef.current = normalized;
+    onChange(normalized, { coalesceKey: dragSessionRef.current });
+  };
 
   const commit = (raw: string) => {
     const normalized = normalizeHexInput(raw);
     if (!normalized || !validRe.test(normalized)) return;
-    // A direct commit (hex field, swatch) supersedes any in-progress native-picker drag — the
-    // close handler must not overwrite this with the stale native value.
-    pendingNativeRef.current = null;
+    // A discrete commit (hex field, swatch) ends any in-progress native-drag session — a later
+    // drag must open its own undo entry, not coalesce into the pre-commit one.
+    dragSessionRef.current = null;
+    lastNativeHexRef.current = null;
     setRecents(pushRecentColor(normalized));
     onChange(normalized);
   };
@@ -179,9 +201,13 @@ export function ColorPicker({
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (!next && pendingNativeRef.current) {
-          commit(pendingNativeRef.current);
-          pendingNativeRef.current = null;
+        if (!next) {
+          // The picks themselves already committed live — closing only finalizes bookkeeping:
+          // the drag's END color joins recents, and the session ends so the next drag gets its
+          // own undo entry.
+          if (lastNativeHexRef.current) setRecents(pushRecentColor(lastNativeHexRef.current));
+          lastNativeHexRef.current = null;
+          dragSessionRef.current = null;
         }
       }}
     >
@@ -229,7 +255,7 @@ export function ColorPicker({
             aria-label={t('colorPicker.native')}
             value={nativeValue}
             onChange={(e) => {
-              pendingNativeRef.current = `${e.target.value}${alphaSuffix}`;
+              commitLive(`${e.target.value}${alphaSuffix}`);
             }}
             style={{
               width: 36,

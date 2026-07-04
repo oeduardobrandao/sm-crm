@@ -111,27 +111,40 @@ describe('ColorPicker', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it('native picker commits ONCE on popover close, preserving an existing alpha suffix', () => {
+  it('native picker commits LIVE per tick, one shared coalesceKey per drag, preserving an existing alpha suffix', () => {
+    // Live commits are what make the macOS OS-panel flow work at all: anything that closes the
+    // popover mid-pick (interact-outside, focus loss) used to eat the buffered pick entirely.
     const { onChange } = renderPicker({ value: '#12151a80' });
     openPicker();
     const native = screen.getByTestId('estudio-color-native');
     fireEvent.change(native, { target: { value: '#ff0000' } });
     fireEvent.change(native, { target: { value: '#00ff00' } });
-    expect(onChange).not.toHaveBeenCalled(); // nothing until close — one undo step per pick
+    expect(onChange).toHaveBeenCalledTimes(2);
+    expect(onChange).toHaveBeenNthCalledWith(1, '#ff000080', {
+      coalesceKey: expect.any(String),
+    });
+    expect(onChange).toHaveBeenNthCalledWith(2, '#00ff0080', {
+      coalesceKey: expect.any(String),
+    });
+    // Same drag → same key (the whole burst is ONE undo entry for undo-aware callers).
+    expect(onChange.mock.calls[0][1].coalesceKey).toBe(onChange.mock.calls[1][1].coalesceKey);
+    // Closing dispatches nothing further — the picks already landed.
     fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' }); // Radix close
-    expect(onChange).toHaveBeenCalledTimes(1);
-    expect(onChange).toHaveBeenCalledWith('#00ff0080');
+    expect(onChange).toHaveBeenCalledTimes(2);
+    // The drag's END color joins recents exactly once.
+    expect(readRecentColors()).toEqual(['#00ff0080']);
   });
 
-  it('a hex-field commit supersedes a pending native pick (no stale overwrite on close)', () => {
+  it('a hex-field commit carries NO coalesceKey and ends the drag session (next drag = new key)', () => {
     const { onChange } = renderPicker();
     openPicker();
-    fireEvent.change(screen.getByTestId('estudio-color-native'), {
-      target: { value: '#ff0000' },
-    });
+    const native = screen.getByTestId('estudio-color-native');
+    fireEvent.change(native, { target: { value: '#ff0000' } });
+    const firstKey = onChange.mock.calls[0][1].coalesceKey as string;
     commitHex('#00ff00');
-    expect(onChange).toHaveBeenCalledWith('#00ff00');
-    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
-    expect(onChange).toHaveBeenCalledTimes(1); // the stale #ff0000 never lands
+    expect(onChange).toHaveBeenCalledWith('#00ff00'); // discrete: no opts at all
+    fireEvent.change(native, { target: { value: '#0000ff' } });
+    const nextKey = onChange.mock.calls.at(-1)![1].coalesceKey as string;
+    expect(nextKey).not.toBe(firstKey); // a fresh drag never coalesces into the pre-commit one
   });
 });
