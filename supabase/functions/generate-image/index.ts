@@ -3,7 +3,7 @@
 // conta scoping). Deploy: --use-api, NO --no-verify-jwt.
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
-import { createGeminiProvider } from "../_shared/image-gen/gemini.ts";
+import { resolveImageProvider } from "../_shared/image-gen/resolve.ts";
 import { effectivePlanFeature, effectivePlanLimit } from "../_shared/entitlements-rpc.ts";
 import { checkRateLimit } from "../_shared/rate-limit.ts";
 import { deleteObject, getObjectBytes, putObject, signGetUrl } from "../_shared/r2.ts";
@@ -12,11 +12,12 @@ import { createGenerateImageHandler } from "./handler.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-// REQUIRED here (unlike the mcp function, where it's optional): generate-image exists ONLY to
-// generate, so a missing key is a deploy error, not a degraded mode.
-const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") ??
+// A provider key is REQUIRED here (unlike the mcp function, where it's optional): generate-image
+// exists ONLY to generate, so no configured provider is a deploy error, not a degraded mode.
+// Selection lives in resolveImageProvider (OpenRouter first, Gemini fallback) — shared with mcp.
+const provider = resolveImageProvider() ??
   (() => {
-    throw new Error("GEMINI_API_KEY is required");
+    throw new Error("an image provider key is required (OPEN_ROUTER_API_KEY or GEMINI_API_KEY)");
   })();
 
 const svc = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
@@ -37,7 +38,7 @@ Deno.serve(createGenerateImageHandler({
   // Identical dep bundle to mcp/index.ts — one core, one wiring shape.
   imageGen: {
     db: svc,
-    provider: createGeminiProvider(GEMINI_API_KEY),
+    provider,
     isFeatureEnabled: (contaId, feature) => effectivePlanFeature(svc as never, contaId, feature),
     monthlyLimit: (contaId) => effectivePlanLimit(svc as never, contaId, "rate_ai_images_per_month"),
     checkRateLimit: (key, max, windowSeconds) => checkRateLimit(svc as never, key, max, windowSeconds),
