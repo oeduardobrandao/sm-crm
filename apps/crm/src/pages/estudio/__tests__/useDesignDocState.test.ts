@@ -117,6 +117,113 @@ describe('designDocReducer — undo/redo', () => {
   });
 });
 
+describe('designDocReducer — coalesced undo (T7.3 nudge bursts)', () => {
+  const nudge = (
+    state: DesignDocState,
+    x: number,
+    coalesceKey: string | undefined,
+  ): DesignDocState =>
+    designDocReducer(state, {
+      type: 'layer/update',
+      pageId: 'page-1',
+      layerId: 'layer-1',
+      patch: { x },
+      coalesceKey,
+    });
+
+  it('consecutive updates sharing a coalesce key collapse into ONE undo entry', () => {
+    const state = initDesignDocState(makeDoc());
+    const s1 = nudge(state, 11, 'nudge-1');
+    const s2 = nudge(s1, 12, 'nudge-1');
+    const s3 = nudge(s2, 13, 'nudge-1');
+    // Only the pre-burst doc sits on `past`; the interim frames never do.
+    expect(s3.past).toHaveLength(1);
+    expect(s3.past[0]).toBe(state.doc);
+    expect(s3.doc.pages[0].layers[0]).toMatchObject({ x: 13 });
+    // A single undo jumps straight back to before the burst.
+    const undone = designDocReducer(s3, { type: 'undo' });
+    expect(undone.doc).toBe(state.doc);
+    expect(undone.doc.pages[0].layers[0]).toMatchObject({ x: 10 });
+  });
+
+  it('a different coalesce key opens a new undo entry', () => {
+    const state = initDesignDocState(makeDoc());
+    const s1 = nudge(state, 11, 'nudge-1');
+    const s2 = nudge(s1, 12, 'nudge-2');
+    expect(s2.past).toHaveLength(2);
+  });
+
+  it('an undefined coalesce key never coalesces (drag commits stay discrete)', () => {
+    const state = initDesignDocState(makeDoc());
+    const s1 = nudge(state, 11, undefined);
+    const s2 = nudge(s1, 12, undefined);
+    expect(s2.past).toHaveLength(2);
+  });
+
+  it('a non-layer/update mutation between same-key nudges breaks the burst', () => {
+    const doc = makeDoc({
+      pages: [makePage({ layers: [makeTextLayer({ id: 'layer-1' }), makeTextLayer({ id: 'b' })] })],
+    });
+    const state = initDesignDocState(doc);
+    const s1 = nudge(state, 11, 'nudge-1');
+    // A background change resets coalesceKey — the next same-key nudge must NOT fold in.
+    const s2 = designDocReducer(s1, {
+      type: 'page/background',
+      pageId: 'page-1',
+      background: { type: 'solid', color: '#123456' },
+    });
+    const s3 = nudge(s2, 12, 'nudge-1');
+    expect(s3.past).toHaveLength(3);
+  });
+
+  it('a selection change breaks the burst so the next layer nudges independently', () => {
+    const state = initDesignDocState(makeDoc());
+    const s1 = nudge(state, 11, 'nudge-1');
+    const s2 = designDocReducer(s1, { type: 'select', selection: ['layer-1'] });
+    expect(s2.coalesceKey).toBeUndefined();
+    const s3 = nudge(s2, 12, 'nudge-1');
+    expect(s3.past).toHaveLength(2);
+  });
+
+  it('switching the active page breaks the burst so a resumed nudge is its own undo entry', () => {
+    const doc = makeDoc({
+      format: 'carrossel',
+      pages: [
+        makePage({ id: 'page-1', layers: [makeTextLayer({ id: 'layer-1' })] }),
+        makePage({ id: 'page-2' }),
+      ],
+    });
+    const state = initDesignDocState(doc);
+    const s1 = nudge(state, 11, 'nudge-1');
+    const s2 = designDocReducer(s1, { type: 'activePage/set', pageId: 'page-2' });
+    expect(s2.coalesceKey).toBeUndefined();
+    const s3 = designDocReducer(s2, { type: 'activePage/set', pageId: 'page-1' });
+    const s4 = nudge(s3, 12, 'nudge-1');
+    expect(s4.past).toHaveLength(2);
+  });
+
+  it('a no-op activePage/set (same id) leaves the burst intact', () => {
+    const state = {
+      ...initDesignDocState(makeDoc()),
+      coalesceKey: 'nudge-1' as string | undefined,
+    };
+    const next = designDocReducer(state, { type: 'activePage/set', pageId: state.activePageId });
+    expect(next).toBe(state);
+    expect(next.coalesceKey).toBe('nudge-1');
+  });
+
+  it('undo clears coalesceKey so a resumed burst cannot fold across the history jump', () => {
+    const state = initDesignDocState(makeDoc());
+    const s1 = nudge(state, 11, 'nudge-1');
+    const undone = designDocReducer(s1, { type: 'undo' });
+    expect(undone.coalesceKey).toBeUndefined();
+    const resumed = nudge(undone, 12, 'nudge-1');
+    // The pre-undo doc is pushed as a fresh entry rather than silently coalescing.
+    expect(resumed.past).toHaveLength(1);
+    expect(resumed.past[0]).toBe(state.doc);
+  });
+});
+
 describe('designDocReducer — selection and active page', () => {
   it('select replaces the selection list', () => {
     const state = initDesignDocState(makeDoc());

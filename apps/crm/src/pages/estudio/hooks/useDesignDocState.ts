@@ -17,11 +17,23 @@ export interface DesignDocState {
   /** Layer ids selected on the active page. */
   selection: string[];
   activePageId: string;
+  /** The coalesce key of the last mutating action (T7.3). Consecutive `layer/update`s sharing a
+   * key (e.g. an arrow-nudge burst) collapse into ONE undo entry — the pre-burst doc stays on
+   * `past` and only `doc` advances. Undefined between bursts / after any other action. */
+  coalesceKey?: string;
 }
 
 export type DesignDocAction =
   | { type: 'layer/add'; pageId: string; layer: NormalizedLayer; index?: number }
-  | { type: 'layer/update'; pageId: string; layerId: string; patch: Partial<NormalizedLayer> }
+  | {
+      type: 'layer/update';
+      pageId: string;
+      layerId: string;
+      patch: Partial<NormalizedLayer>;
+      /** When set and equal to the previous action's key, this update coalesces into the same
+       * undo step (see DesignDocState.coalesceKey). */
+      coalesceKey?: string;
+    }
   | { type: 'layer/remove'; pageId: string; layerId: string }
   | { type: 'layer/duplicate'; pageId: string; layerId: string }
   | { type: 'layer/reorder'; pageId: string; layerId: string; toIndex: number }
@@ -73,7 +85,14 @@ function isMutating(action: DesignDocAction): action is MutatingAction {
 }
 
 export function initDesignDocState(doc: DesignDoc): DesignDocState {
-  return { doc, past: [], future: [], selection: [], activePageId: doc.pages[0]?.id ?? '' };
+  return {
+    doc,
+    past: [],
+    future: [],
+    selection: [],
+    activePageId: doc.pages[0]?.id ?? '',
+    coalesceKey: undefined,
+  };
 }
 
 export function designDocReducer(state: DesignDocState, action: DesignDocAction): DesignDocState {
@@ -81,10 +100,15 @@ export function designDocReducer(state: DesignDocState, action: DesignDocAction)
     const nextDoc = applyOp(state.doc, action);
     // designDocOps contract: same reference back means "nothing to do" — no undo entry.
     if (nextDoc === state.doc) return state;
+    const actionKey = action.type === 'layer/update' ? action.coalesceKey : undefined;
+    // Coalesce: same non-undefined key as the previous action → the pre-burst doc already sits on
+    // `past`, so keep `past` untouched and just advance `doc`. Otherwise push a new undo entry.
+    const coalesce = actionKey !== undefined && actionKey === state.coalesceKey;
     return {
       doc: nextDoc,
-      past: [...state.past, state.doc].slice(-MAX_UNDO),
+      past: coalesce ? state.past : [...state.past, state.doc].slice(-MAX_UNDO),
       future: [],
+      coalesceKey: actionKey,
       // A page/remove may have taken the active page with it — fall back to the first
       // remaining page rather than pointing at a page id that no longer exists.
       activePageId: nextDoc.pages.some((p) => p.id === state.activePageId)
@@ -103,6 +127,8 @@ export function designDocReducer(state: DesignDocState, action: DesignDocAction)
     case 'doc/adopt':
       return {
         ...state,
+        // A server adoption swaps the doc reference; a following nudge must NOT coalesce across it.
+        coalesceKey: undefined,
         doc: action.doc,
         // Stale ids are impossible in practice (normalization never adds/removes layers or
         // pages), but filter defensively so a bad adoption can't leave phantom selection.
@@ -114,16 +140,22 @@ export function designDocReducer(state: DesignDocState, action: DesignDocAction)
           : (action.doc.pages[0]?.id ?? ''),
       };
     case 'select':
-      return { ...state, selection: action.selection };
+      // A selection change ends any nudge burst — a following nudge on the newly-selected layer
+      // opens its own undo entry rather than coalescing into the previous layer's.
+      return { ...state, selection: action.selection, coalesceKey: undefined };
     case 'activePage/set':
+      // Switching pages ends a nudge burst too (a still-selected layer nudged after a page
+      // round-trip must open its own undo entry, not fold into the pre-switch one).
       return state.activePageId === action.pageId
         ? state
-        : { ...state, activePageId: action.pageId };
+        : { ...state, activePageId: action.pageId, coalesceKey: undefined };
     case 'undo': {
       if (state.past.length === 0) return state;
       const previous = state.past[state.past.length - 1];
       return {
         ...state,
+        // History jump: the next nudge burst opens a fresh undo entry, never coalescing back.
+        coalesceKey: undefined,
         doc: previous,
         past: state.past.slice(0, -1),
         future: [state.doc, ...state.future],
@@ -134,6 +166,7 @@ export function designDocReducer(state: DesignDocState, action: DesignDocAction)
       const next = state.future[0];
       return {
         ...state,
+        coalesceKey: undefined,
         doc: next,
         past: [...state.past, state.doc].slice(-MAX_UNDO),
         future: state.future.slice(1),

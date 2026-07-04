@@ -275,3 +275,77 @@ export function computeResizePatch(
   if (hasHeight) result.h = newH;
   return result;
 }
+
+// ============================================================
+// Rotation (T7.1)
+// ============================================================
+
+/** Wraps any angle into the [0, 360) range (handles negatives and multi-turn values). */
+export function normalizeAngle(deg: number): number {
+  return ((deg % 360) + 360) % 360;
+}
+
+/** The clockwise rotation (degrees, normalized [0,360)) implied by a pointer at canvas-space
+ * `pointer` relative to a box `center`, measured from the 12-o'clock (straight-up) direction —
+ * matching the rotation grip that sits above the box's top edge. In y-down canvas space, "up" is
+ * -y; `atan2(dx, -dy)` gives 0° when the pointer is straight up and increases clockwise. */
+export function angleFromPointer(center: CanvasPoint, pointer: CanvasPoint): number {
+  const dx = pointer.x - center.x;
+  const dy = pointer.y - center.y;
+  return normalizeAngle((Math.atan2(dx, -dy) * 180) / Math.PI);
+}
+
+/** Snaps `deg` to the nearest multiple of `stop` (default 45°) when within `threshold` degrees of
+ * one; otherwise returns it unchanged (normalized). Pass `threshold: Infinity` to ALWAYS snap
+ * (the Shift-held behavior). Result is normalized to [0, 360). */
+export function snapAngle(deg: number, stop = 45, threshold = 5): number {
+  const normalized = normalizeAngle(deg);
+  const nearest = Math.round(normalized / stop) * stop;
+  const delta = Math.abs(normalizeAngle(normalized - nearest + 180) - 180);
+  return delta <= threshold ? normalizeAngle(nearest) : normalized;
+}
+
+// ============================================================
+// Align-to-canvas (T7.2)
+// ============================================================
+
+export type AlignAxis = 'left' | 'hcenter' | 'right' | 'top' | 'vcenter' | 'bottom';
+
+/** New top-left `{x, y}` for a layer so its ROTATED extent (the AABB of its rotated corners)
+ * aligns to the canvas edge/center named by `axis`. Aligning a rotated layer by its pre-rotation
+ * box would let its visible edge poke past the canvas — the rotated AABB is what the user sees, so
+ * we shift the layer by the delta between the AABB's current aligned-edge and the target, and
+ * apply that same delta to the layer's own `x/y` (translation is rotation-invariant). Only the
+ * moved axis changes; the other is preserved. */
+export function alignLayerToCanvas(
+  bbox: LayerBBox,
+  rotationDeg: number,
+  canvasWidth: number,
+  canvasHeight: number,
+  axis: AlignAxis,
+): { x: number; y: number } {
+  const aabb = getRotatedAABB(bbox, rotationDeg);
+  let dx = 0;
+  let dy = 0;
+  switch (axis) {
+    case 'left':
+      dx = 0 - aabb.x;
+      break;
+    case 'hcenter':
+      dx = (canvasWidth - aabb.w) / 2 - aabb.x;
+      break;
+    case 'right':
+      dx = canvasWidth - aabb.w - aabb.x;
+      break;
+    case 'top':
+      dy = 0 - aabb.y;
+      break;
+    case 'vcenter':
+      dy = (canvasHeight - aabb.h) / 2 - aabb.y;
+      break;
+    case 'bottom':
+      dy = canvasHeight - aabb.h - aabb.y;
+      break;
+  }
+  return { x: bbox.x + dx, y: bbox.y + dy };
+}

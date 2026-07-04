@@ -155,6 +155,15 @@
       "stroke": "Contorno",
       "radius": "Raio da borda",
       "radiusDisabledHint": "Raio só se aplica a retângulos"
+    },
+    "align": {
+      "label": "Alinhar à página",
+      "left": "Alinhar à esquerda",
+      "hcenter": "Centralizar horizontalmente",
+      "right": "Alinhar à direita",
+      "top": "Alinhar ao topo",
+      "vcenter": "Centralizar verticalmente",
+      "bottom": "Alinhar à base"
     }
   },
   "toast": {

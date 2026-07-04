@@ -15,6 +15,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   getLayerBBox,
   computeResizePatch,
+  angleFromPointer,
+  snapAngle,
   type LayerBBox,
   type ResizeHandle,
 } from '../../lib/layerGeometry';
@@ -62,11 +64,23 @@ type Gesture =
       startBBox: LayerBBox;
       rotation: number;
       hasHeight: boolean;
+    }
+  | {
+      type: 'rotate';
+      layerId: string;
+      /** Canvas-space box center — the pivot the pointer angle is measured around. */
+      center: CanvasPoint;
+      startBBox: LayerBBox;
+      rotation: number;
+      hasHeight: boolean;
     };
 
 interface GhostState {
   bbox: LayerBBox;
   activeLines: SnapLine[];
+  /** Live rotation during a rotate gesture (degrees) — absent for drag/resize (they keep the
+   * layer's committed rotation). */
+  rotation?: number;
 }
 
 function isTextLayer(layer: NormalizedLayer): boolean {
@@ -149,12 +163,19 @@ export function InteractionOverlay({
       const activeGesture = gestureRef.current;
       const activeGhost = ghostRef.current;
       if (commit && activeGesture && activeGhost) {
-        const patch: Partial<NormalizedLayer> = { x: activeGhost.bbox.x, y: activeGhost.bbox.y };
-        if (activeGesture.type === 'resize') {
-          patch.w = activeGhost.bbox.w;
-          if (activeGesture.hasHeight) (patch as { h?: number }).h = activeGhost.bbox.h;
+        if (activeGesture.type === 'rotate') {
+          // Rotation commits ONLY the angle — position/size are unchanged by a rotate gesture.
+          onUpdateLayer(activeGesture.layerId, {
+            rotation: activeGhost.rotation ?? activeGesture.rotation,
+          } as Partial<NormalizedLayer>);
+        } else {
+          const patch: Partial<NormalizedLayer> = { x: activeGhost.bbox.x, y: activeGhost.bbox.y };
+          if (activeGesture.type === 'resize') {
+            patch.w = activeGhost.bbox.w;
+            if (activeGesture.hasHeight) (patch as { h?: number }).h = activeGhost.bbox.h;
+          }
+          onUpdateLayer(activeGesture.layerId, patch);
         }
-        onUpdateLayer(activeGesture.layerId, patch);
       }
       gestureRef.current = null;
       ghostRef.current = null;
@@ -282,11 +303,49 @@ export function InteractionOverlay({
     [selectedLayer, clientPointToCanvas, getTextHeight],
   );
 
+  const handleRotatePointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      if (!selectedLayer) return;
+      e.stopPropagation();
+      const startBBox = getLayerBBox(selectedLayer, getTextHeight);
+      const next: Gesture = {
+        type: 'rotate',
+        layerId: selectedLayer.id,
+        center: { x: startBBox.x + startBBox.w / 2, y: startBBox.y + startBBox.h / 2 },
+        startBBox,
+        rotation: selectedLayer.rotation,
+        hasHeight: !isTextLayer(selectedLayer),
+      };
+      gestureRef.current = next;
+      setGesture(next);
+      const initialGhost: GhostState = {
+        bbox: startBBox,
+        activeLines: [],
+        rotation: selectedLayer.rotation,
+      };
+      ghostRef.current = initialGhost;
+      setGhost(initialGhost);
+      capturePointer(overlayRef.current, e.pointerId);
+    },
+    [selectedLayer, getTextHeight],
+  );
+
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
       const activeGesture = gestureRef.current;
       if (!activeGesture) return;
       const point = clientPointToCanvas(e.clientX, e.clientY);
+
+      if (activeGesture.type === 'rotate') {
+        const raw = angleFromPointer(activeGesture.center, point);
+        // Shift-held → always snap to the nearest 45° stop; otherwise snap only when within the
+        // small default threshold (a gentle magnet, not a forced grid).
+        const rotation = snapAngle(raw, 45, e.shiftKey ? Infinity : undefined);
+        const next: GhostState = { bbox: activeGesture.startBBox, activeLines: [], rotation };
+        ghostRef.current = next;
+        setGhost(next);
+        return;
+      }
 
       if (activeGesture.type === 'drag') {
         const dx = point.x - activeGesture.startPointer.x;
@@ -391,11 +450,15 @@ export function InteractionOverlay({
             top: canvasToScreen(ghost.bbox.x, ghost.bbox.y).y,
             width: ghost.bbox.w * scale,
             height: ghost.bbox.h * scale,
-            // Both Gesture variants carry the layer's own rotation now — without this, a rotated
-            // layer's ghost renders as an axis-aligned box during the gesture while LayerHandles'
-            // selection outline (still visible underneath/around it) stays correctly rotated,
-            // visibly diverging from what the committed result will actually look like.
-            transform: gesture.rotation ? `rotate(${gesture.rotation}deg)` : undefined,
+            // Drag/resize carry the layer's committed rotation; a rotate gesture drives the LIVE
+            // angle from the ghost so the ghost box spins with the pointer. Without this, a
+            // rotated layer's ghost would render axis-aligned while the outline stays rotated,
+            // visibly diverging from what the committed result will look like.
+            transformOrigin: 'center',
+            transform:
+              (ghost.rotation ?? gesture.rotation)
+                ? `rotate(${ghost.rotation ?? gesture.rotation}deg)`
+                : undefined,
             border: '1.5px dashed var(--primary-color, #eab308)',
             backgroundColor: 'rgba(234, 179, 8, 0.08)',
             pointerEvents: 'none',
@@ -435,13 +498,38 @@ export function InteractionOverlay({
           onCancel={handleTextEditCancel}
         />
       )}
+      {gesture?.type === 'rotate' && ghost?.rotation != null && (
+        <div
+          data-testid="rotation-angle-badge"
+          style={{
+            position: 'absolute',
+            left: canvasToScreen(ghost.bbox.x + ghost.bbox.w / 2, ghost.bbox.y).x,
+            top: canvasToScreen(ghost.bbox.x, ghost.bbox.y).y - 34,
+            transform: 'translateX(-50%)',
+            padding: '0.15rem 0.4rem',
+            borderRadius: 6,
+            background: 'var(--primary-color, #eab308)',
+            color: '#12151a',
+            fontSize: '0.7rem',
+            fontWeight: 700,
+            fontFamily: 'var(--font-mono, monospace)',
+            pointerEvents: 'none',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {Math.round(ghost.rotation)}°
+        </div>
+      )}
       {selectedLayer && displayBBox && editingLayerId !== selectedLayer.id && (
         <LayerHandles
           bbox={displayBBox}
-          rotation={selectedLayer.rotation}
+          // During a rotate gesture the outline spins with the live angle; otherwise the
+          // committed rotation. Drag/resize keep the committed rotation (ghost.rotation is unset).
+          rotation={ghost?.rotation ?? selectedLayer.rotation}
           hasHeight={!isTextLayer(selectedLayer)}
           canvasToScreen={canvasToScreen}
           onResizePointerDown={handleResizePointerDown}
+          onRotatePointerDown={handleRotatePointerDown}
         />
       )}
     </div>

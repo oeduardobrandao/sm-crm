@@ -13,8 +13,17 @@
 // doesn't push three separate undo entries ("4", "48", done) — one commit per edit, not one per
 // keystroke.
 import { useEffect, useRef, useState } from 'react';
+import {
+  AlignHorizontalJustifyStart,
+  AlignHorizontalJustifyCenter,
+  AlignHorizontalJustifyEnd,
+  AlignVerticalJustifyStart,
+  AlignVerticalJustifyCenter,
+  AlignVerticalJustifyEnd,
+} from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { findFamily, buildFontFamilyPatch } from '../../hooks/useFontManifest';
+import { alignLayerToCanvas, getLayerBBox, type AlignAxis } from '../../lib/layerGeometry';
 import { ColorPicker, FontPicker, type BrandFontEntry } from '../shared';
 import type {
   FontWeight,
@@ -32,6 +41,10 @@ export interface ContextualToolbarProps {
   brandColors?: string[];
   /** Client brand fonts (matcher-resolved), pinned as the FontPicker's "Marca" group. */
   brandFonts?: BrandFontEntry[];
+  /** Canvas dims + text-height resolver for the align-to-canvas row (T7.2). Omit to hide it. */
+  canvasWidth?: number;
+  canvasHeight?: number;
+  getTextHeight?: (layer: NormalizedTextLayer) => number;
 }
 
 const DEFAULT_SHADOW = { x: 2, y: 2, blur: 4, color: '#00000080' };
@@ -455,12 +468,71 @@ function ShapeVariant({
   );
 }
 
+/** Align-to-canvas row (T7.2) — layer-type-agnostic (applies to text, image, and shape).
+ * Alignment is a pure position update: compute the new top-left via the rotated-AABB math and
+ * commit `{x, y}`. */
+function AlignRow({
+  layer,
+  onUpdateLayer,
+  canvasWidth,
+  canvasHeight,
+  getTextHeight,
+}: {
+  layer: NormalizedLayer;
+  onUpdateLayer: ContextualToolbarProps['onUpdateLayer'];
+  canvasWidth: number;
+  canvasHeight: number;
+  getTextHeight: (layer: NormalizedTextLayer) => number;
+}) {
+  const { t } = useTranslation('estudio');
+  const apply = (axis: AlignAxis) => {
+    const bbox = getLayerBBox(layer, getTextHeight);
+    const { x, y } = alignLayerToCanvas(bbox, layer.rotation, canvasWidth, canvasHeight, axis);
+    onUpdateLayer(layer.id, { x, y });
+  };
+  const buttons: Array<{ axis: AlignAxis; icon: React.ReactNode }> = [
+    { axis: 'left', icon: <AlignHorizontalJustifyStart size={16} /> },
+    { axis: 'hcenter', icon: <AlignHorizontalJustifyCenter size={16} /> },
+    { axis: 'right', icon: <AlignHorizontalJustifyEnd size={16} /> },
+    { axis: 'top', icon: <AlignVerticalJustifyStart size={16} /> },
+    { axis: 'vcenter', icon: <AlignVerticalJustifyCenter size={16} /> },
+    { axis: 'bottom', icon: <AlignVerticalJustifyEnd size={16} /> },
+  ];
+  return (
+    <div style={rowStyle}>
+      <span style={labelStyle}>{t('toolbar.align.label')}</span>
+      <div
+        style={{ display: 'flex', gap: '0.25rem' }}
+        role="group"
+        aria-label={t('toolbar.align.label')}
+      >
+        {buttons.map(({ axis, icon }) => (
+          <button
+            key={axis}
+            type="button"
+            aria-label={t(`toolbar.align.${axis}`)}
+            title={t(`toolbar.align.${axis}`)}
+            data-testid={`align-${axis}`}
+            style={toggleButtonStyle(false)}
+            onClick={() => apply(axis)}
+          >
+            {icon}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function ContextualToolbar({
   layer,
   onUpdateLayer,
   onReplaceImage,
   brandColors,
   brandFonts,
+  canvasWidth,
+  canvasHeight,
+  getTextHeight,
 }: ContextualToolbarProps) {
   if (!layer) return null;
 
@@ -495,6 +567,15 @@ export default function ContextualToolbar({
           layer={layer}
           onUpdateLayer={onUpdateLayer}
           brandColors={brandColors}
+        />
+      )}
+      {canvasWidth !== undefined && canvasHeight !== undefined && getTextHeight && (
+        <AlignRow
+          layer={layer}
+          onUpdateLayer={onUpdateLayer}
+          canvasWidth={canvasWidth}
+          canvasHeight={canvasHeight}
+          getTextHeight={getTextHeight}
         />
       )}
     </ToolbarShell>

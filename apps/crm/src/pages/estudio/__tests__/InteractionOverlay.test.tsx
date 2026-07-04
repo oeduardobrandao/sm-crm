@@ -492,4 +492,41 @@ describe('SafeZoneGuides toggle', () => {
     expect(crop.style.width).toBe(`${1080 * expectedScale}px`);
     expect(crop.style.height).toBe(`${1440 * expectedScale}px`);
   });
+
+  it('dragging the rotation grip commits ONLY the rotation (position/size untouched), one dispatch on pointerup', () => {
+    const onUpdateLayer = vi.fn();
+    // Image layer (has an explicit h) centered at (200,125): x=100 y=75 w=200 h=100.
+    const layer = makeImageLayer({ id: 'a', x: 100, y: 75, w: 200, h: 100 });
+    renderStage({ layers: [layer], selection: ['a'], onUpdateLayer });
+
+    const grip = screen.getByTestId('rotate-handle');
+    fireEvent.pointerDown(grip, { clientX: 200, clientY: 53 }); // on the grip stem
+    const overlay = screen.getByTestId('interaction-overlay');
+    // Pointer to the RIGHT of center (200,125) → 90° clockwise from straight-up.
+    fireEvent.pointerMove(overlay, { clientX: 300, clientY: 125 });
+    // Live angle badge appears mid-gesture.
+    expect(screen.getByTestId('rotation-angle-badge')).toHaveTextContent('90°');
+    expect(onUpdateLayer).not.toHaveBeenCalled(); // no commit mid-gesture
+
+    fireEvent.pointerUp(overlay, { clientX: 300, clientY: 125 });
+    expect(onUpdateLayer).toHaveBeenCalledTimes(1);
+    const [layerId, patch] = onUpdateLayer.mock.calls[0];
+    expect(layerId).toBe('a');
+    expect(patch).toEqual({ rotation: 90 }); // ONLY rotation, snapped to the 90° stop
+  });
+
+  it('Escape cancels an in-progress rotation without dispatching', () => {
+    const onUpdateLayer = vi.fn();
+    const layer = makeImageLayer({ id: 'a', x: 100, y: 75, w: 200, h: 100 });
+    renderStage({ layers: [layer], selection: ['a'], onUpdateLayer });
+
+    const grip = screen.getByTestId('rotate-handle');
+    fireEvent.pointerDown(grip, { clientX: 200, clientY: 53 });
+    const overlay = screen.getByTestId('interaction-overlay');
+    fireEvent.pointerMove(overlay, { clientX: 300, clientY: 125 });
+    fireEvent.keyDown(window, { key: 'Escape' });
+    fireEvent.pointerUp(overlay, { clientX: 300, clientY: 125 });
+
+    expect(onUpdateLayer).not.toHaveBeenCalled();
+  });
 });

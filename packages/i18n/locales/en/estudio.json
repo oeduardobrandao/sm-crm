@@ -155,6 +155,15 @@
       "stroke": "Stroke",
       "radius": "Corner radius",
       "radiusDisabledHint": "Radius only applies to rectangles"
+    },
+    "align": {
+      "label": "Align to page",
+      "left": "Align left",
+      "hcenter": "Center horizontally",
+      "right": "Align right",
+      "top": "Align top",
+      "vcenter": "Center vertically",
+      "bottom": "Align bottom"
     }
   },
   "toast": {

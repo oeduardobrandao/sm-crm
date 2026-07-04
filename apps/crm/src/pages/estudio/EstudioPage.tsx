@@ -17,6 +17,7 @@ import ContextualToolbar from './components/Toolbar';
 import { SlideStrip } from './components/SlideStrip';
 import { usePostDesignQuery, PostDesignError } from './hooks/usePostDesignQuery';
 import { useDesignDocState } from './hooks/useDesignDocState';
+import { useEditorShortcuts } from './hooks/useEditorShortcuts';
 import { useTextMeasurement } from './hooks/useTextMeasurement';
 import { useImageInsert } from './hooks/useImageInsert';
 import { usePostBrand } from './hooks/usePostBrand';
@@ -169,6 +170,20 @@ function EstudioEditorShell({ postId }: { postId: number }) {
   const activePage = state.doc.pages[activePageIndex];
   const selectedLayer =
     selection.length === 1 ? (activePage?.layers.find((l) => l.id === selection[0]) ?? null) : null;
+
+  // T7.3 keyboard shortcuts — Delete, arrow-nudge (Shift = 10px, burst-coalesced), Cmd/Ctrl+D
+  // duplicate, undo/redo, Escape deselect. Inert while typing (isTextEditing or a focused field).
+  useEditorShortcuts({
+    activePage,
+    activePageId: state.activePageId,
+    selection,
+    dispatch: state.dispatch,
+    select: state.select,
+    undo: state.undo,
+    redo: state.redo,
+    isTextEditing,
+    enabled: query.isSuccess,
+  });
 
   // Second, independent `useImageInsert` instance dedicated to ContextualToolbar's "Substituir
   // imagem" action — LeftToolDock owns its own instance for ADDING new layers; this one PATCHES
@@ -417,6 +432,9 @@ function EstudioEditorShell({ postId }: { postId: number }) {
         onReplaceImage={onReplaceImage}
         brandColors={brand.brandColors}
         brandFonts={brand.brandFonts}
+        canvasWidth={state.doc.canvas.width}
+        canvasHeight={state.doc.canvas.height}
+        getTextHeight={getTextHeight}
       />
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
         <LeftToolDock

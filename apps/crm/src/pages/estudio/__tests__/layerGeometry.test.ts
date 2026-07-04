@@ -369,3 +369,74 @@ describe('computeResizePatch — rotated', () => {
     expect(result.h).toBeUndefined();
   });
 });
+
+describe('rotation math (T7.1)', () => {
+  it('normalizeAngle wraps negatives and multi-turns into [0, 360)', () => {
+    expect(geo.normalizeAngle(0)).toBe(0);
+    expect(geo.normalizeAngle(360)).toBe(0);
+    expect(geo.normalizeAngle(-90)).toBe(270);
+    expect(geo.normalizeAngle(450)).toBe(90);
+    expect(geo.normalizeAngle(-370)).toBe(350);
+  });
+
+  it('angleFromPointer: 0° straight up, 90° right, 180° down, 270° left (clockwise, y-down)', () => {
+    const c = { x: 100, y: 100 };
+    expect(geo.angleFromPointer(c, { x: 100, y: 0 })).toBeCloseTo(0, 5); // up
+    expect(geo.angleFromPointer(c, { x: 200, y: 100 })).toBeCloseTo(90, 5); // right
+    expect(geo.angleFromPointer(c, { x: 100, y: 200 })).toBeCloseTo(180, 5); // down
+    expect(geo.angleFromPointer(c, { x: 0, y: 100 })).toBeCloseTo(270, 5); // left
+  });
+
+  it('snapAngle: snaps within threshold to the nearest 45° stop, else leaves it', () => {
+    expect(geo.snapAngle(3)).toBe(0); // within 5° of 0
+    expect(geo.snapAngle(43)).toBe(45);
+    expect(geo.snapAngle(20)).toBe(20); // 20 is >5° from both 0 and 45 → unchanged
+    expect(geo.snapAngle(358)).toBe(0); // wraps to nearest 360→0
+    expect(geo.snapAngle(30, 45, Infinity)).toBe(45); // always-snap (Shift) → nearest stop
+    expect(geo.snapAngle(23, 45, Infinity)).toBe(45); // 23 is nearer 45 than 0
+    expect(geo.snapAngle(20, 45, Infinity)).toBe(0); // 20 is nearer 0 than 45
+  });
+
+  it('angleFromPointer → snapAngle round-trips a rotation grip at canonical angles', () => {
+    const c = { x: 50, y: 50 };
+    for (const [pointer, expected] of [
+      [{ x: 50, y: 0 }, 0],
+      [{ x: 100, y: 50 }, 90],
+      [{ x: 50, y: 100 }, 180],
+      [{ x: 51, y: 0 }, 0], // ~1° off vertical → snaps to 0
+    ] as const) {
+      expect(geo.snapAngle(geo.angleFromPointer(c, pointer))).toBe(expected);
+    }
+  });
+});
+
+describe('alignLayerToCanvas (T7.2)', () => {
+  const CANVAS = { w: 1080, h: 1350 };
+
+  it('aligns an unrotated layer to each canvas edge and center', () => {
+    const bbox: geo.LayerBBox = { x: 500, y: 500, w: 200, h: 100 };
+    expect(geo.alignLayerToCanvas(bbox, 0, CANVAS.w, CANVAS.h, 'left').x).toBe(0);
+    expect(geo.alignLayerToCanvas(bbox, 0, CANVAS.w, CANVAS.h, 'right').x).toBe(880);
+    expect(geo.alignLayerToCanvas(bbox, 0, CANVAS.w, CANVAS.h, 'hcenter').x).toBe(440);
+    expect(geo.alignLayerToCanvas(bbox, 0, CANVAS.w, CANVAS.h, 'top').y).toBe(0);
+    expect(geo.alignLayerToCanvas(bbox, 0, CANVAS.w, CANVAS.h, 'bottom').y).toBe(1250);
+    expect(geo.alignLayerToCanvas(bbox, 0, CANVAS.w, CANVAS.h, 'vcenter').y).toBe(625);
+  });
+
+  it('only the aligned axis moves; the other is preserved', () => {
+    const bbox: geo.LayerBBox = { x: 500, y: 500, w: 200, h: 100 };
+    const left = geo.alignLayerToCanvas(bbox, 0, CANVAS.w, CANVAS.h, 'left');
+    expect(left.y).toBe(500);
+    const top = geo.alignLayerToCanvas(bbox, 0, CANVAS.w, CANVAS.h, 'top');
+    expect(top.x).toBe(500);
+  });
+
+  it("aligns by the ROTATED extent — a 45°-rotated square's visible left edge sits at x=0", () => {
+    // 100x100 box rotated 45° has a rotated AABB of width 100*sqrt2 ≈ 141.42.
+    const bbox: geo.LayerBBox = { x: 500, y: 500, w: 100, h: 100 };
+    const aligned = geo.alignLayerToCanvas(bbox, 45, CANVAS.w, CANVAS.h, 'left');
+    const movedBbox = { ...bbox, x: aligned.x };
+    const aabb = geo.getRotatedAABB(movedBbox, 45);
+    expect(aabb.x).toBeCloseTo(0, 5); // the VISIBLE left edge, not the pre-rotation box edge
+  });
+});
