@@ -2,12 +2,11 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { timingSafeEqual } from "../_shared/crypto.ts";
 import { getObjectBytes, putObject } from "../_shared/r2.ts";
-import { renderPage } from "../_shared/design-render-core.ts";
 import {
   createDesignRenderHandler,
-  type ClaimedDesign,
-  type DesignRow,
-  type ManifestEntry,
+  type ClaimedDesignBlob,
+  type DesignRowMeta,
+  type RenderServiceResult,
 } from "./handler.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -16,32 +15,87 @@ const CRON_SECRET = Deno.env.get("CRON_SECRET") ??
   (() => {
     throw new Error("CRON_SECRET is required");
   })();
+const RENDER_SERVICE_URL = Deno.env.get("RENDER_SERVICE_URL") ??
+  (() => {
+    throw new Error("RENDER_SERVICE_URL is required");
+  })();
+const RENDER_SERVICE_SECRET = Deno.env.get("RENDER_SERVICE_SECRET") ??
+  (() => {
+    throw new Error("RENDER_SERVICE_SECRET is required");
+  })();
 
-const svc = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+// The service renders every frame in one call; the fetch carries its own finite timeout so a
+// hung request can never leave the row stuck 'rendering' silently (edge kills bypass catch —
+// reference_edge_kills_r2_sdk_hang; the sweep cron is the backstop either way).
+const RENDER_SERVICE_TIMEOUT_MS = 55_000;
+
+const svc = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+  auth: { autoRefreshToken: false, persistSession: false },
+});
+
+// Mirrors the SQL editability list (save_post_design_blob / v1 check_and_sync).
+const EDITABLE_STATUSES = ["rascunho", "revisao_interna", "correcao_cliente"];
 
 Deno.serve(createDesignRenderHandler({
   buildCorsHeaders,
   cronSecret: CRON_SECRET,
   timingSafeEqual,
 
-  readDesignRow: async (designId): Promise<DesignRow | null> => {
+  readDesignRow: async (designId): Promise<DesignRowMeta | null> => {
     const { data } = await svc
       .from("post_designs")
-      .select("id, conta_id, post_id, rev, doc, doc_hash, render_status, render_manifest")
+      .select("id, rev, render_status")
       .eq("id", designId)
       .maybeSingle();
-    if (!data) return null;
-    return data as unknown as DesignRow;
+    return data as DesignRowMeta | null;
   },
 
-  claimDesignRender: async (designId): Promise<ClaimedDesign | null> => {
-    const { data, error } = await svc.rpc("claim_design_render", {
-      p_design_id: designId,
-    });
-    if (error) throw error;
-    const row = Array.isArray(data) ? data[0] : data;
-    return row ? (row as unknown as ClaimedDesign) : null;
+  claimDesignRenderBlob: async (designId): Promise<ClaimedDesignBlob | null> => {
+    const { data, error } = await svc.rpc("claim_design_render_blob", { p_design_id: designId });
+    if (error) throw new Error(error.message);
+    const row = (data as Array<Record<string, unknown>> | null)?.[0];
+    if (!row) return null;
+    return {
+      id: row.design_id as number,
+      conta_id: row.conta_id as string,
+      post_id: row.post_id as number,
+      doc_r2_key: (row.doc_r2_key as string | null) ?? null,
+      doc_hash: row.doc_hash as string,
+      post_tipo: row.post_tipo as string,
+    };
   },
+
+  fetchBlob: (key) => getObjectBytes(key),
+
+  callRenderService: async (bytes, tipo): Promise<RenderServiceResult> => {
+    const res = await fetch(`${RENDER_SERVICE_URL}/api/render`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${RENDER_SERVICE_SECRET}`,
+        "content-type": "application/octet-stream",
+        "x-post-tipo": tipo,
+      },
+      body: bytes.slice().buffer as ArrayBuffer,
+      signal: AbortSignal.timeout(RENDER_SERVICE_TIMEOUT_MS),
+    });
+    if (res.status === 422) {
+      // Either a structured validation result or an unparseable-document error — both map to
+      // a RenderServiceResult the handler can fail the row with.
+      const body = await res.json().catch(() => null);
+      if (body && typeof body === "object" && "validation" in body) {
+        return body as RenderServiceResult;
+      }
+      return {
+        validation: { ok: false, errors: [{ code: "invalid_document", message: "Documento inválido." }] },
+        derived: { format: null, tipo: null },
+        pages: [],
+      };
+    }
+    if (!res.ok) throw new Error(`render service returned ${res.status}`);
+    return (await res.json()) as RenderServiceResult;
+  },
+
+  putObject,
 
   finalizeDesignRender: async (designId, claimedHash, manifest) => {
     const { data, error } = await svc.rpc("finalize_design_render", {
@@ -49,67 +103,33 @@ Deno.serve(createDesignRenderHandler({
       p_claimed_hash: claimedHash,
       p_manifest: manifest,
     });
-    if (error) throw error;
+    if (error) throw new Error(error.message);
     return data as "rendered" | "stale";
   },
 
   failDesignRender: async (designId, errorMessage) => {
-    await svc.rpc("fail_design_render", {
+    const { error } = await svc.rpc("fail_design_render", {
       p_design_id: designId,
       p_error: errorMessage,
     });
-  },
-
-  writeManifest: async (designId, manifest: ManifestEntry[]) => {
-    const { error } = await svc
-      .from("post_designs")
-      .update({ render_manifest: manifest })
-      .eq("id", designId);
-    if (error) throw error;
+    if (error) throw new Error(error.message);
   },
 
   queueFileDeletion: async (r2Key) => {
     await svc.from("file_deletions").insert({ r2_key: r2Key });
   },
 
-  renderPage,
-
-  resolveFileBytes: async (fileId, contaId) => {
-    const { data: file } = await svc
-      .from("files")
-      .select("r2_key, mime_type")
-      .eq("id", fileId)
+  syncPostTipo: async (postId, contaId, tipo) => {
+    const { error } = await svc
+      .from("workflow_posts")
+      .update({ tipo })
+      .eq("id", postId)
       .eq("conta_id", contaId)
-      .maybeSingle();
-    if (!file) throw new Error(`file ${fileId} not found for tenant`);
-    const bytes = await getObjectBytes(file.r2_key);
-    if (!bytes) throw new Error(`file ${fileId} bytes missing in R2`);
-    return { bytes, mimeType: file.mime_type };
+      .in("status", EDITABLE_STATUSES);
+    if (error) throw new Error(error.message);
   },
-
-  resolveFontBytes: async (r2Key) => {
-    const bytes = await getObjectBytes(r2Key);
-    if (!bytes) throw new Error(`font asset missing in R2: ${r2Key}`);
-    return bytes;
-  },
-
-  putObject,
 
   logError: (context, error) => {
-    // Internal-only — raw satori/resvg/DB errors never reach clients (security rule);
-    // fail_design_render carries only the sanitized message passed alongside this call.
     console.error(`[${context}]`, error);
   },
-
-  selfInvoke: async (designId, rev, pageIndex) => {
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/design-render`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-cron-secret": CRON_SECRET },
-      body: JSON.stringify({ design_id: designId, rev, page_index: pageIndex }),
-    });
-    if (!res.ok) throw new Error(`design-render self-invoke returned ${res.status}`);
-  },
-
-  // deno-lint-ignore no-undef -- EdgeRuntime is a Supabase Edge Runtime global, not a module import.
-  waitUntil: (promise) => { EdgeRuntime.waitUntil(promise); },
 }));
