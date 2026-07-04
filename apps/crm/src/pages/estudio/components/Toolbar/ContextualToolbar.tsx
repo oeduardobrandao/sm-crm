@@ -20,6 +20,14 @@ import {
   AlignVerticalJustifyStart,
   AlignVerticalJustifyCenter,
   AlignVerticalJustifyEnd,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  Contrast,
+  RectangleHorizontal,
+  Frame,
+  Square,
+  Replace,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { findFamily, buildFontFamilyPatch } from '../../hooks/useFontManifest';
@@ -86,15 +94,18 @@ const inputStyle: React.CSSProperties = {
   fontSize: '0.8rem',
 };
 
+// Every consumer of this style now renders a lucide icon (T7 toolbar iconification) — inline-flex
+// centering keeps the glyph optically centered without the baseline gap a raw inline SVG leaves.
 function toggleButtonStyle(active: boolean): React.CSSProperties {
   return {
-    padding: '0.4rem 0.75rem',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '0.45rem 0.6rem',
     borderRadius: 8,
     border: `1px solid ${active ? 'var(--primary-color)' : 'var(--border-color)'}`,
     background: active ? 'var(--primary-color)' : 'var(--surface-main)',
     color: active ? '#12151a' : 'var(--text-main)',
-    fontSize: '0.75rem',
-    fontWeight: 600,
     cursor: 'pointer',
   };
 }
@@ -278,17 +289,24 @@ function TextVariant({
           role="group"
           aria-label={t('toolbar.text.align')}
         >
-          {(['left', 'center', 'right'] as const).map((align) => (
-            <button
-              key={align}
-              type="button"
-              aria-pressed={layer.align === align}
-              style={toggleButtonStyle(layer.align === align)}
-              onClick={() => onUpdateLayer(layer.id, { align })}
-            >
-              {t(`toolbar.text.align_${align}`)}
-            </button>
-          ))}
+          {(['left', 'center', 'right'] as const).map((align) => {
+            const AlignIcon =
+              align === 'left' ? AlignLeft : align === 'center' ? AlignCenter : AlignRight;
+            const label = t(`toolbar.text.align_${align}`);
+            return (
+              <button
+                key={align}
+                type="button"
+                aria-pressed={layer.align === align}
+                aria-label={label}
+                title={label}
+                style={toggleButtonStyle(layer.align === align)}
+                onClick={() => onUpdateLayer(layer.id, { align })}
+              >
+                <AlignIcon size={16} />
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -298,12 +316,13 @@ function TextVariant({
           type="button"
           aria-pressed={hasShadow}
           aria-label={t('toolbar.text.shadow')}
+          title={t('toolbar.text.shadow')}
           style={toggleButtonStyle(hasShadow)}
           onClick={() =>
             onUpdateLayer(layer.id, { shadow: hasShadow ? undefined : DEFAULT_SHADOW })
           }
         >
-          {hasShadow ? t('toolbar.on') : t('toolbar.off')}
+          <Contrast size={16} />
         </button>
       </div>
 
@@ -313,10 +332,11 @@ function TextVariant({
           type="button"
           aria-pressed={hasPill}
           aria-label={t('toolbar.text.pill')}
+          title={t('toolbar.text.pill')}
           style={toggleButtonStyle(hasPill)}
           onClick={() => onUpdateLayer(layer.id, { pill: hasPill ? undefined : DEFAULT_PILL })}
         >
-          {hasPill ? t('toolbar.on') : t('toolbar.off')}
+          <RectangleHorizontal size={16} />
         </button>
       </div>
     </>
@@ -376,23 +396,26 @@ function ImageVariant({
           type="button"
           aria-pressed={hasBorder}
           aria-label={t('toolbar.image.border')}
+          title={t('toolbar.image.border')}
           style={toggleButtonStyle(hasBorder)}
           onClick={() =>
             onUpdateLayer(layer.id, { border: hasBorder ? undefined : DEFAULT_IMAGE_BORDER })
           }
         >
-          {hasBorder ? t('toolbar.on') : t('toolbar.off')}
+          <Frame size={16} />
         </button>
       </div>
 
       <div style={rowStyle}>
-        <span style={labelStyle}>&nbsp;</span>
+        <span style={labelStyle}>{t('toolbar.image.replace')}</span>
         <button
           type="button"
+          aria-label={t('toolbar.image.replace')}
+          title={t('toolbar.image.replace')}
           style={toggleButtonStyle(false)}
           onClick={() => onReplaceImage?.(layer.id)}
         >
-          {t('toolbar.image.replace')}
+          <Replace size={16} />
         </button>
       </div>
     </>
@@ -434,12 +457,13 @@ function ShapeVariant({
           type="button"
           aria-pressed={hasStroke}
           aria-label={t('toolbar.shape.stroke')}
+          title={t('toolbar.shape.stroke')}
           style={toggleButtonStyle(hasStroke)}
           onClick={() =>
             onUpdateLayer(layer.id, { stroke: hasStroke ? undefined : DEFAULT_SHAPE_STROKE })
           }
         >
-          {hasStroke ? t('toolbar.on') : t('toolbar.off')}
+          <Square size={16} />
         </button>
       </div>
 
