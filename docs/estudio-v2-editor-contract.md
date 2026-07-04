@@ -18,6 +18,13 @@ Editor URL shape:
 
 ## HTTP document contract
 
+**Status: IMPLEMENTED** by `supabase/functions/post-design-manage` (slice 2). Real shape:
+`docUrl = {SUPABASE_URL}/functions/v1/post-design-manage/blob?post_id={id}`. Notes beyond
+the frozen core: the post-status guard maps to **403** (`post_not_editable`); blobs live at
+rev-scoped R2 keys (`designs/{conta}/{post}-r{rev}.fig`) so save races can't clobber; first
+GET mints a starter `.fig` for the post's tipo (feed/carrossel 1080×1350, reels cover
+1080×1920); PUT accepts an optional `x-editor-version` header (recorded on the row).
+
 ```
 GET  {docUrl}
   headers: authorization: Bearer <supabase access token>
