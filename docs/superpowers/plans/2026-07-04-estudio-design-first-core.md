@@ -76,12 +76,13 @@ Another session is concurrently building the MCP/doc-service work on the same in
   `supabase/migrations/20260704000001_post_designs_blob.sql` (blob RPC style),
   `supabase/migrations/20260704000002_claim_design_render_blob.sql` (claim + reap logic)
 
-- [ ] **Step 1:** Create the worktree/branch: `git worktree add ../sm-crm-design-first -b
-  feat/estudio-design-first feat/estudio-openpencil` and work there.
-- [ ] **Step 2:** Read the three reference migrations end-to-end. The new SQL must mirror
+- [x] **Step 1:** Create the worktree/branch: `git worktree add ../sm-crm-design-first -b
+  feat/estudio-design-first feat/estudio-openpencil` and work there. *(Adapted: the session
+  already ran in an isolated worktree at the same commit — created the branch there.)*
+- [x] **Step 2:** Read the three reference migrations end-to-end. The new SQL must mirror
   their FK targets, RLS (`authenticated` gets SELECT-only via conta match), grants, and
   the media-link-swap/staleness semantics inside `finalize_design_render`.
-- [ ] **Step 3:** Write the migration with these sections (complete logic, adapt names
+- [x] **Step 3:** Write the migration with these sections (complete logic, adapt names
   from references):
 
 ```sql
@@ -150,9 +151,11 @@ create index designs_conta_idx on public.designs (conta_id, updated_at desc);
 --    claim_design_render_blob (the old finalize/fail get replaced by the new bodies).
 ```
 
-- [ ] **Step 4:** Self-check the SQL against the reference migrations (FK targets, RLS,
-  grants, error message strings — handlers map on exact SQLERRM text).
-- [ ] **Step 5:** Commit (`feat(estudio): designs first-class — schema + RPCs`). Then ask
+- [x] **Step 4:** Self-check the SQL against the reference migrations (FK targets, RLS,
+  grants, error message strings — handlers map on exact SQLERRM text). *(Went further:
+  executed the migration + a full RPC behavioral suite against a throwaway local Postgres —
+  all assertions passed.)*
+- [x] **Step 5:** Commit (`feat(estudio): designs first-class — schema + RPCs`). Then ask
   Eduardo to apply it on PROD via the SQL editor and confirm before continuing (later
   tasks deploy functions that require it).
 
