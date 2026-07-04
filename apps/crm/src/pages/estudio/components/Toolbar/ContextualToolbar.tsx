@@ -84,6 +84,13 @@ const labelStyle: React.CSSProperties = {
   color: 'var(--text-muted)',
 };
 
+// A toggle icon-button sitting next to the color swatch it reveals when the effect is on.
+const toggleWithColorStyle: React.CSSProperties = {
+  display: 'flex',
+  gap: '0.25rem',
+  alignItems: 'center',
+};
+
 const inputStyle: React.CSSProperties = {
   fontFamily: 'var(--font-mono)',
   padding: '0.4rem 0.6rem',
@@ -215,8 +222,12 @@ function TextVariant({
     .map((v) => v.weight as FontWeight)
     .sort((a, b) => a - b);
 
-  const hasShadow = !!layer.shadow;
-  const hasPill = !!layer.pill;
+  // Captured as locals (not `layer.shadow` inline) so TS narrows them inside the ColorPicker
+  // onChange closures — property-access narrowing doesn't survive into a nested callback.
+  const shadow = layer.shadow;
+  const pill = layer.pill;
+  const hasShadow = !!shadow;
+  const hasPill = !!pill;
 
   return (
     <>
@@ -312,32 +323,52 @@ function TextVariant({
 
       <div style={rowStyle}>
         <span style={labelStyle}>{t('toolbar.text.shadow')}</span>
-        <button
-          type="button"
-          aria-pressed={hasShadow}
-          aria-label={t('toolbar.text.shadow')}
-          title={t('toolbar.text.shadow')}
-          style={toggleButtonStyle(hasShadow)}
-          onClick={() =>
-            onUpdateLayer(layer.id, { shadow: hasShadow ? undefined : DEFAULT_SHADOW })
-          }
-        >
-          <Contrast size={16} />
-        </button>
+        <div style={toggleWithColorStyle}>
+          <button
+            type="button"
+            aria-pressed={hasShadow}
+            aria-label={t('toolbar.text.shadow')}
+            title={t('toolbar.text.shadow')}
+            style={toggleButtonStyle(hasShadow)}
+            onClick={() =>
+              onUpdateLayer(layer.id, { shadow: hasShadow ? undefined : DEFAULT_SHADOW })
+            }
+          >
+            <Contrast size={16} />
+          </button>
+          {shadow && (
+            <ColorPicker
+              value={shadow.color}
+              label={t('toolbar.text.shadowColor')}
+              brandColors={brandColors}
+              onChange={(hex) => onUpdateLayer(layer.id, { shadow: { ...shadow, color: hex } })}
+            />
+          )}
+        </div>
       </div>
 
       <div style={rowStyle}>
         <span style={labelStyle}>{t('toolbar.text.pill')}</span>
-        <button
-          type="button"
-          aria-pressed={hasPill}
-          aria-label={t('toolbar.text.pill')}
-          title={t('toolbar.text.pill')}
-          style={toggleButtonStyle(hasPill)}
-          onClick={() => onUpdateLayer(layer.id, { pill: hasPill ? undefined : DEFAULT_PILL })}
-        >
-          <RectangleHorizontal size={16} />
-        </button>
+        <div style={toggleWithColorStyle}>
+          <button
+            type="button"
+            aria-pressed={hasPill}
+            aria-label={t('toolbar.text.pill')}
+            title={t('toolbar.text.pill')}
+            style={toggleButtonStyle(hasPill)}
+            onClick={() => onUpdateLayer(layer.id, { pill: hasPill ? undefined : DEFAULT_PILL })}
+          >
+            <RectangleHorizontal size={16} />
+          </button>
+          {pill && (
+            <ColorPicker
+              value={pill.color}
+              label={t('toolbar.text.pillColor')}
+              brandColors={brandColors}
+              onChange={(hex) => onUpdateLayer(layer.id, { pill: { ...pill, color: hex } })}
+            />
+          )}
+        </div>
       </div>
     </>
   );
@@ -347,13 +378,16 @@ function ImageVariant({
   layer,
   onUpdateLayer,
   onReplaceImage,
+  brandColors,
 }: {
   layer: NormalizedImageLayer;
   onUpdateLayer: ContextualToolbarProps['onUpdateLayer'];
   onReplaceImage?: (layerId: string) => void;
+  brandColors?: string[];
 }) {
   const { t } = useTranslation('estudio');
-  const hasBorder = !!layer.border;
+  const border = layer.border;
+  const hasBorder = !!border;
 
   return (
     <>
@@ -392,18 +426,28 @@ function ImageVariant({
 
       <div style={rowStyle}>
         <span style={labelStyle}>{t('toolbar.image.border')}</span>
-        <button
-          type="button"
-          aria-pressed={hasBorder}
-          aria-label={t('toolbar.image.border')}
-          title={t('toolbar.image.border')}
-          style={toggleButtonStyle(hasBorder)}
-          onClick={() =>
-            onUpdateLayer(layer.id, { border: hasBorder ? undefined : DEFAULT_IMAGE_BORDER })
-          }
-        >
-          <Frame size={16} />
-        </button>
+        <div style={toggleWithColorStyle}>
+          <button
+            type="button"
+            aria-pressed={hasBorder}
+            aria-label={t('toolbar.image.border')}
+            title={t('toolbar.image.border')}
+            style={toggleButtonStyle(hasBorder)}
+            onClick={() =>
+              onUpdateLayer(layer.id, { border: hasBorder ? undefined : DEFAULT_IMAGE_BORDER })
+            }
+          >
+            <Frame size={16} />
+          </button>
+          {border && (
+            <ColorPicker
+              value={border.color}
+              label={t('toolbar.image.borderColor')}
+              brandColors={brandColors}
+              onChange={(hex) => onUpdateLayer(layer.id, { border: { ...border, color: hex } })}
+            />
+          )}
+        </div>
       </div>
 
       <div style={rowStyle}>
@@ -432,7 +476,8 @@ function ShapeVariant({
   brandColors?: string[];
 }) {
   const { t } = useTranslation('estudio');
-  const hasStroke = !!layer.stroke;
+  const stroke = layer.stroke;
+  const hasStroke = !!stroke;
   // Solid color only for v1 — editing a gradient fill (NormalizedFillGradient) needs a
   // multi-stop gradient editor that doesn't exist yet; a shape whose fill is already a
   // gradient just doesn't show a color value here.
@@ -453,18 +498,28 @@ function ShapeVariant({
 
       <div style={rowStyle}>
         <span style={labelStyle}>{t('toolbar.shape.stroke')}</span>
-        <button
-          type="button"
-          aria-pressed={hasStroke}
-          aria-label={t('toolbar.shape.stroke')}
-          title={t('toolbar.shape.stroke')}
-          style={toggleButtonStyle(hasStroke)}
-          onClick={() =>
-            onUpdateLayer(layer.id, { stroke: hasStroke ? undefined : DEFAULT_SHAPE_STROKE })
-          }
-        >
-          <Square size={16} />
-        </button>
+        <div style={toggleWithColorStyle}>
+          <button
+            type="button"
+            aria-pressed={hasStroke}
+            aria-label={t('toolbar.shape.stroke')}
+            title={t('toolbar.shape.stroke')}
+            style={toggleButtonStyle(hasStroke)}
+            onClick={() =>
+              onUpdateLayer(layer.id, { stroke: hasStroke ? undefined : DEFAULT_SHAPE_STROKE })
+            }
+          >
+            <Square size={16} />
+          </button>
+          {stroke && (
+            <ColorPicker
+              value={stroke.color}
+              label={t('toolbar.shape.strokeColor')}
+              brandColors={brandColors}
+              onChange={(hex) => onUpdateLayer(layer.id, { stroke: { ...stroke, color: hex } })}
+            />
+          )}
+        </div>
       </div>
 
       <div style={rowStyle}>
@@ -583,6 +638,7 @@ export default function ContextualToolbar({
           layer={layer}
           onUpdateLayer={onUpdateLayer}
           onReplaceImage={onReplaceImage}
+          brandColors={brandColors}
         />
       )}
       {layer.type === 'shape' && (

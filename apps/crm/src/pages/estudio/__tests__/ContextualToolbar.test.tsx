@@ -24,6 +24,15 @@ function commitColor(text: string) {
   fireEvent.blur(field);
 }
 
+/** Commits a hex through a SPECIFIC ColorPicker (found by its aria-label) — for toolbars that now
+ * show more than one picker at a time (text/fill color + the pill/shadow/border/stroke colors). */
+function commitColorNamed(triggerName: string, text: string) {
+  fireEvent.click(screen.getByRole('button', { name: triggerName }));
+  const field = screen.getByTestId('estudio-color-hex');
+  fireEvent.change(field, { target: { value: text } });
+  fireEvent.blur(field);
+}
+
 describe('ContextualToolbar', () => {
   it('renders nothing when layer is null', () => {
     const { container } = render(<ContextualToolbar layer={null} onUpdateLayer={vi.fn()} />);
@@ -173,7 +182,7 @@ describe('ContextualToolbar', () => {
 
     it('toggles shadow on with a default patch', () => {
       const { onUpdateLayer } = renderText({ shadow: undefined });
-      const shadowBtn = screen.getByText(/sombra/i).nextElementSibling as HTMLElement;
+      const shadowBtn = screen.getByRole('button', { name: 'Sombra' });
       expect(shadowBtn).toHaveAttribute('aria-pressed', 'false');
       fireEvent.click(shadowBtn);
       expect(onUpdateLayer).toHaveBeenCalledWith('layer-1', {
@@ -187,7 +196,7 @@ describe('ContextualToolbar', () => {
         shadow: { x: 2, y: 2, blur: 4, color: '#00000080' },
       }) as Extract<NormalizedLayer, { type: 'text' }>;
       render(<ContextualToolbar layer={layer} onUpdateLayer={onUpdateLayer} />);
-      const shadowBtn = screen.getByText(/sombra/i).nextElementSibling as HTMLElement;
+      const shadowBtn = screen.getByRole('button', { name: 'Sombra' });
       expect(shadowBtn).toHaveAttribute('aria-pressed', 'true');
       fireEvent.click(shadowBtn);
       expect(onUpdateLayer).toHaveBeenCalledWith('layer-1', { shadow: undefined });
@@ -195,10 +204,52 @@ describe('ContextualToolbar', () => {
 
     it('toggles pill on with a default patch and off with undefined', () => {
       const { onUpdateLayer } = renderText({ pill: undefined });
-      const pillBtn = screen.getByText(/fundo em pílula/i).nextElementSibling as HTMLElement;
+      const pillBtn = screen.getByRole('button', { name: 'Fundo em pílula' });
       fireEvent.click(pillBtn);
       expect(onUpdateLayer).toHaveBeenCalledWith('layer-1', {
         pill: { color: '#000000', padding_x: 16, padding_y: 8, radius: 8 },
+      });
+    });
+
+    it('has no pill color picker until the pill is enabled, then recolors it', () => {
+      // Pill OFF → only the text color picker exists.
+      const { onUpdateLayer } = renderText({ pill: undefined });
+      expect(screen.queryByRole('button', { name: 'Cor do fundo em pílula' })).toBeNull();
+      onUpdateLayer.mockClear();
+
+      // Pill ON → its color picker appears and edits only the color, keeping the geometry.
+      render(
+        <ContextualToolbar
+          layer={
+            makeTextLayer({
+              pill: { color: '#000000', padding_x: 16, padding_y: 8, radius: 8 },
+            }) as Extract<NormalizedLayer, { type: 'text' }>
+          }
+          onUpdateLayer={onUpdateLayer}
+          brandColors={['#eab308']}
+        />,
+      );
+      commitColorNamed('Cor do fundo em pílula', '#ff0000');
+      expect(onUpdateLayer).toHaveBeenCalledWith('layer-1', {
+        pill: { color: '#ff0000', padding_x: 16, padding_y: 8, radius: 8 },
+      });
+    });
+
+    it('recolors the text shadow without dropping its offsets/blur', () => {
+      const onUpdateLayer = vi.fn();
+      render(
+        <ContextualToolbar
+          layer={
+            makeTextLayer({
+              shadow: { x: 3, y: 5, blur: 7, color: '#00000080' },
+            }) as Extract<NormalizedLayer, { type: 'text' }>
+          }
+          onUpdateLayer={onUpdateLayer}
+        />,
+      );
+      commitColorNamed('Cor da sombra', '#112233');
+      expect(onUpdateLayer).toHaveBeenCalledWith('layer-1', {
+        shadow: { x: 3, y: 5, blur: 7, color: '#112233' },
       });
     });
   });
@@ -243,10 +294,18 @@ describe('ContextualToolbar', () => {
 
     it('toggles border on with a default patch and off with undefined', () => {
       const { onUpdateLayer } = renderImage({ border: undefined });
-      const borderBtn = screen.getByText(/^borda$/i).nextElementSibling as HTMLElement;
+      const borderBtn = screen.getByRole('button', { name: 'Borda' });
       fireEvent.click(borderBtn);
       expect(onUpdateLayer).toHaveBeenCalledWith('layer-img-1', {
         border: { width: 2, color: '#ffffff' },
+      });
+    });
+
+    it('recolors the border without dropping its width', () => {
+      const { onUpdateLayer } = renderImage({ border: { width: 4, color: '#ffffff' } });
+      commitColorNamed('Cor da borda', '#00ff00');
+      expect(onUpdateLayer).toHaveBeenCalledWith('layer-img-1', {
+        border: { width: 4, color: '#00ff00' },
       });
     });
 
@@ -291,10 +350,18 @@ describe('ContextualToolbar', () => {
 
     it('toggles stroke on with a default patch and off with undefined', () => {
       const { onUpdateLayer } = renderShape({ stroke: undefined });
-      const strokeBtn = screen.getByText(/contorno/i).nextElementSibling as HTMLElement;
+      const strokeBtn = screen.getByRole('button', { name: 'Contorno' });
       fireEvent.click(strokeBtn);
       expect(onUpdateLayer).toHaveBeenCalledWith('layer-shape-1', {
         stroke: { width: 2, color: '#000000' },
+      });
+    });
+
+    it('recolors the stroke without dropping its width', () => {
+      const { onUpdateLayer } = renderShape({ stroke: { width: 3, color: '#000000' } });
+      commitColorNamed('Cor do contorno', '#abcdef');
+      expect(onUpdateLayer).toHaveBeenCalledWith('layer-shape-1', {
+        stroke: { width: 3, color: '#abcdef' },
       });
     });
 

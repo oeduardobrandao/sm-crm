@@ -140,7 +140,9 @@
       "align_center": "Center",
       "align_right": "Right",
       "shadow": "Shadow",
-      "pill": "Pill background"
+      "shadowColor": "Shadow color",
+      "pill": "Pill background",
+      "pillColor": "Pill background color"
     },
     "image": {
       "fit": "Fit",
@@ -148,11 +150,13 @@
       "fitContain": "Contain",
       "radius": "Corner radius",
       "border": "Border",
+      "borderColor": "Border color",
       "replace": "Replace image"
     },
     "shape": {
       "fill": "Fill",
       "stroke": "Stroke",
+      "strokeColor": "Stroke color",
       "radius": "Corner radius",
       "radiusDisabledHint": "Radius only applies to rectangles"
     },

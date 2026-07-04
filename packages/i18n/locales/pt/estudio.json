@@ -140,7 +140,9 @@
       "align_center": "Centro",
       "align_right": "Direita",
       "shadow": "Sombra",
-      "pill": "Fundo em pílula"
+      "shadowColor": "Cor da sombra",
+      "pill": "Fundo em pílula",
+      "pillColor": "Cor do fundo em pílula"
     },
     "image": {
       "fit": "Ajuste",
@@ -148,11 +150,13 @@
       "fitContain": "Conter",
       "radius": "Raio da borda",
       "border": "Borda",
+      "borderColor": "Cor da borda",
       "replace": "Substituir imagem"
     },
     "shape": {
       "fill": "Preenchimento",
       "stroke": "Contorno",
+      "strokeColor": "Cor do contorno",
       "radius": "Raio da borda",
       "radiusDisabledHint": "Raio só se aplica a retângulos"
     },
