@@ -505,6 +505,7 @@ function EstudioEditorShell({ postId }: { postId: number }) {
             getTextHeight={getTextHeight}
             onEditingChange={setIsTextEditing}
             onViewChange={setView}
+            measureTextAt={measurement.measureAt}
           />
         </div>
         <LayerListPanel

@@ -276,6 +276,65 @@ export function computeResizePatch(
   return result;
 }
 
+export interface UniformScaleResult {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** The uniform factor applied to the start bbox — callers scale font_size etc. by this. */
+  scale: number;
+}
+
+/** Figma-style proportional corner resize: the whole box scales uniformly about the OPPOSITE
+ * corner (the anchor), driven by the pointer's projection onto the dragged corner's diagonal
+ * axis (smooth for any drag direction — no per-axis flip mid-gesture). Used for text-layer
+ * corners (where the committed patch scales `font_size` by `scale` and lets height re-emerge)
+ * and for Shift+corner on image/shape layers (aspect-locked resize). */
+export function computeUniformScalePatch(
+  handle: ResizeHandle,
+  bbox: LayerBBox,
+  rotationDeg: number,
+  delta: CanvasPoint,
+): UniformScaleResult {
+  const axes = HANDLE_AXES[handle];
+  const localDelta = rotatePoint(delta, -rotationDeg);
+
+  const halfW = bbox.w / 2;
+  const halfH = bbox.h / 2;
+  // The dragged corner's local position; its projection onto its own diagonal after the drag
+  // gives the new (signed) diagonal length, and the ratio IS the uniform scale.
+  const cornerX = axes.x * halfW;
+  const cornerY = axes.y * halfH;
+  const diag = Math.hypot(cornerX, cornerY);
+  const projected =
+    ((cornerX + localDelta.x) * cornerX + (cornerY + localDelta.y) * cornerY) / diag;
+  // Floor: neither dimension may scale below MIN_SIZE (and never flip negative).
+  const scale = Math.max(projected / diag, MIN_SIZE / bbox.w, MIN_SIZE / bbox.h);
+
+  const newW = bbox.w * scale;
+  const newH = bbox.h * scale;
+
+  // Same fixed-anchor derivation as computeResizePatch, with the OPPOSITE CORNER as anchor on
+  // both axes (uniform scale always drags a corner).
+  const anchorLocal: CanvasPoint = { x: -cornerX, y: -cornerY };
+  const anchorInNewLocal: CanvasPoint = { x: -axes.x * (newW / 2), y: -axes.y * (newH / 2) };
+  const oldCenter = bboxCenter(bbox);
+  const anchorCanvasOffset = rotatePoint(anchorLocal, rotationDeg);
+  const anchorNewCanvasOffset = rotatePoint(anchorInNewLocal, rotationDeg);
+  const newCenter: CanvasPoint = {
+    x: oldCenter.x + anchorCanvasOffset.x - anchorNewCanvasOffset.x,
+    y: oldCenter.y + anchorCanvasOffset.y - anchorNewCanvasOffset.y,
+  };
+
+  return {
+    x: newCenter.x - newW / 2,
+    y: newCenter.y - newH / 2,
+    w: newW,
+    h: newH,
+    scale,
+  };
+}
+
 // ============================================================
 // Rotation (T7.1)
 // ============================================================

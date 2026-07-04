@@ -15,6 +15,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   getLayerBBox,
   computeResizePatch,
+  computeUniformScalePatch,
   angleFromPointer,
   snapAngle,
   type LayerBBox,
@@ -45,7 +46,16 @@ export interface InteractionOverlayProps {
    * (e.g. `LeftToolDock`'s window-level paste-to-insert listener, per T2.9's `pasteEnabled` prop).
    * Optional: tests/callers that don't care about this signal simply omit it. */
   onEditingChange?: (isEditing: boolean) => void;
+  /** On-demand satori measurement of a text layer at a trial width (useTextMeasurement.measureAt)
+   * — lets a side-handle resize ghost preview the REAL wrapped height live instead of freezing
+   * the pre-drag height until pointerup. Optional: without it the ghost keeps the old behavior. */
+  measureTextAt?: (
+    layer: NormalizedTextLayer,
+    w: number,
+  ) => Promise<{ width: number; height: number }>;
 }
+
+const CORNER_HANDLES: ReadonlySet<ResizeHandle> = new Set(['nw', 'ne', 'se', 'sw']);
 
 type Gesture =
   | {
@@ -64,6 +74,13 @@ type Gesture =
       startBBox: LayerBBox;
       rotation: number;
       hasHeight: boolean;
+      /** Text-only style snapshot at gesture start — a corner (uniform-scale) resize commits
+       * these × the final ghost scale, Figma-style, letting the wrapped height re-emerge. */
+      textStart?: {
+        fontSize: number;
+        letterSpacing: number;
+        pill?: { color: string; padding_x: number; padding_y: number; radius: number };
+      };
     }
   | {
       type: 'rotate';
@@ -81,6 +98,9 @@ interface GhostState {
   /** Live rotation during a rotate gesture (degrees) — absent for drag/resize (they keep the
    * layer's committed rotation). */
   rotation?: number;
+  /** The uniform factor of a corner-scale resize (text corners always; image/shape corners with
+   * Shift) — endGesture scales font_size etc. by the FINAL value on commit. */
+  scale?: number;
 }
 
 function isTextLayer(layer: NormalizedLayer): boolean {
@@ -109,12 +129,16 @@ export function InteractionOverlay({
   screenToCanvas,
   canvasToScreen,
   onEditingChange,
+  measureTextAt,
 }: InteractionOverlayProps) {
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const [gesture, setGesture] = useState<Gesture | null>(null);
   const [ghost, setGhost] = useState<GhostState | null>(null);
   const gestureRef = useRef<Gesture | null>(null);
   const ghostRef = useRef<GhostState | null>(null);
+  // Last integer width a live text-resize measurement was requested for (dedupes the async
+  // measure per pointermove frame; -1 = none this gesture).
+  const lastMeasuredWRef = useRef(-1);
   // Which layer (if any) is currently in TextEditOverlay's modal text-edit takeover — set by a
   // double-click on the selected text layer's body, cleared on commit/cancel. While set, the
   // normal drag hit-area/LayerHandles for THAT layer render nothing; TextEditOverlay renders
@@ -173,12 +197,30 @@ export function InteractionOverlay({
           if (activeGesture.type === 'resize') {
             patch.w = activeGhost.bbox.w;
             if (activeGesture.hasHeight) (patch as { h?: number }).h = activeGhost.bbox.h;
+            // Text corner scale: the box scaled uniformly, so the STYLE scales with it — font
+            // follows the box (Figma semantics) and the wrapped height re-emerges on its own.
+            const { textStart } = activeGesture;
+            if (textStart && activeGhost.scale !== undefined) {
+              const s = activeGhost.scale;
+              const textPatch = patch as Partial<NormalizedTextLayer>;
+              textPatch.font_size = Math.max(1, Math.round(textStart.fontSize * s));
+              textPatch.letter_spacing = Math.round(textStart.letterSpacing * s * 100) / 100;
+              if (textStart.pill) {
+                textPatch.pill = {
+                  ...textStart.pill,
+                  padding_x: Math.round(textStart.pill.padding_x * s),
+                  padding_y: Math.round(textStart.pill.padding_y * s),
+                  radius: Math.round(textStart.pill.radius * s),
+                };
+              }
+            }
           }
           onUpdateLayer(activeGesture.layerId, patch);
         }
       }
       gestureRef.current = null;
       ghostRef.current = null;
+      lastMeasuredWRef.current = -1;
       setGesture(null);
       setGhost(null);
     },
@@ -294,6 +336,14 @@ export function InteractionOverlay({
         startBBox,
         rotation: selectedLayer.rotation,
         hasHeight,
+        textStart:
+          selectedLayer.type === 'text'
+            ? {
+                fontSize: selectedLayer.font_size,
+                letterSpacing: selectedLayer.letter_spacing,
+                pill: selectedLayer.pill,
+              }
+            : undefined,
       };
       gestureRef.current = next;
       setGesture(next);
@@ -367,6 +417,27 @@ export function InteractionOverlay({
           x: point.x - activeGesture.startPointer.x,
           y: point.y - activeGesture.startPointer.y,
         };
+        const isCorner = CORNER_HANDLES.has(activeGesture.handle);
+        // Corner semantics, Figma-style: TEXT corners always scale the whole block uniformly
+        // (font follows the box; height re-emerges); image/shape corners scale uniformly while
+        // Shift is held (aspect lock), else resize each axis freely.
+        const uniform = isCorner && (!activeGesture.hasHeight || e.shiftKey);
+        if (uniform) {
+          const p = computeUniformScalePatch(
+            activeGesture.handle,
+            activeGesture.startBBox,
+            activeGesture.rotation,
+            delta,
+          );
+          const next: GhostState = {
+            bbox: { x: p.x, y: p.y, w: p.w, h: p.h },
+            activeLines: [],
+            scale: p.scale,
+          };
+          ghostRef.current = next;
+          setGhost(next);
+          return;
+        }
         const patch = computeResizePatch(
           activeGesture.handle,
           activeGesture.startBBox,
@@ -378,7 +449,9 @@ export function InteractionOverlay({
           x: patch.x,
           y: patch.y,
           w: patch.w,
-          h: patch.h ?? activeGesture.startBBox.h,
+          // Text side-resize: keep the last PREVIEWED height while the async re-measure below
+          // catches up (starting from the pre-drag height on the first frame).
+          h: patch.h ?? ghostRef.current?.bbox.h ?? activeGesture.startBBox.h,
         };
         // Snapping resize edges is a reasonable UX nicety but adds real complexity (which edge(s)
         // of the box the active handle actually controls varies per-handle, and snapping would
@@ -388,9 +461,30 @@ export function InteractionOverlay({
         const next: GhostState = { bbox: proposed, activeLines: [] };
         ghostRef.current = next;
         setGhost(next);
+        // Live wrapped-height preview for a text side-resize: satori-measure at the trial width
+        // (module-cached; deduped per integer width) and, if this gesture is still the active
+        // one when it resolves, lift the ghost's height to the REAL wrapped value.
+        if (!activeGesture.hasHeight && measureTextAt) {
+          const layer = layers.find((l) => l.id === activeGesture.layerId);
+          const trialW = Math.round(proposed.w);
+          if (layer && layer.type === 'text' && trialW !== lastMeasuredWRef.current) {
+            lastMeasuredWRef.current = trialW;
+            measureTextAt(layer as NormalizedTextLayer, trialW)
+              .then((m) => {
+                const g = ghostRef.current;
+                const ag = gestureRef.current;
+                if (!g || ag !== activeGesture) return; // gesture ended/changed — stale
+                if (Math.round(g.bbox.w) !== trialW) return; // pointer moved on — stale width
+                const lifted: GhostState = { ...g, bbox: { ...g.bbox, h: m.height } };
+                ghostRef.current = lifted;
+                setGhost(lifted);
+              })
+              .catch(() => undefined); // fonts not ready → no preview this frame
+          }
+        }
       }
     },
-    [clientPointToCanvas, snap],
+    [clientPointToCanvas, snap, measureTextAt, layers],
   );
 
   const handlePointerUp = useCallback(() => {

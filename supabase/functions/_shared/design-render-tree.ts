@@ -318,7 +318,12 @@ export function buildTextMeasurementTree(
   return {
     type: "div",
     props: {
-      style: { display: "flex", width: layer.w, height: 100000 },
+      // alignItems flex-start is LOAD-BEARING: flexbox's default `stretch` would stretch the
+      // inner block to this wrapper's full 100000px cross size. Transparent text gets away with
+      // it (getBBox only sees glyph ink), but a pill'd layer PAINTS its stretched background —
+      // the measured height became ~100000 and every pill'd text layer's selection outline /
+      // MCP layout height read as effectively infinite.
+      style: { display: "flex", alignItems: "flex-start", width: layer.w, height: 100000 },
       children: [buildTextInner(layer, pageIndex, pageCount)],
     },
   };

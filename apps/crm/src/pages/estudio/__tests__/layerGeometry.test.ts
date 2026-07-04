@@ -278,6 +278,65 @@ describe('computeResizePatch — unrotated, image/shape (hasHeight=true)', () =>
   });
 });
 
+describe('computeUniformScalePatch — Figma-style proportional corner scale', () => {
+  const bbox: geo.LayerBBox = { x: 100, y: 100, w: 200, h: 50 };
+
+  it('dragging "se" along its own diagonal by 1x doubles the box, anchored at the nw corner', () => {
+    // Corner vector from center is (100, 25); delta = that same vector -> new corner = 2x -> scale 2.
+    const r = geo.computeUniformScalePatch('se', bbox, 0, { x: 100, y: 25 });
+    expect(r.scale).toBeCloseTo(2, 5);
+    expect(r.w).toBeCloseTo(400, 5);
+    expect(r.h).toBeCloseTo(100, 5);
+    expect(r.x).toBeCloseTo(100, 5); // nw anchor fixed
+    expect(r.y).toBeCloseTo(100, 5);
+  });
+
+  it('dragging "nw" inward halves the box, anchored at the se corner', () => {
+    // nw corner vector is (-100, -25); moving it +half that vector -> new corner 0.5x -> scale 0.5.
+    const r = geo.computeUniformScalePatch('nw', bbox, 0, { x: 50, y: 12.5 });
+    expect(r.scale).toBeCloseTo(0.5, 5);
+    expect(r.w).toBeCloseTo(100, 5);
+    expect(r.h).toBeCloseTo(25, 5);
+    expect(r.x + r.w).toBeCloseTo(300, 5); // se anchor fixed
+    expect(r.y + r.h).toBeCloseTo(150, 5);
+  });
+
+  it('a purely-perpendicular drag component does not jitter the scale (projection is smooth)', () => {
+    // Delta perpendicular to the corner diagonal has zero projection -> scale stays ~1.
+    // Perpendicular to (100, 25) is (-25, 100) (dot = 0).
+    const r = geo.computeUniformScalePatch('se', bbox, 0, { x: -25, y: 100 });
+    expect(r.scale).toBeCloseTo(1, 5);
+  });
+
+  it('floors the scale so NEITHER dimension goes below MIN_SIZE (never flips negative)', () => {
+    const r = geo.computeUniformScalePatch('se', bbox, 0, { x: -5000, y: -5000 });
+    // Floor is max(20/200, 20/50) = 0.4 -> h bottoms out exactly at MIN_SIZE.
+    expect(r.scale).toBeCloseTo(0.4, 5);
+    expect(r.w).toBeCloseTo(80, 5);
+    expect(r.h).toBeCloseTo(20, 5);
+  });
+
+  it('keeps the opposite corner fixed in CANVAS space for a rotated box', () => {
+    const rotation = 30;
+    const r = geo.computeUniformScalePatch('se', bbox, rotation, { x: 60, y: 40 });
+    // The nw corner's canvas position must be identical before and after the scale.
+    const cornerCanvas = (b: geo.LayerBBox) => {
+      const cx = b.x + b.w / 2;
+      const cy = b.y + b.h / 2;
+      const local = { x: -b.w / 2, y: -b.h / 2 };
+      const rad = (rotation * Math.PI) / 180;
+      return {
+        x: cx + local.x * Math.cos(rad) - local.y * Math.sin(rad),
+        y: cy + local.x * Math.sin(rad) + local.y * Math.cos(rad),
+      };
+    };
+    const before = cornerCanvas(bbox);
+    const after = cornerCanvas({ x: r.x, y: r.y, w: r.w, h: r.h });
+    expect(after.x).toBeCloseTo(before.x, 4);
+    expect(after.y).toBeCloseTo(before.y, 4);
+  });
+});
+
 describe('computeResizePatch — unrotated, text layer (hasHeight=false, width-only)', () => {
   const bbox: geo.LayerBBox = { x: 100, y: 100, w: 200, h: 60 };
 

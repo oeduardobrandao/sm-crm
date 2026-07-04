@@ -18,7 +18,7 @@ import { useSatoriRenderer } from '../../hooks/useSatoriRenderer';
 import { useCanvasTransform } from '../../hooks/useCanvasTransform';
 import { useGuidesPreference } from '../../hooks/useGuidesPreference';
 import { SatoriPreview } from './SatoriPreview';
-import { InteractionOverlay } from './InteractionOverlay';
+import { InteractionOverlay, type InteractionOverlayProps } from './InteractionOverlay';
 import { SafeZoneGuides } from './SafeZoneGuides';
 import type { GetTextHeight } from '../../lib/layerGeometry';
 import type { DesignDoc, NormalizedLayer } from '../../types';
@@ -45,6 +45,8 @@ export interface CanvasStageProps {
    * zoom control — which lives OUTSIDE this component (design §6.1) — can display and reset it
    * without lifting the whole transform out of the stage. Optional: tests omit it. */
   onViewChange?: (view: { scale: number; resetView: () => void }) => void;
+  /** Threaded to InteractionOverlay — live wrapped-height preview for text side-resizes. */
+  measureTextAt?: InteractionOverlayProps['measureTextAt'];
 }
 
 export function CanvasStage({
@@ -56,6 +58,7 @@ export function CanvasStage({
   getTextHeight,
   onEditingChange,
   onViewChange,
+  measureTextAt,
 }: CanvasStageProps) {
   const { t } = useTranslation('estudio');
   const { svg, error } = useSatoriRenderer(doc, pageIndex);
@@ -120,6 +123,7 @@ export function CanvasStage({
             screenToCanvas={screenToCanvas}
             canvasToScreen={canvasToScreen}
             onEditingChange={onEditingChange}
+            measureTextAt={measureTextAt}
           />
         </div>
       ) : (

@@ -5,7 +5,7 @@
 // HTMLDivElement.prototype since jsdom never lays anything out, mock `useSatoriRenderer` so this
 // file stays focused on interaction logic rather than the real satori/yoga pipeline (that's
 // useSatoriRenderer.test.tsx's concern).
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeDoc, makePage, makeTextLayer, makeImageLayer } from './fixtures';
 import type { NormalizedLayer } from '../types';
@@ -114,6 +114,10 @@ function renderStage(
     onUpdateLayer?: (layerId: string, patch: Partial<NormalizedLayer>) => void;
     format?: 'feed' | 'carrossel' | 'reel_cover';
     canvasHeight?: 1080 | 1350 | 1920;
+    measureTextAt?: (
+      layer: NormalizedLayer,
+      w: number,
+    ) => Promise<{ width: number; height: number }>;
   } = {},
 ) {
   const layers = overrides.layers ?? [makeTextLayer({ id: 'a', x: 100, y: 100, w: 200 })];
@@ -133,6 +137,7 @@ function renderStage(
       select={select}
       onUpdateLayer={onUpdateLayer}
       getTextHeight={getTextHeight}
+      measureTextAt={overrides.measureTextAt as never}
     />,
   );
   return { ...utils, select, onUpdateLayer, doc };
@@ -281,6 +286,90 @@ describe('CanvasStage / InteractionOverlay', () => {
     const [, patch] = onUpdateLayer.mock.calls[0];
     expect(patch.h).toBeUndefined();
     expect(patch.w).toBeGreaterThan(200);
+  });
+
+  it('a text CORNER drag scales the whole block: font_size, letter_spacing and pill geometry follow the box (Figma semantics)', () => {
+    const onUpdateLayer = vi.fn();
+    const layer = makeTextLayer({
+      id: 'a',
+      x: 100,
+      y: 100,
+      w: 200,
+      font_size: 32,
+      letter_spacing: 1,
+      pill: { color: '#000000', padding_x: 16, padding_y: 8, radius: 8 },
+    });
+    renderStage({ layers: [layer], selection: ['a'], onUpdateLayer });
+
+    // bbox is 200x50 (getTextHeight=50); se corner sits at (300, 150). Dragging by the corner's
+    // own center-relative vector (100, 25) doubles the diagonal -> uniform scale 2.
+    const seHandle = screen.getByTestId('resize-handle-se');
+    fireEvent.pointerDown(seHandle, { clientX: 300, clientY: 150 });
+    const overlay = screen.getByTestId('interaction-overlay');
+    fireEvent.pointerMove(overlay, { clientX: 400, clientY: 175 });
+    expect(onUpdateLayer).not.toHaveBeenCalled();
+    fireEvent.pointerUp(overlay, { clientX: 400, clientY: 175 });
+
+    expect(onUpdateLayer).toHaveBeenCalledTimes(1);
+    const [, patch] = onUpdateLayer.mock.calls[0];
+    expect(patch.w).toBeCloseTo(400, 5);
+    expect(patch.h).toBeUndefined(); // text height stays emergent
+    expect(patch.font_size).toBe(64);
+    expect(patch.letter_spacing).toBeCloseTo(2, 5);
+    expect(patch.pill).toEqual({ color: '#000000', padding_x: 32, padding_y: 16, radius: 16 });
+    expect(patch.x).toBeCloseTo(100, 5); // nw anchor fixed
+    expect(patch.y).toBeCloseTo(100, 5);
+  });
+
+  it('a text SIDE drag previews the wrapped height live via measureTextAt, and still commits width-only', async () => {
+    const onUpdateLayer = vi.fn();
+    const measureTextAt = vi.fn(async () => ({ width: 240, height: 123 }));
+    const layer = makeTextLayer({ id: 'a', x: 100, y: 100, w: 200 });
+    renderStage({ layers: [layer], selection: ['a'], onUpdateLayer, measureTextAt });
+
+    const eHandle = screen.getByTestId('resize-handle-e');
+    fireEvent.pointerDown(eHandle, { clientX: 300, clientY: 125 });
+    const overlay = screen.getByTestId('interaction-overlay');
+    fireEvent.pointerMove(overlay, { clientX: 340, clientY: 125 });
+
+    expect(measureTextAt).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }), 240);
+
+    // The ghost outline lifts to the measured height once the async measure resolves: the
+    // bottom corners of the layer-handles polygon land at y = 100 + 123 = 223 (scale 1).
+    await waitFor(() => {
+      const points = screen
+        .getByTestId('layer-handles')
+        .querySelector('polygon')!
+        .getAttribute('points')!;
+      const ys = points.split(' ').map((pair) => Number(pair.split(',')[1]));
+      expect(Math.max(...ys)).toBeCloseTo(223, 3);
+    });
+
+    fireEvent.pointerUp(overlay, { clientX: 340, clientY: 125 });
+    expect(onUpdateLayer).toHaveBeenCalledTimes(1);
+    const [, patch] = onUpdateLayer.mock.calls[0];
+    expect(patch.w).toBeCloseTo(240, 5);
+    expect(patch.h).toBeUndefined();
+    expect(patch.font_size).toBeUndefined(); // side resize reflows, never rescales the font
+  });
+
+  it('an image CORNER drag with Shift held is aspect-locked (uniform w/h scale)', () => {
+    const onUpdateLayer = vi.fn();
+    const layer = makeImageLayer({ id: 'img', x: 100, y: 100, w: 200, h: 100 });
+    renderStage({ layers: [layer], selection: ['img'], onUpdateLayer });
+
+    const seHandle = screen.getByTestId('resize-handle-se');
+    fireEvent.pointerDown(seHandle, { clientX: 300, clientY: 200 });
+    const overlay = screen.getByTestId('interaction-overlay');
+    fireEvent.pointerMove(overlay, { clientX: 400, clientY: 250, shiftKey: true });
+    fireEvent.pointerUp(overlay, { clientX: 400, clientY: 250 });
+
+    expect(onUpdateLayer).toHaveBeenCalledTimes(1);
+    const [, patch] = onUpdateLayer.mock.calls[0];
+    // Delta (100, 50) IS the corner's own center-relative vector (100, 50) -> scale 2 exactly.
+    expect(patch.w).toBeCloseTo(400, 5);
+    expect(patch.h).toBeCloseTo(200, 5);
+    expect((patch.w as number) / (patch.h as number)).toBeCloseTo(2, 5); // aspect preserved
   });
 
   it('does not render LayerHandles when nothing is selected', () => {

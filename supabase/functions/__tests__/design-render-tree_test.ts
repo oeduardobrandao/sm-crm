@@ -135,3 +135,14 @@ Deno.test("buildTextMeasurementTree: standalone tree has no x/y, only w-based si
   assertEquals("left" in style, false);
   assertEquals("top" in style, false);
 });
+
+Deno.test("buildTextMeasurementTree: wrapper never stretches the block (pill'd text measured ~100000px tall otherwise)", () => {
+  // Flexbox's default align-items:stretch stretched the inner block to the wrapper's unbounded
+  // 100000px height; a pill'd layer PAINTS that stretched background, so getBBox() reported the
+  // full wrapper height — 'apparently infinite' selection outlines and MCP layout heights.
+  const layer = makeFeedDoc().pages[0].layers[0];
+  if (layer.type !== "text") throw new Error("expected text layer");
+  const tree = buildTextMeasurementTree(layer);
+  const style = tree.props.style as Record<string, unknown>;
+  assertEquals(style.alignItems, "flex-start");
+});
