@@ -1,33 +1,10 @@
 // POST /api/render — .fig bytes in, frame classification + JPEGs out. Stateless compute:
 // the ONLY secret here is the shared bearer; no Supabase/R2 credentials on Vercel.
 // Contract consumed by supabase/functions/design-render (see the slice-3 plan header).
-import { timingSafeEqual } from 'node:crypto'
-
 import { renderDocument } from '../lib/render.js'
+import { authorized, readBody } from '../lib/http.js'
 
-const MAX_BLOB_BYTES = 10 * 1024 * 1024
 const TIPOS = new Set(['feed', 'carrossel', 'reels'])
-
-function authorized(req) {
-  const secret = process.env.RENDER_SERVICE_SECRET
-  if (!secret) return false
-  const header = req.headers.authorization ?? ''
-  const expected = `Bearer ${secret}`
-  const a = Buffer.from(header)
-  const b = Buffer.from(expected)
-  return a.length === b.length && timingSafeEqual(a, b)
-}
-
-async function readBody(req) {
-  const chunks = []
-  let total = 0
-  for await (const chunk of req) {
-    total += chunk.length
-    if (total > MAX_BLOB_BYTES) return null
-    chunks.push(chunk)
-  }
-  return new Uint8Array(Buffer.concat(chunks))
-}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' })
