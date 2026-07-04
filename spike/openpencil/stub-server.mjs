@@ -7,9 +7,15 @@ let rev = 1
 createServer(async (req, res) => {
   res.setHeader('access-control-allow-origin', '*')
   res.setHeader('access-control-allow-methods', 'GET, PUT, OPTIONS')
-  res.setHeader('access-control-allow-headers', 'content-type, x-expected-rev')
+  res.setHeader('access-control-allow-headers', 'content-type, x-expected-rev, authorization')
   res.setHeader('access-control-expose-headers', 'x-rev')
   if (req.method === 'OPTIONS') return res.end()
+  // auth required on the doc endpoint (contract: 401 without a valid bearer token)
+  if (req.url === '/doc' && req.headers.authorization !== 'Bearer dev-token') {
+    console.log(`${req.method} /doc UNAUTHORIZED (auth=${req.headers.authorization ?? 'none'})`)
+    res.statusCode = 401
+    return res.end('unauthorized')
+  }
   if (req.method === 'GET' && req.url === '/embed-page') {
     res.setHeader('content-type', 'text/html')
     return res.end(await readFile('embed.html'))
