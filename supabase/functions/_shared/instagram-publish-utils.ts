@@ -158,12 +158,12 @@ export interface DesignReadiness {
   design: DesignSummary | null;
 }
 
-/** Publish-safety invariant (design §5.3): a post that HAS a post_designs row may only enter
+/** Publish-safety invariant (design §5.3): a post with an ATTACHED design may only enter
  * the publish pipeline once its flattened JPEGs are current — `render_status='rendered' AND
- * is_stale=false`. No row → ordinary manual-media post → always ready. */
+ * is_stale=false`. No attached design → ordinary manual-media post → always ready. */
 export async function checkDesignReadiness(db: DbClient, postId: number): Promise<DesignReadiness> {
   const { data } = await db
-    .from("post_designs")
+    .from("designs")
     .select("id, rev, render_status, is_stale")
     .eq("post_id", postId)
     .maybeSingle();

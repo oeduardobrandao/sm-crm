@@ -137,7 +137,7 @@ Deno.test("instagram-publish: schedule blocked on a FAILED design → 422 + fire
     }],
     error: null,
   });
-  db.queue("post_designs", "select", {
+  db.queue("designs", "select", {
     data: { id: 77, rev: 6, render_status: "failed", is_stale: true },
     error: null,
   });

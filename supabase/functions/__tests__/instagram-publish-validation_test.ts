@@ -49,7 +49,7 @@ function queueSchedulingReads(
     igCaption?: string | null;
     links?: Array<{ sort_order: number; files: Record<string, unknown> }>;
     encryptedAccessToken?: string;
-    /** post_designs row for the T4.1 readiness gate. Defaults to null (no design). MUST be
+    /** designs row (attached) for the T4.1 readiness gate. Defaults to null (no design). MUST be
      * seeded explicitly — the mock's default select returns `[]`, which is truthy and would
      * read as a design row with undefined fields (the documented trap). */
     design?: { id: number; rev: number; render_status: string; is_stale: boolean } | null;
@@ -66,7 +66,7 @@ function queueSchedulingReads(
     error: null,
   });
   db.queue("post_file_links", "select", { data: opts.links ?? [], error: null });
-  db.queue("post_designs", "select", { data: opts.design ?? null, error: null });
+  db.queue("designs", "select", { data: opts.design ?? null, error: null });
   db.queue("workflows", "select", { data: { cliente_id: 20 }, error: null });
   db.queue("instagram_accounts", "select", {
     data: {
@@ -163,7 +163,7 @@ Deno.test("validateForScheduling: multi-media story rejects a bad segment", asyn
 
 Deno.test("checkDesignReadiness: no design row → ready (ordinary post)", async () => {
   const db = createSupabaseQueryMock();
-  db.queue("post_designs", "select", { data: null, error: null });
+  db.queue("designs", "select", { data: null, error: null });
   const res = await checkDesignReadiness(db as never, 1);
   assertEquals(res, { ready: true, design: null });
 });
@@ -178,7 +178,7 @@ Deno.test("checkDesignReadiness: rendered + fresh → ready; every other state �
   ];
   for (const c of cases) {
     const db = createSupabaseQueryMock();
-    db.queue("post_designs", "select", { data: c.row, error: null });
+    db.queue("designs", "select", { data: c.row, error: null });
     const res = await checkDesignReadiness(db as never, 1);
     assertEquals(res.ready, c.ready, JSON.stringify(c.row));
     assertEquals(res.design, c.row);

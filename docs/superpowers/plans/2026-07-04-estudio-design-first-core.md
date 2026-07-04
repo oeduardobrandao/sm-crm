@@ -259,14 +259,14 @@ Deno.test("POST /designs with post_id on approved post → 403 post_not_editable
   `file-upload-finalize_test.ts`, `shared_test.ts`, `config-audit_test.ts` (update any
   `post_designs`/`post-design-manage` expectations)
 
-- [ ] **Step 1:** `checkDesignReadiness`: `.from("designs")` — same columns/semantics (a
+- [x] **Step 1:** `checkDesignReadiness`: `.from("designs")` — same columns/semantics (a
   post with an ATTACHED design must be rendered+fresh; no attached design → ready).
-- [ ] **Step 2:** `reel-cover-staleness.ts` — this module still reads v1 columns
+- [x] **Step 2:** `reel-cover-staleness.ts` — this module still reads v1 columns
   (`doc->>format`, writes `rendered_doc_hash`) that no longer exist: REWORK, don't just
   rename. New logic: select `id, rev, format` from `designs` where `post_id = X`; if
   `format === 'reel_cover'` → `update designs set is_stale = true` (v2 staleness).
-- [ ] **Step 3:** Fix all listed tests' mock shapes; `npm run test:functions` fully green.
-  Commit.
+- [x] **Step 3:** Fix all listed tests' mock shapes; `npm run test:functions` fully green.
+  Commit. *(mcp-* test mocks left untouched — owned by the parallel session.)*
 
 ### Task 6: CRM rewire — store, drawer, shell
 

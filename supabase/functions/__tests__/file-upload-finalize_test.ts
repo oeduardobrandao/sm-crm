@@ -394,11 +394,11 @@ Deno.test("file-upload-finalize: NEW video on a reel_cover-designed post marks s
   db.queueRpc("file_insert_with_quota", { data: { id: 31, kind: "video" }, error: null });
   db.queue("workflow_posts", "select", { data: { conta_id: "conta-1" }, error: null });
   db.queue("post_file_links", "insert", { data: null, error: null });
-  db.queue("post_designs", "select", {
+  db.queue("designs", "select", {
     data: { id: 9, rev: 5, format: "reel_cover" },
     error: null,
   });
-  db.queue("post_designs", "update", { data: null, error: null });
+  db.queue("designs", "update", { data: null, error: null });
 
   const triggered: Array<{ designId: number; rev: number }> = [];
   const waited: Promise<unknown>[] = [];
@@ -432,7 +432,7 @@ Deno.test("file-upload-finalize: video on a post WITHOUT a reel_cover design doe
   db.queueRpc("file_insert_with_quota", { data: { id: 32, kind: "video" }, error: null });
   db.queue("workflow_posts", "select", { data: { conta_id: "conta-1" }, error: null });
   db.queue("post_file_links", "insert", { data: null, error: null });
-  db.queue("post_designs", "select", { data: null, error: null });
+  db.queue("designs", "select", { data: null, error: null });
 
   const triggered: number[] = [];
   const handler = createFileUploadFinalizeHandler({
