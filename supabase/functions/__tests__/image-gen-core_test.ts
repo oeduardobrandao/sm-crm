@@ -184,6 +184,8 @@ Deno.test("monthly quota exhausted: friendly 403 BEFORE paying the provider, ret
 Deno.test("ledger row is inserted 'pending' BEFORE the provider call (spend never unlogged)", async () => {
   const h = makeHarness({
     provider: {
+      name: "openrouter",
+      model: "google/gemini-3.1-flash-lite-image",
       generate: () => Promise.reject(new Error("boom mid-flight")),
     },
   });
@@ -195,6 +197,13 @@ Deno.test("ledger row is inserted 'pending' BEFORE the provider call (spend neve
   );
   assert(insert, "pending row inserted before the provider blew up");
   assertEquals((insert!.payload as { status: string }).status, "pending");
+  // Attribution comes from the adapter, so this FAILED row points at the provider/model that
+  // actually served the attempt (not a hardcoded gemini default).
+  assertEquals((insert!.payload as { provider: string }).provider, "openrouter");
+  assertEquals(
+    (insert!.payload as { model: string }).model,
+    "google/gemini-3.1-flash-lite-image",
+  );
   const update = h.db.calls.find((c) =>
     c.table === "ai_image_generations" && c.operation === "update"
   );

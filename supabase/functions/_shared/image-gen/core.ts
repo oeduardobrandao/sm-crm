@@ -437,8 +437,10 @@ async function runPipeline(
         post_id: input.postId ?? null, // ledger ONLY — never post_file_links (§5.2)
         source: input.source,
         mcp_key_id: input.mcpKeyId ?? null,
-        provider: "gemini",
-        model: "gemini-3.1-flash-image",
+        // Attribution from the adapter itself, so failed rows point at the provider/model that
+        // actually served the attempt (success rows are later overwritten with the result's).
+        provider: deps.provider.name ?? "unknown",
+        model: deps.provider.model ?? "unknown",
         aspect_ratio: input.aspectRatio,
         image_size: imageSize,
         prompt,

@@ -83,7 +83,7 @@ Deno.test("openrouter: request carries model/prompt/aspect_ratio/resolution/outp
     assertEquals(f.calls.length, 1);
     assertEquals(f.calls[0].url, "https://openrouter.ai/api/v1/images");
     assertEquals(f.calls[0].headers["Authorization"], "Bearer or-key-123");
-    assertEquals(f.calls[0].body.model, "google/gemini-3.1-flash-image");
+    assertEquals(f.calls[0].body.model, "google/gemini-3.1-flash-lite-image");
     assertEquals(f.calls[0].body.prompt, "fundo dourado");
     assertEquals(f.calls[0].body.aspect_ratio, "9:16");
     assertEquals(f.calls[0].body.resolution, "2K");
@@ -102,8 +102,8 @@ Deno.test("openrouter: IHDR dims win; cost keyed by requested size", async () =>
     assertEquals(result.width, 2048);
     assertEquals(result.height, 2560);
     assertEquals(result.mime, "image/png");
-    assertEquals(result.costEstimateUsd, 0.101);
-    assertEquals(result.model, "google/gemini-3.1-flash-image");
+    assertEquals(result.costEstimateUsd, 0.051);
+    assertEquals(result.model, "google/gemini-3.1-flash-lite-image");
   } finally {
     f.restore();
   }

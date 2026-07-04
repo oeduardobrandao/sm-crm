@@ -1,5 +1,5 @@
-// OpenRouter image provider — same underlying model as gemini.ts (Nano Banana 2 /
-// gemini-3.1-flash-image) routed through OpenRouter's Unified Image API
+// OpenRouter image provider — same underlying model as gemini.ts (Nano Banana 2 Lite /
+// gemini-3.1-flash-lite-image) routed through OpenRouter's Unified Image API
 // (verified against openrouter.ai/docs 2026-07-05: POST /api/v1/images takes model/prompt/
 // aspect_ratio/resolution, reference images ride as `input_references` data URLs, and the
 // image returns as base64 in data[0].b64_json). Mirrors gemini.ts's contract exactly:
@@ -18,13 +18,15 @@ import {
   ProviderTimeoutError,
 } from "./provider.ts";
 
-const MODEL = "google/gemini-3.1-flash-image";
+// Nano Banana 2 Lite — default since 2026-07-04 (user call: half the flash-tier token price on
+// OpenRouter for the same image pipeline). Slug verified against openrouter.ai/api/v1/models.
+const MODEL = "google/gemini-3.1-flash-lite-image";
 const ENDPOINT = "https://openrouter.ai/api/v1/images";
 const ATTEMPT_TIMEOUT_MS = 60_000;
 
-// Same flash-tier estimates as gemini.ts — identical underlying model; OpenRouter adds a small
-// routing markup we deliberately ignore (this figure feeds internal cost accounting, not billing).
-const COST_BY_SIZE: Record<string, number> = { "1K": 0.067, "2K": 0.101 };
+// Lite tier ≈ half the flash figures gemini.ts documented ($/image by output size; OpenRouter's
+// per-token price is exactly 0.5x flash). Feeds internal cost accounting, not billing.
+const COST_BY_SIZE: Record<string, number> = { "1K": 0.034, "2K": 0.051 };
 
 function toBase64(bytes: Uint8Array): string {
   let binary = "";
@@ -57,6 +59,8 @@ function extractImageB64(entry: any): string | null {
 
 export function createOpenRouterProvider(apiKey: string): ImageGenProvider {
   return {
+    name: "openrouter",
+    model: MODEL,
     async generate(req: ImageGenRequest, signal?: AbortSignal): Promise<ImageGenResult> {
       const body = JSON.stringify({
         model: MODEL,

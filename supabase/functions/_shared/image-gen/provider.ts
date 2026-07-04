@@ -24,6 +24,10 @@ export interface ImageGenResult {
 }
 
 export interface ImageGenProvider {
+  /** Ledger attribution for the pending row — recorded BEFORE any result exists, so failed
+   * attempts point at the provider/model that actually served them. */
+  readonly name?: string;
+  readonly model?: string;
   generate(req: ImageGenRequest, signal?: AbortSignal): Promise<ImageGenResult>;
 }
 
