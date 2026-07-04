@@ -81,9 +81,9 @@ export function buildEditorUrl(editorOrigin: string, docUrl: string, parentOrigi
  * CRM Vite proxy (`/estudio-fn/*`, see apps/crm/vite.config.ts) which rewrites CORS.
  */
 export function buildDocUrl(
-  postId: number,
+  designId: number,
   env: { dev: boolean; appOrigin: string; supabaseUrl: string },
 ): string {
   const base = env.dev ? `${env.appOrigin}/estudio-fn` : `${env.supabaseUrl}/functions/v1`;
-  return `${base}/post-design-manage/blob?post_id=${postId}`;
+  return `${base}/design-manage/blob?design_id=${designId}`;
 }

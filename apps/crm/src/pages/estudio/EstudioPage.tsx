@@ -7,10 +7,11 @@ import { supabase } from '@/lib/supabase';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { buildDocUrl, buildEditorUrl, createEmbedHost, type EditorEvent } from './embedHost';
 
-// Estúdio v2 CRM shell — hosts the forked OpenPencil editor in an iframe and implements
+// Estúdio CRM shell — hosts the forked OpenPencil editor in an iframe and implements
 // the parent side of bridge protocol v1 (docs/estudio-v2-editor-contract.md): auth
 // handshake over postMessage (tokens never touch the URL), save status, conflict → reload.
-// The editor loads/saves the .fig blob itself via docUrl (post-design-manage /blob).
+// The editor loads/saves the .fig blob itself via docUrl (design-manage /blob, keyed by
+// design_id — designs are first-class; the drawer resolves-or-creates before navigating).
 
 const EDITOR_ORIGIN: string | null =
   (import.meta.env.VITE_ESTUDIO_EDITOR_ORIGIN as string | undefined) ??
@@ -46,12 +47,12 @@ function CenteredNotice({ children }: { children: React.ReactNode }) {
 }
 
 export default function EstudioPage() {
-  const { postId: postIdParam } = useParams();
+  const { designId: designIdParam } = useParams();
   const navigate = useNavigate();
   const { t } = useTranslation('estudio');
   const { features } = useWorkspaceLimits();
 
-  const postId = postIdParam !== undefined ? parseInt(postIdParam, 10) : null;
+  const designId = designIdParam !== undefined ? parseInt(designIdParam, 10) : null;
   const estudioBlocked = features?.feature_estudio === false;
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -120,14 +121,14 @@ export default function EstudioPage() {
   );
 
   const editorUrl = useMemo(() => {
-    if (!EDITOR_ORIGIN || postId === null || isNaN(postId)) return null;
-    const docUrl = buildDocUrl(postId, {
+    if (!EDITOR_ORIGIN || designId === null || isNaN(designId)) return null;
+    const docUrl = buildDocUrl(designId, {
       dev: import.meta.env.DEV,
       appOrigin: window.location.origin,
       supabaseUrl: import.meta.env.VITE_SUPABASE_URL as string,
     });
     return buildEditorUrl(EDITOR_ORIGIN, docUrl, window.location.origin);
-  }, [postId]);
+  }, [designId]);
 
   useEffect(() => {
     if (!host) return;
@@ -190,7 +191,7 @@ export default function EstudioPage() {
 
   // ----- non-editor views -------------------------------------------------------------
 
-  if (postId === null) {
+  if (designId === null) {
     return (
       <CenteredNotice>
         <h1
@@ -212,7 +213,7 @@ export default function EstudioPage() {
     );
   }
 
-  if (isNaN(postId)) return <CenteredNotice>{t('editor.invalidPost')}</CenteredNotice>;
+  if (isNaN(designId)) return <CenteredNotice>{t('editor.invalidDesign')}</CenteredNotice>;
   if (estudioBlocked) return <CenteredNotice>{t('featureBlocked')}</CenteredNotice>;
   if (!editorUrl) return <CenteredNotice>{t('editor.unavailable')}</CenteredNotice>;
 
@@ -258,7 +259,7 @@ export default function EstudioPage() {
           <ArrowLeft className="h-4 w-4" />
         </button>
         <span style={{ fontWeight: 700, color: 'var(--text-main)' }}>{t('title')}</span>
-        <span style={{ color: 'var(--text-light)', fontSize: '0.8rem' }}>#{postId}</span>
+        <span style={{ color: 'var(--text-light)', fontSize: '0.8rem' }}>#{designId}</span>
         <span
           data-testid="save-pill"
           style={{

@@ -43,7 +43,7 @@
     "notRunningDevHint": "Dev: start the editor dev server on port 1420 (\"op-editor\" launch config).",
     "unsavedPrompt": "There are unsaved changes. Leave anyway?",
     "saveNow": "Save now",
-    "invalidPost": "Invalid post.",
+    "invalidDesign": "Invalid design.",
     "authError": "Could not authenticate the editor. Reload the page.",
     "loadErrorHint": "Check that the post is still editable and Estúdio is enabled on your plan."
   },

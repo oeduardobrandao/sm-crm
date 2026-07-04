@@ -43,7 +43,7 @@
     "notRunningDevHint": "Dev: inicie o servidor do editor na porta 1420 (configuração \"op-editor\").",
     "unsavedPrompt": "Há alterações não salvas. Sair mesmo assim?",
     "saveNow": "Salvar agora",
-    "invalidPost": "Post inválido.",
+    "invalidDesign": "Design inválido.",
     "authError": "Não foi possível autenticar o editor. Recarregue a página.",
     "loadErrorHint": "Verifique se o post ainda é editável e se o Estúdio está habilitado no seu plano."
   },

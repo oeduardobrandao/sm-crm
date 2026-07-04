@@ -278,7 +278,7 @@ Deno.test("POST /designs with post_id on approved post → 403 post_not_editable
   `apps/crm/src/App.tsx` (route param), `packages/i18n/locales/{pt,en}/estudio.json`
 - Test: `apps/crm/src/pages/estudio/__tests__/embedHost.test.ts`
 
-- [ ] **Step 1:** `store/designs.ts`:
+- [x] **Step 1:** `store/designs.ts`:
 
 ```ts
 export interface DesignSummary {
@@ -291,15 +291,15 @@ export async function getDesignForPost(postId: number): Promise<DesignSummary | 
 export async function createDesign(input: { post_id?: number; format?: string }): Promise<{ design_id: number }> { … }
 ```
 
-- [ ] **Step 2:** WorkflowDrawer: query key `['post-design-summary', post.id]` keeps its
+- [x] **Step 2:** WorkflowDrawer: query key `['post-design-summary', post.id]` keeps its
   options but calls `getDesignForPost`; button handler becomes: design exists →
   `navigate(\`/estudio/\${design.id}\`)`; none → `createDesign({post_id})` mutation
   (button shows `t('picker.creating')` while pending, toast on error) → navigate to the
   returned id. `PostMediaGallery` keeps receiving the summary (same fields it uses).
-- [ ] **Step 3:** Shell: route + param `:postId`→`:designId` (App.tsx + EstudioPage),
+- [x] **Step 3:** Shell: route + param `:postId`→`:designId` (App.tsx + EstudioPage),
   `buildDocUrl(designId…)` → `…/design-manage/blob?design_id=`, header chip `#designId`.
   Update `embedHost.test.ts` URL expectations. Vite proxy needs NO change (path-agnostic).
-- [ ] **Step 4:** `npm run test`, `npm run build`, prettier+lint on touched files. Commit.
+- [x] **Step 4:** `npm run test`, `npm run build`, prettier+lint on touched files. Commit.
 
 ### Task 7: Delete the old function + full-suite gate
 

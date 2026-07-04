@@ -126,19 +126,19 @@ describe('createEmbedHost', () => {
 describe('URL builders', () => {
   it('buildEditorUrl matches the frozen embed URL shape', () => {
     expect(
-      buildEditorUrl(EDITOR_ORIGIN, 'https://x.y/blob?post_id=7', 'http://localhost:5173'),
+      buildEditorUrl(EDITOR_ORIGIN, 'https://x.y/blob?design_id=7', 'http://localhost:5173'),
     ).toBe(
-      'http://localhost:1420/?embed=1&docUrl=https%3A%2F%2Fx.y%2Fblob%3Fpost_id%3D7&parentOrigin=http%3A%2F%2Flocalhost%3A5173',
+      'http://localhost:1420/?embed=1&docUrl=https%3A%2F%2Fx.y%2Fblob%3Fdesign_id%3D7&parentOrigin=http%3A%2F%2Flocalhost%3A5173',
     );
   });
 
   it('buildDocUrl uses the CRM proxy in dev and Supabase directly in prod', () => {
     const env = { appOrigin: 'http://localhost:5173', supabaseUrl: 'https://proj.supabase.co' };
     expect(buildDocUrl(1041, { ...env, dev: true })).toBe(
-      'http://localhost:5173/estudio-fn/post-design-manage/blob?post_id=1041',
+      'http://localhost:5173/estudio-fn/design-manage/blob?design_id=1041',
     );
     expect(buildDocUrl(1041, { ...env, dev: false })).toBe(
-      'https://proj.supabase.co/functions/v1/post-design-manage/blob?post_id=1041',
+      'https://proj.supabase.co/functions/v1/design-manage/blob?design_id=1041',
     );
   });
 });

@@ -133,7 +133,7 @@ export default function App() {
                 <Route path="/entregas" element={<EntregasPage />} />
                 <Route path="/post-express" element={<ExpressPostPage />} />
                 <Route path="/estudio" element={<EstudioPage />} />
-                <Route path="/estudio/:postId" element={<EstudioPage />} />
+                <Route path="/estudio/:designId" element={<EstudioPage />} />
                 <Route path="/arquivos" element={<ArquivosPage />} />
                 <Route path="/analytics" element={<AnalyticsPage />} />
                 <Route path="/analytics/:id" element={<AnalyticsContaPage />} />

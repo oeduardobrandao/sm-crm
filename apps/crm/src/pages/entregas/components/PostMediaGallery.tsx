@@ -36,7 +36,7 @@ import { extractVideoFrame } from '../../../utils/videoFrame';
 import { encodeImageAsJpeg } from '../../../utils/imageJpeg';
 import { ThumbnailPickerDialog } from './ThumbnailPickerDialog';
 import { useTranslation } from 'react-i18next';
-import type { PostMedia, PostDesignSummary } from '../../../store';
+import type { PostMedia, DesignSummary } from '../../../store';
 import { OptimizedImage } from '../../../components/OptimizedImage';
 import { PostMediaLightbox } from './PostMediaLightbox';
 import { FilePickerModal } from '../../arquivos/components/FilePickerModal';
@@ -52,7 +52,7 @@ interface PostMediaGalleryProps {
    * reels → cover-only ownership: the video tile's thumbnail IS the rendered cover (no design
    * tile exists), so set-cover/edit-thumbnail hide and image uploads are rejected while video
    * upload stays manual. Omit both props for the pre-Estúdio behavior (existing callers). */
-  design?: PostDesignSummary | null;
+  design?: DesignSummary | null;
   postTipo?: string;
 }
 

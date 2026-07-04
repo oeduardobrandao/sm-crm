@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import {
@@ -86,7 +86,7 @@ import {
   resolveInlineImageUrls,
 } from '@/services/inlineImage';
 import { listPostMedia } from '../../../services/postMedia';
-import { getPostDesignSummary } from '@/store';
+import { createDesign, getDesignForPost } from '@/store';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { InstagramCaptionField } from './InstagramCaptionField';
 import { ScheduleButton } from './ScheduleButton';
@@ -888,14 +888,14 @@ function SortablePostItem({
   const { t } = useTranslation('estudio');
 
   // T4.4/T4.5 — Estúdio lifecycle surface. Fail-open feature gate (same pattern as nav/
-  // PostPicker) and an EXPANDED-ONLY summary query: collapsed rows never hit post_designs.
-  // Direct RLS select via getPostDesignSummary — the GET route is get-or-create and would
-  // mint a design row from a mere existence check.
+  // PostPicker) and an EXPANDED-ONLY summary query: collapsed rows never hit designs.
+  // Direct RLS select via getDesignForPost; creation is explicit (createDesign) so an
+  // existence check can never mint a row.
   const { features } = useWorkspaceLimits();
   const estudioBlocked = features?.feature_estudio === false;
   const designSummaryQuery = useQuery({
     queryKey: ['post-design-summary', post.id],
-    queryFn: () => getPostDesignSummary(post.id!),
+    queryFn: () => getDesignForPost(post.id!),
     enabled: isExpanded && !!post.id && post.tipo !== 'stories' && !estudioBlocked,
     // staleTime dedupes expand/collapse churn WITHIN an open drawer; refetchOnMount 'always'
     // guarantees a fresh read when the drawer remounts — e.g. returning from a quick Estúdio
@@ -905,6 +905,11 @@ function SortablePostItem({
     refetchOnMount: 'always',
   });
   const designSummary = designSummaryQuery.data ?? null;
+  const createDesignMutation = useMutation({
+    mutationFn: () => createDesign({ post_id: post.id! }),
+    onSuccess: ({ design_id }) => navigate(`/estudio/${design_id}`),
+    onError: (err: Error) => toast.error(t('toast.createError', { error: err.message })),
+  });
 
   // Local state for title to avoid input lag / letter-replacement from the
   // round-trip through updateWorkflowPost + refresh on every keystroke.
@@ -1180,7 +1185,11 @@ function SortablePostItem({
           {post.tipo !== 'stories' && !estudioBlocked && (
             <button
               type="button"
-              onClick={() => navigate(`/estudio/${post.id}`)}
+              disabled={createDesignMutation.isPending}
+              onClick={() => {
+                if (designSummary) navigate(`/estudio/${designSummary.id}`);
+                else createDesignMutation.mutate();
+              }}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors"
               style={{
                 background: 'rgba(234,179,8,0.12)',
@@ -1189,7 +1198,8 @@ function SortablePostItem({
                 marginBottom: '0.75rem',
               }}
             >
-              <Wand2 className="h-3.5 w-3.5" /> {t('openInEstudio')}
+              <Wand2 className="h-3.5 w-3.5" />{' '}
+              {createDesignMutation.isPending ? t('picker.creating') : t('openInEstudio')}
             </button>
           )}
 
