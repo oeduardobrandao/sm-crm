@@ -253,3 +253,33 @@ describe('designDocOps pages', () => {
     expect(next.fileIds).toEqual([]);
   });
 });
+
+describe('designDocOps setPageBackground (T6.4)', () => {
+  it('replaces a page background and syncs doc.fileIds for an image fill', () => {
+    const doc = makeDoc({ pages: [makePage({ id: 'p1' })] });
+    const next = ops.setPageBackground(doc, 'p1', { type: 'image', file_id: 900, fit: 'cover' });
+    expect(next).not.toBe(doc);
+    expect(next.pages[0].background).toEqual({ type: 'image', file_id: 900, fit: 'cover' });
+    expect(next.fileIds).toContain(900);
+  });
+
+  it('is a no-op (same reference → no undo entry) when the background is content-identical', () => {
+    const doc = makeDoc({
+      pages: [makePage({ id: 'p1', background: { type: 'solid', color: '#ffffff' } })],
+    });
+    expect(ops.setPageBackground(doc, 'p1', { type: 'solid', color: '#ffffff' })).toBe(doc);
+  });
+
+  it('returns the doc unchanged for an unknown page id', () => {
+    const doc = makeDoc({ pages: [makePage({ id: 'p1' })] });
+    expect(ops.setPageBackground(doc, 'nope', { type: 'solid', color: '#000000' })).toBe(doc);
+  });
+
+  it('swapping an image background off drops the stale file id', () => {
+    const doc = makeDoc({
+      pages: [makePage({ id: 'p1', background: { type: 'image', file_id: 5, fit: 'cover' } })],
+    });
+    const next = ops.setPageBackground(doc, 'p1', { type: 'solid', color: '#000000' });
+    expect(next.fileIds).not.toContain(5);
+  });
+});

@@ -8,15 +8,35 @@ import { supabase } from '@/lib/supabase';
 import { collectDocFileIds } from '../lib/imageResolution';
 import type { DesignDoc } from '../types';
 
+// Module-scope seed of file_id → freshly-signed URL. A just-generated AI image (T6.4) or any
+// upload that already carries a valid signed URL primes this so the very next render resolves
+// it WITHOUT a files-table + sign-r2-urls round trip (no flash). Entries are 1h-signed; they
+// only ever accelerate the first resolution, after which the normal query owns the value.
+const seededUrls = new Map<number, string>();
+
+/** Seed a file's signed URL so the doc-wide render finds it immediately (see above). */
+export function seedImageUrl(fileId: number, url: string): void {
+  seededUrls.set(fileId, url);
+}
+
 export async function resolveImageUrls(fileIds: number[]): Promise<Map<number, string>> {
   if (fileIds.length === 0) return new Map();
+
+  const map = new Map<number, string>();
+  const unseeded: number[] = [];
+  for (const id of fileIds) {
+    const seed = seededUrls.get(id);
+    if (seed) map.set(id, seed);
+    else unseeded.push(id);
+  }
+  if (unseeded.length === 0) return map;
 
   const { data: files, error } = await supabase
     .from('files')
     .select('id, r2_key')
-    .in('id', fileIds);
+    .in('id', unseeded);
   if (error) throw error;
-  if (!files || files.length === 0) return new Map();
+  if (!files || files.length === 0) return map;
 
   const {
     data: { session },
@@ -35,7 +55,6 @@ export async function resolveImageUrls(fileIds: number[]): Promise<Map<number, s
   if (!res.ok) throw new Error(`sign-r2-urls failed: ${res.status}`);
   const { urls } = (await res.json()) as { urls: Record<string, string> };
 
-  const map = new Map<number, string>();
   for (const file of files) {
     const signed = urls[file.r2_key];
     if (signed) map.set(file.id, signed);

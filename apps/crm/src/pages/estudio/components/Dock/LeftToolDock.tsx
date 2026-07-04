@@ -8,7 +8,7 @@
 // passes the connected <BrandPanel/>. Still out of scope: the AI-generation button (slice 6).
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Type, Square, Circle, Upload, FolderOpen, Shapes, Palette } from 'lucide-react';
+import { Type, Square, Circle, Upload, FolderOpen, Shapes, Palette, Sparkles } from 'lucide-react';
 import rawManifest from '@mesaas/fonts/manifest.json';
 import type { FontManifest } from '@mesaas/fonts/types';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -47,6 +47,9 @@ export interface LeftToolDockProps {
   /** Connected BrandPanel content (T3.6). When present, the dock shows a "Marca" button whose
    * popover renders this node. */
   brandPanel?: React.ReactNode;
+  /** Connected GerarImagemPanel content (T6.4). When present (feature-gated by the caller), the
+   * dock shows an AI button whose popover renders this node. */
+  aiPanel?: React.ReactNode;
 }
 
 function buildTextLayer(canvasWidth: number, canvasHeight: number, text: string): NormalizedLayer {
@@ -168,6 +171,7 @@ export function LeftToolDock({
   onAddLayer,
   pasteEnabled = true,
   brandPanel,
+  aiPanel,
 }: LeftToolDockProps) {
   const { t } = useTranslation('estudio');
   const [shapePopoverOpen, setShapePopoverOpen] = useState(false);
@@ -266,6 +270,28 @@ export function LeftToolDock({
           </PopoverTrigger>
           <PopoverContent side="right" align="start" className="w-auto p-4">
             {brandPanel}
+          </PopoverContent>
+        </Popover>
+      )}
+
+      {aiPanel && (
+        <Popover>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              title={t('dock.generateImage')}
+              aria-label={t('dock.generateImage')}
+              data-testid="estudio-dock-ai"
+              className="flex items-center justify-center transition-colors"
+              style={{ width: 44, height: 44, borderRadius: 10, color: 'var(--primary-hover)' }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-hover)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              <Sparkles size={20} />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent side="right" align="start" className="w-auto p-4">
+            {aiPanel}
           </PopoverContent>
         </Popover>
       )}

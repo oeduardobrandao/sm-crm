@@ -6,7 +6,7 @@
 // "dispatch once on pointer-up" / "commit on blur/Enter" are the callers' job, not this atom's).
 import { useCallback, useMemo, useReducer } from 'react';
 import * as ops from '../lib/designDocOps';
-import type { DesignDoc, NormalizedLayer, NormalizedPage } from '../types';
+import type { DesignDoc, NormalizedFill, NormalizedLayer, NormalizedPage } from '../types';
 
 export const MAX_UNDO = 50;
 
@@ -25,6 +25,7 @@ export type DesignDocAction =
   | { type: 'layer/remove'; pageId: string; layerId: string }
   | { type: 'layer/duplicate'; pageId: string; layerId: string }
   | { type: 'layer/reorder'; pageId: string; layerId: string; toIndex: number }
+  | { type: 'page/background'; pageId: string; background: NormalizedFill }
   | { type: 'page/add'; page: NormalizedPage; index?: number }
   | { type: 'page/duplicate'; pageId: string }
   | { type: 'page/remove'; pageId: string }
@@ -54,6 +55,8 @@ function applyOp(doc: DesignDoc, action: MutatingAction): DesignDoc {
       return ops.duplicateLayer(doc, action.pageId, action.layerId);
     case 'layer/reorder':
       return ops.reorderLayer(doc, action.pageId, action.layerId, action.toIndex);
+    case 'page/background':
+      return ops.setPageBackground(doc, action.pageId, action.background);
     case 'page/add':
       return ops.addPage(doc, action.page, action.index);
     case 'page/duplicate':

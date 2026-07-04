@@ -12,7 +12,7 @@ import { useAutosave } from './hooks/useAutosave';
 import { TopToolbar } from './components/Toolbar';
 import PostPicker from './components/PostPicker';
 import { CanvasStage } from './components/Canvas/CanvasStage';
-import { LeftToolDock, BrandPanel } from './components/Dock';
+import { LeftToolDock, BrandPanel, GerarImagemPanel } from './components/Dock';
 import ContextualToolbar from './components/Toolbar';
 import { SlideStrip } from './components/SlideStrip';
 import { usePostDesignQuery, PostDesignError } from './hooks/usePostDesignQuery';
@@ -21,6 +21,7 @@ import { useTextMeasurement } from './hooks/useTextMeasurement';
 import { useImageInsert } from './hooks/useImageInsert';
 import { usePostBrand } from './hooks/usePostBrand';
 import { buildFontFamilyPatch } from './hooks/useFontManifest';
+import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { generateDesignId } from './types';
 import type { NormalizedLayer, NormalizedPage, NormalizedTextLayer } from './types';
 import type { UploadedEstudioImage } from './lib/uploadEstudioImage';
@@ -261,6 +262,44 @@ function EstudioEditorShell({ postId }: { postId: number }) {
     [state.doc.canvas.width, state.doc.canvas.height, onAddLayer],
   );
 
+  // T6.4 AI image gen — feature-gated (fail-open, same as the button/nav). A generated file
+  // becomes either a centered image layer (≤80% canvas) or the active page's background.
+  const { features, limits } = useWorkspaceLimits();
+  const aiImagesEnabled = features?.feature_ai_images !== false;
+  const onInsertAiLayer = useCallback(
+    (fileId: number, natural: { width: number; height: number }) => {
+      const cap = Math.round(Math.min(state.doc.canvas.width, state.doc.canvas.height) * 0.8);
+      const { w, h } = fitReplacementImageSize(natural.width, natural.height, cap);
+      onAddLayer({
+        id: generateDesignId('layer'),
+        name: 'Imagem IA',
+        type: 'image',
+        w,
+        h,
+        x: (state.doc.canvas.width - w) / 2,
+        y: (state.doc.canvas.height - h) / 2,
+        rotation: 0,
+        opacity: 1,
+        locked: false,
+        file_id: fileId,
+        fit: 'cover',
+      });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state.doc.canvas.width, state.doc.canvas.height, onAddLayer],
+  );
+  const onSetAiBackground = useCallback(
+    (fileId: number) => {
+      state.dispatch({
+        type: 'page/background',
+        pageId: state.activePageId,
+        background: { type: 'image', file_id: fileId, fit: 'cover' },
+      });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state.activePageId],
+  );
+
   const pageDispatchHandlers = useMemo(
     () => ({
       onAddPage: () => state.dispatch({ type: 'page/add', page: buildBlankPage() }),
@@ -393,6 +432,19 @@ function EstudioEditorShell({ postId }: { postId: number }) {
               onApplyFont={onApplyBrandFont}
               onInsertLogo={onInsertLogo}
             />
+          }
+          aiPanel={
+            aiImagesEnabled ? (
+              <GerarImagemPanel
+                postId={postId}
+                clienteId={brand.clienteId}
+                hasBrandLogo={brand.logoFileId !== null}
+                canvasAspectRatio={state.doc.aspect_ratio}
+                monthlyLimit={limits?.rate_ai_images_per_month ?? null}
+                onInsertLayer={onInsertAiLayer}
+                onSetBackground={onSetAiBackground}
+              />
+            ) : undefined
           }
         />
         <div

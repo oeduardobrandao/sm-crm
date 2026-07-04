@@ -48,7 +48,35 @@
     "addEllipse": "Elipse",
     "uploadImage": "Enviar imagem",
     "openArquivos": "Arquivos",
-    "brand": "Marca"
+    "brand": "Marca",
+    "generateImage": "Gerar imagem com IA"
+  },
+  "aiPanel": {
+    "promptLabel": "Descreva a imagem",
+    "promptPlaceholder": "Ex: fundo abstrato dourado com textura de mármore",
+    "aspectRatio": "Proporção",
+    "placement": "Uso",
+    "placementElement": "Camada",
+    "placementBackground": "Fundo",
+    "useBrandLogo": "Incluir o logo da marca como referência",
+    "quota": "{{used}}/{{limit}} imagens este mês",
+    "quotaUnlimited": "{{used}} imagens este mês",
+    "generate": "Gerar",
+    "generating": "Gerando…",
+    "resultAlt": "Imagem gerada",
+    "insertLayer": "Inserir como camada",
+    "setBackground": "Usar como fundo",
+    "error": {
+      "featureDisabled": "A geração de imagens não está disponível no seu plano.",
+      "quotaExhausted": "Você atingiu a cota mensal de imagens do seu plano.",
+      "rateLimited": "Muitas gerações em sequência — aguarde alguns instantes.",
+      "inProgress": "Uma geração ainda está em andamento — aguarde.",
+      "safety": "O provedor recusou este prompt — tente descrever de outra forma.",
+      "invalidReference": "Não foi possível usar uma das referências (logo/imagem).",
+      "storageQuota": "Limite de armazenamento do plano atingido.",
+      "timeout": "O provedor demorou demais — tente novamente.",
+      "generic": "Não foi possível gerar a imagem. Tente novamente."
+    }
   },
   "colorPicker": {
     "open": "Escolher cor",

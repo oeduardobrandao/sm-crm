@@ -74,6 +74,7 @@ vi.mock('../components/Dock', () => ({
     </div>
   ),
   BrandPanel: () => <div>brand-panel-stub</div>,
+  GerarImagemPanel: () => <div>ai-panel-stub</div>,
 }));
 
 // usePostBrand queries supabase (post -> cliente -> hub_brand) — irrelevant to these tests,

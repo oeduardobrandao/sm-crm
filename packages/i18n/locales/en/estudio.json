@@ -48,7 +48,35 @@
     "addEllipse": "Ellipse",
     "uploadImage": "Upload image",
     "openArquivos": "Files",
-    "brand": "Brand"
+    "brand": "Brand",
+    "generateImage": "Generate image with AI"
+  },
+  "aiPanel": {
+    "promptLabel": "Describe the image",
+    "promptPlaceholder": "e.g. abstract golden background with marble texture",
+    "aspectRatio": "Aspect ratio",
+    "placement": "Use",
+    "placementElement": "Layer",
+    "placementBackground": "Background",
+    "useBrandLogo": "Include the brand logo as a reference",
+    "quota": "{{used}}/{{limit}} images this month",
+    "quotaUnlimited": "{{used}} images this month",
+    "generate": "Generate",
+    "generating": "Generating…",
+    "resultAlt": "Generated image",
+    "insertLayer": "Insert as layer",
+    "setBackground": "Use as background",
+    "error": {
+      "featureDisabled": "Image generation isn't available on your plan.",
+      "quotaExhausted": "You've reached your plan's monthly image quota.",
+      "rateLimited": "Too many generations in a row — wait a moment.",
+      "inProgress": "A generation is still in progress — please wait.",
+      "safety": "The provider declined this prompt — try describing it differently.",
+      "invalidReference": "One of the references (logo/image) couldn't be used.",
+      "storageQuota": "Your plan's storage limit has been reached.",
+      "timeout": "The provider took too long — try again.",
+      "generic": "Couldn't generate the image. Please try again."
+    }
   },
   "colorPicker": {
     "open": "Pick color",

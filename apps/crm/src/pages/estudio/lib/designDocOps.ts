@@ -13,7 +13,7 @@
 // active page, or undo history — `useDesignDocState.ts` owns all of that.
 
 import { generateDesignId } from '@mesaas/design-doc';
-import type { DesignDoc, NormalizedLayer, NormalizedPage } from '../types';
+import type { DesignDoc, NormalizedFill, NormalizedLayer, NormalizedPage } from '../types';
 
 function withFileIds(doc: DesignDoc): DesignDoc {
   const fileIds = new Set<number>();
@@ -113,6 +113,20 @@ export function updateLayer(
         return merged;
       }),
     };
+  });
+}
+
+/** Replaces a page's background fill (e.g. an AI image "used as background", T6.4). No-op
+ * (returns `doc` unchanged, so no undo entry) when the background is content-identical —
+ * withFileIds inside updatePage keeps `doc.fileIds` in sync when an image fill is swapped in. */
+export function setPageBackground(
+  doc: DesignDoc,
+  pageId: string,
+  background: NormalizedFill,
+): DesignDoc {
+  return updatePage(doc, pageId, (page) => {
+    if (JSON.stringify(page.background) === JSON.stringify(background)) return page;
+    return { ...page, background };
   });
 }
 
