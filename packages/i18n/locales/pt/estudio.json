@@ -44,7 +44,8 @@
     "unsavedPrompt": "Há alterações não salvas. Sair mesmo assim?",
     "saveNow": "Salvar agora",
     "invalidPost": "Post inválido.",
-    "authError": "Não foi possível autenticar o editor. Recarregue a página."
+    "authError": "Não foi possível autenticar o editor. Recarregue a página.",
+    "loadErrorHint": "Verifique se o post ainda é editável e se o Estúdio está habilitado no seu plano."
   },
   "openInEstudio": "Abrir no Estúdio",
   "dock": {

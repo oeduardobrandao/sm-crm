@@ -44,7 +44,8 @@
     "unsavedPrompt": "There are unsaved changes. Leave anyway?",
     "saveNow": "Save now",
     "invalidPost": "Invalid post.",
-    "authError": "Could not authenticate the editor. Reload the page."
+    "authError": "Could not authenticate the editor. Reload the page.",
+    "loadErrorHint": "Check that the post is still editable and Estúdio is enabled on your plan."
   },
   "openInEstudio": "Open in Studio",
   "dock": {

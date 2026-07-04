@@ -19,6 +19,9 @@ const EDITOR_ORIGIN: string | null =
 /** How long a silent iframe can stay "booting" before we hint the editor isn't running. */
 const BOOT_TIMEOUT_MS = 8000;
 
+/** How long the post-`ready` doc fetch may take before the spinner gives up. */
+const DOC_LOAD_TIMEOUT_MS = 20000;
+
 type BootStatus = 'booting' | 'loading' | 'ready';
 type SaveState = 'saved' | 'dirty' | 'conflict';
 
@@ -57,6 +60,13 @@ export default function EstudioPage() {
   const [saveState, setSaveState] = useState<SaveState>('saved');
   const [dirty, setDirty] = useState(false);
   const [bootTimedOut, setBootTimedOut] = useState(false);
+  // Non-null = the doc never loaded (boot GET failed: 403 not editable / feature off, 404,
+  // 422 video media, auth timeout...). Holds the editor's detail message ('' = watchdog).
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const statusRef = useRef<BootStatus>('booting');
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
 
   const onEvent = useCallback(
     (ev: EditorEvent) => {
@@ -67,6 +77,7 @@ export default function EstudioPage() {
           break;
         case 'doc:loaded':
           setStatus('ready');
+          setLoadError(null);
           break;
         case 'save:ok':
           setDirty(false);
@@ -76,11 +87,15 @@ export default function EstudioPage() {
           setDirty(ev.dirty);
           setSaveState((s) => (s === 'conflict' ? s : ev.dirty ? 'dirty' : 'saved'));
           break;
+        case 'save:error':
+          // The editor also reports FAILED BOOTS this way (its own toast is under our
+          // overlay) — before doc:loaded this must become the load-error screen, or the
+          // spinner runs forever.
+          if (statusRef.current !== 'ready') setLoadError(ev.message ?? '');
+          else toast.error(t('editor.saveError'));
+          break;
         case 'save:conflict':
           setSaveState('conflict');
-          break;
-        case 'save:error':
-          toast.error(t('editor.saveError'));
           break;
         case 'auth:needed': // host re-auth handled inside embedHost
           break;
@@ -138,6 +153,14 @@ export default function EstudioPage() {
     return () => clearTimeout(timer);
   }, [editorUrl, reloadKey, status]);
 
+  // Watchdog for the doc-fetch phase (post-`ready`): a hung GET emits no bridge event at
+  // all, so give up after 20s instead of spinning forever.
+  useEffect(() => {
+    if (status !== 'loading') return;
+    const timer = setTimeout(() => setLoadError((e) => e ?? ''), DOC_LOAD_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [status, reloadKey]);
+
   // Dirty guards: autosave is 3s-debounced, so navigating away can drop the last edits.
   const blocker = useBlocker(dirty);
   useEffect(() => {
@@ -161,6 +184,7 @@ export default function EstudioPage() {
     setSaveState('saved');
     setDirty(false);
     setBootTimedOut(false);
+    setLoadError(null);
     setReloadKey((k) => k + 1);
   }, []);
 
@@ -308,7 +332,36 @@ export default function EstudioPage() {
             }}
           >
             <div style={{ textAlign: 'center', color: 'var(--text-muted)', maxWidth: '26rem' }}>
-              {bootTimedOut ? (
+              {loadError !== null ? (
+                <>
+                  <p style={{ marginBottom: '0.5rem', color: 'var(--danger)' }}>
+                    {t('editor.loadError')}
+                  </p>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-light)' }}>
+                    {t('editor.loadErrorHint')}
+                  </p>
+                  {loadError && (
+                    <p
+                      style={{
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: '0.7rem',
+                        color: 'var(--text-light)',
+                        marginTop: '0.5rem',
+                      }}
+                    >
+                      {loadError}
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={reloadEditor}
+                    className="btn-secondary"
+                    style={{ marginTop: '1rem' }}
+                  >
+                    {t('editor.reload')}
+                  </button>
+                </>
+              ) : bootTimedOut ? (
                 <>
                   <p style={{ marginBottom: '0.5rem' }}>{t('editor.notRunning')}</p>
                   {import.meta.env.DEV && (
