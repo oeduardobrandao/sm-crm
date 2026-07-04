@@ -166,11 +166,11 @@ create index designs_conta_idx on public.designs (conta_id, updated_at desc);
   `supabase/functions/post-design-manage/starter-templates.gen.ts` (regenerated; moves in
   Task 3)
 
-- [ ] **Step 1:** Add a `livre` variant to the generator: page "Canvas", NO frame (free
+- [x] **Step 1:** Add a `livre` variant to the generator: page "Canvas", NO frame (free
   canvas). Follow the existing three variants.
-- [ ] **Step 2:** Regenerate (`node scripts/estudio/build-starter-figs.mjs`) and change
+- [x] **Step 2:** Regenerate (`node scripts/estudio/build-starter-figs.mjs`) and change
   the exported helper to `starterTemplateFor(format: 'feed'|'carrossel'|'reel_cover'|'livre')`.
-- [ ] **Step 3:** Commit.
+- [x] **Step 3:** Commit.
 
 ### Task 3: `design-manage` edge function (replaces `post-design-manage`)
 
