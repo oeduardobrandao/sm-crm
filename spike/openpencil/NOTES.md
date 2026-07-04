@@ -111,3 +111,25 @@ Package: `@open-pencil/core@0.13.2` (npm, bundles scene-graph/io/layout/text/too
   2. A module-scope init promise that rejects = opaque exit 128; lazy-init inside the handler with try/catch made the real error visible. Doc service should init lazily and return structured errors.
   3. Team default Deployment Protection (SSO) intercepts requests (302) — scratch project needed `ssoProtection: null` via API. The real doc service wants protection OFF + its own shared-secret header auth.
 - **KNOWN GAP — emoji:** headless render shows a "NO GLYPH" box for emoji (`out/emoji.jpg`). Their fallback scripts are only `'cjk' | 'arabic'` (no emoji), and headless has no OS emoji font. Mitigations for the doc-service slice: register a color-emoji font and wire it into the fallback chain (possibly upstream a `'emoji'` FontFallbackScript — they're active), or reuse v1's twemoji-substitution idea. Editor-side emoji rendering to be sanity-checked in Task 4 (browser has system fonts).
+
+## Design-first core (slice A1, 2026-07-04) — implementation notes
+
+- `designs` replaces `post_designs` wholesale (rows were dark test data). Migration
+  `20260705000001_designs_first_class.sql` was validated by EXECUTING it against a throwaway
+  local Postgres 14 (homebrew initdb in a scratch dir, prod-shape stubs) plus a behavioral
+  RPC suite — cheap and caught a real plpgsql bug (record-field access on an unassigned
+  record when a design is unattached; plpgsql does NOT short-circuit `AND`).
+- Lock-ordering flip: v1 locked workflow_posts → post_designs (safe because post_id was
+  immutable). With attach/detach, post_id is only authoritative under the designs-row lock,
+  so the whole v2 family (save/attach/finalize) locks designs FIRST, then the post.
+- Stored-manifest lifecycle: unattached finalizes keep render_manifest on the rendered row
+  (future gallery thumbnails). claim_design_render reaps ANY non-null manifest at reclaim
+  (v1 reaped only superseded 'rendering') — otherwise the previous unattached render's R2
+  keys leak when a new render is claimed. delete_design queues doc blob + stored manifest
+  into file_deletions in the same transaction.
+- Blob keys are uuid-keyed now (`designs/{conta}/{uuid}-r{rev}.fig`) — POST /designs can't
+  know the row id before insert, and decoupling keys from ids removes the create-race
+  entirely.
+- `livre` starter = page with NO frame. design-render maps livre → 'carrossel' service mode
+  when unattached (multi-frame-tolerant); an empty livre canvas fails validation and shows a
+  gallery placeholder (accepted for A1).

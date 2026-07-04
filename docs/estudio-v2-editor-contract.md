@@ -3,7 +3,7 @@
 The forked OpenPencil editor (`github.com/oeduardobrandao/open-pencil`, branch `mesaas`) is
 backend-agnostic: it talks to whatever `docUrl` it is given over the **HTTP document
 contract**, and to its host window over the **bridge protocol**. The endpoint slice
-(post-design-manage) implements the former; the CRM-shell slice implements the latter.
+(design-manage) implements the former; the CRM-shell slice implements the latter.
 Change either only by versioning (bridge `v` field) and updating both sides.
 
 Editor URL shape:
@@ -18,12 +18,16 @@ Editor URL shape:
 
 ## HTTP document contract
 
-**Status: IMPLEMENTED** by `supabase/functions/post-design-manage` (slice 2). Real shape:
-`docUrl = {SUPABASE_URL}/functions/v1/post-design-manage/blob?post_id={id}`. Notes beyond
-the frozen core: the post-status guard maps to **403** (`post_not_editable`); blobs live at
-rev-scoped R2 keys (`designs/{conta}/{post}-r{rev}.fig`) so save races can't clobber; first
-GET mints a starter `.fig` for the post's tipo (feed/carrossel 1080×1350, reels cover
-1080×1920); PUT accepts an optional `x-editor-version` header (recorded on the row).
+**Status: IMPLEMENTED** by `supabase/functions/design-manage` (design-first core, slice A1
+— replaced post-design-manage). Real shape:
+`docUrl = {SUPABASE_URL}/functions/v1/design-manage/blob?design_id={id}`. Designs are
+first-class: creation is explicit (`POST /designs` mints the starter `.fig` per format —
+feed/carrossel 1080×1350, reels cover 1080×1920, livre = free canvas) and GET is a plain
+fetch (404 when the design does not exist; mint-on-GET is gone). Notes beyond the frozen
+core: a save against a design attached to a locked post maps to **403** (`read_only`);
+blobs live at uuid-keyed, rev-scoped R2 keys (`designs/{conta}/{uuid}-r{rev}.fig`) so save
+races can't clobber; PUT accepts an optional `x-editor-version` header (recorded on the
+row).
 
 ```
 GET  {docUrl}
