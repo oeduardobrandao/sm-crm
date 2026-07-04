@@ -1,7 +1,8 @@
 # Estúdio v2 — OpenPencil adoption
 
 **Date:** 2026-07-04
-**Status:** Approved (design). Phase 0 spike must pass before implementation slices begin.
+**Status:** Approved (design). Phase 0 spike PASSED 2026-07-04 (GO) — see `2026-07-04-openpencil-spike-findings.md`.
+**Amendment (from spike):** the stored blob format is **`.fig`** (their native read/write document format), not `.pen` (read-only interchange). Read every "`.pen`" below as "`.fig`". WYSIWYG parity is guaranteed by pinning `@open-pencil/core` — verified byte-identical renders across macOS and Vercel Linux.
 **Branch:** `feat/estudio-openpencil` (based on `feat/estudio-post-editor`)
 **Supersedes:** the custom editor UI + satori render pipeline described in `docs/estudio-design.md`. The workflow/lifecycle/quota contracts in that document remain authoritative where this spec says "kept".
 
