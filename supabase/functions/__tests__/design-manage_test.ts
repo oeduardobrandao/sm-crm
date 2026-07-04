@@ -131,7 +131,7 @@ function authedRequest(method: string, url: string, init: RequestInit = {}): Req
   });
 }
 
-function postDesigns(body: unknown): Request {
+function createDesignsRequest(body: unknown): Request {
   return authedRequest("POST", "https://x.test/design-manage/designs", {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -189,7 +189,7 @@ Deno.test("non-blob GET path → 404", async () => {
 Deno.test("POST /designs with post_id: starter from post tipo, uuid r1 key, trigger, audit, 201", async () => {
   const { deps, spy } = makeDeps();
   const handler = createDesignManageHandler(deps);
-  const res = await handler(postDesigns({ post_id: POST_ID }));
+  const res = await handler(createDesignsRequest({ post_id: POST_ID }));
   assertEquals(res.status, 201);
   const body = await res.json();
   assertEquals(body.design_id, 55);
@@ -207,7 +207,7 @@ Deno.test("POST /designs with post_id: starter from post tipo, uuid r1 key, trig
 Deno.test("POST /designs standalone: format from body, no post checks", async () => {
   const { deps, spy } = makeDeps();
   const handler = createDesignManageHandler(deps);
-  const res = await handler(postDesigns({ format: "livre", name: "Meu canvas" }));
+  const res = await handler(createDesignsRequest({ format: "livre", name: "Meu canvas" }));
   assertEquals(res.status, 201);
   assertEquals(spy.createCalls[0].input.postId, null);
   assertEquals(spy.createCalls[0].input.format, "livre");
@@ -217,7 +217,7 @@ Deno.test("POST /designs standalone: format from body, no post checks", async ()
 Deno.test("POST /designs standalone with bad format → 400", async () => {
   const { deps, spy } = makeDeps();
   const handler = createDesignManageHandler(deps);
-  const res = await handler(postDesigns({ format: "stories" }));
+  const res = await handler(createDesignsRequest({ format: "stories" }));
   assertEquals(res.status, 400);
   assertEquals(spy.putBlobCalls.length, 0);
 });
@@ -225,7 +225,7 @@ Deno.test("POST /designs standalone with bad format → 400", async () => {
 Deno.test("POST /designs with post_id derives format from post tipo (reels → reel_cover)", async () => {
   const { deps, spy } = makeDeps({ getPost: async () => makePostRow({ tipo: "reels" }) });
   const handler = createDesignManageHandler(deps);
-  const res = await handler(postDesigns({ post_id: POST_ID, format: "feed" }));
+  const res = await handler(createDesignsRequest({ post_id: POST_ID, format: "feed" }));
   assertEquals(res.status, 201);
   assertEquals(spy.createCalls[0].input.format, "reel_cover");
 });
@@ -233,7 +233,7 @@ Deno.test("POST /designs with post_id derives format from post tipo (reels → r
 Deno.test("POST /designs with post_id on non-editable post → 403 post_not_editable", async () => {
   const { deps, spy } = makeDeps({ getPost: async () => makePostRow({ status: "aprovado_cliente" }) });
   const handler = createDesignManageHandler(deps);
-  const res = await handler(postDesigns({ post_id: POST_ID }));
+  const res = await handler(createDesignsRequest({ post_id: POST_ID }));
   assertEquals(res.status, 403);
   assertEquals((await res.json()).error, "post_not_editable");
   assertEquals(spy.putBlobCalls.length, 0);
@@ -242,7 +242,7 @@ Deno.test("POST /designs with post_id on non-editable post → 403 post_not_edit
 Deno.test("POST /designs on stories post → 422 post_tipo_unsupported", async () => {
   const { deps, spy } = makeDeps({ getPost: async () => makePostRow({ tipo: "stories" }) });
   const handler = createDesignManageHandler(deps);
-  const res = await handler(postDesigns({ post_id: POST_ID }));
+  const res = await handler(createDesignsRequest({ post_id: POST_ID }));
   assertEquals(res.status, 422);
   assertEquals((await res.json()).error, "post_tipo_unsupported");
   assertEquals(spy.putBlobCalls.length, 0);
@@ -251,7 +251,7 @@ Deno.test("POST /designs on stories post → 422 post_tipo_unsupported", async (
 Deno.test("POST /designs on feed post with video media → 422 post_has_video", async () => {
   const { deps, spy } = makeDeps({ hasVideoMedia: async () => true });
   const handler = createDesignManageHandler(deps);
-  const res = await handler(postDesigns({ post_id: POST_ID }));
+  const res = await handler(createDesignsRequest({ post_id: POST_ID }));
   assertEquals(res.status, 422);
   assertEquals((await res.json()).error, "post_has_video");
   assertEquals(spy.putBlobCalls.length, 0);
@@ -260,14 +260,14 @@ Deno.test("POST /designs on feed post with video media → 422 post_has_video", 
 Deno.test("POST /designs with unknown post → 404", async () => {
   const { deps } = makeDeps({ getPost: async () => null });
   const handler = createDesignManageHandler(deps);
-  const res = await handler(postDesigns({ post_id: POST_ID }));
+  const res = await handler(createDesignsRequest({ post_id: POST_ID }));
   assertEquals(res.status, 404);
 });
 
 Deno.test("POST /designs with alien cliente_id → 404 cliente_not_found", async () => {
   const { deps } = makeDeps();
   const handler = createDesignManageHandler(deps);
-  const res = await handler(postDesigns({ format: "feed", cliente_id: 999 }));
+  const res = await handler(createDesignsRequest({ format: "feed", cliente_id: 999 }));
   assertEquals(res.status, 404);
   assertEquals((await res.json()).error, "cliente_not_found");
 });
@@ -279,7 +279,7 @@ Deno.test("POST /designs maps post_already_designed RPC error → 409", async ()
     },
   });
   const handler = createDesignManageHandler(deps);
-  const res = await handler(postDesigns({ post_id: POST_ID }));
+  const res = await handler(createDesignsRequest({ post_id: POST_ID }));
   assertEquals(res.status, 409);
   assertEquals((await res.json()).error, "post_already_designed");
 });

@@ -1,8 +1,8 @@
 // Shared "what did the last render actually produce" projection (docs/estudio-design.md §5.4 /
 // §9's `get_design` MCP tool use the identical `render: {status, pages}` shape — this module is
-// the one place that builds `pages`, so post-design-manage and the future MCP tool can't drift).
+// the one place that builds `pages`, so design-manage and the future MCP tool can't drift).
 //
-// Mirrors the media semantics in finalize_design_render (20260702000001_post_designs.sql §5.2):
+// Mirrors the media semantics in finalize_design_render (20260705000001_designs_first_class.sql):
 // feed/carrossel renders create real `post_file_links` rows (`origin='design'`); reel_cover
 // renders never create a link row at all — the JPEG becomes the linked video's
 // `thumbnail_r2_key` instead. Zipped positionally against the CURRENT doc's pages (by

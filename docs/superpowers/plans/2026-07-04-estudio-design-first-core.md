@@ -303,11 +303,13 @@ export async function createDesign(input: { post_id?: number; format?: string })
 
 ### Task 7: Delete the old function + full-suite gate
 
-- [ ] **Step 1:** Confirm `post-design-manage` dir is gone (Task 3 mv), no stray imports:
+- [x] **Step 1:** Confirm `post-design-manage` dir is gone (Task 3 mv), no stray imports:
   `grep -rn "post-design-manage\|post_designs\|postDesigns" apps/ supabase/functions/ packages/ --include="*.ts*" | grep -v mcp/ | grep -v design-doc` → ONLY hits in docs/spike
   history and the migration itself.
-- [ ] **Step 2:** Full gates: `npm run test`, `npm run test:functions`, `npm run build`,
+- [x] **Step 2:** Full gates: `npm run test`, `npm run test:functions`, `npm run build`,
   `npm run lint` (0 errors), `npx prettier --check` on touched files. Commit fixes if any.
+  *(Gotcha reconfirmed: test:functions pollutes node_modules via deno — `npm ci` before the
+  tsc builds.)*
 
 ### Task 8: Deploy to prod + live E2E + docs
 

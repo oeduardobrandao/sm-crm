@@ -1,5 +1,5 @@
 // Fire-and-forget design-render kick — the ONE implementation of the internal trigger
-// (post-design-manage save path, instagram-publish/hub-approve T4.1 re-triggers). 409 = a
+// (design-manage create/save/attach paths, instagram-publish/hub-approve T4.1 re-triggers). 409 = a
 // render is already in flight (claim lost) and 204 = nothing to do; both are success here.
 export function createDesignRenderTrigger(supabaseUrl: string, cronSecret: string) {
   return async (designId: number, rev: number): Promise<void> => {

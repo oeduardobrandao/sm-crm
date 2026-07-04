@@ -1,6 +1,6 @@
 // design-render-sweep-cron — docs/estudio-design.md §5.2 T1.6. Safety net for design-render's
-// fire-and-forget triggers (initial call from post-design-manage/MCP writes, and PR 1.5's chain
-// self-invocation): re-fires any post_designs row stuck `pending`/`rendering` for more than the
+// fire-and-forget triggers (initial call from design-manage/MCP writes, and PR 1.5's chain
+// self-invocation): re-fires any designs row stuck `pending`/`rendering` for more than the
 // threshold. Droppable and safe to overlap with a still-alive render — claim_design_render's own
 // 3-minute stale-lock means a re-fire against a row that isn't actually dead just no-ops (409, or
 // 204 if the rev also moved), so this cron's shorter threshold is deliberately a fast-retry net,
