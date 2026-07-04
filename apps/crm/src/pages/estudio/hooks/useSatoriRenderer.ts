@@ -15,6 +15,10 @@ import { useImageUrls } from './useImageUrls';
 
 const RENDER_DEBOUNCE_MS = 150;
 
+/** 1×1 transparent PNG — the graceful stand-in for an image satori can't resolve. */
+const TRANSPARENT_PIXEL =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+
 export type SatoriStandalone = typeof import('satori/standalone');
 
 let satoriModulePromise: Promise<SatoriStandalone> | null = null;
@@ -82,7 +86,13 @@ export function useSatoriRenderer(
 
         const tree = buildPageTree(doc, pageIndex, (fileId) => {
           const url = images.get(fileId);
-          if (!url) throw new Error(`useSatoriRenderer: unresolved file_id ${fileId}`);
+          if (!url) {
+            // Degrade, don't die: an unresolvable image (fetch failed on every route, or a
+            // stale id) renders as a transparent hole while the REST of the page stays live
+            // and editable. The server render (design-render) keeps its strict throw.
+            console.warn(`[estudio] imagem não resolvida para file_id ${fileId}`);
+            return TRANSPARENT_PIXEL;
+          }
           return url;
         });
 

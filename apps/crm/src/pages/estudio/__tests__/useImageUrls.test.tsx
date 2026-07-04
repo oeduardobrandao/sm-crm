@@ -16,7 +16,7 @@ vi.mock('@/lib/supabase', () => ({
   },
 }));
 
-import { useImageUrls } from '../hooks/useImageUrls';
+import { clearImageUrlCachesForTest, seedImageUrl, useImageUrls } from '../hooks/useImageUrls';
 
 function renderWithClient(doc: Parameters<typeof useImageUrls>[0]) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -38,34 +38,84 @@ function docWithImage(fileId: number) {
   });
 }
 
+/** fetch stub routed by URL: sign POST, direct signed GET, and the byte-proxy GET. */
+function routeFetch(opts: {
+  signedUrl?: string;
+  directOk?: boolean;
+  proxyOk?: boolean;
+  signStatus?: number;
+}) {
+  const { signedUrl = 'https://r2.example/signed', directOk = true, proxyOk = true } = opts;
+  return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url.includes('/functions/v1/sign-r2-urls?key=')) {
+      if (!proxyOk) return new Response(null, { status: 404 });
+      return new Response(new Blob([new Uint8Array([9, 9])], { type: 'image/png' }), {
+        status: 200,
+      });
+    }
+    if (url.includes('/functions/v1/sign-r2-urls')) {
+      if (opts.signStatus) return new Response(null, { status: opts.signStatus });
+      return new Response(JSON.stringify({ urls: { 'contas/c1/files/photo.jpg': signedUrl } }), {
+        status: 200,
+      });
+    }
+    if (url === signedUrl) {
+      if (!directOk) throw new TypeError('Failed to fetch'); // the CORS shape
+      return new Response(new Blob([new Uint8Array([1, 2, 3])], { type: 'image/jpeg' }), {
+        status: 200,
+      });
+    }
+    void init;
+    throw new Error(`unexpected fetch: ${url}`);
+  }) as unknown as typeof fetch;
+}
+
 describe('useImageUrls', () => {
   const originalFetch = global.fetch;
+  const originalCreateObjectURL = URL.createObjectURL;
+  let blobCounter = 0;
 
   beforeEach(() => {
+    clearImageUrlCachesForTest();
+    blobCounter = 0;
+    URL.createObjectURL = vi.fn(() => `blob:mock-${++blobCounter}`);
     filesTableIn.mockResolvedValue({
       data: [{ id: 42, r2_key: 'contas/c1/files/photo.jpg' }],
       error: null,
     });
     getSession.mockResolvedValue({ data: { session: { access_token: 'token-123' } } });
-    global.fetch = vi.fn(
-      async () =>
-        new Response(
-          JSON.stringify({ urls: { 'contas/c1/files/photo.jpg': 'https://r2.example/signed' } }),
-          {
-            status: 200,
-          },
-        ),
-    ) as typeof fetch;
+    global.fetch = routeFetch({});
   });
 
   afterEach(() => {
     global.fetch = originalFetch;
+    URL.createObjectURL = originalCreateObjectURL;
   });
 
-  it('resolves a background file_id to its signed URL', async () => {
+  it('resolves a background file_id to a blob URL via the direct signed fetch', async () => {
     const { result } = renderWithClient(docWithImage(42));
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.data!.get(42)).toBe('https://r2.example/signed');
+    expect(result.current.data!.get(42)).toBe('blob:mock-1');
+    // No byte-proxy call on the happy path.
+    const proxyCalls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.filter((c) =>
+      String(c[0]).includes('sign-r2-urls?key='),
+    );
+    expect(proxyCalls).toHaveLength(0);
+  });
+
+  it('falls back to the byte-proxy (with auth) when the direct fetch fails CORS-style', async () => {
+    global.fetch = routeFetch({ directOk: false });
+    const { result } = renderWithClient(docWithImage(42));
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data!.get(42)).toMatch(/^blob:mock-/);
+    const proxyCall = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.find((c) =>
+      String(c[0]).includes('sign-r2-urls?key=contas%2Fc1%2Ffiles%2Fphoto.jpg'),
+    );
+    expect(proxyCall).toBeTruthy();
+    expect(proxyCall![1]).toMatchObject({
+      headers: { Authorization: 'Bearer token-123' },
+    });
   });
 
   it('calls files.select().in() with the collected file_ids and sign-r2-urls with the resolved keys', async () => {
@@ -83,6 +133,34 @@ describe('useImageUrls', () => {
         }),
       ),
     );
+  });
+
+  it('reuses the module blob cache — a second doc resolution makes zero network calls', async () => {
+    const first = renderWithClient(docWithImage(42));
+    await waitFor(() => expect(first.result.current.isSuccess).toBe(true));
+    const callsAfterFirst = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    const second = renderWithClient(docWithImage(42));
+    await waitFor(() => expect(second.result.current.isSuccess).toBe(true));
+    expect(second.result.current.data!.get(42)).toBe(first.result.current.data!.get(42));
+    expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(callsAfterFirst);
+  });
+
+  it('a seeded signed URL resolves with a single direct fetch (no table, no sign round trip)', async () => {
+    seedImageUrl(42, 'https://r2.example/signed');
+    const { result } = renderWithClient(docWithImage(42));
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data!.get(42)).toBe('blob:mock-1');
+    expect(filesTableIn).not.toHaveBeenCalled();
+  });
+
+  it('a seeded URL that fails falls through to the full resolution path', async () => {
+    seedImageUrl(42, 'https://r2.example/expired-seed');
+    global.fetch = routeFetch({}); // seed URL is not routed → its fetch throws → fallthrough
+    const { result } = renderWithClient(docWithImage(42));
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data!.get(42)).toMatch(/^blob:mock-/);
+    expect(filesTableIn).toHaveBeenCalled();
   });
 
   it('short-circuits to an empty map with no network calls when the doc has no image references', async () => {
@@ -106,16 +184,14 @@ describe('useImageUrls', () => {
   });
 
   it('rejects when sign-r2-urls responds with a non-ok status', async () => {
-    global.fetch = vi.fn(async () => new Response(null, { status: 500 })) as typeof fetch;
+    global.fetch = routeFetch({ signStatus: 500 });
     const { result } = renderWithClient(docWithImage(42));
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(result.current.error).toMatchObject({ message: expect.stringContaining('500') });
   });
 
-  it('a file_id present in `files` but missing from the returned urls map resolves to a partial map, not a crash', async () => {
-    global.fetch = vi.fn(
-      async () => new Response(JSON.stringify({ urls: {} }), { status: 200 }),
-    ) as typeof fetch;
+  it('a file whose direct AND proxy fetches fail resolves to a partial map, not a crash', async () => {
+    global.fetch = routeFetch({ directOk: false, proxyOk: false });
     const { result } = renderWithClient(docWithImage(42));
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data!.has(42)).toBe(false);
