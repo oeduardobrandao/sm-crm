@@ -287,6 +287,17 @@ describe('CanvasStage / InteractionOverlay', () => {
     renderStage({ layers: [makeTextLayer({ id: 'a' })], selection: [] });
     expect(screen.queryByTestId('layer-handles')).not.toBeInTheDocument();
   });
+
+  it('renders NO transform handles for a locked selected layer (T7.4 lock enforcement)', () => {
+    // A layer locked via the LayerListPanel can be selected, but must expose no resize/rotate grips.
+    renderStage({
+      layers: [makeImageLayer({ id: 'img', x: 100, y: 100, w: 200, h: 200, locked: true })],
+      selection: ['img'],
+    });
+    expect(screen.queryByTestId('layer-handles')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('rotate-handle')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('resize-handle-se')).not.toBeInTheDocument();
+  });
 });
 
 describe('InteractionOverlay text-edit mode (T2.8)', () => {

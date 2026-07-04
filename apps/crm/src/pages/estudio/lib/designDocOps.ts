@@ -231,3 +231,26 @@ export function reorderPages(doc: DesignDoc, fromIndex: number, toIndex: number)
   pages.splice(clampedTo, 0, moved);
   return { ...doc, pages };
 }
+
+// ============================================================
+// Templates (T7.6 — groundwork only; no template LIBRARY in v1, design §0)
+// ============================================================
+
+/** Instantiates a fresh, independent copy of `source` — a deep clone with EVERY page id and layer
+ * id re-minted, so the result can be saved as a brand-new design without colliding with the
+ * template (or another instance of it) under the schema's per-doc id-uniqueness rule. This is the
+ * whole of v1 "template" support: a template is just a stored DesignDoc (design §0), and turning
+ * one into an editable design is exactly this re-mint.
+ *
+ * `file_id` references are intentionally preserved (files are shared assets, not per-doc), so
+ * `fileIds` is unchanged — recomputed through `withFileIds` only to keep the derived list in
+ * lock-step with the (structurally identical) clone. Purely functional: `source` is never mutated. */
+export function instantiateDoc(source: DesignDoc): DesignDoc {
+  const clone = structuredClone(source);
+  const pages = clone.pages.map((page) => ({
+    ...page,
+    id: generateDesignId('page'),
+    layers: page.layers.map((layer) => ({ ...layer, id: generateDesignId('layer') })),
+  }));
+  return withFileIds({ ...clone, pages });
+}

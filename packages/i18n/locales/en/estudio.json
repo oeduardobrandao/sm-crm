@@ -166,6 +166,13 @@
       "bottom": "Align bottom"
     }
   },
+  "layers": {
+    "title": "Layers",
+    "empty": "No layers yet",
+    "dragHandle": "Reorder layer",
+    "lock": "Lock layer",
+    "unlock": "Unlock layer"
+  },
   "toast": {
     "createError": "Could not create the design: {{error}}"
   },

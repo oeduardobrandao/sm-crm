@@ -12,10 +12,11 @@
 // (`inset: 0`) siblings. A pointer event's position relative to that box's own
 // `getBoundingClientRect()` then feeds directly into `screenToCanvas` (divide by scale, no extra
 // offset math needed).
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSatoriRenderer } from '../../hooks/useSatoriRenderer';
 import { useCanvasTransform } from '../../hooks/useCanvasTransform';
+import { useGuidesPreference } from '../../hooks/useGuidesPreference';
 import { SatoriPreview } from './SatoriPreview';
 import { InteractionOverlay } from './InteractionOverlay';
 import { SafeZoneGuides } from './SafeZoneGuides';
@@ -60,7 +61,8 @@ export function CanvasStage({
   const { svg, error } = useSatoriRenderer(doc, pageIndex);
   const { containerRef, scale, offset, screenToCanvas, canvasToScreen, resetView } =
     useCanvasTransform(doc.canvas.width, doc.canvas.height);
-  const [safeZonesVisible, setSafeZonesVisible] = useState(true);
+  // T7.5: user-scoped, localStorage-persisted (absent = ON). Replaces the old ephemeral useState.
+  const [safeZonesVisible, setSafeZonesVisible] = useGuidesPreference();
 
   useEffect(() => {
     onViewChange?.({ scale, resetView });
@@ -126,7 +128,7 @@ export function CanvasStage({
       {svg && (
         <button
           type="button"
-          onClick={() => setSafeZonesVisible((v) => !v)}
+          onClick={() => setSafeZonesVisible(!safeZonesVisible)}
           title={t('editor.safeZoneToggle')}
           aria-pressed={safeZonesVisible}
           style={{

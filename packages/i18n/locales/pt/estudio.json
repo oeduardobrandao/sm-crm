@@ -166,6 +166,13 @@
       "bottom": "Alinhar à base"
     }
   },
+  "layers": {
+    "title": "Camadas",
+    "empty": "Nenhuma camada ainda",
+    "dragHandle": "Reordenar camada",
+    "lock": "Bloquear camada",
+    "unlock": "Desbloquear camada"
+  },
   "toast": {
     "createError": "Não foi possível criar o design: {{error}}"
   },

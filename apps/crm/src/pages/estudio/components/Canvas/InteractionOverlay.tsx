@@ -279,7 +279,9 @@ export function InteractionOverlay({
 
   const handleResizePointerDown = useCallback(
     (handle: ResizeHandle, e: React.PointerEvent) => {
-      if (!selectedLayer) return;
+      // A locked layer can be SELECTED via the LayerListPanel (T7.4) but never transformed; its
+      // grips aren't rendered (see render() below) — this guard is defense-in-depth.
+      if (!selectedLayer || selectedLayer.locked) return;
       e.stopPropagation();
       const point = clientPointToCanvas(e.clientX, e.clientY);
       const startBBox = getLayerBBox(selectedLayer, getTextHeight);
@@ -305,7 +307,7 @@ export function InteractionOverlay({
 
   const handleRotatePointerDown = useCallback(
     (e: React.PointerEvent) => {
-      if (!selectedLayer) return;
+      if (!selectedLayer || selectedLayer.locked) return;
       e.stopPropagation();
       const startBBox = getLayerBBox(selectedLayer, getTextHeight);
       const next: Gesture = {
@@ -428,7 +430,11 @@ export function InteractionOverlay({
     <div
       ref={overlayRef}
       data-testid="interaction-overlay"
-      style={{ position: 'absolute', inset: 0, cursor: selectedLayer ? 'move' : 'default' }}
+      style={{
+        position: 'absolute',
+        inset: 0,
+        cursor: selectedLayer && !selectedLayer.locked ? 'move' : 'default',
+      }}
       onPointerDown={
         editingLayerId
           ? undefined
@@ -520,18 +526,23 @@ export function InteractionOverlay({
           {Math.round(ghost.rotation)}°
         </div>
       )}
-      {selectedLayer && displayBBox && editingLayerId !== selectedLayer.id && (
-        <LayerHandles
-          bbox={displayBBox}
-          // During a rotate gesture the outline spins with the live angle; otherwise the
-          // committed rotation. Drag/resize keep the committed rotation (ghost.rotation is unset).
-          rotation={ghost?.rotation ?? selectedLayer.rotation}
-          hasHeight={!isTextLayer(selectedLayer)}
-          canvasToScreen={canvasToScreen}
-          onResizePointerDown={handleResizePointerDown}
-          onRotatePointerDown={handleRotatePointerDown}
-        />
-      )}
+      {/* Locked layers can be selected (via LayerListPanel) but show NO transform handles — the
+          selection is visible in the panel, not as grabbable canvas chrome (T7.4). */}
+      {selectedLayer &&
+        !selectedLayer.locked &&
+        displayBBox &&
+        editingLayerId !== selectedLayer.id && (
+          <LayerHandles
+            bbox={displayBBox}
+            // During a rotate gesture the outline spins with the live angle; otherwise the
+            // committed rotation. Drag/resize keep the committed rotation (ghost.rotation is unset).
+            rotation={ghost?.rotation ?? selectedLayer.rotation}
+            hasHeight={!isTextLayer(selectedLayer)}
+            canvasToScreen={canvasToScreen}
+            onResizePointerDown={handleResizePointerDown}
+            onRotatePointerDown={handleRotatePointerDown}
+          />
+        )}
     </div>
   );
 }

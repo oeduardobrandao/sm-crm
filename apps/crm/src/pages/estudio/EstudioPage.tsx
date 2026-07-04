@@ -15,6 +15,7 @@ import { CanvasStage } from './components/Canvas/CanvasStage';
 import { LeftToolDock, BrandPanel, GerarImagemPanel } from './components/Dock';
 import ContextualToolbar from './components/Toolbar';
 import { SlideStrip } from './components/SlideStrip';
+import { LayerListPanel } from './components/Layers/LayerListPanel';
 import { usePostDesignQuery, PostDesignError } from './hooks/usePostDesignQuery';
 import { useDesignDocState } from './hooks/useDesignDocState';
 import { useEditorShortcuts } from './hooks/useEditorShortcuts';
@@ -156,6 +157,18 @@ function EstudioEditorShell({ postId }: { postId: number }) {
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [state.activePageId],
+  );
+  // T7.4 LayerListPanel wiring — z-order reorder (absolute array index) + lock toggle.
+  const onReorderLayer = useCallback(
+    (layerId: string, toIndex: number) => {
+      state.dispatch({ type: 'layer/reorder', pageId: state.activePageId, layerId, toIndex });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state.activePageId],
+  );
+  const onToggleLayerLock = useCallback(
+    (layerId: string, locked: boolean) => onUpdateLayer(layerId, { locked }),
+    [onUpdateLayer],
   );
 
   // TextEditOverlay's modal takeover (InteractionOverlay's `editingLayerId` !== null) is the
@@ -486,6 +499,13 @@ function EstudioEditorShell({ postId }: { postId: number }) {
             onViewChange={setView}
           />
         </div>
+        <LayerListPanel
+          layers={activePage?.layers ?? []}
+          selection={state.selection}
+          onSelect={state.select}
+          onReorder={onReorderLayer}
+          onToggleLock={onToggleLayerLock}
+        />
       </div>
       <SlideStrip
         doc={state.doc}

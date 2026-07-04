@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as ops from '../lib/designDocOps';
-import { makeDoc, makePage, makeTextLayer } from './fixtures';
+import { makeDoc, makeImageLayer, makePage, makeTextLayer } from './fixtures';
 
 describe('designDocOps layers', () => {
   it('addLayer inserts at the end by default (top of z-order)', () => {
@@ -281,5 +281,56 @@ describe('designDocOps setPageBackground (T6.4)', () => {
     });
     const next = ops.setPageBackground(doc, 'p1', { type: 'solid', color: '#000000' });
     expect(next.fileIds).not.toContain(5);
+  });
+});
+
+describe('instantiateDoc (T7.6 template groundwork)', () => {
+  const template = () =>
+    makeDoc({
+      format: 'carrossel',
+      pages: [
+        makePage({
+          id: 'tpl-page-1',
+          background: { type: 'image', file_id: 7, fit: 'cover' },
+          layers: [makeTextLayer({ id: 'tpl-a' }), makeImageLayer({ id: 'tpl-b', file_id: 9 })],
+        }),
+        makePage({ id: 'tpl-page-2', layers: [makeTextLayer({ id: 'tpl-c' })] }),
+      ],
+    });
+
+  it('re-mints every page id and every layer id', () => {
+    const src = template();
+    const out = ops.instantiateDoc(src);
+    const pageIds = out.pages.map((p) => p.id);
+    const layerIds = out.pages.flatMap((p) => p.layers.map((l) => l.id));
+    expect(pageIds).not.toContain('tpl-page-1');
+    expect(pageIds).not.toContain('tpl-page-2');
+    expect(layerIds).not.toContain('tpl-a');
+    expect(layerIds).not.toContain('tpl-b');
+    expect(layerIds).not.toContain('tpl-c');
+    // All fresh ids are unique across the whole doc (schema id-uniqueness rule).
+    const all = [...pageIds, ...layerIds];
+    expect(new Set(all).size).toBe(all.length);
+  });
+
+  it('preserves structure, layer props, and file references (files are shared assets)', () => {
+    const src = template();
+    const out = ops.instantiateDoc(src);
+    expect(out.pages).toHaveLength(2);
+    expect(out.pages[0].layers).toHaveLength(2);
+    expect(out.pages[0].background).toEqual({ type: 'image', file_id: 7, fit: 'cover' });
+    expect(out.pages[0].layers[0]).toMatchObject({ type: 'text', name: 'Texto 1' });
+    // fileIds stay in sync with the (unchanged) file references.
+    expect(new Set(out.fileIds)).toEqual(new Set([7, 9]));
+  });
+
+  it('is a pure deep clone — the source doc is never mutated and shares no nested refs', () => {
+    const src = template();
+    const snapshot = JSON.stringify(src);
+    const out = ops.instantiateDoc(src);
+    expect(JSON.stringify(src)).toBe(snapshot); // source untouched
+    expect(out).not.toBe(src);
+    expect(out.pages[0]).not.toBe(src.pages[0]);
+    expect(out.pages[0].layers[0]).not.toBe(src.pages[0].layers[0]);
   });
 });
