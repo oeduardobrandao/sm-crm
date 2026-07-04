@@ -20,8 +20,9 @@ import { useGuidesPreference } from '../../hooks/useGuidesPreference';
 import { SatoriPreview } from './SatoriPreview';
 import { InteractionOverlay, type InteractionOverlayProps } from './InteractionOverlay';
 import { SafeZoneGuides } from './SafeZoneGuides';
+import { StaticTextBridge } from './StaticTextBridge';
 import type { GetTextHeight } from '../../lib/layerGeometry';
-import type { DesignDoc, NormalizedLayer } from '../../types';
+import type { DesignDoc, NormalizedLayer, NormalizedTextLayer } from '../../types';
 
 export interface CanvasStageProps {
   doc: DesignDoc;
@@ -65,14 +66,33 @@ export function CanvasStage({
   // live contenteditable IS that layer's presentation; satori's own copy underneath was a
   // double-exposure that diverged on the first keystroke.
   const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
+  // When the edit ENDS, the on-screen SVG still excludes the layer until the debounced
+  // re-render lands — bridgeLayerId keeps a static DOM stand-in (StaticTextBridge) mounted for
+  // exactly that gap, so the text never blinks out on commit.
+  const [bridgeLayerId, setBridgeLayerId] = useState<string | null>(null);
   const handleEditingLayerChange = useCallback(
     (layerId: string | null) => {
-      setEditingLayerId(layerId);
+      setEditingLayerId((prev) => {
+        if (layerId === null && prev !== null) setBridgeLayerId(prev);
+        return layerId;
+      });
       onEditingChange?.(layerId != null);
     },
     [onEditingChange],
   );
-  const { svg, error } = useSatoriRenderer(doc, pageIndex, editingLayerId);
+  const { svg, renderedDoc, renderedHiddenLayerId, error } = useSatoriRenderer(
+    doc,
+    pageIndex,
+    editingLayerId,
+  );
+
+  // Release the bridge once the DISPLAYED svg was built from the current doc WITH the layer
+  // visible again (commit: new doc reference; cancel: same doc, hiddenLayerId back to null).
+  useEffect(() => {
+    if (bridgeLayerId && renderedDoc === doc && renderedHiddenLayerId === null) {
+      setBridgeLayerId(null);
+    }
+  }, [bridgeLayerId, renderedDoc, renderedHiddenLayerId, doc]);
   const { containerRef, scale, offset, screenToCanvas, canvasToScreen, resetView } =
     useCanvasTransform(doc.canvas.width, doc.canvas.height);
   // T7.5: user-scoped, localStorage-persisted (absent = ON). Replaces the old ephemeral useState.
@@ -83,6 +103,11 @@ export function CanvasStage({
   }, [scale, resetView, onViewChange]);
 
   const layers = doc.pages[pageIndex]?.layers ?? [];
+  const bridgeLayer = bridgeLayerId
+    ? (layers.find((l) => l.id === bridgeLayerId && l.type === 'text') as
+        | NormalizedTextLayer
+        | undefined)
+    : undefined;
 
   return (
     <div
@@ -116,6 +141,7 @@ export function CanvasStage({
           }}
         >
           <SatoriPreview svg={svg} />
+          {bridgeLayer && <StaticTextBridge layer={bridgeLayer} scale={scale} />}
           <SafeZoneGuides
             format={doc.format}
             canvasHeight={doc.canvas.height}

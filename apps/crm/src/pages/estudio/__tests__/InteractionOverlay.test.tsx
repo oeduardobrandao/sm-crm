@@ -53,13 +53,22 @@ Range.prototype.getBoundingClientRect = () =>
 // @ts-expect-error jsdom-only polyfill — ProseMirror's view.dom querying uses this in a few paths.
 document.elementFromPoint = () => null;
 
-const satoriRendererState: { svg: string | null; error: Error | null } = {
+const satoriRendererState: {
+  svg: string | null;
+  error: Error | null;
+  renderedDoc: unknown;
+  renderedHiddenLayerId: string | null;
+} = {
   svg: '<svg width="1000" height="1000"></svg>',
   error: null,
+  renderedDoc: null,
+  renderedHiddenLayerId: null,
 };
 vi.mock('../hooks/useSatoriRenderer', () => ({
   useSatoriRenderer: () => ({
     svg: satoriRendererState.svg,
+    renderedDoc: satoriRendererState.renderedDoc,
+    renderedHiddenLayerId: satoriRendererState.renderedHiddenLayerId,
     isRendering: false,
     error: satoriRendererState.error,
   }),
@@ -408,6 +417,46 @@ describe('InteractionOverlay text-edit mode (T2.8)', () => {
 
     expect(await screen.findByTestId('text-edit-overlay')).toBeInTheDocument();
     expect(screen.queryByTestId('layer-handles')).not.toBeInTheDocument();
+  });
+
+  it('ending an edit mounts the StaticTextBridge until the rendered SVG includes the layer again (review finding: text blinked out for the debounce+render window on every commit)', async () => {
+    const layer = makeTextLayer({ id: 'a', x: 100, y: 100, w: 200, text: 'Olá' });
+    const doc = makeDoc({
+      canvas: { width: 1000, height: 1000 as never },
+      pages: [makePage({ layers: [layer] })],
+    });
+    // Fresh element per (re)render — rerendering the SAME element reference makes React bail out
+    // without re-reading the mocked renderer state.
+    const stage = () => (
+      <CanvasStage
+        doc={doc}
+        pageIndex={0}
+        selection={['a']}
+        select={vi.fn()}
+        onUpdateLayer={vi.fn()}
+        getTextHeight={getTextHeight}
+      />
+    );
+    const { rerender } = render(stage());
+
+    const overlay = screen.getByTestId('interaction-overlay');
+    fireEvent.doubleClick(overlay, { clientX: 150, clientY: 125 });
+    const editable = await screen.findByTestId('text-edit-overlay-editor');
+    expect(screen.queryByTestId('static-text-bridge')).not.toBeInTheDocument();
+
+    // Escape ends the edit session — the renderer still reports a render WITHOUT the layer.
+    satoriRendererState.renderedDoc = doc;
+    satoriRendererState.renderedHiddenLayerId = 'a';
+    fireEvent.keyDown(editable, { key: 'Escape' });
+
+    await waitFor(() => expect(screen.queryByTestId('text-edit-overlay')).not.toBeInTheDocument());
+    const bridge = screen.getByTestId('static-text-bridge');
+    expect(bridge).toHaveTextContent('Olá');
+
+    // The renderer catches up (same doc, no hidden layer) → the next render releases the bridge.
+    satoriRendererState.renderedHiddenLayerId = null;
+    rerender(stage());
+    await waitFor(() => expect(screen.queryByTestId('static-text-bridge')).not.toBeInTheDocument());
   });
 
   it('a pointerdown/drag on the layer while editing does NOT start a drag gesture (no gesture-ghost renders)', async () => {

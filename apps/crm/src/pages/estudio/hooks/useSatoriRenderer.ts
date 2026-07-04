@@ -50,6 +50,11 @@ export async function ensureSatoriReady(): Promise<SatoriStandalone> {
 
 export interface UseSatoriRendererResult {
   svg: string | null;
+  /** The exact inputs the CURRENT `svg` was built from — `renderedDoc` by reference, plus which
+   * layer (if any) was hidden. CanvasStage's post-edit bridge waits on these to know when the
+   * on-screen SVG finally INCLUDES a freshly committed text layer again. */
+  renderedDoc: DesignDoc | null;
+  renderedHiddenLayerId: string | null;
   isRendering: boolean;
   error: Error | null;
 }
@@ -72,6 +77,10 @@ export function useSatoriRenderer(
   const fontsQuery = useFontManifest(doc);
   const imagesQuery = useImageUrls(doc);
   const [svg, setSvg] = useState<string | null>(null);
+  const [rendered, setRendered] = useState<{
+    doc: DesignDoc;
+    hiddenLayerId: string | null;
+  } | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const [isRendering, setIsRendering] = useState(false);
   const generationRef = useRef(0);
@@ -128,6 +137,7 @@ export function useSatoriRenderer(
         .then((result) => {
           if (generation !== generationRef.current) return;
           setSvg(result ?? null);
+          if (result != null) setRendered({ doc, hiddenLayerId: hideLayerId ?? null });
           setError(null);
         })
         .catch((e: unknown) => {
@@ -144,6 +154,8 @@ export function useSatoriRenderer(
 
   return {
     svg,
+    renderedDoc: rendered?.doc ?? null,
+    renderedHiddenLayerId: rendered?.hiddenLayerId ?? null,
     isRendering,
     error:
       error ?? (fontsQuery.error as Error | null) ?? (imagesQuery.error as Error | null) ?? null,
