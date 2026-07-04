@@ -1,0 +1,10 @@
+{
+  "name": "estudio-render",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node --test test/" },
+  "dependencies": {
+    "@open-pencil/core": "0.13.2",
+    "canvaskit-wasm": "0.41.1"
+  }
+}
