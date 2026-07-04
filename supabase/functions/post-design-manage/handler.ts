@@ -1,83 +1,35 @@
-// post-design-manage — docs/estudio-design.md §5.4. The editor's save path (slice 1): the ONLY
-// design write path for the CRM. User-facing (Bearer JWT, verified in application code — same
-// pattern as file-upload-finalize, NOT the platform gateway's verify_jwt; see config.toml).
+// post-design-manage — Estúdio v2 (OpenPencil). The editor's blob save/load path: .fig bytes
+// live in R2, this function moves them and guards rev/tenancy/status. Contract (FROZEN):
+// docs/estudio-v2-editor-contract.md — GET/PUT /blob with x-rev / x-expected-rev.
 //
-// Every write goes through the RPC family from 20260702000001_post_designs.sql
-// (get_or_create_post_design / update_post_design / delete_post_design) — clients cannot write
-// post_designs directly at all (SELECT-only grants), so ownership/status/rev/tipo-sync are
-// enforced in one transaction regardless of caller. This handler's own status/feature
-// pre-checks exist only to turn what would otherwise be a raw RPC exception into a clean
-// structured response — the RPCs re-check everything themselves (defense in depth, not the
-// actual access-control boundary).
+// User-facing (Bearer JWT, verified in application code — same pattern as file-upload-finalize,
+// NOT the platform gateway's verify_jwt; see config.toml). All writes go through the v2 RPC
+// family (20260704000001_post_designs_blob.sql) — clients cannot write post_designs directly
+// (SELECT-only grants), so ownership/status/rev are enforced in one transaction regardless of
+// caller. Deep validation, tipo-sync and render triggering are the doc service's job (later
+// slice) — this function treats the blob as opaque bytes.
 
 import { createJsonResponder } from "../_shared/http.ts";
-import {
-  toDesignValidationError,
-  validateDesignDoc,
-  type DesignDoc,
-  type DesignFormat,
-  type AspectRatio,
-  type FontVariantLookup,
-  type ValidationContext,
-} from "../_shared/design-doc.ts";
 import type { MaterializeLogoResult } from "../_shared/brand-logo.ts";
-import type { RenderPageInfo } from "../_shared/design-render-status.ts";
+import { starterTemplateFor } from "./starter-templates.gen.ts";
 
-// Mirrors EDITABLE_STATUSES in supabase/functions/mcp/queries.ts and the SQL copy inside
-// post_design_check_and_sync (20260702000001_post_designs.sql) — kept in sync by hand, same as
-// those two already are with each other.
+// Mirrors the SQL copies inside get_or_create_post_design_blob / save_post_design_blob.
 const EDITABLE_STATUSES = ["rascunho", "revisao_interna", "correcao_cliente"];
 
-// doc_version passed to the create/update RPCs — DesignDocInputSchema's `version: z.literal(1)`
-// is the only schema version that exists yet; index.ts's RPC-wrapper deps use this constant.
-export const DOC_VERSION = 1;
-
-function starterFormatForTipo(tipo: string): DesignFormat | null {
-  switch (tipo) {
-    case "feed":
-      return "feed";
-    case "carrossel":
-      return "carrossel";
-    case "reels":
-      return "reel_cover";
-    default:
-      return null; // 'stories' (unsupported, §5.4) and anything else unrecognized.
-  }
-}
-
-// Product default, not a technical constraint — 9:16 is reel_cover's only allowed ratio; 4:5
-// is picked for feed/carrossel as the more space-efficient modern default (both formats also
-// allow 1:1, the user can switch once the doc exists).
-const STARTER_ASPECT_RATIO: Record<DesignFormat, AspectRatio> = {
-  feed: "4:5",
-  carrossel: "4:5",
-  reel_cover: "9:16",
-};
-
-function buildStarterDocInput(format: DesignFormat, coverFileId: number | null): unknown {
-  const background = coverFileId
-    ? { type: "image", file_id: coverFileId, fit: "cover" }
-    : { type: "solid", color: "#ffffff" };
-  return {
-    version: 1,
-    format,
-    aspect_ratio: STARTER_ASPECT_RATIO[format],
-    pages: [{ background, layers: [] }],
-  };
-}
-
-export interface DesignRow {
-  id: number;
-  doc: DesignDoc;
-  rev: number;
-  render_status: string;
-  is_stale: boolean;
-}
+// Contract: PUT bodies above this are refused with 413. Keep well under the edge runtime's
+// own request-size ceiling so our limit is the one callers actually observe.
+export const MAX_BLOB_BYTES = 10 * 1024 * 1024;
 
 export interface PostRow {
   id: number;
   tipo: string;
   status: string;
+}
+
+export interface DesignMeta {
+  id: number;
+  rev: number;
+  doc_r2_key: string | null;
 }
 
 export interface PostDesignManageDeps {
@@ -87,47 +39,35 @@ export interface PostDesignManageDeps {
   isFeatureEnabled: (contaId: string) => Promise<boolean>;
   getPost: (postId: number, contaId: string) => Promise<PostRow | null>;
   hasVideoMedia: (postId: number) => Promise<boolean>;
-  getCoverFileId: (postId: number, contaId: string) => Promise<number | null>;
-  getExistingDesign: (postId: number, contaId: string) => Promise<DesignRow | null>;
-  // `created` is computed atomically inside the RPC (see migration 20260702000006) — the ONLY
-  // place that can tell "I inserted this row" apart from "lost the create race, here's the
-  // winner's row" apart from "a row already existed". Inferring it caller-side (e.g. from
-  // "did I have to call this at all") double-audits a single creation under a concurrent race.
-  getOrCreateDesign: (
+  getDesignMeta: (postId: number, contaId: string) => Promise<DesignMeta | null>;
+  getOrCreateDesignBlob: (
     contaId: string,
     postId: number,
-    starterDoc: DesignDoc,
+    r2Key: string,
+    docHash: string,
+    docBytes: number,
     updatedBy: string,
-  ) => Promise<DesignRow & { created: boolean }>;
-  updateDesign: (
+  ) => Promise<DesignMeta & { created: boolean }>;
+  saveDesignBlob: (
     contaId: string,
     postId: number,
-    doc: DesignDoc,
     expectedRev: number,
+    docHash: string,
+    r2Key: string,
+    docBytes: number,
+    editorVersion: string | null,
     updatedBy: string,
-  ) => Promise<DesignRow>;
+  ) => Promise<{ rev: number; prevR2Key: string | null }>;
   deleteDesign: (contaId: string, postId: number) => Promise<void>;
-  // Not CheckFileIds directly — this dep is wired once at module scope (Deno.serve is not
-  // per-request), so it takes contaId explicitly; the handler closes over it per-request when
-  // building ValidationContext.checkFileIds below.
-  checkFileIds: (ids: number[], contaId: string) => Promise<Set<number>>;
-  // POST /brand-logo (§5.4 / T3.2) — tenancy check + the SSRF-hardened import, injected so the
-  // route tests never touch the network.
+  fetchBlob: (r2Key: string) => Promise<Uint8Array | null>;
+  putBlob: (r2Key: string, bytes: Uint8Array) => Promise<void>;
+  deleteBlob: (r2Key: string) => Promise<void>;
   clienteExists: (clienteId: number, contaId: string) => Promise<boolean>;
   materializeBrandLogo: (args: {
     contaId: string;
     clienteId: number;
     uploadedBy: string;
   }) => Promise<MaterializeLogoResult>;
-  fonts: FontVariantLookup;
-  getRenderPages: (
-    postId: number,
-    contaId: string,
-    tipo: string,
-    doc: DesignDoc,
-  ) => Promise<RenderPageInfo[]>;
-  triggerRender: (designId: number, rev: number) => Promise<void>;
-  waitUntil: (promise: Promise<unknown>) => void;
   insertAuditLog: (entry: {
     conta_id: string;
     actor_user_id: string;
@@ -139,45 +79,40 @@ export interface PostDesignManageDeps {
   logError: (context: string, error: unknown) => void;
 }
 
-function docStats(doc: DesignDoc) {
-  return {
-    format: doc.format,
-    page_count: doc.pages.length,
-    layer_count: doc.pages.reduce((sum, p) => sum + p.layers.length, 0),
-    doc_bytes: JSON.stringify(doc).length,
-  };
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", bytes.slice().buffer as ArrayBuffer);
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function blobKey(contaId: string, postId: number, rev: number): string {
+  // Rev-scoped on purpose: a lost save race can never clobber the winner's bytes; the row's
+  // doc_r2_key always names the bytes that won. The loser's orphan is cleaned best-effort.
+  return `designs/${contaId}/${postId}-r${rev}.fig`;
 }
 
 function mapDesignRpcError(message: string): { status: number; body: Record<string, unknown> } {
   if (message === "post_not_found") return { status: 404, body: { error: "post_not_found" } };
   if (message.startsWith("post_not_editable:")) {
     return {
-      status: 409,
+      status: 403,
       body: { error: "post_not_editable", status: message.slice("post_not_editable:".length) },
     };
   }
-  if (message.startsWith("rev_conflict:")) {
-    return {
-      status: 409,
-      body: { error: "rev_conflict", current_rev: Number(message.slice("rev_conflict:".length)) },
-    };
-  }
-  if (message === "design_not_found") {
-    return { status: 404, body: { error: "design_not_found" } };
-  }
-  if (message.startsWith("invalid_format:")) {
-    return { status: 400, body: { error: "invalid_format" } };
-  }
-  if (message === "file_not_found_or_forbidden") {
-    return { status: 400, body: { error: "file_not_found_or_forbidden" } };
-  }
+  if (message === "rev_conflict") return { status: 409, body: { error: "rev_conflict" } };
+  if (message === "design_not_found") return { status: 404, body: { error: "design_not_found" } };
   // Never surface a raw/unrecognized RPC exception message to the client (security rule).
   return { status: 500, body: { error: "internal_error" } };
 }
 
 export function createPostDesignManageHandler(deps: PostDesignManageDeps) {
   return async (req: Request): Promise<Response> => {
-    const cors = deps.buildCorsHeaders(req);
+    const cors = {
+      ...deps.buildCorsHeaders(req),
+      // The /blob contract needs two extra request headers and the rev echo (frozen contract).
+      "Access-Control-Allow-Headers":
+        "authorization, x-client-info, apikey, content-type, x-expected-rev, x-editor-version",
+      "Access-Control-Expose-Headers": "x-rev",
+    };
     const json = createJsonResponder(cors);
 
     if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -195,11 +130,12 @@ export function createPostDesignManageHandler(deps: PostDesignManageDeps) {
       return json({ error: "feature_disabled", feature: "feature_estudio" }, 403);
     }
 
+    const url = new URL(req.url);
+    const parts = url.pathname.split("/").filter(Boolean);
+    const sub = parts[parts.indexOf("post-design-manage") + 1] ?? null;
+
     if (req.method === "POST") {
-      // Path-based sub-route (the post-media-manage precedent): POST /brand-logo is the ONLY
-      // POST this function serves — lazy logo materialization, §5.4.
-      const parts = new URL(req.url).pathname.split("/").filter(Boolean);
-      const sub = parts[parts.indexOf("post-design-manage") + 1];
+      // POST /brand-logo is the ONLY POST this function serves — lazy logo materialization.
       if (sub !== "brand-logo") return json({ error: "not_found" }, 404);
 
       let body: { cliente_id?: unknown };
@@ -241,159 +177,161 @@ export function createPostDesignManageHandler(deps: PostDesignManageDeps) {
       return json({ logo_file_id: null, reason: result.reason });
     }
 
+    const postId = parseInt(url.searchParams.get("post_id") ?? "", 10);
+
     if (req.method === "GET") {
-      const url = new URL(req.url);
-      const postId = parseInt(url.searchParams.get("post_id") ?? "", 10);
+      if (sub !== "blob") return json({ error: "not_found" }, 404);
       if (isNaN(postId)) return json({ error: "invalid_post_id" }, 400);
 
       const post = await deps.getPost(postId, contaId);
       if (!post) return json({ error: "post_not_found" }, 404);
 
-      let design = await deps.getExistingDesign(postId, contaId);
-      let created = false;
+      const bytesResponse = (bytes: Uint8Array, rev: number) =>
+        new Response(bytes.slice().buffer as ArrayBuffer, {
+          status: 200,
+          headers: {
+            ...cors,
+            "content-type": "application/octet-stream",
+            "cache-control": "no-store",
+            "x-rev": String(rev),
+          },
+        });
 
-      if (!design) {
-        if (!EDITABLE_STATUSES.includes(post.status)) {
-          return json({ error: "post_not_editable", status: post.status }, 409);
+      const meta = await deps.getDesignMeta(postId, contaId);
+      if (meta?.doc_r2_key) {
+        const bytes = await deps.fetchBlob(meta.doc_r2_key);
+        if (!bytes) {
+          // R2/DB drift — an internal inconsistency, not a client error shape we can act on.
+          deps.logError("post-design-manage:blob-missing", { postId, key: meta.doc_r2_key });
+          return json({ error: "design_blob_missing" }, 404);
         }
-        const format = starterFormatForTipo(post.tipo);
-        if (!format) return json({ error: "unsupported_post_tipo" }, 400);
+        return bytesResponse(bytes, meta.rev);
+      }
 
-        const postHasVideoMedia = await deps.hasVideoMedia(postId);
-        // Designed blocked state, not an internal bug: a feed/carrossel post with video media
-        // can never hold a design (design §5.4 post_has_video_media). Surface it as itself —
-        // funneling it into the starter-doc validation below masked it as a 500 internal_error
-        // and the editor showed a generic load failure with no way for the user to understand.
-        if (format !== "reel_cover" && postHasVideoMedia) {
-          return json({ error: "post_has_video_media" }, 400);
+      // Mint: same rules v1 enforced for creation — editable post, supported tipo, and
+      // feed/carrossel posts with video media can never hold a design.
+      if (!EDITABLE_STATUSES.includes(post.status)) {
+        return json({ error: "post_not_editable", status: post.status }, 403);
+      }
+      const template = starterTemplateFor(post.tipo);
+      if (!template) return json({ error: "unsupported_post_tipo" }, 422);
+      if (post.tipo !== "reels" && (await deps.hasVideoMedia(postId))) {
+        return json({ error: "post_has_video_media" }, 422);
+      }
+
+      const key = blobKey(contaId, postId, 1);
+      try {
+        await deps.putBlob(key, template);
+        const created = await deps.getOrCreateDesignBlob(
+          contaId,
+          postId,
+          key,
+          await sha256Hex(template),
+          template.length,
+          user.id,
+        );
+        if (created.created) {
+          await deps.insertAuditLog({
+            conta_id: contaId,
+            actor_user_id: user.id,
+            action: "create",
+            resource_type: "post_design",
+            resource_id: String(created.id),
+            metadata: { post_id: postId, doc_bytes: template.length, rev: created.rev },
+          });
+          return bytesResponse(template, created.rev);
         }
-
-        const coverFileId = format === "reel_cover" ? null : await deps.getCoverFileId(postId, contaId);
-        const ctx: ValidationContext = {
-          postTipo: post.tipo,
-          postHasVideoMedia,
-          fonts: deps.fonts,
-          checkFileIds: (ids) => deps.checkFileIds(ids, contaId),
-        };
-        const validated = await validateDesignDoc(buildStarterDocInput(format, coverFileId), ctx);
-        if (!validated.ok) {
-          // A starter doc this handler built itself failing validation is an internal bug, not
-          // a client error — never leak validation internals for a doc the caller never sent.
-          deps.logError("post-design-manage:starter-doc", validated.issues);
+        // Lost the create race — serve the winner's bytes, never ours.
+        const winnerBytes = created.doc_r2_key ? await deps.fetchBlob(created.doc_r2_key) : null;
+        if (!winnerBytes) {
+          deps.logError("post-design-manage:create-race-blob-missing", { postId });
           return json({ error: "internal_error" }, 500);
         }
-
-        try {
-          const result = await deps.getOrCreateDesign(contaId, postId, validated.doc, user.id);
-          design = result;
-          created = result.created;
-        } catch (e) {
-          const message = e instanceof Error ? e.message : String(e);
-          const mapped = mapDesignRpcError(message);
-          if (mapped.status === 500) deps.logError("post-design-manage:get-or-create", e);
-          return json(mapped.body, mapped.status);
-        }
+        return bytesResponse(winnerBytes, created.rev);
+      } catch (e) {
+        const mapped = mapDesignRpcError(e instanceof Error ? e.message : String(e));
+        if (mapped.status === 500) deps.logError("post-design-manage:get-or-create", e);
+        return json(mapped.body, mapped.status);
       }
-
-      if (created) {
-        await deps.insertAuditLog({
-          conta_id: contaId,
-          actor_user_id: user.id,
-          action: "create",
-          resource_type: "post_design",
-          resource_id: String(design.id),
-          metadata: { post_id: postId, ...docStats(design.doc), rev: design.rev },
-        });
-      }
-
-      if (design.is_stale) {
-        deps.waitUntil(
-          deps.triggerRender(design.id, design.rev)
-            .catch((e) => deps.logError("post-design-manage:trigger-render", e)),
-        );
-      }
-
-      const pages = await deps.getRenderPages(postId, contaId, post.tipo, design.doc);
-      return json({
-        design: design.doc,
-        rev: design.rev,
-        render: { status: design.render_status, pages },
-      });
     }
 
     if (req.method === "PUT") {
-      let body: { post_id?: unknown; doc?: unknown; expected_rev?: unknown };
-      try {
-        body = await req.json();
-      } catch {
-        return json({ error: "invalid_json" }, 400);
-      }
-      const postId = typeof body.post_id === "number" ? body.post_id : NaN;
+      if (sub !== "blob") return json({ error: "not_found" }, 404);
       if (isNaN(postId)) return json({ error: "invalid_post_id" }, 400);
-      if (typeof body.expected_rev !== "number") return json({ error: "invalid_request" }, 400);
+
+      const expected = Number(req.headers.get("x-expected-rev"));
+      if (!Number.isInteger(expected) || expected < 1) {
+        return json({ error: "invalid_expected_rev" }, 422);
+      }
 
       const post = await deps.getPost(postId, contaId);
       if (!post) return json({ error: "post_not_found" }, 404);
-      if (!EDITABLE_STATUSES.includes(post.status)) {
-        return json({ error: "post_not_editable", status: post.status }, 409);
-      }
 
-      const ctx: ValidationContext = {
-        postTipo: post.tipo,
-        postHasVideoMedia: await deps.hasVideoMedia(postId),
-        fonts: deps.fonts,
-        checkFileIds: (ids) => deps.checkFileIds(ids, contaId),
-      };
-      const validated = await validateDesignDoc(body.doc, ctx);
-      if (!validated.ok) return json(toDesignValidationError(validated), 400);
+      const body = new Uint8Array(await req.arrayBuffer());
+      if (body.length === 0) return json({ error: "empty_body" }, 422);
+      if (body.length > MAX_BLOB_BYTES) return json({ error: "blob_too_large" }, 413);
 
-      let design: DesignRow;
+      const key = blobKey(contaId, postId, expected + 1);
       try {
-        design = await deps.updateDesign(contaId, postId, validated.doc, body.expected_rev, user.id);
+        await deps.putBlob(key, body);
+        const saved = await deps.saveDesignBlob(
+          contaId,
+          postId,
+          expected,
+          await sha256Hex(body),
+          key,
+          body.length,
+          req.headers.get("x-editor-version"),
+          user.id,
+        );
+
+        await deps.insertAuditLog({
+          conta_id: contaId,
+          actor_user_id: user.id,
+          action: "update",
+          resource_type: "post_design",
+          resource_id: String(postId),
+          metadata: { post_id: postId, doc_bytes: body.length, rev: saved.rev },
+        });
+
+        // Best-effort: the previous rev's blob is now unreachable via the row.
+        if (saved.prevR2Key && saved.prevR2Key !== key) {
+          await deps.deleteBlob(saved.prevR2Key).catch((e) =>
+            deps.logError("post-design-manage:prev-blob-cleanup", e)
+          );
+        }
+
+        return new Response("ok", { status: 200, headers: { ...cors, "x-rev": String(saved.rev) } });
       } catch (e) {
-        const message = e instanceof Error ? e.message : String(e);
-        const mapped = mapDesignRpcError(message);
-        if (mapped.status === 500) deps.logError("post-design-manage:update", e);
+        const mapped = mapDesignRpcError(e instanceof Error ? e.message : String(e));
+        if (mapped.status === 500) deps.logError("post-design-manage:save", e);
         return json(mapped.body, mapped.status);
       }
-
-      await deps.insertAuditLog({
-        conta_id: contaId,
-        actor_user_id: user.id,
-        action: "update",
-        resource_type: "post_design",
-        resource_id: String(design.id),
-        metadata: { post_id: postId, ...docStats(design.doc), rev: design.rev },
-      });
-
-      if (design.is_stale) {
-        deps.waitUntil(
-          deps.triggerRender(design.id, design.rev)
-            .catch((e) => deps.logError("post-design-manage:trigger-render", e)),
-        );
-      }
-
-      return json({ design: design.doc, rev: design.rev, warnings: validated.warnings });
     }
 
     if (req.method === "DELETE") {
-      const url = new URL(req.url);
-      const postId = parseInt(url.searchParams.get("post_id") ?? "", 10);
       if (isNaN(postId)) return json({ error: "invalid_post_id" }, 400);
 
       const post = await deps.getPost(postId, contaId);
       if (!post) return json({ error: "post_not_found" }, 404);
       if (!EDITABLE_STATUSES.includes(post.status)) {
-        return json({ error: "post_not_editable", status: post.status }, 409);
+        return json({ error: "post_not_editable", status: post.status }, 403);
       }
+
+      const meta = await deps.getDesignMeta(postId, contaId);
 
       try {
         await deps.deleteDesign(contaId, postId);
       } catch (e) {
-        const message = e instanceof Error ? e.message : String(e);
-        const mapped = mapDesignRpcError(message);
+        const mapped = mapDesignRpcError(e instanceof Error ? e.message : String(e));
         if (mapped.status === 500) deps.logError("post-design-manage:delete", e);
         return json(mapped.body, mapped.status);
+      }
+
+      if (meta?.doc_r2_key) {
+        await deps.deleteBlob(meta.doc_r2_key).catch((e) =>
+          deps.logError("post-design-manage:delete-blob", e)
+        );
       }
 
       await deps.insertAuditLog({

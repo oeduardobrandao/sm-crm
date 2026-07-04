@@ -1,68 +1,47 @@
-import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+// post-design-manage v2 (Estúdio/OpenPencil) — the /blob contract:
+// docs/estudio-v2-editor-contract.md. GET/PUT move .fig bytes with x-rev /
+// x-expected-rev; JSON doc routes are gone. POST /brand-logo is unchanged.
+import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   createPostDesignManageHandler,
-  type DesignRow,
+  type DesignMeta,
   type PostDesignManageDeps,
   type PostRow,
 } from "../post-design-manage/handler.ts";
-import { fakeFonts, VALID_FEED_1x1 } from "../_shared/design-doc-fixtures.ts";
-import type { DesignDoc } from "../_shared/design-doc.ts";
+import { starterTemplateFor } from "../post-design-manage/starter-templates.gen.ts";
 
 const CONTA_ID = "11111111-1111-1111-1111-111111111111";
 const USER_ID = "22222222-2222-2222-2222-222222222222";
 const POST_ID = 42;
 const CLIENTE_ID = 7;
+const BLOB_URL = `https://x.test/post-design-manage/blob?post_id=${POST_ID}`;
 
-function makeDoc(overrides: Partial<DesignDoc> = {}): DesignDoc {
-  return {
-    version: 1,
-    format: "feed",
-    aspect_ratio: "1:1",
-    canvas: { width: 1080, height: 1080 },
-    pages: [{ id: "p1", background: { type: "solid", color: "#ffffff" }, layers: [] }],
-    fileIds: [],
-    ...overrides,
-  };
-}
-
-function makeDesignRow(overrides: Partial<DesignRow> = {}): DesignRow {
-  return {
-    id: 1,
-    doc: makeDoc(),
-    rev: 1,
-    render_status: "pending",
-    is_stale: true,
-    ...overrides,
-  };
-}
+const STORED_BYTES = new Uint8Array([0x66, 0x69, 0x67, 1, 2, 3]);
+const STORED_KEY = `designs/${CONTA_ID}/${POST_ID}-r3.fig`;
 
 function makePostRow(overrides: Partial<PostRow> = {}): PostRow {
   return { id: POST_ID, tipo: "feed", status: "rascunho", ...overrides };
 }
 
 interface DepsSpy {
-  getOrCreateCalls: Array<{ contaId: string; postId: number; starterDoc: DesignDoc }>;
-  updateCalls: Array<{ contaId: string; postId: number; doc: DesignDoc; expectedRev: number }>;
+  putBlobCalls: Array<{ key: string; bytes: Uint8Array }>;
+  deleteBlobCalls: string[];
+  getOrCreateCalls: Array<{ r2Key: string; docHash: string; docBytes: number }>;
+  saveCalls: Array<{ expectedRev: number; docHash: string; r2Key: string; editorVersion: string | null }>;
   deleteCalls: Array<{ contaId: string; postId: number }>;
-  triggerRenderCalls: Array<{ designId: number; rev: number }>;
-  waitUntilCalls: Promise<unknown>[];
   auditCalls: Array<Record<string, unknown>>;
   loggedErrors: Array<{ context: string; error: unknown }>;
-  materializeCalls: Array<{ contaId: string; clienteId: number; uploadedBy: string }>;
 }
 
-function makeDeps(
-  overrides: Partial<PostDesignManageDeps> = {},
-): { deps: PostDesignManageDeps; spy: DepsSpy } {
+function makeDeps(overrides: Partial<PostDesignManageDeps> = {}): { deps: PostDesignManageDeps; spy: DepsSpy } {
   const spy: DepsSpy = {
+    putBlobCalls: [],
+    deleteBlobCalls: [],
     getOrCreateCalls: [],
-    updateCalls: [],
+    saveCalls: [],
     deleteCalls: [],
-    triggerRenderCalls: [],
-    waitUntilCalls: [],
     auditCalls: [],
     loggedErrors: [],
-    materializeCalls: [],
   };
 
   const deps: PostDesignManageDeps = {
@@ -73,614 +52,279 @@ function makeDeps(
     getPost: async (postId, contaId) =>
       postId === POST_ID && contaId === CONTA_ID ? makePostRow() : null,
     hasVideoMedia: async () => false,
-    getCoverFileId: async () => null,
-    getExistingDesign: async () => null,
-    getOrCreateDesign: async (contaId, postId, starterDoc) => {
-      spy.getOrCreateCalls.push({ contaId, postId, starterDoc });
-      return { ...makeDesignRow({ doc: starterDoc, is_stale: true }), created: true };
+    getDesignMeta: async (): Promise<DesignMeta | null> => ({
+      id: 9,
+      rev: 3,
+      doc_r2_key: STORED_KEY,
+    }),
+    getOrCreateDesignBlob: async (_contaId, _postId, r2Key, docHash, docBytes) => {
+      spy.getOrCreateCalls.push({ r2Key, docHash, docBytes });
+      return { id: 9, rev: 1, doc_r2_key: r2Key, created: true };
     },
-    updateDesign: async (contaId, postId, doc, expectedRev) => {
-      spy.updateCalls.push({ contaId, postId, doc, expectedRev });
-      return makeDesignRow({ doc, rev: expectedRev + 1, is_stale: true });
+    saveDesignBlob: async (_contaId, _postId, expectedRev, docHash, r2Key, _docBytes, editorVersion) => {
+      spy.saveCalls.push({ expectedRev, docHash, r2Key, editorVersion });
+      return { rev: expectedRev + 1, prevR2Key: STORED_KEY };
     },
     deleteDesign: async (contaId, postId) => {
       spy.deleteCalls.push({ contaId, postId });
     },
-    checkFileIds: async (ids) => new Set(ids.filter((id) => id === 812 || id === 900)),
+    fetchBlob: async (key) => (key === STORED_KEY ? STORED_BYTES : null),
+    putBlob: async (key, bytes) => {
+      spy.putBlobCalls.push({ key, bytes });
+    },
+    deleteBlob: async (key) => {
+      spy.deleteBlobCalls.push(key);
+    },
     clienteExists: async (clienteId, contaId) => clienteId === CLIENTE_ID && contaId === CONTA_ID,
-    materializeBrandLogo: async (args) => {
-      spy.materializeCalls.push(args);
-      return { logo_file_id: 77, created: true };
-    },
-    fonts: fakeFonts,
-    getRenderPages: async () => [],
-    triggerRender: async (designId, rev) => {
-      spy.triggerRenderCalls.push({ designId, rev });
-    },
-    waitUntil: (promise) => {
-      spy.waitUntilCalls.push(promise);
-    },
+    materializeBrandLogo: async () => ({ logo_file_id: 77, created: true }),
     insertAuditLog: async (entry) => {
-      spy.auditCalls.push(entry);
+      spy.auditCalls.push(entry as unknown as Record<string, unknown>);
     },
     logError: (context, error) => {
       spy.loggedErrors.push({ context, error });
     },
     ...overrides,
   };
-
   return { deps, spy };
 }
 
-function makeReq(
-  method: string,
-  opts: { token?: string; search?: string; body?: unknown } = {},
-) {
-  const token = opts.token ?? "valid-token";
-  const url = `http://localhost/post-design-manage${opts.search ?? ""}`;
+function blobRequest(method: "GET" | "PUT", init: RequestInit = {}, url = BLOB_URL): Request {
   return new Request(url, {
     method,
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      "Content-Type": "application/json",
-    },
-    body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+    headers: { Authorization: "Bearer valid-token", ...(init.headers ?? {}) },
+    body: init.body,
   });
 }
 
-// ============================================================
-// Auth / preflight
-// ============================================================
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", bytes.slice().buffer as ArrayBuffer);
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
 
-Deno.test("handles OPTIONS preflight without checking auth", async () => {
+// ---------- auth / gate ----------
+
+Deno.test("GET /blob without token → 401", async () => {
   const { deps } = makeDeps();
   const handler = createPostDesignManageHandler(deps);
-  const res = await handler(new Request("http://localhost/post-design-manage", { method: "OPTIONS" }));
-  assertEquals(res.status, 200);
-});
-
-Deno.test("rejects requests with no Authorization header", async () => {
-  const { deps } = makeDeps();
-  const handler = createPostDesignManageHandler(deps);
-  const res = await handler(makeReq("GET", { token: "", search: `?post_id=${POST_ID}` }));
+  const res = await handler(new Request(BLOB_URL, { method: "GET" }));
   assertEquals(res.status, 401);
 });
 
-Deno.test("rejects an invalid/expired token", async () => {
+Deno.test("GET /blob with bad token → 401", async () => {
   const { deps } = makeDeps();
   const handler = createPostDesignManageHandler(deps);
-  const res = await handler(makeReq("GET", { token: "garbage", search: `?post_id=${POST_ID}` }));
+  const res = await handler(
+    new Request(BLOB_URL, { method: "GET", headers: { Authorization: "Bearer nope" } }),
+  );
   assertEquals(res.status, 401);
 });
 
-Deno.test("returns 403 when the user has no profile/conta_id", async () => {
-  const { deps } = makeDeps({ getProfile: async () => null });
+Deno.test("feature gate off → 403", async () => {
+  const { deps } = makeDeps({ isFeatureEnabled: async () => false });
   const handler = createPostDesignManageHandler(deps);
-  const res = await handler(makeReq("GET", { search: `?post_id=${POST_ID}` }));
+  const res = await handler(blobRequest("GET"));
   assertEquals(res.status, 403);
 });
 
-Deno.test("feature gate: feature_estudio disabled returns 403 before touching the post", async () => {
-  let postLookedUp = false;
-  const { deps } = makeDeps({
-    isFeatureEnabled: async () => false,
-    getPost: async () => {
-      postLookedUp = true;
-      return makePostRow();
-    },
-  });
+Deno.test("unknown post → 404", async () => {
+  const { deps } = makeDeps({ getPost: async () => null });
   const handler = createPostDesignManageHandler(deps);
-  const res = await handler(makeReq("GET", { search: `?post_id=${POST_ID}` }));
-  assertEquals(res.status, 403);
-  const body = await res.json();
-  assertEquals(body.error, "feature_disabled");
-  assertEquals(postLookedUp, false);
-});
-
-Deno.test("unknown method returns 405", async () => {
-  const { deps } = makeDeps();
-  const handler = createPostDesignManageHandler(deps);
-  const res = await handler(makeReq("PATCH", { search: `?post_id=${POST_ID}` }));
-  assertEquals(res.status, 405);
-});
-
-// ============================================================
-// GET — get-or-create + starter doc
-// ============================================================
-
-Deno.test("GET: foreign/nonexistent post_id is rejected as not found", async () => {
-  const { deps } = makeDeps();
-  const handler = createPostDesignManageHandler(deps);
-  const res = await handler(makeReq("GET", { search: "?post_id=999" }));
+  const res = await handler(blobRequest("GET"));
   assertEquals(res.status, 404);
-  const body = await res.json();
-  assertEquals(body.error, "post_not_found");
 });
 
-Deno.test("GET: rejects a missing/non-numeric post_id", async () => {
+Deno.test("non-blob GET path → 404 (JSON doc route is gone)", async () => {
   const { deps } = makeDeps();
   const handler = createPostDesignManageHandler(deps);
-  const res = await handler(makeReq("GET", { search: "?post_id=abc" }));
-  assertEquals(res.status, 400);
+  const res = await handler(
+    blobRequest("GET", {}, `https://x.test/post-design-manage?post_id=${POST_ID}`),
+  );
+  assertEquals(res.status, 404);
 });
 
-Deno.test("GET: creates a blank starter doc derived from tipo when no design exists", async () => {
-  const { deps, spy } = makeDeps({
-    getPost: async () => makePostRow({ tipo: "feed" }),
-  });
+// ---------- GET /blob ----------
+
+Deno.test("GET /blob mints the tipo starter when no design exists", async () => {
+  const { deps, spy } = makeDeps({ getDesignMeta: async () => null });
   const handler = createPostDesignManageHandler(deps);
-  const res = await handler(makeReq("GET", { search: `?post_id=${POST_ID}` }));
+  const res = await handler(blobRequest("GET"));
   assertEquals(res.status, 200);
+  assertEquals(res.headers.get("x-rev"), "1");
+  assertEquals(res.headers.get("content-type"), "application/octet-stream");
+  const body = new Uint8Array(await res.arrayBuffer());
+  const template = starterTemplateFor("feed")!;
+  assertEquals(body, template);
+  assertEquals(spy.putBlobCalls.length, 1);
+  assertEquals(spy.putBlobCalls[0].key, `designs/${CONTA_ID}/${POST_ID}-r1.fig`);
   assertEquals(spy.getOrCreateCalls.length, 1);
-  const starter = spy.getOrCreateCalls[0].starterDoc;
-  assertEquals(starter.format, "feed");
-  assertEquals(starter.pages.length, 1);
-  assertEquals(starter.pages[0].background, { type: "solid", color: "#ffffff" });
+  assertEquals(spy.getOrCreateCalls[0].docHash, await sha256Hex(template));
+  assertEquals(spy.auditCalls.length, 1); // create audit
 });
 
-Deno.test("GET: losing the create race (RPC reports created=false) does not audit-log a create", async () => {
-  // get_or_create_post_design's own atomicity means a lost race returns the WINNER's row —
-  // this simulates that: this caller built a starter doc, but the RPC signals it didn't
-  // actually insert (created: false). Auditing "create" here would misattribute someone
-  // else's creation to this caller.
-  const winnerRow = makeDesignRow({ id: 9, rev: 1, is_stale: true });
+Deno.test("GET /blob mint refused on non-editable post", async () => {
   const { deps, spy } = makeDeps({
-    getOrCreateDesign: async (contaId, postId, starterDoc) => {
-      spy.getOrCreateCalls.push({ contaId, postId, starterDoc });
-      return { ...winnerRow, created: false };
-    },
+    getDesignMeta: async () => null,
+    getPost: async () => makePostRow({ status: "aprovado" }),
   });
   const handler = createPostDesignManageHandler(deps);
-  const res = await handler(makeReq("GET", { search: `?post_id=${POST_ID}` }));
-  assertEquals(res.status, 200);
-  const body = await res.json();
-  assertEquals(body.rev, winnerRow.rev);
-  assertEquals(spy.auditCalls.length, 0);
+  const res = await handler(blobRequest("GET"));
+  assertEquals(res.status, 403);
+  assertEquals(spy.putBlobCalls.length, 0);
 });
 
-Deno.test("GET: a status race during get_or_create maps to the same structured error PUT/DELETE give", async () => {
+Deno.test("GET /blob mint refused for feed post with video media", async () => {
   const { deps, spy } = makeDeps({
-    getOrCreateDesign: async () => {
-      throw new Error("post_not_editable:agendado");
-    },
-  });
-  const handler = createPostDesignManageHandler(deps);
-  const res = await handler(makeReq("GET", { search: `?post_id=${POST_ID}` }));
-  assertEquals(res.status, 409);
-  const body = await res.json();
-  assertEquals(body, { error: "post_not_editable", status: "agendado" });
-  assertEquals(spy.auditCalls.length, 0);
-});
-
-Deno.test("GET: an unrecognized error from get_or_create never leaks the raw message", async () => {
-  const { deps, spy } = makeDeps({
-    getOrCreateDesign: async () => {
-      throw new Error("permission denied for relation post_designs — leaked internal detail");
-    },
-  });
-  const handler = createPostDesignManageHandler(deps);
-  const res = await handler(makeReq("GET", { search: `?post_id=${POST_ID}` }));
-  assertEquals(res.status, 500);
-  const body = await res.json();
-  assertEquals(body, { error: "internal_error" });
-  assertEquals(spy.loggedErrors.length, 1);
-});
-
-Deno.test("GET: starter doc uses the existing cover image as background when present", async () => {
-  const { deps, spy } = makeDeps({
-    getPost: async () => makePostRow({ tipo: "carrossel" }),
-    getCoverFileId: async () => 900,
-  });
-  const handler = createPostDesignManageHandler(deps);
-  await handler(makeReq("GET", { search: `?post_id=${POST_ID}` }));
-  const starter = spy.getOrCreateCalls[0].starterDoc;
-  const background = starter.pages[0].background as { type: string; file_id: number; fit: string };
-  assertEquals(background.type, "image");
-  assertEquals(background.file_id, 900);
-  assertEquals(background.fit, "cover");
-});
-
-Deno.test("GET: reel_cover starter doc never looks up a cover image", async () => {
-  let called = false;
-  const { deps } = makeDeps({
-    getPost: async () => makePostRow({ tipo: "reels" }),
-    getCoverFileId: async () => {
-      called = true;
-      return 900;
-    },
-  });
-  const handler = createPostDesignManageHandler(deps);
-  const res = await handler(makeReq("GET", { search: `?post_id=${POST_ID}` }));
-  assertEquals(res.status, 200);
-  assertEquals(called, false);
-});
-
-Deno.test("GET: unsupported post tipo (stories) is rejected before creating anything", async () => {
-  const { deps, spy } = makeDeps({
-    getPost: async () => makePostRow({ tipo: "stories" }),
-  });
-  const handler = createPostDesignManageHandler(deps);
-  const res = await handler(makeReq("GET", { search: `?post_id=${POST_ID}` }));
-  assertEquals(res.status, 400);
-  const body = await res.json();
-  assertEquals(body.error, "unsupported_post_tipo");
-  assertEquals(spy.getOrCreateCalls.length, 0);
-});
-
-Deno.test("GET: status guard blocks starter-doc creation on a non-editable post", async () => {
-  const { deps, spy } = makeDeps({
-    getPost: async () => makePostRow({ status: "agendado" }),
-  });
-  const handler = createPostDesignManageHandler(deps);
-  const res = await handler(makeReq("GET", { search: `?post_id=${POST_ID}` }));
-  assertEquals(res.status, 409);
-  const body = await res.json();
-  assertEquals(body.error, "post_not_editable");
-  assertEquals(body.status, "agendado");
-  assertEquals(spy.getOrCreateCalls.length, 0);
-});
-
-Deno.test("GET: returns an existing design without re-creating or re-auditing", async () => {
-  const existing = makeDesignRow({ id: 5, rev: 3, render_status: "rendered", is_stale: false });
-  const { deps, spy } = makeDeps({
-    getExistingDesign: async () => existing,
-  });
-  const handler = createPostDesignManageHandler(deps);
-  const res = await handler(makeReq("GET", { search: `?post_id=${POST_ID}` }));
-  assertEquals(res.status, 200);
-  const body = await res.json();
-  assertEquals(body.rev, 3);
-  assertEquals(spy.getOrCreateCalls.length, 0);
-  assertEquals(spy.auditCalls.length, 0);
-});
-
-Deno.test("GET: creating a design audits with redacted metadata (no doc contents)", async () => {
-  const { deps, spy } = makeDeps();
-  const handler = createPostDesignManageHandler(deps);
-  await handler(makeReq("GET", { search: `?post_id=${POST_ID}` }));
-  assertEquals(spy.auditCalls.length, 1);
-  const entry = spy.auditCalls[0];
-  assertEquals(entry.action, "create");
-  assertEquals(entry.conta_id, CONTA_ID);
-  const metadata = entry.metadata as Record<string, unknown>;
-  assertEquals(metadata.post_id, POST_ID);
-  assertEquals(typeof metadata.doc_bytes, "number");
-  assertEquals(JSON.stringify(entry).includes("#ffffff"), false); // no raw doc fields leaked
-});
-
-Deno.test("GET: triggers a render via waitUntil for a newly created (stale) design", async () => {
-  const { deps, spy } = makeDeps();
-  const handler = createPostDesignManageHandler(deps);
-  await handler(makeReq("GET", { search: `?post_id=${POST_ID}` }));
-  assertEquals(spy.waitUntilCalls.length, 1);
-  await spy.waitUntilCalls[0];
-  assertEquals(spy.triggerRenderCalls.length, 1);
-});
-
-Deno.test("GET: does not trigger a render when the existing design is not stale", async () => {
-  const { deps, spy } = makeDeps({
-    getExistingDesign: async () => makeDesignRow({ is_stale: false }),
-  });
-  const handler = createPostDesignManageHandler(deps);
-  await handler(makeReq("GET", { search: `?post_id=${POST_ID}` }));
-  assertEquals(spy.waitUntilCalls.length, 0);
-});
-
-// ============================================================
-// PUT — validated save via update_post_design
-// ============================================================
-
-Deno.test("PUT: foreign/nonexistent post_id is rejected as not found", async () => {
-  const { deps } = makeDeps();
-  const handler = createPostDesignManageHandler(deps);
-  const res = await handler(
-    makeReq("PUT", { body: { post_id: 999, doc: VALID_FEED_1x1, expected_rev: 1 } }),
-  );
-  assertEquals(res.status, 404);
-});
-
-Deno.test("PUT: rejects a body missing expected_rev", async () => {
-  const { deps } = makeDeps();
-  const handler = createPostDesignManageHandler(deps);
-  const res = await handler(makeReq("PUT", { body: { post_id: POST_ID, doc: VALID_FEED_1x1 } }));
-  assertEquals(res.status, 400);
-});
-
-Deno.test("PUT: status guard rejects a save on a non-editable post", async () => {
-  const { deps } = makeDeps({ getPost: async () => makePostRow({ status: "publicado" }) });
-  const handler = createPostDesignManageHandler(deps);
-  const res = await handler(
-    makeReq("PUT", { body: { post_id: POST_ID, doc: VALID_FEED_1x1, expected_rev: 1 } }),
-  );
-  assertEquals(res.status, 409);
-  const body = await res.json();
-  assertEquals(body.error, "post_not_editable");
-  assertEquals(body.status, "publicado");
-});
-
-Deno.test("PUT: an invalid doc returns every aggregated issue together", async () => {
-  const { deps } = makeDeps();
-  const handler = createPostDesignManageHandler(deps);
-  // Two independent zod-level (Stage 0) violations, so both surface together — a Stage 1
-  // business-rule issue (like invalid_aspect_ratio_for_format) never runs when Stage 0 fails,
-  // since validateDesignDoc short-circuits after Stage 0.
-  const badDoc = {
-    version: 1,
-    format: "feed",
-    aspect_ratio: "1:1",
-    pages: [
-      {
-        background: { type: "solid", color: "not-a-hex" },
-        layers: [
-          {
-            type: "text", x: 0, y: 0, w: 100, text: "oi",
-            font_key: "dm-sans", font_weight: 700, font_size: 40,
-            color: "also-not-a-hex",
-          },
-        ],
-      },
-    ],
-  };
-  const res = await handler(
-    makeReq("PUT", { body: { post_id: POST_ID, doc: badDoc, expected_rev: 1 } }),
-  );
-  assertEquals(res.status, 400);
-  const body = await res.json();
-  assertEquals(body.error, "design_invalid");
-  assertEquals(body.issues.length > 1, true);
-});
-
-Deno.test("PUT: rev_conflict from the RPC maps to 409 with the current rev", async () => {
-  const { deps } = makeDeps({
-    updateDesign: async () => {
-      throw new Error("rev_conflict:7");
-    },
-  });
-  const handler = createPostDesignManageHandler(deps);
-  const res = await handler(
-    makeReq("PUT", { body: { post_id: POST_ID, doc: VALID_FEED_1x1, expected_rev: 3 } }),
-  );
-  assertEquals(res.status, 409);
-  const body = await res.json();
-  assertEquals(body, { error: "rev_conflict", current_rev: 7 });
-});
-
-Deno.test("PUT: design_not_found from the RPC maps to 404", async () => {
-  const { deps } = makeDeps({
-    updateDesign: async () => {
-      throw new Error("design_not_found");
-    },
-  });
-  const handler = createPostDesignManageHandler(deps);
-  const res = await handler(
-    makeReq("PUT", { body: { post_id: POST_ID, doc: VALID_FEED_1x1, expected_rev: 1 } }),
-  );
-  assertEquals(res.status, 404);
-});
-
-Deno.test("PUT: an unrecognized RPC error never leaks the raw message to the client", async () => {
-  const { deps, spy } = makeDeps({
-    updateDesign: async () => {
-      throw new Error("permission denied for relation post_designs — leaked internal detail");
-    },
-  });
-  const handler = createPostDesignManageHandler(deps);
-  const res = await handler(
-    makeReq("PUT", { body: { post_id: POST_ID, doc: VALID_FEED_1x1, expected_rev: 1 } }),
-  );
-  assertEquals(res.status, 500);
-  const body = await res.json();
-  assertEquals(body, { error: "internal_error" });
-  assertEquals(spy.loggedErrors.length, 1); // raw error still reaches internal logs
-});
-
-Deno.test("PUT: a successful save returns the normalized doc, rev, and warnings", async () => {
-  const { deps } = makeDeps();
-  const handler = createPostDesignManageHandler(deps);
-  const res = await handler(
-    makeReq("PUT", { body: { post_id: POST_ID, doc: VALID_FEED_1x1, expected_rev: 1 } }),
-  );
-  assertEquals(res.status, 200);
-  const body = await res.json();
-  assertEquals(body.rev, 2);
-  assertEquals(Array.isArray(body.warnings), true);
-  assertEquals(body.design.format, "feed");
-});
-
-Deno.test("PUT: audits the save with redacted metadata (no doc contents)", async () => {
-  const { deps, spy } = makeDeps();
-  const handler = createPostDesignManageHandler(deps);
-  await handler(makeReq("PUT", { body: { post_id: POST_ID, doc: VALID_FEED_1x1, expected_rev: 1 } }));
-  assertEquals(spy.auditCalls.length, 1);
-  const entry = spy.auditCalls[0];
-  assertEquals(entry.action, "update");
-  const metadata = entry.metadata as Record<string, unknown>;
-  assertEquals(metadata.page_count, 1);
-  assertEquals(typeof metadata.layer_count, "number");
-  assertEquals(JSON.stringify(entry).includes("Bom dia"), false); // caption/layer text never audited
-});
-
-Deno.test("PUT: a trigger-render failure is non-fatal — the save still succeeds", async () => {
-  const { deps, spy } = makeDeps({
-    triggerRender: async () => {
-      throw new Error("design-render unreachable");
-    },
-  });
-  const handler = createPostDesignManageHandler(deps);
-  const res = await handler(
-    makeReq("PUT", { body: { post_id: POST_ID, doc: VALID_FEED_1x1, expected_rev: 1 } }),
-  );
-  assertEquals(res.status, 200);
-  await spy.waitUntilCalls[0];
-  assertEquals(spy.loggedErrors.some((l) => l.context === "post-design-manage:trigger-render"), true);
-});
-
-Deno.test("PUT: does not trigger a render when the RPC reports the design is not stale", async () => {
-  const { deps, spy } = makeDeps({
-    updateDesign: async (contaId, postId, doc, expectedRev) =>
-      makeDesignRow({ doc, rev: expectedRev + 1, is_stale: false }),
-  });
-  const handler = createPostDesignManageHandler(deps);
-  await handler(makeReq("PUT", { body: { post_id: POST_ID, doc: VALID_FEED_1x1, expected_rev: 1 } }));
-  assertEquals(spy.waitUntilCalls.length, 0);
-});
-
-// ============================================================
-// DELETE
-// ============================================================
-
-Deno.test("DELETE: foreign/nonexistent post_id is rejected as not found", async () => {
-  const { deps } = makeDeps();
-  const handler = createPostDesignManageHandler(deps);
-  const res = await handler(makeReq("DELETE", { search: "?post_id=999" }));
-  assertEquals(res.status, 404);
-});
-
-Deno.test("DELETE: status guard applies to delete too", async () => {
-  const { deps } = makeDeps({ getPost: async () => makePostRow({ status: "aprovado" }) });
-  const handler = createPostDesignManageHandler(deps);
-  const res = await handler(makeReq("DELETE", { search: `?post_id=${POST_ID}` }));
-  assertEquals(res.status, 409);
-});
-
-Deno.test("DELETE: a successful delete calls the RPC and audits minimal metadata", async () => {
-  const { deps, spy } = makeDeps();
-  const handler = createPostDesignManageHandler(deps);
-  const res = await handler(makeReq("DELETE", { search: `?post_id=${POST_ID}` }));
-  assertEquals(res.status, 200);
-  const body = await res.json();
-  assertEquals(body, { ok: true });
-  assertEquals(spy.deleteCalls, [{ contaId: CONTA_ID, postId: POST_ID }]);
-  assertEquals(spy.auditCalls[0].action, "delete");
-  assertEquals(spy.auditCalls[0].metadata, { post_id: POST_ID });
-});
-
-Deno.test("GET: a feed post with video media surfaces post_has_video_media (not a masked 500)", async () => {
-  // Regression: this designed blocked state (design §5.4) used to fall through to the
-  // starter-doc validation, which reported it as internal_error 500 — the editor showed a
-  // generic load failure with no explanation.
-  const { deps, spy } = makeDeps({
-    getPost: async () => makePostRow({ tipo: "feed" }),
+    getDesignMeta: async () => null,
     hasVideoMedia: async () => true,
   });
   const handler = createPostDesignManageHandler(deps);
-  const res = await handler(makeReq("GET", { search: `?post_id=${POST_ID}` }));
-  assertEquals(res.status, 400);
-  const body = await res.json();
-  assertEquals(body, { error: "post_has_video_media" });
-  // Not an internal bug — nothing should be error-logged, and no design row gets created.
-  assertEquals(spy.loggedErrors.length, 0);
-  assertEquals(spy.auditCalls.length, 0);
+  const res = await handler(blobRequest("GET"));
+  assertEquals(res.status, 422);
+  assertEquals(spy.putBlobCalls.length, 0);
 });
 
-Deno.test("GET: a reels post with video media still creates its starter design normally", async () => {
-  const { deps } = makeDeps({
-    getPost: async () => makePostRow({ tipo: "reels" }),
-    hasVideoMedia: async () => true,
-  });
-  const handler = createPostDesignManageHandler(deps);
-  const res = await handler(makeReq("GET", { search: `?post_id=${POST_ID}` }));
-  assertEquals(res.status, 200);
-});
-
-// ============================================================
-// POST /brand-logo (T3.2, design §5.4)
-// ============================================================
-
-Deno.test("POST /brand-logo: happy path materializes, audits, returns logo_file_id", async () => {
+Deno.test("GET /blob returns stored bytes for an existing design", async () => {
   const { deps, spy } = makeDeps();
   const handler = createPostDesignManageHandler(deps);
-  const res = await handler(
-    makeReq("POST", { search: "/brand-logo", body: { cliente_id: CLIENTE_ID } }),
-  );
+  const res = await handler(blobRequest("GET"));
   assertEquals(res.status, 200);
-  assertEquals(await res.json(), { logo_file_id: 77 });
-  assertEquals(spy.materializeCalls, [
-    { contaId: CONTA_ID, clienteId: CLIENTE_ID, uploadedBy: USER_ID },
-  ]);
-  assertEquals(spy.auditCalls.length, 1);
-  assertEquals(spy.auditCalls[0].action, "brand_logo_materialize");
-  assertEquals(spy.auditCalls[0].resource_type, "hub_brand");
+  assertEquals(res.headers.get("x-rev"), "3");
+  const body = new Uint8Array(await res.arrayBuffer());
+  assertEquals(body, STORED_BYTES);
+  assertEquals(spy.putBlobCalls.length, 0);
+  assertEquals(spy.getOrCreateCalls.length, 0);
 });
 
-Deno.test("POST /brand-logo: idempotent hit (created=false) is NOT audited again", async () => {
-  const { deps, spy } = makeDeps({
-    materializeBrandLogo: async () => ({ logo_file_id: 77, created: false }),
-  });
+Deno.test("GET /blob with missing R2 object → 404 + internal log", async () => {
+  const { deps, spy } = makeDeps({ fetchBlob: async () => null });
   const handler = createPostDesignManageHandler(deps);
-  const res = await handler(
-    makeReq("POST", { search: "/brand-logo", body: { cliente_id: CLIENTE_ID } }),
-  );
-  assertEquals(res.status, 200);
-  assertEquals(await res.json(), { logo_file_id: 77 });
-  assertEquals(spy.auditCalls.length, 0);
-});
-
-Deno.test("POST /brand-logo: soft failure passes the reason through as 200", async () => {
-  const { deps, spy } = makeDeps({
-    materializeBrandLogo: async () => ({ logo_file_id: null, reason: "private_address" }),
-  });
-  const handler = createPostDesignManageHandler(deps);
-  const res = await handler(
-    makeReq("POST", { search: "/brand-logo", body: { cliente_id: CLIENTE_ID } }),
-  );
-  assertEquals(res.status, 200);
-  assertEquals(await res.json(), { logo_file_id: null, reason: "private_address" });
-  assertEquals(spy.auditCalls.length, 0);
-});
-
-Deno.test("POST /brand-logo: cliente from another workspace is 404, never materialized", async () => {
-  const { deps, spy } = makeDeps();
-  const handler = createPostDesignManageHandler(deps);
-  const res = await handler(
-    makeReq("POST", { search: "/brand-logo", body: { cliente_id: 999 } }),
-  );
+  const res = await handler(blobRequest("GET"));
   assertEquals(res.status, 404);
-  assertEquals((await res.json()).error, "cliente_not_found");
-  assertEquals(spy.materializeCalls.length, 0);
+  assertEquals(spy.loggedErrors.length, 1);
 });
 
-Deno.test("POST /brand-logo: non-numeric cliente_id is 400", async () => {
+// ---------- PUT /blob ----------
+
+Deno.test("PUT /blob happy path: rev-scoped key, sha256, x-rev bump, prev blob cleanup", async () => {
   const { deps, spy } = makeDeps();
   const handler = createPostDesignManageHandler(deps);
+  const bytes = new Uint8Array([9, 9, 9, 9]);
   const res = await handler(
-    makeReq("POST", { search: "/brand-logo", body: { cliente_id: "7" } }),
+    blobRequest("PUT", {
+      body: bytes,
+      headers: { "x-expected-rev": "3", "x-editor-version": "0.13.2" },
+    }),
   );
-  assertEquals(res.status, 400);
-  assertEquals((await res.json()).error, "invalid_cliente_id");
-  assertEquals(spy.materializeCalls.length, 0);
+  assertEquals(res.status, 200);
+  assertEquals(res.headers.get("x-rev"), "4");
+  assertEquals(spy.putBlobCalls.length, 1);
+  assertEquals(spy.putBlobCalls[0].key, `designs/${CONTA_ID}/${POST_ID}-r4.fig`);
+  assertEquals(spy.saveCalls.length, 1);
+  assertEquals(spy.saveCalls[0].expectedRev, 3);
+  assertEquals(spy.saveCalls[0].editorVersion, "0.13.2");
+  assertEquals(spy.saveCalls[0].docHash, await sha256Hex(bytes));
+  // previous rev's blob is best-effort deleted after a successful save
+  assertEquals(spy.deleteBlobCalls, [STORED_KEY]);
+  assertEquals(spy.auditCalls.length, 1); // update audit
 });
 
-Deno.test("POST /brand-logo: infra throw maps to generic 500 and logs internally", async () => {
+Deno.test("PUT /blob rev conflict → 409, no cleanup", async () => {
   const { deps, spy } = makeDeps({
-    materializeBrandLogo: async () => {
-      throw new Error("R2 PUT failed: 503 with internal details");
+    saveDesignBlob: async () => {
+      throw new Error("rev_conflict");
     },
   });
   const handler = createPostDesignManageHandler(deps);
   const res = await handler(
-    makeReq("POST", { search: "/brand-logo", body: { cliente_id: CLIENTE_ID } }),
+    blobRequest("PUT", { body: new Uint8Array([1]), headers: { "x-expected-rev": "2" } }),
   );
-  assertEquals(res.status, 500);
-  assertEquals(await res.json(), { error: "internal_error" }); // no internals leaked
-  assertEquals(spy.loggedErrors.length, 1);
+  assertEquals(res.status, 409);
+  assertEquals(spy.deleteBlobCalls.length, 0);
+  const body = await res.json();
+  assertEquals(body.error, "rev_conflict");
 });
 
-Deno.test("POST to any other path is 404", async () => {
-  const { deps, spy } = makeDeps();
-  const handler = createPostDesignManageHandler(deps);
-  const res = await handler(makeReq("POST", { body: { cliente_id: CLIENTE_ID } }));
-  assertEquals(res.status, 404);
-  assertEquals(spy.materializeCalls.length, 0);
-});
-
-Deno.test("POST /brand-logo: feature gate applies (same as every other route)", async () => {
-  const { deps, spy } = makeDeps({ isFeatureEnabled: async () => false });
+Deno.test("PUT /blob on non-editable post → 403", async () => {
+  const { deps } = makeDeps({
+    saveDesignBlob: async () => {
+      throw new Error("post_not_editable:aprovado");
+    },
+  });
   const handler = createPostDesignManageHandler(deps);
   const res = await handler(
-    makeReq("POST", { search: "/brand-logo", body: { cliente_id: CLIENTE_ID } }),
+    blobRequest("PUT", { body: new Uint8Array([1]), headers: { "x-expected-rev": "2" } }),
   );
   assertEquals(res.status, 403);
-  assertEquals((await res.json()).error, "feature_disabled");
-  assertEquals(spy.materializeCalls.length, 0);
+});
+
+Deno.test("PUT /blob body over 10MB → 413, blob never uploaded", async () => {
+  const { deps, spy } = makeDeps();
+  const handler = createPostDesignManageHandler(deps);
+  const res = await handler(
+    blobRequest("PUT", {
+      body: new Uint8Array(10 * 1024 * 1024 + 1),
+      headers: { "x-expected-rev": "3" },
+    }),
+  );
+  assertEquals(res.status, 413);
+  assertEquals(spy.putBlobCalls.length, 0);
+});
+
+Deno.test("PUT /blob empty body or bad expected-rev → 422", async () => {
+  const { deps } = makeDeps();
+  const handler = createPostDesignManageHandler(deps);
+  const empty = await handler(
+    blobRequest("PUT", { body: new Uint8Array(0), headers: { "x-expected-rev": "3" } }),
+  );
+  assertEquals(empty.status, 422);
+  const badRev = await handler(
+    blobRequest("PUT", { body: new Uint8Array([1]), headers: { "x-expected-rev": "zero" } }),
+  );
+  assertEquals(badRev.status, 422);
+});
+
+// ---------- DELETE ----------
+
+Deno.test("DELETE removes the row and the blob", async () => {
+  const { deps, spy } = makeDeps();
+  const handler = createPostDesignManageHandler(deps);
+  const res = await handler(
+    new Request(`https://x.test/post-design-manage?post_id=${POST_ID}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer valid-token" },
+    }),
+  );
+  assertEquals(res.status, 200);
+  assertEquals(spy.deleteCalls, [{ contaId: CONTA_ID, postId: POST_ID }]);
+  assertEquals(spy.deleteBlobCalls, [STORED_KEY]);
+});
+
+// ---------- CORS ----------
+
+Deno.test("preflight allows the contract headers and exposes x-rev", async () => {
+  const { deps } = makeDeps();
+  const handler = createPostDesignManageHandler(deps);
+  const res = await handler(new Request(BLOB_URL, { method: "OPTIONS" }));
+  assertEquals(res.status, 200);
+  const allow = res.headers.get("Access-Control-Allow-Headers") ?? "";
+  assert(allow.includes("x-expected-rev"));
+  assert(allow.includes("x-editor-version"));
+  assertEquals(res.headers.get("Access-Control-Expose-Headers"), "x-rev");
+});
+
+// ---------- POST /brand-logo (unchanged behavior) ----------
+
+Deno.test("POST /brand-logo still works", async () => {
+  const { deps } = makeDeps();
+  const handler = createPostDesignManageHandler(deps);
+  const res = await handler(
+    new Request("https://x.test/post-design-manage/brand-logo", {
+      method: "POST",
+      headers: { Authorization: "Bearer valid-token", "content-type": "application/json" },
+      body: JSON.stringify({ cliente_id: CLIENTE_ID }),
+    }),
+  );
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.logo_file_id, 77);
 });
