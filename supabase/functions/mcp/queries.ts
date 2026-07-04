@@ -59,6 +59,9 @@ export interface Deps {
   triggerRender?: (designId: number, rev: number) => Promise<void>;
   /** R2 font bytes for the §2.5 measure pass (layout arrays in write responses). */
   resolveFontBytes?: (r2Key: string) => Promise<Uint8Array>;
+  /** Image-generation core deps (§8) — wired in index.ts; absent = tool unconfigured. */
+  // deno-lint-ignore no-explicit-any
+  imageGen?: any;
 }
 
 const sign = (d: Deps) => d.signUrl ?? ((key: string) => signGetUrl(key, 3600));

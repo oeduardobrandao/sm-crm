@@ -22,6 +22,7 @@ import {
   listWorkflows,
 } from "./queries.ts";
 import { createDesign, getDesign, McpStructuredError, updateDesign } from "./design.ts";
+import { generateImage } from "./imageGen.ts";
 
 function jsonResult(data: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(data) }] };
@@ -279,6 +280,35 @@ export function registerTools(server: any, deps: Deps): void {
     },
     (a) => updateDesign(deps, a),
     (a, r) => ({ post_id: a.post_id, expected_rev: a.expected_rev, ...designAudit(r) }));
+
+  register(server, deps, "generate_image", "images:generate",
+    "Gera uma imagem com IA (custo por imagem, quota mensal do plano). placement 'background' gera em 2K para fundos full-bleed; 'element' em 1K. Com client_id, cores e segmento da marca entram como contexto; use_brand_logo anexa o logo como referência. A imagem vira um arquivo do workspace (file_id) para usar em designs — nunca é anexada a posts. Passe idempotency_key para retries seguros.",
+    {
+      prompt: z.string().trim().min(1).max(2000),
+      aspect_ratio: z.enum(["1:1", "4:5", "9:16", "16:9"]),
+      placement: z.enum(["background", "element"]).optional(),
+      quality: z.enum(["1K", "2K"]).optional(),
+      client_id: z.number().int().positive().optional(),
+      post_id: z.number().int().positive().optional(),
+      reference_file_ids: z.array(z.number().int().positive()).max(4).optional(),
+      use_brand_logo: z.boolean().optional(),
+      idempotency_key: z.string().trim().min(8).max(80).optional(),
+    },
+    (a) => generateImage(deps, a),
+    // Spend audit (§8): model/AR/cost/file_id — NEVER the prompt (ledger-only, RLS-scoped).
+    (a, r) => ({
+      client_id: a.client_id,
+      post_id: a.post_id,
+      aspect_ratio: a.aspect_ratio,
+      placement: a.placement,
+      quality: a.quality,
+      prompt_len: a.prompt?.length ?? 0,
+      reference_count: (a.reference_file_ids?.length ?? 0) + (a.use_brand_logo ? 1 : 0),
+      file_id: r?.file_id,
+      model: r?.model,
+      cost_usd_estimate: r?.cost_usd_estimate,
+      replayed: r?.replayed ?? false,
+    }));
 }
 
 /** Audit stats from a design write RESULT (never args — the doc itself must not be audited). */

@@ -8,8 +8,10 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { publicOrigin, resolveCtx } from "../_shared/mcp-oauth.ts";
 import { createDesignRenderTrigger } from "../_shared/design-render-trigger.ts";
-import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
-import { getObjectBytes } from "../_shared/r2.ts";
+import { createGeminiProvider } from "../_shared/image-gen/gemini.ts";
+import { effectivePlanFeature, effectivePlanLimit } from "../_shared/entitlements-rpc.ts";
+import { checkRateLimit } from "../_shared/rate-limit.ts";
+import { deleteObject, getObjectBytes, putObject, signGetUrl } from "../_shared/r2.ts";
 import { registerTools } from "./tools.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -17,6 +19,10 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 // Optional on purpose — without it design writes still land, only the immediate render kick is
 // skipped (the sweep cron and the editor's own reads converge the render).
 const CRON_SECRET = Deno.env.get("CRON_SECRET");
+// Optional too: without the key, generate_image reports "não configurada" instead of the whole
+// MCP server failing to boot (this function serves 17 other tools).
+const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+const geminiProvider = GEMINI_API_KEY ? createGeminiProvider(GEMINI_API_KEY) : undefined;
 // The OAuth scope we advertise to clients. Supabase's AS only supports OIDC scopes
 // (openid/profile/email/phone), so advertising our MCP scopes here makes Claude request them at
 // /authorize, which Supabase rejects ("unsupported scope: clientes:read"). MCP scopes are enforced
@@ -122,6 +128,28 @@ Deno.serve(async (req) => {
       const bytes = await getObjectBytes(r2Key);
       if (!bytes) throw new Error(`font object missing: ${r2Key}`);
       return bytes;
+    },
+    // generate_image (§8) — the shared core's dep bundle:
+    imageGen: {
+      db,
+      provider: geminiProvider,
+      isFeatureEnabled: (contaId: string, feature: string) =>
+        effectivePlanFeature(db as never, contaId, feature),
+      monthlyLimit: (contaId: string) =>
+        effectivePlanLimit(db as never, contaId, "rate_ai_images_per_month"),
+      checkRateLimit: (key: string, max: number, windowSeconds: number) =>
+        checkRateLimit(db as never, key, max, windowSeconds),
+      putObject,
+      deleteObject,
+      insertFile: async (p: Record<string, unknown>) => {
+        const { data, error } = await db.rpc("file_insert_with_quota", { p }).single();
+        if (error || !data) throw new Error((error as { message?: string })?.message ?? "file insert failed");
+        return { id: (data as { id: number }).id };
+      },
+      resolveFileBytes: (r2Key: string) => getObjectBytes(r2Key),
+      signUrl: (key: string) => signGetUrl(key, 3600),
+      randomUUID: () => crypto.randomUUID(),
+      logError: (context: string, error: unknown) => console.error(`[${context}]`, error),
     },
   });
 
