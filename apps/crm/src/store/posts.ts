@@ -170,6 +170,9 @@ export interface PostMedia {
   duration_seconds: number | null;
   is_cover: boolean;
   sort_order: number;
+  /** 'design' = an Estúdio-rendered link (T4.1/T4.5 — the design owns it, not user-editable);
+   * optional because responses cached before the post-media-manage redeploy omit it. */
+  origin?: 'manual' | 'design';
   uploaded_by: string | null;
   created_at: string;
   blur_data_url?: string | null;

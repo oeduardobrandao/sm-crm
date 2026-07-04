@@ -86,6 +86,8 @@ import {
   resolveInlineImageUrls,
 } from '@/services/inlineImage';
 import { listPostMedia } from '../../../services/postMedia';
+import { getPostDesignSummary } from '@/store';
+import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { InstagramCaptionField } from './InstagramCaptionField';
 import { ScheduleButton } from './ScheduleButton';
 import { DateTimePicker } from '@/components/ui/date-time-picker';
@@ -885,6 +887,25 @@ function SortablePostItem({
   const navigate = useNavigate();
   const { t } = useTranslation('estudio');
 
+  // T4.4/T4.5 — Estúdio lifecycle surface. Fail-open feature gate (same pattern as nav/
+  // PostPicker) and an EXPANDED-ONLY summary query: collapsed rows never hit post_designs.
+  // Direct RLS select via getPostDesignSummary — the GET route is get-or-create and would
+  // mint a design row from a mere existence check.
+  const { features } = useWorkspaceLimits();
+  const estudioBlocked = features?.feature_estudio === false;
+  const designSummaryQuery = useQuery({
+    queryKey: ['post-design-summary', post.id],
+    queryFn: () => getPostDesignSummary(post.id!),
+    enabled: isExpanded && !!post.id && post.tipo !== 'stories' && !estudioBlocked,
+    // staleTime dedupes expand/collapse churn WITHIN an open drawer; refetchOnMount 'always'
+    // guarantees a fresh read when the drawer remounts — e.g. returning from a quick Estúdio
+    // edit that created/changed the design inside the 30s window (nothing invalidates this
+    // key from the editor route).
+    staleTime: 30 * 1000,
+    refetchOnMount: 'always',
+  });
+  const designSummary = designSummaryQuery.data ?? null;
+
   // Local state for title to avoid input lag / letter-replacement from the
   // round-trip through updateWorkflowPost + refresh on every keystroke.
   const [tituloLocal, setTituloLocal] = useState(post.titulo ?? '');
@@ -1156,7 +1177,7 @@ function SortablePostItem({
             />
           )}
 
-          {post.tipo !== 'stories' && (
+          {post.tipo !== 'stories' && !estudioBlocked && (
             <button
               type="button"
               onClick={() => navigate(`/estudio/${post.id}`)}
@@ -1172,7 +1193,7 @@ function SortablePostItem({
             </button>
           )}
 
-          <PostMediaGallery postId={post.id!} />
+          <PostMediaGallery postId={post.id!} design={designSummary} postTipo={post.tipo} />
 
           {editSuggestion ? (
             <div className="rounded-lg border border-amber-200 bg-amber-50/50 overflow-hidden">
