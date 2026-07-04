@@ -313,6 +313,17 @@ export async function createDesign(input: { post_id?: number; format?: string })
 
 ### Task 8: Deploy to prod + live E2E + docs
 
+> **STATUS 2026-07-04:** Tasks 1–7 complete on `feat/estudio-design-first`; gates green.
+> Waiting on Eduardo to apply `20260705000001_designs_first_class.sql` on PROD (SQL editor
+> — it DROPS post_designs; rows are dark test data). Deploy set enumerated (Step 2):
+> `design-manage`, `design-render`, `design-render-sweep-cron`, `file-manage`,
+> `file-upload-finalize`, `hub-approve`, `instagram-publish-cron` (all `--use-api
+> --no-verify-jwt`) + `instagram-publish` (`--use-api` ONLY — confirmed absent from
+> config.toml, keeps gateway JWT). Then delete prod fn `post-design-manage`. Contract doc,
+> spike NOTES and memory already updated (part of Step 5). Do NOT deploy before the
+> migration — the new functions call RPCs that don't exist yet, while the old deployed
+> post-design-manage keeps working against post_designs until the drop.
+
 - [ ] **Step 1:** Confirm with Eduardo that the Task 1 migration is applied on prod.
 - [ ] **Step 2:** Enumerate deploy set: `design-manage`, `design-render`,
   `design-render-sweep-cron`, plus every fn importing the changed shared modules:
