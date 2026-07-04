@@ -145,6 +145,22 @@ async function setLedger(
   if (error) deps.logError("image-gen:ledger-update", error);
 }
 
+/** Quota snapshot for read tools (get_design_capabilities): same reservation predicate as the
+ * pipeline, zero side effects. */
+export async function quotaSnapshot(
+  deps: Pick<ImageGenCoreDeps, "db" | "monthlyLimit">,
+  contaId: string,
+  nowDate?: Date,
+): Promise<{ used: number; limit: number | null; resets_at: string }> {
+  const now = nowDate ?? new Date();
+  const { resetsAt } = monthBoundsUtc(now);
+  return {
+    used: await reservedCount(deps as ImageGenCoreDeps, contaId, now),
+    limit: await deps.monthlyLimit(contaId),
+    resets_at: resetsAt,
+  };
+}
+
 export async function generateImageCore(
   deps: ImageGenCoreDeps,
   input: ImageGenInput,

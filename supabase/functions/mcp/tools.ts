@@ -23,9 +23,18 @@ import {
 } from "./queries.ts";
 import { createDesign, getDesign, McpStructuredError, updateDesign } from "./design.ts";
 import { generateImage } from "./imageGen.ts";
+import { getDesignCapabilities, previewDesign } from "./capabilities.ts";
+import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
 function jsonResult(data: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(data) }] };
+}
+
+/** §9 registrar note: jsonResult wraps everything as a text block, so preview_design needs
+ * this sibling returning a raw MCP IMAGE content block (Claude is multimodal — seeing the
+ * render collapses blind iterations). */
+function imageResult(bytes: Uint8Array, mimeType: string) {
+  return { content: [{ type: "image" as const, data: encodeBase64(bytes), mimeType }] };
 }
 
 function errorResult(e: unknown) {
@@ -72,13 +81,14 @@ function register(
   shape: z.ZodRawShape,
   run: (args: any) => Promise<unknown>,
   auditArgs?: (args: any, result: any) => Record<string, unknown>,
+  wrapResult: (data: any) => unknown = jsonResult,
 ) {
   server.tool(name, description, shape, async (args: any) => {
     try {
       requireScope(deps.ctx, scope);
       const data = await run(args ?? {});
       await audit(deps, name, (auditArgs ?? ((a: any) => a))(args ?? {}, data));
-      return jsonResult(data);
+      return wrapResult(data);
     } catch (e) {
       return errorResult(e);
     }
@@ -309,6 +319,22 @@ export function registerTools(server: any, deps: Deps): void {
       cost_usd_estimate: r?.cost_usd_estimate,
       replayed: r?.replayed ?? false,
     }));
+
+  register(server, deps, "preview_design", "posts:read",
+    "Renderiza UMA página do design de um post e retorna a imagem (JPEG) — use para VER o resultado antes/depois de editar. page_id escolhe a página (padrão: a primeira); width padrão 512 (128–1080; o layout roda sempre no tamanho nativo do canvas, o width só escala a saída). Custa CPU: uma página por chamada.",
+    {
+      post_id: z.number().int().positive(),
+      page_id: z.string().trim().min(1).max(40).optional(),
+      width: z.number().int().min(128).max(1080).optional(),
+    },
+    (a) => previewDesign(deps, a),
+    (a, r) => ({ post_id: a.post_id, page_id: r?.page_id, width: r?.width, height: r?.height }),
+    (r: any) => imageResult(r.jpegBytes, "image/jpeg"));
+
+  register(server, deps, "get_design_capabilities", "posts:read",
+    "Descobre o que o Estúdio aceita ANTES de criar designs: formatos e canvases por tipo de post, catálogo completo de fontes (keys/pesos/estilos/grupos), limites do documento, features do plano, quota de geração de imagens e — com client_id — o kit de marca do cliente (cores, logo_file_id quando já materializado, fontes resolvidas para o catálogo). Leitura pura: nunca materializa o logo.",
+    { client_id: z.number().int().positive().optional() },
+    (a) => getDesignCapabilities(deps, a));
 }
 
 /** Audit stats from a design write RESULT (never args — the doc itself must not be audited). */

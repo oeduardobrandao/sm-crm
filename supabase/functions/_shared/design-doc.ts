@@ -354,7 +354,7 @@ export const FORMAT_TO_TIPO: Record<DesignFormat, string> = {
   reel_cover: "reels",
 };
 
-const ALLOWED_ASPECT_RATIOS_BY_FORMAT: Record<
+export const ALLOWED_ASPECT_RATIOS_BY_FORMAT: Record<
   DesignFormat,
   readonly AspectRatio[]
 > = {
@@ -363,7 +363,7 @@ const ALLOWED_ASPECT_RATIOS_BY_FORMAT: Record<
   reel_cover: ["9:16"],
 };
 
-const CANVAS_DIMENSIONS: Record<
+export const CANVAS_DIMENSIONS: Record<
   AspectRatio,
   { width: 1080; height: 1080 | 1350 | 1920 }
 > = {
