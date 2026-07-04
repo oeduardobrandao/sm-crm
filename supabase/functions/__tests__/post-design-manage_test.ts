@@ -24,6 +24,7 @@ function makePostRow(overrides: Partial<PostRow> = {}): PostRow {
 }
 
 interface DepsSpy {
+  triggerCalls: Array<{ designId: number; rev: number }>;
   putBlobCalls: Array<{ key: string; bytes: Uint8Array }>;
   deleteBlobCalls: string[];
   getOrCreateCalls: Array<{ r2Key: string; docHash: string; docBytes: number }>;
@@ -35,6 +36,7 @@ interface DepsSpy {
 
 function makeDeps(overrides: Partial<PostDesignManageDeps> = {}): { deps: PostDesignManageDeps; spy: DepsSpy } {
   const spy: DepsSpy = {
+    triggerCalls: [],
     putBlobCalls: [],
     deleteBlobCalls: [],
     getOrCreateCalls: [],
@@ -82,6 +84,12 @@ function makeDeps(overrides: Partial<PostDesignManageDeps> = {}): { deps: PostDe
     },
     logError: (context, error) => {
       spy.loggedErrors.push({ context, error });
+    },
+    triggerRender: async (designId, rev) => {
+      spy.triggerCalls.push({ designId, rev });
+    },
+    waitUntil: (p) => {
+      void p;
     },
     ...overrides,
   };
@@ -159,6 +167,7 @@ Deno.test("GET /blob mints the tipo starter when no design exists", async () => 
   assertEquals(spy.getOrCreateCalls.length, 1);
   assertEquals(spy.getOrCreateCalls[0].docHash, await sha256Hex(template));
   assertEquals(spy.auditCalls.length, 1); // create audit
+  assertEquals(spy.triggerCalls, [{ designId: 9, rev: 1 }]); // mint kicks the first render
 });
 
 Deno.test("GET /blob mint refused on non-editable post", async () => {
@@ -226,6 +235,7 @@ Deno.test("PUT /blob happy path: rev-scoped key, sha256, x-rev bump, prev blob c
   // previous rev's blob is best-effort deleted after a successful save
   assertEquals(spy.deleteBlobCalls, [STORED_KEY]);
   assertEquals(spy.auditCalls.length, 1); // update audit
+  assertEquals(spy.triggerCalls, [{ designId: 9, rev: 4 }]); // save kicks a re-render
 });
 
 Deno.test("PUT /blob rev conflict → 409, no cleanup", async () => {
@@ -240,6 +250,7 @@ Deno.test("PUT /blob rev conflict → 409, no cleanup", async () => {
   );
   assertEquals(res.status, 409);
   assertEquals(spy.deleteBlobCalls.length, 0);
+  assertEquals(spy.triggerCalls.length, 0); // no render on a lost save
   const body = await res.json();
   assertEquals(body.error, "rev_conflict");
 });

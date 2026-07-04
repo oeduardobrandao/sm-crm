@@ -6,8 +6,9 @@
 // NOT the platform gateway's verify_jwt; see config.toml). All writes go through the v2 RPC
 // family (20260704000001_post_designs_blob.sql) — clients cannot write post_designs directly
 // (SELECT-only grants), so ownership/status/rev are enforced in one transaction regardless of
-// caller. Deep validation, tipo-sync and render triggering are the doc service's job (later
-// slice) — this function treats the blob as opaque bytes.
+// caller. This function treats the blob as opaque bytes — deep validation and tipo-sync live in
+// the render pipeline (design-render + estudio-render service), kicked fire-and-forget on
+// every mint/save.
 
 import { createJsonResponder } from "../_shared/http.ts";
 import type { MaterializeLogoResult } from "../_shared/brand-logo.ts";
@@ -68,6 +69,8 @@ export interface PostDesignManageDeps {
     clienteId: number;
     uploadedBy: string;
   }) => Promise<MaterializeLogoResult>;
+  triggerRender: (designId: number, rev: number) => Promise<void>;
+  waitUntil: (promise: Promise<unknown>) => void;
   insertAuditLog: (entry: {
     conta_id: string;
     actor_user_id: string;
@@ -82,6 +85,15 @@ export interface PostDesignManageDeps {
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", bytes.slice().buffer as ArrayBuffer);
   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function fireRender(deps: PostDesignManageDeps, designId: number, rev: number) {
+  // Fire-and-forget (v1 idiom): a failed kick just leaves the row pending for the sweep cron.
+  deps.waitUntil(
+    deps.triggerRender(designId, rev).catch((e) =>
+      deps.logError("post-design-manage:trigger-render", e)
+    ),
+  );
 }
 
 function blobKey(contaId: string, postId: number, rev: number): string {
@@ -239,6 +251,7 @@ export function createPostDesignManageHandler(deps: PostDesignManageDeps) {
             resource_id: String(created.id),
             metadata: { post_id: postId, doc_bytes: template.length, rev: created.rev },
           });
+          fireRender(deps, created.id, created.rev);
           return bytesResponse(template, created.rev);
         }
         // Lost the create race — serve the winner's bytes, never ours.
@@ -293,6 +306,9 @@ export function createPostDesignManageHandler(deps: PostDesignManageDeps) {
           resource_id: String(postId),
           metadata: { post_id: postId, doc_bytes: body.length, rev: saved.rev },
         });
+
+        const savedMeta = await deps.getDesignMeta(postId, contaId);
+        if (savedMeta) fireRender(deps, savedMeta.id, saved.rev);
 
         // Best-effort: the previous rev's blob is now unreachable via the row.
         if (saved.prevR2Key && saved.prevR2Key !== key) {

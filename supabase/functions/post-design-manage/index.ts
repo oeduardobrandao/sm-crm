@@ -4,11 +4,16 @@ import { resolveEntitlements } from "../_shared/entitlements.ts";
 import { insertAuditLog } from "../_shared/audit.ts";
 import { fetchPostMedia } from "../_shared/instagram-publish-utils.ts";
 import { materializeBrandLogo, type HubBrandLogoRow } from "../_shared/brand-logo.ts";
+import { createDesignRenderTrigger } from "../_shared/design-render-trigger.ts";
 import { deleteObject, getObjectBytes, putObject } from "../_shared/r2.ts";
 import { createPostDesignManageHandler, type DesignMeta, type PostRow } from "./handler.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const CRON_SECRET = Deno.env.get("CRON_SECRET") ??
+  (() => {
+    throw new Error("CRON_SECRET is required");
+  })();
 
 const svc = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
@@ -146,6 +151,13 @@ Deno.serve(createPostDesignManageHandler({
       randomUUID: () => crypto.randomUUID(),
       logError: (context, error) => console.error(`[${context}]`, error),
     }, args),
+
+  triggerRender: createDesignRenderTrigger(SUPABASE_URL, CRON_SECRET),
+
+  // deno-lint-ignore no-undef -- EdgeRuntime is a Supabase Edge Runtime global, not an import.
+  waitUntil: (promise) => {
+    EdgeRuntime.waitUntil(promise);
+  },
 
   insertAuditLog: (entry) => insertAuditLog(svc, entry),
 
