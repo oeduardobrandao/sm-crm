@@ -287,6 +287,23 @@ export function TextEditOverlay({
     outlineOffset: 2,
     background: 'rgba(255,255,255,0.02)',
     cursor: 'text',
+    // Style parity with the hidden satori copy (the canvas renders WITHOUT this layer while
+    // editing — see useSatoriRenderer's hideLayerId): without the pill/shadow here, a pill'd
+    // text edited over a busy background would lose its backing mid-edit and turn unreadable.
+    ...(layer.pill
+      ? {
+          background: layer.pill.color,
+          padding: `${layer.pill.padding_y * scale}px ${layer.pill.padding_x * scale}px`,
+          borderRadius: layer.pill.radius * scale,
+        }
+      : {}),
+    ...(layer.shadow
+      ? {
+          textShadow: `${layer.shadow.x * scale}px ${layer.shadow.y * scale}px ${
+            layer.shadow.blur * scale
+          }px ${layer.shadow.color}`,
+        }
+      : {}),
     // Text-edit mode is a modal takeover of this layer — no drag/resize gesture should be
     // startable while typing (Part B wires this in by rendering TextEditOverlay INSTEAD OF the
     // drag hit-area/LayerHandles, but stopping propagation here too is cheap defense-in-depth).

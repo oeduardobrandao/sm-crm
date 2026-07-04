@@ -58,10 +58,16 @@ export interface UseSatoriRendererResult {
  * per-mousemove — design.md §6.3: gestures move a CSS-transformed ghost, the reducer/this hook
  * only ever sees committed docs). Returns `svg: null` until the first render completes; a later
  * doc/page change re-renders and replaces it once the new render resolves (the previous SVG
- * stays on screen during that window rather than flashing blank). */
+ * stays on screen during that window rather than flashing blank).
+ *
+ * `hideLayerId`: renders the page WITHOUT that layer — TextEditOverlay's live contenteditable
+ * replaces the edited text, and leaving satori's own copy underneath produced a double-exposure
+ * (any keystroke made the two diverge). Layers are absolutely positioned, so omission never
+ * shifts siblings. */
 export function useSatoriRenderer(
   doc: DesignDoc | undefined,
   pageIndex: number,
+  hideLayerId?: string | null,
 ): UseSatoriRendererResult {
   const fontsQuery = useFontManifest(doc);
   const imagesQuery = useImageUrls(doc);
@@ -84,7 +90,16 @@ export function useSatoriRenderer(
         const satoriMod = await ensureSatoriReady();
         if (generation !== generationRef.current) return; // superseded while satori/yoga loaded
 
-        const tree = buildPageTree(doc, pageIndex, (fileId) => {
+        const renderDoc = hideLayerId
+          ? {
+              ...doc,
+              pages: doc.pages.map((p) => ({
+                ...p,
+                layers: p.layers.filter((l) => l.id !== hideLayerId),
+              })),
+            }
+          : doc;
+        const tree = buildPageTree(renderDoc, pageIndex, (fileId) => {
           const url = images.get(fileId);
           if (!url) {
             // Degrade, don't die: an unresolvable image (fetch failed on every route, or a
@@ -125,7 +140,7 @@ export function useSatoriRenderer(
     }, RENDER_DEBOUNCE_MS);
 
     return () => clearTimeout(timer);
-  }, [doc, pageIndex, page, fonts, images]);
+  }, [doc, pageIndex, page, fonts, images, hideLayerId]);
 
   return {
     svg,

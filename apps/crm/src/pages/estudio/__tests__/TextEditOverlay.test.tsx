@@ -86,6 +86,18 @@ describe('TextEditOverlay', () => {
     expect(overlay.style.height).toBe('auto');
   });
 
+  it("replicates the layer's pill and shadow (the canvas hides the satori copy while editing — without parity, pill'd text loses its backing mid-edit)", async () => {
+    renderOverlay({
+      pill: { color: '#112233', padding_x: 16, padding_y: 8, radius: 12 },
+      shadow: { x: 2, y: 3, blur: 4, color: '#00000080' },
+    });
+    const overlay = await screen.findByTestId('text-edit-overlay');
+    expect(overlay.style.background).toContain('rgb(17, 34, 51)');
+    expect(overlay.style.padding).toBe('8px 16px');
+    expect(overlay.style.borderRadius).toBe('12px');
+    expect(overlay.style.textShadow).toBe('2px 3px 4px #00000080');
+  });
+
   it('applies no rotate transform when layer.rotation is 0', async () => {
     renderOverlay({ rotation: 0 });
     const overlay = await screen.findByTestId('text-edit-overlay');

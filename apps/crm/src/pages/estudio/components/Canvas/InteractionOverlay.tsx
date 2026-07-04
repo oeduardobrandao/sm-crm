@@ -46,6 +46,9 @@ export interface InteractionOverlayProps {
    * (e.g. `LeftToolDock`'s window-level paste-to-insert listener, per T2.9's `pasteEnabled` prop).
    * Optional: tests/callers that don't care about this signal simply omit it. */
   onEditingChange?: (isEditing: boolean) => void;
+  /** Like `onEditingChange`, but with the layer id — CanvasStage uses it to omit the edited
+   * layer from the satori render while TextEditOverlay presents it live. */
+  onEditingLayerIdChange?: (layerId: string | null) => void;
   /** On-demand satori measurement of a text layer at a trial width (useTextMeasurement.measureAt)
    * — lets a side-handle resize ghost preview the REAL wrapped height live instead of freezing
    * the pre-drag height until pointerup. Optional: without it the ghost keeps the old behavior. */
@@ -129,6 +132,7 @@ export function InteractionOverlay({
   screenToCanvas,
   canvasToScreen,
   onEditingChange,
+  onEditingLayerIdChange,
   measureTextAt,
 }: InteractionOverlayProps) {
   const overlayRef = useRef<HTMLDivElement | null>(null);
@@ -170,7 +174,8 @@ export function InteractionOverlay({
 
   useEffect(() => {
     onEditingChange?.(editingLayerId != null);
-  }, [editingLayerId, onEditingChange]);
+    onEditingLayerIdChange?.(editingLayerId);
+  }, [editingLayerId, onEditingChange, onEditingLayerIdChange]);
 
   const clientPointToCanvas = useCallback(
     (clientX: number, clientY: number): CanvasPoint => {

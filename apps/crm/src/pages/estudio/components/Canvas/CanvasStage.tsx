@@ -12,7 +12,7 @@
 // (`inset: 0`) siblings. A pointer event's position relative to that box's own
 // `getBoundingClientRect()` then feeds directly into `screenToCanvas` (divide by scale, no extra
 // offset math needed).
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSatoriRenderer } from '../../hooks/useSatoriRenderer';
 import { useCanvasTransform } from '../../hooks/useCanvasTransform';
@@ -61,7 +61,18 @@ export function CanvasStage({
   measureTextAt,
 }: CanvasStageProps) {
   const { t } = useTranslation('estudio');
-  const { svg, error } = useSatoriRenderer(doc, pageIndex);
+  // While a text layer is in TextEditOverlay's takeover, the canvas renders WITHOUT it — the
+  // live contenteditable IS that layer's presentation; satori's own copy underneath was a
+  // double-exposure that diverged on the first keystroke.
+  const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
+  const handleEditingLayerChange = useCallback(
+    (layerId: string | null) => {
+      setEditingLayerId(layerId);
+      onEditingChange?.(layerId != null);
+    },
+    [onEditingChange],
+  );
+  const { svg, error } = useSatoriRenderer(doc, pageIndex, editingLayerId);
   const { containerRef, scale, offset, screenToCanvas, canvasToScreen, resetView } =
     useCanvasTransform(doc.canvas.width, doc.canvas.height);
   // T7.5: user-scoped, localStorage-persisted (absent = ON). Replaces the old ephemeral useState.
@@ -122,7 +133,7 @@ export function CanvasStage({
             scale={scale}
             screenToCanvas={screenToCanvas}
             canvasToScreen={canvasToScreen}
-            onEditingChange={onEditingChange}
+            onEditingLayerIdChange={handleEditingLayerChange}
             measureTextAt={measureTextAt}
           />
         </div>

@@ -114,6 +114,24 @@ describe('useSatoriRenderer', () => {
     expect(result.current.svg).toBe('<svg>second</svg>');
   });
 
+  it('hideLayerId renders the page WITHOUT that layer (text-edit takeover: the live contenteditable replaces it)', async () => {
+    const doc = makeDoc(); // fixture page has text layer 'layer-1' containing 'Olá mundo'
+    const { result } = renderHook(() => useSatoriRenderer(doc, 0, 'layer-1'));
+    await advance(150);
+    expect(satoriDefault).toHaveBeenCalled();
+    const [tree] = satoriDefault.mock.calls.at(-1)!;
+    expect(JSON.stringify(tree)).not.toContain('Olá mundo');
+    expect(result.current.error).toBeNull();
+  });
+
+  it('a null hideLayerId keeps every layer in the tree', async () => {
+    const doc = makeDoc();
+    renderHook(() => useSatoriRenderer(doc, 0, null));
+    await advance(150);
+    const [tree] = satoriDefault.mock.calls.at(-1)!;
+    expect(JSON.stringify(tree)).toContain('Olá mundo');
+  });
+
   it('surfaces a font-manifest error without ever calling satori', async () => {
     fontManifestState.data = undefined;
     fontManifestState.error = new Error('unknown font variant');
