@@ -161,8 +161,15 @@ describe('designDocOps pages', () => {
     expect(next.pages.map((p) => p.id)).toEqual(['page-1', 'page-2']);
   });
 
-  it('addPage is a no-op for a non-carrossel format (feed/reel_cover are locked to exactly 1 page)', () => {
+  it('addPage on a FEED doc converts it to a carousel (backend tipo-sync makes this a sanctioned conversion)', () => {
     const doc = makeDoc({ format: 'feed' });
+    const next = ops.addPage(doc, makePage({ id: 'page-2' }));
+    expect(next.format).toBe('carrossel');
+    expect(next.pages.map((p) => p.id)).toEqual(['page-1', 'page-2']);
+  });
+
+  it('addPage is a no-op for reel_cover (a reel has exactly one cover)', () => {
+    const doc = makeDoc({ format: 'reel_cover' });
     const next = ops.addPage(doc, makePage({ id: 'page-2' }));
     expect(next).toBe(doc);
   });
@@ -198,8 +205,15 @@ describe('designDocOps pages', () => {
     expect(next).toBe(doc);
   });
 
-  it('duplicatePage is a no-op for a non-carrossel format', () => {
+  it('duplicatePage on a FEED doc converts it to a carousel, same as addPage', () => {
     const doc = makeDoc({ format: 'feed' });
+    const next = ops.duplicatePage(doc, 'page-1');
+    expect(next.format).toBe('carrossel');
+    expect(next.pages).toHaveLength(2);
+  });
+
+  it('duplicatePage is a no-op for reel_cover', () => {
+    const doc = makeDoc({ format: 'reel_cover' });
     const next = ops.duplicatePage(doc, 'page-1');
     expect(next).toBe(doc);
   });

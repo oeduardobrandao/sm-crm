@@ -59,6 +59,10 @@ export function SlideStrip({
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const interactive = doc.format === 'carrossel';
+  // A 'feed' doc can GROW into a carousel (designDocOps.addPage flips the format; the backend's
+  // §5.4 tipo-sync converts the post's tipo on the next save) — so feed shows the add button
+  // too, labeled with the conversion. reel_cover is genuinely single-page: no button at all.
+  const canGrow = interactive || doc.format === 'feed';
   const atMaxPages = doc.pages.length >= MAX_PAGES;
   const atMinPages = doc.pages.length <= 1;
 
@@ -110,7 +114,7 @@ export function SlideStrip({
         </SortableContext>
       </DndContext>
 
-      {interactive && (
+      {canGrow && (
         <button
           type="button"
           onClick={onAddPage}
@@ -118,9 +122,13 @@ export function SlideStrip({
           title={
             atMaxPages
               ? t('slideStrip.maxPagesReached', { max: MAX_PAGES })
-              : t('slideStrip.addPage')
+              : doc.format === 'feed'
+                ? t('slideStrip.addPageConvert')
+                : t('slideStrip.addPage')
           }
-          aria-label={t('slideStrip.addPage')}
+          aria-label={
+            doc.format === 'feed' ? t('slideStrip.addPageConvert') : t('slideStrip.addPage')
+          }
           style={{
             display: 'flex',
             alignItems: 'center',

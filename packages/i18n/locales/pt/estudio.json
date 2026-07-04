@@ -122,6 +122,7 @@
   "slideStrip": {
     "pageLabel": "Página {{number}}",
     "addPage": "Adicionar página",
+    "addPageConvert": "Adicionar página (o post vira carrossel)",
     "maxPagesReached": "Limite de {{max}} páginas atingido",
     "duplicatePage": "Duplicar página",
     "removePage": "Remover página",

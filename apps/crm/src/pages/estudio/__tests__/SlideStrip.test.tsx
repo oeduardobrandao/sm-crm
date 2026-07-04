@@ -182,9 +182,30 @@ describe('SlideStrip', () => {
           onReorderPages={vi.fn()}
         />,
       );
+      // Feed CAN grow (it converts to a carousel on add) — the button says so; per-tile
+      // duplicate/remove stay hidden until the doc actually IS a carousel.
       expect(screen.queryByLabelText('Adicionar página')).not.toBeInTheDocument();
+      expect(screen.getByLabelText('Adicionar página (o post vira carrossel)')).toBeInTheDocument();
       expect(screen.queryByLabelText('Duplicar página')).not.toBeInTheDocument();
       expect(screen.queryByLabelText('Remover página')).not.toBeInTheDocument();
+    });
+
+    it('clicking the convert-add button on a feed doc calls onAddPage', () => {
+      const doc = makeDoc({ format: 'feed', pages: [makePage({ id: 'p1' })] });
+      const onAddPage = vi.fn();
+      render(
+        <SlideStrip
+          doc={doc}
+          activePageId="p1"
+          setActivePage={vi.fn()}
+          onAddPage={onAddPage}
+          onDuplicatePage={vi.fn()}
+          onRemovePage={vi.fn()}
+          onReorderPages={vi.fn()}
+        />,
+      );
+      fireEvent.click(screen.getByLabelText('Adicionar página (o post vira carrossel)'));
+      expect(onAddPage).toHaveBeenCalledTimes(1);
     });
 
     it('hides add/duplicate/remove controls for a reel_cover (single-page, non-carrossel) doc', () => {
@@ -201,6 +222,9 @@ describe('SlideStrip', () => {
         />,
       );
       expect(screen.queryByLabelText('Adicionar página')).not.toBeInTheDocument();
+      expect(
+        screen.queryByLabelText('Adicionar página (o post vira carrossel)'),
+      ).not.toBeInTheDocument();
     });
 
     it('renders the single tile of a non-carrossel doc as genuinely non-interactive — no role="button", not tab-focusable, click is a no-op (regression: previously stayed clickable/tabIndex=0/role=button regardless of format, misleadingly presenting a dead-end affordance)', () => {

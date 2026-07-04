@@ -173,17 +173,30 @@ export function reorderLayer(
 // Pages
 // ============================================================
 
-// design-doc.ts Stage 1: format !== 'carrossel' locks a doc to exactly 1 page (feed/reel_cover),
-// and the authoring schema caps every doc at `pages: z.array(Page).min(1).max(10)` regardless of
+// design-doc.ts Stage 1: format !== 'carrossel' locks a doc to exactly 1 page, and the
+// authoring schema caps every doc at `pages: z.array(Page).min(1).max(10)` regardless of
 // format. Both invariants were previously enforced ONLY by SlideStrip's button visibility — a UI
 // concern, not a data-layer one — leaving `addPage`/`duplicatePage` reachable from any future
 // caller (a keyboard shortcut, a future MCP-driven op, a bug in the UI gating) with no guard
 // against producing a schema-violating doc. Enforced here too, at the one place every mutation
-// path funnels through, so it's impossible to bypass regardless of caller.
+// path funnels through, so it's impossible to bypass regardless of caller. (A 'feed' doc is a
+// special case: growing it is allowed BECAUSE the op converts the declared format — see
+// canAddPage/growFormat below.)
 const MAX_PAGES = 10;
 
 function canAddPage(doc: DesignDoc): boolean {
-  return doc.format === 'carrossel' && doc.pages.length < MAX_PAGES;
+  // 'feed' may GROW into a carousel: adding page 2 flips doc.format to 'carrossel' (see
+  // growFormat below), and the backend's §5.4 tipo-sync (post_design_check_and_sync) converts
+  // the post's own tipo on the next save — a sanctioned conversion, not a schema violation
+  // (the 1-page rule applies to the format the doc DECLARES, which changes with it; feed's
+  // aspect ratios 1:1/4:5 are both valid for carrossel). reel_cover is genuinely single-page —
+  // a reel has exactly one cover.
+  return (doc.format === 'carrossel' || doc.format === 'feed') && doc.pages.length < MAX_PAGES;
+}
+
+/** The format a doc DECLARES once a page-add/duplicate grows it past one page. */
+function growFormat(doc: DesignDoc): DesignDoc['format'] {
+  return doc.format === 'feed' ? 'carrossel' : doc.format;
 }
 
 export function addPage(doc: DesignDoc, page: NormalizedPage, index?: number): DesignDoc {
@@ -191,7 +204,7 @@ export function addPage(doc: DesignDoc, page: NormalizedPage, index?: number): D
   const pages = [...doc.pages];
   const at = index === undefined ? pages.length : Math.max(0, Math.min(index, pages.length));
   pages.splice(at, 0, page);
-  return withFileIds({ ...doc, pages });
+  return withFileIds({ ...doc, format: growFormat(doc), pages });
 }
 
 /** Deep-clones a page with a fresh page id AND fresh layer ids (so the clone never collides
@@ -210,7 +223,7 @@ export function duplicatePage(doc: DesignDoc, pageId: string): DesignDoc {
   };
   const pages = [...doc.pages];
   pages.splice(index + 1, 0, clone);
-  return withFileIds({ ...doc, pages });
+  return withFileIds({ ...doc, format: growFormat(doc), pages });
 }
 
 /** No-op if `pageId` doesn't exist, or if it's the document's only page — every format's
