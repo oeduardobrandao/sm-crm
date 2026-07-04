@@ -37,7 +37,14 @@
     "undo": "Undo",
     "redo": "Redo",
     "zoomReset": "Fit to screen",
-    "zoomLabel": "Zoom"
+    "zoomLabel": "Zoom",
+    "unavailable": "Estúdio is not available in this environment yet.",
+    "notRunning": "The editor did not respond. Check that the editor service is running.",
+    "notRunningDevHint": "Dev: start the editor dev server on port 1420 (\"op-editor\" launch config).",
+    "unsavedPrompt": "There are unsaved changes. Leave anyway?",
+    "saveNow": "Save now",
+    "invalidPost": "Invalid post.",
+    "authError": "Could not authenticate the editor. Reload the page."
   },
   "openInEstudio": "Open in Studio",
   "dock": {
@@ -184,5 +191,8 @@
   "toast": {
     "createError": "Could not create the design: {{error}}"
   },
-  "featureBlocked": "Estúdio is not available on your current plan. Contact support to upgrade."
+  "featureBlocked": "Estúdio is not available on your current plan. Contact support to upgrade.",
+  "back": "Back",
+  "openFromEntregas": "Open a post from the Deliveries tab to edit it in Estúdio.",
+  "goToEntregas": "Go to Deliveries"
 }

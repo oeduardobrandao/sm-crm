@@ -84,8 +84,6 @@ export function buildDocUrl(
   postId: number,
   env: { dev: boolean; appOrigin: string; supabaseUrl: string },
 ): string {
-  const base = env.dev
-    ? `${env.appOrigin}/estudio-fn`
-    : `${env.supabaseUrl}/functions/v1`;
+  const base = env.dev ? `${env.appOrigin}/estudio-fn` : `${env.supabaseUrl}/functions/v1`;
   return `${base}/post-design-manage/blob?post_id=${postId}`;
 }

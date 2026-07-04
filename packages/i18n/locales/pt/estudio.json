@@ -37,7 +37,14 @@
     "undo": "Desfazer",
     "redo": "Refazer",
     "zoomReset": "Ajustar à tela",
-    "zoomLabel": "Zoom"
+    "zoomLabel": "Zoom",
+    "unavailable": "O Estúdio ainda não está disponível neste ambiente.",
+    "notRunning": "O editor não respondeu. Verifique se o serviço do editor está ativo.",
+    "notRunningDevHint": "Dev: inicie o servidor do editor na porta 1420 (configuração \"op-editor\").",
+    "unsavedPrompt": "Há alterações não salvas. Sair mesmo assim?",
+    "saveNow": "Salvar agora",
+    "invalidPost": "Post inválido.",
+    "authError": "Não foi possível autenticar o editor. Recarregue a página."
   },
   "openInEstudio": "Abrir no Estúdio",
   "dock": {
@@ -184,5 +191,8 @@
   "toast": {
     "createError": "Não foi possível criar o design: {{error}}"
   },
-  "featureBlocked": "O Estúdio não está disponível no seu plano atual. Fale com o suporte para fazer upgrade."
+  "featureBlocked": "O Estúdio não está disponível no seu plano atual. Fale com o suporte para fazer upgrade.",
+  "back": "Voltar",
+  "openFromEntregas": "Abra um post pela aba Entregas para editá-lo no Estúdio.",
+  "goToEntregas": "Ir para Entregas"
 }

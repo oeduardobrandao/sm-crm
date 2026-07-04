@@ -125,7 +125,9 @@ describe('createEmbedHost', () => {
 
 describe('URL builders', () => {
   it('buildEditorUrl matches the frozen embed URL shape', () => {
-    expect(buildEditorUrl(EDITOR_ORIGIN, 'https://x.y/blob?post_id=7', 'http://localhost:5173')).toBe(
+    expect(
+      buildEditorUrl(EDITOR_ORIGIN, 'https://x.y/blob?post_id=7', 'http://localhost:5173'),
+    ).toBe(
       'http://localhost:1420/?embed=1&docUrl=https%3A%2F%2Fx.y%2Fblob%3Fpost_id%3D7&parentOrigin=http%3A%2F%2Flocalhost%3A5173',
     );
   });
