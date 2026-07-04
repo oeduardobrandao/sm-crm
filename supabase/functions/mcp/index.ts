@@ -7,10 +7,16 @@ import { WebStandardStreamableHTTPServerTransport } from "npm:@modelcontextproto
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { publicOrigin, resolveCtx } from "../_shared/mcp-oauth.ts";
+import { createDesignRenderTrigger } from "../_shared/design-render-trigger.ts";
+import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
+import { getObjectBytes } from "../_shared/r2.ts";
 import { registerTools } from "./tools.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+// Optional on purpose — without it design writes still land, only the immediate render kick is
+// skipped (the sweep cron and the editor's own reads converge the render).
+const CRON_SECRET = Deno.env.get("CRON_SECRET");
 // The OAuth scope we advertise to clients. Supabase's AS only supports OIDC scopes
 // (openid/profile/email/phone), so advertising our MCP scopes here makes Claude request them at
 // /authorize, which Supabase rejects ("unsupported scope: clientes:read"). MCP scopes are enforced
@@ -106,7 +112,18 @@ Deno.serve(async (req) => {
       },
     ],
   });
-  registerTools(server, { db, ctx });
+  registerTools(server, {
+    db,
+    ctx,
+    // Estúdio design tools (design §9):
+    isFeatureEnabled: (feature) => effectivePlanFeature(db as never, ctx.conta_id, feature),
+    triggerRender: CRON_SECRET ? createDesignRenderTrigger(SUPABASE_URL, CRON_SECRET) : undefined,
+    resolveFontBytes: async (r2Key) => {
+      const bytes = await getObjectBytes(r2Key);
+      if (!bytes) throw new Error(`font object missing: ${r2Key}`);
+      return bytes;
+    },
+  });
 
   const transport = new WebStandardStreamableHTTPServerTransport();
   await server.connect(transport);

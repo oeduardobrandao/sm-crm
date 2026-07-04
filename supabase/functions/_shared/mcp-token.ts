@@ -3,9 +3,12 @@ import { effectivePlanFeature } from "./entitlements-rpc.ts";
 
 export const MCP_TOKEN_PREFIX = "mesaas_sk_";
 
-// Scopes that map to a backing tool. Read scopes (PR 1) + posts:write (write tools).
+// Scopes that map to a backing tool. Read scopes (PR 1) + posts:write (write tools) +
+// Estúdio (design §9): designs:write for design docs, images:generate for AI-image SPEND —
+// deliberately separate so an owner can grant design editing without granting money.
 export const MCP_ALLOWED_SCOPES = [
   "clientes:read", "posts:read", "workflows:read", "ideias:read", "posts:write", "templates:write",
+  "designs:write", "images:generate",
 ] as const;
 export type McpScope = (typeof MCP_ALLOWED_SCOPES)[number];
 

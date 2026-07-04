@@ -21,12 +21,21 @@ import {
   listWorkflowTemplates,
   listWorkflows,
 } from "./queries.ts";
+import { createDesign, getDesign, McpStructuredError, updateDesign } from "./design.ts";
 
 function jsonResult(data: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(data) }] };
 }
 
 function errorResult(e: unknown) {
+  // Structured errors (design §2.4 self-correction contract) return their JSON payload
+  // verbatim — issues[]/current_rev/etc. are the agent's retry instructions.
+  if (e instanceof McpStructuredError) {
+    return {
+      content: [{ type: "text" as const, text: JSON.stringify(e.payload) }],
+      isError: true,
+    };
+  }
   const message = e instanceof McpScopeError
     ? `Permission denied: missing scope '${e.scope}'.`
     : e instanceof McpInputError
@@ -50,7 +59,9 @@ async function audit(deps: Deps, name: string, args: Record<string, unknown>) {
   });
 }
 
-/** Register one tool with scope-gating + audit. */
+/** Register one tool with scope-gating + audit. `auditArgs` also receives the RESULT (design
+ * §9 — write audits carry result metadata like rev/file_id without ever carrying payloads);
+ * existing single-param callbacks are unaffected. */
 function register(
   server: any,
   deps: Deps,
@@ -59,13 +70,13 @@ function register(
   description: string,
   shape: z.ZodRawShape,
   run: (args: any) => Promise<unknown>,
-  auditArgs?: (args: any) => Record<string, unknown>,
+  auditArgs?: (args: any, result: any) => Record<string, unknown>,
 ) {
   server.tool(name, description, shape, async (args: any) => {
     try {
       requireScope(deps.ctx, scope);
       const data = await run(args ?? {});
-      await audit(deps, name, (auditArgs ?? ((a: any) => a))(args ?? {}));
+      await audit(deps, name, (auditArgs ?? ((a: any) => a))(args ?? {}, data));
       return jsonResult(data);
     } catch (e) {
       return errorResult(e);
@@ -239,4 +250,46 @@ export function registerTools(server: any, deps: Deps): void {
     },
     (a) => createWorkflowTemplate(deps, a),
     (a) => ({ nome: a.nome, etapa_count: a.etapas?.length ?? 0, property_count: a.properties?.length ?? 0 }));
+
+  // ── Estúdio design tools (design §9) ─────────────────────────────────────────────
+  // The design payload is zod3 `record(unknown)` here; the shared zod4 pipeline (§2.4)
+  // validates inside the handler and returns aggregated issues[] on failure. Audit metadata is
+  // doc STATS only — never doc contents (client copy lives in text layers).
+
+  register(server, deps, "get_design", "posts:read",
+    "Lê o design (arte do Estúdio) de um post: documento normalizado, rev e estado da renderização com URLs de preview. Post sem design retorna design:null com uma dica — não é erro.",
+    { post_id: z.number().int().positive() },
+    (a) => getDesign(deps, a));
+
+  register(server, deps, "create_design", "designs:write",
+    "Cria o design de um post (documento completo). Valide o formato contra o tipo do post (get_design_capabilities lista formatos, fontes e limites). Se o post já tiver design, use update_design. A renderização é disparada automaticamente.",
+    {
+      post_id: z.number().int().positive(),
+      design: z.record(z.unknown()),
+    },
+    (a) => createDesign(deps, a),
+    (a, r) => ({ post_id: a.post_id, ...designAudit(r) }));
+
+  register(server, deps, "update_design", "designs:write",
+    "Substitui o design de um post pelo documento completo enviado (sem patches parciais). Passe expected_rev (de get_design) para detectar edições concorrentes; omitido, a última escrita vence. A renderização é disparada automaticamente.",
+    {
+      post_id: z.number().int().positive(),
+      design: z.record(z.unknown()),
+      expected_rev: z.number().int().positive().optional(),
+    },
+    (a) => updateDesign(deps, a),
+    (a, r) => ({ post_id: a.post_id, expected_rev: a.expected_rev, ...designAudit(r) }));
+}
+
+/** Audit stats from a design write RESULT (never args — the doc itself must not be audited). */
+function designAudit(result: any): Record<string, unknown> {
+  const doc = result?.design;
+  if (!doc || !Array.isArray(doc.pages)) return {};
+  return {
+    format: doc.format,
+    page_count: doc.pages.length,
+    layer_count: doc.pages.reduce((sum: number, p: any) => sum + (p.layers?.length ?? 0), 0),
+    doc_bytes: JSON.stringify(doc).length,
+    rev: result.rev,
+  };
 }

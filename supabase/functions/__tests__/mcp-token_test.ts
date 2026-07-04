@@ -3,6 +3,8 @@ import {
   generateApiKey,
   hashToken,
   hasScope,
+  MCP_AGENT_PRESET,
+  MCP_ALLOWED_SCOPES,
   MCP_TOKEN_PREFIX,
   McpScopeError,
   mcpKeyActive,
@@ -45,4 +47,11 @@ Deno.test("hasScope / requireScope", () => {
     threw = e instanceof McpScopeError;
   }
   assert(threw, "expected McpScopeError for missing scope");
+});
+
+Deno.test("estudio scopes (design §9): allowlisted, and NEVER in the read-only agent preset", () => {
+  for (const s of ["designs:write", "images:generate"]) {
+    assert((MCP_ALLOWED_SCOPES as readonly string[]).includes(s), `${s} in allowlist`);
+    assert(!(MCP_AGENT_PRESET as readonly string[]).includes(s), `${s} NOT in agent preset`);
+  }
 });

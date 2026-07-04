@@ -52,6 +52,13 @@ export interface Deps {
   signUrl?: (key: string) => Promise<string>;
   now?: () => string;
   genId?: () => string;
+  // Estúdio design tools (design §9) — wired in index.ts, injectable in tests:
+  /** Plan feature gate (resolves against the key's workspace). */
+  isFeatureEnabled?: (feature: string) => Promise<boolean>;
+  /** Fire-and-forget design-render kick (x-cron-secret internal call). */
+  triggerRender?: (designId: number, rev: number) => Promise<void>;
+  /** R2 font bytes for the §2.5 measure pass (layout arrays in write responses). */
+  resolveFontBytes?: (r2Key: string) => Promise<Uint8Array>;
 }
 
 const sign = (d: Deps) => d.signUrl ?? ((key: string) => signGetUrl(key, 3600));
@@ -867,7 +874,9 @@ export async function createPost(
   return post;
 }
 
-const EDITABLE_STATUSES: string[] = ["rascunho", "revisao_interna", "correcao_cliente"];
+// Exported for the Estúdio design tools (design.ts) — one editability definition per module
+// boundary; mirrors the SQL copy inside post_design_check_and_sync and post-design-manage.
+export const EDITABLE_STATUSES: string[] = ["rascunho", "revisao_interna", "correcao_cliente"];
 const AGENT_SETTABLE_STATUSES: string[] = ["rascunho", "revisao_interna"];
 
 export async function updatePost(
