@@ -37,6 +37,21 @@ Package: `@open-pencil/core@0.13.2` (npm, bundles scene-graph/io/layout/text/too
 - The .fig writer/reader injects a default empty "Page 1"; our content page must be found by name, not index.
 - Mutations verified persisted across serialize/reload: `updateNode(textId, {text})`, image swap, both re-read correctly.
 
+### embed probe — PASS (Proof 1)
+
+- **Diff footprint: 3 modified files (+21 lines) + 1 new module (~50 lines)** in their repo (branch `spike/embed` in `~/Projects/open-pencil-spike`, local commit): `src/app/embed/index.ts` (new), `src/app/document/io/source.ts` (embed save + autosave gate), `src/app/editor/session/modules.ts` (boot-load + probe handle), `src/main.ts` (chrome CSS). FAR under the ≤10-file fail bar.
+- Their IO layer is cleanly seamed: `src/app/document/io/` (16 files, 716 LOC) — `openFigFile(File)` for load, `buildFigFile()→bytes` for save, `createAutosave` (3s debounce on `state.sceneVersion`, gated by `hasWritableSource()`), `autosaveEnabled` default false (embed turns it on).
+- Verified end-to-end in the browser: doc served by HTTP stub loads at boot → renders our headless-created frames (write→read through their real app!) → graph edit → autosave PUT with `x-expected-rev` → stub rev 1→4 → stale-rev replay gets **409** → page reload shows the persisted edit. Also verified **inside an iframe**.
+- Editor-side text render matches the frames built in Node (same "ANTES" layout) — visual parity editor↔headless observed on the probe doc.
+- Gotchas for the fork slice:
+  - Repo uses **git-lfs with a custom R2 endpoint that rejects anonymous downloads** — clone with `GIT_LFS_SKIP_SMUDGE=1` (LFS objects are test fixtures only; app builds/runs without them).
+  - Dev needs **Node ≥20.12** (vite config uses `util.styleText`) or run `bun --bun run dev`.
+  - Their dev app opens on the default empty "Page 1" — embed boot should focus the content page.
+  - Chrome hiding: no stable class hooks (tailwind utilities) — fork should `v-if` the menubar/Share/collab components on embedConfig; probe hid `[role=menubar]` via CSS.
+  - An "Automation" websocket (their CLI/MCP app-RPC) retries in a loop in dev — disable in embed mode.
+  - Cross-origin iframe triggered a `localStorage` SecurityError (unhandled) once under partitioned storage; app still booted. Production embed is same-origin (Vercel rewrites) so moot — but worth guarding upstream.
+  - `packages/mcp` fails module resolution in dev from the repo (needs workspace build) — irrelevant to the editor app.
+
 ### 02-export.mjs — PASS (Proof 3b)
 
 - `initCanvasKit()`: **25ms** in plain Node (wasm bundled in canvaskit-wasm pkg, no locateFile needed).

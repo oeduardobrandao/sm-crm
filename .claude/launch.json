@@ -14,6 +14,18 @@
       "runtimeArgs": ["run", "dev:staging"],
       "port": 5173,
       "autoPort": true
+    },
+    {
+      "name": "spike-stub",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "cd spike/openpencil && exec node stub-server.mjs"],
+      "port": 3112
+    },
+    {
+      "name": "op-editor",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "cd \"$HOME/Projects/open-pencil-spike\" && exec bun --bun run dev"],
+      "port": 1420
     }
   ]
 }
