@@ -235,17 +235,17 @@ Deno.test("POST /designs with post_id on approved post → 403 post_not_editable
   `supabase/functions/design-render-sweep-cron/index.ts`
 - Test: `supabase/functions/__tests__/design-render_test.ts`
 
-- [ ] **Step 1:** `index.ts`: `claim_design_render_blob` → `claim_design_render`; claim
+- [x] **Step 1:** `index.ts`: `claim_design_render_blob` → `claim_design_render`; claim
   row now carries nullable `post_id`/`post_tipo`/`post_status` + `format`.
-- [ ] **Step 2:** `handler.ts`: tipo for the render-service call =
+- [x] **Step 2:** `handler.ts`: tipo for the render-service call =
   `post_tipo ?? ({feed:'feed', carrossel:'carrossel', reel_cover:'reels', livre:'carrossel'})[format]`.
   After finalize: run `syncPostTipo` ONLY when `post_id != null` and post editable and
   derived tipo differs (as today). Unattached designs whose frames fail validation (e.g.
   empty `livre` canvas) → `fail_design_render` with the tenant message, exactly like
   today — gallery shows a placeholder; acceptable for A1.
-- [ ] **Step 3:** Sweep cron `index.ts`: `.from("post_designs")` → `.from("designs")`
+- [x] **Step 3:** Sweep cron `index.ts`: `.from("post_designs")` → `.from("designs")`
   (same columns).
-- [ ] **Step 4:** Update the 9 design-render tests (claim shape) + add: unattached design
+- [x] **Step 4:** Update the 9 design-render tests (claim shape) + add: unattached design
   renders → no media application (spy), no tipo-sync; attached-but-locked post → finalize
   skips media (matches the RPC branch). `npm run test:functions` green. Commit.
 

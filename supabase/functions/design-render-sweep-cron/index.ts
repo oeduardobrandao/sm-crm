@@ -26,7 +26,7 @@ Deno.serve(createDesignRenderSweepCronHandler({
   findStuckRows: async () => {
     const cutoff = new Date(Date.now() - STUCK_THRESHOLD_MS).toISOString();
     const { data, error } = await svc
-      .from("post_designs")
+      .from("designs")
       .select("id, rev")
       .or(
         `and(render_status.eq.pending,updated_at.lt.${cutoff}),` +

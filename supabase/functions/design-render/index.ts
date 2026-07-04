@@ -4,7 +4,7 @@ import { timingSafeEqual } from "../_shared/crypto.ts";
 import { getObjectBytes, putObject } from "../_shared/r2.ts";
 import {
   createDesignRenderHandler,
-  type ClaimedDesignBlob,
+  type ClaimedDesign,
   type DesignRowMeta,
   type RenderServiceResult,
 } from "./handler.ts";
@@ -33,7 +33,7 @@ const svc = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
-// Mirrors the SQL editability list (save_post_design_blob / v1 check_and_sync).
+// Mirrors the SQL editability list (save_design_blob / finalize_design_render).
 const EDITABLE_STATUSES = ["rascunho", "revisao_interna", "correcao_cliente"];
 
 Deno.serve(createDesignRenderHandler({
@@ -43,25 +43,27 @@ Deno.serve(createDesignRenderHandler({
 
   readDesignRow: async (designId): Promise<DesignRowMeta | null> => {
     const { data } = await svc
-      .from("post_designs")
+      .from("designs")
       .select("id, rev, render_status")
       .eq("id", designId)
       .maybeSingle();
     return data as DesignRowMeta | null;
   },
 
-  claimDesignRenderBlob: async (designId): Promise<ClaimedDesignBlob | null> => {
-    const { data, error } = await svc.rpc("claim_design_render_blob", { p_design_id: designId });
+  claimDesignRender: async (designId): Promise<ClaimedDesign | null> => {
+    const { data, error } = await svc.rpc("claim_design_render", { p_design_id: designId });
     if (error) throw new Error(error.message);
     const row = (data as Array<Record<string, unknown>> | null)?.[0];
     if (!row) return null;
     return {
       id: row.design_id as number,
       conta_id: row.conta_id as string,
-      post_id: row.post_id as number,
+      post_id: (row.post_id as number | null) ?? null,
       doc_r2_key: (row.doc_r2_key as string | null) ?? null,
       doc_hash: row.doc_hash as string,
-      post_tipo: row.post_tipo as string,
+      format: row.format as string,
+      post_tipo: (row.post_tipo as string | null) ?? null,
+      post_status: (row.post_status as string | null) ?? null,
     };
   },
 

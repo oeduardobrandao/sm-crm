@@ -1,14 +1,27 @@
-// design-render — Estúdio v2 orchestrator. Internal-only (x-cron-secret, --no-verify-jwt).
-// Callers unchanged from v1: post-design-manage (editor saves), the pre-schedule publish-gate
-// re-check, hub-approve, and the sweep cron — same trigger contract ({design_id, rev}).
+// design-render — Estúdio orchestrator (design-first, slice A1). Internal-only
+// (x-cron-secret, --no-verify-jwt). Callers unchanged: design-manage (creates/saves/attach),
+// the pre-schedule publish-gate re-check, hub-approve, and the sweep cron — same trigger
+// contract ({design_id, rev}).
 //
-// v1 rendered pages itself (satori wasm) under the 2s-CPU chunked self-invocation dance; v2
-// delegates the compute to the estudio-render Vercel service (IO-bound here) and keeps the
-// database story identical: claim_design_render_blob (same locking/reap semantics as v1's
-// claim), finalize_design_render / fail_design_render untouched, same rendered-page R2 key
-// scheme, same stale/cleanup behavior. New: tipo-sync from the frames the service derived.
+// Delegates the compute to the estudio-render Vercel service (IO-bound here); the database
+// story lives in the design_id-keyed RPC family (20260705000001): claim_design_render (same
+// locking/reap semantics, now LEFT JOINed to the optionally-attached post),
+// finalize_design_render (media application only when attached AND the post is editable) and
+// fail_design_render. Same rendered-page R2 key scheme, same stale/cleanup behavior.
+// Unattached designs render too — thumbnails for the gallery; no post is touched.
 
 import { createJsonResponder } from "../_shared/http.ts";
+
+// Mirrors the SQL editability list (save_design_blob / finalize_design_render).
+const EDITABLE_STATUSES = ["rascunho", "revisao_interna", "correcao_cliente"];
+
+// Render-service tipo for a design with no attached post, from its format.
+const FORMAT_TO_TIPO: Record<string, string> = {
+  feed: "feed",
+  carrossel: "carrossel",
+  reel_cover: "reels",
+  livre: "carrossel",
+};
 
 export interface ManifestEntry {
   page_id: string;
@@ -24,13 +37,15 @@ export interface DesignRowMeta {
   render_status: string;
 }
 
-export interface ClaimedDesignBlob {
+export interface ClaimedDesign {
   id: number;
   conta_id: string;
-  post_id: number;
+  post_id: number | null;
   doc_r2_key: string | null;
   doc_hash: string;
-  post_tipo: string;
+  format: string;
+  post_tipo: string | null;
+  post_status: string | null;
 }
 
 export interface RenderServiceResult {
@@ -44,7 +59,7 @@ export interface DesignRenderDeps {
   cronSecret: string;
   timingSafeEqual: (a: string, b: string) => boolean;
   readDesignRow: (designId: number) => Promise<DesignRowMeta | null>;
-  claimDesignRenderBlob: (designId: number) => Promise<ClaimedDesignBlob | null>;
+  claimDesignRender: (designId: number) => Promise<ClaimedDesign | null>;
   fetchBlob: (r2Key: string) => Promise<Uint8Array | null>;
   callRenderService: (bytes: Uint8Array, tipo: string) => Promise<RenderServiceResult>;
   putObject: (key: string, bytes: Uint8Array, contentType: string) => Promise<void>;
@@ -105,8 +120,12 @@ export function createDesignRenderHandler(deps: DesignRenderDeps) {
     if (!row) return json({ error: "design_not_found" }, 404);
     if (row.rev !== rev) return NO_CONTENT(cors); // superseded trigger — nothing to do
 
-    const claimed = await deps.claimDesignRenderBlob(design_id);
+    const claimed = await deps.claimDesignRender(design_id);
     if (!claimed) return json({ error: "render_in_progress" }, 409);
+
+    // Attached designs render for the post's tipo; unattached ones derive it from format
+    // (livre has no fixed aspect → carrossel is the service's multi-frame-tolerant mode).
+    const renderTipo = claimed.post_tipo ?? FORMAT_TO_TIPO[claimed.format] ?? "carrossel";
 
     // Track what really landed in R2 so every failure path can queue cleanup before
     // fail_design_render NULLs the manifest (v1 invariant, kept).
@@ -124,7 +143,7 @@ export function createDesignRenderHandler(deps: DesignRenderDeps) {
         return json({ error: "render_failed" }, 500);
       }
 
-      const result = await deps.callRenderService(bytes, claimed.post_tipo);
+      const result = await deps.callRenderService(bytes, renderTipo);
 
       if (!result.validation.ok) {
         await failAndCleanup(tenantErrorFor(result));
@@ -153,8 +172,15 @@ export function createDesignRenderHandler(deps: DesignRenderDeps) {
         return NO_CONTENT(cors);
       }
 
-      if (result.derived.tipo && result.derived.tipo !== claimed.post_tipo) {
+      if (
+        claimed.post_id !== null &&
+        claimed.post_status !== null &&
+        EDITABLE_STATUSES.includes(claimed.post_status) &&
+        result.derived.tipo &&
+        result.derived.tipo !== claimed.post_tipo
+      ) {
         // Post-finalize on purpose: media is live either way; tipo follows the frames.
+        // Unattached or locked posts are never touched (mirrors finalize's media branch).
         await deps
           .syncPostTipo(claimed.post_id, claimed.conta_id, result.derived.tipo)
           .catch((e) => deps.logError("design-render:tipo-sync", e));

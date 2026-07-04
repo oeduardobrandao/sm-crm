@@ -1,10 +1,12 @@
-// design-render v2 orchestrator — claim → blob → render service → R2 → finalize → tipo-sync.
-// Trigger contract identical to v1 (x-cron-secret, {design_id, rev}, 204 nothing-to-do,
-// 409 claim lost) so post-design-manage / sweep cron / publish gate need no changes.
+// design-render orchestrator (design-first) — claim → blob → render service → R2 →
+// finalize → tipo-sync (attached + editable posts only). Trigger contract identical
+// (x-cron-secret, {design_id, rev}, 204 nothing-to-do, 409 claim lost) so design-manage /
+// sweep cron / publish gate need no changes. Unattached designs render too (gallery
+// thumbnails); media application lives in the finalize RPC, not here.
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   createDesignRenderHandler,
-  type ClaimedDesignBlob,
+  type ClaimedDesign,
   type DesignRenderDeps,
   type RenderServiceResult,
 } from "../design-render/handler.ts";
@@ -34,22 +36,28 @@ interface Spy {
   serviceCalls: Array<{ tipo: string; bytes: number }>;
 }
 
-function makeDeps(overrides: Partial<DesignRenderDeps> = {}): { deps: DesignRenderDeps; spy: Spy } {
-  const spy: Spy = { putCalls: [], finalizeCalls: [], failCalls: [], deletions: [], tipoSyncs: [], serviceCalls: [] };
-  const claimed: ClaimedDesignBlob = {
+function makeClaimed(overrides: Partial<ClaimedDesign> = {}): ClaimedDesign {
+  return {
     id: DESIGN_ID,
     conta_id: CONTA_ID,
     post_id: POST_ID,
-    doc_r2_key: `designs/${CONTA_ID}/${POST_ID}-r3.fig`,
+    doc_r2_key: `designs/${CONTA_ID}/deadbeef-r3.fig`,
     doc_hash: "hash-3",
+    format: "feed",
     post_tipo: "feed",
+    post_status: "rascunho",
+    ...overrides,
   };
+}
+
+function makeDeps(overrides: Partial<DesignRenderDeps> = {}): { deps: DesignRenderDeps; spy: Spy } {
+  const spy: Spy = { putCalls: [], finalizeCalls: [], failCalls: [], deletions: [], tipoSyncs: [], serviceCalls: [] };
   const deps: DesignRenderDeps = {
     buildCorsHeaders: () => ({}),
     cronSecret: SECRET,
     timingSafeEqual: (a, b) => a === b,
     readDesignRow: async () => ({ id: DESIGN_ID, rev: 3, render_status: "pending" }),
-    claimDesignRenderBlob: async () => claimed,
+    claimDesignRender: async () => makeClaimed(),
     fetchBlob: async () => new Uint8Array([1, 2, 3]),
     callRenderService: async (bytes, tipo) => {
       spy.serviceCalls.push({ tipo, bytes: bytes.length });
@@ -99,7 +107,7 @@ Deno.test("superseded rev → 204, no claim", async () => {
 });
 
 Deno.test("claim lost → 409", async () => {
-  const { deps } = makeDeps({ claimDesignRenderBlob: async () => null });
+  const { deps } = makeDeps({ claimDesignRender: async () => null });
   const res = await createDesignRenderHandler(deps)(trigger({ design_id: DESIGN_ID, rev: 3 }));
   assertEquals(res.status, 409);
 });
@@ -133,6 +141,52 @@ Deno.test("derived tipo differs → tipo-sync after finalize", async () => {
   const res = await createDesignRenderHandler(deps)(trigger({ design_id: DESIGN_ID, rev: 3 }));
   assertEquals(res.status, 200);
   assertEquals(spy.tipoSyncs, [{ postId: POST_ID, tipo: "carrossel" }]);
+});
+
+Deno.test("unattached design renders with format-derived tipo, no tipo-sync", async () => {
+  const { deps, spy } = makeDeps({
+    claimDesignRender: async () =>
+      makeClaimed({ post_id: null, post_tipo: null, post_status: null, format: "livre" }),
+    callRenderService: async (bytes, tipo) => {
+      spy.serviceCalls.push({ tipo, bytes: bytes.length });
+      return serviceOk({ derived: { format: "feed", tipo: "feed" } });
+    },
+  });
+  const res = await createDesignRenderHandler(deps)(trigger({ design_id: DESIGN_ID, rev: 3 }));
+  assertEquals(res.status, 200);
+  assertEquals(spy.serviceCalls, [{ tipo: "carrossel", bytes: 3 }]); // livre → carrossel mode
+  assertEquals(spy.finalizeCalls.length, 1); // manifest stored by the RPC (no media here)
+  assertEquals(spy.tipoSyncs.length, 0); // no post to sync
+  assertEquals(spy.failCalls.length, 0);
+});
+
+Deno.test("attached to a locked post → renders, but never tipo-syncs", async () => {
+  const { deps, spy } = makeDeps({
+    claimDesignRender: async () => makeClaimed({ post_status: "aprovado_cliente" }),
+    callRenderService: async (bytes, tipo) => {
+      spy.serviceCalls.push({ tipo, bytes: bytes.length });
+      return serviceOk({ derived: { format: "carrossel", tipo: "carrossel" } });
+    },
+  });
+  const res = await createDesignRenderHandler(deps)(trigger({ design_id: DESIGN_ID, rev: 3 }));
+  assertEquals(res.status, 200);
+  assertEquals(spy.finalizeCalls.length, 1); // RPC stores the manifest, skips media itself
+  assertEquals(spy.tipoSyncs.length, 0); // locked post is never touched
+});
+
+Deno.test("unattached design with invalid frames → fail with tenant message", async () => {
+  const { deps, spy } = makeDeps({
+    claimDesignRender: async () =>
+      makeClaimed({ post_id: null, post_tipo: null, post_status: null, format: "livre" }),
+    callRenderService: async () =>
+      serviceOk({
+        validation: { ok: false, errors: [{ code: "no_frames", message: "O design não tem frames." }] },
+        pages: [],
+      }),
+  });
+  const res = await createDesignRenderHandler(deps)(trigger({ design_id: DESIGN_ID, rev: 3 }));
+  assertEquals(res.status, 422);
+  assertEquals(spy.failCalls, [{ designId: DESIGN_ID, error: "O design não tem frames." }]);
 });
 
 Deno.test("validation failure → fail with tenant message, nothing uploaded", async () => {
