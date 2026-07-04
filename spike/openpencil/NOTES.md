@@ -1,5 +1,17 @@
 # OpenPencil spike — running notes
 
+## Slice 2 (endpoint) live verification — 2026-07-04, prod
+
+Post 1041 (DK TESTE, feed, rascunho), all from the CRM page origin with the real user token:
+GET /blob minted the feed starter (200, x-rev 1, 29,184 bytes, ZIP magic — .fig container) →
+PUT at rev 1 (x-editor-version 0.13.2) → 200 x-rev 2 → stale replay → **409 rev_conflict** →
+GET → rev 2 persisted through R2 → unauth GET → 401. Row: rev 2, doc_r2_key
+designs/{conta}/1041-r2.fig, sha256 hash, editor_version recorded, render_status pending +
+is_stale true (renderer = doc-service slice). Prod ALLOWED_ORIGINS covers localhost:5174.
+**CRM-shell slice TODO:** editor dev origin (localhost:1420) is NOT in prod ALLOWED_ORIGINS —
+either add it or dev-proxy the blob route through the CRM origin. Vite ignores the preview
+harness's assigned PORT (grabs 5174 when 5173 busy) — navigate the preview manually.
+
 Package: `@open-pencil/core@0.13.2` (npm, bundles scene-graph/io/layout/text/tools as subpath exports). Node v20.11.1.
 
 ## API facts (from published .d.ts, verified by probes below)
