@@ -67,11 +67,20 @@ host → editor:  auth          { accessToken } // first one unblocks boot (5s t
 Boot sequence: iframe loads → editor posts `ready` → host posts `auth` → editor GETs
 doc → opens it → focuses the first page with content → posts `doc:loaded`.
 
-## Reference host implementation
+## Host implementation
 
-`spike/openpencil/embed.html` + `spike/openpencil/stub-server.mjs` (auth-checking stub,
-409 on stale rev) — the CRM-shell slice reimplements the host side; the stub is the
-executable spec for the endpoint slice.
+**Status: IMPLEMENTED** by the CRM shell (slice 4): `apps/crm/src/pages/estudio/embedHost.ts`
+(pure bridge host: origin check, auth handshake incl. forced refresh on `auth:needed`,
+force-save, URL builders) + `EstudioPage.tsx` (iframe, save pill, conflict banner → iframe
+remount, dirty guards via `useBlocker` + `beforeunload`, 8s boot-timeout hint). Editor origin
+comes from `VITE_ESTUDIO_EDITOR_ORIGIN` (dev default `http://localhost:1420`). Dev CORS: the
+editor origin is not in prod `ALLOWED_ORIGINS`, so in dev `docUrl` routes through the CRM
+Vite proxy (`/estudio-fn/*` → `{SUPABASE_URL}/functions/v1/*`) which echoes localhost origins
+in `access-control-allow-origin`; prod uses the direct Supabase URL (editor origin gets
+allowlisted at cutover).
+
+Historical reference rig: `spike/openpencil/embed.html` + `stub-server.mjs` (deleted at
+cutover).
 
 ## Embed-mode behavior (what the fork changes)
 

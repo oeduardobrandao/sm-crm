@@ -1,5 +1,21 @@
 # OpenPencil spike — running notes
 
+## Slice 4 (CRM shell) live verification — 2026-07-04, local CRM against prod
+
+`/estudio/1041` in the local CRM (npm run dev :5174 + fork dev server :1420) ran the FULL
+loop: iframe boot → bridge ready → auth over postMessage → GET blob through the Vite dev
+proxy (`/estudio-fn`, OPTIONS 204 + CORS echo) → doc:loaded → editor UI with pages/layers/
+frames → forced save rev 7 → external stale-making PUT → editor save → **409 → CONFLITO
+pill + banner** → Recarregar → fresh boot at rev 8 → autosave rev 9 → Salvo. Row ended
+rev 9 / rendered / not stale — design-render re-fired on every PUT.
+Gotchas: (1) the editor emits `dirty` + a no-op autosave PUT right after every open
+(sceneVersion drifts from savedVersion during load/layout) → one wasted render per open;
+fork fix = re-init savedVersion after open settles. (2) The embed client does NOT send
+x-editor-version (rows have editor_version null) — add to fork backlog. (3) First
+screenshot mid-boot shows a pencil splash + empty canvas: dev-mode module streaming into
+the iframe takes ~10s; not a bug. (4) canvaskit-webgpu vendor warning at fork dev startup
+is benign — the app falls back to /canvaskit.wasm from node_modules.
+
 ## Slice 3 (doc service) live verification — 2026-07-04, prod
 
 Post 1041, full pipeline: PUT 1-frame doc ("ESTÚDIO V2 🔥") → rev 4 → design-render claimed →
