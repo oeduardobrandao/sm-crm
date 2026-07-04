@@ -12,8 +12,9 @@ npm run dev:admin        # Admin app on :5177    (prod)
 npm run dev:staging      # CRM   against staging Supabase
 npm run dev:hub:staging  # Hub   against staging Supabase
 npm run dev:admin:staging# Admin against staging Supabase
-npm run dev:all          # CRM + Hub + Admin together (prod)    via concurrently
-npm run dev:all:staging  # CRM + Hub + Admin together (staging) via concurrently
+npm run dev:estudio      # Estúdio editor (OpenPencil fork) on :1420 — needs ~/Projects/open-pencil-spike + bun
+npm run dev:all          # CRM + Hub + Admin + Estúdio together (prod)    via concurrently
+npm run dev:all:staging  # CRM + Hub + Admin + Estúdio together (staging) via concurrently
 
 # Build (always typecheck first)
 npm run build            # tsc + vite build for CRM
