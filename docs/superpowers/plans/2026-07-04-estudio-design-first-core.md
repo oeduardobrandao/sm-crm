@@ -197,18 +197,18 @@ trigger — ALL unchanged from the old handler):
 | `DELETE /designs/:id` | `delete_design` → queue returned keys into `file_deletions` → 204. (Replaces old `DELETE ?post_id=`.) |
 | `POST /brand-logo` | keep EXACTLY as-is (client-scoped, unrelated to the model change). |
 
-- [ ] **Step 1:** `git mv`, rename the exported factory to `createDesignManageHandler`,
+- [x] **Step 1:** `git mv`, rename the exported factory to `createDesignManageHandler`,
   update `config.toml`.
-- [ ] **Step 2:** Rewrite the deps interface: replace `getOrCreateDesignBlob`/
+- [x] **Step 2:** Rewrite the deps interface: replace `getOrCreateDesignBlob`/
   `saveDesignBlob(post…)`/`deleteDesign` with `createDesign`, `saveDesignBlob(designId…)`,
   `attachDesign`, `detachDesign`, `duplicateDesign`, `deleteDesign`, and
   `getDesign(designId, contaId)` (RLS-equivalent service read returning
   `{id, rev, doc_r2_key, post_id, format}`). Keep `getPost`, `hasVideoMedia`,
   `clienteExists`, blob/trigger/audit deps.
-- [ ] **Step 3:** Implement routes per the table. Wire `index.ts` to the new RPCs
+- [x] **Step 3:** Implement routes per the table. Wire `index.ts` to the new RPCs
   (`create_design`, `save_design_blob`, `attach_design`, `detach_design`,
   `duplicate_design`, `delete_design`) following the existing `.rpc(...)` wiring style.
-- [ ] **Step 4:** Rewrite the test file: keep the 18 parity cases (renamed to design_id
+- [x] **Step 4:** Rewrite the test file: keep the 18 parity cases (renamed to design_id
   semantics; GET-mints cases become POST /designs cases) and ADD: POST with post_id on
   non-editable post → 403; POST on stories → 422; attach happy path fires trigger with
   new rev; attach to already-designed post → 409; PUT on design attached to locked post →
@@ -224,8 +224,9 @@ Deno.test("POST /designs with post_id on approved post → 403 post_not_editable
 });
 ```
 
-- [ ] **Step 5:** `npm run test:functions` → all green (design-manage tests + the
-  untouched suites). Revert root `deno.lock` if dirty. Commit.
+- [x] **Step 5:** `npm run test:functions` → all green (design-manage tests + the
+  untouched suites). Revert root `deno.lock` if dirty. Commit. *(config-audit_test's
+  function list updated here — the rename broke it, so the fix belongs in this commit.)*
 
 ### Task 4: `design-render` + sweep cron on `designs`
 

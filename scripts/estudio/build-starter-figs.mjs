@@ -2,7 +2,7 @@
 // created. One preset frame per format ('livre' is a free canvas: page only, no frame),
 // white fill, page named "Canvas".
 // Run: cd scripts/estudio && npm i && node build-starter-figs.mjs
-// Output: supabase/functions/post-design-manage/starter-templates.gen.ts (committed).
+// Output: supabase/functions/design-manage/starter-templates.gen.ts (committed).
 import { writeFile } from 'node:fs/promises'
 import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
 import { computeAllLayouts } from '@open-pencil/core/layout'
@@ -47,7 +47,7 @@ export function starterTemplateFor(format: DesignFormat): Uint8Array {
   return Uint8Array.from(atob(STARTER_TEMPLATES[format]), (c) => c.charCodeAt(0));
 }
 `
-await writeFile('../../supabase/functions/post-design-manage/starter-templates.gen.ts', ts)
+await writeFile('../../supabase/functions/design-manage/starter-templates.gen.ts', ts)
 console.log('starter-templates.gen.ts written')
 
 // sanity: round-trip each template through the reader

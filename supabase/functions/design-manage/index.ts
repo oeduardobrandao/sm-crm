@@ -6,7 +6,7 @@ import { fetchPostMedia } from "../_shared/instagram-publish-utils.ts";
 import { materializeBrandLogo, type HubBrandLogoRow } from "../_shared/brand-logo.ts";
 import { createDesignRenderTrigger } from "../_shared/design-render-trigger.ts";
 import { deleteObject, getObjectBytes, putObject } from "../_shared/r2.ts";
-import { createPostDesignManageHandler, type DesignMeta, type PostRow } from "./handler.ts";
+import { createDesignManageHandler, type DesignRow, type PostRow } from "./handler.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -19,7 +19,7 @@ const svc = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
-Deno.serve(createPostDesignManageHandler({
+Deno.serve(createDesignManageHandler({
   buildCorsHeaders,
 
   getUser: async (token) => {
@@ -53,34 +53,36 @@ Deno.serve(createPostDesignManageHandler({
     return media.some((m) => m.kind === "video");
   },
 
-  getDesignMeta: async (postId, contaId): Promise<DesignMeta | null> => {
+  getDesign: async (designId, contaId): Promise<DesignRow | null> => {
     const { data } = await svc
-      .from("post_designs")
-      .select("id, rev, doc_r2_key")
-      .eq("post_id", postId)
+      .from("designs")
+      .select("id, rev, doc_r2_key, post_id, format")
+      .eq("id", designId)
       .eq("conta_id", contaId)
       .maybeSingle();
-    return data as DesignMeta | null;
+    return data as DesignRow | null;
   },
 
-  getOrCreateDesignBlob: async (contaId, postId, r2Key, docHash, docBytes, updatedBy) => {
-    const { data, error } = await svc.rpc("get_or_create_post_design_blob", {
+  createDesign: async (contaId, input, r2Key, docHash, docBytes, createdBy) => {
+    const { data, error } = await svc.rpc("create_design", {
       p_conta_id: contaId,
-      p_post_id: postId,
+      p_cliente_id: input.clienteId,
+      p_post_id: input.postId,
+      p_format: input.format,
+      p_name: input.name,
       p_r2_key: r2Key,
       p_doc_hash: docHash,
       p_doc_bytes: docBytes,
-      p_updated_by: updatedBy,
-    }).single();
+      p_created_by: createdBy,
+    });
     if (error) throw new Error(error.message);
-    const row = data as { o_id: number; o_rev: number; o_doc_r2_key: string | null; o_created: boolean };
-    return { id: row.o_id, rev: row.o_rev, doc_r2_key: row.o_doc_r2_key, created: row.o_created };
+    return data as number;
   },
 
-  saveDesignBlob: async (contaId, postId, expectedRev, docHash, r2Key, docBytes, editorVersion, updatedBy) => {
-    const { data, error } = await svc.rpc("save_post_design_blob", {
+  saveDesignBlob: async (contaId, designId, expectedRev, docHash, r2Key, docBytes, editorVersion, updatedBy) => {
+    const { data, error } = await svc.rpc("save_design_blob", {
       p_conta_id: contaId,
-      p_post_id: postId,
+      p_design_id: designId,
       p_expected_rev: expectedRev,
       p_doc_hash: docHash,
       p_r2_key: r2Key,
@@ -93,10 +95,40 @@ Deno.serve(createPostDesignManageHandler({
     return { rev: row.o_rev, prevR2Key: row.o_prev_r2_key };
   },
 
-  deleteDesign: async (contaId, postId) => {
-    const { error } = await svc.rpc("delete_post_design", {
+  attachDesign: async (contaId, designId, postId, updatedBy) => {
+    const { data, error } = await svc.rpc("attach_design", {
       p_conta_id: contaId,
+      p_design_id: designId,
       p_post_id: postId,
+      p_updated_by: updatedBy,
+    });
+    if (error) throw new Error(error.message);
+    return data as string;
+  },
+
+  detachDesign: async (contaId, designId) => {
+    const { error } = await svc.rpc("detach_design", {
+      p_conta_id: contaId,
+      p_design_id: designId,
+    });
+    if (error) throw new Error(error.message);
+  },
+
+  duplicateDesign: async (contaId, designId, newR2Key, createdBy) => {
+    const { data, error } = await svc.rpc("duplicate_design", {
+      p_conta_id: contaId,
+      p_design_id: designId,
+      p_new_r2_key: newR2Key,
+      p_created_by: createdBy,
+    });
+    if (error) throw new Error(error.message);
+    return data as number;
+  },
+
+  deleteDesign: async (contaId, designId) => {
+    const { error } = await svc.rpc("delete_design", {
+      p_conta_id: contaId,
+      p_design_id: designId,
     });
     if (error) throw new Error(error.message);
   },
@@ -158,6 +190,8 @@ Deno.serve(createPostDesignManageHandler({
   waitUntil: (promise) => {
     EdgeRuntime.waitUntil(promise);
   },
+
+  randomUUID: () => crypto.randomUUID(),
 
   insertAuditLog: (entry) => insertAuditLog(svc, entry),
 

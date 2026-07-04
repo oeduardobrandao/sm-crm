@@ -46,7 +46,7 @@ verify_jwt = false
 [functions.post-media-manage]
 verify_jwt = false
 
-[functions.post-design-manage]
+[functions.design-manage]
 verify_jwt = false
 
 [functions.hub-instagram-feed]

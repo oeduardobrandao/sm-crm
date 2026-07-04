@@ -45,7 +45,7 @@ const REQUIRED_FUNCTIONS = [
   "post-media-upload-url",
   "post-media-finalize",
   "post-media-manage",
-  "post-design-manage",
+  "design-manage",
   "platform-admin",
   "workspace-limits",
   "file-manage",
