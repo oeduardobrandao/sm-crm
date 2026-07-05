@@ -29,7 +29,6 @@
     "test:coverage": "vitest run --coverage",
     "coverage:check": "vitest run --coverage --config vitest.coverage.config.ts",
     "test:functions": "deno test --no-check --node-modules-dir=auto --allow-env --allow-read --allow-net --allow-sys supabase/functions/",
-    "fonts:build": "node scripts/fonts/build.mjs",
     "test:db": "bash scripts/test-entitlements.sh",
     "test:e2e": "playwright test",
     "test:e2e:crm": "playwright test --project=crm",

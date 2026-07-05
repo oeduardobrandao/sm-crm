@@ -1,9 +1,0 @@
-{
-  "name": "op-spike",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "@open-pencil/core": "0.13.2",
-    "canvaskit-wasm": "0.41.1"
-  }
-}

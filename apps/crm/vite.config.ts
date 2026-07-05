@@ -13,7 +13,6 @@ export default defineConfig(({ mode }) => {
       alias: {
         '@': path.resolve(__dirname, './src'),
         '@mesaas/i18n': path.resolve(__dirname, '../../packages/i18n/index.ts'),
-        '@mesaas/fonts': path.resolve(__dirname, '../../supabase/functions/_shared/fonts'),
       },
     },
     server: {

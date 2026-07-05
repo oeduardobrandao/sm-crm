@@ -3,8 +3,7 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@mesaas/i18n": ["../../packages/i18n/index.ts"],
-      "@mesaas/fonts/*": ["../../supabase/functions/_shared/fonts/*"]
+      "@mesaas/i18n": ["../../packages/i18n/index.ts"]
     },
     "target": "ES2021",
     "useDefineForClassFields": true,

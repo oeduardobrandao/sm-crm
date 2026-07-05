@@ -1,5 +1,11 @@
 # Estúdio — Implementation Plan (v1)
 
+> **SUPERSEDED (2026-07-05).** This plan built the v1 editor + satori renderer, both replaced
+> by the OpenPencil-fork architecture and deleted from the codebase in slice D. Current
+> references: [estudio-v2-editor-contract.md](estudio-v2-editor-contract.md) and
+> [superpowers/specs/2026-07-04-estudio-design-first-model.md](superpowers/specs/2026-07-04-estudio-design-first-model.md).
+> Kept for history only.
+
 Status: **draft for approval, rev 2** · 2026-07-02 · branch `feat/estudio-post-editor`
 Companion to [estudio-design.md](estudio-design.md) (amended twice on 2026-07-02: first from plan verification, then from the external review — media semantics, single-write-path RPCs, quota reservations, atomic finalize, waitUntil contract, satori entrypoints, SSRF hardening).
 Provenance: 7-drafter + 1-verifier workflow (`wf_cdaebfe4-abc`), then an external review whose 4 blockers and 5 majors were **verified against the repo and accepted** (one sub-claim refuted: `insertAuditLog` swallows failures by design, so audit can never fail a paid call). Section 1 records every ruling.

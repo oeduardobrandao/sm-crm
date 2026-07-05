@@ -55,7 +55,7 @@ export function createSignR2UrlsHandler(deps: SignR2UrlsDeps) {
 
     // GET ?key=<r2_key>: stream the object's bytes with app-origin CORS. The R2 bucket itself
     // only serves CORS for the production origins, so an in-browser fetch() of a signed URL
-    // (satori's editor render, blob-URL conversion) fails from every other origin — this proxy
+    // (the Estúdio canvas blob-URL conversion) fails from every other origin — this proxy
     // makes the pipeline origin-independent. Own-conta keys only: kb covers are for public
     // <img> display and never need byte-level access.
     if (req.method === "GET") {

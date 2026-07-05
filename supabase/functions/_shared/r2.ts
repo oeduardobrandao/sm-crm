@@ -92,9 +92,8 @@ export async function getObject(key: string): Promise<ReadableStream<Uint8Array>
   }
 }
 
-// getObjectBytes/putObject (sole owner — design-render-core.ts's font loading and the
-// design-render function's page-upload path both go through these, never a second
-// S3Client instance).
+// getObjectBytes/putObject (sole owner — every edge-function R2 read/write goes through
+// these, never a second S3Client instance).
 //
 // Both go through presign + plain fetch instead of `getR2().send(...)`: on the Supabase edge
 // runtime the aws-sdk's fetch handler HANGS INDEFINITELY on PutObject (100% reproducible —

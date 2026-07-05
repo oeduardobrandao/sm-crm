@@ -1,5 +1,13 @@
 # Estúdio — Technical Design (v1)
 
+> **SUPERSEDED (2026-07-05).** The v1 satori render pipeline and editor described here were
+> replaced by the OpenPencil-fork architecture and deleted from the codebase in slice D.
+> Current references: [estudio-v2-editor-contract.md](estudio-v2-editor-contract.md) (blob +
+> bridge contracts) and
+> [superpowers/specs/2026-07-04-estudio-design-first-model.md](superpowers/specs/2026-07-04-estudio-design-first-model.md)
+> (design-first data model). Backend contracts that survived v1 (media application, quota,
+> SSRF hardening) live on in the v2 implementation. Kept for history only.
+
 Status: **draft for approval** · 2026-07-02
 Prior gates: task/risk outline approved; visual direction **B — Prancheta** approved; image gen **built-in, Gemini default**; fonts **curated + brand kit**; nav name **Estúdio**.
 Evidence base: 9-agent discovery (run `wf_b23a4550-b19`) + 9-agent design workflow incl. a working render spike (run `wf_19284bc4-871`, spike at scratchpad `render-spike/spike.ts`).
