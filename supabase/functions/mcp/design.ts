@@ -168,20 +168,38 @@ function fireRender(d: Deps, designId: number, rev: number): void {
 }
 
 /** Signed URLs of the last finished render (when fresh) — agents that can fetch URLs get the
- * cheap path; preview_design returns inline bytes for the ones that can't. */
+ * cheap path; preview_design returns inline bytes for the ones that can't. Attached designs'
+ * pages live as the POST's media links (finalize applies them there and leaves no manifest);
+ * unattached ones read the stored render manifest. */
 async function renderSummary(d: Deps, row: DesignRow) {
   const fresh = row.render_status === "rendered" && !row.is_stale;
   const signUrl = d.signUrl ?? ((key: string) => signGetUrl(key, 3600));
-  const pages = fresh && Array.isArray(row.render_manifest)
-    ? await Promise.all(
+  let pages: Array<{ page_id: string; width: number; height: number; url: string }> = [];
+  if (fresh && row.post_id != null) {
+    const { data } = await d.db
+      .from("post_file_links")
+      .select("file_id, sort_order, files!inner(r2_key, width, height)")
+      .eq("post_id", row.post_id)
+      .eq("conta_id", d.ctx.conta_id)
+      .eq("origin", "design")
+      .order("sort_order", { ascending: true });
+    // deno-lint-ignore no-explicit-any
+    pages = await Promise.all((data ?? []).map(async (l: any) => ({
+      page_id: String(l.file_id),
+      width: l.files.width,
+      height: l.files.height,
+      url: await signUrl(l.files.r2_key),
+    })));
+  } else if (fresh && Array.isArray(row.render_manifest)) {
+    pages = await Promise.all(
       row.render_manifest.map(async (m) => ({
         page_id: m.page_id,
         width: m.width,
         height: m.height,
         url: await signUrl(m.r2_key),
       })),
-    )
-    : [];
+    );
+  }
   return { status: row.render_status, is_stale: row.is_stale, pages };
 }
 
