@@ -133,6 +133,26 @@ Deno.test("get_design: stale render exposes no page urls; attached post is repor
   assertEquals(out.post, { id: 42, tipo: "feed", status: "rascunho" });
 });
 
+Deno.test("get_design: ATTACHED fresh design signs the post's design links (no manifest)", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("designs", "select", {
+    data: { ...ROW, post_id: 42, render_manifest: null },
+    error: null,
+  });
+  db.queue("post_file_links", "select", {
+    data: [{ file_id: 91, sort_order: 0, files: { r2_key: "contas/a/91.jpg", width: 1080, height: 1350 } }],
+    error: null,
+  });
+  db.queue("workflow_posts", "select", { data: POST, error: null });
+  const out = await getDesign(makeDeps(db), { design_id: 7 });
+  assertEquals(out.render.pages, [{
+    page_id: "91",
+    width: 1080,
+    height: 1350,
+    url: "https://signed.example/contas/a/91.jpg",
+  }]);
+});
+
 Deno.test("list_designs: returns workspace designs", async () => {
   const db = createSupabaseQueryMock();
   db.queue("designs", "select", { data: [{ id: 7 }, { id: 8 }], error: null });
