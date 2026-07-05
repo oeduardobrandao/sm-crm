@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { buildDocUrl, buildEditorUrl, createEmbedHost, type EditorEvent } from './embedHost';
+import { EstudioHome } from './EstudioHome';
 
 // Estúdio CRM shell — hosts the forked OpenPencil editor in an iframe and implements
 // the parent side of bridge protocol v1 (docs/estudio-v2-editor-contract.md): auth
@@ -191,27 +192,7 @@ export default function EstudioPage() {
 
   // ----- non-editor views -------------------------------------------------------------
 
-  if (designId === null) {
-    return (
-      <CenteredNotice>
-        <h1
-          style={{
-            fontFamily: 'var(--font-heading)',
-            fontSize: '2rem',
-            fontWeight: 900,
-            color: 'var(--text-main)',
-            marginBottom: '0.5rem',
-          }}
-        >
-          {t('title')}
-        </h1>
-        <p style={{ marginBottom: '1.25rem' }}>{t('openFromEntregas')}</p>
-        <button type="button" className="btn-primary" onClick={() => navigate('/entregas')}>
-          {t('goToEntregas')}
-        </button>
-      </CenteredNotice>
-    );
-  }
+  if (designId === null) return <EstudioHome />;
 
   if (isNaN(designId)) return <CenteredNotice>{t('editor.invalidDesign')}</CenteredNotice>;
   if (estudioBlocked) return <CenteredNotice>{t('featureBlocked')}</CenteredNotice>;

@@ -192,8 +192,68 @@
   "toast": {
     "createError": "Não foi possível criar o design: {{error}}"
   },
+  "home": {
+    "newDesign": "Novo design",
+    "newDesignHint": "Escolha o formato — dá para vincular a um post depois.",
+    "allClients": "Todos os clientes",
+    "noClient": "Sem cliente",
+    "nameLabel": "Nome",
+    "namePlaceholder": "Design sem título",
+    "clientLabel": "Cliente",
+    "create": "Criar design",
+    "empty": "Nenhum design ainda. Crie o primeiro ou abra um post pela aba Entregas.",
+    "emptyCta": "Criar meu primeiro design",
+    "generating": "Gerando…",
+    "renderFailed": "Falhou",
+    "attachedTo": "Post #{{id}}",
+    "cardMenu": "Ações do design",
+    "duplicated": "Design duplicado!",
+    "detachDone": "Design desvinculado — as mídias já aplicadas continuam no post.",
+    "deleteConfirmTitle": "Excluir design?",
+    "deleteConfirmBody": "\"{{name}}\" será excluído permanentemente. Mídias já aplicadas a um post continuam nele.",
+    "deleteConfirmCta": "Excluir",
+    "deleteCancel": "Cancelar",
+    "formats": {
+      "feed": "Feed",
+      "carrossel": "Carrossel",
+      "reel_cover": "Capa de Reel",
+      "livre": "Livre"
+    },
+    "formatHints": {
+      "feed": "1080×1350",
+      "carrossel": "1080×1350",
+      "reel_cover": "1080×1920",
+      "livre": "Canvas livre"
+    }
+  },
+  "apply": {
+    "title": "Aplicar \"{{name}}\" a um post",
+    "subtitle": "Escolha o cliente, o fluxo e o post que vai receber este design.",
+    "clientLabel": "Cliente",
+    "clientPlaceholder": "Selecione um cliente",
+    "workflowLabel": "Fluxo",
+    "workflowPlaceholder": "Selecione um fluxo",
+    "noWorkflows": "Nenhum fluxo ativo para este cliente",
+    "postLabel": "Post",
+    "noPosts": "Este fluxo não tem posts.",
+    "reasons": {
+      "already_designed": "já tem design",
+      "not_editable": "status não editável",
+      "tipo_unsupported": "tipo não suportado",
+      "has_video": "tem vídeo"
+    },
+    "info": "Aplicar substitui as mídias do post pelas artes do design na próxima renderização, e o tipo do post acompanha os frames.",
+    "confirm": "Aplicar",
+    "applying": "Aplicando…",
+    "success": "Design aplicado! A arte entra no post em instantes ({{tipo}}).",
+    "errors": {
+      "post_already_designed": "Esse post já tem um design.",
+      "post_not_editable": "O post não está mais editável.",
+      "post_has_video": "O post tem vídeo — remova antes de aplicar.",
+      "post_tipo_unsupported": "O tipo do post não suporta designs.",
+      "design_already_attached": "Este design já está vinculado a um post."
+    }
+  },
   "featureBlocked": "O Estúdio não está disponível no seu plano atual. Fale com o suporte para fazer upgrade.",
-  "back": "Voltar",
-  "openFromEntregas": "Abra um post pela aba Entregas para editá-lo no Estúdio.",
-  "goToEntregas": "Ir para Entregas"
+  "back": "Voltar"
 }

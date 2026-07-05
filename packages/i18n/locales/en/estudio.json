@@ -192,8 +192,68 @@
   "toast": {
     "createError": "Could not create the design: {{error}}"
   },
+  "home": {
+    "newDesign": "New design",
+    "newDesignHint": "Pick a format — you can attach it to a post later.",
+    "allClients": "All clients",
+    "noClient": "No client",
+    "nameLabel": "Name",
+    "namePlaceholder": "Untitled design",
+    "clientLabel": "Client",
+    "create": "Create design",
+    "empty": "No designs yet. Create your first one or open a post from Entregas.",
+    "emptyCta": "Create my first design",
+    "generating": "Generating…",
+    "renderFailed": "Failed",
+    "attachedTo": "Post #{{id}}",
+    "cardMenu": "Design actions",
+    "duplicated": "Design duplicated!",
+    "detachDone": "Design detached — media already applied stays on the post.",
+    "deleteConfirmTitle": "Delete design?",
+    "deleteConfirmBody": "\"{{name}}\" will be permanently deleted. Media already applied to a post stays there.",
+    "deleteConfirmCta": "Delete",
+    "deleteCancel": "Cancel",
+    "formats": {
+      "feed": "Feed",
+      "carrossel": "Carousel",
+      "reel_cover": "Reel cover",
+      "livre": "Free"
+    },
+    "formatHints": {
+      "feed": "1080×1350",
+      "carrossel": "1080×1350",
+      "reel_cover": "1080×1920",
+      "livre": "Free canvas"
+    }
+  },
+  "apply": {
+    "title": "Apply \"{{name}}\" to a post",
+    "subtitle": "Pick the client, workflow and post that will receive this design.",
+    "clientLabel": "Client",
+    "clientPlaceholder": "Select a client",
+    "workflowLabel": "Workflow",
+    "workflowPlaceholder": "Select a workflow",
+    "noWorkflows": "No active workflows for this client",
+    "postLabel": "Post",
+    "noPosts": "This workflow has no posts.",
+    "reasons": {
+      "already_designed": "already designed",
+      "not_editable": "status not editable",
+      "tipo_unsupported": "unsupported type",
+      "has_video": "has video"
+    },
+    "info": "Applying replaces the post's media with the design's art on the next render, and the post type follows the frames.",
+    "confirm": "Apply",
+    "applying": "Applying…",
+    "success": "Design applied! The art lands on the post shortly ({{tipo}}).",
+    "errors": {
+      "post_already_designed": "That post already has a design.",
+      "post_not_editable": "The post is no longer editable.",
+      "post_has_video": "The post has video media — remove it before applying.",
+      "post_tipo_unsupported": "This post type doesn't support designs.",
+      "design_already_attached": "This design is already attached to a post."
+    }
+  },
   "featureBlocked": "Estúdio is not available on your current plan. Contact support to upgrade.",
-  "back": "Back",
-  "openFromEntregas": "Open a post from the Deliveries tab to edit it in Estúdio.",
-  "goToEntregas": "Go to Deliveries"
+  "back": "Back"
 }
