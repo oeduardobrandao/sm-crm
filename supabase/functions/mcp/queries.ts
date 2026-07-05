@@ -52,13 +52,29 @@ export interface Deps {
   signUrl?: (key: string) => Promise<string>;
   now?: () => string;
   genId?: () => string;
-  // Estúdio design tools (design §9) — wired in index.ts, injectable in tests:
+  // Estúdio design tools (design-first model) — wired in index.ts, injectable in tests:
   /** Plan feature gate (resolves against the key's workspace). */
   isFeatureEnabled?: (feature: string) => Promise<boolean>;
   /** Fire-and-forget design-render kick (x-cron-secret internal call). */
   triggerRender?: (designId: number, rev: number) => Promise<void>;
-  /** R2 font bytes for the §2.5 measure pass (layout arrays in write responses). */
-  resolveFontBytes?: (r2Key: string) => Promise<Uint8Array>;
+  /** R2 design blob IO. */
+  fetchBlob?: (r2Key: string) => Promise<Uint8Array | null>;
+  putBlob?: (r2Key: string, bytes: Uint8Array) => Promise<void>;
+  deleteBlob?: (r2Key: string) => Promise<void>;
+  /** Doc service (estudio-render Vercel) — scene projection + op-based mutation. */
+  docDescribe?: (bytes: Uint8Array) => Promise<Record<string, unknown>>;
+  docMutate?: (
+    bytes: Uint8Array,
+    ops: unknown[],
+  ) => Promise<{ bytes: Uint8Array; projection: Record<string, unknown>; applied: number }>;
+  /** Full-frame render for preview_design (same contract design-render uses). */
+  callRenderService?: (
+    bytes: Uint8Array,
+    tipo: string,
+  ) => Promise<{ pages: Array<{ frame_id: string; width: number; height: number; jpeg_b64: string }> }>;
+  /** Pregenerated starter .fig for a design format. */
+  starterTemplate?: (format: string) => Uint8Array;
+  randomUUID?: () => string;
   /** Image-generation core deps (§8) — wired in index.ts; absent = tool unconfigured. */
   // deno-lint-ignore no-explicit-any
   imageGen?: any;

@@ -12,10 +12,19 @@ import { resolveImageProvider } from "../_shared/image-gen/resolve.ts";
 import { effectivePlanFeature, effectivePlanLimit } from "../_shared/entitlements-rpc.ts";
 import { checkRateLimit } from "../_shared/rate-limit.ts";
 import { deleteObject, getObjectBytes, putObject, signGetUrl } from "../_shared/r2.ts";
+import { createDocServiceClient } from "../_shared/doc-service.ts";
+import { starterTemplateFor, type DesignFormat } from "../design-manage/starter-templates.gen.ts";
 import { registerTools } from "./tools.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+// Optional: without the doc service configured, the design tools report "não configurado"
+// instead of failing the whole MCP server at boot (same stance as the image provider below).
+const RENDER_SERVICE_URL = Deno.env.get("RENDER_SERVICE_URL");
+const RENDER_SERVICE_SECRET = Deno.env.get("RENDER_SERVICE_SECRET");
+const docSvc = RENDER_SERVICE_URL && RENDER_SERVICE_SECRET
+  ? createDocServiceClient(RENDER_SERVICE_URL, RENDER_SERVICE_SECRET)
+  : null;
 // Optional on purpose — without it design writes still land, only the immediate render kick is
 // skipped (the sweep cron and the editor's own reads converge the render).
 const CRON_SECRET = Deno.env.get("CRON_SECRET");
@@ -121,14 +130,17 @@ Deno.serve(async (req) => {
   registerTools(server, {
     db,
     ctx,
-    // Estúdio design tools (design §9):
+    // Estúdio design tools (design-first model):
     isFeatureEnabled: (feature) => effectivePlanFeature(db as never, ctx.conta_id, feature),
     triggerRender: CRON_SECRET ? createDesignRenderTrigger(SUPABASE_URL, CRON_SECRET) : undefined,
-    resolveFontBytes: async (r2Key) => {
-      const bytes = await getObjectBytes(r2Key);
-      if (!bytes) throw new Error(`font object missing: ${r2Key}`);
-      return bytes;
-    },
+    fetchBlob: (r2Key) => getObjectBytes(r2Key),
+    putBlob: (r2Key, bytes) => putObject(r2Key, bytes, "application/octet-stream"),
+    deleteBlob: (r2Key) => deleteObject(r2Key),
+    docDescribe: docSvc?.describe,
+    docMutate: docSvc?.mutate,
+    callRenderService: docSvc?.render,
+    starterTemplate: (format) => starterTemplateFor(format as DesignFormat),
+    randomUUID: () => crypto.randomUUID(),
     // generate_image (§8) — the shared core's dep bundle:
     imageGen: {
       db,

@@ -1,37 +1,23 @@
-// Estúdio MCP read tools (design §9, plan T5.5): preview_design + get_design_capabilities.
+// Estúdio MCP read tools, v2 (design-first model): preview_design + get_design_capabilities.
 //
-// preview_design renders ONE reduced page synchronously through the SHARED render core (§5.2:
-// satori → resvg → mozjpeg) and returns raw JPEG bytes for an MCP image content block —
-// Claude is multimodal; seeing the render collapses blind iterations. One page per call, width
-// default 512 (layout always runs at native canvas size; the width only scales the raster).
+// preview_design renders the design's publishable frames through the SAME Vercel render
+// service the pipeline uses (version-pinned @open-pencil/core — what you see is what the
+// post gets) and returns ONE page as raw JPEG bytes for an MCP image content block.
+// Frames render at their preset export size (1080-wide) — one page per call, CPU-priced.
 //
-// get_design_capabilities is the agent's discovery surface: formats/canvases, tipo mapping,
-// the font catalog, hard limits, feature/quota state, and the per-client brand block. It is a
-// PURE READ — logo_file_id is reported only when already materialized (never triggers the
-// import; that's the /brand-logo route or generate_image use_brand_logo), and it is NOT an
-// extension of get_brand_profile (that shape is a published contract used by the DK skills).
-import rawManifest from "../_shared/fonts/manifest.json" with { type: "json" };
-import type { FontManifest } from "../_shared/fonts/types.ts";
-import { matchBrandFont } from "../_shared/fonts/match.ts";
-import {
-  ALLOWED_ASPECT_RATIOS_BY_FORMAT,
-  CANVAS_DIMENSIONS,
-  FORMAT_TO_TIPO,
-  MAX_DESIGN_DOC_BYTES,
-  type DesignDoc,
-  type DesignFormat,
-} from "../_shared/design-doc.ts";
-import { renderPage } from "../_shared/design-render-core.ts";
+// get_design_capabilities is the agent's discovery surface: formats/starters, the
+// update_design ops vocabulary, projection semantics, limits, feature/quota state and the
+// per-client brand block. PURE READ — logo_file_id is reported only when already
+// materialized (never triggers the import).
 import { quotaSnapshot } from "../_shared/image-gen/core.ts";
 import { McpInputError } from "../_shared/mcp-token.ts";
-import { McpStructuredError } from "./design.ts";
+import {
+  FORMAT_TO_RENDER_TIPO,
+  getDesignRowOrThrow,
+  McpStructuredError,
+  type DesignFormat,
+} from "./design.ts";
 import type { Deps } from "./queries.ts";
-
-const FONT_MANIFEST = rawManifest as unknown as FontManifest;
-
-export const PREVIEW_DEFAULT_WIDTH = 512;
-export const PREVIEW_MIN_WIDTH = 128;
-export const PREVIEW_MAX_WIDTH = 1080;
 
 // ---- preview_design --------------------------------------------------------------------------
 
@@ -44,101 +30,101 @@ export interface PreviewResult {
 
 export async function previewDesign(
   d: Deps,
-  args: { post_id: number; page_id?: string; width?: number },
+  args: { design_id: number; page_id?: string },
 ): Promise<PreviewResult> {
-  const { data: post } = await d.db
-    .from("workflow_posts")
-    .select("id, tipo, status")
-    .eq("conta_id", d.ctx.conta_id)
-    .eq("id", args.post_id)
-    .maybeSingle();
-  if (!post) throw new McpInputError("Post não encontrado neste workspace.");
-
-  const { data: design } = await d.db
-    .from("post_designs")
-    .select("doc")
-    .eq("conta_id", d.ctx.conta_id)
-    .eq("post_id", args.post_id)
-    .maybeSingle();
-  if (!design) {
-    throw new McpInputError("Este post não tem design — crie um com create_design.");
+  if (!d.fetchBlob || !d.callRenderService) {
+    throw new McpInputError("O serviço de render do Estúdio não está configurado neste ambiente.");
   }
-  const doc = (design as { doc: DesignDoc }).doc;
+  const row = await getDesignRowOrThrow(d, args.design_id);
 
-  let pageIndex = 0;
+  let tipo = FORMAT_TO_RENDER_TIPO[row.format];
+  if (row.post_id != null) {
+    const { data } = await d.db
+      .from("workflow_posts")
+      .select("tipo")
+      .eq("conta_id", d.ctx.conta_id)
+      .eq("id", row.post_id)
+      .maybeSingle();
+    const postTipo = (data as { tipo: string } | null)?.tipo;
+    if (postTipo && postTipo in { feed: 1, carrossel: 1, reels: 1 }) tipo = postTipo;
+  }
+
+  const bytes = await d.fetchBlob(row.doc_r2_key);
+  if (!bytes) throw new Error(`design blob missing: ${row.doc_r2_key}`);
+  const out = await d.callRenderService(bytes, tipo);
+
+  if (!out.pages.length) {
+    throw new McpStructuredError({
+      error: "no_publishable_frames",
+      message:
+        "Nenhum frame publicável para renderizar — frames precisam de proporção 1:1, 4:5 ou 9:16 (get_design_capabilities documenta os formatos).",
+    });
+  }
+  let page = out.pages[0];
   if (args.page_id !== undefined) {
-    pageIndex = doc.pages.findIndex((p) => p.id === args.page_id);
-    if (pageIndex === -1) {
+    const found = out.pages.find((p) => p.frame_id === args.page_id);
+    if (!found) {
       throw new McpStructuredError({
         error: "page_not_found",
         message: `Página '${args.page_id}' não existe neste design.`,
-        page_ids: doc.pages.map((p) => p.id),
+        page_ids: out.pages.map((p) => p.frame_id),
       });
     }
+    page = found;
   }
 
-  const width = Math.min(
-    PREVIEW_MAX_WIDTH,
-    Math.max(PREVIEW_MIN_WIDTH, Math.trunc(args.width ?? PREVIEW_DEFAULT_WIDTH)),
-  );
-
-  if (!d.resolveFontBytes) throw new Error("resolveFontBytes dep missing");
-  const resolveFontBytes = d.resolveFontBytes;
-  const result = await renderPage(doc, pageIndex, {
-    resolveFileBytes: async (fileId: number) => {
-      // Tenant re-check per file even though the doc was validated at write time — the doc is
-      // stored data, and files can change hands/kind only within the workspace anyway.
-      const { data } = await d.db
-        .from("files")
-        .select("r2_key, mime_type")
-        .eq("conta_id", d.ctx.conta_id)
-        .eq("id", fileId)
-        .maybeSingle();
-      const row = data as { r2_key: string; mime_type: string } | null;
-      if (!row) throw new Error(`file ${fileId} not found in workspace`);
-      const bytes = await resolveFontBytes(row.r2_key); // generic R2 byte reader
-      return { bytes, mimeType: row.mime_type };
-    },
-    resolveFontBytes,
-  }, { width });
-
   return {
-    jpegBytes: result.jpegBytes,
-    width: result.width,
-    height: result.height,
-    page_id: doc.pages[pageIndex].id,
+    jpegBytes: Uint8Array.from(atob(page.jpeg_b64), (c) => c.charCodeAt(0)),
+    width: page.width,
+    height: page.height,
+    page_id: page.frame_id,
   };
 }
 
 // ---- get_design_capabilities -----------------------------------------------------------------
 
-/** §7 defaults when a brand font is unmatched: template fonts, else playfair-display / inter. */
-const UNMATCHED_FALLBACK: Record<"primary" | "secondary", string> = {
-  primary: "playfair-display",
-  secondary: "inter",
+const STARTER_CANVAS: Record<DesignFormat, { width: number; height: number } | null> = {
+  feed: { width: 1080, height: 1350 },
+  carrossel: { width: 1080, height: 1350 },
+  reel_cover: { width: 1080, height: 1920 },
+  livre: null,
 };
 
-function brandFontEntry(raw: string | null | undefined, slot: "primary" | "secondary") {
-  const trimmed = raw?.trim();
-  if (!trimmed) return null;
-  return {
-    raw: trimmed,
-    resolved_key: matchBrandFont(trimmed, FONT_MANIFEST.families),
-    fallback_key: UNMATCHED_FALLBACK[slot],
-  };
-}
+/** update_design ops vocabulary — mirrors services/estudio-render/lib/doc.js (the executor). */
+const OPS_CATALOG = [
+  { op: "set_text", args: "node, text", desc: "Troca o texto de um nó TEXT." },
+  {
+    op: "set_text_style",
+    args: "node, fontSize?, fontFamily?, fontWeight?, textAlignHorizontal?, color?",
+    desc: "Estilo de um nó TEXT; color é hex (#rrggbb) e vira o fill do texto.",
+  },
+  { op: "set_fill", args: "node, color", desc: "Fill sólido (hex) de qualquer nó." },
+  {
+    op: "set_image_fill",
+    args: "node, imageHash, scaleMode?",
+    desc: "Fill de imagem usando um hash já presente em projection.images.",
+  },
+  { op: "set_bounds", args: "node, x?, y?, width?, height?", desc: "Move/redimensiona um nó." },
+  { op: "rename", args: "node, name", desc: "Renomeia um nó (frames numerados ordenam o carrossel)." },
+  { op: "remove_node", args: "node", desc: "Remove um nó e seus filhos." },
+  {
+    op: "add_text",
+    args: "parent, text, x, y, width, height?, fontSize?, fontFamily?, fontWeight?, textAlignHorizontal?, color?, name?",
+    desc: "Cria um TEXT dentro de um frame (parent = id do frame).",
+  },
+  {
+    op: "add_frame",
+    args: "page?, name?, x, y, width, height, color?",
+    desc: "Cria um FRAME na página (sem page, usa a página com conteúdo). Frames 1080x1350 ou 1080x1920 são publicáveis.",
+  },
+];
 
 export async function getDesignCapabilities(d: Deps, args: { client_id?: number }) {
-  const formats = (Object.keys(ALLOWED_ASPECT_RATIOS_BY_FORMAT) as DesignFormat[]).map(
-    (format) => ({
-      format,
-      tipo: FORMAT_TO_TIPO[format],
-      aspect_ratios: ALLOWED_ASPECT_RATIOS_BY_FORMAT[format].map((ar) => ({
-        aspect_ratio: ar,
-        canvas: CANVAS_DIMENSIONS[ar],
-      })),
-    }),
-  );
+  const formats = (Object.keys(STARTER_CANVAS) as DesignFormat[]).map((format) => ({
+    format,
+    render_tipo: FORMAT_TO_RENDER_TIPO[format],
+    starter_canvas: STARTER_CANVAS[format],
+  }));
 
   const [estudioOn, aiImagesOn] = await Promise.all([
     d.isFeatureEnabled ? d.isFeatureEnabled("feature_estudio") : Promise.resolve(false),
@@ -150,9 +136,7 @@ export async function getDesignCapabilities(d: Deps, args: { client_id?: number 
     | undefined;
   const imageGen = {
     enabled: aiImagesOn && !!imageGenDeps?.provider,
-    quota: imageGenDeps
-      ? await quotaSnapshot(imageGenDeps as never, d.ctx.conta_id)
-      : null,
+    quota: imageGenDeps ? await quotaSnapshot(imageGenDeps as never, d.ctx.conta_id) : null,
   };
 
   // deno-lint-ignore no-explicit-any
@@ -182,8 +166,8 @@ export async function getDesignCapabilities(d: Deps, args: { client_id?: number 
         colors: [row.primary_color, row.secondary_color].filter(Boolean),
         // Reported ONLY when already materialized — a read tool never triggers the import.
         logo_file_id: row.logo_file_id ?? null,
-        font_primary: brandFontEntry(row.font_primary, "primary"),
-        font_secondary: brandFontEntry(row.font_secondary, "secondary"),
+        font_primary: row.font_primary?.trim() || null,
+        font_secondary: row.font_secondary?.trim() || null,
       }
       : { colors: [], logo_file_id: null, font_primary: null, font_secondary: null };
   }
@@ -191,26 +175,32 @@ export async function getDesignCapabilities(d: Deps, args: { client_id?: number 
   return {
     formats,
     post_tipo_mapping: { feed: "feed", carrossel: "carrossel", reels: "reel_cover", stories: null },
+    ops: OPS_CATALOG,
+    projection: {
+      node_ids: "Estáveis entre revisões — use os ids retornados por get_design nas ops.",
+      fills: "Cores em hex #rrggbb (ou #rrggbbaa).",
+      publishable_frames:
+        "Frames com proporção 1:1, 4:5 ou 9:16 (±0,5%) exportam a 1080px; ordem = prefixo numérico do nome, depois x. Demais frames são rascunho.",
+    },
     fonts: {
-      groups: FONT_MANIFEST.groups,
-      fallback_key: FONT_MANIFEST.fallbackKey,
-      families: FONT_MANIFEST.families.map((f) => ({
-        key: f.key,
-        name: f.name,
-        group: f.group,
-        variants: f.variants.map((v) => ({ weight: v.weight, style: v.style })),
-      })),
+      guaranteed: [{ family: "Inter", weights: [400, 700] }],
+      note:
+        "Renderizações garantem Inter (400/700) + emoji colorido; outras famílias podem cair em fallback no render. Prefira Inter até o catálogo expandir.",
     },
     limits: {
-      max_pages: 10,
-      max_layers_per_page: 40,
-      max_text_chars_per_layer: 2000,
-      max_doc_bytes: MAX_DESIGN_DOC_BYTES,
-      gradient_stops: { min: 2, max: 8 },
+      max_doc_bytes: 10 * 1024 * 1024,
       carousel_max_published_items: 10,
+    },
+    attachment_rules: {
+      one_post_per_design: true,
+      post_must_be_editable: EDITABLE_STATUSES_DOC,
+      feed_carrossel_reject_video_posts: true,
+      locked_post_designs_are_read_only: "Duplique o design para continuar editando.",
     },
     features: { feature_estudio: estudioOn, feature_ai_images: aiImagesOn },
     image_gen: imageGen,
     ...(brand !== null ? { brand } : {}),
   };
 }
+
+const EDITABLE_STATUSES_DOC = ["rascunho", "revisao_interna", "correcao_cliente"];

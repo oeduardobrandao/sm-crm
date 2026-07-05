@@ -1,204 +1,156 @@
-// T5.5 — preview_design + get_design_capabilities (design §9): discovery shapes, tenancy,
-// the read-only brand block (logo only when materialized), quota snapshot, and the preview's
-// guards + full render path (satori → resvg → mozjpeg with real font bytes).
+// Estúdio MCP read tools, v2: preview_design (render-service backed, page selection,
+// structured page errors) + get_design_capabilities (formats, ops catalog, brand block).
 import { assert, assertEquals } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import type { McpKeyContext } from "../_shared/mcp-token.ts";
 import { McpInputError } from "../_shared/mcp-token.ts";
-import { McpStructuredError } from "../mcp/design.ts";
-import {
-  getDesignCapabilities,
-  PREVIEW_DEFAULT_WIDTH,
-  previewDesign,
-} from "../mcp/capabilities.ts";
 import type { Deps } from "../mcp/queries.ts";
+import { McpStructuredError } from "../mcp/design.ts";
+import { getDesignCapabilities, previewDesign } from "../mcp/capabilities.ts";
 
 const CTX: McpKeyContext = {
   conta_id: "workspace-A",
-  scopes: ["posts:read"],
+  scopes: ["posts:read", "designs:write"],
   key_id: "key-1",
   created_by: "user-1",
 };
 
+const ROW = {
+  id: 7,
+  cliente_id: null,
+  post_id: null,
+  name: "Design",
+  format: "feed",
+  rev: 3,
+  doc_r2_key: "designs/workspace-A/x-r3.fig",
+  render_status: "rendered",
+  is_stale: false,
+  render_manifest: null,
+};
+
+const JPEG_B64 = btoa("\x01\x02\x03");
+
 function makeDeps(
   db: ReturnType<typeof createSupabaseQueryMock>,
   extra: Partial<Deps> = {},
-): Deps {
+): Deps & { renderTipos: string[] } {
+  const renderTipos: string[] = [];
   return {
     db: db as never,
     ctx: CTX,
-    isFeatureEnabled: async () => true,
-    imageGen: {
-      db: db as never,
-      provider: { generate: () => Promise.reject(new Error("unused")) },
-      monthlyLimit: async () => 50,
+    isFeatureEnabled: async (f: string) => f === "feature_estudio",
+    fetchBlob: async () => new Uint8Array([1, 2, 3]),
+    callRenderService: async (_bytes: Uint8Array, tipo: string) => {
+      renderTipos.push(tipo);
+      return {
+        pages: [
+          { frame_id: "1:4", width: 1080, height: 1350, jpeg_b64: JPEG_B64 },
+          { frame_id: "1:5", width: 1080, height: 1350, jpeg_b64: JPEG_B64 },
+        ],
+      };
     },
     ...extra,
-  } as Deps;
+    renderTipos,
+  } as never;
 }
 
-// ── get_design_capabilities ──────────────────────────────────────────────────
-
-Deno.test("capabilities: formats/canvases/tipo mapping + fonts + limits from the single sources", async () => {
-  const db = createSupabaseQueryMock();
-  db.queue("ai_image_generations", "select", { data: [], error: null }); // quota snapshot
-  const out = await getDesignCapabilities(makeDeps(db), {});
-
-  const feed = out.formats.find((f) => f.format === "feed")!;
-  assertEquals(feed.tipo, "feed");
-  assertEquals(feed.aspect_ratios.map((a) => a.aspect_ratio), ["1:1", "4:5"]);
-  assertEquals(feed.aspect_ratios[1].canvas, { width: 1080, height: 1350 });
-  const reel = out.formats.find((f) => f.format === "reel_cover")!;
-  assertEquals(reel.aspect_ratios[0].canvas, { width: 1080, height: 1920 });
-
-  assertEquals(out.post_tipo_mapping.stories, null);
-  assertEquals(out.post_tipo_mapping.reels, "reel_cover");
-
-  assertEquals(out.fonts.families.length, 26); // the real committed manifest
-  assert(out.fonts.families.some((f) => f.key === "playfair-display"));
-  assertEquals(out.fonts.fallback_key, "inter");
-
-  assertEquals(out.limits.max_pages, 10);
-  assertEquals(out.limits.max_doc_bytes, 256 * 1024);
-  assertEquals(out.features, { feature_estudio: true, feature_ai_images: true });
-  assertEquals(out.image_gen.enabled, true);
-  assertEquals(out.image_gen.quota, { used: 0, limit: 50, resets_at: out.image_gen.quota!.resets_at });
-  assert(!("brand" in out), "no brand block without client_id");
-});
-
-Deno.test("capabilities: image_gen.enabled is false without a provider even when the feature is on", async () => {
-  const db = createSupabaseQueryMock();
-  db.queue("ai_image_generations", "select", { data: [], error: null });
-  const deps = makeDeps(db);
-  // deno-lint-ignore no-explicit-any
-  (deps.imageGen as any).provider = undefined;
-  const out = await getDesignCapabilities(deps, {});
-  assertEquals(out.image_gen.enabled, false);
-});
-
-Deno.test("capabilities: foreign client_id rejects; own client resolves the brand block via the matcher", async () => {
-  const db = createSupabaseQueryMock();
-  db.queue("ai_image_generations", "select", { data: [], error: null });
-  db.queue("clientes", "select", { data: null, error: null });
-  let threw = false;
+async function expectErr(fn: () => Promise<unknown>): Promise<unknown> {
   try {
-    await getDesignCapabilities(makeDeps(db), { client_id: 999 });
+    await fn();
   } catch (e) {
-    threw = e instanceof McpInputError;
+    return e;
   }
-  assertEquals(threw, true);
+  throw new Error("expected an error");
+}
+
+// ── preview_design ────────────────────────────────────────────────────────────
+
+Deno.test("preview_design: unconfigured render service reports actionably", async () => {
+  const db = createSupabaseQueryMock();
+  const err = await expectErr(() =>
+    previewDesign(makeDeps(db, { callRenderService: undefined }), { design_id: 7 })
+  );
+  assert(err instanceof McpInputError);
+});
+
+Deno.test("preview_design: default page is the first; bytes decoded from the service", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("designs", "select", { data: ROW, error: null });
+  const deps = makeDeps(db);
+  const out = await previewDesign(deps, { design_id: 7 });
+  assertEquals(out.page_id, "1:4");
+  assertEquals([...out.jpegBytes], [1, 2, 3]);
+  assertEquals(out.width, 1080);
+  assertEquals(deps.renderTipos, ["feed"]); // standalone: tipo from format
+});
+
+Deno.test("preview_design: attached design renders with the POST's tipo", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("designs", "select", { data: { ...ROW, post_id: 42 }, error: null });
+  db.queue("workflow_posts", "select", { data: { tipo: "carrossel" }, error: null });
+  const deps = makeDeps(db);
+  await previewDesign(deps, { design_id: 7, page_id: "1:5" });
+  assertEquals(deps.renderTipos, ["carrossel"]);
+});
+
+Deno.test("preview_design: unknown page_id → structured error listing pages", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("designs", "select", { data: ROW, error: null });
+  const err = await expectErr(() => previewDesign(makeDeps(db), { design_id: 7, page_id: "nope" }));
+  assert(err instanceof McpStructuredError);
+  assertEquals((err as McpStructuredError).payload.error, "page_not_found");
+  assertEquals((err as McpStructuredError).payload.page_ids, ["1:4", "1:5"]);
+});
+
+Deno.test("preview_design: no publishable frames → structured error", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("designs", "select", { data: ROW, error: null });
+  const deps = makeDeps(db, {
+    callRenderService: async () => ({ pages: [] }),
+  });
+  const err = await expectErr(() => previewDesign(deps, { design_id: 7 }));
+  assert(err instanceof McpStructuredError);
+  assertEquals((err as McpStructuredError).payload.error, "no_publishable_frames");
+});
+
+// ── get_design_capabilities ───────────────────────────────────────────────────
+
+Deno.test("capabilities: formats, ops catalog and feature flags", async () => {
+  const db = createSupabaseQueryMock();
+  const out = await getDesignCapabilities(makeDeps(db), {});
+  assertEquals(out.formats.length, 4);
+  const livre = out.formats.find((f: { format: string }) => f.format === "livre");
+  assertEquals(livre!.starter_canvas, null);
+  assert(out.ops.some((o: { op: string }) => o.op === "set_text"));
+  assert(out.ops.some((o: { op: string }) => o.op === "add_frame"));
+  assertEquals(out.features, { feature_estudio: true, feature_ai_images: false });
+  assertEquals(out.image_gen, { enabled: false, quota: null });
+  assert(!("brand" in out));
+});
+
+Deno.test("capabilities: unknown client rejects; brand block returns raw fonts", async () => {
+  const db1 = createSupabaseQueryMock();
+  db1.queue("clientes", "select", { data: null, error: null });
+  const err = await expectErr(() => getDesignCapabilities(makeDeps(db1), { client_id: 5 }));
+  assert(err instanceof McpInputError);
 
   const db2 = createSupabaseQueryMock();
-  db2.queue("ai_image_generations", "select", { data: [], error: null });
-  db2.queue("clientes", "select", { data: { id: 42 }, error: null });
+  db2.queue("clientes", "select", { data: { id: 5 }, error: null });
   db2.queue("hub_brand", "select", {
     data: {
-      primary_color: "#eab308",
+      primary_color: "#112233",
       secondary_color: null,
-      logo_file_id: 2258,
-      font_primary: "Playfair",
-      font_secondary: "Comic Sans MS",
+      logo_file_id: 88,
+      font_primary: " Montserrat ",
+      font_secondary: null,
     },
     error: null,
   });
-  const out = await getDesignCapabilities(makeDeps(db2), { client_id: 42 });
-  assertEquals(out.brand.colors, ["#eab308"]);
-  assertEquals(out.brand.logo_file_id, 2258); // reported because ALREADY materialized — no write
-  assertEquals(out.brand.font_primary, {
-    raw: "Playfair",
-    resolved_key: "playfair-display",
-    fallback_key: "playfair-display",
+  const out = await getDesignCapabilities(makeDeps(db2), { client_id: 5 });
+  assertEquals(out.brand, {
+    colors: ["#112233"],
+    logo_file_id: 88,
+    font_primary: "Montserrat",
+    font_secondary: null,
   });
-  assertEquals(out.brand.font_secondary, {
-    raw: "Comic Sans MS",
-    resolved_key: null, // never guesses
-    fallback_key: "inter",
-  });
-});
-
-// ── preview_design guards ────────────────────────────────────────────────────
-
-Deno.test("preview: post without a design points at create_design", async () => {
-  const db = createSupabaseQueryMock();
-  db.queue("workflow_posts", "select", { data: { id: 42, tipo: "feed", status: "rascunho" }, error: null });
-  db.queue("post_designs", "select", { data: null, error: null });
-  let message = "";
-  try {
-    await previewDesign(makeDeps(db), { post_id: 42 });
-  } catch (e) {
-    message = (e as Error).message;
-  }
-  assert(message.includes("create_design"), message);
-});
-
-Deno.test("preview: unknown page_id returns a structured error LISTING the real page ids", async () => {
-  const db = createSupabaseQueryMock();
-  db.queue("workflow_posts", "select", { data: { id: 42, tipo: "feed", status: "rascunho" }, error: null });
-  db.queue("post_designs", "select", {
-    data: { doc: { pages: [{ id: "p1", layers: [] }, { id: "p2", layers: [] }] } },
-    error: null,
-  });
-  let err: unknown;
-  try {
-    await previewDesign(makeDeps(db), { post_id: 42, page_id: "nope" });
-  } catch (e) {
-    err = e;
-  }
-  assert(err instanceof McpStructuredError, String(err));
-  assertEquals((err as McpStructuredError).payload.error, "page_not_found");
-  assertEquals((err as McpStructuredError).payload.page_ids, ["p1", "p2"]);
-});
-
-// ── preview_design full render (satori → resvg → mozjpeg, real font bytes) ──
-
-Deno.test("preview: renders one page to JPEG at the default width", async () => {
-  const doc = {
-    version: 1,
-    format: "feed",
-    aspect_ratio: "1:1",
-    canvas: { width: 1080, height: 1080 },
-    fileIds: [],
-    pages: [{
-      id: "p1",
-      background: { type: "solid", color: "#f4efe6" },
-      layers: [{
-        id: "headline",
-        name: "Headline",
-        type: "text",
-        x: 90,
-        y: 400,
-        w: 900,
-        rotation: 0,
-        opacity: 1,
-        locked: false,
-        text: "Preview via MCP",
-        font_key: "inter",
-        font_weight: 400,
-        font_size: 64,
-        line_height: 1.2,
-        letter_spacing: 0,
-        color: "#12151a",
-        align: "left",
-      }],
-    }],
-  };
-  const db = createSupabaseQueryMock();
-  db.queue("workflow_posts", "select", { data: { id: 42, tipo: "feed", status: "rascunho" }, error: null });
-  db.queue("post_designs", "select", { data: { doc }, error: null });
-  const deps = makeDeps(db, {
-    resolveFontBytes: (r2Key: string) => {
-      // The manifest's r2 keys live under assets/fonts/v1/…; the same files are committed at
-      // public/fonts/estudio/… (byte-identical — §7 single-format serving).
-      const local = r2Key.replace("assets/fonts/v1/", "");
-      return Deno.readFile(new URL(`../../../public/fonts/estudio/${local}`, import.meta.url));
-    },
-  });
-  const out = await previewDesign(deps, { post_id: 42 });
-  assertEquals(out.page_id, "p1");
-  assertEquals(out.width, PREVIEW_DEFAULT_WIDTH);
-  assertEquals(out.height, PREVIEW_DEFAULT_WIDTH); // 1:1 canvas
-  assert(out.jpegBytes.length > 1000, `jpeg too small: ${out.jpegBytes.length}`);
-  // JPEG magic bytes
-  assertEquals(out.jpegBytes[0], 0xff);
-  assertEquals(out.jpegBytes[1], 0xd8);
 });

@@ -1,45 +1,97 @@
-// Estúdio MCP design tools (design §9, plan T5.2/T5.3): get_design / create_design /
-// update_design handlers + the zod4 validation glue. MCP arg shapes stay zod3 in tools.ts;
-// the design payload arrives as an untyped record and is validated HERE by the shared zod4
-// pipeline (§2.4) — invalid docs throw McpStructuredError carrying the aggregated issues[]
-// payload so one retry can fix everything.
+// Estúdio MCP design tools, v2 (design-first model — spec
+// docs/superpowers/specs/2026-07-04-estudio-design-first-model.md §MCP):
+// designs are first-class rows whose document is a .fig blob in R2; reads project
+// the scene graph through the doc service (/api/describe) and writes go through
+// /api/mutate + the SAME RPC family design-manage uses (create_design /
+// save_design_blob / attach_design) — ownership, rev CAS, read-only and
+// eligibility rules are enforced in one place regardless of caller.
 //
-// Writes go through the SAME service-role RPC family the editor uses (create_post_design /
-// update_post_design — no bespoke write path): ownership, status, rev guard and tipo sync are
-// enforced in one transaction regardless of caller. This module's own pre-checks exist only to
-// turn raw RPC exceptions into agent-actionable messages.
-import {
-  FORMAT_TO_TIPO,
-  toDesignValidationError,
-  validateDesignDoc,
-  type DesignDoc,
-  type DesignWarning,
-  type ValidationContext,
-} from "../_shared/design-doc.ts";
-import { manifestFontLookup } from "../_shared/fonts/lookup.ts";
-import {
-  getRenderPages,
-  type RenderPageInfo,
-} from "../_shared/design-render-status.ts";
-import { measureLayer, type FontBytesResolver } from "../_shared/design-render-core.ts";
+// Projection node ids are `source.id` guids — STABLE across saves. Ops reference
+// them; get_design_capabilities documents the vocabulary.
+import { DocServiceError } from "../_shared/doc-service.ts";
 import { McpInputError } from "../_shared/mcp-token.ts";
 import { signGetUrl } from "../_shared/r2.ts";
 import { EDITABLE_STATUSES, type Deps } from "./queries.ts";
 
-export const DOC_VERSION = 1;
+export { DocServiceError };
 
 /** Structured (JSON-payload) tool error — errorResult emits the payload verbatim instead of a
- * plain message string, giving agents a machine-usable self-correction contract (§2.4). */
+ * plain message string, giving agents a machine-usable self-correction contract. */
 export class McpStructuredError extends Error {
   constructor(public payload: Record<string, unknown>) {
     super(typeof payload.error === "string" ? payload.error : "structured_error");
   }
 }
 
+export const FORMATS = ["feed", "carrossel", "reel_cover", "livre"] as const;
+export type DesignFormat = (typeof FORMATS)[number];
+
+const TIPO_TO_FORMAT: Record<string, DesignFormat> = {
+  feed: "feed",
+  carrossel: "carrossel",
+  reels: "reel_cover",
+};
+
+/** Render-service tipo for a design; attached designs use the post's tipo instead. */
+export const FORMAT_TO_RENDER_TIPO: Record<DesignFormat, string> = {
+  feed: "feed",
+  carrossel: "carrossel",
+  reel_cover: "reels",
+  livre: "carrossel",
+};
+
+export interface DesignRow {
+  id: number;
+  cliente_id: number | null;
+  post_id: number | null;
+  name: string;
+  format: DesignFormat;
+  rev: number;
+  doc_r2_key: string;
+  render_status: string;
+  is_stale: boolean;
+  render_manifest: Array<{ page_id: string; r2_key: string; width: number; height: number }> | null;
+}
+
+const DESIGN_COLUMNS =
+  "id, cliente_id, post_id, name, format, rev, doc_r2_key, render_status, is_stale, render_manifest";
+
 interface PostRow {
   id: number;
   tipo: string;
   status: string;
+}
+
+// ---- plumbing --------------------------------------------------------------------------------
+
+async function requireFeature(d: Deps): Promise<void> {
+  if (!d.isFeatureEnabled) return; // wired in index.ts; absent only in tests that opt out
+  if (!(await d.isFeatureEnabled("feature_estudio"))) {
+    throw new McpInputError(
+      "O Estúdio não está disponível no plano deste workspace (feature_estudio).",
+    );
+  }
+}
+
+function requireDocService(d: Deps): void {
+  if (!d.fetchBlob || !d.putBlob || !d.docDescribe || !d.docMutate) {
+    throw new McpInputError(
+      "O serviço de documentos do Estúdio não está configurado neste ambiente.",
+    );
+  }
+}
+
+export async function getDesignRowOrThrow(d: Deps, designId: number): Promise<DesignRow> {
+  const { data } = await d.db
+    .from("designs")
+    .select(DESIGN_COLUMNS)
+    .eq("conta_id", d.ctx.conta_id)
+    .eq("id", designId)
+    .maybeSingle();
+  if (!data) {
+    throw new McpInputError("Design não encontrado neste workspace (use list_designs).");
+  }
+  return data as DesignRow;
 }
 
 async function getPostOrThrow(d: Deps, postId: number): Promise<PostRow> {
@@ -53,6 +105,14 @@ async function getPostOrThrow(d: Deps, postId: number): Promise<PostRow> {
   return data as PostRow;
 }
 
+function requireEditable(post: PostRow): void {
+  if (!EDITABLE_STATUSES.includes(post.status)) {
+    throw new McpInputError(
+      `Post em estado '${post.status}' não pode receber design pelo agente.`,
+    );
+  }
+}
+
 async function hasVideoMedia(d: Deps, postId: number): Promise<boolean> {
   const { data } = await d.db
     .from("post_file_links")
@@ -64,358 +124,330 @@ async function hasVideoMedia(d: Deps, postId: number): Promise<boolean> {
   return (data ?? []).length > 0;
 }
 
-function buildValidationContext(d: Deps, post: PostRow, postHasVideo: boolean): ValidationContext {
-  return {
-    postTipo: post.tipo,
-    postHasVideoMedia: postHasVideo,
-    fonts: manifestFontLookup,
-    checkFileIds: async (ids: number[]) => {
-      if (ids.length === 0) return new Set<number>();
-      const { data } = await d.db
-        .from("files")
-        .select("id")
-        .eq("conta_id", d.ctx.conta_id)
-        .eq("kind", "image")
-        .in("id", ids);
-      return new Set((data ?? []).map((f: { id: number }) => f.id));
-    },
-  };
-}
-
-/** §2.4 through the shared pipeline; invalid → McpStructuredError with the aggregated issues
- * payload (≤20 + truncated flag — toDesignValidationError owns the cap). */
-async function validateOrThrow(
-  d: Deps,
-  post: PostRow,
-  input: unknown,
-): Promise<{ doc: DesignDoc; warnings: DesignWarning[] }> {
-  const ctx = buildValidationContext(d, post, await hasVideoMedia(d, post.id));
-  const validated = await validateDesignDoc(input, ctx);
-  if (!validated.ok) {
-    throw new McpStructuredError(toDesignValidationError(validated) as Record<string, unknown>);
-  }
-  return { doc: validated.doc, warnings: validated.warnings };
-}
-
-// ---- measure pass (§2.5) -------------------------------------------------------------------
-// Per-layer bboxes so agents can position relative to real geometry ("below the headline").
-// Text heights are emergent (auto-grow): measured through satori + resvg getBBox — SVG parse
-// only, no rasterization. Non-text layers already carry explicit w/h in the normalized doc.
-
-export interface LayoutEntry {
-  page_id: string;
-  layer_id: string;
-  type: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
-
-export async function buildLayout(
-  doc: DesignDoc,
-  resolveFontBytes: FontBytesResolver | undefined,
-): Promise<LayoutEntry[]> {
-  const out: LayoutEntry[] = [];
-  for (const page of doc.pages) {
-    for (const layer of page.layers) {
-      if (layer.type === "text") {
-        let h = layer.font_size * layer.line_height;
-        if (resolveFontBytes) {
-          try {
-            h = (await measureLayer(layer, resolveFontBytes)).height;
-          } catch (e) {
-            // Measurement is best-effort agent ergonomics — a font-fetch hiccup must not fail
-            // a write that already committed. Fall back to the single-line estimate.
-            console.error("[mcp] measureLayer failed:", (e as Error)?.message);
-          }
-        }
-        out.push({
-          page_id: page.id,
-          layer_id: layer.id,
-          type: layer.type,
-          x: layer.x,
-          y: layer.y,
-          w: layer.w,
-          h,
-        });
-      } else {
-        out.push({
-          page_id: page.id,
-          layer_id: layer.id,
-          type: layer.type,
-          x: layer.x,
-          y: layer.y,
-          w: layer.w,
-          h: layer.h,
-        });
-      }
-    }
-  }
-  return out;
-}
-
-// ---- render info (get_design) ---------------------------------------------------------------
-
-async function renderInfo(
-  d: Deps,
-  postId: number,
-  tipo: string,
-  doc: DesignDoc,
-  renderStatus: string,
-): Promise<{ status: string; pages: RenderPageInfo[] }> {
-  // Same default signer as queries.ts's sign() — d.signUrl is the test override.
-  const signUrl = d.signUrl ?? ((key: string) => signGetUrl(key, 3600));
-  const pages = await getRenderPages({
-    fetchDesignLinks: async (pId, cId) => {
-      const { data } = await d.db
-        .from("post_file_links")
-        .select("file_id, sort_order, files!inner(r2_key, width, height)")
-        .eq("post_id", pId)
-        .eq("conta_id", cId)
-        .eq("origin", "design")
-        .order("sort_order", { ascending: true });
-      // deno-lint-ignore no-explicit-any
-      return (data ?? []).map((l: any) => ({
-        file_id: l.file_id,
-        r2_key: l.files.r2_key,
-        width: l.files.width,
-        height: l.files.height,
-        sort_order: l.sort_order,
-      }));
-    },
-    fetchVideoThumbnail: async (pId, cId) => {
-      const { data } = await d.db
-        .from("post_file_links")
-        .select("file_id, files!inner(kind, thumbnail_r2_key)")
-        .eq("post_id", pId)
-        .eq("conta_id", cId)
-        .eq("files.kind", "video")
-        .maybeSingle();
-      if (!data) return null;
-      // deno-lint-ignore no-explicit-any
-      const files = (data as any).files;
-      return {
-        file_id: (data as { file_id: number }).file_id,
-        thumbnail_r2_key: files.thumbnail_r2_key,
-      };
-    },
-    signUrl,
-  }, { postId, contaId: d.ctx.conta_id, tipo, doc });
-  return { status: renderStatus, pages };
-}
-
-// ---- shared write plumbing -------------------------------------------------------------------
-
-async function requireFeature(d: Deps): Promise<void> {
-  if (!d.isFeatureEnabled) return; // wired in index.ts; absent only in tests that opt out
-  if (!(await d.isFeatureEnabled("feature_estudio"))) {
+/** Post-eligibility pre-checks shared by create-with-post and attach: friendly messages here,
+ * the RPCs remain the real boundary. Returns the design format derived from the post's tipo. */
+async function checkPostEligibility(d: Deps, post: PostRow): Promise<DesignFormat> {
+  requireEditable(post);
+  const format = TIPO_TO_FORMAT[post.tipo];
+  if (!format) {
     throw new McpInputError(
-      "O Estúdio não está disponível no plano deste workspace (feature_estudio).",
+      `Posts do tipo '${post.tipo}' não são suportados pelo Estúdio (suportados: feed, carrossel, reels).`,
     );
   }
-}
-
-function requireEditable(post: PostRow): void {
-  if (!EDITABLE_STATUSES.includes(post.status)) {
+  if (format !== "reel_cover" && (await hasVideoMedia(d, post.id))) {
     throw new McpInputError(
-      `Post em estado '${post.status}' não pode receber design pelo agente.`,
+      "Este post tem vídeo — designs de feed/carrossel não podem ser vinculados a ele.",
     );
   }
+  return format;
 }
 
-/** correcao_cliente is live in the client portal — a design change is a content edit and must
- * pull the post back to revisao_interna (decision 16; same rule as updatePost). */
-async function autoMoveCorrecao(d: Deps, post: PostRow): Promise<string> {
-  if (post.status !== "correcao_cliente") return post.status;
-  const { data } = await d.db
-    .from("workflow_posts")
-    .update({ status: "revisao_interna" })
-    .eq("conta_id", d.ctx.conta_id)
-    .eq("id", post.id)
-    .eq("status", "correcao_cliente")
-    .select("status")
-    .maybeSingle();
-  return (data as { status: string } | null)?.status ?? post.status;
+function blobKey(d: Deps, rev: number): string {
+  const uuid = d.randomUUID ? d.randomUUID() : crypto.randomUUID();
+  return `designs/${d.ctx.conta_id}/${uuid}-r${rev}.fig`;
+}
+
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", bytes.buffer as ArrayBuffer);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function loadProjection(d: Deps, row: DesignRow): Promise<Record<string, unknown>> {
+  const bytes = await d.fetchBlob!(row.doc_r2_key);
+  if (!bytes) throw new Error(`design blob missing: ${row.doc_r2_key}`);
+  return await d.docDescribe!(bytes);
 }
 
 function fireRender(d: Deps, designId: number, rev: number): void {
   if (!d.triggerRender) return;
   // Fire-and-forget: the row's `pending` status IS the job and the sweep cron is the safety
-  // net (§9) — a trigger failure must never fail the tool call.
+  // net — a trigger failure must never fail the tool call.
   d.triggerRender(designId, rev).catch((e) =>
     console.error("[mcp] design render trigger failed:", (e as Error)?.message)
   );
 }
 
-export function docStats(doc: DesignDoc) {
-  return {
-    format: doc.format,
-    page_count: doc.pages.length,
-    layer_count: doc.pages.reduce((sum, p) => sum + p.layers.length, 0),
-    doc_bytes: JSON.stringify(doc).length,
-  };
+/** Signed URLs of the last finished render (when fresh) — agents that can fetch URLs get the
+ * cheap path; preview_design returns inline bytes for the ones that can't. */
+async function renderSummary(d: Deps, row: DesignRow) {
+  const fresh = row.render_status === "rendered" && !row.is_stale;
+  const signUrl = d.signUrl ?? ((key: string) => signGetUrl(key, 3600));
+  const pages = fresh && Array.isArray(row.render_manifest)
+    ? await Promise.all(
+      row.render_manifest.map(async (m) => ({
+        page_id: m.page_id,
+        width: m.width,
+        height: m.height,
+        url: await signUrl(m.r2_key),
+      })),
+    )
+    : [];
+  return { status: row.render_status, is_stale: row.is_stale, pages };
 }
 
-interface DesignRow {
-  id: number;
-  doc: DesignDoc;
-  rev: number;
-  render_status: string;
-  is_stale: boolean;
+async function attachedPost(d: Deps, row: DesignRow): Promise<PostRow | null> {
+  if (row.post_id == null) return null;
+  const { data } = await d.db
+    .from("workflow_posts")
+    .select("id, tipo, status")
+    .eq("conta_id", d.ctx.conta_id)
+    .eq("id", row.post_id)
+    .maybeSingle();
+  return (data as PostRow | null) ?? null;
+}
+
+function mapDocServiceError(e: unknown): never {
+  if (e instanceof DocServiceError) {
+    throw new McpStructuredError({
+      error: e.code,
+      message: e.detail ??
+        "Operação inválida — confira os ids de nós na projeção (get_design) e os args da op.",
+    });
+  }
+  throw e;
 }
 
 // ---- tools -----------------------------------------------------------------------------------
 
-export async function getDesign(d: Deps, args: { post_id: number }) {
-  const post = await getPostOrThrow(d, args.post_id);
-  const { data } = await d.db
-    .from("post_designs")
-    .select("id, doc, rev, render_status, is_stale")
-    .eq("conta_id", d.ctx.conta_id)
-    .eq("post_id", args.post_id)
-    .maybeSingle();
-  if (!data) {
-    return {
-      design: null,
-      hint:
-        "Este post ainda não tem design. Use create_design para criar um (get_design_capabilities lista formatos, fontes e limites).",
-      post: { tipo: post.tipo, status: post.status },
-    };
-  }
-  const row = data as DesignRow;
+export async function getDesign(d: Deps, args: { design_id: number }) {
+  requireDocService(d);
+  const row = await getDesignRowOrThrow(d, args.design_id);
+  const post = await attachedPost(d, row);
   return {
-    design: row.doc,
+    design_id: row.id,
+    name: row.name,
+    format: row.format,
     rev: row.rev,
-    render: await renderInfo(d, args.post_id, post.tipo, row.doc, row.render_status),
-    post: { tipo: post.tipo, status: post.status },
+    cliente_id: row.cliente_id,
+    projection: await loadProjection(d, row),
+    render: await renderSummary(d, row),
+    post: post ? { id: post.id, tipo: post.tipo, status: post.status } : null,
   };
 }
 
-export async function createDesign(d: Deps, args: { post_id: number; design: unknown }) {
-  await requireFeature(d);
-  const post = await getPostOrThrow(d, args.post_id);
-  requireEditable(post);
-
-  // Friendly pre-check; the RPC's unique guard is the real boundary (race caught below).
-  const { data: existing } = await d.db
-    .from("post_designs")
-    .select("id, rev")
+export async function listDesigns(
+  d: Deps,
+  args: { cliente_id?: number; post_id?: number; limit?: number },
+) {
+  let q = d.db
+    .from("designs")
+    .select("id, name, format, rev, cliente_id, post_id, render_status, is_stale, updated_at")
     .eq("conta_id", d.ctx.conta_id)
-    .eq("post_id", args.post_id)
-    .maybeSingle();
-  if (existing) {
-    throw new McpStructuredError({
-      error: "design_already_exists",
-      message: "Este post já tem um design — use update_design (leia o atual com get_design).",
-      rev: (existing as { rev: number }).rev,
-    });
-  }
+    .order("updated_at", { ascending: false })
+    .limit(Math.min(Math.max(args.limit ?? 20, 1), 100));
+  if (args.cliente_id != null) q = q.eq("cliente_id", args.cliente_id);
+  if (args.post_id != null) q = q.eq("post_id", args.post_id);
+  const { data, error } = await q;
+  if (error) throw new Error(error.message);
+  return { designs: data ?? [] };
+}
 
-  const { doc, warnings } = await validateOrThrow(d, post, args.design);
+export async function createDesign(
+  d: Deps,
+  args: { format?: string; post_id?: number; cliente_id?: number; name?: string },
+) {
+  await requireFeature(d);
+  requireDocService(d);
+  if (!d.starterTemplate) throw new McpInputError("Templates do Estúdio indisponíveis.");
 
-  const { data, error } = await d.db.rpc("create_post_design", {
-    p_conta_id: d.ctx.conta_id,
-    p_post_id: args.post_id,
-    p_doc: doc,
-    p_doc_version: DOC_VERSION,
-    p_updated_via: "agent",
-    p_updated_by: d.ctx.created_by,
-  }).single();
-  if (error) {
-    const message = (error as { message?: string }).message ?? "";
-    if (message.includes("design_already_exists")) {
+  let format: DesignFormat;
+  let postId: number | null = null;
+  if (args.post_id != null) {
+    const post = await getPostOrThrow(d, args.post_id);
+    const { data: existing } = await d.db
+      .from("designs")
+      .select("id, rev")
+      .eq("conta_id", d.ctx.conta_id)
+      .eq("post_id", args.post_id)
+      .maybeSingle();
+    if (existing) {
       throw new McpStructuredError({
-        error: "design_already_exists",
-        message: "Este post já tem um design — use update_design (leia o atual com get_design).",
+        error: "post_already_designed",
+        design_id: (existing as { id: number }).id,
+        message:
+          `Este post já tem o design ${(existing as { id: number }).id} — edite-o com update_design.`,
       });
     }
-    if (message.includes("post_has_video_media")) {
+    format = await checkPostEligibility(d, post);
+    postId = post.id;
+  } else {
+    if (!args.format || !(FORMATS as readonly string[]).includes(args.format)) {
       throw new McpInputError(
-        "Este post tem vídeo — designs de feed/carrossel não podem ser criados para ele.",
+        `Informe format (${FORMATS.join(", ")}) ou post_id para derivar do post.`,
       );
     }
-    console.error("[mcp] create_post_design failed:", message);
-    throw new Error("create_post_design failed");
+    format = args.format as DesignFormat;
   }
-  const row = data as unknown as DesignRow;
 
-  const status = await autoMoveCorrecao(d, post);
-  fireRender(d, row.id, row.rev);
+  if (args.cliente_id != null) {
+    const { data } = await d.db
+      .from("clientes")
+      .select("id")
+      .eq("conta_id", d.ctx.conta_id)
+      .eq("id", args.cliente_id)
+      .maybeSingle();
+    if (!data) throw new McpInputError("Cliente não encontrado neste workspace.");
+  }
+
+  const template = d.starterTemplate(format);
+  const key = blobKey(d, 1);
+  await d.putBlob!(key, template);
+
+  const { data, error } = await d.db.rpc("create_design", {
+    p_conta_id: d.ctx.conta_id,
+    p_cliente_id: args.cliente_id ?? null,
+    p_post_id: postId,
+    p_format: format,
+    p_name: args.name ?? null,
+    p_r2_key: key,
+    p_doc_hash: await sha256Hex(template),
+    p_doc_bytes: template.length,
+    p_created_by: d.ctx.created_by,
+  });
+  if (error) {
+    const message = (error as { message?: string }).message ?? "";
+    if (message.includes("post_already_designed")) {
+      throw new McpStructuredError({
+        error: "post_already_designed",
+        message: "Este post já tem um design — edite-o com update_design.",
+      });
+    }
+    console.error("[mcp] create_design failed:", message);
+    throw new Error("create_design failed");
+  }
+  const designId = data as number;
+  fireRender(d, designId, 1);
 
   return {
-    design: row.doc,
-    rev: row.rev,
-    warnings,
-    // Layout from the locally-normalized doc (identical to what the RPC stored) — defaults
-    // like line_height are guaranteed materialized there.
-    layout: await buildLayout(doc, d.resolveFontBytes),
-    render: { status: "queued", rev: row.rev },
-    // tipo derived from the WRITTEN doc's format: the RPC's check_and_sync updates
-    // workflow_posts.tipo when the design format maps differently (feed↔carrossel↔reels),
-    // so the pre-write post row would be stale here.
-    post: { tipo: FORMAT_TO_TIPO[doc.format], status },
+    design_id: designId,
+    format,
+    rev: 1,
+    post_id: postId,
+    projection: await d.docDescribe!(template),
+    render: { status: "queued", rev: 1 },
+    hint: "Edite com update_design (ops referem ids de nós da projeção).",
   };
 }
 
 export async function updateDesign(
   d: Deps,
-  args: { post_id: number; design: unknown; expected_rev?: number },
+  args: { design_id: number; ops: unknown[]; expected_rev?: number },
 ) {
   await requireFeature(d);
-  const post = await getPostOrThrow(d, args.post_id);
-  requireEditable(post);
+  requireDocService(d);
+  if (!Array.isArray(args.ops) || args.ops.length === 0) {
+    throw new McpInputError(
+      "ops deve ser uma lista não-vazia de operações (get_design_capabilities documenta o vocabulário).",
+    );
+  }
+  const row = await getDesignRowOrThrow(d, args.design_id);
 
-  const { doc, warnings } = await validateOrThrow(d, post, args.design);
+  const bytes = await d.fetchBlob!(row.doc_r2_key);
+  if (!bytes) throw new Error(`design blob missing: ${row.doc_r2_key}`);
 
-  const { data, error } = await d.db.rpc("update_post_design", {
+  let mutated;
+  try {
+    mutated = await d.docMutate!(bytes, args.ops);
+  } catch (e) {
+    mapDocServiceError(e);
+  }
+
+  // NULL expected_rev = documented last-writer-wins: guard against the rev we just read.
+  const expected = args.expected_rev ?? row.rev;
+  const key = blobKey(d, expected + 1);
+  await d.putBlob!(key, mutated.bytes);
+
+  const { data, error } = await d.db.rpc("save_design_blob", {
     p_conta_id: d.ctx.conta_id,
-    p_post_id: args.post_id,
-    p_doc: doc,
-    p_doc_version: DOC_VERSION,
-    // NULL = unguarded (documented last-writer-wins when expected_rev is omitted).
-    p_expected_rev: args.expected_rev ?? null,
-    p_updated_via: "agent",
+    p_design_id: row.id,
+    p_expected_rev: expected,
+    p_doc_hash: await sha256Hex(mutated.bytes),
+    p_r2_key: key,
+    p_doc_bytes: mutated.bytes.length,
+    p_editor_version: null,
     p_updated_by: d.ctx.created_by,
   }).single();
   if (error) {
+    // The staged blob is unreachable on failure; best-effort cleanup.
+    d.deleteBlob?.(key).catch(() => {});
     const message = (error as { message?: string }).message ?? "";
-    if (message.startsWith("rev_conflict:") || message.includes("rev_conflict:")) {
-      const current = Number(message.slice(message.indexOf("rev_conflict:") + "rev_conflict:".length));
+    if (message.includes("rev_conflict")) {
       throw new McpStructuredError({
         error: "rev_conflict",
-        current_rev: Number.isFinite(current) ? current : undefined,
         message:
-          `O design foi alterado por outra fonte (rev atual: ${current}). Releia com get_design e reaplique sua mudança.`,
+          "O design foi alterado por outra fonte. Releia com get_design e reaplique as ops.",
       });
     }
-    if (message.includes("design_not_found")) {
-      throw new McpInputError("Este post ainda não tem design — use create_design.");
+    if (message.includes("read_only") || message.includes("post_not_editable")) {
+      throw new McpStructuredError({
+        error: "read_only",
+        message:
+          "O post vinculado não está mais editável (aprovado/agendado). Duplique o design para continuar editando.",
+      });
     }
-    if (message.includes("post_has_video_media")) {
-      throw new McpInputError(
-        "Este post tem vídeo — designs de feed/carrossel não podem ser atualizados para ele.",
-      );
-    }
-    console.error("[mcp] update_post_design failed:", message);
-    throw new Error("update_post_design failed");
+    console.error("[mcp] save_design_blob failed:", message);
+    throw new Error("save_design_blob failed");
   }
-  const row = data as unknown as DesignRow;
-
-  const status = await autoMoveCorrecao(d, post);
-  fireRender(d, row.id, row.rev);
+  const saved = data as { o_rev: number; o_prev_r2_key: string | null };
+  if (saved.o_prev_r2_key) d.deleteBlob?.(saved.o_prev_r2_key).catch(() => {});
+  fireRender(d, row.id, saved.o_rev);
 
   return {
-    design: row.doc,
-    rev: row.rev,
-    warnings,
-    // Layout from the locally-normalized doc (identical to what the RPC stored) — defaults
-    // like line_height are guaranteed materialized there.
-    layout: await buildLayout(doc, d.resolveFontBytes),
-    render: { status: "queued", rev: row.rev },
-    // tipo derived from the WRITTEN doc's format: the RPC's check_and_sync updates
-    // workflow_posts.tipo when the design format maps differently (feed↔carrossel↔reels),
-    // so the pre-write post row would be stale here.
-    post: { tipo: FORMAT_TO_TIPO[doc.format], status },
+    design_id: row.id,
+    rev: saved.o_rev,
+    applied: mutated.applied,
+    projection: mutated.projection,
+    render: { status: "queued", rev: saved.o_rev },
+  };
+}
+
+export async function attachDesign(d: Deps, args: { design_id: number; post_id: number }) {
+  await requireFeature(d);
+  const row = await getDesignRowOrThrow(d, args.design_id);
+  if (row.post_id != null) {
+    throw new McpStructuredError({
+      error: "design_already_attached",
+      post_id: row.post_id,
+      message:
+        `Este design já está vinculado ao post ${row.post_id}. Duplique-o para usar em outro post.`,
+    });
+  }
+  const post = await getPostOrThrow(d, args.post_id);
+  await checkPostEligibility(d, post);
+  const { data: existing } = await d.db
+    .from("designs")
+    .select("id")
+    .eq("conta_id", d.ctx.conta_id)
+    .eq("post_id", args.post_id)
+    .maybeSingle();
+  if (existing) {
+    throw new McpStructuredError({
+      error: "post_already_designed",
+      design_id: (existing as { id: number }).id,
+      message: `O post ${args.post_id} já tem o design ${(existing as { id: number }).id}.`,
+    });
+  }
+
+  const { data, error } = await d.db.rpc("attach_design", {
+    p_conta_id: d.ctx.conta_id,
+    p_design_id: args.design_id,
+    p_post_id: args.post_id,
+    p_updated_by: d.ctx.created_by,
+  });
+  if (error) {
+    const message = (error as { message?: string }).message ?? "";
+    for (const code of ["design_already_attached", "post_already_designed", "post_not_editable"]) {
+      if (message.includes(code)) throw new McpStructuredError({ error: code, message });
+    }
+    console.error("[mcp] attach_design failed:", message);
+    throw new Error("attach_design failed");
+  }
+  fireRender(d, args.design_id, row.rev);
+
+  return {
+    design_id: args.design_id,
+    post_id: args.post_id,
+    post_tipo: data as string,
+    hint: "A renderização foi disparada — as páginas viram a mídia do post ao concluir.",
   };
 }
