@@ -313,28 +313,24 @@ export async function createDesign(input: { post_id?: number; format?: string })
 
 ### Task 8: Deploy to prod + live E2E + docs
 
-> **STATUS 2026-07-04:** Tasks 1–7 complete on `feat/estudio-design-first`; gates green.
-> Waiting on Eduardo to apply `20260705000001_designs_first_class.sql` on PROD (SQL editor
-> — it DROPS post_designs; rows are dark test data). Deploy set enumerated (Step 2):
-> `design-manage`, `design-render`, `design-render-sweep-cron`, `file-manage`,
-> `file-upload-finalize`, `hub-approve`, `instagram-publish-cron` (all `--use-api
-> --no-verify-jwt`) + `instagram-publish` (`--use-api` ONLY — confirmed absent from
-> config.toml, keeps gateway JWT). Then delete prod fn `post-design-manage`. Contract doc,
-> spike NOTES and memory already updated (part of Step 5). Do NOT deploy before the
-> migration — the new functions call RPCs that don't exist yet, while the old deployed
-> post-design-manage keeps working against post_designs until the drop.
+> **STATUS 2026-07-04: SLICE A1 COMPLETE.** Migration applied by Eduardo, all 8 functions
+> deployed to prod, orphaned `post-design-manage` deleted, live E2E passed (all 5 checks:
+> drawer-create post 1113 → design 1 + render replaced media + tipo-sync carrossel→feed;
+> standalone POST → design 2 rendered w/ STORED manifest, no post touched; attach → 200 +
+> media applied + manifest consumed; stale PUT → 409; drawer reopen → same design, no
+> mint). Branch merged back into feat/estudio-openpencil.
 
-- [ ] **Step 1:** Confirm with Eduardo that the Task 1 migration is applied on prod.
-- [ ] **Step 2:** Enumerate deploy set: `design-manage`, `design-render`,
+- [x] **Step 1:** Confirm with Eduardo that the Task 1 migration is applied on prod.
+- [x] **Step 2:** Enumerate deploy set: `design-manage`, `design-render`,
   `design-render-sweep-cron`, plus every fn importing the changed shared modules:
   `grep -rln "instagram-publish-utils\|reel-cover-staleness" supabase/functions --include="*.ts" | cut -d/ -f3 | sort -u` (expect instagram-publish, file-upload-finalize,
   post-media-manage, hub fns…). Deploy each:
   `npx supabase functions deploy <fn> --use-api --no-verify-jwt --project-ref skjzpekeqefvlojenfsw`.
   Note: `instagram-publish` keeps its gateway JWT — deploy it WITHOUT `--no-verify-jwt`
   (it is NOT in config.toml; check before deploying).
-- [ ] **Step 3:** Delete the orphaned prod fn:
+- [x] **Step 3:** Delete the orphaned prod fn:
   `npx supabase functions delete post-design-manage --project-ref skjzpekeqefvlojenfsw`.
-- [ ] **Step 4:** Live E2E on prod (preview harness; login = test@mesaas.com / DK TESTE;
+- [x] **Step 4:** Live E2E on prod (preview harness; login = test@mesaas.com / DK TESTE;
   pick the PROD `sb-skjzpekeqefvlojenfsw-auth-token` localStorage key — a stale staging
   key coexists; Vite may grab a different port than the harness reports — read the
   server log). Verify: (a) drawer on a designless editable post → creates design +
@@ -344,7 +340,7 @@ export async function createDesign(input: { post_id?: number; format?: string })
   (d) PUT with stale rev → 409; (e) drawer on a post with a design → opens same design.
   All API probes run IN-PAGE via `preview_eval` (never materialize the token into the
   transcript).
-- [ ] **Step 5:** Update `docs/estudio-v2-editor-contract.md` (docUrl shape →
+- [x] **Step 5:** Update `docs/estudio-v2-editor-contract.md` (docUrl shape →
   `design-manage/blob?design_id=`), append findings to `spike/openpencil/NOTES.md`,
   update the memory file `project_estudio_openpencil_pivot.md` (A1 done, A2 next).
   Commit. Tell Eduardo A1 is done and offer to write the A2 plan (Estúdio home gallery +
