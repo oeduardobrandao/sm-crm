@@ -1,5 +1,15 @@
 # OpenPencil spike — running notes
 
+## B-prep (doc service) — 2026-07-04, deployed + live-smoked
+
+mesaas-estudio-render grew the headless doc endpoints for the MCP slice:
+`POST /api/describe` (.fig bytes → scene projection; node ids = source.id guids, STABLE
+across saves — graph-internal ids are NOT) and `POST /api/mutate` (MDF1 binary frame
+{ops}+bytes → frame {projection,applied}+new bytes; 9 ops, all-or-nothing coded 422s;
+ensureExportSafeGuids pre-write). Live: describe 95ms, mutate 230ms on the feed starter —
+set_fill + add_text applied, untouched ids stable, invalid op → 422 node_not_found.
+MCP update_design = fetch blob → /api/mutate → save RPC; get_design = /api/describe.
+
 ## Slice 4 (CRM shell) live verification — 2026-07-04, local CRM against prod
 
 `/estudio/1041` in the local CRM (npm run dev :5174 + fork dev server :1420) ran the FULL
@@ -24,10 +34,16 @@ origin='design' link → render_status rendered / is_stale false. Then PUT 2-fra
 2 ordered links → **tipo auto-flipped feed→carrossel** (frame-derived sync). Sanitized-failure
 path also proven live: an invalid doc (no publishable frames) → render_error "Nenhum frame com
 proporção 1:1, 4:5 ou 9:16." and no uploads.
-**GOTCHA for the MCP slice:** loading a .fig with readDocument and re-exporting with
-writeDocument('fig') LOSES frame nodes (kiwi round-trip state; the editor's exportFigFile path
-with renderer+currentPageId is fine). Headless doc MUTATION must not naively write-after-read —
-investigate exportFigFile args or rebuild-graph strategies before building update_design.
+**GOTCHA SOLVED (2026-07-04, B-prep):** the "write-after-read loses frames" bug is a guid
+collision in @open-pencil/core's fig exporter — new-node guids mint as {sessionID:1,
+localID:counter++} but the counter is only seeded past imported session-0 ids; content
+nodes from a previous export live in session 1, so the first node CREATED on an imported
+doc steals an existing guid and re-import drops its owner (pure read→write and
+updateNode-only round-trips are SAFE). Fixed in the fork (5d01d6f, export.ts scans all
+sessions — protects the interactive editor too) and worked around in the npm-pinned
+service via ensureExportSafeGuids(graph) (lib/guids.js: assign source.ids to created
+nodes pre-write). Baseline test in test/guids.test.js flags when a fixed core version
+lands.
 Vercel service: mesaas-estudio-render.vercel.app (bearer auth, SSO off), cold 1.8s/warm 1.0s.
 supabase secrets CLI: --env-file only accepts RELATIVE paths (absolute → "node: not found").
 
