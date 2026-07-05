@@ -217,6 +217,13 @@
     "deleteConfirmBody": "\"{{name}}\" will be permanently deleted. Media already applied to a post stays there.",
     "deleteConfirmCta": "Delete",
     "deleteCancel": "Cancel",
+    "actions": {
+      "open": "Open",
+      "duplicate": "Duplicate",
+      "apply": "Apply to a post",
+      "detach": "Detach from post",
+      "delete": "Delete"
+    },
     "formats": {
       "feed": "Feed",
       "carrossel": "Carousel",

@@ -217,6 +217,13 @@
     "deleteConfirmBody": "\"{{name}}\" será excluído permanentemente. Mídias já aplicadas a um post continuam nele.",
     "deleteConfirmCta": "Excluir",
     "deleteCancel": "Cancelar",
+    "actions": {
+      "open": "Abrir",
+      "duplicate": "Duplicar",
+      "apply": "Aplicar a um post",
+      "detach": "Desvincular do post",
+      "delete": "Excluir"
+    },
     "formats": {
       "feed": "Feed",
       "carrossel": "Carrossel",
