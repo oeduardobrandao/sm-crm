@@ -149,3 +149,30 @@ Package: `@open-pencil/core@0.13.2` (npm, bundles scene-graph/io/layout/text/too
 - `livre` starter = page with NO frame. design-render maps livre → 'carrossel' service mode
   when unattached (multi-frame-tolerant); an empty livre canvas fails validation and shows a
   gallery placeholder (accepted for A1).
+
+## Estúdio home + read-only (slice A2, 2026-07-05) — implementation notes
+
+- Zero backend changes — the whole slice consumed A1's routes/RLS as designed. Gallery
+  thumbnails: stored render_manifest (unattached) / design-origin cover link (attached) /
+  video thumbnail_r2_key (attached reel_cover), signed in one resolveInlineImageUrls batch.
+- Fork `readOnly=1` (open-pencil-spike@5a4ae95): embedConfig.readOnly → HAND tool locked
+  after doc load, autosave off, bridge 'save' ignored, no dirty events, toolbar hidden,
+  keyboard bindings skipped, dblclick/contextmenu neutralized via capture listeners. Live
+  E2E proved zero PUTs from a read-only session (write mode autosaves ~3s post-load).
+  Config parsing extracted to embed/config.ts (pure, bun-testable — index.ts touches
+  window at module scope). Fork engine suite: 66 pre-existing failures = LFS fixtures
+  skipped at clone (GIT_LFS_SKIP_SMUDGE), identical before/after — compare against a
+  stashed baseline, not zero.
+- E2E harness gotchas (new): Radix triggers ignore synthetic PointerEvents AND CDP
+  preview_click — invoke the trigger's __reactProps onPointerDown({button:0, pointerType:
+  'mouse'}) directly, then plain MouseEvent('click') on items (pointerup+click BOTH select
+  → double-fire; we got a duplicate design that way). Drawer TIPO/STATUS are NATIVE
+  selects — but status changes FROM approved statuses open a confirm dialog
+  (pendingStatusChange) — click 'Confirmar'. The preview harness periodically re-navigates
+  its tab to the assigned port: do whole flows in ONE eval, re-establish state at the top.
+  Narrow preview viewport = mobile layout (bottom nav, '#/' hrefs) — preview_resize to
+  desktop first.
+- Prod test residue (DK TESTE): designs 1/2/3 attached to posts 1113/971/1041, design 5
+  detached ('A1 standalone E2E (cópia)'); posts 1114/1115 ('Post 2'/'Post 3', rascunho)
+  created for the apply E2E — drawer trash deletion didn't take via synthetic events,
+  left as test data.
