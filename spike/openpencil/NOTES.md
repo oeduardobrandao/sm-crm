@@ -1,5 +1,20 @@
 # OpenPencil spike — running notes
 
+## Slice B (MCP rewrite) — 2026-07-05, deployed + live-verified on prod
+
+MCP design tools v2 live (DK TESTE, scratch keys created+revoked in-page): create_design
+standalone (design 3, starter projection) → update_design ops rev 2 (set_fill + add_text
+"MCP V2 AO VIVO 🔥", stable node ids) → render kept pace → attach_design → post 1041
+(media applied; get_design signs the post's design links — finalize leaves NO manifest for
+attached designs, manifest fallback covers unattached) → preview_design 32KB JPEG image
+block → bad op → structured node_not_found. get_design_capabilities documents the ops
+vocabulary. Scopes unchanged; the session's cached MCP connector schemas were STALE after
+redeploy (drive E2E via raw JSON-RPC in-page; reconnect the connector for new tools).
+Gotchas: mcp-keys fn wants {action:'create'|'list'|'revoke'}; preview_eval hard-times-out
+at 30s (no long sleeps — but the in-page script keeps running and its `finally` cleanup
+still executes); page reloads wipe window state between evals (use sessionStorage or
+single-eval flows).
+
 ## B-prep (doc service) — 2026-07-04, deployed + live-smoked
 
 mesaas-estudio-render grew the headless doc endpoints for the MCP slice:
