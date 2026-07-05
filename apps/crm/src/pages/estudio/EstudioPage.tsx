@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useBlocker, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Loader2, RefreshCw, Save } from 'lucide-react';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { ArrowLeft, Copy, Eye, Loader2, RefreshCw, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
+import { duplicateDesign, getDesign } from '@/store';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { buildDocUrl, buildEditorUrl, createEmbedHost, type EditorEvent } from './embedHost';
 import { EstudioHome } from './EstudioHome';
+import { EDITABLE_STATUSES } from './applyEligibility';
 
 // Estúdio CRM shell — hosts the forked OpenPencil editor in an iframe and implements
 // the parent side of bridge protocol v1 (docs/estudio-v2-editor-contract.md): auth
@@ -55,6 +58,42 @@ export default function EstudioPage() {
 
   const designId = designIdParam !== undefined ? parseInt(designIdParam, 10) : null;
   const estudioBlocked = features?.feature_estudio === false;
+
+  // Design meta gates the iframe: a design attached to a LOCKED post opens the editor in
+  // readOnly (fork param) — what the client approved never silently diverges. The backend
+  // enforces this regardless (403 read_only on save); the param makes it visible.
+  const metaQuery = useQuery({
+    queryKey: ['design-meta', designId],
+    enabled: designId !== null && !isNaN(designId) && !estudioBlocked,
+    queryFn: async () => {
+      const design = await getDesign(designId!);
+      if (!design) return { design: null, postStatus: null };
+      let postStatus: string | null = null;
+      if (design.post_id !== null) {
+        const { data } = await supabase
+          .from('workflow_posts')
+          .select('status')
+          .eq('id', design.post_id)
+          .maybeSingle();
+        postStatus = (data as { status: string } | null)?.status ?? null;
+      }
+      return { design, postStatus };
+    },
+  });
+  const readOnly =
+    !!metaQuery.data?.design &&
+    metaQuery.data.design.post_id !== null &&
+    metaQuery.data.postStatus !== null &&
+    !EDITABLE_STATUSES.includes(metaQuery.data.postStatus);
+
+  const duplicateMutation = useMutation({
+    mutationFn: () => duplicateDesign(designId!),
+    onSuccess: ({ design_id }) => {
+      toast.success(t('home.duplicated'));
+      navigate(`/estudio/${design_id}`);
+    },
+    onError: (err: Error) => toast.error(t('toast.createError', { error: err.message })),
+  });
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -123,13 +162,15 @@ export default function EstudioPage() {
 
   const editorUrl = useMemo(() => {
     if (!EDITOR_ORIGIN || designId === null || isNaN(designId)) return null;
+    // Wait for the meta read: the iframe must boot in the right mode from the start.
+    if (!metaQuery.data?.design) return null;
     const docUrl = buildDocUrl(designId, {
       dev: import.meta.env.DEV,
       appOrigin: window.location.origin,
       supabaseUrl: import.meta.env.VITE_SUPABASE_URL as string,
     });
-    return buildEditorUrl(EDITOR_ORIGIN, docUrl, window.location.origin);
-  }, [designId]);
+    return buildEditorUrl(EDITOR_ORIGIN, docUrl, window.location.origin, readOnly);
+  }, [designId, metaQuery.data, readOnly]);
 
   useEffect(() => {
     if (!host) return;
@@ -190,12 +231,31 @@ export default function EstudioPage() {
     setReloadKey((k) => k + 1);
   }, []);
 
+  // In-place navigation (Duplicar) changes designId under a mounted shell — reboot it.
+  useEffect(() => {
+    reloadEditor();
+  }, [designId, reloadEditor]);
+
   // ----- non-editor views -------------------------------------------------------------
 
   if (designId === null) return <EstudioHome />;
 
   if (isNaN(designId)) return <CenteredNotice>{t('editor.invalidDesign')}</CenteredNotice>;
   if (estudioBlocked) return <CenteredNotice>{t('featureBlocked')}</CenteredNotice>;
+  if (metaQuery.isLoading) {
+    return (
+      <CenteredNotice>
+        <p
+          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'center' }}
+        >
+          <Loader2 className="h-4 w-4 animate-spin" /> {t('editor.loading')}
+        </p>
+      </CenteredNotice>
+    );
+  }
+  if (metaQuery.data && !metaQuery.data.design) {
+    return <CenteredNotice>{t('editor.notFound')}</CenteredNotice>;
+  }
   if (!editorUrl) return <CenteredNotice>{t('editor.unavailable')}</CenteredNotice>;
 
   // ----- editor shell -----------------------------------------------------------------
@@ -241,23 +301,44 @@ export default function EstudioPage() {
         </button>
         <span style={{ fontWeight: 700, color: 'var(--text-main)' }}>{t('title')}</span>
         <span style={{ color: 'var(--text-light)', fontSize: '0.8rem' }}>#{designId}</span>
-        <span
-          data-testid="save-pill"
-          style={{
-            fontSize: '0.7rem',
-            fontWeight: 600,
-            textTransform: 'uppercase',
-            letterSpacing: '0.04em',
-            padding: '0.25rem 0.6rem',
-            borderRadius: 999,
-            color: pill.color,
-            background: pill.bg,
-          }}
-        >
-          {pill.label}
-        </span>
+        {readOnly ? (
+          <span
+            data-testid="readonly-pill"
+            style={{
+              fontSize: '0.7rem',
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+              padding: '0.25rem 0.6rem',
+              borderRadius: 999,
+              color: 'var(--warning)',
+              background: 'rgba(245,163,66,0.12)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+            }}
+          >
+            <Eye className="h-3 w-3" /> {t('editor.readOnlyPill')}
+          </span>
+        ) : (
+          <span
+            data-testid="save-pill"
+            style={{
+              fontSize: '0.7rem',
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+              padding: '0.25rem 0.6rem',
+              borderRadius: 999,
+              color: pill.color,
+              background: pill.bg,
+            }}
+          >
+            {pill.label}
+          </span>
+        )}
         <div style={{ flex: 1 }} />
-        {dirty && saveState !== 'conflict' && (
+        {!readOnly && dirty && saveState !== 'conflict' && (
           <button
             type="button"
             onClick={() => host?.forceSave()}
@@ -268,6 +349,33 @@ export default function EstudioPage() {
           </button>
         )}
       </header>
+
+      {readOnly && (
+        <div
+          data-testid="readonly-banner"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            padding: '0.5rem 1rem',
+            background: 'rgba(245,163,66,0.1)',
+            color: 'var(--warning)',
+            fontSize: '0.85rem',
+            flexShrink: 0,
+          }}
+        >
+          <span>{t('editor.readOnlyBanner')}</span>
+          <button
+            type="button"
+            disabled={duplicateMutation.isPending}
+            onClick={() => duplicateMutation.mutate()}
+            className="flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-md"
+            style={{ background: 'var(--warning)', color: '#fff' }}
+          >
+            <Copy className="h-3 w-3" /> {t('editor.duplicate')}
+          </button>
+        </div>
+      )}
 
       {saveState === 'conflict' && (
         <div

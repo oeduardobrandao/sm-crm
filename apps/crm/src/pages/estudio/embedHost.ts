@@ -70,9 +70,15 @@ export function createEmbedHost(opts: EmbedHostOptions): EmbedHost {
   return { handleMessage, forceSave: () => post({ type: 'save' }), sendAuth };
 }
 
-/** Frozen editor URL shape: {EDITOR_ORIGIN}/?embed=1&docUrl=…&parentOrigin=… */
-export function buildEditorUrl(editorOrigin: string, docUrl: string, parentOrigin: string): string {
-  return `${editorOrigin}/?embed=1&docUrl=${encodeURIComponent(docUrl)}&parentOrigin=${encodeURIComponent(parentOrigin)}`;
+/** Frozen editor URL shape: {EDITOR_ORIGIN}/?embed=1&docUrl=…&parentOrigin=…[&readOnly=1].
+ * readOnly = view-only fork mode (locked-post designs): tools/autosave off, `save` ignored. */
+export function buildEditorUrl(
+  editorOrigin: string,
+  docUrl: string,
+  parentOrigin: string,
+  readOnly = false,
+): string {
+  return `${editorOrigin}/?embed=1&docUrl=${encodeURIComponent(docUrl)}&parentOrigin=${encodeURIComponent(parentOrigin)}${readOnly ? '&readOnly=1' : ''}`;
 }
 
 /**

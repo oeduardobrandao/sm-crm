@@ -9,10 +9,17 @@ Change either only by versioning (bridge `v` field) and updating both sides.
 Editor URL shape:
 
 ```
-{EDITOR_ORIGIN}/?embed=1&docUrl=<url-encoded endpoint>&parentOrigin=<url-encoded host origin>
+{EDITOR_ORIGIN}/?embed=1&docUrl=<url-encoded endpoint>&parentOrigin=<url-encoded host origin>[&readOnly=1]
 ```
 
 - Without `parentOrigin` the bridge is disabled and no auth header is sent (standalone dev).
+- `readOnly=1` (slice A2 — designs attached to locked posts): view-only mode. The editor
+  locks the HAND tool after doc load (pan/zoom only), hides the toolbar, binds no keyboard
+  shortcuts, neutralizes dblclick/contextmenu, never autosaves, ignores the `save` bridge
+  message and never emits `dirty`. The host hides the save UI and shows a read-only banner
+  with a "Duplicar" CTA. Degraded mode (a fork build WITHOUT readOnly support ignores the
+  param): local edits become possible but every PUT gets the backend's 403 `read_only`,
+  surfacing as the editor's save-error toast — nothing can ever be written either way.
 - Deployed (dark, SSO-protected): https://mesaas-estudio-rmsz5df8v-oeduardobrandaos-projects.vercel.app
 - Dev: `bun --bun run dev` in the fork → http://localhost:1420
 

@@ -132,6 +132,17 @@ describe('URL builders', () => {
     );
   });
 
+  it('buildEditorUrl appends readOnly=1 only when asked (locked-post designs)', () => {
+    expect(
+      buildEditorUrl(EDITOR_ORIGIN, 'https://x.y/blob?design_id=7', 'http://localhost:5173', true),
+    ).toBe(
+      'http://localhost:1420/?embed=1&docUrl=https%3A%2F%2Fx.y%2Fblob%3Fdesign_id%3D7&parentOrigin=http%3A%2F%2Flocalhost%3A5173&readOnly=1',
+    );
+    expect(
+      buildEditorUrl(EDITOR_ORIGIN, 'https://x.y/blob?design_id=7', 'http://localhost:5173', false),
+    ).not.toContain('readOnly');
+  });
+
   it('buildDocUrl uses the CRM proxy in dev and Supabase directly in prod', () => {
     const env = { appOrigin: 'http://localhost:5173', supabaseUrl: 'https://proj.supabase.co' };
     expect(buildDocUrl(1041, { ...env, dev: true })).toBe(

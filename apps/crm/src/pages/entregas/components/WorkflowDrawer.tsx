@@ -87,6 +87,7 @@ import {
 } from '@/services/inlineImage';
 import { listPostMedia } from '../../../services/postMedia';
 import { createDesign, getDesignForPost } from '@/store';
+import { EDITABLE_STATUSES as POST_EDITABLE_STATUSES } from '@/pages/estudio/applyEligibility';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { InstagramCaptionField } from './InstagramCaptionField';
 import { ScheduleButton } from './ScheduleButton';
@@ -1182,26 +1183,34 @@ function SortablePostItem({
             />
           )}
 
-          {post.tipo !== 'stories' && !estudioBlocked && (
-            <button
-              type="button"
-              disabled={createDesignMutation.isPending}
-              onClick={() => {
-                if (designSummary) navigate(`/estudio/${designSummary.id}`);
-                else createDesignMutation.mutate();
-              }}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors"
-              style={{
-                background: 'rgba(234,179,8,0.12)',
-                color: 'var(--primary-hover)',
-                width: 'fit-content',
-                marginBottom: '0.75rem',
-              }}
-            >
-              <Wand2 className="h-3.5 w-3.5" />{' '}
-              {createDesignMutation.isPending ? t('picker.creating') : t('openInEstudio')}
-            </button>
-          )}
+          {/* Button matrix (design-first spec): editable post → create-or-open; locked post
+              WITH a design → "Ver no Estúdio" (read-only shell); locked without → nothing. */}
+          {post.tipo !== 'stories' &&
+            !estudioBlocked &&
+            (designSummary !== null || POST_EDITABLE_STATUSES.includes(post.status)) && (
+              <button
+                type="button"
+                disabled={createDesignMutation.isPending}
+                onClick={() => {
+                  if (designSummary) navigate(`/estudio/${designSummary.id}`);
+                  else createDesignMutation.mutate();
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors"
+                style={{
+                  background: 'rgba(234,179,8,0.12)',
+                  color: 'var(--primary-hover)',
+                  width: 'fit-content',
+                  marginBottom: '0.75rem',
+                }}
+              >
+                <Wand2 className="h-3.5 w-3.5" />{' '}
+                {createDesignMutation.isPending
+                  ? t('picker.creating')
+                  : designSummary && !POST_EDITABLE_STATUSES.includes(post.status)
+                    ? t('viewInEstudio')
+                    : t('openInEstudio')}
+              </button>
+            )}
 
           <PostMediaGallery postId={post.id!} design={designSummary} postTipo={post.tipo} />
 
