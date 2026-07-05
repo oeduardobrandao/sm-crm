@@ -63,8 +63,8 @@ dropdown-menu — all present in `components/ui/`), Vitest; fork = Vue 3 + bun (
 - Modify: `apps/crm/src/store/designs.ts`
 - Test: `apps/crm/src/store/__tests__/designs.test.ts` (new — pure helpers only)
 
-- [ ] **Step 1:** Worktree/branch off `feat/estudio-openpencil`; copy `.env` in.
-- [ ] **Step 2:** Extend `DesignSummary` with `cliente_id: number | null`,
+- [x] **Step 1:** Worktree/branch off `feat/estudio-openpencil`; copy `.env` in.
+- [x] **Step 2:** Extend `DesignSummary` with `cliente_id: number | null`,
   `render_manifest: Array<{ r2_key: string }> | null`, `updated_at: string`. Add:
 
 ```ts
@@ -82,7 +82,7 @@ export async function deleteDesign(id: number): Promise<void>                   
 
   Refactor the shared authed-fetch into one local `callDesignManage(path, method, body?)`
   helper (204 → no json parse; error body `{error}` → throw with the code as message).
-- [ ] **Step 3:** Thumbnail source resolution — pure, testable:
+- [x] **Step 3:** Thumbnail source resolution — pure, testable:
 
 ```ts
 export interface DesignThumbSource { designId: number; r2Key: string | null }
@@ -98,7 +98,7 @@ export function pickThumbKey(design: DesignSummary, attachedMedia?: {
   filtered `post_id=in.(...)` → map post_id → { coverKey, videoThumbKey }. Sign all picked
   keys with the existing `resolveInlineImageUrls(keys)` (services/inlineImage.ts) in one
   batch from the page (Task 2), NOT here.
-- [ ] **Step 4:** Unit-test `pickThumbKey` (manifest wins when present; attached
+- [x] **Step 4:** Unit-test `pickThumbKey` (manifest wins when present; attached
   feed cover; reel video thumb; null fallback). `npm run test` green. Commit.
 
 ### Task 2: Estúdio home — gallery + Novo design
@@ -109,7 +109,7 @@ export function pickThumbKey(design: DesignSummary, attachedMedia?: {
 - Modify: `apps/crm/src/pages/estudio/EstudioPage.tsx` (designId === null → render
   `<EstudioHome/>` instead of the CenteredNotice), `packages/i18n/locales/{pt,en}/estudio.json`
 
-- [ ] **Step 1:** `EstudioHome`: `useQuery(['designs', clienteFilter], () =>
+- [x] **Step 1:** `EstudioHome`: `useQuery(['designs', clienteFilter], () =>
   listDesigns(clienteFilter))` + `useQuery(['clientes'], getClientes)` for the filter
   (shadcn Select, "Todos os clientes" default). Grid of cards (`kpi-card` styling family):
   thumbnail (signed URL via one `resolveInlineImageUrls` batch; neutral placeholder when
@@ -117,24 +117,24 @@ export function pickThumbKey(design: DesignSummary, attachedMedia?: {
   chip (`rendered`+fresh → nothing; `pending/rendering` or `is_stale` → "Gerando…";
   `failed` → "Falhou" badge-danger), attached indicator ("Post #id"). Card click → abrir
   (`navigate(/estudio/:id)`). Feature gate + empty state ("Nenhum design ainda" + CTA).
-- [ ] **Step 2:** Card overflow menu (dropdown-menu): **Abrir**, **Duplicar**
+- [x] **Step 2:** Card overflow menu (dropdown-menu): **Abrir**, **Duplicar**
   (`duplicateDesign` → toast + navigate to the new id), **Aplicar a um post** (Task 3
   modal; hidden when attached), **Desvincular** (attached only; `detachDesign` → toast
   explaining media stays on the post — reuse spec wording), **Excluir** (alert-dialog
   confirm mentioning the design is permanently deleted, post media stays; `deleteDesign`).
   Every mutation invalidates `['designs']`; attached-post mutations also invalidate
   `['post-design-summary', post_id]`.
-- [ ] **Step 3:** `NewDesignDialog`: 4 format options (feed 4:5, carrossel 4:5,
+- [x] **Step 3:** `NewDesignDialog`: 4 format options (feed 4:5, carrossel 4:5,
   reel_cover 9:16, livre — small visual aspect hints) + optional client Select + optional
   name input → `createDesign({format, cliente_id?, name?})` → navigate to the editor.
   Pending state reuses `picker.creating`.
-- [ ] **Step 4:** i18n: add `home.*` keys (pt + en): title/subtitle reuse existing,
+- [x] **Step 4:** i18n: add `home.*` keys (pt + en): title/subtitle reuse existing,
   `home.newDesign`, `home.allClients`, `home.empty`, `home.emptyCta`, `home.generating`,
   `home.renderFailed`, `home.attachedTo`, `home.actions.{open,duplicate,apply,detach,delete}`,
   `home.detachDone`, `home.deleteConfirm{Title,Body,Cta}`, `home.formats.{feed,carrossel,
   reel_cover,livre}` (+ short descriptions). Portuguese first-person product voice, match
   existing file tone.
-- [ ] **Step 5:** `npm run test`, `npm run build`, prettier+lint. Commit.
+- [x] **Step 5:** `npm run test`, `npm run build`, prettier+lint. Commit.
 
 ### Task 3: "Aplicar a um post" modal — eligibility made visible
 
@@ -144,7 +144,7 @@ export function pickThumbKey(design: DesignSummary, attachedMedia?: {
 - Test: `apps/crm/src/pages/estudio/__tests__/applyEligibility.test.ts`
 - Modify: `packages/i18n/locales/{pt,en}/estudio.json`
 
-- [ ] **Step 1:** `applyEligibility.ts` — the reason mapper the spec demands ("invalid
+- [x] **Step 1:** `applyEligibility.ts` — the reason mapper the spec demands ("invalid
   targets are listed disabled WITH the reason — eligibility becomes visible, not a 403"):
 
 ```ts
@@ -156,17 +156,17 @@ export function postEligibility(post: { id: number; tipo: string; status: string
 
   Order the checks exactly like the backend (tipo → status → designed → video) so the
   disabled reason always matches what the RPC would raise.
-- [ ] **Step 2:** Dialog flow: client Select (`getClientes`) → workflow Select
+- [x] **Step 2:** Dialog flow: client Select (`getClientes`) → workflow Select
   (`getWorkflows()` filtered cliente + `status==='ativo'`) → post list
   (`getWorkflowPosts(workflowId)`), each row: title/tipo/status + enabled radio OR
   disabled row with the translated reason chip. Data for reasons, batched per workflow:
   `designs?select=post_id&post_id=in.(...)` and the video-media RLS query from Task 1's
   `fetchAttachedThumbSources` shape (`files.kind=eq.video`). Info line: applying re-renders
   and REPLACES the post's media; tipo will follow the design's frames (tipo-sync).
-- [ ] **Step 3:** Confirm → `attachDesign(designId, postId)`; success toast with
+- [x] **Step 3:** Confirm → `attachDesign(designId, postId)`; success toast with
   `post_tipo`; RPC error codes → same translated reasons (belt for races). Invalidate
   `['designs']` + `['post-design-summary', postId]`.
-- [ ] **Step 4:** Unit-test `postEligibility` (each reason + eligible). i18n
+- [x] **Step 4:** Unit-test `postEligibility` (each reason + eligible). i18n
   `apply.*` keys (title, steps, reasons.{already_designed,not_editable,tipo_unsupported,
   has_video}, confirm, success, info). Gates. Commit.
 
@@ -176,18 +176,18 @@ export function postEligibility(post: { id: number; tipo: string; status: string
 - embedConfig plumbing (their existing `embed=1` param parsing), toolbar/canvas
   interaction gating, autosave scheduler, bridge `save` handler; `UPSTREAM.md`
 
-- [ ] **Step 1:** COORDINATION GATE: if the MCP/slice-B session is active, hand it this
+- [x] **Step 1:** COORDINATION GATE: if the MCP/slice-B session is active, hand it this
   task and wait; otherwise proceed yourself following the fork's conventions (`// MESAAS:`
   markers, changes gated on `embedConfig`, `bun test tests/engine/`, oxlint strict, build
   `bun --bun`).
-- [ ] **Step 2:** `readOnly=1` URL param → `embedConfig.readOnly`: canvas tools locked to
+- [x] **Step 2:** `readOnly=1` URL param → `embedConfig.readOnly`: canvas tools locked to
   select/pan (no create/edit/delete mutations), autosave scheduler never arms, incoming
   bridge `save` message ignored; doc load + `doc:loaded` + zoom/pan unchanged. No `dirty`
   events ever emitted.
-- [ ] **Step 3:** Fork tests green; redeploy the dark Vercel editor; smoke an
+- [x] **Step 3:** Fork tests green; redeploy the dark Vercel editor; smoke an
   `embed=1&readOnly=1&docUrl=…` boot locally (editor on :1420) confirming edits are
   impossible and no PUT ever fires (network tab clean).
-- [ ] **Step 4:** Document the param in `docs/estudio-v2-editor-contract.md` (embed URL
+- [x] **Step 4:** Document the param in `docs/estudio-v2-editor-contract.md` (embed URL
   shape + bridge behavior deltas) — commit in THIS repo.
 
 ### Task 5: Shell read-only + drawer "Ver no Estúdio"
@@ -199,7 +199,7 @@ export function postEligibility(post: { id: number; tipo: string; status: string
   `packages/i18n/locales/{pt,en}/estudio.json`
 - Test: `apps/crm/src/pages/estudio/__tests__/embedHost.test.ts`
 
-- [ ] **Step 1:** EstudioPage: `useQuery(['design-meta', designId], () =>
+- [x] **Step 1:** EstudioPage: `useQuery(['design-meta', designId], () =>
   getDesign(designId))`; when `post_id` set, fetch the post's status (one RLS select).
   `readOnly = attached && !EDITABLE_STATUSES.includes(post.status)`. Editor URL gets
   `readOnly=1` (new `buildEditorUrl` arg; update tests). Hide save pill + "Salvar agora";
@@ -207,23 +207,23 @@ export function postEligibility(post: { id: number; tipo: string; status: string
   aprovado — somente leitura.") + **Duplicar** button (`duplicateDesign` → navigate new id,
   which opens EDITABLE since the copy is detached). Keep the dirty guards inert (editor
   never emits dirty in readOnly).
-- [ ] **Step 2:** WorkflowDrawer button matrix (spec parity):
+- [x] **Step 2:** WorkflowDrawer button matrix (spec parity):
   - designless + editable → "Abrir no Estúdio" (create-attached; unchanged)
   - designless + locked → button HIDDEN
   - designed + editable → "Abrir no Estúdio" (open; unchanged)
   - designed + locked → label `t('viewInEstudio')` ("Ver no Estúdio"), same navigate.
-- [ ] **Step 3:** i18n (`editor.readOnlyBanner`, `editor.duplicate`, `viewInEstudio`).
+- [x] **Step 3:** i18n (`editor.readOnlyBanner`, `editor.duplicate`, `viewInEstudio`).
   Belt check: with a fork WITHOUT readOnly support (param ignored), the shell banner still
   renders and a stray autosave gets the backend 403 `read_only` → editor toast — accepted
   degraded mode; note it in the contract doc.
-- [ ] **Step 4:** Gates (vitest incl. embedHost URL tests, build, lint, prettier). Commit.
+- [x] **Step 4:** Gates (vitest incl. embedHost URL tests, build, lint, prettier). Commit.
 
 ### Task 6: Full gates + live E2E + docs/memory
 
-- [ ] **Step 1:** Full suite order: `npm run test:functions` (should be UNTOUCHED — no
+- [x] **Step 1:** Full suite order: `npm run test:functions` (should be UNTOUCHED — no
   edge changes; still run it) → revert `deno.lock` → `npm ci` → `npm run test` →
   `npm run build` → `npm run lint` → prettier check.
-- [ ] **Step 2:** Live E2E on prod (preview harness, DK TESTE): (a) `/estudio` gallery
+- [x] **Step 2:** Live E2E on prod (preview harness, DK TESTE): (a) `/estudio` gallery
   lists designs 1+2 with real thumbnails + client filter works; (b) Novo design `livre` →
   editor opens, gallery shows it "Gerando…" → placeholder-or-thumb (empty livre fails
   render by design — placeholder accepted); (c) Duplicar design 1 → new detached copy
@@ -235,7 +235,7 @@ export function postEligibility(post: { id: number; tipo: string; status: string
   attached design's post to a locked status via the drawer STATUS select → design opens
   with banner + no editing + Duplicar works → flip the status back; (h) drawer on that
   locked post showed "Ver no Estúdio".
-- [ ] **Step 3:** Update `docs/estudio-v2-editor-contract.md` (readOnly param — if not
+- [x] **Step 3:** Update `docs/estudio-v2-editor-contract.md` (readOnly param — if not
   already in Task 4), append findings to `spike/openpencil/NOTES.md`, update memory
   `project_estudio_openpencil_pivot.md` (**SLICE A COMPLETE** — A2 done; next = slice B
   MCP rewrite, then C image→editable). Merge back into `feat/estudio-openpencil`
