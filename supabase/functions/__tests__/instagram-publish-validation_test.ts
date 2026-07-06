@@ -52,7 +52,9 @@ function queueSchedulingReads(
     /** designs row (attached) for the T4.1 readiness gate. Defaults to null (no design). MUST be
      * seeded explicitly — the mock's default select returns `[]`, which is truthy and would
      * read as a design row with undefined fields (the documented trap). */
-    design?: { id: number; rev: number; render_status: string; is_stale: boolean } | null;
+    design?:
+      | { id: number; rev: number; render_status: string; is_stale: boolean; media_apply_held?: boolean }
+      | null;
   },
 ) {
   db.queue("workflow_posts", "select", {
@@ -185,6 +187,21 @@ Deno.test("checkDesignReadiness: rendered + fresh → ready; every other state �
   }
 });
 
+Deno.test("checkDesignReadiness: media_apply_held → ready regardless of render_status/is_stale (slice C dormant attachment)", async () => {
+  const heldCases = [
+    { id: 7, rev: 1, render_status: "pending", is_stale: true, media_apply_held: true },
+    { id: 7, rev: 1, render_status: "rendering", is_stale: true, media_apply_held: true },
+    { id: 7, rev: 1, render_status: "failed", is_stale: true, media_apply_held: true },
+    { id: 7, rev: 1, render_status: "rendered", is_stale: false, media_apply_held: true },
+  ];
+  for (const row of heldCases) {
+    const db = createSupabaseQueryMock();
+    db.queue("designs", "select", { data: row, error: null });
+    const res = await checkDesignReadiness(db as never, 1);
+    assertEquals(res, { ready: true, design: null }, JSON.stringify(row));
+  }
+});
+
 Deno.test("validateForScheduling: pending design blocks with the 'ainda está sendo gerada' message and exposes designBlocked", async () => {
   const db = createSupabaseQueryMock();
   queueSchedulingReads(db, {
@@ -235,5 +252,21 @@ Deno.test("validateForScheduling: rendered + fresh design passes and designBlock
   });
   const res = await validateForScheduling(db as never, 1);
   assertEquals(res.ok, true);
+  assertEquals(res.designBlocked, undefined);
+});
+
+Deno.test("validateForScheduling: HELD design (slice C dormant attachment) schedules like a design-less post — no block, no designBlocked", async () => {
+  const db = createSupabaseQueryMock();
+  queueSchedulingReads(db, {
+    igCaption: null,
+    encryptedAccessToken: await encryptedToken(),
+    links: [{ sort_order: 0, files: media({ sort_order: undefined }) }],
+    // Held design would fail every freshness check on its own (pending + stale) — proves the
+    // hold, not a fortunate render state, is what makes this pass.
+    design: { id: 7, rev: 1, render_status: "pending", is_stale: true, media_apply_held: true },
+  });
+  const res = await validateForScheduling(db as never, 1);
+  assertEquals(res.ok, true, res.errors.join("; "));
+  assert(!res.errors.some((e) => e.includes("Estúdio")), res.errors.join("; "));
   assertEquals(res.designBlocked, undefined);
 });
