@@ -230,6 +230,14 @@ Deno.test("POST /designs with post_id derives format from post tipo (reels → r
   assertEquals(spy.createCalls[0].input.format, "reel_cover");
 });
 
+Deno.test("POST /designs with post_id on enviado_cliente post → 201 (editable since 20260706000001)", async () => {
+  const { deps, spy } = makeDeps({ getPost: async () => makePostRow({ status: "enviado_cliente" }) });
+  const handler = createDesignManageHandler(deps);
+  const res = await handler(createDesignsRequest({ post_id: POST_ID, format: "feed" }));
+  assertEquals(res.status, 201);
+  assertEquals(spy.createCalls[0].input.postId, POST_ID);
+});
+
 Deno.test("POST /designs with post_id on non-editable post → 403 post_not_editable", async () => {
   const { deps, spy } = makeDeps({ getPost: async () => makePostRow({ status: "aprovado_cliente" }) });
   const handler = createDesignManageHandler(deps);

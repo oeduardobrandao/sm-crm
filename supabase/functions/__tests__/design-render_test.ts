@@ -160,6 +160,20 @@ Deno.test("unattached design renders with format-derived tipo, no tipo-sync", as
   assertEquals(spy.failCalls.length, 0);
 });
 
+Deno.test("attached to an enviado_cliente post → tipo-syncs (editable since 20260706000001)", async () => {
+  const { deps, spy } = makeDeps({
+    claimDesignRender: async () => makeClaimed({ post_status: "enviado_cliente" }),
+    callRenderService: async (bytes, tipo) => {
+      spy.serviceCalls.push({ tipo, bytes: bytes.length });
+      return serviceOk({ derived: { format: "carrossel", tipo: "carrossel" } });
+    },
+  });
+  const res = await createDesignRenderHandler(deps)(trigger({ design_id: DESIGN_ID, rev: 3 }));
+  assertEquals(res.status, 200);
+  assertEquals(spy.finalizeCalls.length, 1);
+  assertEquals(spy.tipoSyncs.length, 1); // post awaiting client review still follows the frames
+});
+
 Deno.test("attached to a locked post → renders, but never tipo-syncs", async () => {
   const { deps, spy } = makeDeps({
     claimDesignRender: async () => makeClaimed({ post_status: "aprovado_cliente" }),

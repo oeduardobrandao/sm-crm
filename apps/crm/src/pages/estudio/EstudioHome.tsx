@@ -50,6 +50,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
 import { NewDesignDialog } from './NewDesignDialog';
 import { ApplyToPostDialog } from './ApplyToPostDialog';
 
@@ -60,9 +61,10 @@ function statusChip(
   d: DesignSummary,
   t: (k: string) => string,
 ): { label: string; cls: string } | null {
-  if (d.render_status === 'failed') return { label: t('home.renderFailed'), cls: 'badge-danger' };
+  if (d.render_status === 'failed')
+    return { label: t('home.renderFailed'), cls: 'badge badge-danger' };
   if (d.render_status !== 'rendered' || d.is_stale)
-    return { label: t('home.generating'), cls: 'badge-neutral' };
+    return { label: t('home.generating'), cls: 'badge badge-neutral' };
   return null;
 }
 
@@ -205,10 +207,10 @@ export function EstudioHome() {
                 ))}
             </SelectContent>
           </Select>
-          <button type="button" className="btn-primary" onClick={() => setNewOpen(true)}>
-            <Plus className="h-4 w-4" style={{ display: 'inline', marginRight: 4 }} />
+          <Button onClick={() => setNewOpen(true)}>
+            <Plus className="h-4 w-4" />
             {t('home.newDesign')}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -222,9 +224,7 @@ export function EstudioHome() {
           style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '3rem' }}
         >
           <p style={{ marginBottom: '1rem' }}>{t('home.empty')}</p>
-          <button type="button" className="btn-primary" onClick={() => setNewOpen(true)}>
-            {t('home.emptyCta')}
-          </button>
+          <Button onClick={() => setNewOpen(true)}>{t('home.emptyCta')}</Button>
         </div>
       ) : (
         <div
@@ -341,14 +341,8 @@ export function EstudioHome() {
                       flexWrap: 'wrap',
                     }}
                   >
-                    <span className="badge-neutral" style={{ fontSize: '0.6rem' }}>
-                      {t(`home.formats.${d.format}`)}
-                    </span>
-                    {chip && (
-                      <span className={chip.cls} style={{ fontSize: '0.6rem' }}>
-                        {chip.label}
-                      </span>
-                    )}
+                    <span className="badge badge-neutral">{t(`home.formats.${d.format}`)}</span>
+                    {chip && <span className={chip.cls}>{chip.label}</span>}
                     {d.post_id !== null && (
                       <span
                         style={{

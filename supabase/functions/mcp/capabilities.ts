@@ -203,4 +203,4 @@ export async function getDesignCapabilities(d: Deps, args: { client_id?: number 
   };
 }
 
-const EDITABLE_STATUSES_DOC = ["rascunho", "revisao_interna", "correcao_cliente"];
+const EDITABLE_STATUSES_DOC = ["rascunho", "revisao_interna", "correcao_cliente", "enviado_cliente"];

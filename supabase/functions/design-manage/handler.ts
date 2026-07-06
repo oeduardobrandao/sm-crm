@@ -16,8 +16,9 @@ import { createJsonResponder } from "../_shared/http.ts";
 import type { MaterializeLogoResult } from "../_shared/brand-logo.ts";
 import { type DesignFormat, starterTemplateFor } from "./starter-templates.gen.ts";
 
-// Mirrors the SQL checks inside create_design / save_design_blob / attach_design.
-const EDITABLE_STATUSES = ["rascunho", "revisao_interna", "correcao_cliente"];
+// Mirrors the SQL checks inside create_design / save_design_blob / attach_design
+// (20260706000001: design work may continue while the post awaits client review).
+const EDITABLE_STATUSES = ["rascunho", "revisao_interna", "correcao_cliente", "enviado_cliente"];
 
 const FORMATS: DesignFormat[] = ["feed", "carrossel", "reel_cover", "livre"];
 

@@ -34,7 +34,7 @@ const svc = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 });
 
 // Mirrors the SQL editability list (save_design_blob / finalize_design_render).
-const EDITABLE_STATUSES = ["rascunho", "revisao_interna", "correcao_cliente"];
+const EDITABLE_STATUSES = ["rascunho", "revisao_interna", "correcao_cliente", "enviado_cliente"];
 
 Deno.serve(createDesignRenderHandler({
   buildCorsHeaders,

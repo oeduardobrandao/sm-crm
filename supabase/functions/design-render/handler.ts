@@ -13,7 +13,7 @@
 import { createJsonResponder } from "../_shared/http.ts";
 
 // Mirrors the SQL editability list (save_design_blob / finalize_design_render).
-const EDITABLE_STATUSES = ["rascunho", "revisao_interna", "correcao_cliente"];
+const EDITABLE_STATUSES = ["rascunho", "revisao_interna", "correcao_cliente", "enviado_cliente"];
 
 // Render-service tipo for a design with no attached post, from its format.
 const FORMAT_TO_TIPO: Record<string, string> = {

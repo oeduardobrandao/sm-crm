@@ -26,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
 import { postEligibility, type IneligibleReason } from './applyEligibility';
 
 // Walks client → workflow → post. Per-post eligibility data comes from two batched RLS
@@ -325,15 +326,13 @@ export function ApplyToPostDialog({
         </div>
 
         <DialogFooter>
-          <button
-            type="button"
-            className="btn-primary"
+          <Button
             disabled={postId === undefined || attachMutation.isPending}
             onClick={() => attachMutation.mutate()}
             data-testid="apply-confirm"
           >
             {attachMutation.isPending ? t('apply.applying') : t('apply.confirm')}
-          </button>
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

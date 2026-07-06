@@ -3,7 +3,12 @@
 // the same order design-manage validates (tipo → status → designed → video) so the shown
 // reason always matches what the backend would raise for that post.
 
-export const EDITABLE_STATUSES = ['rascunho', 'revisao_interna', 'correcao_cliente'];
+export const EDITABLE_STATUSES = [
+  'rascunho',
+  'revisao_interna',
+  'correcao_cliente',
+  'enviado_cliente',
+];
 
 const SUPPORTED_TIPOS = ['feed', 'carrossel', 'reels'];
 
