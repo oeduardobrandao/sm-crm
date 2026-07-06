@@ -20,7 +20,10 @@ Editor URL shape:
   with a "Duplicar" CTA. Degraded mode (a fork build WITHOUT readOnly support ignores the
   param): local edits become possible but every PUT gets the backend's 403 `read_only`,
   surfacing as the editor's save-error toast — nothing can ever be written either way.
-- Deployed (dark, SSO-protected): https://mesaas-estudio-rmsz5df8v-oeduardobrandaos-projects.vercel.app
+- Production: https://estudio.mesaas.com.br (public; CSP `frame-ancestors` restricts
+  embedding to the CRM origins mesaas.com.br / www.mesaas.com.br / sm-crm.vercel.app;
+  the CRM reads it from `VITE_ESTUDIO_EDITOR_ORIGIN`). The editor's direct
+  `functions/v1` calls require this origin in the edge functions' `ALLOWED_ORIGINS`.
 - Dev: `bun --bun run dev` in the fork → http://localhost:1420
 
 ## HTTP document contract

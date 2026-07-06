@@ -191,3 +191,27 @@ Package: `@open-pencil/core@0.13.2` (npm, bundles scene-graph/io/layout/text/too
   detached ('A1 standalone E2E (cópia)'); posts 1114/1115 ('Post 2'/'Post 3', rascunho)
   created for the apply E2E — drawer trash deletion didn't take via synthetic events,
   left as test data.
+
+## Slice D — cutover (2026-07-06)
+
+- Satori legacy deleted end-to-end (−7.4k LOC): the module web reached further than the
+  functions dir — root `test/` vitest mirrors, `scripts/fonts/` tooling, `fonts:build`
+  script and `@mesaas/design-doc`+`@mesaas/fonts` aliases (the CRM one dead since the v1
+  editor deletion). Sweep greps must be repo-wide, not app-dir-scoped.
+- Editor went live at https://estudio.mesaas.com.br: `mesaas.com.br` is registered in the
+  same Vercel team with Vercel nameservers, so `vercel domains add` provisioned DNS+cert
+  in one step, no registrar work. Vercel deployment protection turned out to be a non-issue
+  for custom domains — it only gates `*.vercel.app` URLs.
+- The CRM's REAL production origin is `www.mesaas.com.br` (apex 307-redirects to www; the
+  planning shorthand "app.mesaas.com" never existed). CSP `frame-ancestors` carries
+  mesaas.com.br + www + sm-crm.vercel.app.
+- PR #187 (99 commits, 288 files) merged as a SQUASH (d90be77) — tree verified identical
+  to the branch head (`git diff origin/main <branch> --stat` empty). Prod↔repo drift over.
+- Deployed-app E2E (www.mesaas.com.br): /estudio gallery + create + card menu + delete all
+  work; deleted-design rows disappear from RLS reads immediately. The editor iframe boots
+  from the prod origin (embed=1, CSP framing OK) and fails exactly at the doc fetch until
+  the editor origin lands in ALLOWED_ORIGINS — the shell's load-error screen (not an
+  eternal spinner) renders as designed.
+- Workspace isolation seen live: a session on another workspace sees an EMPTY gallery
+  (RLS), and Eduardo's own workspace has feature_estudio enabled — the flag's blast radius
+  is real-team-visible, not just DK TESTE.
