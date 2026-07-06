@@ -151,6 +151,28 @@ function envelope(code: string, message: string, retryable: boolean): { error: E
   return { error: { code, message, retryable } };
 }
 
+/** Maps create_design's raw RPC exception message onto the §8 envelope (mirrors
+ * design-manage's mapDesignRpcError string parsing — the RPC's error contract is shared). A
+ * post-eligibility race (someone else attaches a design, or the post's status/existence changes)
+ * between our pre-check and this final RPC call surfaces here with its proper coded status
+ * rather than a generic 502, even though it happens AFTER the inpaint spend succeeded. */
+function mapCreateDesignError(message: string): { code: string; message: string; retryable: boolean; status: number } {
+  if (message === "post_not_found") {
+    return { code: "post_not_found", message: "Post não encontrado.", retryable: false, status: 404 };
+  }
+  if (message === "cliente_not_found") {
+    return { code: "post_not_found", message: "Post não encontrado.", retryable: false, status: 404 };
+  }
+  if (message.startsWith("post_not_editable:")) {
+    return { code: "post_not_editable", message: "Este post não pode ser editado no momento.", retryable: false, status: 403 };
+  }
+  if (message === "post_already_designed") {
+    return { code: "post_already_designed", message: "Este post já tem um design.", retryable: false, status: 409 };
+  }
+  // Unrecognized RPC exception — never surface raw internals to the client (security rule).
+  return { code: "compose_failed", message: "Não foi possível criar o design.", retryable: true, status: 502 };
+}
+
 /** §8-style status mapping — extends generate-image's statusForCode with the pipeline's own
  * eligibility / doc-service codes. */
 function statusForCode(code: string): number {
@@ -382,8 +404,9 @@ export function createDesignImportHandler(deps: DesignImportDeps) {
         user.id,
       );
     } catch (e) {
-      deps.logError("design-import:create-design", e);
-      return json(envelope("compose_failed", "Não foi possível criar o design.", true), 502);
+      const mapped = mapCreateDesignError(e instanceof Error ? e.message : String(e));
+      if (mapped.status === 502) deps.logError("design-import:create-design", e);
+      return json(envelope(mapped.code, mapped.message, mapped.retryable), mapped.status);
     }
 
     await deps.insertAuditLog({

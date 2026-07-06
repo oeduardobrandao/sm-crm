@@ -578,6 +578,45 @@ Deno.test("compose generic failure → compose_failed 502", async () => {
   assertEquals((await res.json()).error.code, "compose_failed");
 });
 
+// ── create_design RPC race (post-inpaint-spend): coded exceptions map through, not a flat 502 ──
+
+Deno.test("create_design RPC race: post_already_designed maps to 409, not a generic 502 (post-spend)", async () => {
+  const { deps, spy } = makeDeps({
+    createDesign: async () => {
+      throw new Error("post_already_designed");
+    },
+  });
+  const res = await createDesignImportHandler(deps)(req(VALID_BODY));
+  assertEquals(res.status, 409);
+  assertEquals((await res.json()).error.code, "post_already_designed");
+  // The inpaint DID run (spend happened) — this asserts we don't try to unwind it, just map+log.
+  assertEquals(spy.providerCalls, 1);
+});
+
+Deno.test("create_design RPC race: post_not_editable:<status> maps to 403", async () => {
+  const { deps } = makeDeps({
+    createDesign: async () => {
+      throw new Error("post_not_editable:aprovado_cliente");
+    },
+  });
+  const res = await createDesignImportHandler(deps)(req(VALID_BODY));
+  assertEquals(res.status, 403);
+  assertEquals((await res.json()).error.code, "post_not_editable");
+});
+
+Deno.test("create_design RPC unrecognized exception never leaks raw message to client", async () => {
+  const { deps } = makeDeps({
+    createDesign: async () => {
+      throw new Error("some raw postgres internal detail");
+    },
+  });
+  const res = await createDesignImportHandler(deps)(req(VALID_BODY));
+  assertEquals(res.status, 502);
+  const body = await res.json();
+  assertEquals(body.error.code, "compose_failed");
+  assert(!JSON.stringify(body).includes("postgres internal"), "raw RPC error leaked to client");
+});
+
 Deno.test("envelope shape is always {error:{code,message,retryable}}", async () => {
   const { deps } = makeDeps({ checkRateLimit: async () => false });
   const res = await createDesignImportHandler(deps)(req(VALID_BODY));
