@@ -215,3 +215,9 @@ Package: `@open-pencil/core@0.13.2` (npm, bundles scene-graph/io/layout/text/too
 - Workspace isolation seen live: a session on another workspace sees an EMPTY gallery
   (RLS), and Eduardo's own workspace has feature_estudio enabled — the flag's blast radius
   is real-team-visible, not just DK TESTE.
+- ALLOWED_ORIGINS closed 2026-07-06: current list was reconstructed by CORS probing
+  (allowed origins echo back; denied get the first-entry fallback — also the Stripe
+  redirect base, so ordering matters: keep https://mesaas.com.br first). Final list =
+  prod pair + dev localhosts (5173/5174/5175/5177) + estudio.mesaas.com.br +
+  mesaas-estudio.vercel.app. Full editor loop then verified on the deployed app:
+  boot → doc fetch → autosave PUT (rev 1→2) → render_status rendered w/ manifest.
