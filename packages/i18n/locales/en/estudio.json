@@ -46,6 +46,8 @@
     "invalidDesign": "Invalid design.",
     "readOnlyPill": "Read-only",
     "readOnlyBanner": "This design belongs to a client-approved post — read-only. Duplicate it to edit a copy.",
+    "readOnlyBannerHeld": "This design never replaced the post's media, and the post is now locked. Duplicate it to reuse the artwork on a new post.",
+    "heldBanner": "Check the design's fidelity — saving it will replace the post's media.",
     "duplicate": "Duplicate",
     "authError": "Could not authenticate the editor. Reload the page.",
     "loadErrorHint": "Check that the post is still editable and Estúdio is enabled on your plan."
@@ -266,5 +268,21 @@
     }
   },
   "featureBlocked": "Estúdio is not available on your current plan. Contact support to upgrade.",
-  "back": "Back"
+  "back": "Back",
+  "import": {
+    "title": "Make editable in Estúdio",
+    "explanation": "The image's text becomes editable layers, and the background is reconstructed by AI.",
+    "quotaNote": "This consumes 1 image from your monthly AI quota.",
+    "carouselNote": "The post's {{count}} images become pages of the design.",
+    "pending": "Processing… this can take up to two minutes.",
+    "pendingCta": "Processing…",
+    "cancel": "Cancel",
+    "confirm": "Make editable",
+    "retry": "Retry",
+    "heldBanner": "Design imported, awaiting confirmation — open it in Estúdio and save so it replaces the media.",
+    "errors": {
+      "generic": "Couldn't make this image editable. Please try again.",
+      "network": "Connection failed. Check your internet and try again."
+    }
+  }
 }

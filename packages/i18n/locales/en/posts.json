@@ -80,7 +80,8 @@
     "carouselLimitDesc": "Carousels published via Instagram allow at most {{max}} items (this post has {{count}}). The app allows 20, but automatic publishing is limited to {{max}}.",
     "designOwned": "Media managed by Estúdio — edit the design in Estúdio.",
     "designOwnedReel": "Cover managed by Estúdio — the reel video stays manual.",
-    "designOwnsImages": "The cover is managed by Estúdio — upload the video only."
+    "designOwnsImages": "The cover is managed by Estúdio — upload the video only.",
+    "makeEditable": "Make editable in Estúdio"
   },
   "thumbnailEditor": {
     "title": "Video thumbnail",

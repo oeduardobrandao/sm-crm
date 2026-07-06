@@ -15,10 +15,14 @@ export interface DesignSummary {
   name: string;
   render_manifest: Array<{ r2_key: string }> | null;
   updated_at: string;
+  /** Slice C (image → editable design import): true until the user's first save in the
+   * editor. While held, the design does NOT own the post's media yet — do not lock the
+   * gallery or show the ownership banner; show the informational held banner instead. */
+  media_apply_held: boolean;
 }
 
 const DESIGN_COLUMNS =
-  'id, rev, render_status, is_stale, post_id, cliente_id, format, name, render_manifest, updated_at';
+  'id, rev, render_status, is_stale, post_id, cliente_id, format, name, render_manifest, updated_at, media_apply_held';
 
 /** The design attached to a post, if any. Direct RLS select — NEVER the edge function
  * (creation is explicit now; GET /blob is a plain fetch). Null = post has no design. */
@@ -108,6 +112,49 @@ export async function detachDesign(designId: number): Promise<void> {
 
 export async function deleteDesign(designId: number): Promise<void> {
   return callDesignManage(`/designs/${designId}`, 'DELETE');
+}
+
+/** Structured error from design-import: carries the server's `{error:{code,message}}`
+ * envelope so ImportToEstudioDialog can map codes to PT copy while still having the
+ * server's own (already PT) message as a fallback. */
+export class DesignImportError extends Error {
+  code: string;
+  constructor(code: string, message: string) {
+    super(message);
+    this.name = 'DesignImportError';
+    this.code = code;
+  }
+}
+
+/** Turn a post's existing image media into an editable design via AI vision + inpaint
+ * (design-import edge function, slice C). `linkId` is the post_file_links id (PostMedia.id)
+ * of the clicked tile. The created design is born HELD (media_apply_held=true) — it does not
+ * take over the post's media until the user's first save in the editor. */
+export async function importDesignFromMedia(
+  postId: number,
+  linkId: number,
+): Promise<{ design_id: number; quota?: { used: number; limit: number | null } }> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session) throw new Error('Not authenticated');
+  const url = `${import.meta.env.VITE_SUPABASE_URL as string}/functions/v1/design-import`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+      apikey: import.meta.env.VITE_SUPABASE_ANON_KEY as string,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ post_id: postId, link_id: linkId }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const err = (body as { error?: { code?: string; message?: string } }).error;
+    if (err?.code) throw new DesignImportError(err.code, err.message ?? err.code);
+    throw new DesignImportError('generic', `HTTP ${res.status}`);
+  }
+  return res.json();
 }
 
 // ---------- gallery thumbnails ----------

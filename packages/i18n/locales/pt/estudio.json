@@ -46,6 +46,8 @@
     "invalidDesign": "Design inválido.",
     "readOnlyPill": "Somente leitura",
     "readOnlyBanner": "Este design pertence a um post que o cliente já aprovou — somente leitura. Duplique para editar uma cópia.",
+    "readOnlyBannerHeld": "Este design nunca chegou a substituir as mídias do post, que agora está travado. Duplique para reaproveitar a arte em um novo post.",
+    "heldBanner": "Confira a fidelidade do design — ao salvar, ele substitui as mídias do post.",
     "duplicate": "Duplicar",
     "authError": "Não foi possível autenticar o editor. Recarregue a página.",
     "loadErrorHint": "Verifique se o post ainda é editável e se o Estúdio está habilitado no seu plano."
@@ -266,5 +268,21 @@
     }
   },
   "featureBlocked": "O Estúdio não está disponível no seu plano atual. Fale com o suporte para fazer upgrade.",
-  "back": "Voltar"
+  "back": "Voltar",
+  "import": {
+    "title": "Tornar editável no Estúdio",
+    "explanation": "Os textos da imagem viram camadas editáveis e o fundo é reconstruído por IA.",
+    "quotaNote": "Essa ação consome 1 imagem da sua cota mensal de IA.",
+    "carouselNote": "As {{count}} imagens do post viram páginas do design.",
+    "pending": "Processando… pode levar até dois minutos.",
+    "pendingCta": "Processando…",
+    "cancel": "Cancelar",
+    "confirm": "Tornar editável",
+    "retry": "Tentar novamente",
+    "heldBanner": "Design importado aguardando confirmação — abra no Estúdio e salve para que ele substitua as mídias.",
+    "errors": {
+      "generic": "Não foi possível tornar esta imagem editável. Tente novamente.",
+      "network": "Falha de conexão. Verifique sua internet e tente novamente."
+    }
+  }
 }

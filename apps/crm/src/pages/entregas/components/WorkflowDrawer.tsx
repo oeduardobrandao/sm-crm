@@ -86,8 +86,14 @@ import {
   resolveInlineImageUrls,
 } from '@/services/inlineImage';
 import { listPostMedia } from '../../../services/postMedia';
-import { createDesign, getDesignForPost } from '@/store';
-import { EDITABLE_STATUSES as POST_EDITABLE_STATUSES } from '@/pages/estudio/applyEligibility';
+import { createDesign, getDesignForPost, type PostMedia } from '@/store';
+import {
+  EDITABLE_STATUSES as POST_EDITABLE_STATUSES,
+  canMakeEditable,
+  galleryDesignForHeld,
+  shouldShowHeldInfoBanner,
+} from '@/pages/estudio/applyEligibility';
+import { ImportToEstudioDialog } from '@/pages/estudio/ImportToEstudioDialog';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { InstagramCaptionField } from './InstagramCaptionField';
 import { ScheduleButton } from './ScheduleButton';
@@ -912,6 +918,19 @@ function SortablePostItem({
     onError: (err: Error) => toast.error(t('toast.createError', { error: err.message })),
   });
 
+  // Slice C — "Tornar editável no Estúdio" entry point (image → design-import). Gating lives
+  // in canMakeEditable (feature flags fail-open, no design attached, tipo/status editable);
+  // video-media ineligibility is NOT checked here — PostMediaGallery owns that (it has the
+  // media list, this component doesn't fetch it independently).
+  const aiImagesBlocked = features?.feature_ai_images === false;
+  const showMakeEditable = canMakeEditable(
+    { tipo: post.tipo, status: post.status },
+    { estudioBlocked, aiImagesBlocked, hasDesign: designSummary !== null },
+  );
+  const [importTarget, setImportTarget] = useState<PostMedia | null>(null);
+  const [galleryMedia, setGalleryMedia] = useState<PostMedia[]>([]);
+  const imageCount = galleryMedia.filter((m) => m.kind === 'image').length;
+
   // Local state for title to avoid input lag / letter-replacement from the
   // round-trip through updateWorkflowPost + refresh on every keystroke.
   const [tituloLocal, setTituloLocal] = useState(post.titulo ?? '');
@@ -1212,7 +1231,34 @@ function SortablePostItem({
               </button>
             )}
 
-          <PostMediaGallery postId={post.id!} design={designSummary} postTipo={post.tipo} />
+          {/* Held ≠ ownership (slice C): a design-import result does NOT own the post's media
+              until the user's first save in the editor. The gallery must stay unlocked while
+              held, so `design` is passed only once ownership is real. */}
+          {shouldShowHeldInfoBanner(designSummary) && (
+            <div
+              data-testid="held-info-banner"
+              className="flex items-start gap-2 rounded-xl bg-[#eab308]/10 ring-1 ring-[#eab308]/40 px-3 py-2.5 text-stone-800 dark:text-stone-200 mb-3"
+            >
+              <Wand2 className="h-4 w-4 shrink-0 text-[#ca8a04] mt-0.5" />
+              <span className="text-[12px]">{t('import.heldBanner')}</span>
+            </div>
+          )}
+
+          <PostMediaGallery
+            postId={post.id!}
+            design={galleryDesignForHeld(designSummary)}
+            postTipo={post.tipo}
+            onChange={setGalleryMedia}
+            onMakeEditable={showMakeEditable ? (media) => setImportTarget(media) : undefined}
+          />
+
+          <ImportToEstudioDialog
+            postId={importTarget ? post.id! : null}
+            media={importTarget}
+            imageCount={imageCount}
+            postTipo={post.tipo}
+            onClose={() => setImportTarget(null)}
+          />
 
           {editSuggestion ? (
             <div className="rounded-lg border border-amber-200 bg-amber-50/50 overflow-hidden">
