@@ -53,3 +53,6 @@ playwright-report/
 
 # Claude Code
 .claude/worktrees/
+
+# Vercel CLI link
+.vercel/
