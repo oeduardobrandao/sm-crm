@@ -1,5 +1,5 @@
-// OpenRouter image provider — same underlying model as gemini.ts (Nano Banana 2 Lite /
-// gemini-3.1-flash-lite-image) routed through OpenRouter's Unified Image API
+// OpenRouter image provider — same underlying model as gemini.ts (Gemini 3.1 Flash Image /
+// gemini-3.1-flash-image) routed through OpenRouter's Unified Image API
 // (verified against openrouter.ai/docs 2026-07-05: POST /api/v1/images takes model/prompt/
 // aspect_ratio/resolution, reference images ride as `input_references` data URLs, and the
 // image returns as base64 in data[0].b64_json). Mirrors gemini.ts's contract exactly:
@@ -18,15 +18,16 @@ import {
   ProviderTimeoutError,
 } from "./provider.ts";
 
-// Nano Banana 2 Lite — default since 2026-07-04 (user call: half the flash-tier token price on
-// OpenRouter for the same image pipeline). Slug verified against openrouter.ai/api/v1/models.
-const MODEL = "google/gemini-3.1-flash-lite-image";
+// Gemini 3.1 Flash Image — the slug LIVE-VERIFIED E2E over OpenRouter on 2026-07-05. The
+// `-lite-image` ("Nano Banana 2 Lite") variant was swapped in unvalidated and OpenRouter rejects
+// it (prod ledger 2026-07-06: provider_error, ~8.5s, no image), so we stay on the verified slug.
+// Re-introducing Lite requires confirming its real OpenRouter slug against a live generation first.
+const MODEL = "google/gemini-3.1-flash-image";
 const ENDPOINT = "https://openrouter.ai/api/v1/images";
 const ATTEMPT_TIMEOUT_MS = 60_000;
 
-// Lite tier ≈ half the flash figures gemini.ts documented ($/image by output size; OpenRouter's
-// per-token price is exactly 0.5x flash). Feeds internal cost accounting, not billing.
-const COST_BY_SIZE: Record<string, number> = { "1K": 0.034, "2K": 0.051 };
+// Flash-tier $/image by output size (mirrors gemini.ts). Feeds internal cost accounting, not billing.
+const COST_BY_SIZE: Record<string, number> = { "1K": 0.068, "2K": 0.102 };
 
 function toBase64(bytes: Uint8Array): string {
   let binary = "";

@@ -1,6 +1,6 @@
 // Gemini image provider (design §8, verified against ai.google.dev 2026-07-02): classic
-// generateContent on gemini-3.1-flash-lite-image (Nano Banana 2 Lite — default since
-// 2026-07-04, matching openrouter.ts) with responseModalities ["IMAGE"] and
+// generateContent on gemini-3.1-flash-image (matching openrouter.ts; the `-lite-image` variant
+// was rejected by OpenRouter — see openrouter.ts) with responseModalities ["IMAGE"] and
 // responseFormat.image {aspectRatio, imageSize}; the image comes back as base64 PNG in
 // candidates[0].content.parts[].inlineData. Per-attempt timeout 60s, ONE retry on 429/5xx
 // or timeout. BILLING NOTE: a timed-out first attempt may still have completed (and billed)
@@ -19,13 +19,12 @@ import {
   ProviderTimeoutError,
 } from "./provider.ts";
 
-const MODEL = "gemini-3.1-flash-lite-image";
+const MODEL = "gemini-3.1-flash-image";
 const ENDPOINT = `https://generativelanguage.googleapis.com/v1/models/${MODEL}:generateContent`;
 const ATTEMPT_TIMEOUT_MS = 60_000;
 
-// Lite tier ≈ half the flash figures from §8 ($/image by output size; the per-token price is
-// exactly 0.5x flash). 0.5K is not offered by this pipeline.
-const COST_BY_SIZE: Record<string, number> = { "1K": 0.034, "2K": 0.051 };
+// Flash-tier $/image by output size (§8). 0.5K is not offered by this pipeline.
+const COST_BY_SIZE: Record<string, number> = { "1K": 0.068, "2K": 0.102 };
 
 function toBase64(bytes: Uint8Array): string {
   let binary = "";

@@ -185,7 +185,7 @@ Deno.test("ledger row is inserted 'pending' BEFORE the provider call (spend neve
   const h = makeHarness({
     provider: {
       name: "openrouter",
-      model: "google/gemini-3.1-flash-lite-image",
+      model: "google/gemini-3.1-flash-image",
       generate: () => Promise.reject(new Error("boom mid-flight")),
     },
   });
@@ -202,7 +202,7 @@ Deno.test("ledger row is inserted 'pending' BEFORE the provider call (spend neve
   assertEquals((insert!.payload as { provider: string }).provider, "openrouter");
   assertEquals(
     (insert!.payload as { model: string }).model,
-    "google/gemini-3.1-flash-lite-image",
+    "google/gemini-3.1-flash-image",
   );
   const update = h.db.calls.find((c) =>
     c.table === "ai_image_generations" && c.operation === "update"
