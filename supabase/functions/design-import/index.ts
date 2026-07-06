@@ -8,12 +8,11 @@ import { resolveImageProvider, resolveVisionConfig } from "../_shared/image-gen/
 import { extractTextBlocks } from "../_shared/image-gen/vision.ts";
 import { effectivePlanLimit } from "../_shared/entitlements-rpc.ts";
 import { checkRateLimit } from "../_shared/rate-limit.ts";
-import { fetchPostMedia } from "../_shared/instagram-publish-utils.ts";
 import { createDesignRenderTrigger } from "../_shared/design-render-trigger.ts";
 import { createDocServiceClient } from "../_shared/doc-service.ts";
 import { deleteObject, getObjectBytes, putObject, signGetUrl } from "../_shared/r2.ts";
 import { insertAuditLog } from "../_shared/audit.ts";
-import { createDesignImportHandler, type FileRow, type PostRow } from "./handler.ts";
+import { createDesignImportHandler, type FileRow, type PostRow, type ResolvedLink } from "./handler.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -78,9 +77,23 @@ Deno.serve(createDesignImportHandler({
     return !!data;
   },
 
-  getPostMedia: async (postId) => {
-    const media = await fetchPostMedia(svc, postId);
-    return media.map((m) => ({ file_id: m.id, kind: m.kind, r2_key: m.r2_key, sort_order: m.sort_order }));
+  getPostMedia: async (postId, contaId) => {
+    // Genuinely conta-scoped (defense-in-depth — getPost runs first and already enforces this,
+    // but the signature must not lie): post_file_links carries its own conta_id column.
+    const { data } = await svc
+      .from("post_file_links")
+      .select("id, sort_order, files!inner(id, kind, r2_key)")
+      .eq("post_id", postId)
+      .eq("conta_id", contaId)
+      .order("sort_order", { ascending: true });
+    // deno-lint-ignore no-explicit-any
+    return (data ?? []).map((l: any) => ({
+      link_id: l.id,
+      file_id: l.files.id,
+      kind: l.files.kind,
+      r2_key: l.files.r2_key,
+      sort_order: l.sort_order,
+    }));
   },
 
   getFile: async (fileId, contaId): Promise<FileRow | null> => {
@@ -91,6 +104,24 @@ Deno.serve(createDesignImportHandler({
       .eq("conta_id", contaId)
       .maybeSingle();
     return data as FileRow | null;
+  },
+
+  resolveLink: async (postId, linkId, contaId): Promise<ResolvedLink | null> => {
+    // ONE conta-scoped query joining post_file_links + files — uniform null for every mismatch
+    // flavor (not found / foreign conta / not linked to this post / not an image); the handler
+    // turns null into a single invalid_reference response regardless of which check failed.
+    const { data } = await svc
+      .from("post_file_links")
+      .select("id, files!inner(id, kind, r2_key, width, height)")
+      .eq("id", linkId)
+      .eq("post_id", postId)
+      .eq("conta_id", contaId)
+      .maybeSingle();
+    if (!data) return null;
+    // deno-lint-ignore no-explicit-any
+    const file = (data as any).files as FileRow;
+    if (!file || file.kind !== "image") return null;
+    return { link_id: (data as { id: number }).id, file };
   },
 
   checkRateLimit: (key, max, windowSeconds) => checkRateLimit(svc, key, max, windowSeconds),

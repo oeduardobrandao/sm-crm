@@ -61,6 +61,10 @@ export interface PostRow {
 }
 
 export interface PostMediaRow {
+  /** post_file_links.id — the value-space the CRM's `link_id` actually lives in (PostMedia.id,
+   * see apps/crm/src/store/designs.ts). Distinct PK sequence from file_id; never compare the
+   * two. */
+  link_id: number;
   file_id: number;
   kind: string;
   r2_key: string;
@@ -75,6 +79,15 @@ export interface FileRow {
   height: number | null;
 }
 
+/** The clicked link resolved against post_file_links JOIN files — link_id + post_id + conta_id
+ * all matched in ONE query, uniform null for every mismatch flavor (not-found / foreign conta /
+ * not linked to this post / not an image). Never distinguish these to the client (invalid_reference
+ * covers all of them). */
+export interface ResolvedLink {
+  link_id: number;
+  file: FileRow;
+}
+
 export interface DesignImportDeps {
   buildCorsHeaders: (req: Request) => Record<string, string>;
   getUser: (token: string) => Promise<{ id: string } | null>;
@@ -84,6 +97,9 @@ export interface DesignImportDeps {
   hasDesignAttached: (postId: number, contaId: string) => Promise<boolean>;
   getPostMedia: (postId: number, contaId: string) => Promise<PostMediaRow[]>;
   getFile: (fileId: number, contaId: string) => Promise<FileRow | null>;
+  /** Conta-scoped resolve of the clicked link: post_file_links.id = linkId AND post_id = postId
+   * AND conta_id = contaId, joined to files (kind must be 'image'). Null for any mismatch. */
+  resolveLink: (postId: number, linkId: number, contaId: string) => Promise<ResolvedLink | null>;
   checkRateLimit: (key: string, max: number, windowSeconds: number) => Promise<boolean>;
   signGetUrl: (r2Key: string) => Promise<string>;
   docService: {
@@ -217,16 +233,16 @@ export function createDesignImportHandler(deps: DesignImportDeps) {
     const json = createJsonResponder(cors);
 
     if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
-    if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+    if (req.method !== "POST") return json(envelope("method_not_allowed", "Método não permitido.", false), 405);
 
     // ── 1. Auth ──────────────────────────────────────────────────────────────
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) return json({ error: "unauthorized" }, 401);
+    if (!authHeader) return json(envelope("unauthorized", "Não autenticado.", false), 401);
     const user = await deps.getUser(authHeader.replace("Bearer ", ""));
-    if (!user) return json({ error: "unauthorized" }, 401);
+    if (!user) return json(envelope("unauthorized", "Não autenticado.", false), 401);
 
     const profile = await deps.getProfile(user.id);
-    if (!profile?.conta_id) return json({ error: "profile_not_found" }, 403);
+    if (!profile?.conta_id) return json(envelope("profile_not_found", "Perfil não encontrado.", false), 403);
     const contaId = profile.conta_id;
 
     // ── 1b. Feature gates (both required; report which is missing) ───────────
@@ -244,12 +260,12 @@ export function createDesignImportHandler(deps: DesignImportDeps) {
     try {
       body = await req.json();
     } catch {
-      return json({ error: "invalid_json" }, 400);
+      return json(envelope("invalid_json", "JSON inválido.", false), 400);
     }
     const postId = typeof body.post_id === "number" ? body.post_id : NaN;
-    const linkFileId = typeof body.link_id === "number" ? body.link_id : NaN;
-    if (isNaN(postId) || isNaN(linkFileId)) {
-      return json({ error: "invalid_request" }, 400);
+    const linkId = typeof body.link_id === "number" ? body.link_id : NaN;
+    if (isNaN(postId) || isNaN(linkId)) {
+      return json(envelope("invalid_request", "post_id e link_id são obrigatórios.", false), 400);
     }
 
     // ── 2. Eligibility (mirrors design-manage create-attached) ────────────────
@@ -271,15 +287,15 @@ export function createDesignImportHandler(deps: DesignImportDeps) {
       return json(envelope("post_already_designed", "Este post já tem um design.", false), 409);
     }
 
-    // ── 3. Resolve link_id → the clicked file; uniform error, never reveal foreign existence ──
-    const clickedLink = media.find((m) => m.file_id === linkFileId);
-    if (!clickedLink) {
+    // ── 3. Resolve link_id (post_file_links.id — NOT files.id) → the clicked file; ONE
+    // conta-scoped query joining post_file_links + files, uniform error for every mismatch
+    // flavor (not found / foreign conta / not linked to this post / not an image) so we never
+    // reveal foreign existence. ──
+    const resolved = await deps.resolveLink(postId, linkId, contaId);
+    if (!resolved) {
       return json(envelope("invalid_reference", "Imagem não encontrada neste post.", false), 400);
     }
-    const clickedFile = await deps.getFile(linkFileId, contaId);
-    if (!clickedFile || clickedFile.kind !== "image") {
-      return json(envelope("invalid_reference", "Imagem não encontrada neste post.", false), 400);
-    }
+    const clickedFile = resolved.file;
 
     // Frames in sort_order: every image link of the post (siblings keep their own URL/no texts).
     const imageFrames = media.filter((m) => m.kind === "image").sort((a, b) => a.sort_order - b.sort_order);
@@ -299,9 +315,9 @@ export function createDesignImportHandler(deps: DesignImportDeps) {
       const clickedUrl = await deps.signGetUrl(clickedFile.r2_key);
       croppedBytes = await deps.docService.normalize({ image: { url: clickedUrl, mime: "image/jpeg" }, preset });
     } catch (e) {
-      if (e instanceof DocServiceError && e.code === "doc_too_large") {
-        return json(envelope("doc_too_large", "Imagem excede o tamanho máximo suportado.", false), 413);
-      }
+      // NOTE: doc_too_large is unreachable here — normalize's own oversized-input failure surfaces
+      // as blob_too_large/image_fetch_failed/image_decode_failed (api/normalize.mjs, lib/normalize.js);
+      // doc_too_large is only ever thrown by the COMPOSE step (lib/compose.js), handled below (step 8).
       deps.logError("design-import:normalize", e);
       return json(envelope("normalize_failed", "Não foi possível processar a imagem.", true), 502);
     }
@@ -359,20 +375,27 @@ export function createDesignImportHandler(deps: DesignImportDeps) {
       const composeTexts: NonNullable<ComposeSpec["texts"]> = [];
       for (let i = 0; i < imageFrames.length; i++) {
         const frame = imageFrames[i];
-        const isClicked = frame.file_id === clickedFile.id;
+        // Key on link_id, not file_id: the SAME file can be linked to a post twice (two rows,
+        // two link ids) — file_id alone would put texts on every frame sharing that file.
+        const isClicked = frame.link_id === resolved.link_id;
         const r2Key = isClicked ? backgroundFile.r2_key : frame.r2_key;
         const url = await deps.signGetUrl(r2Key);
         composeFrames.push({ name: String(i + 1), image: { url, mime: "image/jpeg" } });
         if (isClicked) {
           for (const block of textBlocks) {
             composeTexts.push({
-              frame: i + 1,
+              // 0-based frame INDEX — the doc-service contract (services/estudio-render/lib/compose.js)
+              // validates 0 <= frame < frames.length and places via frameNodes[t.frame].
+              frame: i,
               text: block.text,
               bbox: block.bbox,
               size: block.size,
               weight: block.weight,
               color: block.color,
-              align: block.align,
+              // doc-service only accepts LEFT|CENTER|RIGHT|JUSTIFIED (uppercase); vision.ts emits
+              // lowercase left|center|right — uppercase here or every imported text silently
+              // falls back to LEFT in compose.js.
+              align: block.align.toUpperCase(),
             });
           }
         }
@@ -417,7 +440,7 @@ export function createDesignImportHandler(deps: DesignImportDeps) {
       resource_id: String(designId),
       metadata: {
         post_id: postId,
-        link_id: linkFileId,
+        link_id: linkId,
         file_id: clickedFile.id,
         background_file_id: backgroundFile.id,
         frame_count: composeFrames.length,

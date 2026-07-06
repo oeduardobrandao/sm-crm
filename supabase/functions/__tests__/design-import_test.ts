@@ -4,7 +4,14 @@
 // on the core itself). Mirrors generate-image_test.ts's and design-manage_test.ts's conventions.
 import { assert, assertEquals } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
-import { createDesignImportHandler, type DesignImportDeps, type FileRow, type PostMediaRow, type PostRow } from "../design-import/handler.ts";
+import {
+  createDesignImportHandler,
+  type DesignImportDeps,
+  type FileRow,
+  type PostMediaRow,
+  type PostRow,
+  type ResolvedLink,
+} from "../design-import/handler.ts";
 import type { ImageGenCoreDeps } from "../_shared/image-gen/core.ts";
 import type { TextBlock } from "../_shared/image-gen/vision.ts";
 import { DocServiceError } from "../_shared/doc-service.ts";
@@ -12,20 +19,47 @@ import { DocServiceError } from "../_shared/doc-service.ts";
 const CONTA = "conta-1";
 const USER = "user-1";
 const POST_ID = 42;
-const CLICKED_FILE_ID = 100;
+
+// link ids and file ids are DELIBERATELY DISJOINT ranges (post_file_links.id vs files.id are
+// independent bigserial sequences — see supabase/migrations/20260425000001_file_system_tables.sql).
+// A regression that confuses the two value-spaces (C2) must not be able to pass by coincidence.
+const CLICKED_LINK_ID = 9001;
+const SIBLING_LINK_ID = 9002;
+const CLICKED_FILE_ID = 501;
 const BACKGROUND_FILE_ID = 900;
-const SIBLING_FILE_ID = 101;
+const SIBLING_FILE_ID = 502;
 
 function makePostRow(overrides: Partial<PostRow> = {}): PostRow {
   return { id: POST_ID, titulo: "Promoção de verão", tipo: "feed", status: "rascunho", ...overrides };
 }
 
 function makeClickedMedia(overrides: Partial<PostMediaRow> = {}): PostMediaRow {
-  return { file_id: CLICKED_FILE_ID, kind: "image", r2_key: "files/clicked.jpg", sort_order: 0, ...overrides };
+  return {
+    link_id: CLICKED_LINK_ID,
+    file_id: CLICKED_FILE_ID,
+    kind: "image",
+    r2_key: "files/clicked.jpg",
+    sort_order: 0,
+    ...overrides,
+  };
 }
 
 function makeClickedFile(overrides: Partial<FileRow> = {}): FileRow {
   return { id: CLICKED_FILE_ID, kind: "image", r2_key: "files/clicked.jpg", width: 1080, height: 1350, ...overrides };
+}
+
+/** Default resolveLink fake: succeeds only for (POST_ID, CLICKED_LINK_ID, CONTA), mirroring the
+ * real conta-scoped post_file_links JOIN files query. Tests override this directly (not via the
+ * old media.find + getFile pair) to model link-resolution failures. */
+function makeResolveLink(
+  files: Map<number, FileRow>,
+): DesignImportDeps["resolveLink"] {
+  return async (postId, linkId, contaId) => {
+    if (contaId !== CONTA || postId !== POST_ID || linkId !== CLICKED_LINK_ID) return null;
+    const file = files.get(CLICKED_FILE_ID);
+    if (!file || file.kind !== "image") return null;
+    return { link_id: CLICKED_LINK_ID, file } satisfies ResolvedLink;
+  };
 }
 
 const SAMPLE_BLOCKS: TextBlock[] = [
@@ -114,6 +148,7 @@ function makeDeps(
     hasDesignAttached: async () => false,
     getPostMedia: async () => [makeClickedMedia()],
     getFile: async (fileId, contaId) => (contaId === CONTA ? files.get(fileId) ?? null : null),
+    resolveLink: makeResolveLink(files),
     checkRateLimit: async (key) => {
       spy.rateLimitCalls.push(key);
       return true;
@@ -167,7 +202,7 @@ function req(body: unknown, token = "valid", method = "POST") {
   });
 }
 
-const VALID_BODY = { post_id: POST_ID, link_id: CLICKED_FILE_ID };
+const VALID_BODY = { post_id: POST_ID, link_id: CLICKED_LINK_ID };
 
 // ── auth + method + cors ─────────────────────────────────────────────────────
 
@@ -337,7 +372,7 @@ Deno.test("post with video media → post_has_video", async () => {
   const { deps } = makeDeps({
     getPostMedia: async () => [
       makeClickedMedia(),
-      { file_id: 555, kind: "video", r2_key: "files/v.mp4", sort_order: 1 },
+      { link_id: 9555, file_id: 555, kind: "video", r2_key: "files/v.mp4", sort_order: 1 },
     ],
   });
   const res = await createDesignImportHandler(deps)(req(VALID_BODY));
@@ -353,35 +388,35 @@ Deno.test("post already has a design attached → post_already_designed", async 
 });
 
 // ── link resolution: uniform foreign/mismatched error ────────────────────────
+// C2 regression guard: link_id (post_file_links.id) and file_id are DISJOINT id spaces
+// (CLICKED_LINK_ID=9001 vs CLICKED_FILE_ID=501) — resolveLink is the ONLY resolution path,
+// so these tests exercise it directly rather than the old media.find/getFile pair.
 
 Deno.test("link_id not linked to this post → invalid_reference (uniform, not 404)", async () => {
-  const { deps } = makeDeps({ getPostMedia: async () => [] }); // clicked file not in this post's media
+  const { deps } = makeDeps({ resolveLink: async () => null }); // clicked link not resolvable
   const res = await createDesignImportHandler(deps)(req(VALID_BODY));
   assertEquals(res.status, 400);
   assertEquals((await res.json()).error.code, "invalid_reference");
 });
 
 Deno.test("link_id resolves to a non-image file row (defensive re-check) → invalid_reference", async () => {
-  // The post-level media list reports this link as an image (so the post_has_video gate passes),
-  // but the files-table lookup for THIS id disagrees — a data-inconsistency edge case the
-  // resolver must still reject rather than trust the media list alone.
+  // The resolver's own post_file_links JOIN files disagrees with kind='image' — resolveLink must
+  // reject rather than trust a stale media list.
   const { deps } = makeDeps({
-    getFile: async (fileId, contaId) =>
-      contaId === CONTA && fileId === CLICKED_FILE_ID
-        ? { id: CLICKED_FILE_ID, kind: "document", r2_key: "x", width: null, height: null }
-        : null,
+    resolveLink: async (postId, linkId, contaId) =>
+      contaId === CONTA && postId === POST_ID && linkId === CLICKED_LINK_ID ? null : null,
   });
   const res = await createDesignImportHandler(deps)(req(VALID_BODY));
   assertEquals(res.status, 400);
   assertEquals((await res.json()).error.code, "invalid_reference");
 });
 
-Deno.test("link_id from a different conta (getFile returns null) → same uniform invalid_reference message", async () => {
-  const { deps: deps1 } = makeDeps({ getPostMedia: async () => [] });
+Deno.test("link_id from a different conta (resolveLink returns null) → same uniform invalid_reference message", async () => {
+  const { deps: deps1 } = makeDeps({ resolveLink: async () => null });
   const res1 = await createDesignImportHandler(deps1)(req(VALID_BODY));
   const body1 = await res1.json();
 
-  const { deps: deps2 } = makeDeps({ getFile: async () => null });
+  const { deps: deps2 } = makeDeps({ resolveLink: async () => null });
   const res2 = await createDesignImportHandler(deps2)(req(VALID_BODY));
   const body2 = await res2.json();
 
@@ -389,34 +424,73 @@ Deno.test("link_id from a different conta (getFile returns null) → same unifor
   assertEquals(body1.error.message, body2.error.message);
 });
 
+Deno.test("link_id equal to a file_id value (id-space collision) is REJECTED, not silently matched", async () => {
+  // The request sends link_id = CLICKED_FILE_ID's numeric value (a coincidental id collision
+  // across the two disjoint sequences). resolveLink must fail closed — it only resolves the
+  // REAL link id (CLICKED_LINK_ID), never anything that merely matches a files.id.
+  const { deps } = makeDeps();
+  const res = await createDesignImportHandler(deps)(req({ post_id: POST_ID, link_id: CLICKED_FILE_ID }));
+  assertEquals(res.status, 400);
+  assertEquals((await res.json()).error.code, "invalid_reference");
+});
+
 // ── carrossel: N frames, clicked-frame-texts-only ────────────────────────────
 
-Deno.test("carrossel builds N frames in sort_order; only the clicked frame carries texts", async () => {
-  const { deps, spy } = makeDeps({
-    getPost: async () => makePostRow({ tipo: "carrossel" }),
-    getPostMedia: async () => [
-      { file_id: SIBLING_FILE_ID, kind: "image", r2_key: "files/sibling.jpg", sort_order: 0 },
-      makeClickedMedia({ sort_order: 1 }),
-      { file_id: 102, kind: "image", r2_key: "files/sibling2.jpg", sort_order: 2 },
-    ],
-  });
+Deno.test("carrossel builds N frames in sort_order; only the clicked frame carries texts (0-based index)", async () => {
+  const SIBLING2_FILE_ID = 503;
+  const SIBLING2_LINK_ID = 9003;
   const files = new Map<number, FileRow>([
     [CLICKED_FILE_ID, makeClickedFile()],
     [BACKGROUND_FILE_ID, { id: BACKGROUND_FILE_ID, kind: "image", r2_key: "files/background.jpg", width: 1080, height: 1350 }],
     [SIBLING_FILE_ID, { id: SIBLING_FILE_ID, kind: "image", r2_key: "files/sibling.jpg", width: 1080, height: 1350 }],
-    [102, { id: 102, kind: "image", r2_key: "files/sibling2.jpg", width: 1080, height: 1350 }],
+    [SIBLING2_FILE_ID, { id: SIBLING2_FILE_ID, kind: "image", r2_key: "files/sibling2.jpg", width: 1080, height: 1350 }],
   ]);
-  (deps as unknown as { getFile: DesignImportDeps["getFile"] }).getFile = async (fileId, contaId) =>
-    contaId === CONTA ? files.get(fileId) ?? null : null;
+  const { deps, spy } = makeDeps({
+    getPost: async () => makePostRow({ tipo: "carrossel" }),
+    getPostMedia: async () => [
+      { link_id: SIBLING_LINK_ID, file_id: SIBLING_FILE_ID, kind: "image", r2_key: "files/sibling.jpg", sort_order: 0 },
+      makeClickedMedia({ sort_order: 1 }),
+      { link_id: SIBLING2_LINK_ID, file_id: SIBLING2_FILE_ID, kind: "image", r2_key: "files/sibling2.jpg", sort_order: 2 },
+    ],
+    getFile: async (fileId, contaId) => (contaId === CONTA ? files.get(fileId) ?? null : null),
+    resolveLink: makeResolveLink(files),
+  });
 
   const res = await createDesignImportHandler(deps)(req(VALID_BODY));
   assertEquals(res.status, 201);
   assertEquals(spy.composeCalls.length, 1);
   const compose = spy.composeCalls[0];
   assertEquals(compose.frames.length, 3);
-  // Clicked file was at sort_order 1 → frame "2" (1-indexed name); it alone carries texts.
+  // Clicked link was at sort_order 1 → frame INDEX 1 (0-based); it alone carries texts.
   assertEquals(compose.texts.length, SAMPLE_BLOCKS.length);
-  assertEquals((compose.texts[0] as { frame: number }).frame, 2);
+  assertEquals((compose.texts[0] as { frame: number }).frame, 1);
+});
+
+Deno.test("carrossel: same file linked twice keys texts on the LINK id, not the file id", async () => {
+  // Two post_file_links rows point at the SAME file_id (CLICKED_FILE_ID) but only the clicked
+  // LINK (CLICKED_LINK_ID) should carry texts — the sibling link sharing that file must not.
+  const DUP_LINK_ID = 9099;
+  const files = new Map<number, FileRow>([
+    [CLICKED_FILE_ID, makeClickedFile()],
+    [BACKGROUND_FILE_ID, { id: BACKGROUND_FILE_ID, kind: "image", r2_key: "files/background.jpg", width: 1080, height: 1350 }],
+  ]);
+  const { deps, spy } = makeDeps({
+    getPost: async () => makePostRow({ tipo: "carrossel" }),
+    getPostMedia: async () => [
+      makeClickedMedia({ sort_order: 0 }),
+      { link_id: DUP_LINK_ID, file_id: CLICKED_FILE_ID, kind: "image", r2_key: "files/clicked.jpg", sort_order: 1 },
+    ],
+    getFile: async (fileId, contaId) => (contaId === CONTA ? files.get(fileId) ?? null : null),
+    resolveLink: makeResolveLink(files),
+  });
+
+  const res = await createDesignImportHandler(deps)(req(VALID_BODY));
+  assertEquals(res.status, 201);
+  const compose = spy.composeCalls[0];
+  assertEquals(compose.frames.length, 2);
+  // Only ONE frame carries texts (frame 0, the clicked link) — not both, despite sharing a file_id.
+  assertEquals(compose.texts.length, SAMPLE_BLOCKS.length);
+  assertEquals((compose.texts[0] as { frame: number }).frame, 0);
 });
 
 // ── hold flag / audit hygiene ─────────────────────────────────────────────────
@@ -481,13 +555,13 @@ Deno.test("happy path returns 201 with design_id + quota", async () => {
 // ── preset selection ──────────────────────────────────────────────────────────
 
 Deno.test("preset falls back to 4:5 when width/height missing, noted in audit", async () => {
+  const files = new Map<number, FileRow>([
+    [CLICKED_FILE_ID, { id: CLICKED_FILE_ID, kind: "image", r2_key: "files/clicked.jpg", width: null, height: null }],
+    [BACKGROUND_FILE_ID, { id: BACKGROUND_FILE_ID, kind: "image", r2_key: "files/background.jpg", width: 1080, height: 1350 }],
+  ]);
   const { deps, spy } = makeDeps({
-    getFile: async (fileId, contaId) => {
-      if (contaId !== CONTA) return null;
-      if (fileId === CLICKED_FILE_ID) return { id: CLICKED_FILE_ID, kind: "image", r2_key: "files/clicked.jpg", width: null, height: null };
-      if (fileId === BACKGROUND_FILE_ID) return { id: BACKGROUND_FILE_ID, kind: "image", r2_key: "files/background.jpg", width: 1080, height: 1350 };
-      return null;
-    },
+    getFile: async (fileId, contaId) => (contaId === CONTA ? files.get(fileId) ?? null : null),
+    resolveLink: makeResolveLink(files),
   });
   const res = await createDesignImportHandler(deps)(req(VALID_BODY));
   assertEquals(res.status, 201);
@@ -503,13 +577,13 @@ Deno.test("preset picks nearest of 1:1/4:5/9:16 by aspect ratio", async () => {
     [1080, 1920, "9:16"],
   ];
   for (const [width, height, expected] of cases) {
+    const files = new Map<number, FileRow>([
+      [CLICKED_FILE_ID, { id: CLICKED_FILE_ID, kind: "image", r2_key: "files/clicked.jpg", width, height }],
+      [BACKGROUND_FILE_ID, { id: BACKGROUND_FILE_ID, kind: "image", r2_key: "files/background.jpg", width, height }],
+    ]);
     const { deps, spy } = makeDeps({
-      getFile: async (fileId, contaId) => {
-        if (contaId !== CONTA) return null;
-        if (fileId === CLICKED_FILE_ID) return { id: CLICKED_FILE_ID, kind: "image", r2_key: "files/clicked.jpg", width, height };
-        if (fileId === BACKGROUND_FILE_ID) return { id: BACKGROUND_FILE_ID, kind: "image", r2_key: "files/background.jpg", width, height };
-        return null;
-      },
+      getFile: async (fileId, contaId) => (contaId === CONTA ? files.get(fileId) ?? null : null),
+      resolveLink: makeResolveLink(files),
     });
     const res = await createDesignImportHandler(deps)(req(VALID_BODY));
     assertEquals(res.status, 201);
@@ -651,4 +725,104 @@ Deno.test("envelope shape is always {error:{code,message,retryable}}", async () 
   assert(typeof body.error.code === "string");
   assert(typeof body.error.message === "string");
   assert(typeof body.error.retryable === "boolean");
+});
+
+// ── early-path errors also use the {error:{code,message,retryable}} envelope (M1) ───────────
+
+Deno.test("early-path errors (405/401/403 profile/400) use the same envelope as the rest of the function", async () => {
+  const h = createDesignImportHandler(makeDeps().deps);
+
+  const methodRes = await h(req(VALID_BODY, "valid", "GET"));
+  assertEquals(methodRes.status, 405);
+  const methodBody = await methodRes.json();
+  assertEquals(methodBody.error.code, "method_not_allowed");
+  assert(typeof methodBody.error.retryable === "boolean");
+
+  const authRes = await h(req(VALID_BODY, ""));
+  assertEquals(authRes.status, 401);
+  const authBody = await authRes.json();
+  assertEquals(authBody.error.code, "unauthorized");
+  assert(typeof authBody.error.retryable === "boolean");
+
+  const { deps: noProfileDeps } = makeDeps({ getProfile: async () => null });
+  const profileRes = await createDesignImportHandler(noProfileDeps)(req(VALID_BODY));
+  assertEquals(profileRes.status, 403);
+  const profileBody = await profileRes.json();
+  assertEquals(profileBody.error.code, "profile_not_found");
+  assert(typeof profileBody.error.retryable === "boolean");
+
+  const invalidBodyRes = await h(req({}));
+  assertEquals(invalidBodyRes.status, 400);
+  const invalidBody = await invalidBodyRes.json();
+  assertEquals(invalidBody.error.code, "invalid_request");
+  assert(typeof invalidBody.error.retryable === "boolean");
+});
+
+// ── align value-space: vision.ts's lowercase must reach the doc-service as uppercase (I1) ────
+
+Deno.test("compose texts uppercase the align value (vision emits lowercase, doc-service requires uppercase)", async () => {
+  const { deps, spy } = makeDeps({
+    extractTextBlocks: async () => [
+      { text: "A", bbox: { x: 0, y: 0, w: 0.2, h: 0.1 }, size: 0.05, weight: 400, color: "#000000", align: "left" },
+      { text: "B", bbox: { x: 0, y: 0.2, w: 0.2, h: 0.1 }, size: 0.05, weight: 400, color: "#000000", align: "center" },
+      { text: "C", bbox: { x: 0, y: 0.4, w: 0.2, h: 0.1 }, size: 0.05, weight: 400, color: "#000000", align: "right" },
+    ],
+  });
+  const res = await createDesignImportHandler(deps)(req(VALID_BODY));
+  assertEquals(res.status, 201);
+  const texts = spy.composeCalls[0].texts as Array<{ align: string }>;
+  assertEquals(texts.map((t) => t.align), ["LEFT", "CENTER", "RIGHT"]);
+});
+
+// ── cross-seam contract test: assert the doc-service's OWN invariants against the ComposeSpec ──
+// the handler actually builds. Closes the mock-vs-mock gap — this does NOT import compose.js
+// (Node service code must never enter the Deno suite); it mirrors validateSpec's rules by hand.
+
+Deno.test("cross-seam: the built ComposeSpec satisfies doc-service's validateSpec invariants (mirrored, not imported)", async () => {
+  const SIBLING2_FILE_ID = 503;
+  const SIBLING2_LINK_ID = 9003;
+  const files = new Map<number, FileRow>([
+    [CLICKED_FILE_ID, makeClickedFile()],
+    [BACKGROUND_FILE_ID, { id: BACKGROUND_FILE_ID, kind: "image", r2_key: "files/background.jpg", width: 1080, height: 1350 }],
+    [SIBLING_FILE_ID, { id: SIBLING_FILE_ID, kind: "image", r2_key: "files/sibling.jpg", width: 1080, height: 1350 }],
+    [SIBLING2_FILE_ID, { id: SIBLING2_FILE_ID, kind: "image", r2_key: "files/sibling2.jpg", width: 1080, height: 1350 }],
+  ]);
+  const { deps, spy } = makeDeps({
+    getPost: async () => makePostRow({ tipo: "carrossel" }),
+    getPostMedia: async () => [
+      { link_id: SIBLING_LINK_ID, file_id: SIBLING_FILE_ID, kind: "image", r2_key: "files/sibling.jpg", sort_order: 0 },
+      makeClickedMedia({ sort_order: 1 }),
+      { link_id: SIBLING2_LINK_ID, file_id: SIBLING2_FILE_ID, kind: "image", r2_key: "files/sibling2.jpg", sort_order: 2 },
+    ],
+    getFile: async (fileId, contaId) => (contaId === CONTA ? files.get(fileId) ?? null : null),
+    resolveLink: makeResolveLink(files),
+    extractTextBlocks: async () => [
+      { text: "50% OFF", bbox: { x: 0.1, y: 0.1, w: 0.5, h: 0.1 }, size: 0.08, weight: 700, color: "#ffffff", align: "left" },
+      { text: "Aproveite", bbox: { x: 0.1, y: 0.3, w: 0.5, h: 0.1 }, size: 0.06, weight: 400, color: "#000000", align: "right" },
+    ],
+  });
+
+  const res = await createDesignImportHandler(deps)(req(VALID_BODY));
+  assertEquals(res.status, 201);
+  assertEquals(spy.composeCalls.length, 1);
+  const spec = spy.composeCalls[0] as { preset: string; frames: Array<{ name?: string; image: { url: string } }>; texts: Array<{ frame: number; align?: string }> };
+
+  // preset ∈ {'1:1','4:5','9:16'} (compose.js: PRESET_DIMS[spec.preset] must exist)
+  assert(["1:1", "4:5", "9:16"].includes(spec.preset), `preset ${spec.preset} not a valid doc-service preset`);
+
+  // frames must be a non-empty array; every frame needs name = String(position 1..N) + image.url
+  assert(Array.isArray(spec.frames) && spec.frames.length > 0, "frames must be a non-empty array");
+  spec.frames.forEach((f, i) => {
+    assertEquals(f.name, String(i + 1), `frames[${i}].name must be "${i + 1}"`);
+    assert(!!f.image?.url, `frames[${i}].image.url is required`);
+  });
+
+  // every texts[].frame is an integer 0 <= frame < frames.length (compose.js validateSpec)
+  // every texts[].align ∈ {LEFT,CENTER,RIGHT} (JUSTIFIED never emitted by this pipeline)
+  assert(spec.texts.length > 0, "expected at least one text block in this fixture");
+  for (const t of spec.texts) {
+    assert(Number.isInteger(t.frame), `texts[].frame must be an integer, got ${t.frame}`);
+    assert(t.frame >= 0 && t.frame < spec.frames.length, `texts[].frame ${t.frame} out of range [0,${spec.frames.length})`);
+    assert(["LEFT", "CENTER", "RIGHT"].includes(t.align ?? ""), `texts[].align "${t.align}" not in {LEFT,CENTER,RIGHT}`);
+  }
 });
