@@ -210,6 +210,49 @@ Deno.test("ledger row is inserted 'pending' BEFORE the provider call (spend neve
   assertEquals((update!.payload as { status: string }).status, "provider_error");
 });
 
+Deno.test("OAuth key_id ('oauth:<clientId>', not a uuid) is stored as NULL — the mcp_key_id uuid column never sees it", async () => {
+  // Regression: resolveOAuthCtx sets ctx.key_id = `oauth:${clientId}` (mcp-oauth.ts), which is
+  // NOT a uuid. Writing it straight into the `mcp_key_id uuid` ledger column made Postgres reject
+  // the insert ("invalid input syntax for type uuid") BEFORE any pending row existed, surfacing as
+  // an opaque {"error":"Internal error."} on generate_image for every claude.ai web (OAuth) call.
+  const h = makeHarness();
+  queueBare(h.db);
+  await generateImageCore(
+    h.deps,
+    baseInput({ mcpKeyId: "oauth:df1238a4-84d1-4e06-96c7-0808c6358d15" }),
+  );
+  const insert = h.db.calls.find((c) =>
+    c.table === "ai_image_generations" && c.operation === "insert"
+  );
+  assertEquals((insert!.payload as { mcp_key_id: string | null }).mcp_key_id, null);
+});
+
+Deno.test("API-key key_id (a real uuid) is preserved on the ledger", async () => {
+  const h = makeHarness();
+  queueBare(h.db);
+  const keyUuid = "11111111-2222-3333-4444-555555555555";
+  await generateImageCore(h.deps, baseInput({ mcpKeyId: keyUuid }));
+  const insert = h.db.calls.find((c) =>
+    c.table === "ai_image_generations" && c.operation === "insert"
+  );
+  assertEquals((insert!.payload as { mcp_key_id: string | null }).mcp_key_id, keyUuid);
+});
+
+Deno.test("OAuth session is still per-credential burst-limited on the opaque key_id", async () => {
+  // Coercing the ledger value to null must NOT drop the per-credential rate limit: the burst check
+  // still keys on the opaque ctx.key_id, so an OAuth client keeps its own 10/10min window.
+  const rlKeys: string[] = [];
+  const h = makeHarness({
+    checkRateLimit: (key: string) => {
+      rlKeys.push(key);
+      return Promise.resolve(true);
+    },
+  });
+  queueBare(h.db);
+  await generateImageCore(h.deps, baseInput({ mcpKeyId: "oauth:client-xyz" }));
+  assert(rlKeys.includes("imggen:key:oauth:client-xyz"), rlKeys.join(","));
+});
+
 Deno.test("safety refusal: ledger 'safety_refused', non-retryable, no storage side effects", async () => {
   const { ProviderSafetyError } = await import("../_shared/image-gen/provider.ts");
   const h = makeHarness({
