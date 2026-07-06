@@ -354,37 +354,37 @@ export function createDesignImportHandler(deps: DesignImportDeps) {
     }
 
     const composeFrames: ComposeSpec["frames"] = [];
-    const composeTexts: NonNullable<ComposeSpec["texts"]> = [];
-    for (let i = 0; i < imageFrames.length; i++) {
-      const frame = imageFrames[i];
-      const isClicked = frame.file_id === clickedFile.id;
-      const r2Key = isClicked ? backgroundFile.r2_key : frame.r2_key;
-      const url = await deps.signGetUrl(r2Key);
-      composeFrames.push({ name: String(i + 1), image: { url, mime: "image/jpeg" } });
-      if (isClicked) {
-        for (const block of textBlocks) {
-          composeTexts.push({
-            frame: i + 1,
-            text: block.text,
-            bbox: block.bbox,
-            size: block.size,
-            weight: block.weight,
-            color: block.color,
-            align: block.align,
-          });
-        }
-      }
-    }
-
     let composedBytes: Uint8Array;
     try {
+      const composeTexts: NonNullable<ComposeSpec["texts"]> = [];
+      for (let i = 0; i < imageFrames.length; i++) {
+        const frame = imageFrames[i];
+        const isClicked = frame.file_id === clickedFile.id;
+        const r2Key = isClicked ? backgroundFile.r2_key : frame.r2_key;
+        const url = await deps.signGetUrl(r2Key);
+        composeFrames.push({ name: String(i + 1), image: { url, mime: "image/jpeg" } });
+        if (isClicked) {
+          for (const block of textBlocks) {
+            composeTexts.push({
+              frame: i + 1,
+              text: block.text,
+              bbox: block.bbox,
+              size: block.size,
+              weight: block.weight,
+              color: block.color,
+              align: block.align,
+            });
+          }
+        }
+      }
       composedBytes = await deps.docService.compose({ preset, frames: composeFrames, texts: composeTexts });
     } catch (e) {
       if (e instanceof DocServiceError && e.code === "doc_too_large") {
         return json(envelope("doc_too_large", "Documento excede o tamanho máximo suportado.", false), 413);
       }
-      // Failure AFTER inpaint succeeded: the background file row stays (a normal AI-gen asset;
-      // the idempotency key makes a retry free) — log and return, never unwind quota.
+      // Failure AFTER inpaint succeeded (frame-URL presigning OR doc-service compose itself): the
+      // background file row stays (a normal AI-gen asset; the idempotency key makes a retry free)
+      // — log and return the mapped error, never unwind quota.
       deps.logError("design-import:compose", e);
       return json(envelope("compose_failed", "Não foi possível montar o design.", true), 502);
     }

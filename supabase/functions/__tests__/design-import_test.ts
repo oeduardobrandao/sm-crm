@@ -578,6 +578,33 @@ Deno.test("compose generic failure → compose_failed 502", async () => {
   assertEquals((await res.json()).error.code, "compose_failed");
 });
 
+Deno.test("post-inpaint frame-URL signing failure → compose_failed 502, logged, no quota unwind", async () => {
+  // signGetUrl must succeed for the PRE-inpaint normalize call (step 5) but throw on the
+  // POST-inpaint frame-signing loop (step 8) — this is the exact "escapes the log+mapped-error
+  // contract" scenario from the review finding: presigning happens AFTER the paid inpaint.
+  let logged: { context: string; error: unknown } | null = null;
+  let callCount = 0;
+  const { deps, spy } = makeDeps({
+    signGetUrl: async (r2Key) => {
+      callCount++;
+      if (callCount === 1) return `https://signed.example/${r2Key}`; // normalize (pre-spend)
+      throw new Error("r2 presign exploded"); // frame-signing (post-spend)
+    },
+    logError: (context, error) => {
+      logged = { context, error };
+    },
+  });
+  const res = await createDesignImportHandler(deps)(req(VALID_BODY));
+  assertEquals(res.status, 502);
+  const body = await res.json();
+  assertEquals(body.error.code, "compose_failed");
+  assertEquals(body.error.retryable, true);
+  assert(!JSON.stringify(body).includes("r2 presign exploded"), "raw presign error leaked to client");
+  // The inpaint DID run (spend happened) — this asserts we don't try to unwind it, just map+log.
+  assertEquals(spy.providerCalls, 1);
+  assert(logged !== null, "logError must be called for the post-spend presign failure");
+});
+
 // ── create_design RPC race (post-inpaint-spend): coded exceptions map through, not a flat 502 ──
 
 Deno.test("create_design RPC race: post_already_designed maps to 409, not a generic 502 (post-spend)", async () => {
