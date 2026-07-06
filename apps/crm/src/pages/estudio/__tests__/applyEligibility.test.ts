@@ -12,6 +12,11 @@ describe('postEligibility', () => {
     expect(postEligibility({ id: 1, tipo: 'reels', status: 'revisao_interna' }, none, none)).toBe(
       null,
     );
+    // enviado_cliente joined the editable set (20260706000001): the art keeps updating
+    // while the post awaits client review.
+    expect(postEligibility({ id: 1, tipo: 'feed', status: 'enviado_cliente' }, none, none)).toBe(
+      null,
+    );
   });
 
   it('stories (and anything unknown) → tipo_unsupported, checked FIRST', () => {
@@ -21,7 +26,7 @@ describe('postEligibility', () => {
   });
 
   it('locked statuses → not_editable', () => {
-    for (const status of ['aprovado_interno', 'enviado_cliente', 'aprovado_cliente', 'agendado']) {
+    for (const status of ['aprovado_interno', 'aprovado_cliente', 'agendado']) {
       expect(postEligibility({ id: 1, tipo: 'feed', status }, none, none)).toBe('not_editable');
     }
   });

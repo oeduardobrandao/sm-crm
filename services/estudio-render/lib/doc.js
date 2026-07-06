@@ -180,6 +180,8 @@ const OPS = {
     graph.createNode('FRAME', page.id, {
       name: op.name ?? String(graph.getChildren(page.id).length + 1),
       ...pickBounds(op),
+      // Post pages clip: the export crops to frame bounds, the canvas must agree.
+      clipsContent: true,
       fills: [solidFill(op.color ?? '#ffffff')],
     });
   },

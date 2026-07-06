@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 
 const FORMATS = ['feed', 'carrossel', 'reel_cover', 'livre'] as const;
 type Format = (typeof FORMATS)[number];
@@ -170,15 +171,13 @@ export function NewDesignDialog({
         </div>
 
         <DialogFooter>
-          <button
-            type="button"
-            className="btn-primary"
+          <Button
             disabled={createMutation.isPending}
             onClick={() => createMutation.mutate()}
             data-testid="new-design-create"
           >
             {createMutation.isPending ? t('picker.creating') : t('home.create')}
-          </button>
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

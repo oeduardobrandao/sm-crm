@@ -57,7 +57,7 @@ test('renders a 1-frame doc with text + emoji to a JPEG (visual gate: out/emoji-
 })
 
 test('renders the committed feed starter template', async () => {
-  const gen = await readFile('../../supabase/functions/post-design-manage/starter-templates.gen.ts', 'utf8')
+  const gen = await readFile('../../supabase/functions/design-manage/starter-templates.gen.ts', 'utf8')
   const b64 = /"feed": "([^"]+)"/.exec(gen)[1]
   const bytes = Uint8Array.from(Buffer.from(b64, 'base64'))
   const out = await renderDocument(bytes, 'feed')

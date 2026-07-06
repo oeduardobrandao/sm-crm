@@ -11,7 +11,7 @@
 import { DocServiceError } from "../_shared/doc-service.ts";
 import { McpInputError } from "../_shared/mcp-token.ts";
 import { signGetUrl } from "../_shared/r2.ts";
-import { EDITABLE_STATUSES, type Deps } from "./queries.ts";
+import { DESIGN_ELIGIBLE_STATUSES, type Deps } from "./queries.ts";
 
 export { DocServiceError };
 
@@ -106,7 +106,7 @@ async function getPostOrThrow(d: Deps, postId: number): Promise<PostRow> {
 }
 
 function requireEditable(post: PostRow): void {
-  if (!EDITABLE_STATUSES.includes(post.status)) {
+  if (!DESIGN_ELIGIBLE_STATUSES.includes(post.status)) {
     throw new McpInputError(
       `Post em estado '${post.status}' não pode receber design pelo agente.`,
     );

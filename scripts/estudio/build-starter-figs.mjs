@@ -30,6 +30,8 @@ for (const [kind, size] of Object.entries(SIZES)) {
       y: 0,
       width: w,
       height: h,
+      // Post pages clip: the export crops to frame bounds, the canvas must agree.
+      clipsContent: true,
       fills: [{ type: 'SOLID', color: { r: 1, g: 1, b: 1, a: 1 }, opacity: 1, visible: true }],
     });
   }
