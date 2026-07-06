@@ -16,3 +16,18 @@ export function resolveImageProvider(): ImageGenProvider | null {
   if (geminiKey) return createGeminiProvider(geminiKey);
   return null;
 }
+
+export interface VisionConfig {
+  apiKey: string;
+}
+
+/** Vision (design-import text extraction, slice C) REQUIRES OpenRouter for now — there's no
+ * Gemini-direct fallback yet (tracked as a follow-up). Reuses the SAME resolved key as
+ * resolveImageProvider() so both entrypoints (the design-import edge function today, an MCP tool
+ * later) can't drift on which env var spelling wins. Null means the caller should surface
+ * vision_unavailable rather than attempting the call. */
+export function resolveVisionConfig(): VisionConfig | null {
+  const openRouterKey = Deno.env.get("OPEN_ROUTER_API_KEY") ??
+    Deno.env.get("OPENROUTER_API_KEY");
+  return openRouterKey ? { apiKey: openRouterKey } : null;
+}
