@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { HubContext } from '../../HubContext';
@@ -77,5 +77,52 @@ describe('HubNav', () => {
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Modo Escuro' })[0]);
     expect(toggleTheme).toHaveBeenCalled();
+  });
+
+  it('exposes a mobile Mais overflow control and keeps Briefing off the direct tabs', () => {
+    mockedUseTheme.mockReturnValue({ theme: 'light', toggleTheme: vi.fn() });
+    renderHubNav('/mesaas/hub/token-publico');
+
+    expect(screen.getByRole('button', { name: 'Mais' })).toBeInTheDocument();
+    // Briefing left the mobile bar (into Mais) but stays a desktop link.
+    expect(screen.getAllByRole('link', { name: 'Briefing' })).toHaveLength(1);
+  });
+
+  it('opens the Mais sheet and exposes Briefing, Ideias, and Relatórios', () => {
+    mockedUseTheme.mockReturnValue({ theme: 'light', toggleTheme: vi.fn() });
+    renderHubNav('/mesaas/hub/token-publico');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mais' }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByRole('link', { name: 'Briefing' })).toHaveAttribute(
+      'href',
+      '/mesaas/hub/token-publico/briefing',
+    );
+    expect(within(dialog).getByRole('link', { name: 'Ideias' })).toHaveAttribute(
+      'href',
+      '/mesaas/hub/token-publico/ideias',
+    );
+    expect(within(dialog).getByRole('link', { name: 'Relatórios' })).toHaveAttribute(
+      'href',
+      '/mesaas/hub/token-publico/relatorios',
+    );
+  });
+
+  it('marks Mais active on an overflow route', () => {
+    mockedUseTheme.mockReturnValue({ theme: 'light', toggleTheme: vi.fn() });
+    renderHubNav('/mesaas/hub/token-publico/relatorios/2026-06');
+
+    expect(screen.getByRole('button', { name: 'Mais' })).toHaveAttribute('data-active', 'true');
+  });
+
+  it('closes the Mais sheet on Escape', () => {
+    mockedUseTheme.mockReturnValue({ theme: 'light', toggleTheme: vi.fn() });
+    renderHubNav('/mesaas/hub/token-publico');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mais' }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });

@@ -1,6 +1,103 @@
 {
-  "lastMergedAt": "2026-06-27T01:01:04Z",
+  "lastMergedAt": "2026-07-02T13:44:13Z",
   "releases": [
+    {
+      "date": "2026-07-04",
+      "summary": "Melhorias e correções em várias áreas do Mesaas",
+      "items": [
+        {
+          "type": "feature",
+          "area": "Hub",
+          "title": "Renomeação de seções de briefing",
+          "description": "Agora é possível renomear seções de briefing no Hub do cliente",
+          "pr": 185
+        },
+        {
+          "type": "feature",
+          "area": "Hub",
+          "title": "Experiência móvel melhorada",
+          "description": "Melhorias na experiência móvel do Hub, incluindo navegação, legenda de postagens e visualização de feed",
+          "pr": 184
+        },
+        {
+          "type": "feature",
+          "area": "Hub",
+          "title": "Compartilhamento de postagens individuais",
+          "description": "Agora é possível compartilhar links para postagens individuais no Hub",
+          "pr": 183
+        },
+        {
+          "type": "fix",
+          "area": "Entregas",
+          "title": "Alinhamento de botões de agendamento e esclarecimento de badges de aprovação do cliente",
+          "description": "Correções nos botões de agendamento e badges de aprovação do cliente nas entregas",
+          "pr": 182
+        },
+        {
+          "type": "feature",
+          "area": "Login",
+          "title": "Redesenho da página de login",
+          "description": "Nova página de login com uma área de destaque para o conector MCP 'Agente de Conteúdo'",
+          "pr": 181
+        },
+        {
+          "type": "feature",
+          "area": "Planos",
+          "title": "Edição de preço e ordem de planos",
+          "description": "Agora é possível editar o preço e a ordem dos planos na área de administração",
+          "pr": 179
+        },
+        {
+          "type": "fix",
+          "area": "Planos",
+          "title": "Persistência de recursos MCP nos planos",
+          "description": "Correção para garantir que os recursos MCP sejam persistidos corretamente nos planos",
+          "pr": 178
+        },
+        {
+          "type": "fix",
+          "area": "Convites",
+          "title": "Auto-curado de membros de convite",
+          "description": "Correção para garantir que os membros de convite sejam auto-curados corretamente",
+          "pr": 175
+        },
+        {
+          "type": "feature",
+          "area": "Convites",
+          "title": "Reenvio de links de convite sem exclusão do usuário",
+          "description": "Agora é possível reenviar links de convite sem excluir o usuário",
+          "pr": 174
+        },
+        {
+          "type": "fix",
+          "area": "Autenticação",
+          "title": "Melhorias na autenticação de convites",
+          "description": "Correções para melhorar a autenticação de convites e evitar problemas de acesso",
+          "pr": 172
+        },
+        {
+          "type": "fix",
+          "area": "Autenticação",
+          "title": "Erro de login mais claro e sem expiração falsa",
+          "description": "Correções para melhorar a mensagem de erro de login e evitar expiração falsa de links",
+          "pr": 171
+        },
+        {
+          "type": "fix",
+          "area": "Autenticação",
+          "title": "Reconvite de usuários sem senha",
+          "description": "Correção para garantir que os usuários sem senha sejam reconvitados corretamente",
+          "pr": 170
+        },
+        {
+          "type": "feature",
+          "area": "Análise",
+          "title": "Classificação alinhada com o Instagram",
+          "description": "Agora a classificação de postagens é alinhada com o modelo de engajamento do Instagram",
+          "pr": 162
+        }
+      ]
+    },
     {
       "date": "2026-06-27",
       "summary": "Melhorias e correções em várias áreas do Mesaas",

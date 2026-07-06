@@ -272,4 +272,54 @@ describe('InstagramPostCard', () => {
     expect(screen.queryByRole('button', { name: /mais/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /ver menos/i })).not.toBeInTheDocument();
   });
+
+  it('reads a pending caption first, with an "Editar legenda" action and no open editor', () => {
+    render(
+      <InstagramPostCard
+        post={makePost({ status: 'enviado_cliente', ig_caption: 'Olá pessoal do feed' })}
+        token="token-publico"
+        approvals={[]}
+        instagramProfile={profile}
+        onApprovalSubmitted={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/Olá pessoal do feed/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /editar legenda/i })).toBeInTheDocument();
+    // The caption editor is a distinct, labelled textarea — closed by default.
+    expect(screen.queryByLabelText(/legenda do post/i)).not.toBeInTheDocument();
+  });
+
+  it('reveals the caption editor on "Editar legenda" and closes it on "Concluir"', () => {
+    render(
+      <InstagramPostCard
+        post={makePost({ status: 'enviado_cliente', ig_caption: 'Olá' })}
+        token="token-publico"
+        approvals={[]}
+        instagramProfile={profile}
+        onApprovalSubmitted={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /editar legenda/i }));
+    expect(screen.getByLabelText(/legenda do post/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /concluir/i }));
+    expect(screen.queryByLabelText(/legenda do post/i)).not.toBeInTheDocument();
+  });
+
+  it('opens the lightbox at the tapped media slide via its accessible label', () => {
+    render(
+      <InstagramPostCard
+        post={makePost({ status: 'aprovado_cliente' })}
+        token="token-publico"
+        approvals={[]}
+        instagramProfile={profile}
+        readOnly
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /abrir mídia 1/i }));
+    expect(screen.getByTestId('post-media-lightbox')).toBeInTheDocument();
+  });
 });

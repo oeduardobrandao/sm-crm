@@ -59,59 +59,50 @@ export function createHubPostsHandler(deps: HubPostsHandlerDeps) {
 
     if (req.method === "PATCH") {
       const body = await req.json().catch(() => ({}));
-      const updates: { post_id: number; scheduled_at: string | null }[] = body.updates;
+      const updates = body.updates;
       if (!Array.isArray(updates) || updates.length === 0) {
         return json({ error: "updates array required" }, 400);
       }
-
-      const { data: workflows } = await db
-        .from("workflows")
-        .select("id")
-        .eq("cliente_id", hubToken.cliente_id)
-        .eq("conta_id", hubToken.conta_id);
-      const workflowIds = (workflows ?? []).map((w: { id: number }) => w.id);
-
-      const postIds = updates.map((u) => u.post_id);
-      const { data: posts } = await db
-        .from("workflow_posts")
-        .select("id, workflow_id")
-        .in("id", postIds)
-        .in("workflow_id", workflowIds);
-
-      const allowedIds = new Set((posts ?? []).map((p: { id: number }) => p.id));
-
-      const { data: postStatuses } = await db
-        .from("workflow_posts")
-        .select("id, status")
-        .in("id", Array.from(allowedIds));
-
-      const lockedStatuses = new Set(["agendado", "postado", "falha_publicacao"]);
-      const lockedPosts = (postStatuses ?? []).filter(
-        (p: { id: number; status: string }) => lockedStatuses.has(p.status)
-      );
-      if (lockedPosts.length > 0) {
-        const lockedIds = lockedPosts.map((p: { id: number }) => p.id);
-        return json({
-          error: "Não é possível alterar a data de posts agendados ou publicados. Cancele o agendamento primeiro.",
-          locked_post_ids: lockedIds,
-        }, 409);
+      for (const u of updates) {
+        if (!u || typeof u.post_id !== "number" || !("scheduled_at" in u)) {
+          return json({ error: "malformed update" }, 400);
+        }
       }
 
-      const validUpdates = updates.filter((u) => allowedIds.has(u.post_id));
+      // Ownership scoping, the status allowlist, and the atomic date swap (plus
+      // publishing-safety for agendado rows) all live in one transactional RPC so
+      // a swap can never half-apply or race the publish cron.
+      const { data, error } = await db.rpc("hub_reorder_post_schedules", {
+        p_cliente_id: hubToken.cliente_id,
+        p_conta_id: hubToken.conta_id,
+        p_updates: updates,
+      });
 
-      if (validUpdates.length === 0) {
-        return json({ error: "No valid posts to update" }, 400);
+      if (error) {
+        const msg = String((error as { message?: string }).message ?? "");
+        if (msg.includes("FORBIDDEN")) return json({ error: "Post não autorizado." }, 403);
+        if (msg.includes("LOCKED")) {
+          const lockedIds = (msg.match(/\{([\d,\s]+)\}/)?.[1] ?? "")
+            .split(",")
+            .map((s) => parseInt(s.trim(), 10))
+            .filter((n) => Number.isFinite(n));
+          return json(
+            {
+              error:
+                "Não é possível reagendar posts em publicação ou já publicados. Atualize a página e tente novamente.",
+              locked_post_ids: lockedIds,
+            },
+            409,
+          );
+        }
+        if (msg.includes("BAD_REQUEST")) {
+          return json({ error: "Datas inválidas para reagendamento." }, 400);
+        }
+        // Never leak raw internals to the client.
+        return json({ error: "Falha ao reagendar." }, 500);
       }
 
-      for (const u of validUpdates) {
-        const { error } = await db
-          .from("workflow_posts")
-          .update({ scheduled_at: u.scheduled_at })
-          .eq("id", u.post_id);
-        if (error) return json({ error: error.message }, 500);
-      }
-
-      return json({ ok: true, updated: validUpdates.length });
+      return json(data ?? { ok: true }, 200);
     }
 
     const { data: workflows } = await db

@@ -1,11 +1,13 @@
-import { useState, useMemo, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useMemo, useRef, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown } from 'lucide-react';
 import { useHub } from '../HubContext';
-import { fetchPosts } from '../api';
+import { fetchPosts, fetchInstagramFeed } from '../api';
 import { InstagramPostCard } from '../components/InstagramPostCard';
 import { StoryPostCard } from '../components/StoryPostCard';
 import { TextPostCard } from '../components/TextPostCard';
+import { FeedPreviewButton } from '../components/FeedPreviewButton';
+import { InstagramGridPreview } from '../components/InstagramGridPreview';
 import type { HubPost } from '../types';
 import { VISIBLE_STATUSES } from '../lib/postView';
 import { SharePostButton } from '../components/SharePostButton';
@@ -76,7 +78,10 @@ function StatusTag({ status }: { status: string }) {
 
 export function PostagensPage() {
   const { token, bootstrap } = useHub();
+  const qc = useQueryClient();
   const [collapsed, setCollapsed] = useState<Set<string> | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [showGrid, setShowGrid] = useState(false);
   const { data, isLoading, isError } = useQuery({
     queryKey: ['hub-posts', token],
     queryFn: () => fetchPosts(token),
@@ -91,6 +96,43 @@ export function PostagensPage() {
   const allPosts = (data?.posts ?? []).filter((p) => VISIBLE_STATUSES.has(p.status));
   const approvals = data?.postApprovals ?? [];
   const instagramProfile = data?.instagramProfile ?? null;
+
+  const { data: feedData } = useQuery({
+    queryKey: ['hub-instagram-feed', token],
+    queryFn: () => fetchInstagramFeed(token),
+    enabled: showGrid && instagramProfile != null,
+  });
+
+  // Only feed-compatible posts (media, not stories) can be selected for the preview.
+  const feedSelectable = allPosts.filter((p) => p.media.length > 0 && p.tipo !== 'stories');
+  // Memoized on the query data + selection so the preview modal isn't handed a fresh
+  // array reference (which would reset an in-progress reorder) on every background refetch.
+  const selectedPosts = useMemo(
+    () =>
+      (data?.posts ?? []).filter(
+        (p) =>
+          VISIBLE_STATUSES.has(p.status) &&
+          p.media.length > 0 &&
+          p.tipo !== 'stories' &&
+          selectedIds.has(p.id),
+      ),
+    [data?.posts, selectedIds],
+  );
+
+  function handleToggleSelect(postId: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(postId)) next.delete(postId);
+      else next.add(postId);
+      return next;
+    });
+  }
+
+  function handleInvalidate() {
+    qc.invalidateQueries({ queryKey: ['hub-posts', token] });
+  }
+
+  const handleCloseGrid = useCallback(() => setShowGrid(false), []);
 
   const groups = useMemo(
     () =>
@@ -148,9 +190,36 @@ export function PostagensPage() {
           <span className="accent-bar" />
           Calendário editorial
         </p>
-        <h2 className="font-display text-[2rem] sm:text-[2.25rem] leading-[1.05] font-medium tracking-tight text-stone-900">
-          Postagens
-        </h2>
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="font-display text-[2rem] sm:text-[2.25rem] leading-[1.05] font-medium tracking-tight text-stone-900">
+            Postagens
+          </h2>
+          {instagramProfile && (
+            <FeedPreviewButton
+              selectedCount={selectedPosts.length}
+              onClick={() => setShowGrid(true)}
+            />
+          )}
+        </div>
+        {instagramProfile && feedSelectable.length > 0 && selectedPosts.length === 0 && (
+          <p className="text-[12px] text-stone-400 mt-2 flex items-center gap-1.5">
+            <svg
+              width="14"
+              height="14"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              viewBox="0 0 24 24"
+              className="shrink-0"
+            >
+              <rect x="3" y="3" width="7" height="7" />
+              <rect x="14" y="3" width="7" height="7" />
+              <rect x="3" y="14" width="7" height="7" />
+              <rect x="14" y="14" width="7" height="7" />
+            </svg>
+            Selecione posts para visualizar e reordenar como ficarão no feed do Instagram.
+          </p>
+        )}
       </header>
 
       {groups.length === 0 ? (
@@ -212,6 +281,8 @@ export function PostagensPage() {
                           instagramProfile={instagramProfile}
                           workspaceName={bootstrap.workspace.name}
                           readOnly
+                          isSelected={selectedIds.has(post.id)}
+                          onToggleSelect={instagramProfile ? handleToggleSelect : undefined}
                           priority={i === 0}
                           autoPublishOnApproval={data?.autoPublishOnApproval ?? false}
                         />
@@ -268,6 +339,17 @@ export function PostagensPage() {
             );
           })}
         </div>
+      )}
+
+      {showGrid && feedData && (
+        <InstagramGridPreview
+          selectedPosts={selectedPosts}
+          feedProfile={feedData.profile}
+          livePosts={feedData.recentPosts}
+          token={token}
+          onClose={handleCloseGrid}
+          onScheduleUpdated={handleInvalidate}
+        />
       )}
     </div>
   );
