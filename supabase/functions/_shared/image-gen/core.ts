@@ -530,7 +530,10 @@ async function runPipeline(
   };
 
   // ── Store: R2 → files (storage quota) → ledger succeeded ──────────────────
-  const r2Key = `contas/${input.contaId}/files/${deps.randomUUID()}.png`;
+  // Extension follows the ACTUAL bytes (providers may return JPEG for a PNG request) so the stored
+  // object / file name don't mislead extension-sniffing consumers; mime_type carries the truth too.
+  const ext = generated.mime === "image/jpeg" ? "jpg" : "png";
+  const r2Key = `contas/${input.contaId}/files/${deps.randomUUID()}.${ext}`;
   try {
     await deps.putObject(r2Key, generated.bytes, generated.mime);
   } catch (e) {
@@ -550,7 +553,7 @@ async function runPipeline(
       folder_id: "",
       r2_key: r2Key,
       thumbnail_r2_key: "",
-      name: `ai-${input.aspectRatio.replace(":", "x")}-${ledgerId}.png`,
+      name: `ai-${input.aspectRatio.replace(":", "x")}-${ledgerId}.${ext}`,
       kind: "image",
       mime_type: generated.mime,
       size_bytes: generated.bytes.byteLength,

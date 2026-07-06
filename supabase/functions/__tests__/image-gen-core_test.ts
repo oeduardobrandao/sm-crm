@@ -11,7 +11,11 @@ import {
   type ImageGenCoreDeps,
   type ImageGenInput,
 } from "../_shared/image-gen/core.ts";
-import { parsePngIhdr, type ImageGenRequest } from "../_shared/image-gen/provider.ts";
+import {
+  parseImageMeta,
+  parsePngIhdr,
+  type ImageGenRequest,
+} from "../_shared/image-gen/provider.ts";
 
 const CONTA = "workspace-A";
 
@@ -123,6 +127,36 @@ Deno.test("parsePngIhdr: real dims win; garbage returns null", () => {
   assertEquals(parsePngIhdr(png), { width: 512, height: 640 });
   assertEquals(parsePngIhdr(new TextEncoder().encode("not a png at all........")), null);
   assertEquals(parsePngIhdr(new Uint8Array(4)), null);
+});
+
+/** A minimal JPEG (SOI + APP0 + SOF0) whose SOF0 declares the given dims — the SOF sits after an
+ * APP0 segment so the test also proves the parser skips segments (real JPEGs open with JFIF/APP0). */
+function jpegBytes(width: number, height: number): Uint8Array {
+  const b = new Uint8Array(30);
+  b.set([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]); // SOI + APP0 marker + length 16
+  b.set([0x4a, 0x46, 0x49, 0x46, 0x00], 6); // "JFIF\0" (rest of APP0 payload zero-padded)
+  b.set([0xff, 0xc0, 0x00, 0x11, 0x08], 20); // SOF0 marker + length 17 + precision 8
+  b[25] = (height >> 8) & 0xff;
+  b[26] = height & 0xff;
+  b[27] = (width >> 8) & 0xff;
+  b[28] = width & 0xff;
+  return b;
+}
+
+Deno.test("parseImageMeta: sniffs PNG vs JPEG (mime + ext + real dims); garbage → null", () => {
+  const png = new Uint8Array(32);
+  png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const view = new DataView(png.buffer);
+  view.setUint32(16, 800);
+  view.setUint32(20, 600);
+  assertEquals(parseImageMeta(png), { mime: "image/png", ext: "png", width: 800, height: 600 });
+  assertEquals(parseImageMeta(jpegBytes(1024, 768)), {
+    mime: "image/jpeg",
+    ext: "jpg",
+    width: 1024,
+    height: 768,
+  });
+  assertEquals(parseImageMeta(new TextEncoder().encode("not an image at all....")), null);
 });
 
 // ── gates before spend ───────────────────────────────────────────────────────
@@ -311,6 +345,34 @@ Deno.test("happy path: R2 put at the tenant key, files row, ledger succeeded, qu
   assertEquals(out.height, 1152);
   assert(out.preview_url.startsWith("https://signed.example/"));
   assertEquals(out.quota, { used: 1, limit: 50, resets_at: out.quota.resets_at });
+});
+
+Deno.test("JPEG from the provider is stored as .jpg with image/jpeg (R2 key, file name, mime_type)", async () => {
+  // The provider may return JPEG even when we asked for PNG (OpenRouter does for this model). The
+  // stored object, its extension, and the files row must reflect the ACTUAL bytes — not a hardcoded
+  // png that mislabels the content type and misleads extension-sniffing consumers.
+  const h = makeHarness({
+    provider: {
+      name: "openrouter",
+      model: "google/gemini-3.1-flash-image",
+      generate: () =>
+        Promise.resolve({
+          bytes: new Uint8Array([0xff, 0xd8, 0xff]),
+          mime: "image/jpeg",
+          width: 1024,
+          height: 1024,
+          model: "google/gemini-3.1-flash-image",
+          costEstimateUsd: 0.068,
+        }),
+    },
+  });
+  queueBare(h.db);
+  const out = await generateImageCore(h.deps, baseInput());
+  assert(h.puts[0].key.endsWith(".jpg"), h.puts[0].key);
+  assertEquals(h.puts[0].contentType, "image/jpeg");
+  assertEquals(h.fileInserts[0].mime_type, "image/jpeg");
+  assert(String(h.fileInserts[0].name).endsWith(".jpg"), String(h.fileInserts[0].name));
+  assert(out.preview_url.endsWith(".jpg"), out.preview_url);
 });
 
 Deno.test("the prompt reaches ONLY the ledger insert (and the provider) — no other sink", async () => {
