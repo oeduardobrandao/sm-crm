@@ -53,6 +53,17 @@ export const RESERVATION_WINDOW_MIN = 10;
 // deno-lint-ignore no-explicit-any
 type Db = { from: (table: string) => any };
 
+// ctx.key_id is an OPAQUE credential id (mcp-oauth.ts): a uuid for API keys, but `oauth:<clientId>`
+// for claude.ai web (OAuth) sessions. The ledger's `mcp_key_id` is a uuid column, so persist the id
+// only when it IS one — an OAuth session has no API key, so its ledger attribution is NULL (the
+// caller is still identified by created_by). The opaque value keeps keying the per-credential burst
+// limit upstream. Without this coercion, an OAuth generate_image insert throws `invalid input syntax
+// for type uuid` before any pending row exists, surfacing as an opaque "Internal error.".
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function asLedgerKeyId(keyId: string | undefined): string | null {
+  return keyId && UUID_RE.test(keyId) ? keyId : null;
+}
+
 export interface ImageGenCoreDeps {
   db: Db;
   provider: ImageGenProvider | undefined;
@@ -436,7 +447,7 @@ async function runPipeline(
         cliente_id: input.clientId ?? null,
         post_id: input.postId ?? null, // ledger ONLY — never post_file_links (§5.2)
         source: input.source,
-        mcp_key_id: input.mcpKeyId ?? null,
+        mcp_key_id: asLedgerKeyId(input.mcpKeyId), // uuid for API keys; NULL for OAuth (`oauth:…`)
         // Attribution from the adapter itself, so failed rows point at the provider/model that
         // actually served the attempt (success rows are later overwritten with the result's).
         provider: deps.provider.name ?? "unknown",
