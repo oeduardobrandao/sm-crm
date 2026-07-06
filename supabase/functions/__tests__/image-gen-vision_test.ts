@@ -116,6 +116,32 @@ Deno.test("vision: tolerant JSON extraction — prose around the JSON block stil
   }
 });
 
+Deno.test("vision: prose-wrapped JSON whose block text contains literal braces/brackets still parses (string-aware scan)", async () => {
+  const block = validBlock({ text: "Save 20% {hoje} [promo]" });
+  const wrapped = `Sure, here are the blocks:\n${JSON.stringify({ blocks: [block] })}\nHope that helps!`;
+  const f = stubFetch([chatResponse(wrapped)]);
+  try {
+    const blocks = await extractTextBlocks(input);
+    assertEquals(blocks.length, 1);
+    assertEquals(blocks[0].text, "Save 20% {hoje} [promo]");
+  } finally {
+    f.restore();
+  }
+});
+
+Deno.test("vision: prose-wrapped JSON with an escaped quote followed by a brace in a string value still parses (escape-state coverage)", async () => {
+  const block = validBlock({ text: 'a \\" b }' });
+  const wrapped = `Sure, here are the blocks:\n${JSON.stringify({ blocks: [block] })}\nHope that helps!`;
+  const f = stubFetch([chatResponse(wrapped)]);
+  try {
+    const blocks = await extractTextBlocks(input);
+    assertEquals(blocks.length, 1);
+    assertEquals(blocks[0].text, 'a \\" b }');
+  } finally {
+    f.restore();
+  }
+});
+
 Deno.test("vision: a top-level JSON array (no 'blocks' wrapper) is also accepted", async () => {
   const f = stubFetch([chatResponse(JSON.stringify([validBlock()]))]);
   try {
