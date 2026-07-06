@@ -1,5 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { signGetUrl } from "../_shared/r2.ts";
+import { getObjectBytes, signGetUrl } from "../_shared/r2.ts";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { createSignR2UrlsHandler } from "./handler.ts";
 
@@ -12,4 +12,5 @@ Deno.serve(createSignR2UrlsHandler({
     auth: { autoRefreshToken: false, persistSession: false },
   }),
   signGetUrl,
+  getObjectBytes,
 }));

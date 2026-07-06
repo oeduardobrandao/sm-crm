@@ -77,7 +77,10 @@
     "thumbnailFallback": "Could not generate a thumbnail automatically. Select a cover image for",
     "remainingVideos": "{{count}} video(s) awaiting a thumbnail",
     "carouselLimit": "Carousel exceeds Instagram's limit",
-    "carouselLimitDesc": "Carousels published via Instagram allow at most {{max}} items (this post has {{count}}). The app allows 20, but automatic publishing is limited to {{max}}."
+    "carouselLimitDesc": "Carousels published via Instagram allow at most {{max}} items (this post has {{count}}). The app allows 20, but automatic publishing is limited to {{max}}.",
+    "designOwned": "Media managed by Estúdio — edit the design in Estúdio.",
+    "designOwnedReel": "Cover managed by Estúdio — the reel video stays manual.",
+    "designOwnsImages": "The cover is managed by Estúdio — upload the video only."
   },
   "thumbnailEditor": {
     "title": "Video thumbnail",

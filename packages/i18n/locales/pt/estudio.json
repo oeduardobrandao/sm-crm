@@ -1,0 +1,270 @@
+{
+  "title": "Estúdio",
+  "subtitle": "Crie designs para seus posts direto no Mesaas.",
+  "picker": {
+    "clientLabel": "Cliente",
+    "selectClient": "Selecione um cliente",
+    "postLabel": "Post",
+    "selectPost": "Selecione um post existente",
+    "noEditablePosts": "Nenhum post editável para este cliente ainda.",
+    "createNew": "Criar novo design",
+    "creating": "Preparando seu design...",
+    "openExisting": "Abrir"
+  },
+  "editor": {
+    "loading": "Carregando design...",
+    "notFound": "Design não encontrado.",
+    "loadError": "Não foi possível carregar o design.",
+    "pageCount": "{{count}} página",
+    "pageCount_other": "{{count}} páginas",
+    "layerCount": "{{count}} camada",
+    "layerCount_other": "{{count}} camadas",
+    "canvasComingSoon": "O canvas de edição chega na próxima atualização.",
+    "rendering": "Renderizando...",
+    "renderError": "Não foi possível renderizar este design.",
+    "safeZoneToggle": "Guias de área segura",
+    "reelVideoNotice": "Adicione o vídeo do reel ao post — o Estúdio cria apenas a capa, e a renderização precisa do vídeo.",
+    "videoMediaBlocked": "Este post tem vídeo — o Estúdio não pode criar um design de feed/carrossel para ele.",
+    "saveError": "Não foi possível salvar o design.",
+    "conflictBanner": "Este design foi alterado por outra fonte —",
+    "reload": "Recarregar",
+    "savePill": {
+      "saved": "Salvo",
+      "saving": "Salvando…",
+      "dirty": "Alterações pendentes",
+      "conflict": "Conflito"
+    },
+    "undo": "Desfazer",
+    "redo": "Refazer",
+    "zoomReset": "Ajustar à tela",
+    "zoomLabel": "Zoom",
+    "unavailable": "O Estúdio ainda não está disponível neste ambiente.",
+    "notRunning": "O editor não respondeu. Verifique se o serviço do editor está ativo.",
+    "notRunningDevHint": "Dev: inicie o servidor do editor na porta 1420 (configuração \"op-editor\").",
+    "unsavedPrompt": "Há alterações não salvas. Sair mesmo assim?",
+    "saveNow": "Salvar agora",
+    "invalidDesign": "Design inválido.",
+    "readOnlyPill": "Somente leitura",
+    "readOnlyBanner": "Este design pertence a um post que o cliente já aprovou — somente leitura. Duplique para editar uma cópia.",
+    "duplicate": "Duplicar",
+    "authError": "Não foi possível autenticar o editor. Recarregue a página.",
+    "loadErrorHint": "Verifique se o post ainda é editável e se o Estúdio está habilitado no seu plano."
+  },
+  "openInEstudio": "Abrir no Estúdio",
+  "viewInEstudio": "Ver no Estúdio",
+  "dock": {
+    "addText": "Adicionar texto",
+    "defaultText": "Seu texto aqui",
+    "addShape": "Adicionar forma",
+    "addRectangle": "Retângulo",
+    "addEllipse": "Elipse",
+    "uploadImage": "Enviar imagem",
+    "openArquivos": "Arquivos",
+    "brand": "Marca",
+    "generateImage": "Gerar imagem com IA"
+  },
+  "aiPanel": {
+    "promptLabel": "Descreva a imagem",
+    "promptPlaceholder": "Ex: fundo abstrato dourado com textura de mármore",
+    "aspectRatio": "Proporção",
+    "placement": "Uso",
+    "placementElement": "Camada",
+    "placementBackground": "Fundo",
+    "useBrandLogo": "Incluir o logo da marca como referência",
+    "quota": "{{used}}/{{limit}} imagens este mês",
+    "quotaUnlimited": "{{used}} imagens este mês",
+    "generate": "Gerar",
+    "generating": "Gerando…",
+    "resultAlt": "Imagem gerada",
+    "insertLayer": "Inserir como camada",
+    "setBackground": "Usar como fundo",
+    "error": {
+      "featureDisabled": "A geração de imagens não está disponível no seu plano.",
+      "quotaExhausted": "Você atingiu a cota mensal de imagens do seu plano.",
+      "rateLimited": "Muitas gerações em sequência — aguarde alguns instantes.",
+      "inProgress": "Uma geração ainda está em andamento — aguarde.",
+      "safety": "O provedor recusou este prompt — tente descrever de outra forma.",
+      "invalidReference": "Não foi possível usar uma das referências (logo/imagem).",
+      "storageQuota": "Limite de armazenamento do plano atingido.",
+      "timeout": "O provedor demorou demais — tente novamente.",
+      "generic": "Não foi possível gerar a imagem. Tente novamente."
+    }
+  },
+  "colorPicker": {
+    "open": "Escolher cor",
+    "native": "Seletor de cor",
+    "hex": "Cor em hexadecimal",
+    "brand": "Marca",
+    "recents": "Recentes",
+    "empty": "Sem cor"
+  },
+  "fontPicker": {
+    "open": "Escolher fonte",
+    "search": "Buscar fonte…",
+    "empty": "Nenhuma fonte encontrada.",
+    "brand": "Marca",
+    "notIncluded": "não incluída no Estúdio"
+  },
+  "brandPanel": {
+    "colors": "Cores",
+    "fonts": "Fontes",
+    "logo": "Logo",
+    "apply": "Aplicar",
+    "insertLogo": "Inserir logo",
+    "importLogo": "Importar logo",
+    "importing": "Importando…",
+    "importSuccess": "Logo importado!",
+    "noBrand": "Nenhuma marca cadastrada para este cliente. Configure em Clientes → Hub → Marca.",
+    "noColors": "Nenhuma cor cadastrada.",
+    "noFonts": "Nenhuma fonte cadastrada.",
+    "noLogo": "Nenhum logo cadastrado.",
+    "selectColorTarget": "Selecione um texto ou forma para aplicar.",
+    "selectFontTarget": "Selecione uma camada de texto",
+    "importReason": {
+      "noLogoUrl": "Este cliente não tem URL de logo cadastrada.",
+      "invalidUrl": "A URL do logo é inválida — use um endereço https válido.",
+      "blocked": "A URL do logo foi bloqueada por segurança.",
+      "unreachable": "Não foi possível acessar a URL do logo.",
+      "notImage": "A URL do logo não aponta para uma imagem válida.",
+      "tooLarge": "O logo é maior que 5 MB.",
+      "quota": "Limite de armazenamento do seu plano atingido.",
+      "generic": "Não foi possível importar o logo."
+    }
+  },
+  "slideStrip": {
+    "pageLabel": "Página {{number}}",
+    "addPage": "Adicionar página",
+    "addPageConvert": "Adicionar página (o post vira carrossel)",
+    "maxPagesReached": "Limite de {{max}} páginas atingido",
+    "duplicatePage": "Duplicar página",
+    "removePage": "Remover página",
+    "cannotRemoveLastPage": "Não é possível remover a única página"
+  },
+  "toolbar": {
+    "on": "Ativado",
+    "off": "Desativado",
+    "emptyHint": "Selecione um elemento para editar",
+    "stepDown": "Diminuir",
+    "stepUp": "Aumentar",
+    "text": {
+      "font": "Fonte",
+      "weight": "Peso",
+      "size": "Tamanho",
+      "color": "Cor",
+      "align": "Alinhamento",
+      "align_left": "Esquerda",
+      "align_center": "Centro",
+      "align_right": "Direita",
+      "shadow": "Sombra",
+      "shadowColor": "Cor da sombra",
+      "pill": "Fundo em pílula",
+      "pillColor": "Cor do fundo em pílula"
+    },
+    "image": {
+      "fit": "Ajuste",
+      "fitCover": "Preencher",
+      "fitContain": "Conter",
+      "radius": "Raio da borda",
+      "border": "Borda",
+      "borderColor": "Cor da borda",
+      "replace": "Substituir imagem"
+    },
+    "shape": {
+      "fill": "Preenchimento",
+      "stroke": "Contorno",
+      "strokeColor": "Cor do contorno",
+      "radius": "Raio da borda",
+      "radiusDisabledHint": "Raio só se aplica a retângulos"
+    },
+    "align": {
+      "label": "Alinhar à página",
+      "left": "Alinhar à esquerda",
+      "hcenter": "Centralizar horizontalmente",
+      "right": "Alinhar à direita",
+      "top": "Alinhar ao topo",
+      "vcenter": "Centralizar verticalmente",
+      "bottom": "Alinhar à base"
+    }
+  },
+  "layers": {
+    "title": "Camadas",
+    "empty": "Nenhuma camada ainda",
+    "dragHandle": "Reordenar camada",
+    "lock": "Bloquear camada",
+    "unlock": "Desbloquear camada"
+  },
+  "toast": {
+    "createError": "Não foi possível criar o design: {{error}}"
+  },
+  "home": {
+    "newDesign": "Novo design",
+    "newDesignHint": "Escolha o formato — dá para vincular a um post depois.",
+    "allClients": "Todos os clientes",
+    "noClient": "Sem cliente",
+    "nameLabel": "Nome",
+    "namePlaceholder": "Design sem título",
+    "clientLabel": "Cliente",
+    "create": "Criar design",
+    "empty": "Nenhum design ainda. Crie o primeiro ou abra um post pela aba Entregas.",
+    "emptyCta": "Criar meu primeiro design",
+    "generating": "Gerando…",
+    "renderFailed": "Falhou",
+    "attachedTo": "Post #{{id}}",
+    "cardMenu": "Ações do design",
+    "duplicated": "Design duplicado!",
+    "detachDone": "Design desvinculado — as mídias já aplicadas continuam no post.",
+    "deleteConfirmTitle": "Excluir design?",
+    "deleteConfirmBody": "\"{{name}}\" será excluído permanentemente. Mídias já aplicadas a um post continuam nele.",
+    "deleteConfirmCta": "Excluir",
+    "deleteCancel": "Cancelar",
+    "actions": {
+      "open": "Abrir",
+      "duplicate": "Duplicar",
+      "apply": "Aplicar a um post",
+      "detach": "Desvincular do post",
+      "delete": "Excluir"
+    },
+    "formats": {
+      "feed": "Feed",
+      "carrossel": "Carrossel",
+      "reel_cover": "Capa de Reel",
+      "livre": "Livre"
+    },
+    "formatHints": {
+      "feed": "1080×1350",
+      "carrossel": "1080×1350",
+      "reel_cover": "1080×1920",
+      "livre": "Canvas livre"
+    }
+  },
+  "apply": {
+    "title": "Aplicar \"{{name}}\" a um post",
+    "subtitle": "Escolha o cliente, o fluxo e o post que vai receber este design.",
+    "clientLabel": "Cliente",
+    "clientPlaceholder": "Selecione um cliente",
+    "workflowLabel": "Fluxo",
+    "workflowPlaceholder": "Selecione um fluxo",
+    "noWorkflows": "Nenhum fluxo ativo para este cliente",
+    "postLabel": "Post",
+    "noPosts": "Este fluxo não tem posts.",
+    "reasons": {
+      "already_designed": "já tem design",
+      "not_editable": "status não editável",
+      "tipo_unsupported": "tipo não suportado",
+      "has_video": "tem vídeo"
+    },
+    "info": "Aplicar substitui as mídias do post pelas artes do design na próxima renderização, e o tipo do post acompanha os frames.",
+    "confirm": "Aplicar",
+    "applying": "Aplicando…",
+    "success": "Design aplicado! A arte entra no post em instantes ({{tipo}}).",
+    "errors": {
+      "post_already_designed": "Esse post já tem um design.",
+      "post_not_editable": "O post não está mais editável.",
+      "post_has_video": "O post tem vídeo — remova antes de aplicar.",
+      "post_tipo_unsupported": "O tipo do post não suporta designs.",
+      "design_already_attached": "Este design já está vinculado a um post."
+    }
+  },
+  "featureBlocked": "O Estúdio não está disponível no seu plano atual. Fale com o suporte para fazer upgrade.",
+  "back": "Voltar"
+}

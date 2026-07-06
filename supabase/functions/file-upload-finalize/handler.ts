@@ -1,4 +1,5 @@
 import { createJsonResponder } from "../_shared/http.ts";
+import { markReelCoverStaleForNewVideo } from "../_shared/reel-cover-staleness.ts";
 
 type DbClient = {
   from: (table: string) => any;
@@ -16,6 +17,10 @@ interface FileUploadFinalizeDeps {
   createDb: () => DbClient;
   headObject: (key: string) => Promise<HeadResult | null>;
   signUrl: (key: string) => Promise<string>;
+  /** Optional design-render kick after a reel video swap marks its cover stale — same
+   * best-effort pattern as instagram-publish (wired only when CRON_SECRET exists). */
+  triggerDesignRender?: (designId: number, rev: number) => Promise<void>;
+  waitUntil?: (promise: Promise<unknown>) => void;
 }
 
 export function createFileUploadFinalizeHandler(deps: FileUploadFinalizeDeps) {
@@ -148,6 +153,25 @@ export function createFileUploadFinalizeHandler(deps: FileUploadFinalizeDeps) {
       }
       const { error: linkErr } = await svc.from("post_file_links").insert(link);
       if (linkErr) return json({ error: linkErr.message }, 500);
+
+      // A NEW video on a post with a reel_cover design invalidates the rendered cover (it
+      // lives on the video's thumbnail — see _shared/reel-cover-staleness.ts). Best-effort:
+      // an upload must never fail because of this bookkeeping.
+      if (body.kind === "video") {
+        try {
+          const stale = await markReelCoverStaleForNewVideo(svc, body.post_id);
+          if (stale.marked && stale.design && deps.triggerDesignRender) {
+            const kick = deps
+              .triggerDesignRender(stale.design.id, stale.design.rev)
+              .catch((e) =>
+                console.error("[file-upload-finalize] design re-trigger failed:", (e as Error)?.message)
+              );
+            if (deps.waitUntil) deps.waitUntil(kick);
+          }
+        } catch (e) {
+          console.error("[file-upload-finalize] reel-cover staleness failed:", e);
+        }
+      }
     }
 
     const url = await deps.signUrl(body.r2_key);

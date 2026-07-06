@@ -12,8 +12,9 @@ npm run dev:admin        # Admin app on :5177    (prod)
 npm run dev:staging      # CRM   against staging Supabase
 npm run dev:hub:staging  # Hub   against staging Supabase
 npm run dev:admin:staging# Admin against staging Supabase
-npm run dev:all          # CRM + Hub + Admin together (prod)    via concurrently
-npm run dev:all:staging  # CRM + Hub + Admin together (staging) via concurrently
+npm run dev:estudio      # Estúdio editor (OpenPencil fork) on :1420 — needs ~/Projects/open-pencil-spike + bun
+npm run dev:all          # CRM + Hub + Admin + Estúdio together (prod)    via concurrently
+npm run dev:all:staging  # CRM + Hub + Admin + Estúdio together (staging) via concurrently
 
 # Build (always typecheck first)
 npm run build            # tsc + vite build for CRM
@@ -110,6 +111,7 @@ Monorepo with npm workspaces:
 - `ALLOWED_ORIGINS` -- Comma-separated allowed CORS origins
 - `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` -- Cloudflare R2
 - `CRON_SECRET` -- Shared secret for cron function authentication
+- `GEMINI_API_KEY` -- Google Gemini key for AI image generation (mcp generate_image + generate-image fn). Optional for the mcp function (tool reports unconfigured); REQUIRED by generate-image, no default
 - `STRIPE_SECRET_KEY` -- Stripe API secret key. REQUIRED by billing functions, no default -- throw if missing
 - `STRIPE_WEBHOOK_SECRET` -- Stripe webhook signing secret. REQUIRED by stripe-webhook, no default -- throw if missing
 

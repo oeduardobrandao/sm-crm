@@ -1,0 +1,270 @@
+{
+  "title": "Studio",
+  "subtitle": "Design your posts right inside Mesaas.",
+  "picker": {
+    "clientLabel": "Client",
+    "selectClient": "Select a client",
+    "postLabel": "Post",
+    "selectPost": "Select an existing post",
+    "noEditablePosts": "No editable posts for this client yet.",
+    "createNew": "Create new design",
+    "creating": "Preparing your design...",
+    "openExisting": "Open"
+  },
+  "editor": {
+    "loading": "Loading design...",
+    "notFound": "Design not found.",
+    "loadError": "Could not load the design.",
+    "pageCount": "{{count}} page",
+    "pageCount_other": "{{count}} pages",
+    "layerCount": "{{count}} layer",
+    "layerCount_other": "{{count}} layers",
+    "canvasComingSoon": "The editing canvas ships in the next update.",
+    "rendering": "Rendering...",
+    "renderError": "Could not render this design.",
+    "safeZoneToggle": "Safe-zone guides",
+    "reelVideoNotice": "Add the reel video to the post — Estúdio only creates the cover, and rendering needs the video.",
+    "videoMediaBlocked": "This post has video media — Estúdio cannot create a feed/carousel design for it.",
+    "saveError": "Could not save the design.",
+    "conflictBanner": "This design was changed by another source —",
+    "reload": "Reload",
+    "savePill": {
+      "saved": "Saved",
+      "saving": "Saving…",
+      "dirty": "Unsaved changes",
+      "conflict": "Conflict"
+    },
+    "undo": "Undo",
+    "redo": "Redo",
+    "zoomReset": "Fit to screen",
+    "zoomLabel": "Zoom",
+    "unavailable": "Estúdio is not available in this environment yet.",
+    "notRunning": "The editor did not respond. Check that the editor service is running.",
+    "notRunningDevHint": "Dev: start the editor dev server on port 1420 (\"op-editor\" launch config).",
+    "unsavedPrompt": "There are unsaved changes. Leave anyway?",
+    "saveNow": "Save now",
+    "invalidDesign": "Invalid design.",
+    "readOnlyPill": "Read-only",
+    "readOnlyBanner": "This design belongs to a client-approved post — read-only. Duplicate it to edit a copy.",
+    "duplicate": "Duplicate",
+    "authError": "Could not authenticate the editor. Reload the page.",
+    "loadErrorHint": "Check that the post is still editable and Estúdio is enabled on your plan."
+  },
+  "openInEstudio": "Open in Studio",
+  "viewInEstudio": "View in Studio",
+  "dock": {
+    "addText": "Add text",
+    "defaultText": "Your text here",
+    "addShape": "Add shape",
+    "addRectangle": "Rectangle",
+    "addEllipse": "Ellipse",
+    "uploadImage": "Upload image",
+    "openArquivos": "Files",
+    "brand": "Brand",
+    "generateImage": "Generate image with AI"
+  },
+  "aiPanel": {
+    "promptLabel": "Describe the image",
+    "promptPlaceholder": "e.g. abstract golden background with marble texture",
+    "aspectRatio": "Aspect ratio",
+    "placement": "Use",
+    "placementElement": "Layer",
+    "placementBackground": "Background",
+    "useBrandLogo": "Include the brand logo as a reference",
+    "quota": "{{used}}/{{limit}} images this month",
+    "quotaUnlimited": "{{used}} images this month",
+    "generate": "Generate",
+    "generating": "Generating…",
+    "resultAlt": "Generated image",
+    "insertLayer": "Insert as layer",
+    "setBackground": "Use as background",
+    "error": {
+      "featureDisabled": "Image generation isn't available on your plan.",
+      "quotaExhausted": "You've reached your plan's monthly image quota.",
+      "rateLimited": "Too many generations in a row — wait a moment.",
+      "inProgress": "A generation is still in progress — please wait.",
+      "safety": "The provider declined this prompt — try describing it differently.",
+      "invalidReference": "One of the references (logo/image) couldn't be used.",
+      "storageQuota": "Your plan's storage limit has been reached.",
+      "timeout": "The provider took too long — try again.",
+      "generic": "Couldn't generate the image. Please try again."
+    }
+  },
+  "colorPicker": {
+    "open": "Pick color",
+    "native": "Color selector",
+    "hex": "Hex color",
+    "brand": "Brand",
+    "recents": "Recent",
+    "empty": "No color"
+  },
+  "fontPicker": {
+    "open": "Pick font",
+    "search": "Search fonts…",
+    "empty": "No fonts found.",
+    "brand": "Brand",
+    "notIncluded": "not included in Estúdio"
+  },
+  "brandPanel": {
+    "colors": "Colors",
+    "fonts": "Fonts",
+    "logo": "Logo",
+    "apply": "Apply",
+    "insertLogo": "Insert logo",
+    "importLogo": "Import logo",
+    "importing": "Importing…",
+    "importSuccess": "Logo imported!",
+    "noBrand": "No brand set up for this client yet. Configure it in Clients → Hub → Brand.",
+    "noColors": "No colors set.",
+    "noFonts": "No fonts set.",
+    "noLogo": "No logo set.",
+    "selectColorTarget": "Select a text or shape layer to apply.",
+    "selectFontTarget": "Select a text layer",
+    "importReason": {
+      "noLogoUrl": "This client has no logo URL configured.",
+      "invalidUrl": "The logo URL is invalid — use a valid https address.",
+      "blocked": "The logo URL was blocked for security reasons.",
+      "unreachable": "The logo URL could not be reached.",
+      "notImage": "The logo URL does not point to a valid image.",
+      "tooLarge": "The logo is larger than 5 MB.",
+      "quota": "Your plan's storage limit has been reached.",
+      "generic": "The logo could not be imported."
+    }
+  },
+  "slideStrip": {
+    "pageLabel": "Page {{number}}",
+    "addPage": "Add page",
+    "addPageConvert": "Add page (post becomes a carousel)",
+    "maxPagesReached": "{{max}}-page limit reached",
+    "duplicatePage": "Duplicate page",
+    "removePage": "Remove page",
+    "cannotRemoveLastPage": "Can't remove the only page"
+  },
+  "toolbar": {
+    "on": "On",
+    "off": "Off",
+    "emptyHint": "Select an element to edit",
+    "stepDown": "Decrease",
+    "stepUp": "Increase",
+    "text": {
+      "font": "Font",
+      "weight": "Weight",
+      "size": "Size",
+      "color": "Color",
+      "align": "Align",
+      "align_left": "Left",
+      "align_center": "Center",
+      "align_right": "Right",
+      "shadow": "Shadow",
+      "shadowColor": "Shadow color",
+      "pill": "Pill background",
+      "pillColor": "Pill background color"
+    },
+    "image": {
+      "fit": "Fit",
+      "fitCover": "Cover",
+      "fitContain": "Contain",
+      "radius": "Corner radius",
+      "border": "Border",
+      "borderColor": "Border color",
+      "replace": "Replace image"
+    },
+    "shape": {
+      "fill": "Fill",
+      "stroke": "Stroke",
+      "strokeColor": "Stroke color",
+      "radius": "Corner radius",
+      "radiusDisabledHint": "Radius only applies to rectangles"
+    },
+    "align": {
+      "label": "Align to page",
+      "left": "Align left",
+      "hcenter": "Center horizontally",
+      "right": "Align right",
+      "top": "Align top",
+      "vcenter": "Center vertically",
+      "bottom": "Align bottom"
+    }
+  },
+  "layers": {
+    "title": "Layers",
+    "empty": "No layers yet",
+    "dragHandle": "Reorder layer",
+    "lock": "Lock layer",
+    "unlock": "Unlock layer"
+  },
+  "toast": {
+    "createError": "Could not create the design: {{error}}"
+  },
+  "home": {
+    "newDesign": "New design",
+    "newDesignHint": "Pick a format — you can attach it to a post later.",
+    "allClients": "All clients",
+    "noClient": "No client",
+    "nameLabel": "Name",
+    "namePlaceholder": "Untitled design",
+    "clientLabel": "Client",
+    "create": "Create design",
+    "empty": "No designs yet. Create your first one or open a post from Entregas.",
+    "emptyCta": "Create my first design",
+    "generating": "Generating…",
+    "renderFailed": "Failed",
+    "attachedTo": "Post #{{id}}",
+    "cardMenu": "Design actions",
+    "duplicated": "Design duplicated!",
+    "detachDone": "Design detached — media already applied stays on the post.",
+    "deleteConfirmTitle": "Delete design?",
+    "deleteConfirmBody": "\"{{name}}\" will be permanently deleted. Media already applied to a post stays there.",
+    "deleteConfirmCta": "Delete",
+    "deleteCancel": "Cancel",
+    "actions": {
+      "open": "Open",
+      "duplicate": "Duplicate",
+      "apply": "Apply to a post",
+      "detach": "Detach from post",
+      "delete": "Delete"
+    },
+    "formats": {
+      "feed": "Feed",
+      "carrossel": "Carousel",
+      "reel_cover": "Reel cover",
+      "livre": "Free"
+    },
+    "formatHints": {
+      "feed": "1080×1350",
+      "carrossel": "1080×1350",
+      "reel_cover": "1080×1920",
+      "livre": "Free canvas"
+    }
+  },
+  "apply": {
+    "title": "Apply \"{{name}}\" to a post",
+    "subtitle": "Pick the client, workflow and post that will receive this design.",
+    "clientLabel": "Client",
+    "clientPlaceholder": "Select a client",
+    "workflowLabel": "Workflow",
+    "workflowPlaceholder": "Select a workflow",
+    "noWorkflows": "No active workflows for this client",
+    "postLabel": "Post",
+    "noPosts": "This workflow has no posts.",
+    "reasons": {
+      "already_designed": "already designed",
+      "not_editable": "status not editable",
+      "tipo_unsupported": "unsupported type",
+      "has_video": "has video"
+    },
+    "info": "Applying replaces the post's media with the design's art on the next render, and the post type follows the frames.",
+    "confirm": "Apply",
+    "applying": "Applying…",
+    "success": "Design applied! The art lands on the post shortly ({{tipo}}).",
+    "errors": {
+      "post_already_designed": "That post already has a design.",
+      "post_not_editable": "The post is no longer editable.",
+      "post_has_video": "The post has video media — remove it before applying.",
+      "post_tipo_unsupported": "This post type doesn't support designs.",
+      "design_already_attached": "This design is already attached to a post."
+    }
+  },
+  "featureBlocked": "Estúdio is not available on your current plan. Contact support to upgrade.",
+  "back": "Back"
+}

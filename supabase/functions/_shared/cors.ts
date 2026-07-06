@@ -27,6 +27,6 @@ export function buildCorsHeaders(req: Request): Record<string, string> {
   return {
     'Access-Control-Allow-Origin': resolveAllowedOrigin(req),
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-    'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
   };
 }

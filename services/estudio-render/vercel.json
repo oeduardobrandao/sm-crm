@@ -1,0 +1,15 @@
+{
+  "functions": {
+    "api/render.mjs": {
+      "memory": 1769,
+      "maxDuration": 60,
+      "includeFiles": "{assets,node_modules/@open-pencil/core/node_modules/canvaskit-wasm/bin/full,node_modules/canvaskit-wasm/bin/full}/**"
+    },
+    "api/describe.mjs": {
+      "maxDuration": 30
+    },
+    "api/mutate.mjs": {
+      "maxDuration": 30
+    }
+  }
+}

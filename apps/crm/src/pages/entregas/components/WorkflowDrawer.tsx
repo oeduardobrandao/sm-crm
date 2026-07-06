@@ -1,6 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import {
   X,
   Plus,
@@ -12,6 +14,7 @@ import {
   GripVertical,
   ImageIcon,
   Calendar as CalendarIcon,
+  Wand2,
 } from 'lucide-react';
 import {
   AlertDialog,
@@ -83,6 +86,9 @@ import {
   resolveInlineImageUrls,
 } from '@/services/inlineImage';
 import { listPostMedia } from '../../../services/postMedia';
+import { createDesign, getDesignForPost } from '@/store';
+import { EDITABLE_STATUSES as POST_EDITABLE_STATUSES } from '@/pages/estudio/applyEligibility';
+import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { InstagramCaptionField } from './InstagramCaptionField';
 import { ScheduleButton } from './ScheduleButton';
 import { DateTimePicker } from '@/components/ui/date-time-picker';
@@ -879,6 +885,32 @@ function SortablePostItem({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: post.id!,
   });
+  const navigate = useNavigate();
+  const { t } = useTranslation('estudio');
+
+  // T4.4/T4.5 — Estúdio lifecycle surface. Fail-open feature gate (same pattern as nav/
+  // PostPicker) and an EXPANDED-ONLY summary query: collapsed rows never hit designs.
+  // Direct RLS select via getDesignForPost; creation is explicit (createDesign) so an
+  // existence check can never mint a row.
+  const { features } = useWorkspaceLimits();
+  const estudioBlocked = features?.feature_estudio === false;
+  const designSummaryQuery = useQuery({
+    queryKey: ['post-design-summary', post.id],
+    queryFn: () => getDesignForPost(post.id!),
+    enabled: isExpanded && !!post.id && post.tipo !== 'stories' && !estudioBlocked,
+    // staleTime dedupes expand/collapse churn WITHIN an open drawer; refetchOnMount 'always'
+    // guarantees a fresh read when the drawer remounts — e.g. returning from a quick Estúdio
+    // edit that created/changed the design inside the 30s window (nothing invalidates this
+    // key from the editor route).
+    staleTime: 30 * 1000,
+    refetchOnMount: 'always',
+  });
+  const designSummary = designSummaryQuery.data ?? null;
+  const createDesignMutation = useMutation({
+    mutationFn: () => createDesign({ post_id: post.id! }),
+    onSuccess: ({ design_id }) => navigate(`/estudio/${design_id}`),
+    onError: (err: Error) => toast.error(t('toast.createError', { error: err.message })),
+  });
 
   // Local state for title to avoid input lag / letter-replacement from the
   // round-trip through updateWorkflowPost + refresh on every keystroke.
@@ -1151,7 +1183,36 @@ function SortablePostItem({
             />
           )}
 
-          <PostMediaGallery postId={post.id!} />
+          {/* Button matrix (design-first spec): editable post → create-or-open; locked post
+              WITH a design → "Ver no Estúdio" (read-only shell); locked without → nothing. */}
+          {post.tipo !== 'stories' &&
+            !estudioBlocked &&
+            (designSummary !== null || POST_EDITABLE_STATUSES.includes(post.status)) && (
+              <button
+                type="button"
+                disabled={createDesignMutation.isPending}
+                onClick={() => {
+                  if (designSummary) navigate(`/estudio/${designSummary.id}`);
+                  else createDesignMutation.mutate();
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors"
+                style={{
+                  background: 'rgba(234,179,8,0.12)',
+                  color: 'var(--primary-hover)',
+                  width: 'fit-content',
+                  marginBottom: '0.75rem',
+                }}
+              >
+                <Wand2 className="h-3.5 w-3.5" />{' '}
+                {createDesignMutation.isPending
+                  ? t('picker.creating')
+                  : designSummary && !POST_EDITABLE_STATUSES.includes(post.status)
+                    ? t('viewInEstudio')
+                    : t('openInEstudio')}
+              </button>
+            )}
+
+          <PostMediaGallery postId={post.id!} design={designSummary} postTipo={post.tipo} />
 
           {editSuggestion ? (
             <div className="rounded-lg border border-amber-200 bg-amber-50/50 overflow-hidden">

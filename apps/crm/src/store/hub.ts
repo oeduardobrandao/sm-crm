@@ -4,6 +4,9 @@ export interface HubBrandRow {
   id?: string;
   cliente_id: number;
   logo_url?: string | null;
+  /** Materialized logo as a real `files` row (Estúdio T3.2). Written by the CRM logo upload
+   * (HubTab) or the SSRF-hardened import route — `logo_url` stays the Hub-display field. */
+  logo_file_id?: number | null;
   primary_color?: string | null;
   secondary_color?: string | null;
   font_primary?: string | null;

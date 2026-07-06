@@ -29,6 +29,8 @@ const REQUIRED_FUNCTIONS = [
   "post-media-cleanup-cron",
   "analytics-report-cron",
   "invite-expire-cron",
+  "design-render",
+  "design-render-sweep-cron",
   // Token/internal auth
   "instagram-integration",
   "hub-bootstrap",
@@ -43,6 +45,7 @@ const REQUIRED_FUNCTIONS = [
   "post-media-upload-url",
   "post-media-finalize",
   "post-media-manage",
+  "design-manage",
   "platform-admin",
   "workspace-limits",
   "file-manage",

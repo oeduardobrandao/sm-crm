@@ -8,7 +8,7 @@ export const RESOURCE_COLUMNS = [
 ] as const;
 export const RATE_COLUMNS = [
   "rate_instagram_syncs_per_day", "rate_ai_analyses_per_month",
-  "rate_report_generations_per_month",
+  "rate_report_generations_per_month", "rate_ai_images_per_month",
 ] as const;
 export const FEATURE_COLUMNS = [
   "feature_instagram", "feature_instagram_ai", "feature_analytics_reports",
@@ -17,6 +17,7 @@ export const FEATURE_COLUMNS = [
   "feature_workflow_gantt", "feature_workflow_recurrence", "feature_csv_import",
   "feature_custom_properties", "feature_post_scheduling", "feature_auto_sync_cron",
   "feature_post_tagging", "feature_brand_customization", "feature_mcp",
+  "feature_estudio", "feature_ai_images",
 ] as const;
 
 type PlanRow = Record<string, unknown>;

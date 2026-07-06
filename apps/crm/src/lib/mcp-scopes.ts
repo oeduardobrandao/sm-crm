@@ -8,6 +8,8 @@ export const SCOPE_OPTIONS = [
   { value: 'ideias:read', label: 'Ideias/Pautas (leitura)' },
   { value: 'posts:write', label: 'Posts (escrita)' },
   { value: 'templates:write', label: 'Modelos (escrita)' },
+  { value: 'designs:write', label: 'Designs do Estúdio (escrita)' },
+  { value: 'images:generate', label: 'Geração de imagens com IA (gera custo)' },
 ] as const;
 
 /** Least-privilege preset for a content agent — read scopes only. Write is opt-in. */

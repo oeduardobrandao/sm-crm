@@ -73,6 +73,34 @@ Deno.test("create-plan persists feature_mcp and max_mcp_keys", async () => {
   assertEquals(payload.max_clients, 7);
 });
 
+Deno.test("update-plan persists feature_estudio, feature_ai_images and rate_ai_images_per_month", async () => {
+  const { db, calls } = makeFakeDb({
+    plans: [{ data: { id: "pro", feature_estudio: true, feature_ai_images: true, rate_ai_images_per_month: 100 }, error: null }],
+  });
+
+  const res = await handleUpdatePlan(
+    db as unknown as SupabaseClient,
+    {
+      action: "update-plan",
+      plan_id: "pro",
+      feature_estudio: true,
+      feature_ai_images: true,
+      rate_ai_images_per_month: 100,
+      feature_leads: true,
+    },
+    HEADERS,
+  );
+
+  assertEquals(res.status, 200);
+  const payload = lastPayload(calls, "plans", "update");
+  assert(payload, "expected an update on the plans table");
+  assertEquals(payload.feature_estudio, true);
+  assertEquals(payload.feature_ai_images, true);
+  assertEquals(payload.rate_ai_images_per_month, 100);
+  // Control: a column that already worked must keep working.
+  assertEquals(payload.feature_leads, true);
+});
+
 Deno.test("update-plan with is_default:true persists feature_mcp via the real update, not the demote call", async () => {
   const { db, calls } = makeFakeDb({
     plans: [

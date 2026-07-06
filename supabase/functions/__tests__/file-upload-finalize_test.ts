@@ -387,3 +387,71 @@ Deno.test("file-upload-finalize: forwards sort_order to the post_file_links inse
   assertEquals(linkCalls.length, 1);
   assertEquals((linkCalls[0].payload as { sort_order?: number }).sort_order, 4);
 });
+
+Deno.test("file-upload-finalize: NEW video on a reel_cover-designed post marks stale + kicks a render", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queueRpc("file_insert_with_quota", { data: { id: 31, kind: "video" }, error: null });
+  db.queue("workflow_posts", "select", { data: { conta_id: "conta-1" }, error: null });
+  db.queue("post_file_links", "insert", { data: null, error: null });
+  db.queue("designs", "select", {
+    data: { id: 9, rev: 5, format: "reel_cover" },
+    error: null,
+  });
+  db.queue("designs", "update", { data: null, error: null });
+
+  const triggered: Array<{ designId: number; rev: number }> = [];
+  const waited: Promise<unknown>[] = [];
+  const handler = createFileUploadFinalizeHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    headObject: async () => ({ contentLength: 5000 }),
+    signUrl: async (key) => `https://signed.example.com/${key}`,
+    triggerDesignRender: (designId, rev) => {
+      triggered.push({ designId, rev });
+      return Promise.resolve();
+    },
+    waitUntil: (p) => { waited.push(p); },
+  });
+  const res = await handler(authedRequest({
+    ...baseBody,
+    kind: "video",
+    mime_type: "video/mp4",
+    thumbnail_r2_key: "contas/conta-1/files/abc-123.thumb.jpg",
+    post_id: 7,
+  }));
+  assertEquals(res.status, 200);
+  assertEquals(triggered, [{ designId: 9, rev: 5 }]);
+  assertEquals(waited.length, 1); // fire-and-forget — never blocks the upload response
+  await Promise.all(waited);
+});
+
+Deno.test("file-upload-finalize: video on a post WITHOUT a reel_cover design does not touch designs", async () => {
+  const db = createSupabaseQueryMock();
+  setupAuth(db);
+  db.queueRpc("file_insert_with_quota", { data: { id: 32, kind: "video" }, error: null });
+  db.queue("workflow_posts", "select", { data: { conta_id: "conta-1" }, error: null });
+  db.queue("post_file_links", "insert", { data: null, error: null });
+  db.queue("designs", "select", { data: null, error: null });
+
+  const triggered: number[] = [];
+  const handler = createFileUploadFinalizeHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    headObject: async () => ({ contentLength: 5000 }),
+    signUrl: async (key) => `https://signed.example.com/${key}`,
+    triggerDesignRender: (designId) => {
+      triggered.push(designId);
+      return Promise.resolve();
+    },
+  });
+  const res = await handler(authedRequest({
+    ...baseBody,
+    kind: "video",
+    mime_type: "video/mp4",
+    thumbnail_r2_key: "contas/conta-1/files/abc-123.thumb.jpg",
+    post_id: 7,
+  }));
+  assertEquals(res.status, 200);
+  assertEquals(triggered, []);
+});

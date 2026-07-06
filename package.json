@@ -12,8 +12,9 @@
     "dev:hub": "vite --config apps/hub/vite.config.ts --port 5175",
     "dev:hub:staging": "vite --config apps/hub/vite.config.ts --port 5175 --mode staging",
     "dev:staging": "vite --config apps/crm/vite.config.ts --mode staging",
-    "dev:all": "concurrently -k -n crm,hub,admin -c blue,magenta,yellow \"npm:dev\" \"npm:dev:hub\" \"npm:dev:admin\"",
-    "dev:all:staging": "concurrently -k -n crm,hub,admin -c blue,magenta,yellow \"npm:dev:staging\" \"npm:dev:hub:staging\" \"npm:dev:admin:staging\"",
+    "dev:estudio": "cd \"$HOME/Projects/open-pencil-spike\" && bun --bun run dev",
+    "dev:all": "concurrently -k -n crm,hub,admin,estudio -c blue,magenta,yellow,green \"npm:dev\" \"npm:dev:hub\" \"npm:dev:admin\" \"npm:dev:estudio\"",
+    "dev:all:staging": "concurrently -k -n crm,hub,admin,estudio -c blue,magenta,yellow,green \"npm:dev:staging\" \"npm:dev:hub:staging\" \"npm:dev:admin:staging\" \"npm:dev:estudio\"",
     "build": "tsc -p apps/crm/tsconfig.json && vite build --config apps/crm/vite.config.ts",
     "build:hub": "tsc -p apps/hub/tsconfig.json && vite build --config apps/hub/vite.config.ts",
     "build:hub:staging": "tsc -p apps/hub/tsconfig.json && vite build --config apps/hub/vite.config.ts --mode staging",
@@ -106,6 +107,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@aws-sdk/client-s3": "^3.637.0",
     "@eslint/js": "^9.39.4",
     "@playwright/test": "^1.59.1",
     "@testing-library/jest-dom": "^6.9.1",
@@ -125,6 +127,7 @@
     "postcss": "^8.5.8",
     "prettier": "^3.8.3",
     "shadcn": "^4.0.8",
+    "subset-font": "^2.5.0",
     "tailwindcss": "^3.4.19",
     "tsx": "^4.22.4",
     "typescript": "^5.2.2",

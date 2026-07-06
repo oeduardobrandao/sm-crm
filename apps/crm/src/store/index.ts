@@ -7,6 +7,7 @@ export * from './integrations';
 export * from './leads';
 export * from './workflows';
 export * from './posts';
+export * from './designs';
 export * from './comments';
 export * from './hub';
 export * from './ideias';

@@ -22,6 +22,8 @@ function makeDeps(overrides: Partial<Parameters<typeof createSignR2UrlsHandler>[
       }),
     }),
     signGetUrl: async (key: string) => `https://r2.example.com/${key}?signed=1`,
+    getObjectBytes: async (key: string) =>
+      key.includes("missing") ? null : new Uint8Array([0x89, 0x50, 0x4e]),
     ...overrides,
   };
 }
@@ -78,4 +80,50 @@ Deno.test("handles OPTIONS for CORS preflight", async () => {
   const handler = createSignR2UrlsHandler(makeDeps());
   const res = await handler(new Request("http://localhost/sign-r2-urls", { method: "OPTIONS" }));
   assertEquals(res.status, 200);
+});
+
+// ── GET byte-proxy route ─────────────────────────────────────────────────────
+
+function makeGetReq(key: string, withAuth = true) {
+  return new Request(
+    `http://localhost/sign-r2-urls?key=${encodeURIComponent(key)}`,
+    { method: "GET", headers: withAuth ? { Authorization: "Bearer test-token" } : {} },
+  );
+}
+
+Deno.test("GET streams an own-conta object with CORS + content type + nosniff", async () => {
+  const handler = createSignR2UrlsHandler(makeDeps());
+  const res = await handler(makeGetReq("contas/conta-abc/files/img1.png"));
+  assertEquals(res.status, 200);
+  assertEquals(res.headers.get("Content-Type"), "image/png");
+  assertEquals(res.headers.get("X-Content-Type-Options"), "nosniff");
+  assertEquals(res.headers.get("Access-Control-Allow-Origin"), "http://localhost");
+  assertEquals(res.headers.get("Cache-Control"), "private, max-age=3600");
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  assertEquals(bytes.length, 3);
+});
+
+Deno.test("GET on an unknown extension falls back to octet-stream (never sniffable)", async () => {
+  const handler = createSignR2UrlsHandler(makeDeps());
+  const res = await handler(makeGetReq("contas/conta-abc/files/payload.svg"));
+  assertEquals(res.status, 200);
+  assertEquals(res.headers.get("Content-Type"), "application/octet-stream");
+});
+
+Deno.test("GET on a foreign-conta key is 404 (existence never confirmed)", async () => {
+  const handler = createSignR2UrlsHandler(makeDeps());
+  const res = await handler(makeGetReq("contas/other-workspace/files/img.png"));
+  assertEquals(res.status, 404);
+});
+
+Deno.test("GET on a missing object is 404", async () => {
+  const handler = createSignR2UrlsHandler(makeDeps());
+  const res = await handler(makeGetReq("contas/conta-abc/files/missing.png"));
+  assertEquals(res.status, 404);
+});
+
+Deno.test("GET without auth header is 401", async () => {
+  const handler = createSignR2UrlsHandler(makeDeps());
+  const res = await handler(makeGetReq("contas/conta-abc/files/img1.png", false));
+  assertEquals(res.status, 401);
 });

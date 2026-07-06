@@ -23,6 +23,11 @@ export function getR2(): S3Client {
         secretAccessKey: getEnvOrThrow("R2_SECRET_ACCESS_KEY"),
       },
       forcePathStyle: true,
+      // Without this, a stalled connection to R2 hangs for the AWS SDK's own much longer
+      // default rather than failing fast. This is a per-socket idle timeout (resets on any
+      // activity), so it's safe for legitimately slow-but-progressing operations like a large
+      // getObjectBytes or listOrphanKeys page — it only fires on a genuine stall.
+      requestHandler: { requestTimeout: 10_000 },
     });
   }
   return _r2Client;
@@ -84,5 +89,53 @@ export async function getObject(key: string): Promise<ReadableStream<Uint8Array>
     return (res.Body as ReadableStream<Uint8Array>) ?? null;
   } catch {
     return null;
+  }
+}
+
+// getObjectBytes/putObject (sole owner — every edge-function R2 read/write goes through
+// these, never a second S3Client instance).
+//
+// Both go through presign + plain fetch instead of `getR2().send(...)`: on the Supabase edge
+// runtime the aws-sdk's fetch handler HANGS INDEFINITELY on PutObject (100% reproducible —
+// zero bytes back, worker burns to the wall-clock kill, so callers like design-render die
+// without ever reaching their catch block and leave rows stuck 'rendering') and
+// intermittently on GetObject body streaming. The `requestHandler.requestTimeout` client
+// option demonstrably does not apply there. Presigning is pure local crypto (no network),
+// and a plain fetch with AbortSignal.timeout can always fail fast instead of hanging.
+
+const OBJECT_FETCH_TIMEOUT_MS = 30_000;
+
+export async function getObjectBytes(key: string): Promise<Uint8Array | null> {
+  try {
+    const url = await signGetUrl(key, 300);
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(OBJECT_FETCH_TIMEOUT_MS),
+    });
+    if (!res.ok) {
+      // Drain so the connection can be reused; body is small (error XML) or absent.
+      await res.body?.cancel();
+      return null;
+    }
+    return new Uint8Array(await res.arrayBuffer());
+  } catch {
+    return null;
+  }
+}
+
+export async function putObject(
+  key: string,
+  bytes: Uint8Array,
+  contentType: string,
+): Promise<void> {
+  const url = await signPutUrl(key, contentType, 300);
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: { "Content-Type": contentType },
+    body: bytes,
+    signal: AbortSignal.timeout(OBJECT_FETCH_TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    await res.body?.cancel();
+    throw new Error(`R2 PUT failed for ${key}: ${res.status}`);
   }
 }

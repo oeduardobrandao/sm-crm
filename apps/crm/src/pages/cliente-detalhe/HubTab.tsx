@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { openCSVSelector } from '@/lib/csv';
 import {
   buildBriefingExportSections,
@@ -87,6 +87,10 @@ import {
 } from '@/store';
 import { IdeiaDrawer } from '@/components/ideias/IdeiaDrawer';
 import { IdeiaStatusBadge } from '@/components/ideias/IdeiaStatusBadge';
+// Estúdio's shared brand-aware controls (T3.5/T3.7 — one picker for canvas AND brand editing).
+import { ColorPicker } from '@/components/shared/ColorPicker';
+import { useFileUrl } from '@/hooks/useFileUrl';
+import { uploadFile } from '@/services/fileService';
 import { BriefingTemplatesModal } from './BriefingTemplatesModal';
 import { SortableQuestion, SortableSection, SECTION_PREFIX } from './BriefingReorder';
 import {
@@ -258,6 +262,9 @@ function BrandEditor({
 }) {
   const [form, setForm] = useState<Partial<HubBrandRow>>(brand ?? {});
   const [saving, setSaving] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement | null>(null);
+  const logoPreview = useFileUrl(brand?.logo_file_id ?? null);
 
   useEffect(() => {
     if (brand) setForm(brand);
@@ -266,11 +273,30 @@ function BrandEditor({
   async function save() {
     setSaving(true);
     try {
-      await upsertHubBrand(clienteId, form);
+      // logo_file_id is owned by the upload flow below — never written by this button, so a
+      // stale form (older tab, refetch race) can't null out a logo uploaded in the meantime.
+      const { logo_file_id: _logoFileId, ...values } = form;
+      await upsertHubBrand(clienteId, values);
       toast.success('Marca salva!');
       onSaved();
     } finally {
       setSaving(false);
+    }
+  }
+
+  // Logo file upload (Estúdio T3.7): saves logo_file_id IMMEDIATELY (own write, independent of
+  // the "Salvar marca" button) — logo_url stays untouched, it remains what the Hub displays.
+  async function uploadLogo(file: File) {
+    setUploadingLogo(true);
+    try {
+      const record = await uploadFile({ file, folderId: null });
+      await upsertHubBrand(clienteId, { logo_file_id: record.id });
+      toast.success('Logo enviado!');
+      onSaved();
+    } catch {
+      toast.error('Não foi possível enviar o logo.');
+    } finally {
+      setUploadingLogo(false);
     }
   }
 
@@ -287,20 +313,74 @@ function BrandEditor({
           />
         </div>
         <div>
+          <Label>Logo (arquivo)</Label>
+          <div className="flex items-center gap-3 mt-1">
+            {logoPreview.data && (
+              <img
+                src={logoPreview.data}
+                alt="Logo da marca"
+                className="h-10 max-w-24 object-contain rounded border border-border p-0.5"
+              />
+            )}
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={uploadingLogo}
+              onClick={() => logoInputRef.current?.click()}
+            >
+              <Upload size={14} className="mr-1.5" />
+              {uploadingLogo ? 'Enviando…' : brand?.logo_file_id ? 'Trocar logo' : 'Enviar logo'}
+            </Button>
+            <input
+              ref={logoInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (file) void uploadLogo(file);
+              }}
+            />
+          </div>
+        </div>
+        <div>
           <Label>Cor primária</Label>
-          <Input
-            value={form.primary_color ?? ''}
-            onChange={(e) => setForm((f) => ({ ...f, primary_color: e.target.value }))}
-            placeholder="#000000"
-          />
+          <div className="flex items-center gap-2 mt-1">
+            <ColorPicker
+              value={form.primary_color ?? ''}
+              label="Cor primária"
+              onChange={(hex) => setForm((f) => ({ ...f, primary_color: hex }))}
+            />
+            {form.primary_color && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setForm((f) => ({ ...f, primary_color: null }))}
+              >
+                Limpar
+              </Button>
+            )}
+          </div>
         </div>
         <div>
           <Label>Cor secundária</Label>
-          <Input
-            value={form.secondary_color ?? ''}
-            onChange={(e) => setForm((f) => ({ ...f, secondary_color: e.target.value }))}
-            placeholder="#ffffff"
-          />
+          <div className="flex items-center gap-2 mt-1">
+            <ColorPicker
+              value={form.secondary_color ?? ''}
+              label="Cor secundária"
+              onChange={(hex) => setForm((f) => ({ ...f, secondary_color: hex }))}
+            />
+            {form.secondary_color && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setForm((f) => ({ ...f, secondary_color: null }))}
+              >
+                Limpar
+              </Button>
+            )}
+          </div>
         </div>
         <div>
           <Label>Fonte principal</Label>

@@ -21,3 +21,10 @@ Deno.test("agent preset is read-only and within the allowlist", () => {
     assert(s.endsWith(":read"), `${s} is read-only`);
   }
 });
+
+Deno.test("estudio scopes (design §9): allowlisted, and NEVER in the read-only agent preset", () => {
+  for (const s of ["designs:write", "images:generate"]) {
+    assert((MCP_ALLOWED_SCOPES as readonly string[]).includes(s), `${s} in allowlist`);
+    assert(!(MCP_AGENT_PRESET as readonly string[]).includes(s), `${s} NOT in agent preset`);
+  }
+});

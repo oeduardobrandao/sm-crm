@@ -77,7 +77,10 @@
     "thumbnailFallback": "Não foi possível gerar a miniatura automaticamente. Selecione uma imagem de capa para",
     "remainingVideos": "{{count}} vídeo(s) aguardando miniatura",
     "carouselLimit": "Carrossel acima do limite do Instagram",
-    "carouselLimitDesc": "Carrosséis publicados via Instagram aceitam no máximo {{max}} itens (este post tem {{count}}). O app permite 20, mas a publicação automática é limitada a {{max}}."
+    "carouselLimitDesc": "Carrosséis publicados via Instagram aceitam no máximo {{max}} itens (este post tem {{count}}). O app permite 20, mas a publicação automática é limitada a {{max}}.",
+    "designOwned": "Mídias gerenciadas pelo Estúdio — edite a arte no Estúdio.",
+    "designOwnedReel": "Capa gerenciada pelo Estúdio — o vídeo do reel continua manual.",
+    "designOwnsImages": "A capa é gerenciada pelo Estúdio — envie apenas o vídeo."
   },
   "thumbnailEditor": {
     "title": "Miniatura do vídeo",

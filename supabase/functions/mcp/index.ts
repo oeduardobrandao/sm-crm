@@ -7,10 +7,31 @@ import { WebStandardStreamableHTTPServerTransport } from "npm:@modelcontextproto
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { publicOrigin, resolveCtx } from "../_shared/mcp-oauth.ts";
+import { createDesignRenderTrigger } from "../_shared/design-render-trigger.ts";
+import { resolveImageProvider } from "../_shared/image-gen/resolve.ts";
+import { effectivePlanFeature, effectivePlanLimit } from "../_shared/entitlements-rpc.ts";
+import { checkRateLimit } from "../_shared/rate-limit.ts";
+import { deleteObject, getObjectBytes, putObject, signGetUrl } from "../_shared/r2.ts";
+import { createDocServiceClient } from "../_shared/doc-service.ts";
+import { starterTemplateFor, type DesignFormat } from "../design-manage/starter-templates.gen.ts";
 import { registerTools } from "./tools.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+// Optional: without the doc service configured, the design tools report "não configurado"
+// instead of failing the whole MCP server at boot (same stance as the image provider below).
+const RENDER_SERVICE_URL = Deno.env.get("RENDER_SERVICE_URL");
+const RENDER_SERVICE_SECRET = Deno.env.get("RENDER_SERVICE_SECRET");
+const docSvc = RENDER_SERVICE_URL && RENDER_SERVICE_SECRET
+  ? createDocServiceClient(RENDER_SERVICE_URL, RENDER_SERVICE_SECRET)
+  : null;
+// Optional on purpose — without it design writes still land, only the immediate render kick is
+// skipped (the sweep cron and the editor's own reads converge the render).
+const CRON_SECRET = Deno.env.get("CRON_SECRET");
+// Optional too: without ANY provider key, generate_image reports "não configurada" instead of
+// the whole MCP server failing to boot (this function serves 17 other tools). Selection
+// (OpenRouter first, Gemini fallback) is shared with generate-image via resolveImageProvider.
+const imageProvider = resolveImageProvider() ?? undefined;
 // The OAuth scope we advertise to clients. Supabase's AS only supports OIDC scopes
 // (openid/profile/email/phone), so advertising our MCP scopes here makes Claude request them at
 // /authorize, which Supabase rejects ("unsupported scope: clientes:read"). MCP scopes are enforced
@@ -106,7 +127,43 @@ Deno.serve(async (req) => {
       },
     ],
   });
-  registerTools(server, { db, ctx });
+  registerTools(server, {
+    db,
+    ctx,
+    // Estúdio design tools (design-first model):
+    isFeatureEnabled: (feature) => effectivePlanFeature(db as never, ctx.conta_id, feature),
+    triggerRender: CRON_SECRET ? createDesignRenderTrigger(SUPABASE_URL, CRON_SECRET) : undefined,
+    fetchBlob: (r2Key) => getObjectBytes(r2Key),
+    putBlob: (r2Key, bytes) => putObject(r2Key, bytes, "application/octet-stream"),
+    deleteBlob: (r2Key) => deleteObject(r2Key),
+    docDescribe: docSvc?.describe,
+    docMutate: docSvc?.mutate,
+    callRenderService: docSvc?.render,
+    starterTemplate: (format) => starterTemplateFor(format as DesignFormat),
+    randomUUID: () => crypto.randomUUID(),
+    // generate_image (§8) — the shared core's dep bundle:
+    imageGen: {
+      db,
+      provider: imageProvider,
+      isFeatureEnabled: (contaId: string, feature: string) =>
+        effectivePlanFeature(db as never, contaId, feature),
+      monthlyLimit: (contaId: string) =>
+        effectivePlanLimit(db as never, contaId, "rate_ai_images_per_month"),
+      checkRateLimit: (key: string, max: number, windowSeconds: number) =>
+        checkRateLimit(db as never, key, max, windowSeconds),
+      putObject,
+      deleteObject,
+      insertFile: async (p: Record<string, unknown>) => {
+        const { data, error } = await db.rpc("file_insert_with_quota", { p }).single();
+        if (error || !data) throw new Error((error as { message?: string })?.message ?? "file insert failed");
+        return { id: (data as { id: number }).id };
+      },
+      resolveFileBytes: (r2Key: string) => getObjectBytes(r2Key),
+      signUrl: (key: string) => signGetUrl(key, 3600),
+      randomUUID: () => crypto.randomUUID(),
+      logError: (context: string, error: unknown) => console.error(`[${context}]`, error),
+    },
+  });
 
   const transport = new WebStandardStreamableHTTPServerTransport();
   await server.connect(transport);

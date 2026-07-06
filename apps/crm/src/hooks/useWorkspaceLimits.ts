@@ -15,9 +15,11 @@ export interface ResourceLimits {
   max_custom_properties_per_template: number | null;
   max_posts_per_workflow: number | null;
   max_workspaces_per_user: number | null;
+  max_mcp_keys: number | null;
   rate_instagram_syncs_per_day: number | null;
   rate_ai_analyses_per_month: number | null;
   rate_report_generations_per_month: number | null;
+  rate_ai_images_per_month: number | null;
 }
 
 export interface FeatureFlags {
@@ -39,6 +41,9 @@ export interface FeatureFlags {
   feature_auto_sync_cron: boolean;
   feature_post_tagging: boolean;
   feature_brand_customization: boolean;
+  feature_mcp: boolean;
+  feature_estudio: boolean;
+  feature_ai_images: boolean;
 }
 
 interface WorkspaceLimitsResponse {

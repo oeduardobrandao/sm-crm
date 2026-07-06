@@ -83,6 +83,13 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
         icon: 'ph-paper-plane-tilt',
       },
       {
+        id: 'estudio',
+        route: '/estudio',
+        label: 'Estúdio',
+        labelKey: 'nav.estudio',
+        icon: 'ph-magic-wand',
+      },
+      {
         id: 'arquivos',
         route: '/arquivos',
         label: 'Arquivos',
@@ -202,6 +209,9 @@ const NAV_FEATURE: Record<string, string> = {
   analytics: 'feature_analytics_reports',
   'analytics-fluxos': 'feature_analytics_reports',
   'post-express': 'feature_post_scheduling',
+  // The nav item itself ships in slice 2 (apps/crm/src/pages/estudio/); this entry lands now
+  // so the flag is never `undefined` (which getNavGroups treats as visible) by the time it does.
+  estudio: 'feature_estudio',
 };
 
 export function getNavGroups(role: string, features?: Record<string, boolean> | null): NavGroup[] {
