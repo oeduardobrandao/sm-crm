@@ -4,7 +4,8 @@
 // aspect_ratio/resolution, reference images ride as `input_references` data URLs, and the
 // image returns as base64 in data[0].b64_json). Mirrors gemini.ts's contract exactly:
 // per-attempt timeout 60s, ONE retry on 429/5xx or timeout, raw provider payloads logged
-// internally and never surfaced (typed errors only), PNG IHDR dims win over anything declared.
+// internally and never surfaced (typed errors only); the true format + dims are sniffed from the
+// returned bytes (this model returns JPEG despite output_format:"png") and win over anything declared.
 // BILLING NOTE (same as gemini.ts): no request idempotency upstream — a timed-out first
 // attempt may still bill; bounded 2x, and our own idempotency_key stops caller-level retries
 // from multiplying it further.
@@ -12,7 +13,7 @@ import {
   ImageGenProvider,
   ImageGenRequest,
   ImageGenResult,
-  parsePngIhdr,
+  parseImageMeta,
   ProviderError,
   ProviderSafetyError,
   ProviderTimeoutError,
@@ -137,13 +138,15 @@ export function createOpenRouterProvider(apiKey: string): ImageGenProvider {
         }
 
         const bytes = fromBase64(b64);
-        const ihdr = parsePngIhdr(bytes);
+        // Sniff the REAL format + dims from the bytes: this model returns JPEG even though we ask
+        // for output_format:"png", so a hardcoded png mime + PNG-only IHDR parse mislabeled the file
+        // and left width/height at 0. parseImageMeta handles PNG and JPEG.
+        const meta = parseImageMeta(bytes);
         return {
           bytes,
-          mime: "image/png",
-          // IHDR wins over anything declared — see module header.
-          width: ihdr?.width ?? 0,
-          height: ihdr?.height ?? 0,
+          mime: meta?.mime ?? "image/png",
+          width: meta?.width ?? 0,
+          height: meta?.height ?? 0,
           model: (payload?.model as string) ?? MODEL,
           costEstimateUsd: COST_BY_SIZE[req.imageSize] ?? COST_BY_SIZE["1K"],
         };

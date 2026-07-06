@@ -56,3 +56,53 @@ export function parsePngIhdr(bytes: Uint8Array): { width: number; height: number
   if (width === 0 || height === 0) return null;
   return { width, height };
 }
+
+/** Minimal JPEG dimension parse: walk the marker segments to the first Start-Of-Frame (SOF0–SOF15,
+ * excluding the non-frame markers C4/C8/CC) and read its big-endian 16-bit height then width.
+ * Skips APP/other segments by their length; tolerates fill bytes. Null if no SOF / truncated. */
+export function parseJpegDimensions(bytes: Uint8Array): { width: number; height: number } | null {
+  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) return null; // no SOI → not JPEG
+  let i = 2;
+  while (i + 3 < bytes.length) {
+    if (bytes[i] !== 0xff) {
+      i++; // resync to the next marker byte
+      continue;
+    }
+    const marker = bytes[i + 1];
+    if (marker === 0xff) {
+      i++; // fill byte before the real marker
+      continue;
+    }
+    // Standalone markers carry no length payload: SOI/EOI (D8/D9), RSTn (D0–D7), TEM (01).
+    if (marker === 0xd8 || marker === 0xd9 || (marker >= 0xd0 && marker <= 0xd7) || marker === 0x01) {
+      i += 2;
+      continue;
+    }
+    const len = (bytes[i + 2] << 8) | bytes[i + 3];
+    if (len < 2) return null; // malformed segment length
+    const isSof = marker >= 0xc0 && marker <= 0xcf &&
+      marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;
+    if (isSof) {
+      if (i + 8 >= bytes.length) return null;
+      const height = (bytes[i + 5] << 8) | bytes[i + 6];
+      const width = (bytes[i + 7] << 8) | bytes[i + 8];
+      if (width === 0 || height === 0) return null;
+      return { width, height };
+    }
+    i += 2 + len; // skip this segment
+  }
+  return null;
+}
+
+export type ImageFormatMeta = { mime: string; ext: string; width: number; height: number };
+
+/** Sniffs the TRUE image format from magic bytes — never trust a provider's declared type (the
+ * OpenRouter model returns JPEG even for an output_format:"png" request) — and pairs it with the
+ * real pixel dims (PNG via IHDR, JPEG via SOF). Null for anything we can't identify. */
+export function parseImageMeta(bytes: Uint8Array): ImageFormatMeta | null {
+  const png = parsePngIhdr(bytes);
+  if (png) return { mime: "image/png", ext: "png", ...png };
+  const jpeg = parseJpegDimensions(bytes);
+  if (jpeg) return { mime: "image/jpeg", ext: "jpg", ...jpeg };
+  return null;
+}
