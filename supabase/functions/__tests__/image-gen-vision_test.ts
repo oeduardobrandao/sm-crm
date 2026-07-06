@@ -69,7 +69,7 @@ Deno.test("vision: happy path — sends chat completions with data URL image + j
     assertEquals(f.calls.length, 1);
     assertEquals(f.calls[0].url, "https://openrouter.ai/api/v1/chat/completions");
     assertEquals(f.calls[0].headers["Authorization"], "Bearer or-key-123");
-    assertEquals(f.calls[0].body.model, "google/gemini-3.1-flash-lite");
+    assertEquals(f.calls[0].body.model, "google/gemini-3.5-flash");
     assertEquals(f.calls[0].body.response_format, { type: "json_object" });
     const content = f.calls[0].body.messages[0].content;
     const imagePart = content.find((p: { type: string }) => p.type === "image_url");

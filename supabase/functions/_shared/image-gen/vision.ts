@@ -1,8 +1,10 @@
 // Vision text-extraction (slice C, task 3): given a design's flattened/cropped image, ask a
 // vision-capable model to locate every text block and return it as structured layout data the
 // design-import pipeline can turn into editable text layers. OpenRouter chat completions on
-// google/gemini-3.1-flash-lite (verified against the live OpenRouter catalog 2026-07-06:
-// text+image input, text output, structured outputs supported). Mirrors openrouter.ts's
+// google/gemini-3.5-flash (verified against the live OpenRouter catalog 2026-07-06: text+image
+// input, text output, structured outputs supported). The lite tier was tried first and returned
+// ZERO blocks on a trivially texty poster in two live prod runs — layout extraction needs the
+// full flash tier. Mirrors openrouter.ts's
 // conventions closely: per-attempt 60s timeout, ONE retry on 429/5xx/timeout, typed errors only,
 // raw provider payloads logged internally and never surfaced.
 //
@@ -12,7 +14,7 @@
 // dropped rather than failing the whole request. An empty list (no text detected) is a VALID
 // result, not an error: the caller (design-import) still gets value from the reconstructed
 // background even when there are no text layers to place.
-const MODEL = "google/gemini-3.1-flash-lite";
+const MODEL = "google/gemini-3.5-flash";
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 const ATTEMPT_TIMEOUT_MS = 60_000;
 const MAX_BLOCKS = 20;
@@ -184,6 +186,15 @@ function parseBlocks(content: string): TextBlock[] {
     if (blocks.length >= MAX_BLOCKS) break;
     const block = validateBlock(raw);
     if (block) blocks.push(block);
+  }
+  if (blocks.length === 0) {
+    // Zero validated blocks is a legal outcome (image may have no text) but it is also the
+    // signature of a model/prompt regression — log a truncated sample internally (same
+    // convention as openrouter.ts's refusal logging) so prod runs are diagnosable.
+    console.error(
+      "[image-gen] vision returned 0 valid blocks:",
+      JSON.stringify({ rawCount: rawBlocks.length, sample: content.slice(0, 300) }),
+    );
   }
   return blocks;
 }

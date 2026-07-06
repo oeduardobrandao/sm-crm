@@ -49,9 +49,11 @@ const BURST_WINDOW_SECONDS = 3600;
 // Fixed PT inpaint instruction (decision from the plan): remove ALL text/typography, reconstruct
 // the background naturally, change nothing else about the composition/subject/colors.
 const INPAINT_PROMPT =
-  "Remova TODO o texto e elementos tipográficos desta imagem, reconstruindo o fundo de forma " +
-  "natural e contínua no lugar onde o texto estava. Não altere mais nada: mantenha exatamente a " +
-  "mesma composição, sujeito, cores e estilo do restante da imagem.";
+  "Remova TODO o texto e elementos tipográficos desta imagem — títulos, subtítulos, legendas, " +
+  "textos pequenos, arrobas/handles (@usuario), rodapés, selos e marcas d'água. Não deixe NENHUMA " +
+  "letra, número ou símbolo tipográfico visível. Reconstrua o fundo de forma natural e contínua " +
+  "no lugar onde cada texto estava. Não altere mais nada: mantenha exatamente a mesma composição, " +
+  "sujeito, cores e estilo do restante da imagem.";
 
 export interface PostRow {
   id: number;
