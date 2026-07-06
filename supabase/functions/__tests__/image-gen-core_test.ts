@@ -11,7 +11,11 @@ import {
   type ImageGenCoreDeps,
   type ImageGenInput,
 } from "../_shared/image-gen/core.ts";
-import { parsePngIhdr, type ImageGenRequest } from "../_shared/image-gen/provider.ts";
+import {
+  parseImageMeta,
+  parsePngIhdr,
+  type ImageGenRequest,
+} from "../_shared/image-gen/provider.ts";
 
 const CONTA = "workspace-A";
 
@@ -125,6 +129,36 @@ Deno.test("parsePngIhdr: real dims win; garbage returns null", () => {
   assertEquals(parsePngIhdr(new Uint8Array(4)), null);
 });
 
+/** A minimal JPEG (SOI + APP0 + SOF0) whose SOF0 declares the given dims — the SOF sits after an
+ * APP0 segment so the test also proves the parser skips segments (real JPEGs open with JFIF/APP0). */
+function jpegBytes(width: number, height: number): Uint8Array {
+  const b = new Uint8Array(30);
+  b.set([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]); // SOI + APP0 marker + length 16
+  b.set([0x4a, 0x46, 0x49, 0x46, 0x00], 6); // "JFIF\0" (rest of APP0 payload zero-padded)
+  b.set([0xff, 0xc0, 0x00, 0x11, 0x08], 20); // SOF0 marker + length 17 + precision 8
+  b[25] = (height >> 8) & 0xff;
+  b[26] = height & 0xff;
+  b[27] = (width >> 8) & 0xff;
+  b[28] = width & 0xff;
+  return b;
+}
+
+Deno.test("parseImageMeta: sniffs PNG vs JPEG (mime + ext + real dims); garbage → null", () => {
+  const png = new Uint8Array(32);
+  png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const view = new DataView(png.buffer);
+  view.setUint32(16, 800);
+  view.setUint32(20, 600);
+  assertEquals(parseImageMeta(png), { mime: "image/png", ext: "png", width: 800, height: 600 });
+  assertEquals(parseImageMeta(jpegBytes(1024, 768)), {
+    mime: "image/jpeg",
+    ext: "jpg",
+    width: 1024,
+    height: 768,
+  });
+  assertEquals(parseImageMeta(new TextEncoder().encode("not an image at all....")), null);
+});
+
 // ── gates before spend ───────────────────────────────────────────────────────
 
 Deno.test("feature gate short-circuits: no provider call, no ledger row", async () => {
@@ -185,7 +219,7 @@ Deno.test("ledger row is inserted 'pending' BEFORE the provider call (spend neve
   const h = makeHarness({
     provider: {
       name: "openrouter",
-      model: "google/gemini-3.1-flash-lite-image",
+      model: "google/gemini-3.1-flash-image",
       generate: () => Promise.reject(new Error("boom mid-flight")),
     },
   });
@@ -202,12 +236,55 @@ Deno.test("ledger row is inserted 'pending' BEFORE the provider call (spend neve
   assertEquals((insert!.payload as { provider: string }).provider, "openrouter");
   assertEquals(
     (insert!.payload as { model: string }).model,
-    "google/gemini-3.1-flash-lite-image",
+    "google/gemini-3.1-flash-image",
   );
   const update = h.db.calls.find((c) =>
     c.table === "ai_image_generations" && c.operation === "update"
   );
   assertEquals((update!.payload as { status: string }).status, "provider_error");
+});
+
+Deno.test("OAuth key_id ('oauth:<clientId>', not a uuid) is stored as NULL — the mcp_key_id uuid column never sees it", async () => {
+  // Regression: resolveOAuthCtx sets ctx.key_id = `oauth:${clientId}` (mcp-oauth.ts), which is
+  // NOT a uuid. Writing it straight into the `mcp_key_id uuid` ledger column made Postgres reject
+  // the insert ("invalid input syntax for type uuid") BEFORE any pending row existed, surfacing as
+  // an opaque {"error":"Internal error."} on generate_image for every claude.ai web (OAuth) call.
+  const h = makeHarness();
+  queueBare(h.db);
+  await generateImageCore(
+    h.deps,
+    baseInput({ mcpKeyId: "oauth:df1238a4-84d1-4e06-96c7-0808c6358d15" }),
+  );
+  const insert = h.db.calls.find((c) =>
+    c.table === "ai_image_generations" && c.operation === "insert"
+  );
+  assertEquals((insert!.payload as { mcp_key_id: string | null }).mcp_key_id, null);
+});
+
+Deno.test("API-key key_id (a real uuid) is preserved on the ledger", async () => {
+  const h = makeHarness();
+  queueBare(h.db);
+  const keyUuid = "11111111-2222-3333-4444-555555555555";
+  await generateImageCore(h.deps, baseInput({ mcpKeyId: keyUuid }));
+  const insert = h.db.calls.find((c) =>
+    c.table === "ai_image_generations" && c.operation === "insert"
+  );
+  assertEquals((insert!.payload as { mcp_key_id: string | null }).mcp_key_id, keyUuid);
+});
+
+Deno.test("OAuth session is still per-credential burst-limited on the opaque key_id", async () => {
+  // Coercing the ledger value to null must NOT drop the per-credential rate limit: the burst check
+  // still keys on the opaque ctx.key_id, so an OAuth client keeps its own 10/10min window.
+  const rlKeys: string[] = [];
+  const h = makeHarness({
+    checkRateLimit: (key: string) => {
+      rlKeys.push(key);
+      return Promise.resolve(true);
+    },
+  });
+  queueBare(h.db);
+  await generateImageCore(h.deps, baseInput({ mcpKeyId: "oauth:client-xyz" }));
+  assert(rlKeys.includes("imggen:key:oauth:client-xyz"), rlKeys.join(","));
 });
 
 Deno.test("safety refusal: ledger 'safety_refused', non-retryable, no storage side effects", async () => {
@@ -268,6 +345,34 @@ Deno.test("happy path: R2 put at the tenant key, files row, ledger succeeded, qu
   assertEquals(out.height, 1152);
   assert(out.preview_url.startsWith("https://signed.example/"));
   assertEquals(out.quota, { used: 1, limit: 50, resets_at: out.quota.resets_at });
+});
+
+Deno.test("JPEG from the provider is stored as .jpg with image/jpeg (R2 key, file name, mime_type)", async () => {
+  // The provider may return JPEG even when we asked for PNG (OpenRouter does for this model). The
+  // stored object, its extension, and the files row must reflect the ACTUAL bytes — not a hardcoded
+  // png that mislabels the content type and misleads extension-sniffing consumers.
+  const h = makeHarness({
+    provider: {
+      name: "openrouter",
+      model: "google/gemini-3.1-flash-image",
+      generate: () =>
+        Promise.resolve({
+          bytes: new Uint8Array([0xff, 0xd8, 0xff]),
+          mime: "image/jpeg",
+          width: 1024,
+          height: 1024,
+          model: "google/gemini-3.1-flash-image",
+          costEstimateUsd: 0.068,
+        }),
+    },
+  });
+  queueBare(h.db);
+  const out = await generateImageCore(h.deps, baseInput());
+  assert(h.puts[0].key.endsWith(".jpg"), h.puts[0].key);
+  assertEquals(h.puts[0].contentType, "image/jpeg");
+  assertEquals(h.fileInserts[0].mime_type, "image/jpeg");
+  assert(String(h.fileInserts[0].name).endsWith(".jpg"), String(h.fileInserts[0].name));
+  assert(out.preview_url.endsWith(".jpg"), out.preview_url);
 });
 
 Deno.test("the prompt reaches ONLY the ledger insert (and the provider) — no other sink", async () => {

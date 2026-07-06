@@ -75,6 +75,29 @@ function okImage(width = 1024, height = 1280) {
     );
 }
 
+/** A minimal JPEG (SOI + APP0 + SOF0) — OpenRouter returns JPEG for this model even though we
+ * request output_format:"png", so the adapter must sniff the real format, not assume PNG. */
+function jpegBytes(width: number, height: number): Uint8Array {
+  const b = new Uint8Array(30);
+  b.set([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]); // SOI + APP0 marker + length 16
+  b.set([0x4a, 0x46, 0x49, 0x46, 0x00], 6); // "JFIF\0"
+  b.set([0xff, 0xc0, 0x00, 0x11, 0x08], 20); // SOF0 marker + length 17 + precision 8
+  b[25] = (height >> 8) & 0xff;
+  b[26] = height & 0xff;
+  b[27] = (width >> 8) & 0xff;
+  b[28] = width & 0xff;
+  return b;
+}
+
+function okJpeg(width = 1024, height = 1024) {
+  return () =>
+    Promise.resolve(
+      new Response(JSON.stringify({ data: [{ b64_json: b64(jpegBytes(width, height)) }] }), {
+        status: 200,
+      }),
+    );
+}
+
 Deno.test("openrouter: request carries model/prompt/aspect_ratio/resolution/output_format + bearer auth", async () => {
   const f = stubFetch([okImage()]);
   try {
@@ -83,7 +106,7 @@ Deno.test("openrouter: request carries model/prompt/aspect_ratio/resolution/outp
     assertEquals(f.calls.length, 1);
     assertEquals(f.calls[0].url, "https://openrouter.ai/api/v1/images");
     assertEquals(f.calls[0].headers["Authorization"], "Bearer or-key-123");
-    assertEquals(f.calls[0].body.model, "google/gemini-3.1-flash-lite-image");
+    assertEquals(f.calls[0].body.model, "google/gemini-3.1-flash-image");
     assertEquals(f.calls[0].body.prompt, "fundo dourado");
     assertEquals(f.calls[0].body.aspect_ratio, "9:16");
     assertEquals(f.calls[0].body.resolution, "2K");
@@ -102,8 +125,21 @@ Deno.test("openrouter: IHDR dims win; cost keyed by requested size", async () =>
     assertEquals(result.width, 2048);
     assertEquals(result.height, 2560);
     assertEquals(result.mime, "image/png");
-    assertEquals(result.costEstimateUsd, 0.051);
-    assertEquals(result.model, "google/gemini-3.1-flash-lite-image");
+    assertEquals(result.costEstimateUsd, 0.102);
+    assertEquals(result.model, "google/gemini-3.1-flash-image");
+  } finally {
+    f.restore();
+  }
+});
+
+Deno.test("openrouter: JPEG response (what this model actually returns) → mime image/jpeg + SOF dims, not 0", async () => {
+  const f = stubFetch([okJpeg(1024, 1024)]);
+  try {
+    const provider = createOpenRouterProvider("k");
+    const result = await provider.generate(baseReq({ imageSize: "1K" }));
+    assertEquals(result.mime, "image/jpeg");
+    assertEquals(result.width, 1024);
+    assertEquals(result.height, 1024);
   } finally {
     f.restore();
   }

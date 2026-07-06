@@ -1,6 +1,6 @@
 // Gemini image provider (design §8, verified against ai.google.dev 2026-07-02): classic
-// generateContent on gemini-3.1-flash-lite-image (Nano Banana 2 Lite — default since
-// 2026-07-04, matching openrouter.ts) with responseModalities ["IMAGE"] and
+// generateContent on gemini-3.1-flash-image (matching openrouter.ts; the `-lite-image` variant
+// was rejected by OpenRouter — see openrouter.ts) with responseModalities ["IMAGE"] and
 // responseFormat.image {aspectRatio, imageSize}; the image comes back as base64 PNG in
 // candidates[0].content.parts[].inlineData. Per-attempt timeout 60s, ONE retry on 429/5xx
 // or timeout. BILLING NOTE: a timed-out first attempt may still have completed (and billed)
@@ -8,24 +8,24 @@
 // ledger logs one cost estimate. Accepted: bounded to at most 2x on a rare path; our own
 // idempotency_key prevents CALLER-level retries from multiplying this further.
 // Raw provider payloads are logged internally and never surfaced (typed errors only).
-// Dimensions: parse the PNG IHDR — never trust the requested imageSize (§8 js-genai bug).
+// Dimensions/format: sniff from the returned bytes — never trust the requested imageSize (§8
+// js-genai bug) nor the declared mimeType.
 import {
   ImageGenProvider,
   ImageGenRequest,
   ImageGenResult,
-  parsePngIhdr,
+  parseImageMeta,
   ProviderError,
   ProviderSafetyError,
   ProviderTimeoutError,
 } from "./provider.ts";
 
-const MODEL = "gemini-3.1-flash-lite-image";
+const MODEL = "gemini-3.1-flash-image";
 const ENDPOINT = `https://generativelanguage.googleapis.com/v1/models/${MODEL}:generateContent`;
 const ATTEMPT_TIMEOUT_MS = 60_000;
 
-// Lite tier ≈ half the flash figures from §8 ($/image by output size; the per-token price is
-// exactly 0.5x flash). 0.5K is not offered by this pipeline.
-const COST_BY_SIZE: Record<string, number> = { "1K": 0.034, "2K": 0.051 };
+// Flash-tier $/image by output size (§8). 0.5K is not offered by this pipeline.
+const COST_BY_SIZE: Record<string, number> = { "1K": 0.068, "2K": 0.102 };
 
 function toBase64(bytes: Uint8Array): string {
   let binary = "";
@@ -116,13 +116,13 @@ export function createGeminiProvider(apiKey: string): ImageGenProvider {
         }
 
         const bytes = fromBase64(imagePart.inlineData.data as string);
-        const ihdr = parsePngIhdr(bytes);
+        // Sniff the true format + dims from the bytes (wins over the declared mimeType/imageSize).
+        const meta = parseImageMeta(bytes);
         return {
           bytes,
-          mime: (imagePart.inlineData.mimeType as string) ?? "image/png",
-          // IHDR wins over anything declared — see module header.
-          width: ihdr?.width ?? 0,
-          height: ihdr?.height ?? 0,
+          mime: meta?.mime ?? (imagePart.inlineData.mimeType as string) ?? "image/png",
+          width: meta?.width ?? 0,
+          height: meta?.height ?? 0,
           model: MODEL,
           outputTokens: payload?.usageMetadata?.candidatesTokenCount as number | undefined,
           costEstimateUsd: COST_BY_SIZE[req.imageSize] ?? COST_BY_SIZE["1K"],
