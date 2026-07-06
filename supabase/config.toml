@@ -49,6 +49,9 @@ verify_jwt = false
 [functions.design-manage]
 verify_jwt = false
 
+[functions.design-import]
+verify_jwt = false
+
 [functions.hub-instagram-feed]
 verify_jwt = false
 
