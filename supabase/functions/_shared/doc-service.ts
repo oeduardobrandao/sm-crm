@@ -49,6 +49,25 @@ export interface RenderServicePage {
   jpeg_b64: string;
 }
 
+export interface NormalizeSpec {
+  image: { url: string; mime?: string };
+  preset: "1:1" | "4:5" | "9:16";
+}
+
+export interface ComposeSpec {
+  preset: "1:1" | "4:5" | "9:16";
+  frames: Array<{ name?: string; image: { url: string; mime?: string } }>;
+  texts?: Array<{
+    frame: number;
+    text: string;
+    bbox: { x: number; y: number; w: number; h: number };
+    size: number;
+    weight?: number;
+    color?: string;
+    align?: string;
+  }>;
+}
+
 export function createDocServiceClient(baseUrl: string, secret: string) {
   const auth = { authorization: `Bearer ${secret}` };
   return {
@@ -91,6 +110,34 @@ export function createDocServiceClient(baseUrl: string, secret: string) {
       });
       if (!res.ok) throw await asDocServiceError(res);
       return await res.json() as { pages: RenderServicePage[] };
+    },
+
+    /** Fetches + cover-crops one image to a preset's exact pixel size; returns JPEG bytes. */
+    normalize: async (spec: NormalizeSpec): Promise<Uint8Array> => {
+      const res = await fetch(`${baseUrl}/api/normalize`, {
+        method: "POST",
+        headers: { ...auth, "content-type": "application/json" },
+        body: JSON.stringify(spec),
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!res.ok) throw await asDocServiceError(res);
+      return new Uint8Array(await res.arrayBuffer());
+    },
+
+    /**
+     * Builds a fresh .fig document (one FRAME per entry, image background + text
+     * nodes) — never reads an existing document. 55s: images fetch in parallel
+     * server-side, so N frames don't stack per-image latency.
+     */
+    compose: async (spec: ComposeSpec): Promise<Uint8Array> => {
+      const res = await fetch(`${baseUrl}/api/compose`, {
+        method: "POST",
+        headers: { ...auth, "content-type": "application/json" },
+        body: JSON.stringify(spec),
+        signal: AbortSignal.timeout(55_000),
+      });
+      if (!res.ok) throw await asDocServiceError(res);
+      return new Uint8Array(await res.arrayBuffer());
     },
   };
 }
