@@ -85,6 +85,11 @@ export default function EstudioPage() {
     metaQuery.data.design.post_id !== null &&
     metaQuery.data.postStatus !== null &&
     !EDITABLE_STATUSES.includes(metaQuery.data.postStatus);
+  // Slice C — held ≠ ownership: a design-import result does not own the post's media until
+  // the user's first save. Editable-post + held gets a slim heads-up; locked-post + held
+  // (readOnly already true) swaps the generic read-only copy for one that doesn't imply
+  // saving/waiting will fix anything — "Duplicar" is the only way out.
+  const isHeld = metaQuery.data?.design?.media_apply_held === true;
 
   const duplicateMutation = useMutation({
     mutationFn: () => duplicateDesign(designId!),
@@ -364,7 +369,7 @@ export default function EstudioPage() {
             flexShrink: 0,
           }}
         >
-          <span>{t('editor.readOnlyBanner')}</span>
+          <span>{isHeld ? t('editor.readOnlyBannerHeld') : t('editor.readOnlyBanner')}</span>
           <button
             type="button"
             disabled={duplicateMutation.isPending}
@@ -374,6 +379,24 @@ export default function EstudioPage() {
           >
             <Copy className="h-3 w-3" /> {t('editor.duplicate')}
           </button>
+        </div>
+      )}
+
+      {!readOnly && isHeld && (
+        <div
+          data-testid="held-banner"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            padding: '0.5rem 1rem',
+            background: 'rgba(234,179,8,0.1)',
+            color: 'var(--primary-hover)',
+            fontSize: '0.85rem',
+            flexShrink: 0,
+          }}
+        >
+          <span>{t('editor.heldBanner')}</span>
         </div>
       )}
 

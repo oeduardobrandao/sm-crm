@@ -174,3 +174,64 @@ Deno.test("instagram-publish: schedule blocked on a FAILED design → 422 + fire
   assertEquals(waited.length, 1); // fire-and-forget rides waitUntil, never blocks the response
   await Promise.all(waited);
 });
+
+Deno.test("instagram-publish: schedule with a HELD design → 200, NO re-trigger (dormant attachment, slice C)", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "actor-1" });
+  const post = {
+    id: 1,
+    status: "aprovado_cliente",
+    workflow_id: 9,
+    scheduled_at: "2030-01-01T12:00:00Z",
+    ig_caption: "cap",
+    instagram_container_id: null,
+    publish_retry_count: 0,
+    tipo: "feed",
+  };
+  db.queue("workflow_posts", "select", { data: post, error: null });
+  db.queue("workflow_posts", "select", { data: post, error: null });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  db.queueRpc("effective_plan_feature", { data: true, error: null });
+  db.queue("post_file_links", "select", {
+    data: [{
+      sort_order: 0,
+      files: {
+        id: 2, kind: "image", mime_type: "image/jpeg", size_bytes: 1000,
+        width: 1080, height: 1080, duration_seconds: null, r2_key: "img/2.jpg",
+      },
+    }],
+    error: null,
+  });
+  // Held + pending + stale: would block on every freshness check if the hold weren't honored.
+  db.queue("designs", "select", {
+    data: { id: 77, rev: 1, render_status: "pending", is_stale: true, media_apply_held: true },
+    error: null,
+  });
+  db.queue("workflows", "select", { data: { cliente_id: 5 }, error: null });
+  db.queue("instagram_accounts", "select", {
+    data: {
+      encrypted_access_token: null, instagram_user_id: "ig",
+      token_expires_at: null, authorization_status: "connected",
+    },
+    error: null,
+  });
+  db.queueRpc("record_post_status_change", { data: null, error: null });
+
+  const triggered: Array<{ designId: number; rev: number }> = [];
+  const waited: Promise<unknown>[] = [];
+  const handler = createPublishHandler({
+    buildCorsHeaders: () => ({}),
+    createDb: () => db as never,
+    createServiceDb: () => db as never,
+    triggerDesignRender: (designId, rev) => {
+      triggered.push({ designId, rev });
+      return Promise.resolve();
+    },
+    waitUntil: (p) => { waited.push(p); },
+  });
+  const res = await handler(publishRequest("schedule", 1));
+
+  assertEquals(res.status, 200);
+  assertEquals(triggered, []); // held design must never trigger a re-render kick
+  assertEquals(waited.length, 0);
+});

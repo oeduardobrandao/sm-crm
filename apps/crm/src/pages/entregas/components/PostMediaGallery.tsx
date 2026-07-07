@@ -10,6 +10,7 @@ import {
   Download,
   FolderOpen,
   Image as ImageIcon,
+  Wand2,
 } from 'lucide-react';
 import { fetchWithRetry } from '@/utils/fetchWithRetry';
 import { UploadHint } from '@/components/help/UploadHint';
@@ -54,6 +55,13 @@ interface PostMediaGalleryProps {
    * upload stays manual. Omit both props for the pre-Estúdio behavior (existing callers). */
   design?: DesignSummary | null;
   postTipo?: string;
+  /** Slice C (image → editable design import): when present, eligible image tiles get a
+   * hover "Tornar editável no Estúdio" action. Hidden entirely if ANY media item is a video
+   * — mirrors the server's post_has_video check, which the caller cannot see (it only knows
+   * the post's tipo, not what's actually uploaded). All OTHER eligibility (feature flags,
+   * design-already-exists, post status/tipo) lives in the caller; the gallery only owns the
+   * media-shape check. */
+  onMakeEditable?: (media: PostMedia) => void;
 }
 
 // Mirror of CAROUSEL_MAX_ITEMS in
@@ -68,6 +76,7 @@ export function PostMediaGallery({
   onChange,
   design,
   postTipo,
+  onMakeEditable,
 }: PostMediaGalleryProps) {
   const { t } = useTranslation('posts');
   const { t: tc } = useTranslation();
@@ -156,6 +165,9 @@ export function PostMediaGallery({
     qc.invalidateQueries({ queryKey: ['workflow-covers'] });
   };
   const atLimit = maxFiles != null && media.length >= maxFiles;
+  // "Tornar editável" is offered only for pure-image posts — mirrors the server's
+  // post_has_video check (design-import), which the caller (WorkflowDrawer) cannot see.
+  const hasVideoMedia = media.some((m) => m.kind === 'video');
 
   async function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
@@ -489,6 +501,11 @@ export function PostMediaGallery({
                 onEditThumbnail={
                   m.kind === 'video' && !coverOwned ? () => setEditingMedia(m) : undefined
                 }
+                onMakeEditable={
+                  onMakeEditable && !hasVideoMedia && m.kind === 'image' && m.origin !== 'design'
+                    ? () => onMakeEditable(m)
+                    : undefined
+                }
               />
             ))}
             {!effectiveDisabled && !atLimit && (
@@ -647,6 +664,8 @@ interface SortableMediaTileProps {
   onSetCover: () => void;
   onDelete: () => void;
   onEditThumbnail?: () => void;
+  /** Slice C: present only for eligible tiles (image, not design-owned, no video sibling). */
+  onMakeEditable?: () => void;
 }
 
 function SortableMediaTile({
@@ -657,7 +676,9 @@ function SortableMediaTile({
   onSetCover,
   onDelete,
   onEditThumbnail,
+  onMakeEditable,
 }: SortableMediaTileProps) {
+  const { t } = useTranslation('posts');
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: m.id,
     disabled,
@@ -723,6 +744,16 @@ function SortableMediaTile({
               className="flex items-center justify-center w-6 h-6 rounded-full bg-stone-900/85 text-white hover:bg-stone-900"
             >
               <ImageIcon className="h-3 w-3" />
+            </button>
+          )}
+          {onMakeEditable && (
+            <button
+              type="button"
+              onClick={onMakeEditable}
+              title={t('mediaGallery.makeEditable')}
+              className="flex items-center justify-center w-6 h-6 rounded-full bg-stone-900/85 text-white hover:bg-stone-900"
+            >
+              <Wand2 className="h-3 w-3" />
             </button>
           )}
           <button

@@ -494,6 +494,49 @@ Deno.test("use_brand_logo without a materialized logo: actionable error, no spen
   assertEquals(h.providerCalls.length, 0);
 });
 
+// ── rawReferences (slice C, task 3: additive input for design-import's in-memory source image) ──
+
+Deno.test("rawReferences: appended to the provider call AFTER resolved referenceFileIds and the brand logo", async () => {
+  const h = makeHarness();
+  h.db.queue("ai_image_generations", "select", { data: [], error: null }); // quota
+  h.db.queue("clientes", "select", { data: { id: 5 }, error: null }); // tenant check for clientId
+  h.db.queue("hub_brand", "select", {
+    data: { primary_color: null, secondary_color: null, logo_file_id: 77 },
+    error: null,
+  });
+  h.db.queue("clientes", "select", { data: { especialidade: null }, error: null });
+  h.db.queue("files", "select", {
+    data: [{ id: 1, r2_key: "ref-key", mime_type: "image/png" }],
+    error: null,
+  }); // referenceFileIds
+  h.db.queue("files", "select", { data: { r2_key: "logo-key", mime_type: "image/png" }, error: null }); // brand logo
+  h.db.queue("ai_image_generations", "insert", { data: { id: 61 }, error: null });
+
+  const raw = { bytes: new Uint8Array([9, 9, 9]), mime: "image/jpeg" };
+  await generateImageCore(
+    h.deps,
+    baseInput({ clientId: 5, referenceFileIds: [1], useBrandLogo: true, rawReferences: [raw] }),
+  );
+
+  const sent = h.providerCalls[0];
+  assertEquals(sent.references?.length, 3);
+  assertEquals(sent.references?.[0].mime, "image/png"); // resolved referenceFileIds first
+  assertEquals(sent.references?.[1].mime, "image/png"); // brand logo second
+  assertEquals(sent.references?.[2], raw); // rawReferences last
+  // reference_count on the ledger reflects everything sent to the provider.
+  const insert = h.db.calls.find((c) =>
+    c.table === "ai_image_generations" && c.operation === "insert"
+  );
+  assertEquals((insert!.payload as { reference_count: number }).reference_count, 3);
+});
+
+Deno.test("rawReferences: omitted (existing callers) → references list unaffected", async () => {
+  const h = makeHarness();
+  queueBare(h.db);
+  await generateImageCore(h.deps, baseInput());
+  assertEquals(h.providerCalls[0].references, []);
+});
+
 Deno.test("idempotency: losing the reuse CAS (another retry claimed the row) → generation_in_progress, NO provider call", async () => {
   const h = makeHarness();
   h.db.queue("ai_image_generations", "select", {

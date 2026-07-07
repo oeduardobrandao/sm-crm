@@ -99,6 +99,11 @@ export interface ImageGenInput {
   referenceFileIds?: number[];
   useBrandLogo?: boolean;
   idempotencyKey?: string;
+  /** Reference bytes supplied directly by the caller (not R2-resolved file ids) — e.g. the
+   * design-import pipeline's already-in-memory source image. Appended AFTER referenceFileIds
+   * and the brand logo, so existing callers (who never set this) see no change to ordering or
+   * count. Not persisted anywhere; these bytes only ever reach the provider call. */
+  rawReferences?: Array<{ bytes: Uint8Array; mime: string }>;
 }
 
 export interface ImageGenOutput {
@@ -396,6 +401,12 @@ async function runPipeline(
       "use_brand_logo exige client_id.",
       false,
     );
+  }
+
+  // Caller-supplied raw bytes (e.g. design-import's in-memory source image) ride LAST, after
+  // resolved referenceFileIds and the brand logo — additive only, existing callers never set this.
+  if (input.rawReferences && input.rawReferences.length > 0) {
+    references.push(...input.rawReferences);
   }
 
   if (!deps.provider) {

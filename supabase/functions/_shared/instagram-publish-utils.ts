@@ -160,15 +160,24 @@ export interface DesignReadiness {
 
 /** Publish-safety invariant (design §5.3): a post with an ATTACHED design may only enter
  * the publish pipeline once its flattened JPEGs are current — `render_status='rendered' AND
- * is_stale=false`. No attached design → ordinary manual-media post → always ready. */
+ * is_stale=false`. No attached design → ordinary manual-media post → always ready.
+ * A HELD design (media_apply_held, slice C) does not own the post's media yet — the post
+ * still ships its original media — so it is ready regardless of render_status/is_stale;
+ * freshness only starts to matter once the user's first save clears the hold. */
 export async function checkDesignReadiness(db: DbClient, postId: number): Promise<DesignReadiness> {
   const { data } = await db
     .from("designs")
-    .select("id, rev, render_status, is_stale")
+    .select("id, rev, render_status, is_stale, media_apply_held")
     .eq("post_id", postId)
     .maybeSingle();
   if (!data) return { ready: true, design: null };
-  const design = data as DesignSummary;
+  if (data.media_apply_held) return { ready: true, design: null };
+  const design: DesignSummary = {
+    id: data.id,
+    rev: data.rev,
+    render_status: data.render_status,
+    is_stale: data.is_stale,
+  };
   return { ready: design.render_status === "rendered" && !design.is_stale, design };
 }
 
