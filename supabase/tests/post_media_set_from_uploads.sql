@@ -74,6 +74,39 @@ begin
     assert v_threw, 'design_attached rejected';
   end;
 
+  -- (8) post_not_found: bogus post id never reaches any other gate
+  declare v_threw boolean; begin
+    v_threw := false;
+    begin perform post_media_set_from_uploads(v_ws, 999999999, v_u, jsonb_build_array(
+      jsonb_build_object('r2_key','contas/'||v_ws||'/files/nf.jpg','size_bytes',10,'mime_type','image/jpeg')));
+    exception when sqlstate 'P0001' then assert sqlerrm like 'post_not_found%'; v_threw:=true; end;
+    assert v_threw, 'post_not_found rejected';
+  end;
+
+  -- (9) tipo_not_image: editable status but tipo outside ('feed','carrossel')
+  declare v_threw boolean; v_post_reels bigint; begin
+    insert into workflow_posts (workflow_id, conta_id, titulo, tipo, status)
+      values (v_wf, v_ws, 'p-reels', 'reels', 'rascunho') returning id into v_post_reels;
+    v_threw := false;
+    begin perform post_media_set_from_uploads(v_ws, v_post_reels, v_u, jsonb_build_array(
+      jsonb_build_object('r2_key','contas/'||v_ws||'/files/rl.jpg','size_bytes',10,'mime_type','image/jpeg')));
+    exception when sqlstate 'P0001' then assert sqlerrm like 'tipo_not_image:%'; v_threw:=true; end;
+    assert v_threw, 'tipo_not_image rejected';
+  end;
+
+  -- (10) quota_exceeded: reset v_post to editable/no-design, then push a single item whose
+  -- size_bytes alone busts the free-plan 100MB (104857600) quota; fresh r2_key so it takes the
+  -- file_insert_with_quota path (not idempotent reuse).
+  declare v_threw boolean; begin
+    delete from designs where post_id = v_post;
+    update workflow_posts set status='rascunho' where id=v_post;
+    v_threw := false;
+    begin perform post_media_set_from_uploads(v_ws, v_post, v_u, jsonb_build_array(
+      jsonb_build_object('r2_key','contas/'||v_ws||'/files/huge.jpg','size_bytes',200000000,'mime_type','image/jpeg')));
+    exception when sqlstate 'P0001' then assert sqlerrm like 'quota_exceeded%'; v_threw:=true; end;
+    assert v_threw, 'quota_exceeded rejected';
+  end;
+
   raise notice 'post_media_set_from_uploads: all cases passed';
 end $$;
 rollback;
