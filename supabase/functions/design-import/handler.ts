@@ -353,7 +353,6 @@ export function createDesignImportHandler(deps: DesignImportDeps) {
       throw e;
     }
 
-
     // ── 7. Inpaint (generateImageCore owns its own gates/ledger/quota) ────────
     const inpaintInput: ImageGenInput = {
       contaId,

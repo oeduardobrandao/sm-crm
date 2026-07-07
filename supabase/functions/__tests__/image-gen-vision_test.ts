@@ -1,5 +1,5 @@
 // Vision text-extraction module (slice C, task 3): OpenRouter chat completions on
-// google/gemini-3.1-flash-lite, tolerant JSON parsing of the model's block list, hard
+// google/gemini-3.5-flash, tolerant JSON parsing of the model's block list, hard
 // validation per the block shape, one-retry-on-429/5xx/timeout (same stubbed-fetch pattern
 // as image-gen-openrouter_test.ts).
 import { assert, assertEquals } from "./assert.ts";
