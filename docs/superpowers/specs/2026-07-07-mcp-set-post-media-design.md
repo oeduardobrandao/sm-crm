@@ -28,8 +28,10 @@ brainstorming and two corrections found by grounding the spec against the code.
 
 ## Grounding corrections (spec was slightly stale)
 
-- **`get_post` already exposes `file_id`, `link_id`, `is_cover`** (Task 4 of the superseded slice +
-  pre-existing `is_cover`). P2-3 therefore reduces to **adding `sort_order`** to the media items.
+- **`get_post` on this branch exposes only `is_cover`** among the P2-3 fields. Task 4 of the
+  superseded slice added `file_id`/`link_id`, but that lives on the abandoned `feat/mcp-attach-image`
+  branch — this slice is off `main`, so **P2-3 = add `file_id`, `link_id`, AND `sort_order`**
+  (`is_cover` is already present). (Re-doing Task 4's `get_post` work is the one small cost of D0.)
 - **`DESIGN_ELIGIBLE_STATUSES` is already exported** (`mcp/queries.ts:904`) — §7's "export it" is a
   no-op. `signPutUrl`, `headObject`, `effectivePlanLimit` all exist/are-imported as the spec assumed.
 
@@ -122,8 +124,9 @@ errors → `McpInputError`: `post_not_found | post_not_editable:<st> | tipo_not_
 design_attached | quota_exceeded`. (3) return `getPost(deps, { post_id })`.
 **auditArgs (P1-3):** `{ post_id, item_count, total_bytes }`.
 
-**get_post (P2-3):** add `sort_order` to the media items (`file_id`/`link_id`/`is_cover` already present
-after Task 4). Same query already orders by `sort_order`.
+**get_post (P2-3):** add `file_id`, `link_id`, and `sort_order` to the media items (`is_cover` already
+present; the query already selects/orders by `sort_order`, and needs `id` + `files(id, …)` added to the
+select). Off `main`, none of `file_id`/`link_id`/`sort_order` are exposed yet.
 
 ## 5. RPC `post_media_set_from_uploads` — the transactional boundary
 
@@ -203,7 +206,7 @@ occurs → the partial-unique-index trap does not apply.
 | File | Change |
 |---|---|
 | `mcp/index.ts` | import + inject `signPutUrl`/`headObject`/quota (§6) |
-| `mcp/queries.ts` | `Deps += signPutUrl/headObject`; `getPost` media `+ sort_order` (P2-3) |
+| `mcp/queries.ts` | `Deps += signPutUrl/headObject/storageQuota`; `getPost` media `+ file_id/link_id/sort_order` (P2-3) |
 | `mcp/media.ts` (**new**) | `createMediaUpload` + `setPostMedia` (§4) |
 | `mcp/tools.ts` | `register(...)` the 2 tools + `auditArgs` (P1-3). (No attach removal here — this branch is off `main`, which never had it; the deploy retires the live tool per D0.) |
 | `migrations/…_post_media_set_from_uploads.sql` (**new**) | the RPC §5 |
@@ -229,7 +232,7 @@ metadata only (P1-3).
    the lock; final state is design XOR manual media, never both. 6. **Status (P1-5):** `correcao_cliente`
    → `revisao_interna` after set; `enviado_cliente` stays. 7. **Rejections:** scheduled/published post;
    design attached; foreign-tenant `r2_key`; size ≠ `headObject`; 11 items; `tipo=reels/stories`; image
-   > 8 MB. 8. **get_post (P2-3):** media items include `sort_order` (+ existing `file_id/link_id/is_cover`).
+   > 8 MB. 8. **get_post (P2-3):** media items include `file_id`, `link_id`, `sort_order` (+ existing `is_cover`).
 
 Note the RPC's DB behavior (locks, GC, quota, cover trigger) is only fully exercised against a real
 Postgres — the Deno tests mock `db.rpc`, so include a pgTAP-style validation file for the RPC (as with
