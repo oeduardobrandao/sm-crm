@@ -78,6 +78,12 @@ export interface Deps {
   /** Image-generation core deps (§8) — wired in index.ts; absent = tool unconfigured. */
   // deno-lint-ignore no-explicit-any
   imageGen?: any;
+  /** Presigned R2 PUT URL for direct client upload (create_media_upload). */
+  signPutUrl?: (key: string, mimeType: string) => Promise<string>;
+  /** R2 object HEAD for finalize integrity check (set_post_media). */
+  headObject?: (key: string) => Promise<{ contentLength: number; contentType: string | null } | null>;
+  /** Plan storage quota in bytes (null = unlimited). */
+  storageQuota?: (contaId: string) => Promise<number | null>;
 }
 
 const sign = (d: Deps) => d.signUrl ?? ((key: string) => signGetUrl(key, 3600));

@@ -1,7 +1,9 @@
-import { assertEquals } from "./assert.ts";
+import { assert, assertEquals } from "./assert.ts";
 import { getPost } from "../mcp/queries.ts";
 import type { Deps } from "../mcp/queries.ts";
 import type { McpKeyContext } from "../_shared/mcp-token.ts";
+import { McpInputError } from "../_shared/mcp-token.ts";
+import { createMediaUpload } from "../mcp/media.ts";
 
 type Resp = { data: unknown; error: unknown };
 
@@ -79,4 +81,58 @@ Deno.test("get_post media exposes file_id, link_id, sort_order", async () => {
   assertEquals(post.media[0].link_id, 55);
   assertEquals(post.media[0].sort_order, 0);
   assertEquals(post.media[0].is_cover, true); // unchanged
+});
+
+// ── create_media_upload ─────────────────────────────────────────────────────────
+
+const CTX_WRITE: McpKeyContext = {
+  conta_id: "ws-A", scopes: ["posts:write"], key_id: "k", created_by: "u",
+};
+
+/** fakeDeps for create_media_upload: fake db answers workspaces.select(storage_used_bytes)
+ * .eq.single with `used`; storageQuota/signPutUrl are stubbed directly (not real R2/RPC). */
+function fakeDeps(opts: {
+  used: number;
+  quota: number | null;
+  uuid?: string;
+  onSign?: (key: string) => void;
+}): Deps {
+  const { db } = makeFakeDb({
+    workspaces: [{ data: { storage_used_bytes: opts.used }, error: null }],
+  });
+  return {
+    db,
+    ctx: CTX_WRITE,
+    storageQuota: (_contaId: string) => Promise.resolve(opts.quota),
+    signPutUrl: (key: string, _mime: string) => {
+      opts.onSign?.(key);
+      return Promise.resolve(`https://r2.example/${key}?signed=1`);
+    },
+    randomUUID: () => opts.uuid ?? "uuu",
+  } as unknown as Deps;
+}
+
+Deno.test("create_media_upload signs a PUT url per file with a tenant-scoped r2_key", async () => {
+  const deps = fakeDeps({ used: 0, quota: 1_000_000, uuid: "uuu" });
+  const out = await createMediaUpload(deps, { files: [
+    { filename: "a.jpg", mime_type: "image/jpeg", size_bytes: 100 }] });
+  assertEquals(out.uploads.length, 1);
+  assertEquals(out.uploads[0].r2_key, "contas/ws-A/files/uuu.jpg");
+  assert(out.uploads[0].upload_url.includes("uuu.jpg")); // stub returns a url embedding the key
+  assertEquals(out.uploads[0].size_bytes, 100);
+});
+
+Deno.test("create_media_upload rejects when used + Σsize exceeds quota, WITHOUT signing", async () => {
+  const signed: string[] = [];
+  const deps = fakeDeps({ used: 900, quota: 1000, onSign: (k) => signed.push(k) });
+  let threw = false;
+  try { await createMediaUpload(deps, { files: [{ filename:"a.jpg", mime_type:"image/jpeg", size_bytes: 200 }] }); }
+  catch (e) { threw = e instanceof McpInputError; }
+  assert(threw); assertEquals(signed.length, 0, "must not sign when over quota");
+});
+
+Deno.test("create_media_upload treats null quota as unlimited", async () => {
+  const deps = fakeDeps({ used: 10 ** 12, quota: null, uuid: "u2" });
+  const out = await createMediaUpload(deps, { files: [{ filename:"a.png", mime_type:"image/png", size_bytes: 5 }] });
+  assertEquals(out.uploads[0].r2_key, "contas/ws-A/files/u2.png");
 });

@@ -11,7 +11,7 @@ import { createDesignRenderTrigger } from "../_shared/design-render-trigger.ts";
 import { resolveImageProvider } from "../_shared/image-gen/resolve.ts";
 import { effectivePlanFeature, effectivePlanLimit } from "../_shared/entitlements-rpc.ts";
 import { checkRateLimit } from "../_shared/rate-limit.ts";
-import { deleteObject, getObjectBytes, putObject, signGetUrl } from "../_shared/r2.ts";
+import { deleteObject, getObjectBytes, headObject, putObject, signGetUrl, signPutUrl } from "../_shared/r2.ts";
 import { createDocServiceClient } from "../_shared/doc-service.ts";
 import { starterTemplateFor, type DesignFormat } from "../design-manage/starter-templates.gen.ts";
 import { registerTools } from "./tools.ts";
@@ -141,6 +141,9 @@ Deno.serve(async (req) => {
     callRenderService: docSvc?.render,
     starterTemplate: (format) => starterTemplateFor(format as DesignFormat),
     randomUUID: () => crypto.randomUUID(),
+    signPutUrl: (key: string, mime: string) => signPutUrl(key, mime),
+    headObject: (key: string) => headObject(key),
+    storageQuota: (contaId: string) => effectivePlanLimit(db as never, contaId, "storage_quota_bytes"),
     // generate_image (§8) — the shared core's dep bundle:
     imageGen: {
       db,
