@@ -335,3 +335,35 @@ Deno.test("vision: no-key error — caller checks resolveVisionConfig() before c
   // extractTextBlocks. VisionUnavailableError exists for callers that prefer a thrown signal.
   assert(typeof VisionUnavailableError === "function");
 });
+
+Deno.test("vision: pixel-space bbox/size values re-normalize when dims are provided (live gemini mixes pixel and fraction in one bbox)", async () => {
+  const mixed = validBlock({
+    // x/w normalized, y/h/size in PIXELS of a 1080x1350 image — the exact live failure shape.
+    bbox: { x: 0.125, y: 109, w: 0.749, h: 58 },
+    size: 78,
+  });
+  const f = stubFetch([chatResponse(JSON.stringify({ blocks: [mixed, validBlock()] }))]);
+  try {
+    const blocks = await extractTextBlocks({ ...input, width: 1080, height: 1350 });
+    assertEquals(blocks.length, 2);
+    assertEquals(blocks[0].bbox.x, 0.125);
+    assertEquals(blocks[0].bbox.y, 109 / 1350);
+    assertEquals(blocks[0].bbox.w, 0.749);
+    assertEquals(blocks[0].bbox.h, 58 / 1350);
+    assertEquals(blocks[0].size, 78 / 1350);
+  } finally {
+    f.restore();
+  }
+});
+
+Deno.test("vision: pixel-space values WITHOUT dims still drop the block (no silent garbage)", async () => {
+  const mixed = validBlock({ bbox: { x: 0.125, y: 109, w: 0.749, h: 58 } });
+  const f = stubFetch([chatResponse(JSON.stringify({ blocks: [mixed, validBlock()] }))]);
+  try {
+    const blocks = await extractTextBlocks(input);
+    assertEquals(blocks.length, 1);
+    assertEquals(blocks[0].text, "Hello world");
+  } finally {
+    f.restore();
+  }
+});

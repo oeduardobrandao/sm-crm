@@ -39,6 +39,12 @@ export interface VisionInput {
   imageBytes: Uint8Array;
   mime: string;
   apiKey: string;
+  /** Pixel dimensions of imageBytes. Used to defensively re-normalize bbox/size values the
+   * model returns in PIXELS despite the prompt asking for 0–1 fractions (observed live:
+   * gemini mixes the two in one bbox — x normalized, y/h in pixels — which used to drop
+   * every block). Omitted → pixel-looking values are dropped as before. */
+  width?: number;
+  height?: number;
 }
 
 /** Any extraction failure (fetch failure, non-2xx after retry, moderation 403, unparsable
@@ -90,35 +96,51 @@ function nearestWeight(v: number): TextBlockWeight {
   return Math.abs(v - 400) <= Math.abs(v - 700) ? 400 : 700;
 }
 
+/** Defensive re-normalization: the prompt asks for 0–1 fractions, but the model sometimes
+ * answers in PIXELS — even mixing both inside one bbox (observed live: x normalized, y/h in
+ * pixels). Any finite value > 1 is treated as pixels and divided by the matching dimension;
+ * values already in [0,1] pass through. Without a dimension to divide by, pixel-looking values
+ * stay invalid and the block is dropped by the range check. */
+function normalizeFraction(v: unknown, dim: number | undefined): unknown {
+  if (typeof v !== "number" || !Number.isFinite(v)) return v;
+  if (v > 1 && dim && dim > 0) return v / dim;
+  return v;
+}
+
 /** Hard validation per the slice C block shape. Returns null for anything that doesn't fit —
  * callers drop invalid blocks rather than failing the whole extraction. fontFamily is
  * deliberately NOT part of this shape: callers always use Inter, so any fontFamily the model
  * hallucinates is discarded here rather than threaded through. */
 // deno-lint-ignore no-explicit-any
-function validateBlock(raw: any): TextBlock | null {
+function validateBlock(raw: any, width?: number, height?: number): TextBlock | null {
   if (!raw || typeof raw !== "object") return null;
   if (typeof raw.text !== "string" || raw.text.length === 0) return null;
 
   const bbox = raw.bbox;
   if (!bbox || typeof bbox !== "object") return null;
+  const x = normalizeFraction(bbox.x, width);
+  const y = normalizeFraction(bbox.y, height);
+  const w = normalizeFraction(bbox.w, width);
+  const bh = normalizeFraction(bbox.h, height);
   if (
-    !isFiniteNumberInRange(bbox.x, 0, 1) ||
-    !isFiniteNumberInRange(bbox.y, 0, 1) ||
-    !isFiniteNumberInRange(bbox.w, 0, 1) ||
-    !isFiniteNumberInRange(bbox.h, 0, 1)
+    !isFiniteNumberInRange(x, 0, 1) ||
+    !isFiniteNumberInRange(y, 0, 1) ||
+    !isFiniteNumberInRange(w, 0, 1) ||
+    !isFiniteNumberInRange(bh, 0, 1)
   ) {
     return null;
   }
 
-  if (!isFiniteNumberInRange(raw.size, 0, 1)) return null;
+  const size = normalizeFraction(raw.size, height);
+  if (!isFiniteNumberInRange(size, 0, 1)) return null;
   if (typeof raw.weight !== "number" || !Number.isFinite(raw.weight)) return null;
   if (typeof raw.color !== "string" || !HEX_COLOR_RE.test(raw.color)) return null;
   if (!ALLOWED_ALIGNS.includes(raw.align)) return null;
 
   return {
     text: raw.text,
-    bbox: { x: bbox.x, y: bbox.y, w: bbox.w, h: bbox.h },
-    size: raw.size,
+    bbox: { x, y, w, h: bh },
+    size,
     weight: nearestWeight(raw.weight),
     color: raw.color.toLowerCase(),
     align: raw.align,
@@ -177,7 +199,7 @@ function extractJson(content: string): unknown {
   throw new VisionError("no parsable JSON in vision model response");
 }
 
-function parseBlocks(content: string): TextBlock[] {
+function parseBlocks(content: string, width?: number, height?: number): TextBlock[] {
   const parsed = extractJson(content);
   const rawBlocks = Array.isArray(parsed)
     ? parsed
@@ -189,7 +211,7 @@ function parseBlocks(content: string): TextBlock[] {
   const blocks: TextBlock[] = [];
   for (const raw of rawBlocks) {
     if (blocks.length >= MAX_BLOCKS) break;
-    const block = validateBlock(raw);
+    const block = validateBlock(raw, width, height);
     if (block) blocks.push(block);
   }
   if (blocks.length === 0) {
@@ -277,7 +299,7 @@ export async function extractTextBlocks(
     }
 
     lastVisionContentSample = content.slice(0, 600);
-    return parseBlocks(content);
+    return parseBlocks(content, input.width, input.height);
   }
   throw new VisionError(`vision provider status ${lastStatus}`);
 }

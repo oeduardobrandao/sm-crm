@@ -41,6 +41,13 @@ const TIPO_TO_FORMAT: Record<string, "feed" | "carrossel"> = { feed: "feed", car
 const PRESETS = ["1:1", "4:5", "9:16"] as const;
 type Preset = (typeof PRESETS)[number];
 const PRESET_RATIOS: Record<Preset, number> = { "1:1": 1, "4:5": 4 / 5, "9:16": 9 / 16 };
+// Pixel size of each preset (mirrors services/estudio-render lib/frames.js PRESETS) — the
+// normalized crop is exactly this size; vision uses it to re-normalize pixel-space bboxes.
+const PRESET_DIMS: Record<Preset, { width: number; height: number }> = {
+  "1:1": { width: 1080, height: 1080 },
+  "4:5": { width: 1080, height: 1350 },
+  "9:16": { width: 1080, height: 1920 },
+};
 const FALLBACK_PRESET: Preset = "4:5";
 
 const BURST_MAX = 20;
@@ -331,7 +338,13 @@ export function createDesignImportHandler(deps: DesignImportDeps) {
     }
     let textBlocks: TextBlock[];
     try {
-      textBlocks = await deps.extractTextBlocks({ imageBytes: croppedBytes, mime: "image/jpeg", apiKey: visionApiKey });
+      textBlocks = await deps.extractTextBlocks({
+        imageBytes: croppedBytes,
+        mime: "image/jpeg",
+        apiKey: visionApiKey,
+        width: PRESET_DIMS[preset].width,
+        height: PRESET_DIMS[preset].height,
+      });
     } catch (e) {
       if (e instanceof VisionError) {
         deps.logError("design-import:vision", e);
@@ -344,7 +357,17 @@ export function createDesignImportHandler(deps: DesignImportDeps) {
     // gates enforced, zero provider spend (no inpaint/design). Returns the tenant's own
     // truncated model output. Remove once the zero-blocks investigation closes.
     if ((body as { debug_vision?: unknown }).debug_vision === true) {
-      return json({ debug: true, text_block_count: textBlocks.length, sample: lastVisionContentSample }, 200);
+      let croppedB64 = "";
+      for (let i = 0; i < croppedBytes.length; i += 0x8000) {
+        croppedB64 += String.fromCharCode(...croppedBytes.subarray(i, i + 0x8000));
+      }
+      return json({
+        debug: true,
+        text_block_count: textBlocks.length,
+        sample: lastVisionContentSample,
+        cropped_bytes: croppedBytes.length,
+        cropped_b64: btoa(croppedB64),
+      }, 200);
     }
 
     // ── 7. Inpaint (generateImageCore owns its own gates/ledger/quota) ────────
