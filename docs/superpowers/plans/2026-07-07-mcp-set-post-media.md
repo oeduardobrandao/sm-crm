@@ -159,21 +159,28 @@ non-deferrable partial-unique-index trap (`reference_post_file_links_cover_flip_
 
 - [ ] **Step 2: Write the pgTAP validation test**
 
-Create `supabase/tests/post_media_set_from_uploads.sql` (rolled-back txn; fill fixtures to satisfy live
-NOT NULL/FK/CHECK — `workspaces` needs a generous storage quota so `file_insert_with_quota` passes;
-`workflows` needs `user_id`+`cliente_id`; use status `aprovado_interno` for the not-editable case):
+**CRITICAL — plan-based quota:** the RPC calls `file_insert_with_quota`, whose quota comes from
+`effective_plan_limit(conta_id, 'storage_quota_bytes')` (migration `20260611150001`), **NOT**
+`workspaces.storage_quota_bytes`. So the fixture MUST give the workspace a plan — use the entitlements
+harness `et_make_workspace('free')` (free plan = 100 MB, ample for 10-byte test files), exactly like
+`supabase/tests/entitlements/20_storage_rpcs.sql` (which tests `file_insert_with_quota` itself). Do NOT
+set `workspaces.storage_quota_bytes` — it is ignored.
+
+Create `supabase/tests/post_media_set_from_uploads.sql` (rolled-back txn; fill remaining fixtures to
+satisfy live NOT NULL/FK/CHECK — `workflows` needs `user_id`+`cliente_id`; use status `aprovado_interno`
+for the not-editable case):
 
 ```sql
 \set ON_ERROR_STOP on
+\i supabase/tests/entitlements/_helpers.sql
 begin;
 do $$
 declare
-  v_ws uuid := gen_random_uuid(); v_wf bigint; v_post bigint; v_res jsonb;
+  v_ws uuid; v_wf bigint; v_post bigint; v_res jsonb;
   v_u uuid := gen_random_uuid(); v_cli bigint;
 begin
+  v_ws := et_make_workspace('free');  -- free plan → effective storage quota 100MB (see 20_storage_rpcs.sql)
   insert into auth.users (id) values (v_u) on conflict do nothing;
-  insert into workspaces (id, name, storage_quota_bytes, storage_used_bytes)
-    values (v_ws, 'set-media-test', 999999999, 0) on conflict do nothing;
   insert into clientes (conta_id, user_id, nome, sigla) values (v_ws, v_u, 'C', 'C') returning id into v_cli;
   insert into workflows (conta_id, cliente_id, user_id, titulo, status)
     values (v_ws, v_cli, v_u, 'wf', 'ativo') returning id into v_wf;
@@ -653,10 +660,11 @@ git commit -m "feat(mcp): announce upload+set media capability"
   (`git diff deno.lock` empty; revert if not). No `apps/`/`packages/` changes → CRM prettier/tsc/vitest
   gates N/A.
 
-- [ ] **Step 2: pgTAP on a real Postgres.** Build a self-contained validator (as with the attach slice):
-  `begin; <migration 20260707000002 body> <pgTAP do-block from supabase/tests/post_media_set_from_uploads.sql, minus \set/begin/rollback> rollback;` and run it against STAGING via
-  `psql "<staging conn>" -f <file>` (fixtures roll back; zero residue). Expect `NOTICE:
-  post_media_set_from_uploads: all cases passed`. Fix any real-DB surprise before prod apply.
+- [ ] **Step 2: pgTAP on a real Postgres (STAGING).** The test uses `\i supabase/tests/entitlements/_helpers.sql` (psql-only) and needs the function to exist, so: (a) apply the migration
+  `20260707000002` to STAGING (SQL editor or `psql -f`) to create the function — additive, and staging
+  should track prod-bound migrations anyway; (b) `psql "<staging conn>" -f supabase/tests/post_media_set_from_uploads.sql` — its `begin;…rollback;` rolls back all fixtures (zero
+  residue; the function persists on staging, which is fine). Expect `NOTICE: post_media_set_from_uploads:
+  all cases passed`. Fix any real-DB surprise (esp. the plan-quota fixture) before prod apply.
 
 - [ ] **Step 3: STOP — Eduardo applies** `20260707000002_post_media_set_from_uploads.sql` to PROD via the
   SQL editor; record the version. Additive (new function), safe ahead of the deploy.
