@@ -31,6 +31,7 @@ import {
 } from "./design.ts";
 import { generateImage } from "./imageGen.ts";
 import { getDesignCapabilities, previewDesign } from "./capabilities.ts";
+import { createMediaUpload, setPostMedia } from "./media.ts";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
 function jsonResult(data: unknown) {
@@ -373,4 +374,28 @@ export function registerTools(server: any, deps: Deps): void {
     "Descubra o que o Estúdio aceita ANTES de criar/editar designs: formatos e canvases dos templates, o vocabulário de ops do update_design, semântica da projeção (ids estáveis, frames publicáveis), fontes garantidas no render, limites, regras de vínculo com posts, features do plano, quota de imagens e — com client_id — o kit de marca (cores, logo_file_id quando já materializado, fontes). Leitura pura: nunca materializa o logo.",
     { client_id: z.number().int().positive().optional() },
     (a) => getDesignCapabilities(deps, a));
+
+  register(server, deps, "create_media_upload", "posts:write",
+    "Gera URL(s) de upload presigned (PUT) para subir imagens JPG/PNG prontas ao workspace (cota checada antes de assinar). Depois use set_post_media com os r2_key retornados para colocá-las como mídia de um post. Máx 10 arquivos, ≤ 8MB cada.",
+    { files: z.array(z.object({
+        filename: z.string().trim().min(1).max(200),
+        mime_type: z.enum(["image/jpeg", "image/png"]),
+        size_bytes: z.number().int().positive().max(8 * 1024 * 1024),
+      })).min(1).max(10) },
+    (a) => createMediaUpload(deps, a),
+    (a) => ({ file_count: a.files.length, total_bytes: a.files.reduce((s: number, f: any) => s + f.size_bytes, 0),
+              mime_types: [...new Set(a.files.map((f: any) => f.mime_type))] }));
+
+  register(server, deps, "set_post_media", "posts:write",
+    "Define a mídia de um post (feed/carrossel) a partir de imagens já enviadas (r2_key de create_media_upload). SUBSTITUI toda a mídia atual, na ordem dada (capa = 1º item), sincroniza o tipo (feed/carrossel) e devolve o post atualizado. Rejeita posts com design (edite o design). Máx 10 itens.",
+    { post_id: z.number().int().positive(),
+      items: z.array(z.object({
+        r2_key: z.string(), size_bytes: z.number().int().positive(),
+        mime_type: z.enum(["image/jpeg", "image/png"]),
+        width: z.number().int().positive().optional(), height: z.number().int().positive().optional(),
+        filename: z.string().max(200).optional(),
+      })).min(1).max(10) },
+    (a) => setPostMedia(deps, a),
+    (a) => ({ post_id: a.post_id, item_count: a.items.length,
+              total_bytes: a.items.reduce((s: number, i: any) => s + i.size_bytes, 0) }));
 }
