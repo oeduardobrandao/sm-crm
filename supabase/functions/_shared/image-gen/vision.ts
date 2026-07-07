@@ -57,11 +57,6 @@ export class VisionError extends Error {}
  * null as an exception rather than branching on it directly. */
 export class VisionUnavailableError extends Error {}
 
-/** TEMP DIAGNOSTIC (slice C E2E): truncated raw content of the last vision response, read by
- * design-import's debug_vision branch. Remove together with that branch once the zero-blocks
- * investigation closes. */
-export let lastVisionContentSample = "";
-
 function toBase64(bytes: Uint8Array): string {
   let binary = "";
   const chunk = 0x8000;
@@ -298,7 +293,6 @@ export async function extractTextBlocks(
       throw new VisionError("vision provider returned no content");
     }
 
-    lastVisionContentSample = content.slice(0, 600);
     return parseBlocks(content, input.width, input.height);
   }
   throw new VisionError(`vision provider status ${lastStatus}`);
