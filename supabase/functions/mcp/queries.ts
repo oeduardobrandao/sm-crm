@@ -415,13 +415,16 @@ export async function getPost(d: Deps, args: { post_id: number }): Promise<any |
   // Signed media (1h) for the single post.
   const { data: links } = await d.db
     .from("post_file_links")
-    .select("is_cover, sort_order, files!inner(r2_key, thumbnail_r2_key, kind, mime_type, width, height, duration_seconds)")
+    .select("id, is_cover, sort_order, files!inner(id, r2_key, thumbnail_r2_key, kind, mime_type, width, height, duration_seconds)")
     .eq("conta_id", d.ctx.conta_id)
     .eq("post_id", p.id)
     .order("sort_order");
   const signUrl = sign(d);
   const media = await Promise.all(
     (links ?? []).map(async (l: any) => ({
+      link_id: l.id,
+      file_id: l.files.id,
+      sort_order: l.sort_order,
       kind: l.files.kind,
       mime_type: l.files.mime_type,
       width: l.files.width,
