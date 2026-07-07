@@ -31,7 +31,7 @@ import {
 } from "./design.ts";
 import { generateImage } from "./imageGen.ts";
 import { getDesignCapabilities, previewDesign } from "./capabilities.ts";
-import { createMediaUpload } from "./media.ts";
+import { createMediaUpload, setPostMedia } from "./media.ts";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
 function jsonResult(data: unknown) {
@@ -385,4 +385,17 @@ export function registerTools(server: any, deps: Deps): void {
     (a) => createMediaUpload(deps, a),
     (a) => ({ file_count: a.files.length, total_bytes: a.files.reduce((s: number, f: any) => s + f.size_bytes, 0),
               mime_types: [...new Set(a.files.map((f: any) => f.mime_type))] }));
+
+  register(server, deps, "set_post_media", "posts:write",
+    "Define a mídia de um post (feed/carrossel) a partir de imagens já enviadas (r2_key de create_media_upload). SUBSTITUI toda a mídia atual, na ordem dada (capa = 1º item), sincroniza o tipo (feed/carrossel) e devolve o post atualizado. Rejeita posts com design (edite o design). Máx 10 itens.",
+    { post_id: z.number().int().positive(),
+      items: z.array(z.object({
+        r2_key: z.string(), size_bytes: z.number().int().positive(),
+        mime_type: z.enum(["image/jpeg", "image/png"]),
+        width: z.number().int().positive().optional(), height: z.number().int().positive().optional(),
+        filename: z.string().max(200).optional(),
+      })).min(1).max(10) },
+    (a) => setPostMedia(deps, a),
+    (a) => ({ post_id: a.post_id, item_count: a.items.length,
+              total_bytes: a.items.reduce((s: number, i: any) => s + i.size_bytes, 0) }));
 }
