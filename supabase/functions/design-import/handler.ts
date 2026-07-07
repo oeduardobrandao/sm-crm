@@ -24,7 +24,7 @@ import {
   type ImageGenCoreDeps,
   type ImageGenInput,
 } from "../_shared/image-gen/core.ts";
-import { extractTextBlocks, VisionError, type TextBlock } from "../_shared/image-gen/vision.ts";
+import { extractTextBlocks, lastVisionContentSample, VisionError, type TextBlock } from "../_shared/image-gen/vision.ts";
 import { DocServiceError, type ComposeSpec } from "../_shared/doc-service.ts";
 
 // Mirrors design-manage's EDITABLE_STATUSES (20260706000001: design work may continue while the
@@ -338,6 +338,13 @@ export function createDesignImportHandler(deps: DesignImportDeps) {
         return json(envelope("vision_failed", "Não foi possível analisar o texto da imagem.", true), 502);
       }
       throw e;
+    }
+
+    // TEMP DIAGNOSTIC (slice C E2E): debug_vision runs the pipeline UP TO vision only — all
+    // gates enforced, zero provider spend (no inpaint/design). Returns the tenant's own
+    // truncated model output. Remove once the zero-blocks investigation closes.
+    if ((body as { debug_vision?: unknown }).debug_vision === true) {
+      return json({ debug: true, text_block_count: textBlocks.length, sample: lastVisionContentSample }, 200);
     }
 
     // ── 7. Inpaint (generateImageCore owns its own gates/ledger/quota) ────────
