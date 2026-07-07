@@ -13,7 +13,11 @@ export const EDITABLE_STATUSES = [
 const SUPPORTED_TIPOS = ['feed', 'carrossel', 'reels'];
 
 export type IneligibleReason =
-  'tipo_unsupported' | 'not_editable' | 'already_designed' | 'has_video' | null;
+  | 'tipo_unsupported'
+  | 'not_editable'
+  | 'already_designed'
+  | 'has_video'
+  | null;
 
 export function postEligibility(
   post: { id: number; tipo: string; status: string },
