@@ -16,6 +16,18 @@ export interface BillingPlan {
   feature_brand_customization: boolean;
 }
 
+export interface PublicPricingPlan {
+  id: string;
+  name: string;
+  price_brl: number | null;
+  price_brl_annual: number | null;
+  sort_order: number;
+  max_clients: number | null;
+  max_team_members: number | null;
+}
+
+const INTERNAL_PLAN_IDS = new Set(['lifetime']);
+
 export interface WorkspaceSubscription {
   status: string | null;
   plan_id: string | null;
@@ -47,6 +59,20 @@ export async function listActivePlans(): Promise<BillingPlan[]> {
     .order('sort_order', { ascending: true });
   if (error) throw new Error(error.message);
   return (data ?? []) as BillingPlan[];
+}
+
+export async function listPublicPricingPlans(): Promise<PublicPricingPlan[]> {
+  const { data, error } = await supabase
+    .from('plans')
+    .select(
+      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members',
+    )
+    .eq('is_active', true)
+    .order('sort_order', { ascending: true });
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as PublicPricingPlan[]).filter(
+    (plan) => !INTERNAL_PLAN_IDS.has(plan.id),
+  );
 }
 
 /**

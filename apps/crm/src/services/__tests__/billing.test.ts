@@ -1,15 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+const { from } = vi.hoisted(() => ({ from: vi.fn() }));
+
 vi.mock('../../lib/supabase', () => ({
   supabase: {
     auth: {
       getSession: vi.fn().mockResolvedValue({ data: { session: { access_token: 'tok' } } }),
     },
+    from,
   },
 }));
 
 import { supabase } from '../../lib/supabase';
-import { startCheckout, openBillingPortal } from '../billing';
+import {
+  listPublicPricingPlans,
+  startCheckout,
+  openBillingPortal,
+} from '../billing';
 
 describe('billing service', () => {
   beforeEach(() => {
@@ -18,8 +25,68 @@ describe('billing service', () => {
     vi.mocked(supabase.auth.getSession).mockResolvedValue({
       data: { session: { access_token: 'tok' } },
     } as never);
+    from.mockReset();
     vi.stubGlobal('fetch', vi.fn());
     vi.stubEnv('VITE_SUPABASE_URL', 'https://example.supabase.co');
+  });
+
+  it('lists only active public pricing fields in Admin order and hides Lifetime', async () => {
+    const order = vi.fn().mockResolvedValue({
+      data: [
+        {
+          id: 'lifetime',
+          name: 'Lifetime',
+          price_brl: 0,
+          price_brl_annual: 0,
+          sort_order: -1,
+          max_clients: null,
+          max_team_members: null,
+        },
+        {
+          id: 'start',
+          name: 'Start',
+          price_brl: 9990,
+          price_brl_annual: 95900,
+          sort_order: 1,
+          max_clients: 5,
+          max_team_members: 2,
+        },
+      ],
+      error: null,
+    });
+    const eq = vi.fn().mockReturnValue({ order });
+    const select = vi.fn().mockReturnValue({ eq });
+    from.mockReturnValue({ select });
+
+    await expect(listPublicPricingPlans()).resolves.toEqual([
+      {
+        id: 'start',
+        name: 'Start',
+        price_brl: 9990,
+        price_brl_annual: 95900,
+        sort_order: 1,
+        max_clients: 5,
+        max_team_members: 2,
+      },
+    ]);
+    expect(from).toHaveBeenCalledWith('plans');
+    expect(select).toHaveBeenCalledWith(
+      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members',
+    );
+    expect(eq).toHaveBeenCalledWith('is_active', true);
+    expect(order).toHaveBeenCalledWith('sort_order', { ascending: true });
+  });
+
+  it('surfaces public pricing catalog errors', async () => {
+    const order = vi.fn().mockResolvedValue({
+      data: null,
+      error: { message: 'catalog unavailable' },
+    });
+    const eq = vi.fn().mockReturnValue({ order });
+    const select = vi.fn().mockReturnValue({ eq });
+    from.mockReturnValue({ select });
+
+    await expect(listPublicPricingPlans()).rejects.toThrow('catalog unavailable');
   });
 
   it('startCheckout posts plan+interval and returns the url', async () => {
