@@ -13,10 +13,7 @@ import {
   Youtube,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import {
-  listPublicPricingPlans,
-  type PublicPricingPlan,
-} from '@/services/billing';
+import { listPublicPricingPlans, type PublicPricingPlan } from '@/services/billing';
 
 import {
   AgentVisual,
@@ -594,10 +591,7 @@ function Testimonial() {
   );
 }
 
-const PLAN_MARKETING: Record<
-  string,
-  { description: string; cta: string; highlight?: boolean }
-> = {
+const PLAN_MARKETING: Record<string, { description: string; cta: string; highlight?: boolean }> = {
   free: {
     description: 'Para conhecer a plataforma.',
     cta: 'Começar grátis',
@@ -741,8 +735,7 @@ function Pricing() {
                 description: `Conheça o plano ${plan.name}.`,
                 cta: `Assinar ${plan.name}`,
               };
-              const hasAnnualPrice =
-                plan.price_brl_annual != null && plan.price_brl_annual > 0;
+              const hasAnnualPrice = plan.price_brl_annual != null && plan.price_brl_annual > 0;
               const isFree = plan.price_brl === 0 && plan.price_brl_annual === 0;
               const amount = isYear
                 ? isFree
@@ -752,7 +745,10 @@ function Pricing() {
                     : null
                 : plan.price_brl;
               return (
-                <div key={plan.id} className={`plan-card${marketing.highlight ? ' highlight' : ''}`}>
+                <div
+                  key={plan.id}
+                  className={`plan-card${marketing.highlight ? ' highlight' : ''}`}
+                >
                   {marketing.highlight && <div className="plan-badge">Mais popular</div>}
                   <h3>{plan.name}</h3>
                   <div className="price-row">

@@ -64,15 +64,11 @@ export async function listActivePlans(): Promise<BillingPlan[]> {
 export async function listPublicPricingPlans(): Promise<PublicPricingPlan[]> {
   const { data, error } = await supabase
     .from('plans')
-    .select(
-      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members',
-    )
+    .select('id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members')
     .eq('is_active', true)
     .order('sort_order', { ascending: true });
   if (error) throw new Error(error.message);
-  return ((data ?? []) as PublicPricingPlan[]).filter(
-    (plan) => !INTERNAL_PLAN_IDS.has(plan.id),
-  );
+  return ((data ?? []) as PublicPricingPlan[]).filter((plan) => !INTERNAL_PLAN_IDS.has(plan.id));
 }
 
 /**

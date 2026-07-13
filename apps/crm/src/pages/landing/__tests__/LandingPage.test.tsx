@@ -223,7 +223,9 @@ describe('LandingPage', () => {
     );
     expect(names).toEqual(['Free', 'Start', 'Pro', 'Max']);
 
-    const startCard = screen.getByRole('heading', { name: 'Start', level: 3 }).closest('.plan-card');
+    const startCard = screen
+      .getByRole('heading', { name: 'Start', level: 3 })
+      .closest('.plan-card');
     expect(startCard).not.toBeNull();
     expect(within(startCard as HTMLElement).getByText('R$ 99,90')).toBeInTheDocument();
     expect(within(startCard as HTMLElement).getByText('5')).toBeInTheDocument();
@@ -245,7 +247,9 @@ describe('LandingPage', () => {
     expect(screen.getByText('Economize até 20% no plano anual')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Anual' }));
 
-    const startCard = screen.getByRole('heading', { name: 'Start', level: 3 }).closest('.plan-card');
+    const startCard = screen
+      .getByRole('heading', { name: 'Start', level: 3 })
+      .closest('.plan-card');
     expect(startCard).not.toBeNull();
     expect(within(startCard as HTMLElement).getByText('R$ 79,92')).toBeInTheDocument();
     expect(
@@ -264,7 +268,9 @@ describe('LandingPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Anual' }));
 
-    const startCard = screen.getByRole('heading', { name: 'Start', level: 3 }).closest('.plan-card');
+    const startCard = screen
+      .getByRole('heading', { name: 'Start', level: 3 })
+      .closest('.plan-card');
     expect(startCard).not.toBeNull();
     expect(within(startCard as HTMLElement).getByText('Sob consulta')).toBeInTheDocument();
     expect(within(startCard as HTMLElement).queryByText('/mês')).not.toBeInTheDocument();
@@ -287,7 +293,9 @@ describe('LandingPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Anual' }));
 
-    const startCard = screen.getByRole('heading', { name: 'Start', level: 3 }).closest('.plan-card');
+    const startCard = screen
+      .getByRole('heading', { name: 'Start', level: 3 })
+      .closest('.plan-card');
     expect(startCard).not.toBeNull();
     expect(within(startCard as HTMLElement).getByText('Sob consulta')).toBeInTheDocument();
     expect(within(startCard as HTMLElement).queryByText('/mês')).not.toBeInTheDocument();
@@ -337,11 +345,12 @@ describe('LandingPage', () => {
     const heading = await screen.findByRole('heading', { name: 'Enterprise', level: 3 });
     const card = heading.closest('.plan-card');
     expect(card).not.toBeNull();
-    expect(within(card as HTMLElement).getByText('Conheça o plano Enterprise.')).toBeInTheDocument();
-    expect(within(card as HTMLElement).getByRole('link', { name: 'Assinar Enterprise' })).toHaveAttribute(
-      'href',
-      '/login?tab=register',
-    );
+    expect(
+      within(card as HTMLElement).getByText('Conheça o plano Enterprise.'),
+    ).toBeInTheDocument();
+    expect(
+      within(card as HTMLElement).getByRole('link', { name: 'Assinar Enterprise' }),
+    ).toHaveAttribute('href', '/login?tab=register');
   });
 
   it('shows a retryable error without stale plan values', async () => {
@@ -349,7 +358,9 @@ describe('LandingPage', () => {
     renderLandingPage();
     triggerPricingIntersection();
 
-    expect(await screen.findByText('Não foi possível carregar os planos agora.')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Não foi possível carregar os planos agora.'),
+    ).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Start', level: 3 })).not.toBeInTheDocument();
 
     vi.mocked(listPublicPricingPlans).mockResolvedValueOnce(PRICING_PLANS);

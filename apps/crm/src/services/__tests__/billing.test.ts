@@ -12,11 +12,7 @@ vi.mock('../../lib/supabase', () => ({
 }));
 
 import { supabase } from '../../lib/supabase';
-import {
-  listPublicPricingPlans,
-  startCheckout,
-  openBillingPortal,
-} from '../billing';
+import { listPublicPricingPlans, startCheckout, openBillingPortal } from '../billing';
 
 describe('billing service', () => {
   beforeEach(() => {
