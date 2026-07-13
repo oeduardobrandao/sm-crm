@@ -350,15 +350,14 @@ Deno.serve(createInstagramSyncCronHandler({
         success: true,
         synced: syncedCount,
         failed: failedCount,
-        total: eligible.length,
-        errors
+        total: eligible.length
       }), {
         headers: { 'Content-Type': 'application/json' }
       });
     } catch (err: any) {
       console.error("[IG-SYNC-CRON] Cron Job Failed", err);
       await reportCronFailure(supabase, 'instagram-sync-cron', { total: 0, failed: 1, errors: [{ error: err.message }], stack: err?.stack });
-      return new Response(JSON.stringify({ error: err.message }), {
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' }
       });

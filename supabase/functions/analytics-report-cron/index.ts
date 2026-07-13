@@ -98,7 +98,7 @@ Deno.serve(createAnalyticsReportCronHandler({
       return json({ success: true, month, queued, skipped, failed, total: accounts.length });
     } catch (err: any) {
       console.error("Report Cron Job Failed:", err);
-      return json({ error: err.message }, 500);
+      return json({ error: "Internal server error" }, 500);
     }
   },
 }));

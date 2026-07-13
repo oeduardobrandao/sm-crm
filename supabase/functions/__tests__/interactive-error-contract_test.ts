@@ -12,6 +12,13 @@ const files = [
   "../invite-user/index.ts",
 ];
 
+const cronFiles = [
+  "../analytics-report-cron/index.ts",
+  "../instagram-publish-cron/index.ts",
+  "../instagram-refresh-cron/index.ts",
+  "../instagram-sync-cron/index.ts",
+];
+
 Deno.test("interactive 500 responses do not interpolate raw exception messages", async () => {
   for (const relative of files) {
     const source = await Deno.readTextFile(new URL(relative, import.meta.url));
@@ -24,4 +31,20 @@ Deno.test("interactive 500 responses do not interpolate raw exception messages",
     assertEquals(source.includes("error: err.message ??"), false, relative);
     assertEquals(source.includes("Erro interno do servidor: ${detail}"), false, relative);
   }
+});
+
+Deno.test("cron responses do not expose raw exception details", async () => {
+  for (const relative of cronFiles) {
+    const source = await Deno.readTextFile(new URL(relative, import.meta.url));
+    assertEquals(
+      /(?:json|JSON\.stringify)\(\{\s*error:\s*err\.message/.test(source),
+      false,
+      relative,
+    );
+  }
+
+  const syncCron = await Deno.readTextFile(
+    new URL("../instagram-sync-cron/index.ts", import.meta.url),
+  );
+  assertEquals(/total:\s*eligible\.length,\s*errors\s*\}/s.test(syncCron), false);
 });
