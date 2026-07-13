@@ -137,6 +137,9 @@ export default {
       const cacheUrl = new URL(url.toString());
       cacheUrl.searchParams.delete("exp");
       cacheUrl.searchParams.delete("sig");
+      cacheUrl.searchParams.delete("w");
+      cacheUrl.searchParams.delete("f");
+      cacheUrl.searchParams.delete("fit");
       const origin = request.headers.get("Origin");
       if (origin) cacheUrl.searchParams.set("_origin", origin);
       cacheKey = new Request(cacheUrl.toString(), { method: "GET" });
