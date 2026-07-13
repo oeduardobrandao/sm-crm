@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   ArrowRight,
   ChevronDown,
@@ -12,6 +13,10 @@ import {
   Youtube,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import {
+  listPublicPricingPlans,
+  type PublicPricingPlan,
+} from '@/services/billing';
 
 import {
   AgentVisual,
@@ -589,98 +594,79 @@ function Testimonial() {
   );
 }
 
+const PLAN_MARKETING: Record<
+  string,
+  { description: string; cta: string; highlight?: boolean }
+> = {
+  free: {
+    description: 'Para conhecer a plataforma.',
+    cta: 'Começar grátis',
+  },
+  start: {
+    description: 'Para freelancers que estão começando.',
+    cta: 'Assinar Start',
+  },
+  pro: {
+    description: 'Para freelancers com carteira consolidada.',
+    cta: 'Assinar Pro',
+    highlight: true,
+  },
+  max: {
+    description: 'Para micro-agências e equipes completas.',
+    cta: 'Assinar Max',
+  },
+};
+
+function displayLimit(limit: number | null): string {
+  return limit == null ? 'Ilimitado' : String(limit);
+}
+
+function annualSavingsPct(plans: PublicPricingPlan[]): number {
+  return plans.reduce((best, plan) => {
+    if (!plan.price_brl || !plan.price_brl_annual) return best;
+    const saving = Math.round((1 - plan.price_brl_annual / (plan.price_brl * 12)) * 100);
+    return Math.max(best, saving);
+  }, 0);
+}
+
 function Pricing() {
   const { user } = useAuth();
   const [period, setPeriod] = useState<'month' | 'year'>('month');
+  const pricingRef = useRef<HTMLElement>(null);
+  const [shouldLoadPlans, setShouldLoadPlans] = useState(false);
 
-  // Prices in centavos, mirroring the real plan catalog (supabase/seed.sql → DB `plans`).
-  // Annual price is the full yearly charge; the card shows its per-month equivalent.
-  const plans = [
-    {
-      id: 'free',
-      name: 'Free',
-      monthly: 0,
-      annual: 0,
-      tag: 'Para conhecer a plataforma.',
-      limits: [
-        ['Clientes', '2'],
-        ['Usuários', '1'],
-        ['Templates', '1'],
-      ] as const,
-      feats: [
-        { t: 'Planejamento', y: true },
-        { t: 'Calendário', y: true },
-        { t: 'Integração Instagram', y: false },
-        { t: 'Portal do cliente', y: false },
-      ],
-      cta: 'Começar grátis',
-      highlight: false,
-    },
-    {
-      id: 'start',
-      name: 'Start',
-      monthly: 9990,
-      annual: 95900,
-      tag: 'Para freelancers que estão começando.',
-      limits: [
-        ['Clientes', '5'],
-        ['Usuários', '1'],
-        ['Templates', '3'],
-      ] as const,
-      feats: [
-        { t: 'Planejamento', y: true },
-        { t: 'Calendário', y: true },
-        { t: 'Integração Instagram', y: true },
-        { t: 'Portal do cliente', y: true },
-      ],
-      cta: 'Assinar Start',
-      highlight: false,
-    },
-    {
-      id: 'pro',
-      name: 'Pro',
-      monthly: 13990,
-      annual: 134300,
-      tag: 'Para freelancers com carteira consolidada.',
-      limits: [
-        ['Clientes', '15'],
-        ['Usuários', '3'],
-        ['Templates', '8'],
-      ] as const,
-      feats: [
-        { t: 'Planejamento', y: true },
-        { t: 'Calendário', y: true },
-        { t: 'Integração Instagram', y: true },
-        { t: 'Portal do cliente', y: true },
-        { t: 'Agendamento automático', y: true },
-        { t: 'Métricas avançadas', y: true },
-      ],
-      cta: 'Assinar Pro',
-      highlight: true,
-    },
-    {
-      id: 'max',
-      name: 'Max',
-      monthly: 19990,
-      annual: 191900,
-      tag: 'Para micro-agências e equipes completas.',
-      limits: [
-        ['Clientes', 'Ilimitado'],
-        ['Usuários', 'Ilimitado'],
-        ['Templates', 'Ilimitado'],
-      ] as const,
-      feats: [
-        { t: 'Planejamento', y: true },
-        { t: 'Calendário', y: true },
-        { t: 'Integração Instagram', y: true },
-        { t: 'Portal do cliente', y: true },
-        { t: 'Agendamento automático', y: true },
-        { t: 'Métricas avançadas', y: true },
-      ],
-      cta: 'Assinar Max',
-      highlight: false,
-    },
-  ];
+  useEffect(() => {
+    const section = pricingRef.current;
+    if (!section) return;
+    if (typeof IntersectionObserver === 'undefined') {
+      setShouldLoadPlans(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return;
+        setShouldLoadPlans(true);
+        observer.disconnect();
+      },
+      { rootMargin: '600px 0px' },
+    );
+    observer.observe(section);
+    return () => observer.disconnect();
+  }, []);
+
+  const {
+    data: plans = [],
+    isPending,
+    isError,
+    refetch,
+  } = useQuery({
+    queryKey: ['landing', 'pricing-plans'],
+    queryFn: listPublicPricingPlans,
+    enabled: shouldLoadPlans,
+    staleTime: 5 * 60_000,
+  });
+
+  const savingsPct = annualSavingsPct(plans);
 
   const isYear = period === 'year';
 
@@ -691,7 +677,7 @@ function Pricing() {
   };
 
   return (
-    <section className="lp-pad" id="pricing">
+    <section ref={pricingRef} className="lp-pad" id="pricing">
       <div className="lp-container">
         <div className="section-head reveal">
           <span className="eyebrow-pill">Planos e preços</span>
@@ -715,55 +701,84 @@ function Pricing() {
               Anual
             </button>
           </div>
-          <span className="pricing-save">Economize 20% no plano anual</span>
+          {savingsPct > 0 && (
+            <span className="pricing-save">Economize até {savingsPct}% no plano anual</span>
+          )}
         </div>
 
         <div className="plans-grid">
-          {plans.map((p) => {
-            const amount = isYear ? p.annual / 12 : p.monthly;
-            return (
-              <div key={p.id} className={`plan-card reveal ${p.highlight ? 'highlight' : ''}`}>
-                {p.highlight && <div className="plan-badge">Mais popular</div>}
-                <h3>{p.name}</h3>
-                <div className="price-row">
-                  <span className="price">{formatPrice(amount)}</span>
-                  <span className="price-sub">/mês</span>
-                </div>
-                <div className="price-annual-note">
-                  {isYear && p.annual > 0
-                    ? `cobrado anualmente (${formatPrice(p.annual)}/ano)`
-                    : ' '}
-                </div>
-                <div className="plan-tag">{p.tag}</div>
-                <div className="plan-label">Limites</div>
-                <ul className="plan-list plan-limits">
-                  {p.limits.map(([k, v]) => (
-                    <li key={k}>
-                      <span className="k">{k}</span>
-                      <span className="v">{v}</span>
-                    </li>
-                  ))}
-                </ul>
-                <div className="plan-label">Features</div>
-                <ul className="plan-list plan-feats">
-                  {p.feats.map((f) => (
-                    <li key={f.t}>
-                      {f.y ? <span className="ck">✓</span> : <span className="xk">✕</span>}
-                      <span className={f.y ? '' : 'strike'}>{f.t}</span>
-                    </li>
-                  ))}
-                </ul>
-                <div className="plan-cta">
-                  <a
-                    href={planHref(p.id)}
-                    className={`lp-btn ${p.highlight ? 'lp-btn-primary' : 'lp-btn-outline'}`}
-                  >
-                    {p.id === 'free' && user ? 'Acessar painel' : p.cta}
-                  </a>
-                </div>
+          {!shouldLoadPlans || isPending ? (
+            Array.from({ length: 4 }).map((_, index) => (
+              <div key={index} className="plan-card plan-card-skeleton" aria-hidden="true">
+                <span className="pricing-sk pricing-sk--name" />
+                <span className="pricing-sk pricing-sk--price" />
+                <span className="pricing-sk pricing-sk--description" />
+                <span className="pricing-sk pricing-sk--line" />
+                <span className="pricing-sk pricing-sk--line" />
+                <span className="pricing-sk pricing-sk--button" />
               </div>
-            );
-          })}
+            ))
+          ) : isError ? (
+            <div className="pricing-state" role="alert">
+              <p>Não foi possível carregar os planos agora.</p>
+              <button type="button" className="lp-btn lp-btn-outline" onClick={() => refetch()}>
+                Tentar novamente
+              </button>
+            </div>
+          ) : plans.length === 0 ? (
+            <div className="pricing-state">
+              <p>Os planos estão temporariamente indisponíveis.</p>
+            </div>
+          ) : (
+            plans.map((plan) => {
+              const marketing = PLAN_MARKETING[plan.id] ?? {
+                description: `Conheça o plano ${plan.name}.`,
+                cta: `Assinar ${plan.name}`,
+              };
+              const amount = isYear
+                ? plan.price_brl_annual == null
+                  ? plan.price_brl
+                  : plan.price_brl_annual / 12
+                : plan.price_brl;
+              return (
+                <div key={plan.id} className={`plan-card${marketing.highlight ? ' highlight' : ''}`}>
+                  {marketing.highlight && <div className="plan-badge">Mais popular</div>}
+                  <h3>{plan.name}</h3>
+                  <div className="price-row">
+                    <span className="price">
+                      {amount == null ? 'Sob consulta' : formatPrice(amount)}
+                    </span>
+                    {amount != null && <span className="price-sub">/mês</span>}
+                  </div>
+                  <div className="price-annual-note">
+                    {isYear && plan.price_brl_annual != null && plan.price_brl_annual > 0
+                      ? `cobrado anualmente (${formatPrice(plan.price_brl_annual)}/ano)`
+                      : ' '}
+                  </div>
+                  <div className="plan-tag">{marketing.description}</div>
+                  <div className="plan-label">Limites</div>
+                  <ul className="plan-list plan-limits">
+                    <li>
+                      <span className="k">Clientes</span>
+                      <span className="v">{displayLimit(plan.max_clients)}</span>
+                    </li>
+                    <li>
+                      <span className="k">Usuários</span>
+                      <span className="v">{displayLimit(plan.max_team_members)}</span>
+                    </li>
+                  </ul>
+                  <div className="plan-cta">
+                    <a
+                      href={planHref(plan.id)}
+                      className={`lp-btn ${marketing.highlight ? 'lp-btn-primary' : 'lp-btn-outline'}`}
+                    >
+                      {plan.id === 'free' && user ? 'Acessar painel' : marketing.cta}
+                    </a>
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
     </section>

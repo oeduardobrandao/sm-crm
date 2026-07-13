@@ -1,7 +1,14 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
+import type { PublicPricingPlan } from '@/services/billing';
 
+vi.mock('@/services/billing', () => ({
+  listPublicPricingPlans: vi.fn(),
+}));
+
+import { listPublicPricingPlans } from '@/services/billing';
 import LandingPage from '../LandingPage';
 
 vi.mock('@/context/AuthContext', () => ({
@@ -9,11 +16,91 @@ vi.mock('@/context/AuthContext', () => ({
   AuthProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
+const PRICING_PLANS: PublicPricingPlan[] = [
+  {
+    id: 'free',
+    name: 'Free',
+    price_brl: 0,
+    price_brl_annual: 0,
+    sort_order: 0,
+    max_clients: 2,
+    max_team_members: 1,
+  },
+  {
+    id: 'start',
+    name: 'Start',
+    price_brl: 9990,
+    price_brl_annual: 95900,
+    sort_order: 1,
+    max_clients: 5,
+    max_team_members: 2,
+  },
+  {
+    id: 'pro',
+    name: 'Pro',
+    price_brl: 13990,
+    price_brl_annual: 134300,
+    sort_order: 2,
+    max_clients: 15,
+    max_team_members: 5,
+  },
+  {
+    id: 'max',
+    name: 'Max',
+    price_brl: 19990,
+    price_brl_annual: 191900,
+    sort_order: 3,
+    max_clients: null,
+    max_team_members: null,
+  },
+];
+
+class MockIntersectionObserver {
+  static instances: MockIntersectionObserver[] = [];
+  readonly root = null;
+  readonly rootMargin: string;
+  readonly thresholds: readonly number[];
+  readonly observe = vi.fn();
+  readonly unobserve = vi.fn();
+  readonly disconnect = vi.fn();
+  readonly takeRecords = vi.fn(() => []);
+
+  constructor(
+    readonly callback: IntersectionObserverCallback,
+    readonly options: IntersectionObserverInit = {},
+  ) {
+    this.rootMargin = options.rootMargin ?? '0px';
+    this.thresholds = Array.isArray(options.threshold)
+      ? options.threshold
+      : [options.threshold ?? 0];
+    MockIntersectionObserver.instances.push(this);
+  }
+}
+
+function triggerPricingIntersection() {
+  const observer = MockIntersectionObserver.instances.find(
+    (instance) => instance.options.rootMargin === '600px 0px',
+  );
+  const section = document.getElementById('pricing');
+  if (!observer || !section) throw new Error('Pricing observer was not registered');
+  act(() => {
+    observer.callback(
+      [{ isIntersecting: true, target: section } as IntersectionObserverEntry],
+      observer as unknown as IntersectionObserver,
+    );
+  });
+}
+
 function renderLandingPage() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+  });
   return render(
-    <MemoryRouter>
-      <LandingPage />
-    </MemoryRouter>,
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <LandingPage />
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
@@ -28,6 +115,9 @@ function mockSectionScroll(id: string) {
 
 describe('LandingPage', () => {
   beforeEach(() => {
+    MockIntersectionObserver.instances = [];
+    vi.stubGlobal('IntersectionObserver', MockIntersectionObserver);
+    vi.mocked(listPublicPricingPlans).mockResolvedValue(PRICING_PLANS);
     document.body.classList.remove('landing-page');
     document.documentElement.removeAttribute('data-theme');
     localStorage.clear();
@@ -66,8 +156,10 @@ describe('LandingPage', () => {
     expect(localStorage.getItem('mesaas_promo_dismissed')).toBe('1');
   });
 
-  it('wires scroll buttons to the right sections and exposes the auth CTAs', () => {
+  it('wires scroll buttons to the right sections and exposes the auth CTAs', async () => {
     renderLandingPage();
+    triggerPricingIntersection();
+    await screen.findByRole('heading', { name: 'Start', level: 3 });
 
     const featuresScroll = mockSectionScroll('features');
     const agenteScroll = mockSectionScroll('agente');
@@ -94,6 +186,72 @@ describe('LandingPage', () => {
     // plus all 4 pricing CTAs.
     expect(registerLinks).toHaveLength(9);
     expect(screen.getByRole('link', { name: 'Entrar' })).toHaveAttribute('href', '/login');
+  });
+
+  it('defers the plan request until pricing approaches the viewport', async () => {
+    renderLandingPage();
+
+    expect(listPublicPricingPlans).not.toHaveBeenCalled();
+    expect(document.querySelectorAll('.plan-card-skeleton')).toHaveLength(4);
+
+    triggerPricingIntersection();
+
+    await waitFor(() => expect(listPublicPricingPlans).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole('heading', { name: 'Start', level: 3 })).toBeInTheDocument();
+  });
+
+  it('renders Admin order, prices, and only client/user limits', async () => {
+    renderLandingPage();
+    triggerPricingIntersection();
+
+    await screen.findByRole('heading', { name: 'Max', level: 3 });
+    const names = Array.from(document.querySelectorAll('.plans-grid .plan-card h3')).map(
+      (heading) => heading.textContent,
+    );
+    expect(names).toEqual(['Free', 'Start', 'Pro', 'Max']);
+
+    const startCard = screen.getByRole('heading', { name: 'Start', level: 3 }).closest('.plan-card');
+    expect(startCard).not.toBeNull();
+    expect(within(startCard as HTMLElement).getByText('R$ 99,90')).toBeInTheDocument();
+    expect(within(startCard as HTMLElement).getByText('5')).toBeInTheDocument();
+    expect(within(startCard as HTMLElement).getByText('2')).toBeInTheDocument();
+
+    const maxCard = screen.getByRole('heading', { name: 'Max', level: 3 }).closest('.plan-card');
+    expect(maxCard).not.toBeNull();
+    expect(within(maxCard as HTMLElement).getAllByText('Ilimitado')).toHaveLength(2);
+    expect(screen.queryByText('Templates')).not.toBeInTheDocument();
+    expect(screen.queryByText('Features')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Lifetime', level: 3 })).not.toBeInTheDocument();
+  });
+
+  it('uses annual catalog prices and derives the savings hint', async () => {
+    renderLandingPage();
+    triggerPricingIntersection();
+    await screen.findByRole('heading', { name: 'Start', level: 3 });
+
+    expect(screen.getByText('Economize até 20% no plano anual')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Anual' }));
+
+    const startCard = screen.getByRole('heading', { name: 'Start', level: 3 }).closest('.plan-card');
+    expect(startCard).not.toBeNull();
+    expect(within(startCard as HTMLElement).getByText('R$ 79,92')).toBeInTheDocument();
+    expect(
+      within(startCard as HTMLElement).getByText('cobrado anualmente (R$ 959,00/ano)'),
+    ).toBeInTheDocument();
+  });
+
+  it('shows a retryable error without stale plan values', async () => {
+    vi.mocked(listPublicPricingPlans).mockRejectedValueOnce(new Error('offline'));
+    renderLandingPage();
+    triggerPricingIntersection();
+
+    expect(await screen.findByText('Não foi possível carregar os planos agora.')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Start', level: 3 })).not.toBeInTheDocument();
+
+    vi.mocked(listPublicPricingPlans).mockResolvedValueOnce(PRICING_PLANS);
+    fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }));
+
+    expect(await screen.findByRole('heading', { name: 'Start', level: 3 })).toBeInTheDocument();
   });
 
   it('opens one FAQ answer at a time', () => {
