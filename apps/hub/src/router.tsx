@@ -20,7 +20,9 @@ export const router = createBrowserRouter([
       },
       {
         path: 'postagens/:postId',
-        lazy: async () => ({ Component: (await import('./pages/PostagemFocoPage')).PostagemFocoPage }),
+        lazy: async () => ({
+          Component: (await import('./pages/PostagemFocoPage')).PostagemFocoPage,
+        }),
       },
       {
         path: 'marca',
@@ -48,7 +50,9 @@ export const router = createBrowserRouter([
       },
       {
         path: 'relatorios/:month',
-        lazy: async () => ({ Component: (await import('./pages/RelatorioView')).RelatorioViewPage }),
+        lazy: async () => ({
+          Component: (await import('./pages/RelatorioView')).RelatorioViewPage,
+        }),
       },
     ],
   },

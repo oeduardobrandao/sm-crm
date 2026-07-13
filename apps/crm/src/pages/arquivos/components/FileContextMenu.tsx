@@ -195,96 +195,97 @@ export function FileContextMenu({
       <Slot onContextMenu={handleContextMenu}>{children}</Slot>
 
       {/* Context menu */}
-      {menuPos && createPortal(
-        <div
-          ref={menuRef}
-          role="menu"
-          className="fixed z-50 min-w-[12rem] rounded-lg border border-[var(--border-color)] bg-[var(--card-bg)] shadow-lg py-1 text-sm"
-          style={{ top: menuPos.y, left: menuPos.x }}
-        >
-          {/* Rename */}
-          <button
-            role="menuitem"
-            onClick={openRename}
-            className="flex w-full items-center gap-2.5 px-3 py-2 text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors"
+      {menuPos &&
+        createPortal(
+          <div
+            ref={menuRef}
+            role="menu"
+            className="fixed z-50 min-w-[12rem] rounded-lg border border-[var(--border-color)] bg-[var(--card-bg)] shadow-lg py-1 text-sm"
+            style={{ top: menuPos.y, left: menuPos.x }}
           >
-            <Pencil className="h-3.5 w-3.5 text-[var(--text-muted)]" />
-            Renomear
-          </button>
-
-          {/* Info */}
-          <button
-            role="menuitem"
-            onClick={openInfo}
-            className="flex w-full items-center gap-2.5 px-3 py-2 text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors"
-          >
-            <Info className="h-3.5 w-3.5 text-[var(--text-muted)]" />
-            Informações
-          </button>
-
-          {/* Download — files only */}
-          {!isFolder && file?.url && (
-            <a
-              role="menuitem"
-              href={sanitizeExternalUrl(file.url)}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={closeMenu}
-              className="flex w-full items-center gap-2.5 px-3 py-2 text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors"
-            >
-              <Download className="h-3.5 w-3.5 text-[var(--text-muted)]" />
-              Download
-            </a>
-          )}
-
-          {/* Move to… */}
-          <button
-            role="menuitem"
-            onClick={() => {
-              closeMenu();
-              onRequestMove?.();
-            }}
-            className="flex w-full items-center gap-2.5 px-3 py-2 text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors"
-          >
-            <ArrowRight className="h-3.5 w-3.5 text-[var(--text-muted)]" />
-            Mover para…
-          </button>
-
-          {/* Copy to… */}
-          <button
-            role="menuitem"
-            onClick={() => {
-              closeMenu();
-              onRequestCopy?.();
-            }}
-            className="flex w-full items-center gap-2.5 px-3 py-2 text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors"
-          >
-            <Copy className="h-3.5 w-3.5 text-[var(--text-muted)]" />
-            Copiar para…
-          </button>
-
-          {/* Separator before delete */}
-          <div className="my-1 h-px bg-[var(--border-color)]" />
-
-          {/* Delete */}
-          {isSystemFolder ? (
-            <div className="flex items-center gap-2.5 px-3 py-2 text-[var(--text-muted)] cursor-not-allowed text-xs italic">
-              <Trash2 className="h-3.5 w-3.5 opacity-40" />
-              Pasta do sistema — não pode ser excluída
-            </div>
-          ) : (
+            {/* Rename */}
             <button
               role="menuitem"
-              onClick={openDelete}
-              className="flex w-full items-center gap-2.5 px-3 py-2 text-[var(--danger)] hover:bg-[var(--surface-hover)] transition-colors"
+              onClick={openRename}
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors"
             >
-              <Trash2 className="h-3.5 w-3.5" />
-              Excluir
+              <Pencil className="h-3.5 w-3.5 text-[var(--text-muted)]" />
+              Renomear
             </button>
-          )}
-        </div>,
-        document.body,
-      )}
+
+            {/* Info */}
+            <button
+              role="menuitem"
+              onClick={openInfo}
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors"
+            >
+              <Info className="h-3.5 w-3.5 text-[var(--text-muted)]" />
+              Informações
+            </button>
+
+            {/* Download — files only */}
+            {!isFolder && file?.url && (
+              <a
+                role="menuitem"
+                href={sanitizeExternalUrl(file.url)}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={closeMenu}
+                className="flex w-full items-center gap-2.5 px-3 py-2 text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors"
+              >
+                <Download className="h-3.5 w-3.5 text-[var(--text-muted)]" />
+                Download
+              </a>
+            )}
+
+            {/* Move to… */}
+            <button
+              role="menuitem"
+              onClick={() => {
+                closeMenu();
+                onRequestMove?.();
+              }}
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors"
+            >
+              <ArrowRight className="h-3.5 w-3.5 text-[var(--text-muted)]" />
+              Mover para…
+            </button>
+
+            {/* Copy to… */}
+            <button
+              role="menuitem"
+              onClick={() => {
+                closeMenu();
+                onRequestCopy?.();
+              }}
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-[var(--text-main)] hover:bg-[var(--surface-hover)] transition-colors"
+            >
+              <Copy className="h-3.5 w-3.5 text-[var(--text-muted)]" />
+              Copiar para…
+            </button>
+
+            {/* Separator before delete */}
+            <div className="my-1 h-px bg-[var(--border-color)]" />
+
+            {/* Delete */}
+            {isSystemFolder ? (
+              <div className="flex items-center gap-2.5 px-3 py-2 text-[var(--text-muted)] cursor-not-allowed text-xs italic">
+                <Trash2 className="h-3.5 w-3.5 opacity-40" />
+                Pasta do sistema — não pode ser excluída
+              </div>
+            ) : (
+              <button
+                role="menuitem"
+                onClick={openDelete}
+                className="flex w-full items-center gap-2.5 px-3 py-2 text-[var(--danger)] hover:bg-[var(--surface-hover)] transition-colors"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Excluir
+              </button>
+            )}
+          </div>,
+          document.body,
+        )}
 
       {/* Rename dialog */}
       <Dialog open={renameOpen} onOpenChange={setRenameOpen}>

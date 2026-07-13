@@ -13,9 +13,7 @@ import { AuthProvider, useAuth } from '../AuthContext';
 type MockedSupabaseModule = typeof supabaseModule & {
   __resetSupabaseMock: () => void;
   __setCurrentProfile: (profile: Record<string, unknown> | null) => void;
-  __queueCurrentProfileResponse: (
-    response: Promise<Record<string, unknown> | null>,
-  ) => void;
+  __queueCurrentProfileResponse: (response: Promise<Record<string, unknown> | null>) => void;
   __setCurrentUser: (user: { id: string } | null) => void;
   __emitAuthChange: (event: string, session: { user: { id: string } | null } | null) => void;
 };

@@ -121,9 +121,7 @@ export function __setCurrentProfile(profile: Record<string, unknown> | null) {
   currentProfile = profile;
 }
 
-export function __queueCurrentProfileResponse(
-  response: Promise<Record<string, unknown> | null>,
-) {
+export function __queueCurrentProfileResponse(response: Promise<Record<string, unknown> | null>) {
   profileResponses.push(response);
 }
 

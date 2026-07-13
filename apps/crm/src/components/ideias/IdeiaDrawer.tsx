@@ -220,7 +220,11 @@ export function IdeiaDrawer({ ideia, queryKey, onClose }: IdeiaDrawerProps) {
               <div className="flex flex-wrap gap-2 mb-2">
                 {images.map((img: CrmIdeiaImage) => (
                   <div key={img.file_id} className="relative group">
-                    <a href={sanitizeExternalUrl(img.url)} target="_blank" rel="noopener noreferrer">
+                    <a
+                      href={sanitizeExternalUrl(img.url)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
                       <img
                         src={img.thumbnail_url ?? img.url}
                         alt=""

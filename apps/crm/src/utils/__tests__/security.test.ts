@@ -31,10 +31,6 @@ describe('CRM URL security', () => {
     expect(open).not.toHaveBeenCalled();
 
     openExternalUrl('https://example.com/file');
-    expect(open).toHaveBeenCalledWith(
-      'https://example.com/file',
-      '_blank',
-      'noopener,noreferrer',
-    );
+    expect(open).toHaveBeenCalledWith('https://example.com/file', '_blank', 'noopener,noreferrer');
   });
 });
