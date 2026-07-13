@@ -94,6 +94,26 @@ describe('FileContextMenu', () => {
     expect(screen.getByText('Excluir')).toBeInTheDocument();
   });
 
+  it('does not insert an element between tbody and tr', () => {
+    const { container } = render(
+      <table>
+        <tbody>
+          <FileContextMenu item={makeFile()} type="file" onActionComplete={onActionComplete}>
+            <tr data-testid="file-row">
+              <td>Arquivo</td>
+            </tr>
+          </FileContextMenu>
+        </tbody>
+      </table>,
+    );
+
+    const tbody = container.querySelector('tbody')!;
+    expect(tbody.children).toHaveLength(1);
+    expect(tbody.children[0].tagName).toBe('TR');
+    rightClick(screen.getByTestId('file-row'));
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+  });
+
   it('shows Download option for files with url', () => {
     const file = makeFile({ url: 'https://cdn.example.com/file.jpg' });
     render(
@@ -153,6 +173,9 @@ describe('FileContextMenu', () => {
     // Rename dialog should be open
     const input = screen.getByDisplayValue('Original');
     expect(input).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: /Renomear/ })).toHaveAccessibleDescription(
+      'Informe o novo nome e salve para concluir.',
+    );
 
     // Change name and submit
     fireEvent.change(input, { target: { value: 'Novo Nome' } });

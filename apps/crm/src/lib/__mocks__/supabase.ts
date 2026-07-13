@@ -10,6 +10,7 @@ let currentProfile: Record<string, unknown> | null = {
   conta_id: 'conta-1',
   active_workspace_id: 'conta-1',
 };
+let profileResponses: Array<Promise<Record<string, unknown> | null>> = [];
 let currentSession = {
   access_token: 'token-de-teste',
   user: currentUser,
@@ -66,6 +67,8 @@ export async function getCurrentUser() {
 
 export async function getCurrentProfile(force = false) {
   void force;
+  const queuedResponse = profileResponses.shift();
+  if (queuedResponse) return queuedResponse;
   return currentProfile;
 }
 
@@ -75,6 +78,7 @@ export async function signOut() {
 
 export function __resetSupabaseMock() {
   queryMock.reset();
+  profileResponses = [];
   currentUser = { id: 'user-1' };
   currentProfile = {
     id: 'user-1',
@@ -115,6 +119,12 @@ export function __setCurrentUser(user: { id: string } | null) {
 
 export function __setCurrentProfile(profile: Record<string, unknown> | null) {
   currentProfile = profile;
+}
+
+export function __queueCurrentProfileResponse(
+  response: Promise<Record<string, unknown> | null>,
+) {
+  profileResponses.push(response);
 }
 
 export function __setCurrentSession(

@@ -85,6 +85,9 @@ describe('FilePickerModal', () => {
     await waitFor(() => {
       expect(screen.getByText('Selecionar arquivos')).toBeInTheDocument();
     });
+    expect(screen.getByRole('dialog', { name: 'Selecionar arquivos' })).toHaveAccessibleDescription(
+      'Escolha um ou mais arquivos para vincular.',
+    );
   });
 
   it('does not render dialog content when closed', () => {

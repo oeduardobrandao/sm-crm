@@ -1,14 +1,17 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Pencil, Trash2, Download, Info, ArrowRight, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
   DialogClose,
 } from '@/components/ui/dialog';
+import { Slot } from '@radix-ui/react-slot';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,7 +41,7 @@ function truncateName(name: string, max = 40): string {
 }
 
 interface FileContextMenuProps {
-  children: React.ReactNode;
+  children: React.ReactElement;
   item: Folder | FileRecord;
   type: 'folder' | 'file';
   onActionComplete: () => void;
@@ -189,13 +192,10 @@ export function FileContextMenu({
 
   return (
     <>
-      {/* Wrapper that captures right-click */}
-      <div onContextMenu={handleContextMenu} className="contents">
-        {children}
-      </div>
+      <Slot onContextMenu={handleContextMenu}>{children}</Slot>
 
       {/* Context menu */}
-      {menuPos && (
+      {menuPos && createPortal(
         <div
           ref={menuRef}
           role="menu"
@@ -282,7 +282,8 @@ export function FileContextMenu({
               Excluir
             </button>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
 
       {/* Rename dialog */}
@@ -290,6 +291,9 @@ export function FileContextMenu({
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Renomear {isFolder ? 'pasta' : 'arquivo'}</DialogTitle>
+            <DialogDescription className="sr-only">
+              Informe o novo nome e salve para concluir.
+            </DialogDescription>
           </DialogHeader>
           <div className="py-2">
             <Input

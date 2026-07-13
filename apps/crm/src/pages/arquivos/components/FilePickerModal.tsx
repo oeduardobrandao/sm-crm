@@ -13,6 +13,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -115,6 +116,9 @@ export function FilePickerModal({ open, onClose, onSelect, filterKind }: FilePic
           <DialogTitle className="text-base font-semibold text-[var(--text-main)]">
             Selecionar arquivos
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            Escolha um ou mais arquivos para vincular.
+          </DialogDescription>
         </DialogHeader>
 
         {/* Breadcrumb bar + search */}
