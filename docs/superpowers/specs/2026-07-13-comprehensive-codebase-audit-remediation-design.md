@@ -1,7 +1,7 @@
 # Comprehensive Codebase Audit Remediation Design
 
-**Date:** 2026-07-13  
-**Branch:** `codex/comprehensive-codebase-audit`  
+**Date:** 2026-07-13
+**Branch:** `codex/comprehensive-codebase-audit`
 **Status:** Approved for implementation planning
 
 ## Context
