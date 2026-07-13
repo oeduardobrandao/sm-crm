@@ -23,11 +23,16 @@ function makePost(overrides: Partial<DashboardTopPost> = {}): DashboardTopPost {
 
 describe('TopPostsRow', () => {
   it('renders post cards with metrics', () => {
-    render(<TopPostsRow posts={[makePost()]} />);
+    const { container } = render(<TopPostsRow posts={[makePost()]} />);
 
     expect(screen.getByText('Imagem')).toBeInTheDocument();
     expect(screen.getByText('4.8%')).toBeInTheDocument();
     expect(screen.getByText('80')).toBeInTheDocument();
+    const img = container.querySelector('img')!;
+    expect(img).toHaveAttribute('loading', 'lazy');
+    expect(img).toHaveAttribute('decoding', 'async');
+    expect(img).toHaveAttribute('width', '1');
+    expect(img).toHaveAttribute('height', '1');
   });
 
   it('renders links to Instagram', () => {

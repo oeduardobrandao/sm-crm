@@ -604,8 +604,11 @@ export function FileGrid(props: FileGridProps) {
                   <img
                     src={(file.thumbnail_url ?? file.url)!}
                     alt={file.name}
+                    width={1}
+                    height={1}
                     className="w-full h-full object-cover"
                     loading="lazy"
+                    decoding="async"
                   />
                 ) : (
                   <FileIcon

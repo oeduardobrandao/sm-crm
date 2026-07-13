@@ -116,6 +116,10 @@ export function TopPostsRow({ posts }: TopPostsRowProps) {
                   <img
                     src={post.thumbnailUrl!}
                     alt=""
+                    width={1}
+                    height={1}
+                    loading="lazy"
+                    decoding="async"
                     className="w-full h-full object-cover"
                     onError={() => setFailedImages((prev) => new Set(prev).add(post.id))}
                   />

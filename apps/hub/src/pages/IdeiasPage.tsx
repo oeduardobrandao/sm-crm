@@ -92,6 +92,10 @@ function IdeiaImages({
                 <img
                   src={img.thumbnail_url ?? img.url}
                   alt=""
+                  width={64}
+                  height={64}
+                  loading="lazy"
+                  decoding="async"
                   className="h-16 w-16 rounded-lg object-cover border border-stone-200 bg-stone-100"
                   style={
                     img.blur_data_url

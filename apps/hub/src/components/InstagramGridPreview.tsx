@@ -128,7 +128,7 @@ export function InstagramGridPreview({
           id: `hub-${p.id}`,
           postId: p.id,
           status: p.status,
-          thumbnailUrl: isVideo ? (firstMedia.thumbnail_url ?? null) : (firstMedia?.url ?? null),
+          thumbnailUrl: firstMedia?.thumbnail_url ?? firstMedia?.url ?? null,
           videoUrl: isVideo ? firstMedia.url : null,
           mediaType:
             p.tipo === 'carrossel' || (p.media?.length ?? 0) > 1
@@ -429,6 +429,10 @@ export function InstagramGridPreview({
                 <img
                   src={feedProfile.profilePictureUrl}
                   alt={displayName}
+                  width={86}
+                  height={86}
+                  loading="lazy"
+                  decoding="async"
                   className="w-[86px] h-[86px] rounded-full object-cover"
                 />
               ) : (
@@ -584,7 +588,15 @@ export function InstagramGridPreview({
                   }`}
                 >
                   {item.thumbnailUrl ? (
-                    <img src={item.thumbnailUrl} alt="" className="w-full h-full object-cover" />
+                    <img
+                      src={item.thumbnailUrl}
+                      alt=""
+                      width={1}
+                      height={1}
+                      loading="lazy"
+                      decoding="async"
+                      className="w-full h-full object-cover"
+                    />
                   ) : item.videoUrl ? (
                     <video
                       src={item.videoUrl}

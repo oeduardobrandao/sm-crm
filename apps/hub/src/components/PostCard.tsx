@@ -264,6 +264,10 @@ export function PostCard({
               <img
                 src={displayCover.thumbnail_url ?? ''}
                 alt=""
+                width={4}
+                height={3}
+                loading="lazy"
+                decoding="async"
                 className="w-full h-full object-cover"
               />
               <span className="absolute inset-0 flex items-center justify-center">
@@ -382,7 +386,7 @@ export function PostCard({
                 >
                   {m.kind === 'image' ? (
                     <OptimizedImage
-                      src={m.url}
+                      src={m.thumbnail_url ?? m.url}
                       alt=""
                       width={80}
                       height={80}
@@ -393,6 +397,10 @@ export function PostCard({
                     <img
                       src={m.thumbnail_url ?? ''}
                       alt=""
+                      width={80}
+                      height={80}
+                      loading="lazy"
+                      decoding="async"
                       className="w-full h-full object-cover"
                     />
                   )}

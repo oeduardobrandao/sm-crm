@@ -224,8 +224,11 @@ export function FilePickerModal({ open, onClose, onSelect, filterKind }: FilePic
                             <img
                               src={thumbSrc}
                               alt={file.name}
+                              width={1}
+                              height={1}
                               className="w-full h-full object-cover"
                               loading="lazy"
+                              decoding="async"
                             />
                           ) : (
                             <FileIcon

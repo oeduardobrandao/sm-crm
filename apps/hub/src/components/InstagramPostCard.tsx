@@ -296,6 +296,10 @@ export function InstagramPostCard({
               <img
                 src={profilePic}
                 alt={displayName}
+                width={32}
+                height={32}
+                loading="lazy"
+                decoding="async"
                 className="w-8 h-8 rounded-full object-cover"
               />
             ) : (
@@ -365,6 +369,10 @@ export function InstagramPostCard({
                 <img
                   src={m.thumbnail_url ?? ''}
                   alt=""
+                  width={4}
+                  height={5}
+                  loading="lazy"
+                  decoding="async"
                   draggable={false}
                   className="w-full h-full object-cover pointer-events-none"
                 />
