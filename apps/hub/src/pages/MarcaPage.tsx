@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Download } from 'lucide-react';
 import { useHub } from '../HubContext';
 import { fetchBrand } from '../api';
+import { sanitizeExternalUrl } from '../lib/security';
 
 function ColorSwatch({ color, label }: { color: string; label: string }) {
   return (
@@ -117,10 +118,10 @@ export function MarcaPage() {
             {files.map((f) => (
               <a
                 key={f.id}
-                href={f.file_url}
+                href={sanitizeExternalUrl(f.file_url)}
                 download
                 target="_blank"
-                rel="noreferrer"
+                rel="noopener noreferrer"
                 className="hub-card hub-card-hover flex items-center justify-between px-5 py-4 group"
               >
                 <span className="text-[14px] font-semibold text-stone-900">{f.name}</span>

@@ -1,4 +1,4 @@
-import { createJsonResponder } from "../_shared/http.ts";
+import { createJsonResponder, internalServerError } from "../_shared/http.ts";
 import { resolveHubToken } from "../_shared/hub-token.ts";
 import { presignIdeiaImage, finalizeIdeiaImage, removeIdeiaImage } from "../_shared/ideia-media.ts";
 
@@ -177,7 +177,7 @@ export function createHubIdeiasHandler(deps: HubIdeiasHandlerDeps) {
         .select()
         .single();
 
-      if (error) return json({ error: error.message }, 500);
+      if (error) return internalServerError(json, "hub-ideias:create", error);
       return json({ ideia: data }, 201);
     }
 
@@ -203,7 +203,7 @@ export function createHubIdeiasHandler(deps: HubIdeiasHandlerDeps) {
         .select()
         .single();
 
-      if (error) return json({ error: error.message }, 500);
+      if (error) return internalServerError(json, "hub-ideias:update", error);
       return json({ ideia: data });
     }
 
@@ -218,7 +218,7 @@ export function createHubIdeiasHandler(deps: HubIdeiasHandlerDeps) {
         .eq("id", ideiaId!)
         .eq("cliente_id", clienteId);
 
-      if (error) return json({ error: error.message }, 500);
+      if (error) return internalServerError(json, "hub-ideias:delete", error);
       return json({ ok: true });
     }
 

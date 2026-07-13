@@ -19,24 +19,28 @@ const ICON: Record<TodayEvent['kind'], { icon: string; color: string }> = {
 export function TodayCard({ events }: { events: TodayEvent[] }) {
   const { t } = useTranslation('dashboard');
   return (
-    <Link to="/calendario" style={{ textDecoration: 'none', color: 'inherit' }}>
-      <div className="card dashboard-hub-card animate-up">
-        <div className="dashboard-hub-card-header">
-          <h3>
-            <i className="ph ph-calendar-check" style={{ marginRight: 8 }} />
-            {t('cards.today')}
-          </h3>
-          <i className="ph ph-arrow-right" />
-        </div>
-        {events.length === 0 ? (
-          <EmptyStateGuide
-            icon="📅"
-            title={t('empty.noEventsToday')}
-            description=""
-            actionLabel="Clientes"
-            actionHref="/clientes"
-          />
-        ) : (
+    <div className="card dashboard-hub-card animate-up">
+      <Link
+        to="/calendario"
+        className="dashboard-hub-card-header"
+        style={{ textDecoration: 'none', color: 'inherit' }}
+      >
+        <h3>
+          <i className="ph ph-calendar-check" style={{ marginRight: 8 }} />
+          {t('cards.today')}
+        </h3>
+        <i className="ph ph-arrow-right" />
+      </Link>
+      {events.length === 0 ? (
+        <EmptyStateGuide
+          icon="📅"
+          title={t('empty.noEventsToday')}
+          description=""
+          actionLabel="Clientes"
+          actionHref="/clientes"
+        />
+      ) : (
+        <Link to="/calendario" style={{ textDecoration: 'none', color: 'inherit' }}>
           <div className="dashboard-hub-list">
             {events.map((e, i) => (
               <div key={i} className="dashboard-hub-row">
@@ -51,8 +55,8 @@ export function TodayCard({ events }: { events: TodayEvent[] }) {
               </div>
             ))}
           </div>
-        )}
-      </div>
-    </Link>
+        </Link>
+      )}
+    </div>
   );
 }

@@ -19,6 +19,6 @@ describe('OpenPostLink', () => {
     const link = screen.getByRole('link', { name: /abrir/i });
     expect(link).toHaveAttribute('href', '/mesaas/hub/token-publico/postagens/42');
     expect(link).toHaveAttribute('target', '_blank');
-    expect(link).toHaveAttribute('rel', 'noreferrer');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
   });
 });

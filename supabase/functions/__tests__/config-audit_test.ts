@@ -17,6 +17,12 @@ function parseVerifyJwtFunctions(toml: string): Set<string> {
   return result;
 }
 
+function parseConfiguredFunctions(toml: string): Set<string> {
+  return new Set(
+    [...toml.matchAll(/^\[functions\.(.+)\]$/gm)].map((match) => match[1]),
+  );
+}
+
 const REQUIRED_FUNCTIONS = [
   // Cron (x-cron-secret)
   "instagram-sync-cron",
@@ -71,4 +77,18 @@ Deno.test("config.toml: all non-JWT functions have verify_jwt = false", async ()
     if (!configured.has(fn)) missing.push(fn);
   }
   assert(missing.length === 0, `Functions missing verify_jwt = false: ${missing.join(", ")}`);
+});
+
+Deno.test("config.toml: every configured function has a source directory", async () => {
+  const toml = await Deno.readTextFile(CONFIG_PATH);
+  const configured = parseConfiguredFunctions(toml);
+  const functionsDirectory = new URL("../", import.meta.url);
+  const sourceDirectories = new Set<string>();
+
+  for await (const entry of Deno.readDir(functionsDirectory)) {
+    if (entry.isDirectory && !entry.name.startsWith("_")) sourceDirectories.add(entry.name);
+  }
+
+  const stale = [...configured].filter((name) => !sourceDirectories.has(name));
+  assert(stale.length === 0, `Configured functions without source: ${stale.join(", ")}`);
 });

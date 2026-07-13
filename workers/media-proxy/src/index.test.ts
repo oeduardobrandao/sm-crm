@@ -16,10 +16,14 @@ async function hmacSign(key: string, data: string): Promise<string> {
   return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-async function signedUrl(key: string): Promise<string> {
+async function signedUrl(key: string, params: Record<string, string> = {}): Promise<string> {
   const exp = Math.floor(Date.now() / 1000) + 3600;
   const sig = await hmacSign(SIGNING_KEY, `${key}:${exp}`);
-  return `https://media.example/${encodeURIComponent(key)}?exp=${exp}&sig=${sig}`;
+  const url = new URL(`https://media.example/${encodeURIComponent(key)}`);
+  url.searchParams.set('exp', String(exp));
+  url.searchParams.set('sig', sig);
+  for (const [name, value] of Object.entries(params)) url.searchParams.set(name, value);
+  return url.toString();
 }
 
 function streamFromBytes(bytes: Uint8Array): ReadableStream<Uint8Array> {
@@ -147,6 +151,23 @@ describe('media-proxy range support', () => {
     expect(res.headers.get('Accept-Ranges')).toBe('bytes');
     expect(res.headers.get('Content-Length')).toBe('500');
     expect(cache.putCount).toBe(1);
+  });
+
+  it('shares the original-object cache across ignored transform parameters', async () => {
+    const bytes = new Uint8Array(500).fill(9);
+    const bucket = makeBucket(bytes, 'image/jpeg');
+    const first = new Request(
+      await signedUrl('contas/1/photo.jpg', { w: '400', f: 'webp' }),
+      { headers: { Origin: ORIGIN } },
+    );
+    const second = new Request(
+      await signedUrl('contas/1/photo.jpg', { w: '1200', f: 'avif', fit: 'cover' }),
+      { headers: { Origin: ORIGIN } },
+    );
+
+    expect((await worker.fetch(first, env(bucket), ctx)).status).toBe(200);
+    expect((await worker.fetch(second, env(bucket), ctx)).status).toBe(200);
+    expect(bucket.get).toHaveBeenCalledTimes(1);
   });
 
   it('advertises Accept-Ranges on a HEAD request without a body', async () => {

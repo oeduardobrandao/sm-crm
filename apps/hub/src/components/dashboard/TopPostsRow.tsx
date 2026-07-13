@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { DashboardTopPost } from '../../types';
+import { sanitizeExternalUrl } from '../../lib/security';
 
 const TIPO_COLORS: Record<string, string> = {
   IMAGE: '#3b82f6',
@@ -98,7 +99,7 @@ export function TopPostsRow({ posts }: TopPostsRowProps) {
           return (
             <a
               key={post.id}
-              href={post.permalink}
+              href={sanitizeExternalUrl(post.permalink)}
               target="_blank"
               rel="noopener noreferrer"
               className="snap-start shrink-0 basis-[84%] sm:basis-auto rounded-2xl overflow-hidden border border-stone-200 dark:border-white/[0.06] bg-white dark:bg-[#1a1e26] transition-transform hover:scale-[1.02]"
@@ -115,6 +116,10 @@ export function TopPostsRow({ posts }: TopPostsRowProps) {
                   <img
                     src={post.thumbnailUrl!}
                     alt=""
+                    width={1}
+                    height={1}
+                    loading="lazy"
+                    decoding="async"
                     className="w-full h-full object-cover"
                     onError={() => setFailedImages((prev) => new Set(prev).add(post.id))}
                   />

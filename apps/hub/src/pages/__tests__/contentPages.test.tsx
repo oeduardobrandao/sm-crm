@@ -215,6 +215,7 @@ describe('hub content pages', () => {
           { type: 'heading', level: 2, content: 'Estratégia' },
           { type: 'paragraph', content: 'Texto base da estratégia.' },
           { type: 'link', content: 'Abrir site', href: 'https://mesaas.com' },
+          { type: 'link', content: 'Link inseguro', href: 'javascript:alert(1)' },
           { type: 'markdown', content: '**Mensagem-chave**' },
           { type: 'image', content: 'https://cdn.mesaas.com/guia.png' },
         ],
@@ -234,6 +235,7 @@ describe('hub content pages', () => {
       'href',
       'https://mesaas.com',
     );
+    expect(screen.getByRole('link', { name: 'Link inseguro' })).toHaveAttribute('href', '#');
     expect(screen.getByText('Mensagem-chave')).toBeInTheDocument();
     expect(document.querySelector('img[src="https://cdn.mesaas.com/guia.png"]')).not.toBeNull();
     expect(screen.getByRole('link', { name: /Voltar/ })).toHaveAttribute(

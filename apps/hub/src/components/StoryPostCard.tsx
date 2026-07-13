@@ -132,6 +132,10 @@ export function StoryPostCard({
               <img
                 src={currentMedia.thumbnail_url ?? ''}
                 alt=""
+                width={9}
+                height={16}
+                loading="lazy"
+                decoding="async"
                 className="w-full h-full object-cover"
               />
             )}
@@ -190,6 +194,10 @@ export function StoryPostCard({
             <img
               src={profilePic}
               alt={displayName}
+              width={32}
+              height={32}
+              loading="lazy"
+              decoding="async"
               className="w-8 h-8 rounded-full object-cover ring-2 ring-white/40"
             />
           ) : (

@@ -1,4 +1,4 @@
-import { createJsonResponder } from "../_shared/http.ts";
+import { createJsonResponder, internalServerError } from "../_shared/http.ts";
 import { resolveHubToken } from "../_shared/hub-token.ts";
 
 type DbClient = {
@@ -35,14 +35,14 @@ export function createHubBriefingHandler(deps: HubBriefingHandlerDeps) {
         .eq("cliente_id", hubToken.cliente_id)
         .order("display_order")
         .order("created_at");
-      if (bErr) return json({ error: bErr.message }, 500);
+      if (bErr) return internalServerError(json, "hub-briefing:list-briefings", bErr);
 
       const { data: questions, error: qErr } = await db
         .from("hub_briefing_questions")
         .select("id, question, answer, section, display_order, briefing_id")
         .eq("cliente_id", hubToken.cliente_id)
         .order("display_order");
-      if (qErr) return json({ error: qErr.message }, 500);
+      if (qErr) return internalServerError(json, "hub-briefing:list-questions", qErr);
 
       const list = (briefings ?? []) as Array<{ id: string; title: string; display_order: number }>;
       const qs = (questions ?? []) as Array<
@@ -116,7 +116,7 @@ export function createHubBriefingHandler(deps: HubBriefingHandlerDeps) {
         .eq("id", question_id)
         .eq("cliente_id", hubToken.cliente_id);
 
-      if (error) return json({ error: error.message }, 500);
+      if (error) return internalServerError(json, "hub-briefing:update-answer", error);
       return json({ ok: true });
     }
 

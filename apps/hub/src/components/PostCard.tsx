@@ -6,6 +6,7 @@ import { PostMediaLightbox } from './PostMediaLightbox';
 import { OptimizedImage } from './OptimizedImage';
 import { RichTextContent } from './RichTextContent';
 import { useEditSuggestion } from '../hooks/useEditSuggestion';
+import { sanitizeExternalUrl } from '../lib/security';
 
 export const TIPO_LABEL: Record<string, string> = {
   feed: 'Feed',
@@ -33,10 +34,6 @@ export function formatDate(d: string | null) {
     year: 'numeric',
     timeZone: 'UTC',
   });
-}
-
-function sanitizeUrl(url: string) {
-  return url.startsWith('http') ? url : `https://${url}`;
 }
 
 type PropDef = HubPostProperty['template_property_definitions'];
@@ -75,7 +72,7 @@ function PropertyRow({
       return <span className="text-muted-foreground italic text-sm">—</span>;
     }
     if (def.type === 'url') {
-      const safe = sanitizeUrl(String(value));
+      const safe = sanitizeExternalUrl(String(value));
       return (
         <a
           href={safe}
@@ -267,6 +264,10 @@ export function PostCard({
               <img
                 src={displayCover.thumbnail_url ?? ''}
                 alt=""
+                width={4}
+                height={3}
+                loading="lazy"
+                decoding="async"
                 className="w-full h-full object-cover"
               />
               <span className="absolute inset-0 flex items-center justify-center">
@@ -385,7 +386,7 @@ export function PostCard({
                 >
                   {m.kind === 'image' ? (
                     <OptimizedImage
-                      src={m.url}
+                      src={m.thumbnail_url ?? m.url}
                       alt=""
                       width={80}
                       height={80}
@@ -396,6 +397,10 @@ export function PostCard({
                     <img
                       src={m.thumbnail_url ?? ''}
                       alt=""
+                      width={80}
+                      height={80}
+                      loading="lazy"
+                      decoding="async"
                       className="w-full h-full object-cover"
                     />
                   )}

@@ -23,11 +23,16 @@ function makePost(overrides: Partial<DashboardTopPost> = {}): DashboardTopPost {
 
 describe('TopPostsRow', () => {
   it('renders post cards with metrics', () => {
-    render(<TopPostsRow posts={[makePost()]} />);
+    const { container } = render(<TopPostsRow posts={[makePost()]} />);
 
     expect(screen.getByText('Imagem')).toBeInTheDocument();
     expect(screen.getByText('4.8%')).toBeInTheDocument();
     expect(screen.getByText('80')).toBeInTheDocument();
+    const img = container.querySelector('img')!;
+    expect(img).toHaveAttribute('loading', 'lazy');
+    expect(img).toHaveAttribute('decoding', 'async');
+    expect(img).toHaveAttribute('width', '1');
+    expect(img).toHaveAttribute('height', '1');
   });
 
   it('renders links to Instagram', () => {
@@ -36,6 +41,12 @@ describe('TopPostsRow', () => {
     const link = screen.getByRole('link');
     expect(link).toHaveAttribute('href', 'https://instagram.com/p/abc');
     expect(link).toHaveAttribute('target', '_blank');
+  });
+
+  it('blocks unsafe Instagram permalinks', () => {
+    render(<TopPostsRow posts={[makePost({ permalink: 'javascript:alert(1)' })]} />);
+
+    expect(screen.getByRole('link')).toHaveAttribute('href', '#');
   });
 
   it('renders multiple cards', () => {

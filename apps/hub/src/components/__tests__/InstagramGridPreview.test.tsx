@@ -81,6 +81,30 @@ const livePosts: InstagramFeedPost[] = [
 ];
 
 describe('InstagramGridPreview', () => {
+  it('uses the generated thumbnail for an image grid tile', () => {
+    render(
+      <InstagramGridPreview
+        selectedPosts={[
+          makePost({
+            media: [
+              makeMedia({
+                url: 'https://cdn.example/original.jpg',
+                thumbnail_url: 'https://cdn.example/thumb.webp',
+              }),
+            ],
+          }),
+        ]}
+        feedProfile={profile}
+        livePosts={[]}
+        token="test-token"
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(document.body.querySelector('img[src="https://cdn.example/thumb.webp"]')).not.toBeNull();
+    expect(document.body.querySelector('img[src="https://cdn.example/original.jpg"]')).toBeNull();
+  });
+
   it('renders the profile header with username and stats', () => {
     render(
       <InstagramGridPreview

@@ -2,6 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { jsPDF } from "npm:jspdf@2.5.2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { timingSafeEqual } from "../_shared/crypto.ts";
+import { createJsonResponder, internalServerError } from "../_shared/http.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -30,8 +31,7 @@ Deno.serve(async (req) => {
     });
   }
 
-  const json = (data: any, status = 200) =>
-    new Response(JSON.stringify(data), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  const json = createJsonResponder(corsHeaders);
 
   try {
     const serviceClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
@@ -750,8 +750,7 @@ Deno.serve(async (req) => {
     return new Response('Not Found', { status: 404, headers: corsHeaders });
 
   } catch (err: any) {
-    console.error('Report generation error:', err);
-    return json({ error: true, message: err.message || 'Erro ao gerar relatório' }, 500);
+    return internalServerError(json, "instagram-report-generator", err);
   }
 });
 

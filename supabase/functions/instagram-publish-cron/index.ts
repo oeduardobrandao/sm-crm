@@ -322,7 +322,7 @@ Deno.serve(createPublishCronHandler({
     } catch (err: any) {
       console.error("[IG-PUBLISH] Cron failed:", err);
       await reportCronFailure(db, 'instagram-publish-cron', { total: 0, failed: 1, errors: [{ error: err.message }], stack: err?.stack });
-      return new Response(JSON.stringify({ error: err.message }), {
+      return new Response(JSON.stringify({ error: "Internal server error" }), {
         status: 500,
         headers: { "Content-Type": "application/json" },
       });

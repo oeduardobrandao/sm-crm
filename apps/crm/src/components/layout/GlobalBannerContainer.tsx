@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useBanners } from '../../hooks/useBanners';
 import { sanitizeUrl } from '../../utils/security';
-import type { GlobalBanner } from '../../store';
+import type { GlobalBanner } from '../../store/banners';
 
 const TYPE_STYLES: Record<string, { accent: string; bg: string; border: string }> = {
   info: { accent: '#42c8f5', bg: 'rgba(66,200,245,0.18)', border: 'rgba(66,200,245,0.30)' },

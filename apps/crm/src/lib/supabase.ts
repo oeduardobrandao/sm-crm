@@ -188,7 +188,7 @@ export async function healPendingInvite() {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${session.access_token}`,
       },
-      body: JSON.stringify({ action: 'accept-invite', email: user.email.toLowerCase() }),
+      body: JSON.stringify({ action: 'accept-invite' }),
     });
 
     // Only mark healed when the server actually accepted it. A transient

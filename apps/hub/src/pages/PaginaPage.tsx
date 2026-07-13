@@ -6,6 +6,7 @@ import remarkGfm from 'remark-gfm';
 import { useHub } from '../HubContext';
 import { fetchPage } from '../api';
 import type { HubContentBlock } from '../types';
+import { sanitizeExternalUrl } from '../lib/security';
 
 const markdownComponents = {
   h1: (props: React.ComponentProps<'h1'>) => (
@@ -32,13 +33,18 @@ const markdownComponents = {
   a: (props: React.ComponentProps<'a'>) => (
     <a
       {...props}
+      href={sanitizeExternalUrl(props.href)}
       target="_blank"
-      rel="noreferrer"
+      rel="noopener noreferrer"
       className="text-stone-900 font-medium underline decoration-[#FFBF30] decoration-2 underline-offset-4 hover:decoration-stone-900 transition-colors"
     />
   ),
   img: (props: React.ComponentProps<'img'>) => (
-    <img {...props} className="rounded-xl max-w-full my-5 border border-stone-200/80" />
+    <img
+      {...props}
+      src={sanitizeExternalUrl(props.src)}
+      className="rounded-xl max-w-full my-5 border border-stone-200/80"
+    />
   ),
   ul: (props: React.ComponentProps<'ul'>) => (
     <ul {...props} className="list-disc pl-6 mb-4 text-[15px] text-stone-700 leading-relaxed" />
@@ -128,7 +134,7 @@ function renderBlock(block: HubContentBlock, i: number) {
       return (
         <img
           key={i}
-          src={block.content}
+          src={sanitizeExternalUrl(block.content)}
           alt=""
           className="rounded-xl max-w-full my-5 border border-stone-200/80"
         />
@@ -137,9 +143,9 @@ function renderBlock(block: HubContentBlock, i: number) {
       return (
         <a
           key={i}
-          href={block.href}
+          href={sanitizeExternalUrl(block.href)}
           target="_blank"
-          rel="noreferrer"
+          rel="noopener noreferrer"
           className="text-stone-900 font-medium underline decoration-[#FFBF30] decoration-2 underline-offset-4 hover:decoration-stone-900 transition-colors"
         >
           {block.content}

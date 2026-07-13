@@ -33,19 +33,4 @@ export function escapeHTML(str: string): string {
     .replace(/'/g, '&#39;');
 }
 
-export function sanitizeUrl(url: string | undefined | null): string {
-  if (!url) return '#';
-  try {
-    const parsed = new URL(url.trim());
-    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
-      return url.trim();
-    }
-    return '#';
-  } catch {
-    const trimmed = url.trim();
-    if (trimmed.startsWith('/') && !trimmed.startsWith('//')) return trimmed;
-    if (trimmed.startsWith('./') || trimmed.startsWith('../')) return trimmed;
-    if (trimmed.startsWith('#')) return trimmed;
-    return '#';
-  }
-}
+export { sanitizeUrl } from './utils/security';

@@ -4,6 +4,7 @@ import { checkRateLimit } from "../_shared/rate-limit.ts";
 import { insertAuditLog } from "../_shared/audit.ts";
 import { featureForPath } from "../_shared/feature-guard.ts";
 import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
+import { createJsonResponder, internalServerError } from "../_shared/http.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -200,8 +201,7 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: corsHeaders });
   }
 
-  const json = (data: any, status = 200) =>
-    new Response(JSON.stringify(data), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  const json = createJsonResponder(corsHeaders);
 
   try {
     // Verify auth
@@ -1393,8 +1393,6 @@ O campo priorityActions deve ter entre 3 e 5 ações distribuídas entre as cont
     console.error('[instagram-analytics] ERROR on path:', new URL(req.url).pathname, '—', err.message || err, err.stack || '');
     const isAuthError = err.message?.includes("Unauthorized");
     const isTokenExpired = err.code === 'TOKEN_EXPIRED' || err.message?.includes("expired");
-    const statusCode = (isAuthError || isTokenExpired) ? 401 : 400;
-
     if (isTokenExpired) {
       try {
         const clientIdMatch = path.match(/\/(\d+)(?:$|\/|\?)/);
@@ -1406,10 +1404,18 @@ O campo priorityActions deve ter entre 3 e 5 ações distribuídas entre as cont
       } catch (_) { /* best-effort DB update */ }
     }
 
-    return json({
-      error: true,
-      message: err.message || 'Unknown error',
-      code: isTokenExpired ? 'TOKEN_EXPIRED' : undefined,
-    }, statusCode);
+    if (isTokenExpired) {
+      return json({
+        error: true,
+        message: "Token do Instagram expirado.",
+        code: "TOKEN_EXPIRED",
+      }, 401);
+    }
+
+    if (isAuthError) {
+      return json({ error: true, message: "Unauthorized" }, 401);
+    }
+
+    return internalServerError(json, "instagram-analytics", err);
   }
 });

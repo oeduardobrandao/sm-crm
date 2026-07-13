@@ -1,4 +1,4 @@
-import { createJsonResponder } from "../_shared/http.ts";
+import { createJsonResponder, internalServerError } from "../_shared/http.ts";
 import { markReelCoverStaleForNewVideo } from "../_shared/reel-cover-staleness.ts";
 
 type DbClient = {
@@ -132,7 +132,8 @@ export function createFileUploadFinalizeHandler(deps: FileUploadFinalizeDeps) {
 
     if (insErr || !inserted) {
       const msg = insErr?.message ?? "insert failed";
-      return json({ error: msg }, msg.includes("quota_exceeded") ? 413 : 500);
+      if (msg.includes("quota_exceeded")) return json({ error: "quota_exceeded" }, 413);
+      return internalServerError(json, "file-upload-finalize:insert-file", insErr ?? new Error(msg));
     }
 
     if (body.blur_data_url && typeof body.blur_data_url === "string" && body.blur_data_url.startsWith("data:")) {
@@ -152,7 +153,7 @@ export function createFileUploadFinalizeHandler(deps: FileUploadFinalizeDeps) {
         link.sort_order = Math.max(0, Math.trunc(body.sort_order));
       }
       const { error: linkErr } = await svc.from("post_file_links").insert(link);
-      if (linkErr) return json({ error: linkErr.message }, 500);
+      if (linkErr) return internalServerError(json, "file-upload-finalize:create-link", linkErr);
 
       // A NEW video on a post with a reel_cover design invalidates the rendered cover (it
       // lives on the video's thumbnail — see _shared/reel-cover-staleness.ts). Best-effort:

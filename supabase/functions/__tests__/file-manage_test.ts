@@ -187,6 +187,7 @@ Deno.test("file-manage: POST /folders DB error returns 500", async () => {
   const handler = makeHandler(db);
   const res = await handler(req("POST", "/folders", { name: "Dup" }));
   assertEquals(res.status, 500);
+  assertEquals(await readJson(res), { error: "Internal server error" });
 });
 
 // ─── FOLDERS: PATCH ──────────────────────────────────────────────
@@ -493,6 +494,7 @@ Deno.test("file-manage: PATCH /links/:id set_cover RPC error returns 500", async
   const handler = makeHandler(db);
   const res = await handler(req("PATCH", "/links/1", { is_cover: true }));
   assertEquals(res.status, 500);
+  assertEquals(await readJson(res), { error: "Internal server error" });
 });
 
 // ─── TREE ─────────────────────────────────────────────────────

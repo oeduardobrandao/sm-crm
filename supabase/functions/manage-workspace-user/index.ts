@@ -36,7 +36,51 @@ Deno.serve(async (req: Request) => {
 
     const serviceClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Get caller's profile to check role and conta_id
+    const body = await req.json();
+    const { action, targetUserId, role, inviteId } = body;
+
+    // --- Accept Invite (called by the invited user themselves, any role) ---
+    if (action === "accept-invite") {
+      const { data: acceptedRows, error: acceptError } = await serviceClient.rpc(
+        "accept_workspace_invite",
+        { p_user_id: user.id },
+      );
+
+      if (acceptError) {
+        if (acceptError.code === "P0002" || acceptError.message === "invite_not_found") {
+          return new Response(
+            JSON.stringify({ error: "Convite não encontrado ou expirado." }),
+            { status: 404, headers },
+          );
+        }
+        throw acceptError;
+      }
+
+      const accepted = Array.isArray(acceptedRows) ? acceptedRows[0] : acceptedRows;
+      if (!accepted) {
+        return new Response(
+          JSON.stringify({ error: "Convite não encontrado ou expirado." }),
+          { status: 404, headers },
+        );
+      }
+
+      await insertAuditLog(serviceClient, {
+        conta_id: accepted.conta_id,
+        actor_user_id: user.id,
+        action: 'accept-invite',
+        resource_type: 'invite',
+        resource_id: accepted.invite_id,
+        metadata: {
+          email: accepted.email,
+          role: accepted.role,
+          already_accepted: accepted.already_accepted,
+        },
+      });
+
+      return new Response(JSON.stringify({ message: "Convite aceito." }), { status: 200, headers });
+    }
+
+    // All administrative actions below are scoped to the caller's current workspace.
     const { data: callerProfile, error: profileError } = await serviceClient
       .from("profiles")
       .select("role, conta_id")
@@ -45,62 +89,6 @@ Deno.serve(async (req: Request) => {
 
     if (profileError || !callerProfile) {
       return new Response(JSON.stringify({ error: "Profile not found" }), { status: 403, headers });
-    }
-
-    const body = await req.json();
-    const { action, targetUserId, role, inviteId } = body;
-
-    // --- Accept Invite (called by the invited user themselves, any role) ---
-    if (action === "accept-invite") {
-      const { email } = body;
-      if (!email) {
-        return new Response(JSON.stringify({ error: "email is required" }), { status: 400, headers });
-      }
-      const { error: acceptError } = await serviceClient
-        .from("invites")
-        .update({ status: "accepted", accepted_at: new Date().toISOString() })
-        .eq("email", email.toLowerCase())
-        .eq("status", "pending")
-        .eq("conta_id", callerProfile.conta_id);
-
-      if (acceptError) throw acceptError;
-
-      // Add user to workspace now that they've completed the invitation flow
-      const { error: memberErr } = await serviceClient
-        .from("workspace_members")
-        .insert({
-          user_id: user.id,
-          workspace_id: callerProfile.conta_id,
-          role: callerProfile.role,
-        })
-        .select()
-        .maybeSingle();
-
-      // Ignore unique constraint violation (user already a member)
-      if (memberErr && !memberErr.message?.includes("duplicate key")) throw memberErr;
-
-      // Mark onboarding complete: reaching accept-invite means the user has set
-      // a password (configurar-senha calls updateUser before this). This is the
-      // server-authoritative signal that the invitee is fully onboarded, so a
-      // later re-invite adds them directly instead of wiping & re-inviting.
-      // Must succeed — a member row with onboarding_complete=false would be
-      // wiped by a subsequent re-invite, so surface the error and let the
-      // client retry rather than swallowing it.
-      const { error: onboardingErr } = await serviceClient
-        .from("profiles")
-        .update({ onboarding_complete: true })
-        .eq("id", user.id);
-      if (onboardingErr) throw onboardingErr;
-
-      await insertAuditLog(serviceClient, {
-        conta_id: callerProfile.conta_id,
-        actor_user_id: user.id,
-        action: 'accept-invite',
-        resource_type: 'invite',
-        metadata: { email: email },
-      });
-
-      return new Response(JSON.stringify({ message: "Convite aceito." }), { status: 200, headers });
     }
 
     // All other actions require owner/admin

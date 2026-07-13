@@ -956,6 +956,7 @@ Deno.test("hub-ideias returns 500 when the insert reports an error", async () =>
     body: JSON.stringify({ token: "hub-123", titulo: "Ideia", descricao: "descrição" }),
   }));
   assertEquals(response.status, 500);
+  assertEquals(await readJson(response), { error: "Internal server error" });
 });
 
 Deno.test("hub-ideias returns 404 when PATCH targets a non-existent idea", async () => {

@@ -177,7 +177,7 @@ export default function ConfigurarSenhaPage() {
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ action: 'accept-invite', email: email.toLowerCase() }),
+            body: JSON.stringify({ action: 'accept-invite' }),
           },
         );
         if (!res.ok) throw new Error(`accept-invite failed: ${res.status}`);

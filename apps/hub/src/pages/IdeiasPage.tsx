@@ -6,6 +6,7 @@ import { useHub } from '../HubContext';
 import { fetchIdeias, createIdeia, updateIdeia, deleteIdeia, deleteIdeiaImage } from '../api';
 import { uploadIdeiaImage } from '../services/ideiaMedia';
 import type { HubIdeia, IdeiaImage } from '../types';
+import { sanitizeExternalUrl } from '../lib/security';
 
 const ALLOWED_EMOJI = ['👍', '❤️', '🔥', '💡', '🎯'] as const;
 
@@ -29,16 +30,6 @@ function isMutable(ideia: HubIdeia): boolean {
     ideia.comentario_agencia === null &&
     ideia.ideia_reactions.length === 0
   );
-}
-
-function sanitizeUrl(href: string): string {
-  try {
-    const url = new URL(href);
-    if (url.protocol === 'http:' || url.protocol === 'https:') return url.toString();
-  } catch {
-    /* fall through */
-  }
-  return '#';
 }
 
 const MAX_IMAGES = 10;
@@ -97,10 +88,14 @@ function IdeiaImages({
         <div className="flex flex-wrap gap-2">
           {images.map((img) => (
             <div key={img.file_id} className="relative group">
-              <a href={img.url} target="_blank" rel="noopener noreferrer">
+              <a href={sanitizeExternalUrl(img.url)} target="_blank" rel="noopener noreferrer">
                 <img
                   src={img.thumbnail_url ?? img.url}
                   alt=""
+                  width={64}
+                  height={64}
+                  loading="lazy"
+                  decoding="async"
                   className="h-16 w-16 rounded-lg object-cover border border-stone-200 bg-stone-100"
                   style={
                     img.blur_data_url
@@ -326,7 +321,7 @@ function IdeiaCard({
           {ideia.links.map((link, i) => (
             <a
               key={i}
-              href={sanitizeUrl(link)}
+              href={sanitizeExternalUrl(link)}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 text-[12px] text-stone-500 hover:text-stone-800 underline underline-offset-2 transition-colors"

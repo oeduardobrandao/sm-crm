@@ -109,12 +109,6 @@ verify_jwt = false
 [functions.manage-workspace-user]
 verify_jwt = false
 
-[functions.portal-approve]
-verify_jwt = false
-
-[functions.portal-data]
-verify_jwt = false
-
 [functions.sign-r2-urls]
 verify_jwt = false
 
