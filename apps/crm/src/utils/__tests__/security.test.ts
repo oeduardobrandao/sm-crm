@@ -7,6 +7,7 @@ const unsafeExternalUrls = [
   '//evil.example/path',
   'https://user:password@example.com/private',
   'not a url',
+  'nota',
 ];
 
 describe('CRM URL security', () => {

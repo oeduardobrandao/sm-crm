@@ -6,6 +6,7 @@ export function sanitizeExternalUrl(value: string | undefined | null): string {
     const candidate = hasScheme || trimmed.startsWith('//') ? trimmed : `https://${trimmed}`;
     const parsed = new URL(candidate);
     if (parsed.username || parsed.password) return '#';
+    if (!hasScheme && !parsed.hostname.includes('.')) return '#';
     return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? candidate : '#';
   } catch {
     return '#';

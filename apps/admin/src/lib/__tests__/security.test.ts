@@ -8,6 +8,7 @@ describe('Admin URL security', () => {
     '//evil.example/path',
     'https://user:password@example.com/private',
     'not a url',
+    'nota',
   ])('blocks unsafe external URL %s', (value) => {
     expect(sanitizeExternalUrl(value)).toBe('#');
   });
