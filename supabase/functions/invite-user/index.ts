@@ -4,6 +4,7 @@ import { seatsAvailable } from "./seats.ts";
 import { classifyExistingUser } from "./onboarding.ts";
 import { sendInviteEmail } from "../_shared/invite-email.ts";
 import { effectivePlanLimit } from "../_shared/entitlements-rpc.ts";
+import { sendPendingWorkspaceInvite } from "./pending-invite.ts";
 
 async function findAuthUserByEmail(adminClient: any, email: string) {
   let page = 1;
@@ -297,22 +298,45 @@ Deno.serve(async (req) => {
 
     // --- New user (or stale user cleaned up above): send invite email ---
     const redirectBase = Deno.env.get('OAUTH_REDIRECT_BASE') || 'http://localhost:5173';
-    const { error } = await adminClient.auth.admin.inviteUserByEmail(email, {
-       data: { conta_id: profile.conta_id, role, nome: email.split('@')[0] },
-       redirectTo: redirectBase + '/configurar-senha',
-    });
-
-    if (error) {
-      console.error('[invite-user] inviteUserByEmail error:', JSON.stringify({ message: error.message, status: error.status }));
-      throw error;
-    }
-
-    await adminClient.from('invites').insert({
-      conta_id: profile.conta_id,
+    await sendPendingWorkspaceInvite({
+      createPendingInvite: async (pending) => {
+        const { data, error: insertError } = await adminClient.from('invites').insert({
+          conta_id: pending.contaId,
+          email: pending.email,
+          role: pending.role,
+          invited_by: pending.invitedBy,
+          status: 'pending',
+        }).select('id').single();
+        if (insertError || !data) throw insertError ?? new Error('invite_insert_failed');
+        return data;
+      },
+      sendAuthInvite: async (pending) => {
+        const { error: authInviteError } = await adminClient.auth.admin.inviteUserByEmail(
+          pending.email,
+          {
+            data: {
+              conta_id: pending.contaId,
+              role: pending.role,
+              nome: pending.email.split('@')[0],
+            },
+            redirectTo: pending.redirectTo,
+          },
+        );
+        if (authInviteError) throw authInviteError;
+      },
+      deletePendingInvite: async (inviteId) => {
+        const { error: cleanupError } = await adminClient
+          .from('invites')
+          .delete()
+          .eq('id', inviteId);
+        if (cleanupError) throw cleanupError;
+      },
+    }, {
+      contaId: profile.conta_id,
       email: email.toLowerCase(),
       role,
-      invited_by: user.id,
-      status: 'pending',
+      invitedBy: user.id,
+      redirectTo: redirectBase + '/configurar-senha',
     });
 
     return new Response(JSON.stringify({ success: true, message: `Convite enviado para ${email} como ${role}.` }), {

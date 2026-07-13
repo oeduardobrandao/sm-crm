@@ -291,6 +291,6 @@ describe('healPendingInvite', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     const [url, opts] = fetchSpy.mock.calls[0];
     expect(String(url)).toContain('manage-workspace-user');
-    expect(JSON.parse(String((opts as RequestInit).body)).action).toBe('accept-invite');
+    expect(JSON.parse(String((opts as RequestInit).body))).toEqual({ action: 'accept-invite' });
   });
 });

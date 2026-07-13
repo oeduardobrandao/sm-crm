@@ -266,8 +266,7 @@ describe('ConfigurarSenhaPage', () => {
     );
     expect(acceptCall).toBeDefined();
     const body = JSON.parse(String((acceptCall![1] as any).body));
-    expect(body.action).toBe('accept-invite');
-    expect(body.email).toBe('novo@equipe.com');
+    expect(body).toEqual({ action: 'accept-invite' });
 
     fetchSpy.mockRestore();
   });
