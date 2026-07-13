@@ -5,6 +5,7 @@ import { classifyExistingUser } from "./onboarding.ts";
 import { sendInviteEmail } from "../_shared/invite-email.ts";
 import { effectivePlanLimit } from "../_shared/entitlements-rpc.ts";
 import { sendPendingWorkspaceInvite } from "./pending-invite.ts";
+import { createJsonResponder, internalServerError } from "../_shared/http.ts";
 
 async function findAuthUserByEmail(adminClient: any, email: string) {
   let page = 1;
@@ -48,6 +49,7 @@ async function deleteUnconfirmedInvitedUser(adminClient: any, email: string) {
 
 Deno.serve(async (req) => {
   const corsHeaders = buildCorsHeaders(req);
+  const json = createJsonResponder(corsHeaders);
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
@@ -344,10 +346,6 @@ Deno.serve(async (req) => {
       status: 200,
     });
   } catch (err: any) {
-    console.error('[invite-user] error:', err);
-    const detail = err?.message || err?.toString?.() || 'unknown';
-    return new Response(JSON.stringify({ error: `Erro interno do servidor: ${detail}` }), {
-      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return internalServerError(json, "invite-user", err);
   }
 });

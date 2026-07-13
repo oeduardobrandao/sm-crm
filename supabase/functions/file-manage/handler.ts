@@ -1,4 +1,4 @@
-import { createJsonResponder } from "../_shared/http.ts";
+import { createJsonResponder, internalServerError } from "../_shared/http.ts";
 import { insertAuditLog } from "../_shared/audit.ts";
 import { copyObject } from "../_shared/r2.ts";
 import { checkRateLimit } from "../_shared/rate-limit.ts";
@@ -212,7 +212,7 @@ export function createFileManageHandler(deps: FileManageDeps) {
           source: "user",
         }).select().single();
 
-        if (createErr) return json({ error: createErr.message }, 500);
+        if (createErr) return internalServerError(json, "file-manage:create-folder", createErr);
         return json(created, 201);
       }
 
@@ -243,7 +243,7 @@ export function createFileManageHandler(deps: FileManageDeps) {
         }
 
         const { data: updated, error: updErr } = await svc.from("folders").update(patch).eq("id", folderId).select().single();
-        if (updErr) return json({ error: updErr.message }, 500);
+        if (updErr) return internalServerError(json, "file-manage:update-folder", updErr);
         return json(updated);
       }
 
@@ -258,7 +258,7 @@ export function createFileManageHandler(deps: FileManageDeps) {
         }
 
         const { error: delErr } = await svc.from("folders").delete().eq("id", folderId);
-        if (delErr) return json({ error: delErr.message }, 500);
+        if (delErr) return internalServerError(json, "file-manage:delete-folder", delErr);
         return json({ ok: true });
       }
 
@@ -412,8 +412,8 @@ export function createFileManageHandler(deps: FileManageDeps) {
             newThumbKey = `${contaId}/thumb-${crypto.randomUUID()}-${source.name}`;
             await copyObject(source.thumbnail_r2_key, newThumbKey);
           }
-        } catch {
-          return json({ error: "R2 copy failed" }, 500);
+        } catch (error) {
+          return internalServerError(json, "file-manage:copy-r2-object", error);
         }
 
         const { data: newFile, error: insertErr } = await svc.from("files").insert({
@@ -433,7 +433,7 @@ export function createFileManageHandler(deps: FileManageDeps) {
           reference_count: 0,
         }).select().single();
 
-        if (insertErr) return json({ error: insertErr.message }, 500);
+        if (insertErr) return internalServerError(json, "file-manage:copy-file-record", insertErr);
 
         await svc.from("workspaces").update({ storage_used_bytes: (ws?.storage_used_bytes ?? 0) + source.size_bytes }).eq("id", contaId);
 
@@ -470,7 +470,7 @@ export function createFileManageHandler(deps: FileManageDeps) {
         if (Object.keys(patch).length === 0) return json({ error: "Nothing to update" }, 400);
 
         const { data: updated, error: updErr } = await svc.from("files").update(patch).eq("id", fileId).select().single();
-        if (updErr) return json({ error: updErr.message }, 500);
+        if (updErr) return internalServerError(json, "file-manage:update-file", updErr);
         return json(updated);
       }
 
@@ -496,7 +496,7 @@ export function createFileManageHandler(deps: FileManageDeps) {
         }
 
         const { error: delErr } = await svc.from("files").delete().eq("id", fileId);
-        if (delErr) return json({ error: delErr.message }, 500);
+        if (delErr) return internalServerError(json, "file-manage:delete-file", delErr);
         return json({ ok: true });
       }
     }
@@ -525,7 +525,7 @@ export function createFileManageHandler(deps: FileManageDeps) {
 
         if (linkErr) {
           if (linkErr.message.includes("duplicate")) return json({ error: "Already linked" }, 409);
-          return json({ error: linkErr.message }, 500);
+          return internalServerError(json, "file-manage:create-link", linkErr);
         }
 
         // A NEW video on a post with a reel_cover design invalidates the rendered cover (it
@@ -556,7 +556,7 @@ export function createFileManageHandler(deps: FileManageDeps) {
         if (!link || link.conta_id !== contaId) return json({ error: "Link not found" }, 404);
 
         const { error: delErr } = await svc.from("post_file_links").delete().eq("id", linkId);
-        if (delErr) return json({ error: delErr.message }, 500);
+        if (delErr) return internalServerError(json, "file-manage:delete-link", delErr);
         return json({ ok: true });
       }
 
@@ -597,7 +597,7 @@ export function createFileManageHandler(deps: FileManageDeps) {
 
         if (body.is_cover === true) {
           const { error: swapErr } = await svc.rpc("post_file_link_set_cover", { p_link_id: linkId });
-          if (swapErr) return json({ error: swapErr.message }, 500);
+          if (swapErr) return internalServerError(json, "file-manage:set-cover", swapErr);
           const { data: updated } = await svc.from("post_file_links").select("*").eq("id", linkId).single();
           return json(updated);
         }
@@ -608,7 +608,7 @@ export function createFileManageHandler(deps: FileManageDeps) {
         if (Object.keys(patch).length === 0) return json({ error: "Nothing to update" }, 400);
 
         const { data: updated, error: updErr } = await svc.from("post_file_links").update(patch).eq("id", linkId).select().single();
-        if (updErr) return json({ error: updErr.message }, 500);
+        if (updErr) return internalServerError(json, "file-manage:update-link", updErr);
         return json(updated);
       }
     }
@@ -633,7 +633,7 @@ export function createFileManageHandler(deps: FileManageDeps) {
         p_destination_id: destination_id ?? null,
       });
 
-      if (rpcError) return json({ error: rpcError.message }, 500);
+      if (rpcError) return internalServerError(json, "file-manage:move-items", rpcError);
       if (result?.error) return json(result, 400);
 
       await insertAuditLog(svc, {
@@ -716,12 +716,12 @@ export function createFileManageHandler(deps: FileManageDeps) {
         totalBytesFreed = (filesToDelete ?? []).reduce((sum: number, f: { size_bytes: number }) => sum + f.size_bytes, 0);
 
         const { error: delErr } = await svc.from("files").delete().in("id", deletableFileIds);
-        if (delErr) return json({ error: delErr.message }, 500);
+        if (delErr) return internalServerError(json, "file-manage:bulk-delete-files", delErr);
       }
 
       if (deletableFolderIds.length > 0) {
         const { error: delErr } = await svc.from("folders").delete().in("id", deletableFolderIds);
-        if (delErr) return json({ error: delErr.message }, 500);
+        if (delErr) return internalServerError(json, "file-manage:bulk-delete-folders", delErr);
       }
 
       if (totalBytesFreed > 0) {

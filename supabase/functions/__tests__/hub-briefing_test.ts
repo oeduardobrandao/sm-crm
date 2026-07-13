@@ -119,3 +119,16 @@ Deno.test("hub-briefing GET surfaces orphan null-briefing_id questions when no b
   assertEquals(body.briefings[0].title, "Briefing");
   assertEquals(body.briefings[0].questions.length, 1);
 });
+
+Deno.test("hub-briefing GET hides database error details", async () => {
+  const db = createSupabaseQueryMock();
+  setupToken(db);
+  db.queue("briefings", "select", {
+    data: null,
+    error: { message: "connection string leaked" },
+  });
+
+  const response = await makeHandler(db)(getReq());
+  assertEquals(response.status, 500);
+  assertEquals(await readJson(response), { error: "Internal server error" });
+});

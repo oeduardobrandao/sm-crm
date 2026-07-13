@@ -208,6 +208,7 @@ Deno.test("post-media-manage: PATCH set_cover RPC error returns 500", async () =
   const handler = makeHandler(db);
   const res = await handler(req("PATCH", "/1", { is_cover: true }));
   assertEquals(res.status, 500);
+  assertEquals(await readJson(res), { error: "Internal server error" });
 });
 
 Deno.test("post-media-manage: PATCH sort_order updates link", async () => {
@@ -278,6 +279,7 @@ Deno.test("post-media-manage: DELETE DB error returns 500", async () => {
   const handler = makeHandler(db);
   const res = await handler(req("DELETE", "/1"));
   assertEquals(res.status, 500);
+  assertEquals(await readJson(res), { error: "Internal server error" });
 });
 
 Deno.test("post-media-manage: DELETE on not found returns 404", async () => {

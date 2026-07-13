@@ -1,4 +1,4 @@
-import { createJsonResponder } from "../_shared/http.ts";
+import { createJsonResponder, internalServerError } from "../_shared/http.ts";
 
 type DbClient = {
   from: (table: string) => any;
@@ -152,7 +152,7 @@ export function createPostMediaManageHandler(deps: PostMediaManageDeps) {
 
       if (body.is_cover === true) {
         const { error: swapErr } = await svc.rpc("post_file_link_set_cover", { p_link_id: linkId });
-        if (swapErr) return json({ error: swapErr.message }, 500);
+        if (swapErr) return internalServerError(json, "post-media-manage:set-cover", swapErr);
       }
 
       if (typeof body.sort_order === "number") {
@@ -179,7 +179,7 @@ export function createPostMediaManageHandler(deps: PostMediaManageDeps) {
 
     if (req.method === "DELETE") {
       const { error: delErr } = await svc.from("post_file_links").delete().eq("id", linkId);
-      if (delErr) return json({ error: delErr.message }, 500);
+      if (delErr) return internalServerError(json, "post-media-manage:delete-link", delErr);
       return json({ ok: true });
     }
 

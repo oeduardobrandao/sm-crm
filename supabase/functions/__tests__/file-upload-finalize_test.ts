@@ -203,6 +203,7 @@ Deno.test("file-upload-finalize: RPC insert failure returns 500", async () => {
   const handler = makeHandler(db);
   const res = await handler(authedRequest(baseBody));
   assertEquals(res.status, 500);
+  assertEquals(await readJson(res), { error: "Internal server error" });
 });
 
 Deno.test("file-upload-finalize: RPC quota_exceeded returns 413", async () => {
@@ -287,6 +288,7 @@ Deno.test("file-upload-finalize: post_file_links insert error returns 500", asyn
   const handler = makeHandler(db);
   const res = await handler(authedRequest({ ...baseBody, post_id: 7 }));
   assertEquals(res.status, 500);
+  assertEquals(await readJson(res), { error: "Internal server error" });
 });
 
 Deno.test("file-upload-finalize: video finalize with thumbnail returns both signed URLs", async () => {

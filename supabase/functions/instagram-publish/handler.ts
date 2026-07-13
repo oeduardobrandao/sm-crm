@@ -1,6 +1,6 @@
 // supabase/functions/instagram-publish/handler.ts
 
-import { createJsonResponder } from "../_shared/http.ts";
+import { createJsonResponder, internalServerError } from "../_shared/http.ts";
 import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
 import {
   validateForScheduling,
@@ -343,7 +343,7 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
           } catch (_) { /* best-effort */ }
         }
 
-        return json({ error: err.message ?? "Erro ao publicar" }, 500);
+        return internalServerError(json, "instagram-publish:publish-now", err);
       }
     }
 
