@@ -5,7 +5,7 @@ import {
   getDismissedBannerIds,
   dismissBanner,
   type GlobalBanner,
-} from '../store';
+} from '../store/banners';
 
 const BANNERS_KEY = ['banners'] as const;
 const DISMISSED_KEY = ['banner-dismissals'] as const;

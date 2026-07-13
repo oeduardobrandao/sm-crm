@@ -8,7 +8,7 @@ import {
   signOut as supabaseSignOut,
   healPendingInvite,
 } from '../lib/supabase';
-import { initStoreRole } from '../store';
+import { initStoreRole } from '../store/core';
 
 interface Profile {
   id: string;

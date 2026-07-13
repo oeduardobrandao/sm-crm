@@ -22,16 +22,13 @@ import {
   CommandGroup,
   CommandItem,
 } from '@/components/ui/command';
-import {
-  getClientes,
-  getContratos,
-  getMembros,
-  getTransacoes,
-  getWorkflows,
-  getAllWorkflowPosts,
-  getIdeias,
-  getAllHubPages,
-} from '@/store';
+import { getClientes } from '@/store/clients';
+import { getContratos, getTransacoes } from '@/store/finance';
+import { getMembros } from '@/store/team';
+import { getWorkflows } from '@/store/workflows';
+import { getAllWorkflowPosts } from '@/store/posts';
+import { getIdeias } from '@/store/ideias';
+import { getAllHubPages } from '@/store/hub';
 
 export default function GlobalSearchTrigger() {
   const [open, setOpen] = useState(false);

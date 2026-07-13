@@ -6,7 +6,7 @@ import {
   markAllNotificationsAsRead,
   markNotificationAsRead,
   type Notification,
-} from '../store';
+} from '../store/notifications';
 
 const UNREAD_KEY = ['notifications-unread-count'] as const;
 const LIST_KEY = ['notifications'] as const;

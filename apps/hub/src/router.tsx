@@ -1,33 +1,55 @@
 import { createBrowserRouter } from 'react-router-dom';
 import { HubShell } from './shell/HubShell';
-import { HomePage } from './pages/HomePage';
-import { AprovacoesPage } from './pages/AprovacoesPage';
-import { MarcaPage } from './pages/MarcaPage';
-import { PaginasPage } from './pages/PaginasPage';
-import { PaginaPage } from './pages/PaginaPage';
-import { BriefingPage } from './pages/BriefingPage';
-import { PostagensPage } from './pages/PostagensPage';
-import { IdeiasPage } from './pages/IdeiasPage';
-import { RelatoriosPage } from './pages/Relatorios';
-import { RelatorioViewPage } from './pages/RelatorioView';
-import { PostagemFocoPage } from './pages/PostagemFocoPage';
 
 export const router = createBrowserRouter([
   {
     path: '/:workspace/hub/:token',
     element: <HubShell />,
     children: [
-      { index: true, element: <HomePage /> },
-      { path: 'aprovacoes', element: <AprovacoesPage /> },
-      { path: 'postagens', element: <PostagensPage /> },
-      { path: 'postagens/:postId', element: <PostagemFocoPage /> },
-      { path: 'marca', element: <MarcaPage /> },
-      { path: 'paginas', element: <PaginasPage /> },
-      { path: 'paginas/:pageId', element: <PaginaPage /> },
-      { path: 'briefing', element: <BriefingPage /> },
-      { path: 'ideias', element: <IdeiasPage /> },
-      { path: 'relatorios', element: <RelatoriosPage /> },
-      { path: 'relatorios/:month', element: <RelatorioViewPage /> },
+      {
+        index: true,
+        lazy: async () => ({ Component: (await import('./pages/HomePage')).HomePage }),
+      },
+      {
+        path: 'aprovacoes',
+        lazy: async () => ({ Component: (await import('./pages/AprovacoesPage')).AprovacoesPage }),
+      },
+      {
+        path: 'postagens',
+        lazy: async () => ({ Component: (await import('./pages/PostagensPage')).PostagensPage }),
+      },
+      {
+        path: 'postagens/:postId',
+        lazy: async () => ({ Component: (await import('./pages/PostagemFocoPage')).PostagemFocoPage }),
+      },
+      {
+        path: 'marca',
+        lazy: async () => ({ Component: (await import('./pages/MarcaPage')).MarcaPage }),
+      },
+      {
+        path: 'paginas',
+        lazy: async () => ({ Component: (await import('./pages/PaginasPage')).PaginasPage }),
+      },
+      {
+        path: 'paginas/:pageId',
+        lazy: async () => ({ Component: (await import('./pages/PaginaPage')).PaginaPage }),
+      },
+      {
+        path: 'briefing',
+        lazy: async () => ({ Component: (await import('./pages/BriefingPage')).BriefingPage }),
+      },
+      {
+        path: 'ideias',
+        lazy: async () => ({ Component: (await import('./pages/IdeiasPage')).IdeiasPage }),
+      },
+      {
+        path: 'relatorios',
+        lazy: async () => ({ Component: (await import('./pages/Relatorios')).RelatoriosPage }),
+      },
+      {
+        path: 'relatorios/:month',
+        lazy: async () => ({ Component: (await import('./pages/RelatorioView')).RelatorioViewPage }),
+      },
     ],
   },
   {

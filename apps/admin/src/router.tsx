@@ -1,20 +1,11 @@
 import { createBrowserRouter } from 'react-router-dom';
 import AdminLayout from './layouts/AdminLayout';
 import AdminProtectedRoute from './layouts/AdminProtectedRoute';
-import LoginPage from './pages/LoginPage';
-import DashboardPage from './pages/DashboardPage';
-import WorkspacesPage from './pages/WorkspacesPage';
-import WorkspaceDetailPage from './pages/WorkspaceDetailPage';
-import PlansPage from './pages/PlansPage';
-import AdminsPage from './pages/AdminsPage';
-import BannersPage from './pages/BannersPage';
-import KbArticlesPage from './pages/KbArticlesPage';
-import KbArticleEditorPage from './pages/KbArticleEditorPage';
 
 export const router = createBrowserRouter([
   {
     path: '/admin/login',
-    element: <LoginPage />,
+    lazy: async () => ({ Component: (await import('./pages/LoginPage')).default }),
   },
   {
     path: '/admin',
@@ -24,15 +15,42 @@ export const router = createBrowserRouter([
       </AdminProtectedRoute>
     ),
     children: [
-      { index: true, element: <DashboardPage /> },
-      { path: 'workspaces', element: <WorkspacesPage /> },
-      { path: 'workspaces/:id', element: <WorkspaceDetailPage /> },
-      { path: 'plans', element: <PlansPage /> },
-      { path: 'admins', element: <AdminsPage /> },
-      { path: 'banners', element: <BannersPage /> },
-      { path: 'kb-articles', element: <KbArticlesPage /> },
-      { path: 'kb-articles/new', element: <KbArticleEditorPage /> },
-      { path: 'kb-articles/:id/edit', element: <KbArticleEditorPage /> },
+      {
+        index: true,
+        lazy: async () => ({ Component: (await import('./pages/DashboardPage')).default }),
+      },
+      {
+        path: 'workspaces',
+        lazy: async () => ({ Component: (await import('./pages/WorkspacesPage')).default }),
+      },
+      {
+        path: 'workspaces/:id',
+        lazy: async () => ({ Component: (await import('./pages/WorkspaceDetailPage')).default }),
+      },
+      {
+        path: 'plans',
+        lazy: async () => ({ Component: (await import('./pages/PlansPage')).default }),
+      },
+      {
+        path: 'admins',
+        lazy: async () => ({ Component: (await import('./pages/AdminsPage')).default }),
+      },
+      {
+        path: 'banners',
+        lazy: async () => ({ Component: (await import('./pages/BannersPage')).default }),
+      },
+      {
+        path: 'kb-articles',
+        lazy: async () => ({ Component: (await import('./pages/KbArticlesPage')).default }),
+      },
+      {
+        path: 'kb-articles/new',
+        lazy: async () => ({ Component: (await import('./pages/KbArticleEditorPage')).default }),
+      },
+      {
+        path: 'kb-articles/:id/edit',
+        lazy: async () => ({ Component: (await import('./pages/KbArticleEditorPage')).default }),
+      },
     ],
   },
   {

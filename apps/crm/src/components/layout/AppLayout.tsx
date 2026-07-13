@@ -1,10 +1,11 @@
 import { Outlet, useLocation } from 'react-router-dom';
 import { ContextHelpLinks } from '../help/ContextHelpLinks';
-import { useEffect, useState, useCallback } from 'react';
+import { lazy, Suspense, useEffect, useState, useCallback } from 'react';
 import Sidebar from './Sidebar';
 import MobileNav from './MobileNav';
 import TopBar from './TopBar';
-import GlobalBannerContainer from './GlobalBannerContainer';
+
+const GlobalBannerContainer = lazy(() => import('./GlobalBannerContainer'));
 
 function useIsTablet() {
   const [isTablet, setIsTablet] = useState(() => {
@@ -66,7 +67,9 @@ export default function AppLayout() {
         />
       )}
 
-      <GlobalBannerContainer />
+      <Suspense fallback={null}>
+        <GlobalBannerContainer />
+      </Suspense>
 
       <Sidebar isDrawer={isTablet} isOpen={drawerOpen} onClose={closeDrawer} />
 

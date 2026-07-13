@@ -43,7 +43,7 @@ vi.mock('../TopBar', () => ({
 }));
 
 vi.mock('../GlobalBannerContainer', () => ({
-  default: () => null,
+  default: () => <div data-testid="global-banner" />,
 }));
 
 vi.mock('../../help/ContextHelpLinks', () => ({
@@ -119,11 +119,12 @@ function renderLayout(pathname = '/dashboard') {
 }
 
 describe('AppLayout', () => {
-  it('renders the desktop shell without tablet drawer controls', () => {
+  it('renders the desktop shell without tablet drawer controls', async () => {
     setViewport(1280);
     mockMatchMedia(false);
 
     renderLayout();
+    await screen.findByTestId('global-banner');
 
     expect(screen.getByTestId('sidebar')).toHaveAttribute('data-drawer', 'false');
     expect(screen.getByTestId('sidebar')).toHaveAttribute('data-open', 'false');
@@ -131,11 +132,12 @@ describe('AppLayout', () => {
     expect(screen.getByTestId('mobile-nav')).toBeInTheDocument();
   });
 
-  it('opens and closes the tablet drawer, then resets when leaving tablet mode', () => {
+  it('opens and closes the tablet drawer, then resets when leaving tablet mode', async () => {
     setViewport(900);
     const mediaQueryList = mockMatchMedia(true);
 
     renderLayout();
+    await screen.findByTestId('global-banner');
 
     expect(screen.getByRole('button', { name: 'Abrir menu' })).toBeInTheDocument();
     expect(screen.getByTestId('sidebar')).toHaveAttribute('data-drawer', 'true');
@@ -161,11 +163,12 @@ describe('AppLayout', () => {
     expect(document.querySelector('.tablet-drawer-backdrop')).toBeNull();
   });
 
-  it('scrolls the main content back to the top when the route changes', () => {
+  it('scrolls the main content back to the top when the route changes', async () => {
     setViewport(1280);
     mockMatchMedia(false);
 
     const { container } = renderLayout();
+    await screen.findByTestId('global-banner');
     const main = container.querySelector('#app') as HTMLDivElement;
 
     main.scrollTop = 180;
