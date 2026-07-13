@@ -27,47 +27,55 @@ describe('billing service', () => {
   });
 
   it('lists only active public pricing fields in Admin order and hides Lifetime', async () => {
-    const order = vi.fn().mockResolvedValue({
-      data: [
-        {
-          id: 'lifetime',
-          name: 'Lifetime',
-          price_brl: 0,
-          price_brl_annual: 0,
-          sort_order: -1,
-          max_clients: null,
-          max_team_members: null,
-        },
-        {
-          id: 'start',
-          name: 'Start',
-          price_brl: 9990,
-          price_brl_annual: 95900,
-          sort_order: 1,
-          max_clients: 5,
-          max_team_members: 2,
-        },
-      ],
-      error: null,
-    });
+    const lifetime = {
+      id: 'lifetime',
+      name: 'Lifetime',
+      price_brl: 0,
+      price_brl_annual: 0,
+      sort_order: -1,
+      max_clients: null,
+      max_team_members: null,
+      max_workflow_templates: null,
+      max_instagram_accounts: null,
+      max_hub_tokens: null,
+      storage_quota_bytes: null,
+      feature_analytics_reports: true,
+      feature_post_scheduling: true,
+      feature_leads: true,
+      feature_financial: true,
+      feature_contracts: true,
+      feature_brand_customization: true,
+      feature_mcp: true,
+    };
+    const start = {
+      id: 'start',
+      name: 'Start',
+      price_brl: 9990,
+      price_brl_annual: 95900,
+      sort_order: 1,
+      max_clients: 5,
+      max_team_members: 2,
+      max_workflow_templates: 3,
+      max_instagram_accounts: 5,
+      max_hub_tokens: 5,
+      storage_quota_bytes: 5 * 1024 ** 3,
+      feature_analytics_reports: true,
+      feature_post_scheduling: true,
+      feature_leads: true,
+      feature_financial: true,
+      feature_contracts: true,
+      feature_brand_customization: true,
+      feature_mcp: true,
+    };
+    const order = vi.fn().mockResolvedValue({ data: [lifetime, start], error: null });
     const eq = vi.fn().mockReturnValue({ order });
     const select = vi.fn().mockReturnValue({ eq });
     from.mockReturnValue({ select });
 
-    await expect(listPublicPricingPlans()).resolves.toEqual([
-      {
-        id: 'start',
-        name: 'Start',
-        price_brl: 9990,
-        price_brl_annual: 95900,
-        sort_order: 1,
-        max_clients: 5,
-        max_team_members: 2,
-      },
-    ]);
+    await expect(listPublicPricingPlans()).resolves.toEqual([start]);
     expect(from).toHaveBeenCalledWith('plans');
     expect(select).toHaveBeenCalledWith(
-      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members',
+      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members, max_workflow_templates, max_instagram_accounts, max_hub_tokens, storage_quota_bytes, feature_analytics_reports, feature_post_scheduling, feature_leads, feature_financial, feature_contracts, feature_brand_customization, feature_mcp',
     );
     expect(eq).toHaveBeenCalledWith('is_active', true);
     expect(order).toHaveBeenCalledWith('sort_order', { ascending: true });

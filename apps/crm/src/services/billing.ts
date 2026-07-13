@@ -24,6 +24,17 @@ export interface PublicPricingPlan {
   sort_order: number;
   max_clients: number | null;
   max_team_members: number | null;
+  max_workflow_templates: number | null;
+  max_instagram_accounts: number | null;
+  max_hub_tokens: number | null;
+  storage_quota_bytes: number | null;
+  feature_analytics_reports: boolean;
+  feature_post_scheduling: boolean;
+  feature_leads: boolean;
+  feature_financial: boolean;
+  feature_contracts: boolean;
+  feature_brand_customization: boolean;
+  feature_mcp: boolean;
 }
 
 const INTERNAL_PLAN_IDS = new Set(['lifetime']);
@@ -64,11 +75,15 @@ export async function listActivePlans(): Promise<BillingPlan[]> {
 export async function listPublicPricingPlans(): Promise<PublicPricingPlan[]> {
   const { data, error } = await supabase
     .from('plans')
-    .select('id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members')
+    .select(
+      'id, name, price_brl, price_brl_annual, sort_order, max_clients, max_team_members, max_workflow_templates, max_instagram_accounts, max_hub_tokens, storage_quota_bytes, feature_analytics_reports, feature_post_scheduling, feature_leads, feature_financial, feature_contracts, feature_brand_customization, feature_mcp',
+    )
     .eq('is_active', true)
     .order('sort_order', { ascending: true });
   if (error) throw new Error(error.message);
-  return ((data ?? []) as PublicPricingPlan[]).filter((plan) => !INTERNAL_PLAN_IDS.has(plan.id));
+  return ((data ?? []) as PublicPricingPlan[]).filter(
+    (plan) => !INTERNAL_PLAN_IDS.has(plan.id),
+  );
 }
 
 /**
