@@ -56,6 +56,7 @@ Add a forward-only migration that replaces the current trigger function:
 - The profile's `conta_id`, `active_workspace_id`, and `role` come from the selected invite. The metadata role is ignored.
 - A supplied `conta_id` without a valid invitation raises an exception, aborting user creation instead of falling back to an owner workspace.
 - The existing repair for a missing `workspaces` row remains, but runs only after the invitation has been validated.
+- `get_my_conta_id()` returns the active workspace only when a matching `workspace_members` row exists. A pending invite/profile alone therefore cannot satisfy tenant RLS before transactional acceptance.
 
 Change `invite-user` so a new-user invitation is recorded before `inviteUserByEmail` runs. If Auth invitation creation fails, delete only the newly created pending invite before returning a generic internal error. Existing-user and resend-link paths keep their current semantics.
 
