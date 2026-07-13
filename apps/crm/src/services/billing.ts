@@ -81,9 +81,7 @@ export async function listPublicPricingPlans(): Promise<PublicPricingPlan[]> {
     .eq('is_active', true)
     .order('sort_order', { ascending: true });
   if (error) throw new Error(error.message);
-  return ((data ?? []) as PublicPricingPlan[]).filter(
-    (plan) => !INTERNAL_PLAN_IDS.has(plan.id),
-  );
+  return ((data ?? []) as PublicPricingPlan[]).filter((plan) => !INTERNAL_PLAN_IDS.has(plan.id));
 }
 
 /**
