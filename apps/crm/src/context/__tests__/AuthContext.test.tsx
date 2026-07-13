@@ -138,6 +138,39 @@ describe('AuthProvider', () => {
     expect(screen.getByTestId('role')).toHaveTextContent('agent');
   });
 
+  it('keeps the active profile request across token refreshes for the same user', async () => {
+    mockedSupabase.__resetSupabaseMock();
+    mockedSupabase.__setCurrentUser({ id: 'user-1' });
+
+    let resolveProfile!: (profile: Record<string, unknown> | null) => void;
+    mockedSupabase.__queueCurrentProfileResponse(
+      new Promise((resolve) => {
+        resolveProfile = resolve;
+      }),
+    );
+
+    renderWithAuth();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('user')).toHaveTextContent('user-1');
+    });
+
+    await act(async () => {
+      mockedSupabase.__emitAuthChange('TOKEN_REFRESHED', { user: { id: 'user-1' } });
+      resolveProfile({
+        id: 'user-1',
+        nome: 'Eduardo',
+        role: 'owner',
+        conta_id: 'conta-1',
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('role')).toHaveTextContent('owner');
+      expect(screen.getByTestId('loading')).toHaveTextContent('false');
+    });
+  });
+
   it('signOut clears the profile from context', async () => {
     mockedSupabase.__resetSupabaseMock();
     mockedSupabase.__setCurrentUser({ id: 'user-1' });

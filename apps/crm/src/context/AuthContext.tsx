@@ -38,6 +38,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [sessionReady, setSessionReady] = useState(false);
   const authGeneration = useRef(0);
   const profileRequestId = useRef(0);
+  const activeUserId = useRef<string | null>(null);
   const userId = user?.id;
 
   useEffect(() => {
@@ -49,7 +50,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void supabase.auth.getSession().then(
       ({ data }) => {
         if (!active || authGeneration.current !== initialAuthGeneration) return;
-        setUser(data.session?.user ?? null);
+        const sessionUser = data.session?.user ?? null;
+        activeUserId.current = sessionUser?.id ?? null;
+        setUser(sessionUser);
         setSessionReady(true);
       },
       () => {
@@ -65,9 +68,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       authGeneration.current += 1;
-      profileRequestId.current += 1;
 
       const nextUser = session?.user ?? null;
+      const nextUserId = nextUser?.id ?? null;
+      if (activeUserId.current !== nextUserId) profileRequestId.current += 1;
+      activeUserId.current = nextUserId;
       setUser(nextUser);
       setSessionReady(true);
       if (!nextUser) {
@@ -81,6 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       active = false;
       authGeneration.current += 1;
       profileRequestId.current += 1;
+      activeUserId.current = null;
       subscription.unsubscribe();
     };
   }, []);
@@ -153,6 +159,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     profileRequestId.current += 1;
     await supabaseSignOut();
     clearProfileCache();
+    activeUserId.current = null;
     setUser(null);
     setSessionReady(true);
     setProfile(null);
