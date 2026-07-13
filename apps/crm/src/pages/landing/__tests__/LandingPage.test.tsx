@@ -193,8 +193,21 @@ describe('LandingPage', () => {
 
     expect(listPublicPricingPlans).not.toHaveBeenCalled();
     expect(document.querySelectorAll('.plan-card-skeleton')).toHaveLength(4);
+    expect(document.querySelector('.plans-grid')).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getByRole('status')).toHaveTextContent('Carregando planos');
 
     triggerPricingIntersection();
+
+    await waitFor(() => expect(listPublicPricingPlans).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole('heading', { name: 'Start', level: 3 })).toBeInTheDocument();
+    expect(document.querySelector('.plans-grid')).toHaveAttribute('aria-busy', 'false');
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('starts the plan request when IntersectionObserver is unavailable', async () => {
+    vi.stubGlobal('IntersectionObserver', undefined);
+
+    renderLandingPage();
 
     await waitFor(() => expect(listPublicPricingPlans).toHaveBeenCalledTimes(1));
     expect(await screen.findByRole('heading', { name: 'Start', level: 3 })).toBeInTheDocument();
@@ -240,6 +253,97 @@ describe('LandingPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('shows paid plans with a null annual price as unavailable in annual mode', async () => {
+    vi.mocked(listPublicPricingPlans).mockResolvedValue([
+      PRICING_PLANS[0],
+      { ...PRICING_PLANS[1], price_brl_annual: null },
+    ]);
+    renderLandingPage();
+    triggerPricingIntersection();
+    await screen.findByRole('heading', { name: 'Start', level: 3 });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Anual' }));
+
+    const startCard = screen.getByRole('heading', { name: 'Start', level: 3 }).closest('.plan-card');
+    expect(startCard).not.toBeNull();
+    expect(within(startCard as HTMLElement).getByText('Sob consulta')).toBeInTheDocument();
+    expect(within(startCard as HTMLElement).queryByText('/mês')).not.toBeInTheDocument();
+    expect(
+      within(startCard as HTMLElement).queryByText(/cobrado anualmente/i),
+    ).not.toBeInTheDocument();
+
+    const freeCard = screen.getByRole('heading', { name: 'Free', level: 3 }).closest('.plan-card');
+    expect(freeCard).not.toBeNull();
+    expect(within(freeCard as HTMLElement).getByText('R$ 0')).toBeInTheDocument();
+  });
+
+  it('shows paid plans with a zero annual price as unavailable in annual mode', async () => {
+    vi.mocked(listPublicPricingPlans).mockResolvedValue([
+      { ...PRICING_PLANS[1], price_brl_annual: 0 },
+    ]);
+    renderLandingPage();
+    triggerPricingIntersection();
+    await screen.findByRole('heading', { name: 'Start', level: 3 });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Anual' }));
+
+    const startCard = screen.getByRole('heading', { name: 'Start', level: 3 }).closest('.plan-card');
+    expect(startCard).not.toBeNull();
+    expect(within(startCard as HTMLElement).getByText('Sob consulta')).toBeInTheDocument();
+    expect(within(startCard as HTMLElement).queryByText('/mês')).not.toBeInTheDocument();
+    expect(
+      within(startCard as HTMLElement).queryByText(/cobrado anualmente/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it('hides the savings hint when annual billing has no positive saving', async () => {
+    vi.mocked(listPublicPricingPlans).mockResolvedValue([
+      { ...PRICING_PLANS[1], price_brl_annual: PRICING_PLANS[1].price_brl! * 12 },
+    ]);
+    renderLandingPage();
+    triggerPricingIntersection();
+
+    await screen.findByRole('heading', { name: 'Start', level: 3 });
+
+    expect(screen.queryByText(/Economize até/i)).not.toBeInTheDocument();
+  });
+
+  it('renders the empty catalog state', async () => {
+    vi.mocked(listPublicPricingPlans).mockResolvedValue([]);
+    renderLandingPage();
+    triggerPricingIntersection();
+
+    expect(
+      await screen.findByText('Os planos estão temporariamente indisponíveis.'),
+    ).toBeInTheDocument();
+    expect(document.querySelectorAll('.plan-card')).toHaveLength(0);
+  });
+
+  it('uses safe generic marketing metadata for an unknown public plan', async () => {
+    vi.mocked(listPublicPricingPlans).mockResolvedValue([
+      {
+        id: 'enterprise',
+        name: 'Enterprise',
+        price_brl: null,
+        price_brl_annual: null,
+        sort_order: 9,
+        max_clients: null,
+        max_team_members: null,
+      },
+    ]);
+    renderLandingPage();
+    triggerPricingIntersection();
+
+    const heading = await screen.findByRole('heading', { name: 'Enterprise', level: 3 });
+    const card = heading.closest('.plan-card');
+    expect(card).not.toBeNull();
+    expect(within(card as HTMLElement).getByText('Conheça o plano Enterprise.')).toBeInTheDocument();
+    expect(within(card as HTMLElement).getByRole('link', { name: 'Assinar Enterprise' })).toHaveAttribute(
+      'href',
+      '/login?tab=register',
+    );
+  });
+
   it('shows a retryable error without stale plan values', async () => {
     vi.mocked(listPublicPricingPlans).mockRejectedValueOnce(new Error('offline'));
     renderLandingPage();
@@ -265,7 +369,7 @@ describe('LandingPage', () => {
     expect(freeQuestion).toHaveAttribute('aria-expanded', 'true');
     expect(
       screen.getByText(
-        'Sim. O plano Free é gratuito para sempre, com limites para você conhecer a plataforma — 2 clientes e 1 usuário. Quando precisar de mais clientes, usuários ou recursos como integração com Instagram e portal do cliente, é só assinar um plano pago, a partir de R$ 99,90/mês.',
+        'Sim. O plano Free permite começar sem custo. Para ver os limites, recursos e condições atuais de cada opção, compare os planos exibidos acima e escolha o que melhor atende à sua operação.',
       ),
     ).toBeInTheDocument();
 
@@ -273,7 +377,7 @@ describe('LandingPage', () => {
 
     expect(freeQuestion).toHaveAttribute('aria-expanded', 'false');
     expect(installQuestion).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.queryByText(/gratuito para sempre/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/permite começar sem custo/i)).not.toBeInTheDocument();
     expect(
       screen.getByText(
         'Não. O Mesaas é 100% web e funciona em qualquer navegador moderno, no computador ou no celular. Nada para baixar, nada para configurar.',

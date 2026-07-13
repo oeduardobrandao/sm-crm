@@ -669,6 +669,7 @@ function Pricing() {
   const savingsPct = annualSavingsPct(plans);
 
   const isYear = period === 'year';
+  const isLoadingPlans = !shouldLoadPlans || isPending;
 
   // Visitors must sign up before checkout; logged-in owners pick/confirm on Plano & Cobrança.
   const planHref = (id: string) => {
@@ -706,18 +707,23 @@ function Pricing() {
           )}
         </div>
 
-        <div className="plans-grid">
-          {!shouldLoadPlans || isPending ? (
-            Array.from({ length: 4 }).map((_, index) => (
-              <div key={index} className="plan-card plan-card-skeleton" aria-hidden="true">
-                <span className="pricing-sk pricing-sk--name" />
-                <span className="pricing-sk pricing-sk--price" />
-                <span className="pricing-sk pricing-sk--description" />
-                <span className="pricing-sk pricing-sk--line" />
-                <span className="pricing-sk pricing-sk--line" />
-                <span className="pricing-sk pricing-sk--button" />
-              </div>
-            ))
+        <div className="plans-grid" aria-busy={isLoadingPlans}>
+          {isLoadingPlans ? (
+            <>
+              <span className="pricing-loading-status" role="status">
+                Carregando planos
+              </span>
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div key={index} className="plan-card plan-card-skeleton" aria-hidden="true">
+                  <span className="pricing-sk pricing-sk--name" />
+                  <span className="pricing-sk pricing-sk--price" />
+                  <span className="pricing-sk pricing-sk--description" />
+                  <span className="pricing-sk pricing-sk--line" />
+                  <span className="pricing-sk pricing-sk--line" />
+                  <span className="pricing-sk pricing-sk--button" />
+                </div>
+              ))}
+            </>
           ) : isError ? (
             <div className="pricing-state" role="alert">
               <p>Não foi possível carregar os planos agora.</p>
@@ -735,10 +741,15 @@ function Pricing() {
                 description: `Conheça o plano ${plan.name}.`,
                 cta: `Assinar ${plan.name}`,
               };
+              const hasAnnualPrice =
+                plan.price_brl_annual != null && plan.price_brl_annual > 0;
+              const isFree = plan.price_brl === 0 && plan.price_brl_annual === 0;
               const amount = isYear
-                ? plan.price_brl_annual == null
-                  ? plan.price_brl
-                  : plan.price_brl_annual / 12
+                ? isFree
+                  ? 0
+                  : hasAnnualPrice
+                    ? plan.price_brl_annual! / 12
+                    : null
                 : plan.price_brl;
               return (
                 <div key={plan.id} className={`plan-card${marketing.highlight ? ' highlight' : ''}`}>
@@ -791,7 +802,7 @@ function Faq() {
   const items = [
     {
       q: 'O Mesaas tem plano gratuito?',
-      a: 'Sim. O plano Free é gratuito para sempre, com limites para você conhecer a plataforma — 2 clientes e 1 usuário. Quando precisar de mais clientes, usuários ou recursos como integração com Instagram e portal do cliente, é só assinar um plano pago, a partir de R$ 99,90/mês.',
+      a: 'Sim. O plano Free permite começar sem custo. Para ver os limites, recursos e condições atuais de cada opção, compare os planos exibidos acima e escolha o que melhor atende à sua operação.',
     },
     {
       q: 'Preciso instalar alguma coisa?',
