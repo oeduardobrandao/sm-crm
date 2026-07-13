@@ -3,7 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
-vi.mock('../../store', () => ({
+vi.mock('../../store/notifications', () => ({
   getNotifications: vi.fn(),
   getUnreadNotificationCount: vi.fn(),
   markNotificationAsRead: vi.fn(),
@@ -11,7 +11,7 @@ vi.mock('../../store', () => ({
   dismissNotification: vi.fn(),
 }));
 
-import { getNotifications, getUnreadNotificationCount } from '../../store';
+import { getNotifications, getUnreadNotificationCount } from '../../store/notifications';
 import { useNotifications } from '../useNotifications';
 
 function wrapper() {

@@ -16,6 +16,7 @@ describe('CRM URL security', () => {
 
   it('allows credential-free HTTP(S) and safe relative app URLs', () => {
     expect(sanitizeExternalUrl(' https://example.com/a?q=1 ')).toBe('https://example.com/a?q=1');
+    expect(sanitizeExternalUrl('example.com/a?q=1')).toBe('https://example.com/a?q=1');
     expect(sanitizeUrl('/clientes/42')).toBe('/clientes/42');
     expect(sanitizeUrl('./clientes/42')).toBe('./clientes/42');
     expect(sanitizeUrl('#detalhes')).toBe('#detalhes');

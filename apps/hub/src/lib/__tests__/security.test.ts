@@ -14,5 +14,6 @@ describe('Hub URL security', () => {
 
   it('allows credential-free HTTP(S)', () => {
     expect(sanitizeExternalUrl('https://example.com/a?q=1')).toBe('https://example.com/a?q=1');
+    expect(sanitizeExternalUrl('example.com/a?q=1')).toBe('https://example.com/a?q=1');
   });
 });

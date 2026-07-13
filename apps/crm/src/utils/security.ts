@@ -2,9 +2,11 @@ export function sanitizeExternalUrl(value: string | undefined | null): string {
   if (!value) return '#';
   const trimmed = value.trim();
   try {
-    const parsed = new URL(trimmed);
+    const hasScheme = /^[a-z][a-z\d+.-]*:/i.test(trimmed);
+    const candidate = hasScheme || trimmed.startsWith('//') ? trimmed : `https://${trimmed}`;
+    const parsed = new URL(candidate);
     if (parsed.username || parsed.password) return '#';
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? trimmed : '#';
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? candidate : '#';
   } catch {
     return '#';
   }
