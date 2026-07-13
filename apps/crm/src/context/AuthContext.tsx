@@ -38,6 +38,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [sessionReady, setSessionReady] = useState(false);
   const authGeneration = useRef(0);
   const profileRequestId = useRef(0);
+  const userId = user?.id;
 
   useEffect(() => {
     let active = true;
@@ -88,7 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!sessionReady) return;
 
-    if (!user) {
+    if (!userId) {
       profileRequestId.current += 1;
       setProfile(null);
       setLoading(false);
@@ -119,7 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false;
     };
-  }, [sessionReady, user?.id]);
+  }, [sessionReady, userId]);
 
   const fetchProfile = async () => {
     if (!sessionReady || !user) {
