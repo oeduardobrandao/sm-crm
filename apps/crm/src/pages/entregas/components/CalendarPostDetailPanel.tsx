@@ -179,7 +179,7 @@ export function CalendarPostDetailPanel({
         {permalink && (
           <a
             className="calendar-detail-btn calendar-detail-btn--primary"
-            href={permalink}
+            href={sanitizeUrl(permalink)}
             target="_blank"
             rel="noopener noreferrer"
           >

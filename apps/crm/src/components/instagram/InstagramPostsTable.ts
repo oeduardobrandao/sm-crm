@@ -112,7 +112,7 @@ export async function renderInstagramPostsTable(container: HTMLElement, clientId
                  </div>
               </td>
               <td data-label="${escapeHTML(t('instagram.colLink'))}">
-                 ${safePermalink ? `<a href="${safePermalink}" target="_blank" class="btn-icon" style="text-decoration:none;display:inline-block;"><i class="ph ph-arrow-square-out"></i></a>` : '—'}
+                 ${safePermalink ? `<a href="${safePermalink}" target="_blank" rel="noopener noreferrer" class="btn-icon" style="text-decoration:none;display:inline-block;"><i class="ph ph-arrow-square-out"></i></a>` : '—'}
               </td>
             </tr>
           `;

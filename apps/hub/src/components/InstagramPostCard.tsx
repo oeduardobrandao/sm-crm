@@ -8,6 +8,7 @@ import { VideoPrewarm } from './VideoPrewarm';
 import type { HubPost, PostApproval, InstagramProfile } from '../types';
 import { useEditSuggestion } from '../hooks/useEditSuggestion';
 import { resolveTarget, applyEdgeResistance, crossedDragThreshold } from '../lib/carouselGesture';
+import { sanitizeExternalUrl } from '../lib/security';
 
 /** Caption length (chars) above which we collapse it behind a "mais"/"ver menos" toggle (~2 lines). */
 const CAPTION_CLAMP_CHARS = 140;
@@ -638,7 +639,7 @@ export function InstagramPostCard({
           </div>
           {post.instagram_permalink && (
             <a
-              href={post.instagram_permalink}
+              href={sanitizeExternalUrl(post.instagram_permalink)}
               target="_blank"
               rel="noopener noreferrer"
               style={{

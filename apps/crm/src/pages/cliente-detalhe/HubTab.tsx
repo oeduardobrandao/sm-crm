@@ -40,6 +40,7 @@ import {
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable';
 import { Button } from '@/components/ui/button';
+import { openExternalUrl } from '@/utils/security';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -175,7 +176,7 @@ export function HubTab({ clienteId, contaId, workspaceSlug }: HubTabProps) {
               <Button size="sm" variant="outline" onClick={copyLink}>
                 <Copy size={14} className="mr-1.5" /> Copiar
               </Button>
-              <Button size="sm" variant="outline" onClick={() => window.open(hubUrl, '_blank')}>
+              <Button size="sm" variant="outline" onClick={() => openExternalUrl(hubUrl)}>
                 <Eye size={14} className="mr-1.5" /> Preview
               </Button>
               <Button

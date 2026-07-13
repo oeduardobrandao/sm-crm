@@ -1,22 +1,33 @@
-/**
- * Sanitize a URL to prevent URI injection attacks.
- * Only allows http: and https: schemes. Returns '#' for anything else.
- */
-export function sanitizeUrl(url: string | undefined | null): string {
-  if (!url) return '#';
+export function sanitizeExternalUrl(value: string | undefined | null): string {
+  if (!value) return '#';
+  const trimmed = value.trim();
   try {
-    const parsed = new URL(url.trim());
-    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
-      return url.trim();
-    }
-    return '#';
+    const parsed = new URL(trimmed);
+    if (parsed.username || parsed.password) return '#';
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? trimmed : '#';
   } catch {
-    // URL constructor throws for relative paths like "/foo" and "//evil.com"
-    // Relative paths starting with / (but not //) are safe to pass through
-    const trimmed = url.trim();
-    if (trimmed.startsWith('/') && !trimmed.startsWith('//')) return trimmed;
-    if (trimmed.startsWith('./') || trimmed.startsWith('../')) return trimmed;
-    if (trimmed.startsWith('#')) return trimmed;
     return '#';
   }
+}
+
+/** Allows safe in-app relative URLs in addition to credential-free HTTP(S). */
+export function sanitizeUrl(value: string | undefined | null): string {
+  if (!value) return '#';
+  const trimmed = value.trim();
+  if (trimmed.startsWith('//')) return '#';
+  if (
+    trimmed.startsWith('/') ||
+    trimmed.startsWith('./') ||
+    trimmed.startsWith('../') ||
+    trimmed.startsWith('#')
+  ) {
+    return trimmed;
+  }
+  return sanitizeExternalUrl(trimmed);
+}
+
+export function openExternalUrl(value: string | undefined | null): Window | null {
+  const safe = sanitizeExternalUrl(value);
+  if (safe === '#') return null;
+  return window.open(safe, '_blank', 'noopener,noreferrer');
 }

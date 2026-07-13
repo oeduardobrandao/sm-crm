@@ -6,6 +6,7 @@ import { PostMediaLightbox } from './PostMediaLightbox';
 import { OptimizedImage } from './OptimizedImage';
 import { RichTextContent } from './RichTextContent';
 import { useEditSuggestion } from '../hooks/useEditSuggestion';
+import { sanitizeExternalUrl } from '../lib/security';
 
 export const TIPO_LABEL: Record<string, string> = {
   feed: 'Feed',
@@ -33,10 +34,6 @@ export function formatDate(d: string | null) {
     year: 'numeric',
     timeZone: 'UTC',
   });
-}
-
-function sanitizeUrl(url: string) {
-  return url.startsWith('http') ? url : `https://${url}`;
 }
 
 type PropDef = HubPostProperty['template_property_definitions'];
@@ -75,7 +72,7 @@ function PropertyRow({
       return <span className="text-muted-foreground italic text-sm">—</span>;
     }
     if (def.type === 'url') {
-      const safe = sanitizeUrl(String(value));
+      const safe = sanitizeExternalUrl(String(value));
       return (
         <a
           href={safe}

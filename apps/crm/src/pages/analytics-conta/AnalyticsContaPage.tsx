@@ -71,7 +71,7 @@ import {
   type AnalyticsReport,
 } from '../../services/analytics';
 import { getInstagramSummary, syncInstagramData } from '../../services/instagram';
-import { sanitizeUrl } from '../../utils/security';
+import { openExternalUrl, sanitizeUrl } from '../../utils/security';
 import {
   formatRate,
   IG_RATE_WEIGHTS,
@@ -1367,7 +1367,7 @@ function AnalyticsContent({
     });
     const blob = new Blob([html], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
-    const win = window.open(url, '_blank');
+    const win = window.open(url, '_blank', 'noopener,noreferrer');
     if (!win) {
       const a = document.createElement('a');
       a.href = url;
@@ -1825,7 +1825,7 @@ function AnalyticsContent({
                             <a
                               href={sanitizeUrl(p.permalink)}
                               target="_blank"
-                              rel="noopener"
+                              rel="noopener noreferrer"
                               style={{ color: 'var(--primary-color)' }}
                             >
                               ↗ Ver no Instagram
@@ -2171,7 +2171,7 @@ function AnalyticsContent({
                         onClick={async () => {
                           try {
                             const url = await getReportDownloadUrl(r.id);
-                            window.open(url, '_blank');
+                            openExternalUrl(url);
                           } catch {
                             toast.error('Erro ao baixar relatório');
                           }

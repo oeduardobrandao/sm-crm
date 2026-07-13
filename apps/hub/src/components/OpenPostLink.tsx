@@ -9,7 +9,7 @@ export function OpenPostLink({ postId, className }: { postId: number; className?
     <a
       href={href}
       target="_blank"
-      rel="noreferrer"
+      rel="noopener noreferrer"
       aria-label="Abrir postagem em nova aba"
       className={`inline-flex items-center gap-1 text-[12px] text-stone-500 hover:text-stone-900 transition-colors ${className ?? ''}`}
     >

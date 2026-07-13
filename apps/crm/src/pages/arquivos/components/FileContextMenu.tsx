@@ -24,6 +24,7 @@ import { Button } from '@/components/ui/button';
 import { renameFolder, deleteFolder, renameFile, deleteFile } from '@/services/fileService';
 import { FolderInfoModal } from './FolderInfoModal';
 import type { Folder, FileRecord } from '../types';
+import { sanitizeExternalUrl } from '@/utils/security';
 
 function truncateName(name: string, max = 40): string {
   if (name.length <= max) return name;
@@ -225,7 +226,7 @@ export function FileContextMenu({
           {!isFolder && file?.url && (
             <a
               role="menuitem"
-              href={file.url}
+              href={sanitizeExternalUrl(file.url)}
               target="_blank"
               rel="noopener noreferrer"
               onClick={closeMenu}

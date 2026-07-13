@@ -38,6 +38,12 @@ describe('TopPostsRow', () => {
     expect(link).toHaveAttribute('target', '_blank');
   });
 
+  it('blocks unsafe Instagram permalinks', () => {
+    render(<TopPostsRow posts={[makePost({ permalink: 'javascript:alert(1)' })]} />);
+
+    expect(screen.getByRole('link')).toHaveAttribute('href', '#');
+  });
+
   it('renders multiple cards', () => {
     const posts = [
       makePost({ id: '1', engagementRate: 5.0 }),

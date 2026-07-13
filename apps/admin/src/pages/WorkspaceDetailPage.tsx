@@ -31,6 +31,7 @@ import {
   RATE_LIMIT_KEYS,
   RATE_LIMIT_LABELS,
 } from '../lib/api';
+import { sanitizeExternalUrl } from '../lib/security';
 
 const ALL_LIMIT_KEYS = [...RESOURCE_LIMIT_KEYS, ...RATE_LIMIT_KEYS];
 const ALL_LIMIT_LABELS = { ...RESOURCE_LIMIT_LABELS, ...RATE_LIMIT_LABELS };
@@ -260,9 +261,9 @@ export default function WorkspaceDetailPage() {
           <h2 className="font-semibold">Assinatura Stripe</h2>
           {data.subscription?.stripe_dashboard_url && (
             <a
-              href={data.subscription.stripe_dashboard_url}
+              href={sanitizeExternalUrl(data.subscription.stripe_dashboard_url)}
               target="_blank"
-              rel="noreferrer"
+              rel="noopener noreferrer"
               className="inline-flex shrink-0 items-center gap-1 text-sm text-primary hover:underline"
             >
               Abrir no Stripe <ExternalLink size={14} />

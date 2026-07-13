@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { updateWorkflowEtapa, type Membro } from '../../../store';
+import { sanitizeUrl } from '@/utils/security';
 
 const avatarColors = [
   '#eab308',
@@ -210,7 +211,7 @@ export function WorkflowCard({
               </span>
               {card.hubUrl && (
                 <a
-                  href={card.hubUrl}
+                  href={sanitizeUrl(card.hubUrl)}
                   target="_blank"
                   rel="noopener noreferrer"
                   title="Abrir Hub do cliente"

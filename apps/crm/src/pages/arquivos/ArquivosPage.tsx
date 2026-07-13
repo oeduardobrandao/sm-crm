@@ -38,6 +38,7 @@ import { useSelection } from './hooks/useSelection';
 import type { SortBy } from './components/FileGrid';
 import type { FileRecord, FolderContents } from './types';
 import type { PostMedia } from '../../store';
+import { openExternalUrl } from '@/utils/security';
 
 function useIsMobile(breakpoint = 900) {
   const [isMobile, setIsMobile] = useState(() => window.innerWidth <= breakpoint);
@@ -357,10 +358,10 @@ export default function ArquivosPage() {
       }
     } else {
       if (file.url) {
-        window.open(file.url, '_blank');
+        openExternalUrl(file.url);
       } else {
         getFileDownloadUrl(file.id)
-          .then((url) => window.open(url, '_blank'))
+          .then((url) => openExternalUrl(url))
           .catch(() => toast.error('Erro ao abrir arquivo'));
       }
     }
