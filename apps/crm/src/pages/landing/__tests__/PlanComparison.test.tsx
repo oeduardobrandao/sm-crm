@@ -76,11 +76,11 @@ describe('PlanComparison', () => {
     render(<PlanComparison plans={[FREE, PRO]} actionFor={actionFor} />);
 
     const table = screen.getByRole('table', { name: 'Comparação detalhada dos planos' });
-    expect(
-      within(table)
-        .getAllByRole('columnheader')
-        .map((cell) => cell.textContent),
-    ).toEqual(['Recurso', 'Free', 'Pro']);
+    const columnHeaders = within(table).getAllByRole('columnheader');
+    expect(columnHeaders).toHaveLength(3);
+    expect(columnHeaders[0]).toHaveAccessibleName('Recurso');
+    expect(columnHeaders[1]).toHaveAccessibleName('Free');
+    expect(columnHeaders[2]).toHaveAccessibleName('Pro Mais popular');
     expect(screen.getByRole('row', { name: /Contas do Instagram/ })).toHaveTextContent('115');
     expect(screen.getByRole('row', { name: /Armazenamento/ })).toHaveTextContent('100 MB10 GB');
     expect(screen.getByRole('row', { name: /Templates de fluxo/ })).toHaveTextContent('1Ilimitado');
@@ -102,8 +102,8 @@ describe('PlanComparison', () => {
       '/assinar/free',
     );
     expect(screen.getByRole('link', { name: 'Assinar Pro' })).toHaveClass('lp-btn-primary');
-    expect(screen.getByRole('columnheader', { name: 'Pro' })).toHaveClass(
-      'plan-comparison-cell--highlight',
-    );
+    const proHeader = screen.getByRole('columnheader', { name: 'Pro Mais popular' });
+    expect(within(proHeader).getByText('Mais popular')).toBeVisible();
+    expect(proHeader).toHaveClass('plan-comparison-cell--highlight');
   });
 });

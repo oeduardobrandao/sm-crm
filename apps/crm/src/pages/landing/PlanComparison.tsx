@@ -95,7 +95,12 @@ export default function PlanComparison({ plans, actionFor }: PlanComparisonProps
               <th scope="col">Recurso</th>
               {plans.map((plan) => (
                 <th key={plan.id} scope="col" className={cellClass(plan)}>
-                  {plan.name}
+                  <span className="plan-comparison-plan-heading">
+                    <span>{plan.name}</span>
+                    {plan.id === 'pro' && (
+                      <span className="plan-comparison-popular">Mais popular</span>
+                    )}
+                  </span>
                 </th>
               ))}
             </tr>

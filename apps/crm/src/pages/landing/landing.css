@@ -389,6 +389,8 @@ section.lp-pad-alt{background:#fafbfc;border-top:1px solid rgba(30,36,48,.06);bo
 .plan-comparison-table{width:100%;min-width:780px;border-collapse:separate;border-spacing:0;color:#374151;font-size:.86rem}
 .plan-comparison-table th,.plan-comparison-table td{padding:15px 14px;border-top:1px solid rgba(30,36,48,.07);text-align:center;vertical-align:middle}
 .plan-comparison-table thead th{position:sticky;top:0;z-index:3;border-top:0;background:#f8fafc;color:#12151a;font-size:.9rem;font-weight:800}
+.plan-comparison-plan-heading{display:flex;align-items:center;justify-content:center;gap:7px;flex-wrap:wrap}
+.plan-comparison-popular{display:inline-flex;padding:3px 7px;border:1px solid rgba(122,90,0,.25);border-radius:9999px;background:rgba(255,191,48,.2);color:#7a5a00;font-size:.56rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
 .plan-comparison-table th:first-child{position:sticky;left:0;z-index:2;width:220px;min-width:220px;background:#fff;text-align:left}
 .plan-comparison-table thead th:first-child{z-index:4;background:#f8fafc}
 .plan-comparison-table tbody th{font-weight:600;color:#4b5563}
@@ -577,6 +579,7 @@ section.lp-pad-alt{background:#fafbfc;border-top:1px solid rgba(30,36,48,.06);bo
 [data-theme='dark'] .plan-comparison-table{color:#94a3b8}
 [data-theme='dark'] .plan-comparison-table th,[data-theme='dark'] .plan-comparison-table td{border-top-color:rgba(255,255,255,.07)}
 [data-theme='dark'] .plan-comparison-table thead th,[data-theme='dark'] .plan-comparison-table tfoot th,[data-theme='dark'] .plan-comparison-table tfoot td{background:#1a1e26;color:#e8eaf0}
+[data-theme='dark'] .plan-comparison-popular{border-color:rgba(255,215,109,.35);background:rgba(255,191,48,.14);color:#ffd76d}
 [data-theme='dark'] .plan-comparison-table th:first-child{background:#12151a;color:#cbd5e1}
 [data-theme='dark'] .plan-comparison-table thead th:first-child,[data-theme='dark'] .plan-comparison-table tfoot th:first-child{background:#1a1e26}
 [data-theme='dark'] .plan-comparison-group th{background:#202632!important;color:#94a3b8!important}

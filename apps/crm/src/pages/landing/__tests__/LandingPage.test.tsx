@@ -4,6 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import type { PublicPricingPlan } from '@/services/billing';
 
+const authState = vi.hoisted(() => ({
+  user: null as { id: string } | null,
+}));
+
 vi.mock('@/services/billing', () => ({
   listPublicPricingPlans: vi.fn(),
 }));
@@ -12,7 +16,7 @@ import { listPublicPricingPlans } from '@/services/billing';
 import LandingPage from '../LandingPage';
 
 vi.mock('@/context/AuthContext', () => ({
-  useAuth: () => ({ user: null, loading: false, profile: null, role: 'owner' }),
+  useAuth: () => ({ user: authState.user, loading: false, profile: null, role: 'owner' }),
   AuthProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
@@ -151,6 +155,7 @@ function mockSectionScroll(id: string) {
 
 describe('LandingPage', () => {
   beforeEach(() => {
+    authState.user = null;
     MockIntersectionObserver.instances = [];
     vi.stubGlobal('IntersectionObserver', MockIntersectionObserver);
     vi.mocked(listPublicPricingPlans).mockResolvedValue(PRICING_PLANS);
@@ -222,6 +227,36 @@ describe('LandingPage', () => {
     // plus all 4 pricing CTAs and all 4 comparison actions.
     expect(registerLinks).toHaveLength(13);
     expect(screen.getByRole('link', { name: 'Entrar' })).toHaveAttribute('href', '/login');
+  });
+
+  it('routes authenticated pricing and comparison actions to the dashboard or billing', async () => {
+    authState.user = { id: 'user-123' };
+    renderLandingPage();
+    triggerPricingIntersection();
+    await screen.findByRole('heading', { name: 'Start', level: 3 });
+
+    const freeCard = screen.getByRole('heading', { name: 'Free', level: 3 }).closest('.plan-card');
+    const startCard = screen
+      .getByRole('heading', { name: 'Start', level: 3 })
+      .closest('.plan-card');
+    expect(freeCard).not.toBeNull();
+    expect(startCard).not.toBeNull();
+    expect(
+      within(freeCard as HTMLElement).getByRole('link', { name: 'Acessar painel' }),
+    ).toHaveAttribute('href', '/dashboard');
+    expect(
+      within(startCard as HTMLElement).getByRole('link', { name: 'Assinar Start' }),
+    ).toHaveAttribute('href', '/configuracao/cobranca');
+
+    const comparison = screen.getByRole('table', { name: 'Comparação detalhada dos planos' });
+    expect(within(comparison).getByRole('link', { name: 'Acessar painel' })).toHaveAttribute(
+      'href',
+      '/dashboard',
+    );
+    expect(within(comparison).getByRole('link', { name: 'Assinar Start' })).toHaveAttribute(
+      'href',
+      '/configuracao/cobranca',
+    );
   });
 
   it('defers the plan request until pricing approaches the viewport', async () => {
