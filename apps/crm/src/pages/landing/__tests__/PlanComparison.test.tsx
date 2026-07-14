@@ -51,20 +51,39 @@ const actionFor = (plan: PublicPricingPlan) => ({
 });
 
 describe('PlanComparison', () => {
+  it('scopes each row group header to its own table body', () => {
+    render(<PlanComparison plans={[FREE, PRO]} actionFor={actionFor} />);
+
+    const table = screen.getByRole('table', { name: 'Comparação detalhada dos planos' });
+    const rowGroups = Array.from(table.querySelectorAll(':scope > tbody'));
+
+    expect(rowGroups).toHaveLength(2);
+    expect(within(rowGroups[0]).getByRole('rowheader', { name: 'Capacidade' })).toHaveAttribute(
+      'scope',
+      'rowgroup',
+    );
+    expect(within(rowGroups[0]).getAllByRole('row')).toHaveLength(5);
+    expect(within(rowGroups[0]).queryByText('Recursos')).not.toBeInTheDocument();
+    expect(within(rowGroups[1]).getByRole('rowheader', { name: 'Recursos' })).toHaveAttribute(
+      'scope',
+      'rowgroup',
+    );
+    expect(within(rowGroups[1]).getAllByRole('row')).toHaveLength(8);
+    expect(within(rowGroups[1]).queryByText('Capacidade')).not.toBeInTheDocument();
+  });
+
   it('renders plans in input order and formats capacity values', () => {
     render(<PlanComparison plans={[FREE, PRO]} actionFor={actionFor} />);
 
     const table = screen.getByRole('table', { name: 'Comparação detalhada dos planos' });
-    expect(within(table).getAllByRole('columnheader').map((cell) => cell.textContent)).toEqual([
-      'Recurso',
-      'Free',
-      'Pro',
-    ]);
+    expect(
+      within(table)
+        .getAllByRole('columnheader')
+        .map((cell) => cell.textContent),
+    ).toEqual(['Recurso', 'Free', 'Pro']);
     expect(screen.getByRole('row', { name: /Contas do Instagram/ })).toHaveTextContent('115');
     expect(screen.getByRole('row', { name: /Armazenamento/ })).toHaveTextContent('100 MB10 GB');
-    expect(screen.getByRole('row', { name: /Templates de fluxo/ })).toHaveTextContent(
-      '1Ilimitado',
-    );
+    expect(screen.getByRole('row', { name: /Templates de fluxo/ })).toHaveTextContent('1Ilimitado');
     expect(screen.getByRole('row', { name: /Portais do cliente/ })).toHaveTextContent('015');
   });
 

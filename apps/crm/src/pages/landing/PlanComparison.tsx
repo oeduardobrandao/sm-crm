@@ -67,9 +67,7 @@ function FeatureValue({ included }: { included: boolean }) {
       <span className={included ? 'plan-comparison-check' : 'plan-comparison-empty'} aria-hidden>
         {included ? '✓' : '—'}
       </span>
-      <span className="plan-comparison-sr-only">
-        {included ? 'Incluído' : 'Não incluído'}
-      </span>
+      <span className="plan-comparison-sr-only">{included ? 'Incluído' : 'Não incluído'}</span>
     </>
   );
 }
@@ -91,9 +89,7 @@ export default function PlanComparison({ plans, actionFor }: PlanComparisonProps
         tabIndex={0}
       >
         <table className="plan-comparison-table">
-          <caption className="plan-comparison-sr-only">
-            Comparação detalhada dos planos
-          </caption>
+          <caption className="plan-comparison-sr-only">Comparação detalhada dos planos</caption>
           <thead>
             <tr>
               <th scope="col">Recurso</th>
@@ -120,6 +116,8 @@ export default function PlanComparison({ plans, actionFor }: PlanComparisonProps
                 ))}
               </tr>
             ))}
+          </tbody>
+          <tbody>
             <tr className="plan-comparison-group">
               <th scope="rowgroup" colSpan={plans.length + 1}>
                 Recursos
