@@ -16,6 +16,16 @@ vi.mock('@/context/AuthContext', () => ({
   AuthProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
+const PAID_FEATURES = {
+  feature_analytics_reports: true,
+  feature_post_scheduling: true,
+  feature_leads: true,
+  feature_financial: true,
+  feature_contracts: true,
+  feature_brand_customization: true,
+  feature_mcp: true,
+} as const;
+
 const PRICING_PLANS: PublicPricingPlan[] = [
   {
     id: 'free',
@@ -25,6 +35,17 @@ const PRICING_PLANS: PublicPricingPlan[] = [
     sort_order: 0,
     max_clients: 2,
     max_team_members: 1,
+    max_workflow_templates: 1,
+    max_instagram_accounts: 1,
+    max_hub_tokens: 0,
+    storage_quota_bytes: 100 * 1024 ** 2,
+    feature_analytics_reports: false,
+    feature_post_scheduling: false,
+    feature_leads: false,
+    feature_financial: false,
+    feature_contracts: false,
+    feature_brand_customization: false,
+    feature_mcp: false,
   },
   {
     id: 'start',
@@ -34,6 +55,11 @@ const PRICING_PLANS: PublicPricingPlan[] = [
     sort_order: 1,
     max_clients: 5,
     max_team_members: 2,
+    max_workflow_templates: 3,
+    max_instagram_accounts: 5,
+    max_hub_tokens: 5,
+    storage_quota_bytes: 5 * 1024 ** 3,
+    ...PAID_FEATURES,
   },
   {
     id: 'pro',
@@ -43,6 +69,11 @@ const PRICING_PLANS: PublicPricingPlan[] = [
     sort_order: 2,
     max_clients: 15,
     max_team_members: 5,
+    max_workflow_templates: null,
+    max_instagram_accounts: 15,
+    max_hub_tokens: 15,
+    storage_quota_bytes: 10 * 1024 ** 3,
+    ...PAID_FEATURES,
   },
   {
     id: 'max',
@@ -52,6 +83,11 @@ const PRICING_PLANS: PublicPricingPlan[] = [
     sort_order: 3,
     max_clients: null,
     max_team_members: null,
+    max_workflow_templates: null,
+    max_instagram_accounts: null,
+    max_hub_tokens: null,
+    storage_quota_bytes: 25 * 1024 ** 3,
+    ...PAID_FEATURES,
   },
 ];
 
@@ -183,8 +219,8 @@ describe('LandingPage', () => {
       .filter((link) => link.getAttribute('href') === '/login?tab=register');
 
     // Promo banner + header + hero + agent section + final CTA each link to signup,
-    // plus all 4 pricing CTAs.
-    expect(registerLinks).toHaveLength(9);
+    // plus all 4 pricing CTAs and all 4 comparison actions.
+    expect(registerLinks).toHaveLength(13);
     expect(screen.getByRole('link', { name: 'Entrar' })).toHaveAttribute('href', '/login');
   });
 
@@ -211,6 +247,23 @@ describe('LandingPage', () => {
 
     await waitFor(() => expect(listPublicPricingPlans).toHaveBeenCalledTimes(1));
     expect(await screen.findByRole('heading', { name: 'Start', level: 3 })).toBeInTheDocument();
+  });
+
+  it('renders the comparison from the same successful deferred plan result', async () => {
+    renderLandingPage();
+
+    expect(screen.queryByRole('heading', { name: 'Compare os planos' })).not.toBeInTheDocument();
+    triggerPricingIntersection();
+
+    expect(
+      await screen.findByRole('table', { name: 'Comparação detalhada dos planos' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('row', { name: /Contas do Instagram/ })).toHaveTextContent(
+      '1515Ilimitado',
+    );
+    expect(screen.getByRole('row', { name: /Armazenamento/ })).toHaveTextContent(
+      '100 MB5 GB10 GB25 GB',
+    );
   });
 
   it('renders Admin order, prices, and only client/user limits', async () => {
@@ -325,6 +378,7 @@ describe('LandingPage', () => {
       await screen.findByText('Os planos estão temporariamente indisponíveis.'),
     ).toBeInTheDocument();
     expect(document.querySelectorAll('.plan-card')).toHaveLength(0);
+    expect(screen.queryByRole('heading', { name: 'Compare os planos' })).not.toBeInTheDocument();
   });
 
   it('uses safe generic marketing metadata for an unknown public plan', async () => {
@@ -337,6 +391,11 @@ describe('LandingPage', () => {
         sort_order: 9,
         max_clients: null,
         max_team_members: null,
+        max_workflow_templates: null,
+        max_instagram_accounts: null,
+        max_hub_tokens: null,
+        storage_quota_bytes: null,
+        ...PAID_FEATURES,
       },
     ]);
     renderLandingPage();
@@ -362,6 +421,7 @@ describe('LandingPage', () => {
       await screen.findByText('Não foi possível carregar os planos agora.'),
     ).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Start', level: 3 })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Compare os planos' })).not.toBeInTheDocument();
 
     vi.mocked(listPublicPricingPlans).mockResolvedValueOnce(PRICING_PLANS);
     fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }));

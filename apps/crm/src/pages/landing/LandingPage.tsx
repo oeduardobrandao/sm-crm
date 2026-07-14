@@ -32,6 +32,7 @@ import {
   Send,
   Users,
 } from './landing-visuals';
+import PlanComparison from './PlanComparison';
 
 import './landing.css';
 
@@ -671,6 +672,18 @@ function Pricing() {
     return user ? '/configuracao/cobranca' : '/login?tab=register';
   };
 
+  const planAction = (plan: PublicPricingPlan) => {
+    const marketing = PLAN_MARKETING[plan.id] ?? {
+      description: `Conheça o plano ${plan.name}.`,
+      cta: `Assinar ${plan.name}`,
+    };
+    return {
+      href: planHref(plan.id),
+      label: plan.id === 'free' && user ? 'Acessar painel' : marketing.cta,
+      primary: marketing.highlight,
+    };
+  };
+
   return (
     <section ref={pricingRef} className="lp-pad" id="pricing">
       <div className="lp-container">
@@ -787,6 +800,9 @@ function Pricing() {
             })
           )}
         </div>
+        {!isLoadingPlans && !isError && plans.length > 0 && (
+          <PlanComparison plans={plans} actionFor={planAction} />
+        )}
       </div>
     </section>
   );
