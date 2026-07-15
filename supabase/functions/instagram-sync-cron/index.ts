@@ -5,6 +5,7 @@ import { reportCronFailure } from "../_shared/triage.ts";
 import { runPool } from "./pool.ts";
 import { buildSnapshotRow } from "./snapshot.ts";
 import { buildMetricFields, fetchPostInsights } from "../_shared/instagram-metrics.ts";
+import { cachePostThumbnail } from "../_shared/instagram-thumbnail-cache.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -232,7 +233,7 @@ async function syncAccount(
         if (ids.length) {
           const { data: existingRows } = await supabase
             .from('instagram_posts')
-            .select('instagram_post_id, reach, impressions, saved, shares, likes, comments')
+            .select('instagram_post_id, thumbnail_url, reach, impressions, saved, shares, likes, comments')
             .in('instagram_post_id', ids) as { data: any[] | null };
           for (const r of existingRows ?? []) existingByPostId.set(r.instagram_post_id, r);
         }
@@ -254,13 +255,22 @@ async function syncAccount(
               if (childData.data?.[0]?.media_url) thumbUrl = childData.data[0].media_url;
             } catch (_) { /* ignore */ }
           }
+          // Persist the thumbnail to durable storage so the Hub feed never depends on
+          // Instagram's expiring CDN links; keeps the raw url on any failure.
+          const cachedThumb = await cachePostThumbnail(
+            { fetch, storage: supabase.storage },
+            account.id,
+            post.id,
+            thumbUrl,
+            existingByPostId.get(post.id)?.thumbnail_url ?? null,
+          );
 
           return {
             instagram_account_id: account.id,
             instagram_post_id: post.id,
             caption: post.caption || '',
             media_type: post.media_type,
-            thumbnail_url: thumbUrl,
+            thumbnail_url: cachedThumb,
             permalink: post.permalink,
             posted_at: post.timestamp,
             likes: m.likes, comments: m.comments,
