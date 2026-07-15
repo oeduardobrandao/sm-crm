@@ -15,6 +15,8 @@ import {
   ImageIcon,
   Calendar as CalendarIcon,
   Wand2,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 import {
   AlertDialog,
@@ -159,6 +161,9 @@ export function WorkflowDrawer({
   const [pendingRejectSuggestionId, setPendingRejectSuggestionId] = useState<number | null>(null);
   const [editorVersions, setEditorVersions] = useState<Record<number, number>>({});
   const [showCalendar, setShowCalendar] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(
+    () => localStorage.getItem('workflow-drawer-fullscreen') === '1',
+  );
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -236,6 +241,14 @@ export function WorkflowDrawer({
           igAccount.permissions.includes('instagram_business_content_publish'),
       }
     : null;
+
+  const toggleFullscreen = useCallback(() => {
+    setIsFullscreen((prev) => {
+      const next = !prev;
+      localStorage.setItem('workflow-drawer-fullscreen', next ? '1' : '0');
+      return next;
+    });
+  }, []);
 
   const refresh = useCallback(() => {
     setLocalOrder(null);
@@ -580,7 +593,7 @@ export function WorkflowDrawer({
       <div className="drawer-overlay" onClick={onClose} />
 
       {/* Panel */}
-      <div className="drawer-panel">
+      <div className={`drawer-panel${isFullscreen ? ' fullscreen' : ''}`}>
         {/* Header */}
         <div className="drawer-header">
           <div className="drawer-header-info">
@@ -608,6 +621,13 @@ export function WorkflowDrawer({
             >
               <CalendarIcon className="h-3.5 w-3.5" />
               {showCalendar ? 'Posts' : 'Calendário'}
+            </button>
+            <button
+              className="drawer-close-btn"
+              onClick={toggleFullscreen}
+              title={isFullscreen ? 'Recolher' : 'Expandir'}
+            >
+              {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             </button>
             <button className="drawer-close-btn" onClick={onClose} title="Fechar">
               <X className="h-5 w-5" />

@@ -5128,6 +5128,13 @@ body.role-agent input[name='valor_total'] {
   animation: drawerPopIn 0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
+.drawer-panel.fullscreen {
+  width: 100vw;
+  height: 100vh;
+  max-height: 100vh;
+  border-radius: 0;
+}
+
 @keyframes drawerFadeIn {
   from {
     opacity: 0;
