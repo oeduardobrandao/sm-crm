@@ -4005,20 +4005,30 @@ body.role-agent input[name='valor_total'] {
 }
 
 .board-row-label {
-  font-size: 0.68rem;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  padding-bottom: 0.5rem;
+  margin-bottom: 0.75rem;
+  border-bottom: 2px solid var(--text-main);
+}
+
+.board-row-label-text {
+  font-size: 0.8rem;
   font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
+  color: var(--text-main);
+}
+
+.board-row-label-count {
+  font-family: var(--font-mono, serif);
+  font-size: 0.7rem;
+  font-weight: 500;
   color: var(--text-muted);
-  padding: 0.5rem 0.85rem;
-  border-radius: 8px;
-  background: var(--surface-2);
-  border: 1px solid var(--border-color);
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.25rem;
-  width: fit-content;
+  white-space: nowrap;
 }
 
 .board-container {
