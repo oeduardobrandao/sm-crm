@@ -92,6 +92,10 @@ function buildBoardRows(cards: BoardCard[], templates: WorkflowTemplate[]): Boar
   return [...rowMap.values()].filter((r) => [...r.columns.values()].some((col) => col.length > 0));
 }
 
+function rowCardCount(row: BoardRow): number {
+  return [...row.columns.values()].reduce((sum, col) => sum + col.length, 0);
+}
+
 // Droppable column body — registers the column as a drop target so empty columns can receive drops
 function DroppableColumnBody({ id, children }: { id: string; children: React.ReactNode }) {
   const { setNodeRef } = useDroppable({ id });
@@ -450,7 +454,14 @@ export function KanbanView({
         <div className="board-rows-wrapper animate-up">
           {boardRows.map((row) => (
             <div key={row.key}>
-              {boardRows.length > 1 && <div className="board-row-label">{row.label}</div>}
+              {boardRows.length > 1 && (
+                <div className="board-row-label">
+                  <span className="board-row-label-text">{row.label}</span>
+                  <span className="board-row-label-count">
+                    {rowCardCount(row)} {rowCardCount(row) === 1 ? 'entrega' : 'entregas'}
+                  </span>
+                </div>
+              )}
               <div className="board-container">
                 {[...row.columns.entries()].map(([stepName, stepCards]) => (
                   <div key={stepName} className="board-column">
