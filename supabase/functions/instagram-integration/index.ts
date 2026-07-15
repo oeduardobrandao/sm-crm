@@ -5,6 +5,7 @@ import { checkRateLimit } from "../_shared/rate-limit.ts";
 import { createSignedState, verifySignedState } from "./oauth-state.ts";
 import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
 import { buildMetricFields, fetchPostInsights } from "../_shared/instagram-metrics.ts";
+import { cachePostThumbnail } from "../_shared/instagram-thumbnail-cache.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const META_APP_ID = Deno.env.get("META_APP_ID")!;
@@ -356,7 +357,7 @@ Deno.serve(async (req) => {
                     if (ids.length) {
                         const { data: existingRows } = await serviceClient
                             .from('instagram_posts')
-                            .select('instagram_post_id, reach, impressions, saved, shares, likes, comments')
+                            .select('instagram_post_id, thumbnail_url, reach, impressions, saved, shares, likes, comments')
                             .in('instagram_post_id', ids);
                         for (const r of existingRows ?? []) existingByPostId.set(r.instagram_post_id, r);
                     }
@@ -365,12 +366,21 @@ Deno.serve(async (req) => {
                     const insights = await fetchPostInsights(fetch, post.id, longLivedToken!);
                     const m = buildMetricFields(existingByPostId.get(post.id) ?? null, insights, post);
 
+                    // Cache to durable storage so the Hub feed survives IG CDN url expiry.
+                    const cachedThumb = await cachePostThumbnail(
+                        { fetch, storage: serviceClient.storage },
+                        accountId,
+                        post.id,
+                        post.thumbnail_url || post.media_url || null,
+                        existingByPostId.get(post.id)?.thumbnail_url ?? null,
+                    );
+
                     const { error: postErr } = await serviceClient.from('instagram_posts').upsert({
                         instagram_account_id: accountId,
                         instagram_post_id: post.id,
                         caption: post.caption || '',
                         media_type: post.media_type,
-                        thumbnail_url: post.thumbnail_url || post.media_url || null,
+                        thumbnail_url: cachedThumb,
                         permalink: post.permalink,
                         posted_at: post.timestamp,
                         likes: m.likes, comments: m.comments,
@@ -568,7 +578,7 @@ Deno.serve(async (req) => {
                     if (ids.length) {
                         const { data: existingRows } = await serviceClient
                             .from('instagram_posts')
-                            .select('instagram_post_id, reach, impressions, saved, shares, likes, comments')
+                            .select('instagram_post_id, thumbnail_url, reach, impressions, saved, shares, likes, comments')
                             .in('instagram_post_id', ids);
                         for (const r of existingRows ?? []) existingByPostId.set(r.instagram_post_id, r);
                     }
@@ -590,13 +600,21 @@ Deno.serve(async (req) => {
                                 if (childData.data?.[0]?.media_url) thumbUrl = childData.data[0].media_url;
                             } catch (_) { /* ignore */ }
                         }
+                        // Cache to durable storage so the Hub feed survives IG CDN url expiry.
+                        const cachedThumb = await cachePostThumbnail(
+                            { fetch, storage: serviceClient.storage },
+                            account.id,
+                            post.id,
+                            thumbUrl,
+                            existingByPostId.get(post.id)?.thumbnail_url ?? null,
+                        );
 
                         return {
                             instagram_account_id: account.id,
                             instagram_post_id: post.id,
                             caption: post.caption || '',
                             media_type: post.media_type,
-                            thumbnail_url: thumbUrl,
+                            thumbnail_url: cachedThumb,
                             permalink: post.permalink,
                             posted_at: post.timestamp,
                             likes: m.likes, comments: m.comments,
