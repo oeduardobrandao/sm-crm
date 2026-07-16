@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { verifyAdmin } from '../lib/api';
+import { describeSignInError } from './login-error';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -18,7 +19,12 @@ export default function LoginPage() {
     try {
       const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
       if (authError) {
-        setError('Email ou senha inválidos.');
+        console.error('[admin-login] sign-in failed', {
+          code: authError.code,
+          status: authError.status,
+          message: authError.message,
+        });
+        setError(describeSignInError(authError));
         setLoading(false);
         return;
       }
@@ -32,7 +38,8 @@ export default function LoginPage() {
       }
 
       navigate('/admin');
-    } catch {
+    } catch (err) {
+      console.error('[admin-login] unexpected failure', err);
       setError('Erro ao fazer login. Tente novamente.');
       setLoading(false);
     }
@@ -44,9 +51,9 @@ export default function LoginPage() {
       style={{ background: 'linear-gradient(135deg, #eaf0dc 0%, #eab308 100%)' }}
     >
       <div className="w-full max-w-[400px] bg-white rounded-3xl p-10 shadow-xl">
-        <div className="text-center mb-8">
-          <h1 className="font-sf text-2xl font-black text-[#12151a]">mesaas</h1>
-          <p className="text-sm text-[#4b5563] mt-1 uppercase tracking-widest font-medium">admin</p>
+        <div className="flex flex-col items-center mb-8">
+          <img src="/logo-black.svg" alt="Mesaas" className="h-5 w-auto" />
+          <p className="text-sm text-[#4b5563] mt-2 uppercase tracking-widest font-medium">admin</p>
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
