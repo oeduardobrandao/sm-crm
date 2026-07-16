@@ -149,7 +149,10 @@ export default function WorkspacesPage() {
                   )}
                   <span>{ws.client_count} clients</span>
                   <span>{ws.member_count} members</span>
-                  <span className={ACTIVITY_TONE_CLASS[activity(ws).tone]}>
+                  <span
+                    title={activity(ws).title}
+                    className={ACTIVITY_TONE_CLASS[activity(ws).tone]}
+                  >
                     Ativo: {activity(ws).label}
                   </span>
                 </div>
@@ -212,6 +215,7 @@ export default function WorkspacesPage() {
                 })}
               </span>
               <span
+                title={activity(ws).title}
                 className={`hidden md:inline text-sm ${ACTIVITY_TONE_CLASS[activity(ws).tone]}`}
               >
                 {activity(ws).label}

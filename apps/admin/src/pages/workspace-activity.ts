@@ -12,6 +12,8 @@ export type ActivityTone = 'active' | 'cooling' | 'dormant';
 export interface ActivityDescription {
   label: string;
   tone: ActivityTone;
+  /** Exact timestamp behind the relative label, for the hover tooltip. */
+  title: string;
 }
 
 const DAY_MS = 86_400_000;
@@ -19,6 +21,16 @@ const ACTIVE_MAX_DAYS = 7;
 const COOLING_MAX_DAYS = 30;
 
 const relative = new Intl.RelativeTimeFormat('pt-BR', { numeric: 'auto' });
+
+// No timeZone is pinned: the exact date is rendered in the viewer's own zone, which is what
+// an admin reading it expects.
+const exact = new Intl.DateTimeFormat('pt-BR', {
+  day: '2-digit',
+  month: 'long',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+});
 
 function wholeDaysBetween(from: Date, to: Date): number {
   return Math.floor((to.getTime() - from.getTime()) / DAY_MS);
@@ -47,12 +59,17 @@ export function describeActivity(
     // A workspace created moments ago has not had a chance to be used, so it is unproven
     // rather than abandoned. It is still never "active" — nothing has happened in it.
     const age = wholeDaysBetween(new Date(createdAt), now);
-    return { label: 'Nunca', tone: age > COOLING_MAX_DAYS ? 'dormant' : 'cooling' };
+    return {
+      label: 'Nunca',
+      tone: age > COOLING_MAX_DAYS ? 'dormant' : 'cooling',
+      title: 'Nenhuma atividade registrada',
+    };
   }
 
-  const days = wholeDaysBetween(new Date(lastActivityAt), now);
+  const at = new Date(lastActivityAt);
+  const days = wholeDaysBetween(at, now);
   const tone: ActivityTone =
     days <= ACTIVE_MAX_DAYS ? 'active' : days <= COOLING_MAX_DAYS ? 'cooling' : 'dormant';
 
-  return { label: relativeLabel(days), tone };
+  return { label: relativeLabel(days), tone, title: exact.format(at) };
 }

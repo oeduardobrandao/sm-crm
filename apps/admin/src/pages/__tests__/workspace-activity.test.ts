@@ -65,6 +65,34 @@ describe('describeActivity', () => {
     expect(cooling.label).not.toBe(dormant.label);
   });
 
+  describe('title (hover tooltip)', () => {
+    // Midday UTC so the calendar day is identical in UTC and America/Sao_Paulo — the label
+    // is rendered in the viewer's zone, and the test must not depend on the runner's.
+    const MIDDAY = new Date('2026-05-10T15:00:00Z').toISOString();
+
+    it('spells out the exact date behind the relative label', () => {
+      const { title } = describeActivity(MIDDAY, OLD_WORKSPACE, NOW);
+      expect(title).toContain('10');
+      expect(title).toContain('2026');
+      expect(title).toMatch(/maio/i);
+    });
+
+    it('includes the time, not just the day', () => {
+      const { title } = describeActivity(MIDDAY, OLD_WORKSPACE, NOW);
+      expect(title).toMatch(/\d{2}:\d{2}/);
+    });
+
+    it('says something useful rather than a date when nothing was ever recorded', () => {
+      const { title } = describeActivity(null, daysAgo(31), NOW);
+      expect(title).toMatch(/nenhuma atividade/i);
+    });
+
+    it('never just repeats the relative label', () => {
+      const r = describeActivity(MIDDAY, OLD_WORKSPACE, NOW);
+      expect(r.title).not.toBe(r.label);
+    });
+  });
+
   it('does not read the clock internally (same inputs, same output)', () => {
     const a = describeActivity(daysAgo(10), OLD_WORKSPACE, NOW);
     const b = describeActivity(daysAgo(10), OLD_WORKSPACE, NOW);
