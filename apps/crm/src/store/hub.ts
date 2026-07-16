@@ -72,15 +72,23 @@ export interface BriefingTemplateRow {
 // Hub management functions
 // ──────────────────────────────────────────────
 
+export interface HubTokenRow {
+  id: string;
+  token: string;
+  is_active: boolean;
+  /** Sliding-window expiry. Renewed on each client visit by hub_token_touch. */
+  expires_at: string;
+}
+
 export async function getHubToken(clienteId: number) {
   const { data } = await supabase
     .from('client_hub_tokens')
-    .select('id, token, is_active')
+    .select('id, token, is_active, expires_at')
     .eq('cliente_id', clienteId)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
-  return data as { id: string; token: string; is_active: boolean } | null;
+  return data as HubTokenRow | null;
 }
 
 export async function createHubToken(clienteId: number, contaId: string) {
@@ -95,6 +103,23 @@ export async function createHubToken(clienteId: number, contaId: string) {
 
 export async function setHubTokenActive(tokenId: string, isActive: boolean) {
   await supabase.from('client_hub_tokens').update({ is_active: isActive }).eq('id', tokenId);
+}
+
+/** Revives a lapsed link, preserving its URL. Rescue only — auto-renew covers normal use. */
+export async function extendHubToken(tokenId: string): Promise<string> {
+  const { data, error } = await supabase.rpc('hub_token_extend', { p_token_id: tokenId });
+  if (error) throw new Error(error.message);
+  return data as string;
+}
+
+/** Issues a new token in place. The previous URL stops working immediately. */
+export async function rotateHubToken(
+  tokenId: string,
+): Promise<{ token: string; expires_at: string }> {
+  const { data, error } = await supabase.rpc('hub_token_rotate', { p_token_id: tokenId });
+  if (error) throw new Error(error.message);
+  const row = Array.isArray(data) ? data[0] : data;
+  return row as { token: string; expires_at: string };
 }
 
 export async function getHubBrand(clienteId: number) {

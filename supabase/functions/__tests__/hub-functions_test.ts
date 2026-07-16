@@ -11,6 +11,10 @@ import { createHubInstagramFeedHandler } from "../hub-instagram-feed/handler.ts"
 
 const now = () => "2026-04-17T12:00:00.000Z";
 const buildCorsHeaders = () => ({ "Access-Control-Allow-Origin": "https://hub.mesaas.com" });
+// hub-bootstrap now requires a touchToken dep (sliding-window renewal). These tests don't
+// exercise renewal behavior, so a no-op stub keeps the handler wired without changing any
+// assertions in this file.
+const noopTouchToken = async () => {};
 
 Deno.test("hub-bootstrap returns workspace metadata for a valid workspace token", async () => {
   const db = createSupabaseQueryMock();
@@ -31,6 +35,7 @@ Deno.test("hub-bootstrap returns workspace metadata for a valid workspace token"
     buildCorsHeaders,
     createDb: () => db as never,
     now,
+    touchToken: noopTouchToken,
   });
 
   const response = await handler(new Request("https://example.test/hub-bootstrap?workspace=mesaas&token=hub-123"));
@@ -46,6 +51,7 @@ Deno.test("hub-bootstrap rejects missing query params", async () => {
     buildCorsHeaders,
     createDb: () => createSupabaseQueryMock() as never,
     now,
+    touchToken: noopTouchToken,
   });
 
   const response = await handler(new Request("https://example.test/hub-bootstrap?workspace=mesaas"));
@@ -509,6 +515,7 @@ Deno.test("hub-bootstrap handles CORS preflight with 200", async () => {
     buildCorsHeaders,
     createDb: () => createSupabaseQueryMock() as never,
     now,
+    touchToken: noopTouchToken,
   });
   const response = await handler(new Request("https://example.test/hub-bootstrap", { method: "OPTIONS" }));
   assertEquals(response.status, 200);
@@ -519,6 +526,7 @@ Deno.test("hub-bootstrap rejects non-GET methods with 405", async () => {
     buildCorsHeaders,
     createDb: () => createSupabaseQueryMock() as never,
     now,
+    touchToken: noopTouchToken,
   });
   const response = await handler(new Request("https://example.test/hub-bootstrap?workspace=x&token=y", { method: "POST" }));
   assertEquals(response.status, 405);
@@ -532,6 +540,7 @@ Deno.test("hub-bootstrap returns 404 when the workspace slug is unknown", async 
     buildCorsHeaders,
     createDb: () => db as never,
     now,
+    touchToken: noopTouchToken,
   });
   const response = await handler(new Request("https://example.test/hub-bootstrap?workspace=nope&token=hub-123"));
   assertEquals(response.status, 404);
@@ -548,6 +557,7 @@ Deno.test("hub-bootstrap returns 403 when the workspace has the hub disabled", a
     buildCorsHeaders,
     createDb: () => db as never,
     now,
+    touchToken: noopTouchToken,
   });
   const response = await handler(new Request("https://example.test/hub-bootstrap?workspace=mesaas&token=hub-123"));
   assertEquals(response.status, 403);
@@ -568,6 +578,7 @@ Deno.test("hub-bootstrap returns 404 when the hub token is missing or inactive",
     buildCorsHeaders,
     createDb: () => db as never,
     now,
+    touchToken: noopTouchToken,
   });
   const response = await handler(new Request("https://example.test/hub-bootstrap?workspace=mesaas&token=hub-123"));
   assertEquals(response.status, 404);
