@@ -1,50 +1,14 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { createHubBootstrapHandler } from "./handler.ts";
+import { makeTouchToken } from "./touch.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-export const TOUCH_TIMEOUT_MS = 1500;
-
-type TouchDbClient = {
-  rpc: (fn: string, params: Record<string, unknown>) => { abortSignal: (signal: AbortSignal) => PromiseLike<unknown> };
-};
-
-/**
- * Sliding-window renewal. Never throws (best-effort — errors are swallowed here AND
- * caught again in handler.ts as defence in depth).
- *
- * The edge runtime can hang on I/O and kill the isolate with no error logs, bypassing
- * `catch` entirely under a ~2s CPU ceiling. A plain `Promise.race([rpc, timeout])` only
- * stops *waiting* on a hung request — the request itself keeps running in the background
- * and still consumes the isolate's budget. Instead this binds an `AbortSignal.timeout(...)`
- * to the request itself so it is actually CANCELLED, not just abandoned. Same mitigation
- * as `_shared/r2.ts` (getObjectBytes) for the identical failure mode.
- */
-export function makeTouchToken(
-  createDb: () => TouchDbClient,
-  timeoutMs = TOUCH_TIMEOUT_MS,
-) {
-  return async (token: string): Promise<void> => {
-    try {
-      await createDb()
-        .rpc("hub_token_touch", { p_token: token })
-        .abortSignal(AbortSignal.timeout(timeoutMs));
-    } catch {
-      // Renewal is best-effort. Never surface to the client.
-    }
-  };
-}
-
-// Guarded so tests can `import` this module (to reach `makeTouchToken`) without booting a
-// live listener — the Edge Runtime executes this file directly as the entrypoint (making
-// `import.meta.main` true there), whereas a test importing it as a dependency does not.
-if (import.meta.main) {
-  Deno.serve(createHubBootstrapHandler({
-    buildCorsHeaders,
-    createDb: () => createClient(SUPABASE_URL, SERVICE_ROLE_KEY),
-    now: () => new Date().toISOString(),
-    touchToken: makeTouchToken(() => createClient(SUPABASE_URL, SERVICE_ROLE_KEY)),
-  }));
-}
+Deno.serve(createHubBootstrapHandler({
+  buildCorsHeaders,
+  createDb: () => createClient(SUPABASE_URL, SERVICE_ROLE_KEY),
+  now: () => new Date().toISOString(),
+  touchToken: makeTouchToken(() => createClient(SUPABASE_URL, SERVICE_ROLE_KEY)),
+}));

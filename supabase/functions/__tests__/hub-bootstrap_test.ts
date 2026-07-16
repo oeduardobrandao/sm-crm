@@ -1,6 +1,6 @@
 import { assertEquals, assertInstanceOf, assert } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { createHubBootstrapHandler } from "../hub-bootstrap/handler.ts";
-import { makeTouchToken } from "../hub-bootstrap/index.ts";
+import { makeTouchToken } from "../hub-bootstrap/touch.ts";
 
 const cors = () => ({});
 const NOW = "2026-07-16T12:00:00.000Z";
