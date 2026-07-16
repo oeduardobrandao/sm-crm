@@ -18,6 +18,8 @@
 - **`touchToken` must never throw and never block the response.** Wrap in a timeout AND a catch. This repo has edge-runtime I/O hangs that kill the isolate with no logs.
 - **Reference for `get_my_conta_id` is `supabase/migrations/20260315_rls_security_audit.sql:11`.** `supabase/hotfix_recursion.sql` contains a stale, contradictory definition (`SELECT conta_id`) and was never applied as a migration — ignore it.
 - **pgTAP files must live in `supabase/tests/entitlements/`.** `scripts/test-entitlements.sh` (`npm run test:db`) scans only that directory; a file placed elsewhere silently never runs.
+- **Test fixtures must use `et_make_workspace('start')`, never `'free'`.** Verified in `supabase/seed.sql`: `start` has `max_hub_tokens = 5`; `free` has **0**, so `trg_limit_hub_tokens` would reject the very first `client_hub_tokens` insert. Keep total inserts per workspace ≤ 5 or the limit trigger fires and the test fails for an unrelated reason.
+- **Inserting `auth.users` fires `on_auth_user_created_workspace`**, which creates a `profiles` row (plus a throwaway conta+workspace when there's no `raw_user_meta_data`). Never `INSERT INTO profiles` in a test after inserting the user — `UPDATE` the row the trigger made.
 - **Project refs:** prod = `skjzpekeqefvlojenfsw`, staging = `wlyzhyfondykzpsiqsce`. This checkout is currently linked to **staging**. `cat supabase/.temp/project-ref` returns a bare ref with no env label — always translate it before acting.
 - Portuguese UI copy. `toast()` from `sonner`. Icons from `lucide-react` only.
 
@@ -187,11 +189,18 @@ begin
   v_ws2 := et_make_workspace('start');
 
   insert into auth.users (id) values (v_owner), (v_other), (v_nullu);
-  -- owner of v_ws; other belongs to v_ws2; nullu has a NULL active_workspace_id
-  insert into profiles (id, conta_id, active_workspace_id, role)
-    values (v_owner, v_ws,  v_ws,  'owner'),
-           (v_other, v_ws2, v_ws2, 'owner'),
-           (v_nullu, v_ws,  null,  'owner');
+  -- IMPORTANT: do NOT insert into profiles here. The AFTER INSERT trigger
+  -- on_auth_user_created_workspace (handle_new_user_workspace) already created a profile
+  -- for each user — and because a bare auth.users row carries no raw_user_meta_data, it
+  -- took the ELSE branch and also created a throwaway conta+workspace per user, pointing
+  -- each profile's active_workspace_id at THAT workspace. An INSERT here dies on
+  -- duplicate key (profiles.id is the PK). Re-point the existing rows instead.
+  -- owner -> v_ws; other -> v_ws2 (foreign workspace); nullu -> NULL active_workspace_id.
+  update profiles set conta_id = v_ws,  active_workspace_id = v_ws  where id = v_owner;
+  update profiles set conta_id = v_ws2, active_workspace_id = v_ws2 where id = v_other;
+  update profiles set conta_id = v_ws,  active_workspace_id = null  where id = v_nullu;
+  -- (role is left as the trigger set it; profiles.role is the user_role ENUM, not text,
+  --  so any write to it needs an explicit ::user_role cast.)
 
   insert into clientes (user_id, conta_id, nome, sigla, cor)
     values (v_owner, v_ws, 'C', 'C', '#000') returning id into v_cli;
