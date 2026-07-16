@@ -157,16 +157,36 @@ inferred and must be checked explicitly in each function body:
 ```sql
 select conta_id into v_conta_id from client_hub_tokens where id = p_token_id;
 if v_conta_id is null then raise exception 'not_found'; end if;
-if v_conta_id not in (select public.get_my_conta_id()) then
+if v_conta_id is distinct from public.get_my_conta_id() then
   raise exception 'forbidden';
 end if;
 ```
 
-The predicate deliberately mirrors the shape of the existing
-`client_hub_tokens_workspace_all` policy (`conta_id IN (SELECT public.get_my_conta_id())`).
-Note that `get_my_conta_id()` returns the caller's **`active_workspace_id`**, not a raw
-`conta_id` — implementation must verify the exact return shape against the live function
-rather than assume a scalar.
+**`IS DISTINCT FROM` is mandatory and is not a style choice.** Verified against the live
+definition (`20260315_rls_security_audit.sql:11`, redefined identically in
+`20260317_multi_workspace.sql:62`):
+
+```sql
+CREATE OR REPLACE FUNCTION public.get_my_conta_id()
+RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+AS $$ SELECT active_workspace_id FROM profiles WHERE id = auth.uid(); $$;
+```
+
+It returns a **scalar, nullable** `uuid` — `profiles.active_workspace_id`, not `conta_id`.
+The RLS policies' `conta_id IN (SELECT public.get_my_conta_id())` works only because a
+scalar in a subquery is a one-row set.
+
+`active_workspace_id` **can be NULL** (see the documented NULL-lockout edge: a profile
+whose workspace row is missing). With a NULL, both `v_conta_id <> get_my_conta_id()` and
+`v_conta_id NOT IN (SELECT get_my_conta_id())` evaluate to **NULL**, the `IF` does not
+fire, and execution falls through to the `UPDATE`. Because these functions are
+`SECURITY DEFINER` and bypass RLS, that would let a caller with a NULL
+`active_workspace_id` rotate **any** client's token in **any** workspace.
+`IS DISTINCT FROM` is NULL-safe and returns true, correctly raising `forbidden`.
+
+⚠️ `supabase/hotfix_recursion.sql` contains a **different, stale** definition of this
+function (`SELECT conta_id FROM profiles`). It is a standalone file, never applied as a
+migration. Do not use it as the reference.
 
 **Audit.** Both functions write to `audit_log` before returning:
 
@@ -236,6 +256,11 @@ prevent double-fire.
   (proves the quota is untouched and `trg_limit_hub_tokens` never fired)
 - `hub_token_rotate` / `hub_token_extend` raise `forbidden` for a caller in another
   workspace — the explicit check that replaces RLS. Use `et_make_workspace` for fixtures.
+- **`hub_token_rotate` / `hub_token_extend` raise `forbidden` when the caller's
+  `active_workspace_id` IS NULL.** This is the regression test for the `IS DISTINCT FROM`
+  NULL trap above: a naive `<>` or `NOT IN` passes every other test in this suite and
+  still lets a NULL-workspace caller rotate any token in any workspace. Without this
+  specific test the hole is invisible.
 - `audit_log` gains a row on rotate/extend, and its `metadata` contains no token value
 
 **Deno** (`supabase/functions/__tests__/hub-bootstrap_test.ts`)
