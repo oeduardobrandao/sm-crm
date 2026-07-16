@@ -170,6 +170,20 @@ describe('HubTab — Acesso', () => {
     expect(screen.getByRole('button', { name: /Estender/ })).toBeInTheDocument();
   });
 
+  it('shows Expirado (not "Expira em 0 dias") for a token that lapsed a few hours ago today', async () => {
+    // Same calendar day as "now", but the instant itself is already past — regression
+    // guard for the differenceInCalendarDays(0) trap that hid a same-day expiry as healthy.
+    vi.mocked(hubStore.getHubToken).mockResolvedValue({
+      id: 't1',
+      token: 'tok-1',
+      is_active: true,
+      expires_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    });
+    renderTab();
+    await waitFor(() => expect(screen.getByText('Expirado')).toBeInTheDocument());
+    expect(screen.queryByText(/Expira em 0 dias/)).not.toBeInTheDocument();
+  });
+
   it('does not rotate until the confirm dialog is accepted', async () => {
     vi.mocked(hubStore.getHubToken).mockResolvedValue(token(360));
     vi.mocked(hubStore.rotateHubToken).mockResolvedValue({

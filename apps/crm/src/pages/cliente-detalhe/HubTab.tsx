@@ -170,8 +170,12 @@ export function HubTab({ clienteId, contaId, workspaceSlug }: HubTabProps) {
 
   const expiresAt = tokenData ? new Date(tokenData.expires_at) : null;
   const daysLeft = expiresAt ? differenceInCalendarDays(expiresAt, new Date()) : null;
-  const isExpired = daysLeft !== null && daysLeft < 0;
-  const isNearExpiry = daysLeft !== null && daysLeft >= 0 && daysLeft <= 30;
+  // Classification keys off the real instant (matches the server's `expires_at > now()`
+  // check exactly) — differenceInCalendarDays truncates to calendar-day boundaries, so a
+  // token that lapsed earlier today would otherwise read daysLeft === 0 and look healthy
+  // until midnight. daysLeft is still used below for the friendlier "Expira em N dias" label.
+  const isExpired = expiresAt !== null && expiresAt.getTime() <= Date.now();
+  const isNearExpiry = !isExpired && daysLeft !== null && daysLeft <= 30;
   // Auto-renew throttles at 350d, so a live link never lands in this range.
   // The rescue only surfaces for genuinely dormant clients.
   const showRescue = isExpired || isNearExpiry;
