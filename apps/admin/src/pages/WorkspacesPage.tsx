@@ -12,6 +12,7 @@ import {
   intervalSuffix,
 } from '../lib/subscription';
 import { describeActivity, type ActivityTone } from './workspace-activity';
+import { Tooltip, TooltipTrigger, TooltipContent } from '../components/ui/tooltip';
 
 const ACTIVITY_TONE_CLASS: Record<ActivityTone, string> = {
   active: 'text-foreground',
@@ -149,12 +150,14 @@ export default function WorkspacesPage() {
                   )}
                   <span>{ws.client_count} clients</span>
                   <span>{ws.member_count} members</span>
-                  <span
-                    title={activity(ws).title}
-                    className={ACTIVITY_TONE_CLASS[activity(ws).tone]}
-                  >
-                    Ativo: {activity(ws).label}
-                  </span>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className={ACTIVITY_TONE_CLASS[activity(ws).tone]}>
+                        Ativo: {activity(ws).label}
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>{activity(ws).title}</TooltipContent>
+                  </Tooltip>
                 </div>
               </div>
               {/* Desktop row */}
@@ -214,12 +217,18 @@ export default function WorkspacesPage() {
                   month: 'short',
                 })}
               </span>
-              <span
-                title={activity(ws).title}
-                className={`hidden md:inline text-sm ${ACTIVITY_TONE_CLASS[activity(ws).tone]}`}
-              >
-                {activity(ws).label}
-              </span>
+              <Tooltip>
+                {/* asChild keeps the span: the default trigger is a <button>, which would sit
+                    inside this navigable row and hijack its click. */}
+                <TooltipTrigger asChild>
+                  <span
+                    className={`hidden w-fit md:inline text-sm ${ACTIVITY_TONE_CLASS[activity(ws).tone]}`}
+                  >
+                    {activity(ws).label}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>{activity(ws).title}</TooltipContent>
+              </Tooltip>
               <span className="hidden md:inline text-muted-foreground">
                 <ArrowRight size={16} />
               </span>
