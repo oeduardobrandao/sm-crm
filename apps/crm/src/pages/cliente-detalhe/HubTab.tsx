@@ -21,10 +21,14 @@ import {
   Pencil,
   ChevronDown,
   ChevronRight,
+  RefreshCw,
+  CalendarClock,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { differenceInCalendarDays, format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import {
   DndContext,
   PointerSensor,
@@ -58,9 +62,22 @@ import {
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import {
   getHubToken,
   createHubToken,
   setHubTokenActive,
+  extendHubToken,
+  rotateHubToken,
   getHubBrand,
   upsertHubBrand,
   getHubPages,
@@ -100,6 +117,14 @@ import {
   toDisplayOrderUpdates,
   applyReorderToCache,
 } from '@/lib/briefingReorder';
+
+// Raw Postgres error text must never reach the user.
+function mapTokenError(e: { message?: string }): string {
+  const m = e?.message ?? '';
+  if (m.includes('forbidden')) return 'Sem permissão para este cliente.';
+  if (m.includes('not_found')) return 'Link não encontrado.';
+  return 'Não foi possível concluir a ação.';
+}
 
 function downloadTextFile(filename: string, mime: string, text: string) {
   const url = URL.createObjectURL(new Blob([text], { type: mime }));
@@ -143,6 +168,17 @@ export function HubTab({ clienteId, contaId, workspaceSlug }: HubTabProps) {
     ? `${window.location.origin}/${workspaceSlug}/hub/${tokenData.token}`
     : '';
 
+  const expiresAt = tokenData ? new Date(tokenData.expires_at) : null;
+  const daysLeft = expiresAt ? differenceInCalendarDays(expiresAt, new Date()) : null;
+  const isExpired = daysLeft !== null && daysLeft < 0;
+  const isNearExpiry = daysLeft !== null && daysLeft >= 0 && daysLeft <= 30;
+  // Auto-renew throttles at 350d, so a live link never lands in this range.
+  // The rescue only surfaces for genuinely dormant clients.
+  const showRescue = isExpired || isNearExpiry;
+
+  const [extending, setExtending] = useState(false);
+  const [rotating, setRotating] = useState(false);
+
   async function toggleActive() {
     if (!tokenData) return;
     await setHubTokenActive(tokenData.id, !tokenData.is_active);
@@ -153,6 +189,34 @@ export function HubTab({ clienteId, contaId, workspaceSlug }: HubTabProps) {
   async function copyLink() {
     await navigator.clipboard.writeText(hubUrl);
     toast.success('Link copiado!');
+  }
+
+  async function handleExtend() {
+    if (!tokenData) return;
+    setExtending(true);
+    try {
+      await extendHubToken(tokenData.id);
+      qc.invalidateQueries({ queryKey: ['hub-token', clienteId] });
+      toast.success('Link renovado por mais 1 ano.');
+    } catch (e: any) {
+      toast.error(mapTokenError(e));
+    } finally {
+      setExtending(false);
+    }
+  }
+
+  async function handleRotate() {
+    if (!tokenData) return;
+    setRotating(true);
+    try {
+      await rotateHubToken(tokenData.id);
+      qc.invalidateQueries({ queryKey: ['hub-token', clienteId] });
+      toast.success('Novo link gerado. Envie-o ao cliente — o anterior parou de funcionar.');
+    } catch (e: any) {
+      toast.error(mapTokenError(e));
+    } finally {
+      setRotating(false);
+    }
   }
 
   return (
@@ -169,32 +233,90 @@ export function HubTab({ clienteId, contaId, workspaceSlug }: HubTabProps) {
         <section>
           <h3 className="font-semibold mb-3">Acesso do Cliente</h3>
           {tokenData ? (
-            <div className="flex items-center gap-3 flex-wrap">
-              <code className="text-xs bg-muted px-3 py-2 rounded-lg flex-1 min-w-0 truncate">
-                {hubUrl}
-              </code>
-              <Button size="sm" variant="outline" onClick={copyLink}>
-                <Copy size={14} className="mr-1.5" /> Copiar
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => openExternalUrl(hubUrl)}>
-                <Eye size={14} className="mr-1.5" /> Preview
-              </Button>
-              <Button
-                size="sm"
-                variant={tokenData.is_active ? 'destructive' : 'default'}
-                onClick={toggleActive}
-              >
-                {tokenData.is_active ? (
-                  <>
-                    <ToggleRight size={14} className="mr-1.5" /> Desativar
-                  </>
-                ) : (
-                  <>
-                    <ToggleLeft size={14} className="mr-1.5" /> Ativar
-                  </>
+            <>
+              <div className="flex items-center gap-3 flex-wrap">
+                <code className="text-xs bg-muted px-3 py-2 rounded-lg flex-1 min-w-0 truncate">
+                  {hubUrl}
+                </code>
+                <Button size="sm" variant="outline" onClick={copyLink}>
+                  <Copy size={14} className="mr-1.5" /> Copiar
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => openExternalUrl(hubUrl)}>
+                  <Eye size={14} className="mr-1.5" /> Preview
+                </Button>
+                <Button
+                  size="sm"
+                  variant={tokenData.is_active ? 'destructive' : 'default'}
+                  onClick={toggleActive}
+                >
+                  {tokenData.is_active ? (
+                    <>
+                      <ToggleRight size={14} className="mr-1.5" /> Desativar
+                    </>
+                  ) : (
+                    <>
+                      <ToggleLeft size={14} className="mr-1.5" /> Ativar
+                    </>
+                  )}
+                </Button>
+
+                {showRescue && (
+                  <Button size="sm" variant="outline" onClick={handleExtend} disabled={extending}>
+                    <CalendarClock size={14} className="mr-1.5" /> Estender +1 ano
+                  </Button>
                 )}
-              </Button>
-            </div>
+
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button size="sm" variant="destructive" disabled={rotating}>
+                      <RefreshCw size={14} className="mr-1.5" /> Gerar novo link
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Gerar um novo link?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        O link atual para de funcionar imediatamente. O cliente perde o acesso até
+                        você enviar o novo link. Esta ação não pode ser desfeita.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleRotate}>Confirmar</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
+
+              {expiresAt && (
+                <p
+                  className={
+                    isExpired
+                      ? 'w-full text-xs font-medium text-destructive mt-2'
+                      : isNearExpiry
+                        ? 'w-full text-xs font-medium text-amber-600 mt-2'
+                        : 'w-full text-xs text-muted-foreground mt-2'
+                  }
+                >
+                  <CalendarClock size={12} className="mr-1 inline" />
+                  {isExpired ? (
+                    <>
+                      <span className="mr-1.5 rounded bg-destructive/10 px-1.5 py-0.5 uppercase">
+                        Expirado
+                      </span>
+                      Expirou em {format(expiresAt, 'dd/MM/yyyy', { locale: ptBR })}
+                    </>
+                  ) : isNearExpiry ? (
+                    <>
+                      Expira em {daysLeft} dias ({format(expiresAt, 'dd/MM/yyyy', { locale: ptBR })}
+                      )
+                    </>
+                  ) : (
+                    <>Expira em {format(expiresAt, 'dd/MM/yyyy', { locale: ptBR })}</>
+                  )}
+                </p>
+              )}
+            </>
           ) : (
             <div className="flex items-center gap-3">
               <p className="text-sm text-muted-foreground">Nenhum link gerado ainda.</p>
