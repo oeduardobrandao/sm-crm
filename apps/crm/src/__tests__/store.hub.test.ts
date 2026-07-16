@@ -46,7 +46,12 @@ describe('store hub and ideias helpers', () => {
 
   it('manages client hub tokens', async () => {
     mockedSupabase.__queueSupabaseResult('client_hub_tokens', 'select', {
-      data: { id: 'token-id', token: 'hub-token', is_active: true },
+      data: {
+        id: 'token-id',
+        token: 'hub-token',
+        is_active: true,
+        expires_at: '2027-07-16T10:00:00Z',
+      },
       error: null,
     });
     mockedSupabase.__queueSupabaseResult('client_hub_tokens', 'insert', {
@@ -62,6 +67,7 @@ describe('store hub and ideias helpers', () => {
       id: 'token-id',
       token: 'hub-token',
       is_active: true,
+      expires_at: '2027-07-16T10:00:00Z',
     });
     await expect(store.createHubToken(14, 'conta-1')).resolves.toEqual({
       id: 'token-new',
@@ -70,11 +76,57 @@ describe('store hub and ideias helpers', () => {
     });
     await expect(store.setHubTokenActive('token-new', false)).resolves.toBeUndefined();
 
+    expect(getCalls('client_hub_tokens', 'select').at(-1)?.selectArgs).toEqual([
+      ['id, token, is_active, expires_at'],
+    ]);
     expect(getCalls('client_hub_tokens', 'insert').at(-1)?.payload).toEqual({
       cliente_id: 14,
       conta_id: 'conta-1',
     });
     expect(getCalls('client_hub_tokens', 'update').at(-1)?.payload).toEqual({ is_active: false });
+  });
+
+  it('extends a lapsed hub token via RPC, preserving its URL', async () => {
+    mockedSupabase.__queueSupabaseRpc('hub_token_extend', {
+      data: '2027-07-16T10:00:00Z',
+      error: null,
+    });
+
+    await expect(store.extendHubToken('token-id')).resolves.toBe('2027-07-16T10:00:00Z');
+
+    const rpcCall = getCalls('rpc:hub_token_extend').at(-1);
+    expect(rpcCall?.payload).toEqual({ p_token_id: 'token-id' });
+  });
+
+  it('rotates a hub token via RPC and unwraps the returned row', async () => {
+    mockedSupabase.__queueSupabaseRpc('hub_token_rotate', {
+      data: [{ token: 'new-token', expires_at: '2027-07-16T10:00:00Z' }],
+      error: null,
+    });
+
+    await expect(store.rotateHubToken('token-id')).resolves.toEqual({
+      token: 'new-token',
+      expires_at: '2027-07-16T10:00:00Z',
+    });
+
+    const rpcCall = getCalls('rpc:hub_token_rotate').at(-1);
+    expect(rpcCall?.payload).toEqual({ p_token_id: 'token-id' });
+  });
+
+  it('propagates hub token RPC errors as thrown Errors (not swallowed)', async () => {
+    mockedSupabase.__queueSupabaseRpc('hub_token_rotate', {
+      data: null,
+      error: { message: 'forbidden' },
+    });
+
+    await expect(store.rotateHubToken('token-id')).rejects.toThrow('forbidden');
+
+    mockedSupabase.__queueSupabaseRpc('hub_token_extend', {
+      data: null,
+      error: { message: 'not_found' },
+    });
+
+    await expect(store.extendHubToken('token-id')).rejects.toThrow('not_found');
   });
 
   it('loads and mutates hub brand assets', async () => {
