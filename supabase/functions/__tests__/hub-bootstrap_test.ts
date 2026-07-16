@@ -126,6 +126,9 @@ Deno.test("makeTouchToken actually applies an AbortSignal that fires by the dead
   assert(capture.signal!.aborted, "expected the bound AbortSignal to have fired by the deadline");
 });
 
+// This models the abort/cancel path specifically: a bound AbortSignal firing
+// on a hung request rejects the underlying fetch (see makeHangingBuilder
+// above). makeTouchToken must tolerate that without throwing.
 Deno.test("makeTouchToken swallows a rejecting RPC without throwing", async () => {
   const touchToken = makeTouchToken(() => ({
     rpc: () => ({
@@ -134,4 +137,54 @@ Deno.test("makeTouchToken swallows a rejecting RPC without throwing", async () =
   }));
 
   await touchToken("some-token"); // must not throw
+});
+
+// --- faithful postgrest-js failure model ------------------------------------------------
+//
+// Real postgrest-js has `shouldThrowOnError = false` by default: a query/RPC error
+// RESOLVES with `{ data: null, error }` — it does NOT reject. A fake builder that only
+// simulates failure via rejection (above) models a failure mode that can't happen in
+// production and misses the one that does: a missing function, a revoked grant, or a
+// renamed RPC all surface as a *resolved* `{ error }`, not a thrown/rejected promise.
+//
+// This builder is faithful to that: `.abortSignal()` returns a thenable that RESOLVES
+// with `{ data: null, error }`, exactly like a real supabase-js RPC call that failed.
+function makeErrorResolvingBuilder(error: { message: string; code?: string }) {
+  const builder = {
+    abortSignal(_signal: AbortSignal) {
+      return builder;
+    },
+    then(resolve: (v: { data: null; error: typeof error }) => void) {
+      resolve({ data: null, error });
+    },
+  };
+  return builder;
+}
+
+Deno.test("makeTouchToken never throws AND logs when the RPC resolves with a postgrest-style error", async () => {
+  const originalConsoleError = console.error;
+  const calls: unknown[][] = [];
+  console.error = (...args: unknown[]) => {
+    calls.push(args);
+  };
+
+  try {
+    const touchToken = makeTouchToken(() => ({
+      rpc: () =>
+        makeErrorResolvingBuilder({
+          message: 'function hub_token_touch(p_token => text) does not exist',
+          code: "PGRST202",
+        }) as any,
+    }));
+
+    await touchToken("super-secret-token-value"); // must not throw
+
+    assert(calls.length > 0, "expected the RPC error to be logged for diagnosis — a silent failure is the bug this test guards against");
+
+    const loggedText = calls.map((args) => args.map(String).join(" ")).join(" | ");
+    assert(loggedText.includes("hub_token_touch"), "expected the log to mention the failing RPC for diagnosis");
+    assert(!loggedText.includes("super-secret-token-value"), "the bearer token value must NEVER be logged");
+  } finally {
+    console.error = originalConsoleError;
+  }
 });
