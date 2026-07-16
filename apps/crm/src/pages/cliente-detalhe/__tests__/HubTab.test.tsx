@@ -44,12 +44,7 @@ vi.mock('@/components/ui/alert-dialog', async () => {
     );
   }
 
-  function AlertDialogTrigger({
-    children,
-  }: {
-    asChild?: boolean;
-    children: React.ReactElement;
-  }) {
+  function AlertDialogTrigger({ children }: { asChild?: boolean; children: React.ReactElement }) {
     const { onOpenChange } = ReactModule.useContext(AlertDialogContext);
     return ReactModule.cloneElement(children, {
       onClick: (event: unknown) => {
