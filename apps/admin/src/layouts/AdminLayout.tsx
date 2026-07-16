@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Outlet, NavLink, useLocation } from 'react-router-dom';
+import { Outlet, NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
   Building2,
@@ -34,11 +34,6 @@ export default function AdminLayout() {
   });
 
   const { enabled: glassEnabled, toggle: toggleGlass } = useLiquidGlassContext();
-  const location = useLocation();
-  const pageTitle =
-    NAV_ITEMS.find((i) =>
-      i.to === '/admin' ? location.pathname === '/admin' : location.pathname.startsWith(i.to),
-    )?.label ?? 'Admin';
 
   // Apply theme to the DOM. While glass is ON the trial forces dark for the best
   // presentation, but does NOT persist it — the user's saved 'admin-theme' is
@@ -204,10 +199,8 @@ export default function AdminLayout() {
       </aside>
 
       <main className="md:ml-[220px] flex-1 min-h-screen">
-        <div className="glass-surface sticky top-0 z-30 mx-4 mt-4 md:mx-8 md:mt-6 rounded-2xl py-3 pl-14 pr-5 md:px-5 flex items-center bg-card border border-border">
-          <h1 className="text-sm font-medium tracking-wide text-foreground">{pageTitle}</h1>
-        </div>
-        <div className="p-4 pt-6 md:p-8">
+        {/* pt-16 on mobile keeps the page heading clear of the fixed hamburger button. */}
+        <div className="p-4 pt-16 md:p-8">
           <Outlet />
         </div>
       </main>

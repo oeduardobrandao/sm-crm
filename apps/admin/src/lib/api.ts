@@ -10,6 +10,8 @@ export interface WorkspaceSummary {
   name: string;
   logo_url: string | null;
   created_at: string;
+  /** Newest audited action in the workspace; null when nothing has ever been logged. */
+  last_activity_at: string | null;
   owner: { name: string; email: string } | null;
   member_count: number;
   client_count: number;

@@ -6,6 +6,7 @@ import { Analytics } from '@vercel/analytics/react';
 import { Toaster } from 'sonner';
 import { AdminAuthProvider } from './context/AdminAuthContext';
 import { LiquidGlassProvider } from './liquidglass/LiquidGlassProvider';
+import { TooltipProvider } from './components/ui/tooltip';
 import { router } from './router';
 import './globals.css';
 import './liquidglass/glass.css';
@@ -21,9 +22,11 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <QueryClientProvider client={queryClient}>
       <AdminAuthProvider>
         <LiquidGlassProvider>
-          <Toaster />
-          <RouterProvider router={router} />
-          <Analytics />
+          <TooltipProvider delayDuration={200}>
+            <Toaster />
+            <RouterProvider router={router} />
+            <Analytics />
+          </TooltipProvider>
         </LiquidGlassProvider>
       </AdminAuthProvider>
     </QueryClientProvider>

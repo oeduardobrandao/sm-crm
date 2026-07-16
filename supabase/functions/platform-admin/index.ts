@@ -345,6 +345,24 @@ async function handleListWorkspaces(
   // with the plan's catalog price as a fallback. Rows with no subscription do no
   // Stripe work.
   const wsIds = enriched.map((w) => w.id);
+
+  // Last activity for the whole page in one round trip. The RPC aggregates the timestamps real
+  // work leaves behind (posts, designs, clients, contracts, briefings, audit rows, Instagram
+  // links) — audit_log alone missed everything the CRM writes client-side through RLS.
+  const activityByWs = new Map<string, string | null>();
+  const { data: activityRows, error: activityError } = await svc.rpc(
+    "admin_workspace_last_activity",
+    { workspace_ids: wsIds },
+  );
+  if (activityError) {
+    // A missing activity column must not take the whole Workspaces page down.
+    console.error("[platform-admin] last-activity lookup failed:", activityError.message);
+  } else {
+    for (const row of activityRows || []) {
+      activityByWs.set(row.workspace_id, row.last_activity_at);
+    }
+  }
+
   const subByWs = new Map<
     string,
     {
@@ -395,8 +413,9 @@ async function handleListWorkspaces(
 
   const enrichedWithSubs = await Promise.all(
     enriched.map(async (w) => {
+      const last_activity_at = activityByWs.get(w.id) ?? null;
       const s = subByWs.get(w.id);
-      if (!s) return { ...w, subscription: null };
+      if (!s) return { ...w, last_activity_at, subscription: null };
 
       const planMeta = s.plan_id ? planById.get(s.plan_id) : undefined;
       let amount_cents: number | null = null;
@@ -425,6 +444,7 @@ async function handleListWorkspaces(
 
       return {
         ...w,
+        last_activity_at,
         subscription: {
           status: s.status,
           plan_name: planMeta?.name ?? null,

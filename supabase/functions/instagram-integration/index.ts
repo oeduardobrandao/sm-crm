@@ -154,7 +154,7 @@ Deno.serve(async (req) => {
 
         if (!code) throw new Error("Missing auth code");
 
-        const { clientId, nonce } = await verifySignedState(state || '');
+        const { clientId, nonce, contaId, userId } = await verifySignedState(state || '');
         if (!clientId || !/^\d+$/.test(String(clientId))) throw new Error("Invalid client ID in state parameter");
 
         const nonceServiceClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
@@ -317,6 +317,11 @@ Deno.serve(async (req) => {
         if (dbError) throw new Error(dbError.message);
 
         await insertAuditLog(serviceClient, {
+          // Both come from the signed state. Without conta_id the row is unattributable: it is
+          // invisible to every per-workspace view of the audit trail, which is how linking an
+          // account came to leave no workspace-level trace at all.
+          conta_id: contaId,
+          actor_user_id: userId,
           action: 'instagram-link',
           resource_type: 'instagram_account',
           resource_id: String(clientId),
