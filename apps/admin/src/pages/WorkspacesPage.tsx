@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Search, ArrowRight } from 'lucide-react';
-import { listWorkspaces, listPlans } from '../lib/api';
+import { listWorkspaces, listPlans, type WorkspaceSummary } from '../lib/api';
 import { getPlanColor } from '../lib/plan-colors';
 import {
   statusMeta,
@@ -11,6 +11,16 @@ import {
   formatMoney,
   intervalSuffix,
 } from '../lib/subscription';
+import { describeActivity, type ActivityTone } from './workspace-activity';
+
+const ACTIVITY_TONE_CLASS: Record<ActivityTone, string> = {
+  active: 'text-foreground',
+  cooling: 'text-muted-foreground',
+  dormant: 'text-warning',
+};
+
+const activity = (ws: WorkspaceSummary) =>
+  describeActivity(ws.last_activity_at, ws.created_at, new Date());
 
 export default function WorkspacesPage() {
   const navigate = useNavigate();
@@ -80,7 +90,7 @@ export default function WorkspacesPage() {
 
       <div className="bg-card border border-border rounded-2xl p-5">
         {/* Desktop table header */}
-        <div className="hidden md:grid grid-cols-[1.8fr_1.3fr_0.9fr_1.1fr_0.55fr_0.55fr_0.7fr_0.4fr] gap-2 text-[0.7rem] text-muted-foreground uppercase tracking-wider pb-3 border-b border-border">
+        <div className="hidden md:grid grid-cols-[1.8fr_1.3fr_0.9fr_1.1fr_0.55fr_0.55fr_0.7fr_0.85fr_0.4fr] gap-2 text-[0.7rem] text-muted-foreground uppercase tracking-wider pb-3 border-b border-border">
           <span>Workspace</span>
           <span>Owner</span>
           <span>Plan</span>
@@ -88,6 +98,7 @@ export default function WorkspacesPage() {
           <span>Clients</span>
           <span>Members</span>
           <span>Created</span>
+          <span>Last activity</span>
           <span></span>
         </div>
 
@@ -100,7 +111,7 @@ export default function WorkspacesPage() {
             <div
               key={ws.id}
               onClick={() => navigate(`/admin/workspaces/${ws.id}`)}
-              className="cursor-pointer hover:bg-secondary/30 transition-colors border-b border-border/50 py-3 -mx-5 px-5 md:grid md:grid-cols-[1.8fr_1.3fr_0.9fr_1.1fr_0.55fr_0.55fr_0.7fr_0.4fr] md:gap-2 md:items-center"
+              className="cursor-pointer hover:bg-secondary/30 transition-colors border-b border-border/50 py-3 -mx-5 px-5 md:grid md:grid-cols-[1.8fr_1.3fr_0.9fr_1.1fr_0.55fr_0.55fr_0.7fr_0.85fr_0.4fr] md:gap-2 md:items-center"
             >
               {/* Mobile card layout */}
               <div className="md:hidden flex flex-col gap-1.5">
@@ -138,6 +149,9 @@ export default function WorkspacesPage() {
                   )}
                   <span>{ws.client_count} clients</span>
                   <span>{ws.member_count} members</span>
+                  <span className={ACTIVITY_TONE_CLASS[activity(ws).tone]}>
+                    Ativo: {activity(ws).label}
+                  </span>
                 </div>
               </div>
               {/* Desktop row */}
@@ -196,6 +210,11 @@ export default function WorkspacesPage() {
                   day: '2-digit',
                   month: 'short',
                 })}
+              </span>
+              <span
+                className={`hidden md:inline text-sm ${ACTIVITY_TONE_CLASS[activity(ws).tone]}`}
+              >
+                {activity(ws).label}
               </span>
               <span className="hidden md:inline text-muted-foreground">
                 <ArrowRight size={16} />
