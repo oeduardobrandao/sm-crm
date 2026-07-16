@@ -10,6 +10,9 @@ interface HubBootstrapHandlerDeps {
   buildCorsHeaders: (req: Request) => Record<string, string>;
   createDb: () => DbClient;
   now: () => string;
+  /** Sliding-window renewal. MUST NOT throw — a renewal failure must never
+   *  break the client's portal. See index.ts for the timeout + catch wrapper. */
+  touchToken: (token: string) => Promise<void>;
 }
 
 export function createHubBootstrapHandler(deps: HubBootstrapHandlerDeps) {
@@ -41,6 +44,15 @@ export function createHubBootstrapHandler(deps: HubBootstrapHandlerDeps) {
     // a token from workspace A must never be served under workspace B's slug.
     const hubToken = await resolveHubToken(db as any, token, deps.now(), conta.id);
     if (!hubToken) return json({ error: "Link inválido." }, 404);
+
+    // Sliding window: keep an in-use link alive. Throttled inside the SQL function.
+    // Defence in depth — index.ts already swallows errors, but a handler-level catch
+    // guarantees no renewal fault can ever reach the client.
+    try {
+      await deps.touchToken(token);
+    } catch {
+      // intentionally ignored
+    }
 
     const { data: cliente } = await db
       .from("clientes")
