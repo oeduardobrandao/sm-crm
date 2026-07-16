@@ -16,6 +16,12 @@
       "autoPort": true
     },
     {
+      "name": "admin",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:admin"],
+      "port": 5177
+    },
+    {
       "name": "op-editor",
       "runtimeExecutable": "sh",
       "runtimeArgs": ["-c", "cd \"$HOME/Projects/open-pencil-spike\" && exec bun --bun run dev"],
