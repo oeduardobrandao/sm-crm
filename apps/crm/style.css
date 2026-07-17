@@ -8131,7 +8131,12 @@ body.landing-page #root {
 #sec-datas,
 #sec-enderecos,
 #sec-financeiro {
-  scroll-margin-top: calc(var(--topbar-height) + 1rem);
+  scroll-margin-top: calc(var(--topbar-height) + var(--banner-height, 0px) + 1rem);
+}
+
+/* Hide the rail by default; only show at ≥1101px. */
+.cliente-detalhe-nav {
+  display: none;
 }
 
 /* The rail and its gutter only make sense where the sidebar is statically
