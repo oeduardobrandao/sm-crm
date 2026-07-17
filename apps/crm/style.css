@@ -8112,3 +8112,122 @@ body.landing-page #root {
   background: var(--primary-color);
   animation: csv-indeterminate 1s ease-in-out infinite;
 }
+
+/* ─── Cliente detalhe — floating section nav ──────────────── */
+
+/* Root padding lives here (not inline) so the desktop gutter can apply. */
+.cliente-detalhe-page {
+  padding: 1.5rem;
+}
+
+/* Smooth-scroll targets clear the top bar. Harmless when the rail is hidden. */
+#sec-info,
+#sec-entregas,
+#sec-historico,
+#ig-container,
+#sec-relatorio,
+#sec-hub,
+#sec-arquivos,
+#sec-datas,
+#sec-enderecos,
+#sec-financeiro {
+  scroll-margin-top: calc(var(--topbar-height) + 1rem);
+}
+
+/* The rail and its gutter only make sense where the sidebar is statically
+   present (>=1101px). Below that the layout uses an off-canvas drawer with
+   .main-content margin-left: 0, so the rail must not render. */
+@media (min-width: 1101px) {
+  .cliente-detalhe-page {
+    /* reserve room for the 48px collapsed rail + breathing space */
+    padding-left: calc(1.5rem + 48px + 0.75rem);
+  }
+
+  .cliente-detalhe-nav {
+    position: fixed;
+    left: calc(var(--sidebar-width) + 0.5rem);
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 30;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    width: 48px;
+    max-height: calc(100vh - 2rem);
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 8px;
+    background: var(--surface-main);
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    box-shadow: var(--shadow);
+    transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .cliente-detalhe-nav:hover {
+    width: 190px;
+  }
+
+  .cliente-detalhe-nav__group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .cliente-detalhe-nav__divider {
+    height: 1px;
+    background: var(--border-color);
+    margin: 4px 6px;
+    flex-shrink: 0;
+  }
+
+  .cliente-detalhe-nav__item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px;
+    border: none;
+    background: transparent;
+    border-radius: 8px;
+    color: var(--text-muted);
+    cursor: pointer;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    transition:
+      background 0.15s ease,
+      color 0.15s ease;
+  }
+
+  .cliente-detalhe-nav__item:hover {
+    background: var(--surface-hover);
+    color: var(--text-main);
+  }
+
+  .cliente-detalhe-nav__icon {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+  }
+
+  .cliente-detalhe-nav__label {
+    font-size: 0.82rem;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+
+  .cliente-detalhe-nav:hover .cliente-detalhe-nav__label {
+    opacity: 1;
+  }
+
+  .cliente-detalhe-nav__item--active {
+    color: var(--primary-color);
+    background: rgba(234, 179, 8, 0.1);
+    font-weight: 500;
+  }
+
+  .cliente-detalhe-nav__item--action {
+    color: var(--primary-color);
+  }
+}
