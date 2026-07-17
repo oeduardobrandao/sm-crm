@@ -3,6 +3,7 @@ import { buildCorsHeaders } from "../_shared/cors.ts";
 import { timingSafeEqual } from "../_shared/crypto.ts";
 import { reportCronFailure } from "../_shared/triage.ts";
 import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
+import { resolveHubUrl } from "../_shared/hub-url.ts";
 
 // ---------------------------------------------------------------------------
 // Environment
@@ -204,7 +205,7 @@ Deno.serve(async (req) => {
             logoUrl: wsFlags.logo_url ?? null,
             aiSummary: reportRow.ai_content?.executive_summary ?? null,
             pdfUrl,
-            hubUrl: '',
+            hubUrl: await resolveHubUrl(supabase, reportRow.client_id, reportRow.conta_id),
           });
 
           const [year, mm] = reportRow.report_month.split('-');
