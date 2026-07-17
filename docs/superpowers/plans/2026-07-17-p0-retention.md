@@ -1306,37 +1306,49 @@ Deno.serve(createRetentionRadarCronHandler({
 
       const now = new Date();
       const rows: RadarRow[] = [];
+      let failed = 0;
 
+      // Per-item try/catch, mirroring notification-deadline-cron. getUserById's validateUUID throws
+      // SYNCHRONOUSLY (before the client's own error handling) on a malformed owner id, so without
+      // isolation one bad workspace would abort the whole loop and zero out the entire weekly
+      // digest. A failed workspace is skipped and counted; every other one still reports.
       for (const sub of subRows) {
-        const ws = wsById.get(sub.workspace_id);
-        if (!ws) continue;
+        try {
+          const ws = wsById.get(sub.workspace_id);
+          if (!ws) continue;
 
-        const bucket = bucketWorkspace({
-          status: sub.status,
-          currentPeriodEnd: sub.current_period_end,
-          lastActivityAt: activityById.get(sub.workspace_id) ?? null,
-          createdAt: ws.created_at,
-        }, now);
-        if (!bucket) continue;
+          const bucket = bucketWorkspace({
+            status: sub.status,
+            currentPeriodEnd: sub.current_period_end,
+            lastActivityAt: activityById.get(sub.workspace_id) ?? null,
+            createdAt: ws.created_at,
+          }, now);
+          if (!bucket) continue;
 
-        let ownerEmail = "—";
-        const { data: ownerMember } = await supabase
-          .from("workspace_members").select("user_id")
-          .eq("workspace_id", sub.workspace_id).eq("role", "owner").limit(1).maybeSingle();
-        if (ownerMember?.user_id) {
-          const { data: ownerUser } = await supabase.auth.admin.getUserById(ownerMember.user_id as string);
-          ownerEmail = ownerUser?.user?.email ?? "—";
+          let ownerEmail = "—";
+          const { data: ownerMember, error: memberErr } = await supabase
+            .from("workspace_members").select("user_id")
+            .eq("workspace_id", sub.workspace_id).eq("role", "owner").limit(1).maybeSingle();
+          if (memberErr) throw memberErr;
+          if (ownerMember?.user_id) {
+            const { data: ownerUser } = await supabase.auth.admin.getUserById(ownerMember.user_id as string);
+            ownerEmail = ownerUser?.user?.email ?? "—";
+          }
+
+          rows.push({
+            bucket,
+            workspaceName: ws.name,
+            ownerEmail,
+            planId: sub.plan_id,
+            status: sub.status,
+            lastActivityAt: activityById.get(sub.workspace_id) ?? null,
+            failedPaymentCount: sub.failed_payment_count,
+          });
+        } catch (workspaceErr) {
+          failed++;
+          const m = workspaceErr instanceof Error ? workspaceErr.message : "unknown";
+          console.error(`retention-radar-cron: workspace_id=${sub.workspace_id} failed:`, m);
         }
-
-        rows.push({
-          bucket,
-          workspaceName: ws.name,
-          ownerEmail,
-          planId: sub.plan_id,
-          status: sub.status,
-          lastActivityAt: activityById.get(sub.workspace_id) ?? null,
-          failedPaymentCount: sub.failed_payment_count,
-        });
       }
 
       const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
@@ -1358,7 +1370,7 @@ Deno.serve(createRetentionRadarCronHandler({
         if (!res.ok) console.error(`[retention-radar-cron] Resend error: ${res.status}`);
       }
 
-      return new Response(JSON.stringify({ success: true, reported: rows.length }), {
+      return new Response(JSON.stringify({ success: true, reported: rows.length, failed }), {
         status: 200, headers: { "Content-Type": "application/json" },
       });
     } catch (err: unknown) {
