@@ -1660,7 +1660,9 @@ into the previous identity.
 In `apps/crm/src/pages/politica-privacidade/PoliticaPage.tsx`, add PostHog to the list of
 third-party processors. The page is PT-BR; match its existing section markup and tone. Text to add:
 
-> **PostHog** — análise de uso do produto (funis de ativação e retenção). Os dados são processados na região da União Europeia. Coletamos identificador de usuário, workspace, plano e eventos de uso do produto. Não enviamos conteúdo de clientes, mídias ou dados de pagamento.
+> **PostHog** — análise de uso do produto (funis de ativação e retenção). Os dados são processados em servidores na União Europeia, o que constitui uma transferência internacional de dados pessoais para fora do Brasil, realizada em conformidade com a LGPD. Coletamos identificador de usuário, workspace, plano e eventos de uso do produto. Não enviamos conteúdo de clientes, mídias ou dados de pagamento.
+
+The "transferência internacional" phrasing is load-bearing: stating only the processing region satisfies disclosing *where*, but LGPD's cross-border-transfer disclosure requires naming that it *is* a transfer out of Brazil.
 
 - [ ] **Step 9: Typecheck, then commit**
 
