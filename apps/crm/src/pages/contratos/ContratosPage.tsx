@@ -69,6 +69,7 @@ import {
   formatDate,
   type Contrato,
 } from '../../store';
+import { captureEvent } from '@/lib/analytics';
 
 const contratoSchema = z.object({
   titulo: z.string().min(1, 'Título obrigatório'),
@@ -183,6 +184,7 @@ export default function ContratosPage() {
       } else {
         await addContrato(payload);
         toast.success('Contrato criado');
+        captureEvent('contract_created');
       }
       qc.invalidateQueries({ queryKey: ['contratos'] });
       setModalOpen(false);

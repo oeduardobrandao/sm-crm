@@ -10,11 +10,15 @@ export type AnalyticsEvent =
   | 'signup_completed'
   | 'workspace_setup_completed'
   | 'client_created'
+  | 'client_updated'
+  | 'client_deleted'
   | 'instagram_connected'
   | 'workflow_created'
   | 'hub_link_copied'
   | 'report_generated'
-  | 'invite_sent';
+  | 'invite_sent'
+  | 'contract_created'
+  | 'lead_created';
 
 export interface WorkspaceUserProps {
   workspace_id: string;

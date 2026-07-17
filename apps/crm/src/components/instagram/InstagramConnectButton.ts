@@ -32,6 +32,7 @@ export function renderInstagramConnectButton(container: HTMLElement, clientId: n
         btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${escapeHTML(t('instagram.connecting'))}`;
         btn.disabled = true;
         const url = await getInstagramAuthUrl(clientId);
+        sessionStorage.setItem('ig_oauth_pending', String(clientId));
         window.location.href = url;
       } catch (err: any) {
         btn.innerHTML = `<i class="fa-brands fa-instagram"></i> ${escapeHTML(t('instagram.connectFallback'))}`;

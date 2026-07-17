@@ -85,6 +85,7 @@ import {
 } from '../../store';
 import { useEntitlements } from '../../hooks/useEntitlements';
 import { FeatureGate } from '@/components/paywall/FeatureGate';
+import { captureEvent } from '@/lib/analytics';
 
 function createLeadSchema(t: (key: string) => string) {
   return z.object({
@@ -275,6 +276,7 @@ export default function LeadsPage() {
       } else {
         await addLead(payload);
         toast.success(t('toast.created'));
+        captureEvent('lead_created');
       }
       qc.invalidateQueries({ queryKey: ['leads'] });
       setModalOpen(false);

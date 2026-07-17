@@ -217,6 +217,7 @@ export default function ClientesPage() {
           status: values.status,
         });
         toast.success(t('toast.updated'));
+        captureEvent('client_updated');
       } else {
         const randomColor = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
         await addCliente({
@@ -248,6 +249,7 @@ export default function ClientesPage() {
     try {
       await removeCliente(deleteId);
       toast.success(t('toast.removed'));
+      captureEvent('client_deleted');
       qc.invalidateQueries({ queryKey: ['clientes'] });
     } catch {
       toast.error(tc('toast.deleteError'));

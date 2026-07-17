@@ -126,6 +126,7 @@ import { renderInstagramFollowerChart } from '../../components/instagram/Instagr
 import { renderInstagramPostsTable } from '../../components/instagram/InstagramPostsTable';
 import { renderInstagramConnectButton } from '../../components/instagram/InstagramConnectButton';
 import { supabase } from '@/lib/supabase';
+import { captureEvent } from '@/lib/analytics';
 
 function StatusBadge({ status }: { status: string }) {
   const { t: tc } = useTranslation();
@@ -215,8 +216,14 @@ export default function ClienteDetalhePage() {
     const params = new URLSearchParams(window.location.search);
     if (params.get('ig_error') === 'no_business_account') {
       toast.error(t('detail.igNotBusiness'));
+    } else {
+      const pending = sessionStorage.getItem('ig_oauth_pending');
+      if (pending !== null && parseInt(pending, 10) === clienteId) {
+        sessionStorage.removeItem('ig_oauth_pending');
+        captureEvent('instagram_connected');
+      }
     }
-  }, [t]);
+  }, [t, clienteId]);
 
   const { data: clientes, isLoading: loadingClientes } = useQuery({
     queryKey: ['clientes'],
