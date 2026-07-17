@@ -115,9 +115,15 @@ import {
 import type { BoardCard } from '../entregas/hooks/useEntregasData';
 import { getWorkflowCovers } from '../../services/postMedia';
 import { HubTab } from './HubTab';
+import { ClienteDetalheNav } from './ClienteDetalheNav';
+import { buildNavModel } from './clienteDetalheNav.model';
 import { getFolderContents } from '../../services/fileService';
 import { FileGrid } from '../arquivos/components/FileGrid';
-import { getInstagramSummary, syncInstagramData } from '../../services/instagram';
+import {
+  getInstagramSummary,
+  syncInstagramData,
+  getInstagramAuthUrl,
+} from '../../services/instagram';
 import { sanitizeUrl } from '../../utils/security';
 import { useAuth } from '../../context/AuthContext';
 import { useTranslation } from 'react-i18next';
@@ -898,8 +904,37 @@ export default function ClienteDetalhePage() {
     .filter((t) => t.tipo === 'entrada' && t.status === 'agendado')
     .reduce((s, t) => s + Number(t.valor), 0);
 
+  const navModel = buildNavModel({
+    isAgent,
+    activeDeliveriesCount: boardCards.length,
+    deliveryHistoryCount: concludedSummaries.length,
+    igSummary,
+    hubToken: hubTokenData ?? null,
+    workspaceSlug: workspaceSlug ?? undefined,
+    contaId: cliente.conta_id ?? null,
+    now: Date.now(),
+    handlers: {
+      onConnectInstagram: async () => {
+        try {
+          const url = await getInstagramAuthUrl(clienteId);
+          window.location.href = url;
+        } catch (err: unknown) {
+          toast.error(t('instagram.connectError', { error: (err as Error).message }));
+        }
+      },
+      onAnalytics: () => navigate(`/analytics/${clienteId}`),
+      onOpenHub: () => {
+        if (!hubTokenData || !workspaceSlug) return;
+        const url = `${window.location.origin}/${workspaceSlug}/hub/${hubTokenData.token}`;
+        window.open(url, '_blank', 'noopener');
+      },
+      onEditar: handleEdit,
+    },
+  });
+
   return (
-    <div style={{ padding: '1.5rem' }}>
+    <div className="cliente-detalhe-page">
+      <ClienteDetalheNav sections={navModel.sections} actions={navModel.actions} />
       {/* Header */}
       <div className="header" style={{ marginBottom: '1.5rem', alignContent: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -958,7 +993,7 @@ export default function ClienteDetalhePage() {
       </div>
 
       {/* Info Card */}
-      <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
+      <div id="sec-info" className="card animate-up" style={{ marginBottom: '1.5rem' }}>
         <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">
           {t('detail.information')}
         </h3>
@@ -1028,7 +1063,7 @@ export default function ClienteDetalhePage() {
 
       {/* Entregas Ativas + Post Calendar */}
       {boardCards.length > 0 && (
-        <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
+        <div id="sec-entregas" className="card animate-up" style={{ marginBottom: '1.5rem' }}>
           <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">
             {t('detail.activeDeliveries')}
           </h3>
@@ -1379,7 +1414,7 @@ export default function ClienteDetalhePage() {
       )}
 
       {concludedSummaries.length > 0 && (
-        <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
+        <div id="sec-historico" className="card animate-up" style={{ marginBottom: '1.5rem' }}>
           <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">
             {t('detail.deliveryHistory')}
           </h3>
@@ -1428,7 +1463,7 @@ export default function ClienteDetalhePage() {
 
       {/* Relatório Mensal Settings */}
       {!isAgent && cliente && (
-        <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
+        <div id="sec-relatorio" className="card animate-up" style={{ marginBottom: '1.5rem' }}>
           <h3 className="text-xl font-bold tracking-tight text-foreground mb-1">
             Relatório Mensal
           </h3>
@@ -1498,7 +1533,7 @@ export default function ClienteDetalhePage() {
 
       {/* Hub do Cliente */}
       {!isAgent && cliente && cliente.id != null && cliente.conta_id && workspaceSlug && (
-        <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
+        <div id="sec-hub" className="card animate-up" style={{ marginBottom: '1.5rem' }}>
           <h3 className="text-xl font-bold tracking-tight text-foreground mb-1">
             {t('detail.clientHub')}
           </h3>
@@ -1511,7 +1546,7 @@ export default function ClienteDetalhePage() {
         </div>
       )}
       {isAgent && (
-        <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
+        <div id="sec-hub" className="card animate-up" style={{ marginBottom: '1.5rem' }}>
           <h3 className="text-xl font-bold tracking-tight text-foreground mb-3">
             {t('detail.clientHub')}
           </h3>
@@ -1526,7 +1561,7 @@ export default function ClienteDetalhePage() {
       {cliente && cliente.id != null && <ClienteArquivosSection clienteId={cliente.id!} />}
 
       {/* Important Dates Section */}
-      <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
+      <div id="sec-datas" className="card animate-up" style={{ marginBottom: '1.5rem' }}>
         <div
           style={{
             display: 'flex',
@@ -1630,7 +1665,7 @@ export default function ClienteDetalhePage() {
       </div>
 
       {/* Addresses Section */}
-      <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
+      <div id="sec-enderecos" className="card animate-up" style={{ marginBottom: '1.5rem' }}>
         <div
           style={{
             display: 'flex',
@@ -1762,7 +1797,7 @@ export default function ClienteDetalhePage() {
       {!isAgent && (
         <>
           {/* KPI Cards */}
-          <div className="kpi-grid" style={{ marginBottom: '1.5rem' }}>
+          <div id="sec-financeiro" className="kpi-grid" style={{ marginBottom: '1.5rem' }}>
             <div className="kpi-card animate-up">
               <span className="kpi-label">{t('detail.monthlyValue')}</span>
               <span className="kpi-value">{formatBRL(Number(cliente.valor_mensal))}</span>
@@ -2347,7 +2382,7 @@ function ClienteArquivosSection({ clienteId }: { clienteId: number }) {
   const totalFiles = contents?.files?.length ?? 0;
 
   return (
-    <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
+    <div id="sec-arquivos" className="card animate-up" style={{ marginBottom: '1.5rem' }}>
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2 mb-0">
           <FolderOpen className="h-5 w-5" style={{ color: 'var(--primary-color)' }} />
