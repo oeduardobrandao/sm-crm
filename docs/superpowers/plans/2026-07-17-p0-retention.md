@@ -24,7 +24,8 @@ Spec: `docs/superpowers/specs/2026-07-16-p0-retention-design.md`
 - **Check `supabase/.temp/project-ref` before any `--linked` command.** The repo defaults to **prod**.
 - **Run one edge test file directly** rather than trusting a `--filter` string to match every test in it (a filter matches on test *name*, so `--filter "Dunning"` silently misses `buildFailureEpisode`):
   `npx deno test --no-check --node-modules-dir=auto --allow-env --allow-read --allow-net --allow-sys <path/to/file_test.ts>`
-- **`npm run test:functions` dirties the root `deno.lock` every time** (confirmed while writing this plan) and can pollute `node_modules` via Deno's `--node-modules-dir`. After running it: `git checkout -- deno.lock`. Never commit the root lockfile — only `supabase/functions/deno.lock` is committed, and only for an intentional dependency add. If the vitest suite starts failing oddly afterwards, run `npm ci`.
+- **`npm run test:functions` dirties the root `deno.lock` every time** (confirmed while writing this plan). After running it: `git checkout -- deno.lock`. Never commit the root lockfile — only `supabase/functions/deno.lock` is committed, and only for an intentional dependency add.
+- **`npm run test:functions` also pollutes `node_modules`** via Deno's `--node-modules-dir`, and this bit Task 4 for real. It installs a second copy of packages under `node_modules/.deno/` (e.g. `@tiptap+core@3.28.0` alongside the project's `3.22.4`), and it surfaces **as a `npm run build` typecheck failure** — screens of "Type X is not assignable to type X" naming two different versions of the same package — not as a vitest failure. **Do not diagnose this as pre-existing breakage: `git stash` cannot undo it, because the corruption is in `node_modules`, not your source.** The tell is any path containing `node_modules/.deno/`. Fix: `npm ci`. After it, the build is clean.
 - **Commit after every task.** Do not batch.
 
 ---
