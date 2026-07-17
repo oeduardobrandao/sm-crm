@@ -23,6 +23,7 @@ export default defineConfig({
       'apps/**/*.{test,spec}.{ts,tsx}',
       'test/**/*.{test,spec}.{ts,tsx}',
       'scripts/**/*.test.mjs',
+      'e2e/**/__tests__/**/*.test.ts',
     ],
     coverage: {
       provider: 'v8',

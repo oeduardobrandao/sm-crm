@@ -45,6 +45,29 @@ export default defineConfig({
         storageState: authFile,
       },
     },
+    // Screenshot captures run against a PRODUCTION workspace (see e2e/screenshots/safety.ts).
+    // This project is opt-in ONLY: it must not exist in the `projects` array unless
+    // CAPTURE_SCREENSHOTS is explicitly set, because a bare `playwright test` (which is
+    // what `npm run test:e2e` runs) executes every project with no --project flag given.
+    // testDir scoping alone does NOT stop that -- do not "clean this up" into an
+    // unconditional entry, or captures become reachable from CI / any bare invocation.
+    ...(process.env.CAPTURE_SCREENSHOTS
+      ? [
+          {
+            name: 'screenshots',
+            testDir: './e2e/screenshots',
+            dependencies: ['crm-auth'],
+            use: {
+              ...devices['Desktop Chrome'],
+              baseURL: CRM_BASE_URL,
+              storageState: authFile,
+              viewport: { width: 1440, height: 900 },
+              deviceScaleFactor: 2,
+              colorScheme: 'light' as const,
+            },
+          },
+        ]
+      : []),
     {
       name: 'hub',
       testDir: './e2e/hub',
