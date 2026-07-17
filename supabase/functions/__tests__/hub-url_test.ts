@@ -58,6 +58,9 @@ function makeDb(opts: {
 }
 
 Deno.test("resolveHubUrl: returns a link for a live token on an enabled plan", async () => {
+  // appBaseUrl() now throws when APP_BASE_URL is unset — set it explicitly so this test's
+  // success path is independent of whatever order the suite runs in.
+  Deno.env.set("APP_BASE_URL", "https://app.mesaas.com.br");
   const db = makeDb({ slug: "agencia-dk", token: "tok-1", featureOn: true });
   const url = await resolveHubUrl(db, 7, "ws-1");
   assertEquals(url.endsWith("/agencia-dk/hub/tok-1"), true);

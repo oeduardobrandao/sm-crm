@@ -3,6 +3,7 @@ import { timingSafeEqual } from "../_shared/crypto.ts";
 import { bucketWorkspace } from "../_shared/radar-logic.ts";
 import { createRetentionRadarCronHandler } from "./handler.ts";
 import { buildRadarEmail, type RadarRow } from "./email.ts";
+import { reportCronFailure } from "../_shared/triage.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -12,9 +13,8 @@ Deno.serve(createRetentionRadarCronHandler({
   cronSecret: CRON_SECRET,
   timingSafeEqual,
   run: async () => {
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
     try {
-      const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
       // Paying and trialing only. A dormant Free workspace is an activation failure, not churn
       // risk, and would drown the list — PostHog measures that population instead.
       const { data: subs, error: subsErr } = await supabase
@@ -122,6 +122,9 @@ Deno.serve(createRetentionRadarCronHandler({
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Unknown error";
       console.error("retention-radar-cron failed:", message);
+      await reportCronFailure(supabase, "retention-radar-cron", {
+        stack: message,
+      });
       return new Response(JSON.stringify({ error: "Internal server error" }), {
         status: 500, headers: { "Content-Type": "application/json" },
       });
