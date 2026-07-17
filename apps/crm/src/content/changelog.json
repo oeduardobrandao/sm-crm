@@ -1,6 +1,33 @@
 {
-  "lastMergedAt": "2026-07-02T13:44:13Z",
+  "lastMergedAt": "2026-07-07T21:42:36Z",
   "releases": [
+    {
+      "date": "2026-07-11",
+      "summary": "Melhorias na criação e gerenciamento de mídias e imagens",
+      "items": [
+        {
+          "type": "feature",
+          "area": "Mídia",
+          "title": "Upload e configuração de mídias em posts",
+          "description": "Agora é possível fazer upload de imagens e configurar mídias em posts de forma automática, sem necessidade de etapas manuais.",
+          "pr": 195
+        },
+        {
+          "type": "fix",
+          "area": "Estúdio",
+          "title": "Correção do armazenamento de imagens geradas por IA",
+          "description": "Imagens geradas por IA agora são armazenadas com o formato e dimensões corretos, evitando problemas de visualização.",
+          "pr": 193
+        },
+        {
+          "type": "fix",
+          "area": "Estúdio",
+          "title": "Correção da geração de imagens com OAuth",
+          "description": "A geração de imagens com OAuth agora funciona corretamente, sem erros de UUID ou rejeição de modelo.",
+          "pr": 192
+        }
+      ]
+    },
     {
       "date": "2026-07-04",
       "summary": "Melhorias e correções em várias áreas do Mesaas",
