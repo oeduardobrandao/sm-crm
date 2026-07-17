@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useEntitlements } from '../hooks/useEntitlements';
 import type { Cliente, Lead, Membro, Workflow } from '../store';
 import type { PortfolioAccount } from '../services/analytics';
 
@@ -25,14 +26,37 @@ export function OnboardingBanner({
 
   const [dismissed, setDismissed] = useState(() => localStorage.getItem(storageKey) === 'true');
 
-  const steps = [
-    { label: 'Conta criada', done: true, to: null },
-    { label: 'Adicionar primeiro cliente', done: clientes.length > 0, to: '/clientes' },
-    { label: 'Criar primeiro lead', done: leads.length > 0, to: '/leads' },
-    { label: 'Adicionar membro da equipe', done: membros.length > 0, to: '/equipe' },
-    { label: 'Conectar conta do Instagram', done: portfolioAccounts.length > 0, to: '/analytics' },
-    { label: 'Criar fluxo de entrega', done: workflows.length > 0, to: '/entregas' },
+  const { hasFeature } = useEntitlements();
+
+  // Each step carries the flag its destination is gated behind. Without this the checklist offers
+  // Free users steps whose routes are nav-hidden and paywalled: the list can never reach 100%,
+  // so it never auto-dismisses, and every click lands on an upgrade wall.
+  // hasFeature is fail-open while entitlements load, matching the rest of the app.
+  const allSteps = [
+    { label: 'Conta criada', done: true, to: null, feature: null },
+    {
+      label: 'Adicionar primeiro cliente',
+      done: clientes.length > 0,
+      to: '/clientes',
+      feature: null,
+    },
+    {
+      label: 'Criar primeiro lead',
+      done: leads.length > 0,
+      to: '/leads',
+      feature: 'feature_leads',
+    },
+    { label: 'Adicionar membro da equipe', done: membros.length > 0, to: '/equipe', feature: null },
+    {
+      label: 'Conectar conta do Instagram',
+      done: portfolioAccounts.length > 0,
+      to: '/analytics',
+      feature: 'feature_analytics_reports',
+    },
+    { label: 'Criar fluxo de entrega', done: workflows.length > 0, to: '/entregas', feature: null },
   ];
+
+  const steps = allSteps.filter((s) => s.feature === null || hasFeature(s.feature));
 
   const completedCount = steps.filter((s) => s.done).length;
 
