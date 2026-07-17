@@ -44,6 +44,8 @@ export interface WorkspaceSubscription {
   plan_id: string | null;
   current_period_end: string | null;
   cancel_at_period_end: boolean;
+  past_due_since: string | null;
+  next_payment_attempt: string | null;
 }
 
 const FUNCTIONS_BASE = (import.meta.env.VITE_SUPABASE_URL as string) + '/functions/v1';
@@ -125,7 +127,9 @@ export async function getWorkspaceSubscription(): Promise<WorkspaceSubscription 
   if (!profile?.conta_id) return null;
   const { data, error } = await supabase
     .from('workspace_subscriptions')
-    .select('status, plan_id, current_period_end, cancel_at_period_end')
+    .select(
+      'status, plan_id, current_period_end, cancel_at_period_end, past_due_since, next_payment_attempt',
+    )
     .eq('workspace_id', profile.conta_id)
     .maybeSingle();
   if (error) throw new Error(error.message);

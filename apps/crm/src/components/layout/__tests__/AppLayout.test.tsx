@@ -46,6 +46,10 @@ vi.mock('../GlobalBannerContainer', () => ({
   default: () => <div data-testid="global-banner" />,
 }));
 
+vi.mock('../../billing/DunningBanner', () => ({
+  DunningBanner: () => null,
+}));
+
 vi.mock('../../help/ContextHelpLinks', () => ({
   ContextHelpLinks: () => null,
 }));

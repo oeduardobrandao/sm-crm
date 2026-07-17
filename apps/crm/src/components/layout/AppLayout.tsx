@@ -4,6 +4,7 @@ import { lazy, Suspense, useEffect, useState, useCallback } from 'react';
 import Sidebar from './Sidebar';
 import MobileNav from './MobileNav';
 import TopBar from './TopBar';
+import { DunningBanner } from '../billing/DunningBanner';
 
 const GlobalBannerContainer = lazy(() => import('./GlobalBannerContainer'));
 
@@ -68,6 +69,7 @@ export default function AppLayout() {
       )}
 
       <Suspense fallback={null}>
+        <DunningBanner />
         <GlobalBannerContainer />
       </Suspense>
 
