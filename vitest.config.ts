@@ -23,6 +23,12 @@ export default defineConfig({
       'apps/**/*.{test,spec}.{ts,tsx}',
       'test/**/*.{test,spec}.{ts,tsx}',
       'scripts/**/*.test.mjs',
+      // Scoped to e2e/screenshots/__tests__ today (safety.ts unit tests).
+      // Correct as-is, but this glob is repo-wide under e2e/** -- if a future
+      // __tests__ dir appears elsewhere under e2e/ (e.g. alongside actual
+      // Playwright specs), vitest would also try to collect those .test.ts
+      // files, which are meant for the Playwright runner, not vitest.
+      'e2e/**/__tests__/**/*.test.ts',
     ],
     coverage: {
       provider: 'v8',

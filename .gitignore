@@ -48,6 +48,7 @@ markdowns/cybersecurity_analysis.md
 
 # Playwright E2E
 e2e/.auth/
+e2e/.shots/
 test-results/
 playwright-report/
 
