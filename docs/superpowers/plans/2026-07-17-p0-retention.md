@@ -1714,7 +1714,7 @@ and fire the event **on the success path only** — never before the mutation re
 | `AnalyticsContaPage.tsx` | in the generate-report success path | `captureEvent('report_generated')` |
 | `ConfiguracaoPage.tsx` | in `handleInvite` after the invite POST succeeds | `captureEvent('invite_sent')` |
 
-`instagram_connected` fires from the OAuth return handler on `/clientes/:id` — find where the success toast for a connected account is raised and add `captureEvent('instagram_connected')` beside it.
+`instagram_connected` — **DEFERRED to a follow-up, not shipped in this PR.** Implementation found there is no correct place to fire it: the OAuth callback (`supabase/functions/instagram-integration/index.ts:401`) redirects to `/clientes/:id` with no first-connection query param, and the only IG success toast fires on every manual re-sync — so hooking it there would count re-syncs as new connections and corrupt the funnel. Making it measurable requires adding a signal to the OAuth redirect (a sensitive edge-function change with a redeploy), which is out of scope for this analytics PR. The event name already exists in the `AnalyticsEvent` union; the follow-up only needs to place the call. `hub_link_copied` — the spec's real activation-milestone proxy — ships here, so the funnel's key step is covered.
 
 - [ ] **Step 2: Verify nothing broke**
 
