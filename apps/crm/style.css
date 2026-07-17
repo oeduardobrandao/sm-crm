@@ -8227,12 +8227,20 @@ body.landing-page #root {
   }
 
   .cliente-detalhe-nav__item--active {
-    color: var(--primary-color);
-    background: rgba(234, 179, 8, 0.1);
-    font-weight: 500;
+    color: var(--text-main);
+    background: rgba(234, 179, 8, 0.16);
+    font-weight: 600;
+  }
+
+  .cliente-detalhe-nav__item--active .cliente-detalhe-nav__icon {
+    color: var(--primary-hover);
   }
 
   .cliente-detalhe-nav__item--action {
-    color: var(--primary-color);
+    color: var(--text-main);
+  }
+
+  .cliente-detalhe-nav__item--action .cliente-detalhe-nav__icon {
+    color: var(--primary-hover);
   }
 }
