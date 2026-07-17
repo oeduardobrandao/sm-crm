@@ -245,9 +245,13 @@ Create `supabase/functions/_shared/app-url.ts`:
  * and coupling the two would make an OAuth change silently rewrite customer email links.
  */
 export function appBaseUrl(): string {
-  return Deno.env.get("APP_BASE_URL") ?? "http://localhost:5173";
+  const url = Deno.env.get("APP_BASE_URL");
+  if (!url) throw new Error("APP_BASE_URL environment variable is required");
+  return url;
 }
 ```
+
+`APP_BASE_URL` is **required, no fallback** — matching the repo's `TOKEN_ENCRYPTION_KEY`/`CRON_SECRET` convention. A localhost fallback would ship a `http://localhost:5173` link in a "last warning" dunning email or a dead Hub button in a report email if the var were missed in prod. Both callers (`notifyOwnerOfFailure`, `resolveHubUrl`) are try/catch-wrapped, so the throw degrades to a safe, logged omission rather than a bad link. (Local dev sets `APP_BASE_URL` in its edge env like any other required secret.)
 
 - [ ] **Step 7: Commit**
 
@@ -1250,6 +1254,7 @@ Create `supabase/functions/retention-radar-cron/index.ts`:
 ```ts
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { timingSafeEqual } from "../_shared/crypto.ts";
+import { reportCronFailure } from "../_shared/triage.ts";
 import { bucketWorkspace } from "../_shared/radar-logic.ts";
 import { createRetentionRadarCronHandler } from "./handler.ts";
 import { buildRadarEmail, type RadarRow } from "./email.ts";
@@ -1376,6 +1381,10 @@ Deno.serve(createRetentionRadarCronHandler({
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Unknown error";
       console.error("retention-radar-cron failed:", message);
+      // pg_cron-layer failures are silent, so this in-function alert is the only signal a broken
+      // radar gives — every sibling cron does the same. Only the total-failure catch alerts;
+      // per-item failures are counted/logged in the loop above, not sent here.
+      await reportCronFailure(supabase, "retention-radar-cron", { stack: message });
       return new Response(JSON.stringify({ error: "Internal server error" }), {
         status: 500, headers: { "Content-Type": "application/json" },
       });
@@ -2111,7 +2120,7 @@ If vitest starts failing strangely right after `test:functions`, Deno's `--node-
 Per component, in order. Component 1 ships first — it is the revenue fix and must not queue behind analytics review.
 
 1. **Confirm the target project.** `cat supabase/.temp/project-ref` — the repo defaults to **prod**.
-2. **Component 1:** apply `20260717000001`, set the `APP_BASE_URL` secret, deploy `stripe-webhook --use-api`, deploy the CRM. Then configure Stripe: Smart Retries on, ~4 attempts over ~14 days, terminal action **cancel subscription**, Stripe's own failed-payment emails on. Verify with a test-clock subscription that a failed invoice produces the email and the banner.
+2. **Component 1:** apply `20260717000001`, set the `APP_BASE_URL` secret (**now required — `appBaseUrl()` throws without it, so both the dunning email and the report Hub link silently omit rather than ship a localhost link; set it before deploying either function**), deploy `stripe-webhook --use-api`, deploy the CRM. Then configure Stripe: Smart Retries on, ~4 attempts over ~14 days, terminal action **cancel subscription**, Stripe's own failed-payment emails on. Verify with a test-clock subscription that a failed invoice produces the email and the banner.
 3. **Component 2:** deploy `retention-radar-cron --use-api` **first**, then apply `20260717000002`. Confirm with `SELECT jobname, active FROM cron.job WHERE jobname = 'retention-radar-cron';` and trigger once manually with the `x-cron-secret` header to check the digest renders.
 4. **Component 3:** set `VITE_POSTHOG_KEY` and `VITE_POSTHOG_HOST` in Vercel, deploy, confirm events land in PostHog EU.
 5. **Component 4:** only after the `cron.job` verification above. Deploy `instagram-analytics` and `report-worker` with `--use-api`.
