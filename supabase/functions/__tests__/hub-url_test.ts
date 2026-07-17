@@ -26,6 +26,7 @@ function makeDb(opts: {
   slug: string | null;
   token: string | null;
   featureOn: boolean;
+  rpcError?: unknown;
 }): SupabaseClient {
   return {
     from: (table: string) => ({
@@ -49,7 +50,10 @@ function makeDb(opts: {
       }),
       _table: table,
     }),
-    rpc: async () => ({ data: opts.featureOn, error: null }),
+    rpc: async () =>
+      opts.rpcError
+        ? { data: null, error: opts.rpcError }
+        : { data: opts.featureOn, error: null },
   } as unknown as SupabaseClient;
 }
 
@@ -73,5 +77,18 @@ Deno.test("resolveHubUrl: returns empty when the plan lost feature_hub_portal", 
 
 Deno.test("resolveHubUrl: returns empty when the workspace has no slug", async () => {
   const db = makeDb({ slug: null, token: "tok-1", featureOn: true });
+  assertEquals(await resolveHubUrl(db, 7, "ws-1"), "");
+});
+
+Deno.test("resolveHubUrl: returns empty (never throws) when the feature RPC errors", async () => {
+  // effectivePlanFeature throws on any RPC error. resolveHubUrl's docstring promises the
+  // failure mode stays "no button" rather than an error propagating into the caller
+  // (instagram-analytics' manual send, report-worker's monthly auto-send) — verify that holds.
+  const db = makeDb({
+    slug: "agencia-dk",
+    token: "tok-1",
+    featureOn: true,
+    rpcError: new Error("rpc unavailable"),
+  });
   assertEquals(await resolveHubUrl(db, 7, "ws-1"), "");
 });
