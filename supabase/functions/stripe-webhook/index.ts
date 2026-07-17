@@ -6,6 +6,15 @@ import {
   statusToPlanId,
   type PlanPriceRow,
 } from "../_shared/billing-logic.ts";
+import {
+  buildFailureEpisode,
+  buildRecoveryEpisode,
+  isRecoveredStatus,
+  selectDunningStage,
+  type DunningEpisode,
+} from "../_shared/dunning-logic.ts";
+import { sendDunningEmail } from "../_shared/dunning-email.ts";
+import { appBaseUrl } from "../_shared/app-url.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -102,6 +111,11 @@ async function syncSubscription(
     ?? subPeriod.items?.data?.[0]?.current_period_end
     ?? null;
 
+  // Upsert only writes the columns provided, so spreading {} leaves the episode fields untouched
+  // for non-recovery statuses. This is also the fix for failed_payment_count never resetting —
+  // without it a recovered workspace reads as permanently troubled in the admin.
+  const recovery = isRecoveredStatus(sub.status) ? buildRecoveryEpisode() : {};
+
   await svc.from("workspace_subscriptions").upsert({
     workspace_id: workspaceId,
     stripe_customer_id: customerId,
@@ -112,6 +126,7 @@ async function syncSubscription(
     current_period_end: periodEndUnix
       ? new Date(periodEndUnix * 1000).toISOString() : null,
     cancel_at_period_end: sub.cancel_at_period_end ?? false,
+    ...recovery,
     updated_at: new Date().toISOString(),
   }, { onConflict: "workspace_id" });
 
@@ -125,16 +140,74 @@ async function handlePaymentFailed(svc: SupabaseClient, invoice: Stripe.Invoice)
   const customerId = typeof invoice.customer === "string"
     ? invoice.customer : invoice.customer?.id;
   if (!customerId) return;
+
+  // past_due_since is selected so buildFailureEpisode can coalesce against its own prior value.
   const { data: row } = await svc
-    .from("workspace_subscriptions").select("workspace_id")
+    .from("workspace_subscriptions").select("workspace_id, past_due_since")
     .eq("stripe_customer_id", customerId).maybeSingle();
   if (!row?.workspace_id) throw new Error(`No workspace for failed-invoice customer ${customerId}`);
-  // Idempotent: assign Stripe's authoritative attempt counter, never increment.
+
+  const nextAttempt = invoice.next_payment_attempt ?? null;
+  const episode = buildFailureEpisode(
+    (row.past_due_since as string | null) ?? null,
+    invoice.attempt_count ?? 0,
+    nextAttempt,
+    new Date(),
+  );
+
   await svc.from("workspace_subscriptions").update({
     status: "past_due",
-    failed_payment_count: invoice.attempt_count ?? 0,
+    ...episode,
     updated_at: new Date().toISOString(),
   }).eq("workspace_id", row.workspace_id);
+
+  await notifyOwnerOfFailure(svc, row.workspace_id as string, invoice, nextAttempt, episode);
+}
+
+/**
+ * Tell the owner their payment failed. Swallows everything: a throw here would 500 the handler,
+ * Stripe would redeliver, and the customer would get the same mail again.
+ *
+ * The owner is the only role that can act — billing-checkout and billing-portal are owner-gated.
+ */
+async function notifyOwnerOfFailure(
+  svc: SupabaseClient,
+  workspaceId: string,
+  invoice: Stripe.Invoice,
+  nextAttempt: number | null,
+  episode: DunningEpisode,
+) {
+  try {
+    const { data: ws } = await svc
+      .from("workspaces").select("name").eq("id", workspaceId).maybeSingle();
+
+    // workspace_members, not profiles.conta_id: profiles has no email column, and conta_id is the
+    // legacy single-workspace field. This is the path platform-admin already uses.
+    const { data: ownerMember } = await svc
+      .from("workspace_members").select("user_id")
+      .eq("workspace_id", workspaceId).eq("role", "owner").limit(1).maybeSingle();
+    if (!ownerMember?.user_id) return;
+
+    const { data: ownerUser } = await svc.auth.admin.getUserById(ownerMember.user_id as string);
+    const to = ownerUser?.user?.email;
+    if (!to) return;
+
+    await sendDunningEmail({
+      to,
+      stage: selectDunningStage(invoice.attempt_count ?? 0, nextAttempt),
+      workspaceName: (ws?.name as string | undefined) ?? "seu workspace",
+      nextAttemptLabel: formatAttemptLabel(episode.next_payment_attempt),
+      billingUrl: `${appBaseUrl()}/configuracao/cobranca`,
+    });
+  } catch (_e) {
+    console.error("[stripe-webhook] dunning notification failed");
+  }
+}
+
+/** "2026-07-24T10:00:00.000Z" -> "24 de julho". Null when Stripe will not retry again. */
+function formatAttemptLabel(iso: string | null): string | null {
+  if (!iso) return null;
+  return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "long" });
 }
 
 /** Effective-plan write, guarded so admin comps (plan_source='manual') are never overridden. */
