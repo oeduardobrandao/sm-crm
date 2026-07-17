@@ -849,20 +849,29 @@ export function DunningBanner() {
 Run: `npx vitest run apps/crm/src/components/billing/__tests__/DunningBanner.test.tsx`
 Expected: PASS, 3 tests.
 
-- [ ] **Step 6: Mount it in the layout**
+- [ ] **Step 6: Mount it inside the fixed banner stack**
 
-In `apps/crm/src/components/layout/AppLayout.tsx`, add the import at the top:
+`.app-container` is `display: flex` with default `flex-direction: row` on desktop (`apps/crm/style.css:195`), and TopBar / Sidebar / `.banner-container` are all `position: fixed`. A banner mounted as a bare sibling there becomes a row flex item and gets squeezed beside `.main-content` instead of spanning the top. jsdom computes no layout, so no test catches this.
+
+Making `DunningBanner` itself `position: fixed` is also wrong: `GlobalBannerContainer` **owns `--banner-height`** (measuring its own `offsetHeight` into it, resetting to `0px` on cleanup), and that variable drives the TopBar `top`, Sidebar `top`/`height`, and `.main-content` `margin-top`/`height` (`style.css:211,214,538,765,767`). Two writers clobber each other; a fixed banner that does not contribute to it overlays the TopBar.
+
+So `GlobalBannerContainer` becomes the single owner of the stack: give it an optional `children` prop rendered inside `.banner-container` **above** the mapped banners (a billing failure outranks an announcement), and make it always render the container rather than returning `null` when empty (an empty flex-column div measures 0px, so `--banner-height` correctly stays `0px`).
+
+Measure with a **`ResizeObserver` on the container**, not an effect keyed on `[banners.length]`: `DunningBanner` resolves its own TanStack Query and can appear *without* re-rendering `GlobalBannerContainer`, which would leave the height stale at `0px`. jsdom has no `ResizeObserver` — guard with `typeof ResizeObserver === 'undefined'`, still setting an initial height and still resetting to `0px` on cleanup; disconnect the observer on cleanup.
+
+In `AppLayout.tsx`:
 
 ```tsx
 import { DunningBanner } from '../billing/DunningBanner';
+...
+        <GlobalBannerContainer>
+          <DunningBanner />
+        </GlobalBannerContainer>
 ```
 
-and render it immediately before the existing `<GlobalBannerContainer />` (around line 71):
+`DunningBanner` does no positioning of its own — it renders a `.banner-bar` row like the rest of the stack.
 
-```tsx
-        <DunningBanner />
-        <GlobalBannerContainer />
-```
+Note: `AppLayout.test.tsx` mocks `GlobalBannerContainer`; the mock must render its `children`, or the composition is silently untested.
 
 - [ ] **Step 7: Typecheck, then commit**
 
