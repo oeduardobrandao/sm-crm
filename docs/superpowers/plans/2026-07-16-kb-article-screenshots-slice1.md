@@ -27,7 +27,7 @@
 | File | Responsibility |
 |---|---|
 | `apps/crm/src/pages/ajuda/__tests__/inlineImageSchema.test.ts` | Create — guards the load-bearing schema assumption |
-| `supabase/migrations/20260716000001_kb_images_bucket.sql` | Create — public bucket, read-only policy |
+| `supabase/migrations/20260717000001_kb_images_bucket.sql` | Create — public bucket, read-only policy |
 | `e2e/screenshots/safety.ts` | Create — network safety net, blocked-endpoint list |
 | `e2e/screenshots/__tests__/safety.test.ts` | Create — proves the net aborts blocked calls |
 | `e2e/screenshots/capture.ts` | Create — shared capture helper (viewport, theme, wait, write) |
@@ -35,7 +35,7 @@
 | `playwright.config.ts` | Modify — add `screenshots` project, excluded from CI |
 | `package.json` | Modify — add `screenshots:capture` script |
 | `scripts/upload-kb-images.mjs` | Create — uploads PNGs to `kb-images`, prints URL map |
-| `supabase/migrations/20260716000002_kb_article_screenshots.sql` | Create — `_kb_shot_*` helpers + re-declared articles |
+| `supabase/migrations/20260717000002_kb_article_screenshots.sql` | Create — `_kb_shot_*` helpers + re-declared articles |
 | `docs/superpowers/plans/2026-07-16-external-shot-list.md` | Create — manual capture instructions |
 
 ---
@@ -135,7 +135,7 @@ git commit -m "test(ajuda): guard inlineImage nesting inside article listItem"
 ### Task 2: Public `kb-images` bucket
 
 **Files:**
-- Create: `supabase/migrations/20260716000001_kb_images_bucket.sql`
+- Create: `supabase/migrations/20260717000001_kb_images_bucket.sql`
 
 **Interfaces:**
 - Produces: bucket id `kb-images`; public URL shape `<SUPABASE_URL>/storage/v1/object/public/kb-images/<slug>/<NN>-<name>.png`
@@ -190,7 +190,7 @@ Expected: one row, `public = true`.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add supabase/migrations/20260716000001_kb_images_bucket.sql
+git add supabase/migrations/20260717000001_kb_images_bucket.sql
 git commit -m "feat(kb): add public kb-images bucket for article screenshots"
 ```
 
@@ -611,7 +611,7 @@ git commit -m "feat(kb): add upload script for public KB article screenshots"
 This task proves the whole design. After it, one real article renders real screenshots permanently.
 
 **Files:**
-- Create: `supabase/migrations/20260716000002_kb_article_screenshots.sql`
+- Create: `supabase/migrations/20260717000002_kb_article_screenshots.sql`
 
 **Interfaces:**
 - Consumes: public URLs from Task 5
@@ -798,7 +798,7 @@ DROP FUNCTION IF EXISTS _kb_shot_text(text);
 
 Replace all six `REPLACE_ME_NN` with the URLs printed in Task 5. Verify none remain:
 
-Run: `grep -c REPLACE_ME supabase/migrations/20260716000002_kb_article_screenshots.sql`
+Run: `grep -c REPLACE_ME supabase/migrations/20260717000002_kb_article_screenshots.sql`
 Expected: `0`
 
 - [ ] **Step 3: Confirm the linked project, then apply**
@@ -834,7 +834,7 @@ Expected: prose beginning "O que é o Post Express?…" with no URLs.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add supabase/migrations/20260716000002_kb_article_screenshots.sql
+git add supabase/migrations/20260717000002_kb_article_screenshots.sql
 git commit -m "feat(kb): add screenshots to Post Express article"
 ```
 
@@ -842,7 +842,7 @@ git commit -m "feat(kb): add screenshots to Post Express article"
 
 ### Tasks 7-10: Remaining Tier-1 articles
 
-Each follows Task 6 exactly: capture spec (Task 4 pattern) → review PNGs → upload (Task 5) → append a `_kb_shot_upsert_article` call to `20260716000002_kb_article_screenshots.sql` above the `DROP` block → verify as a cross-conta reader.
+Each follows Task 6 exactly: capture spec (Task 4 pattern) → review PNGs → upload (Task 5) → append a `_kb_shot_upsert_article` call to `20260717000002_kb_article_screenshots.sql` above the `DROP` block → verify as a cross-conta reader.
 
 The pattern is identical; only the content differs. Per-article specifics:
 
