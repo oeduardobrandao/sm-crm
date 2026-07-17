@@ -199,8 +199,14 @@ async function notifyOwnerOfFailure(
       nextAttemptLabel: formatAttemptLabel(episode.next_payment_attempt),
       billingUrl: `${appBaseUrl()}/configuracao/cobranca`,
     });
-  } catch (_e) {
-    console.error("[stripe-webhook] dunning notification failed");
+  } catch (e) {
+    // Internal log only — CLAUDE.md's "generic message" rule governs client responses, not
+    // server logs. Without the workspace id and reason, a dead Resend key looks exactly like a
+    // one-off blip, and nobody can tell which owner was never warned before losing access.
+    console.error(
+      `[stripe-webhook] dunning notification failed for workspace ${workspaceId}:`,
+      e instanceof Error ? e.message : String(e),
+    );
   }
 }
 
