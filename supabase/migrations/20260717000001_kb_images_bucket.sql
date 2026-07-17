@@ -2,9 +2,11 @@
 --
 -- These are app assets (like the logo), not tenant content: they are captured
 -- from a demo workspace and shown identically to every reader. Serving them
--- public and permanent is what makes them immune to the body-image expiry bug
--- (sign-r2-urls only re-signs kb_articles.cover_image_url, never images inside
--- the content JSONB, so a signed body image 403s once its 3600s URL expires).
+-- public and permanent is what makes them immune to the body-image expiry bug:
+-- sign-r2-urls only signs a key under the caller's own conta prefix or one that
+-- matches a published cover_image_url, so a signed image embedded in article
+-- BODY content (no conta_id on kb_articles, cross-conta readers) never resolves
+-- and 403s once its 3600s URL expires. A permanent public URL sidesteps signing.
 insert into storage.buckets (id, name, public)
 values ('kb-images', 'kb-images', true)
 on conflict (id) do nothing;

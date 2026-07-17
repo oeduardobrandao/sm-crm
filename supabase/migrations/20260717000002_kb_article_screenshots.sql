@@ -1,10 +1,16 @@
 -- Add screenshots to Tier-1 procedural KB articles.
 --
 -- Images are inlineImage nodes with r2Key = NULL and a permanent public URL
--- from the kb-images bucket. r2Key MUST stay NULL: a non-null value routes the
--- node through sign-r2-urls, which only re-signs kb_articles.cover_image_url
--- and never images inside the content JSONB -- so the node would keep its
--- 3600s presigned src and 403 an hour after authoring.
+-- from the kb-images bucket. r2Key MUST stay NULL. If it were set, the reader
+-- (ArtigoPage.tsx -> extractR2Keys) would POST it to sign-r2-urls, which only
+-- signs a key when it is under the CALLER's own conta prefix
+-- (contas/<callerContaId>/) or exact-matches a published kb_articles
+-- cover_image_url (sign-r2-urls/handler.ts:98-113). A KB body image is neither
+-- for a cross-conta reader -- kb_articles has no conta_id, and these files live
+-- in a public Supabase Storage bucket, not the R2 conta path -- so it would not
+-- resolve, the node would keep whatever presigned src it was authored with, and
+-- that 3600s URL would 403 an hour later. NULL bypasses that path entirely and
+-- the permanent public src renders verbatim.
 --
 -- Articles are re-declared in full (not patched) because
 -- _kb_shot_upsert_article takes the whole doc, matching the pattern used by
