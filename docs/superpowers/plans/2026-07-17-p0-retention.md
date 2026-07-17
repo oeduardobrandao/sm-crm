@@ -1874,28 +1874,36 @@ export async function resolveHubUrl(
   clienteId: number,
   contaId: string,
 ): Promise<string> {
-  const { data: ws } = await svc
-    .from("workspaces").select("slug").eq("id", contaId).maybeSingle();
-  const slug = (ws as { slug: string | null } | null)?.slug ?? null;
-  if (!slug) return "";
+  // Total no-throw contract: the send paths feed this straight into buildReportEmail. Every
+  // failure — a query error, or effectivePlanFeature's `throw error` on an RPC hiccup — must
+  // degrade to '' (no button) rather than propagate and kill the whole report email.
+  try {
+    const { data: ws } = await svc
+      .from("workspaces").select("slug").eq("id", contaId).maybeSingle();
+    const slug = (ws as { slug: string | null } | null)?.slug ?? null;
+    if (!slug) return "";
 
-  const { data: tok } = await svc
-    .from("client_hub_tokens")
-    .select("token")
-    .eq("cliente_id", clienteId)
-    .eq("conta_id", contaId)
-    .eq("is_active", true)
-    .gt("expires_at", new Date().toISOString())
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const token = (tok as { token: string | null } | null)?.token ?? null;
-  if (!token) return "";
+    const { data: tok } = await svc
+      .from("client_hub_tokens")
+      .select("token")
+      .eq("cliente_id", clienteId)
+      .eq("conta_id", contaId)
+      .eq("is_active", true)
+      .gt("expires_at", new Date().toISOString())
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const token = (tok as { token: string | null } | null)?.token ?? null;
+    if (!token) return "";
 
-  const featureOn = await effectivePlanFeature(svc, contaId, "feature_hub_portal");
-  if (!featureOn) return "";
+    const featureOn = await effectivePlanFeature(svc, contaId, "feature_hub_portal");
+    if (!featureOn) return "";
 
-  return buildHubUrl(appBaseUrl(), slug, token);
+    return buildHubUrl(appBaseUrl(), slug, token);
+  } catch (e) {
+    console.error("[hub-url] resolveHubUrl failed, omitting hub link:", e instanceof Error ? e.message : String(e));
+    return "";
+  }
 }
 ```
 
