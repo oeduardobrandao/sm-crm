@@ -16,7 +16,7 @@ const SECTIONS: Array<{ bucket: RadarBucket; title: string; hint: string }> = [
   { bucket: "past_due", title: "Pagamento falhando", hint: "Stripe está tentando cobrar. Fale antes do cancelamento." },
   { bucket: "trial_ending", title: "Trial acabando", hint: "Menos de 7 dias para converter." },
   { bucket: "dormant", title: "Dormentes", hint: "Mais de 30 dias sem uso real." },
-  { bucket: "cooling", title: "Esfriando", hint: "Entre 7 e 30 dias sem uso real." },
+  { bucket: "cooling", title: "Esfriando", hint: "Mais de 7 e até 30 dias sem uso real." },
 ];
 
 function fmtDate(iso: string | null): string {
