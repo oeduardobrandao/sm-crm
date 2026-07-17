@@ -56,6 +56,8 @@ export default defineConfig({
           {
             name: 'screenshots',
             testDir: './e2e/screenshots',
+            // Collect only .spec.ts Playwright tests; __tests__/ holds Vitest units (.test.ts) that would collide with expect
+            testMatch: /\.spec\.ts$/,
             dependencies: ['crm-auth'],
             use: {
               ...devices['Desktop Chrome'],
