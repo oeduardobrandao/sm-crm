@@ -22,6 +22,8 @@ Spec: `docs/superpowers/specs/2026-07-16-p0-retention-design.md`
 - **Deploy edge functions with `--use-api`** (the local Docker bundler is broken).
 - **A cron function needs `verify_jwt = false` in `config.toml` and must be deployed BEFORE its schedule migration is applied** — the schedule fires immediately.
 - **Check `supabase/.temp/project-ref` before any `--linked` command.** The repo defaults to **prod**.
+- **Run one edge test file directly** rather than trusting a `--filter` string to match every test in it (a filter matches on test *name*, so `--filter "Dunning"` silently misses `buildFailureEpisode`):
+  `npx deno test --no-check --node-modules-dir=auto --allow-env --allow-read --allow-net --allow-sys <path/to/file_test.ts>`
 - **`npm run test:functions` dirties the root `deno.lock` every time** (confirmed while writing this plan) and can pollute `node_modules` via Deno's `--node-modules-dir`. After running it: `git checkout -- deno.lock`. Never commit the root lockfile — only `supabase/functions/deno.lock` is committed, and only for an intentional dependency add. If the vitest suite starts failing oddly afterwards, run `npm ci`.
 - **Commit after every task.** Do not batch.
 
@@ -328,7 +330,7 @@ Deno.test("buildDunningCopy: every stage produces a non-empty subject and cta", 
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `npm run test:functions -- --filter "buildDunningCopy"`
+Run: `npx deno test --no-check --node-modules-dir=auto --allow-env --allow-read --allow-net --allow-sys supabase/functions/__tests__/dunning-email_test.ts`
 Expected: FAIL — `Module not found "../_shared/dunning-email.ts"`.
 
 - [ ] **Step 3: Write the implementation**
@@ -476,8 +478,8 @@ export async function sendDunningEmail(params: {
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `npm run test:functions -- --filter "Dunning"`
-Expected: PASS, 14 tests (8 from Task 1 + 6 here).
+Run: `npx deno test --no-check --node-modules-dir=auto --allow-env --allow-read --allow-net --allow-sys supabase/functions/__tests__/dunning-email_test.ts`
+Expected: PASS, 6 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -1128,7 +1130,7 @@ Deno.test("buildRadarEmail: says so plainly when nothing is at risk", () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `npm run test:functions -- --filter "retention-radar"`
+Run: `npx deno test --no-check --node-modules-dir=auto --allow-env --allow-read --allow-net --allow-sys supabase/functions/__tests__/retention-radar-cron_test.ts`
 Expected: FAIL — `Module not found "../retention-radar-cron/handler.ts"`.
 
 - [ ] **Step 3: Write the handler**
@@ -1355,7 +1357,7 @@ Deno.serve(createRetentionRadarCronHandler({
 
 - [ ] **Step 6: Run the tests to verify they pass**
 
-Run: `npm run test:functions -- --filter "retention-radar"`
+Run: `npx deno test --no-check --node-modules-dir=auto --allow-env --allow-read --allow-net --allow-sys supabase/functions/__tests__/retention-radar-cron_test.ts`
 Expected: PASS, 4 tests.
 
 - [ ] **Step 7: Register the function in config.toml**
