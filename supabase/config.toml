@@ -73,6 +73,9 @@ verify_jwt = false
 [functions.notification-deadline-cron]
 verify_jwt = false
 
+[functions.retention-radar-cron]
+verify_jwt = false
+
 [functions.notification-cleanup-cron]
 verify_jwt = false
 
