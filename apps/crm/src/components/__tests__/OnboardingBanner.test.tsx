@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { OnboardingBanner } from '../OnboardingBanner';
@@ -57,5 +57,34 @@ describe('OnboardingBanner', () => {
     renderBanner({ feature_leads: false, feature_analytics_reports: false });
     // 6 steps minus the 2 gated ones; "Conta criada" is already done.
     expect(screen.getByText('1 de 4')).toBeInTheDocument();
+  });
+
+  it('reaches 100% and auto-dismisses once a Free-plan user completes every offered step', async () => {
+    const features: Record<string, boolean> = {
+      feature_leads: false,
+      feature_analytics_reports: false,
+    };
+    useEntitlementsMock.mockReturnValue({
+      hasFeature: (flag: string) => features[flag] !== false,
+    });
+
+    // Only 4 steps are offered on Free (leads + analytics are gated out). Complete all 4:
+    // "Conta criada" is always done; the rest need a non-empty array to flip to done.
+    const { container } = render(
+      <MemoryRouter>
+        <OnboardingBanner
+          {...EMPTY}
+          clientes={[{}] as never}
+          membros={[{}] as never}
+          workflows={[{}] as never}
+        />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(localStorage.getItem('onboarding_dismissed_ws-1')).toBe('true');
+    });
+    expect(container.firstChild).toBeNull();
+    expect(screen.queryByText('Bem-vindo ao Mesaas!')).not.toBeInTheDocument();
   });
 });
