@@ -19,6 +19,7 @@ import { ListView } from './views/ListView';
 import { ConcludedView } from './views/ConcludedView';
 import { WorkflowDrawer } from './components/WorkflowDrawer';
 import { duplicateWorkflow } from '../../store';
+import { captureEvent } from '@/lib/analytics';
 
 type ActiveView = 'kanban' | 'chart' | 'calendar' | 'list' | 'concluded';
 
@@ -299,7 +300,10 @@ export default function EntregasPage() {
           clientes={clientes}
           membros={membros}
           templates={templates}
-          onCreated={refresh}
+          onCreated={() => {
+            captureEvent('workflow_created');
+            refresh();
+          }}
         />
       )}
       {editCard && (

@@ -117,6 +117,7 @@ import {
   toDisplayOrderUpdates,
   applyReorderToCache,
 } from '@/lib/briefingReorder';
+import { captureEvent } from '@/lib/analytics';
 
 // Raw Postgres error text must never reach the user.
 function mapTokenError(e: { message?: string }): string {
@@ -193,6 +194,7 @@ export function HubTab({ clienteId, contaId, workspaceSlug }: HubTabProps) {
   async function copyLink() {
     await navigator.clipboard.writeText(hubUrl);
     toast.success('Link copiado!');
+    captureEvent('hub_link_copied', { cliente_id: clienteId });
   }
 
   async function handleExtend() {
