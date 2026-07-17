@@ -79,6 +79,7 @@ import {
   type Quartiles,
   type RateKey,
 } from '../../lib/ig-rates';
+import { captureEvent } from '@/lib/analytics';
 
 Chart.register(...registerables);
 
@@ -1403,6 +1404,7 @@ function AnalyticsContent({
     try {
       await generateReport(clientId, month, generateIncludeAI);
       toast.success('Geração de relatório iniciada!');
+      captureEvent('report_generated');
       qc.invalidateQueries({ queryKey: ['analytics-reports', clientId] });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao gerar relatório');

@@ -1,4 +1,5 @@
 import { useRef, useEffect } from 'react';
+import type { ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useBanners } from '../../hooks/useBanners';
@@ -25,22 +26,52 @@ function contentHasLinks(content: string): boolean {
   return /\[.*?\]\(.*?\)/.test(content) || /<a\s/i.test(content);
 }
 
-export default function GlobalBannerContainer() {
+interface GlobalBannerContainerProps {
+  /**
+   * Rendered above the mapped global banners — a billing failure outranks an announcement.
+   * This component is the single owner of the fixed banner stack and the --banner-height
+   * variable it drives, so anything that needs to live in that stack (e.g. DunningBanner)
+   * is passed in here rather than mounted as a sibling.
+   */
+  children?: ReactNode;
+}
+
+export default function GlobalBannerContainer({ children }: GlobalBannerContainerProps) {
   const { banners, dismiss } = useBanners();
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Measured via ResizeObserver (not a `banners.length` dep): DunningBanner resolves its own
+  // TanStack Query independently and can appear without this component re-rendering, so an
+  // effect keyed on banner state alone would leave --banner-height stale.
   useEffect(() => {
-    const height = containerRef.current?.offsetHeight || 0;
-    document.documentElement.style.setProperty('--banner-height', `${height}px`);
+    const el = containerRef.current;
+    if (!el) return;
+
+    const setHeight = () => {
+      document.documentElement.style.setProperty('--banner-height', `${el.offsetHeight}px`);
+    };
+
+    setHeight();
+
+    if (typeof ResizeObserver === 'undefined') {
+      // jsdom (test environment) has no ResizeObserver — fall back to a one-time measurement.
+      return () => {
+        document.documentElement.style.setProperty('--banner-height', '0px');
+      };
+    }
+
+    const observer = new ResizeObserver(setHeight);
+    observer.observe(el);
+
     return () => {
+      observer.disconnect();
       document.documentElement.style.setProperty('--banner-height', '0px');
     };
-  }, [banners.length]);
-
-  if (banners.length === 0) return null;
+  }, []);
 
   return (
     <div ref={containerRef} className="banner-container">
+      {children}
       {banners.map((b) => {
         const styles = getStyles(b);
         const hasInlineLinks = contentHasLinks(b.content);

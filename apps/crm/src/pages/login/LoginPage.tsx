@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { Sparkles, ChevronRight, Images, Film, Camera } from 'lucide-react';
 import { signIn, signUp, resetPassword } from '../../lib/supabase';
+import { captureEvent } from '@/lib/analytics';
 
 type TabKey = 'login' | 'register' | 'forgot';
 
@@ -69,6 +70,7 @@ export default function LoginPage() {
     if (error) {
       toast.error(error.message);
     } else {
+      captureEvent('signup_completed');
       setRegisterSuccess(true);
       setRegNome('');
       setRegEmpresa('');

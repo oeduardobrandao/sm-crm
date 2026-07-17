@@ -66,6 +66,17 @@ export default function PoliticaPage() {
                   </li>
                   <li>Em caso de fusão, venda de ativos ou aquisição da empresa.</li>
                 </ul>
+                <p>Nossos provedores terceirizados incluem:</p>
+                <ul>
+                  <li>
+                    <strong>PostHog</strong> — análise de uso do produto (funis de ativação e
+                    retenção). Os dados são processados em servidores na União Europeia, o que
+                    constitui uma transferência internacional de dados pessoais para fora do Brasil,
+                    realizada em conformidade com a LGPD. Coletamos identificador de usuário,
+                    workspace, plano e eventos de uso do produto. Não enviamos conteúdo de clientes,
+                    mídias ou dados de pagamento.
+                  </li>
+                </ul>
               </>
             ),
           },

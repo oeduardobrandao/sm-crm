@@ -76,6 +76,7 @@ import { sanitizeUrl } from '../../utils/security';
 import { supabase } from '../../lib/supabase';
 import { useEntitlements } from '../../hooks/useEntitlements';
 import { FeatureGate } from '@/components/paywall/FeatureGate';
+import { captureEvent } from '@/lib/analytics';
 
 type ClienteFormValues = z.infer<ReturnType<typeof createClienteSchema>>;
 
@@ -231,6 +232,7 @@ export default function ClientesPage() {
           status: 'ativo',
         });
         toast.success(t('toast.added'));
+        captureEvent('client_created');
       }
       qc.invalidateQueries({ queryKey: ['clientes'] });
       setModalOpen(false);

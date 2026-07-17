@@ -9,6 +9,7 @@ import {
   healPendingInvite,
 } from '../lib/supabase';
 import { initStoreRole } from '../store/core';
+import { identifyWorkspaceUser, resetAnalytics } from '../lib/analytics';
 
 interface Profile {
   id: string;
@@ -112,6 +113,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!active || profileRequestId.current !== requestId) return;
 
         setProfile(nextProfile as Profile | null);
+        if (nextProfile) {
+          // plan_id is null here on purpose: AuthContext resolves before entitlements load, and
+          // blocking identify on a second request would delay every event behind it. Cohorting by
+          // plan is a follow-up — enrich the `workspace` group where useEntitlements already has it.
+          identifyWorkspaceUser(userId, {
+            workspace_id: (nextProfile as Profile).conta_id,
+            plan_id: null,
+            role: (nextProfile as Profile).role,
+          });
+        }
         await initStoreRole();
         if (!active || profileRequestId.current !== requestId) return;
 
@@ -158,6 +169,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     authGeneration.current += 1;
     profileRequestId.current += 1;
     await supabaseSignOut();
+    // Prevent the next user on a shared machine from being merged into this identity.
+    resetAnalytics();
     clearProfileCache();
     activeUserId.current = null;
     setUser(null);

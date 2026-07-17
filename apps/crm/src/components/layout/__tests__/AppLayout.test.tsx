@@ -43,7 +43,13 @@ vi.mock('../TopBar', () => ({
 }));
 
 vi.mock('../GlobalBannerContainer', () => ({
-  default: () => <div data-testid="global-banner" />,
+  default: ({ children }: { children?: React.ReactNode }) => (
+    <div data-testid="global-banner">{children}</div>
+  ),
+}));
+
+vi.mock('../../billing/DunningBanner', () => ({
+  DunningBanner: () => null,
 }));
 
 vi.mock('../../help/ContextHelpLinks', () => ({

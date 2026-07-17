@@ -4,6 +4,7 @@ import { checkRateLimit } from "../_shared/rate-limit.ts";
 import { insertAuditLog } from "../_shared/audit.ts";
 import { featureForPath } from "../_shared/feature-guard.ts";
 import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
+import { resolveHubUrl } from "../_shared/hub-url.ts";
 import { createJsonResponder, internalServerError } from "../_shared/http.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -1330,7 +1331,7 @@ O campo priorityActions deve ter entre 3 e 5 ações distribuídas entre as cont
       // 7. Build and send email
       const { buildReportEmail } = await import("../_shared/report-template/email.ts");
 
-      const hubUrl = ''; // Hub link would need client_hub_tokens lookup — keep simple for now
+      const hubUrl = await resolveHubUrl(serviceClient, report.client_id, contaId);
       const emailHtml = buildReportEmail({
         clientName: cliente.nome,
         month: report.report_month,

@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
+import { captureEvent } from '@/lib/analytics';
 
 export default function WorkspaceSetupPage() {
   const navigate = useNavigate();
@@ -45,6 +46,7 @@ export default function WorkspaceSetupPage() {
 
       await refetchProfile();
 
+      captureEvent('workspace_setup_completed');
       setLoading(false);
       setDone(true);
       setTimeout(() => setProgressWidth(100), 100);

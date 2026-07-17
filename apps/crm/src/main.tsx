@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import { initSentry } from '@/lib/sentry';
+import { initAnalytics } from './lib/analytics';
 import { initI18n } from '@mesaas/i18n';
 import ptCommon from '../../../packages/i18n/locales/pt/common.json';
 import enCommon from '../../../packages/i18n/locales/en/common.json';
@@ -21,6 +22,7 @@ import App from './App';
 import '../style.css';
 
 initSentry();
+initAnalytics();
 
 initI18n({
   pt: {

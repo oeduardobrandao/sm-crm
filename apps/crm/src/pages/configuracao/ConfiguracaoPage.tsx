@@ -46,6 +46,7 @@ import {
   getWorkspaceBranding,
   updateWorkspaceBranding,
 } from '../../store';
+import { captureEvent } from '@/lib/analytics';
 
 function RoleBadge({ role }: { role: string }) {
   const map: Record<string, string> = {
@@ -442,6 +443,7 @@ export default function ConfiguracaoPage() {
       setInviteEmail('');
       setInviteRole('agent');
       toast.success('Convite enviado!');
+      captureEvent('invite_sent');
     } catch (err: unknown) {
       toast.error('Erro ao convidar: ' + (err as Error).message);
     } finally {
