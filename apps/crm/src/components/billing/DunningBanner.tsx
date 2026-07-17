@@ -34,25 +34,19 @@ export function DunningBanner() {
   return (
     <div
       role="alert"
+      className="banner-bar"
       style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: '1rem',
-        flexWrap: 'wrap',
-        padding: '0.75rem 1.25rem',
         background: 'rgba(245, 90, 66, 0.1)',
         borderBottom: '1px solid var(--danger)',
         color: 'var(--text-main)',
-        fontSize: '0.9rem',
       }}
     >
-      <span>
+      <div className="banner-content">
         <strong>Não conseguimos processar seu pagamento.</strong>{' '}
         {retryLabel
           ? `Vamos tentar novamente em ${retryLabel}. Atualize sua forma de pagamento para manter o acesso.`
           : 'Atualize sua forma de pagamento para não perder o acesso ao seu plano.'}
-      </span>
+      </div>
       <Link
         to="/configuracao/cobranca"
         style={{

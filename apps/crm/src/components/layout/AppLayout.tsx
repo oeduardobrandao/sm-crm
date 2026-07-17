@@ -69,8 +69,9 @@ export default function AppLayout() {
       )}
 
       <Suspense fallback={null}>
-        <DunningBanner />
-        <GlobalBannerContainer />
+        <GlobalBannerContainer>
+          <DunningBanner />
+        </GlobalBannerContainer>
       </Suspense>
 
       <Sidebar isDrawer={isTablet} isOpen={drawerOpen} onClose={closeDrawer} />

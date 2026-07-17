@@ -49,6 +49,23 @@ describe('DunningBanner', () => {
     expect(screen.getByText(/não conseguimos processar/i)).toBeInTheDocument();
   });
 
+  it('falls back to the no-retry-date copy when next_payment_attempt is null', async () => {
+    getWorkspaceSubscriptionMock.mockResolvedValue({
+      status: 'past_due',
+      plan_id: 'pro',
+      current_period_end: null,
+      cancel_at_period_end: false,
+      past_due_since: '2026-07-17T10:00:00.000Z',
+      next_payment_attempt: null,
+    });
+    renderBanner();
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(
+      screen.getByText(/atualize sua forma de pagamento para não perder o acesso ao seu plano/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/vamos tentar novamente/i)).not.toBeInTheDocument();
+  });
+
   it('stays silent when the subscription is healthy', async () => {
     getWorkspaceSubscriptionMock.mockResolvedValue({
       status: 'active',
