@@ -69,6 +69,9 @@ test('criar fluxo + visualizações walkthrough', async ({ page }) => {
   await page.getByRole('heading', { name: 'Entregas', exact: true }).waitFor();
   // Default view is Kanban; wait for at least one card so this isn't a blank board.
   await page.locator('.board-card').first().waitFor();
+  // The board mounts with a .animate-up fadeInUp; without this the shot is
+  // captured mid-fade and comes out washed-out (as the first run did).
+  await waitForFadeIn(page);
   await shoot(page, SLUG, 1, 'step-acessar-entregas');
 
   // Step 2 -- 'Clique em Novo Fluxo'
