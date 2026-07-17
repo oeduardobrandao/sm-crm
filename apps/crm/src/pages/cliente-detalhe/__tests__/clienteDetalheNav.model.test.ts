@@ -66,9 +66,7 @@ describe('buildNavModel — sections', () => {
   });
 
   it('agent: hub present even without contaId and workspaceSlug', () => {
-    const m = buildNavModel(
-      makeInput({ isAgent: true, contaId: null, workspaceSlug: undefined }),
-    );
+    const m = buildNavModel(makeInput({ isAgent: true, contaId: null, workspaceSlug: undefined }));
     expect(sectionKeys(m)).toContain('hub');
     expect(sectionKeys(m)).not.toContain('relatorio');
     expect(sectionKeys(m)).not.toContain('financeiro');
