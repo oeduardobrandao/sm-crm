@@ -157,6 +157,41 @@ Deno.test("validateForTikTokScheduling: stories tipo → single exact error, no 
 });
 
 // ============================================================
+// Rule 1b: a Supabase read `error` is an infra failure and must THROW — never get
+// swallowed into the PT-BR errors[] array. `data: null` with NO error keeps its
+// existing domain meaning ("Post não encontrado."). One pattern (workflow_posts) is
+// enough to pin the contract; the other three reads (post_file_links, workflows,
+// tiktok_accounts) follow the identical `if (error) throw` shape.
+// ============================================================
+
+Deno.test("validateForTikTokScheduling: workflow_posts read error THROWS (infra failure, not a PT-BR domain error)", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("workflow_posts", "select", { data: null, error: { message: "boom" } });
+  let threw = false;
+  let thrownMessage = "";
+  try {
+    await validateForTikTokScheduling(db as never, 1, { skipDateCheck: true });
+  } catch (e) {
+    threw = true;
+    thrownMessage = (e as Error).message;
+  }
+  assert(threw, "an infra read error must throw the validation function, not resolve to ok:false");
+  assert(
+    thrownMessage.includes("workflow_posts") && thrownMessage.includes("boom"),
+    `expected the thrown message to name the table and carry the original error, got: ${thrownMessage}`,
+  );
+});
+
+Deno.test("validateForTikTokScheduling: workflow_posts data:null with NO error still yields the domain 'not found' error (no throw)", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("workflow_posts", "select", { data: null, error: null });
+  const res = await validateForTikTokScheduling(db as never, 1, { skipDateCheck: true });
+  assert(res !== undefined, "must resolve, not throw, when there is simply no error");
+  assert(!res.ok);
+  assertEquals(res.errors, ["Post não encontrado."]);
+});
+
+// ============================================================
 // Rule 2: caption limits per tipo
 // ============================================================
 
@@ -328,6 +363,60 @@ Deno.test("validateForTikTokScheduling: TikTok-targeted photo over 20MB errors",
   });
   const res = await validateForTikTokScheduling(db as never, 1, { skipDateCheck: true });
   assert(res.errors.some((e) => e.includes("20 MB")));
+});
+
+// ============================================================
+// Rule 3b: feed — exactly 1 image (design doc "feed single image → Photo post (1 image)")
+// ============================================================
+
+Deno.test("validateForTikTokScheduling: feed with exactly 1 image passes the media check", async () => {
+  const db = createSupabaseQueryMock();
+  const account = await accountWithRealTokens();
+  Deno.env.set("TIKTOK_APP_AUDITED", "true");
+  try {
+    seed(db, {
+      tipo: "feed",
+      links: [imageLink(0)],
+      account,
+      tiktok_settings: { ...VALID_SETTINGS, privacy_level: "SELF_ONLY" },
+    });
+    const res = await validateForTikTokScheduling(db as never, 1, { skipDateCheck: true });
+    assert(res.ok, `expected ok, got: ${JSON.stringify(res.errors)}`);
+  } finally {
+    Deno.env.delete("TIKTOK_APP_AUDITED");
+  }
+});
+
+Deno.test("validateForTikTokScheduling: feed with 0 media fires the generic media-presence error, not the feed-count message", async () => {
+  const db = createSupabaseQueryMock();
+  seed(db, { tipo: "feed", links: [] });
+  const res = await validateForTikTokScheduling(db as never, 1, { skipDateCheck: true });
+  assert(res.errors.some((e) => e.includes("mídia")), `expected the media-presence error, got: ${JSON.stringify(res.errors)}`);
+  assert(
+    !res.errors.some((e) => e.includes("exatamente 1 imagem")),
+    "zero media must not additionally fire the feed-count message",
+  );
+});
+
+Deno.test("validateForTikTokScheduling: feed with 2 images fails with the feed single-image message", async () => {
+  const db = createSupabaseQueryMock();
+  seed(db, { tipo: "feed", links: [imageLink(0), imageLink(1)] });
+  const res = await validateForTikTokScheduling(db as never, 1, { skipDateCheck: true });
+  assert(
+    res.errors.includes("Posts de feed no TikTok devem ter exatamente 1 imagem."),
+    `expected the exact feed single-image message, got: ${JSON.stringify(res.errors)}`,
+  );
+});
+
+Deno.test("validateForTikTokScheduling: feed with a video file fails (photo route rejects any video item)", async () => {
+  const db = createSupabaseQueryMock();
+  seed(db, { tipo: "feed", links: [videoLink(0)] });
+  const res = await validateForTikTokScheduling(db as never, 1, { skipDateCheck: true });
+  assert(!res.ok);
+  assert(
+    res.errors.some((e) => e.toLowerCase().includes("vídeo")),
+    `expected a video-rejection error, got: ${JSON.stringify(res.errors)}`,
+  );
 });
 
 // ============================================================
@@ -662,6 +751,20 @@ Deno.test("buildVideoInitPayload: minimal settings → optional keys are genuine
   assertEquals(JSON.stringify(payload).includes("photo_cover_index"), false);
 });
 
+Deno.test("buildVideoInitPayload: settings lacking privacy_level → key genuinely ABSENT (same guard as other optional fields)", () => {
+  const post: ClaimedTikTokPost = {
+    tipo: "reels",
+    caption: "cap",
+    tiktok_title: null,
+    tiktok_settings: { disable_comment: true },
+  };
+  const payload = buildVideoInitPayload(post, "https://r2.example.com/v.mp4") as {
+    post_info: Record<string, unknown>;
+  };
+  assertEquals(Object.keys(payload.post_info).includes("privacy_level"), false);
+  assertEquals(JSON.stringify(payload).includes("privacy_level"), false);
+});
+
 const FULL_PHOTO_POST: ClaimedTikTokPost = {
   tipo: "carrossel",
   caption: "Descrição completa das fotos",
@@ -673,6 +776,14 @@ const FULL_PHOTO_POST: ClaimedTikTokPost = {
     brand_organic_toggle: true,
     brand_content_toggle: true,
     photo_cover_index: 1,
+    // Video-only settings, deliberately present on a photo post's tiktok_settings — the
+    // cross-contamination self-check below must prove buildPhotoInitPayload actually
+    // filters these out, not merely that a fixture happening to omit them produced no
+    // trace of them.
+    disable_duet: true,
+    disable_stitch: true,
+    is_aigc: true,
+    video_cover_timestamp_ms: 1000,
   },
 };
 
@@ -732,6 +843,20 @@ Deno.test("buildPhotoInitPayload: photo_cover_index defaults to 0 when unset in 
     source_info: { photo_cover_index: number };
   };
   assertEquals(payload.source_info.photo_cover_index, 0);
+});
+
+Deno.test("buildPhotoInitPayload: settings lacking privacy_level → key genuinely ABSENT (same guard as other optional fields)", () => {
+  const post: ClaimedTikTokPost = {
+    tipo: "carrossel",
+    caption: "desc",
+    tiktok_title: null,
+    tiktok_settings: { disable_comment: true },
+  };
+  const payload = buildPhotoInitPayload(post, ["https://r2.example.com/1.jpg"]) as {
+    post_info: Record<string, unknown>;
+  };
+  assertEquals(Object.keys(payload.post_info).includes("privacy_level"), false);
+  assertEquals(JSON.stringify(payload).includes("privacy_level"), false);
 });
 
 Deno.test("buildVideoInitPayload output never contains a photo-only key (grep-style self-check)", () => {

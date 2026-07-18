@@ -165,6 +165,13 @@ function validateMediaForTipo(
       );
     }
   }
+
+  // Feed maps to a single-image TikTok photo post (design doc: "feed single image ->
+  // Photo post (1 image)"). Only checked when no video item is present — the hasVideo
+  // branch above already rejects a video-in-feed post with its own message.
+  if (tipo === "feed" && !hasVideo && files.length !== 1) {
+    errors.push("Posts de feed no TikTok devem ter exatamente 1 imagem.");
+  }
 }
 
 function validatePrivacyLevel(errors: string[], settings: TikTokSettings) {
@@ -196,13 +203,16 @@ export async function validateForTikTokScheduling(
 ): Promise<TikTokValidationResult> {
   const errors: string[] = [];
 
-  const { data: post } = await db
+  const { data: post, error: postError } = await db
     .from("workflow_posts")
     .select(
       "id, platform, tipo, tiktok_caption, tiktok_title, tiktok_settings, ig_caption, scheduled_at, workflow_id",
     )
     .eq("id", postId)
     .single();
+  if (postError) {
+    throw new Error(`validateForTikTokScheduling: workflow_posts read failed: ${postError.message}`);
+  }
   if (!post) return { ok: false, errors: ["Post não encontrado."] };
 
   // TikTok Stories are not in the API (design doc, permanently out of scope). Nothing else
@@ -222,11 +232,14 @@ export async function validateForTikTokScheduling(
   const caption: string = post.tiktok_caption ?? post.ig_caption ?? "";
   validateCaptionAndTitle(errors, post.tipo, caption, post.tiktok_title);
 
-  const { data: links } = await db
+  const { data: links, error: linksError } = await db
     .from("post_file_links")
     .select("sort_order, files!inner(id, kind, mime_type, size_bytes, width, height, duration_seconds, r2_key)")
     .eq("post_id", postId)
     .order("sort_order", { ascending: true });
+  if (linksError) {
+    throw new Error(`validateForTikTokScheduling: post_file_links read failed: ${linksError.message}`);
+  }
 
   const mediaFiles: TikTokMediaFile[] = (links ?? []).map((l: any) => ({
     ...l.files,
@@ -250,18 +263,24 @@ export async function validateForTikTokScheduling(
     );
   }
 
-  const { data: workflow } = await db
+  const { data: workflow, error: workflowError } = await db
     .from("workflows")
     .select("cliente_id")
     .eq("id", post.workflow_id)
     .single();
+  if (workflowError) {
+    throw new Error(`validateForTikTokScheduling: workflows read failed: ${workflowError.message}`);
+  }
   if (!workflow) return { ok: false, errors: [...errors, "Workflow não encontrado."] };
 
-  const { data: account } = await db
+  const { data: account, error: accountError } = await db
     .from("tiktok_accounts")
     .select("id, encrypted_access_token, encrypted_refresh_token, tiktok_open_id, authorization_status")
     .eq("client_id", workflow.cliente_id)
     .maybeSingle();
+  if (accountError) {
+    throw new Error(`validateForTikTokScheduling: tiktok_accounts read failed: ${accountError.message}`);
+  }
 
   if (!account) {
     errors.push("Cliente não tem conta TikTok conectada.");
@@ -313,8 +332,10 @@ export function buildVideoInitPayload(post: ClaimedTikTokPost, videoUrl: string)
   const s = post.tiktok_settings ?? {};
   const postInfo: Record<string, unknown> = {
     title: post.caption,
-    privacy_level: s.privacy_level,
   };
+  if (s.privacy_level !== undefined && s.privacy_level !== null) {
+    postInfo.privacy_level = s.privacy_level;
+  }
   if (s.disable_comment !== undefined && s.disable_comment !== null) {
     postInfo.disable_comment = s.disable_comment;
   }
@@ -356,7 +377,9 @@ export function buildPhotoInitPayload(post: ClaimedTikTokPost, imageUrls: string
     postInfo.title = post.tiktok_title;
   }
   postInfo.description = post.caption;
-  postInfo.privacy_level = s.privacy_level;
+  if (s.privacy_level !== undefined && s.privacy_level !== null) {
+    postInfo.privacy_level = s.privacy_level;
+  }
   if (s.disable_comment !== undefined && s.disable_comment !== null) {
     postInfo.disable_comment = s.disable_comment;
   }
