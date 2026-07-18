@@ -90,8 +90,9 @@ ALTER TABLE oauth_states
 -- swapping instagram_accounts -> tiktok_accounts (client_id join to clientes.conta_id)
 -- and instagram_posts -> tiktok_posts (join via tiktok_accounts). Same USING
 -- expressions (FOR ALL with no explicit WITH CHECK defaults WITH CHECK to USING,
--- same as the Instagram policies). tiktok_follower_history and
--- tiktok_account_metrics_daily get the same account-join policy as tiktok_posts.
+-- same as the Instagram policies). tiktok_follower_history gets the same account-join
+-- policy as tiktok_posts. tiktok_account_metrics_daily uses service-role-only access
+-- (mirroring instagram_account_metrics_daily for system crons only).
 ALTER TABLE tiktok_accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tiktok_posts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tiktok_follower_history ENABLE ROW LEVEL SECURITY;
@@ -118,12 +119,12 @@ CREATE POLICY "tiktok_follower_history_via_account" ON tiktok_follower_history
     WHERE c.conta_id IN (SELECT conta_id FROM profiles WHERE id = auth.uid())
   ));
 
-CREATE POLICY "tiktok_account_metrics_daily_via_account" ON tiktok_account_metrics_daily
-  FOR ALL USING (tiktok_account_id IN (
-    SELECT ta.id FROM tiktok_accounts ta
-    JOIN clientes c ON c.id = ta.client_id
-    WHERE c.conta_id IN (SELECT conta_id FROM profiles WHERE id = auth.uid())
-  ));
+-- Service role full access only (metrics snapshots are system-generated, never queried by clients)
+CREATE POLICY "Service role full access" ON tiktok_account_metrics_daily
+  FOR ALL USING (auth.role() = 'service_role');
+
+CREATE INDEX IF NOT EXISTS idx_tiktok_metrics_daily_account_date
+  ON tiktok_account_metrics_daily(tiktok_account_id, snapshot_date DESC);
 
 -- Storage bucket for TikTok video cover/thumbnail caching, analogous in
 -- purpose to the `instagram-posts` bucket used by

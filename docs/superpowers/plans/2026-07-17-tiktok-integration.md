@@ -145,7 +145,7 @@ ALTER TABLE tiktok_account_metrics_daily ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tiktok_webhook_events ENABLE ROW LEVEL SECURITY;  -- no policies: service-role only
 ```
 
-Then append the adapted policies: open `20260310_instagram_rls.sql`, copy each `CREATE POLICY` for `instagram_accounts` → rewrite for `tiktok_accounts` (same `clientes.conta_id` USING expression, only the table name changes), and each `instagram_posts` policy → `tiktok_posts` (join path `tiktok_posts.tiktok_account_id → tiktok_accounts.client_id → clientes`). `tiktok_follower_history` and `tiktok_account_metrics_daily` get the same account-join policies as `tiktok_posts`. Keep policy names in the same naming style with `tiktok_` prefixes.
+Then append the adapted policies: open `20260310_instagram_rls.sql`, copy each `CREATE POLICY` for `instagram_accounts` → rewrite for `tiktok_accounts` (same `clientes.conta_id` USING expression, only the table name changes), and each `instagram_posts` policy → `tiktok_posts` (join path `tiktok_posts.tiktok_account_id → tiktok_accounts.client_id → clientes`). `tiktok_follower_history` gets the same account-join policy as `tiktok_posts`. `tiktok_account_metrics_daily` uses service-role-only access (matching `instagram_account_metrics_daily`: policy `FOR ALL USING (auth.role() = 'service_role')` + DESC index on `(tiktok_account_id, snapshot_date DESC)`, metrics snapshots are system-generated). Keep policy names in the same naming style with `tiktok_` prefixes.
 
 Also add the `tiktok-posts` public bucket statement found in Step 1 (mirroring `instagram-posts`).
 
