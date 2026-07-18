@@ -99,6 +99,7 @@ import { ImportToEstudioDialog } from '@/pages/estudio/ImportToEstudioDialog';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { InstagramCaptionField } from './InstagramCaptionField';
 import { PlatformSelector } from './PlatformSelector';
+import { TikTokSettingsPanel } from './TikTokSettingsPanel';
 import { ScheduleButton } from './ScheduleButton';
 import { DateTimePicker } from '@/components/ui/date-time-picker';
 import { supabase } from '@/lib/supabase';
@@ -708,6 +709,7 @@ export function WorkflowDrawer({
                           hubUrl={card.hubUrl}
                           templateId={card.workflow.template_id}
                           workflowId={workflowId}
+                          clienteId={clienteId}
                           isExpanded={expandedId === post.id}
                           isSaving={savingIds.has(post.id!)}
                           approvals={approvals.filter((a) => a.post_id === post.id)}
@@ -856,6 +858,7 @@ interface SortablePostItemProps {
   hubUrl?: string;
   templateId: number | null | undefined;
   workflowId: number;
+  clienteId: number;
   isExpanded: boolean;
   isSaving: boolean;
   approvals: PostApproval[];
@@ -895,6 +898,7 @@ function SortablePostItem({
   hubUrl,
   templateId,
   workflowId,
+  clienteId,
   isExpanded,
   isSaving,
   approvals,
@@ -1410,6 +1414,16 @@ function SortablePostItem({
               lockedMessage="Cancelar agendamento para editar"
             />
           ) : null}
+
+          {/* TikTok settings panel (Task C2) — audit-mandated creator_info compliance UI.
+              Mounted whenever this post targets TikTok, mirroring PlatformSelector's own
+              tipo==='stories' guard (TikTok has no Stories API, so platform can never be
+              'tiktok'/'both' on a stories post — PlatformSelector self-heals that case).
+              `onCompletenessChange`/`showTestModeBanner` are the documented seam for C3's
+              platform-aware ScheduleButton; not yet consumed here. */}
+          {(post.platform === 'tiktok' || post.platform === 'both') && (
+            <TikTokSettingsPanel clientId={clienteId} post={post} onFieldChange={onFieldChange} />
+          )}
 
           <ScheduleButton
             post={post}
