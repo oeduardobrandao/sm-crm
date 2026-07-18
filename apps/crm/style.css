@@ -8173,6 +8173,13 @@ body.landing-page #root {
   padding: 1rem 1.25rem;
 }
 
+.hub-tabs { min-width: 0; }
+.hub-tabs__list { max-width: 100%; }
+.hub-access { display: grid; gap: 0.75rem; }
+.hub-access__url { display: block; min-width: 0; width: 100%; }
+.hub-access__secondary-actions,
+.hub-access__primary-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+
 /* Smooth-scroll targets clear the top bar. Harmless when the rail is hidden. */
 #sec-info,
 #sec-entregas,
@@ -8255,6 +8262,25 @@ body.landing-page #root {
     min-height: 44px;
   }
 
+  .hub-tabs__list {
+    display: flex;
+    width: 100%;
+    height: auto;
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding: 0.25rem;
+    scroll-padding-inline: 0.25rem;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .hub-tabs__list::-webkit-scrollbar { display: none; }
+  .hub-tabs__list [role='tab'] { flex: 0 0 auto; min-height: 44px; }
+  .hub-access__secondary-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hub-access__primary-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hub-access__secondary-actions > *,
+  .hub-access__primary-actions > * { min-height: 44px; width: 100%; }
+
   .cliente-detalhe-nav {
     position: sticky;
     top: calc(var(--banner-height, 0px) + env(safe-area-inset-top, 0px));
@@ -8330,6 +8356,9 @@ body.landing-page #root {
   }
 
   .cliente-detalhe-header__edit { margin-left: 0; }
+
+  .hub-access__secondary-actions,
+  .hub-access__primary-actions { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (min-width: 768px) and (max-width: 1100px) {

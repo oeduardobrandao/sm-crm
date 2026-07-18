@@ -183,6 +183,15 @@ export function HubTab({ clienteId, contaId, workspaceSlug }: HubTabProps) {
 
   const [extending, setExtending] = useState(false);
   const [rotating, setRotating] = useState(false);
+  const [activeTab, setActiveTab] = useState('acesso');
+  const tabListRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const active = tabListRef.current?.querySelector<HTMLElement>(
+      '[role="tab"][data-state="active"]',
+    );
+    active?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }, [activeTab]);
 
   async function toggleActive() {
     if (!tokenData) return;
@@ -226,8 +235,8 @@ export function HubTab({ clienteId, contaId, workspaceSlug }: HubTabProps) {
   }
 
   return (
-    <Tabs defaultValue="acesso" className="py-4">
-      <TabsList className="mb-6">
+    <Tabs value={activeTab} onValueChange={setActiveTab} className="hub-tabs py-4">
+      <TabsList ref={tabListRef} className="hub-tabs__list mb-6">
         <TabsTrigger value="acesso">Acesso</TabsTrigger>
         <TabsTrigger value="briefing">Briefing</TabsTrigger>
         <TabsTrigger value="marca">Marca</TabsTrigger>
@@ -240,58 +249,62 @@ export function HubTab({ clienteId, contaId, workspaceSlug }: HubTabProps) {
           <h3 className="font-semibold mb-3">Acesso do Cliente</h3>
           {tokenData ? (
             <>
-              <div className="flex items-center gap-3 flex-wrap">
-                <code className="text-xs bg-muted px-3 py-2 rounded-lg flex-1 min-w-0 truncate">
+              <div className="hub-access">
+                <code className="hub-access__url text-xs bg-muted px-3 py-2 rounded-lg truncate">
                   {hubUrl}
                 </code>
-                <Button size="sm" variant="outline" onClick={copyLink}>
-                  <Copy size={14} className="mr-1.5" /> Copiar
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => openExternalUrl(hubUrl)}>
-                  <Eye size={14} className="mr-1.5" /> Preview
-                </Button>
-                <Button
-                  size="sm"
-                  variant={tokenData.is_active ? 'destructive' : 'default'}
-                  onClick={toggleActive}
-                >
-                  {tokenData.is_active ? (
-                    <>
-                      <ToggleRight size={14} className="mr-1.5" /> Desativar
-                    </>
-                  ) : (
-                    <>
-                      <ToggleLeft size={14} className="mr-1.5" /> Ativar
-                    </>
-                  )}
-                </Button>
-
-                {showRescue && (
-                  <Button size="sm" variant="outline" onClick={handleExtend} disabled={extending}>
-                    <CalendarClock size={14} className="mr-1.5" /> Estender +1 ano
+                <div className="hub-access__secondary-actions">
+                  <Button size="sm" variant="outline" onClick={copyLink}>
+                    <Copy size={14} className="mr-1.5" /> Copiar
                   </Button>
-                )}
+                  <Button size="sm" variant="outline" onClick={() => openExternalUrl(hubUrl)}>
+                    <Eye size={14} className="mr-1.5" /> Preview
+                  </Button>
+                </div>
+                <div className="hub-access__primary-actions">
+                  <Button
+                    size="sm"
+                    variant={tokenData.is_active ? 'destructive' : 'default'}
+                    onClick={toggleActive}
+                  >
+                    {tokenData.is_active ? (
+                      <>
+                        <ToggleRight size={14} className="mr-1.5" /> Desativar
+                      </>
+                    ) : (
+                      <>
+                        <ToggleLeft size={14} className="mr-1.5" /> Ativar
+                      </>
+                    )}
+                  </Button>
 
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button size="sm" variant="destructive" disabled={rotating}>
-                      <RefreshCw size={14} className="mr-1.5" /> Gerar novo link
+                  {showRescue && (
+                    <Button size="sm" variant="outline" onClick={handleExtend} disabled={extending}>
+                      <CalendarClock size={14} className="mr-1.5" /> Estender +1 ano
                     </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Gerar um novo link?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        O link atual para de funcionar imediatamente. O cliente perde o acesso até
-                        você enviar o novo link. Esta ação não pode ser desfeita.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                      <AlertDialogAction onClick={handleRotate}>Confirmar</AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+                  )}
+
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button size="sm" variant="destructive" disabled={rotating}>
+                        <RefreshCw size={14} className="mr-1.5" /> Gerar novo link
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Gerar um novo link?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          O link atual para de funcionar imediatamente. O cliente perde o acesso até
+                          você enviar o novo link. Esta ação não pode ser desfeita.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleRotate}>Confirmar</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
               </div>
 
               {expiresAt && (

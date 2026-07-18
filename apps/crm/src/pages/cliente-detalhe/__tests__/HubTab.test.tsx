@@ -194,4 +194,33 @@ describe('HubTab — Acesso', () => {
     fireEvent.click(screen.getByRole('button', { name: /Confirmar/ }));
     await waitFor(() => expect(hubStore.rotateHubToken).toHaveBeenCalledWith('t1'));
   });
+
+  it('renders all tabs inside the horizontal Hub tab list', async () => {
+    vi.mocked(hubStore.getHubToken).mockResolvedValue(token(360));
+    renderTab();
+    await waitFor(() => screen.getByText(/Expira em/));
+    expect(screen.getByRole('tablist')).toHaveClass('hub-tabs__list');
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+      'Acesso',
+      'Briefing',
+      'Marca',
+      'Páginas',
+      'Ideias',
+    ]);
+  });
+
+  it('scrolls the selected tab into view and groups access actions', async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    vi.mocked(hubStore.getHubToken).mockResolvedValue(token(360));
+    renderTab();
+    await waitFor(() => screen.getByText(/Expira em/));
+    vi.mocked(Element.prototype.scrollIntoView).mockClear();
+    const ideias = await screen.findByRole('tab', { name: 'Ideias' });
+    fireEvent.mouseDown(ideias);
+    expect(ideias.scrollIntoView).toHaveBeenCalledWith({ block: 'nearest', inline: 'nearest' });
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Acesso' }));
+    expect(document.querySelector('.hub-access__url')).not.toBeNull();
+    expect(document.querySelector('.hub-access__secondary-actions')).not.toBeNull();
+    expect(document.querySelector('.hub-access__primary-actions')).not.toBeNull();
+  });
 });
