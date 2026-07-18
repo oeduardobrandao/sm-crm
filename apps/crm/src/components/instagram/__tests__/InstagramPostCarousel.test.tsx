@@ -21,11 +21,11 @@ describe('InstagramPostCarousel', () => {
     );
 
     const region = screen.getByRole('region', { name: 'Últimas Publicações' });
-    expect(within(region).getAllByRole('article').map((item) => item.textContent)).toEqual([
-      'zebra',
-      'apple',
-      'mango',
-    ]);
+    expect(
+      within(region)
+        .getAllByRole('article')
+        .map((item) => item.textContent),
+    ).toEqual(['zebra', 'apple', 'mango']);
   });
 
   it('renders the optional action without assigning ranking semantics', () => {

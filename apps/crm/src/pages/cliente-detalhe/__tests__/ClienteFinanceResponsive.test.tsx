@@ -4,10 +4,7 @@ import ptClients from '../../../../../../packages/i18n/locales/pt/clients.json';
 import enClients from '../../../../../../packages/i18n/locales/en/clients.json';
 
 const css = readFileSync('apps/crm/style.css', 'utf8');
-const source = readFileSync(
-  'apps/crm/src/pages/cliente-detalhe/ClienteDetalhePage.tsx',
-  'utf8',
-);
+const source = readFileSync('apps/crm/src/pages/cliente-detalhe/ClienteDetalhePage.tsx', 'utf8');
 
 describe('client finance responsive contracts', () => {
   it('keeps all three finance KPIs in equal shrinkable columns on phones', () => {
@@ -18,9 +15,7 @@ describe('client finance responsive contracts', () => {
     expect(css).toMatch(
       /\.cliente-finance-kpis\s*>\s*:last-child:nth-child\(odd\)\s*\{[^}]*grid-column:\s*auto[^}]*max-width:\s*none/s,
     );
-    expect(css).toMatch(
-      /\.cliente-finance-kpis \.kpi-value\s*\{[^}]*white-space:\s*nowrap/s,
-    );
+    expect(css).toMatch(/\.cliente-finance-kpis \.kpi-value\s*\{[^}]*white-space:\s*nowrap/s);
     expect(css).toMatch(
       /\.cliente-finance-kpis \.kpi-value\s*\{[^}]*display:\s*block[^}]*width:\s*100%[^}]*max-width:\s*100%[^}]*overflow-x:\s*auto[^}]*scrollbar-width:\s*none/s,
     );
@@ -38,9 +33,7 @@ describe('client finance responsive contracts', () => {
   });
 
   it('keeps finance empty-state actions at least 44px tall', () => {
-    expect(css).toMatch(
-      /\.cliente-finance-empty__action\s*\{[^}]*min-height:\s*44px/s,
-    );
+    expect(css).toMatch(/\.cliente-finance-empty__action\s*\{[^}]*min-height:\s*44px/s);
   });
 
   it('provides equivalent Portuguese and English empty-state copy', () => {
@@ -49,8 +42,7 @@ describe('client finance responsive contracts', () => {
       noContractsDescription: 'Os contratos vinculados a este cliente aparecerão aqui.',
       manageContracts: 'Gerenciar contratos',
       noTransactions: 'Nenhuma transação registrada',
-      noTransactionsDescription:
-        'Os lançamentos financeiros deste cliente aparecerão aqui.',
+      noTransactionsDescription: 'Os lançamentos financeiros deste cliente aparecerão aqui.',
       viewFinancial: 'Ver financeiro',
     });
     expect(enClients.detail).toMatchObject({

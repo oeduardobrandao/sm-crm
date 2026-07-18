@@ -51,9 +51,7 @@ describe('MonthGrid', () => {
 
     expect(screen.getByLabelText('Mês anterior')).toHaveClass('month-grid-nav-btn');
     expect(screen.getByLabelText('Próximo mês')).toHaveClass('month-grid-nav-btn');
-    expect(css).toMatch(
-      /\.month-grid-nav-btn\s*\{[^}]*min-width:\s*44px[^}]*min-height:\s*44px/s,
-    );
+    expect(css).toMatch(/\.month-grid-nav-btn\s*\{[^}]*min-width:\s*44px[^}]*min-height:\s*44px/s);
   });
 
   it('renders leading cells for days before month start (June 2026 starts on Monday = 0 leading cells)', () => {

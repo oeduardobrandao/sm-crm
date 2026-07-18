@@ -291,7 +291,10 @@ describe('HubTab — Acesso', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Nova página' }));
 
     const dialog = await screen.findByRole('dialog', { name: 'Nova página' });
-    expect(dialog.querySelector('.hub-page-editor__workspace')).toHaveClass('flex-col', 'md:flex-row');
+    expect(dialog.querySelector('.hub-page-editor__workspace')).toHaveClass(
+      'flex-col',
+      'md:flex-row',
+    );
     expect(dialog.querySelector('.hub-page-editor__input')).toHaveClass('w-full', 'md:w-1/2');
     expect(dialog.querySelector('.hub-page-editor__preview')).toHaveClass('w-full', 'md:w-1/2');
   });

@@ -77,7 +77,11 @@ describe('LatestInstagramPosts', () => {
     renderWithQueryClient(<LatestInstagramPosts clienteId={42} />);
 
     const region = await screen.findByRole('region', { name: 'Últimas Publicações' });
-    expect(within(region).getAllByRole('article').map((card) => card.textContent)).toEqual([
+    expect(
+      within(region)
+        .getAllByRole('article')
+        .map((card) => card.textContent),
+    ).toEqual([
       expect.stringContaining(newerPost.caption),
       expect.stringContaining(olderPost.caption),
     ]);
@@ -115,9 +119,7 @@ describe('LatestInstagramPosts', () => {
     expect(css).toMatch(
       /\.latest-instagram-post-card__media\s*\{[^}]*aspect-ratio:\s*4\s*\/\s*5[^}]*background:\s*#111827/s,
     );
-    expect(css).toMatch(
-      /\.latest-instagram-post-card__media img\s*\{[^}]*object-fit:\s*contain/s,
-    );
+    expect(css).toMatch(/\.latest-instagram-post-card__media img\s*\{[^}]*object-fit:\s*contain/s);
     expect(css).toMatch(
       /\.latest-instagram-post-card\s*\{[^}]*overflow:\s*hidden[^}]*border-radius:\s*16px/s,
     );
@@ -170,7 +172,9 @@ describe('LatestInstagramPosts', () => {
     renderWithQueryClient(<LatestInstagramPosts clienteId={42} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Próxima página' }));
 
-    expect(await screen.findByRole('alert')).not.toHaveTextContent('server detail must stay private');
+    expect(await screen.findByRole('alert')).not.toHaveTextContent(
+      'server detail must stay private',
+    );
     const previous = screen.getByRole('button', { name: 'Página anterior' });
     expect(previous).toBeEnabled();
     fireEvent.click(previous);

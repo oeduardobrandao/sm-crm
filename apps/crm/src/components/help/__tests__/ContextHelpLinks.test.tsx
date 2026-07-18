@@ -46,12 +46,15 @@ function renderHelp() {
 describe('ContextHelpLinks', () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    vi.stubGlobal('matchMedia', vi.fn().mockImplementation((query: string) => ({
-      matches: query === '(max-width: 767px)' ? false : false,
-      media: query,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    })));
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn().mockImplementation((query: string) => ({
+        matches: query === '(max-width: 767px)' ? false : false,
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    );
   });
 
   it('renders one trigger and reveals all valid articles', async () => {
@@ -81,24 +84,25 @@ describe('ContextHelpLinks', () => {
   });
 
   it('uses the phone Sheet branch for related articles', async () => {
-    vi.stubGlobal('matchMedia', vi.fn().mockImplementation((query: string) => ({
-      matches: query === '(max-width: 767px)',
-      media: query,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    })));
-    vi.mocked(getContextLinksForRoute).mockResolvedValue([
-      article('1', 'artigo-no-celular'),
-    ]);
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn().mockImplementation((query: string) => ({
+        matches: query === '(max-width: 767px)',
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    );
+    vi.mocked(getContextLinksForRoute).mockResolvedValue([article('1', 'artigo-no-celular')]);
     renderHelp();
 
     fireEvent.click(await screen.findByRole('button', { name: /Artigos relacionados/ }));
 
     const sheet = await screen.findByRole('dialog', { name: 'Artigos relacionados' });
     expect(sheet).toHaveClass('context-help__sheet');
-    expect(
-      within(sheet).getByText('Escolha um artigo relacionado para abrir.'),
-    ).toHaveClass('sr-only');
+    expect(within(sheet).getByText('Escolha um artigo relacionado para abrir.')).toHaveClass(
+      'sr-only',
+    );
     expect(within(sheet).getByRole('link', { name: 'Artigo 1' })).toHaveAttribute(
       'href',
       '/ajuda/artigo-no-celular',
