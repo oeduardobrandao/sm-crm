@@ -288,7 +288,7 @@ Deno.test("tiktok-refresh-cron: successfully refreshed account re-caches its ava
     // deno-lint-ignore no-explicit-any
     tiktokFetch: async (...args: any[]) => {
       tiktokFetchCalls.push(args);
-      return { avatar_url: "https://p16-tiktok.cdn/raw-avatar.jpg" };
+      return { user: { avatar_url: "https://p16-tiktok.cdn/raw-avatar.jpg" } };
     },
   });
 

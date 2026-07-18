@@ -87,13 +87,13 @@ async function recacheAvatar(
     const profile = (await deps.tiktokFetch("/user/info/?fields=avatar_url", {
       method: "GET",
       accessToken,
-    })) as { avatar_url?: string | null };
+    })) as { user?: { avatar_url?: string | null } };
 
     const cachedUrl = await deps.cacheAvatar(
       deps.fetchImpl ?? fetch,
       deps.svc.storage,
       account.client_id,
-      profile?.avatar_url ?? null,
+      profile?.user?.avatar_url ?? null,
     );
     if (!cachedUrl) return;
 
