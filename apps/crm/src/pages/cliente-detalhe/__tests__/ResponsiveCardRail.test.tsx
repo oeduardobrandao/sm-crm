@@ -43,7 +43,7 @@ describe('ResponsiveCardRail', () => {
 
     const narrowPhoneCss = crmStyles.slice(crmStyles.lastIndexOf('@media (max-width: 359px)'));
     expect(narrowPhoneCss).toMatch(
-      /\.cliente-card-rail--multiple,\s*\.ig-posts-list__body\s*\{[^}]*margin-inline:\s*-1rem;[^}]*padding-inline:\s*0\.75rem;/s,
+      /\.cliente-card-rail--multiple\s*\{[^}]*margin-inline:\s*-1rem;[^}]*padding-inline:\s*0\.75rem;/s,
     );
 
     const railViewport = 320 - 2 * 12 - 2;

@@ -135,6 +135,14 @@ describe('instagram service', () => {
     expect(fetchSpy.mock.calls[1][0]).toContain('page=2');
   });
 
+  it('normalizes missing post arrays and invalid totals at the service boundary', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      jsonResponse({ posts: null, total: 'invalid' }),
+    );
+
+    await expect(getInstagramPosts(505, 1)).resolves.toEqual({ posts: [], total: 0 });
+  });
+
   it('sends the Supabase bearer token and anon apikey on every request', async () => {
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')

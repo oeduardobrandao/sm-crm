@@ -129,8 +129,8 @@ import { useAuth } from '../../context/AuthContext';
 import { useTranslation } from 'react-i18next';
 import { renderInstagramOverviewCard } from '../../components/instagram/InstagramOverviewCard';
 import { renderInstagramFollowerChart } from '../../components/instagram/InstagramFollowerChart';
-import { renderInstagramPostsTable } from '../../components/instagram/InstagramPostsTable';
 import { renderInstagramConnectButton } from '../../components/instagram/InstagramConnectButton';
+import { LatestInstagramPosts } from '../../components/instagram/LatestInstagramPosts';
 import { supabase } from '@/lib/supabase';
 
 function StatusBadge({ status }: { status: string }) {
@@ -2376,7 +2376,6 @@ function InstagramSection({
   const { t, i18n } = useTranslation('clients');
   const igOverviewRef = useRef<HTMLDivElement>(null);
   const igChartRef = useRef<HTMLDivElement>(null);
-  const igPostsRef = useRef<HTMLDivElement>(null);
   const igConnectRef = useRef<HTMLDivElement>(null);
 
   const [autoPublish, setAutoPublish] = useState(false);
@@ -2421,7 +2420,6 @@ function InstagramSection({
         renderInstagramOverviewCard(igOverviewRef.current, clienteId, igSummary.account, refetchIg);
       if (igChartRef.current)
         renderInstagramFollowerChart(igChartRef.current, igSummary.history ?? []);
-      if (igPostsRef.current) renderInstagramPostsTable(igPostsRef.current, clienteId);
     }
   }, [loadingIg, igSummary, clienteId, refetchIg, i18n.language]);
 
@@ -2440,7 +2438,9 @@ function InstagramSection({
       )}
       <div ref={igOverviewRef} />
       <div ref={igChartRef} />
-      <div ref={igPostsRef} />
+      {!loadingIg && igSummary?.account?.last_synced_at && (
+        <LatestInstagramPosts clienteId={clienteId} />
+      )}
       {!loadingIg && igSummary?.account?.last_synced_at && (
         <div
           style={{
