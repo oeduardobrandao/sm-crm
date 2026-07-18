@@ -18,14 +18,15 @@ Connect TikTok to Mesaas with feature parity to the existing Instagram integrati
 - **Account stats** (`user.info.stats`): `follower_count`, `following_count`, `likes_count`, `video_count` — current values only, no history → we snapshot daily ourselves (same as IG).
 - **Richer analytics** (saves/favorites, reach, watch time, retention, demographics, daily gained/lost followers with 60-day lookback) live in the **TikTok Business Accounts API** — separate OAuth, separate app application (mandatory access form since 2026-03-20). **Phased in as a later slice**; this design only reserves room for it.
 - **Rate limits:** posting init 6/min per user token; status fetch 30/min; creator_info 20/min; Display API 600 req/min per endpoint per client.
-- **Webhooks (Developers platform):** `post.publish.complete`, `post.publish.failed`, `post.publish.publicly_available` (carries the public post id), `post.publish.no_longer_publicly_available`, `authorization.removed`. At-least-once delivery with 72 h retries → handlers must be idempotent.
+- **Webhooks (Developers platform):** `post.publish.complete`, `post.publish.failed` (payload has `publish_id`, `reason`, `publish_type`), `post.publish.publicly_available` (carries `post_id`), `post.publish.no_longer_publicaly_available` (sic — TikTok's official misspelling), `authorization.removed`. At-least-once delivery with 72 h retries → handlers must be idempotent.
+- **Wire constants must match TikTok's exact (sometimes misspelled) strings**, defined once in `_shared/tiktok.ts` and used everywhere: status-fetch public id field is `publicaly_available_post_id` (sic); event `post.publish.no_longer_publicaly_available` (sic); event `post.publish.publicly_available` is spelled correctly. Fail reasons include `video_pull_failed`, `photo_pull_failed`, `spam_risk_too_many_posts`, `spam_risk_user_banned_from_posting`, `spam_risk_text`, `spam_risk`, `auth_removed`, `publish_cancelled`, plus format/duration/frame-rate/picture-size check failures.
 - **TikTok Stories are not in the API.** Out of scope permanently (until TikTok ships it).
 
 ## Decisions
 
 1. **Analytics depth:** both API surfaces, phased. Slice(s) in this initiative use the Developers platform only (connect, post, schedule, import, views/likes/comments/shares, self-snapshotted follower history). Business Accounts API analytics is a later initiative; the data model anticipates it (columns added by future migration, no redesign).
 2. **Post model:** `workflow_posts.platform` enum `instagram | tiktok | both`. One card, one approval flow, one `scheduled_at`; per-platform publish state and captions.
-3. **Architecture:** Approach A — parallel mirror. New `tiktok_*` tables and `tiktok-*` edge functions cloned from the Instagram shape; shared helpers extracted only where free (token crypto parametrization, thumbnail cache, cron auth). Instagram pipeline untouched except: (a) the new default-valued `platform` column, (b) its publish-complete call site goes through the new `mark_platform_published` RPC (identical behavior for instagram-only posts).
+3. **Architecture:** Approach A — parallel mirror. New `tiktok_*` tables and `tiktok-*` edge functions cloned from the Instagram shape; shared helpers extracted only where free (token crypto parametrization, thumbnail cache, cron auth). Instagram pipeline untouched except: (a) the new default-valued `platform` column, (b) its three publish-complete call sites (cron phase 2, publish-now feed/reel, publish-now stories) go through the new `mark_platform_published` RPC (identical behavior for instagram-only posts).
 
 ## Data model
 
@@ -80,14 +81,22 @@ Connect TikTok to Mesaas with feature parity to the existing Instagram integrati
 - `tiktok_publish_status text CHECK (IN ('initiated','processing','published','failed'))` — **NULL means "targeted but not started"** (no arming step needed)
 - `tiktok_publish_error text` (≤500 chars), `tiktok_publish_retry_count smallint NOT NULL DEFAULT 0`
 - `tiktok_publish_processing_at timestamptz` — TikTok cron lock, independent from `publish_processing_at` (IG's), stale-reclaim after 10 min
-- `tiktok_caption text` — TikTok caption override; when NULL the publisher falls back to `ig_caption`. TikTok limit 2200 UTF-16 runes (video title) / 4000 (photo description) enforced at validation
-- `tiktok_settings jsonb` — `{ privacy_level, disable_comment, disable_duet, disable_stitch, brand_organic_toggle, brand_content_toggle, auto_add_music, photo_cover_index }`. Required before scheduling any TikTok-targeted post; populated by the creator-info UI panel.
+- `tiktok_caption text` — TikTok caption override; when NULL the publisher falls back to `ig_caption`. Mapping is tipo-dependent: for **video** posts it becomes `post_info.title` (≤2200 UTF-16 runes); for **photo** posts it becomes `post_info.description` (≤4000 runes). Limits enforced at validation per tipo.
+- `tiktok_title text` — **photo posts only**: optional `post_info.title` (≤90 UTF-16 runes). Never auto-derived from the internal card `titulo`; user-entered in the settings panel or omitted.
+- `tiktok_settings jsonb` — `{ privacy_level, disable_comment, disable_duet, disable_stitch, brand_organic_toggle, brand_content_toggle, auto_add_music, photo_cover_index, is_aigc, video_cover_timestamp_ms }`. Required before scheduling any TikTok-targeted post; populated by the creator-info UI panel. Field applicability is tipo-dependent per TikTok's docs: `disable_duet`, `disable_stitch`, `is_aigc` ("Creator labeled as AI-generated" tag), and `video_cover_timestamp_ms` are **video-only**; `auto_add_music` and `photo_cover_index` are **photo-only**. The payload builder omits non-applicable fields; the UI hides them.
 
 ### New/changed RPCs
 
 **`claim_posts_for_tiktok_publishing(p_phase, p_limit)`** — clone of the IG claim RPC: `FOR UPDATE SKIP LOCKED` on due posts where `status='agendado'`, `platform IN ('tiktok','both')`, joined to `tiktok_accounts` with `authorization_status='active'`, phase-filtered on `tiktok_publish_status` (`NULL` → init phase; `initiated|processing` → status phase; `failed` with `tiktok_publish_retry_count < 3` → retry phase). Sets `tiktok_publish_processing_at`. Returns decrypted-token inputs (`encrypted_access_token`, `encrypted_refresh_token`, expiries, `tiktok_open_id`).
 
-**`mark_platform_published(p_post_id, p_platform)`** — atomic: records the platform completion (for TikTok sets `tiktok_publish_status='published'`; for Instagram this is called where the IG cron/publish-now currently flips status) and transitions the card to `postado` via the existing `record_post_status_change` **only when all targeted platforms are complete** (IG complete = `instagram_media_id IS NOT NULL`; TikTok complete = `tiktok_publish_status='published'`; `platform` decides which are required). For `platform='instagram'` posts the behavior is exactly today's.
+**`mark_platform_published(p_post_id, p_platform, p_fields)`** — atomic: records the platform completion **and** its companion fields in one statement (for TikTok: `tiktok_publish_status='published'` + publish id/lock clears; for Instagram: `instagram_media_id`, `published_at`, lock/error/retry clears — the same `p_fields` the IG paths pass to `record_post_status_change` today), then transitions the card to `postado` via `record_post_status_change` **only when all targeted platforms are complete** (IG complete = `instagram_media_id IS NOT NULL`; TikTok complete = `tiktok_publish_status='published'`; `platform` decides which are required). For `platform='instagram'` posts the behavior is exactly today's.
+
+**Every IG completion call site moves to this RPC** — this is the one required change to Instagram code, and it must cover all three sites or a `both` post races to `postado` prematurely:
+1. `instagram-publish-cron` phase 2 (`markPublished`),
+2. `instagram-publish` publish-now feed/reel path (`handler.ts:302`),
+3. `instagram-publish` publish-now stories path (`handler.ts:234`).
+
+Concurrent IG + TikTok completions are safe: the RPC re-reads both platforms' completion columns inside the same transaction, so whichever call lands second performs the `postado` transition.
 
 ### Status semantics (`both` posts)
 
@@ -109,7 +118,9 @@ Connect TikTok to Mesaas with feature parity to the existing Instagram integrati
 | `carrossel` | Photo post | images only, ≤20 (app attachment limit; TikTok max is 35) | **images only, ≤10** (IG cap; no video items) |
 | `stories` | — | platform selector disables TikTok | n/a |
 
-Additional gates: `tiktok_settings.privacy_level` must be set (from creator_info options); caption length per mode; account `active` + tokens decryptable; Estúdio design readiness reused (`checkDesignReadiness`).
+Additional gates: `tiktok_settings.privacy_level` must be set (from creator_info options); caption/title length per tipo; account `active` + tokens decryptable; Estúdio design readiness reused (`checkDesignReadiness`).
+
+**Unaudited-mode gate (scheduling-time, not publish-time):** env flag `TIKTOK_APP_AUDITED` (unset/`false` until the Content Posting audit passes). While false, `validateForTikTokScheduling` **rejects any privacy_level other than `SELF_ONLY`** with a clear PT-BR message, and the TikTok settings panel locks the privacy dropdown to SELF_ONLY with a test-mode banner ("App em modo de teste: publicações TikTok saem como privadas"). This makes unaudited failures impossible by construction instead of predictable cron errors. Flipping the env var after audit approval restores the full creator_info options — no code change.
 
 ## Edge functions
 
@@ -149,7 +160,9 @@ Phases via `claim_posts_for_tiktok_publishing`:
 `markTikTokFailed`: sets `tiktok_publish_status='failed'`, `tiktok_publish_error`, `retry_count++`; on `TOKEN_EXPIRED` flips account to `expired`; non-retryable reasons (`spam_risk_too_many_posts`, `unaudited_client_can_only_post_to_private_accounts`) skip retries and surface a clear message. Card → `falha_publicacao` per the status semantics.
 
 ### `tiktok-webhook` (public)
-Registered in the TikTok developer portal. Handler: 200 immediately, then process. Events are **hints** — before mutating, re-confirm via status fetch (idempotent; at-least-once delivery). `post.publish.publicly_available` → store `tiktok_post_id` + `tiktok_post_url`. `post.publish.failed/complete` → same handlers as the cron status phase. `authorization.removed` → account `revoked` + audit log. Payload validation: match `client_key` against `TIKTOK_CLIENT_KEY` and resolve `user_openid` to a known account; unknown → 200 and drop (never error to the caller).
+Registered in the TikTok developer portal. **Durable ack pattern** (never ACK-then-lose): the request handler synchronously (a) validates the payload (`client_key` matches `TIKTOK_CLIENT_KEY`, `user_openid` resolves to a known account — unknown → 200 and drop) and (b) **persists the raw event to `tiktok_webhook_events`** before responding 200; if the insert fails, return 5xx so TikTok's 72 h retry loop redelivers. Actual processing runs after the response via `EdgeRuntime.waitUntil` — the repo's established fire-and-forget seam (`instagram-publish/index.ts:22`, injected as a `waitUntil` dep so tests can await it). Events are **hints** — processing re-confirms via status fetch before mutating (idempotent; at-least-once delivery; `processed_at` stamped on completion). `post.publish.publicly_available` → store `tiktok_post_id` + `tiktok_post_url`. `post.publish.failed/complete` → same handlers as the cron status phase. `authorization.removed` → account `revoked` + audit log. Unprocessed rows (persisted but crashed before processing) are swept by the next `tiktok-publish-cron` run; the status-polling phase independently converges state anyway.
+
+**`tiktok_webhook_events`** (new table, service-role only, no RLS exposure): `id uuid PK`, `event text`, `user_openid text`, `payload jsonb`, `received_at timestamptz DEFAULT now()`, `processed_at timestamptz`. Retention: rows older than 30 days purged by `tiktok-sync-cron`.
 
 ### `tiktok-refresh-cron` (`x-cron-secret`, every 6 h)
 Selects `active` accounts with `access_token_expires_at <= now() + 12 h` and runs `getFreshTikTokToken` per account. Note: refreshing rotates the refresh-token **value** but does not extend its expiry — the 365-day clock runs from the initial OAuth grant. So the cron additionally checks `refresh_token_expires_at <= now() + 30 days` and, when true, no status change occurs but the connect UI and ScheduleButton surface a "reconecte a conta TikTok" warning (computed from `refresh_token_expires_at`); only a fresh OAuth re-connect renews it. Re-caches avatar.
@@ -180,7 +193,7 @@ Same code path as sync (callback initial import + manual sync + daily cron). Dis
 - **Post editor / entregas:**
   - Platform selector (Instagram / TikTok / Ambas) on the post card; TikTok options disabled when `tipo='stories'` or the client has no `active` TikTok account; defaults to `instagram`.
   - `carrossel` + TikTok target: validation messages for video items / >10 images (`both`) / >20 (tiktok-only).
-  - **TikTok settings panel** in the scheduling flow (rendered from `creator-info`): creator nickname+avatar, privacy dropdown (no preselection), comment/duet/stitch checkboxes (unchecked by default, disabled per creator settings), music-usage confirmation text, commercial-content toggles with the "Paid partnership" label behavior, `tiktok_caption` override field with live rune counter. Stored into `tiktok_settings`/`tiktok_caption` before schedule is allowed.
+  - **TikTok settings panel** in the scheduling flow (rendered from `creator-info`): creator nickname+avatar, privacy dropdown (no preselection; locked to SELF_ONLY with a test-mode banner while `TIKTOK_APP_AUDITED` is unset), comment/duet/stitch checkboxes (unchecked by default, disabled per creator settings; duet/stitch hidden for photo tipos), music-usage confirmation text, commercial-content toggles with the "Paid partnership" label behavior, `is_aigc` checkbox for videos ("Conteúdo gerado por IA"), `tiktok_caption` override field with live rune counter (per-tipo limit), and `tiktok_title` field (photo posts, ≤90 runes). Stored into `tiktok_settings`/`tiktok_caption`/`tiktok_title` before schedule is allowed.
   - `ScheduleButton` becomes platform-aware: routes to the right function(s) per `platform`; shows per-platform status chips; retry targets only the failed platform; publish-now for `both` fires both endpoints.
 - **Hub:** approval cards show a platform badge (IG/TikTok/both). Nothing else.
 
@@ -196,7 +209,8 @@ Same code path as sync (callback initial import + manual sync + daily cron). Dis
 ## Entitlements & rollout
 
 - New plan flag **`feature_tiktok`** in `_shared/entitlements.ts` (single source) + SQL `effective_plan_*` + admin panel row. **Ships dark:** `false` on all plans; DK TESTE workspace override for live testing (Estúdio playbook).
-- Env vars (edge functions): `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `TIKTOK_REDIRECT_URI` (registered in the portal, points at `…/functions/v1/tiktok-integration`). Documented in CLAUDE.md env section.
+- Env vars (edge functions): `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `TIKTOK_REDIRECT_URI` (registered in the portal, points at `…/functions/v1/tiktok-integration`), `TIKTOK_APP_AUDITED` (unset until the audit passes; gates privacy options at scheduling). Documented in CLAUDE.md env section.
+- **CRM entitlement touchpoints** (the flag is NOT just `entitlements.ts` + SQL + admin): add `feature_tiktok` to the `FeatureFlags` interface in `apps/crm/src/hooks/useWorkspaceLimits.ts`, a PT label (`'TikTok'`) in `FEATURE_LABELS` in `apps/crm/src/lib/entitlement-errors.ts`, and — only when TikTok becomes a public selling point — the pricing `select()` column lists in `apps/crm/src/services/billing.ts` (not needed while dark). Mirror IG's account cap with a `max_tiktok_accounts` limit column only if plans need to differentiate it; otherwise omit (YAGNI — accounts are 1:1 per client and `max_clients` already caps).
 - **Unaudited mode is the live-test mode:** posts land as SELF_ONLY on a private test account; pipeline verifiable end-to-end. Public posting requires passing TikTok's Content Posting audit — no code change to flip.
 - **Portal prerequisites (owner tasks, tracked in the plan):** register redirect URI; verify the R2/media host as a URL property (required for `PULL_FROM_URL`); ensure ToS + privacy-policy URLs on the app; enable Webhooks product + callback URL; record demo video and submit the Content Posting audit once the UI is live on DK TESTE.
 - Deploys use `--use-api` (local Docker bundler broken) and `--no-verify-jwt` semantics per config.toml conventions.
@@ -208,8 +222,8 @@ Same code path as sync (callback initial import + manual sync + daily cron). Dis
 | Access token expired mid-call | one refresh via `getFreshTikTokToken` + retry; then fail |
 | Refresh token invalid/expired | account `expired`, surfaced in connect UI + ScheduleButton warning (IG pattern) |
 | `authorization.removed` webhook | account `revoked`, audit log |
-| `video_pull_failed` | retryable (≤3), presign regenerated each attempt |
-| `spam_risk_too_many_posts` / unaudited-privacy errors | non-retryable, clear PT-BR message in `tiktok_publish_error` |
+| `video_pull_failed` / `photo_pull_failed` | retryable (≤3), presign regenerated each attempt |
+| `spam_risk_*` / unaudited-privacy errors | non-retryable, clear PT-BR message in `tiktok_publish_error` (unaudited case is normally prevented by the scheduling gate; this row is the backstop) |
 | Webhook duplicate/out-of-order | idempotent handlers; status fetch is source of truth |
 | Cron failure | `reportCronFailure` → Resend alert (existing triage) |
 | `both` partial failure | card `falha_publicacao`, succeeded platform state preserved, retry per platform |
