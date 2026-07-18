@@ -44,6 +44,7 @@ export interface FeatureFlags {
   feature_mcp: boolean;
   feature_estudio: boolean;
   feature_ai_images: boolean;
+  feature_tiktok: boolean;
 }
 
 interface WorkspaceLimitsResponse {
