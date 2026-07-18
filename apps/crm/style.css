@@ -8223,6 +8223,7 @@ body.landing-page #root {
 }
 
 .context-help__trigger {
+  min-height: 44px;
   gap: 0.45rem;
   color: var(--text-muted);
 }
