@@ -1,101 +1,81 @@
-# Task 2 report: related articles menu
+# Task 2 Report — Finance empty states and mobile KPIs
 
-## Scope
+## Implementation summary
 
-Replaced the permanent contextual-help link row with a single `Artigos relacionados`
-trigger. Desktop uses the existing Radix Popover primitive; phone viewports use the
-existing bottom Sheet primitive. Both surfaces render the same filtered article list.
+- Integrated `ClienteFinanceEmptyState` into the contracts and transactions cards. Empty datasets now render the dedicated state; populated datasets keep their existing table headers, rows, labels, values, and status badges.
+- Added the exact Portuguese and English empty-state translations requested.
+- Added the scoped `cliente-finance-kpis` hook and phone-only three-column override. The selectors use `minmax(0, 1fr)`, reset the generic odd-child span rule, and make KPI text non-wrapping with shrinkable cards to avoid horizontal overflow.
+- Added the responsive/integration contract test.
 
-## TDD evidence
+## Commands and results
 
-### RED
+1. `npx vitest run apps/crm/src/pages/cliente-detalhe/__tests__/ClienteFinanceResponsive.test.tsx`
+   - RED: exited 1; all 3 contract assertions failed for the missing KPI hook/CSS, empty-state integration, and translation keys.
+2. `npx vitest run apps/crm/src/pages/cliente-detalhe/__tests__/ClienteFinanceEmptyState.test.tsx apps/crm/src/pages/cliente-detalhe/__tests__/ClienteFinanceResponsive.test.tsx`
+   - GREEN: exited 0; 2 test files and 4 tests passed with no test warnings.
+3. `npm run build`
+   - exited 0; TypeScript and Vite production build completed. Vite reported pre-existing informational warnings about its deprecated CJS API, external `outDir`, and chunk size.
+4. `git diff --check`
+   - exited 0; no whitespace errors.
 
-Command:
+## Files changed
 
-```bash
-npm run test -- apps/crm/src/components/help/__tests__/ContextHelpLinks.test.tsx
-```
-
-Output: failed as expected before implementation: 1 failed, 1 passed. The failing
-test could not find `role="button"` named `Artigos relacionados`; the rendered DOM
-showed the previous two permanent article links instead.
-
-### GREEN
-
-Command:
-
-```bash
-npm run test -- apps/crm/src/components/help/__tests__/ContextHelpLinks.test.tsx
-```
-
-Output after implementation (and again after final CSS cleanup): 1 test file passed,
-2 tests passed, 0 failures.
-
-## Verification
-
-```bash
-npm run test
-```
-
-Output: 166 test files passed, 1311 tests passed, 0 failures. The suite emitted
-pre-existing stderr warnings from media-gallery `act(...)` usage, jsdom canvas
-support, mocked analytics/client-health errors, and safety-net fixtures; none caused
-a test failure.
-
-```bash
-npm run build
-```
-
-Output: passed. TypeScript completed and Vite built 3913 modules successfully. Vite
-reported its existing CJS API deprecation, an outDir warning, and chunk-size guidance.
-
-## Files
-
-- `apps/crm/src/components/help/ContextHelpLinks.tsx`
-- `apps/crm/src/components/help/__tests__/ContextHelpLinks.test.tsx`
+- `apps/crm/src/pages/cliente-detalhe/ClienteDetalhePage.tsx`
 - `apps/crm/style.css`
+- `packages/i18n/locales/pt/clients.json`
+- `packages/i18n/locales/en/clients.json`
+- `apps/crm/src/pages/cliente-detalhe/__tests__/ClienteFinanceResponsive.test.tsx`
 
 ## Self-review
 
-- Preserved the existing `getContextLinksForRoute(baseRoute)` query key, query
-  function, stale time, and `/ajuda/:slug` routes.
-- Filters missing/empty article slugs before rendering, and hides the entire control
-  when no valid article remains.
-- Uses exactly one trigger and shares `ArticleMenu` across desktop Popover and phone
-  Sheet branches.
-- Uses the specified `(max-width: 767px)` media query and subscribes/unsubscribes to
-  viewport changes.
-- Applied the requested compact styles, including 44px article targets and safe-area
-  Sheet padding.
-- `git diff --check` passed before commit preparation.
+- Scope is limited to the client-detail finance section and its explicit locale/test hooks.
+- The phone KPI rule is scoped by `.cliente-finance-kpis`; generic KPI grids remain unaffected.
+- Both populated table render paths preserve their original markup and row content.
+- Empty paths avoid constructing table markup entirely.
+- `min-width: 0`, equal `minmax(0, 1fr)` columns, and non-wrapping type guard against phone-width overflow.
+- Tests verify the integration, responsive CSS contract, no legacy empty rows, and exact bilingual copy.
 
 ## Concerns
 
-No task-specific concerns. The warning-only output noted above is outside this task's
-files and did not affect test or build status.
+- None for this task. Build warnings are unrelated Vite/project configuration warnings and do not affect the focused tests or TypeScript build result.
 
-## Follow-up review fix
+## Follow-up review fix — finance KPI currency containment
 
-The sole review finding was resolved by adding `min-height: 44px` to the scoped
-`.context-help__trigger` rule in `apps/crm/style.css`. This preserves the existing
-compact `Button size="sm"` layout while making the single related-articles trigger
-meet the 44px touch-target requirement.
+### Fix summary
 
-The existing component test already exercises the single trigger behavior. It does
-not load the global stylesheet, so a CSS-height assertion would not verify the rule
-in this test environment; the scoped selector and declaration were verified directly
-in the final diff.
+- Scoped the long-currency containment strategy to `.cliente-finance-kpis .kpi-value` in the phone breakpoint. The value remains a single, full line inside its one-third KPI column and scrolls horizontally within itself when necessary, rather than painting outside the card.
+- Added `display: block`, `width: 100%`, `max-width: 100%`, `overflow-x: auto`, `scrollbar-width: none`, and a matching WebKit scrollbar-hiding selector. No generic `.kpi-grid` styles changed.
 
-Follow-up verification:
+### TDD evidence
+
+#### RED
+
+Command:
 
 ```bash
-npm run test -- apps/crm/src/components/help/__tests__/ContextHelpLinks.test.tsx
+npx vitest run apps/crm/src/pages/cliente-detalhe/__tests__/ClienteFinanceResponsive.test.tsx
 ```
 
-Output: 1 test file passed, 2 tests passed, 0 failures.
+Output: exited 1 as expected; 1 of 3 tests failed because the KPI value rule lacked the required block sizing and internal horizontal-overflow containment declarations. The other 2 tests passed.
+
+#### GREEN
+
+Command:
 
 ```bash
-git diff --check
+npx vitest run apps/crm/src/pages/cliente-detalhe/__tests__/ClienteFinanceEmptyState.test.tsx apps/crm/src/pages/cliente-detalhe/__tests__/ClienteFinanceResponsive.test.tsx
 ```
 
-Output: passed with no whitespace errors.
+Output: exited 0; 2 test files and 4 tests passed.
+
+### Files changed
+
+- `apps/crm/style.css`
+- `apps/crm/src/pages/cliente-detalhe/__tests__/ClienteFinanceResponsive.test.tsx`
+- `.superpowers/sdd/task-2-report.md`
+
+### Follow-up self-review
+
+- The containment selector is limited to `.cliente-finance-kpis`, so it cannot alter other KPI grids.
+- `width` and `max-width` constrain the non-wrapping value to its shrinkable card; `overflow-x: auto` makes excess currency text scroll inside the value instead of contributing page-level horizontal overflow.
+- All three mobile finance cards remain equal `minmax(0, 1fr)` columns, and no truncation rule was added.

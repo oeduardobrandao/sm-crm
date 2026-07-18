@@ -8515,10 +8515,19 @@ body.landing-page #root {
   }
 
   .cliente-finance-kpis .kpi-value {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
     font-size: clamp(0.76rem, 3.8vw, 1.15rem);
     line-height: 1.2;
     letter-spacing: -0.04em;
     white-space: nowrap;
+  }
+
+  .cliente-finance-kpis .kpi-value::-webkit-scrollbar {
+    display: none;
   }
 
   .cliente-card-rail--multiple {

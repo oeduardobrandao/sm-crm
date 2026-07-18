@@ -21,6 +21,12 @@ describe('client finance responsive contracts', () => {
     expect(css).toMatch(
       /\.cliente-finance-kpis \.kpi-value\s*\{[^}]*white-space:\s*nowrap/s,
     );
+    expect(css).toMatch(
+      /\.cliente-finance-kpis \.kpi-value\s*\{[^}]*display:\s*block[^}]*width:\s*100%[^}]*max-width:\s*100%[^}]*overflow-x:\s*auto[^}]*scrollbar-width:\s*none/s,
+    );
+    expect(css).toMatch(
+      /\.cliente-finance-kpis \.kpi-value::-webkit-scrollbar\s*\{[^}]*display:\s*none/s,
+    );
   });
 
   it('uses dedicated empty states instead of empty table rows', () => {
