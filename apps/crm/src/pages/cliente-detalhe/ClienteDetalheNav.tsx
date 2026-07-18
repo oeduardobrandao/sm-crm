@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Info,
@@ -52,6 +52,7 @@ interface ClienteDetalheNavProps {
 export function ClienteDetalheNav({ sections, actions }: ClienteDetalheNavProps) {
   const { t } = useTranslation('clients');
   const [activeId, setActiveId] = useState<string | null>(null);
+  const sectionButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   // Stable dependency: re-subscribe only when the set of section ids changes,
   // not on every render (the parent recomputes the arrays each render).
@@ -75,6 +76,17 @@ export function ClienteDetalheNav({ sections, actions }: ClienteDetalheNavProps)
     }
     return () => observer.disconnect();
   }, [sectionIds]);
+
+  useEffect(() => {
+    if (!activeId || typeof window === 'undefined') return;
+    if (!window.matchMedia('(max-width: 767px)').matches) return;
+    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    sectionButtonRefs.current[activeId]?.scrollIntoView({
+      behavior: prefersReduced ? 'auto' : 'smooth',
+      block: 'nearest',
+      inline: 'center',
+    });
+  }, [activeId]);
 
   const handleSectionClick = (id: string) => {
     const prefersReduced =
@@ -103,6 +115,9 @@ export function ClienteDetalheNav({ sections, actions }: ClienteDetalheNavProps)
               aria-label={label}
               aria-current={active ? 'true' : undefined}
               onClick={() => handleSectionClick(s.id)}
+              ref={(element) => {
+                sectionButtonRefs.current[s.id] = element;
+              }}
             >
               <Icon className="cliente-detalhe-nav__icon" aria-hidden="true" />
               <span className="cliente-detalhe-nav__label">{label}</span>
@@ -111,7 +126,7 @@ export function ClienteDetalheNav({ sections, actions }: ClienteDetalheNavProps)
         })}
       </div>
       {actions.length > 0 && <div className="cliente-detalhe-nav__divider" />}
-      <div className="cliente-detalhe-nav__group">
+      <div className="cliente-detalhe-nav__group cliente-detalhe-nav__group--actions">
         {actions.map((a) => {
           const { icon: Icon, labelKey } = ACTION_META[a.key];
           const label = t(labelKey);

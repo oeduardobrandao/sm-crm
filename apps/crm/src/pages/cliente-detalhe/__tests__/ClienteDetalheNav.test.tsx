@@ -79,4 +79,52 @@ describe('ClienteDetalheNav', () => {
     expect(screen.getByRole('button', { name: 'Datas' })).toHaveAttribute('aria-current', 'true');
     expect(screen.getByRole('button', { name: 'Informação' })).not.toHaveAttribute('aria-current');
   });
+
+  it('keeps an observer-selected phone chip visible', () => {
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn().mockImplementation((query: string) => ({
+        matches: query === '(max-width: 767px)',
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    );
+    render(<ClienteDetalheNav sections={sections} actions={[]} />);
+    const dates = screen.getByRole('button', { name: 'Datas' });
+
+    act(() => {
+      MockIntersectionObserver.instances[0].callback(
+        [
+          {
+            isIntersecting: true,
+            target: document.getElementById('sec-datas')!,
+          } as IntersectionObserverEntry,
+        ],
+        MockIntersectionObserver.instances[0] as unknown as IntersectionObserver,
+      );
+    });
+
+    expect(dates.scrollIntoView).toHaveBeenCalledWith({
+      behavior: 'smooth',
+      block: 'nearest',
+      inline: 'center',
+    });
+  });
+
+  it('uses an instant section jump when reduced motion is preferred', () => {
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn().mockImplementation((query: string) => ({
+        matches: query === '(prefers-reduced-motion: reduce)',
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    );
+    render(<ClienteDetalheNav sections={sections} actions={[]} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Datas' }));
+    expect(document.getElementById('sec-datas')!.scrollIntoView).toHaveBeenCalledWith({
+      behavior: 'auto',
+      block: 'start',
+    });
+  });
 });

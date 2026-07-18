@@ -8110,6 +8110,77 @@ body.landing-page #root {
   display: none;
 }
 
+@media (max-width: 767px) {
+  .cliente-detalhe-nav {
+    position: sticky;
+    top: calc(var(--banner-height, 0px) + env(safe-area-inset-top, 0px));
+    z-index: 35;
+    display: flex;
+    width: calc(100% + 2rem);
+    margin: 0 -1rem 1rem;
+    overflow-x: auto;
+    border-block: 1px solid var(--border-color);
+    background: var(--surface-main);
+    background: color-mix(in srgb, var(--surface-main) 88%, transparent);
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+    scrollbar-width: none;
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    backdrop-filter: blur(18px) saturate(140%);
+  }
+
+  .cliente-detalhe-nav::-webkit-scrollbar { display: none; }
+
+  .cliente-detalhe-nav__group {
+    display: flex;
+    min-width: max-content;
+    gap: 0.35rem;
+    padding: 0.55rem 1rem;
+  }
+
+  .cliente-detalhe-nav__group--actions,
+  .cliente-detalhe-nav__divider { display: none; }
+
+  .cliente-detalhe-nav__item {
+    display: inline-flex;
+    min-height: 40px;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.55rem 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: var(--surface-main);
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
+  .cliente-detalhe-nav__item--active {
+    border-color: color-mix(in srgb, var(--primary-color) 55%, var(--border-color));
+    background: color-mix(in srgb, var(--primary-color) 18%, var(--surface-main));
+    color: var(--text-main);
+    font-weight: 700;
+  }
+
+  .cliente-detalhe-nav__icon { width: 16px; height: 16px; }
+  .cliente-detalhe-nav__label { font-size: 0.78rem; opacity: 1; }
+
+  #sec-info,
+  #sec-entregas,
+  #sec-historico,
+  #ig-container,
+  #sec-relatorio,
+  #sec-hub,
+  #sec-arquivos,
+  #sec-datas,
+  #sec-enderecos,
+  #sec-financeiro {
+    scroll-margin-top: calc(var(--banner-height, 0px) + env(safe-area-inset-top, 0px) + 68px);
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1100px) {
+  .cliente-detalhe-nav { display: none; }
+}
+
 /* The rail and its gutter only make sense where the sidebar is statically
    present (>=1101px). Below that the layout uses an off-canvas drawer with
    .main-content margin-left: 0, so the rail must not render. */
