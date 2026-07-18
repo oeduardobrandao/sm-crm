@@ -91,6 +91,8 @@
     "impressionsTooltip": "Impressões",
     "viewMore": "Ver mais publicações",
     "viewLess": "Ver menos",
+    "previousPage": "Página anterior",
+    "nextPage": "Próxima página",
     "pageIndicator": "Pg {{page}} de {{total}}",
     "postsError": "Erro ao carregar posts: {{error}}",
     "unknownError": "Erro desconhecido"

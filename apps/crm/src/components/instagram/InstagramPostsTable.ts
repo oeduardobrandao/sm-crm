@@ -18,9 +18,9 @@ export async function renderInstagramPostsTable(container: HTMLElement, clientId
        <div class="ig-posts-section__header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
            <h3 class="text-xl font-bold tracking-tight mb-4 text-foreground"><i class="ph ph-images" style="color: var(--primary-color); margin-right: 0.5rem;"></i> ${t('instagram.postsTitle')}</h3>
            <div id="ig-pagination" class="pagination-controls" style="display: none; gap: 0.5rem; align-items: center;">
-              <button id="btn-ig-prev" class="btn-icon" disabled><i class="ph ph-caret-left"></i></button>
+              <button id="btn-ig-prev" class="btn-icon" aria-label="${escapeHTML(t('instagram.previousPage'))}" disabled><i class="ph ph-caret-left" aria-hidden="true"></i></button>
               <span id="ig-page-indicator" style="font-size: 0.8rem; color: var(--text-muted); font-family: var(--font-mono);">Pg 1</span>
-              <button id="btn-ig-next" class="btn-icon"><i class="ph ph-caret-right"></i></button>
+              <button id="btn-ig-next" class="btn-icon" aria-label="${escapeHTML(t('instagram.nextPage'))}"><i class="ph ph-caret-right" aria-hidden="true"></i></button>
            </div>
        </div>
        <div id="ig-posts-content" class="ig-posts-content">
@@ -87,8 +87,8 @@ export async function renderInstagramPostsTable(container: HTMLElement, clientId
 
         html += `
             <tr${rowIndex >= COLLAPSED_LIMIT ? ' class="ig-post-card ig-row-hidden" style="display:none;"' : ' class="ig-post-card"'}>
-              <td class="ig-post-card__identity" data-label="${escapeHTML(t('instagram.colDate'))}" style="width: 140px;">
-                  <div style="display:flex;align-items:center;gap:0.75rem;">
+              <td class="ig-post-card__identity" data-label="${escapeHTML(t('instagram.colDate'))}">
+                  <div class="ig-post-card__identity-content" style="display:flex;align-items:center;gap:0.75rem;">
                     ${safeThumbnail ? `<img loading="lazy" src="${safeThumbnail}" alt="" style="width:44px;height:44px;border-radius:6px;object-fit:cover;flex-shrink:0;background:var(--bg-secondary);" onerror="this.style.display='none'">` : `<div style="width:44px;height:44px;border-radius:6px;background:var(--bg-secondary);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><i class="ph ph-image" style="color:var(--text-muted);font-size:1.1rem;"></i></div>`}
                     <div>
                       <strong>${formatDate(p.posted_at.split('T')[0])}</strong><br>
@@ -96,7 +96,7 @@ export async function renderInstagramPostsTable(container: HTMLElement, clientId
                     </div>
                   </div>
               </td>
-              <td class="ig-post-card__caption" data-label="${escapeHTML(t('instagram.colCaption'))}" style="max-width: 200px; white-space: normal; line-height: 1.4;">
+              <td class="ig-post-card__caption" data-label="${escapeHTML(t('instagram.colCaption'))}">
                  <span class="ig-post-card__caption-text">${captionStr}</span>
               </td>
               <td class="ig-post-card__metrics" data-label="${escapeHTML(t('instagram.colEngagement'))}">
@@ -122,8 +122,8 @@ export async function renderInstagramPostsTable(container: HTMLElement, clientId
       html += '</tbody></table>';
 
       if (posts.length > COLLAPSED_LIMIT) {
-        html += `<button id="btn-ig-expand" style="display:flex;align-items:center;justify-content:center;gap:0.4rem;margin:0.75rem auto 0;padding:0.4rem 1rem;font-size:0.8rem;color:var(--primary-color);background:none;border:1px solid var(--border-color);border-radius:6px;cursor:pointer;transition:background 0.15s;">
-          <i class="ph ph-caret-down"></i> ${escapeHTML(t('instagram.viewMore'))}
+        html += `<button id="btn-ig-expand" class="ig-posts-expand" style="display:flex;align-items:center;justify-content:center;gap:0.4rem;margin:0.75rem auto 0;padding:0.4rem 1rem;font-size:0.8rem;color:var(--primary-color);background:none;border:1px solid var(--border-color);border-radius:6px;cursor:pointer;transition:background 0.15s;">
+          <i class="ph ph-caret-down" aria-hidden="true"></i> ${escapeHTML(t('instagram.viewMore'))}
         </button>`;
       }
 

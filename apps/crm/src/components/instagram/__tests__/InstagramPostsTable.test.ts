@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getAllByRole } from '@testing-library/dom';
+import { getAllByRole, getByRole, waitFor } from '@testing-library/dom';
 import { readFileSync } from 'node:fs';
 import { renderInstagramPostsTable } from '../InstagramPostsTable';
 import { getInstagramPosts } from '../../../services/instagram';
@@ -54,6 +54,59 @@ describe('renderInstagramPostsTable', () => {
     expect(actionLabelRules[0]).toContain('clip:');
     expect(actionLabelRules[1]).toContain('position: static');
     expect(getAllByRole(container, 'link')[0]).toHaveAccessibleName('Abrir publicação');
+  });
+
+  it('names pagination controls and hides their icon-font glyphs', async () => {
+    vi.mocked(getInstagramPosts).mockResolvedValue({ posts, total: 20 } as never);
+    const container = document.createElement('div');
+
+    await renderInstagramPostsTable(container, 42);
+
+    const previous = getByRole(container, 'button', { name: 'Página anterior', hidden: true });
+    const next = getByRole(container, 'button', { name: 'Próxima página', hidden: true });
+    expect(previous.querySelector('i')).toHaveAttribute('aria-hidden', 'true');
+    expect(next.querySelector('i')).toHaveAttribute('aria-hidden', 'true');
+
+    next.click();
+    await waitFor(() => expect(getInstagramPosts).toHaveBeenLastCalledWith(42, 2));
+    expect(container.querySelector('#ig-page-indicator')).toHaveTextContent('Pg 2 de 2');
+  });
+
+  it('uses scoped widths that are neutralized for phone cards', async () => {
+    vi.mocked(getInstagramPosts).mockResolvedValue({ posts, total: 6 } as never);
+    const container = document.createElement('div');
+
+    await renderInstagramPostsTable(container, 42);
+
+    const identity = container.querySelector<HTMLElement>('.ig-post-card__identity')!;
+    const identityContent = container.querySelector<HTMLElement>(
+      '.ig-post-card__identity-content',
+    );
+    const caption = container.querySelector<HTMLElement>('.ig-post-card__caption')!;
+    expect(identityContent).not.toBeNull();
+    expect(identity.style.width).toBe('');
+    expect(caption.style.maxWidth).toBe('');
+
+    expect(crmStyles).toMatch(/\.ig-post-card__identity\s*\{[^}]*width:\s*140px;/s);
+    expect(crmStyles).toMatch(/\.ig-post-card__caption\s*\{[^}]*max-width:\s*200px;/s);
+    expect(crmStyles).toMatch(
+      /\.ig-post-card__identity-content\s*\{[^}]*width:\s*100%;[^}]*min-width:\s*0;/s,
+    );
+    expect(crmStyles).toMatch(
+      /\.ig-posts-list \.ig-post-card__identity,\s*\.ig-posts-list \.ig-post-card__caption\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*none;/s,
+    );
+  });
+
+  it('gives the expand control a scoped 44px touch target', async () => {
+    vi.mocked(getInstagramPosts).mockResolvedValue({ posts, total: 6 } as never);
+    const container = document.createElement('div');
+
+    await renderInstagramPostsTable(container, 42);
+
+    const expand = getByRole(container, 'button', { name: 'Ver mais publicações' });
+    expect(expand).toHaveClass('ig-posts-expand');
+    expect(expand.querySelector('i')).toHaveAttribute('aria-hidden', 'true');
+    expect(crmStyles).toMatch(/\.ig-posts-expand\s*\{[^}]*min-height:\s*44px;/s);
   });
 
   it('keeps rows after the fifth collapsed until Ver mais is activated', async () => {

@@ -8,6 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
   SheetTrigger,
@@ -31,17 +32,16 @@ function usePhoneViewport() {
 function ArticleMenu({ links }: { links: KbContextLink[] }) {
   return (
     <div className="context-help__list">
-      {links.map((link) => (
-        <Link
-          key={link.id}
-          to={`/ajuda/${link.article!.slug}`}
-          className="context-help__article"
-        >
-          <BookOpen className="h-4 w-4" aria-hidden="true" />
-          <span>{link.label ?? link.article!.title}</span>
-          <ChevronRight className="ml-auto h-4 w-4" aria-hidden="true" />
-        </Link>
-      ))}
+      {links.map((link) => {
+        const slug = link.article!.slug.trim();
+        return (
+          <Link key={link.id} to={`/ajuda/${slug}`} className="context-help__article">
+            <BookOpen className="h-4 w-4" aria-hidden="true" />
+            <span>{link.label ?? link.article!.title}</span>
+            <ChevronRight className="ml-auto h-4 w-4" aria-hidden="true" />
+          </Link>
+        );
+      })}
     </div>
   );
 }
@@ -59,7 +59,10 @@ export function ContextHelpLinks() {
     enabled: !!baseRoute && baseRoute !== '/',
   });
 
-  const validLinks = links.filter((link) => Boolean(link.article?.slug));
+  const validLinks = links.filter((link) => {
+    const slug = link.article?.slug;
+    return Boolean(slug && slug.trim());
+  });
 
   if (validLinks.length === 0) return null;
 
@@ -79,6 +82,9 @@ export function ContextHelpLinks() {
           <SheetContent side="bottom" className="context-help__sheet">
             <SheetHeader>
               <SheetTitle>Artigos relacionados</SheetTitle>
+              <SheetDescription className="sr-only">
+                Escolha um artigo relacionado para abrir.
+              </SheetDescription>
             </SheetHeader>
             <ArticleMenu links={validLinks} />
           </SheetContent>

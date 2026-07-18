@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -33,13 +33,14 @@ const article = (id: string, slug: string) => ({
 
 function renderHelp() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  const result = render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={['/clientes/42']}>
         <ContextHelpLinks />
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  return { ...result, client };
 }
 
 describe('ContextHelpLinks', () => {
@@ -55,7 +56,7 @@ describe('ContextHelpLinks', () => {
 
   it('renders one trigger and reveals all valid articles', async () => {
     vi.mocked(getContextLinksForRoute).mockResolvedValue([
-      article('1', 'adicionar-clientes'),
+      article('1', '  adicionar-clientes  '),
       article('2', 'conectar-instagram'),
     ]);
     renderHelp();
@@ -70,10 +71,37 @@ describe('ContextHelpLinks', () => {
     expect(screen.getByRole('link', { name: 'Artigo 2' })).toBeInTheDocument();
   });
 
-  it('omits missing slugs and hides the trigger when none remain', async () => {
-    vi.mocked(getContextLinksForRoute).mockResolvedValue([article('1', '')]);
-    renderHelp();
-    await waitFor(() => expect(getContextLinksForRoute).toHaveBeenCalledWith('/clientes'));
+  it('omits whitespace-only slugs and hides the trigger when none remain', async () => {
+    vi.mocked(getContextLinksForRoute).mockResolvedValue([article('1', '   ')]);
+    const { client } = renderHelp();
+    await waitFor(() => {
+      expect(client.getQueryState(['kb-context-links', '/clientes'])?.status).toBe('success');
+    });
     expect(screen.queryByRole('button', { name: /Artigos relacionados/ })).not.toBeInTheDocument();
+  });
+
+  it('uses the phone Sheet branch for related articles', async () => {
+    vi.stubGlobal('matchMedia', vi.fn().mockImplementation((query: string) => ({
+      matches: query === '(max-width: 767px)',
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })));
+    vi.mocked(getContextLinksForRoute).mockResolvedValue([
+      article('1', 'artigo-no-celular'),
+    ]);
+    renderHelp();
+
+    fireEvent.click(await screen.findByRole('button', { name: /Artigos relacionados/ }));
+
+    const sheet = await screen.findByRole('dialog', { name: 'Artigos relacionados' });
+    expect(sheet).toHaveClass('context-help__sheet');
+    expect(
+      within(sheet).getByText('Escolha um artigo relacionado para abrir.'),
+    ).toHaveClass('sr-only');
+    expect(within(sheet).getByRole('link', { name: 'Artigo 1' })).toHaveAttribute(
+      'href',
+      '/ajuda/artigo-no-celular',
+    );
   });
 });

@@ -1585,16 +1585,18 @@ export default function ClienteDetalhePage() {
                     size="icon"
                     style={{ width: 28, height: 28 }}
                     onClick={() => handleOpenDateModal(d)}
+                    aria-label={`${t('detail.editDate')}: ${d.titulo}`}
                   >
-                    <Pencil className="h-3.5 w-3.5" />
+                    <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon"
                     style={{ width: 28, height: 28, color: 'var(--danger)' }}
                     onClick={() => setDateDeleteId(d.id!)}
+                    aria-label={`${t('detail.removeDate')}: ${d.titulo}`}
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                   </Button>
                 </div>
               </div>
@@ -1693,16 +1695,18 @@ export default function ClienteDetalhePage() {
                       size="icon"
                       style={{ width: 28, height: 28 }}
                       onClick={() => handleOpenAddrModal(addr)}
+                      aria-label={`${t('detail.editAddress')}: ${addr.logradouro}, ${addr.numero}`}
                     >
-                      <Pencil className="h-3.5 w-3.5" />
+                      <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
                     </Button>
                     <Button
                       variant="ghost"
                       size="icon"
                       style={{ width: 28, height: 28, color: 'var(--danger)' }}
                       onClick={() => setAddrDeleteId(addr.id!)}
+                      aria-label={`${t('detail.removeAddress')}: ${addr.logradouro}, ${addr.numero}`}
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                     </Button>
                   </div>
                 </div>
