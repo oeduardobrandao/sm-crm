@@ -59,4 +59,16 @@ describe('MonthGrid', () => {
     const outCalls = renderCell.mock.calls.filter(([, isCurrent]: [Date, boolean]) => !isCurrent);
     expect(outCalls.length).toBeGreaterThan(0);
   });
+
+  it('keeps weekday and day tracks shrinkable inside narrow containers', () => {
+    const { container } = render(<MonthGrid {...defaultProps} />);
+
+    expect(container.querySelector('.month-grid-weekdays')).toHaveStyle({
+      gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+    });
+    expect(container.querySelector('.month-grid-days')).toHaveStyle({
+      gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+    });
+    expect(container.querySelector('.month-grid-cell')).toHaveStyle({ minWidth: '0' });
+  });
 });

@@ -156,6 +156,58 @@ interface WorkflowWithEtapas {
   etapas: WorkflowEtapa[];
 }
 
+export function ClientCalendarDayButton({
+  date,
+  dateLocale,
+  selected,
+  today,
+  hasEvents,
+  onSelect,
+  children,
+}: {
+  date: Date;
+  dateLocale: string;
+  selected: boolean;
+  today: boolean;
+  hasEvents: boolean;
+  onSelect: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      className={`calendar-day ${today ? 'today' : ''} ${selected ? 'selected' : ''} ${hasEvents ? 'has-events' : ''}`}
+      type="button"
+      aria-label={date.toLocaleDateString(dateLocale, { dateStyle: 'long' })}
+      aria-pressed={selected}
+      aria-current={today ? 'date' : undefined}
+      onClick={onSelect}
+    >
+      {children}
+    </button>
+  );
+}
+
+export function ScheduledPostOpenButton({
+  postTitle,
+  label,
+  onOpen,
+}: {
+  postTitle: string;
+  label: string;
+  onOpen: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="scheduled-item__open"
+      aria-label={`${label}: ${postTitle}`}
+      onClick={onOpen}
+    >
+      {label}
+    </button>
+  );
+}
+
 export default function ClienteDetalhePage() {
   const { id: idParam } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -1100,9 +1152,13 @@ export default function ClienteDetalhePage() {
                             byTipo[ev.tipo] = (byTipo[ev.tipo] || 0) + 1;
                           }
                           return (
-                            <div
-                              className={`calendar-day ${isDayToday ? 'today' : ''} ${selectedPostDay === d ? 'selected' : ''} ${hasEvents ? 'has-events' : ''}`}
-                              onClick={() => setSelectedPostDay(d)}
+                            <ClientCalendarDayButton
+                              date={date}
+                              dateLocale={dateLocale}
+                              selected={selectedPostDay === d}
+                              today={isDayToday}
+                              hasEvents={hasEvents}
+                              onSelect={() => setSelectedPostDay(d)}
                             >
                               <span className="day-number">{d}</span>
                               <div className="day-events">
@@ -1120,7 +1176,7 @@ export default function ClienteDetalhePage() {
                                   </div>
                                 ))}
                               </div>
-                            </div>
+                            </ClientCalendarDayButton>
                           );
                         }}
                       />
@@ -1153,17 +1209,7 @@ export default function ClienteDetalhePage() {
                           </div>
                         ) : (
                           selectedEvents.map((ev, i) => (
-                            <div
-                              key={i}
-                              className="scheduled-item"
-                              style={{ cursor: 'pointer' }}
-                              onClick={() => {
-                                const card = boardCards.find(
-                                  (c) => c.workflow.id === ev.workflowId,
-                                );
-                                if (card) setDrawerCard(card);
-                              }}
-                            >
+                            <article key={i} className="scheduled-item">
                               <div className="item-top">
                                 <div
                                   className="item-badge"
@@ -1186,6 +1232,16 @@ export default function ClienteDetalhePage() {
                               <div className="item-meta">
                                 {ev.date.toLocaleDateString(dateLocale)}
                               </div>
+                              <ScheduledPostOpenButton
+                                postTitle={ev.postTitle}
+                                label={t('instagram.openPost')}
+                                onOpen={() => {
+                                  const card = boardCards.find(
+                                    (candidate) => candidate.workflow.id === ev.workflowId,
+                                  );
+                                  if (card) setDrawerCard(card);
+                                }}
+                              />
                               <div
                                 style={{
                                   display: 'flex',
@@ -1243,8 +1299,8 @@ export default function ClienteDetalhePage() {
                                 {(ev.status === 'aprovado_interno' ||
                                   ev.status === 'aprovado_cliente') && (
                                   <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
+                                    type="button"
+                                    onClick={() => {
                                       handlePostStatusUpdate(ev.postId, 'agendado');
                                     }}
                                     disabled={postUpdating !== null}
@@ -1289,8 +1345,8 @@ export default function ClienteDetalhePage() {
                                 {/* Chip 3: Postado */}
                                 {ev.status === 'agendado' && (
                                   <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
+                                    type="button"
+                                    onClick={() => {
                                       handlePostStatusUpdate(ev.postId, 'postado');
                                     }}
                                     disabled={postUpdating !== null}
@@ -1326,7 +1382,7 @@ export default function ClienteDetalhePage() {
                                   </span>
                                 )}
                               </div>
-                            </div>
+                            </article>
                           ))
                         )}
                       </div>
@@ -1334,28 +1390,12 @@ export default function ClienteDetalhePage() {
                   </div>
 
                   {/* Legend */}
-                  <div
-                    style={{
-                      display: 'flex',
-                      gap: '1.5rem',
-                      fontSize: '0.75rem',
-                      color: 'var(--text-muted)',
-                      marginTop: '1rem',
-                    }}
-                  >
+                  <div className="cliente-post-calendar__legend">
                     {Object.entries(tipoColors).map(([tipo, color]) => (
-                      <span
-                        key={tipo}
-                        style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
-                      >
+                      <span key={tipo} className="cliente-post-calendar__legend-item">
                         <span
-                          style={{
-                            width: 10,
-                            height: 10,
-                            borderRadius: '50%',
-                            background: color,
-                            display: 'inline-block',
-                          }}
+                          className="cliente-post-calendar__legend-marker"
+                          style={{ background: color }}
                         />
                         {tipoLabels[tipo] || tipo}
                       </span>
@@ -2360,7 +2400,7 @@ function ClienteArquivosSection({ clienteId }: { clienteId: number }) {
 // Isolated component for imperative Instagram widgets.
 // Keyed by clienteId so it fully remounts on navigation.
 // Never conditionally mounts/unmounts its ref divs — React never touches their children.
-function InstagramSection({
+export function InstagramSection({
   clienteId,
   loadingIg,
   igSummary,

@@ -1,15 +1,33 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { readFileSync } from 'node:fs';
 import type { ReactElement } from 'react';
+import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { i18n } from '@mesaas/i18n';
 import { getInstagramPosts } from '../../../services/instagram';
 import { LatestInstagramPosts } from '../LatestInstagramPosts';
+import { InstagramSection } from '../../../pages/cliente-detalhe/ClienteDetalhePage';
 
-vi.mock('../../../services/instagram', () => ({ getInstagramPosts: vi.fn() }));
+vi.mock('../../../services/instagram', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../services/instagram')>()),
+  getInstagramPosts: vi.fn(),
+}));
+
+vi.mock('../InstagramOverviewCard', () => ({ renderInstagramOverviewCard: vi.fn() }));
+vi.mock('../InstagramFollowerChart', () => ({ renderInstagramFollowerChart: vi.fn() }));
+vi.mock('../InstagramConnectButton', () => ({ renderInstagramConnectButton: vi.fn() }));
+
+vi.mock('@/lib/supabase', () => {
+  const query: Record<string, ReturnType<typeof vi.fn>> = {};
+  query.select = vi.fn(() => query);
+  query.update = vi.fn(() => query);
+  query.eq = vi.fn(() => query);
+  query.single = vi.fn(() => Promise.resolve({ data: { auto_publish_on_approval: false } }));
+  return { supabase: { from: vi.fn(() => query) } };
+});
 
 const mockedGetInstagramPosts = vi.mocked(getInstagramPosts);
+const css = readFileSync('apps/crm/style.css', 'utf8');
 
 const olderPost = {
   id: 'older',
@@ -93,6 +111,21 @@ describe('LatestInstagramPosts', () => {
     expect(screen.getByRole('button', { name: 'Próxima página' })).toBeDisabled();
   });
 
+  it('uses a scoped 4:5 portrait stage that contains the complete client-post preview', () => {
+    expect(css).toMatch(
+      /\.latest-instagram-post-card__media\s*\{[^}]*aspect-ratio:\s*4\s*\/\s*5[^}]*background:\s*#111827/s,
+    );
+    expect(css).toMatch(
+      /\.latest-instagram-post-card__media img\s*\{[^}]*object-fit:\s*contain/s,
+    );
+    expect(css).toMatch(
+      /\.latest-instagram-post-card\s*\{[^}]*overflow:\s*hidden[^}]*border-radius:\s*16px/s,
+    );
+
+    const portraitStageRule = css.match(/\.latest-instagram-post-card__media\s*\{[^}]*\}/s)?.[0];
+    expect(portraitStageRule).not.toContain('analytics-post-card');
+  });
+
   it('does not expose unsafe media or publication URLs', async () => {
     mockedGetInstagramPosts.mockResolvedValue({
       posts: [
@@ -140,15 +173,23 @@ describe('LatestInstagramPosts', () => {
     expect(await screen.findByRole('alert')).not.toHaveTextContent('server detail must stay private');
     const previous = screen.getByRole('button', { name: 'Página anterior' });
     expect(previous).toBeEnabled();
+    fireEvent.click(previous);
+    expect(await screen.findByRole('article')).toHaveTextContent(newerPost.caption);
+    expect(mockedGetInstagramPosts).toHaveBeenLastCalledWith(42, 1);
   });
 
-  it('localizes the external-link copy in English', async () => {
+  it('localizes external-link copy, numbers, and dates from the resolved English language', async () => {
     await i18n.changeLanguage('en');
-    mockedGetInstagramPosts.mockResolvedValue({ posts: [newerPost], total: 1 });
+    mockedGetInstagramPosts.mockResolvedValue({
+      posts: [{ ...newerPost, likes: 1234 }],
+      total: 1,
+    });
 
     renderWithQueryClient(<LatestInstagramPosts clienteId={42} />);
 
     expect(await screen.findByRole('link', { name: 'Open publication' })).toBeTruthy();
+    expect(screen.getByLabelText('Likes: 1,234')).toBeInTheDocument();
+    expect(screen.getByText('7/13/2026')).toBeInTheDocument();
   });
 
   it('announces loading to assistive technology', () => {
@@ -159,14 +200,21 @@ describe('LatestInstagramPosts', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Carregando publicações');
   });
 
-  it('is integrated declaratively into the client detail page', () => {
-    const source = readFileSync(
-      'apps/crm/src/pages/cliente-detalhe/ClienteDetalhePage.tsx',
-      'utf8',
+  it('renders the real paginated carousel through the client-detail Instagram section', async () => {
+    mockedGetInstagramPosts.mockResolvedValue({ posts: [newerPost], total: 1 });
+
+    renderWithQueryClient(
+      <InstagramSection
+        clienteId={42}
+        loadingIg={false}
+        igSummary={{ account: { last_synced_at: '2026-07-18T12:00:00Z' }, history: [] }}
+        refetchIg={vi.fn()}
+        onNavigateAnalytics={vi.fn()}
+      />,
     );
 
-    expect(source).toContain('<LatestInstagramPosts clienteId={clienteId} />');
-    expect(source).not.toContain('renderInstagramPostsTable');
-    expect(source).not.toContain('igPostsRef');
+    const region = await screen.findByRole('region', { name: 'Últimas Publicações' });
+    expect(within(region).getByRole('article')).toHaveTextContent(newerPost.caption);
+    expect(mockedGetInstagramPosts).toHaveBeenCalledWith(42, 1);
   });
 });

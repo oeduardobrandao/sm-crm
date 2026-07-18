@@ -14,7 +14,6 @@ import {
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
-import { formatDate } from '@/store';
 import {
   getInstagramPosts,
   type InstagramPostSummary,
@@ -24,8 +23,17 @@ import { InstagramPostCarousel } from './InstagramPostCarousel';
 
 const POSTS_PER_PAGE = 10;
 
-function metricValue(value: number): string {
-  return (Number(value) || 0).toLocaleString('pt-BR');
+function displayLocale(resolvedLanguage: string | undefined): string {
+  return resolvedLanguage?.toLowerCase().startsWith('en') ? 'en-US' : 'pt-BR';
+}
+
+function metricValue(value: number, locale: string): string {
+  return (Number(value) || 0).toLocaleString(locale);
+}
+
+function postDateValue(postedAt: string, locale: string): string {
+  const dateOnly = postedAt.split('T')[0];
+  return new Date(`${dateOnly}T00:00:00`).toLocaleDateString(locale);
 }
 
 export function LatestInstagramPosts({ clienteId }: { clienteId: number }): ReactElement {
@@ -138,7 +146,8 @@ function InstagramPostsPagination({
 }
 
 function LatestInstagramPostCard({ post }: { post: InstagramPostSummary }): ReactElement {
-  const { t } = useTranslation('clients');
+  const { t, i18n } = useTranslation('clients');
+  const locale = displayLocale(i18n.resolvedLanguage ?? i18n.language);
   const thumbnailUrl = sanitizeUrl(post.thumbnail_url);
   const permalink = sanitizeUrl(post.permalink);
   const mediaType = {
@@ -159,23 +168,23 @@ function LatestInstagramPostCard({ post }: { post: InstagramPostSummary }): Reac
       <div className="latest-instagram-post-card__body">
         <div className="latest-instagram-post-card__meta">
           <span>{mediaType}</span>
-          <time dateTime={post.posted_at}>{formatDate(post.posted_at.split('T')[0])}</time>
+          <time dateTime={post.posted_at}>{postDateValue(post.posted_at, locale)}</time>
         </div>
         <p className="latest-instagram-post-card__caption">{post.caption || '—'}</p>
         <div className="latest-instagram-post-card__metrics">
-          <span aria-label={`${t('instagram.likes')}: ${metricValue(post.likes)}`}>
-            <Heart aria-hidden="true" size={15} /> {metricValue(post.likes)}
+          <span aria-label={`${t('instagram.likes')}: ${metricValue(post.likes, locale)}`}>
+            <Heart aria-hidden="true" size={15} /> {metricValue(post.likes, locale)}
           </span>
-          <span aria-label={`${t('instagram.comments')}: ${metricValue(post.comments)}`}>
-            <MessageCircle aria-hidden="true" size={15} /> {metricValue(post.comments)}
+          <span aria-label={`${t('instagram.comments')}: ${metricValue(post.comments, locale)}`}>
+            <MessageCircle aria-hidden="true" size={15} /> {metricValue(post.comments, locale)}
           </span>
-          <span aria-label={`${t('instagram.reachTooltip')}: ${metricValue(post.reach)}`}>
-            <Users aria-hidden="true" size={15} /> {metricValue(post.reach)}
+          <span aria-label={`${t('instagram.reachTooltip')}: ${metricValue(post.reach, locale)}`}>
+            <Users aria-hidden="true" size={15} /> {metricValue(post.reach, locale)}
           </span>
           <span
-            aria-label={`${t('instagram.impressionsTooltip')}: ${metricValue(post.impressions)}`}
+            aria-label={`${t('instagram.impressionsTooltip')}: ${metricValue(post.impressions, locale)}`}
           >
-            <Eye aria-hidden="true" size={15} /> {metricValue(post.impressions)}
+            <Eye aria-hidden="true" size={15} /> {metricValue(post.impressions, locale)}
           </span>
         </div>
         {permalink !== '#' && (

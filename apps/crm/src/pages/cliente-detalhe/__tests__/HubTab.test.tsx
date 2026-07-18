@@ -211,16 +211,49 @@ describe('HubTab — Acesso', () => {
 
   it('scrolls the selected tab into view and groups access actions', async () => {
     Element.prototype.scrollIntoView = vi.fn();
+    HTMLElement.prototype.scrollTo = vi.fn();
     vi.mocked(hubStore.getHubToken).mockResolvedValue(token(360));
     renderTab();
     await waitFor(() => screen.getByText(/Expira em/));
-    vi.mocked(Element.prototype.scrollIntoView).mockClear();
+    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
+    expect(HTMLElement.prototype.scrollTo).not.toHaveBeenCalled();
+
     const ideias = await screen.findByRole('tab', { name: 'Ideias' });
     fireEvent.mouseDown(ideias);
-    expect(ideias.scrollIntoView).toHaveBeenCalledWith({ block: 'nearest', inline: 'nearest' });
+    await waitFor(() =>
+      expect(screen.getByRole('tablist').scrollTo).toHaveBeenCalledWith({
+        behavior: 'smooth',
+        left: 0,
+      }),
+    );
+    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
     fireEvent.mouseDown(screen.getByRole('tab', { name: 'Acesso' }));
     expect(document.querySelector('.hub-access__url')).not.toBeNull();
     expect(document.querySelector('.hub-access__secondary-actions')).not.toBeNull();
     expect(document.querySelector('.hub-access__primary-actions')).not.toBeNull();
+  });
+
+  it('stacks the brand editor fields until the tablet breakpoint', async () => {
+    vi.mocked(hubStore.getHubToken).mockResolvedValue(token(360));
+    renderTab();
+    fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Marca' }));
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Marca' })).toBeInTheDocument());
+    expect(document.querySelector('.hub-brand-editor__grid')).toHaveClass(
+      'grid-cols-1',
+      'md:grid-cols-2',
+    );
+  });
+
+  it('stacks the page editor and preview until the tablet breakpoint', async () => {
+    vi.mocked(hubStore.getHubToken).mockResolvedValue(token(360));
+    renderTab();
+    fireEvent.mouseDown(await screen.findByRole('tab', { name: 'Páginas' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Nova página' }));
+
+    const dialog = await screen.findByRole('dialog', { name: 'Nova página' });
+    expect(dialog.querySelector('.hub-page-editor__workspace')).toHaveClass('flex-col', 'md:flex-row');
+    expect(dialog.querySelector('.hub-page-editor__input')).toHaveClass('w-full', 'md:w-1/2');
+    expect(dialog.querySelector('.hub-page-editor__preview')).toHaveClass('w-full', 'md:w-1/2');
   });
 });

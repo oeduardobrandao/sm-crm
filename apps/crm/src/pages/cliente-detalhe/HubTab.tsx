@@ -185,12 +185,26 @@ export function HubTab({ clienteId, contaId, workspaceSlug }: HubTabProps) {
   const [rotating, setRotating] = useState(false);
   const [activeTab, setActiveTab] = useState('acesso');
   const tabListRef = useRef<HTMLDivElement>(null);
+  const previousActiveTabRef = useRef(activeTab);
 
   useEffect(() => {
+    if (previousActiveTabRef.current === activeTab) return;
+    previousActiveTabRef.current = activeTab;
+
+    const tabList = tabListRef.current;
     const active = tabListRef.current?.querySelector<HTMLElement>(
       '[role="tab"][data-state="active"]',
     );
-    active?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+    if (!tabList || !active) return;
+
+    const left = Math.max(
+      0,
+      active.offsetLeft - Math.max(0, (tabList.clientWidth - active.offsetWidth) / 2),
+    );
+    const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      ? 'auto'
+      : 'smooth';
+    tabList.scrollTo?.({ left, behavior });
   }, [activeTab]);
 
   async function toggleActive() {
@@ -445,7 +459,7 @@ function BrandEditor({
   return (
     <section>
       <h3 className="font-semibold mb-3">Marca</h3>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="hub-brand-editor__grid grid grid-cols-1 gap-4 md:grid-cols-2">
         <div>
           <Label>URL do Logo</Label>
           <Input
@@ -726,6 +740,7 @@ function PagesEditor({
           className="max-w-5xl w-[95vw] h-[85vh] flex flex-col"
           confirmClose={isDirty}
           onConfirmClose={closeEditor}
+          aria-describedby={undefined}
         >
           <DialogHeader>
             <DialogTitle>{editingPage?.id ? 'Editar página' : 'Nova página'}</DialogTitle>
@@ -749,9 +764,9 @@ function PagesEditor({
               </button>
             </div>
 
-            <div className={`flex-1 min-h-0 flex gap-3 ${showPreview ? '' : ''}`}>
+            <div className="hub-page-editor__workspace flex min-h-0 flex-1 flex-col gap-3 md:flex-row">
               <textarea
-                className={`border border-border bg-background text-foreground rounded-lg p-3 text-sm resize-none font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-ring ${showPreview ? 'w-1/2' : 'w-full'}`}
+                className={`hub-page-editor__input min-h-[12rem] flex-1 resize-none rounded-lg border border-border bg-background p-3 font-mono text-sm leading-relaxed text-foreground focus:outline-none focus:ring-2 focus:ring-ring ${showPreview ? 'w-full md:w-1/2' : 'w-full'}`}
                 style={{ height: '100%' }}
                 value={contentText}
                 onChange={(e) =>
@@ -763,7 +778,7 @@ function PagesEditor({
                 placeholder="Escreva o conteúdo em markdown..."
               />
               {showPreview && (
-                <div className="w-1/2 border rounded-lg p-4 overflow-y-auto bg-muted/30">
+                <div className="hub-page-editor__preview min-h-[12rem] w-full flex-1 overflow-y-auto rounded-lg border bg-muted/30 p-4 md:w-1/2">
                   {contentText ? (
                     <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
                       {contentText}

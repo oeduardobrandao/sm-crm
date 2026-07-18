@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuth } from '../../../context/AuthContext';
@@ -69,6 +69,28 @@ function renderMobileNav(pathname = '/dashboard') {
   );
 }
 
+function createPhoneMediaQuery(initialMatches = true) {
+  let matches = initialMatches;
+  const listeners = new Set<(event: MediaQueryListEvent) => void>();
+
+  return {
+    get matches() {
+      return matches;
+    },
+    media: '(max-width: 767px)',
+    addEventListener: vi.fn((_type: string, listener: (event: MediaQueryListEvent) => void) => {
+      listeners.add(listener);
+    }),
+    removeEventListener: vi.fn((_type: string, listener: (event: MediaQueryListEvent) => void) => {
+      listeners.delete(listener);
+    }),
+    dispatch(nextMatches: boolean) {
+      matches = nextMatches;
+      listeners.forEach((listener) => listener({ matches } as MediaQueryListEvent));
+    },
+  };
+}
+
 describe('MobileNav', () => {
   beforeEach(() => {
     document.documentElement.removeAttribute('data-theme');
@@ -100,6 +122,59 @@ describe('MobileNav', () => {
     expect(document.getElementById('mobile-user-name')?.textContent).toBe('Ana Maria');
   });
 
+  it('marks Mais as the current destination for More routes, including primary-prefix collisions', () => {
+    setAuth();
+    renderMobileNav('/analytics-fluxos');
+
+    expect(screen.getByRole('button', { name: 'Mais' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('button', { name: 'Mais' })).toHaveClass('active');
+    expect(screen.getByRole('button', { name: 'Analytics' })).not.toHaveAttribute('aria-current');
+  });
+
+  it('uses dialog semantics, makes the background inert, closes on Escape, and restores focus', async () => {
+    setAuth();
+    const { container } = renderMobileNav('/dashboard');
+    const more = screen.getByRole('button', { name: 'Mais' });
+
+    fireEvent.click(more);
+
+    const sheet = await screen.findByRole('dialog', { name: 'Mais' });
+    expect(sheet).toHaveClass('mobile-more-sheet');
+    await waitFor(() => expect(sheet).toContainElement(document.activeElement as HTMLElement));
+    expect(container).toHaveAttribute('aria-hidden', 'true');
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Mais' })).toBeNull());
+    expect(more).toHaveFocus();
+  });
+
+  it('closes the phone sheet when the phone media query stops matching', async () => {
+    const phoneMedia = createPhoneMediaQuery();
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn((query: string) =>
+        query === '(max-width: 767px)'
+          ? phoneMedia
+          : {
+              matches: false,
+              media: query,
+              addEventListener: vi.fn(),
+              removeEventListener: vi.fn(),
+            },
+      ),
+    );
+    setAuth();
+    renderMobileNav('/dashboard');
+    const more = screen.getByRole('button', { name: 'Mais' });
+    fireEvent.click(more);
+    expect(await screen.findByRole('dialog', { name: 'Mais' })).toBeInTheDocument();
+
+    act(() => phoneMedia.dispatch(false));
+
+    await waitFor(() => expect(more).toHaveAttribute('aria-expanded', 'false'));
+    expect(screen.queryByRole('dialog', { name: 'Mais' })).toBeNull();
+  });
+
   it('navigates from more sheet and closes it', async () => {
     setAuth();
     renderMobileNav('/dashboard');
@@ -115,7 +190,8 @@ describe('MobileNav', () => {
     await waitFor(() => {
       expect(screen.getByTestId('path').textContent).toBe('/configuracao');
     });
-    expect(document.querySelector('.mobile-more-overlay.visible')).toBeNull();
+    expect(document.getElementById('mobile-more-btn')).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('dialog', { name: 'Mais' })).toBeNull();
   });
 
   it('includes all sidebar routes in more sheet', () => {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
@@ -6,6 +6,7 @@ import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
 import { getMoreSheetGroups } from './nav-data';
 import { Search, MessageCircle } from 'lucide-react';
 import { CommandDialog, CommandInput, CommandList, CommandEmpty } from '@/components/ui/command';
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 
 declare global {
   interface Window {
@@ -37,7 +38,21 @@ export default function MobileNav() {
   );
   const [searchOpen, setSearchOpen] = useState(false);
 
-  const activeIndex = getActiveIndex(location.pathname);
+  const moreSheetGroups = getMoreSheetGroups(role, features as Record<string, boolean> | null);
+  const isMoreRouteActive = moreSheetGroups.some((group) =>
+    group.items.some((item) => location.pathname.startsWith(item.route)),
+  );
+  const activeIndex = isMoreRouteActive ? -1 : getActiveIndex(location.pathname);
+
+  useEffect(() => {
+    const phoneMedia = window.matchMedia('(max-width: 767px)');
+    const closeOutsidePhone = (event: MediaQueryListEvent) => {
+      if (!event.matches) setMoreOpen(false);
+    };
+
+    phoneMedia.addEventListener('change', closeOutsidePhone);
+    return () => phoneMedia.removeEventListener('change', closeOutsidePhone);
+  }, []);
 
   const go = (route: string) => {
     navigate(route);
@@ -61,58 +76,58 @@ export default function MobileNav() {
         .toUpperCase()
     : 'U';
 
-  const moreSheetGroups = getMoreSheetGroups(role, features as Record<string, boolean> | null);
-
   return (
     <>
-      <nav className="mobile-nav-glass" id="mobile-nav" aria-label="Navegação principal">
-        <div className="mobile-nav-items">
-          {PRIMARY_ITEMS.map((item, index) => {
-            const active = activeIndex === index;
-            return (
+      <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
+        <nav className="mobile-nav-glass" id="mobile-nav" aria-label="Navegação principal">
+          <div className="mobile-nav-items">
+            {PRIMARY_ITEMS.map((item, index) => {
+              const active = activeIndex === index;
+              return (
+                <button
+                  key={item.id}
+                  className={`mobile-nav-item${active ? ' active' : ''}`}
+                  onClick={() => go(item.route)}
+                  type="button"
+                  aria-current={active ? 'page' : undefined}
+                  aria-label={item.label}
+                >
+                  <span className="mobile-nav-item__icon" aria-hidden="true">
+                    <i className={`${active ? 'ph-fill' : 'ph'} ${item.icon}`} />
+                  </span>
+                  <span className="nav-label">{item.label}</span>
+                </button>
+              );
+            })}
+
+            <SheetTrigger asChild>
               <button
-                key={item.id}
-                className={`mobile-nav-item${active ? ' active' : ''}`}
-                onClick={() => go(item.route)}
+                id="mobile-more-btn"
+                className={`mobile-nav-item${moreOpen || isMoreRouteActive ? ' active' : ''}`}
                 type="button"
-                aria-current={active ? 'page' : undefined}
-                aria-label={item.label}
+                aria-label="Mais"
+                aria-current={isMoreRouteActive ? 'page' : undefined}
+                aria-expanded={moreOpen}
+                aria-controls="mobile-more-sheet"
               >
                 <span className="mobile-nav-item__icon" aria-hidden="true">
-                  <i className={`${active ? 'ph-fill' : 'ph'} ${item.icon}`} />
+                  <i className="ph ph-dots-three" />
                 </span>
-                <span className="nav-label">{item.label}</span>
+                <span className="nav-label">Mais</span>
               </button>
-            );
-          })}
+            </SheetTrigger>
+          </div>
+        </nav>
 
-          <button
-            id="mobile-more-btn"
-            className={`mobile-nav-item${moreOpen ? ' active' : ''}`}
-            onClick={() => setMoreOpen((value) => !value)}
-            type="button"
-            aria-label="Mais"
-            aria-expanded={moreOpen}
-            aria-controls="mobile-more-sheet"
-          >
-            <span className="mobile-nav-item__icon" aria-hidden="true">
-              <i className="ph ph-dots-three" />
-            </span>
-            <span className="nav-label">Mais</span>
-          </button>
-        </div>
-      </nav>
-
-      {/* More Sheet Overlay */}
-      <div
-        className={`mobile-more-overlay${moreOpen ? ' visible' : ''}`}
-        onClick={() => setMoreOpen(false)}
-      >
-        <div
+        <SheetContent
+          side="bottom"
           id="mobile-more-sheet"
           className="mobile-more-sheet"
-          onClick={(e) => e.stopPropagation()}
+          overlayClassName="mobile-more-overlay"
+          aria-describedby={undefined}
         >
+          <SheetTitle className="sr-only">Mais</SheetTitle>
+
           {/* Profile */}
           <div className="mobile-more-profile" id="mobile-profile">
             <div className="avatar" id="mobile-avatar">
@@ -210,8 +225,8 @@ export default function MobileNav() {
             </div>
             <span>Sair</span>
           </button>
-        </div>
-      </div>
+        </SheetContent>
+      </Sheet>
       <CommandDialog open={searchOpen} onOpenChange={setSearchOpen}>
         <CommandInput placeholder="Buscar..." />
         <CommandList>
