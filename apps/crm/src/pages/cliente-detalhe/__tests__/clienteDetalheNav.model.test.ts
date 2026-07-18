@@ -13,6 +13,7 @@ function makeInput(over: Partial<BuildNavModelInput> = {}): BuildNavModelInput {
     hubToken: null,
     workspaceSlug: 'acme',
     contaId: 'conta-1',
+    featureTiktok: false,
     now: NOW,
     handlers: {
       onConnectInstagram: vi.fn(),
@@ -84,6 +85,27 @@ describe('buildNavModel — sections', () => {
     const m = buildNavModel(makeInput());
     expect(m.sections.find((s) => s.key === 'instagram')?.id).toBe('ig-container');
     expect(SECTION_IDS.info).toBe('sec-info');
+  });
+
+  it('omits tiktok when featureTiktok is false (default: ships dark)', () => {
+    const m = buildNavModel(makeInput());
+    expect(sectionKeys(m)).not.toContain('tiktok');
+  });
+
+  it('includes tiktok, right after instagram, when featureTiktok is true', () => {
+    const m = buildNavModel(makeInput({ featureTiktok: true }));
+    expect(sectionKeys(m)).toEqual([
+      'info',
+      'instagram',
+      'tiktok',
+      'relatorio',
+      'hub',
+      'arquivos',
+      'datas',
+      'enderecos',
+      'financeiro',
+    ]);
+    expect(m.sections.find((s) => s.key === 'tiktok')?.id).toBe('tiktok-container');
   });
 });
 

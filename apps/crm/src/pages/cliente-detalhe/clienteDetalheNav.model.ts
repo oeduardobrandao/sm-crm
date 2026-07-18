@@ -3,6 +3,7 @@ export type NavSectionKey =
   | 'entregas'
   | 'historico'
   | 'instagram'
+  | 'tiktok'
   | 'relatorio'
   | 'hub'
   | 'arquivos'
@@ -48,6 +49,8 @@ export interface BuildNavModelInput {
   hubToken: HubTokenLike | null | undefined;
   workspaceSlug: string | undefined;
   contaId: string | null | undefined;
+  /** feature_tiktok entitlement — the TikTok nav section only appears when true. */
+  featureTiktok: boolean;
   /** Current time in ms; injected so expiry logic is testable. */
   now: number;
   handlers: NavHandlers;
@@ -58,6 +61,7 @@ export const SECTION_IDS: Record<NavSectionKey, string> = {
   entregas: 'sec-entregas',
   historico: 'sec-historico',
   instagram: 'ig-container',
+  tiktok: 'tiktok-container',
   relatorio: 'sec-relatorio',
   hub: 'sec-hub',
   arquivos: 'sec-arquivos',
@@ -78,6 +82,7 @@ export function buildNavModel(input: BuildNavModelInput): {
     hubToken,
     workspaceSlug,
     contaId,
+    featureTiktok,
     now,
     handlers,
   } = input;
@@ -91,6 +96,7 @@ export function buildNavModel(input: BuildNavModelInput): {
   addSection('entregas', activeDeliveriesCount > 0);
   addSection('historico', deliveryHistoryCount > 0);
   addSection('instagram', true);
+  addSection('tiktok', featureTiktok);
   addSection('relatorio', !isAgent);
   addSection('hub', isAgent || (!!contaId && !!workspaceSlug));
   addSection('arquivos', true);
