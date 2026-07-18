@@ -5,8 +5,6 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  ArrowLeft,
-  Edit2,
   MapPin,
   Plus,
   Pencil,
@@ -18,6 +16,8 @@ import {
   CalendarDays,
   FolderOpen,
   ExternalLink,
+  FileText,
+  ReceiptText,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { RoleRestrictionNotice } from '@/components/help/RoleRestrictionNotice';
@@ -115,7 +115,10 @@ import {
 import type { BoardCard } from '../entregas/hooks/useEntregasData';
 import { getWorkflowCovers } from '../../services/postMedia';
 import { HubTab } from './HubTab';
+import { ClienteDetalheHeader } from './ClienteDetalheHeader';
 import { ClienteDetalheNav } from './ClienteDetalheNav';
+import { ResponsiveCardRail } from './ResponsiveCardRail';
+import { ClienteFinanceEmptyState } from './ClienteFinanceEmptyState';
 import { buildNavModel } from './clienteDetalheNav.model';
 import { getFolderContents } from '../../services/fileService';
 import { FileGrid } from '../arquivos/components/FileGrid';
@@ -129,10 +132,10 @@ import { useAuth } from '../../context/AuthContext';
 import { useTranslation } from 'react-i18next';
 import { renderInstagramOverviewCard } from '../../components/instagram/InstagramOverviewCard';
 import { renderInstagramFollowerChart } from '../../components/instagram/InstagramFollowerChart';
-import { renderInstagramPostsTable } from '../../components/instagram/InstagramPostsTable';
 import { renderInstagramConnectButton } from '../../components/instagram/InstagramConnectButton';
 import { TikTokSection } from './TikTokSection';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
+import { LatestInstagramPosts } from '../../components/instagram/LatestInstagramPosts';
 import { supabase } from '@/lib/supabase';
 
 function StatusBadge({ status }: { status: string }) {
@@ -156,6 +159,58 @@ function StatusBadge({ status }: { status: string }) {
 interface WorkflowWithEtapas {
   workflow: Workflow;
   etapas: WorkflowEtapa[];
+}
+
+export function ClientCalendarDayButton({
+  date,
+  dateLocale,
+  selected,
+  today,
+  hasEvents,
+  onSelect,
+  children,
+}: {
+  date: Date;
+  dateLocale: string;
+  selected: boolean;
+  today: boolean;
+  hasEvents: boolean;
+  onSelect: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      className={`calendar-day ${today ? 'today' : ''} ${selected ? 'selected' : ''} ${hasEvents ? 'has-events' : ''}`}
+      type="button"
+      aria-label={date.toLocaleDateString(dateLocale, { dateStyle: 'long' })}
+      aria-pressed={selected}
+      aria-current={today ? 'date' : undefined}
+      onClick={onSelect}
+    >
+      {children}
+    </button>
+  );
+}
+
+export function ScheduledPostOpenButton({
+  postTitle,
+  label,
+  onOpen,
+}: {
+  postTitle: string;
+  label: string;
+  onOpen: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="scheduled-item__open"
+      aria-label={`${label}: ${postTitle}`}
+      onClick={onOpen}
+    >
+      {label}
+    </button>
+  );
 }
 
 export default function ClienteDetalhePage() {
@@ -941,63 +996,17 @@ export default function ClienteDetalhePage() {
 
   return (
     <div className="cliente-detalhe-page">
+      <ClienteDetalheHeader
+        nome={cliente.nome}
+        initials={getInitials(cliente.nome)}
+        cor={cliente.cor}
+        plano={cliente.plano}
+        status={cliente.status}
+        imageUrl={igSummary?.account?.profile_picture_url}
+        onBack={() => navigate('/clientes')}
+        onEdit={handleEdit}
+      />
       <ClienteDetalheNav sections={navModel.sections} actions={navModel.actions} />
-      {/* Header */}
-      <div className="header" style={{ marginBottom: '1.5rem', alignContent: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <Button
-            variant="outline"
-            size="icon"
-            style={{ borderRadius: '50%' }}
-            onClick={() => navigate('/clientes')}
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          {igSummary?.account?.profile_picture_url ? (
-            <img
-              src={igSummary.account.profile_picture_url}
-              alt={cliente.nome}
-              style={{
-                width: 48,
-                height: 48,
-                borderRadius: '50%',
-                objectFit: 'cover',
-                flexShrink: 0,
-              }}
-            />
-          ) : (
-            <div
-              style={{
-                background: cliente.cor,
-                width: 48,
-                height: 48,
-                borderRadius: '50%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#fff',
-                fontWeight: 700,
-                fontSize: '1.1rem',
-                flexShrink: 0,
-              }}
-            >
-              {getInitials(cliente.nome)}
-            </div>
-          )}
-          <div className="header-title" style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
-            <h2 style={{ margin: 0 }}>{cliente.nome}</h2>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <span className="badge badge-neutral">{cliente.plano}</span>
-              <StatusBadge status={cliente.status} />
-            </div>
-          </div>
-        </div>
-        <div className="header-actions">
-          <Button variant="outline" onClick={handleEdit}>
-            <Edit2 className="h-4 w-4" /> {tc('actions.edit')}
-          </Button>
-        </div>
-      </div>
 
       {/* Info Card */}
       <div id="sec-info" className="card animate-up" style={{ marginBottom: '1.5rem' }}>
@@ -1074,7 +1083,7 @@ export default function ClienteDetalhePage() {
           <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">
             {t('detail.activeDeliveries')}
           </h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <ResponsiveCardRail className="cliente-deliveries-rail">
             {boardCards.map((card) => (
               <WorkflowCard
                 key={card.workflow.id}
@@ -1093,7 +1102,7 @@ export default function ClienteDetalhePage() {
                 awaitingClienteCount={awaitingClienteCounts.get(card.workflow.id!) ?? 0}
               />
             ))}
-          </div>
+          </ResponsiveCardRail>
 
           {/* Post Calendar */}
           {postCalendarEvents.length > 0 &&
@@ -1132,7 +1141,7 @@ export default function ClienteDetalhePage() {
                     paddingTop: '1rem',
                   }}
                 >
-                  <div className="calendar-layout">
+                  <div className="calendar-layout cliente-post-calendar">
                     <div className="calendar-main">
                       <MonthGrid
                         currentMonth={calendarMonth}
@@ -1153,9 +1162,13 @@ export default function ClienteDetalhePage() {
                             byTipo[ev.tipo] = (byTipo[ev.tipo] || 0) + 1;
                           }
                           return (
-                            <div
-                              className={`calendar-day ${isDayToday ? 'today' : ''} ${selectedPostDay === d ? 'selected' : ''} ${hasEvents ? 'has-events' : ''}`}
-                              onClick={() => setSelectedPostDay(d)}
+                            <ClientCalendarDayButton
+                              date={date}
+                              dateLocale={dateLocale}
+                              selected={selectedPostDay === d}
+                              today={isDayToday}
+                              hasEvents={hasEvents}
+                              onSelect={() => setSelectedPostDay(d)}
                             >
                               <span className="day-number">{d}</span>
                               <div className="day-events">
@@ -1173,7 +1186,7 @@ export default function ClienteDetalhePage() {
                                   </div>
                                 ))}
                               </div>
-                            </div>
+                            </ClientCalendarDayButton>
                           );
                         }}
                       />
@@ -1206,17 +1219,7 @@ export default function ClienteDetalhePage() {
                           </div>
                         ) : (
                           selectedEvents.map((ev, i) => (
-                            <div
-                              key={i}
-                              className="scheduled-item"
-                              style={{ cursor: 'pointer' }}
-                              onClick={() => {
-                                const card = boardCards.find(
-                                  (c) => c.workflow.id === ev.workflowId,
-                                );
-                                if (card) setDrawerCard(card);
-                              }}
-                            >
+                            <article key={i} className="scheduled-item">
                               <div className="item-top">
                                 <div
                                   className="item-badge"
@@ -1239,6 +1242,16 @@ export default function ClienteDetalhePage() {
                               <div className="item-meta">
                                 {ev.date.toLocaleDateString(dateLocale)}
                               </div>
+                              <ScheduledPostOpenButton
+                                postTitle={ev.postTitle}
+                                label={t('instagram.openPost')}
+                                onOpen={() => {
+                                  const card = boardCards.find(
+                                    (candidate) => candidate.workflow.id === ev.workflowId,
+                                  );
+                                  if (card) setDrawerCard(card);
+                                }}
+                              />
                               <div
                                 style={{
                                   display: 'flex',
@@ -1296,8 +1309,8 @@ export default function ClienteDetalhePage() {
                                 {(ev.status === 'aprovado_interno' ||
                                   ev.status === 'aprovado_cliente') && (
                                   <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
+                                    type="button"
+                                    onClick={() => {
                                       handlePostStatusUpdate(ev.postId, 'agendado');
                                     }}
                                     disabled={postUpdating !== null}
@@ -1342,8 +1355,8 @@ export default function ClienteDetalhePage() {
                                 {/* Chip 3: Postado */}
                                 {ev.status === 'agendado' && (
                                   <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
+                                    type="button"
+                                    onClick={() => {
                                       handlePostStatusUpdate(ev.postId, 'postado');
                                     }}
                                     disabled={postUpdating !== null}
@@ -1379,7 +1392,7 @@ export default function ClienteDetalhePage() {
                                   </span>
                                 )}
                               </div>
-                            </div>
+                            </article>
                           ))
                         )}
                       </div>
@@ -1387,28 +1400,12 @@ export default function ClienteDetalhePage() {
                   </div>
 
                   {/* Legend */}
-                  <div
-                    style={{
-                      display: 'flex',
-                      gap: '1.5rem',
-                      fontSize: '0.75rem',
-                      color: 'var(--text-muted)',
-                      marginTop: '1rem',
-                    }}
-                  >
+                  <div className="cliente-post-calendar__legend">
                     {Object.entries(tipoColors).map(([tipo, color]) => (
-                      <span
-                        key={tipo}
-                        style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
-                      >
+                      <span key={tipo} className="cliente-post-calendar__legend-item">
                         <span
-                          style={{
-                            width: 10,
-                            height: 10,
-                            borderRadius: '50%',
-                            background: color,
-                            display: 'inline-block',
-                          }}
+                          className="cliente-post-calendar__legend-marker"
+                          style={{ background: color }}
                         />
                         {tipoLabels[tipo] || tipo}
                       </span>
@@ -1612,26 +1609,11 @@ export default function ClienteDetalhePage() {
         )}
 
         {!loadingDatas && datasImportantes && datasImportantes.length > 0 && (
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))',
-              gap: '0.75rem',
-            }}
-          >
+          <ResponsiveCardRail className="cliente-dates-rail">
             {datasImportantes.map((d) => (
               <div
                 key={d.id}
-                style={{
-                  padding: '0.75rem 1rem',
-                  borderRadius: '12px',
-                  border: '1px solid var(--border-color)',
-                  background: 'var(--surface-main)',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  transition: 'box-shadow 0.2s ease, transform 0.2s ease',
-                }}
+                className="cliente-date-card"
                 onMouseEnter={(e) => {
                   (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)';
                   (e.currentTarget as HTMLDivElement).style.boxShadow =
@@ -1656,21 +1638,23 @@ export default function ClienteDetalhePage() {
                     size="icon"
                     style={{ width: 28, height: 28 }}
                     onClick={() => handleOpenDateModal(d)}
+                    aria-label={`${t('detail.editDate')}: ${d.titulo}`}
                   >
-                    <Pencil className="h-3.5 w-3.5" />
+                    <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon"
                     style={{ width: 28, height: 28, color: 'var(--danger)' }}
                     onClick={() => setDateDeleteId(d.id!)}
+                    aria-label={`${t('detail.removeDate')}: ${d.titulo}`}
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                   </Button>
                 </div>
               </div>
             ))}
-          </div>
+          </ResponsiveCardRail>
         )}
       </div>
 
@@ -1716,24 +1700,11 @@ export default function ClienteDetalhePage() {
         )}
 
         {!loadingEnderecos && enderecos && enderecos.length > 0 && (
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-              gap: '0.75rem',
-            }}
-          >
+          <ResponsiveCardRail className="cliente-addresses-rail">
             {enderecos.map((addr) => (
               <div
                 key={addr.id}
-                style={{
-                  position: 'relative',
-                  padding: '1rem 1.25rem',
-                  borderRadius: '12px',
-                  border: '1px solid var(--border-color)',
-                  background: 'var(--surface-main)',
-                  transition: 'box-shadow 0.2s ease, transform 0.2s ease',
-                }}
+                className="cliente-address-card"
                 onMouseEnter={(e) => {
                   (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)';
                   (e.currentTarget as HTMLDivElement).style.boxShadow =
@@ -1777,16 +1748,18 @@ export default function ClienteDetalhePage() {
                       size="icon"
                       style={{ width: 28, height: 28 }}
                       onClick={() => handleOpenAddrModal(addr)}
+                      aria-label={`${t('detail.editAddress')}: ${addr.logradouro}, ${addr.numero}`}
                     >
-                      <Pencil className="h-3.5 w-3.5" />
+                      <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
                     </Button>
                     <Button
                       variant="ghost"
                       size="icon"
                       style={{ width: 28, height: 28, color: 'var(--danger)' }}
                       onClick={() => setAddrDeleteId(addr.id!)}
+                      aria-label={`${t('detail.removeAddress')}: ${addr.logradouro}, ${addr.numero}`}
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                     </Button>
                   </div>
                 </div>
@@ -1800,14 +1773,18 @@ export default function ClienteDetalhePage() {
                 <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>CEP: {addr.cep}</p>
               </div>
             ))}
-          </div>
+          </ResponsiveCardRail>
         )}
       </div>
 
       {!isAgent && (
         <>
           {/* KPI Cards */}
-          <div id="sec-financeiro" className="kpi-grid" style={{ marginBottom: '1.5rem' }}>
+          <div
+            id="sec-financeiro"
+            className="kpi-grid cliente-finance-kpis"
+            style={{ marginBottom: '1.5rem' }}
+          >
             <div className="kpi-card animate-up">
               <span className="kpi-label">{t('detail.monthlyValue')}</span>
               <span className="kpi-value">{formatBRL(Number(cliente.valor_mensal))}</span>
@@ -1829,27 +1806,26 @@ export default function ClienteDetalhePage() {
             <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">
               {t('detail.contracts')}
             </h3>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('detail.contractTitle')}</TableHead>
-                  <TableHead>{t('detail.contractPeriod')}</TableHead>
-                  <TableHead>{t('detail.contractValue')}</TableHead>
-                  <TableHead>{t('detail.contractStatus')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {contratosCliente.length === 0 ? (
+            {contratosCliente.length === 0 ? (
+              <ClienteFinanceEmptyState
+                icon={FileText}
+                title={t('detail.noContracts')}
+                description={t('detail.noContractsDescription')}
+                actionLabel={t('detail.manageContracts')}
+                actionHref="/contratos"
+              />
+            ) : (
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell
-                      colSpan={4}
-                      style={{ textAlign: 'center', color: 'var(--text-muted)' }}
-                    >
-                      {t('detail.noContracts')}
-                    </TableCell>
+                    <TableHead>{t('detail.contractTitle')}</TableHead>
+                    <TableHead>{t('detail.contractPeriod')}</TableHead>
+                    <TableHead>{t('detail.contractValue')}</TableHead>
+                    <TableHead>{t('detail.contractStatus')}</TableHead>
                   </TableRow>
-                ) : (
-                  contratosCliente.map((r) => (
+                </TableHeader>
+                <TableBody>
+                  {contratosCliente.map((r) => (
                     <TableRow key={r.id ?? Math.random()}>
                       <TableCell data-label={t('detail.contractTitle')}>{r.titulo}</TableCell>
                       <TableCell data-label={t('detail.contractPeriod')}>
@@ -1862,10 +1838,10 @@ export default function ClienteDetalhePage() {
                         <StatusBadge status={r.status} />
                       </TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </div>
 
           {/* Transações Table */}
@@ -1873,27 +1849,26 @@ export default function ClienteDetalhePage() {
             <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">
               {t('detail.transactions')}
             </h3>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('detail.txDescription')}</TableHead>
-                  <TableHead>{t('detail.txDate')}</TableHead>
-                  <TableHead>{t('detail.txValue')}</TableHead>
-                  <TableHead>{t('detail.txStatus')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {transacoesCliente.length === 0 ? (
+            {transacoesCliente.length === 0 ? (
+              <ClienteFinanceEmptyState
+                icon={ReceiptText}
+                title={t('detail.noTransactions')}
+                description={t('detail.noTransactionsDescription')}
+                actionLabel={t('detail.viewFinancial')}
+                actionHref="/financeiro"
+              />
+            ) : (
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell
-                      colSpan={4}
-                      style={{ textAlign: 'center', color: 'var(--text-muted)' }}
-                    >
-                      {t('detail.noTransactions')}
-                    </TableCell>
+                    <TableHead>{t('detail.txDescription')}</TableHead>
+                    <TableHead>{t('detail.txDate')}</TableHead>
+                    <TableHead>{t('detail.txValue')}</TableHead>
+                    <TableHead>{t('detail.txStatus')}</TableHead>
                   </TableRow>
-                ) : (
-                  transacoesCliente.map((r) => (
+                </TableHeader>
+                <TableBody>
+                  {transacoesCliente.map((r) => (
                     <TableRow key={r.id ?? Math.random()}>
                       <TableCell data-label={t('detail.txDescription')}>{r.descricao}</TableCell>
                       <TableCell data-label={t('detail.txDate')}>{formatDate(r.data)}</TableCell>
@@ -1912,10 +1887,10 @@ export default function ClienteDetalhePage() {
                         <StatusBadge status={r.status ?? 'pago'} />
                       </TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </div>
         </>
       )}
@@ -2440,7 +2415,7 @@ function ClienteArquivosSection({ clienteId }: { clienteId: number }) {
 // Isolated component for imperative Instagram widgets.
 // Keyed by clienteId so it fully remounts on navigation.
 // Never conditionally mounts/unmounts its ref divs — React never touches their children.
-function InstagramSection({
+export function InstagramSection({
   clienteId,
   loadingIg,
   igSummary,
@@ -2456,7 +2431,6 @@ function InstagramSection({
   const { t, i18n } = useTranslation('clients');
   const igOverviewRef = useRef<HTMLDivElement>(null);
   const igChartRef = useRef<HTMLDivElement>(null);
-  const igPostsRef = useRef<HTMLDivElement>(null);
   const igConnectRef = useRef<HTMLDivElement>(null);
 
   const [autoPublish, setAutoPublish] = useState(false);
@@ -2501,7 +2475,6 @@ function InstagramSection({
         renderInstagramOverviewCard(igOverviewRef.current, clienteId, igSummary.account, refetchIg);
       if (igChartRef.current)
         renderInstagramFollowerChart(igChartRef.current, igSummary.history ?? []);
-      if (igPostsRef.current) renderInstagramPostsTable(igPostsRef.current, clienteId);
     }
   }, [loadingIg, igSummary, clienteId, refetchIg, i18n.language]);
 
@@ -2520,7 +2493,9 @@ function InstagramSection({
       )}
       <div ref={igOverviewRef} />
       <div ref={igChartRef} />
-      <div ref={igPostsRef} />
+      {!loadingIg && igSummary?.account?.last_synced_at && (
+        <LatestInstagramPosts clienteId={clienteId} />
+      )}
       {!loadingIg && igSummary?.account?.last_synced_at && (
         <div
           style={{

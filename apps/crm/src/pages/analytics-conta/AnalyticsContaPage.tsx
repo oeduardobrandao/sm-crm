@@ -80,6 +80,7 @@ import {
   type RateKey,
 } from '../../lib/ig-rates';
 import { captureEvent } from '@/lib/analytics';
+import { InstagramPostCarousel } from '@/components/instagram/InstagramPostCarousel';
 
 Chart.register(...registerables);
 
@@ -341,15 +342,7 @@ function RankedPostCard({ post, tone }: { post: PostAnalytics; tone: 'best' | 'w
   );
 }
 
-function RankedPostsSection({
-  title,
-  description,
-  icon,
-  posts,
-  tone,
-  onSeeMore,
-  canSeeMore,
-}: {
+interface RankedPostsSectionProps {
   title: string;
   description: string;
   icon: ReactNode;
@@ -357,44 +350,26 @@ function RankedPostsSection({
   tone: 'best' | 'worst';
   onSeeMore: () => void;
   canSeeMore: boolean;
-}) {
-  if (posts.length === 0) return null;
+}
 
+function RankedPostsSection(props: RankedPostsSectionProps) {
   return (
-    <div className="card animate-up">
-      <div
-        className="dashboard-hub-card-header"
-        style={{ marginBottom: '1rem', alignItems: 'flex-start' }}
-      >
-        <div>
-          <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: 2 }}>
-            {icon}
-            {title}
-          </h3>
-          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: 0 }}>
-            {description}
-          </p>
-        </div>
-        {canSeeMore && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onSeeMore}
-            style={{ fontSize: '0.75rem', gap: '0.25rem', flexShrink: 0 }}
-          >
-            Ver mais <ChevronRight className="h-3.5 w-3.5" />
+    <InstagramPostCarousel
+      title={props.title}
+      description={props.description}
+      ariaLabel={props.title}
+      icon={props.icon}
+      posts={props.posts}
+      getKey={(post) => post.id}
+      renderPost={(post) => <RankedPostCard post={post} tone={props.tone} />}
+      action={
+        props.canSeeMore ? (
+          <Button variant="ghost" size="sm" onClick={props.onSeeMore}>
+            Ver mais <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
           </Button>
-        )}
-      </div>
-      <div
-        className="analytics-posts-row"
-        style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))' }}
-      >
-        {posts.map((post) => (
-          <RankedPostCard key={post.id} post={post} tone={tone} />
-        ))}
-      </div>
-    </div>
+        ) : undefined
+      }
+    />
   );
 }
 

@@ -1,6 +1,9 @@
+import { readFileSync } from 'node:fs';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { MonthGrid } from '../month-grid';
+
+const css = readFileSync('apps/crm/style.css', 'utf8');
 
 describe('MonthGrid', () => {
   const defaultProps = {
@@ -43,6 +46,14 @@ describe('MonthGrid', () => {
     expect(call.getFullYear()).toBe(2026);
   });
 
+  it('gives both month navigation controls 44px touch targets', () => {
+    render(<MonthGrid {...defaultProps} />);
+
+    expect(screen.getByLabelText('Mês anterior')).toHaveClass('month-grid-nav-btn');
+    expect(screen.getByLabelText('Próximo mês')).toHaveClass('month-grid-nav-btn');
+    expect(css).toMatch(/\.month-grid-nav-btn\s*\{[^}]*min-width:\s*44px[^}]*min-height:\s*44px/s);
+  });
+
   it('renders leading cells for days before month start (June 2026 starts on Monday = 0 leading cells)', () => {
     render(<MonthGrid {...defaultProps} />);
     const cells = screen.getAllByTestId(/^cell-/);
@@ -58,5 +69,17 @@ describe('MonthGrid', () => {
     render(<MonthGrid {...defaultProps} renderCell={renderCell} />);
     const outCalls = renderCell.mock.calls.filter(([, isCurrent]: [Date, boolean]) => !isCurrent);
     expect(outCalls.length).toBeGreaterThan(0);
+  });
+
+  it('keeps weekday and day tracks shrinkable inside narrow containers', () => {
+    const { container } = render(<MonthGrid {...defaultProps} />);
+
+    expect(container.querySelector('.month-grid-weekdays')).toHaveStyle({
+      gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+    });
+    expect(container.querySelector('.month-grid-days')).toHaveStyle({
+      gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+    });
+    expect(container.querySelector('.month-grid-cell')).toHaveStyle({ minWidth: '0' });
   });
 });

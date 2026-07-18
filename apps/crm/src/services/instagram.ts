@@ -120,7 +120,28 @@ export async function getInstagramSummary(clientId: number): Promise<any> {
   return data;
 }
 
-export async function getInstagramPosts(clientId: number, page: number = 1): Promise<any> {
+export interface InstagramPostSummary {
+  id: string;
+  posted_at: string;
+  media_type: string;
+  caption: string | null;
+  thumbnail_url: string | null;
+  permalink: string | null;
+  likes: number;
+  comments: number;
+  reach: number;
+  impressions: number;
+}
+
+export interface InstagramPostsPage {
+  posts: InstagramPostSummary[];
+  total: number;
+}
+
+export async function getInstagramPosts(
+  clientId: number,
+  page: number = 1,
+): Promise<InstagramPostsPage> {
   const cacheKey = `posts/${clientId}?page=${page}`;
   const cached = getCached(cacheKey);
   if (cached !== null) return cached;
@@ -134,8 +155,12 @@ export async function getInstagramPosts(clientId: number, page: number = 1): Pro
   }
 
   const data = await res.json();
-  setCache(cacheKey, data);
-  return data;
+  const result: InstagramPostsPage = {
+    posts: Array.isArray(data.posts) ? data.posts : [],
+    total: Number(data.total) || 0,
+  };
+  setCache(cacheKey, result);
+  return result;
 }
 
 export async function scheduleInstagramPost(
