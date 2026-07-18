@@ -2,7 +2,7 @@
 // pulled out of handlers.ts because both the OAuth callback's initial import and the manual
 // /sync route need the exact same logic (design doc: "Import — same code path as sync").
 
-import { tiktokFetch } from "../_shared/tiktok.ts";
+import { TikTokApiError, tiktokFetch } from "../_shared/tiktok.ts";
 import { cachePostThumbnail, type CacheThumbnailDeps, type ThumbnailStorage } from "../_shared/tiktok-thumbnail-cache.ts";
 
 export type { ThumbnailStorage, CacheThumbnailDeps };
@@ -119,6 +119,116 @@ export async function importTikTokVideos(
     return 0;
   }
   return rows.length;
+}
+
+const METRICS_FIELDS = "id,like_count,comment_count,share_count,view_count";
+
+// TikTok's `video/query/` accepts up to 20 video_ids per call; refresh covers the 200
+// most-recently-posted stored rows (10 batches), well below anything TikTok itself paginates.
+const METRICS_SELECT_LIMIT = 200;
+const METRICS_BATCH_SIZE = 20;
+
+interface TikTokVideoMetrics {
+  id: string;
+  like_count?: number | null;
+  comment_count?: number | null;
+  share_count?: number | null;
+  view_count?: number | null;
+}
+
+interface TikTokVideoQueryResult {
+  videos?: TikTokVideoMetrics[];
+}
+
+export interface RefreshMetricsDeps {
+  svc: DbClient;
+}
+
+/**
+ * Refreshes views/likes/comments/shares (+ synced_at) for the 200 most-recently-posted
+ * `tiktok_posts` rows via TikTok's `POST /video/query/`, batched 20 ids/call (TikTok's max
+ * per query). Unlike importTikTokVideos (video.list — discovers NEW videos), this only
+ * refreshes metrics for videos already stored. Ids the response omits (deleted/private
+ * videos) are left untouched, not treated as a failure. A single batch failing with a
+ * retryable TikTokApiError (e.g. rate limit) is logged and skipped so the rest of the
+ * refresh still runs; a non-retryable error (TOKEN_INVALID/REVOKED/etc.) propagates so the
+ * caller's existing error mapping applies. Returns the number of rows updated.
+ */
+export async function refreshStoredPostMetrics(
+  deps: RefreshMetricsDeps,
+  accountId: string,
+  accessToken: string,
+): Promise<number> {
+  const { svc } = deps;
+
+  const { data: rows, error: selectErr } = await svc
+    .from("tiktok_posts")
+    .select("tiktok_video_id")
+    .eq("tiktok_account_id", accountId)
+    .order("posted_at", { ascending: false })
+    .limit(METRICS_SELECT_LIMIT);
+  if (selectErr) {
+    console.error(
+      "[tiktok-integration] refreshStoredPostMetrics: select failed:",
+      (selectErr as { message?: string })?.message,
+    );
+    return 0;
+  }
+
+  const videoIds = ((rows ?? []) as Array<{ tiktok_video_id: string }>)
+    .map((r) => r.tiktok_video_id)
+    .filter(Boolean);
+  if (videoIds.length === 0) return 0;
+
+  let updated = 0;
+  for (let i = 0; i < videoIds.length; i += METRICS_BATCH_SIZE) {
+    const batchIds = videoIds.slice(i, i + METRICS_BATCH_SIZE);
+
+    let videos: TikTokVideoMetrics[];
+    try {
+      const result = (await tiktokFetch(`/video/query/?fields=${METRICS_FIELDS}`, {
+        method: "POST",
+        body: JSON.stringify({ filters: { video_ids: batchIds } }),
+        accessToken,
+      })) as TikTokVideoQueryResult;
+      videos = result.videos ?? [];
+    } catch (e) {
+      if (e instanceof TikTokApiError && e.retryable) {
+        // Retryable (e.g. rate-limited) — a partial metrics refresh beats failing the whole
+        // sync; move on to the next batch.
+        console.error("[tiktok-integration] refreshStoredPostMetrics: batch failed (retryable), skipping:", e.message);
+        continue;
+      }
+      // Non-retryable (TOKEN_INVALID, REVOKED, etc.) — propagate so the caller's existing
+      // error mapping (handleUnexpectedError / handleSync's TOKEN_EXPIRED branch) applies.
+      throw e;
+    }
+
+    for (const v of videos) {
+      const { error: updateErr } = await svc
+        .from("tiktok_posts")
+        .update({
+          views: v.view_count ?? null,
+          likes: v.like_count ?? null,
+          comments: v.comment_count ?? null,
+          shares: v.share_count ?? null,
+          synced_at: new Date().toISOString(),
+        })
+        .eq("tiktok_video_id", v.id);
+      if (updateErr) {
+        console.error(
+          "[tiktok-integration] refreshStoredPostMetrics: update failed for video",
+          v.id,
+          ":",
+          (updateErr as { message?: string })?.message,
+        );
+        continue;
+      }
+      updated++;
+    }
+  }
+
+  return updated;
 }
 
 /**

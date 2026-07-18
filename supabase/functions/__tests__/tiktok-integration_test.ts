@@ -6,6 +6,7 @@
 import { assert, assertEquals } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import { createTikTokIntegrationHandler } from "../tiktok-integration/handlers.ts";
+import { refreshStoredPostMetrics } from "../tiktok-integration/import.ts";
 import { createSignedState, toUrlSafeBase64 } from "../tiktok-integration/oauth-state.ts";
 import { TIKTOK_API_BASE, decryptTikTokToken } from "../_shared/tiktok.ts";
 import type { ThumbnailStorage } from "../_shared/tiktok-thumbnail-cache.ts";
@@ -100,7 +101,16 @@ const DEFAULT_VIDEOS = [
 /** Routes globalThis.fetch by URL prefix — token exchange / user.info / video.list / revoke
  * get canned TikTok envelopes; anything else (avatar or cover downloads) gets an image. */
 function stubTikTokFetch(
-  overrides: { tokenBody?: unknown; profile?: unknown; videos?: unknown[]; hasMore?: boolean } = {},
+  overrides: {
+    tokenBody?: unknown;
+    profile?: unknown;
+    videos?: unknown[];
+    hasMore?: boolean;
+    /** Given a batch's requested video_ids, returns the `videos` array for /video/query/'s
+     * envelope — defaults to echoing metrics back for every id (deterministic per numeric
+     * suffix), so most tests get a sane default without wiring this up. */
+    videoQueryMetrics?: (ids: string[]) => unknown[];
+  } = {},
 ) {
   const original = globalThis.fetch;
   const calls: { url: string; init?: RequestInit }[] = [];
@@ -124,6 +134,21 @@ function stubTikTokFetch(
             data: { videos: overrides.videos ?? DEFAULT_VIDEOS, has_more: overrides.hasMore ?? false },
             error: { code: "ok", message: "", log_id: "2" },
           }),
+          { status: 200 },
+        ),
+      );
+    }
+    if (url.startsWith(`${TIKTOK_API_BASE}/video/query/`)) {
+      const ids = (init?.body ? JSON.parse(init.body as string) : {})?.filters?.video_ids ?? [];
+      const videos = overrides.videoQueryMetrics
+        ? overrides.videoQueryMetrics(ids)
+        : ids.map((id: string) => {
+          const n = parseInt(id.replace(/\D/g, ""), 10) || 1;
+          return { id, like_count: n, comment_count: n * 2, share_count: n * 3, view_count: n * 10 };
+        });
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({ data: { videos }, error: { code: "ok", message: "", log_id: "4" } }),
           { status: 200 },
         ),
       );
@@ -473,4 +498,182 @@ Deno.test("tiktok-integration: /summary returns account + last-30 follower_histo
   assertEquals(body.account, { id: "acct-1", authorization_status: "active", username: "u" });
   // reversed to chronological order, mirroring instagram-integration's summary route
   assertEquals(body.follower_history, [{ date: "2026-07-15", follower_count: 98 }, { date: "2026-07-16", follower_count: 99 }]);
+});
+
+// ─── (h) /sync also refreshes stored posts' metrics via video.query ────────────────────
+
+Deno.test("tiktok-integration: /sync refreshes stored posts' metrics via video.query (batched <=20/call) and returns refreshed_posts", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "user-1" });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  db.queue("clientes", "select", { data: { conta_id: "ws-1" }, error: null });
+  db.queueRpc("effective_plan_feature", { data: true, error: null });
+
+  const { encryptTikTokToken } = await import("../_shared/tiktok.ts");
+  const encAccess = await encryptTikTokToken("fresh-access-token", "access");
+  const farFuture = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+  const accountRow = {
+    id: "acct-1",
+    client_id: "42",
+    tiktok_open_id: "open-1",
+    username: "olduser",
+    display_name: "Old User",
+    avatar_url: null,
+    follower_count: 50,
+    following_count: 5,
+    likes_count: 200,
+    video_count: 3,
+    encrypted_access_token: encAccess,
+    encrypted_refresh_token: null,
+    access_token_expires_at: farFuture,
+    refresh_token_expires_at: farFuture,
+    authorization_status: "active",
+  };
+  // Two selects hit the SAME `tiktok_accounts:select` FIFO queue: handleSync's own account
+  // lookup, then getFreshTikTokToken's internal freshness check.
+  db.queue("tiktok_accounts", "select", { data: accountRow, error: null });
+  db.queue("tiktok_accounts", "select", {
+    data: {
+      id: "acct-1",
+      tiktok_open_id: "open-1",
+      encrypted_access_token: encAccess,
+      access_token_expires_at: farFuture,
+    },
+    error: null,
+  });
+
+  db.queue("tiktok_follower_history", "select", { data: null, error: null });
+  db.queue("tiktok_accounts", "update", { data: null, error: null });
+  db.queue("tiktok_follower_history", "upsert", { data: null, error: null });
+
+  // importTikTokVideos: video.list -> DEFAULT_VIDEOS (1 video, "v1").
+  db.queue("tiktok_posts", "select", { data: [], error: null });
+  db.queue("tiktok_posts", "upsert", { data: null, error: null });
+
+  // refreshStoredPostMetrics: 23 stored posts -> 2 batches (20 + 3).
+  const storedIds = Array.from({ length: 23 }, (_, i) => `m${i + 1}`);
+  db.queue("tiktok_posts", "select", { data: storedIds.map((id) => ({ tiktok_video_id: id })), error: null });
+  db.queue("tiktok_posts", "update", ...Array.from({ length: 23 }, () => ({ data: null, error: null })));
+
+  const { storage } = makeStorage();
+  const f = stubTikTokFetch();
+  const handler = makeHandler(db, storage);
+
+  try {
+    const res = await handler(authedRequest("/sync/42", "POST"));
+    assertEquals(res.status, 200);
+    const body = await res.json();
+    assertEquals(body.ok, true);
+    assertEquals(body.synced_posts, 1);
+    assertEquals(body.refreshed_posts, 23);
+
+    const queryCalls = f.calls.filter((c) => c.url.startsWith(`${TIKTOK_API_BASE}/video/query/`));
+    assertEquals(queryCalls.length, 2, "expected 2 video.query batches for 23 stored ids");
+    let totalIdsRequested = 0;
+    for (const call of queryCalls) {
+      assert(
+        call.url.startsWith(`${TIKTOK_API_BASE}/video/query/?fields=id,like_count,comment_count,share_count,view_count`),
+        `unexpected video.query URL/fields: ${call.url}`,
+      );
+      const reqBody = JSON.parse(call.init?.body as string);
+      const ids = reqBody.filters.video_ids as string[];
+      assert(ids.length <= 20, `batch had ${ids.length} ids, expected <=20`);
+      totalIdsRequested += ids.length;
+    }
+    assertEquals(totalIdsRequested, 23);
+
+    const m1Update = db.calls.find(
+      (c) =>
+        c.table === "tiktok_posts" &&
+        c.operation === "update" &&
+        c.modifiers.some((m) => m.method === "eq" && m.args[0] === "tiktok_video_id" && m.args[1] === "m1"),
+    );
+    assert(m1Update, "expected an update for the m1 stored post's metrics");
+    const m1Payload = m1Update!.payload as Record<string, unknown>;
+    assertEquals(m1Payload.likes, 1);
+    assertEquals(m1Payload.comments, 2);
+    assertEquals(m1Payload.shares, 3);
+    assertEquals(m1Payload.views, 10);
+    assert(typeof m1Payload.synced_at === "string" && m1Payload.synced_at.length > 0);
+  } finally {
+    f.restore();
+  }
+});
+
+// ─── (i) refreshStoredPostMetrics: an omitted id is left untouched, not an error ───────
+
+Deno.test("refreshStoredPostMetrics: video.query response omitting one requested id leaves that row untouched, updates the rest, no error", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("tiktok_posts", "select", {
+    data: [{ tiktok_video_id: "v1" }, { tiktok_video_id: "v2" }, { tiktok_video_id: "v3" }],
+    error: null,
+  });
+  db.queue("tiktok_posts", "update", { data: null, error: null }, { data: null, error: null });
+
+  const original = globalThis.fetch;
+  globalThis.fetch = ((_url: string, _init?: RequestInit) => {
+    // v2 is omitted from the response, simulating a deleted/private video.
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({
+          data: {
+            videos: [
+              { id: "v1", like_count: 5, comment_count: 1, share_count: 0, view_count: 50 },
+              { id: "v3", like_count: 9, comment_count: 2, share_count: 1, view_count: 90 },
+            ],
+          },
+          error: { code: "ok", message: "", log_id: "vq" },
+        }),
+        { status: 200 },
+      ),
+    );
+  }) as typeof fetch;
+
+  try {
+    // deno-lint-ignore no-explicit-any
+    const updated = await refreshStoredPostMetrics({ svc: db as any }, "acct-1", "tok-abc");
+    assertEquals(updated, 2);
+
+    const updateCalls = db.calls.filter((c) => c.table === "tiktok_posts" && c.operation === "update");
+    assertEquals(updateCalls.length, 2, "only v1 and v3 should have been updated");
+    const updatedIds = updateCalls.map(
+      (c) => c.modifiers.find((m) => m.method === "eq" && m.args[0] === "tiktok_video_id")?.args[1],
+    );
+    assert(updatedIds.includes("v1"));
+    assert(updatedIds.includes("v3"));
+    assert(!updatedIds.includes("v2"), "v2 was omitted from the video.query response and must NOT be updated");
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+// ─── (j) disconnect: tiktok_posts delete failing -> 500, no partial disconnect ─────────
+
+Deno.test("tiktok-integration: disconnect returns 500 and does NOT blank tokens/change status when the tiktok_posts delete fails", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "user-1" });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  db.queue("clientes", "select", { data: { conta_id: "ws-1" }, error: null });
+
+  const { encryptTikTokToken } = await import("../_shared/tiktok.ts");
+  const encAccess = await encryptTikTokToken("access-to-revoke", "access");
+  db.queue("tiktok_accounts", "select", { data: { id: "acct-1", encrypted_access_token: encAccess }, error: null });
+  db.queue("tiktok_posts", "delete", { data: null, error: { message: "boom" } });
+
+  const { storage } = makeStorage();
+  const f = stubTikTokFetch();
+  const handler = makeHandler(db, storage);
+
+  try {
+    const res = await handler(authedRequest("/disconnect/42", "POST"));
+    assertEquals(res.status, 500);
+    const body = await res.json();
+    assertEquals(body, { error: true, message: "Erro interno" });
+
+    const updateCall = db.calls.find((c) => c.table === "tiktok_accounts" && c.operation === "update");
+    assert(!updateCall, "tokens must NOT be blanked / status must NOT change when the posts delete fails");
+  } finally {
+    f.restore();
+  }
 });

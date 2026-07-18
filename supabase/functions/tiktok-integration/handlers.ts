@@ -21,7 +21,7 @@ import {
   requireTikTokClientCredentials,
 } from "../_shared/tiktok.ts";
 import { createSignedState, verifySignedState } from "./oauth-state.ts";
-import { importTikTokVideos, cacheTikTokAvatar, type ThumbnailStorage } from "./import.ts";
+import { importTikTokVideos, cacheTikTokAvatar, refreshStoredPostMetrics, type ThumbnailStorage } from "./import.ts";
 
 type DbClient = {
   // deno-lint-ignore no-explicit-any
@@ -349,7 +349,9 @@ async function handleSync(
     maxVideos: 100,
   });
 
-  return json(cors, { ok: true, synced_posts: syncedPosts });
+  const refreshedPosts = await refreshStoredPostMetrics({ svc }, account.id, accessToken);
+
+  return json(cors, { ok: true, synced_posts: syncedPosts, refreshed_posts: refreshedPosts });
 }
 
 // ─── POST /refresh/:clientId ──────────────────────────────────────────────────────────
@@ -419,7 +421,18 @@ async function handleDisconnect(
       }
     }
 
-    await svc.from("tiktok_posts").delete().eq("tiktok_account_id", account.id);
+    const { error: deleteErr } = await svc.from("tiktok_posts").delete().eq("tiktok_account_id", account.id);
+    if (deleteErr) {
+      // A retryable honest failure beats a silent partial disconnect — do NOT proceed to
+      // blank tokens or flip authorization_status if the posts delete didn't actually happen.
+      console.error(
+        "[tiktok-integration] disconnect: tiktok_posts delete failed for account",
+        account.id,
+        ":",
+        (deleteErr as { message?: string })?.message,
+      );
+      return json(cors, { error: true, message: "Erro interno" }, 500);
+    }
 
     const { error: updateErr } = await svc.from("tiktok_accounts").update({
       encrypted_access_token: null,
