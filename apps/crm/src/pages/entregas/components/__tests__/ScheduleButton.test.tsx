@@ -961,6 +961,86 @@ describe('ScheduleButton', () => {
     });
   });
 
+  // ─── Per-side retry blocking (platform both, mixed-blocked accounts) ────────
+  // Retry must stay usable for whichever failed side still has a healthy account —
+  // it should only be disabled when EVERY failed side is blocked.
+
+  describe('per-side retry blocking', () => {
+    it('keeps retry enabled and retries only TikTok when TikTok failed but Instagram (unfailed) is the blocked side', async () => {
+      vi.mocked(retryTikTokPublish).mockResolvedValueOnce({ ok: true });
+      render(
+        <ScheduleButton
+          post={makePost({
+            status: 'falha_publicacao',
+            platform: 'both',
+            publish_error: null,
+            instagram_media_id: 'media_123', // Instagram already published — not a failed side
+            tiktok_publish_status: 'failed',
+          })}
+          {...defaultProps}
+          igAccountStatus={{ revoked: true, expired: false, canPublish: true }}
+        />,
+      );
+      const retryBtn = screen.getByText('Tentar novamente').closest('button')!;
+      expect(retryBtn.hasAttribute('disabled')).toBe(false);
+
+      await act(async () => {
+        fireEvent.click(screen.getByText('Tentar novamente'));
+      });
+
+      expect(retryTikTokPublish).toHaveBeenCalledWith(1);
+      expect(retryInstagramPublish).not.toHaveBeenCalled();
+    });
+
+    it('retries only TikTok and shows a skip toast when both sides failed but only Instagram is blocked', async () => {
+      vi.mocked(retryTikTokPublish).mockResolvedValueOnce({ ok: true });
+      render(
+        <ScheduleButton
+          post={makePost({
+            status: 'falha_publicacao',
+            platform: 'both',
+            publish_error: 'IG erro',
+            instagram_media_id: null,
+            tiktok_publish_status: 'failed',
+          })}
+          {...defaultProps}
+          igAccountStatus={{ revoked: true, expired: false, canPublish: true }}
+        />,
+      );
+      const retryBtn = screen.getByText('Tentar novamente').closest('button')!;
+      expect(retryBtn.hasAttribute('disabled')).toBe(false);
+
+      await act(async () => {
+        fireEvent.click(screen.getByText('Tentar novamente'));
+      });
+
+      expect(retryTikTokPublish).toHaveBeenCalledWith(1);
+      expect(retryInstagramPublish).not.toHaveBeenCalled();
+      expect(toast.info).toHaveBeenCalledWith(
+        'Conta do Instagram precisa ser reconectada — apenas o TikTok será reenviado',
+      );
+    });
+
+    it('disables retry when both failed sides are blocked', () => {
+      render(
+        <ScheduleButton
+          post={makePost({
+            status: 'falha_publicacao',
+            platform: 'both',
+            publish_error: 'IG erro',
+            instagram_media_id: null,
+            tiktok_publish_status: 'failed',
+          })}
+          {...defaultProps}
+          igAccountStatus={{ revoked: true, expired: false, canPublish: true }}
+          ttAccountStatus={{ revoked: true, expired: false }}
+        />,
+      );
+      const retryBtn = screen.getByText('Tentar novamente').closest('button')!;
+      expect(retryBtn.hasAttribute('disabled')).toBe(true);
+    });
+  });
+
   // ─── Per-platform status chips ───────────────────────────────────────────────
 
   describe('per-platform status chips', () => {

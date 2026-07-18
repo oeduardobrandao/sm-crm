@@ -155,6 +155,11 @@ interface ScheduleButtonProps {
   /** C2's `TikTokSettingsPanel.onCompletenessChange` contract, held by the parent (keyed by
    * post id) and threaded through here. Ignored when the post doesn't target TikTok. */
   tiktokSettingsComplete?: boolean;
+  /** Overrides the button `title` shown while a tiktok/both post is gated on
+   * `tiktokSettingsComplete === false`. Lets a mount with no TikTok settings UI (e.g. the
+   * compact calendar panel) point the user elsewhere instead of the default
+   * "Complete as configurações do TikTok", which implies a settings panel that isn't there. */
+  tiktokIncompleteTooltip?: string;
   /** Fired when a schedule/publish-now/retry attempt's error message contains the exact
    * unaudited-mode 422 string, so the parent can flip `TikTokSettingsPanel`'s
    * `showTestModeBanner` prop. */
@@ -171,6 +176,7 @@ export function ScheduleButton({
   igAccountStatus,
   ttAccountStatus,
   tiktokSettingsComplete = false,
+  tiktokIncompleteTooltip,
   onTikTokUnaudited,
   onStatusChange,
   compact = false,
@@ -346,20 +352,42 @@ export function ScheduleButton({
     post.status === 'falha_publicacao' && !!post.publish_error && !post.instagram_media_id;
   const ttFailed = post.tiktok_publish_status === 'failed';
 
+  // Retry must stay usable for whichever failed side still has a healthy account — it
+  // should only be disabled when EVERY failed side is blocked (no side could possibly
+  // retry). For a single-platform post the whole post's fate IS that platform, so this
+  // reduces to the plain `accountBlocked` check (byte-identical to the pre-fix
+  // behavior) — the failedSides disambiguation only matters for `platform === 'both'`,
+  // where igTokenBlocked/ttTokenBlocked previously blocked retry wholesale even when
+  // only one side had actually failed.
+  const bothFailedSidesBlocked = (): boolean => {
+    const failedSides: boolean[] = [];
+    if (igFailed) failedSides.push(igTokenBlocked);
+    if (ttFailed) failedSides.push(ttTokenBlocked);
+    return failedSides.length > 0 && failedSides.every(Boolean);
+  };
+  const retryBlocked = platform === 'both' ? bothFailedSidesBlocked() : accountBlocked;
+
   const handleRetry = async () => {
     setLoading(true);
     try {
       if (platform === 'both') {
+        const igSkip = igFailed && igTokenBlocked;
+        const ttSkip = ttFailed && ttTokenBlocked;
+        if (igSkip) {
+          toast.info('Conta do Instagram precisa ser reconectada — apenas o TikTok será reenviado');
+        } else if (ttSkip) {
+          toast.info('Conta do TikTok precisa ser reconectada — apenas o Instagram será reenviado');
+        }
         let igError: string | undefined;
         let ttError: string | undefined;
-        if (igFailed) {
+        if (igFailed && !igSkip) {
           try {
             await retryInstagramPublish(post.id!);
           } catch (e: any) {
             igError = e.message;
           }
         }
-        if (ttFailed) {
+        if (ttFailed && !ttSkip) {
           try {
             await retryTikTokPublish(post.id!);
           } catch (e: any) {
@@ -447,10 +475,10 @@ export function ScheduleButton({
         )}
         <Button
           onClick={handleRetry}
-          disabled={loading || !!accountBlocked}
+          disabled={loading || retryBlocked}
           size="sm"
           className="text-xs font-semibold"
-          style={!accountBlocked ? { background: '#f55a42', color: 'white' } : undefined}
+          style={!retryBlocked ? { background: '#f55a42', color: 'white' } : undefined}
         >
           <RefreshCw className="h-3 w-3 mr-1" /> Tentar novamente
         </Button>
@@ -480,7 +508,9 @@ export function ScheduleButton({
     if (!isStoryPost && !hasRequiredCaption) missingItems.push('legenda do Instagram');
     if (targetsTikTok && !tiktokReady) missingItems.push('configurações do TikTok');
     const tiktokBlockedTitle =
-      targetsTikTok && !tiktokReady ? 'Complete as configurações do TikTok' : undefined;
+      targetsTikTok && !tiktokReady
+        ? (tiktokIncompleteTooltip ?? 'Complete as configurações do TikTok')
+        : undefined;
 
     return (
       <div className="mt-3">
