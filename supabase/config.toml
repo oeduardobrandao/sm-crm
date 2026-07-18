@@ -7,6 +7,9 @@ verify_jwt = false
 [functions.tiktok-refresh-cron]
 verify_jwt = false
 
+[functions.tiktok-publish-cron]
+verify_jwt = false
+
 [functions.design-render]
 verify_jwt = false
 
