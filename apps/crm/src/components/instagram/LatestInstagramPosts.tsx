@@ -14,10 +14,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
-import {
-  getInstagramPosts,
-  type InstagramPostSummary,
-} from '@/services/instagram';
+import { getInstagramPosts, type InstagramPostSummary } from '@/services/instagram';
 import { sanitizeUrl } from '@/utils/security';
 import { InstagramPostCarousel } from './InstagramPostCarousel';
 
@@ -55,11 +52,7 @@ export function LatestInstagramPosts({ clienteId }: { clienteId: number }): Reac
   const totalPages = Math.max(1, Math.ceil((data?.total ?? 0) / POSTS_PER_PAGE));
   const displayedTotalPages = Math.max(page, totalPages);
   const pagination = (
-    <InstagramPostsPagination
-      page={page}
-      totalPages={displayedTotalPages}
-      onPageChange={setPage}
-    />
+    <InstagramPostsPagination page={page} totalPages={displayedTotalPages} onPageChange={setPage} />
   );
 
   if (isLoading) {
@@ -150,11 +143,12 @@ function LatestInstagramPostCard({ post }: { post: InstagramPostSummary }): Reac
   const locale = displayLocale(i18n.resolvedLanguage ?? i18n.language);
   const thumbnailUrl = sanitizeUrl(post.thumbnail_url);
   const permalink = sanitizeUrl(post.permalink);
-  const mediaType = {
-    CAROUSEL_ALBUM: t('detail.postType.carrossel'),
-    VIDEO: t('detail.postType.reels'),
-    IMAGE: t('detail.postType.feed'),
-  }[post.media_type] ?? post.media_type;
+  const mediaType =
+    {
+      CAROUSEL_ALBUM: t('detail.postType.carrossel'),
+      VIDEO: t('detail.postType.reels'),
+      IMAGE: t('detail.postType.feed'),
+    }[post.media_type] ?? post.media_type;
 
   return (
     <article className="latest-instagram-post-card">

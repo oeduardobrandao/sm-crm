@@ -39,11 +39,7 @@ export function ClienteDetalheHeader(props: ClienteDetalheHeaderProps) {
           <ArrowLeft className="h-4 w-4" />
         </Button>
         {props.imageUrl ? (
-          <img
-            className="cliente-detalhe-header__avatar"
-            src={props.imageUrl}
-            alt={props.nome}
-          />
+          <img className="cliente-detalhe-header__avatar" src={props.imageUrl} alt={props.nome} />
         ) : (
           <div
             className="cliente-detalhe-header__avatar cliente-detalhe-header__initials"
@@ -63,11 +59,7 @@ export function ClienteDetalheHeader(props: ClienteDetalheHeaderProps) {
           </div>
         </div>
       </div>
-      <Button
-        variant="outline"
-        className="cliente-detalhe-header__edit"
-        onClick={props.onEdit}
-      >
+      <Button variant="outline" className="cliente-detalhe-header__edit" onClick={props.onEdit}>
         <Edit2 className="h-4 w-4" /> {tc('actions.edit')}
       </Button>
     </header>

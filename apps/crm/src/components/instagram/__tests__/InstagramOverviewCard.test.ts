@@ -3,7 +3,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderInstagramOverviewCard } from '../InstagramOverviewCard';
 
 const css = readFileSync('apps/crm/style.css', 'utf8');
-const overviewSource = readFileSync('apps/crm/src/components/instagram/InstagramOverviewCard.ts', 'utf8');
+const overviewSource = readFileSync(
+  'apps/crm/src/components/instagram/InstagramOverviewCard.ts',
+  'utf8',
+);
 
 const accountExpiringIn38Days = {
   username: 'mesaasteste',
@@ -28,7 +31,9 @@ describe('renderInstagramOverviewCard', () => {
 
     renderInstagramOverviewCard(container, 42, accountExpiringIn38Days, vi.fn());
 
-    expect(container.querySelectorAll('.instagram-overview__account-kpis .kpi-card')).toHaveLength(3);
+    expect(container.querySelectorAll('.instagram-overview__account-kpis .kpi-card')).toHaveLength(
+      3,
+    );
     expect(container.querySelector('.instagram-overview__token-badge')).toHaveTextContent(
       /38.*restantes/i,
     );
@@ -65,16 +70,21 @@ describe('renderInstagramOverviewCard', () => {
       'aria-label',
       'Sincronizar Dados',
     );
-    expect(container.querySelector('#btn-ig-disconnect')).toHaveAttribute('aria-label', 'Desconectar');
-    expect(container.querySelectorAll('.instagram-overview__profile i[aria-hidden="true"]')).toHaveLength(
-      4,
+    expect(container.querySelector('#btn-ig-disconnect')).toHaveAttribute(
+      'aria-label',
+      'Desconectar',
     );
+    expect(
+      container.querySelectorAll('.instagram-overview__profile i[aria-hidden="true"]'),
+    ).toHaveLength(4);
     expect(container.querySelector('.instagram-overview__token-badge i')).toHaveAttribute(
       'aria-hidden',
       'true',
     );
     expect(
-      container.querySelectorAll('.kpi-grid:not(.instagram-overview__account-kpis) .kpi-label i[aria-hidden="true"]'),
+      container.querySelectorAll(
+        '.kpi-grid:not(.instagram-overview__account-kpis) .kpi-label i[aria-hidden="true"]',
+      ),
     ).toHaveLength(4);
 
     const expiredContainer = document.createElement('div');
@@ -84,10 +94,9 @@ describe('renderInstagramOverviewCard', () => {
       { ...accountExpiringIn38Days, authorization_status: 'expired' },
       vi.fn(),
     );
-    expect(expiredContainer.querySelector('#btn-ig-reconnect')?.parentElement?.querySelector('i')).toHaveAttribute(
-      'aria-hidden',
-      'true',
-    );
+    expect(
+      expiredContainer.querySelector('#btn-ig-reconnect')?.parentElement?.querySelector('i'),
+    ).toHaveAttribute('aria-hidden', 'true');
 
     const revokedContainer = document.createElement('div');
     renderInstagramOverviewCard(

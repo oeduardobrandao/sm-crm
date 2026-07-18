@@ -18,9 +18,7 @@ describe('ResponsiveCardRail', () => {
       </ResponsiveCardRail>,
     );
 
-    expect(screen.getByTestId('responsive-card-rail')).toHaveClass(
-      'cliente-card-rail--multiple',
-    );
+    expect(screen.getByTestId('responsive-card-rail')).toHaveClass('cliente-card-rail--multiple');
     expect(screen.getAllByTestId('responsive-card-rail-item')).toHaveLength(2);
   });
 
@@ -69,12 +67,8 @@ describe('ResponsiveCardRail', () => {
       clienteDetalheSource.indexOf('className="cliente-date-card"'),
       clienteDetalheSource.indexOf('{/* Addresses Section */}'),
     );
-    expect(dateActions).toContain(
-      "aria-label={`${t('detail.editDate')}: ${d.titulo}`}",
-    );
-    expect(dateActions).toContain(
-      "aria-label={`${t('detail.removeDate')}: ${d.titulo}`}",
-    );
+    expect(dateActions).toContain("aria-label={`${t('detail.editDate')}: ${d.titulo}`}");
+    expect(dateActions).toContain("aria-label={`${t('detail.removeDate')}: ${d.titulo}`}");
     expect(dateActions.match(/<(?:Pencil|Trash2)[^>]*aria-hidden="true"/g)).toHaveLength(2);
 
     const addressActions = clienteDetalheSource.slice(

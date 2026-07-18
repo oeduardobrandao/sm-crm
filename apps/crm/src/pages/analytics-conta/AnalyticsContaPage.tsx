@@ -364,11 +364,7 @@ function RankedPostsSection(props: RankedPostsSectionProps) {
       renderPost={(post) => <RankedPostCard post={post} tone={props.tone} />}
       action={
         props.canSeeMore ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={props.onSeeMore}
-          >
+          <Button variant="ghost" size="sm" onClick={props.onSeeMore}>
             Ver mais <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
           </Button>
         ) : undefined

@@ -67,12 +67,12 @@ describe('final mobile responsive CSS contracts', () => {
   });
 
   it('expands the desktop section rail for keyboard focus and keeps focus visible', () => {
-    expect(css).toMatch(/\.cliente-detalhe-nav:(?:hover[^,{]*,\s*)?focus-within\s*\{[^}]*width:\s*190px/s);
+    expect(css).toMatch(
+      /\.cliente-detalhe-nav:(?:hover[^,{]*,\s*)?focus-within\s*\{[^}]*width:\s*190px/s,
+    );
     expect(css).toMatch(
       /\.cliente-detalhe-nav:focus-within \.cliente-detalhe-nav__label\s*\{[^}]*opacity:\s*1/s,
     );
-    expect(css).toMatch(
-      /\.cliente-detalhe-nav__item:focus-visible\s*\{[^}]*outline:\s*[^;]+/s,
-    );
+    expect(css).toMatch(/\.cliente-detalhe-nav__item:focus-visible\s*\{[^}]*outline:\s*[^;]+/s);
   });
 });

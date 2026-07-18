@@ -161,9 +161,7 @@ describe('ClienteDetalheNav', () => {
       );
     });
 
-    expect(
-      nav.scrollTo,
-    ).toHaveBeenCalledWith({
+    expect(nav.scrollTo).toHaveBeenCalledWith({
       left: 260,
       behavior: 'smooth',
     });

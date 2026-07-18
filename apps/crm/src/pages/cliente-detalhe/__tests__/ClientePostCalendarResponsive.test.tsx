@@ -2,16 +2,10 @@ import { useState } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import {
-  ClientCalendarDayButton,
-  ScheduledPostOpenButton,
-} from '../ClienteDetalhePage';
+import { ClientCalendarDayButton, ScheduledPostOpenButton } from '../ClienteDetalhePage';
 
 const css = readFileSync('apps/crm/style.css', 'utf8');
-const source = readFileSync(
-  'apps/crm/src/pages/cliente-detalhe/ClienteDetalhePage.tsx',
-  'utf8',
-);
+const source = readFileSync('apps/crm/src/pages/cliente-detalhe/ClienteDetalhePage.tsx', 'utf8');
 
 describe('client post calendar responsive contracts', () => {
   it('uses seven shrinkable equal tracks for weekday labels and calendar days independently', () => {
@@ -44,9 +38,7 @@ describe('client post calendar responsive contracts', () => {
     expect(css).toMatch(
       /\.cliente-post-calendar[^}]*\.scheduled-panel[^{]*\{[^}]*min-width:\s*0[^}]*max-width:\s*100%/s,
     );
-    expect(css).toMatch(
-      /\.cliente-post-calendar \.item-title\s*\{[^}]*overflow-wrap:\s*anywhere/s,
-    );
+    expect(css).toMatch(/\.cliente-post-calendar \.item-title\s*\{[^}]*overflow-wrap:\s*anywhere/s);
   });
 
   it('selects a native day button through keyboard activation and exposes its state', () => {
