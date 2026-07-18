@@ -30,6 +30,7 @@ beforeEach(() => {
   );
   // jsdom does not implement scrollIntoView.
   Element.prototype.scrollIntoView = vi.fn();
+  HTMLElement.prototype.scrollTo = vi.fn();
   document.body.innerHTML = '<div id="sec-info"></div><div id="sec-datas"></div>';
 });
 
@@ -49,10 +50,30 @@ describe('ClienteDetalheNav', () => {
     expect(screen.getByRole('navigation', { name: 'Navegação da página' })).toBeInTheDocument();
   });
 
-  it('clicking a section scrolls its target into view', () => {
+  it('clicking a phone section scrolls its target without scrolling the sticky chip vertically', () => {
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn().mockImplementation((query: string) => ({
+        matches: query === '(max-width: 767px)',
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    );
     render(<ClienteDetalheNav sections={sections} actions={[]} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Datas' }));
-    expect(document.getElementById('sec-datas')!.scrollIntoView).toHaveBeenCalled();
+    const target = document.getElementById('sec-datas')!;
+    const targetScroll = vi.fn();
+    const chip = screen.getByRole('button', { name: 'Datas' });
+    const chipScroll = vi.fn();
+    target.scrollIntoView = targetScroll;
+    chip.scrollIntoView = chipScroll;
+
+    fireEvent.click(chip);
+
+    expect(targetScroll).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' });
+    expect(chipScroll).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole('navigation', { name: 'Navegação da página' }).scrollTo,
+    ).toHaveBeenCalled();
   });
 
   it('clicking an action fires its onClick', () => {
@@ -80,7 +101,7 @@ describe('ClienteDetalheNav', () => {
     expect(screen.getByRole('button', { name: 'Informação' })).not.toHaveAttribute('aria-current');
   });
 
-  it('keeps an observer-selected phone chip visible', () => {
+  it('keeps an observer-selected phone chip visible with horizontal-only nav scrolling', () => {
     vi.stubGlobal(
       'matchMedia',
       vi.fn().mockImplementation((query: string) => ({
@@ -104,11 +125,13 @@ describe('ClienteDetalheNav', () => {
       );
     });
 
-    expect(dates.scrollIntoView).toHaveBeenCalledWith({
+    expect(
+      screen.getByRole('navigation', { name: 'Navegação da página' }).scrollTo,
+    ).toHaveBeenCalledWith({
+      left: 0,
       behavior: 'smooth',
-      block: 'nearest',
-      inline: 'center',
     });
+    expect(dates.scrollIntoView).not.toHaveBeenCalled();
   });
 
   it('uses an instant section jump when reduced motion is preferred', () => {

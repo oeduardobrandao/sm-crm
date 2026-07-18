@@ -52,6 +52,7 @@ interface ClienteDetalheNavProps {
 export function ClienteDetalheNav({ sections, actions }: ClienteDetalheNavProps) {
   const { t } = useTranslation('clients');
   const [activeId, setActiveId] = useState<string | null>(null);
+  const navRef = useRef<HTMLElement>(null);
   const sectionButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   // Stable dependency: re-subscribe only when the set of section ids changes,
@@ -81,10 +82,14 @@ export function ClienteDetalheNav({ sections, actions }: ClienteDetalheNavProps)
     if (!activeId || typeof window === 'undefined') return;
     if (!window.matchMedia('(max-width: 767px)').matches) return;
     const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    sectionButtonRefs.current[activeId]?.scrollIntoView({
+    const nav = navRef.current;
+    const button = sectionButtonRefs.current[activeId];
+    if (!nav || !button) return;
+    const centeredLeft = button.offsetLeft - (nav.clientWidth - button.offsetWidth) / 2;
+    const maxLeft = Math.max(0, nav.scrollWidth - nav.clientWidth);
+    nav.scrollTo({
+      left: Math.min(maxLeft, Math.max(0, centeredLeft)),
       behavior: prefersReduced ? 'auto' : 'smooth',
-      block: 'nearest',
-      inline: 'center',
     });
   }, [activeId]);
 
@@ -99,7 +104,7 @@ export function ClienteDetalheNav({ sections, actions }: ClienteDetalheNavProps)
   };
 
   return (
-    <nav className="cliente-detalhe-nav" aria-label={t('detail.pageNav')}>
+    <nav ref={navRef} className="cliente-detalhe-nav" aria-label={t('detail.pageNav')}>
       <div className="cliente-detalhe-nav__group">
         {sections.map((s) => {
           const { icon: Icon, labelKey } = SECTION_META[s.key];
