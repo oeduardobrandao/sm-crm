@@ -222,6 +222,35 @@ Deno.test("tiktok-publish schedule: 422 merges TikTok + IG validation errors int
   assertEquals(body.details.includes("Legenda do Instagram não definida."), true);
 });
 
+Deno.test("tiktok-publish schedule: 422 validation failure restores prior scheduled_at", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "actor-1" });
+  db.queue("workflow_posts", "select", {
+    data: basePost({ platform: "tiktok", scheduled_at: "2025-01-01T00:00:00Z" }),
+    error: null,
+  });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  gateOn(db);
+  db.queue("workflow_posts", "update", { data: null, error: null }); // candidate write
+  db.queue("workflow_posts", "update", { data: null, error: null }); // restore write
+
+  const handler = createPublishHandler(makeDeps(db, {
+    validateForTikTokScheduling: (() =>
+      Promise.resolve(okTikTokValidation({ ok: false, errors: ["Legenda do TikTok excede 2200 caracteres."] }))) as never,
+  }));
+
+  const res = await handler(tiktokRequest("schedule", 1, { body: { scheduled_at: "2030-01-01T12:00:00Z" } }));
+  const body = await res.json();
+
+  assertEquals(res.status, 422);
+  assertEquals(body.error, "Validação falhou");
+
+  const updates = callsFor(db, "workflow_posts", "update");
+  assertEquals(updates.length, 2);
+  assertEquals((updates[0].payload as Record<string, unknown>).scheduled_at, "2030-01-01T12:00:00Z"); // candidate
+  assertEquals((updates[1].payload as Record<string, unknown>).scheduled_at, "2025-01-01T00:00:00Z"); // restored prior
+});
+
 Deno.test("tiktok-publish schedule: unaudited-mode gate error propagates as 422", async () => {
   const db = createSupabaseQueryMock();
   db.withAuth({ id: "actor-1" });
@@ -268,6 +297,39 @@ Deno.test("tiktok-publish schedule: infra-throw from validator -> 500 generic PT
   assertEquals(typeof body.error, "string");
 });
 
+Deno.test("tiktok-publish schedule: validator infra-throw restores prior scheduled_at, response unchanged", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "actor-1" });
+  db.queue("workflow_posts", "select", {
+    data: basePost({ platform: "tiktok", scheduled_at: "2025-06-15T09:00:00Z" }),
+    error: null,
+  });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  gateOn(db);
+  db.queue("workflow_posts", "update", { data: null, error: null }); // candidate write
+  db.queue("workflow_posts", "update", { data: null, error: null }); // restore write
+
+  const RAW_DB_TEXT = 'relation "workflow_posts_bogus" does not exist';
+  const handler = createPublishHandler(makeDeps(db, {
+    validateForTikTokScheduling: (() =>
+      Promise.reject(new Error(`validateForTikTokScheduling: workflow_posts read failed: ${RAW_DB_TEXT}`))) as never,
+  }));
+
+  const res = await handler(tiktokRequest("schedule", 1, { body: { scheduled_at: "2030-01-01T12:00:00Z" } }));
+  const rawBody = await res.text();
+
+  assertEquals(res.status, 500);
+  assertEquals(rawBody.includes(RAW_DB_TEXT), false);
+  const body = JSON.parse(rawBody);
+  // Restore succeeding must NOT change the response — it stays the original generic PT-BR 500.
+  assertEquals(body.error, "Erro ao validar post para agendamento no TikTok.");
+
+  const updates = callsFor(db, "workflow_posts", "update");
+  assertEquals(updates.length, 2);
+  assertEquals((updates[0].payload as Record<string, unknown>).scheduled_at, "2030-01-01T12:00:00Z"); // candidate
+  assertEquals((updates[1].payload as Record<string, unknown>).scheduled_at, "2025-06-15T09:00:00Z"); // restored prior
+});
+
 Deno.test("tiktok-publish schedule: IG-only post -> 400 telling caller to use instagram-publish", async () => {
   const db = createSupabaseQueryMock();
   db.withAuth({ id: "actor-1" });
@@ -298,6 +360,30 @@ Deno.test("tiktok-publish: feature_tiktok OFF -> 403 feature_disabled (feature_p
 // ============================================================
 // retry
 // ============================================================
+
+Deno.test("tiktok-publish retry: succeeds with both feature flags OFF (retry is ungated)", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "actor-1" });
+  db.queue("workflow_posts", "select", {
+    data: basePost({ platform: "tiktok", status: "falha_publicacao", tiktok_publish_status: "failed" }),
+    error: null,
+  });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  db.queueRpc("effective_plan_feature", { data: false, error: null }); // feature_post_scheduling OFF
+  db.queueRpc("effective_plan_feature", { data: false, error: null }); // feature_tiktok OFF
+  db.queue("workflow_posts", "update", { data: null, error: null });
+  db.queueRpc("record_post_status_change", { data: null, error: null });
+
+  const handler = createPublishHandler(makeDeps(db));
+  const res = await handler(tiktokRequest("retry", 1));
+  const body = await res.json();
+
+  assertEquals(res.status, 200);
+  assertEquals(body, { ok: true, status: "agendado" });
+  // retry must never call the gate RPC — both queued "false" responses stay unconsumed. If the
+  // gate were mistakenly re-applied, the first "false" would be consumed and this would 403.
+  assertEquals(db.calls.filter((c: QueryCall) => c.table === "rpc:effective_plan_feature").length, 0);
+});
 
 Deno.test("tiktok-publish retry: resets ONLY TikTok fields, leaves IG columns untouched", async () => {
   const db = createSupabaseQueryMock();
@@ -351,6 +437,27 @@ Deno.test("tiktok-publish retry: post.status falha_publicacao but tiktok_publish
 // ============================================================
 // cancel
 // ============================================================
+
+Deno.test("tiktok-publish cancel: succeeds with both feature flags OFF (cancel is ungated)", async () => {
+  const db = createSupabaseQueryMock();
+  db.withAuth({ id: "actor-1" });
+  db.queue("workflow_posts", "select", { data: basePost({ platform: "tiktok", status: "agendado" }), error: null });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  db.queueRpc("effective_plan_feature", { data: false, error: null }); // feature_post_scheduling OFF
+  db.queueRpc("effective_plan_feature", { data: false, error: null }); // feature_tiktok OFF
+  db.queue("workflow_posts", "update", { data: null, error: null });
+  db.queueRpc("record_post_status_change", { data: null, error: null });
+
+  const handler = createPublishHandler(makeDeps(db));
+  const res = await handler(tiktokRequest("cancel", 1));
+  const body = await res.json();
+
+  assertEquals(res.status, 200);
+  assertEquals(body, { ok: true, status: "aprovado_cliente" });
+  // cancel must never call the gate RPC — both queued "false" responses stay unconsumed. If the
+  // gate were mistakenly re-applied, the first "false" would be consumed and this would 403.
+  assertEquals(db.calls.filter((c: QueryCall) => c.table === "rpc:effective_plan_feature").length, 0);
+});
 
 Deno.test("tiktok-publish cancel: `both` clears BOTH platforms' handles", async () => {
   const db = createSupabaseQueryMock();

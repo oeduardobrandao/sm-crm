@@ -2,11 +2,14 @@
 //
 // TikTok's counterpart to instagram-publish/handler.ts (deps-injection shape, gateway-JWT +
 // manual actor resolution, /{action}/{id} route parsing). Routes: creator-info, schedule,
-// publish-now, cancel, retry. Unlike instagram-publish, every route here gates BOTH
-// feature_post_scheduling and feature_tiktok (spec: docs/superpowers/specs/
-// 2026-07-17-tiktok-integration-design.md, task B4) — TikTok is its own paid add-on, so even
-// cancel/retry must be gated (instagram-publish's cancel/retry are deliberately NOT gated;
-// that asymmetry does not carry over here).
+// publish-now, cancel, retry. Feature-gate scope mirrors instagram-publish's deliberate
+// asymmetry (instagram-publish/handler.ts:89-94, spec: docs/superpowers/specs/
+// 2026-07-17-tiktok-integration-design.md, task B4): only schedule, publish-now, and
+// creator-info (creator-info exists solely to drive the scheduling UI, so it stays gated)
+// require feature_post_scheduling + feature_tiktok. cancel and retry run UNGATED — a
+// workspace that downgrades off TikTok must still be able to cancel or retry its own
+// already-committed posts, or they'd be trapped in "agendado"/"falha_publicacao" with no way
+// out (ownership checks still apply regardless of gating).
 //
 // DI seams: validateForTikTokScheduling / validateForScheduling (IG) / getFreshTikTokToken /
 // tiktokFetch / signGetUrl / sleep are all injectable via deps, defaulting to the real shared
@@ -67,7 +70,8 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
   const signUrl = deps.signGetUrl ?? realSignGetUrl;
   const sleepFn = deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
 
-  // Every route requires BOTH flags — TikTok is a separate paid add-on from generic scheduling.
+  // Gated routes (schedule, publish-now, creator-info) require BOTH flags — TikTok is a
+  // separate paid add-on from generic scheduling. cancel/retry never call this.
   async function requireFeatureGates(
     svcDb: DbClient,
     contaId: string,
@@ -172,7 +176,7 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
       .from("workflow_posts")
       .select(
         "id, status, platform, tipo, tiktok_publish_status, tiktok_publish_error, " +
-          "tiktok_publish_retry_count, tiktok_caption, tiktok_title, tiktok_settings, ig_caption",
+          "tiktok_publish_retry_count, tiktok_caption, tiktok_title, tiktok_settings, ig_caption, scheduled_at",
       )
       .eq("id", postId)
       .single();
@@ -182,8 +186,14 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
     const contaId = actorProfile?.conta_id as string | undefined;
     if (!contaId) return json({ error: "Unauthorized" }, 403);
 
-    const gateFailure = await requireFeatureGates(svcDb, contaId, json);
-    if (gateFailure) return gateFailure;
+    // Gate scope mirrors instagram-publish's asymmetry: only schedule/publish-now require the
+    // paid feature flags (creator-info is gated separately above, inside handleCreatorInfo).
+    // cancel/retry stay ungated so a downgraded workspace can still cancel or retry its own
+    // already-committed posts instead of leaving them trapped.
+    if (action === "schedule" || action === "publish-now") {
+      const gateFailure = await requireFeatureGates(svcDb, contaId, json);
+      if (gateFailure) return gateFailure;
+    }
 
     if (!["tiktok", "both"].includes(post.platform)) {
       return json(
@@ -207,17 +217,36 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
         return json({ error: "Data de publicação (scheduled_at) é obrigatória." }, 400);
       }
 
+      // Both validators read scheduled_at from the DB row, so the candidate value has to be
+      // persisted before validating. If validation then fails (422) or a validator infra-throws,
+      // that write must be rolled back to the post's prior value — otherwise a failed schedule
+      // attempt silently overwrites (or clears) whatever scheduled_at the post had before.
+      const priorScheduledAt = post.scheduled_at ?? null;
+
       const { error: schedErr } = await svcDb
         .from("workflow_posts")
         .update({ scheduled_at: body.scheduled_at })
         .eq("id", postId);
       if (schedErr) return internalServerError(json, "tiktok-publish:schedule", schedErr);
 
+      // Restores scheduled_at to its prior value. Returns a Response to send instead of the
+      // original failure (generic 500) if the restore write itself errors; null on success.
+      const restoreScheduledAt = async (): Promise<Response | null> => {
+        const { error: restoreErr } = await svcDb
+          .from("workflow_posts")
+          .update({ scheduled_at: priorScheduledAt })
+          .eq("id", postId);
+        if (restoreErr) return internalServerError(json, "tiktok-publish:schedule:restore", restoreErr);
+        return null;
+      };
+
       let tiktokValidation: TikTokValidationResult;
       try {
         tiktokValidation = await validateTikTok(svcDb as never, postId);
       } catch (e) {
         console.error("[TIKTOK-PUBLISH] schedule TikTok validation error:", (e as Error)?.message);
+        const restoreFailure = await restoreScheduledAt();
+        if (restoreFailure) return restoreFailure;
         return json({ error: "Erro ao validar post para agendamento no TikTok." }, 500);
       }
 
@@ -227,6 +256,8 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
           igValidation = await validateIG(svcDb as never, postId);
         } catch (e) {
           console.error("[TIKTOK-PUBLISH] schedule IG validation error:", (e as Error)?.message);
+          const restoreFailure = await restoreScheduledAt();
+          if (restoreFailure) return restoreFailure;
           return json({ error: "Erro ao validar post para agendamento no Instagram." }, 500);
         }
       }
@@ -234,6 +265,8 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
       const mergedErrors = [...tiktokValidation.errors, ...(igValidation?.errors ?? [])];
       const ok = tiktokValidation.ok && (igValidation ? igValidation.ok : true);
       if (!ok) {
+        const restoreFailure = await restoreScheduledAt();
+        if (restoreFailure) return restoreFailure;
         return json({ error: "Validação falhou", details: mergedErrors }, 422);
       }
 
