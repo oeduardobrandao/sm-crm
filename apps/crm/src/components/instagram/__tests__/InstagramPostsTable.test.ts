@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { getAllByRole } from '@testing-library/dom';
+import { readFileSync } from 'node:fs';
 import { renderInstagramPostsTable } from '../InstagramPostsTable';
 import { getInstagramPosts } from '../../../services/instagram';
+
+const crmStyles = readFileSync('apps/crm/style.css', 'utf8');
 
 vi.mock('../../../services/instagram', () => ({ getInstagramPosts: vi.fn() }));
 
@@ -30,6 +34,26 @@ describe('renderInstagramPostsTable', () => {
     expect(container.querySelectorAll('.ig-post-card')).toHaveLength(6);
     expect(container.querySelector('img[onerror="alert(1)"]')).toBeNull();
     expect(container.textContent).toContain('<img src=x onerror=alert(1)>');
+    expect(
+      container.querySelector('.ig-post-card__caption > .ig-post-card__caption-text'),
+    ).toHaveTextContent('<img src=x onerror=alert(1)>');
+  });
+
+  it('keeps the publication link accessibly named with desktop styles applied', async () => {
+    vi.mocked(getInstagramPosts).mockResolvedValue({ posts, total: 6 } as never);
+    const container = document.createElement('div');
+
+    await renderInstagramPostsTable(container, 42);
+
+    const actionLabelRules = Array.from(
+      crmStyles.matchAll(/\.ig-post-card__action-label\s*\{([^}]*)\}/g),
+      (match) => match[1],
+    );
+    expect(actionLabelRules).toHaveLength(2);
+    expect(actionLabelRules[0]).not.toContain('display: none');
+    expect(actionLabelRules[0]).toContain('clip:');
+    expect(actionLabelRules[1]).toContain('position: static');
+    expect(getAllByRole(container, 'link')[0]).toHaveAccessibleName('Abrir publicação');
   });
 
   it('keeps rows after the fifth collapsed until Ver mais is activated', async () => {

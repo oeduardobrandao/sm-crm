@@ -97,7 +97,7 @@ export async function renderInstagramPostsTable(container: HTMLElement, clientId
                   </div>
               </td>
               <td class="ig-post-card__caption" data-label="${escapeHTML(t('instagram.colCaption'))}" style="max-width: 200px; white-space: normal; line-height: 1.4;">
-                 ${captionStr}
+                 <span class="ig-post-card__caption-text">${captionStr}</span>
               </td>
               <td class="ig-post-card__metrics" data-label="${escapeHTML(t('instagram.colEngagement'))}">
                  <div style="display:flex;gap:0.75rem;color:var(--text-main);">

@@ -8486,7 +8486,18 @@ body.landing-page #root {
 }
 .context-help__article:hover { background: var(--surface-hover); }
 
-.ig-post-card__action-label { display: none; }
+.ig-post-card__action-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
 
 @media (max-width: 767px) {
   .ig-posts-section { overflow: visible !important; }
@@ -8521,7 +8532,23 @@ body.landing-page #root {
     gap: 0.75rem;
   }
   .ig-post-card__caption { min-height: 72px; align-items: flex-start !important; }
-  .ig-post-card__caption { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+  .ig-post-card__caption-text {
+    display: -webkit-box;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+  }
   .ig-post-card__action a { display: inline-flex !important; min-height: 44px; align-items: center; gap: 0.4rem; }
-  .ig-post-card__action-label { display: inline; }
+  .ig-post-card__action-label {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0;
+    overflow: visible;
+    clip: auto;
+    clip-path: none;
+    white-space: normal;
+  }
 }
