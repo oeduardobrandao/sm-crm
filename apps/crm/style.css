@@ -3892,6 +3892,12 @@ body.role-agent input[name='valor_total'] {
   background: rgba(245, 163, 66, 0.06);
 }
 
+.analytics-posts-row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1rem;
+}
+
 @media (max-width: 900px) {
   .analytics-kpi-scroll {
     display: flex;
@@ -3913,6 +3919,27 @@ body.role-agent input[name='valor_total'] {
     max-width: none;
     grid-column: auto;
     justify-self: auto;
+  }
+
+  .analytics-posts-row {
+    display: flex;
+    gap: 1rem;
+    overflow-x: auto;
+    padding-bottom: 0.5rem;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .analytics-posts-row::-webkit-scrollbar {
+    display: none;
+  }
+
+  .analytics-post-card {
+    flex: 0 0 75%;
+    min-width: min(260px, 75%);
+    max-width: 340px;
+    scroll-snap-align: start;
   }
 }
 
