@@ -14,8 +14,8 @@ export async function renderInstagramPostsTable(container: HTMLElement, clientId
   let currentPage = 1;
 
   container.innerHTML = `
-    <div class="card animate-up" style="margin-bottom: 1.5rem;">
-       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
+    <div class="card animate-up ig-posts-section" style="margin-bottom: 1.5rem;">
+       <div class="ig-posts-section__header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
            <h3 class="text-xl font-bold tracking-tight mb-4 text-foreground"><i class="ph ph-images" style="color: var(--primary-color); margin-right: 0.5rem;"></i> ${t('instagram.postsTitle')}</h3>
            <div id="ig-pagination" class="pagination-controls" style="display: none; gap: 0.5rem; align-items: center;">
               <button id="btn-ig-prev" class="btn-icon" disabled><i class="ph ph-caret-left"></i></button>
@@ -23,7 +23,7 @@ export async function renderInstagramPostsTable(container: HTMLElement, clientId
               <button id="btn-ig-next" class="btn-icon"><i class="ph ph-caret-right"></i></button>
            </div>
        </div>
-       <div id="ig-posts-content">
+       <div id="ig-posts-content" class="ig-posts-content">
           <div style="display:flex;align-items:center;justify-content:center;height:100px;">
              <i class="ph ph-spinner ph-spin" style="font-size:1.5rem;color:var(--primary-color)"></i>
           </div>
@@ -60,7 +60,7 @@ export async function renderInstagramPostsTable(container: HTMLElement, clientId
       }
 
       let html = `
-        <table class="data-table" style="font-size: 0.85rem;">
+        <table class="data-table ig-posts-list" style="font-size: 0.85rem;">
           <thead>
             <tr>
               <th>${escapeHTML(t('instagram.colDate'))}</th>
@@ -70,7 +70,7 @@ export async function renderInstagramPostsTable(container: HTMLElement, clientId
               <th>${escapeHTML(t('instagram.colLink'))}</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody class="ig-posts-list__body">
       `;
 
       const COLLAPSED_LIMIT = 5;
@@ -86,8 +86,8 @@ export async function renderInstagramPostsTable(container: HTMLElement, clientId
         const safeThumbnail = p.thumbnail_url ? sanitizeUrl(p.thumbnail_url) : '';
 
         html += `
-            <tr${rowIndex >= COLLAPSED_LIMIT ? ' class="ig-row-hidden" style="display:none;"' : ''}>
-              <td data-label="${escapeHTML(t('instagram.colDate'))}" style="width: 140px;">
+            <tr${rowIndex >= COLLAPSED_LIMIT ? ' class="ig-post-card ig-row-hidden" style="display:none;"' : ' class="ig-post-card"'}>
+              <td class="ig-post-card__identity" data-label="${escapeHTML(t('instagram.colDate'))}" style="width: 140px;">
                   <div style="display:flex;align-items:center;gap:0.75rem;">
                     ${safeThumbnail ? `<img loading="lazy" src="${safeThumbnail}" alt="" style="width:44px;height:44px;border-radius:6px;object-fit:cover;flex-shrink:0;background:var(--bg-secondary);" onerror="this.style.display='none'">` : `<div style="width:44px;height:44px;border-radius:6px;background:var(--bg-secondary);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><i class="ph ph-image" style="color:var(--text-muted);font-size:1.1rem;"></i></div>`}
                     <div>
@@ -96,23 +96,23 @@ export async function renderInstagramPostsTable(container: HTMLElement, clientId
                     </div>
                   </div>
               </td>
-              <td data-label="${escapeHTML(t('instagram.colCaption'))}" style="max-width: 200px; white-space: normal; line-height: 1.4;">
+              <td class="ig-post-card__caption" data-label="${escapeHTML(t('instagram.colCaption'))}" style="max-width: 200px; white-space: normal; line-height: 1.4;">
                  ${captionStr}
               </td>
-              <td data-label="${escapeHTML(t('instagram.colEngagement'))}">
+              <td class="ig-post-card__metrics" data-label="${escapeHTML(t('instagram.colEngagement'))}">
                  <div style="display:flex;gap:0.75rem;color:var(--text-main);">
                     <span data-tooltip="${escapeHTML(t('instagram.likes'))}"><i class="ph ph-heart" style="color:#e25563"></i> ${Number(p.likes) || 0}</span>
                     <span data-tooltip="${escapeHTML(t('instagram.comments'))}"><i class="ph ph-chat-circle"></i> ${Number(p.comments) || 0}</span>
                  </div>
               </td>
-              <td data-label="${escapeHTML(t('instagram.colPerformance'))}">
+              <td class="ig-post-card__metrics" data-label="${escapeHTML(t('instagram.colPerformance'))}">
                  <div style="display:flex;gap:0.75rem;color:var(--text-muted);">
                     <span data-tooltip="${escapeHTML(t('instagram.reachTooltip'))}"><i class="ph ph-users"></i> ${p.reach || 0}</span>
                     <span data-tooltip="${escapeHTML(t('instagram.impressionsTooltip'))}"><i class="ph ph-eye"></i> ${p.impressions || 0}</span>
                  </div>
               </td>
-              <td data-label="${escapeHTML(t('instagram.colLink'))}">
-                 ${safePermalink ? `<a href="${safePermalink}" target="_blank" rel="noopener noreferrer" class="btn-icon" style="text-decoration:none;display:inline-block;"><i class="ph ph-arrow-square-out"></i></a>` : '—'}
+              <td class="ig-post-card__action" data-label="${escapeHTML(t('instagram.colLink'))}">
+                 ${safePermalink ? `<a href="${safePermalink}" target="_blank" rel="noopener noreferrer" class="btn-icon" style="text-decoration:none;display:inline-block;"><i class="ph ph-arrow-square-out" aria-hidden="true"></i><span class="ig-post-card__action-label">Abrir publicação</span></a>` : '—'}
               </td>
             </tr>
           `;

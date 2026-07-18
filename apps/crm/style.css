@@ -8485,3 +8485,43 @@ body.landing-page #root {
   text-decoration: none;
 }
 .context-help__article:hover { background: var(--surface-hover); }
+
+.ig-post-card__action-label { display: none; }
+
+@media (max-width: 767px) {
+  .ig-posts-section { overflow: visible !important; }
+  .ig-posts-content { overflow: visible; }
+  .ig-posts-list,
+  .ig-posts-list__body {
+    display: block;
+    width: 100%;
+  }
+  .ig-posts-list__body {
+    display: flex;
+    overflow-x: auto;
+    gap: 0.75rem;
+    padding: 2px 1px 0.5rem;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .ig-posts-list__body::-webkit-scrollbar { display: none; }
+  .ig-posts-list .ig-post-card {
+    flex: 0 0 84%;
+    min-width: 260px;
+    margin: 0;
+    padding: 1rem;
+    scroll-snap-align: start;
+  }
+  .ig-posts-list .ig-post-card > td {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+  .ig-post-card__caption { min-height: 72px; align-items: flex-start !important; }
+  .ig-post-card__caption { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+  .ig-post-card__action a { display: inline-flex !important; min-height: 44px; align-items: center; gap: 0.4rem; }
+  .ig-post-card__action-label { display: inline; }
+}
