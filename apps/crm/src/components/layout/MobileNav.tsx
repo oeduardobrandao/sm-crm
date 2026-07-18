@@ -1,13 +1,12 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
 import { getMoreSheetGroups } from './nav-data';
-import { drawNavBar, getItemCenterX, BAR_WIDTH } from './mobile-nav-canvas';
-import { useBubbleAnimation, BUBBLE_SIZE } from './use-bubble-animation';
 import { Search, MessageCircle } from 'lucide-react';
 import { CommandDialog, CommandInput, CommandList, CommandEmpty } from '@/components/ui/command';
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 
 declare global {
   interface Window {
@@ -21,8 +20,6 @@ const PRIMARY_ITEMS = [
   { id: 'analytics', route: '/analytics', label: 'Analytics', icon: 'ph-chart-line-up' },
   { id: 'entregas', route: '/entregas', label: 'Entregas', icon: 'ph-kanban' },
 ];
-
-const DPR = typeof window !== 'undefined' ? window.devicePixelRatio || 2 : 2;
 
 function getActiveIndex(pathname: string): number {
   const idx = PRIMARY_ITEMS.findIndex((item) => pathname.startsWith(item.route));
@@ -41,56 +38,25 @@ export default function MobileNav() {
   );
   const [searchOpen, setSearchOpen] = useState(false);
 
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const bubbleRef = useRef<HTMLDivElement>(null);
-  const activeIndexRef = useRef(-1);
-
-  const fillColor = isDark ? '#1a1e26' : '#ffffff';
-  const itemCount = PRIMARY_ITEMS.length + 1; // 4 items + More
-
-  const { animate, initBubble, animatingRef } = useBubbleAnimation({
-    canvasRef,
-    bubbleRef,
-    fillColor,
-    itemCount,
-  });
-
-  const activeIndex = getActiveIndex(location.pathname);
+  const moreSheetGroups = getMoreSheetGroups(role, features as Record<string, boolean> | null);
+  const isMoreRouteActive = moreSheetGroups.some((group) =>
+    group.items.some((item) => location.pathname.startsWith(item.route)),
+  );
+  const activeIndex = isMoreRouteActive ? -1 : getActiveIndex(location.pathname);
 
   useEffect(() => {
-    if (activeIndex >= 0) {
-      if (activeIndexRef.current === -1) {
-        initBubble(activeIndex);
-      } else if (activeIndexRef.current !== activeIndex && !animatingRef.current) {
-        animate(activeIndexRef.current, activeIndex, () => {});
-      }
-      activeIndexRef.current = activeIndex;
-    } else {
-      if (bubbleRef.current) {
-        bubbleRef.current.style.opacity = '0';
-      }
-      if (canvasRef.current) {
-        drawNavBar(canvasRef.current, fillColor, -100, 0);
-      }
-      activeIndexRef.current = -1;
-    }
-  }, [activeIndex, animate, initBubble, animatingRef, fillColor]);
+    const phoneMedia = window.matchMedia('(max-width: 767px)');
+    const closeOutsidePhone = (event: MediaQueryListEvent) => {
+      if (!event.matches) setMoreOpen(false);
+    };
 
-  useEffect(() => {
-    if (activeIndex >= 0 && canvasRef.current) {
-      const cx = getItemCenterX(activeIndex, itemCount);
-      drawNavBar(canvasRef.current, fillColor, cx, 1);
-    }
-  }, [isDark]);
+    phoneMedia.addEventListener('change', closeOutsidePhone);
+    return () => phoneMedia.removeEventListener('change', closeOutsidePhone);
+  }, []);
 
   const go = (route: string) => {
     navigate(route);
     setMoreOpen(false);
-  };
-
-  const handleNavClick = (index: number) => {
-    if (animatingRef.current) return;
-    go(PRIMARY_ITEMS[index].route);
   };
 
   const toggleTheme = () => {
@@ -110,60 +76,58 @@ export default function MobileNav() {
         .toUpperCase()
     : 'U';
 
-  const activeItem = activeIndex >= 0 ? PRIMARY_ITEMS[activeIndex] : null;
-  const moreSheetGroups = getMoreSheetGroups(role, features as Record<string, boolean> | null);
-
   return (
     <>
-      <nav className="mobile-nav-bubble" id="mobile-nav">
-        <div className="mobile-nav-wrap">
-          <canvas
-            ref={canvasRef}
-            className="mobile-nav-canvas"
-            width={BAR_WIDTH * DPR}
-            height={120 * DPR}
-          />
-
-          <div ref={bubbleRef} className="mobile-nav-bubble-circle">
-            {activeItem && <i className={`ph-fill ${activeItem.icon}`} />}
-          </div>
-
+      <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
+        <nav className="mobile-nav-glass" id="mobile-nav" aria-label="Navegação principal">
           <div className="mobile-nav-items">
-            {PRIMARY_ITEMS.map((item, i) => (
+            {PRIMARY_ITEMS.map((item, index) => {
+              const active = activeIndex === index;
+              return (
+                <button
+                  key={item.id}
+                  className={`mobile-nav-item${active ? ' active' : ''}`}
+                  onClick={() => go(item.route)}
+                  type="button"
+                  aria-current={active ? 'page' : undefined}
+                  aria-label={item.label}
+                >
+                  <span className="mobile-nav-item__icon" aria-hidden="true">
+                    <i className={`${active ? 'ph-fill' : 'ph'} ${item.icon}`} />
+                  </span>
+                  <span className="nav-label">{item.label}</span>
+                </button>
+              );
+            })}
+
+            <SheetTrigger asChild>
               <button
-                key={item.id}
-                className={`mobile-nav-item${activeIndex === i ? ' active' : ''}`}
-                onClick={() => handleNavClick(i)}
+                id="mobile-more-btn"
+                className={`mobile-nav-item${moreOpen || isMoreRouteActive ? ' active' : ''}`}
                 type="button"
+                aria-label="Mais"
+                aria-current={isMoreRouteActive ? 'page' : undefined}
+                aria-expanded={moreOpen}
+                aria-controls="mobile-more-sheet"
               >
-                <div className="icon-wrap">
-                  <i className={`${activeIndex === i ? 'ph-fill' : 'ph'} ${item.icon}`} />
-                </div>
-                <span className="nav-label">{item.label}</span>
+                <span className="mobile-nav-item__icon" aria-hidden="true">
+                  <i className="ph ph-dots-three" />
+                </span>
+                <span className="nav-label">Mais</span>
               </button>
-            ))}
-
-            <button
-              id="mobile-more-btn"
-              className="mobile-nav-item"
-              onClick={() => setMoreOpen((v) => !v)}
-              type="button"
-            >
-              <div className="icon-wrap">
-                <i className="ph ph-dots-three" />
-              </div>
-              <span className="nav-label">Mais</span>
-            </button>
+            </SheetTrigger>
           </div>
-        </div>
-      </nav>
+        </nav>
 
-      {/* More Sheet Overlay */}
-      <div
-        className={`mobile-more-overlay${moreOpen ? ' visible' : ''}`}
-        onClick={() => setMoreOpen(false)}
-      >
-        <div className="mobile-more-sheet" onClick={(e) => e.stopPropagation()}>
+        <SheetContent
+          side="bottom"
+          id="mobile-more-sheet"
+          className="mobile-more-sheet"
+          overlayClassName="mobile-more-overlay"
+          aria-describedby={undefined}
+        >
+          <SheetTitle className="sr-only">Mais</SheetTitle>
+
           {/* Profile */}
           <div className="mobile-more-profile" id="mobile-profile">
             <div className="avatar" id="mobile-avatar">
@@ -261,8 +225,8 @@ export default function MobileNav() {
             </div>
             <span>Sair</span>
           </button>
-        </div>
-      </div>
+        </SheetContent>
+      </Sheet>
       <CommandDialog open={searchOpen} onOpenChange={setSearchOpen}>
         <CommandInput placeholder="Buscar..." />
         <CommandList>
