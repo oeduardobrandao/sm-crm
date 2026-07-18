@@ -136,6 +136,11 @@ class QueryBuilder {
     return this;
   }
 
+  range(...args: unknown[]) {
+    this.modifiers.push({ method: 'range', args });
+    return this;
+  }
+
   single() {
     this.modifiers.push({ method: 'single', args: [] });
     return this.execute();

@@ -200,7 +200,9 @@ interface TikTokRefreshErrorBody {
   log_id?: string;
 }
 
-function requireTikTokClientCredentials(): { clientKey: string; clientSecret: string } {
+/** Exported for tiktok-integration's OAuth callback/disconnect (token exchange, revoke) —
+ * the same lazy-read-and-throw credential lookup, no copy-paste of the error message. */
+export function requireTikTokClientCredentials(): { clientKey: string; clientSecret: string } {
   const clientKey = Deno.env.get("TIKTOK_CLIENT_KEY");
   const clientSecret = Deno.env.get("TIKTOK_CLIENT_SECRET");
   if (!clientKey || !clientSecret) {

@@ -1,6 +1,9 @@
 [functions.instagram-integration]
 verify_jwt = false
 
+[functions.tiktok-integration]
+verify_jwt = false
+
 [functions.design-render]
 verify_jwt = false
 
