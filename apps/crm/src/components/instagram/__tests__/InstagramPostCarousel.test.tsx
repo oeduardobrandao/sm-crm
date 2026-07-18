@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { InstagramPostCarousel } from '../InstagramPostCarousel';
 
 describe('InstagramPostCarousel', () => {
-  it('keeps caller ordering and neutral section copy', () => {
-    const posts = [{ id: 'new' }, { id: 'old' }];
+  it('keeps the caller-supplied arbitrary ordering and neutral section copy', () => {
+    const posts = [{ id: 'zebra' }, { id: 'apple' }, { id: 'mango' }];
 
     render(
       <InstagramPostCarousel
@@ -19,8 +19,9 @@ describe('InstagramPostCarousel', () => {
 
     const region = screen.getByRole('region', { name: 'Últimas Publicações' });
     expect(within(region).getAllByRole('article').map((item) => item.textContent)).toEqual([
-      'new',
-      'old',
+      'zebra',
+      'apple',
+      'mango',
     ]);
   });
 

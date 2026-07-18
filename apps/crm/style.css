@@ -3878,6 +3878,21 @@ body.role-agent input[name='valor_total'] {
   display: none;
 }
 
+.instagram-post-carousel__header {
+  align-items: flex-start;
+}
+
+.instagram-post-carousel__header h3 {
+  gap: 0.5rem;
+  margin-bottom: 2px;
+}
+
+.instagram-post-carousel__header p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
 .instagram-post-carousel__item {
   flex: 0 0 clamp(260px, 36vw, 360px);
   min-width: 0;

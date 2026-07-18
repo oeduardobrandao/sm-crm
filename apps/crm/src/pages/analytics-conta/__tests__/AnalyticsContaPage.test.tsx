@@ -279,45 +279,44 @@ function seedCommonAnalyticsData() {
       },
     },
   };
-  queryState['analytics-posts'] = {
-    data: {
-      posts: [
-        {
-          id: 1,
-          posted_at: '2026-04-15T12:00:00Z',
-          media_type: 'VIDEO',
-          reach: 2500,
-          impressions: 4000,
-          engagement_rate: 7.2,
-          likes: 320,
-          saved: 48,
-          saves_rate: 12.4,
-          comments: 12,
-          shares: 5,
-          caption: 'Post em reels com alta performance',
-          thumbnail_url: 'https://example.com/1.jpg',
-          permalink: 'https://instagram.com/p/1',
-          tags: [{ id: 1, tag_name: 'Educação', color: '#3ecf8e' }],
-        },
-        {
-          id: 2,
-          posted_at: '2026-04-12T12:00:00Z',
-          media_type: 'IMAGE',
-          reach: 1700,
-          impressions: 2100,
-          engagement_rate: 4.6,
-          likes: 180,
-          saved: 36,
-          saves_rate: 8.9,
-          comments: 8,
-          shares: 3,
-          caption: 'Conteúdo institucional',
-          thumbnail_url: 'https://example.com/2.jpg',
-          permalink: 'https://instagram.com/p/2',
-          tags: [{ id: 2, tag_name: 'Institucional', color: '#f5a342' }],
-        },
-      ],
+  const posts = [
+    {
+      id: 1,
+      posted_at: '2026-04-15T12:00:00Z',
+      media_type: 'VIDEO',
+      reach: 2500,
+      impressions: 4000,
+      engagement_rate: 7.2,
+      likes: 320,
+      saved: 48,
+      saves_rate: 12.4,
+      comments: 12,
+      shares: 5,
+      caption: 'Post em reels com alta performance',
+      thumbnail_url: 'https://example.com/1.jpg',
+      permalink: 'https://instagram.com/p/1',
+      tags: [{ id: 1, tag_name: 'Educação', color: '#3ecf8e' }],
     },
+    {
+      id: 2,
+      posted_at: '2026-04-12T12:00:00Z',
+      media_type: 'IMAGE',
+      reach: 3000,
+      impressions: 2100,
+      engagement_rate: 4.6,
+      likes: 180,
+      saved: 36,
+      saves_rate: 8.9,
+      comments: 8,
+      shares: 3,
+      caption: 'Conteúdo institucional',
+      thumbnail_url: 'https://example.com/2.jpg',
+      permalink: 'https://instagram.com/p/2',
+      tags: [{ id: 2, tag_name: 'Institucional', color: '#f5a342' }],
+    },
+  ];
+  queryState['analytics-posts'] = {
+    data: { posts },
   };
   queryState['analytics-history'] = {
     data: {
@@ -389,7 +388,7 @@ function seedCommonAnalyticsData() {
       },
     },
   };
-  return { client, account };
+  return { client, account, posts };
 }
 
 beforeEach(() => {
@@ -468,7 +467,7 @@ describe('AnalyticsContaPage', () => {
   });
 
   it('renders the main summaries and generates the AI analysis on demand', async () => {
-    const { client, account } = seedCommonAnalyticsData();
+    const { client, account, posts } = seedCommonAnalyticsData();
     mockedGetAccountAIAnalysis.mockResolvedValue({
       analysis: {
         healthScore: {
@@ -510,12 +509,16 @@ describe('AnalyticsContaPage', () => {
     expect(screen.getByText('Taxa de Salvamentos')).toBeTruthy();
     expect(screen.getByText('Melhores Posts')).toBeTruthy();
     expect(screen.getByText('Precisam de Atenção')).toBeTruthy();
+    expect(posts.map((post) => post.caption)).toEqual([
+      'Post em reels com alta performance',
+      'Conteúdo institucional',
+    ]);
     const bestPostsRegion = screen.getByRole('region', { name: 'Melhores Posts' });
     expect(
       within(bestPostsRegion)
         .getAllByText(/Post em reels com alta performance|Conteúdo institucional/)
         .map((item) => item.textContent),
-    ).toEqual(['Post em reels com alta performance', 'Conteúdo institucional']);
+    ).toEqual(['Conteúdo institucional', 'Post em reels com alta performance']);
     expect(screen.getByText(/Top posts por alcance/i)).toBeTruthy();
     expect(screen.getByText('Relatórios Gerados')).toBeTruthy();
     expect(screen.getByText('Abr 2026')).toBeTruthy();
