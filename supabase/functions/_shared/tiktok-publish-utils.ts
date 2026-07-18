@@ -619,13 +619,16 @@ export type ConfirmAndApplyPublishStatusOutcome = "published" | "processing" | "
  * tally/branch on the returned outcome, they never need their own try/catch around this call.
  *
  * Note on `tiktok_publish_processing_at`: the "published" (via mark_platform_published, whose SQL
- * unconditionally clears this column) and "processing" outcomes both clear the claim-RPC lock as
- * part of their write, same as before extraction. A webhook-triggered call never acquired that
- * lock, so clearing it is a no-op in the common case; the narrow exception (a webhook and a cron
- * run landing on the exact same post within the same ~10-minute lock window) would let the claim
- * RPC re-claim slightly early, but every downstream write here is idempotent (re-running
- * mark_platform_published/markTikTokPublishFailed on an already-settled post is safe), so the
- * worst case is one wasted extra status-fetch, never corrupted state.
+ * unconditionally clears this column), "processing", and "failed" outcomes all clear this lock as
+ * part of their write, same as before extraction. tiktok-webhook (_shared use, Task B6) claims
+ * this exact same lock itself immediately before calling this function (handler.ts's
+ * claimPublishLock, same claim shape as claim_posts_for_tiktok_publishing) — so a webhook
+ * re-confirmation and a concurrently running cron status-fetch on the same post always serialize
+ * on that claim rather than racing to write this column. Without that claim, a cron status-fetch
+ * still in flight against the PRIOR TikTok state could commit its (stale) outcome AFTER this
+ * function already applied the fresher one, transiently regressing the row — routine, not a rare
+ * corner case, since the webhook and the per-minute cron are both normal, active paths to the
+ * same row.
  */
 export async function confirmAndApplyPublishStatus(
   deps: ConfirmAndApplyPublishStatusDeps,

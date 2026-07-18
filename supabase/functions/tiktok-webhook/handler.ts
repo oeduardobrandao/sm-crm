@@ -160,10 +160,50 @@ interface ProcessArgs {
   contentRaw: string | undefined;
 }
 
+/** Claims the SAME `tiktok_publish_processing_at` lock claim_posts_for_tiktok_publishing uses
+ * (migration 20260719000001_tiktok_publishing.sql: NULL or older than the 10-minute stale
+ * window) so a webhook-triggered re-confirmation and a concurrently running cron status-fetch
+ * can never both act on the same post. Returns the claimed post id, or `null` if the cron
+ * currently holds the lock (not an error — the caller treats that as "cron owns this one"). */
+async function claimPublishLock(
+  svc: DbClient,
+  postId: number,
+  now: () => Date,
+): Promise<{ claimed: boolean }> {
+  const staleBefore = new Date(now().getTime() - 10 * 60_000).toISOString();
+  const { data, error } = await svc
+    .from("workflow_posts")
+    .update({ tiktok_publish_processing_at: now().toISOString() })
+    .eq("id", postId)
+    .or(`tiktok_publish_processing_at.is.null,tiktok_publish_processing_at.lt.${staleBefore}`)
+    .select("id")
+    .maybeSingle();
+  if (error) {
+    throw new Error(`tiktok-webhook: failed to claim publish lock for post ${postId}: ${error.message}`);
+  }
+  return { claimed: !!data };
+}
+
 /** post.publish.complete/failed: the webhook is a HINT — always re-confirm via the shared
  * status-resolution step (also used by tiktok-publish-cron's status phase) rather than trusting
- * the event's own `reason`/`publish_type` fields. Never throws (confirmAndApplyPublishStatus's
- * own contract); a post that can't be found by publish_id is logged and treated as a no-op. */
+ * the event's own `reason`/`publish_type` fields.
+ *
+ * Race with the cron (design doc follow-up): without coordination, a cron status-fetch that
+ * started against the PRIOR TikTok state just before this webhook arrived could commit AFTER
+ * this webhook applies the fresher outcome — e.g. re-writing `tiktok_publish_status='processing'`
+ * right after this handler committed 'published'. Self-heals on the cron's next run, but it's a
+ * routine occurrence, not a rare one (the webhook and the per-minute cron are both normal, active
+ * paths to the same row). Fixed by claiming the exact same `tiktok_publish_processing_at` lock
+ * the cron's claim RPC uses (claimPublishLock above) before calling confirmAndApplyPublishStatus:
+ * whichever side wins the claim is the one that gets to resolve this post for this pass; if the
+ * cron already holds it, the cron's own status-fetch converges to the same truth, so ceding to it
+ * is a safe no-op, not a missed update.
+ *
+ * Never throws on the "normal" paths (confirmAndApplyPublishStatus's own contract): a post that
+ * can't be found by publish_id, or a lock currently held by the cron, is logged and treated as a
+ * no-op. A DB error while claiming the lock DOES throw (same as findPostByPublishId's own
+ * DB-error path) — that leaves the event's `processed_at` NULL so it stays a candidate for
+ * redelivery/sweep rather than being silently marked processed. */
 async function handlePublishCompleteOrFailed(
   ctx: ProcessCtx,
   args: ProcessArgs,
@@ -173,6 +213,15 @@ async function handlePublishCompleteOrFailed(
   if (!post) {
     console.log(
       `[tiktok-webhook] ${args.eventName}: no post found for publish_id ${content.publish_id ?? "(missing)"}`,
+    );
+    return;
+  }
+
+  const { claimed } = await claimPublishLock(ctx.svc, post.post_id, ctx.now);
+  if (!claimed) {
+    console.log(
+      `[tiktok-webhook] ${args.eventName}: post ${post.post_id} publish lock held by tiktok-publish-cron — ` +
+        `ceding resolution to the cron's own status-fetch`,
     );
     return;
   }
@@ -188,6 +237,12 @@ async function handlePublishCompleteOrFailed(
     },
   );
   console.log(`[tiktok-webhook] ${args.eventName}: post ${post.post_id} re-confirmed as ${outcome}`);
+  // NOTE: no explicit lock release here. confirmAndApplyPublishStatus's own module comment
+  // (_shared/tiktok-publish-utils.ts) documents that every outcome branch clears
+  // tiktok_publish_processing_at as part of its write: "published" via mark_platform_published
+  // (whose SQL unconditionally clears the column), "processing" via its own explicit update, and
+  // "failed" via markTikTokPublishFailed's update — so the claim taken above is released on
+  // every branch by the time this function returns.
 }
 
 /** post.publish.publicly_available: stores tiktok_post_id + tiktok_post_url via a direct,
@@ -261,7 +316,7 @@ async function handleAuthRemoved(ctx: ProcessCtx, args: ProcessArgs): Promise<vo
     conta_id: contaId,
     action: "tiktok-auth-removed",
     resource_type: "tiktok_account",
-    resource_id: String(args.account.client_id),
+    resource_id: String(args.account.id),
   });
 }
 
