@@ -1,8 +1,7 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuth } from '../../../context/AuthContext';
-import { useBubbleAnimation } from '../use-bubble-animation';
 
 vi.mock('../../../context/AuthContext', () => ({
   useAuth: vi.fn(),
@@ -12,25 +11,10 @@ vi.mock('../../../hooks/useWorkspaceLimits', () => ({
   useWorkspaceLimits: vi.fn(),
 }));
 
-vi.mock('../mobile-nav-canvas', () => ({
-  drawNavBar: vi.fn(),
-  getItemCenterX: vi.fn().mockReturnValue(50),
-  BAR_WIDTH: 390,
-  CUTOUT_R: 32,
-  CUTOUT_CY: 44,
-}));
-
-vi.mock('../use-bubble-animation', () => ({
-  useBubbleAnimation: vi.fn(),
-  BUBBLE_SIZE: 52,
-  BUBBLE_TOP_UP: 18,
-}));
-
 import MobileNav from '../MobileNav';
 import { useWorkspaceLimits } from '../../../hooks/useWorkspaceLimits';
 
 const mockedUseAuth = vi.mocked(useAuth);
-const mockedUseBubbleAnimation = vi.mocked(useBubbleAnimation);
 const mockedUseWorkspaceLimits = vi.mocked(useWorkspaceLimits);
 
 function setLimits(overrides: Record<string, unknown> = {}) {
@@ -68,22 +52,6 @@ function setAuth(overrides: Record<string, unknown> = {}) {
 }
 
 function renderMobileNav(pathname = '/dashboard') {
-  HTMLCanvasElement.prototype.getContext = vi.fn().mockReturnValue({
-    clearRect: vi.fn(),
-    save: vi.fn(),
-    restore: vi.fn(),
-    scale: vi.fn(),
-    beginPath: vi.fn(),
-    moveTo: vi.fn(),
-    lineTo: vi.fn(),
-    quadraticCurveTo: vi.fn(),
-    arc: vi.fn(),
-    closePath: vi.fn(),
-    fill: vi.fn(),
-    fillStyle: '',
-    globalCompositeOperation: 'source-over',
-  }) as any;
-
   return render(
     <MemoryRouter initialEntries={[pathname]}>
       <Routes>
@@ -101,29 +69,110 @@ function renderMobileNav(pathname = '/dashboard') {
   );
 }
 
+function createPhoneMediaQuery(initialMatches = true) {
+  let matches = initialMatches;
+  const listeners = new Set<(event: MediaQueryListEvent) => void>();
+
+  return {
+    get matches() {
+      return matches;
+    },
+    media: '(max-width: 767px)',
+    addEventListener: vi.fn((_type: string, listener: (event: MediaQueryListEvent) => void) => {
+      listeners.add(listener);
+    }),
+    removeEventListener: vi.fn((_type: string, listener: (event: MediaQueryListEvent) => void) => {
+      listeners.delete(listener);
+    }),
+    dispatch(nextMatches: boolean) {
+      matches = nextMatches;
+      listeners.forEach((listener) => listener({ matches } as MediaQueryListEvent));
+    },
+  };
+}
+
 describe('MobileNav', () => {
   beforeEach(() => {
     document.documentElement.removeAttribute('data-theme');
     localStorage.clear();
     setLimits();
-    mockedUseBubbleAnimation.mockReturnValue({
-      animate: vi.fn(),
-      initBubble: vi.fn(),
-      animatingRef: { current: false },
-    } as any);
   });
 
-  it('marks active item and shows profile in more sheet', async () => {
+  it('renders a stable active route without canvas chrome', () => {
     setAuth();
     renderMobileNav('/analytics');
 
-    const labels = document.querySelectorAll('.mobile-nav-item');
-    const analyticsItem = Array.from(labels).find((el) => el.textContent?.includes('Analytics'));
-    expect(analyticsItem?.classList.contains('active')).toBe(true);
+    const analytics = screen.getByRole('button', { name: 'Analytics' });
+    expect(analytics).toHaveAttribute('aria-current', 'page');
+    expect(analytics).toHaveClass('active');
+    expect(document.querySelector('canvas')).not.toBeInTheDocument();
+    expect(document.querySelector('.mobile-nav-bubble-circle')).not.toBeInTheDocument();
+  });
 
-    fireEvent.click(document.getElementById('mobile-more-btn')!);
+  it('exposes the Mais sheet state', () => {
+    setAuth();
+    renderMobileNav('/dashboard');
+
+    const more = screen.getByRole('button', { name: 'Mais' });
+    expect(more).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(more);
+    expect(more).toHaveAttribute('aria-expanded', 'true');
+    expect(more).toHaveAttribute('aria-controls', 'mobile-more-sheet');
     expect(document.getElementById('mobile-avatar')?.textContent).toBe('AM');
     expect(document.getElementById('mobile-user-name')?.textContent).toBe('Ana Maria');
+  });
+
+  it('marks Mais as the current destination for More routes, including primary-prefix collisions', () => {
+    setAuth();
+    renderMobileNav('/analytics-fluxos');
+
+    expect(screen.getByRole('button', { name: 'Mais' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('button', { name: 'Mais' })).toHaveClass('active');
+    expect(screen.getByRole('button', { name: 'Analytics' })).not.toHaveAttribute('aria-current');
+  });
+
+  it('uses dialog semantics, makes the background inert, closes on Escape, and restores focus', async () => {
+    setAuth();
+    const { container } = renderMobileNav('/dashboard');
+    const more = screen.getByRole('button', { name: 'Mais' });
+
+    fireEvent.click(more);
+
+    const sheet = await screen.findByRole('dialog', { name: 'Mais' });
+    expect(sheet).toHaveClass('mobile-more-sheet');
+    await waitFor(() => expect(sheet).toContainElement(document.activeElement as HTMLElement));
+    expect(container).toHaveAttribute('aria-hidden', 'true');
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Mais' })).toBeNull());
+    expect(more).toHaveFocus();
+  });
+
+  it('closes the phone sheet when the phone media query stops matching', async () => {
+    const phoneMedia = createPhoneMediaQuery();
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn((query: string) =>
+        query === '(max-width: 767px)'
+          ? phoneMedia
+          : {
+              matches: false,
+              media: query,
+              addEventListener: vi.fn(),
+              removeEventListener: vi.fn(),
+            },
+      ),
+    );
+    setAuth();
+    renderMobileNav('/dashboard');
+    const more = screen.getByRole('button', { name: 'Mais' });
+    fireEvent.click(more);
+    expect(await screen.findByRole('dialog', { name: 'Mais' })).toBeInTheDocument();
+
+    act(() => phoneMedia.dispatch(false));
+
+    await waitFor(() => expect(more).toHaveAttribute('aria-expanded', 'false'));
+    expect(screen.queryByRole('dialog', { name: 'Mais' })).toBeNull();
   });
 
   it('navigates from more sheet and closes it', async () => {
@@ -141,7 +190,8 @@ describe('MobileNav', () => {
     await waitFor(() => {
       expect(screen.getByTestId('path').textContent).toBe('/configuracao');
     });
-    expect(document.querySelector('.mobile-more-overlay.visible')).toBeNull();
+    expect(document.getElementById('mobile-more-btn')).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('dialog', { name: 'Mais' })).toBeNull();
   });
 
   it('includes all sidebar routes in more sheet', () => {

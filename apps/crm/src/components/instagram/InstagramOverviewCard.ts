@@ -32,10 +32,10 @@ export function renderInstagramOverviewCard(
 
   let statusBanner = '';
   if (isRevoked) {
-    statusBanner = `<div style="background: rgba(245, 90, 66, 0.08); color: var(--danger); padding: 0.5rem 0.75rem; border-radius: 8px; font-size: 0.8rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;"><i class="ph ph-warning"></i> ${escapeHTML(t('instagram.revokedBanner'))}</div>`;
+    statusBanner = `<div style="background: rgba(245, 90, 66, 0.08); color: var(--danger); padding: 0.5rem 0.75rem; border-radius: 8px; font-size: 0.8rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;"><i class="ph ph-warning" aria-hidden="true"></i> ${escapeHTML(t('instagram.revokedBanner'))}</div>`;
   } else if (isExpired) {
     statusBanner = `<div style="background: rgba(245, 163, 66, 0.08); color: var(--warning); padding: 0.5rem 0.75rem; border-radius: 8px; font-size: 0.8rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
-      <i class="ph ph-warning"></i> ${escapeHTML(t('instagram.expiredBanner'))}
+      <i class="ph ph-warning" aria-hidden="true"></i> ${escapeHTML(t('instagram.expiredBanner'))}
       <button id="btn-ig-reconnect" style="margin-left: auto; background: var(--warning); color: #fff; border: none; padding: 0.25rem 0.75rem; border-radius: 6px; font-size: 0.75rem; font-weight: 600; cursor: pointer; white-space: nowrap;">${escapeHTML(t('instagram.reconnectButton'))}</button>
     </div>`;
   }
@@ -55,11 +55,11 @@ export function renderInstagramOverviewCard(
     const tooltip = escapeHTML(t('instagram.tokenTooltip'));
     const badgeBase = `cursor: help; display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.7rem; font-weight: 600; font-family: var(--font-mono);`;
     if (daysLeft <= 0) {
-      tokenBadge = `<span class="token-badge" data-tooltip="${tooltip}" data-tooltip-dir="bottom" style="${badgeBase} background: rgba(245, 90, 66, 0.1); color: var(--danger);"><i class="ph ph-warning" style="font-size: 0.75rem;"></i> ${escapeHTML(t('instagram.tokenExpired'))}</span>`;
+      tokenBadge = `<span class="token-badge instagram-overview__token-badge" data-tooltip="${tooltip}" data-tooltip-dir="bottom" style="${badgeBase} background: rgba(245, 90, 66, 0.1); color: var(--danger);"><i class="ph ph-warning" aria-hidden="true" style="font-size: 0.75rem;"></i> ${escapeHTML(t('instagram.tokenExpired'))}</span>`;
     } else if (daysLeft <= 7) {
-      tokenBadge = `<span class="token-badge" data-tooltip="${tooltip}" data-tooltip-dir="bottom" style="${badgeBase} background: rgba(245, 163, 66, 0.1); color: var(--warning);"><i class="ph ph-clock" style="font-size: 0.75rem;"></i> ${escapeHTML(t('instagram.tokenDaysLeft', { count: daysLeft }))}</span>`;
+      tokenBadge = `<span class="token-badge instagram-overview__token-badge" data-tooltip="${tooltip}" data-tooltip-dir="bottom" style="${badgeBase} background: rgba(245, 163, 66, 0.1); color: var(--warning);"><i class="ph ph-clock" aria-hidden="true" style="font-size: 0.75rem;"></i> ${escapeHTML(t('instagram.tokenDaysLeft', { count: daysLeft }))}</span>`;
     } else {
-      tokenBadge = `<span class="token-badge" data-tooltip="${tooltip}" data-tooltip-dir="bottom" style="${badgeBase} background: rgba(62, 207, 142, 0.1); color: var(--success);"><i class="ph ph-clock" style="font-size: 0.75rem;"></i> ${escapeHTML(t('instagram.tokenDaysLeft', { count: daysLeft }))}</span>`;
+      tokenBadge = `<span class="token-badge instagram-overview__token-badge" data-tooltip="${tooltip}" data-tooltip-dir="bottom" style="${badgeBase} background: rgba(62, 207, 142, 0.1); color: var(--success);"><i class="ph ph-clock" aria-hidden="true" style="font-size: 0.75rem;"></i> ${escapeHTML(t('instagram.tokenDaysLeft', { count: daysLeft }))}</span>`;
     }
   }
 
@@ -70,25 +70,25 @@ export function renderInstagramOverviewCard(
 
       ${statusBanner}
 
-      <div style="display: flex; align-items: center; gap: 1.5rem; margin-bottom: 1.5rem;">
+      <div class="instagram-overview__profile" style="display: flex; align-items: center; gap: 1.5rem; margin-bottom: 1.5rem;">
          <img src="${account.profile_picture_url ? sanitizeUrl(account.profile_picture_url) : 'https://ui-avatars.com/api/?name=IG&background=random'}" alt="IG Profile" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 3px solid #E1306C;" />
-         <div style="flex: 1; min-width: 0;">
+         <div class="instagram-overview__metadata" style="flex: 1; min-width: 0;">
             <h3 class="text-xl font-bold tracking-tight text-foreground flex items-center gap-2 mb-1">
                 ${escapeHTML(account.username || t('instagram.account'))}
-                <i class="fa-brands fa-instagram" style="color: #E1306C; font-size: 1.2rem;"></i>
+                <i class="fa-brands fa-instagram" aria-hidden="true" style="color: #E1306C; font-size: 1.2rem;"></i>
             </h3>
             <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
               <p style="color: var(--text-muted); font-size: 0.85rem; margin: 0;">${escapeHTML(updatedDate)}</p>
               ${tokenBadge}
             </div>
          </div>
-         <div style="display: flex; gap: 0.5rem; flex-shrink: 0;">
-            <button id="btn-ig-sync" class="btn-icon" data-tooltip="${escapeHTML(t('instagram.syncTooltip'))}" data-tooltip-dir="bottom" style="color: var(--text-muted);"><i class="ph ph-arrows-clockwise"></i></button>
-            <button id="btn-ig-disconnect" class="btn-icon" data-tooltip="${escapeHTML(t('instagram.disconnectTooltip'))}" data-tooltip-dir="bottom" style="color: var(--danger);"><i class="ph ph-plugs"></i></button>
+         <div class="instagram-overview__actions" style="display: flex; gap: 0.5rem; flex-shrink: 0;">
+            <button id="btn-ig-sync" class="btn-icon" aria-label="${escapeHTML(t('instagram.syncTooltip'))}" data-tooltip="${escapeHTML(t('instagram.syncTooltip'))}" data-tooltip-dir="bottom" style="color: var(--text-muted);"><i class="ph ph-arrows-clockwise" aria-hidden="true"></i></button>
+            <button id="btn-ig-disconnect" class="btn-icon" aria-label="${escapeHTML(t('instagram.disconnectTooltip'))}" data-tooltip="${escapeHTML(t('instagram.disconnectTooltip'))}" data-tooltip-dir="bottom" style="color: var(--danger);"><i class="ph ph-plugs" aria-hidden="true"></i></button>
          </div>
       </div>
 
-      <div class="kpi-grid" style="margin-bottom: 1.5rem;">
+      <div class="kpi-grid instagram-overview__account-kpis" style="margin-bottom: 1.5rem;">
          <div class="kpi-card">
             <span class="kpi-label">${escapeHTML(t('instagram.followers')).toUpperCase()}</span>
             <span class="kpi-value">${numFmt(account.follower_count)}</span>
@@ -106,19 +106,19 @@ export function renderInstagramOverviewCard(
       <h4 style="margin-bottom: 1rem; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">${escapeHTML(t('instagram.metricsTitle'))}</h4>
       <div class="kpi-grid">
          <div class="kpi-card">
-            <span class="kpi-label"><i class="ph ph-users"></i> ${escapeHTML(t('instagram.reach'))}</span>
+            <span class="kpi-label"><i class="ph ph-users" aria-hidden="true"></i> ${escapeHTML(t('instagram.reach'))}</span>
             <span class="kpi-value">${numFmt(account.reach_28d)}</span>
          </div>
          <div class="kpi-card">
-            <span class="kpi-label"><i class="ph ph-eye"></i> ${escapeHTML(t('instagram.impressions'))}</span>
+            <span class="kpi-label"><i class="ph ph-eye" aria-hidden="true"></i> ${escapeHTML(t('instagram.impressions'))}</span>
             <span class="kpi-value">${numFmt(account.impressions_28d)}</span>
          </div>
          <div class="kpi-card">
-            <span class="kpi-label"><i class="ph ph-user-focus"></i> ${escapeHTML(t('instagram.engaged'))}</span>
+            <span class="kpi-label"><i class="ph ph-user-focus" aria-hidden="true"></i> ${escapeHTML(t('instagram.engaged'))}</span>
             <span class="kpi-value">${numFmt(account.profile_views_28d)}</span>
          </div>
          <div class="kpi-card">
-            <span class="kpi-label"><i class="ph ph-link"></i> ${escapeHTML(t('instagram.linkClicks'))}</span>
+            <span class="kpi-label"><i class="ph ph-link" aria-hidden="true"></i> ${escapeHTML(t('instagram.linkClicks'))}</span>
             <span class="kpi-value">${numFmt(account.website_clicks_28d)}</span>
          </div>
       </div>
@@ -130,13 +130,13 @@ export function renderInstagramOverviewCard(
   if (btnSync) {
     btnSync.addEventListener('click', async () => {
       try {
-        btnSync.innerHTML = '<i class="ph ph-spinner ph-spin"></i>';
+        btnSync.innerHTML = '<i class="ph ph-spinner ph-spin" aria-hidden="true"></i>';
         btnSync.disabled = true;
         await syncInstagramData(clientId);
         showToast(t('instagram.syncSuccess'));
         onRefresh();
       } catch (err: any) {
-        btnSync.innerHTML = '<i class="ph ph-arrows-clockwise"></i>';
+        btnSync.innerHTML = '<i class="ph ph-arrows-clockwise" aria-hidden="true"></i>';
         btnSync.disabled = false;
         if (err.message === 'TOKEN_EXPIRED') {
           showToast(t('instagram.syncTokenExpired'), 'error');
@@ -152,7 +152,7 @@ export function renderInstagramOverviewCard(
   if (btnReconnect) {
     btnReconnect.addEventListener('click', async () => {
       try {
-        btnReconnect.innerHTML = `<i class="ph ph-spinner ph-spin"></i> ${escapeHTML(t('instagram.connecting'))}`;
+        btnReconnect.innerHTML = `<i class="ph ph-spinner ph-spin" aria-hidden="true"></i> ${escapeHTML(t('instagram.connecting'))}`;
         btnReconnect.disabled = true;
         const url = await getInstagramAuthUrl(clientId);
         window.location.href = url;
@@ -175,13 +175,13 @@ export function renderInstagramOverviewCard(
         async () => {
           closeModal();
           try {
-            btnDisconnect.innerHTML = '<i class="ph ph-spinner ph-spin"></i>';
+            btnDisconnect.innerHTML = '<i class="ph ph-spinner ph-spin" aria-hidden="true"></i>';
             btnDisconnect.disabled = true;
             await disconnectInstagram(clientId);
             showToast(t('instagram.disconnectSuccess'));
             onRefresh();
           } catch (err: any) {
-            btnDisconnect.innerHTML = '<i class="ph ph-plugs"></i>';
+            btnDisconnect.innerHTML = '<i class="ph ph-plugs" aria-hidden="true"></i>';
             btnDisconnect.disabled = false;
             showToast(t('instagram.disconnectError', { error: err.message }), 'error');
           }
