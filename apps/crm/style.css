@@ -4108,7 +4108,9 @@ body.role-agent input[name='valor_total'] {
   }
 
   .instagram-post-carousel__item {
-    flex-basis: min(84vw, 340px);
+    flex: 0 0 84%;
+    min-width: min(260px, 84%);
+    max-width: 340px;
   }
 }
 
@@ -7733,6 +7735,8 @@ body.role-agent input[name='valor_total'] {
 }
 
 .month-grid-nav-btn {
+  min-width: 44px;
+  min-height: 44px;
   background: var(--surface-main);
   border: 1px solid var(--border-color);
   border-radius: 6px;
@@ -8457,7 +8461,7 @@ body.landing-page #root {
 .cliente-finance-empty__icon svg { width: 20px; height: 20px; }
 .cliente-finance-empty__title { margin: 0; color: var(--text-main); font-size: 1rem; font-weight: 700; }
 .cliente-finance-empty__description { max-width: 34rem; margin: 0; color: var(--text-muted); font-size: 0.875rem; }
-.cliente-finance-empty__action { min-height: 40px; margin: 0.25rem 0 0; }
+.cliente-finance-empty__action { min-height: 44px; margin: 0.25rem 0 0; }
 
 @media (max-width: 767px) {
   .cliente-detalhe-page { padding: 0; }

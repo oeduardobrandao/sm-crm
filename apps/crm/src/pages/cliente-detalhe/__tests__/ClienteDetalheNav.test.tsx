@@ -22,21 +22,54 @@ const sections: NavSectionItem[] = [
   { key: 'datas', id: 'sec-datas' },
 ];
 
+let scrollIntoViewDescriptor: PropertyDescriptor | undefined;
+let scrollToDescriptor: PropertyDescriptor | undefined;
+
+function setGeometry(
+  element: Element,
+  geometry: Partial<Record<'offsetLeft' | 'offsetWidth' | 'clientWidth' | 'scrollWidth', number>>,
+) {
+  for (const [property, value] of Object.entries(geometry)) {
+    Object.defineProperty(element, property, { configurable: true, value });
+  }
+}
+
 beforeEach(() => {
   MockIntersectionObserver.instances = [];
   vi.stubGlobal(
     'IntersectionObserver',
     MockIntersectionObserver as unknown as typeof IntersectionObserver,
   );
-  // jsdom does not implement scrollIntoView.
-  Element.prototype.scrollIntoView = vi.fn();
-  HTMLElement.prototype.scrollTo = vi.fn();
+  // jsdom does not implement these scrolling methods. Preserve their descriptors so
+  // this suite cannot leak mocks into other test files.
+  scrollIntoViewDescriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollIntoView');
+  scrollToDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollTo');
+  Object.defineProperty(Element.prototype, 'scrollIntoView', {
+    configurable: true,
+    writable: true,
+    value: vi.fn(),
+  });
+  Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
+    configurable: true,
+    writable: true,
+    value: vi.fn(),
+  });
   document.body.innerHTML = '<div id="sec-info"></div><div id="sec-datas"></div>';
 });
 
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  if (scrollIntoViewDescriptor) {
+    Object.defineProperty(Element.prototype, 'scrollIntoView', scrollIntoViewDescriptor);
+  } else {
+    delete (Element.prototype as Partial<Element>).scrollIntoView;
+  }
+  if (scrollToDescriptor) {
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', scrollToDescriptor);
+  } else {
+    delete (HTMLElement.prototype as Partial<HTMLElement>).scrollTo;
+  }
   document.body.innerHTML = '';
 });
 
@@ -112,6 +145,9 @@ describe('ClienteDetalheNav', () => {
     );
     render(<ClienteDetalheNav sections={sections} actions={[]} />);
     const dates = screen.getByRole('button', { name: 'Datas' });
+    const nav = screen.getByRole('navigation', { name: 'Navegação da página' });
+    setGeometry(nav, { clientWidth: 200, scrollWidth: 500 });
+    setGeometry(dates, { offsetLeft: 320, offsetWidth: 80 });
 
     act(() => {
       MockIntersectionObserver.instances[0].callback(
@@ -126,9 +162,9 @@ describe('ClienteDetalheNav', () => {
     });
 
     expect(
-      screen.getByRole('navigation', { name: 'Navegação da página' }).scrollTo,
+      nav.scrollTo,
     ).toHaveBeenCalledWith({
-      left: 0,
+      left: 260,
       behavior: 'smooth',
     });
     expect(dates.scrollIntoView).not.toHaveBeenCalled();

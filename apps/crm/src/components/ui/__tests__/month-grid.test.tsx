@@ -1,6 +1,9 @@
+import { readFileSync } from 'node:fs';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { MonthGrid } from '../month-grid';
+
+const css = readFileSync('apps/crm/style.css', 'utf8');
 
 describe('MonthGrid', () => {
   const defaultProps = {
@@ -41,6 +44,16 @@ describe('MonthGrid', () => {
     const call = onMonthChange.mock.calls[0][0] as Date;
     expect(call.getMonth()).toBe(4); // May
     expect(call.getFullYear()).toBe(2026);
+  });
+
+  it('gives both month navigation controls 44px touch targets', () => {
+    render(<MonthGrid {...defaultProps} />);
+
+    expect(screen.getByLabelText('Mês anterior')).toHaveClass('month-grid-nav-btn');
+    expect(screen.getByLabelText('Próximo mês')).toHaveClass('month-grid-nav-btn');
+    expect(css).toMatch(
+      /\.month-grid-nav-btn\s*\{[^}]*min-width:\s*44px[^}]*min-height:\s*44px/s,
+    );
   });
 
   it('renders leading cells for days before month start (June 2026 starts on Monday = 0 leading cells)', () => {

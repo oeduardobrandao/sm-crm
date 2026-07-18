@@ -1,6 +1,6 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, waitFor, fireEvent, cleanup } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 // Radix AlertDialog relies on portals/focus-trap plumbing that's overkill to exercise
@@ -125,6 +125,18 @@ const token = (expiresInDays: number) => ({
   expires_at: new Date(Date.now() + expiresInDays * DAY).toISOString(),
 });
 
+let scrollIntoViewDescriptor: PropertyDescriptor | undefined;
+let scrollToDescriptor: PropertyDescriptor | undefined;
+
+function setGeometry(
+  element: Element,
+  geometry: Partial<Record<'offsetLeft' | 'offsetWidth' | 'clientWidth' | 'scrollWidth', number>>,
+) {
+  for (const [property, value] of Object.entries(geometry)) {
+    Object.defineProperty(element, property, { configurable: true, value });
+  }
+}
+
 function renderTab() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -137,10 +149,36 @@ function renderTab() {
 describe('HubTab — Acesso', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    scrollIntoViewDescriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollIntoView');
+    scrollToDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollTo');
+    Object.defineProperty(Element.prototype, 'scrollIntoView', {
+      configurable: true,
+      writable: true,
+      value: vi.fn(),
+    });
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
+      configurable: true,
+      writable: true,
+      value: vi.fn(),
+    });
     // These queries always mount (independent of the active tab) — stub them so
     // TanStack Query doesn't warn about an undefined resolution unrelated to this suite.
     vi.mocked(hubStore.getHubBrand).mockResolvedValue({ brand: null, files: [] });
     vi.mocked(hubStore.getHubPages).mockResolvedValue([]);
+  });
+
+  afterEach(() => {
+    cleanup();
+    if (scrollIntoViewDescriptor) {
+      Object.defineProperty(Element.prototype, 'scrollIntoView', scrollIntoViewDescriptor);
+    } else {
+      delete (Element.prototype as Partial<Element>).scrollIntoView;
+    }
+    if (scrollToDescriptor) {
+      Object.defineProperty(HTMLElement.prototype, 'scrollTo', scrollToDescriptor);
+    } else {
+      delete (HTMLElement.prototype as Partial<HTMLElement>).scrollTo;
+    }
   });
 
   it('shows a healthy link with no Estender button', async () => {
@@ -210,8 +248,6 @@ describe('HubTab — Acesso', () => {
   });
 
   it('scrolls the selected tab into view and groups access actions', async () => {
-    Element.prototype.scrollIntoView = vi.fn();
-    HTMLElement.prototype.scrollTo = vi.fn();
     vi.mocked(hubStore.getHubToken).mockResolvedValue(token(360));
     renderTab();
     await waitFor(() => screen.getByText(/Expira em/));
@@ -219,11 +255,14 @@ describe('HubTab — Acesso', () => {
     expect(HTMLElement.prototype.scrollTo).not.toHaveBeenCalled();
 
     const ideias = await screen.findByRole('tab', { name: 'Ideias' });
+    const tabList = screen.getByRole('tablist');
+    setGeometry(tabList, { clientWidth: 240, scrollWidth: 600 });
+    setGeometry(ideias, { offsetLeft: 420, offsetWidth: 100 });
     fireEvent.mouseDown(ideias);
     await waitFor(() =>
-      expect(screen.getByRole('tablist').scrollTo).toHaveBeenCalledWith({
+      expect(tabList.scrollTo).toHaveBeenCalledWith({
         behavior: 'smooth',
-        left: 0,
+        left: 350,
       }),
     );
     expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();

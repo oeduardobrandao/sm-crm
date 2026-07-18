@@ -37,6 +37,12 @@ describe('client finance responsive contracts', () => {
     expect(source).not.toMatch(/<TableCell[^>]*colSpan=\{4\}[\s\S]*detail\.noTransactions/s);
   });
 
+  it('keeps finance empty-state actions at least 44px tall', () => {
+    expect(css).toMatch(
+      /\.cliente-finance-empty__action\s*\{[^}]*min-height:\s*44px/s,
+    );
+  });
+
   it('provides equivalent Portuguese and English empty-state copy', () => {
     expect(ptClients.detail).toMatchObject({
       noContracts: 'Nenhum contrato cadastrado',
