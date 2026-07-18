@@ -42,7 +42,7 @@ describe('renderInstagramOverviewCard', () => {
     );
   });
 
-  it('keeps the profile header reflowable and exposes accessible icon-button labels', () => {
+  it('uses a narrow-phone grid that gives metadata and actions safe placement', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-07-18T12:00:00Z'));
     const container = document.createElement('div');
@@ -50,14 +50,16 @@ describe('renderInstagramOverviewCard', () => {
     renderInstagramOverviewCard(container, 42, accountExpiringIn38Days, vi.fn());
 
     expect(css).toMatch(
-      /@media\s*\(max-width:\s*600px\)\s*\{[^}]*\.instagram-overview__profile\s*\{[^}]*flex-wrap:\s*wrap[^}]*align-items:\s*flex-start/s,
+      /@media\s*\(max-width:\s*600px\)\s*\{[^}]*\.instagram-overview__profile\s*\{[^}]*display:\s*grid\s*!important[^}]*grid-template-columns:\s*80px\s+minmax\(0,\s*1fr\)/s,
     );
     expect(css).toMatch(
-      /\.instagram-overview__profile\s*>\s*div:last-child\s*\{[^}]*margin-left:\s*auto/s,
+      /\.instagram-overview__metadata\s*\{[^}]*grid-column:\s*1\s*\/\s*-1[^}]*min-width:\s*0/s,
     );
     expect(css).toMatch(
-      /\.instagram-overview__profile\s*>\s*img\s*\{[^}]*flex:\s*0\s+0\s+80px/s,
+      /\.instagram-overview__actions\s*\{[^}]*grid-column:\s*2[^}]*grid-row:\s*1[^}]*justify-self:\s*end/s,
     );
+    expect(container.querySelector('.instagram-overview__metadata')).toBeTruthy();
+    expect(container.querySelector('.instagram-overview__actions')).toBeTruthy();
     expect(container.querySelector('#btn-ig-sync')).toHaveAttribute(
       'aria-label',
       'Sincronizar Dados',
@@ -67,6 +69,33 @@ describe('renderInstagramOverviewCard', () => {
       4,
     );
     expect(container.querySelector('.instagram-overview__token-badge i')).toHaveAttribute(
+      'aria-hidden',
+      'true',
+    );
+    expect(
+      container.querySelectorAll('.kpi-grid:not(.instagram-overview__account-kpis) .kpi-label i[aria-hidden="true"]'),
+    ).toHaveLength(4);
+
+    const expiredContainer = document.createElement('div');
+    renderInstagramOverviewCard(
+      expiredContainer,
+      42,
+      { ...accountExpiringIn38Days, authorization_status: 'expired' },
+      vi.fn(),
+    );
+    expect(expiredContainer.querySelector('#btn-ig-reconnect')?.parentElement?.querySelector('i')).toHaveAttribute(
+      'aria-hidden',
+      'true',
+    );
+
+    const revokedContainer = document.createElement('div');
+    renderInstagramOverviewCard(
+      revokedContainer,
+      42,
+      { ...accountExpiringIn38Days, authorization_status: 'revoked' },
+      vi.fn(),
+    );
+    expect(revokedContainer.querySelector('.card > div:first-child i')).toHaveAttribute(
       'aria-hidden',
       'true',
     );

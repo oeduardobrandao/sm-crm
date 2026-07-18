@@ -8701,13 +8701,27 @@ body.landing-page #root {
 
 @media (max-width: 600px) {
   .instagram-overview__profile {
-    flex-wrap: wrap;
+    display: grid !important;
+    grid-template-columns: 80px minmax(0, 1fr);
     align-items: flex-start;
     gap: 1rem;
   }
 
-  .instagram-overview__profile > img { flex: 0 0 80px; }
-  .instagram-overview__profile > div:last-child { margin-left: auto; }
+  .instagram-overview__profile > img {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .instagram-overview__metadata {
+    grid-column: 1 / -1;
+    min-width: 0;
+  }
+
+  .instagram-overview__actions {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+  }
 
   .instagram-overview__account-kpis .kpi-card {
     padding: 0.85rem 0.6rem;

@@ -32,10 +32,10 @@ export function renderInstagramOverviewCard(
 
   let statusBanner = '';
   if (isRevoked) {
-    statusBanner = `<div style="background: rgba(245, 90, 66, 0.08); color: var(--danger); padding: 0.5rem 0.75rem; border-radius: 8px; font-size: 0.8rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;"><i class="ph ph-warning"></i> ${escapeHTML(t('instagram.revokedBanner'))}</div>`;
+    statusBanner = `<div style="background: rgba(245, 90, 66, 0.08); color: var(--danger); padding: 0.5rem 0.75rem; border-radius: 8px; font-size: 0.8rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;"><i class="ph ph-warning" aria-hidden="true"></i> ${escapeHTML(t('instagram.revokedBanner'))}</div>`;
   } else if (isExpired) {
     statusBanner = `<div style="background: rgba(245, 163, 66, 0.08); color: var(--warning); padding: 0.5rem 0.75rem; border-radius: 8px; font-size: 0.8rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem;">
-      <i class="ph ph-warning"></i> ${escapeHTML(t('instagram.expiredBanner'))}
+      <i class="ph ph-warning" aria-hidden="true"></i> ${escapeHTML(t('instagram.expiredBanner'))}
       <button id="btn-ig-reconnect" style="margin-left: auto; background: var(--warning); color: #fff; border: none; padding: 0.25rem 0.75rem; border-radius: 6px; font-size: 0.75rem; font-weight: 600; cursor: pointer; white-space: nowrap;">${escapeHTML(t('instagram.reconnectButton'))}</button>
     </div>`;
   }
@@ -72,7 +72,7 @@ export function renderInstagramOverviewCard(
 
       <div class="instagram-overview__profile" style="display: flex; align-items: center; gap: 1.5rem; margin-bottom: 1.5rem;">
          <img src="${account.profile_picture_url ? sanitizeUrl(account.profile_picture_url) : 'https://ui-avatars.com/api/?name=IG&background=random'}" alt="IG Profile" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 3px solid #E1306C;" />
-         <div style="flex: 1; min-width: 0;">
+         <div class="instagram-overview__metadata" style="flex: 1; min-width: 0;">
             <h3 class="text-xl font-bold tracking-tight text-foreground flex items-center gap-2 mb-1">
                 ${escapeHTML(account.username || t('instagram.account'))}
                 <i class="fa-brands fa-instagram" aria-hidden="true" style="color: #E1306C; font-size: 1.2rem;"></i>
@@ -82,7 +82,7 @@ export function renderInstagramOverviewCard(
               ${tokenBadge}
             </div>
          </div>
-         <div style="display: flex; gap: 0.5rem; flex-shrink: 0;">
+         <div class="instagram-overview__actions" style="display: flex; gap: 0.5rem; flex-shrink: 0;">
             <button id="btn-ig-sync" class="btn-icon" aria-label="${escapeHTML(t('instagram.syncTooltip'))}" data-tooltip="${escapeHTML(t('instagram.syncTooltip'))}" data-tooltip-dir="bottom" style="color: var(--text-muted);"><i class="ph ph-arrows-clockwise" aria-hidden="true"></i></button>
             <button id="btn-ig-disconnect" class="btn-icon" aria-label="${escapeHTML(t('instagram.disconnectTooltip'))}" data-tooltip="${escapeHTML(t('instagram.disconnectTooltip'))}" data-tooltip-dir="bottom" style="color: var(--danger);"><i class="ph ph-plugs" aria-hidden="true"></i></button>
          </div>
@@ -106,19 +106,19 @@ export function renderInstagramOverviewCard(
       <h4 style="margin-bottom: 1rem; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">${escapeHTML(t('instagram.metricsTitle'))}</h4>
       <div class="kpi-grid">
          <div class="kpi-card">
-            <span class="kpi-label"><i class="ph ph-users"></i> ${escapeHTML(t('instagram.reach'))}</span>
+            <span class="kpi-label"><i class="ph ph-users" aria-hidden="true"></i> ${escapeHTML(t('instagram.reach'))}</span>
             <span class="kpi-value">${numFmt(account.reach_28d)}</span>
          </div>
          <div class="kpi-card">
-            <span class="kpi-label"><i class="ph ph-eye"></i> ${escapeHTML(t('instagram.impressions'))}</span>
+            <span class="kpi-label"><i class="ph ph-eye" aria-hidden="true"></i> ${escapeHTML(t('instagram.impressions'))}</span>
             <span class="kpi-value">${numFmt(account.impressions_28d)}</span>
          </div>
          <div class="kpi-card">
-            <span class="kpi-label"><i class="ph ph-user-focus"></i> ${escapeHTML(t('instagram.engaged'))}</span>
+            <span class="kpi-label"><i class="ph ph-user-focus" aria-hidden="true"></i> ${escapeHTML(t('instagram.engaged'))}</span>
             <span class="kpi-value">${numFmt(account.profile_views_28d)}</span>
          </div>
          <div class="kpi-card">
-            <span class="kpi-label"><i class="ph ph-link"></i> ${escapeHTML(t('instagram.linkClicks'))}</span>
+            <span class="kpi-label"><i class="ph ph-link" aria-hidden="true"></i> ${escapeHTML(t('instagram.linkClicks'))}</span>
             <span class="kpi-value">${numFmt(account.website_clicks_28d)}</span>
          </div>
       </div>
