@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderInstagramOverviewCard } from '../InstagramOverviewCard';
 
 const css = readFileSync('apps/crm/style.css', 'utf8');
+const overviewSource = readFileSync('apps/crm/src/components/instagram/InstagramOverviewCard.ts', 'utf8');
 
 const accountExpiringIn38Days = {
   username: 'mesaasteste',
@@ -99,5 +100,12 @@ describe('renderInstagramOverviewCard', () => {
       'aria-hidden',
       'true',
     );
+  });
+
+  it('marks every static and dynamically injected overview icon as decorative', () => {
+    const iconTags = overviewSource.match(/<i\b[^>]*>/g) ?? [];
+
+    expect(iconTags).not.toHaveLength(0);
+    expect(iconTags.every((tag) => /aria-hidden="true"/.test(tag))).toBe(true);
   });
 });

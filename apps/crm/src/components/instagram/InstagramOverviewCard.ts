@@ -130,13 +130,13 @@ export function renderInstagramOverviewCard(
   if (btnSync) {
     btnSync.addEventListener('click', async () => {
       try {
-        btnSync.innerHTML = '<i class="ph ph-spinner ph-spin"></i>';
+        btnSync.innerHTML = '<i class="ph ph-spinner ph-spin" aria-hidden="true"></i>';
         btnSync.disabled = true;
         await syncInstagramData(clientId);
         showToast(t('instagram.syncSuccess'));
         onRefresh();
       } catch (err: any) {
-        btnSync.innerHTML = '<i class="ph ph-arrows-clockwise"></i>';
+        btnSync.innerHTML = '<i class="ph ph-arrows-clockwise" aria-hidden="true"></i>';
         btnSync.disabled = false;
         if (err.message === 'TOKEN_EXPIRED') {
           showToast(t('instagram.syncTokenExpired'), 'error');
@@ -152,7 +152,7 @@ export function renderInstagramOverviewCard(
   if (btnReconnect) {
     btnReconnect.addEventListener('click', async () => {
       try {
-        btnReconnect.innerHTML = `<i class="ph ph-spinner ph-spin"></i> ${escapeHTML(t('instagram.connecting'))}`;
+        btnReconnect.innerHTML = `<i class="ph ph-spinner ph-spin" aria-hidden="true"></i> ${escapeHTML(t('instagram.connecting'))}`;
         btnReconnect.disabled = true;
         const url = await getInstagramAuthUrl(clientId);
         window.location.href = url;
@@ -175,13 +175,13 @@ export function renderInstagramOverviewCard(
         async () => {
           closeModal();
           try {
-            btnDisconnect.innerHTML = '<i class="ph ph-spinner ph-spin"></i>';
+            btnDisconnect.innerHTML = '<i class="ph ph-spinner ph-spin" aria-hidden="true"></i>';
             btnDisconnect.disabled = true;
             await disconnectInstagram(clientId);
             showToast(t('instagram.disconnectSuccess'));
             onRefresh();
           } catch (err: any) {
-            btnDisconnect.innerHTML = '<i class="ph ph-plugs"></i>';
+            btnDisconnect.innerHTML = '<i class="ph ph-plugs" aria-hidden="true"></i>';
             btnDisconnect.disabled = false;
             showToast(t('instagram.disconnectError', { error: err.message }), 'error');
           }
