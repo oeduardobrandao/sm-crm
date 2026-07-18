@@ -8,6 +8,7 @@ import {
   tiktokFetch,
   TikTokApiError,
   EVENT_NO_LONGER_PUBLICALY_AVAILABLE,
+  TIKTOK_API_BASE,
 } from "../_shared/tiktok.ts";
 
 /** Local stand-in for std's assertRejects — ./assert.ts deliberately stays tiny. */
@@ -24,11 +25,23 @@ async function assertRejects(fn: () => Promise<unknown>, ErrClass?: new (...a: a
   throw new Error("expected the function to throw, but it did not");
 }
 
+interface CapturedFetchCall {
+  url: string;
+  init?: RequestInit;
+}
+
 function stubFetch(response: () => Promise<Response>) {
   const original = globalThis.fetch;
-  globalThis.fetch = ((..._args: unknown[]) => response()) as typeof fetch;
-  return () => {
-    globalThis.fetch = original;
+  const captured: CapturedFetchCall[] = [];
+  globalThis.fetch = ((url: string, init?: RequestInit) => {
+    captured.push({ url, init });
+    return response();
+  }) as typeof fetch;
+  return {
+    restore: () => {
+      globalThis.fetch = original;
+    },
+    captured,
   };
 }
 
@@ -69,7 +82,7 @@ Deno.test("tiktok-shared: missing TOKEN_ENCRYPTION_KEY throws", async () => {
 });
 
 Deno.test("tiktok-shared: tiktokFetch throws TikTokApiError code TOKEN_INVALID on access_token_invalid", async () => {
-  const restore = stubFetch(() =>
+  const { restore } = stubFetch(() =>
     Promise.resolve(
       new Response(
         JSON.stringify({ data: {}, error: { code: "access_token_invalid", message: "token expired", log_id: "1" } }),
@@ -86,8 +99,8 @@ Deno.test("tiktok-shared: tiktokFetch throws TikTokApiError code TOKEN_INVALID o
   }
 });
 
-Deno.test("tiktok-shared: tiktokFetch maps scope errors to code REVOKED", async () => {
-  const restore = stubFetch(() =>
+Deno.test("tiktok-shared: tiktokFetch maps scope_not_authorized to code REVOKED", async () => {
+  const { restore } = stubFetch(() =>
     Promise.resolve(
       new Response(
         JSON.stringify({ data: {}, error: { code: "scope_not_authorized", message: "missing scope", log_id: "2" } }),
@@ -104,7 +117,7 @@ Deno.test("tiktok-shared: tiktokFetch maps scope errors to code REVOKED", async 
 });
 
 Deno.test("tiktok-shared: tiktokFetch maps HTTP 429 to retryable code RATE_LIMITED", async () => {
-  const restore = stubFetch(() => Promise.resolve(new Response(JSON.stringify({}), { status: 429 })));
+  const { restore } = stubFetch(() => Promise.resolve(new Response(JSON.stringify({}), { status: 429 })));
   try {
     const err = await assertRejects(() => tiktokFetch("/post/publish/status/fetch/", { accessToken: "tok" }), TikTokApiError);
     assertEquals((err as TikTokApiError).code, "RATE_LIMITED");
@@ -115,7 +128,7 @@ Deno.test("tiktok-shared: tiktokFetch maps HTTP 429 to retryable code RATE_LIMIT
 });
 
 Deno.test("tiktok-shared: tiktokFetch returns the data envelope on code ok", async () => {
-  const restore = stubFetch(() =>
+  const { restore } = stubFetch(() =>
     Promise.resolve(
       new Response(
         JSON.stringify({ data: { open_id: "abc" }, error: { code: "ok", message: "", log_id: "3" } }),
@@ -126,6 +139,45 @@ Deno.test("tiktok-shared: tiktokFetch returns the data envelope on code ok", asy
   try {
     const result = await tiktokFetch("/user/info/", { accessToken: "tok" });
     assertEquals(result, { open_id: "abc" });
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("tiktok-shared: tiktokFetch constructs correct request URL and headers", async () => {
+  const { restore, captured } = stubFetch(() =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify({ data: { open_id: "abc" }, error: { code: "ok", message: "", log_id: "4" } }),
+        { status: 200 },
+      ),
+    )
+  );
+  try {
+    await tiktokFetch("/user/info/?fields=open_id", { method: "GET", accessToken: "tok123" });
+    assertEquals(captured.length, 1);
+    assertEquals(captured[0].url, `${TIKTOK_API_BASE}/user/info/?fields=open_id`);
+    assertEquals(captured[0].init?.method, "GET");
+    const headers = new Headers(captured[0].init?.headers);
+    assertEquals(headers.get("Authorization"), "Bearer tok123");
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("tiktok-shared: tiktokFetch maps only scope_not_authorized to REVOKED, not other scope_ codes", async () => {
+  const { restore } = stubFetch(() =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify({ data: {}, error: { code: "scope_other", message: "some other scope error", log_id: "5" } }),
+        { status: 200 },
+      ),
+    )
+  );
+  try {
+    const err = await assertRejects(() => tiktokFetch("/video/list/", { accessToken: "tok" }), TikTokApiError);
+    // Should use the generic error code mapping, not REVOKED
+    assertEquals((err as TikTokApiError).code, "scope_other");
   } finally {
     restore();
   }

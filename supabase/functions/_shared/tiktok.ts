@@ -140,7 +140,7 @@ export async function tiktokFetch(
     if (errorCode === "access_token_invalid") {
       throw new TikTokApiError(message, "TOKEN_INVALID", false);
     }
-    if (errorCode.startsWith("scope_")) {
+    if (errorCode === "scope_not_authorized") {
       throw new TikTokApiError(message, "REVOKED", false);
     }
     throw new TikTokApiError(message, errorCode, false);
