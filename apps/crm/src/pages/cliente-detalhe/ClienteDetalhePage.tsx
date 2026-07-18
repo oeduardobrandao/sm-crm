@@ -16,6 +16,8 @@ import {
   CalendarDays,
   FolderOpen,
   ExternalLink,
+  FileText,
+  ReceiptText,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { RoleRestrictionNotice } from '@/components/help/RoleRestrictionNotice';
@@ -116,6 +118,7 @@ import { HubTab } from './HubTab';
 import { ClienteDetalheHeader } from './ClienteDetalheHeader';
 import { ClienteDetalheNav } from './ClienteDetalheNav';
 import { ResponsiveCardRail } from './ResponsiveCardRail';
+import { ClienteFinanceEmptyState } from './ClienteFinanceEmptyState';
 import { buildNavModel } from './clienteDetalheNav.model';
 import { getFolderContents } from '../../services/fileService';
 import { FileGrid } from '../arquivos/components/FileGrid';
@@ -1767,7 +1770,11 @@ export default function ClienteDetalhePage() {
       {!isAgent && (
         <>
           {/* KPI Cards */}
-          <div id="sec-financeiro" className="kpi-grid" style={{ marginBottom: '1.5rem' }}>
+          <div
+            id="sec-financeiro"
+            className="kpi-grid cliente-finance-kpis"
+            style={{ marginBottom: '1.5rem' }}
+          >
             <div className="kpi-card animate-up">
               <span className="kpi-label">{t('detail.monthlyValue')}</span>
               <span className="kpi-value">{formatBRL(Number(cliente.valor_mensal))}</span>
@@ -1789,27 +1796,26 @@ export default function ClienteDetalhePage() {
             <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">
               {t('detail.contracts')}
             </h3>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('detail.contractTitle')}</TableHead>
-                  <TableHead>{t('detail.contractPeriod')}</TableHead>
-                  <TableHead>{t('detail.contractValue')}</TableHead>
-                  <TableHead>{t('detail.contractStatus')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {contratosCliente.length === 0 ? (
+            {contratosCliente.length === 0 ? (
+              <ClienteFinanceEmptyState
+                icon={FileText}
+                title={t('detail.noContracts')}
+                description={t('detail.noContractsDescription')}
+                actionLabel={t('detail.manageContracts')}
+                actionHref="/contratos"
+              />
+            ) : (
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell
-                      colSpan={4}
-                      style={{ textAlign: 'center', color: 'var(--text-muted)' }}
-                    >
-                      {t('detail.noContracts')}
-                    </TableCell>
+                    <TableHead>{t('detail.contractTitle')}</TableHead>
+                    <TableHead>{t('detail.contractPeriod')}</TableHead>
+                    <TableHead>{t('detail.contractValue')}</TableHead>
+                    <TableHead>{t('detail.contractStatus')}</TableHead>
                   </TableRow>
-                ) : (
-                  contratosCliente.map((r) => (
+                </TableHeader>
+                <TableBody>
+                  {contratosCliente.map((r) => (
                     <TableRow key={r.id ?? Math.random()}>
                       <TableCell data-label={t('detail.contractTitle')}>{r.titulo}</TableCell>
                       <TableCell data-label={t('detail.contractPeriod')}>
@@ -1822,10 +1828,10 @@ export default function ClienteDetalhePage() {
                         <StatusBadge status={r.status} />
                       </TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </div>
 
           {/* Transações Table */}
@@ -1833,27 +1839,26 @@ export default function ClienteDetalhePage() {
             <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">
               {t('detail.transactions')}
             </h3>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t('detail.txDescription')}</TableHead>
-                  <TableHead>{t('detail.txDate')}</TableHead>
-                  <TableHead>{t('detail.txValue')}</TableHead>
-                  <TableHead>{t('detail.txStatus')}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {transacoesCliente.length === 0 ? (
+            {transacoesCliente.length === 0 ? (
+              <ClienteFinanceEmptyState
+                icon={ReceiptText}
+                title={t('detail.noTransactions')}
+                description={t('detail.noTransactionsDescription')}
+                actionLabel={t('detail.viewFinancial')}
+                actionHref="/financeiro"
+              />
+            ) : (
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell
-                      colSpan={4}
-                      style={{ textAlign: 'center', color: 'var(--text-muted)' }}
-                    >
-                      {t('detail.noTransactions')}
-                    </TableCell>
+                    <TableHead>{t('detail.txDescription')}</TableHead>
+                    <TableHead>{t('detail.txDate')}</TableHead>
+                    <TableHead>{t('detail.txValue')}</TableHead>
+                    <TableHead>{t('detail.txStatus')}</TableHead>
                   </TableRow>
-                ) : (
-                  transacoesCliente.map((r) => (
+                </TableHeader>
+                <TableBody>
+                  {transacoesCliente.map((r) => (
                     <TableRow key={r.id ?? Math.random()}>
                       <TableCell data-label={t('detail.txDescription')}>{r.descricao}</TableCell>
                       <TableCell data-label={t('detail.txDate')}>{formatDate(r.data)}</TableCell>
@@ -1872,10 +1877,10 @@ export default function ClienteDetalhePage() {
                         <StatusBadge status={r.status ?? 'pago'} />
                       </TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </div>
         </>
       )}
