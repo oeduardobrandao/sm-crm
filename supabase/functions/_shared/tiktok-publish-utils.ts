@@ -196,6 +196,11 @@ function validatePrivacyLevel(errors: string[], settings: TikTokSettings) {
   }
 }
 
+/** Validate a post for TikTok scheduling. Throws on infrastructure errors (DB read failures);
+ * domain validation errors (missing fields, invalid values) are accumulated in result.errors
+ * and never thrown. Note: thrown errors may embed raw DB error text — callers must catch
+ * and return a generic PT-BR message to clients, never forward error.message directly
+ * (security rule: never log or return raw error details to clients). */
 export async function validateForTikTokScheduling(
   db: DbClient,
   postId: number,
@@ -209,7 +214,7 @@ export async function validateForTikTokScheduling(
       "id, platform, tipo, tiktok_caption, tiktok_title, tiktok_settings, ig_caption, scheduled_at, workflow_id",
     )
     .eq("id", postId)
-    .single();
+    .maybeSingle();
   if (postError) {
     throw new Error(`validateForTikTokScheduling: workflow_posts read failed: ${postError.message}`);
   }
@@ -267,7 +272,7 @@ export async function validateForTikTokScheduling(
     .from("workflows")
     .select("cliente_id")
     .eq("id", post.workflow_id)
-    .single();
+    .maybeSingle();
   if (workflowError) {
     throw new Error(`validateForTikTokScheduling: workflows read failed: ${workflowError.message}`);
   }

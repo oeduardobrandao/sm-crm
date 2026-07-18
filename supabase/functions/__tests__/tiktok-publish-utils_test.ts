@@ -191,6 +191,34 @@ Deno.test("validateForTikTokScheduling: workflow_posts data:null with NO error s
   assertEquals(res.errors, ["Post não encontrado."]);
 });
 
+Deno.test("validateForTikTokScheduling: workflows read data:null with NO error yields domain 'not found' error (no throw)", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("workflow_posts", "select", {
+    data: {
+      id: 1,
+      platform: "tiktok",
+      tipo: "carrossel",
+      tiktok_caption: "legenda",
+      ig_caption: null,
+      tiktok_title: null,
+      tiktok_settings: VALID_SETTINGS,
+      scheduled_at: "2030-01-01T12:00:00Z",
+      workflow_id: 9,
+    },
+    error: null,
+  });
+  db.queue("post_file_links", "select", { data: [imageLink(0)], error: null });
+  db.queue("designs", "select", { data: null, error: null });
+  db.queue("workflows", "select", { data: null, error: null });
+  const res = await validateForTikTokScheduling(db as never, 1, { skipDateCheck: true });
+  assert(res !== undefined, "must resolve, not throw, when workflow read simply finds no match");
+  assert(!res.ok);
+  assert(
+    res.errors.includes("Workflow não encontrado."),
+    `expected exact domain error "Workflow não encontrado.", got: ${JSON.stringify(res.errors)}`,
+  );
+});
+
 // ============================================================
 // Rule 2: caption limits per tipo
 // ============================================================
