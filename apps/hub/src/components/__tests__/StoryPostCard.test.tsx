@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { StoryPostCard } from '../StoryPostCard';
 import type { HubPost, HubPostMedia, InstagramProfile } from '../../types';
@@ -89,5 +89,18 @@ describe('StoryPostCard', () => {
     );
 
     expect(container.querySelector('video')).toBeNull();
+  });
+
+  it('shows an "Instagram + TikTok" platform badge for platform=both', () => {
+    render(
+      <StoryPostCard
+        post={makePost({ platform: 'both' })}
+        token="token-publico"
+        approvals={[]}
+        instagramProfile={profile}
+      />,
+    );
+
+    expect(screen.getByText('Instagram + TikTok')).toBeInTheDocument();
   });
 });

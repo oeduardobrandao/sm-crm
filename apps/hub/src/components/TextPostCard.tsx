@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { CheckCircle, AlertCircle, ChevronDown } from 'lucide-react';
 import { submitApproval } from '../api';
-import { TIPO_LABEL, STATUS_LABEL, formatDate } from './PostCard';
+import { TIPO_LABEL, STATUS_LABEL, formatDate, PlatformBadge } from './PostCard';
 import { RichTextContent } from './RichTextContent';
 import type { HubPost, PostApproval } from '../types';
 import { useEditSuggestion } from '../hooks/useEditSuggestion';
@@ -78,6 +78,7 @@ export function TextPostCard({
             <span className="text-[11px] font-semibold text-amber-600">
               {STATUS_LABEL[post.status] ?? post.status}
             </span>
+            <PlatformBadge platform={post.platform} />
             <span className="text-[12px] text-stone-400 ml-auto">
               {formatDate(post.scheduled_at)}
             </span>

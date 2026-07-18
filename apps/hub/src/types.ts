@@ -30,6 +30,9 @@ export interface HubPost {
   id: number;
   titulo: string;
   tipo: 'feed' | 'reels' | 'stories' | 'carrossel';
+  /** Target platform(s) for publishing. Absent on stale/pre-migration cached payloads —
+   * treat as 'instagram' (mirrors the DB default). */
+  platform?: 'instagram' | 'tiktok' | 'both';
   status:
     | 'rascunho'
     | 'revisao_interna'

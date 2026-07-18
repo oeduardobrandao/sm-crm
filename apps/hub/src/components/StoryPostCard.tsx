@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { CheckCircle, AlertCircle } from 'lucide-react';
 import { submitApproval } from '../api';
-import { formatDate } from './PostCard';
+import { formatDate, PlatformBadge } from './PostCard';
 import { PostMediaLightbox } from './PostMediaLightbox';
 import { OptimizedImage } from './OptimizedImage';
 import { VideoPrewarm } from './VideoPrewarm';
@@ -206,6 +206,7 @@ export function StoryPostCard({
             </div>
           )}
           <span className="text-white text-[13px] font-semibold drop-shadow-sm">{displayName}</span>
+          <PlatformBadge platform={post.platform} tone="overlay" />
           <span className="text-white/60 text-[11px] drop-shadow-sm whitespace-nowrap">
             {post.scheduled_at
               ? new Date(post.scheduled_at).toLocaleDateString('pt-BR', {

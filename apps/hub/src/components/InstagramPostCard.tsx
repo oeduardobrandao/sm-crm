@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { CheckCircle, AlertCircle } from 'lucide-react';
 import { submitApproval } from '../api';
-import { formatDate } from './PostCard';
+import { formatDate, PlatformBadge } from './PostCard';
 import { PostMediaLightbox } from './PostMediaLightbox';
 import { OptimizedImage } from './OptimizedImage';
 import { VideoPrewarm } from './VideoPrewarm';
@@ -312,6 +312,7 @@ export function InstagramPostCard({
         <span className="text-[14px] font-semibold text-[#262626] dark:text-[#f5f5f5] truncate leading-none">
           {displayName}
         </span>
+        <PlatformBadge platform={post.platform} />
         {!onToggleSelect && (
           <svg
             className="ml-auto text-[#262626] dark:text-[#f5f5f5]"
