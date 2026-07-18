@@ -261,13 +261,23 @@ export async function getFreshTikTokToken(
   // Access token is expiring — claim the per-account refresh lock atomically. Only the request
   // whose UPDATE matches a row (lock free or stale) performs the refresh-token rotation.
   const staleBefore = new Date(Date.now() - REFRESH_LOCK_STALE_MS).toISOString();
-  const { data: claimed } = await svc
+  const { data: claimed, error: claimError } = await svc
     .from("tiktok_accounts")
     .update({ refresh_lock_at: new Date().toISOString() })
     .eq("id", accountId)
     .or(`refresh_lock_at.is.null,refresh_lock_at.lt.${staleBefore}`)
     .select("id, encrypted_refresh_token, tiktok_open_id")
     .maybeSingle();
+
+  // A claim-read failure (PostgREST/network error) is NOT the same thing as losing the lock
+  // race — that case is `data: null` with no `error`, and must keep polling as before.
+  if (claimError) {
+    throw new TikTokApiError(
+      `Failed to claim TikTok refresh lock: ${claimError.message}`,
+      "REFRESH_FAILED",
+      true,
+    );
+  }
 
   if (!claimed) {
     return pollForRefreshedToken(svc, accountId, sleep);
@@ -309,10 +319,17 @@ async function refreshClaimedAccount(
       if (payload.error === "invalid_grant") {
         // Dead refresh token — flip the account to expired and release the lock in the SAME
         // update (a re-auth is now required; nothing left for the lock to protect).
-        await svc
+        const { error: markError } = await svc
           .from("tiktok_accounts")
           .update({ authorization_status: "expired", refresh_lock_at: null })
           .eq("id", accountId);
+        if (markError) {
+          // The marker write failing must not mask the real condition (dead refresh token) —
+          // log and still throw TOKEN_EXPIRED below.
+          console.error(
+            `Failed to mark TikTok account ${accountId} as expired: ${markError.message}`,
+          );
+        }
         lockHeld = false;
         throw new TikTokApiError(
           payload.error_description || "TikTok refresh token is no longer valid",
@@ -330,7 +347,7 @@ async function refreshClaimedAccount(
     const now = Date.now();
 
     // Persist the rotated token (and clear the lock) in ONE update, BEFORE returning.
-    await svc
+    const { error: persistError } = await svc
       .from("tiktok_accounts")
       .update({
         encrypted_access_token: encryptedAccess,
@@ -340,6 +357,17 @@ async function refreshClaimedAccount(
         refresh_lock_at: null,
       })
       .eq("id", accountId);
+
+    if (persistError) {
+      // Persist failed — the rotated refresh token was NOT written. The access token must NOT
+      // be returned (the next refresh would use the now-dead old refresh token and permanently
+      // brick the account). lockHeld stays true so the finally below still releases the claim.
+      throw new TikTokApiError(
+        `Failed to persist refreshed TikTok tokens: ${persistError.message}`,
+        "REFRESH_FAILED",
+        true,
+      );
+    }
     lockHeld = false;
 
     return { accessToken: payload.access_token, openId: payload.open_id };
@@ -347,7 +375,17 @@ async function refreshClaimedAccount(
     if (lockHeld) {
       // Any other failure (network error, malformed response, missing env, non-invalid_grant
       // TikTok error) must still release the claim so the next caller can retry.
-      await svc.from("tiktok_accounts").update({ refresh_lock_at: null }).eq("id", accountId);
+      const { error: releaseError } = await svc
+        .from("tiktok_accounts")
+        .update({ refresh_lock_at: null })
+        .eq("id", accountId);
+      if (releaseError) {
+        // Do NOT throw from finally — that would mask the in-flight error being propagated;
+        // the 60s stale window (REFRESH_LOCK_STALE_MS) is the documented backstop for exactly this.
+        console.error(
+          `Failed to release TikTok refresh lock for account ${accountId}: ${releaseError.message}`,
+        );
+      }
     }
   }
 }

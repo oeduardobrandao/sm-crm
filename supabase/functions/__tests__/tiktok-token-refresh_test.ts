@@ -139,6 +139,7 @@ Deno.test("getFreshTikTokToken: expiring token refreshes, persists new tokens BE
 
   const f = stubSuccessfulRefresh();
   try {
+    const beforeCall = Date.now();
     const result = await getFreshTikTokToken(db as never, ACCOUNT_ID);
     assertEquals(result, { accessToken: "new-access-token", openId: "open-1" });
 
@@ -167,6 +168,15 @@ Deno.test("getFreshTikTokToken: expiring token refreshes, persists new tokens BE
     assertEquals(decryptedAccess, "new-access-token");
     assert(typeof payload.access_token_expires_at === "string");
     assert(typeof payload.refresh_token_expires_at === "string");
+
+    // Strengthened assertion (review lesson): the persisted expiry must be the exact instant
+    // implied by expires_in, not just "some string" — within a small tolerance for test runtime.
+    const expectedExpiresAt = beforeCall + 86400 * 1000;
+    const actualExpiresAt = new Date(payload.access_token_expires_at as string).getTime();
+    assert(
+      Math.abs(actualExpiresAt - expectedExpiresAt) <= 5000,
+      `access_token_expires_at should be ~now+expires_in (within 5s), got delta ${actualExpiresAt - expectedExpiresAt}ms`,
+    );
   } finally {
     f.restore();
   }
@@ -362,6 +372,49 @@ Deno.test("getFreshTikTokToken: lock is released via finally when the refresh ca
     assertEquals(updateCalls.length, 2, "claim update + finally release update");
     const releasePayload = updateCalls[1].payload as Record<string, unknown>;
     assertEquals(releasePayload.refresh_lock_at, null);
+  } finally {
+    f.restore();
+  }
+});
+
+// ── 8. Persist failure must NOT return the new access token (Critical review gap) ──
+//
+// supabase-js resolves `{ data: null, error: {...} }` on a PostgREST-level failure — it does
+// NOT throw. If the persist update silently swallowed that error, getFreshTikTokToken would
+// return the new access token while the rotated refresh token was never written to the row,
+// so the next refresh would present the now-dead old refresh token and get invalid_grant,
+// permanently bricking the account. This regression test locks in that persist errors reject.
+
+Deno.test("getFreshTikTokToken: persist update failing (data:null, error set) rejects and does NOT return a token", async () => {
+  const db = createSupabaseQueryMock();
+  const encOldRefresh = await encryptTikTokToken("old-refresh-token", "refresh");
+  db.queue("tiktok_accounts", "select", {
+    data: {
+      id: ACCOUNT_ID,
+      tiktok_open_id: "open-1",
+      encrypted_access_token: "irrelevant",
+      access_token_expires_at: isoInMinutes(1),
+    },
+  });
+  db.queue("tiktok_accounts", "update", {
+    // claim succeeds
+    data: { id: ACCOUNT_ID, encrypted_refresh_token: encOldRefresh, tiktok_open_id: "open-1" },
+  });
+  // The persist write itself resolves with a PostgREST-level error — supabase-js does NOT throw.
+  db.queue("tiktok_accounts", "update", { data: null, error: { message: "boom" } });
+  // lockHeld must stay true after the persist error, so finally attempts a release update too.
+  db.queue("tiktok_accounts", "update", { data: null });
+
+  const f = stubSuccessfulRefresh();
+  try {
+    const err = await assertRejects(() => getFreshTikTokToken(db as never, ACCOUNT_ID), TikTokApiError);
+    assertEquals((err as TikTokApiError).code, "REFRESH_FAILED");
+    assertEquals((err as TikTokApiError).retryable, true);
+
+    const updateCalls = db.calls.filter((c) => c.table === "tiktok_accounts" && c.operation === "update");
+    assertEquals(updateCalls.length, 3, "claim update + failed persist update + finally release update");
+    const releasePayload = updateCalls[2].payload as Record<string, unknown>;
+    assertEquals(releasePayload.refresh_lock_at, null, "finally must still release the lock after a persist failure");
   } finally {
     f.restore();
   }
