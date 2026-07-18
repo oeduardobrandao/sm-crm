@@ -510,6 +510,12 @@ describe('AnalyticsContaPage', () => {
     expect(screen.getByText('Taxa de Salvamentos')).toBeTruthy();
     expect(screen.getByText('Melhores Posts')).toBeTruthy();
     expect(screen.getByText('Precisam de Atenção')).toBeTruthy();
+    const bestPostsRegion = screen.getByRole('region', { name: 'Melhores Posts' });
+    expect(
+      within(bestPostsRegion)
+        .getAllByText(/Post em reels com alta performance|Conteúdo institucional/)
+        .map((item) => item.textContent),
+    ).toEqual(['Post em reels com alta performance', 'Conteúdo institucional']);
     expect(screen.getByText(/Top posts por alcance/i)).toBeTruthy();
     expect(screen.getByText('Relatórios Gerados')).toBeTruthy();
     expect(screen.getByText('Abr 2026')).toBeTruthy();

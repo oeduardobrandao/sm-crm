@@ -3864,10 +3864,28 @@ body.role-agent input[name='valor_total'] {
   }
 }
 
-.analytics-posts-row {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
+.instagram-post-carousel__track {
+  display: flex;
   gap: 1rem;
+  overflow-x: auto;
+  padding: 0 0 0.5rem;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.instagram-post-carousel__track::-webkit-scrollbar {
+  display: none;
+}
+
+.instagram-post-carousel__item {
+  flex: 0 0 clamp(260px, 36vw, 360px);
+  min-width: 0;
+  scroll-snap-align: start;
+}
+
+.instagram-post-carousel__item > * {
+  height: 100%;
 }
 
 .analytics-post-card {
@@ -3884,22 +3902,9 @@ body.role-agent input[name='valor_total'] {
   transform: scale(1.02);
 }
 
-@media (max-width: 900px) {
-  .analytics-posts-row {
-    display: flex;
-    overflow-x: auto;
-    scroll-snap-type: x mandatory;
-    -webkit-overflow-scrolling: touch;
-    padding-bottom: 0.5rem;
-  }
-
-  .analytics-posts-row::-webkit-scrollbar {
-    display: none;
-  }
-
-  .analytics-post-card {
-    flex: 0 0 75vw;
-    scroll-snap-align: start;
+@media (max-width: 767px) {
+  .instagram-post-carousel__item {
+    flex-basis: min(84vw, 340px);
   }
 }
 
