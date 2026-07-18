@@ -8215,3 +8215,46 @@ body.landing-page #root {
     color: var(--primary-hover);
   }
 }
+.context-help {
+  display: flex;
+  justify-content: flex-end;
+  min-height: 36px;
+  margin-bottom: 0.75rem;
+}
+
+.context-help__trigger {
+  gap: 0.45rem;
+  color: var(--text-muted);
+}
+
+.context-help__count {
+  display: grid;
+  min-width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary-color) 20%, transparent);
+  color: var(--text-main);
+  font-size: 0.7rem;
+}
+
+.context-help__popover { padding: 0.5rem; }
+.context-help__sheet {
+  max-height: 72svh;
+  overflow-y: auto;
+  border-radius: 24px 24px 0 0;
+  padding-bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+.context-help__list { display: grid; gap: 0.25rem; }
+.context-help__article {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 10px;
+  color: var(--text-main);
+  text-decoration: none;
+}
+.context-help__article:hover { background: var(--surface-hover); }
