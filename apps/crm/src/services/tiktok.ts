@@ -1,15 +1,17 @@
 // =============================================
 // Mesaas - TikTok Integration Service
 // =============================================
-// Phase A: connect/sync/disconnect/read surface only. Publishing functions
-// (schedule/cancel/publish-now/retry) arrive in Phase C against a separate
-// tiktok-publish edge function — do not add them here.
+// Phase A: connect/sync/disconnect/read surface (EDGE_FUNCTION_URL, tiktok-integration).
+// Phase C adds the publishing surface (PUBLISH_FUNCTION_URL, tiktok-publish, gateway JWT) —
+// schedule/cancel/publish-now/retry/creator-info — mirroring instagram.ts's equivalents so
+// ScheduleButton (Task C3) can treat both platforms uniformly.
 //
 // Mirrors instagram.ts's structure: 5-min in-memory cache, session-token
 // fetch helper, cache invalidation on mutating calls.
 import { supabase } from '../lib/supabase';
 
 const EDGE_FUNCTION_URL = import.meta.env.VITE_SUPABASE_URL + '/functions/v1/tiktok-integration';
+const PUBLISH_FUNCTION_URL = import.meta.env.VITE_SUPABASE_URL + '/functions/v1/tiktok-publish';
 
 // ─── Response types (mirror supabase/functions/tiktok-integration/handlers.ts) ────
 
@@ -206,5 +208,97 @@ export async function getTikTokPosts(clientId: number, page: number = 1): Promis
 
   const data = await res.json();
   setCache(cacheKey, data);
+  return data;
+}
+
+// ─── Publishing (Phase C) ───────────────────────────────────────────────
+// Hits tiktok-publish, a separate gateway-JWT edge function from tiktok-integration
+// above — no anon apikey header (mirrors instagram.ts's schedule/cancel/retry/
+// publish-now, which are also gateway-JWT-only). Never cached: creator-info is an
+// audit requirement (must reflect live TikTok state on every open) and the
+// schedule/cancel/retry/publish-now actions mutate post state, so caching them would
+// only ever serve stale data.
+
+export interface TikTokCreatorInfo {
+  creator_nickname?: string;
+  creator_avatar_url?: string;
+  privacy_level_options?: string[];
+  comment_disabled?: boolean;
+  duet_disabled?: boolean;
+  stitch_disabled?: boolean;
+  max_video_post_duration_sec?: number;
+}
+
+async function getPublishAuthHeaders(): Promise<{
+  Authorization: string;
+  'Content-Type': string;
+}> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session) throw new Error('Not authenticated');
+  return {
+    Authorization: `Bearer ${session.access_token}`,
+    'Content-Type': 'application/json',
+  };
+}
+
+export async function getTikTokCreatorInfo(clientId: number): Promise<TikTokCreatorInfo> {
+  const headers = await getPublishAuthHeaders();
+  const res = await fetch(`${PUBLISH_FUNCTION_URL}/creator-info/${clientId}`, { headers });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error ?? 'Erro ao consultar informações do criador no TikTok');
+  }
+  return data;
+}
+
+export async function scheduleTikTokPost(
+  postId: number,
+  scheduledAt: string,
+): Promise<{ ok: boolean; status: string }> {
+  const headers = await getPublishAuthHeaders();
+  const res = await fetch(`${PUBLISH_FUNCTION_URL}/schedule/${postId}`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ scheduled_at: scheduledAt }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.details?.join('; ') ?? data.error ?? 'Erro ao agendar');
+  return data;
+}
+
+export async function cancelTikTokSchedule(postId: number): Promise<{ ok: boolean }> {
+  const headers = await getPublishAuthHeaders();
+  const res = await fetch(`${PUBLISH_FUNCTION_URL}/cancel/${postId}`, {
+    method: 'POST',
+    headers,
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? 'Erro ao cancelar');
+  return data;
+}
+
+export async function publishTikTokPostNow(
+  postId: number,
+): Promise<{ ok: boolean; status: string; message?: string }> {
+  const headers = await getPublishAuthHeaders();
+  const res = await fetch(`${PUBLISH_FUNCTION_URL}/publish-now/${postId}`, {
+    method: 'POST',
+    headers,
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.details?.join('; ') ?? data.error ?? 'Erro ao publicar');
+  return data;
+}
+
+export async function retryTikTokPublish(postId: number): Promise<{ ok: boolean }> {
+  const headers = await getPublishAuthHeaders();
+  const res = await fetch(`${PUBLISH_FUNCTION_URL}/retry/${postId}`, {
+    method: 'POST',
+    headers,
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error ?? 'Erro ao reenviar');
   return data;
 }

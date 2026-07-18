@@ -31,6 +31,19 @@ export interface WorkflowPost {
   publish_retry_count?: number;
   instagram_container_id?: string | null;
   instagram_media_id?: string | null;
+  /** Which platform(s) this post targets. Defaults to 'instagram' at the DB level
+   * (migration 20260719000001_tiktok_publishing.sql). 'stories' tipo never allows
+   * 'tiktok'/'both' — TikTok has no Stories API. */
+  platform?: 'instagram' | 'tiktok' | 'both';
+  tiktok_publish_id?: string | null;
+  tiktok_post_id?: string | null;
+  tiktok_post_url?: string | null;
+  tiktok_publish_status?: 'initiated' | 'processing' | 'published' | 'failed' | null;
+  tiktok_publish_error?: string | null;
+  tiktok_publish_retry_count?: number;
+  tiktok_caption?: string | null;
+  tiktok_title?: string | null;
+  tiktok_settings?: Record<string, unknown> | null;
   created_at?: string;
   updated_at?: string;
   created_via?: 'human' | 'agent';

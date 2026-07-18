@@ -98,6 +98,7 @@ import {
 import { ImportToEstudioDialog } from '@/pages/estudio/ImportToEstudioDialog';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { InstagramCaptionField } from './InstagramCaptionField';
+import { PlatformSelector } from './PlatformSelector';
 import { ScheduleButton } from './ScheduleButton';
 import { DateTimePicker } from '@/components/ui/date-time-picker';
 import { supabase } from '@/lib/supabase';
@@ -241,6 +242,22 @@ export function WorkflowDrawer({
           igAccount.permissions.includes('instagram_business_content_publish'),
       }
     : null;
+
+  // Lightweight signal for the platform selector's gating — mirrors the igAccount
+  // query above (direct RLS read, no tiktok.ts round trip/cache needed here).
+  const { data: ttAccount } = useQuery({
+    queryKey: ['ttAccountForWorkflow', clienteId],
+    queryFn: async () => {
+      const { data: account } = await supabase
+        .from('tiktok_accounts')
+        .select('id, authorization_status')
+        .eq('client_id', clienteId)
+        .maybeSingle();
+      return account;
+    },
+    enabled: !!clienteId,
+  });
+  const hasActiveTikTokAccount = ttAccount?.authorization_status === 'active';
 
   const toggleFullscreen = useCallback(() => {
     setIsFullscreen((prev) => {
@@ -708,6 +725,7 @@ export function WorkflowDrawer({
                           hasMedia={(post as any).has_media ?? false}
                           hasInstagramAccount={hasInstagramAccount}
                           igAccountStatus={igAccountStatus}
+                          hasActiveTikTokAccount={hasActiveTikTokAccount}
                           onToggle={() => setExpandedId(expandedId === post.id ? null : post.id!)}
                           onDelete={() => handleDeletePost(post.id!)}
                           onFieldChange={(field, value) =>
@@ -853,6 +871,7 @@ interface SortablePostItemProps {
   hasMedia: boolean;
   hasInstagramAccount: boolean;
   igAccountStatus: { revoked: boolean; expired: boolean; canPublish: boolean } | null;
+  hasActiveTikTokAccount: boolean;
   onToggle: () => void;
   onDelete: () => void;
   onFieldChange: (field: keyof WorkflowPost, value: unknown) => void;
@@ -891,6 +910,7 @@ function SortablePostItem({
   hasMedia,
   hasInstagramAccount,
   igAccountStatus,
+  hasActiveTikTokAccount,
   onToggle,
   onDelete,
   onFieldChange,
@@ -1159,6 +1179,13 @@ function SortablePostItem({
                 ))}
               </select>
             </div>
+            <PlatformSelector
+              value={post.platform ?? 'instagram'}
+              tipo={post.tipo}
+              tiktokFeatureEnabled={features?.feature_tiktok === true}
+              hasActiveTikTokAccount={hasActiveTikTokAccount}
+              onChange={(platform) => onFieldChange('platform', platform)}
+            />
             <div className="drawer-post-field">
               <label>Status</label>
               <select

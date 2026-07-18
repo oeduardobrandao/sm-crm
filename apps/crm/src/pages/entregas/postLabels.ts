@@ -7,6 +7,12 @@ export const TIPO_LABELS: Record<WorkflowPost['tipo'], string> = {
   carrossel: 'Carrossel',
 };
 
+export const PLATFORM_LABELS: Record<NonNullable<WorkflowPost['platform']>, string> = {
+  instagram: 'Instagram',
+  tiktok: 'TikTok',
+  both: 'Ambas',
+};
+
 export const STATUS_LABELS: Record<WorkflowPost['status'], string> = {
   rascunho: 'Rascunho',
   revisao_interna: 'Em revisão',
