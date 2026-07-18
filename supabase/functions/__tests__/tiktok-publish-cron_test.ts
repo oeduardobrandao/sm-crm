@@ -346,6 +346,70 @@ Deno.test("tiktok-publish-cron status phase: FAILED with spam_risk_too_many_post
   assertEquals(payload.tiktok_publish_retry_count, 3, "non-retryable reason skips straight to the retry ceiling");
 });
 
+// ── (g2) markTikTokFailed partial-write failures self-heal, never orphan ───────
+//
+// Both new tests drive markTikTokFailed via the status phase's FAILED branch (as (g) does).
+// clearLock and the compensating status update reuse the SAME workflow_posts:update queue key
+// as write (1) on the mock — queuing exactly one error response there lets write (1) consume it
+// and leaves the queue empty (-> default success) for whichever best-effort write follows.
+
+Deno.test("tiktok-publish-cron markTikTokFailed: write (1) failure skips the RPC, clears the lock, never throws", async () => {
+  const db = createSupabaseQueryMock();
+  const post = claimedPost({ post_id: 52, tiktok_publish_id: "pub-52", tiktok_publish_retry_count: 0 });
+  queueClaims(db, [], [post], []);
+  db.queue("workflow_posts", "update", { error: { message: "boom" } });
+
+  const response = await runTikTokPublishCron(baseDeps(db, {
+    getFreshTikTokToken: async () => ({ accessToken: "tok", openId: "open-1" }),
+    tiktokFetch: async () => ({ status: "FAILED", fail_reason: "video_pull_failed" }),
+    signGetUrl: async () => "",
+  }));
+
+  assertEquals(response.status, 200, "must not throw even though write (1) failed");
+
+  const updateCalls = callsFor(db, "workflow_posts", "update");
+  assertEquals(updateCalls.length, 2, "the failed write (1) attempt + the best-effort clearLock");
+  assertEquals(
+    updateCalls[1].payload,
+    { tiktok_publish_processing_at: null },
+    "clearLock is attempted after write (1) fails, releasing the post back to its claiming phase",
+  );
+
+  assertEquals(
+    rpcCalls(db, "record_post_status_change").length,
+    0,
+    "record_post_status_change must NOT fire when write (1) itself failed — that would orphan the post",
+  );
+});
+
+Deno.test("tiktok-publish-cron markTikTokFailed: write (1) ok, RPC failure runs a compensating status update", async () => {
+  const db = createSupabaseQueryMock();
+  const post = claimedPost({ post_id: 53, tiktok_publish_id: "pub-53", tiktok_publish_retry_count: 0 });
+  queueClaims(db, [], [post], []);
+  db.queueRpc("record_post_status_change", { error: { message: "boom" } });
+
+  const response = await runTikTokPublishCron(baseDeps(db, {
+    getFreshTikTokToken: async () => ({ accessToken: "tok", openId: "open-1" }),
+    tiktokFetch: async () => ({ status: "FAILED", fail_reason: "video_pull_failed" }),
+    signGetUrl: async () => "",
+  }));
+
+  assertEquals(response.status, 200, "must not throw even though the RPC failed");
+
+  const updateCalls = callsFor(db, "workflow_posts", "update");
+  assertEquals(updateCalls.length, 2, "write (1) succeeds + the compensating status update");
+  assertEquals(
+    (updateCalls[0].payload as Record<string, unknown>).tiktok_publish_status,
+    "failed",
+    "write (1) itself still succeeds",
+  );
+  assertEquals(
+    updateCalls[1].payload,
+    { status: "falha_publicacao" },
+    "compensating write moves the card status directly since the RPC that normally does it failed",
+  );
+});
+
 // ── (h) retry phase: pure state reset ───────────────────────────────────────────
 
 Deno.test("tiktok-publish-cron retry phase: resets tiktok_publish_status/error and moves the card back to agendado", async () => {

@@ -181,6 +181,13 @@ async function clearLock(svc: DbClient, postId: number): Promise<void> {
  * getFreshTikTokToken has ALREADY flipped the account to authorization_status='expired' before
  * throwing, so no account write happens here. That status also drops the account out of the
  * claim RPC's join, so this post won't be reclaimed again until a fresh OAuth reconnect.
+ *
+ * Self-healing on partial failure: this function does TWO writes (the direct
+ * tiktok_publish_status='failed' update, then the record_post_status_change RPC), and every
+ * claim phase's WHERE clause only recognizes specific status+tiktok_publish_status PAIRS (see
+ * claim_posts_for_tiktok_publishing). If either write fails outright, this function never lets
+ * the two columns drift into an unrecognized pair — see the inline comments at each failure
+ * branch below for exactly how each case converges back to a claimable state.
  */
 async function markTikTokFailed(
   svc: DbClient,
@@ -203,6 +210,17 @@ async function markTikTokFailed(
     .eq("id", postId);
   if (updateErr) {
     console.error(`[${CRON_NAME}] failed to persist failure state for post ${postId}:`, updateErr.message);
+    // Write (1) itself failed: tiktok_publish_status was never set to 'failed', so the post is
+    // left exactly as the claiming phase found it — status='agendado' paired with whatever
+    // tiktok_publish_status that phase's own WHERE clause required (NULL for init, 'initiated'/
+    // 'processing' for status; see claim_posts_for_tiktok_publishing). That pair is one the SAME
+    // phase re-claims on its own once the lock's 10-minute stale window elapses — clearLock below
+    // releases it immediately instead of making it wait — so this self-heals with no RPC needed.
+    // Firing record_post_status_change anyway would flip status to 'falha_publicacao' while
+    // tiktok_publish_status never became 'failed', producing a pair NO claim phase's WHERE clause
+    // recognizes — permanently orphaning the post. So: log, best-effort clear the lock, and stop.
+    await clearLock(svc, postId);
+    return;
   }
 
   const { error: statusErr } = await svc.rpc("record_post_status_change", {
@@ -214,6 +232,26 @@ async function markTikTokFailed(
   });
   if (statusErr) {
     console.error(`[${CRON_NAME}] record_post_status_change failed for post ${postId}:`, statusErr.message);
+    // Write (1) already committed tiktok_publish_status='failed', but status is still 'agendado'
+    // — a pair no claim phase's WHERE clause recognizes either (retry needs status=
+    // 'falha_publicacao' AND tiktok_publish_status='failed' together). Compensate with a direct
+    // status write so the retry phase can pick it back up next run. The status-capture trigger
+    // (workflow_posts_status_event, migration 20260606000001) still records the transition off
+    // this direct UPDATE; losing actor/source context on this backstop path is acceptable.
+    const { error: compensateErr } = await svc
+      .from("workflow_posts")
+      .update({ status: "falha_publicacao" })
+      .eq("id", postId);
+    if (compensateErr) {
+      // Both writes failed: the post is stuck as status='agendado' + tiktok_publish_status=
+      // 'failed', a pair no claim phase recognizes — it will NOT self-heal on its own. The run's
+      // reportCronFailure alert (fired from the totalFailed>0 branch in runTikTokPublishCron) is
+      // the human signal that something needs attention; this loud marker is for whoever is
+      // reading logs off that alert to find the specific orphaned post.
+      console.error(
+        `[TIKTOK-CRON] ORPHAN RISK post ${postId}: failed+agendado state, manual fix needed`,
+      );
+    }
   }
 }
 
