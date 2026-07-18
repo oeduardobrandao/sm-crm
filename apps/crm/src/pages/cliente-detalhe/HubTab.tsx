@@ -183,6 +183,29 @@ export function HubTab({ clienteId, contaId, workspaceSlug }: HubTabProps) {
 
   const [extending, setExtending] = useState(false);
   const [rotating, setRotating] = useState(false);
+  const [activeTab, setActiveTab] = useState('acesso');
+  const tabListRef = useRef<HTMLDivElement>(null);
+  const previousActiveTabRef = useRef(activeTab);
+
+  useEffect(() => {
+    if (previousActiveTabRef.current === activeTab) return;
+    previousActiveTabRef.current = activeTab;
+
+    const tabList = tabListRef.current;
+    const active = tabListRef.current?.querySelector<HTMLElement>(
+      '[role="tab"][data-state="active"]',
+    );
+    if (!tabList || !active) return;
+
+    const left = Math.max(
+      0,
+      active.offsetLeft - Math.max(0, (tabList.clientWidth - active.offsetWidth) / 2),
+    );
+    const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      ? 'auto'
+      : 'smooth';
+    tabList.scrollTo?.({ left, behavior });
+  }, [activeTab]);
 
   async function toggleActive() {
     if (!tokenData) return;
@@ -226,8 +249,8 @@ export function HubTab({ clienteId, contaId, workspaceSlug }: HubTabProps) {
   }
 
   return (
-    <Tabs defaultValue="acesso" className="py-4">
-      <TabsList className="mb-6">
+    <Tabs value={activeTab} onValueChange={setActiveTab} className="hub-tabs py-4">
+      <TabsList ref={tabListRef} className="hub-tabs__list mb-6">
         <TabsTrigger value="acesso">Acesso</TabsTrigger>
         <TabsTrigger value="briefing">Briefing</TabsTrigger>
         <TabsTrigger value="marca">Marca</TabsTrigger>
@@ -240,58 +263,62 @@ export function HubTab({ clienteId, contaId, workspaceSlug }: HubTabProps) {
           <h3 className="font-semibold mb-3">Acesso do Cliente</h3>
           {tokenData ? (
             <>
-              <div className="flex items-center gap-3 flex-wrap">
-                <code className="text-xs bg-muted px-3 py-2 rounded-lg flex-1 min-w-0 truncate">
+              <div className="hub-access">
+                <code className="hub-access__url text-xs bg-muted px-3 py-2 rounded-lg truncate">
                   {hubUrl}
                 </code>
-                <Button size="sm" variant="outline" onClick={copyLink}>
-                  <Copy size={14} className="mr-1.5" /> Copiar
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => openExternalUrl(hubUrl)}>
-                  <Eye size={14} className="mr-1.5" /> Preview
-                </Button>
-                <Button
-                  size="sm"
-                  variant={tokenData.is_active ? 'destructive' : 'default'}
-                  onClick={toggleActive}
-                >
-                  {tokenData.is_active ? (
-                    <>
-                      <ToggleRight size={14} className="mr-1.5" /> Desativar
-                    </>
-                  ) : (
-                    <>
-                      <ToggleLeft size={14} className="mr-1.5" /> Ativar
-                    </>
-                  )}
-                </Button>
-
-                {showRescue && (
-                  <Button size="sm" variant="outline" onClick={handleExtend} disabled={extending}>
-                    <CalendarClock size={14} className="mr-1.5" /> Estender +1 ano
+                <div className="hub-access__secondary-actions">
+                  <Button size="sm" variant="outline" onClick={copyLink}>
+                    <Copy size={14} className="mr-1.5" /> Copiar
                   </Button>
-                )}
+                  <Button size="sm" variant="outline" onClick={() => openExternalUrl(hubUrl)}>
+                    <Eye size={14} className="mr-1.5" /> Preview
+                  </Button>
+                </div>
+                <div className="hub-access__primary-actions">
+                  <Button
+                    size="sm"
+                    variant={tokenData.is_active ? 'destructive' : 'default'}
+                    onClick={toggleActive}
+                  >
+                    {tokenData.is_active ? (
+                      <>
+                        <ToggleRight size={14} className="mr-1.5" /> Desativar
+                      </>
+                    ) : (
+                      <>
+                        <ToggleLeft size={14} className="mr-1.5" /> Ativar
+                      </>
+                    )}
+                  </Button>
 
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button size="sm" variant="destructive" disabled={rotating}>
-                      <RefreshCw size={14} className="mr-1.5" /> Gerar novo link
+                  {showRescue && (
+                    <Button size="sm" variant="outline" onClick={handleExtend} disabled={extending}>
+                      <CalendarClock size={14} className="mr-1.5" /> Estender +1 ano
                     </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Gerar um novo link?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        O link atual para de funcionar imediatamente. O cliente perde o acesso até
-                        você enviar o novo link. Esta ação não pode ser desfeita.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                      <AlertDialogAction onClick={handleRotate}>Confirmar</AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+                  )}
+
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button size="sm" variant="destructive" disabled={rotating}>
+                        <RefreshCw size={14} className="mr-1.5" /> Gerar novo link
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Gerar um novo link?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          O link atual para de funcionar imediatamente. O cliente perde o acesso até
+                          você enviar o novo link. Esta ação não pode ser desfeita.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleRotate}>Confirmar</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
               </div>
 
               {expiresAt && (
@@ -432,7 +459,7 @@ function BrandEditor({
   return (
     <section>
       <h3 className="font-semibold mb-3">Marca</h3>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="hub-brand-editor__grid grid grid-cols-1 gap-4 md:grid-cols-2">
         <div>
           <Label>URL do Logo</Label>
           <Input
@@ -713,6 +740,7 @@ function PagesEditor({
           className="max-w-5xl w-[95vw] h-[85vh] flex flex-col"
           confirmClose={isDirty}
           onConfirmClose={closeEditor}
+          aria-describedby={undefined}
         >
           <DialogHeader>
             <DialogTitle>{editingPage?.id ? 'Editar página' : 'Nova página'}</DialogTitle>
@@ -736,9 +764,9 @@ function PagesEditor({
               </button>
             </div>
 
-            <div className={`flex-1 min-h-0 flex gap-3 ${showPreview ? '' : ''}`}>
+            <div className="hub-page-editor__workspace flex min-h-0 flex-1 flex-col gap-3 md:flex-row">
               <textarea
-                className={`border border-border bg-background text-foreground rounded-lg p-3 text-sm resize-none font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-ring ${showPreview ? 'w-1/2' : 'w-full'}`}
+                className={`hub-page-editor__input min-h-[12rem] flex-1 resize-none rounded-lg border border-border bg-background p-3 font-mono text-sm leading-relaxed text-foreground focus:outline-none focus:ring-2 focus:ring-ring ${showPreview ? 'w-full md:w-1/2' : 'w-full'}`}
                 style={{ height: '100%' }}
                 value={contentText}
                 onChange={(e) =>
@@ -750,7 +778,7 @@ function PagesEditor({
                 placeholder="Escreva o conteúdo em markdown..."
               />
               {showPreview && (
-                <div className="w-1/2 border rounded-lg p-4 overflow-y-auto bg-muted/30">
+                <div className="hub-page-editor__preview min-h-[12rem] w-full flex-1 overflow-y-auto rounded-lg border bg-muted/30 p-4 md:w-1/2">
                   {contentText ? (
                     <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
                       {contentText}

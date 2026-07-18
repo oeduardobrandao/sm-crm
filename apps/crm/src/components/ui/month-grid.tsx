@@ -102,7 +102,13 @@ export function MonthGrid({
       )}
 
       <div
-        style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 6 }}
+        className="month-grid-weekdays"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+          gap: 4,
+          marginBottom: 6,
+        }}
       >
         {WEEK_DAYS.map((d) => (
           <div
@@ -122,9 +128,16 @@ export function MonthGrid({
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+      <div
+        className="month-grid-days"
+        style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 4 }}
+      >
         {allDays.map(({ date, isCurrentMonth }, i) => (
-          <div key={i} className={cellClassName}>
+          <div
+            key={i}
+            className={`month-grid-cell${cellClassName ? ` ${cellClassName}` : ''}`}
+            style={{ minWidth: 0 }}
+          >
             {renderCell(date, isCurrentMonth)}
           </div>
         ))}
