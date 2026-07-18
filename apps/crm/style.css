@@ -8678,6 +8678,30 @@ body.landing-page #root {
 }
 .context-help__article:hover { background: var(--surface-hover); }
 
+.instagram-overview__account-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.instagram-overview__token-badge {
+  white-space: nowrap;
+  min-height: 36px;
+  padding-inline: 0.75rem !important;
+  font-size: 0.78rem !important;
+}
+
+@media (max-width: 600px) {
+  .instagram-overview__account-kpis .kpi-card {
+    padding: 0.85rem 0.6rem;
+    min-width: 0;
+  }
+
+  .instagram-overview__account-kpis .kpi-label { font-size: 0.58rem; }
+  .instagram-overview__account-kpis .kpi-value { font-size: clamp(1.05rem, 5vw, 1.4rem); }
+  .instagram-overview__profile { align-items: flex-start; gap: 1rem; }
+}
+
 @media (max-width: 359px) {
   .cliente-card-rail--multiple {
     margin-inline: -1rem;

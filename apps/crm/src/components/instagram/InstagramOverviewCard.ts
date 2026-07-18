@@ -55,11 +55,11 @@ export function renderInstagramOverviewCard(
     const tooltip = escapeHTML(t('instagram.tokenTooltip'));
     const badgeBase = `cursor: help; display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.7rem; font-weight: 600; font-family: var(--font-mono);`;
     if (daysLeft <= 0) {
-      tokenBadge = `<span class="token-badge" data-tooltip="${tooltip}" data-tooltip-dir="bottom" style="${badgeBase} background: rgba(245, 90, 66, 0.1); color: var(--danger);"><i class="ph ph-warning" style="font-size: 0.75rem;"></i> ${escapeHTML(t('instagram.tokenExpired'))}</span>`;
+      tokenBadge = `<span class="token-badge instagram-overview__token-badge" data-tooltip="${tooltip}" data-tooltip-dir="bottom" style="${badgeBase} background: rgba(245, 90, 66, 0.1); color: var(--danger);"><i class="ph ph-warning" style="font-size: 0.75rem;"></i> ${escapeHTML(t('instagram.tokenExpired'))}</span>`;
     } else if (daysLeft <= 7) {
-      tokenBadge = `<span class="token-badge" data-tooltip="${tooltip}" data-tooltip-dir="bottom" style="${badgeBase} background: rgba(245, 163, 66, 0.1); color: var(--warning);"><i class="ph ph-clock" style="font-size: 0.75rem;"></i> ${escapeHTML(t('instagram.tokenDaysLeft', { count: daysLeft }))}</span>`;
+      tokenBadge = `<span class="token-badge instagram-overview__token-badge" data-tooltip="${tooltip}" data-tooltip-dir="bottom" style="${badgeBase} background: rgba(245, 163, 66, 0.1); color: var(--warning);"><i class="ph ph-clock" style="font-size: 0.75rem;"></i> ${escapeHTML(t('instagram.tokenDaysLeft', { count: daysLeft }))}</span>`;
     } else {
-      tokenBadge = `<span class="token-badge" data-tooltip="${tooltip}" data-tooltip-dir="bottom" style="${badgeBase} background: rgba(62, 207, 142, 0.1); color: var(--success);"><i class="ph ph-clock" style="font-size: 0.75rem;"></i> ${escapeHTML(t('instagram.tokenDaysLeft', { count: daysLeft }))}</span>`;
+      tokenBadge = `<span class="token-badge instagram-overview__token-badge" data-tooltip="${tooltip}" data-tooltip-dir="bottom" style="${badgeBase} background: rgba(62, 207, 142, 0.1); color: var(--success);"><i class="ph ph-clock" style="font-size: 0.75rem;"></i> ${escapeHTML(t('instagram.tokenDaysLeft', { count: daysLeft }))}</span>`;
     }
   }
 
@@ -70,7 +70,7 @@ export function renderInstagramOverviewCard(
 
       ${statusBanner}
 
-      <div style="display: flex; align-items: center; gap: 1.5rem; margin-bottom: 1.5rem;">
+      <div class="instagram-overview__profile" style="display: flex; align-items: center; gap: 1.5rem; margin-bottom: 1.5rem;">
          <img src="${account.profile_picture_url ? sanitizeUrl(account.profile_picture_url) : 'https://ui-avatars.com/api/?name=IG&background=random'}" alt="IG Profile" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 3px solid #E1306C;" />
          <div style="flex: 1; min-width: 0;">
             <h3 class="text-xl font-bold tracking-tight text-foreground flex items-center gap-2 mb-1">
@@ -88,7 +88,7 @@ export function renderInstagramOverviewCard(
          </div>
       </div>
 
-      <div class="kpi-grid" style="margin-bottom: 1.5rem;">
+      <div class="kpi-grid instagram-overview__account-kpis" style="margin-bottom: 1.5rem;">
          <div class="kpi-card">
             <span class="kpi-label">${escapeHTML(t('instagram.followers')).toUpperCase()}</span>
             <span class="kpi-value">${numFmt(account.follower_count)}</span>
