@@ -5,8 +5,6 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  ArrowLeft,
-  Edit2,
   MapPin,
   Plus,
   Pencil,
@@ -115,7 +113,9 @@ import {
 import type { BoardCard } from '../entregas/hooks/useEntregasData';
 import { getWorkflowCovers } from '../../services/postMedia';
 import { HubTab } from './HubTab';
+import { ClienteDetalheHeader } from './ClienteDetalheHeader';
 import { ClienteDetalheNav } from './ClienteDetalheNav';
+import { ResponsiveCardRail } from './ResponsiveCardRail';
 import { buildNavModel } from './clienteDetalheNav.model';
 import { getFolderContents } from '../../services/fileService';
 import { FileGrid } from '../arquivos/components/FileGrid';
@@ -934,63 +934,17 @@ export default function ClienteDetalhePage() {
 
   return (
     <div className="cliente-detalhe-page">
+      <ClienteDetalheHeader
+        nome={cliente.nome}
+        initials={getInitials(cliente.nome)}
+        cor={cliente.cor}
+        plano={cliente.plano}
+        status={cliente.status}
+        imageUrl={igSummary?.account?.profile_picture_url}
+        onBack={() => navigate('/clientes')}
+        onEdit={handleEdit}
+      />
       <ClienteDetalheNav sections={navModel.sections} actions={navModel.actions} />
-      {/* Header */}
-      <div className="header" style={{ marginBottom: '1.5rem', alignContent: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <Button
-            variant="outline"
-            size="icon"
-            style={{ borderRadius: '50%' }}
-            onClick={() => navigate('/clientes')}
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          {igSummary?.account?.profile_picture_url ? (
-            <img
-              src={igSummary.account.profile_picture_url}
-              alt={cliente.nome}
-              style={{
-                width: 48,
-                height: 48,
-                borderRadius: '50%',
-                objectFit: 'cover',
-                flexShrink: 0,
-              }}
-            />
-          ) : (
-            <div
-              style={{
-                background: cliente.cor,
-                width: 48,
-                height: 48,
-                borderRadius: '50%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#fff',
-                fontWeight: 700,
-                fontSize: '1.1rem',
-                flexShrink: 0,
-              }}
-            >
-              {getInitials(cliente.nome)}
-            </div>
-          )}
-          <div className="header-title" style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
-            <h2 style={{ margin: 0 }}>{cliente.nome}</h2>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <span className="badge badge-neutral">{cliente.plano}</span>
-              <StatusBadge status={cliente.status} />
-            </div>
-          </div>
-        </div>
-        <div className="header-actions">
-          <Button variant="outline" onClick={handleEdit}>
-            <Edit2 className="h-4 w-4" /> {tc('actions.edit')}
-          </Button>
-        </div>
-      </div>
 
       {/* Info Card */}
       <div id="sec-info" className="card animate-up" style={{ marginBottom: '1.5rem' }}>
@@ -1067,7 +1021,7 @@ export default function ClienteDetalhePage() {
           <h3 className="text-xl font-bold tracking-tight mb-4 text-foreground">
             {t('detail.activeDeliveries')}
           </h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <ResponsiveCardRail className="cliente-deliveries-rail">
             {boardCards.map((card) => (
               <WorkflowCard
                 key={card.workflow.id}
@@ -1086,7 +1040,7 @@ export default function ClienteDetalhePage() {
                 awaitingClienteCount={awaitingClienteCounts.get(card.workflow.id!) ?? 0}
               />
             ))}
-          </div>
+          </ResponsiveCardRail>
 
           {/* Post Calendar */}
           {postCalendarEvents.length > 0 &&
@@ -1602,26 +1556,11 @@ export default function ClienteDetalhePage() {
         )}
 
         {!loadingDatas && datasImportantes && datasImportantes.length > 0 && (
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))',
-              gap: '0.75rem',
-            }}
-          >
+          <ResponsiveCardRail className="cliente-dates-rail">
             {datasImportantes.map((d) => (
               <div
                 key={d.id}
-                style={{
-                  padding: '0.75rem 1rem',
-                  borderRadius: '12px',
-                  border: '1px solid var(--border-color)',
-                  background: 'var(--surface-main)',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  transition: 'box-shadow 0.2s ease, transform 0.2s ease',
-                }}
+                className="cliente-date-card"
                 onMouseEnter={(e) => {
                   (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)';
                   (e.currentTarget as HTMLDivElement).style.boxShadow =
@@ -1660,7 +1599,7 @@ export default function ClienteDetalhePage() {
                 </div>
               </div>
             ))}
-          </div>
+          </ResponsiveCardRail>
         )}
       </div>
 
@@ -1706,24 +1645,11 @@ export default function ClienteDetalhePage() {
         )}
 
         {!loadingEnderecos && enderecos && enderecos.length > 0 && (
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-              gap: '0.75rem',
-            }}
-          >
+          <ResponsiveCardRail className="cliente-addresses-rail">
             {enderecos.map((addr) => (
               <div
                 key={addr.id}
-                style={{
-                  position: 'relative',
-                  padding: '1rem 1.25rem',
-                  borderRadius: '12px',
-                  border: '1px solid var(--border-color)',
-                  background: 'var(--surface-main)',
-                  transition: 'box-shadow 0.2s ease, transform 0.2s ease',
-                }}
+                className="cliente-address-card"
                 onMouseEnter={(e) => {
                   (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)';
                   (e.currentTarget as HTMLDivElement).style.boxShadow =
@@ -1790,7 +1716,7 @@ export default function ClienteDetalhePage() {
                 <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>CEP: {addr.cep}</p>
               </div>
             ))}
-          </div>
+          </ResponsiveCardRail>
         )}
       </div>
 
