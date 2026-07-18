@@ -48,10 +48,19 @@ export type PostPublishState = 'publicando' | WorkflowPost['status'];
 export function getPostPublishState(p: {
   status: WorkflowPost['status'];
   scheduled_at?: string | null;
+  platform?: WorkflowPost['platform'];
+  tiktok_publish_status?: WorkflowPost['tiktok_publish_status'];
 }): PostPublishState {
-  return p.status === 'agendado' && !!p.scheduled_at && new Date(p.scheduled_at) <= new Date()
-    ? 'publicando'
-    : p.status;
+  if (p.status !== 'agendado') return p.status;
+  const isDue = !!p.scheduled_at && new Date(p.scheduled_at) <= new Date();
+  // Extends the original due-time-only derivation: a tiktok/both post is also
+  // "publicando" once its TikTok side has been claimed by the cron (initiated/processing),
+  // even if the shared scheduled_at hasn't ticked over yet on a slow poll cycle.
+  const targetsTikTok = p.platform === 'tiktok' || p.platform === 'both';
+  const tiktokPublishing =
+    targetsTikTok &&
+    (p.tiktok_publish_status === 'initiated' || p.tiktok_publish_status === 'processing');
+  return isDue || tiktokPublishing ? 'publicando' : 'agendado';
 }
 
 export const PUBLISH_STATE_LABELS: Record<PostPublishState, string> = {

@@ -259,6 +259,15 @@ export function WorkflowDrawer({
     enabled: !!clienteId,
   });
   const hasActiveTikTokAccount = ttAccount?.authorization_status === 'active';
+  // ScheduleButton's TikTok analogue of igAccountStatus above — same query, no round trip
+  // added. `tiktok_accounts.authorization_status` has no separate "missing publish scope"
+  // concept (unlike Instagram's `permissions` array), so there's no `canPublish` field here.
+  const ttAccountStatus = ttAccount
+    ? {
+        revoked: ttAccount.authorization_status === 'revoked',
+        expired: ttAccount.authorization_status === 'expired',
+      }
+    : null;
 
   const toggleFullscreen = useCallback(() => {
     setIsFullscreen((prev) => {
@@ -728,6 +737,7 @@ export function WorkflowDrawer({
                           hasInstagramAccount={hasInstagramAccount}
                           igAccountStatus={igAccountStatus}
                           hasActiveTikTokAccount={hasActiveTikTokAccount}
+                          ttAccountStatus={ttAccountStatus}
                           onToggle={() => setExpandedId(expandedId === post.id ? null : post.id!)}
                           onDelete={() => handleDeletePost(post.id!)}
                           onFieldChange={(field, value) =>
@@ -875,6 +885,7 @@ interface SortablePostItemProps {
   hasInstagramAccount: boolean;
   igAccountStatus: { revoked: boolean; expired: boolean; canPublish: boolean } | null;
   hasActiveTikTokAccount: boolean;
+  ttAccountStatus: { revoked: boolean; expired: boolean } | null;
   onToggle: () => void;
   onDelete: () => void;
   onFieldChange: (field: keyof WorkflowPost, value: unknown) => void;
@@ -915,6 +926,7 @@ function SortablePostItem({
   hasInstagramAccount,
   igAccountStatus,
   hasActiveTikTokAccount,
+  ttAccountStatus,
   onToggle,
   onDelete,
   onFieldChange,
@@ -974,6 +986,21 @@ function SortablePostItem({
   const [importTarget, setImportTarget] = useState<PostMedia | null>(null);
   const [galleryMedia, setGalleryMedia] = useState<PostMedia[]>([]);
   const imageCount = galleryMedia.filter((m) => m.kind === 'image').length;
+
+  // TikTok settings completeness/test-mode-banner seam (Task C3), held here rather than
+  // inside ScheduleButton because TikTokSettingsPanel and ScheduleButton are siblings —
+  // this component instance is scoped to a single post row, so per-post-id keying is
+  // implicit. Reset on collapse (isExpanded -> false below) so a fresh open always
+  // re-requires the ephemeral music-usage confirmation, matching TikTokSettingsPanel's
+  // documented "re-confirm every open" contract instead of silently trusting a stale value.
+  const [tiktokSettingsComplete, setTiktokSettingsComplete] = useState(false);
+  const [tiktokTestModeBanner, setTiktokTestModeBanner] = useState(false);
+  useEffect(() => {
+    if (!isExpanded) {
+      setTiktokSettingsComplete(false);
+      setTiktokTestModeBanner(false);
+    }
+  }, [isExpanded]);
 
   // Local state for title to avoid input lag / letter-replacement from the
   // round-trip through updateWorkflowPost + refresh on every keystroke.
@@ -1419,16 +1446,25 @@ function SortablePostItem({
               Mounted whenever this post targets TikTok, mirroring PlatformSelector's own
               tipo==='stories' guard (TikTok has no Stories API, so platform can never be
               'tiktok'/'both' on a stories post — PlatformSelector self-heals that case).
-              `onCompletenessChange`/`showTestModeBanner` are the documented seam for C3's
-              platform-aware ScheduleButton; not yet consumed here. */}
+              `onCompletenessChange`/`showTestModeBanner` wire into the sibling ScheduleButton
+              below via the local state declared above (Task C3). */}
           {(post.platform === 'tiktok' || post.platform === 'both') && (
-            <TikTokSettingsPanel clientId={clienteId} post={post} onFieldChange={onFieldChange} />
+            <TikTokSettingsPanel
+              clientId={clienteId}
+              post={post}
+              onFieldChange={onFieldChange}
+              onCompletenessChange={setTiktokSettingsComplete}
+              showTestModeBanner={tiktokTestModeBanner}
+            />
           )}
 
           <ScheduleButton
             post={post}
             hasInstagramAccount={hasInstagramAccount}
             igAccountStatus={igAccountStatus}
+            ttAccountStatus={ttAccountStatus}
+            tiktokSettingsComplete={tiktokSettingsComplete}
+            onTikTokUnaudited={() => setTiktokTestModeBanner(true)}
             onStatusChange={onRefresh}
           />
 
