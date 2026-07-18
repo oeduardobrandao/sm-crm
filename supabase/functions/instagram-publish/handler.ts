@@ -12,6 +12,7 @@ import {
   fetchPermalink,
   createMissingStorySegmentContainers,
   publishReadyStorySegments,
+  selectStoryMediaId,
   type ScheduleValidationResult,
 } from "../_shared/instagram-publish-utils.ts";
 
@@ -230,21 +231,48 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
               message: "Stories ainda processando no Instagram. Os segmentos restantes serão publicados em instantes.",
             });
           }
-          const firstMediaId = segments[0]?.media_id ?? null;
-          await svcDb.rpc("record_post_status_change", {
+          const firstMediaId = selectStoryMediaId(segments);
+          if (firstMediaId === null) {
+            // Impossible under allDone semantics (every segment carries a media_id) — defensive
+            // fallback so the card is never stranded in 'agendado' if it somehow happens.
+            console.error(
+              `[IG-PUBLISH-NOW] Story post ${postId}: allDone=true but no segment carried a media_id.`,
+            );
+            const { error: fallbackErr } = await svcDb.rpc("record_post_status_change", {
+              p_post_id: postId,
+              p_new_status: "postado",
+              p_source: "workspace_user",
+              p_actor: actorId,
+              p_fields: {
+                instagram_media_id: null,
+                published_at: new Date().toISOString(),
+                publish_processing_at: null,
+                publish_error: null,
+                publish_retry_count: 0,
+              },
+            });
+            if (fallbackErr) {
+              const msg = (fallbackErr as { message?: string })?.message ?? String(fallbackErr);
+              throw new Error(`record_post_status_change fallback failed: ${msg}`);
+            }
+            return json({ ok: true, status: "postado", instagram_permalink: null });
+          }
+
+          const { error: markErr } = await svcDb.rpc("mark_platform_published", {
             p_post_id: postId,
-            p_new_status: "postado",
+            p_platform: "instagram",
             p_source: "workspace_user",
             p_actor: actorId,
             p_fields: {
               instagram_media_id: firstMediaId,
               published_at: new Date().toISOString(),
-              publish_processing_at: null,
-              publish_error: null,
-              publish_retry_count: 0,
             },
           });
-          const permalink = firstMediaId ? await fetchPermalink(firstMediaId, token) : null;
+          if (markErr) {
+            const msg = (markErr as { message?: string })?.message ?? String(markErr);
+            throw new Error(`mark_platform_published failed: ${msg}`);
+          }
+          const permalink = await fetchPermalink(firstMediaId, token);
           if (permalink) {
             await svcDb.from("workflow_posts").update({ instagram_permalink: permalink }).eq("id", postId);
           }
@@ -299,19 +327,20 @@ export function createPublishHandler(deps: PublishHandlerDeps) {
 
         const result = await publishContainer(igUserId, token, containerId);
 
-        await svcDb.rpc("record_post_status_change", {
+        const { error: markErr } = await svcDb.rpc("mark_platform_published", {
           p_post_id: postId,
-          p_new_status: "postado",
+          p_platform: "instagram",
           p_source: "workspace_user",
           p_actor: actorId,
           p_fields: {
             instagram_media_id: result.id,
             published_at: new Date().toISOString(),
-            publish_processing_at: null,
-            publish_error: null,
-            publish_retry_count: 0,
           },
         });
+        if (markErr) {
+          const msg = (markErr as { message?: string })?.message ?? String(markErr);
+          throw new Error(`mark_platform_published failed: ${msg}`);
+        }
 
         console.log(`[IG-PUBLISH-NOW] Published post ${postId}, media_id: ${result.id}`);
 

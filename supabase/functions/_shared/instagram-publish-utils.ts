@@ -565,6 +565,23 @@ export async function publishReadyStorySegments(
   return { segments, allDone };
 }
 
+/**
+ * Pick the media id to persist for a completed story post. `allDone` (above)
+ * guarantees every segment has a non-null media_id, so in practice this is
+ * always `segments[0].media_id` — but `mark_platform_published`'s `ig_done`
+ * check requires a NON-NULL `instagram_media_id` to flip the card to
+ * 'postado', so callers select the first NON-NULL segment defensively rather
+ * than trusting index 0 blindly. Returns null only if no segment carries one
+ * (impossible under allDone semantics — callers must fall back rather than
+ * strand the card).
+ */
+export function selectStoryMediaId(segments: StorySegment[]): string | null {
+  for (const seg of segments) {
+    if (seg.media_id) return seg.media_id;
+  }
+  return null;
+}
+
 export interface ContainerCreationResult {
   containerId: string;
   /**
