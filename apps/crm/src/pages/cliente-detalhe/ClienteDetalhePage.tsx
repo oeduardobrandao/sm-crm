@@ -1079,7 +1079,7 @@ export default function ClienteDetalhePage() {
                     paddingTop: '1rem',
                   }}
                 >
-                  <div className="calendar-layout">
+                  <div className="calendar-layout cliente-post-calendar">
                     <div className="calendar-main">
                       <MonthGrid
                         currentMonth={calendarMonth}

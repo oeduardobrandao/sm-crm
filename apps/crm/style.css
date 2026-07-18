@@ -3090,7 +3090,7 @@ select.form-input option {
 
 .calendar-weekdays {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 8px;
 }
@@ -3105,12 +3105,15 @@ select.form-input option {
 
 .calendar-grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 10px;
 }
 
 .calendar-day {
-  min-height: 110px;
+  width: 100%;
+  height: 110px;
+  min-width: 0;
+  min-height: 0;
   background: var(--surface-main);
   border: 1px solid var(--border-color);
   border-radius: 8px;
@@ -3179,6 +3182,7 @@ select.form-input option {
 
 .day-events {
   display: flex;
+  min-width: 0;
   flex-direction: column;
   gap: 4px;
   margin-top: auto;
@@ -3269,6 +3273,25 @@ select.form-input option {
   border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 1.25rem 1.25rem 1.1rem;
+}
+
+.cliente-post-calendar,
+.cliente-post-calendar .calendar-main,
+.cliente-post-calendar .scheduled-panel,
+.cliente-post-calendar .scheduled-list,
+.cliente-post-calendar .scheduled-item {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.cliente-post-calendar .item-title {
+  overflow-wrap: anywhere;
+}
+
+.cliente-post-calendar .item-top,
+.cliente-post-calendar .item-meta {
+  min-width: 0;
+  flex-wrap: wrap;
 }
 
 .item-top {
@@ -3515,7 +3538,8 @@ select.form-input option {
     font-size: 0.55rem;
   }
   .calendar-day {
-    min-height: 80px;
+    height: 80px;
+    min-height: 0;
     padding: 0.4rem;
   }
   .day-number {
