@@ -4,6 +4,8 @@
 // AES-256-GCM scheme (info string parametrized per token kind), minus the legacy padEnd
 // fallback branch — this is a new integration with a single scheme, nothing to migrate.
 
+import { SupabaseClient } from "npm:@supabase/supabase-js@2";
+
 // --- Wire constants ---
 
 export const TIKTOK_AUTH_URL = "https://www.tiktok.com/v2/auth/authorize/";
@@ -147,4 +149,230 @@ export async function tiktokFetch(
   }
 
   return body?.data ?? body;
+}
+
+// --- Rotation-safe token freshness ---
+//
+// TikTok access tokens live 24h; refresh tokens rotate — every refresh response can carry a
+// NEW refresh_token, and the old one may stop working immediately. If two processes refresh
+// concurrently, one persists a stale refresh token and permanently bricks the account's auth.
+// getFreshTikTokToken is the ONLY code path allowed to read/refresh TikTok tokens: it serializes
+// refreshes per account via an atomic claim UPDATE on `refresh_lock_at` (60s stale window, since
+// supabase-js can't hold a cross-request `SELECT ... FOR UPDATE`), persists the rotated token
+// BEFORE returning, and releases the lock in a `finally` on every path (success, TikTok error,
+// thrown exception). Losing the claim race polls the row instead of refreshing again.
+
+/** Access token is refreshed once fewer than this many ms remain before expiry. */
+const ACCESS_TOKEN_FRESHNESS_WINDOW_MS = 30 * 60 * 1000; // 30 minutes
+
+/** A refresh claim older than this is treated as abandoned (crashed process) and re-claimable. */
+const REFRESH_LOCK_STALE_MS = 60 * 1000; // 60 seconds
+
+const REFRESH_LOCK_POLL_ATTEMPTS = 3;
+const REFRESH_LOCK_POLL_INTERVAL_MS = 2000;
+
+interface TikTokAccountFreshnessRow {
+  id: string;
+  tiktok_open_id: string;
+  encrypted_access_token: string | null;
+  access_token_expires_at: string | null;
+}
+
+interface TikTokAccountClaimRow {
+  id: string;
+  encrypted_refresh_token: string | null;
+  tiktok_open_id: string;
+}
+
+interface TikTokRefreshSuccessBody {
+  open_id: string;
+  access_token: string;
+  expires_in: number;
+  refresh_token: string;
+  refresh_expires_in: number;
+  scope?: string;
+  token_type?: string;
+}
+
+interface TikTokRefreshErrorBody {
+  error: string;
+  error_description?: string;
+  log_id?: string;
+}
+
+function requireTikTokClientCredentials(): { clientKey: string; clientSecret: string } {
+  const clientKey = Deno.env.get("TIKTOK_CLIENT_KEY");
+  const clientSecret = Deno.env.get("TIKTOK_CLIENT_SECRET");
+  if (!clientKey || !clientSecret) {
+    throw new Error("TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET environment variables are required");
+  }
+  return { clientKey, clientSecret };
+}
+
+function isAccessTokenFresh(expiresAt: string | null, now: number): boolean {
+  if (!expiresAt) return false;
+  return new Date(expiresAt).getTime() - now > ACCESS_TOKEN_FRESHNESS_WINDOW_MS;
+}
+
+async function decryptFreshAccount(
+  row: TikTokAccountFreshnessRow,
+): Promise<{ accessToken: string; openId: string }> {
+  if (!row.encrypted_access_token) {
+    throw new TikTokApiError("TikTok account has no access token on file", "TOKEN_EXPIRED", false);
+  }
+  const accessToken = await decryptTikTokToken(row.encrypted_access_token, "access");
+  return { accessToken, openId: row.tiktok_open_id };
+}
+
+export interface GetFreshTikTokTokenOptions {
+  /**
+   * Injected sleep for lock-contention polling — smallest seam that lets tests exercise the
+   * 3x-poll path without burning real 2s waits. Defaults to a real setTimeout-based sleep.
+   */
+  sleep?: (ms: number) => Promise<void>;
+}
+
+/**
+ * The ONLY code path that reads or refreshes TikTok tokens. Returns a live access token,
+ * refreshing it first when fewer than 30 minutes remain before expiry. See the module-level
+ * comment above for why the refresh is serialized per account via an atomic claim lock.
+ */
+export async function getFreshTikTokToken(
+  svc: SupabaseClient,
+  accountId: string,
+  opts: GetFreshTikTokTokenOptions = {},
+): Promise<{ accessToken: string; openId: string }> {
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+
+  const { data: account } = await svc
+    .from("tiktok_accounts")
+    .select("id, tiktok_open_id, encrypted_access_token, access_token_expires_at")
+    .eq("id", accountId)
+    .maybeSingle();
+
+  if (!account) {
+    throw new TikTokApiError("TikTok account not found", "ACCOUNT_NOT_FOUND", false);
+  }
+
+  if (isAccessTokenFresh(account.access_token_expires_at, Date.now())) {
+    return decryptFreshAccount(account);
+  }
+
+  // Access token is expiring — claim the per-account refresh lock atomically. Only the request
+  // whose UPDATE matches a row (lock free or stale) performs the refresh-token rotation.
+  const staleBefore = new Date(Date.now() - REFRESH_LOCK_STALE_MS).toISOString();
+  const { data: claimed } = await svc
+    .from("tiktok_accounts")
+    .update({ refresh_lock_at: new Date().toISOString() })
+    .eq("id", accountId)
+    .or(`refresh_lock_at.is.null,refresh_lock_at.lt.${staleBefore}`)
+    .select("id, encrypted_refresh_token, tiktok_open_id")
+    .maybeSingle();
+
+  if (!claimed) {
+    return pollForRefreshedToken(svc, accountId, sleep);
+  }
+
+  return refreshClaimedAccount(svc, accountId, claimed as TikTokAccountClaimRow);
+}
+
+/** Performs the refresh call for a claimed account and releases the lock on every exit path. */
+async function refreshClaimedAccount(
+  svc: SupabaseClient,
+  accountId: string,
+  claimed: TikTokAccountClaimRow,
+): Promise<{ accessToken: string; openId: string }> {
+  let lockHeld = true;
+  try {
+    if (!claimed.encrypted_refresh_token) {
+      throw new TikTokApiError("TikTok account has no refresh token on file", "TOKEN_EXPIRED", false);
+    }
+    const refreshToken = await decryptTikTokToken(claimed.encrypted_refresh_token, "refresh");
+    const { clientKey, clientSecret } = requireTikTokClientCredentials();
+
+    const body = new URLSearchParams({
+      client_key: clientKey,
+      client_secret: clientSecret,
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+    });
+
+    const response = await fetch(`${TIKTOK_API_BASE}/oauth/token/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+    });
+
+    const payload = (await response.json()) as TikTokRefreshSuccessBody | TikTokRefreshErrorBody;
+
+    if ("error" in payload) {
+      if (payload.error === "invalid_grant") {
+        // Dead refresh token — flip the account to expired and release the lock in the SAME
+        // update (a re-auth is now required; nothing left for the lock to protect).
+        await svc
+          .from("tiktok_accounts")
+          .update({ authorization_status: "expired", refresh_lock_at: null })
+          .eq("id", accountId);
+        lockHeld = false;
+        throw new TikTokApiError(
+          payload.error_description || "TikTok refresh token is no longer valid",
+          "TOKEN_EXPIRED",
+          false,
+        );
+      }
+      throw new TikTokApiError(payload.error_description || payload.error, "REFRESH_FAILED", false);
+    }
+
+    const [encryptedAccess, encryptedRefresh] = await Promise.all([
+      encryptTikTokToken(payload.access_token, "access"),
+      encryptTikTokToken(payload.refresh_token, "refresh"),
+    ]);
+    const now = Date.now();
+
+    // Persist the rotated token (and clear the lock) in ONE update, BEFORE returning.
+    await svc
+      .from("tiktok_accounts")
+      .update({
+        encrypted_access_token: encryptedAccess,
+        encrypted_refresh_token: encryptedRefresh,
+        access_token_expires_at: new Date(now + payload.expires_in * 1000).toISOString(),
+        refresh_token_expires_at: new Date(now + payload.refresh_expires_in * 1000).toISOString(),
+        refresh_lock_at: null,
+      })
+      .eq("id", accountId);
+    lockHeld = false;
+
+    return { accessToken: payload.access_token, openId: payload.open_id };
+  } finally {
+    if (lockHeld) {
+      // Any other failure (network error, malformed response, missing env, non-invalid_grant
+      // TikTok error) must still release the claim so the next caller can retry.
+      await svc.from("tiktok_accounts").update({ refresh_lock_at: null }).eq("id", accountId);
+    }
+  }
+}
+
+/** Lost the claim race — another process is (or just finished) refreshing. Poll instead of
+ * racing it: up to 3 attempts, 2s apart, waiting for access_token_expires_at to move forward. */
+async function pollForRefreshedToken(
+  svc: SupabaseClient,
+  accountId: string,
+  sleep: (ms: number) => Promise<void>,
+): Promise<{ accessToken: string; openId: string }> {
+  for (let attempt = 0; attempt < REFRESH_LOCK_POLL_ATTEMPTS; attempt++) {
+    await sleep(REFRESH_LOCK_POLL_INTERVAL_MS);
+    const { data: account } = await svc
+      .from("tiktok_accounts")
+      .select("id, tiktok_open_id, encrypted_access_token, access_token_expires_at")
+      .eq("id", accountId)
+      .maybeSingle();
+    if (account && isAccessTokenFresh(account.access_token_expires_at, Date.now())) {
+      return decryptFreshAccount(account);
+    }
+  }
+  throw new TikTokApiError(
+    "Timed out waiting for a concurrent TikTok token refresh to complete",
+    "REFRESH_LOCK_TIMEOUT",
+    true,
+  );
 }
