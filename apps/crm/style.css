@@ -8691,7 +8691,24 @@ body.landing-page #root {
   font-size: 0.78rem !important;
 }
 
+@media (max-width: 900px) {
+  .instagram-overview__account-kpis > :last-child:nth-child(odd) {
+    grid-column: auto;
+    max-width: none;
+    justify-self: stretch;
+  }
+}
+
 @media (max-width: 600px) {
+  .instagram-overview__profile {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .instagram-overview__profile > img { flex: 0 0 80px; }
+  .instagram-overview__profile > div:last-child { margin-left: auto; }
+
   .instagram-overview__account-kpis .kpi-card {
     padding: 0.85rem 0.6rem;
     min-width: 0;
@@ -8699,7 +8716,6 @@ body.landing-page #root {
 
   .instagram-overview__account-kpis .kpi-label { font-size: 0.58rem; }
   .instagram-overview__account-kpis .kpi-value { font-size: clamp(1.05rem, 5vw, 1.4rem); }
-  .instagram-overview__profile { align-items: flex-start; gap: 1rem; }
 }
 
 @media (max-width: 359px) {

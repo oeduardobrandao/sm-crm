@@ -55,11 +55,11 @@ export function renderInstagramOverviewCard(
     const tooltip = escapeHTML(t('instagram.tokenTooltip'));
     const badgeBase = `cursor: help; display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.7rem; font-weight: 600; font-family: var(--font-mono);`;
     if (daysLeft <= 0) {
-      tokenBadge = `<span class="token-badge instagram-overview__token-badge" data-tooltip="${tooltip}" data-tooltip-dir="bottom" style="${badgeBase} background: rgba(245, 90, 66, 0.1); color: var(--danger);"><i class="ph ph-warning" style="font-size: 0.75rem;"></i> ${escapeHTML(t('instagram.tokenExpired'))}</span>`;
+      tokenBadge = `<span class="token-badge instagram-overview__token-badge" data-tooltip="${tooltip}" data-tooltip-dir="bottom" style="${badgeBase} background: rgba(245, 90, 66, 0.1); color: var(--danger);"><i class="ph ph-warning" aria-hidden="true" style="font-size: 0.75rem;"></i> ${escapeHTML(t('instagram.tokenExpired'))}</span>`;
     } else if (daysLeft <= 7) {
-      tokenBadge = `<span class="token-badge instagram-overview__token-badge" data-tooltip="${tooltip}" data-tooltip-dir="bottom" style="${badgeBase} background: rgba(245, 163, 66, 0.1); color: var(--warning);"><i class="ph ph-clock" style="font-size: 0.75rem;"></i> ${escapeHTML(t('instagram.tokenDaysLeft', { count: daysLeft }))}</span>`;
+      tokenBadge = `<span class="token-badge instagram-overview__token-badge" data-tooltip="${tooltip}" data-tooltip-dir="bottom" style="${badgeBase} background: rgba(245, 163, 66, 0.1); color: var(--warning);"><i class="ph ph-clock" aria-hidden="true" style="font-size: 0.75rem;"></i> ${escapeHTML(t('instagram.tokenDaysLeft', { count: daysLeft }))}</span>`;
     } else {
-      tokenBadge = `<span class="token-badge instagram-overview__token-badge" data-tooltip="${tooltip}" data-tooltip-dir="bottom" style="${badgeBase} background: rgba(62, 207, 142, 0.1); color: var(--success);"><i class="ph ph-clock" style="font-size: 0.75rem;"></i> ${escapeHTML(t('instagram.tokenDaysLeft', { count: daysLeft }))}</span>`;
+      tokenBadge = `<span class="token-badge instagram-overview__token-badge" data-tooltip="${tooltip}" data-tooltip-dir="bottom" style="${badgeBase} background: rgba(62, 207, 142, 0.1); color: var(--success);"><i class="ph ph-clock" aria-hidden="true" style="font-size: 0.75rem;"></i> ${escapeHTML(t('instagram.tokenDaysLeft', { count: daysLeft }))}</span>`;
     }
   }
 
@@ -75,7 +75,7 @@ export function renderInstagramOverviewCard(
          <div style="flex: 1; min-width: 0;">
             <h3 class="text-xl font-bold tracking-tight text-foreground flex items-center gap-2 mb-1">
                 ${escapeHTML(account.username || t('instagram.account'))}
-                <i class="fa-brands fa-instagram" style="color: #E1306C; font-size: 1.2rem;"></i>
+                <i class="fa-brands fa-instagram" aria-hidden="true" style="color: #E1306C; font-size: 1.2rem;"></i>
             </h3>
             <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
               <p style="color: var(--text-muted); font-size: 0.85rem; margin: 0;">${escapeHTML(updatedDate)}</p>
@@ -83,8 +83,8 @@ export function renderInstagramOverviewCard(
             </div>
          </div>
          <div style="display: flex; gap: 0.5rem; flex-shrink: 0;">
-            <button id="btn-ig-sync" class="btn-icon" data-tooltip="${escapeHTML(t('instagram.syncTooltip'))}" data-tooltip-dir="bottom" style="color: var(--text-muted);"><i class="ph ph-arrows-clockwise"></i></button>
-            <button id="btn-ig-disconnect" class="btn-icon" data-tooltip="${escapeHTML(t('instagram.disconnectTooltip'))}" data-tooltip-dir="bottom" style="color: var(--danger);"><i class="ph ph-plugs"></i></button>
+            <button id="btn-ig-sync" class="btn-icon" aria-label="${escapeHTML(t('instagram.syncTooltip'))}" data-tooltip="${escapeHTML(t('instagram.syncTooltip'))}" data-tooltip-dir="bottom" style="color: var(--text-muted);"><i class="ph ph-arrows-clockwise" aria-hidden="true"></i></button>
+            <button id="btn-ig-disconnect" class="btn-icon" aria-label="${escapeHTML(t('instagram.disconnectTooltip'))}" data-tooltip="${escapeHTML(t('instagram.disconnectTooltip'))}" data-tooltip-dir="bottom" style="color: var(--danger);"><i class="ph ph-plugs" aria-hidden="true"></i></button>
          </div>
       </div>
 
