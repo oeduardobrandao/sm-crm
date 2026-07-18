@@ -22,6 +22,16 @@ export const EVENT_NO_LONGER_PUBLICALY_AVAILABLE = "post.publish.no_longer_publi
 export const EVENT_AUTH_REMOVED = "authorization.removed";
 export const RETRYABLE_FAIL_REASONS = ["video_pull_failed", "photo_pull_failed", "internal"];
 
+// --- Status-fetch wire constants (POST /v2/post/publish/status/fetch/) ---
+export const STATUS_PROCESSING_UPLOAD = "PROCESSING_UPLOAD";
+export const STATUS_PROCESSING_DOWNLOAD = "PROCESSING_DOWNLOAD";
+export const STATUS_PUBLISH_COMPLETE = "PUBLISH_COMPLETE";
+export const STATUS_FAILED = "FAILED";
+// Only occurs in TikTok's "inbox" draft-posting mode (video.upload scope), which this
+// integration never uses (direct-post only). Mapped for completeness/safety in case a
+// stray status-fetch response ever reports it.
+export const STATUS_SEND_TO_USER_INBOX = "SEND_TO_USER_INBOX";
+
 // --- Token encryption (AES-256-GCM, HKDF-derived key from TOKEN_ENCRYPTION_KEY) ---
 
 function requireEncryptionSecret(): string {
