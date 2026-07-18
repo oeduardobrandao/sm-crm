@@ -2,7 +2,6 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuth } from '../../../context/AuthContext';
-import { useBubbleAnimation } from '../use-bubble-animation';
 
 vi.mock('../../../context/AuthContext', () => ({
   useAuth: vi.fn(),
@@ -12,25 +11,10 @@ vi.mock('../../../hooks/useWorkspaceLimits', () => ({
   useWorkspaceLimits: vi.fn(),
 }));
 
-vi.mock('../mobile-nav-canvas', () => ({
-  drawNavBar: vi.fn(),
-  getItemCenterX: vi.fn().mockReturnValue(50),
-  BAR_WIDTH: 390,
-  CUTOUT_R: 32,
-  CUTOUT_CY: 44,
-}));
-
-vi.mock('../use-bubble-animation', () => ({
-  useBubbleAnimation: vi.fn(),
-  BUBBLE_SIZE: 52,
-  BUBBLE_TOP_UP: 18,
-}));
-
 import MobileNav from '../MobileNav';
 import { useWorkspaceLimits } from '../../../hooks/useWorkspaceLimits';
 
 const mockedUseAuth = vi.mocked(useAuth);
-const mockedUseBubbleAnimation = vi.mocked(useBubbleAnimation);
 const mockedUseWorkspaceLimits = vi.mocked(useWorkspaceLimits);
 
 function setLimits(overrides: Record<string, unknown> = {}) {
@@ -68,22 +52,6 @@ function setAuth(overrides: Record<string, unknown> = {}) {
 }
 
 function renderMobileNav(pathname = '/dashboard') {
-  HTMLCanvasElement.prototype.getContext = vi.fn().mockReturnValue({
-    clearRect: vi.fn(),
-    save: vi.fn(),
-    restore: vi.fn(),
-    scale: vi.fn(),
-    beginPath: vi.fn(),
-    moveTo: vi.fn(),
-    lineTo: vi.fn(),
-    quadraticCurveTo: vi.fn(),
-    arc: vi.fn(),
-    closePath: vi.fn(),
-    fill: vi.fn(),
-    fillStyle: '',
-    globalCompositeOperation: 'source-over',
-  }) as any;
-
   return render(
     <MemoryRouter initialEntries={[pathname]}>
       <Routes>
@@ -106,22 +74,28 @@ describe('MobileNav', () => {
     document.documentElement.removeAttribute('data-theme');
     localStorage.clear();
     setLimits();
-    mockedUseBubbleAnimation.mockReturnValue({
-      animate: vi.fn(),
-      initBubble: vi.fn(),
-      animatingRef: { current: false },
-    } as any);
   });
 
-  it('marks active item and shows profile in more sheet', async () => {
+  it('renders a stable active route without canvas chrome', () => {
     setAuth();
     renderMobileNav('/analytics');
 
-    const labels = document.querySelectorAll('.mobile-nav-item');
-    const analyticsItem = Array.from(labels).find((el) => el.textContent?.includes('Analytics'));
-    expect(analyticsItem?.classList.contains('active')).toBe(true);
+    const analytics = screen.getByRole('button', { name: 'Analytics' });
+    expect(analytics).toHaveAttribute('aria-current', 'page');
+    expect(analytics).toHaveClass('active');
+    expect(document.querySelector('canvas')).not.toBeInTheDocument();
+    expect(document.querySelector('.mobile-nav-bubble-circle')).not.toBeInTheDocument();
+  });
 
-    fireEvent.click(document.getElementById('mobile-more-btn')!);
+  it('exposes the Mais sheet state', () => {
+    setAuth();
+    renderMobileNav('/dashboard');
+
+    const more = screen.getByRole('button', { name: 'Mais' });
+    expect(more).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(more);
+    expect(more).toHaveAttribute('aria-expanded', 'true');
+    expect(more).toHaveAttribute('aria-controls', 'mobile-more-sheet');
     expect(document.getElementById('mobile-avatar')?.textContent).toBe('AM');
     expect(document.getElementById('mobile-user-name')?.textContent).toBe('Ana Maria');
   });

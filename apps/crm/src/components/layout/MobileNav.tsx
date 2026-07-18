@@ -1,11 +1,9 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
 import { getMoreSheetGroups } from './nav-data';
-import { drawNavBar, getItemCenterX, BAR_WIDTH } from './mobile-nav-canvas';
-import { useBubbleAnimation, BUBBLE_SIZE } from './use-bubble-animation';
 import { Search, MessageCircle } from 'lucide-react';
 import { CommandDialog, CommandInput, CommandList, CommandEmpty } from '@/components/ui/command';
 
@@ -21,8 +19,6 @@ const PRIMARY_ITEMS = [
   { id: 'analytics', route: '/analytics', label: 'Analytics', icon: 'ph-chart-line-up' },
   { id: 'entregas', route: '/entregas', label: 'Entregas', icon: 'ph-kanban' },
 ];
-
-const DPR = typeof window !== 'undefined' ? window.devicePixelRatio || 2 : 2;
 
 function getActiveIndex(pathname: string): number {
   const idx = PRIMARY_ITEMS.findIndex((item) => pathname.startsWith(item.route));
@@ -41,56 +37,11 @@ export default function MobileNav() {
   );
   const [searchOpen, setSearchOpen] = useState(false);
 
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const bubbleRef = useRef<HTMLDivElement>(null);
-  const activeIndexRef = useRef(-1);
-
-  const fillColor = isDark ? '#1a1e26' : '#ffffff';
-  const itemCount = PRIMARY_ITEMS.length + 1; // 4 items + More
-
-  const { animate, initBubble, animatingRef } = useBubbleAnimation({
-    canvasRef,
-    bubbleRef,
-    fillColor,
-    itemCount,
-  });
-
   const activeIndex = getActiveIndex(location.pathname);
-
-  useEffect(() => {
-    if (activeIndex >= 0) {
-      if (activeIndexRef.current === -1) {
-        initBubble(activeIndex);
-      } else if (activeIndexRef.current !== activeIndex && !animatingRef.current) {
-        animate(activeIndexRef.current, activeIndex, () => {});
-      }
-      activeIndexRef.current = activeIndex;
-    } else {
-      if (bubbleRef.current) {
-        bubbleRef.current.style.opacity = '0';
-      }
-      if (canvasRef.current) {
-        drawNavBar(canvasRef.current, fillColor, -100, 0);
-      }
-      activeIndexRef.current = -1;
-    }
-  }, [activeIndex, animate, initBubble, animatingRef, fillColor]);
-
-  useEffect(() => {
-    if (activeIndex >= 0 && canvasRef.current) {
-      const cx = getItemCenterX(activeIndex, itemCount);
-      drawNavBar(canvasRef.current, fillColor, cx, 1);
-    }
-  }, [isDark]);
 
   const go = (route: string) => {
     navigate(route);
     setMoreOpen(false);
-  };
-
-  const handleNavClick = (index: number) => {
-    if (animatingRef.current) return;
-    go(PRIMARY_ITEMS[index].route);
   };
 
   const toggleTheme = () => {
@@ -110,51 +61,45 @@ export default function MobileNav() {
         .toUpperCase()
     : 'U';
 
-  const activeItem = activeIndex >= 0 ? PRIMARY_ITEMS[activeIndex] : null;
   const moreSheetGroups = getMoreSheetGroups(role, features as Record<string, boolean> | null);
 
   return (
     <>
-      <nav className="mobile-nav-bubble" id="mobile-nav">
-        <div className="mobile-nav-wrap">
-          <canvas
-            ref={canvasRef}
-            className="mobile-nav-canvas"
-            width={BAR_WIDTH * DPR}
-            height={120 * DPR}
-          />
-
-          <div ref={bubbleRef} className="mobile-nav-bubble-circle">
-            {activeItem && <i className={`ph-fill ${activeItem.icon}`} />}
-          </div>
-
-          <div className="mobile-nav-items">
-            {PRIMARY_ITEMS.map((item, i) => (
+      <nav className="mobile-nav-glass" id="mobile-nav" aria-label="Navegação principal">
+        <div className="mobile-nav-items">
+          {PRIMARY_ITEMS.map((item, index) => {
+            const active = activeIndex === index;
+            return (
               <button
                 key={item.id}
-                className={`mobile-nav-item${activeIndex === i ? ' active' : ''}`}
-                onClick={() => handleNavClick(i)}
+                className={`mobile-nav-item${active ? ' active' : ''}`}
+                onClick={() => go(item.route)}
                 type="button"
+                aria-current={active ? 'page' : undefined}
+                aria-label={item.label}
               >
-                <div className="icon-wrap">
-                  <i className={`${activeIndex === i ? 'ph-fill' : 'ph'} ${item.icon}`} />
-                </div>
+                <span className="mobile-nav-item__icon" aria-hidden="true">
+                  <i className={`${active ? 'ph-fill' : 'ph'} ${item.icon}`} />
+                </span>
                 <span className="nav-label">{item.label}</span>
               </button>
-            ))}
+            );
+          })}
 
-            <button
-              id="mobile-more-btn"
-              className="mobile-nav-item"
-              onClick={() => setMoreOpen((v) => !v)}
-              type="button"
-            >
-              <div className="icon-wrap">
-                <i className="ph ph-dots-three" />
-              </div>
-              <span className="nav-label">Mais</span>
-            </button>
-          </div>
+          <button
+            id="mobile-more-btn"
+            className={`mobile-nav-item${moreOpen ? ' active' : ''}`}
+            onClick={() => setMoreOpen((value) => !value)}
+            type="button"
+            aria-label="Mais"
+            aria-expanded={moreOpen}
+            aria-controls="mobile-more-sheet"
+          >
+            <span className="mobile-nav-item__icon" aria-hidden="true">
+              <i className="ph ph-dots-three" />
+            </span>
+            <span className="nav-label">Mais</span>
+          </button>
         </div>
       </nav>
 
@@ -163,7 +108,11 @@ export default function MobileNav() {
         className={`mobile-more-overlay${moreOpen ? ' visible' : ''}`}
         onClick={() => setMoreOpen(false)}
       >
-        <div className="mobile-more-sheet" onClick={(e) => e.stopPropagation()}>
+        <div
+          id="mobile-more-sheet"
+          className="mobile-more-sheet"
+          onClick={(e) => e.stopPropagation()}
+        >
           {/* Profile */}
           <div className="mobile-more-profile" id="mobile-profile">
             <div className="avatar" id="mobile-avatar">

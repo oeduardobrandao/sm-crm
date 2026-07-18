@@ -2248,8 +2248,8 @@ select.form-input option {
   color: var(--danger);
 }
 
-/* ===== MOBILE NAV — BUBBLE STYLE ===== */
-.mobile-nav-bubble {
+/* ===== MOBILE NAV — GLASS STYLE ===== */
+.mobile-nav-glass {
   display: none;
 }
 
@@ -2278,143 +2278,6 @@ select.form-input option {
   /* Hide desktop sidebar completely on mobile */
   .sidebar {
     display: none !important;
-  }
-
-  .mobile-nav-bubble {
-    display: block;
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    z-index: 1000;
-    height: 120px;
-    pointer-events: none;
-  }
-
-  .mobile-nav-wrap {
-    position: relative;
-    width: 100%;
-    height: 100%;
-    pointer-events: auto;
-  }
-
-  .mobile-nav-canvas {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    height: 120px;
-    filter: drop-shadow(0 -2px 8px rgba(0, 0, 0, 0.08));
-  }
-
-  [data-theme='dark'] .mobile-nav-canvas {
-    filter: drop-shadow(0 -2px 8px rgba(0, 0, 0, 0.25));
-  }
-
-  /* Floating bubble circle */
-  .mobile-nav-bubble-circle {
-    position: absolute;
-    width: 52px;
-    height: 52px;
-    border-radius: 50%;
-    background: #12151a;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 10;
-    pointer-events: none;
-  }
-
-  [data-theme='dark'] .mobile-nav-bubble-circle {
-    background: #1e2430;
-  }
-
-  .mobile-nav-bubble-circle i {
-    font-size: 1.35rem;
-    color: #ffffff;
-  }
-
-  [data-theme='dark'] .mobile-nav-bubble-circle i {
-    color: #e8eaf0;
-  }
-
-  /* Nav items row */
-  .mobile-nav-items {
-    position: absolute;
-    bottom: env(safe-area-inset-bottom, 0);
-    left: 0;
-    right: 0;
-    height: 68px;
-    display: flex;
-    align-items: center;
-    justify-content: space-around;
-    z-index: 5;
-    padding: 0 0.25rem;
-  }
-
-  .mobile-nav-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 3px;
-    background: none;
-    border: none;
-    cursor: pointer;
-    user-select: none;
-    -webkit-tap-highlight-color: transparent;
-    width: 64px;
-    padding: 0;
-    font-family: var(--font-main);
-  }
-
-  .mobile-nav-item .icon-wrap {
-    width: 24px;
-    height: 24px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: opacity 0.25s ease;
-  }
-
-  .mobile-nav-item.active .icon-wrap {
-    opacity: 0;
-    visibility: hidden;
-    transition: none;
-  }
-
-  .mobile-nav-item i {
-    font-size: 1.35rem;
-    color: #b0b5be;
-    transition: color 0.25s ease;
-  }
-
-  [data-theme='dark'] .mobile-nav-item i {
-    color: #7a8194;
-  }
-
-  .mobile-nav-item .nav-label {
-    font-size: 0.6rem;
-    font-weight: 600;
-    letter-spacing: 0.2px;
-    color: #b0b5be;
-    transition: color 0.25s ease;
-  }
-
-  [data-theme='dark'] .mobile-nav-item .nav-label {
-    color: #7a8194;
-  }
-
-  .mobile-nav-item.active .nav-label {
-    color: #12151a;
-    font-weight: 700;
-  }
-
-  [data-theme='dark'] .mobile-nav-item.active .nav-label {
-    color: #e8eaf0;
-  }
-
-  .mobile-nav-item:not(.active):active .icon-wrap {
-    transform: scale(0.9);
   }
 
   /* ===== MORE SHEET ===== */
@@ -2947,6 +2810,113 @@ select.form-input option {
   [data-tooltip]::before,
   [data-tooltip]::after {
     display: none !important;
+  }
+}
+
+@media (max-width: 767px) {
+  .mobile-nav-glass {
+    position: fixed;
+    z-index: 1000;
+    left: max(12px, env(safe-area-inset-left));
+    right: max(12px, env(safe-area-inset-right));
+    bottom: max(10px, env(safe-area-inset-bottom));
+    display: block;
+    min-height: 72px;
+    padding: 6px;
+    border: 1px solid color-mix(in srgb, var(--border-color) 76%, white 24%);
+    border-radius: 26px;
+    background: var(--surface-main);
+    background: color-mix(in srgb, var(--surface-main) 82%, transparent);
+    box-shadow: 0 -4px 24px rgba(15, 23, 42, 0.12);
+    -webkit-backdrop-filter: blur(22px) saturate(145%);
+    backdrop-filter: blur(22px) saturate(145%);
+  }
+
+  @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+    .mobile-nav-glass {
+      background: var(--surface-main);
+    }
+  }
+
+  .mobile-nav-items {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    align-items: stretch;
+    min-height: 58px;
+  }
+
+  .mobile-nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    min-height: 58px;
+    padding: 4px 2px;
+    gap: 3px;
+    border: none;
+    background: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-family: var(--font-main);
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-nav-item__icon {
+    display: grid;
+    width: 36px;
+    height: 30px;
+    place-items: center;
+    border-radius: 999px;
+    transition: background-color 160ms ease, color 160ms ease, transform 160ms ease;
+  }
+
+  .mobile-nav-item__icon i {
+    font-size: 1.35rem;
+  }
+
+  .mobile-nav-item.active .mobile-nav-item__icon {
+    color: var(--text-main);
+    background: color-mix(in srgb, var(--primary-color) 24%, transparent);
+  }
+
+  .mobile-nav-item.active .icon-wrap,
+  .mobile-nav-item.active .mobile-nav-item__icon {
+    opacity: 1;
+    visibility: visible;
+  }
+
+  .mobile-nav-item .nav-label {
+    max-width: 100%;
+    overflow: hidden;
+    color: var(--text-muted);
+    font-size: 0.64rem;
+    font-weight: 600;
+    line-height: 1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-nav-item.active .nav-label {
+    color: var(--text-main);
+    font-weight: 750;
+  }
+
+  .main-content {
+    padding-bottom: calc(104px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .mobile-more-sheet {
+    bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-nav-item__icon,
+  .mobile-more-sheet,
+  .mobile-more-overlay {
+    transition: none;
   }
 }
 
@@ -7057,7 +7027,7 @@ body.role-agent input[name='valor_total'] {
     display: flex !important; /* override the <900px display:none */
   }
 
-  .mobile-nav-bubble {
+  .mobile-nav-glass {
     display: none !important;
   }
 
