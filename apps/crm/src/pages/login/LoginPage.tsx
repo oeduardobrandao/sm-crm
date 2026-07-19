@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PasswordInput } from '@/components/ui/password-input';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { Sparkles, ChevronRight, Images, Film, Camera } from 'lucide-react';
@@ -39,6 +40,7 @@ export default function LoginPage() {
   const [regTelefone, setRegTelefone] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [regConfirm, setRegConfirm] = useState('');
+  const [regMarketingOptIn, setRegMarketingOptIn] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [registerSuccess, setRegisterSuccess] = useState(false);
 
@@ -70,6 +72,7 @@ export default function LoginPage() {
       nome: regNome,
       empresa: regEmpresa,
       telefone: regTelefone,
+      marketing_opt_in: regMarketingOptIn,
     });
     setLoading(false);
     if (error) {
@@ -83,6 +86,7 @@ export default function LoginPage() {
       setRegTelefone('');
       setRegPassword('');
       setRegConfirm('');
+      setRegMarketingOptIn(false);
     }
   };
 
@@ -279,6 +283,25 @@ export default function LoginPage() {
                     onChange={(e) => setRegConfirm(e.target.value)}
                     required
                   />
+                </div>
+                <div className="flex items-start gap-2">
+                  <Checkbox
+                    id="reg-marketing-opt-in"
+                    checked={regMarketingOptIn}
+                    onCheckedChange={(checked) => setRegMarketingOptIn(checked === true)}
+                    className="mt-0.5"
+                  />
+                  <Label
+                    htmlFor="reg-marketing-opt-in"
+                    style={{
+                      fontWeight: 400,
+                      lineHeight: 1.35,
+                      color: 'var(--text-muted)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {t('register.marketingOptIn')}
+                  </Label>
                 </div>
                 <Button type="submit" disabled={loading} className="btn-primary auth-submit w-full">
                   {loading && <Spinner size="sm" />}

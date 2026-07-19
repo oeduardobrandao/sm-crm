@@ -190,6 +190,7 @@ describe('LoginPage', () => {
     fireEvent.change(screen.getByLabelText('Confirmar Senha'), {
       target: { value: 'senha-123' },
     });
+    fireEvent.click(screen.getByRole('checkbox'));
 
     fireEvent.submit(screen.getByLabelText('Nome Completo').closest('form')!);
 
@@ -198,6 +199,7 @@ describe('LoginPage', () => {
         nome: 'Ana Souza',
         empresa: 'Mesaas',
         telefone: '(11) 99999-9999',
+        marketing_opt_in: true,
       });
     });
     expect(screen.getByText('Verifique seu e-mail')).toBeInTheDocument();

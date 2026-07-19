@@ -237,6 +237,7 @@ describe('supabase helpers', () => {
       nome: 'Ana',
       empresa: 'Mesaas',
       telefone: '(11) 99999-9999',
+      marketing_opt_in: true,
     });
     await module.resetPassword('ana@mesaas.com');
     await module.signOut();
@@ -249,7 +250,12 @@ describe('supabase helpers', () => {
       email: 'ana@mesaas.com',
       password: 'segredo',
       options: {
-        data: { nome: 'Ana', empresa: 'Mesaas', telefone: '(11) 99999-9999' },
+        data: {
+          nome: 'Ana',
+          empresa: 'Mesaas',
+          telefone: '(11) 99999-9999',
+          marketing_opt_in: true,
+        },
         emailRedirectTo: `${window.location.origin}/login`,
       },
     });

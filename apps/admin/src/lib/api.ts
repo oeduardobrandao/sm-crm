@@ -12,7 +12,7 @@ export interface WorkspaceSummary {
   created_at: string;
   /** Newest audited action in the workspace; null when nothing has ever been logged. */
   last_activity_at: string | null;
-  owner: { name: string; email: string } | null;
+  owner: { name: string; email: string; telefone: string | null; marketing_opt_in: boolean } | null;
   member_count: number;
   client_count: number;
   plan_name: string | null;
@@ -46,6 +46,8 @@ export interface MemberInfo {
   user_id: string;
   name: string;
   email: string;
+  telefone: string | null;
+  marketing_opt_in: boolean;
   role: string;
   joined_at: string;
 }
