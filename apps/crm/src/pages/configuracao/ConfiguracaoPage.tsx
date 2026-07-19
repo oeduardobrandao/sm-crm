@@ -130,9 +130,7 @@ export default function ConfiguracaoPage() {
       setPEmpresa((profile as unknown as Record<string, string>).empresa ?? '');
       setPTelefone((profile as unknown as Record<string, string>).telefone ?? '');
       setPWhatsapp((profile as unknown as Record<string, string>).whatsapp ?? '');
-      setPMarketingOptIn(
-        (profile as unknown as Record<string, unknown>).marketing_opt_in === true,
-      );
+      setPMarketingOptIn((profile as unknown as Record<string, unknown>).marketing_opt_in === true);
     }
   }, [profile]);
 
