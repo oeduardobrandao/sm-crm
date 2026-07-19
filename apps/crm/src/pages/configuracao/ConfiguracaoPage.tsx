@@ -121,6 +121,7 @@ export default function ConfiguracaoPage() {
   const [pEmpresa, setPEmpresa] = useState('');
   const [pTelefone, setPTelefone] = useState('');
   const [pWhatsapp, setPWhatsapp] = useState('');
+  const [pMarketingOptIn, setPMarketingOptIn] = useState(false);
   const [profileLoading, setProfileLoading] = useState(false);
 
   useEffect(() => {
@@ -129,6 +130,9 @@ export default function ConfiguracaoPage() {
       setPEmpresa((profile as unknown as Record<string, string>).empresa ?? '');
       setPTelefone((profile as unknown as Record<string, string>).telefone ?? '');
       setPWhatsapp((profile as unknown as Record<string, string>).whatsapp ?? '');
+      setPMarketingOptIn(
+        (profile as unknown as Record<string, unknown>).marketing_opt_in === true,
+      );
     }
   }, [profile]);
 
@@ -141,7 +145,13 @@ export default function ConfiguracaoPage() {
     try {
       const { error } = await supabase
         .from('profiles')
-        .update({ nome: pNome, empresa: pEmpresa, telefone: pTelefone, whatsapp: pWhatsapp })
+        .update({
+          nome: pNome,
+          empresa: pEmpresa,
+          telefone: pTelefone,
+          whatsapp: pWhatsapp,
+          marketing_opt_in: pMarketingOptIn,
+        })
         .eq('id', user!.id);
       if (error) throw error;
       await refetchProfile();
@@ -584,6 +594,21 @@ export default function ConfiguracaoPage() {
             <div className="space-y-1">
               <Label>WhatsApp</Label>
               <Input value={pWhatsapp} onChange={(e) => setPWhatsapp(e.target.value)} />
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <Switch
+              id="marketing-opt-in"
+              checked={pMarketingOptIn}
+              onCheckedChange={setPMarketingOptIn}
+            />
+            <div>
+              <div style={{ fontWeight: 500 }}>Comunicações de marketing</div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                {pMarketingOptIn
+                  ? 'Você receberá novidades e comunicações de marketing por SMS e WhatsApp.'
+                  : 'Você não receberá comunicações de marketing. Mensagens sobre sua conta continuam sendo enviadas.'}
+              </div>
             </div>
           </div>
           <Button onClick={handleProfileSave} disabled={profileLoading}>
