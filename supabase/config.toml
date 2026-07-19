@@ -88,6 +88,9 @@ verify_jwt = false
 [functions.file-manage]
 verify_jwt = false
 
+[functions.workspace-created-notify]
+verify_jwt = false
+
 [functions.file-upload-finalize]
 verify_jwt = false
 

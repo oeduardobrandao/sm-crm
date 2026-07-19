@@ -1,5 +1,54 @@
 import { escapeHtml } from "./report-template/escape.ts";
 
+export interface WorkspaceCreatedDetail {
+  workspaceName: string;
+  ownerEmail: string;
+  contaId: string;
+  createdAt: string;
+}
+
+/**
+ * Send a "new workspace created" alert via Resend. Env is read lazily so
+ * tests can set it after import. Returns silently if Resend isn't
+ * configured. Never throws on a Resend error — logs generically.
+ */
+export async function sendWorkspaceCreatedEmail(
+  detail: WorkspaceCreatedDetail,
+): Promise<void> {
+  const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
+  const ALERT_EMAIL = Deno.env.get("ALERT_EMAIL");
+  if (!RESEND_API_KEY || !ALERT_EMAIL) return;
+
+  const html = [
+    `<p>Um novo workspace foi criado no Mesaas.</p>`,
+    `<p><strong>Nome:</strong> ${escapeHtml(detail.workspaceName)}<br>`,
+    `<strong>Dono:</strong> ${escapeHtml(detail.ownerEmail)}<br>`,
+    `<strong>Workspace ID:</strong> ${escapeHtml(detail.contaId)}<br>`,
+    `<strong>Criado em:</strong> ${escapeHtml(detail.createdAt)}</p>`,
+  ].join("");
+
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: "Mesaas Alerts <alertas@mesaas.com.br>",
+        to: [ALERT_EMAIL],
+        subject: `[Mesaas] Novo workspace criado — ${detail.workspaceName}`,
+        html,
+      }),
+    });
+    if (!res.ok) {
+      console.error(`[notify] Resend error: ${res.status}`);
+    }
+  } catch (_e) {
+    console.error("[notify] Failed to send workspace-created alert email");
+  }
+}
+
 export interface CronFailureDetail {
   total?: number;
   failed?: number;
