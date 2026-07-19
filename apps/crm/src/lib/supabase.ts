@@ -211,7 +211,7 @@ export async function signIn(email: string, password: string) {
 export async function signUp(
   email: string,
   password: string,
-  meta?: { nome?: string; empresa?: string },
+  meta?: { nome?: string; empresa?: string; telefone?: string },
 ) {
   return supabase.auth.signUp({
     email,

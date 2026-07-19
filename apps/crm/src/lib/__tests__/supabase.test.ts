@@ -233,7 +233,11 @@ describe('supabase helpers', () => {
     const { module, auth } = await loadSupabaseModule({ id: 'user-1' });
 
     await module.signIn('ana@mesaas.com', 'segredo');
-    await module.signUp('ana@mesaas.com', 'segredo', { nome: 'Ana', empresa: 'Mesaas' });
+    await module.signUp('ana@mesaas.com', 'segredo', {
+      nome: 'Ana',
+      empresa: 'Mesaas',
+      telefone: '(11) 99999-9999',
+    });
     await module.resetPassword('ana@mesaas.com');
     await module.signOut();
 
@@ -245,7 +249,7 @@ describe('supabase helpers', () => {
       email: 'ana@mesaas.com',
       password: 'segredo',
       options: {
-        data: { nome: 'Ana', empresa: 'Mesaas' },
+        data: { nome: 'Ana', empresa: 'Mesaas', telefone: '(11) 99999-9999' },
         emailRedirectTo: `${window.location.origin}/login`,
       },
     });

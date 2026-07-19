@@ -36,6 +36,7 @@ export default function LoginPage() {
   const [regNome, setRegNome] = useState('');
   const [regEmpresa, setRegEmpresa] = useState('');
   const [regEmail, setRegEmail] = useState('');
+  const [regTelefone, setRegTelefone] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [regConfirm, setRegConfirm] = useState('');
   const [forgotEmail, setForgotEmail] = useState('');
@@ -65,7 +66,11 @@ export default function LoginPage() {
       return;
     }
     setLoading(true);
-    const { error } = await signUp(regEmail, regPassword, { nome: regNome, empresa: regEmpresa });
+    const { error } = await signUp(regEmail, regPassword, {
+      nome: regNome,
+      empresa: regEmpresa,
+      telefone: regTelefone,
+    });
     setLoading(false);
     if (error) {
       toast.error(error.message);
@@ -75,6 +80,7 @@ export default function LoginPage() {
       setRegNome('');
       setRegEmpresa('');
       setRegEmail('');
+      setRegTelefone('');
       setRegPassword('');
       setRegConfirm('');
     }
@@ -233,6 +239,22 @@ export default function LoginPage() {
                     onChange={(e) => setRegEmail(e.target.value)}
                     required
                   />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="reg-telefone">{t('register.phone')}</Label>
+                  <Input
+                    id="reg-telefone"
+                    type="tel"
+                    inputMode="tel"
+                    placeholder={t('register.phonePlaceholder')}
+                    autoComplete="tel"
+                    value={regTelefone}
+                    onChange={(e) => setRegTelefone(e.target.value)}
+                    required
+                  />
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                    {t('register.phoneHint')}
+                  </p>
                 </div>
                 <div className="space-y-1">
                   <Label htmlFor="reg-password">{t('register.password')}</Label>

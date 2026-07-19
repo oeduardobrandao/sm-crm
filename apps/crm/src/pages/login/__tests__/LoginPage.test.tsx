@@ -181,6 +181,9 @@ describe('LoginPage', () => {
     fireEvent.change(screen.getByLabelText('E-mail'), {
       target: { value: 'ana@mesaas.com' },
     });
+    fireEvent.change(screen.getByLabelText('Telefone'), {
+      target: { value: '(11) 99999-9999' },
+    });
     fireEvent.change(screen.getByLabelText('Senha'), {
       target: { value: 'senha-123' },
     });
@@ -194,6 +197,7 @@ describe('LoginPage', () => {
       expect(mockedSignUp).toHaveBeenCalledWith('ana@mesaas.com', 'senha-123', {
         nome: 'Ana Souza',
         empresa: 'Mesaas',
+        telefone: '(11) 99999-9999',
       });
     });
     expect(screen.getByText('Verifique seu e-mail')).toBeInTheDocument();
