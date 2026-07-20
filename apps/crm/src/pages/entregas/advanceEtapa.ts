@@ -1,15 +1,9 @@
 import { toast } from 'sonner';
 import { completeEtapa, completeEtapaWithRearm } from '../../store';
-import type { Workflow, WorkflowEtapa } from '../../store';
+import type { CompleteEtapaWithRearmResult } from '../../store';
 
-export interface AdvanceResult {
-  workflow: Workflow;
-  etapas: WorkflowEtapa[];
-  /** Approved posts were reset to rascunho for the next approval cycle. */
-  rearmed: boolean;
-  /** The etapa advanced but the post reset failed — needs manual remediation. */
-  rearmFailed: boolean;
-}
+/** Same shape the store returns — re-exported so callers need one import. */
+export type AdvanceResult = CompleteEtapaWithRearmResult;
 
 /**
  * Complete an etapa on an advance path, re-arming the next approval cycle by default.

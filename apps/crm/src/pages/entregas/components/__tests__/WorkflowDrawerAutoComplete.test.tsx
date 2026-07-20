@@ -39,7 +39,6 @@ const store = vi.hoisted(() => ({
   getDesignForPost: vi.fn().mockResolvedValue(null),
 }));
 vi.mock('../../../../store', () => store);
-vi.mock('@/store', () => store);
 
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
@@ -105,17 +104,23 @@ const card = {
   allEtapas: [approvalEtapa],
 } as unknown as BoardCard;
 
-function makePost(id: number, status: string) {
-  return { id, workflow_id: 1, titulo: `Post ${id}`, ordem: id, status, tipo: 'feed' };
+function makePost(id: number, status: string, titulo = `Post ${id}`) {
+  return { id, workflow_id: 1, titulo, ordem: id, status, tipo: 'feed' };
 }
 
 /**
- * The effect compares the previous rendered snapshot against the next one, so the first
- * snapshot must be committed to the DOM before we invalidate — waiting only on the query
- * function having been *called* lets the refetch overwrite it before it ever renders.
+ * The effect compares the previous rendered snapshot against the next one, so BOTH snapshots
+ * have to be observed before asserting on the outcome:
+ *
+ * - waiting only on the query function having been *called* lets the refetch overwrite the
+ *   first snapshot before it ever renders, leaving the effect with `prev === null`;
+ * - asserting "did not fire" after a fixed sleep passes trivially if the refetch never landed,
+ *   which is precisely the failure mode of the dead code this effect replaced.
+ *
+ * So every snapshot carries a DOM-visible marker title and we wait for it to render.
  */
-async function waitForRenderedPosts(count: number) {
-  await screen.findByText(`Post ${count}`);
+async function waitForSnapshot(marker: string) {
+  await screen.findByText(marker);
 }
 
 function renderDrawer(onRefresh = vi.fn()) {
@@ -145,14 +150,21 @@ describe('WorkflowDrawer approval auto-complete', () => {
 
   it('completes the active approval etapa via the re-arming path when the last awaiting post is approved', async () => {
     store.getWorkflowPostsWithProperties
-      .mockResolvedValueOnce([makePost(1, 'aprovado_cliente'), makePost(2, 'enviado_cliente')])
-      .mockResolvedValue([makePost(1, 'aprovado_cliente'), makePost(2, 'aprovado_cliente')]);
+      .mockResolvedValueOnce([
+        makePost(1, 'aprovado_cliente'),
+        makePost(2, 'enviado_cliente', 'aguardando cliente'),
+      ])
+      .mockResolvedValue([
+        makePost(1, 'aprovado_cliente'),
+        makePost(2, 'aprovado_cliente', 'cliente aprovou'),
+      ]);
 
     const { queryClient, onRefresh } = renderDrawer();
-    await waitForRenderedPosts(2);
+    await waitForSnapshot('aguardando cliente');
     expect(store.completeEtapaWithRearm).not.toHaveBeenCalled();
 
     await queryClient.invalidateQueries({ queryKey: ['workflow-posts-with-props', 1] });
+    await waitForSnapshot('cliente aprovou');
 
     await waitFor(() => expect(store.completeEtapaWithRearm).toHaveBeenCalledWith(1, 11));
     const { toast } = await import('sonner');
@@ -167,29 +179,45 @@ describe('WorkflowDrawer approval auto-complete', () => {
   });
 
   it('does not fire on open when the cycle was already approved before the drawer opened', async () => {
-    store.getWorkflowPostsWithProperties.mockResolvedValue([
-      makePost(1, 'aprovado_cliente'),
-      makePost(2, 'aprovado_cliente'),
-    ]);
+    // Both snapshots are fully approved — only the marker title differs, so we can prove the
+    // second one really rendered before asserting that nothing fired.
+    store.getWorkflowPostsWithProperties
+      .mockResolvedValueOnce([
+        makePost(1, 'aprovado_cliente'),
+        makePost(2, 'aprovado_cliente', 'ja aprovado'),
+      ])
+      .mockResolvedValue([
+        makePost(1, 'aprovado_cliente'),
+        makePost(2, 'aprovado_cliente', 'ainda aprovado'),
+      ]);
 
     const { queryClient } = renderDrawer();
-    await waitForRenderedPosts(2);
+    await waitForSnapshot('ja aprovado');
     await queryClient.invalidateQueries({ queryKey: ['workflow-posts-with-props', 1] });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await waitForSnapshot('ainda aprovado');
+    expect(store.getWorkflowPostsWithProperties).toHaveBeenCalledTimes(2);
     expect(store.completeEtapaWithRearm).not.toHaveBeenCalled();
   });
 
   it('does not fire while a post is still awaiting the client', async () => {
+    // Post 1 gets approved, post 2 is still with the client → the cycle is not done.
     store.getWorkflowPostsWithProperties
-      .mockResolvedValueOnce([makePost(1, 'enviado_cliente'), makePost(2, 'enviado_cliente')])
-      .mockResolvedValue([makePost(1, 'aprovado_cliente'), makePost(2, 'enviado_cliente')]);
+      .mockResolvedValueOnce([
+        makePost(1, 'enviado_cliente', 'ambos pendentes'),
+        makePost(2, 'enviado_cliente'),
+      ])
+      .mockResolvedValue([
+        makePost(1, 'aprovado_cliente', 'um aprovado'),
+        makePost(2, 'enviado_cliente'),
+      ]);
 
     const { queryClient } = renderDrawer();
-    await waitForRenderedPosts(2);
+    await waitForSnapshot('ambos pendentes');
     await queryClient.invalidateQueries({ queryKey: ['workflow-posts-with-props', 1] });
 
-    await new Promise((r) => setTimeout(r, 50));
+    await waitForSnapshot('um aprovado');
+    expect(store.getWorkflowPostsWithProperties).toHaveBeenCalledTimes(2);
     expect(store.completeEtapaWithRearm).not.toHaveBeenCalled();
   });
 
@@ -201,12 +229,13 @@ describe('WorkflowDrawer approval auto-complete', () => {
       rearmFailed: true,
     });
     store.getWorkflowPostsWithProperties
-      .mockResolvedValueOnce([makePost(1, 'correcao_cliente')])
-      .mockResolvedValue([makePost(1, 'aprovado_cliente')]);
+      .mockResolvedValueOnce([makePost(1, 'correcao_cliente', 'correcao pedida')])
+      .mockResolvedValue([makePost(1, 'aprovado_cliente', 'correcao aceita')]);
 
     const { queryClient, onRefresh } = renderDrawer();
-    await waitForRenderedPosts(1);
+    await waitForSnapshot('correcao pedida');
     await queryClient.invalidateQueries({ queryKey: ['workflow-posts-with-props', 1] });
+    await waitForSnapshot('correcao aceita');
 
     const { toast } = await import('sonner');
     await waitFor(() =>

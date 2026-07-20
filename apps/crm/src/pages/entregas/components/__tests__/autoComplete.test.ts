@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { shouldAutoCompleteApproval } from '../autoComplete';
 import type { WorkflowPost } from '../../../../store';
 
-function post(status: string, id = Math.floor(Math.random() * 1e6)): WorkflowPost {
+function post(status: string, id: number): WorkflowPost {
   return { id, workflow_id: 1, titulo: `Post ${id}`, status, ordem: 0 } as unknown as WorkflowPost;
 }
 

@@ -347,6 +347,15 @@ export function hasLaterApprovalEtapa(etapas: WorkflowEtapa[], etapaId: number):
   return etapas.some((e) => e.tipo === 'aprovacao_cliente' && e.ordem > current.ordem);
 }
 
+export interface CompleteEtapaWithRearmResult {
+  workflow: Workflow;
+  etapas: WorkflowEtapa[];
+  /** Approved posts were reset to rascunho for the next approval cycle. */
+  rearmed: boolean;
+  /** The etapa advanced but the post reset failed — needs manual remediation. */
+  rearmFailed: boolean;
+}
+
 /**
  * completeEtapa + approval-cycle re-arm: when the completed etapa is an aprovacao_cliente
  * and another approval etapa lies ahead, approved posts are reset to rascunho so the next
@@ -356,12 +365,7 @@ export function hasLaterApprovalEtapa(etapas: WorkflowEtapa[], etapaId: number):
 export async function completeEtapaWithRearm(
   workflowId: number,
   etapaId: number,
-): Promise<{
-  workflow: Workflow;
-  etapas: WorkflowEtapa[];
-  rearmed: boolean;
-  rearmFailed: boolean;
-}> {
+): Promise<CompleteEtapaWithRearmResult> {
   const before = await getWorkflowEtapas(workflowId);
   const current = before.find((e) => e.id === etapaId);
   const rearm = current?.tipo === 'aprovacao_cliente' && hasLaterApprovalEtapa(before, etapaId);
