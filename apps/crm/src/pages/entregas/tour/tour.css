@@ -1,0 +1,28 @@
+.driver-popover {
+  background: #12151a;
+  color: #e8eaf0;
+  border-radius: 10px;
+}
+.driver-popover-title {
+  color: #fff;
+  font-family: var(--font-main);
+}
+.driver-popover-description {
+  color: #cbd5e1;
+  font-size: 0.82rem;
+}
+.driver-popover-progress-text {
+  color: #eab308;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+.driver-popover-next-btn,
+.driver-popover-done-btn {
+  background: #eab308 !important;
+  color: #12151a !important;
+  border: none !important;
+  font-weight: 700;
+}
+.driver-popover-arrow {
+  border-color: #12151a;
+}
