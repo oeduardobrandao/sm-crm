@@ -51,6 +51,7 @@ function makePlan(overrides: Partial<Plan> = {}): Plan {
     feature_mcp: false,
     feature_estudio: false,
     feature_ai_images: false,
+    feature_tiktok: false,
     rate_instagram_syncs_per_day: 15,
     rate_ai_analyses_per_month: 15,
     rate_report_generations_per_month: 15,

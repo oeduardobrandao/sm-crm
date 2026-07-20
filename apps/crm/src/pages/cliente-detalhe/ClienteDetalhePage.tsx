@@ -133,6 +133,8 @@ import { useTranslation } from 'react-i18next';
 import { renderInstagramOverviewCard } from '../../components/instagram/InstagramOverviewCard';
 import { renderInstagramFollowerChart } from '../../components/instagram/InstagramFollowerChart';
 import { renderInstagramConnectButton } from '../../components/instagram/InstagramConnectButton';
+import { TikTokSection } from './TikTokSection';
+import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
 import { LatestInstagramPosts } from '../../components/instagram/LatestInstagramPosts';
 import { supabase } from '@/lib/supabase';
 
@@ -219,6 +221,7 @@ export default function ClienteDetalhePage() {
   const isAgent = role === 'agent';
   const { t, i18n } = useTranslation('clients');
   const { t: tc } = useTranslation();
+  const { features } = useWorkspaceLimits();
   const dateLocale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
   const [editOpen, setEditOpen] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
@@ -276,6 +279,9 @@ export default function ClienteDetalhePage() {
     const params = new URLSearchParams(window.location.search);
     if (params.get('ig_error') === 'no_business_account') {
       toast.error(t('detail.igNotBusiness'));
+    }
+    if (params.get('tt_error') === '1') {
+      toast.error(t('detail.ttError'));
     }
   }, [t]);
 
@@ -967,6 +973,7 @@ export default function ClienteDetalhePage() {
     hubToken: hubTokenData ?? null,
     workspaceSlug: workspaceSlug ?? undefined,
     contaId: cliente.conta_id ?? null,
+    featureTiktok: !!features?.feature_tiktok,
     now: Date.now(),
     handlers: {
       onConnectInstagram: async () => {
@@ -1457,6 +1464,9 @@ export default function ClienteDetalhePage() {
         refetchIg={refetchIg}
         onNavigateAnalytics={() => navigate(`/analytics/${clienteId}`)}
       />
+
+      {/* TikTok Section — dark behind feature_tiktok; keyed so it fully remounts on client change */}
+      <TikTokSection key={`tt-${clienteId}`} clienteId={clienteId} />
 
       {/* Relatório Mensal Settings */}
       {!isAgent && cliente && (

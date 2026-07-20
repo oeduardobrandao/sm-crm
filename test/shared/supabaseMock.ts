@@ -116,6 +116,11 @@ class QueryBuilder {
     return this;
   }
 
+  or(...args: unknown[]) {
+    this.modifiers.push({ method: 'or', args });
+    return this;
+  }
+
   is(...args: unknown[]) {
     this.modifiers.push({ method: 'is', args });
     return this;
@@ -128,6 +133,11 @@ class QueryBuilder {
 
   limit(...args: unknown[]) {
     this.modifiers.push({ method: 'limit', args });
+    return this;
+  }
+
+  range(...args: unknown[]) {
+    this.modifiers.push({ method: 'range', args });
     return this;
   }
 
