@@ -14,6 +14,7 @@ import {
   createMissingStorySegmentContainers,
   publishReadyStorySegments,
   checkDesignReadiness,
+  selectStoryMediaId,
 } from "../_shared/instagram-publish-utils.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -159,17 +160,44 @@ async function processPublish(
       console.log(`[IG-PUBLISH] Story post ${post.post_id} partially published, will continue next cycle`);
       return;
     }
-    const firstMediaId = segments[0]?.media_id ?? null;
-    await db.from("workflow_posts").update({
-      instagram_media_id: firstMediaId,
-      status: "postado",
-      published_at: new Date().toISOString(),
-      publish_processing_at: null,
-      publish_error: null,
-      publish_retry_count: 0,
-    }).eq("id", post.post_id);
+    const firstMediaId = selectStoryMediaId(segments);
+    if (firstMediaId === null) {
+      // Impossible under allDone semantics (every segment carries a media_id) — defensive
+      // fallback so the card is never stranded in 'agendado' if it somehow happens.
+      console.error(
+        `[IG-PUBLISH] Story post ${post.post_id}: allDone=true but no segment carried a media_id.`,
+      );
+      const { error: fallbackErr } = await db.from("workflow_posts").update({
+        instagram_media_id: null,
+        status: "postado",
+        published_at: new Date().toISOString(),
+        publish_processing_at: null,
+        publish_error: null,
+        publish_retry_count: 0,
+      }).eq("id", post.post_id);
+      if (fallbackErr) {
+        const msg = (fallbackErr as { message?: string })?.message ?? String(fallbackErr);
+        throw new Error(`Failed to mark story post ${post.post_id} postado (fallback): ${msg}`);
+      }
+      console.log(`[IG-PUBLISH] Published story post ${post.post_id} (${segments.length} segments) [fallback path]`);
+      return;
+    }
+    const { error: markErr } = await db.rpc("mark_platform_published", {
+      p_post_id: post.post_id,
+      p_platform: "instagram",
+      p_source: "system",
+      p_actor: null,
+      p_fields: {
+        instagram_media_id: firstMediaId,
+        published_at: new Date().toISOString(),
+      },
+    });
+    if (markErr) {
+      const msg = (markErr as { message?: string })?.message ?? String(markErr);
+      throw new Error(`mark_platform_published failed for post ${post.post_id}: ${msg}`);
+    }
     console.log(`[IG-PUBLISH] Published story post ${post.post_id} (${segments.length} segments)`);
-    const permalink = firstMediaId ? await fetchPermalink(firstMediaId, token) : null;
+    const permalink = await fetchPermalink(firstMediaId, token);
     if (permalink) {
       await db.from("workflow_posts").update({ instagram_permalink: permalink }).eq("id", post.post_id);
     }
@@ -193,14 +221,20 @@ async function processPublish(
 
   const result = await publishContainer(post.instagram_user_id, token, containerId);
 
-  await db.from("workflow_posts").update({
-    instagram_media_id: result.id,
-    status: "postado",
-    published_at: new Date().toISOString(),
-    publish_processing_at: null,
-    publish_error: null,
-    publish_retry_count: 0,
-  }).eq("id", post.post_id);
+  const { error: markErr } = await db.rpc("mark_platform_published", {
+    p_post_id: post.post_id,
+    p_platform: "instagram",
+    p_source: "system",
+    p_actor: null,
+    p_fields: {
+      instagram_media_id: result.id,
+      published_at: new Date().toISOString(),
+    },
+  });
+  if (markErr) {
+    const msg = (markErr as { message?: string })?.message ?? String(markErr);
+    throw new Error(`mark_platform_published failed for post ${post.post_id}: ${msg}`);
+  }
 
   const lateS = Math.round((Date.now() - new Date(post.scheduled_at).getTime()) / 1000);
   console.log(`[IG-PUBLISH] Published post ${post.post_id}, media_id: ${result.id}, late_s: ${lateS}`);
@@ -230,14 +264,41 @@ async function processRetry(
       token,
     });
     if (allDone) {
-      await db.from("workflow_posts").update({
-        instagram_media_id: segments[0]?.media_id ?? null,
-        status: "postado",
-        published_at: new Date().toISOString(),
-        publish_processing_at: null,
-        publish_error: null,
-        publish_retry_count: 0,
-      }).eq("id", post.post_id);
+      const firstMediaId = selectStoryMediaId(segments);
+      if (firstMediaId === null) {
+        // Impossible under allDone semantics (every segment carries a media_id) — defensive
+        // fallback so the card is never stranded in 'agendado' if it somehow happens.
+        console.error(
+          `[IG-PUBLISH] Story post ${post.post_id}: allDone=true but no segment carried a media_id (retry phase).`,
+        );
+        const { error: fallbackErr } = await db.from("workflow_posts").update({
+          instagram_media_id: null,
+          status: "postado",
+          published_at: new Date().toISOString(),
+          publish_processing_at: null,
+          publish_error: null,
+          publish_retry_count: 0,
+        }).eq("id", post.post_id);
+        if (fallbackErr) {
+          const msg = (fallbackErr as { message?: string })?.message ?? String(fallbackErr);
+          throw new Error(`Failed to mark story post ${post.post_id} postado (retry fallback): ${msg}`);
+        }
+      } else {
+        const { error: markErr } = await db.rpc("mark_platform_published", {
+          p_post_id: post.post_id,
+          p_platform: "instagram",
+          p_source: "system",
+          p_actor: null,
+          p_fields: {
+            instagram_media_id: firstMediaId,
+            published_at: new Date().toISOString(),
+          },
+        });
+        if (markErr) {
+          const msg = (markErr as { message?: string })?.message ?? String(markErr);
+          throw new Error(`mark_platform_published failed for post ${post.post_id}: ${msg}`);
+        }
+      }
     } else {
       await db.from("workflow_posts").update({ status: "agendado", publish_processing_at: null }).eq("id", post.post_id);
     }
