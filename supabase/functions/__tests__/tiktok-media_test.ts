@@ -216,3 +216,50 @@ Deno.test("tiktok-media proxy route: R2 404 maps to a bare 404, never echoing th
   assertEquals(res.status, 404);
   assertEquals(await res.text(), "");
 });
+
+// ── (d) HEAD support — TikTok's verifier and media puller probe with HEAD before GET ──
+
+Deno.test("tiktok-media verify-file route: HEAD returns 200 with headers and an empty body", async () => {
+  const handler = createTikTokMediaHandler(baseDeps({
+    urlVerifyFilename: "tiktokABC123.txt",
+    urlVerifyContent: "tiktok-developers-site-verification=abc123",
+  }));
+
+  const res = await handler(
+    new Request("https://example.test/tiktok-media/tiktokABC123.txt", { method: "HEAD" }),
+  );
+  assertEquals(res.status, 200);
+  assertEquals(res.headers.get("Content-Type"), "text/plain");
+  assertEquals(await res.text(), "");
+});
+
+Deno.test("tiktok-media proxy route: HEAD forwards HEAD to R2 and returns status/headers with no body", async () => {
+  let captured: { url: string; method: string } | null = null;
+  const handler = createTikTokMediaHandler(baseDeps({
+    verifyTikTokMediaToken: () => Promise.resolve("ws/1/video.mp4"),
+    signGetUrl: () => Promise.resolve("https://r2.example/signed"),
+    fetchR2: (url, init) => {
+      captured = { url: String(url), method: (init?.method ?? "GET") as string };
+      return Promise.resolve(
+        new Response(null, { status: 200, headers: { "Content-Type": "video/mp4", "Content-Length": "1234" } }),
+      );
+    },
+  }));
+
+  const res = await handler(
+    new Request("https://example.test/tiktok-media/m/whatever.token", { method: "HEAD" }),
+  );
+  assertEquals(res.status, 200);
+  assertEquals(res.headers.get("Content-Type"), "video/mp4");
+  assertEquals(res.headers.get("Content-Length"), "1234");
+  assertEquals(res.body, null);
+  assertEquals(captured!.method, "HEAD");
+});
+
+Deno.test("tiktok-media: HEAD on an unknown path still 404s; non-GET/HEAD methods 404", async () => {
+  const handler = createTikTokMediaHandler(baseDeps());
+  const head = await handler(new Request("https://example.test/tiktok-media/nope", { method: "HEAD" }));
+  assertEquals(head.status, 404);
+  const post = await handler(new Request("https://example.test/tiktok-media/m/tok", { method: "POST" }));
+  assertEquals(post.status, 404);
+});
