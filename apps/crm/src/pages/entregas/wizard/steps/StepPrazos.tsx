@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/select';
 import type { Cliente, Membro } from '../../../../store';
 import { SortableEtapaList } from '../../components/SortableEtapaList';
-import { countApprovals, dataEntregaAvailability } from '../wizardLogic';
+import { countApprovals } from '../wizardLogic';
 import type { WizardState } from '../NewWorkflowWizard';
 
 type ModoPrazo = WizardState['modoPrazo'];
@@ -38,6 +38,7 @@ export function StepPrazos({
   modoPrazo,
   cliente,
   membros,
+  availability,
   rowErrors,
   error,
 }: {
@@ -47,17 +48,23 @@ export function StepPrazos({
   modoPrazo: ModoPrazo;
   cliente: Cliente | undefined;
   membros: Membro[];
+  /** Computed by the shell, which gates on it — passed down so the two can never disagree. */
+  availability: { enabled: boolean; reason: string | null };
   rowErrors?: Map<string, string>;
   error?: string | null;
 }) {
-  const availability = dataEntregaAvailability(state.etapas, cliente);
   // `countApprovals` counts unnamed rows too, so a blank row whose "Aprovação externa" pill was
   // flipped before it was named would otherwise make a one-approval fluxo look ambiguous. Only
   // named rows reach the database, so only named rows can be the anchor.
   const aprovacoes = countApprovals(state.etapas.filter((e) => e.nome.trim()));
   // `modoPrazo` only ever differs from the stored value via the shell's auto-fallback.
   const ajustado = modoPrazo !== state.modoPrazo;
-  const semDiaEntrega = !cliente?.dia_entrega;
+  // `dataEntregaAvailability` checks the anchor etapa BEFORE the dia de entrega, so the missing
+  // day is only the operative blocker once an approval etapa exists. Branching on the actual
+  // reason keeps the notice, the inline reason and the "Configurar dia de entrega" shortcut from
+  // contradicting each other when both preconditions fail at once.
+  const blocoDiaEntrega = aprovacoes >= 1 && !cliente?.dia_entrega;
+  const mostrarEtapas = modoPrazo === 'data_fixa' || (rowErrors?.size ?? 0) > 0;
 
   const opcoes: { value: ModoPrazo; titulo: string; descricao: string }[] = [
     {
@@ -88,7 +95,7 @@ export function StepPrazos({
 
       {ajustado && (
         <p style={{ fontSize: '0.75rem', color: 'var(--warning)', margin: 0 }}>
-          {semDiaEntrega
+          {blocoDiaEntrega
             ? 'Modo ajustado para Duração por etapa — o cliente não tem dia de entrega configurado.'
             : `Modo ajustado para Duração por etapa — ${availability.reason}`}
         </p>
@@ -164,7 +171,7 @@ export function StepPrazos({
                   }}
                 >
                   {availability.reason}
-                  {semDiaEntrega && cliente && (
+                  {blocoDiaEntrega && cliente && (
                     <>
                       {' '}
                       <Link to={`/clientes/${cliente.id}`} style={{ textDecoration: 'underline' }}>
@@ -211,11 +218,14 @@ export function StepPrazos({
         </>
       )}
 
-      {modoPrazo === 'data_fixa' && (
+      {/* data_fixa needs the per-etapa date inputs; the other modes only pull the list in when a
+          row is broken, so the blocker is shown where it can actually be fixed instead of leaving
+          a dead Continuar button behind. */}
+      {mostrarEtapas && (
         <SortableEtapaList
           etapas={state.etapas}
           setEtapas={(etapas) => patch({ etapas })}
-          modoPrazo="data_fixa"
+          modoPrazo={modoPrazo}
           membros={membros}
           rowErrors={rowErrors}
         />

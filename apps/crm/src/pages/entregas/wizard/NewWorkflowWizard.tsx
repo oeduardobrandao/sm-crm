@@ -151,13 +151,16 @@ export function NewWorkflowWizard(props: {
 
   // Defense in depth for `createWorkflowFromWizard`, which has none of its own: it silently writes
   // null deadlines when asked for data_entrega without a dia de entrega, and happily creates a
-  // fluxo with zero etapas. Step 4 re-runs the etapa validation because its data_fixa mode hands
-  // the user the same editable list step 3 had — blanking every row there must not sneak past.
+  // fluxo with zero etapas. Step 4 re-runs the FULL etapa validation because its data_fixa mode
+  // hands the user the same editable list step 3 had — and every branch that blocks `Continuar`
+  // must produce a message, or the button just dies silently.
   const prazosError =
     etapasIssues.globalError ??
-    (modoEfetivo === 'data_entrega' && !availability.enabled
-      ? availability.reason
-      : validatePrazos(s.etapas, modoEfetivo));
+    (etapasIssues.rowErrors.size > 0
+      ? 'Revise os responsáveis das etapas abaixo antes de continuar.'
+      : modoEfetivo === 'data_entrega' && !availability.enabled
+        ? availability.reason
+        : validatePrazos(s.etapas, modoEfetivo));
 
   // Recomputed every render once the user has tried to leave step 3, so fixes clear their errors.
   const etapasValidation = etapasChecked ? etapasIssues : null;
@@ -202,7 +205,8 @@ export function NewWorkflowWizard(props: {
       setEtapasChecked(false);
     }
     if (s.step === 4) {
-      if (prazosError || etapasIssues.rowErrors.size > 0) {
+      // `prazosError` now covers every step-4 blocker, row errors included.
+      if (prazosError) {
         setPrazosChecked(true);
         return;
       }
@@ -279,6 +283,7 @@ export function NewWorkflowWizard(props: {
             modoPrazo={modoEfetivo}
             cliente={cliente}
             membros={membros}
+            availability={availability}
             rowErrors={prazosChecked ? etapasIssues.rowErrors : undefined}
             error={prazosChecked ? prazosError : null}
           />

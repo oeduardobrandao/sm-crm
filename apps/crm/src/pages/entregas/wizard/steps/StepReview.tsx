@@ -66,14 +66,15 @@ export function StepReview({
       <div>
         <Row label="Cliente" value={cliente?.nome ?? '—'} />
         <Row label="Nome" value={state.nome} />
+        {/* The row's label already says "Etapas", so the value is just the count. */}
         <Row
           label="Etapas"
           value={
             aprovacoes > 0
-              ? `${etapas.length} etapas (${aprovacoes} ${
+              ? `${etapas.length} (${aprovacoes} ${
                   aprovacoes === 1 ? 'aprovação do cliente' : 'aprovações do cliente'
                 })`
-              : `${etapas.length} etapas`
+              : String(etapas.length)
           }
         />
         <Row label="Prazos" value={prazosValor} />
@@ -117,6 +118,13 @@ export function StepReview({
             value={state.templateName}
             onChange={(e) => patch({ templateName: e.target.value })}
           />
+          {/* A blank name makes the creation path skip the template silently, so say so rather
+              than dropping the request without a word. */}
+          {!state.templateName.trim() && (
+            <p role="alert" style={{ fontSize: '0.7rem', color: 'var(--danger)', margin: 0 }}>
+              Dê um nome ao template — sem nome, o fluxo é criado mas o template não é salvo.
+            </p>
+          )}
         </div>
       )}
     </div>

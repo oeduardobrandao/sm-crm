@@ -610,6 +610,44 @@ describe('NewWorkflowWizard — steps 4 & 5', () => {
     expect(screen.queryByText(/revisar/i)).toBeNull(); // did not advance
   });
 
+  it('never leaves Continuar dead when a row error survives leaving data_fixa', () => {
+    // The row-error gate applies in EVERY mode, but the etapa list that shows those errors used
+    // to render only for data_fixa — so this exact sequence produced a Continuar button that did
+    // nothing, forever, with no message.
+    renderWizardAtStep4();
+    fireEvent.click(screen.getByRole('radio', { name: /datas fixas/i }));
+    const responsavelSelects = screen
+      .getAllByDisplayValue('Maria')
+      .filter((el) => el.id !== 'wizard-bulk-responsavel');
+    fireEvent.change(responsavelSelects[0], { target: { value: '__none__' } });
+    fireEvent.click(screen.getByRole('radio', { name: /duração por etapa/i }));
+    expect(screen.queryAllByPlaceholderText('Nome da etapa')).toHaveLength(0); // list is gone
+    fireEvent.click(screen.getByText('Continuar →'));
+    expect(screen.getByText(/revise os responsáveis das etapas/i)).toBeTruthy();
+    // ...and the broken row is pulled back into view so it can be fixed in place.
+    expect(screen.getByText('Selecione um responsável para esta etapa.')).toBeTruthy();
+    expect(screen.queryByText(/revisar/i)).toBeNull(); // did not advance
+  });
+
+  it('names the real blocker when the fluxo has neither an approval etapa nor a dia de entrega', () => {
+    renderWizardRouted();
+    fireEvent.click(screen.getByText('Posts mensais'));
+    fireEvent.change(screen.getByLabelText(/cliente/i), { target: { value: '2' } }); // no dia_entrega
+    fireEvent.click(screen.getByText('Continuar →'));
+    fireEvent.change(screen.getByLabelText(/atribuir todas a/i), { target: { value: '7' } });
+    fireEvent.click(screen.getByRole('button', { name: '✓ Aprovação do cliente' })); // drop the anchor
+    fireEvent.click(screen.getByText('Continuar →'));
+    // The anchor is checked first, so the dia de entrega is not yet the operative blocker.
+    expect(screen.getByText(/modo ajustado .* aprovação do cliente/i)).toBeTruthy();
+    expect(screen.queryByText('Configurar dia de entrega')).toBeNull();
+  });
+
+  it('warns instead of silently skipping the template when the name is cleared', () => {
+    renderWizardThroughReview();
+    fireEvent.change(screen.getByLabelText(/nome do template/i), { target: { value: '  ' } });
+    expect(screen.getByText(/dê um nome ao template/i)).toBeTruthy();
+  });
+
   it('never stores the __auto__ sentinel in wizard state', () => {
     renderWizardAtStep4();
     const select = screen.getByLabelText(/mês de entrega/i) as HTMLSelectElement;
@@ -663,7 +701,7 @@ describe('NewWorkflowWizard — steps 4 & 5', () => {
     const onClose = vi.fn();
     renderWizardThroughReview({ onCreated, onClose });
     expect(screen.getByText('Aurora')).toBeTruthy();
-    expect(screen.getByText(/5 etapas \(1 aprovação do cliente\)/i)).toBeTruthy();
+    expect(screen.getByText('5 (1 aprovação do cliente)')).toBeTruthy();
     fireEvent.click(screen.getByText('✓ Criar Fluxo'));
     await waitFor(() => expect(createWorkflowFromWizardMock).toHaveBeenCalled());
     expect(createWorkflowFromWizardMock).toHaveBeenCalledWith(
