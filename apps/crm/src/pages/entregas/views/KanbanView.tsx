@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -29,6 +29,7 @@ import { completeEtapaForAdvance, notifyRearmOutcome } from '../advanceEtapa';
 import type { BoardCard } from '../hooks/useEntregasData';
 import type { Membro, WorkflowTemplate } from '../../../store';
 import { WorkflowCard } from '../components/WorkflowCard';
+import { ExampleBoard } from '../components/ExampleBoard';
 import {
   RevertConfirmDialog,
   ForwardConfirmDialog,
@@ -49,6 +50,8 @@ interface KanbanViewProps {
   clearedClienteCounts: Map<number, number>;
   revisaoInternaCounts: Map<number, number>;
   awaitingClienteCounts: Map<number, number>;
+  showExample?: boolean;
+  onDismissExample?: () => void;
 }
 
 interface BoardRow {
@@ -185,6 +188,8 @@ export function KanbanView({
   clearedClienteCounts,
   revisaoInternaCounts,
   awaitingClienteCounts,
+  showExample,
+  onDismissExample,
 }: KanbanViewProps) {
   const [localCards, setLocalCards] = useState<BoardCard[]>(cards);
   const [activeCard, setActiveCard] = useState<BoardCard | null>(null);
@@ -212,6 +217,16 @@ export function KanbanView({
   }
 
   const boardRows = buildBoardRows(localCards, templates);
+
+  const approvalStepNames = useMemo(
+    () =>
+      new Set(
+        cards.flatMap((c) =>
+          c.allEtapas.filter((e) => e.tipo === 'aprovacao_cliente').map((e) => e.nome),
+        ),
+      ),
+    [cards],
+  );
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -429,6 +444,9 @@ export function KanbanView({
   };
 
   if (localCards.length === 0) {
+    if (showExample) {
+      return <ExampleBoard onDismiss={onDismissExample!} />;
+    }
     return (
       <div
         className="card animate-up"
@@ -464,7 +482,12 @@ export function KanbanView({
               <div className="board-container">
                 {[...row.columns.entries()].map(([stepName, stepCards]) => (
                   <div key={stepName} className="board-column">
-                    <div className="board-column-header">
+                    <div
+                      className="board-column-header"
+                      {...(approvalStepNames.has(stepName)
+                        ? { 'data-tour': 'wf-col-aprovacao' }
+                        : {})}
+                    >
                       <span className="board-column-title">{stepName}</span>
                       <span className="board-column-count">{stepCards.length}</span>
                     </div>

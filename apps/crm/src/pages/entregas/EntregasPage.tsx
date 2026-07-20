@@ -200,7 +200,7 @@ export default function EntregasPage() {
           <Button variant="outline" onClick={() => setTemplatesOpen(true)}>
             <LayoutGrid className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Templates
           </Button>
-          <Button onClick={() => setNewWorkflowOpen(true)}>
+          <Button data-tour="novo-fluxo-btn" onClick={() => setNewWorkflowOpen(true)}>
             <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Novo Fluxo
           </Button>
         </div>
