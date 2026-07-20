@@ -20,6 +20,8 @@ import { GripVertical } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   completeEtapa,
+  completeEtapaWithRearm,
+  hasLaterApprovalEtapa,
   revertEtapa,
   updateWorkflowPositions,
   approvePostsInternally,
@@ -336,14 +338,31 @@ export function KanbanView({
     setForwardTarget(card);
   }, []);
 
+  // opts.rearm === false keeps the plain completeEtapa (post statuses untouched) — used by
+  // "Avançar etapa sem alterar posts", whose literal contract is to leave posts alone.
   const advanceEtapa = useCallback(
-    async (card: BoardCard, successMessage: string) => {
+    async (card: BoardCard, successMessage: string, opts?: { rearm?: boolean }) => {
       try {
-        const result = await completeEtapa(card.workflow.id!, card.etapa.id!);
+        const useRearm = opts?.rearm !== false;
+        const result = useRearm
+          ? await completeEtapaWithRearm(card.workflow.id!, card.etapa.id!)
+          : {
+              ...(await completeEtapa(card.workflow.id!, card.etapa.id!)),
+              rearmed: false,
+              rearmFailed: false,
+            };
         if (result.workflow.status === 'concluido' && card.workflow.recorrente) {
           onRecurring(card.workflow.id!);
         } else {
           toast.success(successMessage);
+        }
+        if (result.rearmed) {
+          toast.info('Posts voltaram para rascunho para o próximo ciclo de aprovação.');
+        }
+        if (result.rearmFailed) {
+          toast.error(
+            'A etapa avançou, mas não foi possível preparar os posts para o próximo ciclo de aprovação. Reinicie os status dos posts manualmente.',
+          );
         }
         onRefresh();
       } catch (err: unknown) {
@@ -385,16 +404,11 @@ export function KanbanView({
     setApprovalChoiceCard(null);
     try {
       await approvePostsInternally(card.workflow.id!);
-      const result = await completeEtapa(card.workflow.id!, card.etapa.id!);
-      if (result.workflow.status === 'concluido' && card.workflow.recorrente) {
-        onRecurring(card.workflow.id!);
-      } else {
-        toast.success('Posts aprovados internamente — etapa concluída!');
-      }
-      onRefresh();
     } catch (err: unknown) {
       toast.error((err as Error).message || 'Erro ao aprovar internamente');
+      return;
     }
+    await advanceEtapa(card, 'Posts aprovados internamente — etapa concluída!');
   };
 
   const handleSendToPortal = async () => {
@@ -414,7 +428,7 @@ export function KanbanView({
     if (!approvalChoiceCard) return;
     const card = approvalChoiceCard;
     setApprovalChoiceCard(null);
-    advanceEtapa(card, 'Etapa avançada — status dos posts mantidos.');
+    advanceEtapa(card, 'Etapa avançada — status dos posts mantidos.', { rearm: false });
   };
 
   const handleRevertConfirm = async () => {
@@ -547,6 +561,11 @@ export function KanbanView({
       <ClientApprovalChoiceDialog
         open={!!approvalChoiceCard}
         workflowTitle={approvalChoiceCard?.workflow.titulo || ''}
+        willRearm={
+          approvalChoiceCard
+            ? hasLaterApprovalEtapa(approvalChoiceCard.allEtapas, approvalChoiceCard.etapa.id!)
+            : false
+        }
         onApproveInternally={handleApproveInternally}
         onSendToPortal={handleSendToPortal}
         onAdvanceWithoutChanges={handleAdvanceWithoutApproval}

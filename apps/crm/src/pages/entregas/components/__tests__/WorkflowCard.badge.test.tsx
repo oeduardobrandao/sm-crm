@@ -130,3 +130,90 @@ describe('WorkflowCard client-approval badge', () => {
     expect(screen.queryByText(/Aprovado pelo cliente/i)).not.toBeInTheDocument();
   });
 });
+
+// Re-arm regression: with two approval etapas the card can sit past the FIRST approval
+// while a second approval cycle is running. The badge keys off the first approval's
+// ordem, so it must keep rendering during the second cycle.
+describe('WorkflowCard awaiting-client badge across two approval cycles', () => {
+  const twoCycleEtapas = [
+    {
+      id: 1,
+      workflow_id: 1,
+      ordem: 0,
+      nome: 'Briefing',
+      status: 'concluido' as const,
+      tipo: 'padrao' as const,
+      prazo_dias: 1,
+      tipo_prazo: 'corridos' as const,
+    },
+    {
+      id: 2,
+      workflow_id: 1,
+      ordem: 1,
+      nome: 'Aprovação do texto',
+      status: 'concluido' as const,
+      tipo: 'aprovacao_cliente' as const,
+      prazo_dias: 2,
+      tipo_prazo: 'corridos' as const,
+    },
+    {
+      id: 3,
+      workflow_id: 1,
+      ordem: 2,
+      nome: 'Design',
+      status: 'concluido' as const,
+      tipo: 'padrao' as const,
+      prazo_dias: 3,
+      tipo_prazo: 'corridos' as const,
+    },
+    {
+      id: 4,
+      workflow_id: 1,
+      ordem: 3,
+      nome: 'Aprovação da arte',
+      status: 'ativo' as const,
+      tipo: 'aprovacao_cliente' as const,
+      prazo_dias: 2,
+      tipo_prazo: 'corridos' as const,
+    },
+  ];
+
+  function makeTwoCycleCard(currentEtapaOrdem: number): BoardCard {
+    const etapa = twoCycleEtapas.find((e) => e.ordem === currentEtapaOrdem)!;
+    return {
+      workflow: {
+        id: 1,
+        cliente_id: 1,
+        titulo: 'Campanha',
+        status: 'ativo',
+        etapa_atual: currentEtapaOrdem,
+        recorrente: false,
+      },
+      etapa,
+      allEtapas: twoCycleEtapas,
+      cliente: undefined,
+      membro: undefined,
+      deadline: { diasRestantes: 2, horasRestantes: 0, estourado: false, urgente: false },
+      totalEtapas: twoCycleEtapas.length,
+      etapaIdx: currentEtapaOrdem,
+    } as unknown as BoardCard;
+  }
+
+  it('still shows the awaiting-client badge during the second approval cycle', () => {
+    render(
+      <MemoryRouter>
+        <WorkflowCard card={makeTwoCycleCard(3)} awaitingClienteCount={2} postsCount={5} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText(/2 posts com o cliente/i)).toBeInTheDocument();
+  });
+
+  it('shows no badge before the first approval etapa', () => {
+    render(
+      <MemoryRouter>
+        <WorkflowCard card={makeTwoCycleCard(0)} awaitingClienteCount={2} postsCount={5} />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByText(/posts com o cliente/i)).not.toBeInTheDocument();
+  });
+});

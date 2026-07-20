@@ -1563,6 +1563,8 @@ interface ClientApprovalChoiceDialogProps {
   onSendToPortal: () => void;
   onAdvanceWithoutChanges: () => void;
   onCancel: () => void;
+  /** Another client-approval etapa lies ahead — completing this one re-arms the posts. */
+  willRearm?: boolean;
 }
 export function ClientApprovalChoiceDialog({
   open,
@@ -1571,6 +1573,7 @@ export function ClientApprovalChoiceDialog({
   onSendToPortal,
   onAdvanceWithoutChanges,
   onCancel,
+  willRearm,
 }: ClientApprovalChoiceDialogProps) {
   return (
     <Dialog
@@ -1586,6 +1589,12 @@ export function ClientApprovalChoiceDialog({
         <p className="text-sm text-muted-foreground">
           "{workflowTitle}" está em etapa de aprovação do cliente.
         </p>
+        {willRearm && (
+          <p className="text-sm" style={{ color: 'var(--warning)' }}>
+            Há outra etapa de aprovação adiante — ao concluir esta, os posts aprovados voltarão para
+            rascunho para o próximo ciclo de aprovação.
+          </p>
+        )}
         <DialogFooter className="flex-col gap-2 sm:flex-col">
           <Button className="w-full" onClick={onApproveInternally}>
             Aprovar internamente
