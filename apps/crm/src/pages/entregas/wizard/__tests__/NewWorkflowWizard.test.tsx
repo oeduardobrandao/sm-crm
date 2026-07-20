@@ -1,14 +1,27 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Cliente, Membro, WorkflowTemplate } from '../../../../store';
 
+// sonner 2.x really does expose `toast.warning`, so the template-failure path asserts against it
+// rather than falling back to `toast.error`.
 vi.mock('sonner', () => ({
   toast: {
     success: vi.fn(),
     error: vi.fn(),
+    warning: vi.fn(),
   },
+}));
+
+vi.mock('@/lib/analytics', () => ({ captureEvent: vi.fn() }));
+
+// Only the network-touching entry point is replaced: `resolveDeliveryDate` stays real so the date
+// the review step prints is the same one the creation path would write.
+const createWorkflowFromWizardMock = vi.hoisted(() => vi.fn());
+vi.mock('../createWorkflow', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../createWorkflow')>()),
+  createWorkflowFromWizard: createWorkflowFromWizardMock,
 }));
 
 vi.mock('@/components/ui/button', () => ({
@@ -112,6 +125,8 @@ vi.mock('@/components/ui/select', async () => {
 });
 
 // `Dialog` stays REAL so the close paths exercise the unsaved-changes guard in dialog.tsx.
+import { toast } from 'sonner';
+import { captureEvent } from '@/lib/analytics';
 import { NewWorkflowWizard } from '../NewWorkflowWizard';
 
 const clientes = [
@@ -463,5 +478,249 @@ describe('NewWorkflowWizard — step 3 (etapas)', () => {
     fireEvent.click(screen.getByText('Continuar →'));
     expect(screen.getByText(/não existe mais/i)).toBeTruthy();
     expect(screen.getByText('As etapas')).toBeTruthy(); // did not advance
+  });
+});
+
+// Steps 4–5 render react-router <Link>s (the "Configurar dia de entrega" shortcut), so these
+// renders need a router — the earlier steps never reach that branch.
+function renderWizardRouted(
+  overrides: Partial<React.ComponentProps<typeof NewWorkflowWizard>> = {},
+): void {
+  render(
+    <MemoryRouter>
+      <NewWorkflowWizard
+        open={true}
+        onClose={vi.fn()}
+        clientes={clientes}
+        membros={equipe}
+        templates={templates}
+        onCreated={vi.fn()}
+        {...overrides}
+      />
+    </MemoryRouter>,
+  );
+}
+
+/**
+ * Source preset → cliente → step 3 (bulk-assign so the etapas validate) → step 4.
+ * Cliente 1 (Aurora) has `dia_entrega: 25`; cliente 2 (Borealis) has none.
+ */
+function renderWizardAtStep4(
+  opts: {
+    preset?: string;
+    clienteId?: string;
+    overrides?: Partial<React.ComponentProps<typeof NewWorkflowWizard>>;
+  } = {},
+): void {
+  const { preset = 'Posts mensais', clienteId = '1', overrides = {} } = opts;
+  renderWizardRouted(overrides);
+  fireEvent.click(screen.getByText(preset));
+  fireEvent.change(screen.getByLabelText(/cliente/i), { target: { value: clienteId } });
+  fireEvent.click(screen.getByText('Continuar →'));
+  fireEvent.change(screen.getByLabelText(/atribuir todas a/i), { target: { value: '7' } });
+  fireEvent.click(screen.getByText('Continuar →'));
+}
+
+/** Same, but from the preset with TWO approval etapas. */
+function renderWizardAtStep4ViaDupla(opts: { clienteId?: string } = {}): void {
+  renderWizardAtStep4({ preset: 'Aprovação dupla (texto + arte)', ...opts });
+}
+
+/** Step 4 → step 5, with the save-as-template checkbox already ticked. */
+function renderWizardThroughReview(
+  overrides: Partial<React.ComponentProps<typeof NewWorkflowWizard>> = {},
+): void {
+  renderWizardAtStep4({ overrides });
+  fireEvent.click(screen.getByText('Continuar →'));
+  fireEvent.click(screen.getByRole('checkbox'));
+}
+
+describe('NewWorkflowWizard — steps 4 & 5', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    createWorkflowFromWizardMock.mockResolvedValue({ workflow: { id: 1 }, template: { id: 5 } });
+  });
+
+  it('disables data_entrega and auto-falls back when client lacks dia_entrega', () => {
+    // "Posts mensais" prefers data_entrega; Borealis has no dia_entrega.
+    renderWizardAtStep4({ clienteId: '2' });
+    expect(screen.getByText(/modo ajustado para duração por etapa/i)).toBeTruthy();
+    const radio = screen.getByRole('radio', { name: /data de entrega do cliente/i });
+    expect((radio as HTMLInputElement).disabled).toBe(true);
+    expect((radio as HTMLInputElement).checked).toBe(false);
+    expect(
+      (screen.getByRole('radio', { name: /duração por etapa/i }) as HTMLInputElement).checked,
+    ).toBe(true);
+    // The fallback offers the way out of the dead end.
+    expect(screen.getByText('Configurar dia de entrega')).toBeTruthy();
+  });
+
+  it('warns about the first-approval anchor with 2+ approvals', () => {
+    renderWizardAtStep4ViaDupla();
+    fireEvent.click(screen.getByRole('radio', { name: /data de entrega do cliente/i }));
+    expect(screen.getByText(/a primeira .* âncora/i)).toBeTruthy();
+  });
+
+  it('does not count an unnamed approval row toward the anchor warning', () => {
+    // `countApprovals` counts unnamed rows too (task 7), so an empty row flipped to "Aprovação
+    // externa" before it is named must not make a single-approval fluxo look ambiguous.
+    renderWizardRouted();
+    fireEvent.click(screen.getByText('Posts mensais'));
+    fireEvent.change(screen.getByLabelText(/cliente/i), { target: { value: '1' } });
+    fireEvent.click(screen.getByText('Continuar →'));
+    fireEvent.change(screen.getByLabelText(/atribuir todas a/i), { target: { value: '7' } });
+    fireEvent.click(screen.getByText('＋ Personalizada'));
+    const pills = screen.getAllByRole('button', { name: 'Aprovação externa' });
+    fireEvent.click(pills[pills.length - 1]); // the blank row's pill
+    fireEvent.click(screen.getByText('Continuar →'));
+    expect(screen.queryByText(/a primeira .* âncora/i)).toBeNull();
+  });
+
+  it('data_fixa without all datas limite blocks Continuar with the inline error', () => {
+    renderWizardAtStep4();
+    fireEvent.click(screen.getByRole('radio', { name: /datas fixas/i }));
+    fireEvent.click(screen.getByText('Continuar →'));
+    expect(screen.getByText(/data limite para todas as etapas/i)).toBeTruthy();
+    expect(screen.queryByText(/revisar/i)).toBeNull(); // did not advance
+  });
+
+  it('month select offers próximo disponível + current month + 5 more', () => {
+    renderWizardAtStep4();
+    const select = screen.getByLabelText(/mês de entrega/i) as HTMLSelectElement;
+    // The Select mock always prepends a valueless placeholder <option>; the component's own
+    // options are the ones with a value.
+    const options = Array.from(select.options).filter((o) => o.value !== '');
+    expect(options).toHaveLength(7); // '__auto__' sentinel + 6 months
+    expect(options[0].textContent).toMatch(/próximo mês disponível/i);
+    const now = new Date();
+    const currentLabel = now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+    expect(options[1].textContent!.toLowerCase()).toBe(currentLabel.toLowerCase());
+  });
+
+  it('blocks Continuar when the data_fixa list on step 4 is blanked out', () => {
+    // Step 4's data_fixa mode re-exposes the etapa list, so step 3's "at least one etapa" gate
+    // has to hold here too — otherwise the wizard creates a fluxo with no etapas at all.
+    renderWizardAtStep4();
+    fireEvent.click(screen.getByRole('radio', { name: /datas fixas/i }));
+    for (const input of screen.getAllByPlaceholderText('Nome da etapa')) {
+      fireEvent.change(input, { target: { value: '' } });
+    }
+    fireEvent.click(screen.getByText('Continuar →'));
+    expect(screen.getByText('Adicione pelo menos uma etapa.')).toBeTruthy();
+    expect(screen.queryByText(/revisar/i)).toBeNull(); // did not advance
+  });
+
+  it('never stores the __auto__ sentinel in wizard state', () => {
+    renderWizardAtStep4();
+    const select = screen.getByLabelText(/mês de entrega/i) as HTMLSelectElement;
+    const proximo = Array.from(select.options).find((o) =>
+      /próximo mês disponível/i.test(o.textContent ?? ''),
+    )!;
+    fireEvent.change(select, { target: { value: proximo.value } });
+    fireEvent.click(screen.getByText('Continuar →'));
+    fireEvent.click(screen.getByText('✓ Criar Fluxo'));
+    expect(createWorkflowFromWizardMock).toHaveBeenCalledWith(
+      expect.objectContaining({ mesEntrega: '' }),
+    );
+  });
+
+  it('client switch re-applies the source mode preference when not manually overridden', () => {
+    renderWizardAtStep4({ clienteId: '2' }); // no dia_entrega → auto-fallback padrao
+    expect(screen.getByText(/modo ajustado para duração por etapa/i)).toBeTruthy();
+    fireEvent.click(screen.getByText('← Voltar')); // step 3
+    fireEvent.click(screen.getByText('← Voltar')); // step 2
+    fireEvent.change(screen.getByLabelText(/cliente/i), { target: { value: '1' } }); // dia_entrega 25
+    fireEvent.click(screen.getByText('Continuar →'));
+    fireEvent.click(screen.getByText('Continuar →')); // back to step 4
+    const radio = screen.getByRole('radio', { name: /data de entrega do cliente/i });
+    expect((radio as HTMLInputElement).checked).toBe(true);
+    expect((radio as HTMLInputElement).disabled).toBe(false);
+    expect(screen.queryByText(/modo ajustado para duração por etapa/i)).toBeNull();
+  });
+
+  it('keeps a manual data_entrega selected-but-blocked after switching to a client without dia_entrega', () => {
+    renderWizardAtStep4(); // cliente 1, data_entrega available
+    // Two clicks so the *manual* choice is registered: re-clicking an already-checked radio
+    // fires no change event.
+    fireEvent.click(screen.getByRole('radio', { name: /datas fixas/i }));
+    fireEvent.click(screen.getByRole('radio', { name: /data de entrega do cliente/i }));
+    fireEvent.click(screen.getByText('← Voltar')); // step 3
+    fireEvent.click(screen.getByText('← Voltar')); // step 2
+    fireEvent.change(screen.getByLabelText(/cliente/i), { target: { value: '2' } }); // no dia_entrega
+    fireEvent.click(screen.getByText('Continuar →'));
+    fireEvent.click(screen.getByText('Continuar →')); // step 4
+    const radio = screen.getByRole('radio', { name: /data de entrega do cliente/i });
+    expect((radio as HTMLInputElement).checked).toBe(true); // manual choice preserved
+    expect((radio as HTMLInputElement).disabled).toBe(true);
+    expect(screen.queryByText(/modo ajustado para duração por etapa/i)).toBeNull();
+    fireEvent.click(screen.getByText('Continuar →'));
+    expect(screen.getByRole('alert').textContent).toMatch(/dia de entrega/i);
+    expect(screen.queryByText(/revisar/i)).toBeNull(); // did not advance
+  });
+
+  it('review summary + create calls sequencing and analytics, then closes', async () => {
+    const onCreated = vi.fn();
+    const onClose = vi.fn();
+    renderWizardThroughReview({ onCreated, onClose });
+    expect(screen.getByText('Aurora')).toBeTruthy();
+    expect(screen.getByText(/5 etapas \(1 aprovação do cliente\)/i)).toBeTruthy();
+    fireEvent.click(screen.getByText('✓ Criar Fluxo'));
+    await waitFor(() => expect(createWorkflowFromWizardMock).toHaveBeenCalled());
+    expect(createWorkflowFromWizardMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clienteId: 1,
+        modoPrazo: 'data_entrega',
+        saveAsTemplate: true,
+        source: { kind: 'preset', presetId: 'posts-mensais', presetNome: 'Posts mensais' },
+      }),
+    );
+    expect(captureEvent).toHaveBeenCalledWith('workflow_wizard_source', {
+      source: 'posts-mensais',
+    });
+    expect(captureEvent).toHaveBeenCalledWith('workflow_saved_as_template');
+    expect(toast.success).toHaveBeenCalledWith('Fluxo criado com sucesso!');
+    await waitFor(() => expect(onCreated).toHaveBeenCalled());
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('does not fire workflow_wizard_source until creation succeeds', () => {
+    renderWizardAtStep4();
+    expect(captureEvent).not.toHaveBeenCalledWith('workflow_wizard_source', expect.anything());
+  });
+
+  it('prefills the template name from the source preset and the client', () => {
+    renderWizardThroughReview();
+    expect((screen.getByLabelText(/nome do template/i) as HTMLInputElement).value).toBe(
+      'Posts mensais — Aurora',
+    );
+  });
+
+  it('surfaces the template warning as a separate toast', async () => {
+    createWorkflowFromWizardMock.mockResolvedValue({
+      workflow: { id: 1 },
+      warning: 'O fluxo será criado, mas não foi possível salvar o template.',
+    });
+    renderWizardThroughReview();
+    fireEvent.click(screen.getByText('✓ Criar Fluxo'));
+    await waitFor(() =>
+      expect(toast.warning).toHaveBeenCalledWith(
+        expect.stringMatching(/não foi possível salvar o template/i),
+      ),
+    );
+    expect(toast.success).toHaveBeenCalledWith('Fluxo criado com sucesso!');
+    // No template came back, so the template event must not fire.
+    expect(captureEvent).not.toHaveBeenCalledWith('workflow_saved_as_template');
+  });
+
+  it('keeps the wizard open and toasts the error when creation fails', async () => {
+    const onCreated = vi.fn();
+    const onClose = vi.fn();
+    createWorkflowFromWizardMock.mockRejectedValue(new Error('Falha no servidor'));
+    renderWizardThroughReview({ onCreated, onClose });
+    fireEvent.click(screen.getByText('✓ Criar Fluxo'));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Falha no servidor'));
+    expect(onCreated).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect((screen.getByText('✓ Criar Fluxo') as HTMLButtonElement).disabled).toBe(false);
   });
 });

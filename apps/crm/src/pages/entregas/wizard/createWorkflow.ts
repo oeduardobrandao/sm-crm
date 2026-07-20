@@ -22,19 +22,23 @@ export interface WizardCreateInput {
   membros: Membro[];
 }
 
-function deliveryDeadlines(input: WizardCreateInput, valid: EtapaFormData[]) {
-  if (input.modoPrazo !== 'data_entrega' || !input.cliente?.dia_entrega) return null;
+/**
+ * `mesEntrega` (YYYY-MM, or '' for "próximo mês disponível") + the client's delivery day → the
+ * concrete delivery date. Exported so the review step can show the very date this module writes.
+ */
+export function resolveDeliveryDate(mesEntrega: string, diaEntrega: number): Date {
   // State stores '' for "próximo mês disponível"; '__auto__' is the Select's sentinel and must
   // never leak here — normalize defensively so it can't parse as an invalid YYYY-MM.
-  const mes = input.mesEntrega === '__auto__' ? '' : input.mesEntrega;
-  let deliveryDate: Date;
-  if (mes) {
-    const [yr, mo] = mes.split('-').map(Number);
-    const lastDay = new Date(yr, mo, 0).getDate();
-    deliveryDate = new Date(yr, mo - 1, Math.min(input.cliente.dia_entrega, lastDay));
-  } else {
-    deliveryDate = getNextDeliveryDate(input.cliente.dia_entrega);
-  }
+  const mes = mesEntrega === '__auto__' ? '' : mesEntrega;
+  if (!mes) return getNextDeliveryDate(diaEntrega);
+  const [yr, mo] = mes.split('-').map(Number);
+  const lastDay = new Date(yr, mo, 0).getDate();
+  return new Date(yr, mo - 1, Math.min(diaEntrega, lastDay));
+}
+
+function deliveryDeadlines(input: WizardCreateInput, valid: EtapaFormData[]) {
+  if (input.modoPrazo !== 'data_entrega' || !input.cliente?.dia_entrega) return null;
+  const deliveryDate = resolveDeliveryDate(input.mesEntrega, input.cliente.dia_entrega);
   const mock = valid.map((e, i) => ({
     id: i,
     workflow_id: 0,

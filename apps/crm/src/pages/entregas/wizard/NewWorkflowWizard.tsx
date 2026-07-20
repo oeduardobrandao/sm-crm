@@ -20,16 +20,26 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Spinner } from '@/components/ui/spinner';
 import { captureEvent } from '@/lib/analytics';
+import { toast } from 'sonner';
 import type { Cliente, Membro, WorkflowTemplate } from '../../../store';
 import type { EtapaFormData } from '../components/SortableEtapaList';
 import { type WorkflowPreset } from './presets';
-import { etapasFromPreset, etapasFromTemplate, suggestName, validateEtapas } from './wizardLogic';
-import { type WizardSource } from './createWorkflow';
+import {
+  dataEntregaAvailability,
+  etapasFromPreset,
+  etapasFromTemplate,
+  suggestName,
+  validateEtapas,
+  validatePrazos,
+} from './wizardLogic';
+import { createWorkflowFromWizard, type WizardSource } from './createWorkflow';
 import { StepTemplate } from './steps/StepTemplate';
 import { StepBasics } from './steps/StepBasics';
 import { StepEtapas } from './steps/StepEtapas';
-// Steps 4–5 render `null` inline until their files land — never import a missing module.
+import { StepPrazos } from './steps/StepPrazos';
+import { StepReview } from './steps/StepReview';
 
 export interface WizardState {
   step: 1 | 2 | 3 | 4 | 5;
@@ -74,12 +84,15 @@ export function NewWorkflowWizard(props: {
   templates: WorkflowTemplate[];
   onCreated: () => void;
 }) {
-  const { open, onClose, clientes, membros, templates } = props;
+  const { open, onClose, clientes, membros, templates, onCreated } = props;
   const [s, setS] = useState<WizardState>(INITIAL);
   const [cancelConfirm, setCancelConfirm] = useState(false);
   // Step 3's errors surface only after a blocked Continuar, then track edits live so a row
   // stops shouting the moment the user fixes it.
   const [etapasChecked, setEtapasChecked] = useState(false);
+  // Same contract for step 4.
+  const [prazosChecked, setPrazosChecked] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const patch = (p: Partial<WizardState>) => setS((prev) => ({ ...prev, ...p }));
 
@@ -89,15 +102,19 @@ export function NewWorkflowWizard(props: {
     setS(INITIAL);
     setCancelConfirm(false);
     setEtapasChecked(false);
+    setPrazosChecked(false);
     onClose();
   };
 
   const selectSource = (source: WizardSource, preset?: WorkflowPreset, tpl?: WorkflowTemplate) => {
     const etapas = preset ? etapasFromPreset(preset) : tpl ? etapasFromTemplate(tpl) : [];
     const sourceNome = preset?.nome ?? tpl?.nome ?? '';
-    captureEvent('workflow_wizard_source', { kind: source.kind });
+    // `workflow_wizard_source` fires once per SUCCESSFUL creation (see handleCreate), not on each
+    // step-1 selection — funnel-abandon analysis is a non-goal and per-selection firing would
+    // count a single fluxo several times.
     // A new source brings brand-new etapas, so the previous attempt's errors are meaningless.
     setEtapasChecked(false);
+    setPrazosChecked(false);
     patch({
       source,
       etapas,
@@ -117,22 +134,85 @@ export function NewWorkflowWizard(props: {
         : s.source.templateNome
       : '';
 
-  const continueDisabled = s.step === 2 && (!s.clienteId || !s.nome.trim());
+  const continueDisabled = saving || (s.step === 2 && (!s.clienteId || !s.nome.trim()));
+
+  const cliente = clientes.find((c) => c.id === Number(s.clienteId));
+  const availability = dataEntregaAvailability(s.etapas, cliente);
+
+  // The source's preferred mode stays in `modoPrazo` untouched; the fallback is DERIVED so that
+  // switching to a client who does have a dia de entrega silently restores the preference,
+  // while an explicit choice (`modoEdited`) is never overridden behind the user's back.
+  const modoEfetivo: WizardState['modoPrazo'] =
+    !s.modoEdited && s.modoPrazo === 'data_entrega' && !availability.enabled
+      ? 'padrao'
+      : s.modoPrazo;
+
+  const etapasIssues = validateEtapas(s.etapas, membros);
+
+  // Defense in depth for `createWorkflowFromWizard`, which has none of its own: it silently writes
+  // null deadlines when asked for data_entrega without a dia de entrega, and happily creates a
+  // fluxo with zero etapas. Step 4 re-runs the etapa validation because its data_fixa mode hands
+  // the user the same editable list step 3 had — blanking every row there must not sneak past.
+  const prazosError =
+    etapasIssues.globalError ??
+    (modoEfetivo === 'data_entrega' && !availability.enabled
+      ? availability.reason
+      : validatePrazos(s.etapas, modoEfetivo));
 
   // Recomputed every render once the user has tried to leave step 3, so fixes clear their errors.
-  const etapasValidation = etapasChecked ? validateEtapas(s.etapas, membros) : null;
+  const etapasValidation = etapasChecked ? etapasIssues : null;
+
+  const handleCreate = async () => {
+    setSaving(true);
+    try {
+      const result = await createWorkflowFromWizard({
+        clienteId: Number(s.clienteId),
+        titulo: s.nome,
+        recorrente: s.recorrente,
+        modoPrazo: modoEfetivo,
+        mesEntrega: s.mesEntrega,
+        etapas: s.etapas,
+        source: s.source ?? { kind: 'zero' },
+        saveAsTemplate: s.saveAsTemplate,
+        templateName: s.templateName,
+        cliente,
+        membros,
+      });
+      toast.success('Fluxo criado com sucesso!');
+      if (result.warning) toast.warning(result.warning);
+      captureEvent('workflow_wizard_source', {
+        source: s.source?.kind === 'preset' ? s.source.presetId : (s.source?.kind ?? 'zero'),
+      });
+      if (result.template) captureEvent('workflow_saved_as_template');
+      onCreated();
+      requestClose();
+    } catch (err: unknown) {
+      toast.error((err as Error).message || 'Erro ao criar fluxo');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const goNext = () => {
     if (s.step === 3) {
-      const { rowErrors, globalError } = validateEtapas(s.etapas, membros);
-      if (globalError || rowErrors.size > 0) {
+      if (etapasIssues.globalError || etapasIssues.rowErrors.size > 0) {
         setEtapasChecked(true);
         return;
       }
       setEtapasChecked(false);
     }
-    // Step 5 submits the wizard; that handler arrives with the review step.
-    if (s.step < STEP_COUNT) patch({ step: (s.step + 1) as WizardState['step'] });
+    if (s.step === 4) {
+      if (prazosError || etapasIssues.rowErrors.size > 0) {
+        setPrazosChecked(true);
+        return;
+      }
+      setPrazosChecked(false);
+    }
+    if (s.step === STEP_COUNT) {
+      void handleCreate();
+      return;
+    }
+    patch({ step: (s.step + 1) as WizardState['step'] });
   };
 
   return (
@@ -192,8 +272,20 @@ export function NewWorkflowWizard(props: {
             globalError={etapasValidation?.globalError ?? null}
           />
         )}
-        {s.step === 4 && null}
-        {s.step === 5 && null}
+        {s.step === 4 && (
+          <StepPrazos
+            state={s}
+            patch={patch}
+            modoPrazo={modoEfetivo}
+            cliente={cliente}
+            membros={membros}
+            rowErrors={prazosChecked ? etapasIssues.rowErrors : undefined}
+            error={prazosChecked ? prazosError : null}
+          />
+        )}
+        {s.step === 5 && (
+          <StepReview state={s} patch={patch} modoPrazo={modoEfetivo} cliente={cliente} />
+        )}
 
         <div
           style={{
@@ -216,15 +308,18 @@ export function NewWorkflowWizard(props: {
             <div style={{ display: 'flex', gap: '0.5rem' }}>
               <Button
                 variant="outline"
+                disabled={saving}
                 onClick={() => {
                   // Going back is not an attempt to advance — arrive at a step with a clean slate.
                   setEtapasChecked(false);
+                  setPrazosChecked(false);
                   patch({ step: (s.step - 1) as WizardState['step'] });
                 }}
               >
                 ← Voltar
               </Button>
               <Button onClick={goNext} disabled={continueDisabled}>
+                {saving && <Spinner size="sm" />}
                 {s.step === STEP_COUNT ? '✓ Criar Fluxo' : 'Continuar →'}
               </Button>
             </div>
