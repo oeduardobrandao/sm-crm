@@ -26,13 +26,17 @@ npm run test:watch       # Vitest in watch mode
 npm run test:coverage    # Vitest with V8 coverage
 deno test supabase/functions/    # Deno edge-function suite
 
+# Formatting (Prettier — enforced in CI via the format-check job)
+npm run format           # prettier --write  (auto-fix apps/** and packages/**)
+npm run format:check     # prettier --check  (CI gate; run before pushing)
+
 # Supabase
 npx supabase functions serve                    # local edge functions
 npx supabase functions deploy <name>
 npx supabase db push --linked                   # push migrations to staging
 ```
 
-IMPORTANT: There is no linter or formatter configured. Typecheck with `npm run build` (runs `tsc` then `vite build`). Always typecheck after making code changes. Run `npm run test` after changes to verify no regressions.
+IMPORTANT: There is no ESLint linter configured, but Prettier IS enforced in CI (the `format-check` job runs `prettier --check`). Run `npm run format:check` before pushing and `npm run format` to auto-fix, or CI will fail. Typecheck with `npm run build` (runs `tsc` then `vite build`). Always typecheck after making code changes. Run `npm run test` after changes to verify no regressions.
 
 ## Architecture
 

@@ -288,7 +288,7 @@ async function handleListWorkspaces(
       if (ownerMember) {
         const { data: ownerProfile } = await svc
           .from("profiles")
-          .select("nome, id")
+          .select("nome, id, telefone, marketing_opt_in")
           .eq("id", ownerMember.user_id)
           .single();
 
@@ -296,6 +296,8 @@ async function handleListWorkspaces(
         owner = {
           name: ownerProfile?.nome || "Unknown",
           email: ownerUser?.user?.email || "Unknown",
+          telefone: ownerProfile?.telefone || null,
+          marketing_opt_in: ownerProfile?.marketing_opt_in ?? false,
         };
       }
 
@@ -495,12 +497,18 @@ async function handleGetWorkspace(
 
   const enrichedMembers = await Promise.all(
     (members || []).map(async (m) => {
-      const { data: profile } = await svc.from("profiles").select("nome").eq("id", m.user_id).single();
+      const { data: profile } = await svc
+        .from("profiles")
+        .select("nome, telefone, marketing_opt_in")
+        .eq("id", m.user_id)
+        .single();
       const { data: authUser } = await svc.auth.admin.getUserById(m.user_id);
       return {
         user_id: m.user_id,
         name: profile?.nome || "Unknown",
         email: authUser?.user?.email || "Unknown",
+        telefone: profile?.telefone || null,
+        marketing_opt_in: profile?.marketing_opt_in ?? false,
         role: m.role,
         joined_at: m.joined_at,
       };

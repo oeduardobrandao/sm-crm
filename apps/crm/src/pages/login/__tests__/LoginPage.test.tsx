@@ -181,12 +181,16 @@ describe('LoginPage', () => {
     fireEvent.change(screen.getByLabelText('E-mail'), {
       target: { value: 'ana@mesaas.com' },
     });
+    fireEvent.change(screen.getByLabelText('Telefone'), {
+      target: { value: '(11) 99999-9999' },
+    });
     fireEvent.change(screen.getByLabelText('Senha'), {
       target: { value: 'senha-123' },
     });
     fireEvent.change(screen.getByLabelText('Confirmar Senha'), {
       target: { value: 'senha-123' },
     });
+    fireEvent.click(screen.getByRole('checkbox'));
 
     fireEvent.submit(screen.getByLabelText('Nome Completo').closest('form')!);
 
@@ -194,6 +198,8 @@ describe('LoginPage', () => {
       expect(mockedSignUp).toHaveBeenCalledWith('ana@mesaas.com', 'senha-123', {
         nome: 'Ana Souza',
         empresa: 'Mesaas',
+        telefone: '(11) 99999-9999',
+        marketing_opt_in: true,
       });
     });
     expect(screen.getByText('Verifique seu e-mail')).toBeInTheDocument();
