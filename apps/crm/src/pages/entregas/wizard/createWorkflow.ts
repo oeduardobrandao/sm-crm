@@ -60,6 +60,10 @@ export async function createWorkflowFromWizard(
 ): Promise<{ workflow: Workflow; template?: WorkflowTemplate; warning?: string }> {
   const valid = input.etapas.filter((e) => e.nome.trim());
 
+  if (valid.length === 0) {
+    throw new Error('Um fluxo precisa de pelo menos uma etapa nomeada.');
+  }
+
   // 1. Template first — a failure here must never block fluxo creation.
   let template: WorkflowTemplate | undefined;
   let warning: string | undefined;

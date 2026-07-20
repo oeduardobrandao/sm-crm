@@ -7,7 +7,7 @@ describe('STANDARD_PRESETS', () => {
     expect(new Set(STANDARD_PRESETS.map((p) => p.id)).size).toBe(6);
   });
 
-  it('every preset has at least one named etapa and no responsavel', () => {
+  it('every preset has at least one etapa and every etapa has a non-empty name', () => {
     for (const p of STANDARD_PRESETS) {
       expect(p.etapas.length).toBeGreaterThan(0);
       for (const e of p.etapas) expect(e.nome.trim().length).toBeGreaterThan(0);

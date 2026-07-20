@@ -50,9 +50,12 @@ import {
   type TemplatePropertyDefinition,
 } from '../../../store';
 import { PropertyDefinitionPanel } from './PropertyDefinitionPanel';
-import { SortableEtapaList, defaultEtapa, type EtapaFormData } from './SortableEtapaList';
-
-type ModoPrazo = 'padrao' | 'data_fixa' | 'data_entrega';
+import {
+  SortableEtapaList,
+  defaultEtapa,
+  type EtapaFormData,
+  type ModoPrazo,
+} from './SortableEtapaList';
 
 // ---- Types ----
 interface BoardCard {

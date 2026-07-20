@@ -30,7 +30,7 @@ import { EmptyStateGuide } from '@/components/help/EmptyStateGuide';
 import { HelpTooltip } from '@/components/help/HelpTooltip';
 import type { Membro } from '../../../store';
 
-type ModoPrazo = 'padrao' | 'data_fixa' | 'data_entrega';
+export type ModoPrazo = 'padrao' | 'data_fixa' | 'data_entrega';
 
 // ---- Types ----
 export interface EtapaFormData {

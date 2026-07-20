@@ -92,6 +92,15 @@ describe('createWorkflowFromWizard', () => {
     expect(calls[1]).toMatchObject({ ordem: 1, status: 'pendente', iniciado_em: null });
   });
 
+  it('rejects when every etapa name is blank, without calling addWorkflow', async () => {
+    await expect(
+      createWorkflowFromWizard(
+        baseInput({ etapas: [defaultEtapa({ nome: '' }), defaultEtapa({ nome: '   ' })] }),
+      ),
+    ).rejects.toThrow('Um fluxo precisa de pelo menos uma etapa nomeada.');
+    expect(store.addWorkflow).not.toHaveBeenCalled();
+  });
+
   it('stale responsavel is sanitized to null at insert (defense in depth)', async () => {
     await createWorkflowFromWizard(
       baseInput({ etapas: [defaultEtapa({ nome: 'A', responsavelId: 999 })] }),
