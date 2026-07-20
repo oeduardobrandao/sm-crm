@@ -508,4 +508,29 @@ describe('EntregasPage', () => {
     expect(screen.getByText('Posts de Agosto')).toBeTruthy();
     expect(localStorage.getItem('entregas_tour_done_conta-1')).toBe('true');
   });
+
+  it('auto-starts the tour exactly once on an empty first visit with an unset key', () => {
+    localStorage.clear();
+    renderEntregasPage({ activeWorkflows: [], cards: [] });
+    expect(tourMock.startEntregasTour).toHaveBeenCalledTimes(1);
+    expect(tourMock.startEntregasTour).toHaveBeenCalledWith(
+      expect.objectContaining({
+        onComplete: expect.any(Function),
+        onDismiss: expect.any(Function),
+      }),
+    );
+  });
+
+  it('does not auto-start the tour when the conta has already completed it', () => {
+    localStorage.setItem('entregas_tour_done_conta-1', 'true');
+    renderEntregasPage({ activeWorkflows: [], cards: [] });
+    expect(tourMock.startEntregasTour).not.toHaveBeenCalled();
+  });
+
+  it('shows the replay control only on the kanban view', () => {
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [] });
+    expect(screen.getByText(/ver tour novamente/i)).toBeTruthy();
+    fireEvent.click(screen.getByText('Gráfico'));
+    expect(screen.queryByText(/ver tour novamente/i)).toBeNull();
+  });
 });

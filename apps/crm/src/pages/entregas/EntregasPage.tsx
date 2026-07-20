@@ -74,7 +74,8 @@ export default function EntregasPage() {
   } = useEntregasData();
 
   // --- Onboarding tour + example board ---------------------------------------------------------
-  // Persistence is per-conta so the tour re-arms for each workspace a user belongs to.
+  // The persistence key is per-conta. `tourDone` is read once at mount from the current conta's
+  // key; it is not recomputed if `contaId` changes within the same mount.
   const { profile } = useAuth();
   const contaId = profile?.conta_id ?? 'unknown';
   const [tourDone, setTourDone] = useState(
@@ -231,20 +232,25 @@ export default function EntregasPage() {
             >
               <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
             </span>
-            <button
-              type="button"
-              onClick={handleReplay}
-              style={{
-                fontSize: '0.72rem',
-                color: 'var(--text-muted)',
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                textDecoration: 'underline',
-              }}
-            >
-              Ver tour novamente
-            </button>
+            {/* Only on the kanban view — the tour's data-tour anchors live there, so a click
+                elsewhere would fire a "started" event and hit startEntregasTour's zero-anchor
+                early return with no visible tour. */}
+            {activeView === 'kanban' && (
+              <button
+                type="button"
+                onClick={handleReplay}
+                style={{
+                  fontSize: '0.72rem',
+                  color: 'var(--text-muted)',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                }}
+              >
+                Ver tour novamente
+              </button>
+            )}
           </div>
           <p>
             fluxos ativos: {activeWorkflows.length}
