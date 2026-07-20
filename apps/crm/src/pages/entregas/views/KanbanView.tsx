@@ -52,12 +52,14 @@ interface KanbanViewBaseProps {
   awaitingClienteCounts: Map<number, number>;
 }
 
-// Discriminated union: showExample={true} makes onDismissExample compile-time
-// required, so the example board can never render without a working dismiss.
+// Discriminated union: a caller either passes neither prop, or passes both together.
+// The populated branch takes `showExample: boolean` (not the literal `true`) so callers
+// can hand it a computed boolean expression while still being forced to supply
+// `onDismissExample` — the example board can never render without a working dismiss.
 type KanbanViewProps = KanbanViewBaseProps &
   (
     | { showExample?: false; onDismissExample?: () => void }
-    | { showExample: true; onDismissExample: () => void }
+    | { showExample: boolean; onDismissExample: () => void }
   );
 
 interface BoardRow {
