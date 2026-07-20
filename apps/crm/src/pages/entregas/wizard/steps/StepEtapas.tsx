@@ -125,9 +125,10 @@ export function StepEtapas({
       ) : (
         <div className="space-y-1">
           <Label htmlFor="wizard-bulk-responsavel">Atribuir todas a…</Label>
+          {/* `!v` guards the empty placeholder value, which must never become responsavelId 0. */}
           <Select
             value={bulkValue}
-            onValueChange={(v) => bulkAssign(v === NONE ? null : Number(v))}
+            onValueChange={(v) => bulkAssign(v === NONE || !v ? null : Number(v))}
           >
             <SelectTrigger id="wizard-bulk-responsavel">
               <SelectValue placeholder="Escolha um responsável" />

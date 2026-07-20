@@ -96,6 +96,8 @@ export function NewWorkflowWizard(props: {
     const etapas = preset ? etapasFromPreset(preset) : tpl ? etapasFromTemplate(tpl) : [];
     const sourceNome = preset?.nome ?? tpl?.nome ?? '';
     captureEvent('workflow_wizard_source', { kind: source.kind });
+    // A new source brings brand-new etapas, so the previous attempt's errors are meaningless.
+    setEtapasChecked(false);
     patch({
       source,
       etapas,
@@ -214,7 +216,11 @@ export function NewWorkflowWizard(props: {
             <div style={{ display: 'flex', gap: '0.5rem' }}>
               <Button
                 variant="outline"
-                onClick={() => patch({ step: (s.step - 1) as WizardState['step'] })}
+                onClick={() => {
+                  // Going back is not an attempt to advance — arrive at a step with a clean slate.
+                  setEtapasChecked(false);
+                  patch({ step: (s.step - 1) as WizardState['step'] });
+                }}
               >
                 ← Voltar
               </Button>

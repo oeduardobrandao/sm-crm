@@ -363,8 +363,13 @@ describe('NewWorkflowWizard — step 3 (etapas)', () => {
   it('bulk assign sets responsável on every etapa', () => {
     renderWizardAtStep3();
     fireEvent.change(screen.getByLabelText(/atribuir todas a/i), { target: { value: '7' } });
-    const rowSelects = screen.getAllByDisplayValue('Maria');
-    expect(rowSelects.length).toBeGreaterThanOrEqual(5);
+    // Scoped to the per-row selects on purpose: the bulk control itself also displays 'Maria', so
+    // a total-count assertion would state the intent ("every row got Maria") only indirectly.
+    const rowSelects = screen
+      .getAllByDisplayValue('Maria')
+      .filter((el) => el.id !== 'wizard-bulk-responsavel');
+    expect(screen.getAllByPlaceholderText('Nome da etapa')).toHaveLength(5);
+    expect(rowSelects).toHaveLength(5);
   });
 
   it('advances once every etapa has an existing responsável', () => {
@@ -406,6 +411,28 @@ describe('NewWorkflowWizard — step 3 (etapas)', () => {
     fireEvent.click(screen.getByText('Continuar →'));
     expect(screen.getByText('Adicione pelo menos uma etapa.')).toBeTruthy();
     expect(screen.getByText('As etapas')).toBeTruthy(); // did not advance
+  });
+
+  it('going back clears the errors, so step 3 is clean on re-arrival', () => {
+    renderWizardAtStep3();
+    fireEvent.click(screen.getByText('Continuar →')); // blocked: nothing is assigned
+    expect(screen.getAllByText('Selecione um responsável para esta etapa.')).toHaveLength(5);
+    fireEvent.click(screen.getByText('← Voltar')); // step 2
+    fireEvent.click(screen.getByText('Continuar →')); // back to step 3
+    expect(screen.getByText('As etapas')).toBeTruthy();
+    expect(screen.queryByText('Selecione um responsável para esta etapa.')).toBeNull();
+  });
+
+  it('does not carry errors from one source onto the next source etapas', () => {
+    renderWizardAtStep3();
+    fireEvent.click(screen.getByText('Continuar →')); // blocked at step 3
+    expect(screen.getAllByText('Selecione um responsável para esta etapa.')).toHaveLength(5);
+    fireEvent.click(screen.getByText('← Voltar')); // step 2
+    fireEvent.click(screen.getByText('← Voltar')); // step 1
+    fireEvent.click(screen.getByText('Post avulso rápido')); // brand-new etapas
+    fireEvent.click(screen.getByText('Continuar →')); // step 3
+    expect(screen.getByDisplayValue('Publicação')).toBeTruthy(); // the new source's etapas
+    expect(screen.queryByText('Selecione um responsável para esta etapa.')).toBeNull();
   });
 
   it('with no membros, swaps the bulk control for the prerequisite alert', () => {
