@@ -13,6 +13,9 @@ verify_jwt = false
 [functions.tiktok-webhook]
 verify_jwt = false
 
+[functions.tiktok-media]
+verify_jwt = false
+
 [functions.tiktok-sync-cron]
 verify_jwt = false
 

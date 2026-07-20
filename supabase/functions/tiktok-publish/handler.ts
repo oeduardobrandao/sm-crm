@@ -12,10 +12,15 @@
 // out (ownership checks still apply regardless of gating).
 //
 // DI seams: validateForTikTokScheduling / validateForScheduling (IG) / getFreshTikTokToken /
-// tiktokFetch / signGetUrl / sleep are all injectable via deps, defaulting to the real shared
-// implementations. This lets tests spy on "was the IG validator called for a `both` post"
-// without any network/DB-crypto wiring, and lets the publish-now poll loop run its full
+// tiktokFetch / buildTikTokMediaUrl / sleep are all injectable via deps, defaulting to the real
+// shared implementations. This lets tests spy on "was the IG validator called for a `both`
+// post" without any network/DB-crypto wiring, and lets the publish-now poll loop run its full
 // 12-iteration bound instantly in tests (mirrors _shared/tiktok.ts's own `opts.sleep` seam).
+//
+// buildTikTokMediaUrl (_shared/tiktok-media-url.ts) mints a TikTok-verifiable proxy URL for the
+// TikTok init payload's video_url/photo_images — NOT a raw R2 presign (signGetUrl): TikTok's
+// PULL_FROM_URL source requires media URLs under a TikTok-verifiable URL prefix, which raw
+// *.r2.cloudflarestorage.com presigned URLs can't satisfy.
 
 import { createJsonResponder, internalServerError, type JsonResponder } from "../_shared/http.ts";
 import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
@@ -36,7 +41,7 @@ import {
   getFreshTikTokToken as realGetFreshTikTokToken,
   tiktokFetch as realTiktokFetch,
 } from "../_shared/tiktok.ts";
-import { signGetUrl as realSignGetUrl } from "../_shared/r2.ts";
+import { buildTikTokMediaUrl as realBuildTikTokMediaUrl } from "../_shared/tiktok-media-url.ts";
 
 type DbClient = {
   // deno-lint-ignore no-explicit-any
@@ -55,7 +60,7 @@ export interface TikTokPublishDeps {
   validateForScheduling?: typeof realValidateForScheduling;
   getFreshTikTokToken?: typeof realGetFreshTikTokToken;
   tiktokFetch?: typeof realTiktokFetch;
-  signGetUrl?: typeof realSignGetUrl;
+  buildTikTokMediaUrl?: typeof realBuildTikTokMediaUrl;
   sleep?: (ms: number) => Promise<void>;
 }
 
@@ -67,7 +72,7 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
   const validateIG = deps.validateForScheduling ?? realValidateForScheduling;
   const getFreshToken = deps.getFreshTikTokToken ?? realGetFreshTikTokToken;
   const tiktokFetchFn = deps.tiktokFetch ?? realTiktokFetch;
-  const signUrl = deps.signGetUrl ?? realSignGetUrl;
+  const buildMediaUrl = deps.buildTikTokMediaUrl ?? realBuildTikTokMediaUrl;
   const sleepFn = deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
 
   // Gated routes (schedule, publish-now, creator-info) require BOTH flags — TikTok is a
@@ -381,11 +386,11 @@ export function createPublishHandler(deps: TikTokPublishDeps) {
         let initPath: string;
         let initPayload: object;
         if (post.tipo === "reels") {
-          const videoUrl = await signUrl(media[0].r2_key, 7200);
+          const videoUrl = await buildMediaUrl(media[0].r2_key, 7200);
           initPath = "/post/publish/video/init/";
           initPayload = buildVideoInitPayload(claimedPost, videoUrl);
         } else {
-          const imageUrls = await Promise.all(media.map((m) => signUrl(m.r2_key, 7200)));
+          const imageUrls = await Promise.all(media.map((m) => buildMediaUrl(m.r2_key, 7200)));
           initPath = "/post/publish/content/init/";
           initPayload = buildPhotoInitPayload(claimedPost, imageUrls);
         }

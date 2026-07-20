@@ -3,9 +3,13 @@
 // TikTok Phase B, Task B4: tiktok-publish edge function (creator-info, schedule, publish-now,
 // cancel, retry). Mirrors instagram-publish-gate_test.ts's mocking style (createSupabaseQueryMock,
 // per-table `.queue()` seeding in call order) but drives the TikTok/IG validators, the TikTok
-// token helper, tiktokFetch, and R2 signGetUrl entirely through the handler's DI seams —
+// token helper, tiktokFetch, and buildTikTokMediaUrl entirely through the handler's DI seams —
 // avoids real token crypto and global-fetch stubbing, and lets the publish-now poll loop
 // (12 x 3s) run instantly under an injected no-op `sleep`.
+//
+// buildTikTokMediaUrl (_shared/tiktok-media-url.ts) replaced a raw R2 signGetUrl call
+// (tiktok-media proxy fast-follow): TikTok's PULL_FROM_URL source needs a TikTok-verifiable URL
+// prefix, which raw *.r2.cloudflarestorage.com presigned URLs can't satisfy.
 
 import { assert, assertEquals } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
@@ -13,6 +17,11 @@ import type { QueryCall } from "../../../test/shared/supabaseMock.ts";
 import { createPublishHandler, type TikTokPublishDeps } from "../tiktok-publish/handler.ts";
 import type { TikTokValidationResult } from "../_shared/tiktok-publish-utils.ts";
 import type { ScheduleValidationResult } from "../_shared/instagram-publish-utils.ts";
+import { buildTikTokMediaUrl, verifyTikTokMediaToken } from "../_shared/tiktok-media-url.ts";
+
+Deno.env.set("TOKEN_ENCRYPTION_KEY", "test-tiktok-publish-key");
+Deno.env.set("SUPABASE_URL", "https://supabase.example");
+const MEDIA_URL_PREFIX = "https://supabase.example/functions/v1/tiktok-media/m/";
 
 // ============================================================
 // Helpers
@@ -582,11 +591,14 @@ Deno.test("tiktok-publish publish-now: success calls mark_platform_published and
     statusSequence: [{ status: "PUBLISH_COMPLETE", publicaly_available_post_id: "7123456" }],
   });
 
+  // Real buildTikTokMediaUrl (not a stub) so the init payload's photo_images URL can be pinned
+  // to the tiktok-media proxy shape and round-tripped back to the linked file's r2_key below —
+  // same pattern as tiktok-publish-cron_test.ts's init-phase payload-shape test.
   const handler = createPublishHandler(makeDeps(db, {
     validateForTikTokScheduling: (() => Promise.resolve(okTikTokValidation())) as never,
     getFreshTikTokToken: (() => Promise.resolve({ accessToken: "tok", openId: "open-1" })) as never,
     tiktokFetch: tiktokFetchStub,
-    signGetUrl: ((key: string) => Promise.resolve(`https://r2.example/${key}?sig=1`)) as never,
+    buildTikTokMediaUrl,
     sleep: noopSleep,
   }));
 
@@ -596,6 +608,17 @@ Deno.test("tiktok-publish publish-now: success calls mark_platform_published and
   assertEquals(res.status, 200);
   assertEquals(body, { ok: true, status: "postado" });
   assertEquals(fetchCalls.length, 2); // one init + exactly one status-fetch (terminal on first poll)
+
+  const initCall = fetchCalls.find((c) => c.path === "/post/publish/content/init/");
+  assert(initCall, "feed (photo) post must POST to /post/publish/content/init/");
+  const initBody = initCall!.body as { source_info: { photo_images: string[] } };
+  const photoUrl = initBody.source_info.photo_images[0];
+  assert(photoUrl.startsWith(MEDIA_URL_PREFIX), `photo_images entry must be a tiktok-media proxy URL, got ${photoUrl}`);
+  assertEquals(
+    await verifyTikTokMediaToken(photoUrl.slice(MEDIA_URL_PREFIX.length)),
+    "img/1.jpg",
+    "the proxy token must resolve back to the validated media's r2_key",
+  );
 
   const markCalls = rpcCalls(db, "mark_platform_published");
   assertEquals(markCalls.length, 1);
@@ -629,7 +652,7 @@ Deno.test("tiktok-publish publish-now: still-processing after 12 polls -> agenda
     validateForTikTokScheduling: (() => Promise.resolve(okTikTokValidation())) as never,
     getFreshTikTokToken: (() => Promise.resolve({ accessToken: "tok", openId: "open-1" })) as never,
     tiktokFetch: tiktokFetchStub,
-    signGetUrl: ((key: string) => Promise.resolve(`https://r2.example/${key}?sig=1`)) as never,
+    buildTikTokMediaUrl: ((key: string) => Promise.resolve(`https://r2.example/${key}?sig=1`)) as never,
     sleep: noopSleep,
   }));
 
