@@ -64,7 +64,7 @@ export function createTikTokMediaHandler(deps: TikTokMediaDeps) {
     });
   }
 
-  async function handleProxy(token: string, incomingRange: string | null): Promise<Response> {
+  async function handleProxy(token: string, incomingRange: string | null, isHead = false): Promise<Response> {
     // (a) Token must verify (valid signature, unexpired) AND resolve to an r2Key. A bad token
     // never reaches signGetUrl/R2 at all — the token IS the only access grant; there is no
     // path traversal risk because the r2Key comes from the verified token payload, never from
@@ -74,7 +74,12 @@ export function createTikTokMediaHandler(deps: TikTokMediaDeps) {
 
     const signedUrl = await signUrl(r2Key, R2_FETCH_TTL_SECONDS);
 
-    const fetchInit: RequestInit = incomingRange ? { headers: { Range: incomingRange } } : {};
+    // HEAD is forwarded as HEAD so no media bytes transit for a metadata probe (TikTok's
+    // verifier and its puller both HEAD before GET).
+    const fetchInit: RequestInit = {
+      ...(isHead ? { method: "HEAD" } : {}),
+      ...(incomingRange ? { headers: { Range: incomingRange } } : {}),
+    };
 
     let r2Res: Response;
     try {
@@ -105,11 +110,17 @@ export function createTikTokMediaHandler(deps: TikTokMediaDeps) {
     if (acceptRanges) headers.set("Accept-Ranges", acceptRanges);
 
     // status is R2's own (200 full body, or 206 when the Range request above was honored).
+    if (isHead) {
+      // Defensive: R2 HEAD responses carry no body, but never stream one on HEAD regardless.
+      await r2Res.body?.cancel();
+      return new Response(null, { status: r2Res.status, headers });
+    }
     return new Response(r2Res.body, { status: r2Res.status, headers });
   }
 
   return async (req: Request): Promise<Response> => {
-    if (req.method !== "GET") return emptyResponse(404);
+    const isHead = req.method === "HEAD";
+    if (req.method !== "GET" && !isHead) return emptyResponse(404);
 
     const url = new URL(req.url);
     const pathParts = url.pathname.split("/").filter(Boolean);
@@ -117,11 +128,12 @@ export function createTikTokMediaHandler(deps: TikTokMediaDeps) {
     const second = pathParts[1];
 
     if (second === "m" && pathParts.length === 3) {
-      return handleProxy(pathParts[2], req.headers.get("Range"));
+      return handleProxy(pathParts[2], req.headers.get("Range"), isHead);
     }
 
     if (pathParts.length === 2 && second && VERIFY_FILENAME_PATTERN.test(second)) {
-      return handleVerifyFile(second);
+      const res = await handleVerifyFile(second);
+      return isHead ? new Response(null, { status: res.status, headers: res.headers }) : res;
     }
 
     return emptyResponse(404);
