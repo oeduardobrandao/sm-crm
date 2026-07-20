@@ -49,6 +49,11 @@ describe('entregas tour', () => {
 describe('startEntregasTour completion vs dismissal', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // clearAllMocks wipes call records but NOT implementations, so a mockReturnValue set inside
+    // one test would leak into every test after it. Re-stub the default here explicitly.
+    // (vi.resetAllMocks() is not an option: it would also blow away driverFactory's
+    // implementation, so capturedConfig would never be populated.)
+    driverInstance.getActiveIndex.mockReturnValue(2);
     document.body.innerHTML = '<div data-tour="wf-card"></div>';
   });
 
@@ -67,6 +72,21 @@ describe('startEntregasTour completion vs dismissal', () => {
     startEntregasTour({ onComplete, onDismiss });
     expect(driverFactory).not.toHaveBeenCalled();
     expect(driverInstance.drive).not.toHaveBeenCalled();
+  });
+
+  // Mirrors the REAL driver.js 1.7.0 call graph: the done-button click handler invokes
+  // onDoneClick directly, and the d.destroy() we make from inside it runs teardown with the
+  // internal `started` flag forced false — which skips the onDestroyStarted branch entirely.
+  // So onDestroyStarted never runs on this path, and onComplete must fire from onDoneClick
+  // itself. This is the test that actually pins the bug fix; the double-invocation test below
+  // passes against the broken implementation too and only guards against double-firing.
+  it('done button alone completes (real driver.js never re-enters onDestroyStarted)', () => {
+    const onComplete = vi.fn();
+    const onDismiss = vi.fn();
+    startEntregasTour({ onComplete, onDismiss });
+    capturedConfig.current.onDoneClick();
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(onDismiss).not.toHaveBeenCalled();
   });
 
   it('done button → onComplete', () => {
