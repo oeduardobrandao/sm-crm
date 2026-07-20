@@ -200,6 +200,11 @@ describe('NewWorkflowWizard — step 1 (galeria)', () => {
     fireEvent.click(screen.getByText('Post avulso rápido'));
     // The source really switched (etapas swap with it — asserted once step 3 renders them)...
     expect(screen.getByText('Novo Fluxo · Post avulso rápido')).toBeTruthy();
+    // ...and non-nome fields ARE overwritten by the new source: Posts mensais is recorrente,
+    // Post avulso rápido is not, so the switch must have flipped back to false.
+    expect(screen.getByRole('switch', { name: /recorrente/i }).getAttribute('aria-checked')).toBe(
+      'false',
+    );
     // ...but the name the user typed survives it.
     expect((screen.getByLabelText(/nome do fluxo/i) as HTMLInputElement).value).toBe('Meu nome');
   });

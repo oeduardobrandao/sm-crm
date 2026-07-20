@@ -33,7 +33,15 @@ const DialogOverlay = React.forwardRef<
 ));
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
-const CONFIRM_CLOSE_MSG = 'Você tem alterações não salvas. Deseja fechar mesmo assim?';
+/**
+ * Shared with callers that render their own copy of the guard (e.g. a Cancelar button whose
+ * confirm must read identically to the X/Escape one). Retyping the string instead of importing it
+ * lets the two silently diverge on a future copy edit.
+ */
+export const CONFIRM_CLOSE_MSG = 'Você tem alterações não salvas. Deseja fechar mesmo assim?';
+export const CONFIRM_CLOSE_TITLE = 'Fechar sem salvar?';
+export const CONFIRM_CLOSE_KEEP_EDITING = 'Continuar editando';
+export const CONFIRM_CLOSE_DISCARD = 'Fechar mesmo assim';
 
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
@@ -123,11 +131,11 @@ const DialogContent = React.forwardRef<
           <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Fechar sem salvar?</AlertDialogTitle>
+                <AlertDialogTitle>{CONFIRM_CLOSE_TITLE}</AlertDialogTitle>
                 <AlertDialogDescription>{CONFIRM_CLOSE_MSG}</AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Continuar editando</AlertDialogCancel>
+                <AlertDialogCancel>{CONFIRM_CLOSE_KEEP_EDITING}</AlertDialogCancel>
                 <AlertDialogAction
                   onClick={() => {
                     setConfirmOpen(false);
@@ -135,7 +143,7 @@ const DialogContent = React.forwardRef<
                   }}
                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                 >
-                  Fechar mesmo assim
+                  {CONFIRM_CLOSE_DISCARD}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>

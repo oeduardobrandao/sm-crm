@@ -1,6 +1,9 @@
 import type { WorkflowTemplate } from '../../../../store';
 import { STANDARD_PRESETS, presetDurationDays, type WorkflowPreset } from '../presets';
 
+/** A saved template is only selectable as a wizard source once it has a persisted id. */
+type SelectableTemplate = WorkflowTemplate & { id: number };
+
 export function StepTemplate({
   templates,
   onSelectPreset,
@@ -9,7 +12,7 @@ export function StepTemplate({
 }: {
   templates: WorkflowTemplate[];
   onSelectPreset: (p: WorkflowPreset) => void;
-  onSelectTemplate: (t: WorkflowTemplate) => void;
+  onSelectTemplate: (t: SelectableTemplate) => void;
   onSelectZero: () => void;
 }) {
   return (
@@ -101,31 +104,34 @@ export function StepTemplate({
         >
           Seus templates
         </h5>
-        {templates.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => onSelectTemplate(t)}
-            style={{
-              display: 'flex',
-              width: '100%',
-              justifyContent: 'space-between',
-              border: '1px solid var(--border-color)',
-              borderRadius: 8,
-              padding: '0.5rem 0.75rem',
-              marginBottom: 6,
-              background: 'transparent',
-              cursor: 'pointer',
-            }}
-          >
-            <span>
-              📋 <span>{t.nome}</span>
-            </span>
-            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-              {t.etapas.length} etapas
-            </span>
-          </button>
-        ))}
+        {/* A template without an id cannot be selected as a source — don't render a dead row. */}
+        {templates
+          .filter((t): t is SelectableTemplate => t.id != null)
+          .map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => onSelectTemplate(t)}
+              style={{
+                display: 'flex',
+                width: '100%',
+                justifyContent: 'space-between',
+                border: '1px solid var(--border-color)',
+                borderRadius: 8,
+                padding: '0.5rem 0.75rem',
+                marginBottom: 6,
+                background: 'transparent',
+                cursor: 'pointer',
+              }}
+            >
+              <span>
+                📋 <span>{t.nome}</span>
+              </span>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                {t.etapas.length} etapas
+              </span>
+            </button>
+          ))}
         <button
           type="button"
           onClick={onSelectZero}

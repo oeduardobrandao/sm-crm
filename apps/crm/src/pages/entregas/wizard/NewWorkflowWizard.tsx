@@ -1,6 +1,15 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  CONFIRM_CLOSE_DISCARD,
+  CONFIRM_CLOSE_KEEP_EDITING,
+  CONFIRM_CLOSE_MSG,
+  CONFIRM_CLOSE_TITLE,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -145,14 +154,13 @@ export function NewWorkflowWizard(props: {
             onSelectPreset={(p) =>
               selectSource({ kind: 'preset', presetId: p.id, presetNome: p.nome }, p)
             }
-            onSelectTemplate={(t) => {
-              if (t.id == null) return;
+            onSelectTemplate={(t) =>
               selectSource(
                 { kind: 'template', templateId: t.id, templateNome: t.nome },
                 undefined,
                 t,
-              );
-            }}
+              )
+            }
             onSelectZero={() => selectSource({ kind: 'zero' })}
           />
         )}
@@ -194,22 +202,20 @@ export function NewWorkflowWizard(props: {
         </div>
       </DialogContent>
 
-      {/* Same copy as dialog.tsx's built-in guard so both close paths read identically. */}
+      {/* Copy is imported, not retyped, so this can never drift from dialog.tsx's own guard. */}
       <AlertDialog open={cancelConfirm} onOpenChange={setCancelConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Fechar sem salvar?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Você tem alterações não salvas. Deseja fechar mesmo assim?
-            </AlertDialogDescription>
+            <AlertDialogTitle>{CONFIRM_CLOSE_TITLE}</AlertDialogTitle>
+            <AlertDialogDescription>{CONFIRM_CLOSE_MSG}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Continuar editando</AlertDialogCancel>
+            <AlertDialogCancel>{CONFIRM_CLOSE_KEEP_EDITING}</AlertDialogCancel>
             <AlertDialogAction
               onClick={requestClose}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Fechar mesmo assim
+              {CONFIRM_CLOSE_DISCARD}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
