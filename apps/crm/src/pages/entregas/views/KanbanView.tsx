@@ -19,14 +19,13 @@ import { CSS } from '@dnd-kit/utilities';
 import { GripVertical } from 'lucide-react';
 import { toast } from 'sonner';
 import {
-  completeEtapa,
-  completeEtapaWithRearm,
   hasLaterApprovalEtapa,
   revertEtapa,
   updateWorkflowPositions,
   approvePostsInternally,
   sendPostsToCliente,
 } from '../../../store';
+import { completeEtapaForAdvance, notifyRearmOutcome } from '../advanceEtapa';
 import type { BoardCard } from '../hooks/useEntregasData';
 import type { Membro, WorkflowTemplate } from '../../../store';
 import { WorkflowCard } from '../components/WorkflowCard';
@@ -343,27 +342,13 @@ export function KanbanView({
   const advanceEtapa = useCallback(
     async (card: BoardCard, successMessage: string, opts?: { rearm?: boolean }) => {
       try {
-        const useRearm = opts?.rearm !== false;
-        const result = useRearm
-          ? await completeEtapaWithRearm(card.workflow.id!, card.etapa.id!)
-          : {
-              ...(await completeEtapa(card.workflow.id!, card.etapa.id!)),
-              rearmed: false,
-              rearmFailed: false,
-            };
+        const result = await completeEtapaForAdvance(card.workflow.id!, card.etapa.id!, opts);
         if (result.workflow.status === 'concluido' && card.workflow.recorrente) {
           onRecurring(card.workflow.id!);
         } else {
           toast.success(successMessage);
         }
-        if (result.rearmed) {
-          toast.info('Posts voltaram para rascunho para o próximo ciclo de aprovação.');
-        }
-        if (result.rearmFailed) {
-          toast.error(
-            'A etapa avançou, mas não foi possível preparar os posts para o próximo ciclo de aprovação. Reinicie os status dos posts manualmente.',
-          );
-        }
+        notifyRearmOutcome(result);
         onRefresh();
       } catch (err: unknown) {
         toast.error((err as Error).message || 'Erro ao avançar etapa');

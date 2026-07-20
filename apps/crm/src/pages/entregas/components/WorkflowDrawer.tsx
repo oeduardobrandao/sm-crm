@@ -53,7 +53,6 @@ import {
   getPostApprovals,
   getPostStatusEvents,
   replyToPostApproval,
-  completeEtapaWithRearm,
   getPostCommentThreads,
   createCommentThread,
   addPostComment,
@@ -76,6 +75,7 @@ import {
 } from '../../../store';
 import type { BoardCard } from '../hooks/useEntregasData';
 import { shouldAutoCompleteApproval } from './autoComplete';
+import { completeEtapaForAdvance, notifyRearmOutcome } from '../advanceEtapa';
 import { PostEditor } from './PostEditor';
 import { PropertyPanel } from './PropertyPanel';
 import PostCommentSummary from './PostCommentSummary';
@@ -195,16 +195,9 @@ export function WorkflowDrawer({
     if (!approvalEtapa) return;
     (async () => {
       try {
-        const { rearmed, rearmFailed } = await completeEtapaWithRearm(
-          workflowId,
-          approvalEtapa.id!,
-        );
+        const result = await completeEtapaForAdvance(workflowId, approvalEtapa.id!);
         toast.success('Todos os posts aprovados — etapa concluída!');
-        if (rearmed) toast.info('Posts voltaram para rascunho para o próximo ciclo de aprovação.');
-        if (rearmFailed)
-          toast.error(
-            'A etapa avançou, mas não foi possível preparar os posts para o próximo ciclo de aprovação. Reinicie os status dos posts manualmente.',
-          );
+        notifyRearmOutcome(result);
         onRefresh();
       } catch {
         /* silent, etapa completion is a bonus */
