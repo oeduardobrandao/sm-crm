@@ -50,6 +50,14 @@ describe('analytics', () => {
     expect(posthogMock.capture).toHaveBeenCalledWith('hub_link_copied', { cliente_id: 7 });
   });
 
+  it('captures workflow_wizard_source with properties', async () => {
+    vi.stubEnv('VITE_POSTHOG_KEY', 'phc_test');
+    const { initAnalytics, captureEvent } = await import('../analytics');
+    initAnalytics();
+    captureEvent('workflow_wizard_source', { source: 'posts-mensais' });
+    expect(posthogMock.capture).toHaveBeenCalledWith('workflow_wizard_source', { source: 'posts-mensais' });
+  });
+
   it('groups the user by workspace, because retention is a workspace property', async () => {
     vi.stubEnv('VITE_POSTHOG_KEY', 'phc_test');
     const { initAnalytics, identifyWorkspaceUser } = await import('../analytics');

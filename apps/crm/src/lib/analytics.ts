@@ -12,6 +12,11 @@ export type AnalyticsEvent =
   | 'client_created'
   | 'instagram_connected'
   | 'workflow_created'
+  | 'workflow_wizard_source'
+  | 'workflow_saved_as_template'
+  | 'entregas_tour_started'
+  | 'entregas_tour_completed'
+  | 'entregas_tour_dismissed'
   | 'hub_link_copied'
   | 'report_generated'
   | 'invite_sent';
