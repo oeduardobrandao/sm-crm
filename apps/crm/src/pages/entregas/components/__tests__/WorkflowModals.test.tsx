@@ -1,6 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { toastSuccessMock, toastErrorMock } = vi.hoisted(() => ({
@@ -21,8 +20,6 @@ vi.mock('../PropertyDefinitionPanel', () => ({
 
 vi.mock('../../../../store', () => ({
   getDeadlineInfo: vi.fn(),
-  addWorkflow: vi.fn(),
-  addWorkflowEtapa: vi.fn(),
   addWorkflowTemplate: vi.fn(),
   removeWorkflowTemplate: vi.fn(),
   removeWorkflow: vi.fn(),
@@ -239,229 +236,16 @@ vi.mock('@/components/ui/alert-dialog', async () => {
   };
 });
 
-import { addWorkflow, addWorkflowEtapa, removeWorkflow } from '../../../../store';
 import {
   ClientApprovalChoiceDialog,
-  NewWorkflowModal,
   RecurringWorkflowDialog,
   RevertConfirmDialog,
 } from '../WorkflowModals';
 
-const mockedAddWorkflow = vi.mocked(addWorkflow);
-const mockedAddWorkflowEtapa = vi.mocked(addWorkflowEtapa);
-const mockedRemoveWorkflow = vi.mocked(removeWorkflow);
-
 describe('WorkflowModals', () => {
   beforeEach(() => {
-    mockedAddWorkflow.mockReset();
-    mockedAddWorkflowEtapa.mockReset();
-    mockedRemoveWorkflow.mockReset();
     toastSuccessMock.mockReset();
     toastErrorMock.mockReset();
-  });
-
-  it('validates required fields before trying to create a workflow', async () => {
-    render(
-      <MemoryRouter>
-        <NewWorkflowModal
-          open={true}
-          onClose={vi.fn()}
-          clientes={[{ id: 1, nome: 'Aurora', status: 'ativo' } as any]}
-          membros={[]}
-          templates={[]}
-          onCreated={vi.fn()}
-        />
-      </MemoryRouter>,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /Criar Fluxo/i }));
-
-    await waitFor(() => {
-      expect(toastErrorMock).toHaveBeenCalledWith('Título e cliente são obrigatórios.');
-    });
-    expect(mockedAddWorkflow).not.toHaveBeenCalled();
-  });
-
-  it('hydrates etapas from the selected template and creates the workflow successfully', async () => {
-    const onClose = vi.fn();
-    const onCreated = vi.fn();
-
-    mockedAddWorkflow.mockResolvedValue({ id: 77 } as never);
-    mockedAddWorkflowEtapa.mockResolvedValue({} as never);
-
-    render(
-      <MemoryRouter>
-        <NewWorkflowModal
-          open={true}
-          onClose={onClose}
-          onCreated={onCreated}
-          clientes={
-            [
-              { id: 1, nome: 'Aurora', status: 'ativo' },
-              { id: 2, nome: 'Inativo', status: 'inativo' },
-            ] as any
-          }
-          membros={[{ id: 9, nome: 'Ana' } as any]}
-          templates={
-            [
-              {
-                id: 12,
-                nome: 'Template social',
-                etapas: [
-                  {
-                    nome: 'Briefing',
-                    prazo_dias: 2,
-                    tipo_prazo: 'corridos',
-                    responsavel_id: 9,
-                    tipo: 'padrao',
-                  },
-                  {
-                    nome: 'Aprovação final',
-                    prazo_dias: 1,
-                    tipo_prazo: 'uteis',
-                    responsavel_id: 9,
-                    tipo: 'aprovacao_cliente',
-                  },
-                ],
-              },
-            ] as any
-          }
-        />
-      </MemoryRouter>,
-    );
-
-    fireEvent.change(screen.getByPlaceholderText('Ex: Posts Instagram — Março 2026'), {
-      target: { value: 'Fluxo Abril' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Aurora' }));
-    fireEvent.click(screen.getByRole('button', { name: /Template social \(2 etapas\)/i }));
-
-    expect(screen.getByDisplayValue('Briefing')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('Aprovação final')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: /Criar Fluxo/i }));
-
-    await waitFor(() => {
-      expect(mockedAddWorkflow).toHaveBeenCalledWith(
-        expect.objectContaining({
-          cliente_id: 1,
-          titulo: 'Fluxo Abril',
-          template_id: 12,
-          status: 'ativo',
-        }),
-      );
-    });
-    expect(mockedAddWorkflowEtapa).toHaveBeenCalledTimes(2);
-    expect(mockedAddWorkflowEtapa).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({
-        workflow_id: 77,
-        ordem: 0,
-        nome: 'Briefing',
-        status: 'ativo',
-        iniciado_em: expect.any(String),
-      }),
-    );
-    expect(mockedAddWorkflowEtapa).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        workflow_id: 77,
-        ordem: 1,
-        nome: 'Aprovação final',
-        status: 'pendente',
-        tipo: 'aprovacao_cliente',
-      }),
-    );
-    expect(toastSuccessMock).toHaveBeenCalledWith('Fluxo criado com sucesso!');
-    expect(onCreated).toHaveBeenCalled();
-    expect(onClose).toHaveBeenCalled();
-  });
-
-  it('shows error when etapas are missing a responsible', async () => {
-    render(
-      <MemoryRouter>
-        <NewWorkflowModal
-          open={true}
-          onClose={vi.fn()}
-          onCreated={vi.fn()}
-          clientes={[{ id: 1, nome: 'Aurora', status: 'ativo' } as any]}
-          membros={[{ id: 9, nome: 'Ana' } as any]}
-          templates={
-            [
-              {
-                id: 12,
-                nome: 'Template social',
-                etapas: [
-                  {
-                    nome: 'Briefing',
-                    prazo_dias: 2,
-                    tipo_prazo: 'corridos',
-                    responsavel_id: 9,
-                    tipo: 'padrao',
-                  },
-                  {
-                    nome: 'Aprovação final',
-                    prazo_dias: 1,
-                    tipo_prazo: 'uteis',
-                    responsavel_id: null,
-                    tipo: 'aprovacao_cliente',
-                  },
-                ],
-              },
-            ] as any
-          }
-        />
-      </MemoryRouter>,
-    );
-
-    fireEvent.change(screen.getByPlaceholderText('Ex: Posts Instagram — Março 2026'), {
-      target: { value: 'Fluxo Teste' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Aurora' }));
-    fireEvent.click(screen.getByRole('button', { name: /Template social \(2 etapas\)/i }));
-
-    fireEvent.click(screen.getByRole('button', { name: /Criar Fluxo/i }));
-
-    await waitFor(() => {
-      expect(toastErrorMock).toHaveBeenCalledWith(
-        'Todas as etapas precisam de um responsável atribuído.',
-      );
-    });
-    expect(mockedAddWorkflow).not.toHaveBeenCalled();
-  });
-
-  it('rolls back the workflow when etapa creation fails', async () => {
-    mockedAddWorkflow.mockResolvedValue({ id: 45 } as never);
-    mockedAddWorkflowEtapa.mockRejectedValue(new Error('Falha ao criar etapa'));
-
-    render(
-      <MemoryRouter>
-        <NewWorkflowModal
-          open={true}
-          onClose={vi.fn()}
-          onCreated={vi.fn()}
-          clientes={[{ id: 1, nome: 'Aurora', status: 'ativo' } as any]}
-          membros={[{ id: 5, nome: 'João' } as any]}
-          templates={[]}
-        />
-      </MemoryRouter>,
-    );
-
-    fireEvent.change(screen.getByPlaceholderText('Ex: Posts Instagram — Março 2026'), {
-      target: { value: 'Fluxo de Crise' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Aurora' }));
-    fireEvent.change(screen.getByPlaceholderText('Nome da etapa'), {
-      target: { value: 'Briefing' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'João' }));
-
-    fireEvent.click(screen.getByRole('button', { name: /Criar Fluxo/i }));
-
-    await waitFor(() => {
-      expect(mockedRemoveWorkflow).toHaveBeenCalledWith(45);
-    });
-    expect(toastErrorMock).toHaveBeenCalledWith('Falha ao criar etapa');
   });
 
   it('wires the lightweight confirmation dialogs to the provided callbacks', () => {

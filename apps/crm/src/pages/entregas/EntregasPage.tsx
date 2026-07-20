@@ -7,11 +7,11 @@ import { Spinner } from '@/components/ui/spinner';
 import { useEntregasData, type BoardCard } from './hooks/useEntregasData';
 import { EntregasFilters, type FilterState } from './components/EntregasFilters';
 import {
-  NewWorkflowModal,
   EditWorkflowModal,
   TemplatesModal,
   RecurringWorkflowDialog,
 } from './components/WorkflowModals';
+import { NewWorkflowWizard } from './wizard/NewWorkflowWizard';
 import { KanbanView } from './views/KanbanView';
 import { ChartView } from './views/ChartView';
 import { CalendarView } from './views/CalendarView';
@@ -294,7 +294,7 @@ export default function EntregasPage() {
       {activeView === 'concluded' && <ConcludedView />}
 
       {newWorkflowOpen && (
-        <NewWorkflowModal
+        <NewWorkflowWizard
           open={newWorkflowOpen}
           onClose={() => setNewWorkflowOpen(false)}
           clientes={clientes}

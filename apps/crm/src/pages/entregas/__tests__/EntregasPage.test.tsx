@@ -132,8 +132,8 @@ vi.mock('../components/WorkflowDrawer', () => ({
   ),
 }));
 
-vi.mock('../components/WorkflowModals', () => ({
-  NewWorkflowModal: ({
+vi.mock('../wizard/NewWorkflowWizard', () => ({
+  NewWorkflowWizard: ({
     open,
     onClose,
     onCreated,
@@ -144,11 +144,14 @@ vi.mock('../components/WorkflowModals', () => ({
   }) =>
     open ? (
       <div>
-        <div>New workflow modal</div>
+        <div>WizardMock</div>
         <button onClick={onCreated}>Created workflow</button>
         <button onClick={onClose}>Close new modal</button>
       </div>
     ) : null,
+}));
+
+vi.mock('../components/WorkflowModals', () => ({
   EditWorkflowModal: ({
     card,
     onClose,
@@ -319,7 +322,7 @@ describe('EntregasPage', () => {
     expect(refresh).toHaveBeenCalled();
 
     fireEvent.click(screen.getByText('Novo Fluxo'));
-    expect(screen.getByText('New workflow modal')).toBeInTheDocument();
+    expect(screen.getByText('WizardMock')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Created workflow'));
     expect(refresh).toHaveBeenCalledTimes(2);
   });
