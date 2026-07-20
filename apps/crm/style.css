@@ -8613,7 +8613,10 @@ body.landing-page #root {
 
   .cliente-detalhe-nav {
     position: sticky;
-    top: env(safe-area-inset-top, 0px);
+    /* Sticky offsets resolve against .main-content's padding edge, so its
+       1.25rem top padding would otherwise leave a permanent gap above the
+       stuck strip. Cancel it here so the strip sits flush at the safe area. */
+    top: -1.25rem;
     z-index: 35;
     display: flex;
     width: calc(100% + 2rem);
