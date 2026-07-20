@@ -74,7 +74,7 @@ export function PlatformSelector({
   };
 
   return (
-    <div className="drawer-post-field">
+    <div className="drawer-post-field drawer-post-field--platform">
       <label>Plataforma</label>
       <ToggleGroup
         type="single"
