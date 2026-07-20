@@ -5,6 +5,9 @@ const store = vi.hoisted(() => ({
   addWorkflowEtapa: vi.fn(),
   addWorkflowTemplate: vi.fn(),
   removeWorkflow: vi.fn(),
+  // Present so a future template-cleanup call in the catch block would be a real spy
+  // rather than a TypeError swallowed by the best-effort guard. See the orphan test.
+  removeWorkflowTemplate: vi.fn(),
 }));
 vi.mock('../../../../store', () => store);
 
@@ -52,7 +55,7 @@ describe('createWorkflowFromWizard', () => {
       baseInput({ saveAsTemplate: true, templateName: 'Meu template' }),
     );
     expect(result.workflow).toEqual({ id: 42 });
-    expect(result.warning).toMatch(/template/i);
+    expect(result.warning).toBe('O fluxo será criado, mas não foi possível salvar o template.');
     expect(store.addWorkflow).toHaveBeenCalledWith(expect.objectContaining({ template_id: null }));
   });
 
@@ -69,6 +72,9 @@ describe('createWorkflowFromWizard', () => {
       createWorkflowFromWizard(baseInput({ saveAsTemplate: true, templateName: 'X' })),
     ).rejects.toThrow('etapa boom');
     expect(store.removeWorkflow).toHaveBeenCalledWith(42);
+    // The template is deliberately NOT rolled back — a saved template outliving a failed
+    // fluxo is the intended trade-off, so no cleanup call may creep into the catch block.
+    expect(store.removeWorkflowTemplate).not.toHaveBeenCalled();
   });
 
   it('first etapa starts ativo with iniciado_em, rest pendente', async () => {
