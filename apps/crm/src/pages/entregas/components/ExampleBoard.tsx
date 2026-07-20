@@ -48,19 +48,19 @@ export function ExampleBoard({ onDismiss }: { onDismiss: () => void }) {
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                     <span
                       data-tour="wf-deadline"
-                      className="badge-success"
+                      className="badge badge-success"
                       style={{ fontSize: '0.62rem' }}
                     >
                       3d restantes
                     </span>
                     <span
                       data-tour="wf-posts"
-                      className="badge-neutral"
+                      className="badge badge-neutral"
                       style={{ fontSize: '0.62rem' }}
                     >
                       📄 4 posts
                     </span>
-                    <span className="badge-neutral" style={{ fontSize: '0.62rem' }}>
+                    <span className="badge badge-neutral" style={{ fontSize: '0.62rem' }}>
                       👤 Maria
                     </span>
                   </div>

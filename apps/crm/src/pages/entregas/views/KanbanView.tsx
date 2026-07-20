@@ -36,7 +36,7 @@ import {
   ClientApprovalChoiceDialog,
 } from '../components/WorkflowModals';
 
-interface KanbanViewProps {
+interface KanbanViewBaseProps {
   cards: BoardCard[];
   onCardClick: (card: BoardCard) => void;
   onEditClick: (card: BoardCard) => void;
@@ -50,9 +50,15 @@ interface KanbanViewProps {
   clearedClienteCounts: Map<number, number>;
   revisaoInternaCounts: Map<number, number>;
   awaitingClienteCounts: Map<number, number>;
-  showExample?: boolean;
-  onDismissExample?: () => void;
 }
+
+// Discriminated union: showExample={true} makes onDismissExample compile-time
+// required, so the example board can never render without a working dismiss.
+type KanbanViewProps = KanbanViewBaseProps &
+  (
+    | { showExample?: false; onDismissExample?: () => void }
+    | { showExample: true; onDismissExample: () => void }
+  );
 
 interface BoardRow {
   key: string;
@@ -444,8 +450,8 @@ export function KanbanView({
   };
 
   if (localCards.length === 0) {
-    if (showExample) {
-      return <ExampleBoard onDismiss={onDismissExample!} />;
+    if (showExample && onDismissExample) {
+      return <ExampleBoard onDismiss={onDismissExample} />;
     }
     return (
       <div

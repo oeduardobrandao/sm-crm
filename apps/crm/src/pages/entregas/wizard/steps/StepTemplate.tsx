@@ -57,7 +57,7 @@ export function StepTemplate({
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <Icon className="h-5 w-5" />
                 {p.recorrente && (
-                  <span className="badge-warning" style={{ fontSize: '0.6rem' }}>
+                  <span className="badge badge-warning" style={{ fontSize: '0.6rem' }}>
                     Recorrente
                   </span>
                 )}

@@ -217,3 +217,47 @@ describe('WorkflowCard awaiting-client badge across two approval cycles', () => 
     expect(screen.queryByText(/posts com o cliente/i)).not.toBeInTheDocument();
   });
 });
+
+// The guided tour (see the entregas tour module) selects its steps by [data-tour]
+// presence at runtime: a missing anchor silently drops that step instead of failing
+// loudly. These assertions pin the three card anchors so a refactor that strips one
+// breaks a test rather than quietly degrading onboarding.
+describe('WorkflowCard tour anchors', () => {
+  it('exposes the wf-card, wf-deadline and wf-posts anchors', () => {
+    const { container } = render(
+      <MemoryRouter>
+        <WorkflowCard card={makeCard(1)} postsCount={5} />
+      </MemoryRouter>,
+    );
+    expect(container.querySelector('[data-tour="wf-card"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-tour="wf-deadline"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-tour="wf-posts"]')).toBeInTheDocument();
+  });
+
+  it('anchors sit on the elements the tour describes', () => {
+    const { container } = render(
+      <MemoryRouter>
+        <WorkflowCard card={makeCard(1)} postsCount={5} />
+      </MemoryRouter>,
+    );
+    // wf-deadline must be the pill showing the remaining time, not some other span.
+    expect(container.querySelector('[data-tour="wf-deadline"]')).toHaveTextContent(/5d restantes/i);
+    // wf-posts must be the Posts control, and it carries the count badge.
+    expect(container.querySelector('[data-tour="wf-posts"]')).toHaveTextContent(/Posts/i);
+    // wf-card is the card root, so it contains the other two anchors.
+    const root = container.querySelector('[data-tour="wf-card"]')!;
+    expect(root.querySelector('[data-tour="wf-deadline"]')).toBeInTheDocument();
+    expect(root.querySelector('[data-tour="wf-posts"]')).toBeInTheDocument();
+  });
+
+  it('keeps the wf-posts anchor even when the card has no posts', () => {
+    // The tour must be able to point at the Posts control on a brand-new workflow,
+    // which is exactly the zero-posts case a first-time user sees.
+    const { container } = render(
+      <MemoryRouter>
+        <WorkflowCard card={makeCard(1)} postsCount={0} />
+      </MemoryRouter>,
+    );
+    expect(container.querySelector('[data-tour="wf-posts"]')).toBeInTheDocument();
+  });
+});

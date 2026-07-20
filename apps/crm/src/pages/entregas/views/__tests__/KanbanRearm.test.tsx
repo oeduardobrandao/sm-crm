@@ -249,3 +249,29 @@ describe('KanbanView approval advance with re-arm', () => {
     expect(toast.info).not.toHaveBeenCalled();
   });
 });
+
+// The guided tour selects steps by [data-tour] presence at runtime, so a lost anchor
+// degrades the tour silently. This pins the approval-column anchor AND the Set lookup
+// that decides which column gets it — the part most likely to break without noise
+// (e.g. if the columns were ever keyed by etapa id instead of nome).
+describe('KanbanView wf-col-aprovacao tour anchor', () => {
+  it('tags the aprovacao_cliente column header and no other column', () => {
+    const { container } = renderBoard(0);
+
+    const tagged = container.querySelectorAll('[data-tour="wf-col-aprovacao"]');
+    expect(tagged).toHaveLength(1);
+    // The fixture board has an approval column ("Aprovação do texto") and a plain
+    // one ("Design"); the anchor must land on the approval column's header.
+    expect(tagged[0]).toHaveTextContent('Aprovação do texto');
+    expect(tagged[0]).not.toHaveTextContent('Design');
+    expect(tagged[0]).toHaveClass('board-column-header');
+
+    // Non-vacuity: prove the non-approval column really rendered, so the
+    // "no other column" assertion above is not passing on an empty board.
+    const headers = container.querySelectorAll('.board-column-header');
+    expect(headers).toHaveLength(2);
+    const design = [...headers].find((h) => h.textContent?.includes('Design'))!;
+    expect(design).toBeInTheDocument();
+    expect(design.hasAttribute('data-tour')).toBe(false);
+  });
+});
