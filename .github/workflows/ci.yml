@@ -162,3 +162,31 @@ jobs:
 
       - name: Prettier check
         run: npm run format:check
+
+  # Leak 5: two migrations sharing a version prefix (e.g. 20260717000002_a.sql
+  # and 20260717000002_b.sql, from parallel PRs) collide in the remote
+  # supabase_migrations.schema_migrations table — its primary key is the
+  # version, so only the first applies and the second is silently skipped
+  # forever (it never reaches prod, and `db push` later blocks on it as an
+  # out-of-order migration). This gates against that class of drift by failing
+  # the build on any duplicate migration version prefix.
+  migration-version-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fail on duplicate migration versions
+        run: |
+          dupes=$(
+            for f in supabase/migrations/*.sql; do
+              base=$(basename "$f" .sql)
+              echo "${base%%_*}"
+            done | sort | uniq -d
+          )
+          if [ -n "$dupes" ]; then
+            echo "::error::Duplicate migration version prefix(es) found:"
+            echo "$dupes"
+            echo "Rename the newer file(s) to a unique timestamp. Duplicate versions collide in schema_migrations and silently fail to apply to remote databases."
+            exit 1
+          fi
+          echo "No duplicate migration versions."
