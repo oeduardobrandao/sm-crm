@@ -26,13 +26,20 @@ npm run test:watch       # Vitest in watch mode
 npm run test:coverage    # Vitest with V8 coverage
 deno test supabase/functions/    # Deno edge-function suite
 
+# Lint & format (both enforced in CI)
+npm run lint             # eslint apps/ packages/ (runs in the typecheck-and-test job)
+npm run format           # prettier --write  (auto-fix apps/** and packages/**)
+npm run format:check     # prettier --check  (format-check job gate; run before pushing)
+
 # Supabase
 npx supabase functions serve                    # local edge functions
 npx supabase functions deploy <name>
 npx supabase db push --linked                   # push migrations to staging
 ```
 
-IMPORTANT: There is no linter or formatter configured. Typecheck with `npm run build` (runs `tsc` then `vite build`). Always typecheck after making code changes. Run `npm run test` after changes to verify no regressions.
+IMPORTANT: Both ESLint and Prettier are enforced in CI. `npm run lint` (`eslint apps/ packages/`) runs in the `typecheck-and-test` job, and `npm run format:check` (`prettier --check`) runs in the `format-check` job. Run `npm run lint` and `npm run format:check` before pushing (`npm run format` auto-fixes formatting), or CI will fail. Typecheck with `npm run build` (runs `tsc` then `vite build`). Always typecheck after making code changes. Run `npm run test` after changes to verify no regressions.
+
+Migration filenames must use a unique timestamp version prefix (the digits before the first `_`). Two files sharing a prefix collide in Supabase's `schema_migrations` history table — only the first applies and the second is silently skipped. The `migration-version-guard` CI job fails the build on duplicates.
 
 ## Architecture
 

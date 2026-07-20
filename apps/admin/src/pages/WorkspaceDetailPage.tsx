@@ -219,7 +219,8 @@ export default function WorkspaceDetailPage() {
           <div className="min-w-0">
             <h1 className="font-sf text-xl font-bold break-words">{data.workspace.name}</h1>
             <p className="text-sm text-muted-foreground truncate">
-              Owner: {data.owner?.email || '—'} · Created{' '}
+              Owner: {data.owner?.email || '—'}
+              {data.owner?.telefone ? ` · ${data.owner.telefone}` : ''} · Created{' '}
               {new Date(data.workspace.created_at).toLocaleDateString('pt-BR')}
             </p>
           </div>
@@ -514,22 +515,33 @@ export default function WorkspaceDetailPage() {
       <div className="min-w-0 overflow-hidden bg-card border border-border rounded-2xl p-5">
         <h2 className="font-semibold mb-4">Members ({data.members.length})</h2>
         {/* Desktop table header */}
-        <div className="hidden md:grid grid-cols-[2fr_2fr_1fr_1fr] gap-2 text-[0.7rem] text-muted-foreground uppercase tracking-wider pb-3 border-b border-border">
+        <div className="hidden md:grid grid-cols-[1.5fr_1.9fr_1.4fr_0.8fr_0.9fr] gap-2 text-[0.7rem] text-muted-foreground uppercase tracking-wider pb-3 border-b border-border">
           <span>Name</span>
           <span>Email</span>
+          <span>Phone</span>
           <span>Role</span>
           <span>Joined</span>
         </div>
         {data.members.map((m) => (
           <div
             key={m.user_id}
-            className="min-w-0 border-b border-border/50 py-2.5 md:grid md:grid-cols-[2fr_2fr_1fr_1fr] md:gap-2"
+            className="min-w-0 border-b border-border/50 py-2.5 md:grid md:grid-cols-[1.5fr_1.9fr_1.4fr_0.8fr_0.9fr] md:gap-2"
           >
             {/* Mobile card */}
             <div className="flex min-w-0 items-center justify-between gap-3 md:hidden">
               <div className="flex min-w-0 flex-col gap-0.5">
                 <span className="truncate text-sm">{m.name}</span>
                 <span className="truncate text-xs text-muted-foreground">{m.email}</span>
+                {m.telefone && (
+                  <span className="flex items-center gap-1.5 truncate text-xs text-muted-foreground">
+                    {m.telefone}
+                    {m.marketing_opt_in && (
+                      <span className="shrink-0 text-[0.55rem] font-semibold uppercase px-1 py-0.5 rounded-sm bg-success/10 text-success">
+                        MKT
+                      </span>
+                    )}
+                  </span>
+                )}
               </div>
               <span
                 className={`shrink-0 text-xs font-medium ${m.role === 'owner' ? 'text-foreground font-semibold' : 'text-muted-foreground'}`}
@@ -541,6 +553,23 @@ export default function WorkspaceDetailPage() {
             <span className="hidden truncate text-sm md:inline">{m.name}</span>
             <span className="hidden truncate text-sm text-muted-foreground md:inline">
               {m.email}
+            </span>
+            <span className="hidden min-w-0 items-center gap-1.5 text-sm text-muted-foreground md:flex">
+              {m.telefone ? (
+                <>
+                  <span className="truncate">{m.telefone}</span>
+                  {m.marketing_opt_in && (
+                    <span
+                      className="shrink-0 text-[0.55rem] font-semibold uppercase px-1 py-0.5 rounded-sm bg-success/10 text-success"
+                      title="Opted in to marketing contact"
+                    >
+                      MKT
+                    </span>
+                  )}
+                </>
+              ) : (
+                <span className="text-dim-foreground">—</span>
+              )}
             </span>
             <span
               className={`hidden md:inline text-sm ${m.role === 'owner' ? 'text-foreground font-semibold' : 'text-muted-foreground'}`}
