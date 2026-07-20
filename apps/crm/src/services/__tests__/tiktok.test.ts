@@ -4,11 +4,16 @@ vi.mock('../../lib/supabase');
 
 import * as supabaseModule from '../../lib/supabase';
 import {
+  cancelTikTokSchedule,
   disconnectTikTok,
   getTikTokAuthUrl,
+  getTikTokCreatorInfo,
   getTikTokPosts,
   getTikTokSummary,
+  publishTikTokPostNow,
   refreshTikTokToken,
+  retryTikTokPublish,
+  scheduleTikTokPost,
   syncTikTokData,
 } from '../tiktok';
 
@@ -269,5 +274,169 @@ describe('tiktok service', () => {
     expect(headers.Authorization).toBe('Bearer token-de-teste');
     expect(headers.apikey).toBe('anon-key-for-tests');
     expect(headers['Content-Type']).toBe('application/json');
+  });
+
+  // ─── Publishing service functions (Phase C, tiktok-publish) ─────────
+
+  describe('getTikTokCreatorInfo', () => {
+    it('GETs /tiktok-publish/creator-info/:clientId and returns the result', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        jsonResponse({
+          creator_nickname: 'dk.teste',
+          privacy_level_options: ['SELF_ONLY'],
+          comment_disabled: false,
+          duet_disabled: false,
+          stitch_disabled: false,
+          max_video_post_duration_sec: 600,
+        }),
+      );
+
+      const info = await getTikTokCreatorInfo(9);
+
+      expect(fetchSpy.mock.calls[0][0]).toContain('/tiktok-publish/creator-info/9');
+      expect(info.creator_nickname).toBe('dk.teste');
+      expect(info.privacy_level_options).toEqual(['SELF_ONLY']);
+    });
+
+    it('does not send the anon apikey header (gateway JWT, not tiktok-integration)', async () => {
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(jsonResponse({ creator_nickname: 'x' }));
+
+      await getTikTokCreatorInfo(9);
+
+      const headers = (fetchSpy.mock.calls[0][1] as RequestInit).headers as Record<string, string>;
+      expect(headers.Authorization).toBe('Bearer token-de-teste');
+      expect(headers.apikey).toBeUndefined();
+    });
+
+    it('throws the server-provided error message on failure', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        jsonResponse(
+          { error: 'Conta do TikTok não está ativa. Reconecte a conta.' },
+          { status: 422 },
+        ),
+      );
+      await expect(getTikTokCreatorInfo(9)).rejects.toThrow('Conta do TikTok não está ativa');
+    });
+  });
+
+  describe('scheduleTikTokPost', () => {
+    it('POSTs scheduled_at to /tiktok-publish/schedule/:postId and returns the result', async () => {
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(jsonResponse({ ok: true, status: 'agendado' }));
+
+      const result = await scheduleTikTokPost(123, '2026-08-01T12:00:00.000Z');
+
+      expect(result).toEqual({ ok: true, status: 'agendado' });
+      expect(fetchSpy.mock.calls[0][0]).toContain('/tiktok-publish/schedule/123');
+      const init = fetchSpy.mock.calls[0][1] as RequestInit;
+      expect(init.method).toBe('POST');
+      expect(JSON.parse(init.body as string)).toEqual({
+        scheduled_at: '2026-08-01T12:00:00.000Z',
+      });
+    });
+
+    it('surfaces the 422 details array joined into the thrown error message', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        jsonResponse(
+          {
+            error: 'Validação falhou',
+            details: [
+              'tiktok_settings.privacy_level é obrigatório.',
+              'Carrossel tem vídeo (não suportado no TikTok).',
+            ],
+          },
+          { status: 422 },
+        ),
+      );
+
+      await expect(scheduleTikTokPost(123, '2026-08-01T12:00:00.000Z')).rejects.toThrow(
+        'tiktok_settings.privacy_level é obrigatório.; Carrossel tem vídeo (não suportado no TikTok).',
+      );
+    });
+  });
+
+  describe('cancelTikTokSchedule', () => {
+    it('POSTs to /tiktok-publish/cancel/:postId and returns {ok}', async () => {
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(jsonResponse({ ok: true, status: 'aprovado_cliente' }));
+
+      const result = await cancelTikTokSchedule(456);
+
+      expect(result).toEqual({ ok: true, status: 'aprovado_cliente' });
+      expect(fetchSpy.mock.calls[0][0]).toContain('/tiktok-publish/cancel/456');
+      expect((fetchSpy.mock.calls[0][1] as RequestInit).method).toBe('POST');
+    });
+
+    it('throws the server error message on failure', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        jsonResponse({ error: 'Apenas posts agendados podem ser cancelados.' }, { status: 422 }),
+      );
+      await expect(cancelTikTokSchedule(456)).rejects.toThrow('Apenas posts agendados');
+    });
+  });
+
+  describe('retryTikTokPublish', () => {
+    it('POSTs to /tiktok-publish/retry/:postId and returns {ok}', async () => {
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(jsonResponse({ ok: true, status: 'agendado' }));
+
+      const result = await retryTikTokPublish(789);
+
+      expect(result).toEqual({ ok: true, status: 'agendado' });
+      expect(fetchSpy.mock.calls[0][0]).toContain('/tiktok-publish/retry/789');
+    });
+
+    it('throws the server error message on failure', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        jsonResponse(
+          { error: 'Apenas posts com falha no TikTok podem ser reenviados.' },
+          { status: 422 },
+        ),
+      );
+      await expect(retryTikTokPublish(789)).rejects.toThrow('Apenas posts com falha no TikTok');
+    });
+  });
+
+  describe('publishTikTokPostNow', () => {
+    it('POSTs to /tiktok-publish/publish-now/:postId and returns a postado result', async () => {
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(jsonResponse({ ok: true, status: 'postado' }));
+
+      const result = await publishTikTokPostNow(100);
+
+      expect(result).toEqual({ ok: true, status: 'postado' });
+      expect(fetchSpy.mock.calls[0][0]).toContain('/tiktok-publish/publish-now/100');
+      expect((fetchSpy.mock.calls[0][1] as RequestInit).method).toBe('POST');
+    });
+
+    it('returns agendado + message when TikTok is still processing', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        jsonResponse({
+          ok: true,
+          status: 'agendado',
+          message:
+            'TikTok ainda processando. A publicação será concluída automaticamente em instantes.',
+        }),
+      );
+      const result = await publishTikTokPostNow(100);
+      expect(result.status).toBe('agendado');
+      expect(result.message).toContain('processando');
+    });
+
+    it('surfaces the 422 details array on validation failure', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        jsonResponse(
+          { error: 'Validação falhou', details: ['Conta do TikTok não está ativa.'] },
+          { status: 422 },
+        ),
+      );
+      await expect(publishTikTokPostNow(100)).rejects.toThrow('Conta do TikTok não está ativa.');
+    });
   });
 });

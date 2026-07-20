@@ -121,6 +121,8 @@ Monorepo with npm workspaces:
 - `GEMINI_API_KEY` -- Google Gemini key for AI image generation (mcp generate_image + generate-image fn). Optional for the mcp function (tool reports unconfigured); REQUIRED by generate-image, no default
 - `STRIPE_SECRET_KEY` -- Stripe API secret key. REQUIRED by billing functions, no default -- throw if missing
 - `STRIPE_WEBHOOK_SECRET` -- Stripe webhook signing secret. REQUIRED by stripe-webhook, no default -- throw if missing
+- `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET`, `TIKTOK_REDIRECT_URI` -- TikTok Login Kit OAuth (tiktok-integration)
+- `TIKTOK_APP_AUDITED` -- unset until TikTok's Content Posting audit passes; while unset, scheduling enforces SELF_ONLY privacy
 
 ## Gotchas
 

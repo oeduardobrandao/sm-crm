@@ -272,3 +272,5 @@ RETURNS TABLE (
   JOIN clientes c ON c.id = w.cliente_id
   JOIN instagram_accounts ia ON ia.client_id = c.id;
 $$;
+REVOKE ALL ON FUNCTION claim_posts_for_publishing(text, int) FROM public;
+GRANT EXECUTE ON FUNCTION claim_posts_for_publishing(text, int) TO service_role;

@@ -26,6 +26,39 @@ export const STATUS_LABEL: Record<string, string> = {
   aprovado_interno: 'Aprovado interno',
 };
 
+export const PLATFORM_LABEL: Record<'instagram' | 'tiktok' | 'both', string> = {
+  instagram: 'Instagram',
+  tiktok: 'TikTok',
+  both: 'Instagram + TikTok',
+};
+
+/**
+ * Small, purely presentational chip showing which platform(s) a post targets.
+ * `platform` is optional on `HubPost` — pre-migration rows and stale cached
+ * payloads omit it, which we treat the same as 'instagram' (mirrors the DB
+ * default), so the badge always renders exactly one of the three labels.
+ */
+export function PlatformBadge({
+  platform,
+  tone = 'neutral',
+}: {
+  platform?: HubPost['platform'];
+  tone?: 'neutral' | 'overlay';
+}) {
+  const label = PLATFORM_LABEL[platform ?? 'instagram'] ?? PLATFORM_LABEL.instagram;
+  const toneClass =
+    tone === 'overlay'
+      ? 'bg-white/15 text-white/90 ring-1 ring-white/25 backdrop-blur-sm'
+      : 'bg-stone-100 text-stone-500 ring-1 ring-stone-200/70 dark:bg-stone-800 dark:text-stone-400 dark:ring-stone-700/60';
+  return (
+    <span
+      className={`inline-flex items-center shrink-0 whitespace-nowrap text-[10px] font-medium px-1.5 py-0.5 rounded-full ${toneClass}`}
+    >
+      {label}
+    </span>
+  );
+}
+
 export function formatDate(d: string | null) {
   if (!d) return '—';
   return new Date(d).toLocaleDateString('pt-BR', {
@@ -310,6 +343,7 @@ export function PostCard({
             <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${statusStyles}`}>
               {STATUS_LABEL[post.status] ?? post.status}
             </span>
+            <PlatformBadge platform={post.platform} />
           </div>
           <p className="font-display font-semibold text-[16px] tracking-tight text-stone-900 leading-snug">
             {post.titulo}

@@ -105,4 +105,18 @@ describe('TextPostCard', () => {
     });
     expect(onApprovalSubmitted).toHaveBeenCalledTimes(1);
   });
+
+  it('shows a "TikTok" platform badge for platform=tiktok', () => {
+    render(
+      <TextPostCard post={makePost({ platform: 'tiktok' })} token="token-publico" approvals={[]} />,
+    );
+
+    expect(screen.getByText('TikTok')).toBeInTheDocument();
+  });
+
+  it('shows an "Instagram" platform badge when platform is undefined', () => {
+    render(<TextPostCard post={makePost()} token="token-publico" approvals={[]} />);
+
+    expect(screen.getByText('Instagram')).toBeInTheDocument();
+  });
 });

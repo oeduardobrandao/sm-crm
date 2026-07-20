@@ -31,6 +31,19 @@ export interface WorkflowPost {
   publish_retry_count?: number;
   instagram_container_id?: string | null;
   instagram_media_id?: string | null;
+  /** Which platform(s) this post targets. Defaults to 'instagram' at the DB level
+   * (migration 20260719000001_tiktok_publishing.sql). 'stories' tipo never allows
+   * 'tiktok'/'both' — TikTok has no Stories API. */
+  platform?: 'instagram' | 'tiktok' | 'both';
+  tiktok_publish_id?: string | null;
+  tiktok_post_id?: string | null;
+  tiktok_post_url?: string | null;
+  tiktok_publish_status?: 'initiated' | 'processing' | 'published' | 'failed' | null;
+  tiktok_publish_error?: string | null;
+  tiktok_publish_retry_count?: number;
+  tiktok_caption?: string | null;
+  tiktok_title?: string | null;
+  tiktok_settings?: Record<string, unknown> | null;
   created_at?: string;
   updated_at?: string;
   created_via?: 'human' | 'agent';
@@ -113,6 +126,12 @@ export interface ScheduledPost {
   publish_error: string | null;
   ordem: number;
   responsavel_id: number | null;
+  /** Which platform(s) this post targets; DB defaults to 'instagram' (see WorkflowPost). */
+  platform: NonNullable<WorkflowPost['platform']>;
+  tiktok_publish_status: WorkflowPost['tiktok_publish_status'];
+  tiktok_publish_error: string | null;
+  tiktok_post_url: string | null;
+  instagram_media_id: string | null;
 }
 
 /**
@@ -120,6 +139,10 @@ export interface ScheduledPost {
  * [startISO, endISO). workflow_posts has only workflow_id as an FK, so the client
  * name is reached through a nested workflows -> clientes join (mirrors
  * getAllActiveEtapas in store/workflows.ts). RLS enforces conta_id.
+ *
+ * Includes platform/tiktok_* fields so callers (e.g. PublicacoesPanel) can route
+ * schedule/cancel/retry to the correct platform service instead of assuming
+ * Instagram for every post (see toWorkflowPost in PublicacoesPanel.tsx).
  */
 export async function getScheduledPosts(
   startISO: string,
@@ -128,7 +151,7 @@ export async function getScheduledPosts(
   const { data, error } = await supabase
     .from('workflow_posts')
     .select(
-      'id, workflow_id, titulo, tipo, status, scheduled_at, published_at, ig_caption, instagram_permalink, publish_error, ordem, responsavel_id, workflows!inner(titulo, cliente_id, status, clientes!inner(nome))',
+      'id, workflow_id, titulo, tipo, status, scheduled_at, published_at, ig_caption, instagram_permalink, publish_error, ordem, responsavel_id, platform, tiktok_publish_status, tiktok_publish_error, tiktok_post_url, instagram_media_id, workflows!inner(titulo, cliente_id, status, clientes!inner(nome))',
     )
     .eq('workflows.status', 'ativo')
     .not('scheduled_at', 'is', null)
@@ -152,6 +175,11 @@ export async function getScheduledPosts(
     publish_error: row.publish_error ?? null,
     ordem: row.ordem,
     responsavel_id: row.responsavel_id ?? null,
+    platform: row.platform ?? 'instagram',
+    tiktok_publish_status: row.tiktok_publish_status ?? null,
+    tiktok_publish_error: row.tiktok_publish_error ?? null,
+    tiktok_post_url: row.tiktok_post_url ?? null,
+    instagram_media_id: row.instagram_media_id ?? null,
   }));
 }
 

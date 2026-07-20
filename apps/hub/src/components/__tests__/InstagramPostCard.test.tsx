@@ -322,4 +322,30 @@ describe('InstagramPostCard', () => {
     fireEvent.click(screen.getByRole('button', { name: /abrir mídia 1/i }));
     expect(screen.getByTestId('post-media-lightbox')).toBeInTheDocument();
   });
+
+  it('shows a "TikTok" platform badge for platform=tiktok', () => {
+    render(
+      <InstagramPostCard
+        post={makePost({ platform: 'tiktok' })}
+        token="token-publico"
+        approvals={[]}
+        instagramProfile={profile}
+      />,
+    );
+
+    expect(screen.getByText('TikTok')).toBeInTheDocument();
+  });
+
+  it('shows an "Instagram" platform badge when platform is undefined', () => {
+    render(
+      <InstagramPostCard
+        post={makePost()}
+        token="token-publico"
+        approvals={[]}
+        instagramProfile={profile}
+      />,
+    );
+
+    expect(screen.getByText('Instagram')).toBeInTheDocument();
+  });
 });

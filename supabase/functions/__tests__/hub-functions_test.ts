@@ -75,6 +75,7 @@ Deno.test("hub-posts returns flattened post data with signed media URLs", async 
         ordem: 0,
         conteudo_plain: "Legenda aprovada",
         scheduled_at: "2026-04-20T10:00:00.000Z",
+        platform: "tiktok",
         workflow_id: 7,
         workflows: { titulo: "Calendário Abril" },
       },
@@ -124,6 +125,7 @@ Deno.test("hub-posts returns flattened post data with signed media URLs", async 
   assertEquals(response.status, 200);
   assertEquals(body.posts[0].workflow_titulo, "Calendário Abril");
   assertEquals(body.posts[0].cover_media.url, "https://signed.mesaas.com/contas/1/post.png");
+  assertEquals(body.posts[0].platform, "tiktok");
 });
 
 Deno.test("hub-posts rejects missing tokens", async () => {

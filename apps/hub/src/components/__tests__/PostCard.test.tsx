@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { PostCard } from '../PostCard';
+import { PostCard, PlatformBadge } from '../PostCard';
 import { submitApproval } from '../../api';
 import type {
   HubPost,
@@ -183,7 +183,9 @@ describe('PostCard', () => {
     expect(screen.getByText('Sim')).toBeInTheDocument();
     expect(screen.getByText('Urgente')).toBeInTheDocument();
     expect(screen.getByText('Aprovado internamente')).toBeInTheDocument();
-    expect(screen.getByText('Instagram')).toBeInTheDocument();
+    // Two matches: the "Canais" multiselect pill and the platform badge (both
+    // render the literal text "Instagram").
+    expect(screen.getAllByText('Instagram')).toHaveLength(2);
     expect(screen.getByText('LinkedIn')).toBeInTheDocument();
     expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('Correção solicitada')).toBeInTheDocument();
@@ -339,5 +341,42 @@ describe('PostCard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Fechar lightbox' }));
 
     expect(screen.queryByTestId('post-media-lightbox')).not.toBeInTheDocument();
+  });
+
+  it('renders an Instagram platform badge by default', () => {
+    render(
+      <PostCard
+        post={makePost()}
+        token="token-publico"
+        approvals={[]}
+        propertyValues={[]}
+        workflowSelectOptions={[]}
+        onApprovalSubmitted={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Instagram')).toBeInTheDocument();
+  });
+});
+
+describe('PlatformBadge', () => {
+  it('renders "TikTok" for platform=tiktok', () => {
+    render(<PlatformBadge platform="tiktok" />);
+    expect(screen.getByText('TikTok')).toBeInTheDocument();
+  });
+
+  it('renders "Instagram + TikTok" for platform=both', () => {
+    render(<PlatformBadge platform="both" />);
+    expect(screen.getByText('Instagram + TikTok')).toBeInTheDocument();
+  });
+
+  it('renders "Instagram" for platform=instagram', () => {
+    render(<PlatformBadge platform="instagram" />);
+    expect(screen.getByText('Instagram')).toBeInTheDocument();
+  });
+
+  it('renders "Instagram" for undefined platform (pre-migration/cached payload)', () => {
+    render(<PlatformBadge platform={undefined} />);
+    expect(screen.getByText('Instagram')).toBeInTheDocument();
   });
 });

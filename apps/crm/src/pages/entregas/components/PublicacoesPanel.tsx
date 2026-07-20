@@ -20,8 +20,9 @@ interface PublicacoesPanelProps {
   onStatusChange: () => void;
 }
 
-// ScheduleButton only reads id/status/tipo/scheduled_at/ig_caption/publish_error; the
-// rest are filled with inert defaults so we never fetch the heavy `conteudo`.
+// ScheduleButton only reads id/status/tipo/scheduled_at/ig_caption/publish_error plus
+// platform/tiktok_* (to route to the right platform service); the rest are filled
+// with inert defaults so we never fetch the heavy `conteudo`.
 function toWorkflowPost(p: ScheduledPost): WorkflowPost {
   return {
     id: p.id,
@@ -38,6 +39,11 @@ function toWorkflowPost(p: ScheduledPost): WorkflowPost {
     instagram_permalink: p.instagram_permalink,
     published_at: p.published_at,
     publish_error: p.publish_error,
+    platform: p.platform,
+    tiktok_publish_status: p.tiktok_publish_status,
+    tiktok_publish_error: p.tiktok_publish_error,
+    tiktok_post_url: p.tiktok_post_url,
+    instagram_media_id: p.instagram_media_id,
   };
 }
 
@@ -105,6 +111,11 @@ export function PublicacoesPanel({
                     post={toWorkflowPost(p)}
                     hasInstagramAccount={hasInstagramAccount}
                     igAccountStatus={igStatus}
+                    // The compact calendar panel has no TikTok settings UI, so a
+                    // tiktok/both post can never be "ready" here — schedule/publish-now
+                    // stay gated until the user opens the post in the full drawer.
+                    tiktokSettingsComplete={false}
+                    tiktokIncompleteTooltip="Abra o post para configurar o TikTok"
                     onStatusChange={onStatusChange}
                     compact
                   />

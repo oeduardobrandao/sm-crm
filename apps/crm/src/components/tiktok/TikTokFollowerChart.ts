@@ -94,7 +94,7 @@ export function renderTikTokFollowerChart(
           ticks: { color: textColor, font: { family: "'SF Pro Text', sans-serif", size: 10 } },
         },
         y: {
-          // @ts-ignore
+          // @ts-expect-error chart.js scales type mismatch
           grid: { color: gridColor, borderDash: [5, 5] },
           ticks: {
             color: textColor,
