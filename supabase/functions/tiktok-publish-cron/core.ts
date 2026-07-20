@@ -14,8 +14,10 @@
 // getFreshTikTokToken (_shared/tiktok.ts) is called ONCE PER ACCOUNT PER RUN — posts are
 // grouped by tiktok_account_id in the init and status phases before any token fetch — never
 // per post; that file's module comment explains why concurrent refreshes race the rotating
-// refresh token. Media presigned URLs (signGetUrl) are regenerated on every attempt, never
-// cached/reused across retries — an expired presign would otherwise permanently fail an
+// refresh token. TikTok media proxy URLs (buildTikTokMediaUrl, _shared/tiktok-media-url.ts —
+// NOT a raw R2 presign; TikTok's PULL_FROM_URL requires a TikTok-verifiable URL prefix, which
+// tiktok-media's own function host provides) are regenerated on every attempt, never
+// cached/reused across retries — an expired token would otherwise permanently fail an
 // otherwise-retryable post.
 //
 // `svc` is created and hoisted by the caller (index.ts) BEFORE the outer try in
@@ -94,7 +96,9 @@ export interface TikTokPublishCronDeps {
   /** The ONLY code path allowed to read/refresh TikTok tokens — see _shared/tiktok.ts. */
   getFreshTikTokToken: (svc: DbClient, accountId: string) => Promise<{ accessToken: string; openId: string }>;
   tiktokFetch: (path: string, init: RequestInit & { accessToken: string }) => Promise<unknown>;
-  signGetUrl: (key: string, expiresSeconds?: number) => Promise<string>;
+  /** Mints a TikTok-verifiable proxy URL for an r2Key (_shared/tiktok-media-url.ts) — NOT a raw
+   * R2 presign. See the module comment above for why. */
+  buildTikTokMediaUrl: (r2Key: string, ttlSeconds: number) => Promise<string>;
   reportCronFailure: (svc: DbClient, cronName: string, detail: CronFailureDetail) => Promise<void>;
   /** Optional DI seams — default to the real shared implementations. Tests may override, but
    * normally just queue `post_file_links`/`designs` responses on the mock db and let the real
@@ -165,7 +169,7 @@ async function processInitPhase(
   deps: TikTokPublishCronDeps,
   posts: ClaimedTikTokCronPost[],
 ): Promise<PhaseResult> {
-  const { svc, getFreshTikTokToken, tiktokFetch, signGetUrl } = deps;
+  const { svc, getFreshTikTokToken, tiktokFetch, buildTikTokMediaUrl } = deps;
   const fetchPostMedia = deps.fetchPostMedia ?? realFetchPostMedia;
   const checkDesignReadiness = deps.checkDesignReadiness ?? realCheckDesignReadiness;
 
@@ -223,12 +227,12 @@ async function processInitPhase(
         if (post.tipo === "reels") {
           const videoFile = media.find((f) => f.kind === "video");
           if (!videoFile) throw new Error("Post de vídeo sem arquivo de vídeo vinculado.");
-          const videoUrl = await signGetUrl(videoFile.r2_key, 7200);
+          const videoUrl = await buildTikTokMediaUrl(videoFile.r2_key, 7200);
           initPath = "/post/publish/video/init/";
           initPayload = buildVideoInitPayload(claimedForBuilder, videoUrl);
         } else {
           if (media.length === 0) throw new Error("Post sem arquivos de mídia vinculados.");
-          const imageUrls = await Promise.all(media.map((f) => signGetUrl(f.r2_key, 7200)));
+          const imageUrls = await Promise.all(media.map((f) => buildTikTokMediaUrl(f.r2_key, 7200)));
           initPath = "/post/publish/content/init/";
           initPayload = buildPhotoInitPayload(claimedForBuilder, imageUrls);
         }

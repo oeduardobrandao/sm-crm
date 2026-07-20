@@ -1,18 +1,29 @@
 // tiktok-publish-cron (Task B5) — mirrors tiktok-refresh-cron_test.ts's convention (handler.ts's
 // timingSafeEqual auth gate tested in isolation, core.ts's business logic tested via DI'd
-// getFreshTikTokToken / tiktokFetch / signGetUrl / reportCronFailure against the shared
-// supabaseMock). fetchPostMedia/checkDesignReadiness are left to their REAL implementations
-// (imported by core.ts from _shared/instagram-publish-utils.ts) in most tests — queued via
-// `post_file_links`/`designs` responses on the mock db — except where a test only cares about
-// downstream behavior, where they're overridden directly for brevity.
+// getFreshTikTokToken / tiktokFetch / buildTikTokMediaUrl / reportCronFailure against the
+// shared supabaseMock). fetchPostMedia/checkDesignReadiness are left to their REAL
+// implementations (imported by core.ts from _shared/instagram-publish-utils.ts) in most tests —
+// queued via `post_file_links`/`designs` responses on the mock db — except where a test only
+// cares about downstream behavior, where they're overridden directly for brevity.
+//
+// buildTikTokMediaUrl replaced a raw R2 signGetUrl call (tiktok-media proxy fast-follow):
+// TikTok's PULL_FROM_URL source needs a TikTok-verifiable URL prefix, which raw
+// *.r2.cloudflarestorage.com presigned URLs can't satisfy. Most tests below stub it with a
+// throwaway string (they only care that init/status flow correctly); test (c) uses the REAL
+// shared implementation to pin the URL shape TikTok actually receives.
 import { assert, assertEquals } from "./assert.ts";
 import { createSupabaseQueryMock } from "../../../test/shared/supabaseMock.ts";
 import type { QueryCall } from "../../../test/shared/supabaseMock.ts";
 import { createTikTokPublishCronHandler } from "../tiktok-publish-cron/handler.ts";
 import { runTikTokPublishCron, type TikTokPublishCronDeps } from "../tiktok-publish-cron/core.ts";
 import { FIELD_PUBLIC_POST_ID } from "../_shared/tiktok.ts";
+import { buildTikTokMediaUrl, verifyTikTokMediaToken } from "../_shared/tiktok-media-url.ts";
 
 const timingSafeEqual = (a: string, b: string) => a === b;
+
+Deno.env.set("TOKEN_ENCRYPTION_KEY", "test-tiktok-publish-cron-key");
+Deno.env.set("SUPABASE_URL", "https://supabase.example");
+const MEDIA_URL_PREFIX = "https://supabase.example/functions/v1/tiktok-media/m/";
 
 type Db = ReturnType<typeof createSupabaseQueryMock>;
 
@@ -67,7 +78,7 @@ function baseDeps(db: Db, overrides: Partial<TikTokPublishCronDeps> = {}): TikTo
     svc: db as never,
     getFreshTikTokToken: (unreachable("getFreshTikTokToken") as unknown) as TikTokPublishCronDeps["getFreshTikTokToken"],
     tiktokFetch: (unreachable("tiktokFetch") as unknown) as TikTokPublishCronDeps["tiktokFetch"],
-    signGetUrl: (unreachable("signGetUrl") as unknown) as TikTokPublishCronDeps["signGetUrl"],
+    buildTikTokMediaUrl: (unreachable("buildTikTokMediaUrl") as unknown) as TikTokPublishCronDeps["buildTikTokMediaUrl"],
     reportCronFailure: async () => {},
     ...overrides,
   };
@@ -122,7 +133,7 @@ Deno.test("tiktok-publish-cron init phase: caps at 5 inits per account per run, 
       initCalls.push(path);
       return { publish_id: `pub-${initCalls.length}` };
     },
-    signGetUrl: async (key) => `https://signed.example/${key}`,
+    buildTikTokMediaUrl: async (key) => `https://signed.example/${key}`,
     fetchPostMedia: async () => [{ id: 1, kind: "image", r2_key: "img/1.jpg", sort_order: 0 }],
     checkDesignReadiness: async () => ({ ready: true, design: null }),
   }));
@@ -146,6 +157,12 @@ Deno.test("tiktok-publish-cron init phase: caps at 5 inits per account per run, 
 });
 
 // ── (c) init phase: payload shape per tipo ──────────────────────────────────────
+//
+// Uses the REAL buildTikTokMediaUrl (not a stub) so the assertions below pin the actual URL
+// shape TikTok receives post-swap: `${SUPABASE_URL}/functions/v1/tiktok-media/m/{token}`, never
+// a raw R2 presigned URL — and confirms each URL's token resolves back to the exact r2_key that
+// was linked to the post, via verifyTikTokMediaToken (the tiktok-media function's own
+// resolution step).
 
 Deno.test("tiktok-publish-cron init phase: reels hits video/init with a video payload; carrossel hits content/init with a photo payload", async () => {
   const db = createSupabaseQueryMock();
@@ -166,7 +183,7 @@ Deno.test("tiktok-publish-cron init phase: reels hits video/init with a video pa
       calls.push({ path, body: JSON.parse(String(init.body)) });
       return { publish_id: `pub-${calls.length}` };
     },
-    signGetUrl: async (key) => `https://signed.example/${key}`,
+    buildTikTokMediaUrl,
     fetchPostMedia: async (_db, postId) =>
       postId === 10
         ? [{ id: 1, kind: "video", r2_key: "vid/1.mp4", sort_order: 0 }]
@@ -184,7 +201,13 @@ Deno.test("tiktok-publish-cron init phase: reels hits video/init with a video pa
   assert(videoCall, "video (reels) post must POST to /post/publish/video/init/");
   const videoBody = videoCall!.body as { source_info: Record<string, unknown>; post_info: Record<string, unknown> };
   assertEquals(videoBody.source_info.source, "PULL_FROM_URL");
-  assertEquals(videoBody.source_info.video_url, "https://signed.example/vid/1.mp4");
+  const videoUrl = videoBody.source_info.video_url as string;
+  assert(videoUrl.startsWith(MEDIA_URL_PREFIX), `video_url must be a tiktok-media proxy URL, got ${videoUrl}`);
+  assertEquals(
+    await verifyTikTokMediaToken(videoUrl.slice(MEDIA_URL_PREFIX.length)),
+    "vid/1.mp4",
+    "the proxy token must resolve back to the linked video's r2_key",
+  );
   assertEquals(videoBody.post_info.title, "legenda video");
 
   const photoCall = calls.find((c) => c.path === "/post/publish/content/init/");
@@ -197,10 +220,16 @@ Deno.test("tiktok-publish-cron init phase: reels hits video/init with a video pa
   };
   assertEquals(photoBody.media_type, "PHOTO");
   assertEquals(photoBody.post_mode, "DIRECT_POST");
-  assertEquals(photoBody.source_info.photo_images, [
-    "https://signed.example/img/1.jpg",
-    "https://signed.example/img/2.jpg",
-  ]);
+  const photoUrls = photoBody.source_info.photo_images as string[];
+  assertEquals(photoUrls.length, 2);
+  for (const url of photoUrls) {
+    assert(url.startsWith(MEDIA_URL_PREFIX), `photo_images entries must be tiktok-media proxy URLs, got ${url}`);
+  }
+  assertEquals(
+    await Promise.all(photoUrls.map((u) => verifyTikTokMediaToken(u.slice(MEDIA_URL_PREFIX.length)))),
+    ["img/1.jpg", "img/2.jpg"],
+    "each proxy token must resolve back to its linked image's r2_key, in order",
+  );
   assertEquals(photoBody.post_info.description, "legenda carrossel");
 });
 
@@ -219,7 +248,7 @@ Deno.test("tiktok-publish-cron init phase: design still rendering defers the pos
       initCalled = true;
       return { publish_id: "pub-1" };
     },
-    signGetUrl: async (key) => `https://signed.example/${key}`,
+    buildTikTokMediaUrl: async (key) => `https://signed.example/${key}`,
     checkDesignReadiness: async () => ({
       ready: false,
       design: { id: 1, rev: 1, render_status: "rendering", is_stale: false },
@@ -246,7 +275,7 @@ Deno.test("tiktok-publish-cron status phase: PUBLISH_COMPLETE with a public id c
   const response = await runTikTokPublishCron(baseDeps(db, {
     getFreshTikTokToken: async () => ({ accessToken: "tok", openId: "open-1" }),
     tiktokFetch: async () => ({ status: "PUBLISH_COMPLETE", [FIELD_PUBLIC_POST_ID]: "7301234" }),
-    signGetUrl: async () => "",
+    buildTikTokMediaUrl: async () => "",
     now: () => new Date("2026-07-18T12:00:00.000Z"),
   }));
 
@@ -270,7 +299,7 @@ Deno.test("tiktok-publish-cron status phase: PUBLISH_COMPLETE without a public i
   const response = await runTikTokPublishCron(baseDeps(db, {
     getFreshTikTokToken: async () => ({ accessToken: "tok", openId: "open-1" }),
     tiktokFetch: async () => ({ status: "PUBLISH_COMPLETE" }),
-    signGetUrl: async () => "",
+    buildTikTokMediaUrl: async () => "",
   }));
 
   assertEquals(response.status, 200);
@@ -292,7 +321,7 @@ Deno.test("tiktok-publish-cron status phase: still processing sets tiktok_publis
   const response = await runTikTokPublishCron(baseDeps(db, {
     getFreshTikTokToken: async () => ({ accessToken: "tok", openId: "open-1" }),
     tiktokFetch: async () => ({ status: "PROCESSING_DOWNLOAD" }),
-    signGetUrl: async () => "",
+    buildTikTokMediaUrl: async () => "",
   }));
 
   assertEquals(response.status, 200);
@@ -312,7 +341,7 @@ Deno.test("tiktok-publish-cron status phase: FAILED with video_pull_failed is re
   const response = await runTikTokPublishCron(baseDeps(db, {
     getFreshTikTokToken: async () => ({ accessToken: "tok", openId: "open-1" }),
     tiktokFetch: async () => ({ status: "FAILED", fail_reason: "video_pull_failed" }),
-    signGetUrl: async () => "",
+    buildTikTokMediaUrl: async () => "",
   }));
 
   assertEquals(response.status, 200);
@@ -336,7 +365,7 @@ Deno.test("tiktok-publish-cron status phase: FAILED with spam_risk_too_many_post
   const response = await runTikTokPublishCron(baseDeps(db, {
     getFreshTikTokToken: async () => ({ accessToken: "tok", openId: "open-1" }),
     tiktokFetch: async () => ({ status: "FAILED", fail_reason: "spam_risk_too_many_posts" }),
-    signGetUrl: async () => "",
+    buildTikTokMediaUrl: async () => "",
   }));
 
   assertEquals(response.status, 200);
@@ -362,7 +391,7 @@ Deno.test("tiktok-publish-cron markTikTokFailed: write (1) failure skips the RPC
   const response = await runTikTokPublishCron(baseDeps(db, {
     getFreshTikTokToken: async () => ({ accessToken: "tok", openId: "open-1" }),
     tiktokFetch: async () => ({ status: "FAILED", fail_reason: "video_pull_failed" }),
-    signGetUrl: async () => "",
+    buildTikTokMediaUrl: async () => "",
   }));
 
   assertEquals(response.status, 200, "must not throw even though write (1) failed");
@@ -391,7 +420,7 @@ Deno.test("tiktok-publish-cron markTikTokFailed: write (1) ok, RPC failure runs 
   const response = await runTikTokPublishCron(baseDeps(db, {
     getFreshTikTokToken: async () => ({ accessToken: "tok", openId: "open-1" }),
     tiktokFetch: async () => ({ status: "FAILED", fail_reason: "video_pull_failed" }),
-    signGetUrl: async () => "",
+    buildTikTokMediaUrl: async () => "",
   }));
 
   assertEquals(response.status, 200, "must not throw even though the RPC failed");
@@ -417,7 +446,7 @@ Deno.test("tiktok-publish-cron retry phase: resets tiktok_publish_status/error a
   const post = claimedPost({ post_id: 60, tiktok_publish_retry_count: 1 });
   queueClaims(db, [], [], [post]);
 
-  const response = await runTikTokPublishCron(baseDeps(db)); // getFreshTikTokToken/tiktokFetch/signGetUrl unreachable
+  const response = await runTikTokPublishCron(baseDeps(db)); // getFreshTikTokToken/tiktokFetch/buildTikTokMediaUrl unreachable
 
   assertEquals(response.status, 200);
   const updateCalls = callsFor(db, "workflow_posts", "update");

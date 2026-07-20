@@ -8,7 +8,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { timingSafeEqual } from "../_shared/crypto.ts";
 import { getFreshTikTokToken, tiktokFetch } from "../_shared/tiktok.ts";
-import { signGetUrl } from "../_shared/r2.ts";
+import { buildTikTokMediaUrl } from "../_shared/tiktok-media-url.ts";
 import { reportCronFailure } from "../_shared/triage.ts";
 import { createTikTokPublishCronHandler } from "./handler.ts";
 import { runTikTokPublishCron } from "./core.ts";
@@ -28,7 +28,7 @@ Deno.serve(createTikTokPublishCronHandler({
       svc: svc as any,
       getFreshTikTokToken,
       tiktokFetch,
-      signGetUrl,
+      buildTikTokMediaUrl,
       reportCronFailure,
     });
   },
