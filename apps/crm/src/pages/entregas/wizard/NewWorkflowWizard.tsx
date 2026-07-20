@@ -24,11 +24,12 @@ import { captureEvent } from '@/lib/analytics';
 import type { Cliente, Membro, WorkflowTemplate } from '../../../store';
 import type { EtapaFormData } from '../components/SortableEtapaList';
 import { type WorkflowPreset } from './presets';
-import { etapasFromPreset, etapasFromTemplate, suggestName } from './wizardLogic';
+import { etapasFromPreset, etapasFromTemplate, suggestName, validateEtapas } from './wizardLogic';
 import { type WizardSource } from './createWorkflow';
 import { StepTemplate } from './steps/StepTemplate';
 import { StepBasics } from './steps/StepBasics';
-// Steps 3–5 render `null` inline until their files land — never import a missing module.
+import { StepEtapas } from './steps/StepEtapas';
+// Steps 4–5 render `null` inline until their files land — never import a missing module.
 
 export interface WizardState {
   step: 1 | 2 | 3 | 4 | 5;
@@ -73,9 +74,12 @@ export function NewWorkflowWizard(props: {
   templates: WorkflowTemplate[];
   onCreated: () => void;
 }) {
-  const { open, onClose, clientes, templates } = props;
+  const { open, onClose, clientes, membros, templates } = props;
   const [s, setS] = useState<WizardState>(INITIAL);
   const [cancelConfirm, setCancelConfirm] = useState(false);
+  // Step 3's errors surface only after a blocked Continuar, then track edits live so a row
+  // stops shouting the moment the user fixes it.
+  const [etapasChecked, setEtapasChecked] = useState(false);
 
   const patch = (p: Partial<WizardState>) => setS((prev) => ({ ...prev, ...p }));
 
@@ -84,6 +88,7 @@ export function NewWorkflowWizard(props: {
   const requestClose = () => {
     setS(INITIAL);
     setCancelConfirm(false);
+    setEtapasChecked(false);
     onClose();
   };
 
@@ -112,7 +117,18 @@ export function NewWorkflowWizard(props: {
 
   const continueDisabled = s.step === 2 && (!s.clienteId || !s.nome.trim());
 
+  // Recomputed every render once the user has tried to leave step 3, so fixes clear their errors.
+  const etapasValidation = etapasChecked ? validateEtapas(s.etapas, membros) : null;
+
   const goNext = () => {
+    if (s.step === 3) {
+      const { rowErrors, globalError } = validateEtapas(s.etapas, membros);
+      if (globalError || rowErrors.size > 0) {
+        setEtapasChecked(true);
+        return;
+      }
+      setEtapasChecked(false);
+    }
     // Step 5 submits the wizard; that handler arrives with the review step.
     if (s.step < STEP_COUNT) patch({ step: (s.step + 1) as WizardState['step'] });
   };
@@ -165,7 +181,15 @@ export function NewWorkflowWizard(props: {
           />
         )}
         {s.step === 2 && <StepBasics state={s} patch={patch} clientes={clientes} />}
-        {s.step === 3 && null}
+        {s.step === 3 && (
+          <StepEtapas
+            state={s}
+            patch={patch}
+            membros={membros}
+            rowErrors={etapasValidation?.rowErrors}
+            globalError={etapasValidation?.globalError ?? null}
+          />
+        )}
         {s.step === 4 && null}
         {s.step === 5 && null}
 
