@@ -31,11 +31,23 @@ export function StepEtapas({
   globalError?: string | null;
 }) {
   const active = new Set(state.etapas.map((e) => e.suggestionId).filter(Boolean));
+  // Client approval is a per-row property (also toggled by each row's "Aprovação externa" pill) and
+  // a fluxo may hold several approval etapas under any name, so the single approval chip reflects
+  // the whole set: pressed when ANY approval etapa exists, not just a suggestionId-bound one.
+  const hasApproval = state.etapas.some((e) => e.tipo === 'aprovacao_cliente');
+  const chipPressed = (sug: Suggestion) =>
+    sug.tipo === 'aprovacao_cliente' ? hasApproval : active.has(sug.suggestionId);
 
   const toggleChip = (sug: Suggestion) => {
-    if (active.has(sug.suggestionId)) {
-      // Removal keys off suggestionId, never nome — the user may have renamed the row.
-      patch({ etapas: state.etapas.filter((e) => e.suggestionId !== sug.suggestionId) });
+    if (chipPressed(sug)) {
+      if (sug.tipo === 'aprovacao_cliente') {
+        // The chip represents client approval as a whole — turning it off clears every approval
+        // etapa (row pills stay the way to add/remove a single one).
+        patch({ etapas: state.etapas.filter((e) => e.tipo !== 'aprovacao_cliente') });
+      } else {
+        // Removal keys off suggestionId, never nome — the user may have renamed the row.
+        patch({ etapas: state.etapas.filter((e) => e.suggestionId !== sug.suggestionId) });
+      }
     } else {
       patch({
         etapas: [
@@ -72,7 +84,7 @@ export function StepEtapas({
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
         {SUGGESTED_ETAPAS.map((sug) => {
-          const pressed = active.has(sug.suggestionId);
+          const pressed = chipPressed(sug);
           const approval = sug.tipo === 'aprovacao_cliente';
           const accent = approval ? '#1d4ed8' : '#eab308';
           return (

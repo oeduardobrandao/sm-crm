@@ -479,6 +479,42 @@ describe('NewWorkflowWizard — step 3 (etapas)', () => {
     expect(screen.getByText(/não existe mais/i)).toBeTruthy();
     expect(screen.getByText('As etapas')).toBeTruthy(); // did not advance
   });
+
+  it('lights the "Aprovação do cliente" chip for an approval etapa under any name', () => {
+    // The dupla preset's approvals are "Aprovação do texto" / "Aprovação da arte" — names that do
+    // not match the suggestion, but they ARE client-approval etapas, so the chip must read active.
+    renderWizard({ membros: equipe });
+    fireEvent.click(screen.getByText('Aprovação dupla (texto + arte)'));
+    fireEvent.change(screen.getByLabelText(/cliente/i), { target: { value: '1' } });
+    fireEvent.click(screen.getByText('Continuar →'));
+    expect(
+      screen.getByRole('button', { name: /Aprovação do cliente/ }).getAttribute('aria-pressed'),
+    ).toBe('true');
+  });
+
+  it('the top chip reflects a row-level "Aprovação externa" toggle', () => {
+    renderWizard({ membros: equipe });
+    fireEvent.click(screen.getByText('Post avulso rápido')); // preset has no approval etapa
+    fireEvent.change(screen.getByLabelText(/cliente/i), { target: { value: '1' } });
+    fireEvent.click(screen.getByText('Continuar →'));
+    const chip = screen.getByRole('button', { name: /Aprovação do cliente/ });
+    expect(chip.getAttribute('aria-pressed')).toBe('false');
+    // Promote a row to client-approval via its own pill — the top chip must follow.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Aprovação externa' })[0]);
+    expect(chip.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('toggling the "Aprovação do cliente" chip off clears every approval etapa', () => {
+    renderWizard({ membros: equipe });
+    fireEvent.click(screen.getByText('Aprovação dupla (texto + arte)'));
+    fireEvent.change(screen.getByLabelText(/cliente/i), { target: { value: '1' } });
+    fireEvent.click(screen.getByText('Continuar →'));
+    expect(screen.getByDisplayValue('Aprovação do texto')).toBeTruthy();
+    expect(screen.getByDisplayValue('Aprovação da arte')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Aprovação do cliente/ }));
+    expect(screen.queryByDisplayValue('Aprovação do texto')).toBeNull();
+    expect(screen.queryByDisplayValue('Aprovação da arte')).toBeNull();
+  });
 });
 
 // Steps 4–5 render react-router <Link>s (the "Configurar dia de entrega" shortcut), so these
