@@ -5706,6 +5706,18 @@ body.role-agent input[name='valor_total'] {
   flex: 1.5 1 200px;
 }
 
+/* The platform toggle's three labels need ~250px; a smaller basis makes the
+   shadcn toggle items clip instead of shrink, so give the field a basis that
+   fits and let the wrapping row move it to its own line on narrow drawers. */
+.drawer-post-meta-row > .drawer-post-field--platform {
+  flex: 1 1 250px;
+}
+
+.drawer-post-field--platform button {
+  padding-inline: 0.625rem;
+  flex: 0 0 auto;
+}
+
 .drawer-post-field {
   display: flex;
   flex-direction: column;
