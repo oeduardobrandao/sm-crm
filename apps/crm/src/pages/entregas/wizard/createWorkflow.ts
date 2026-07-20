@@ -2,6 +2,7 @@ import type { Cliente, Membro, Workflow, WorkflowTemplate } from '../../../store
 import { addWorkflow, addWorkflowEtapa, addWorkflowTemplate, removeWorkflow } from '../../../store';
 import { computeDeliveryDeadlines, getNextDeliveryDate } from '../hooks/useEntregasData';
 import type { EtapaFormData } from '../components/SortableEtapaList';
+import { mapEntitlementError, entitlementMessage } from '@/lib/entitlement-errors';
 
 export type WizardSource =
   | { kind: 'preset'; presetId: string; presetNome: string }
@@ -80,8 +81,14 @@ export async function createWorkflowFromWizard(
           tipo: e.tipo,
         })),
       });
-    } catch {
-      warning = 'O fluxo será criado, mas não foi possível salvar o template.';
+    } catch (err) {
+      // The fluxo is still created (template save is best-effort). Surface the real reason when it
+      // is a known entitlement limit — e.g. the account is at its plan's template quota — instead
+      // of a generic failure the user can't act on.
+      const entitlement = mapEntitlementError(err);
+      warning = entitlement
+        ? `O fluxo será criado, mas o template não foi salvo: ${entitlementMessage(entitlement).replace(/^Você/, 'você')}`
+        : 'O fluxo será criado, mas não foi possível salvar o template.';
     }
   }
 

@@ -59,6 +59,22 @@ describe('createWorkflowFromWizard', () => {
     expect(store.addWorkflow).toHaveBeenCalledWith(expect.objectContaining({ template_id: null }));
   });
 
+  it('a plan-limit template failure surfaces the specific reason, not the generic message', async () => {
+    // The DB trigger raises this exact PostgREST error object when the account is at its
+    // max_workflow_templates quota; the fluxo must still be created.
+    store.addWorkflowTemplate.mockRejectedValue({
+      message: 'plan_limit_exceeded:max_workflow_templates',
+      code: 'P0001',
+    });
+    const result = await createWorkflowFromWizard(
+      baseInput({ saveAsTemplate: true, templateName: 'Meu template' }),
+    );
+    expect(result.workflow).toEqual({ id: 42 });
+    expect(result.warning).toContain('modelos de fluxo');
+    expect(result.warning).toMatch(/limite/i);
+    expect(store.addWorkflow).toHaveBeenCalledWith(expect.objectContaining({ template_id: null }));
+  });
+
   it('account-template source links the source template id', async () => {
     await createWorkflowFromWizard(
       baseInput({ source: { kind: 'template', templateId: 5, templateNome: 'T' } }),
