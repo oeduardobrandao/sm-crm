@@ -8,8 +8,6 @@ import { uploadIdeiaImage } from '../services/ideiaMedia';
 import type { HubIdeia, IdeiaImage } from '../types';
 import { sanitizeExternalUrl } from '../lib/security';
 
-const ALLOWED_EMOJI = ['👍', '❤️', '🔥', '💡', '🎯'] as const;
-
 const STATUS_LABEL: Record<HubIdeia['status'], string> = {
   nova: 'Nova',
   em_analise: 'Em análise',
@@ -18,10 +16,10 @@ const STATUS_LABEL: Record<HubIdeia['status'], string> = {
 };
 
 const STATUS_COLOR: Record<HubIdeia['status'], string> = {
-  nova: 'bg-stone-100 text-stone-600',
-  em_analise: 'bg-yellow-100 text-yellow-700',
-  aprovada: 'bg-green-100 text-green-700',
-  descartada: 'bg-red-100 text-red-600',
+  nova: 'hub-bg-soft hub-tx2',
+  em_analise: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/10 dark:text-yellow-400',
+  aprovada: 'bg-green-100 text-green-700 dark:bg-green-500/10 dark:text-green-400',
+  descartada: 'bg-red-100 text-red-600 dark:bg-red-500/10 dark:text-red-400',
 };
 
 function isMutable(ideia: HubIdeia): boolean {
@@ -96,7 +94,7 @@ function IdeiaImages({
                   height={64}
                   loading="lazy"
                   decoding="async"
-                  className="h-16 w-16 rounded-lg object-cover border border-stone-200 bg-stone-100"
+                  className="h-16 w-16 rounded-lg object-cover border hub-border hub-bg-soft"
                   style={
                     img.blur_data_url
                       ? { backgroundImage: `url(${img.blur_data_url})`, backgroundSize: 'cover' }
@@ -108,7 +106,7 @@ function IdeiaImages({
                 onClick={() => remove(img.file_id)}
                 disabled={busy}
                 aria-label="Remover imagem"
-                className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full bg-stone-900 text-white opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
+                className="absolute -top-1.5 -right-1.5 p-0.5 rounded-full hub-btn-primary opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
               >
                 <X size={12} />
               </button>
@@ -120,7 +118,7 @@ function IdeiaImages({
         <button
           onClick={() => inputRef.current?.click()}
           disabled={busy}
-          className="inline-flex items-center gap-1.5 text-[12px] text-stone-500 hover:text-stone-800 transition-colors disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 text-[12px] hub-tx3 transition-colors disabled:opacity-50"
         >
           {busy ? <Loader2 size={13} className="animate-spin" /> : <ImagePlus size={13} />}
           Adicionar imagem
@@ -171,19 +169,15 @@ export function IdeiasPage() {
       {/* Hero */}
       <div className="mb-8 sm:mb-10 flex items-end justify-between gap-4">
         <div>
-          <p className="text-[11px] uppercase tracking-[0.14em] text-stone-500 font-medium mb-2">
-            Ideias
-          </p>
-          <h1 className="font-display text-[2rem] sm:text-[2.5rem] leading-[1.05] font-medium tracking-tight text-stone-900">
+          <p className="text-[11px] uppercase tracking-[0.14em] hub-tx3 font-medium mb-2">Ideias</p>
+          <h1 className="font-display text-[2rem] sm:text-[2.5rem] leading-[1.05] font-medium tracking-tight hub-txt">
             Compartilhe suas ideias
           </h1>
-          <p className="text-sm text-stone-500 mt-2">
-            Envie sugestões e a agência responderá em breve.
-          </p>
+          <p className="text-sm hub-tx2 mt-2">Envie sugestões e a agência responderá em breve.</p>
         </div>
         <button
           onClick={openCreate}
-          className="flex items-center gap-2 shrink-0 px-4 py-2.5 rounded-lg bg-stone-900 text-white text-sm font-semibold hover:bg-stone-800 transition-colors"
+          className="flex items-center gap-2 shrink-0 px-4 py-2.5 rounded-lg hub-btn-primary text-sm font-semibold transition-colors"
         >
           <Plus size={16} strokeWidth={2.5} />
           Nova ideia
@@ -198,13 +192,11 @@ export function IdeiasPage() {
       ) : error ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <span className="text-5xl mb-4">⚠️</span>
-          <p className="font-display text-lg font-semibold text-stone-800 mb-1">
-            Erro ao carregar ideias
-          </p>
-          <p className="text-sm text-stone-500 mb-6">{error.message}</p>
+          <p className="font-display text-lg font-semibold hub-txt mb-1">Erro ao carregar ideias</p>
+          <p className="text-sm hub-tx2 mb-6">{error.message}</p>
           <button
             onClick={() => qc.invalidateQueries({ queryKey: ['hub-ideias', token] })}
-            className="px-4 py-2 rounded-lg bg-stone-900 text-white text-sm font-semibold hover:bg-stone-800 transition-colors"
+            className="px-4 py-2 rounded-lg hub-btn-primary text-sm font-semibold transition-colors"
           >
             Tentar novamente
           </button>
@@ -212,15 +204,13 @@ export function IdeiasPage() {
       ) : ideias.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <span className="text-5xl mb-4">💡</span>
-          <p className="font-display text-lg font-semibold text-stone-800 mb-1">
-            Nenhuma ideia ainda
-          </p>
-          <p className="text-sm text-stone-500 mb-6">
+          <p className="font-display text-lg font-semibold hub-txt mb-1">Nenhuma ideia ainda</p>
+          <p className="text-sm hub-tx2 mb-6">
             Clique em "Nova ideia" para compartilhar sua primeira sugestão.
           </p>
           <button
             onClick={openCreate}
-            className="px-4 py-2 rounded-lg bg-stone-900 text-white text-sm font-semibold hover:bg-stone-800 transition-colors"
+            className="px-4 py-2 rounded-lg hub-btn-primary text-sm font-semibold transition-colors"
           >
             Adicionar ideia
           </button>
@@ -292,22 +282,22 @@ function IdeiaCard({
           >
             {STATUS_LABEL[ideia.status]}
           </span>
-          <h3 className="font-display text-[17px] font-semibold text-stone-900 leading-snug">
+          <h3 className="font-display text-[17px] font-semibold hub-txt leading-snug">
             {ideia.titulo}
           </h3>
-          <p className="text-sm text-stone-600 mt-1 whitespace-pre-wrap">{ideia.descricao}</p>
+          <p className="text-sm hub-tx2 mt-1 whitespace-pre-wrap">{ideia.descricao}</p>
         </div>
         {mutable && (
           <div className="flex gap-1 shrink-0">
             <button
               onClick={onEdit}
-              className="p-1.5 rounded-md hover:bg-stone-100 text-stone-500 hover:text-stone-800 transition-colors"
+              className="hub-icon-btn p-1.5 rounded-md hub-tx3 transition-colors"
             >
               <Pencil size={15} />
             </button>
             <button
               onClick={onDelete}
-              className="p-1.5 rounded-md hover:bg-red-50 text-stone-500 hover:text-red-600 transition-colors"
+              className="p-1.5 rounded-md hover:bg-red-50 hub-tx3 hover:text-red-600 transition-colors"
             >
               <Trash2 size={15} />
             </button>
@@ -324,7 +314,7 @@ function IdeiaCard({
               href={sanitizeExternalUrl(link)}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-[12px] text-stone-500 hover:text-stone-800 underline underline-offset-2 transition-colors"
+              className="inline-flex items-center gap-1 text-[12px] hub-tx3 underline underline-offset-2 transition-colors"
             >
               <ExternalLink size={11} />
               {link.length > 50 ? link.slice(0, 50) + '…' : link}
@@ -343,9 +333,9 @@ function IdeiaCard({
             <span
               key={emoji}
               title={names.join(', ')}
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-stone-100 text-sm"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full hub-bg-soft text-sm"
             >
-              {emoji} <span className="text-[12px] text-stone-600 font-medium">{names.length}</span>
+              {emoji} <span className="text-[12px] hub-tx2 font-medium">{names.length}</span>
             </span>
           ))}
         </div>
@@ -353,8 +343,8 @@ function IdeiaCard({
 
       {/* Agency comment */}
       {ideia.comentario_agencia && (
-        <div className="border-t border-stone-100 pt-3 mt-1">
-          <p className="text-[11px] uppercase tracking-wide text-stone-400 font-medium mb-1">
+        <div className="border-t hub-border pt-3 mt-1">
+          <p className="text-[11px] uppercase tracking-wide hub-tx3 font-medium mb-1">
             Resposta da agência
             {ideia.comentario_autor && (
               <span className="normal-case tracking-normal ml-1">
@@ -362,7 +352,7 @@ function IdeiaCard({
               </span>
             )}
           </p>
-          <p className="text-sm text-stone-700 whitespace-pre-wrap">{ideia.comentario_agencia}</p>
+          <p className="text-sm hub-tx2 whitespace-pre-wrap">{ideia.comentario_agencia}</p>
         </div>
       )}
     </div>
@@ -446,14 +436,14 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
       aria-modal="true"
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
     >
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6 space-y-4 max-h-[calc(100dvh-2rem)] overflow-y-auto">
+      <div className="hub-bg-card rounded-xl shadow-2xl w-full max-w-lg p-6 space-y-4 max-h-[calc(100dvh-2rem)] overflow-y-auto">
         <div className="flex items-center justify-between">
-          <h2 className="font-display text-lg font-semibold text-stone-900">
+          <h2 className="font-display text-lg font-semibold hub-txt">
             {editing ? 'Editar ideia' : 'Nova ideia'}
           </h2>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-md hover:bg-stone-100 transition-colors text-stone-500"
+            className="hub-icon-btn p-1.5 rounded-md transition-colors hub-tx3"
           >
             <X size={18} />
           </button>
@@ -461,11 +451,11 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
 
         <div className="space-y-3">
           <div>
-            <label className="text-[12px] font-semibold text-stone-600 uppercase tracking-wide mb-1 block">
+            <label className="text-[12px] font-semibold hub-tx2 uppercase tracking-wide mb-1 block">
               Título
             </label>
             <input
-              className={`w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-stone-900/20 ${errors.titulo ? 'border-red-400' : 'border-stone-200'}`}
+              className={`w-full border rounded-lg px-3 py-2 text-sm outline-none hub-focus-accent focus:ring-2 ${errors.titulo ? 'border-red-400' : 'hub-border'}`}
               value={titulo}
               onChange={(e) => setTitulo(e.target.value)}
               placeholder="Ex: Reel mostrando os bastidores..."
@@ -474,11 +464,11 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
           </div>
 
           <div>
-            <label className="text-[12px] font-semibold text-stone-600 uppercase tracking-wide mb-1 block">
+            <label className="text-[12px] font-semibold hub-tx2 uppercase tracking-wide mb-1 block">
               Descrição
             </label>
             <textarea
-              className={`w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-stone-900/20 resize-none min-h-[100px] ${errors.descricao ? 'border-red-400' : 'border-stone-200'}`}
+              className={`w-full border rounded-lg px-3 py-2 text-sm outline-none hub-focus-accent focus:ring-2 resize-none min-h-[100px] ${errors.descricao ? 'border-red-400' : 'hub-border'}`}
               value={descricao}
               onChange={(e) => setDescricao(e.target.value)}
               placeholder="Descreva sua ideia com detalhes..."
@@ -487,16 +477,14 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
           </div>
 
           <div>
-            <label className="text-[12px] font-semibold text-stone-600 uppercase tracking-wide mb-1 block">
+            <label className="text-[12px] font-semibold hub-tx2 uppercase tracking-wide mb-1 block">
               Links de referência{' '}
-              <span className="text-stone-400 normal-case tracking-normal font-normal">
-                (opcional)
-              </span>
+              <span className="hub-tx3 normal-case tracking-normal font-normal">(opcional)</span>
             </label>
             {links.map((link, i) => (
               <div key={i} className="flex gap-2 mb-2">
                 <input
-                  className="flex-1 border border-stone-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-stone-900/20"
+                  className="flex-1 border hub-border rounded-lg px-3 py-2 text-sm outline-none hub-focus-accent focus:ring-2"
                   value={link}
                   onChange={(e) =>
                     setLinks((ls) => ls.map((l, j) => (j === i ? e.target.value : l)))
@@ -506,7 +494,7 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
                 {links.length > 1 && (
                   <button
                     onClick={() => setLinks((ls) => ls.filter((_, j) => j !== i))}
-                    className="p-2 rounded-md hover:bg-stone-100 text-stone-400 hover:text-stone-700 transition-colors"
+                    className="hub-icon-btn p-2 rounded-md hub-tx3 transition-colors"
                   >
                     <X size={14} />
                   </button>
@@ -515,7 +503,7 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
             ))}
             <button
               onClick={() => setLinks((ls) => [...ls, ''])}
-              className="text-xs text-stone-500 hover:text-stone-800 underline underline-offset-2 transition-colors"
+              className="text-xs hub-tx3 underline underline-offset-2 transition-colors"
             >
               + Adicionar outro link
             </button>
@@ -523,11 +511,9 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
 
           {current && (
             <div>
-              <label className="text-[12px] font-semibold text-stone-600 uppercase tracking-wide mb-1 block">
+              <label className="text-[12px] font-semibold hub-tx2 uppercase tracking-wide mb-1 block">
                 Imagens{' '}
-                <span className="text-stone-400 normal-case tracking-normal font-normal">
-                  (até 10)
-                </span>
+                <span className="hub-tx3 normal-case tracking-normal font-normal">(até 10)</span>
               </label>
               <IdeiaImages
                 token={token}
@@ -543,7 +529,7 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
           <button
             onClick={handleSaveText}
             disabled={saving}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg bg-stone-900 text-white text-sm font-semibold hover:bg-stone-800 disabled:opacity-50 transition-colors"
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg hub-btn-primary text-sm font-semibold disabled:opacity-50 transition-colors"
           >
             {saving && <Loader2 size={15} className="animate-spin" />}
             {current ? 'Salvar alterações' : 'Salvar e adicionar imagens'}
@@ -552,7 +538,7 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
             onClick={() => {
               onSaved();
             }}
-            className="px-4 py-2.5 rounded-lg border border-stone-200 text-sm text-stone-600 hover:bg-stone-50 transition-colors"
+            className="px-4 py-2.5 rounded-lg border hub-border text-sm hub-tx2 hover:bg-stone-50 transition-colors"
           >
             {current ? 'Concluir' : 'Cancelar'}
           </button>
