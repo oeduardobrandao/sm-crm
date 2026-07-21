@@ -168,7 +168,7 @@ function QuestionItem({
         </span>
       </div>
       <textarea
-        className="hub-focus-accent w-full border hub-border rounded-lg px-3.5 py-3 text-[14px] resize-none min-h-[112px] bg-[color-mix(in_srgb,var(--hub-soft)_40%,transparent)] hub-txt placeholder:text-[var(--hub-tx3)] focus:outline-none focus:bg-white focus:border-[var(--hub-bd2)] focus:ring-4 transition-all"
+        className="hub-focus-accent w-full border hub-border rounded-lg px-3.5 py-3 text-[14px] resize-none min-h-[112px] bg-[color-mix(in_srgb,var(--hub-soft)_40%,transparent)] hub-txt placeholder:text-[var(--hub-tx3)] focus:outline-none focus:bg-[var(--hub-card)] focus:border-[var(--hub-bd2)] focus:ring-4 transition-all"
         value={answer}
         onChange={(e) => handleChange(e.target.value)}
         placeholder="Digite sua resposta…"

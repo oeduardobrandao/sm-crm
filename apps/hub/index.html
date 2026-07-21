@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
@@ -6,25 +6,32 @@
     <title>Hub do Cliente</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Instrument+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
     <style>
       :root {
         --hub-font-display: 'Fraunces', ui-serif, Georgia, serif;
         --hub-font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
         /* Fallback values only — HubShell overrides these inline via resolveHubTheme() before paint. */
-        --hub-bg: #FAFAFA;
-        --hub-card: #FFFFFF;
+        --hub-bg: #fafafa;
+        --hub-card: #ffffff;
         --hub-txt: #171717;
         --hub-tx2: #525252;
-        --hub-tx3: #8A8A8A;
-        --hub-bd: rgba(0,0,0,.08);
-        --hub-bd2: rgba(0,0,0,.2);
-        --hub-soft: #F4F4F4;
+        --hub-tx3: #8a8a8a;
+        --hub-bd: rgba(0, 0, 0, 0.08);
+        --hub-bd2: rgba(0, 0, 0, 0.2);
+        --hub-soft: #f4f4f4;
         --hub-acc: #171717;
         --hub-acc-fg: #ffffff;
         --hub-logo-filter: none;
       }
-      .hub-root, .hub-root button, .hub-root input, .hub-root textarea, .hub-root select {
+      .hub-root,
+      .hub-root button,
+      .hub-root input,
+      .hub-root textarea,
+      .hub-root select {
         font-family: var(--hub-font-sans);
         font-feature-settings: 'ss01', 'cv11';
       }
@@ -41,8 +48,16 @@
       }
       .hub-root .hub-noise {
         background-image:
-          radial-gradient(1200px 600px at 10% -10%, color-mix(in srgb, var(--hub-acc) 6%, transparent), transparent 60%),
-          radial-gradient(900px 500px at 110% 10%, color-mix(in srgb, var(--hub-txt) 3.5%, transparent), transparent 60%);
+          radial-gradient(
+            1200px 600px at 10% -10%,
+            color-mix(in srgb, var(--hub-acc) 6%, transparent),
+            transparent 60%
+          ),
+          radial-gradient(
+            900px 500px at 110% 10%,
+            color-mix(in srgb, var(--hub-txt) 3.5%, transparent),
+            transparent 60%
+          );
       }
       .hub-root .accent-bar {
         display: inline-block;
@@ -58,30 +73,69 @@
         background-color: var(--hub-card);
         border: 1px solid var(--hub-bd);
         border-radius: 12px;
-        box-shadow: 0 1px 0 rgba(0,0,0,0.02), 0 1px 2px rgba(28, 25, 23, 0.04);
+        box-shadow:
+          0 1px 0 rgba(0, 0, 0, 0.02),
+          0 1px 2px rgba(28, 25, 23, 0.04);
       }
       .hub-root .hub-card-hover:hover {
         border-color: var(--hub-bd2);
-        box-shadow: 0 1px 0 rgba(0,0,0,0.02), 0 6px 16px -8px rgba(28, 25, 23, 0.08);
+        box-shadow:
+          0 1px 0 rgba(0, 0, 0, 0.02),
+          0 6px 16px -8px rgba(28, 25, 23, 0.08);
         transform: translateY(-1px);
       }
       /* Neutral text/surface/border utilities — replace stone-* Tailwind classes in touched files. */
-      .hub-root .hub-txt { color: var(--hub-txt); }
-      .hub-root .hub-tx2 { color: var(--hub-tx2); }
-      .hub-root .hub-tx3 { color: var(--hub-tx3); }
-      .hub-root .hub-bg-card { background-color: var(--hub-card); }
-      .hub-root .hub-bg-soft { background-color: var(--hub-soft); }
-      .hub-root .hub-border { border-color: var(--hub-bd); }
-      .hub-root .hub-border-strong { border-color: var(--hub-bd2); }
-      .hub-root .hub-acc-text { color: var(--hub-acc); }
-      .hub-root .hub-back-link:hover { color: var(--hub-txt); }
-      .hub-root .hub-divide > * + * { border-top: 1px solid var(--hub-bd); }
-      .hub-root .hub-download-link:hover .hub-download-hint { color: var(--hub-txt); }
-      .hub-root .hub-page-row:hover .hub-page-chevron { color: var(--hub-txt); }
-      .hub-root .hub-tab-btn:hover { color: var(--hub-tx2); }
-      .hub-root .hub-icon-btn:hover { background: var(--hub-soft); }
-      .hub-root .hub-action-pill { background: var(--hub-soft); }
-      .hub-root .hub-action-pill:hover { background: var(--hub-bd2); }
+      .hub-root .hub-txt {
+        color: var(--hub-txt);
+      }
+      .hub-root .hub-tx2 {
+        color: var(--hub-tx2);
+      }
+      .hub-root .hub-tx3 {
+        color: var(--hub-tx3);
+      }
+      .hub-root .hub-bg-card {
+        background-color: var(--hub-card);
+      }
+      .hub-root .hub-bg-soft {
+        background-color: var(--hub-soft);
+      }
+      .hub-root .hub-border {
+        border-color: var(--hub-bd);
+      }
+      .hub-root .hub-border-strong {
+        border-color: var(--hub-bd2);
+      }
+      .hub-root .hub-acc-text {
+        color: var(--hub-acc);
+      }
+      .hub-root .hub-back-link:hover {
+        color: var(--hub-txt);
+      }
+      .hub-root .hub-link-muted:hover {
+        color: var(--hub-txt);
+      }
+      .hub-root .hub-divide > * + * {
+        border-top: 1px solid var(--hub-bd);
+      }
+      .hub-root .hub-download-link:hover .hub-download-hint {
+        color: var(--hub-txt);
+      }
+      .hub-root .hub-page-row:hover .hub-page-chevron {
+        color: var(--hub-txt);
+      }
+      .hub-root .hub-tab-btn:hover {
+        color: var(--hub-tx2);
+      }
+      .hub-root .hub-icon-btn:hover {
+        background: var(--hub-soft);
+      }
+      .hub-root .hub-action-pill {
+        background: var(--hub-soft);
+      }
+      .hub-root .hub-action-pill:hover {
+        background: var(--hub-bd2);
+      }
       /* Tailwind can't apply an opacity modifier (e.g. `/15`) to an arbitrary
          `var()` color value — it needs a literal color to decompose into
          channels, so `focus:ring-[var(--hub-acc)]/15` silently produces no
@@ -97,14 +151,18 @@
         color: var(--hub-acc-fg);
         transition: opacity 200ms ease;
       }
-      .hub-root .hub-btn-primary:hover { opacity: 0.88; }
+      .hub-root .hub-btn-primary:hover {
+        opacity: 0.88;
+      }
       .hub-root .hub-btn-secondary {
         background-color: transparent;
         color: var(--hub-tx2);
         border: 1px solid var(--hub-bd2);
         transition: background-color 200ms ease;
       }
-      .hub-root .hub-btn-secondary:hover { background-color: var(--hub-soft); }
+      .hub-root .hub-btn-secondary:hover {
+        background-color: var(--hub-soft);
+      }
       /* Status pills — approved/correction/pending tri-tone, matches StatusPill.tsx tones. */
       .hub-root .hub-pill {
         display: inline-flex;
@@ -122,8 +180,8 @@
       }
       .hub-root .hub-pill-danger {
         background: transparent;
-        color: #B0472E;
-        box-shadow: inset 0 0 0 1px rgba(176,71,46,.4);
+        color: #b0472e;
+        box-shadow: inset 0 0 0 1px rgba(176, 71, 46, 0.4);
       }
       .hub-root .hub-pill-neutral {
         background: transparent;
@@ -131,11 +189,20 @@
         box-shadow: inset 0 0 0 1px var(--hub-bd2);
       }
       .hub-root .hub-card-hover {
-        transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+        transition:
+          transform 200ms ease,
+          box-shadow 200ms ease,
+          border-color 200ms ease;
       }
       @keyframes hub-fade-up {
-        from { opacity: 0; transform: translateY(8px); }
-        to { opacity: 1; transform: translateY(0); }
+        from {
+          opacity: 0;
+          transform: translateY(8px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
       }
       .hub-root .hub-fade-up {
         animation: hub-fade-up 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -150,7 +217,7 @@
          selectors out-specify Tailwind's text-[..px] utilities (no !important
          needed). Scoped to the sm breakpoint so desktop sizing is untouched. */
       @media (max-width: 640px) {
-        .hub-root input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+        .hub-root input:not([type='checkbox']):not([type='radio']):not([type='file']),
         .hub-root textarea,
         .hub-root select {
           font-size: 16px;

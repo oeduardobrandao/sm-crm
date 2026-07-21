@@ -446,7 +446,7 @@ export function PostCard({
           )}
 
           {postProperties.length > 0 && (
-            <div className="rounded-xl border hub-border bg-white px-4 pt-3 pb-1">
+            <div className="rounded-xl border hub-border hub-bg-card px-4 pt-3 pb-1">
               <p className="text-[10px] font-bold uppercase tracking-[0.12em] hub-tx3 pb-2">
                 Propriedades
               </p>
@@ -485,7 +485,7 @@ export function PostCard({
                   <div
                     key={a.id}
                     className={`rounded-xl px-4 py-3 text-[13.5px] ${
-                      isTeam ? 'ml-6' : 'bg-white ring-1 ring-[var(--hub-bd)] mr-6'
+                      isTeam ? 'ml-6' : 'hub-bg-card ring-1 ring-[var(--hub-bd)] mr-6'
                     }`}
                     style={
                       isTeam
@@ -517,7 +517,7 @@ export function PostCard({
           {!isPending && (
             <div className="flex items-center gap-2">
               <input
-                className="hub-focus-accent flex-1 rounded-full border hub-border bg-white px-4 py-2.5 text-[13.5px] hub-txt placeholder:text-[var(--hub-tx3)] focus:outline-none focus:border-[var(--hub-bd2)] focus:ring-4 transition-all"
+                className="hub-focus-accent flex-1 rounded-full border hub-border hub-bg-card px-4 py-2.5 text-[13.5px] hub-txt placeholder:text-[var(--hub-tx3)] focus:outline-none focus:border-[var(--hub-bd2)] focus:ring-4 transition-all"
                 placeholder="Enviar mensagem…"
                 value={replyText}
                 onChange={(e) => setReplyText(e.target.value)}
@@ -551,7 +551,7 @@ export function PostCard({
                     value={comentario}
                     onChange={(e) => setComentario(e.target.value)}
                     placeholder="Comentário (opcional)…"
-                    className="hub-focus-accent w-full rounded-xl border hub-border px-4 py-3 text-[13.5px] resize-none min-h-[80px] bg-white hub-txt placeholder:text-[var(--hub-tx3)] focus:outline-none focus:border-[var(--hub-bd2)] focus:ring-4 transition-all"
+                    className="hub-focus-accent w-full rounded-xl border hub-border px-4 py-3 text-[13.5px] resize-none min-h-[80px] hub-bg-card hub-txt placeholder:text-[var(--hub-tx3)] focus:outline-none focus:border-[var(--hub-bd2)] focus:ring-4 transition-all"
                   />
                   <div className="flex gap-2.5">
                     <button

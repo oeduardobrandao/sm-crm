@@ -297,7 +297,7 @@ function IdeiaCard({
             </button>
             <button
               onClick={onDelete}
-              className="p-1.5 rounded-md hover:bg-red-50 hub-tx3 hover:text-red-600 transition-colors"
+              className="p-1.5 rounded-md hover:bg-red-50 dark:hover:bg-red-500/10 hub-tx3 hover:text-red-600 transition-colors"
             >
               <Trash2 size={15} />
             </button>
@@ -538,7 +538,7 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
             onClick={() => {
               onSaved();
             }}
-            className="px-4 py-2.5 rounded-lg border hub-border text-sm hub-tx2 hover:bg-stone-50 transition-colors"
+            className="px-4 py-2.5 rounded-lg border hub-border text-sm hub-tx2 hover:bg-[var(--hub-soft)] transition-colors"
           >
             {current ? 'Concluir' : 'Cancelar'}
           </button>

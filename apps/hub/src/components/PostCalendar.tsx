@@ -103,14 +103,14 @@ export function PostCalendar({ posts }: Props) {
               <button
                 onClick={prevMonth}
                 aria-label="Mês anterior"
-                className="w-7 h-7 flex items-center justify-center rounded-full hub-tx2 hover:bg-white hover:text-[var(--hub-txt)] hover:shadow-sm transition-all"
+                className="w-7 h-7 flex items-center justify-center rounded-full hub-tx2 hover:bg-[var(--hub-card)] hover:text-[var(--hub-txt)] hover:shadow-sm transition-all"
               >
                 <ChevronLeft size={15} />
               </button>
               <button
                 onClick={nextMonth}
                 aria-label="Próximo mês"
-                className="w-7 h-7 flex items-center justify-center rounded-full hub-tx2 hover:bg-white hover:text-[var(--hub-txt)] hover:shadow-sm transition-all"
+                className="w-7 h-7 flex items-center justify-center rounded-full hub-tx2 hover:bg-[var(--hub-card)] hover:text-[var(--hub-txt)] hover:shadow-sm transition-all"
               >
                 <ChevronRight size={15} />
               </button>
@@ -212,7 +212,7 @@ export function PostCalendar({ posts }: Props) {
                 <button
                   key={p.id}
                   onClick={() => navigate(`postagens?post=${p.id}`)}
-                  className="text-left rounded-xl border hub-border bg-white p-3.5 space-y-2 hover:border-[var(--hub-bd2)] hover:shadow-sm transition-all"
+                  className="text-left rounded-xl border hub-border hub-bg-card p-3.5 space-y-2 hover:border-[var(--hub-bd2)] hover:shadow-sm transition-all"
                 >
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span

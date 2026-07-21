@@ -136,7 +136,7 @@ export function HubMobileNav() {
                 type="button"
                 onClick={() => setOpen(false)}
                 aria-label={t('actions.close', 'Fechar')}
-                className="w-9 h-9 rounded-full flex items-center justify-center hub-tx2 hover:hub-bg-soft"
+                className="w-9 h-9 rounded-full flex items-center justify-center hub-tx2 hover:bg-[var(--hub-soft)]"
               >
                 <X size={18} />
               </button>
@@ -156,7 +156,7 @@ export function HubMobileNav() {
                     className={`flex items-center gap-3 px-3 py-3 rounded-lg min-h-[48px] transition-colors ${
                       active
                         ? 'font-semibold hub-txt hub-bg-soft'
-                        : 'font-medium hub-tx2 hover:hub-bg-soft'
+                        : 'font-medium hub-tx2 hover:bg-[var(--hub-soft)]'
                     }`}
                   >
                     <Icon size={18} strokeWidth={active ? 2.25 : 1.75} />
@@ -177,14 +177,14 @@ export function HubMobileNav() {
               <button
                 onClick={() => cycleLanguage(i18n.language)}
                 aria-label={t('sidebar.language')}
-                className="w-9 h-9 flex items-center justify-center rounded-full hub-tx3 hover:hub-bg-soft transition-colors text-sm"
+                className="w-9 h-9 flex items-center justify-center rounded-full hub-tx3 hover:bg-[var(--hub-soft)] transition-colors text-sm"
               >
                 {LANGUAGE_FLAGS[i18n.language as Language] || LANGUAGE_FLAGS.pt}
               </button>
               <button
                 onClick={toggleTheme}
                 aria-label={theme === 'dark' ? t('sidebar.lightMode') : t('sidebar.darkMode')}
-                className="w-9 h-9 flex items-center justify-center rounded-full hub-tx3 hover:hub-bg-soft transition-colors"
+                className="w-9 h-9 flex items-center justify-center rounded-full hub-tx3 hover:bg-[var(--hub-soft)] transition-colors"
               >
                 {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
               </button>

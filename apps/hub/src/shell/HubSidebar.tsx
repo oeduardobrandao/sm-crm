@@ -86,7 +86,7 @@ export function HubSidebar() {
               className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[13.5px] min-h-[40px] transition-colors ${
                 active
                   ? 'font-semibold hub-txt hub-bg-soft'
-                  : 'font-medium hub-tx2 hover:hub-bg-soft'
+                  : 'font-medium hub-tx2 hover:bg-[var(--hub-soft)]'
               }`}
             >
               <Icon size={17} strokeWidth={active ? 2.25 : 1.75} />
@@ -107,14 +107,14 @@ export function HubSidebar() {
         <button
           onClick={() => cycleLanguage(i18n.language)}
           aria-label={t('sidebar.language')}
-          className="w-8 h-8 flex items-center justify-center rounded-full hub-tx3 hover:hub-bg-soft transition-colors text-sm"
+          className="w-8 h-8 flex items-center justify-center rounded-full hub-tx3 hover:bg-[var(--hub-soft)] transition-colors text-sm"
         >
           {LANGUAGE_FLAGS[i18n.language as Language] || LANGUAGE_FLAGS.pt}
         </button>
         <button
           onClick={toggleTheme}
           aria-label={theme === 'dark' ? t('sidebar.lightMode') : t('sidebar.darkMode')}
-          className="w-8 h-8 flex items-center justify-center rounded-full hub-tx3 hover:hub-bg-soft transition-colors"
+          className="w-8 h-8 flex items-center justify-center rounded-full hub-tx3 hover:bg-[var(--hub-soft)] transition-colors"
         >
           {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
         </button>
