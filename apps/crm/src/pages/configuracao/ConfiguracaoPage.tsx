@@ -83,6 +83,16 @@ export function computeEffectiveInviteStatus<
   });
 }
 
+/**
+ * invite-user has three success shapes: an invite was mailed, a fresh
+ * set-password link was mailed, or an existing user was added to the workspace
+ * with no e-mail at all. Reporting all three as "Convite enviado!" hid the third
+ * case from owners, who then assumed a mail was in flight.
+ */
+export function inviteSuccessMessage(result: { message?: string }): string {
+  return result.message?.trim() || 'Convite enviado!';
+}
+
 export function InviteTimeLeft({ expiresAt, status }: { expiresAt: string; status: string }) {
   if (status !== 'pending' || !expiresAt) return null;
   const diff = new Date(expiresAt).getTime() - Date.now();
@@ -450,7 +460,7 @@ export default function ConfiguracaoPage() {
       setInviteOpen(false);
       setInviteEmail('');
       setInviteRole('agent');
-      toast.success('Convite enviado!');
+      toast.success(inviteSuccessMessage(result));
       captureEvent('invite_sent');
     } catch (err: unknown) {
       toast.error('Erro ao convidar: ' + (err as Error).message);

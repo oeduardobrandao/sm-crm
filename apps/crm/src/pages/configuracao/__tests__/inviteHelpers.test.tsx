@@ -5,6 +5,7 @@ import {
   computeEffectiveInviteStatus,
   InviteStatusBadge,
   InviteTimeLeft,
+  inviteSuccessMessage,
 } from '../ConfiguracaoPage';
 
 describe('InviteStatusBadge', () => {
@@ -134,5 +135,17 @@ describe('computeEffectiveInviteStatus', () => {
     ];
     computeEffectiveInviteStatus(invites);
     expect(invites[0].status).toBe('pending');
+  });
+});
+
+describe('inviteSuccessMessage', () => {
+  it("uses the server's message so add-direct isn't reported as a send", () => {
+    expect(
+      inviteSuccessMessage({ message: 'malu@example.com foi adicionado ao workspace como agent.' }),
+    ).toBe('malu@example.com foi adicionado ao workspace como agent.');
+  });
+
+  it('falls back to a generic confirmation when the server sends no message', () => {
+    expect(inviteSuccessMessage({})).toBe('Convite enviado!');
   });
 });
