@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { classifyExistingUser } from "../invite-user/onboarding.ts";
+import { classifyExistingUser, coerceHasPassword } from "../invite-user/onboarding.ts";
 
 Deno.test("classifyExistingUser: fully onboarded user is added to the workspace directly", () => {
   assertEquals(
@@ -99,4 +99,22 @@ Deno.test("classifyExistingUser: passwordless AND unconfirmed is still a destruc
     }),
     "reinvite",
   );
+});
+
+Deno.test("coerceHasPassword: an RPC error is unknown, not 'no password'", () => {
+  // Must not veto add-direct on a transport failure.
+  assertEquals(coerceHasPassword(false, { message: "boom" }), null);
+});
+
+Deno.test("coerceHasPassword: booleans pass through", () => {
+  assertEquals(coerceHasPassword(true, null), true);
+  assertEquals(coerceHasPassword(false, null), false);
+});
+
+Deno.test("coerceHasPassword: a null row (unknown user) is unknown", () => {
+  assertEquals(coerceHasPassword(null, null), null);
+});
+
+Deno.test("coerceHasPassword: a non-boolean payload is unknown", () => {
+  assertEquals(coerceHasPassword("true", null), null);
 });

@@ -1,7 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { seatsAvailable } from "./seats.ts";
-import { classifyExistingUser } from "./onboarding.ts";
+import { classifyExistingUser, coerceHasPassword } from "./onboarding.ts";
 import { sendInviteEmail } from "../_shared/invite-email.ts";
 import { effectivePlanLimit } from "../_shared/entitlements-rpc.ts";
 import { sendPendingWorkspaceInvite } from "./pending-invite.ts";
@@ -35,10 +35,13 @@ async function deleteUnconfirmedInvitedUser(adminClient: any, email: string) {
     .select('onboarding_complete')
     .eq('id', authUser.id)
     .maybeSingle();
+  const { data: pwData, error: pwError } = await adminClient
+    .rpc('user_has_password', { p_user_id: authUser.id });
   const action = classifyExistingUser({
     emailConfirmed: !!authUser.email_confirmed_at,
     hasProfile: !!profile,
     onboardingComplete: profile?.onboarding_complete === true,
+    hasPassword: coerceHasPassword(pwData, pwError),
   });
   if (action !== 'reinvite' && action !== 'resend-link') return;
 
@@ -175,10 +178,14 @@ Deno.serve(async (req) => {
         .eq('id', existingUser.id)
         .maybeSingle();
 
+      const { data: existingPw, error: existingPwError } = await adminClient
+        .rpc('user_has_password', { p_user_id: existingUser.id });
+
       const action = classifyExistingUser({
         emailConfirmed: !!existingUser.email_confirmed_at,
         hasProfile: !!existingOnboarding,
         onboardingComplete: existingOnboarding?.onboarding_complete === true,
+        hasPassword: coerceHasPassword(existingPw, existingPwError),
       });
 
       if (action === 'blocked-anomalous') {

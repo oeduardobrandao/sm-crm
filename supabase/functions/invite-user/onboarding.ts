@@ -52,3 +52,14 @@ export function classifyExistingUser(
   // Never confirmed: nothing in-flight to destroy — delete + fresh invite.
   return "reinvite";
 }
+
+/**
+ * Normalise a `user_has_password` RPC result into the tri-state
+ * `classifyExistingUser` expects. Anything that is not an explicit boolean —
+ * an error, a missing row, an unexpected payload — is "unknown", which
+ * preserves the flag-only behavior rather than vetoing add-direct.
+ */
+export function coerceHasPassword(data: unknown, error: unknown): boolean | null {
+  if (error) return null;
+  return typeof data === "boolean" ? data : null;
+}
