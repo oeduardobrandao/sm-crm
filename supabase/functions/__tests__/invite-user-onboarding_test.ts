@@ -49,3 +49,54 @@ Deno.test("classifyExistingUser: confirmed user with NO profile row is anomalous
     "blocked-anomalous",
   );
 });
+
+Deno.test("classifyExistingUser: onboarded flag does NOT win when the user has no password", () => {
+  // The 2026-06-29 backfill marked passwordless invitees onboarding_complete=true.
+  // Trusting it sent them down add-direct, which mails nothing.
+  assertEquals(
+    classifyExistingUser({
+      emailConfirmed: true,
+      hasProfile: true,
+      onboardingComplete: true,
+      hasPassword: false,
+    }),
+    "resend-link",
+  );
+});
+
+Deno.test("classifyExistingUser: unknown password status preserves add-direct", () => {
+  // RPC missing or failing must degrade to current behavior, never block invites.
+  assertEquals(
+    classifyExistingUser({
+      emailConfirmed: true,
+      hasProfile: true,
+      onboardingComplete: true,
+      hasPassword: null,
+    }),
+    "add-direct",
+  );
+});
+
+Deno.test("classifyExistingUser: a real password confirms add-direct", () => {
+  assertEquals(
+    classifyExistingUser({
+      emailConfirmed: true,
+      hasProfile: true,
+      onboardingComplete: true,
+      hasPassword: true,
+    }),
+    "add-direct",
+  );
+});
+
+Deno.test("classifyExistingUser: passwordless AND unconfirmed is still a destructive reinvite", () => {
+  assertEquals(
+    classifyExistingUser({
+      emailConfirmed: false,
+      hasProfile: true,
+      onboardingComplete: true,
+      hasPassword: false,
+    }),
+    "reinvite",
+  );
+});
