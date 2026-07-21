@@ -135,9 +135,9 @@ export function PostCalendar({ posts }: Props) {
           </div>
 
           {/* Day grid */}
-          <div className="grid grid-cols-7 gap-1">
+          <div className="grid grid-cols-7 gap-1.5">
             {Array.from({ length: firstDay }).map((_, i) => (
-              <div key={`empty-${i}`} className="min-h-[62px]" />
+              <div key={`empty-${i}`} className="min-h-[88px]" />
             ))}
             {Array.from({ length: daysInMonth }).map((_, i) => {
               const day = i + 1;
@@ -154,7 +154,7 @@ export function PostCalendar({ posts }: Props) {
                 <button
                   key={day}
                   onClick={() => setSelectedDay(day)}
-                  className={`min-h-[62px] p-1.5 rounded-xl text-left transition-all ${
+                  className={`min-h-[88px] p-2 rounded-xl text-left transition-all ${
                     isSelected ? '' : 'hover:bg-[var(--hub-soft)]'
                   }`}
                   style={
@@ -168,17 +168,17 @@ export function PostCalendar({ posts }: Props) {
                   }
                 >
                   <div
-                    className={`text-[11px] mb-1 w-6 h-6 flex items-center justify-center rounded-full font-semibold ${
+                    className={`text-[12px] mb-1.5 w-7 h-7 flex items-center justify-center rounded-full font-semibold ${
                       isToday ? 'hub-btn-primary' : isSelected ? 'hub-txt' : 'hub-tx2'
                     }`}
                   >
                     {day}
                   </div>
-                  <div className="flex flex-col gap-0.5">
+                  <div className="flex flex-col gap-1">
                     {Object.entries(byTipo).map(([tipo, count]) => (
                       <div
                         key={tipo}
-                        className="text-[9px] px-1.5 py-[3px] rounded-md font-semibold leading-none truncate"
+                        className="text-[10px] px-1.5 py-[3px] rounded-md font-semibold leading-none truncate"
                         style={{
                           background: `${TIPO_COLOR[tipo] ?? '#78716c'}1c`,
                           color: TIPO_COLOR[tipo] ?? '#78716c',

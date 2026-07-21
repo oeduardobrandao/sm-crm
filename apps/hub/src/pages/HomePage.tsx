@@ -121,44 +121,40 @@ export function HomePage() {
         })}
       </section>
 
-      <section
-        className="grid gap-3.5"
-        style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}
-      >
-        <div className="hub-card p-5">
-          <h3 className="font-semibold text-[16px] tracking-tight hub-txt">Calendário</h3>
-          <div className="text-[12.5px] hub-tx3 mt-0.5 mb-2.5">Próximas publicações</div>
-          {isLoading ? (
-            <div className="flex justify-center py-8">
-              <div className="animate-spin h-5 w-5 rounded-full border-2 border-stone-300 border-t-stone-900" />
-            </div>
-          ) : (
-            <PostCalendar posts={posts} />
-          )}
-        </div>
-        <div className="hub-card p-5 flex flex-col gap-3">
-          <div>
-            <h3 className="font-semibold text-[16px] tracking-tight hub-txt">Recursos</h3>
-            <div className="text-[12.5px] hub-tx3 mt-0.5">Acesso rápido</div>
+      <section className="hub-card p-5">
+        <h3 className="font-semibold text-[16px] tracking-tight hub-txt">Calendário</h3>
+        <div className="text-[12.5px] hub-tx3 mt-0.5 mb-2.5">Próximas publicações</div>
+        {isLoading ? (
+          <div className="flex justify-center py-8">
+            <div className="animate-spin h-5 w-5 rounded-full border-2 border-stone-300 border-t-stone-900" />
           </div>
-          <div className="flex flex-col">
-            {RESOURCE_LINKS.map(({ label, icon: Icon, path }) => (
-              <button
-                key={path}
-                onClick={() => navigate(`${base}${path}`)}
-                className="flex items-center gap-3 py-2.5 border-t hub-border first:border-t-0 text-left group"
-              >
-                <span className="w-8 h-8 rounded-lg hub-bg-soft flex items-center justify-center hub-tx2 flex-shrink-0">
-                  <Icon size={16} strokeWidth={1.75} />
-                </span>
-                <span className="flex-1 text-[14px] font-medium hub-txt">{label}</span>
+        ) : (
+          <PostCalendar posts={posts} />
+        )}
+      </section>
+
+      <section className="hub-card p-5">
+        <h3 className="font-semibold text-[16px] tracking-tight hub-txt">Recursos</h3>
+        <div className="text-[12.5px] hub-tx3 mt-0.5 mb-2.5">Acesso rápido</div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {RESOURCE_LINKS.map(({ label, icon: Icon, path }) => (
+            <button
+              key={path}
+              onClick={() => navigate(`${base}${path}`)}
+              className="flex flex-col items-start gap-2.5 p-3.5 rounded-xl border hub-border text-left hover:border-[var(--hub-bd2)] hover:shadow-sm transition-all group"
+            >
+              <span className="w-8 h-8 rounded-lg hub-bg-soft flex items-center justify-center hub-tx2 flex-shrink-0">
+                <Icon size={16} strokeWidth={1.75} />
+              </span>
+              <span className="flex items-center gap-1 text-[14px] font-medium hub-txt">
+                {label}
                 <ChevronRight
-                  size={16}
+                  size={14}
                   className="hub-tx3 group-hover:translate-x-0.5 transition-transform"
                 />
-              </button>
-            ))}
-          </div>
+              </span>
+            </button>
+          ))}
         </div>
       </section>
 
