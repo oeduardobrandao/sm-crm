@@ -10,6 +10,11 @@ vi.mock('../../api', () => ({
   fetchPosts: vi.fn().mockResolvedValue({ posts: [], postApprovals: [], instagramProfile: null }),
 }));
 
+vi.mock('@mesaas/i18n', () => ({
+  changeLanguage: vi.fn(),
+  SUPPORTED_LANGUAGES: ['pt', 'en'],
+}));
+
 const BOOTSTRAP: HubBootstrap = {
   workspace: { name: 'Café da Manhã', logo_url: null, brand_color: '#171717' },
   cliente_nome: 'Débora Lima',
@@ -49,5 +54,16 @@ describe('HubMobileNav', () => {
     expect(screen.getByText('Mensagens')).toBeInTheDocument();
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('includes a language toggle button in the drawer footer', () => {
+    renderMobileNav();
+    fireEvent.click(screen.getByRole('button', { name: /abrir menu|open menu/i }));
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toBeInTheDocument();
+    // Language button should be present with flag emoji
+    const languageButton = screen.getByRole('button', { name: /idioma|language/i });
+    expect(languageButton).toBeInTheDocument();
+    expect(languageButton.textContent).toMatch(/🇧🇷|🇺🇸/);
   });
 });

@@ -18,6 +18,13 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useHub } from '../HubContext';
 import { usePendingApprovalsCount } from '../hooks/usePendingApprovalsCount';
+import { changeLanguage, SUPPORTED_LANGUAGES } from '@mesaas/i18n';
+import type { Language } from '@mesaas/i18n';
+
+const LANGUAGE_FLAGS: Record<Language, string> = {
+  pt: '\u{1F1E7}\u{1F1F7}',
+  en: '\u{1F1FA}\u{1F1F8}',
+};
 
 const NAV_ITEMS = [
   { label: 'Início', labelKey: 'nav.home', icon: Home, path: '' },
@@ -31,11 +38,16 @@ const NAV_ITEMS = [
   { label: 'Mensagens', labelKey: 'nav.mensagens', icon: MessageCircle, path: '/mensagens' },
 ];
 
+function cycleLanguage(current: string) {
+  const idx = SUPPORTED_LANGUAGES.indexOf(current as Language);
+  changeLanguage(SUPPORTED_LANGUAGES[(idx + 1) % SUPPORTED_LANGUAGES.length]);
+}
+
 export function HubMobileNav() {
   const { bootstrap, theme, toggleTheme } = useHub();
   const { workspace, token } = useParams<{ workspace: string; token: string }>();
   const { pathname } = useLocation();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const base = `/${workspace}/hub/${token}`;
   const pendingCount = usePendingApprovalsCount(token!);
 
@@ -163,9 +175,16 @@ export function HubMobileNav() {
                 <div className="text-[13.5px] font-semibold hub-txt">{bootstrap.cliente_nome}</div>
               </div>
               <button
+                onClick={() => cycleLanguage(i18n.language)}
+                aria-label={t('sidebar.language')}
+                className="w-9 h-9 flex items-center justify-center rounded-full hub-tx3 hover:hub-bg-soft transition-colors text-sm"
+              >
+                {LANGUAGE_FLAGS[i18n.language as Language] || LANGUAGE_FLAGS.pt}
+              </button>
+              <button
                 onClick={toggleTheme}
                 aria-label={theme === 'dark' ? t('sidebar.lightMode') : t('sidebar.darkMode')}
-                className="w-9 h-9 flex items-center justify-center rounded-full hub-tx2 hover:hub-bg-soft"
+                className="w-9 h-9 flex items-center justify-center rounded-full hub-tx3 hover:hub-bg-soft transition-colors"
               >
                 {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
               </button>
