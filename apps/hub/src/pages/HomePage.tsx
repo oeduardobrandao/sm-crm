@@ -105,9 +105,11 @@ export function HomePage() {
         {kpis.map((k) => {
           const content = (
             <>
-              <div className="text-[15px] font-semibold tracking-tight hub-txt">{k.label}</div>
-              <div className="text-[12.5px] hub-tx3 mt-0.5 mb-3.5">{k.hint}</div>
-              <div className="font-display text-[2.1rem] font-medium tracking-tight leading-none hub-txt">
+              <div>
+                <div className="text-[15px] font-semibold tracking-tight hub-txt">{k.label}</div>
+                <div className="text-[12.5px] hub-tx3 mt-0.5">{k.hint}</div>
+              </div>
+              <div className="font-display text-[2.1rem] font-medium tracking-tight leading-none hub-txt mt-3.5">
                 {k.value}
               </div>
             </>
@@ -117,12 +119,12 @@ export function HomePage() {
               key={k.label}
               type="button"
               onClick={k.onClick}
-              className="hub-card hub-card-hover cursor-pointer p-4 text-left w-full flex flex-col"
+              className="hub-card hub-card-hover cursor-pointer p-4 text-left w-full flex flex-col justify-between"
             >
               {content}
             </button>
           ) : (
-            <div key={k.label} className="hub-card p-4">
+            <div key={k.label} className="hub-card p-4 flex flex-col justify-between">
               {content}
             </div>
           );
