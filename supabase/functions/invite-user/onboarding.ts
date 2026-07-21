@@ -5,8 +5,9 @@ export type InviteAction = "reinvite" | "resend-link" | "add-direct" | "blocked-
  *
  * - "add-direct": the user has fully completed onboarding (actually set a
  *   usable password), so just add them to the new workspace.
- *   `hasPassword === false` overrides `onboardingComplete`: a user with no password
- *   cannot log in, so they are routed to "resend-link" no matter what the flag says.
+ *   `hasPassword === false` vetoes `add-direct`: a user with no password cannot
+ *   log in. Where they land next ("resend-link" vs the destructive "reinvite")
+ *   still depends on `emailConfirmed` — see below.
  * - "resend-link": the user confirmed their e-mail (clicked the invite link,
  *   which mints a session) but never set a password. Re-send a fresh
  *   set-password link to the SAME user — no delete — so the prior link and any
