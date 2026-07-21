@@ -69,6 +69,14 @@ export function PostCalendar({ posts }: Props) {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const isSameCalMonth = month === today.getUTCMonth() && year === today.getUTCFullYear();
 
+  // Leading/trailing days from the neighbouring months, rendered muted and
+  // non-interactive so the grid always reads as full rectangular weeks
+  // instead of trailing off into blank cells.
+  const prevMonthDays = new Date(year, month, 0).getDate();
+  const leadingDays = Array.from({ length: firstDay }, (_, i) => prevMonthDays - firstDay + 1 + i);
+  const trailingCount = (7 - ((firstDay + daysInMonth) % 7)) % 7;
+  const trailingDays = Array.from({ length: trailingCount }, (_, i) => i + 1);
+
   function prevMonth() {
     if (month === 0) {
       setYear((y) => y - 1);
@@ -96,15 +104,19 @@ export function PostCalendar({ posts }: Props) {
 
   return (
     <div>
-      <div className="hub-card grid grid-cols-1 md:grid-cols-[1fr_300px] overflow-hidden">
+      {/* On mobile this sits directly inside the page's own "Calendário" card, so it
+          drops its own card chrome — nesting two bordered cards double-padded the
+          grid and squeezed the day cells. `hub-card` is hand-written CSS (no `md:`
+          variant support), hence the explicit arbitrary-value form. */}
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_300px] overflow-hidden md:rounded-xl md:border md:border-[var(--hub-bd)] md:bg-[var(--hub-card)]">
         {/* Left: calendar grid */}
-        <div className="p-5 sm:p-6">
+        <div className="p-0 md:p-6">
           {/* Header — mobile: month centered between two standalone nav buttons */}
           <div className="flex items-center justify-between mb-5 md:hidden">
             <button
               onClick={prevMonth}
               aria-label="Mês anterior"
-              className="w-10 h-10 flex items-center justify-center rounded-2xl hub-bg-soft hub-tx2 active:scale-95 transition-transform"
+              className="w-10 h-10 flex items-center justify-center rounded-2xl border hub-border hub-txt active:scale-95 transition-transform"
             >
               <ChevronLeft size={18} />
             </button>
@@ -112,12 +124,12 @@ export function PostCalendar({ posts }: Props) {
               <h2 className="font-display text-[19px] font-semibold tracking-tight hub-txt leading-none capitalize">
                 {MONTHS_PT[month]}
               </h2>
-              <p className="text-[12.5px] hub-tx2 mt-1">{year}</p>
+              <p className="text-[12.5px] hub-tx3 mt-0.5">{year}</p>
             </div>
             <button
               onClick={nextMonth}
               aria-label="Próximo mês"
-              className="w-10 h-10 flex items-center justify-center rounded-2xl hub-bg-soft hub-tx2 active:scale-95 transition-transform"
+              className="w-10 h-10 flex items-center justify-center rounded-2xl border hub-border hub-txt active:scale-95 transition-transform"
             >
               <ChevronRight size={18} />
             </button>
@@ -151,12 +163,12 @@ export function PostCalendar({ posts }: Props) {
             </div>
           </div>
 
-          {/* Weekday labels */}
-          <div className="grid grid-cols-7 mb-2">
+          {/* Weekday labels — mixed case + light tracking on mobile, matching the reference */}
+          <div className="grid grid-cols-7 mb-1 md:mb-2">
             {DAYS_PT.map((d) => (
               <div
                 key={d}
-                className="text-center text-[10px] uppercase tracking-[0.12em] font-semibold hub-tx3 py-1"
+                className="text-center text-[12px] md:text-[10px] font-medium md:font-semibold tracking-normal md:uppercase md:tracking-[0.12em] hub-tx3 py-1"
               >
                 {d}
               </div>
@@ -164,9 +176,17 @@ export function PostCalendar({ posts }: Props) {
           </div>
 
           {/* Day grid */}
-          <div className="grid grid-cols-7 gap-1.5">
-            {Array.from({ length: firstDay }).map((_, i) => (
-              <div key={`empty-${i}`} className="min-h-[88px]" />
+          <div className="grid grid-cols-7 gap-x-0 gap-y-0.5 md:gap-1.5">
+            {leadingDays.map((d) => (
+              <div
+                key={`lead-${d}`}
+                aria-hidden="true"
+                className="min-h-[54px] md:min-h-[88px] p-1 md:p-2 flex flex-col items-center md:items-start"
+              >
+                <div className="w-9 h-9 md:w-7 md:h-7 flex items-center justify-center text-[14px] md:text-[12px] font-semibold hub-tx3 opacity-50">
+                  {d}
+                </div>
+              </div>
             ))}
             {Array.from({ length: daysInMonth }).map((_, i) => {
               const day = i + 1;
@@ -183,39 +203,50 @@ export function PostCalendar({ posts }: Props) {
                 <button
                   key={day}
                   onClick={() => setSelectedDay(day)}
-                  className={`min-h-[88px] p-2 rounded-xl text-left transition-all ${
-                    isSelected ? '' : 'hover:bg-[var(--hub-soft)]'
-                  }`}
-                  style={
+                  aria-current={isToday ? 'date' : undefined}
+                  aria-pressed={isSelected}
+                  className={`min-h-[54px] md:min-h-[88px] p-1 md:p-2 rounded-xl flex flex-col items-center md:items-start md:text-left transition-colors ${
                     isSelected
-                      ? {
-                          background: 'color-mix(in srgb, var(--hub-acc) 12%, transparent)',
-                          boxShadow:
-                            'inset 0 0 0 1px color-mix(in srgb, var(--hub-acc) 50%, transparent)',
-                        }
-                      : undefined
-                  }
+                      ? 'md:bg-[color-mix(in_srgb,var(--hub-acc)_10%,transparent)]'
+                      : 'hover:bg-[var(--hub-soft)]'
+                  }`}
                 >
+                  {/* The selected/today affordance lives on the number chip itself —
+                      highlighting the whole cell stretches into a tall pill once the
+                      cell grows to fit its posts. */}
                   <div
-                    className={`text-[12px] mb-1.5 w-7 h-7 flex items-center justify-center rounded-full font-semibold ${
-                      isToday ? 'hub-btn-primary' : isSelected ? 'hub-txt' : 'hub-tx2'
+                    className={`w-9 h-9 md:w-7 md:h-7 mb-0.5 md:mb-1.5 flex items-center justify-center rounded-[13px] md:rounded-full text-[14px] md:text-[12px] font-semibold transition-colors ${
+                      isSelected || isToday ? '' : 'text-[var(--hub-txt)] md:text-[var(--hub-tx2)]'
                     }`}
+                    style={
+                      isSelected
+                        ? { background: 'var(--hub-acc)', color: 'var(--hub-acc-fg)' }
+                        : isToday
+                          ? {
+                              boxShadow: 'inset 0 0 0 1.5px var(--hub-acc)',
+                              color: 'var(--hub-acc)',
+                            }
+                          : undefined
+                    }
                   >
                     {day}
                   </div>
-                  {/* Mobile: a colored dot per post type, no text (cells are too narrow for labels) */}
-                  <div className="flex items-center justify-center gap-1 md:hidden">
-                    {Object.keys(byTipo).map((tipo) => (
+
+                  {/* Mobile: one dot per post (capped), colored by type — the cells are
+                      far too narrow for the desktop text pills, which truncated to a
+                      bare digit. */}
+                  <div className="flex items-center justify-center gap-[3px] h-[5px] md:hidden">
+                    {dayPosts.slice(0, 3).map((p) => (
                       <span
-                        key={tipo}
+                        key={p.id}
                         className="w-[5px] h-[5px] rounded-full"
-                        style={{ background: TIPO_COLOR[tipo] ?? '#78716c' }}
+                        style={{ background: TIPO_COLOR[p.tipo] ?? '#78716c' }}
                       />
                     ))}
                   </div>
 
                   {/* Desktop: full type + count pill, room to spare */}
-                  <div className="hidden md:flex md:flex-col gap-1">
+                  <div className="hidden md:flex md:flex-col gap-1 w-full">
                     {Object.entries(byTipo).map(([tipo, count]) => (
                       <div
                         key={tipo}
@@ -232,6 +263,17 @@ export function PostCalendar({ posts }: Props) {
                 </button>
               );
             })}
+            {trailingDays.map((d) => (
+              <div
+                key={`trail-${d}`}
+                aria-hidden="true"
+                className="min-h-[54px] md:min-h-[88px] p-1 md:p-2 flex flex-col items-center md:items-start"
+              >
+                <div className="w-9 h-9 md:w-7 md:h-7 flex items-center justify-center text-[14px] md:text-[12px] font-semibold hub-tx3 opacity-50">
+                  {d}
+                </div>
+              </div>
+            ))}
           </div>
 
           {/* Decorative divider handle, mobile only — mirrors the reference's bottom-sheet grabber */}
@@ -240,8 +282,9 @@ export function PostCalendar({ posts }: Props) {
           </div>
         </div>
 
-        {/* Right: side panel */}
-        <div className="md:border-l hub-border p-5 sm:p-6 hub-bg-soft">
+        {/* Right: side panel. `hub-bg-soft` is a hand-written class, so a `md:`
+            variant would silently no-op — use the arbitrary-value form instead. */}
+        <div className="md:border-l hub-border p-0 pt-1 md:p-6 md:bg-[var(--hub-soft)]">
           <div className="mb-4 hidden md:block">
             <h3 className="font-display text-[15px] font-semibold tracking-tight hub-txt">
               Postagens
@@ -258,12 +301,12 @@ export function PostCalendar({ posts }: Props) {
               {selectedDay ? 'Nenhuma postagem neste dia.' : 'Selecione um dia.'}
             </div>
           ) : (
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-2.5 md:gap-3">
               {selectedPosts.map((p) => (
                 <button
                   key={p.id}
                   onClick={() => navigate(`postagens?post=${p.id}`)}
-                  className="text-left rounded-xl md:border hub-border hub-bg-card p-3.5 space-y-1.5 md:space-y-2 hover:border-[var(--hub-bd2)] hover:shadow-sm transition-all"
+                  className="text-left rounded-2xl md:rounded-xl md:border hub-border bg-[var(--hub-soft)] md:bg-[var(--hub-card)] p-3.5 space-y-1 md:space-y-2 hover:border-[var(--hub-bd2)] hover:shadow-sm transition-all"
                 >
                   {/* Mobile: colored dot + time, no status/type text */}
                   <div className="flex items-center gap-2 md:hidden">

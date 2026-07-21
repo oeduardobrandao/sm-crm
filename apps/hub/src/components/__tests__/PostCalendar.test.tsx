@@ -180,7 +180,6 @@ describe('PostCalendar', () => {
     expect(screen.getByText('21 de Julho, 2026')).toBeInTheDocument();
     expect(screen.getByText('Post de hoje (UTC)')).toBeInTheDocument();
 
-    const todayButton = getDayButton(21);
-    expect(within(todayButton).getByText('21')).toHaveClass('hub-btn-primary');
+    expect(getDayButton(21)).toHaveAttribute('aria-current', 'date');
   });
 });
