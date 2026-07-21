@@ -52,9 +52,7 @@ describe('HubContext', () => {
       );
     }
     render(
-      <HubContext.Provider
-        value={{ ...providerValue, theme: 'dark', toggleTheme }}
-      >
+      <HubContext.Provider value={{ ...providerValue, theme: 'dark', toggleTheme }}>
         <Probe />
       </HubContext.Provider>,
     );
