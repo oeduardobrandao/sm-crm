@@ -247,6 +247,26 @@ describe('carousel 10-item warning', () => {
   });
 });
 
+describe('media request mode', () => {
+  // Regression: the tile used to request the url in no-cors mode while the
+  // preloader, lightbox and zip download request the SAME url in cors mode.
+  // The proxy serves media as `immutable` for a year, so whichever request
+  // landed first decided the browser's cache entry — and a no-cors entry (no
+  // ACAO header) makes every later cors read fail, breaking the lightbox.
+  it('requests image tiles in cors mode, matching every other reader of the url', async () => {
+    vi.mocked(listPostMedia).mockResolvedValueOnce(makeMedia(1));
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <PostMediaGallery postId={1} />
+      </QueryClientProvider>,
+    );
+
+    const img = await screen.findByAltText('img0.jpg');
+    expect(img).toHaveAttribute('crossorigin', 'anonymous');
+  });
+});
+
 // ============================================================
 // T4.5 — Estúdio design-ownership mode (design §6.7)
 // ============================================================

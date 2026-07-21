@@ -704,6 +704,10 @@ function SortableMediaTile({
           width={m.width ?? undefined}
           height={m.height ?? undefined}
           blurDataURL={m.blur_data_url ?? undefined}
+          // Every other reader of this same url is cors-mode (preloader, lightbox,
+          // zip download). Requesting it no-cors here would fetch each image twice
+          // and keep two browser-cache entries for one object.
+          crossOrigin="anonymous"
           className="w-full h-full object-cover pointer-events-none"
         />
       ) : (
