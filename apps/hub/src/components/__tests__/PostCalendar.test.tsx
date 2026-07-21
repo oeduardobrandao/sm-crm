@@ -43,6 +43,8 @@ function getDayButton(day: number) {
 }
 
 describe('PostCalendar', () => {
+  const originalTZ = process.env.TZ;
+
   beforeEach(() => {
     navigateMock.mockReset();
     vi.useFakeTimers();
@@ -50,6 +52,7 @@ describe('PostCalendar', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    process.env.TZ = originalTZ;
   });
 
   it('shows grouped posts for the current day, lets the user choose another day, and navigates to the post details', () => {
@@ -153,5 +156,31 @@ describe('PostCalendar', () => {
 
     expect(screen.getByText('3 de Fevereiro, 2026')).toBeInTheDocument();
     expect(screen.getByText('Campanha de fevereiro')).toBeInTheDocument();
+  });
+
+  it('anchors "today" and the initially selected day to the UTC calendar day, not the viewer\'s local day', () => {
+    // Posts are grouped by scheduled_at in UTC (postsForDay), so a viewer
+    // west of UTC late in their evening must still see "today" land on the
+    // UTC date, not fall back a day to their local date.
+    process.env.TZ = 'America/Fortaleza'; // UTC-3
+    vi.setSystemTime(new Date('2026-07-21T01:00:00.000Z')); // 2026-07-20 22:00 local
+
+    render(
+      <PostCalendar
+        posts={[
+          makePost({
+            id: 21,
+            titulo: 'Post de hoje (UTC)',
+            scheduled_at: '2026-07-21T05:00:00.000Z',
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText('21 de Julho, 2026')).toBeInTheDocument();
+    expect(screen.getByText('Post de hoje (UTC)')).toBeInTheDocument();
+
+    const todayButton = getDayButton(21);
+    expect(within(todayButton).getByText('21')).toHaveClass('hub-btn-primary');
   });
 });

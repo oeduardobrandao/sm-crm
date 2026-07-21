@@ -51,13 +51,18 @@ interface Props {
 export function PostCalendar({ posts }: Props) {
   const navigate = useNavigate();
   const today = new Date();
-  const [year, setYear] = useState(today.getFullYear());
-  const [month, setMonth] = useState(today.getMonth());
-  const [selectedDay, setSelectedDay] = useState<number | null>(today.getDate());
+  // Posts are grouped by their scheduled_at date in UTC (see postsForDay
+  // below), so "today" must use the same UTC calendar day — otherwise, for
+  // viewers whose local timezone differs from UTC, the highlighted "today"
+  // cell and the initially selected day drift by one day from where posts
+  // actually land on the grid.
+  const [year, setYear] = useState(today.getUTCFullYear());
+  const [month, setMonth] = useState(today.getUTCMonth());
+  const [selectedDay, setSelectedDay] = useState<number | null>(today.getUTCDate());
 
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const isSameCalMonth = month === today.getMonth() && year === today.getFullYear();
+  const isSameCalMonth = month === today.getUTCMonth() && year === today.getUTCFullYear();
 
   function prevMonth() {
     if (month === 0) {
@@ -137,7 +142,7 @@ export function PostCalendar({ posts }: Props) {
             {Array.from({ length: daysInMonth }).map((_, i) => {
               const day = i + 1;
               const dayPosts = postsForDay(day);
-              const isToday = day === today.getDate() && isSameCalMonth;
+              const isToday = day === today.getUTCDate() && isSameCalMonth;
               const isSelected = selectedDay === day;
 
               const byTipo: Record<string, number> = {};
