@@ -109,6 +109,12 @@ $$;
 -- listed too so the intent survives a future default-privileges change.
 REVOKE EXECUTE ON FUNCTION public.user_has_password(uuid) FROM PUBLIC, anon, authenticated;
 
+-- Revoking PUBLIC (above) also removes service_role, which reaches public schema
+-- functions only through the implicit PUBLIC grant. invite-user calls this with
+-- the service-role key, so it must be granted back explicitly -- without this the
+-- RPC always errors, degrades to "unknown", and the veto never fires.
+GRANT EXECUTE ON FUNCTION public.user_has_password(uuid) TO service_role;
+
 -- One-time repair. 20260629000001 blanket-set onboarding_complete = true for every
 -- pre-existing profile as a safety measure against the destructive reinvite branch;
 -- that marked passwordless invitees as onboarded, pinning them to the silent
@@ -136,7 +142,28 @@ Re-run `supabase/tests/user_has_password.sql` in the staging SQL editor.
 
 Expected: `NOTICE: user_has_password: all cases passed`, then `ROLLBACK`.
 
-- [ ] **Step 6: Register the migration as applied on prod**
+- [ ] **Step 6: Grant EXECUTE back to service_role on prod**
+
+Prod's hand-applied version ran the `CREATE FUNCTION` and `REVOKE` but was written
+before this plan's `GRANT` line existed, so prod is currently in the broken state:
+`service_role` cannot call the function. Registering the migration version in the
+next step does not run any SQL, so skipping this step leaves the feature dead
+after `invite-user` deploys. In the **prod** SQL editor (`skjzpekeqefvlojenfsw`):
+
+```sql
+GRANT EXECUTE ON FUNCTION public.user_has_password(uuid) TO service_role;
+
+-- verify
+select has_function_privilege('service_role', 'public.user_has_password(uuid)', 'execute') as service_role_can_run;
+```
+
+Expected: `service_role_can_run` = `true`. The same grant must be run on **staging**
+after Step 4 applies the migration there, since the migration file's own `GRANT`
+line only takes effect where the file is actually executed — staging gets it via
+the migration; prod does not, because prod only got the pre-`GRANT` hand-applied
+version.
+
+- [ ] **Step 7: Register the migration as applied on prod**
 
 Prod already has both statements but no history row, so `db push` would try to replay them. Recording the version keeps prod's history honest. In the **prod** SQL editor (`skjzpekeqefvlojenfsw`):
 
@@ -155,7 +182,7 @@ where version = '20260721000001';
 
 Expected: one row.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add supabase/migrations/20260721000001_invite_password_truth.sql supabase/tests/user_has_password.sql
@@ -567,6 +594,12 @@ git commit -m "fix(crm): surface the real invite result instead of always 'Convi
 
 **Interfaces:**
 - Consumes: everything from Tasks 1–4.
+
+Note: `supabase/tests/*.sql` (including `user_has_password.sql`) are not wired
+into CI or `npm run test:functions` — they are plain psql scripts run by hand.
+`npm run test:functions` passing does NOT confirm the privilege assertions
+(`authenticated`/`anon` denied, `service_role` granted); those must be run by
+hand against each database (staging in Task 1 Step 5, prod after Step 6's grant).
 
 - [ ] **Step 1: Run the full suite one more time**
 

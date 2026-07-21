@@ -19,6 +19,8 @@ begin
     'authenticated must NOT be able to execute user_has_password';
   assert has_function_privilege('anon', 'public.user_has_password(uuid)', 'execute') = false,
     'anon must NOT be able to execute user_has_password';
+  assert has_function_privilege('service_role', 'public.user_has_password(uuid)', 'execute') = true,
+    'service_role MUST be able to execute user_has_password';
 
   raise notice 'user_has_password: all cases passed';
 end $$;

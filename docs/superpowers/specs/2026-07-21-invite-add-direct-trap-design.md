@@ -52,6 +52,7 @@ RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS
   SELECT coalesce(u.encrypted_password, '') <> '' FROM auth.users u WHERE u.id = p_user_id;
 $$;
 REVOKE EXECUTE ON FUNCTION public.user_has_password(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.user_has_password(uuid) TO service_role;
 ```
 
 `coalesce(..., '') <> ''` covers both representations GoTrue has used for
@@ -59,11 +60,19 @@ passwordless users (`NULL` and `''`). The `REVOKE` is load-bearing: "does this
 address have a password" is an account-enumeration primitive and must remain
 service-role only.
 
+The `GRANT` back to `service_role` is equally load-bearing, not decorative.
+`anon`, `authenticated`, and `service_role` all reach `public`-schema functions
+only through the implicit `PUBLIC` grant Postgres attaches by default; revoking
+`PUBLIC` removes it from all three at once, including `service_role`. `invite-user`
+calls this RPC with the service-role key, so without the explicit grant-back the
+call always errors, `coerceHasPassword` maps that to "unknown", and the veto
+never fires — the fix silently does nothing.
+
 **`PUBLIC` is the operative target.** Postgres grants `EXECUTE` on a new function
 to `PUBLIC` by default and every role inherits that grant, so revoking from
 `anon`/`authenticated` alone leaves the function callable by any signed-in user.
 The first hand-applied version of this migration (prod, 2026-07-21) omitted
-`PUBLIC` and had to be corrected. The pgTAP case asserting `authenticated` cannot
+`PUBLIC` and had to be corrected. The psql test case asserting `authenticated` cannot
 execute it exists to catch exactly this.
 
 One-time repair, with no date filter — "has no password" is itself the correct
@@ -76,7 +85,7 @@ WHERE u.id = p.id AND p.onboarding_complete = true AND coalesce(u.encrypted_pass
 ```
 
 Safe because login is password-only: no `signInWithOAuth`, `signInWithOtp`, or
-`signInWithIdToken` call exists in either `apps/crm` or `apps/hub`, so no
+`signInWithIdToken` call exists in `apps/crm`, `apps/hub`, or `apps/admin`, so no
 legitimate user has an empty password.
 
 Both statements are idempotent: `CREATE OR REPLACE`, and the `UPDATE` cannot match
@@ -116,7 +125,11 @@ deletes on `reinvite`/`resend-link`. A repaired passwordless user previously
 classified `add-direct` and was skipped; they now classify `resend-link` and will
 be deleted on cancel. This is correct — cancelling is meant to remove the invitee
 entirely, and an account with no password has nothing to lose — but it is a real
-behavior change.
+behavior change. Note the scope of that delete: it removes the `workspace_members`
+row filtered only by `user_id` (no `conta_id` filter) and deletes the auth user
+globally, so cancelling the invite in one workspace removes the user from every
+workspace they belong to. Harmless in practice, since these accounts cannot log
+in, but worth having written down.
 
 **Users flipped to `onboarding_complete = false` no longer pass the
 `healPendingInvite` gate** at `apps/crm/src/lib/supabase.ts:164`. Intended: healing
@@ -153,17 +166,29 @@ drifting a third time, not the thing that fixes it.
 
 ## Testing
 
-Deno, in `supabase/functions/__tests__/invite-user-onboarding_test.ts`:
+Deno, in `supabase/functions/__tests__/invite-user-onboarding_test.ts`: 8 new cases
+(6 pre-existing cases unchanged, 14 total).
+
+`classifyExistingUser`, 4 new cases:
 
 - `onboardingComplete: true, hasPassword: false` → `resend-link` (the trap)
-- `onboardingComplete: true, hasPassword: undefined` → `add-direct` (degradation)
+- `onboardingComplete: true, hasPassword: undefined`/`null` → `add-direct` (degradation)
 - `onboardingComplete: true, hasPassword: true` → `add-direct`
-- existing six cases unchanged
+- `emailConfirmed: false, hasPassword: false` → `reinvite` (still destructive when unconfirmed)
 
-pgTAP, in `supabase/tests/`:
+`coerceHasPassword`, 4 new cases:
+
+- RPC error → `null` (unknown, does not veto)
+- `true`/`false` pass through unchanged
+- a `null` row (unknown user) → `null`
+- a non-boolean payload → `null`
+
+Plain psql (`DO $$ … assert … $$`, matching the house style of
+`supabase/tests/post_media_set_from_uploads.sql` — not pgTAP), in `supabase/tests/`:
 
 - `user_has_password` returns `false` for `NULL`, `false` for `''`, `true` for a real hash
-- `authenticated` cannot execute it
+- `authenticated` and `anon` cannot execute it
+- `service_role` CAN execute it
 
 ## Out of scope
 

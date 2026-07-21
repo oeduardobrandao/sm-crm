@@ -29,6 +29,12 @@ $$;
 -- listed too so the intent survives a future default-privileges change.
 REVOKE EXECUTE ON FUNCTION public.user_has_password(uuid) FROM PUBLIC, anon, authenticated;
 
+-- Revoking PUBLIC (above) also removes service_role, which reaches public schema
+-- functions only through the implicit PUBLIC grant. invite-user calls this with
+-- the service-role key, so it must be granted back explicitly -- without this the
+-- RPC always errors, degrades to "unknown", and the veto never fires.
+GRANT EXECUTE ON FUNCTION public.user_has_password(uuid) TO service_role;
+
 -- One-time repair. 20260629000001 blanket-set onboarding_complete = true for every
 -- pre-existing profile as a safety measure against the destructive reinvite branch;
 -- that marked passwordless invitees as onboarded, pinning them to the silent
