@@ -78,7 +78,10 @@ export function PostCalendar({ posts }: Props) {
     return posts.filter((p) => {
       if (!p.scheduled_at) return false;
       const d = new Date(p.scheduled_at);
-      return d.getUTCFullYear() === year && d.getUTCMonth() === month && d.getUTCDate() === day;
+      // Bucket by local calendar day so the cell a post lands in matches the local
+      // date shown on its card (and the CRM calendar). Using UTC parts here would
+      // place an evening post one day ahead of where its own label reads.
+      return d.getFullYear() === year && d.getMonth() === month && d.getDate() === day;
     });
   }
 
@@ -234,7 +237,6 @@ export function PostCalendar({ posts }: Props) {
                         day: '2-digit',
                         month: 'long',
                         year: 'numeric',
-                        timeZone: 'UTC',
                       })}
                     </p>
                   )}

@@ -212,7 +212,6 @@ export function StoryPostCard({
               ? new Date(post.scheduled_at).toLocaleDateString('pt-BR', {
                   day: '2-digit',
                   month: 'short',
-                  timeZone: 'UTC',
                 })
               : ''}
           </span>
