@@ -64,6 +64,7 @@
     "add": "Add",
     "choose": "Choose",
     "downloadAll": "Download all",
+    "downloadOne": "Download file",
     "downloading": "Downloading…",
     "error": "Error",
     "uploadDone": "Upload complete",
