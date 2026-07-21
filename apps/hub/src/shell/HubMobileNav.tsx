@@ -52,9 +52,23 @@ export function HubMobileNav() {
   const pendingCount = usePendingApprovalsCount(token!);
 
   const [open, setOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const firstItemRef = useRef<HTMLAnchorElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // A sentinel at the top of the document tells us when the page has scrolled,
+  // without caring which element is the scroll container (a scroll listener
+  // would have to guess between window and body). Mirrors VideoPrewarm's guard
+  // so jsdom, which has no IntersectionObserver, simply stays un-scrolled.
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver(([entry]) => setScrolled(!entry.isIntersecting));
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -92,25 +106,56 @@ export function HubMobileNav() {
 
   return (
     <>
-      <header className="md:hidden sticky top-0 z-20 h-[54px] px-5 flex items-center justify-between border-b hub-border hub-bg-card">
-        <span className="font-display text-[15px] font-medium hub-txt">
-          {bootstrap.workspace.name}
-        </span>
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] hub-tx3 truncate max-w-[100px]">
-            {bootstrap.cliente_nome}
+      <div ref={sentinelRef} aria-hidden="true" className="md:hidden h-px -mb-px" />
+      {/* Reserves the flow height the fixed bar no longer occupies. */}
+      <div aria-hidden="true" className="md:hidden h-[70px]" />
+
+      {/* The bar detaches into a floating, blurred pill once the page scrolls;
+          at rest it sits flush so the page still opens on its own heading.
+          `pointer-events-none` keeps the transparent gutter around the pill
+          from swallowing taps meant for the content scrolling behind it.
+
+          Deliberately `fixed`, not `sticky`: main.tsx pulls in the CRM's global
+          stylesheet, which sets `overflow-x: hidden` on #root. That computes
+          overflow-y to `auto`, making #root a scroll container whose scrollport
+          is its own full height — so a sticky descendant has nothing to stick
+          to and just scrolls away. Ancestor overflow doesn't affect `fixed`. */}
+      <header className="md:hidden fixed top-0 left-0 right-0 z-20 px-3 py-2 pointer-events-none">
+        <div
+          className={`pointer-events-auto h-[54px] px-4 rounded-2xl flex items-center justify-between border transition-[background-color,border-color,box-shadow] duration-200 ${
+            scrolled
+              ? 'hub-border shadow-[0_10px_30px_-12px_rgba(0,0,0,.35)]'
+              : 'border-transparent'
+          }`}
+          style={
+            scrolled
+              ? {
+                  background: 'color-mix(in srgb, var(--hub-card) 80%, transparent)',
+                  backdropFilter: 'saturate(180%) blur(14px)',
+                  WebkitBackdropFilter: 'saturate(180%) blur(14px)',
+                }
+              : undefined
+          }
+        >
+          <span className="font-display text-[15px] font-medium hub-txt">
+            {bootstrap.workspace.name}
           </span>
-          <button
-            type="button"
-            ref={triggerRef}
-            aria-label={t('nav.openMenu', 'Abrir menu')}
-            aria-haspopup="dialog"
-            aria-expanded={open}
-            onClick={() => setOpen(true)}
-            className="w-10 h-10 rounded-lg border hub-border flex items-center justify-center hub-txt"
-          >
-            <Menu size={18} />
-          </button>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] hub-tx3 truncate max-w-[100px]">
+              {bootstrap.cliente_nome}
+            </span>
+            <button
+              type="button"
+              ref={triggerRef}
+              aria-label={t('nav.openMenu', 'Abrir menu')}
+              aria-haspopup="dialog"
+              aria-expanded={open}
+              onClick={() => setOpen(true)}
+              className="w-10 h-10 rounded-lg border hub-border flex items-center justify-center hub-txt"
+            >
+              <Menu size={18} />
+            </button>
+          </div>
         </div>
       </header>
 
