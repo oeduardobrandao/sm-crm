@@ -14,7 +14,13 @@ const BOOTSTRAP: HubBootstrap = {
 function renderPage() {
   return render(
     <HubContext.Provider
-      value={{ bootstrap: BOOTSTRAP, token: 'tok', workspace: 'ws', theme: 'light', toggleTheme: vi.fn() }}
+      value={{
+        bootstrap: BOOTSTRAP,
+        token: 'tok',
+        workspace: 'ws',
+        theme: 'light',
+        toggleTheme: vi.fn(),
+      }}
     >
       <MensagensPage />
     </HubContext.Provider>,

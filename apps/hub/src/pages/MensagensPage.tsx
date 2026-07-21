@@ -48,18 +48,28 @@ export function MensagensPage() {
             <div className="text-[12px] hub-tx3">Online</div>
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-3" style={{ background: 'var(--hub-bg)' }}>
+        <div
+          className="flex-1 overflow-y-auto p-5 flex flex-col gap-3"
+          style={{ background: 'var(--hub-bg)' }}
+        >
           {messages.map((m) => (
-            <div key={m.id} className={`max-w-[72%] ${m.from === 'me' ? 'self-end' : 'self-start'}`}>
+            <div
+              key={m.id}
+              className={`max-w-[72%] ${m.from === 'me' ? 'self-end' : 'self-start'}`}
+            >
               <div
                 className={`px-3.5 py-2.5 rounded-2xl text-sm ${
                   m.from === 'me' ? 'hub-btn-primary' : 'hub-bg-card'
                 }`}
-                style={m.from === 'them' ? { boxShadow: 'inset 0 0 0 1px var(--hub-bd)' } : undefined}
+                style={
+                  m.from === 'them' ? { boxShadow: 'inset 0 0 0 1px var(--hub-bd)' } : undefined
+                }
               >
                 {m.text}
               </div>
-              <span className={`block mt-1 text-[11px] hub-tx3 ${m.from === 'me' ? 'text-right' : 'text-left'}`}>
+              <span
+                className={`block mt-1 text-[11px] hub-tx3 ${m.from === 'me' ? 'text-right' : 'text-left'}`}
+              >
                 {m.time}
               </span>
             </div>
@@ -76,7 +86,10 @@ export function MensagensPage() {
             className="flex-1 px-4.5 py-3 rounded-full border hub-border-strong text-sm outline-none"
             style={{ background: 'var(--hub-bg)', color: 'var(--hub-txt)' }}
           />
-          <button onClick={send} className="px-5 py-3 rounded-full text-[13px] font-semibold hub-btn-primary">
+          <button
+            onClick={send}
+            className="px-5 py-3 rounded-full text-[13px] font-semibold hub-btn-primary"
+          >
             Enviar
           </button>
         </div>
