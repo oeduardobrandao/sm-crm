@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { ChevronLeft, ChevronRight, Download, X } from 'lucide-react';
+import { toast } from 'sonner';
 import type { PostMedia } from '../../../store';
+import { downloadMedia } from '@/utils/downloadMedia';
 
 interface PostMediaLightboxProps {
   media: PostMedia[];
   initialIndex: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onDownloadAll?: () => void;
 }
 
 export function PostMediaLightbox({
@@ -16,9 +17,9 @@ export function PostMediaLightbox({
   initialIndex,
   open,
   onOpenChange,
-  onDownloadAll,
 }: PostMediaLightboxProps) {
   const [index, setIndex] = useState(initialIndex);
+  const [downloading, setDownloading] = useState(false);
 
   // Reseed when open flips so clicking a different tile lands on its slide.
   useEffect(() => {
@@ -106,12 +107,24 @@ export function PostMediaLightbox({
             <X className="h-5 w-5" />
           </DialogPrimitive.Close>
 
-          {onDownloadAll && (
+          {/* Downloads the slide on screen, not the whole gallery — the zip lives on the
+              gallery's own "Baixar todos". Guarded so a double-click can't fire twice. */}
+          {current.url && (
             <button
               type="button"
-              aria-label="Baixar todos"
-              onClick={onDownloadAll}
-              className="fixed top-4 right-16 w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm text-white hover:bg-white/30 flex items-center justify-center pointer-events-auto ring-1 ring-white/20"
+              aria-label="Baixar"
+              disabled={downloading}
+              onClick={async () => {
+                setDownloading(true);
+                try {
+                  await downloadMedia(current);
+                } catch {
+                  toast.error('Erro ao baixar arquivo');
+                } finally {
+                  setDownloading(false);
+                }
+              }}
+              className="fixed top-4 right-16 w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm text-white hover:bg-white/30 flex items-center justify-center pointer-events-auto ring-1 ring-white/20 disabled:opacity-50"
             >
               <Download className="h-5 w-5" />
             </button>
