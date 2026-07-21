@@ -1,5 +1,6 @@
 import { createJsonResponder } from "../_shared/http.ts";
 import { resolveHubToken } from "../_shared/hub-token.ts";
+import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
 
 type DbClient = {
   from: (table: string) => any;
@@ -60,6 +61,16 @@ export function createHubBootstrapHandler(deps: HubBootstrapHandlerDeps) {
       .eq("id", hubToken.cliente_id)
       .single();
 
+    // Fail closed: an entitlements RPC hiccup must never break the client's portal —
+    // same defence-in-depth principle as touchToken above, just hiding one nav item
+    // instead of silently doing nothing.
+    let featureMensagens = false;
+    try {
+      featureMensagens = await effectivePlanFeature(db as any, conta.id, "feature_mensagens");
+    } catch {
+      // intentionally ignored — defaults to false
+    }
+
     return json({
       workspace: {
         name: conta.name,
@@ -69,6 +80,7 @@ export function createHubBootstrapHandler(deps: HubBootstrapHandlerDeps) {
       cliente_nome: cliente?.nome ?? "",
       is_active: hubToken.is_active,
       cliente_id: hubToken.cliente_id,
+      feature_mensagens: featureMensagens,
     });
   };
 }

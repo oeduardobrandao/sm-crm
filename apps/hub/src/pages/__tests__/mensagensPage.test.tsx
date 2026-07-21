@@ -9,13 +9,14 @@ const BOOTSTRAP: HubBootstrap = {
   cliente_nome: 'Débora Lima',
   is_active: true,
   cliente_id: 1,
+  feature_mensagens: true,
 };
 
-function renderPage() {
+function renderPage(bootstrap: HubBootstrap = BOOTSTRAP) {
   return render(
     <HubContext.Provider
       value={{
-        bootstrap: BOOTSTRAP,
+        bootstrap,
         token: 'tok',
         workspace: 'ws',
         theme: 'light',
@@ -47,5 +48,12 @@ describe('MensagensPage', () => {
     fireEvent.change(input, { target: { value: 'Oi!' } });
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(screen.getByText('Oi!')).toBeInTheDocument();
+  });
+
+  it('shows an unavailable message instead of the chat when feature_mensagens is false', () => {
+    renderPage({ ...BOOTSTRAP, feature_mensagens: false });
+    expect(screen.queryByPlaceholderText(/enviar mensagem/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/subi o reels/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/não está disponível/i)).toBeInTheDocument();
   });
 });

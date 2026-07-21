@@ -94,6 +94,7 @@ export interface Plan {
   feature_estudio: boolean;
   feature_ai_images: boolean;
   feature_tiktok: boolean;
+  feature_mensagens: boolean;
   rate_instagram_syncs_per_day: number | null;
   rate_ai_analyses_per_month: number | null;
   rate_report_generations_per_month: number | null;
@@ -189,6 +190,7 @@ export const FEATURE_FLAG_KEYS = [
   'feature_estudio',
   'feature_ai_images',
   'feature_tiktok',
+  'feature_mensagens',
 ] as const;
 
 export const FEATURE_FLAG_LABELS: Record<string, string> = {
@@ -214,6 +216,7 @@ export const FEATURE_FLAG_LABELS: Record<string, string> = {
   feature_estudio: 'Estúdio (Editor)',
   feature_ai_images: 'AI Image Generation',
   feature_tiktok: 'TikTok',
+  feature_mensagens: 'Mensagens',
 };
 
 export const RATE_LIMIT_KEYS = [

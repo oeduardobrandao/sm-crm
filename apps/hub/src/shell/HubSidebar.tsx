@@ -1,20 +1,9 @@
 import { Link, useLocation, useParams } from 'react-router-dom';
-import {
-  Home,
-  CheckSquare,
-  LayoutList,
-  FileText,
-  BookOpen,
-  Palette,
-  Lightbulb,
-  FileBarChart,
-  MessageCircle,
-  Sun,
-  Moon,
-} from 'lucide-react';
+import { Sun, Moon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useHub } from '../HubContext';
 import { usePendingApprovalsCount } from '../hooks/usePendingApprovalsCount';
+import { getVisibleNavItems } from './navItems';
 import { changeLanguage, SUPPORTED_LANGUAGES } from '@mesaas/i18n';
 import type { Language } from '@mesaas/i18n';
 
@@ -22,18 +11,6 @@ const LANGUAGE_FLAGS: Record<Language, string> = {
   pt: '\u{1F1E7}\u{1F1F7}',
   en: '\u{1F1FA}\u{1F1F8}',
 };
-
-const NAV_ITEMS = [
-  { label: 'Início', labelKey: 'nav.home', icon: Home, path: '' },
-  { label: 'Aprovações', labelKey: 'nav.aprovacoes', icon: CheckSquare, path: '/aprovacoes' },
-  { label: 'Postagens', labelKey: 'nav.postagens', icon: LayoutList, path: '/postagens' },
-  { label: 'Páginas', labelKey: 'nav.paginas', icon: FileText, path: '/paginas' },
-  { label: 'Briefing', labelKey: 'nav.briefing', icon: BookOpen, path: '/briefing' },
-  { label: 'Marca', labelKey: 'nav.marca', icon: Palette, path: '/marca' },
-  { label: 'Ideias', labelKey: 'nav.ideias', icon: Lightbulb, path: '/ideias' },
-  { label: 'Relatórios', labelKey: 'nav.relatorios', icon: FileBarChart, path: '/relatorios' },
-  { label: 'Mensagens', labelKey: 'nav.mensagens', icon: MessageCircle, path: '/mensagens' },
-];
 
 function cycleLanguage(current: string) {
   const idx = SUPPORTED_LANGUAGES.indexOf(current as Language);
@@ -47,6 +24,7 @@ export function HubSidebar() {
   const { t, i18n } = useTranslation();
   const base = `/${workspace}/hub/${token}`;
   const pendingCount = usePendingApprovalsCount(token!);
+  const navItems = getVisibleNavItems(bootstrap.feature_mensagens);
 
   const initial = bootstrap.workspace.name.trim().charAt(0).toUpperCase();
 
@@ -75,7 +53,7 @@ export function HubSidebar() {
         </div>
       </div>
       <nav className="flex flex-col gap-0.5 px-3 py-3 border-t hub-border overflow-y-auto">
-        {NAV_ITEMS.map(({ label, labelKey, icon: Icon, path }) => {
+        {navItems.map(({ label, labelKey, icon: Icon, path }) => {
           const href = `${base}${path}`;
           const active = path === '' ? pathname === base : pathname.startsWith(`${base}${path}`);
           const badge = path === '/aprovacoes' ? pendingCount : null;

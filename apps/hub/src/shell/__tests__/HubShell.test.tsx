@@ -33,6 +33,7 @@ describe('HubShell', () => {
       cliente_nome: 'Clínica Aurora',
       is_active: true,
       cliente_id: 14,
+      feature_mensagens: true,
     });
 
     render(
@@ -70,6 +71,7 @@ describe('HubShell', () => {
       cliente_nome: 'Clínica Aurora',
       is_active: true,
       cliente_id: 14,
+      feature_mensagens: true,
     });
 
     render(
@@ -121,6 +123,7 @@ describe('HubShell', () => {
       cliente_nome: 'Clínica Aurora',
       is_active: false,
       cliente_id: 14,
+      feature_mensagens: true,
     });
 
     render(
