@@ -54,7 +54,6 @@ function formatShortDate(d: string | null): string {
   return new Date(d).toLocaleDateString('pt-BR', {
     day: '2-digit',
     month: 'short',
-    timeZone: 'UTC',
   });
 }
 
