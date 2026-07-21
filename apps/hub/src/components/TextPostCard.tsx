@@ -6,6 +6,13 @@ import { RichTextContent } from './RichTextContent';
 import type { HubPost, PostApproval } from '../types';
 import { useEditSuggestion } from '../hooks/useEditSuggestion';
 
+/** Status label color, independent from PostagensPage's StatusTag map (not guaranteed to share every key). */
+const STATUS_TEXT_COLOR: Record<string, string> = {
+  aprovado_cliente: 'text-emerald-600',
+  correcao_cliente: 'text-rose-600',
+  agendado: 'text-[#42c8f5]',
+};
+
 interface TextPostCardProps {
   post: HubPost;
   token: string;
@@ -72,10 +79,12 @@ export function TextPostCard({
       >
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider bg-stone-900 text-white px-2 py-0.5 rounded">
+            <span className="text-[10px] font-bold uppercase tracking-wider hub-btn-primary px-2 py-0.5 rounded">
               {TIPO_LABEL[post.tipo] ?? post.tipo}
             </span>
-            <span className="text-[11px] font-semibold text-amber-600">
+            <span
+              className={`text-[11px] font-semibold ${STATUS_TEXT_COLOR[post.status] ?? 'hub-tx2'}`}
+            >
               {STATUS_LABEL[post.status] ?? post.status}
             </span>
             <PlatformBadge platform={post.platform} />
@@ -175,13 +184,13 @@ export function TextPostCard({
                     value={comentario}
                     onChange={(e) => setComentario(e.target.value)}
                     placeholder="Comente aqui ou corrija o texto diretamente no campo acima"
-                    className="w-full rounded border border-stone-200 px-4 py-3 text-[13px] resize-none min-h-[70px] bg-white text-stone-900 placeholder:text-stone-400 focus:outline-none focus:border-stone-300 focus:ring-4 focus:ring-[#FFBF30]/15 transition-all"
+                    className="hub-focus-accent w-full rounded border border-stone-200 px-4 py-3 text-[13px] resize-none min-h-[70px] bg-white text-stone-900 placeholder:text-stone-400 focus:outline-none focus:border-stone-300 focus:ring-4 transition-all"
                   />
                   <div className="flex gap-2">
                     <button
                       onClick={() => handleAction('aprovado')}
                       disabled={submitting || approvalBlocked}
-                      className="flex-1 flex items-center justify-center gap-1.5 bg-stone-900 text-white rounded py-2.5 min-h-[44px] text-[13px] font-semibold hover:bg-stone-800 disabled:opacity-50 transition-colors"
+                      className="flex-1 flex items-center justify-center gap-1.5 hub-btn-primary rounded py-2.5 min-h-[44px] text-[13px] font-semibold disabled:opacity-50 transition-colors"
                     >
                       <CheckCircle size={14} /> {saveState === 'saving' ? 'Salvando...' : 'Aprovar'}
                     </button>
@@ -193,7 +202,7 @@ export function TextPostCard({
                           ? 'Deixe um comentário para solicitar correção'
                           : undefined
                       }
-                      className="flex-1 flex items-center justify-center gap-1.5 border border-stone-200 bg-white text-stone-800 rounded py-2.5 min-h-[44px] text-[13px] font-semibold hover:bg-stone-50 disabled:opacity-50 transition-colors"
+                      className="flex-1 flex items-center justify-center gap-1.5 hub-btn-secondary rounded py-2.5 min-h-[44px] text-[13px] font-semibold disabled:opacity-50 transition-colors"
                     >
                       <AlertCircle size={14} /> Solicitar correção
                     </button>

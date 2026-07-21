@@ -333,7 +333,7 @@ export function StoryPostCard({
                 <button
                   onClick={() => handleAction('aprovado')}
                   disabled={submitting || approvalBlocked}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 min-h-[44px] rounded-[4px] bg-stone-900 text-white text-[13px] font-semibold hover:bg-stone-800 disabled:opacity-50 transition-colors"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 min-h-[44px] rounded-[4px] hub-btn-primary text-[13px] font-semibold disabled:opacity-50 transition-colors"
                 >
                   <CheckCircle size={16} /> {saveState === 'saving' ? 'Salvando...' : 'Aprovar'}
                 </button>
@@ -343,7 +343,7 @@ export function StoryPostCard({
                   title={
                     !comentario.trim() ? 'Deixe um comentário para solicitar correção' : undefined
                   }
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 min-h-[44px] rounded-[4px] border border-stone-200 dark:border-stone-700 bg-white dark:bg-transparent text-stone-700 dark:text-stone-300 text-[13px] font-medium hover:bg-stone-50 dark:hover:bg-stone-800 disabled:opacity-50 transition-colors"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 min-h-[44px] rounded-[4px] hub-btn-secondary text-[13px] font-medium disabled:opacity-50 transition-colors"
                 >
                   <AlertCircle size={16} /> Correção
                 </button>
