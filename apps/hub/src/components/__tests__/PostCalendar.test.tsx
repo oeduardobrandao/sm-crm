@@ -133,7 +133,7 @@ describe('PostCalendar', () => {
 
     expect(screen.getByText('10 de Janeiro, 2026')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Mês anterior' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Mês anterior' })[0]);
 
     expect(screen.getAllByText(/Dezembro 2025/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('Selecione um dia.')).toBeInTheDocument();
@@ -143,12 +143,12 @@ describe('PostCalendar', () => {
     expect(screen.getByText('12 de Dezembro, 2025')).toBeInTheDocument();
     expect(screen.getByText('Retrospectiva 2025')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Próximo mês' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Próximo mês' })[0]);
 
     expect(screen.getAllByText(/Janeiro 2026/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('Selecione um dia.')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Próximo mês' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Próximo mês' })[0]);
 
     expect(screen.getAllByText(/Fevereiro 2026/).length).toBeGreaterThanOrEqual(1);
 

@@ -48,6 +48,11 @@ interface Props {
   posts: HubPost[];
 }
 
+function formatTimeUTC(iso: string): string {
+  const d = new Date(iso);
+  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+}
+
 export function PostCalendar({ posts }: Props) {
   const navigate = useNavigate();
   const today = new Date();
@@ -94,8 +99,32 @@ export function PostCalendar({ posts }: Props) {
       <div className="hub-card grid grid-cols-1 md:grid-cols-[1fr_300px] overflow-hidden">
         {/* Left: calendar grid */}
         <div className="p-5 sm:p-6">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-5">
+          {/* Header — mobile: month centered between two standalone nav buttons */}
+          <div className="flex items-center justify-between mb-5 md:hidden">
+            <button
+              onClick={prevMonth}
+              aria-label="Mês anterior"
+              className="w-10 h-10 flex items-center justify-center rounded-2xl hub-bg-soft hub-tx2 active:scale-95 transition-transform"
+            >
+              <ChevronLeft size={18} />
+            </button>
+            <div className="text-center">
+              <h2 className="font-display text-[19px] font-semibold tracking-tight hub-txt leading-none capitalize">
+                {MONTHS_PT[month]}
+              </h2>
+              <p className="text-[12.5px] hub-tx2 mt-1">{year}</p>
+            </div>
+            <button
+              onClick={nextMonth}
+              aria-label="Próximo mês"
+              className="w-10 h-10 flex items-center justify-center rounded-2xl hub-bg-soft hub-tx2 active:scale-95 transition-transform"
+            >
+              <ChevronRight size={18} />
+            </button>
+          </div>
+
+          {/* Header — desktop */}
+          <div className="hidden md:flex items-center justify-between mb-5">
             <div>
               <h2 className="font-display text-[20px] font-semibold tracking-tight hub-txt leading-none">
                 Postagens
@@ -174,7 +203,19 @@ export function PostCalendar({ posts }: Props) {
                   >
                     {day}
                   </div>
-                  <div className="flex flex-col gap-1">
+                  {/* Mobile: a colored dot per post type, no text (cells are too narrow for labels) */}
+                  <div className="flex items-center justify-center gap-1 md:hidden">
+                    {Object.keys(byTipo).map((tipo) => (
+                      <span
+                        key={tipo}
+                        className="w-[5px] h-[5px] rounded-full"
+                        style={{ background: TIPO_COLOR[tipo] ?? '#78716c' }}
+                      />
+                    ))}
+                  </div>
+
+                  {/* Desktop: full type + count pill, room to spare */}
+                  <div className="hidden md:flex md:flex-col gap-1">
                     {Object.entries(byTipo).map(([tipo, count]) => (
                       <div
                         key={tipo}
@@ -192,11 +233,16 @@ export function PostCalendar({ posts }: Props) {
               );
             })}
           </div>
+
+          {/* Decorative divider handle, mobile only — mirrors the reference's bottom-sheet grabber */}
+          <div className="flex justify-center pt-4 md:hidden">
+            <span className="w-9 h-1 rounded-full" style={{ background: 'var(--hub-bd2)' }} />
+          </div>
         </div>
 
         {/* Right: side panel */}
-        <div className="border-t md:border-t-0 md:border-l hub-border p-5 sm:p-6 hub-bg-soft">
-          <div className="mb-4">
+        <div className="md:border-l hub-border p-5 sm:p-6 hub-bg-soft">
+          <div className="mb-4 hidden md:block">
             <h3 className="font-display text-[15px] font-semibold tracking-tight hub-txt">
               Postagens
             </h3>
@@ -217,9 +263,21 @@ export function PostCalendar({ posts }: Props) {
                 <button
                   key={p.id}
                   onClick={() => navigate(`postagens?post=${p.id}`)}
-                  className="text-left rounded-xl border hub-border hub-bg-card p-3.5 space-y-2 hover:border-[var(--hub-bd2)] hover:shadow-sm transition-all"
+                  className="text-left rounded-xl md:border hub-border hub-bg-card p-3.5 space-y-1.5 md:space-y-2 hover:border-[var(--hub-bd2)] hover:shadow-sm transition-all"
                 >
-                  <div className="flex items-center gap-1.5 flex-wrap">
+                  {/* Mobile: colored dot + time, no status/type text */}
+                  <div className="flex items-center gap-2 md:hidden">
+                    <span
+                      className="w-2 h-2 rounded-full flex-shrink-0"
+                      style={{ background: TIPO_COLOR[p.tipo] ?? '#78716c' }}
+                    />
+                    <span className="text-[12px] font-semibold hub-tx2">
+                      {p.scheduled_at ? formatTimeUTC(p.scheduled_at) : '—'}
+                    </span>
+                  </div>
+
+                  {/* Desktop: type + status pills */}
+                  <div className="hidden md:flex items-center gap-1.5 flex-wrap">
                     <span
                       className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full"
                       style={{
@@ -233,9 +291,15 @@ export function PostCalendar({ posts }: Props) {
                       {STATUS_LABEL[p.status] ?? p.status}
                     </span>
                   </div>
+
                   <p className="text-[13.5px] font-semibold leading-snug hub-txt">{p.titulo}</p>
+
+                  {p.conteudo_plain && (
+                    <p className="text-[12px] hub-tx2 truncate md:hidden">{p.conteudo_plain}</p>
+                  )}
+
                   {p.scheduled_at && (
-                    <p className="text-[11px] hub-tx2">
+                    <p className="hidden md:block text-[11px] hub-tx2">
                       {new Date(p.scheduled_at).toLocaleDateString('pt-BR', {
                         day: '2-digit',
                         month: 'long',
