@@ -210,6 +210,22 @@ describe('Sidebar', () => {
     expect(screen.getByText('Equipe')).toBeInTheDocument();
   });
 
+  it('renders the TikTok analytics item as disabled with a coming-soon badge', async () => {
+    const onClose = vi.fn();
+    setAuth();
+
+    renderSidebar('/dashboard', { isDrawer: true, isOpen: true, onClose });
+
+    const tiktokRow = screen.getByText('TikTok').closest('div');
+    expect(tiktokRow).toHaveAttribute('aria-disabled', 'true');
+    expect(tiktokRow?.tagName).toBe('DIV');
+    expect(screen.getByText('Em breve')).toBeInTheDocument();
+
+    fireEvent.click(tiktokRow!);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByTestId('current-path')).toHaveTextContent('/dashboard');
+  });
+
   it('shows feature-gated nav items when their feature flag is true', () => {
     setAuth();
     setLimits({

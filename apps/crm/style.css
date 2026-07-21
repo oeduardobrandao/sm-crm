@@ -321,6 +321,29 @@ body {
   color: var(--primary-color);
 }
 
+.sidebar-sub-link--disabled {
+  cursor: default;
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+/* "Coming soon" pill for nav rows that are visible but not yet functional.
+   Shared by the desktop sidebar and the mobile "Mais" sheet. */
+.nav-badge {
+  margin-left: auto;
+  padding: 0.15rem 0.4rem;
+  border-radius: 2px;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  background: var(--surface-hover);
+  border: 1px solid var(--border-color);
+  white-space: nowrap;
+}
+
 .sidebar-bottom {
   margin-top: auto;
   padding: 1rem 0.75rem;
@@ -2377,6 +2400,12 @@ select.form-input option {
 
   .mobile-more-item.active {
     color: var(--primary-color);
+  }
+
+  .mobile-more-item--disabled {
+    cursor: default;
+    opacity: 0.55;
+    pointer-events: none;
   }
 
   .mobile-more-item-icon {
