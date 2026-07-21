@@ -57,10 +57,6 @@ export function MarcaPage() {
   return (
     <div className="max-w-3xl mx-auto space-y-10 hub-fade-up">
       <header>
-        <p className="text-[11px] uppercase tracking-[0.14em] hub-tx3 font-medium mb-2">
-          <span className="accent-bar" />
-          Identidade visual
-        </p>
         <h2 className="font-display text-[2rem] sm:text-[2.25rem] leading-[1.05] font-medium tracking-tight hub-txt">
           Marca
         </h2>

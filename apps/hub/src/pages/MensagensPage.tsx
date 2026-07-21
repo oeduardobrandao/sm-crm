@@ -29,7 +29,6 @@ export function MensagensPage() {
   return (
     <div className="flex flex-col gap-4 hub-fade-up">
       <header>
-        <p className="text-[13px] font-medium hub-tx3 mb-1">Comunicação</p>
         <h1 className="font-display text-[1.7rem] sm:text-[2.4rem] font-medium tracking-tight hub-txt">
           Mensagens
         </h1>

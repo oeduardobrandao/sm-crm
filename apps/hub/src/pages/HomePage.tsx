@@ -1,5 +1,13 @@
 import { useNavigate, useParams } from 'react-router-dom';
-import { Palette, FileText, BookOpen, Lightbulb, ChevronRight } from 'lucide-react';
+import {
+  Palette,
+  FileText,
+  BookOpen,
+  Lightbulb,
+  ChevronRight,
+  CheckSquare,
+  ArrowRight,
+} from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useHub } from '../HubContext';
 import { fetchPosts } from '../api';
@@ -109,7 +117,7 @@ export function HomePage() {
               key={k.label}
               type="button"
               onClick={k.onClick}
-              className="hub-card hub-card-hover cursor-pointer p-4 text-left w-full"
+              className="hub-card hub-card-hover cursor-pointer p-4 text-left w-full flex flex-col"
             >
               {content}
             </button>
@@ -120,6 +128,37 @@ export function HomePage() {
           );
         })}
       </section>
+
+      {pendingCount > 0 && (
+        <button
+          type="button"
+          onClick={() => navigate(`${base}/aprovacoes`)}
+          className="hub-fade-up w-full flex items-center gap-3 px-5 py-3.5 rounded-2xl text-left group transition-shadow hover:shadow-sm"
+          style={{
+            background: 'color-mix(in srgb, var(--hub-acc) 8%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--hub-acc) 24%, transparent)',
+          }}
+        >
+          <span
+            className="flex items-center justify-center w-8 h-8 rounded-full flex-shrink-0"
+            style={{
+              background: 'color-mix(in srgb, var(--hub-acc) 18%, transparent)',
+              color: 'var(--hub-acc)',
+            }}
+          >
+            <CheckSquare size={16} strokeWidth={2} />
+          </span>
+          <span className="flex-1 text-sm font-medium hub-txt">
+            {pendingCount === 1
+              ? 'Você tem 1 post aguardando aprovação'
+              : `Você tem ${pendingCount} posts aguardando aprovação`}
+          </span>
+          <ArrowRight
+            size={16}
+            className="hub-tx3 group-hover:translate-x-0.5 transition-transform flex-shrink-0"
+          />
+        </button>
+      )}
 
       <section className="hub-card p-5">
         <h3 className="font-semibold text-[16px] tracking-tight hub-txt">Calendário</h3>

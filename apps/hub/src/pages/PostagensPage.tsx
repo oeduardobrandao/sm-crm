@@ -186,10 +186,6 @@ export function PostagensPage() {
   return (
     <div className="max-w-5xl mx-auto hub-fade-up">
       <header className="mb-8">
-        <p className="text-[11px] uppercase tracking-[0.14em] hub-tx3 font-medium mb-2">
-          <span className="accent-bar" />
-          Calendário editorial
-        </p>
         <div className="flex items-center justify-between gap-4">
           <h2 className="font-display text-[2rem] sm:text-[2.25rem] leading-[1.05] font-medium tracking-tight hub-txt">
             Postagens
