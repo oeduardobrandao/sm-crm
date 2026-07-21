@@ -32,9 +32,7 @@ import {
   RATE_LIMIT_LABELS,
 } from '../lib/api';
 import { sanitizeExternalUrl } from '../lib/security';
-
-const ALL_LIMIT_KEYS = [...RESOURCE_LIMIT_KEYS, ...RATE_LIMIT_KEYS];
-const ALL_LIMIT_LABELS = { ...RESOURCE_LIMIT_LABELS, ...RATE_LIMIT_LABELS };
+import { computeOverridesPayload } from './workspace-overrides';
 
 export default function WorkspaceDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -141,27 +139,19 @@ export default function WorkspaceDetailPage() {
       const plan = plansData?.plans?.find((p) => p.id === selectedPlanId);
       if (!plan) throw new Error('No plan selected');
 
-      const resOverrides: Record<string, number> = {};
-      for (const key of ALL_LIMIT_KEYS) {
-        const parsed = parseInt(resourceEdits[key], 10);
-        const planVal = (plan[key as keyof typeof plan] as number | null) ?? 0;
-        if (!isNaN(parsed) && parsed !== planVal) {
-          resOverrides[key] = parsed;
-        }
-      }
+      const { resource_overrides, feature_overrides } = computeOverridesPayload(
+        plan,
+        resourceEdits,
+        featureEdits,
+      );
 
-      const featOverrides: Record<string, boolean> = {};
-      for (const key of FEATURE_FLAG_KEYS) {
-        const planVal = (plan[key] as boolean) ?? false;
-        if (featureEdits[key] !== planVal) {
-          featOverrides[key] = featureEdits[key];
-        }
-      }
-
+      // Always send the objects, even when empty: an empty object clears a stale
+      // override (e.g. a feature toggled back to the plan's own default), while
+      // `undefined` tells the server to leave the existing override untouched.
       return setWorkspaceOverrides({
         workspace_id: id!,
-        resource_overrides: Object.keys(resOverrides).length > 0 ? resOverrides : undefined,
-        feature_overrides: Object.keys(featOverrides).length > 0 ? featOverrides : undefined,
+        resource_overrides,
+        feature_overrides,
         notes: notes || undefined,
       });
     },
