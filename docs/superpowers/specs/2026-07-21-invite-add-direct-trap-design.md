@@ -51,13 +51,20 @@ CREATE OR REPLACE FUNCTION public.user_has_password(p_user_id uuid)
 RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
   SELECT coalesce(u.encrypted_password, '') <> '' FROM auth.users u WHERE u.id = p_user_id;
 $$;
-REVOKE EXECUTE ON FUNCTION public.user_has_password(uuid) FROM anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.user_has_password(uuid) FROM PUBLIC, anon, authenticated;
 ```
 
 `coalesce(..., '') <> ''` covers both representations GoTrue has used for
 passwordless users (`NULL` and `''`). The `REVOKE` is load-bearing: "does this
 address have a password" is an account-enumeration primitive and must remain
 service-role only.
+
+**`PUBLIC` is the operative target.** Postgres grants `EXECUTE` on a new function
+to `PUBLIC` by default and every role inherits that grant, so revoking from
+`anon`/`authenticated` alone leaves the function callable by any signed-in user.
+The first hand-applied version of this migration (prod, 2026-07-21) omitted
+`PUBLIC` and had to be corrected. The pgTAP case asserting `authenticated` cannot
+execute it exists to catch exactly this.
 
 One-time repair, with no date filter — "has no password" is itself the correct
 discriminator, so it also catches rows the `healPendingInvite` bug corrupted:
