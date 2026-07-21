@@ -92,25 +92,25 @@ export function PostCalendar({ posts }: Props) {
           {/* Header */}
           <div className="flex items-center justify-between mb-5">
             <div>
-              <h2 className="font-display text-[20px] font-semibold tracking-tight text-stone-900 leading-none">
+              <h2 className="font-display text-[20px] font-semibold tracking-tight hub-txt leading-none">
                 Postagens
               </h2>
-              <p className="text-[12.5px] text-stone-500 mt-1">
+              <p className="text-[12.5px] hub-tx2 mt-1">
                 <span className="capitalize">{MONTHS_PT[month]}</span> {year}
               </p>
             </div>
-            <div className="flex items-center gap-1 p-1 rounded-full bg-stone-100">
+            <div className="flex items-center gap-1 p-1 rounded-full hub-bg-soft">
               <button
                 onClick={prevMonth}
                 aria-label="Mês anterior"
-                className="w-7 h-7 flex items-center justify-center rounded-full text-stone-600 hover:bg-white hover:text-stone-900 hover:shadow-sm transition-all"
+                className="w-7 h-7 flex items-center justify-center rounded-full hub-tx2 hover:bg-white hover:text-[var(--hub-txt)] hover:shadow-sm transition-all"
               >
                 <ChevronLeft size={15} />
               </button>
               <button
                 onClick={nextMonth}
                 aria-label="Próximo mês"
-                className="w-7 h-7 flex items-center justify-center rounded-full text-stone-600 hover:bg-white hover:text-stone-900 hover:shadow-sm transition-all"
+                className="w-7 h-7 flex items-center justify-center rounded-full hub-tx2 hover:bg-white hover:text-[var(--hub-txt)] hover:shadow-sm transition-all"
               >
                 <ChevronRight size={15} />
               </button>
@@ -122,7 +122,7 @@ export function PostCalendar({ posts }: Props) {
             {DAYS_PT.map((d) => (
               <div
                 key={d}
-                className="text-center text-[10px] uppercase tracking-[0.12em] font-semibold text-stone-400 py-1"
+                className="text-center text-[10px] uppercase tracking-[0.12em] font-semibold hub-tx3 py-1"
               >
                 {d}
               </div>
@@ -150,18 +150,21 @@ export function PostCalendar({ posts }: Props) {
                   key={day}
                   onClick={() => setSelectedDay(day)}
                   className={`min-h-[62px] p-1.5 rounded-xl text-left transition-all ${
-                    isSelected
-                      ? 'bg-[#FFBF30]/12 ring-1 ring-[#FFBF30]/50'
-                      : 'hover:bg-stone-100/80'
+                    isSelected ? '' : 'hover:bg-[var(--hub-soft)]'
                   }`}
+                  style={
+                    isSelected
+                      ? {
+                          background: 'color-mix(in srgb, var(--hub-acc) 12%, transparent)',
+                          boxShadow:
+                            'inset 0 0 0 1px color-mix(in srgb, var(--hub-acc) 50%, transparent)',
+                        }
+                      : undefined
+                  }
                 >
                   <div
                     className={`text-[11px] mb-1 w-6 h-6 flex items-center justify-center rounded-full font-semibold ${
-                      isToday
-                        ? 'bg-stone-900 text-white'
-                        : isSelected
-                          ? 'text-stone-900'
-                          : 'text-stone-500'
+                      isToday ? 'hub-btn-primary' : isSelected ? 'hub-txt' : 'hub-tx2'
                     }`}
                   >
                     {day}
@@ -187,12 +190,12 @@ export function PostCalendar({ posts }: Props) {
         </div>
 
         {/* Right: side panel */}
-        <div className="border-t md:border-t-0 md:border-l border-stone-200/80 p-5 sm:p-6 bg-stone-50/70">
+        <div className="border-t md:border-t-0 md:border-l hub-border p-5 sm:p-6 hub-bg-soft">
           <div className="mb-4">
-            <h3 className="font-display text-[15px] font-semibold tracking-tight text-stone-900">
+            <h3 className="font-display text-[15px] font-semibold tracking-tight hub-txt">
               Postagens
             </h3>
-            <p className="text-[12px] text-stone-500 mt-0.5">
+            <p className="text-[12px] hub-tx2 mt-0.5">
               {selectedDay
                 ? `${selectedDay} de ${MONTHS_PT[month]}, ${year}`
                 : `${MONTHS_PT[month]} ${year}`}
@@ -200,7 +203,7 @@ export function PostCalendar({ posts }: Props) {
           </div>
 
           {selectedPosts.length === 0 ? (
-            <div className="py-10 text-center text-stone-400 text-[13px]">
+            <div className="py-10 text-center hub-tx3 text-[13px]">
               {selectedDay ? 'Nenhuma postagem neste dia.' : 'Selecione um dia.'}
             </div>
           ) : (
@@ -209,7 +212,7 @@ export function PostCalendar({ posts }: Props) {
                 <button
                   key={p.id}
                   onClick={() => navigate(`postagens?post=${p.id}`)}
-                  className="text-left rounded-xl border border-stone-200/80 bg-white p-3.5 space-y-2 hover:border-stone-300 hover:shadow-sm transition-all"
+                  className="text-left rounded-xl border hub-border bg-white p-3.5 space-y-2 hover:border-[var(--hub-bd2)] hover:shadow-sm transition-all"
                 >
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span
@@ -221,15 +224,13 @@ export function PostCalendar({ posts }: Props) {
                     >
                       {TIPO_LABEL[p.tipo] ?? p.tipo}
                     </span>
-                    <span className="text-[10px] text-stone-500 px-2 py-0.5 rounded-full bg-stone-100">
+                    <span className="text-[10px] hub-tx2 px-2 py-0.5 rounded-full hub-bg-soft">
                       {STATUS_LABEL[p.status] ?? p.status}
                     </span>
                   </div>
-                  <p className="text-[13.5px] font-semibold leading-snug text-stone-900">
-                    {p.titulo}
-                  </p>
+                  <p className="text-[13.5px] font-semibold leading-snug hub-txt">{p.titulo}</p>
                   {p.scheduled_at && (
-                    <p className="text-[11px] text-stone-500">
+                    <p className="text-[11px] hub-tx2">
                       {new Date(p.scheduled_at).toLocaleDateString('pt-BR', {
                         day: '2-digit',
                         month: 'long',
