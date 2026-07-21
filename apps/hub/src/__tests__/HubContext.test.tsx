@@ -1,3 +1,4 @@
+import { fireEvent, render, screen } from '@testing-library/react';
 import { renderHook } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { HubContext, useHub } from '../HubContext';
@@ -38,5 +39,28 @@ describe('HubContext', () => {
     } finally {
       spy.mockRestore();
     }
+  });
+
+  it('exposes theme and toggleTheme from the provider value', () => {
+    const toggleTheme = vi.fn();
+    function Probe() {
+      const { theme, toggleTheme: toggle } = useHub();
+      return (
+        <button onClick={toggle} data-testid="probe">
+          {theme}
+        </button>
+      );
+    }
+    render(
+      <HubContext.Provider
+        value={{ ...providerValue, theme: 'dark', toggleTheme }}
+      >
+        <Probe />
+      </HubContext.Provider>,
+    );
+    const btn = screen.getByTestId('probe');
+    expect(btn).toHaveTextContent('dark');
+    fireEvent.click(btn);
+    expect(toggleTheme).toHaveBeenCalledTimes(1);
   });
 });
