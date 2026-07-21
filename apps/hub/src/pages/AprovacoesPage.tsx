@@ -65,19 +65,19 @@ export function AprovacoesPage() {
   return (
     <div className="max-w-5xl mx-auto hub-fade-up">
       <header className="mb-8">
-        <p className="text-[11px] uppercase tracking-[0.14em] text-stone-500 font-medium mb-2">
+        <p className="text-[11px] uppercase tracking-[0.14em] hub-tx3 font-medium mb-2">
           <span className="accent-bar" />
           Sua revisão
         </p>
         <div className="flex items-center justify-between gap-4">
-          <h2 className="font-display text-[2rem] sm:text-[2.25rem] leading-[1.05] font-medium tracking-tight text-stone-900">
+          <h2 className="font-display text-[2rem] sm:text-[2.25rem] leading-[1.05] font-medium tracking-tight hub-txt">
             Aprovações
           </h2>
           {instagramProfile && (
             <FeedPreviewButton selectedCount={selectedIds.size} onClick={() => setShowGrid(true)} />
           )}
         </div>
-        <p className="text-[14px] text-stone-500 mt-2">
+        <p className="text-[14px] hub-tx2 mt-2">
           {pending.length === 0
             ? 'Tudo em dia. Nenhum post aguardando aprovação.'
             : `${pending.length} post${pending.length > 1 ? 's' : ''} aguardando sua aprovação.`}
@@ -87,7 +87,7 @@ export function AprovacoesPage() {
       {withMedia.length > 0 && (
         <>
           {instagramProfile && selectedIds.size === 0 && (
-            <p className="text-[12px] text-stone-400 mb-3 flex items-center gap-1.5">
+            <p className="text-[12px] hub-tx3 mb-3 flex items-center gap-1.5">
               <svg
                 width="14"
                 height="14"
@@ -109,9 +109,7 @@ export function AprovacoesPage() {
             {withMedia.map((post, i) => (
               <div key={post.id} className="flex flex-col">
                 <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <p className="text-[11px] text-stone-400 pl-0.5">
-                    {formatDate(post.scheduled_at)}
-                  </p>
+                  <p className="text-[11px] hub-tx3 pl-0.5">{formatDate(post.scheduled_at)}</p>
                   <span className="flex items-center gap-3">
                     <OpenPostLink postId={post.id} />
                     <SharePostButton postId={post.id} />
@@ -136,9 +134,9 @@ export function AprovacoesPage() {
       )}
 
       {stories.length > 0 && (
-        <div className={withMedia.length > 0 ? 'mt-10 pt-8 border-t border-stone-200' : ''}>
+        <div className={withMedia.length > 0 ? 'mt-10 pt-8 border-t hub-border' : ''}>
           {withMedia.length > 0 && (
-            <p className="text-[11px] uppercase tracking-[0.14em] text-stone-500 font-medium mb-4">
+            <p className="text-[11px] uppercase tracking-[0.14em] hub-tx3 font-medium mb-4">
               <span className="accent-bar" />
               Stories
             </p>
@@ -147,9 +145,7 @@ export function AprovacoesPage() {
             {stories.map((post) => (
               <div key={post.id}>
                 <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <p className="text-[11px] text-stone-400 pl-0.5">
-                    {formatDate(post.scheduled_at)}
-                  </p>
+                  <p className="text-[11px] hub-tx3 pl-0.5">{formatDate(post.scheduled_at)}</p>
                   <span className="flex items-center gap-3">
                     <OpenPostLink postId={post.id} />
                     <SharePostButton postId={post.id} />
@@ -172,11 +168,11 @@ export function AprovacoesPage() {
       {withoutMedia.length > 0 && (
         <div
           className={
-            withMedia.length > 0 || stories.length > 0 ? 'mt-10 pt-8 border-t border-stone-200' : ''
+            withMedia.length > 0 || stories.length > 0 ? 'mt-10 pt-8 border-t hub-border' : ''
           }
         >
           {(withMedia.length > 0 || stories.length > 0) && (
-            <p className="text-[11px] uppercase tracking-[0.14em] text-stone-500 font-medium mb-4">
+            <p className="text-[11px] uppercase tracking-[0.14em] hub-tx3 font-medium mb-4">
               <span className="accent-bar" />
               Posts sem mídia
             </p>
@@ -185,9 +181,7 @@ export function AprovacoesPage() {
             {withoutMedia.map((post) => (
               <div key={post.id}>
                 <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <p className="text-[11px] text-stone-400 pl-0.5">
-                    {formatDate(post.scheduled_at)}
-                  </p>
+                  <p className="text-[11px] hub-tx3 pl-0.5">{formatDate(post.scheduled_at)}</p>
                   <span className="flex items-center gap-3">
                     <OpenPostLink postId={post.id} />
                     <SharePostButton postId={post.id} />
