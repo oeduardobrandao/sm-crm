@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -19,22 +19,24 @@ import { CSS } from '@dnd-kit/utilities';
 import { GripVertical } from 'lucide-react';
 import { toast } from 'sonner';
 import {
-  completeEtapa,
+  hasLaterApprovalEtapa,
   revertEtapa,
   updateWorkflowPositions,
   approvePostsInternally,
   sendPostsToCliente,
 } from '../../../store';
+import { completeEtapaForAdvance, notifyRearmOutcome } from '../advanceEtapa';
 import type { BoardCard } from '../hooks/useEntregasData';
 import type { Membro, WorkflowTemplate } from '../../../store';
 import { WorkflowCard } from '../components/WorkflowCard';
+import { ExampleBoard } from '../components/ExampleBoard';
 import {
   RevertConfirmDialog,
   ForwardConfirmDialog,
   ClientApprovalChoiceDialog,
 } from '../components/WorkflowModals';
 
-interface KanbanViewProps {
+interface KanbanViewBaseProps {
   cards: BoardCard[];
   onCardClick: (card: BoardCard) => void;
   onEditClick: (card: BoardCard) => void;
@@ -49,6 +51,16 @@ interface KanbanViewProps {
   revisaoInternaCounts: Map<number, number>;
   awaitingClienteCounts: Map<number, number>;
 }
+
+// Discriminated union: a caller either passes neither prop, or passes both together.
+// The populated branch takes `showExample: boolean` (not the literal `true`) so callers
+// can hand it a computed boolean expression while still being forced to supply
+// `onDismissExample` — the example board can never render without a working dismiss.
+type KanbanViewProps = KanbanViewBaseProps &
+  (
+    | { showExample?: false; onDismissExample?: () => void }
+    | { showExample: boolean; onDismissExample: () => void }
+  );
 
 interface BoardRow {
   key: string;
@@ -184,6 +196,8 @@ export function KanbanView({
   clearedClienteCounts,
   revisaoInternaCounts,
   awaitingClienteCounts,
+  showExample,
+  onDismissExample,
 }: KanbanViewProps) {
   const [localCards, setLocalCards] = useState<BoardCard[]>(cards);
   const [activeCard, setActiveCard] = useState<BoardCard | null>(null);
@@ -211,6 +225,16 @@ export function KanbanView({
   }
 
   const boardRows = buildBoardRows(localCards, templates);
+
+  const approvalStepNames = useMemo(
+    () =>
+      new Set(
+        cards.flatMap((c) =>
+          c.allEtapas.filter((e) => e.tipo === 'aprovacao_cliente').map((e) => e.nome),
+        ),
+      ),
+    [cards],
+  );
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -336,15 +360,18 @@ export function KanbanView({
     setForwardTarget(card);
   }, []);
 
+  // opts.rearm === false keeps the plain completeEtapa (post statuses untouched) — used by
+  // "Avançar etapa sem alterar posts", whose literal contract is to leave posts alone.
   const advanceEtapa = useCallback(
-    async (card: BoardCard, successMessage: string) => {
+    async (card: BoardCard, successMessage: string, opts?: { rearm?: boolean }) => {
       try {
-        const result = await completeEtapa(card.workflow.id!, card.etapa.id!);
+        const result = await completeEtapaForAdvance(card.workflow.id!, card.etapa.id!, opts);
         if (result.workflow.status === 'concluido' && card.workflow.recorrente) {
           onRecurring(card.workflow.id!);
         } else {
           toast.success(successMessage);
         }
+        notifyRearmOutcome(result);
         onRefresh();
       } catch (err: unknown) {
         toast.error((err as Error).message || 'Erro ao avançar etapa');
@@ -385,16 +412,11 @@ export function KanbanView({
     setApprovalChoiceCard(null);
     try {
       await approvePostsInternally(card.workflow.id!);
-      const result = await completeEtapa(card.workflow.id!, card.etapa.id!);
-      if (result.workflow.status === 'concluido' && card.workflow.recorrente) {
-        onRecurring(card.workflow.id!);
-      } else {
-        toast.success('Posts aprovados internamente — etapa concluída!');
-      }
-      onRefresh();
     } catch (err: unknown) {
       toast.error((err as Error).message || 'Erro ao aprovar internamente');
+      return;
     }
+    await advanceEtapa(card, 'Posts aprovados internamente — etapa concluída!');
   };
 
   const handleSendToPortal = async () => {
@@ -414,7 +436,7 @@ export function KanbanView({
     if (!approvalChoiceCard) return;
     const card = approvalChoiceCard;
     setApprovalChoiceCard(null);
-    advanceEtapa(card, 'Etapa avançada — status dos posts mantidos.');
+    advanceEtapa(card, 'Etapa avançada — status dos posts mantidos.', { rearm: false });
   };
 
   const handleRevertConfirm = async () => {
@@ -430,6 +452,9 @@ export function KanbanView({
   };
 
   if (localCards.length === 0) {
+    if (showExample && onDismissExample) {
+      return <ExampleBoard onDismiss={onDismissExample} />;
+    }
     return (
       <div
         className="card animate-up"
@@ -465,7 +490,12 @@ export function KanbanView({
               <div className="board-container">
                 {[...row.columns.entries()].map(([stepName, stepCards]) => (
                   <div key={stepName} className="board-column">
-                    <div className="board-column-header">
+                    <div
+                      className="board-column-header"
+                      {...(approvalStepNames.has(stepName)
+                        ? { 'data-tour': 'wf-col-aprovacao' }
+                        : {})}
+                    >
                       <span className="board-column-title">{stepName}</span>
                       <span className="board-column-count">{stepCards.length}</span>
                     </div>
@@ -547,6 +577,11 @@ export function KanbanView({
       <ClientApprovalChoiceDialog
         open={!!approvalChoiceCard}
         workflowTitle={approvalChoiceCard?.workflow.titulo || ''}
+        willRearm={
+          approvalChoiceCard
+            ? hasLaterApprovalEtapa(approvalChoiceCard.allEtapas, approvalChoiceCard.etapa.id!)
+            : false
+        }
         onApproveInternally={handleApproveInternally}
         onSendToPortal={handleSendToPortal}
         onAdvanceWithoutChanges={handleAdvanceWithoutApproval}

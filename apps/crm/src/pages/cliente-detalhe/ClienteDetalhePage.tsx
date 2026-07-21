@@ -69,7 +69,7 @@ import {
   getWorkflowEtapas,
   getDeadlineInfo,
   getMembros,
-  completeEtapa,
+  hasLaterApprovalEtapa,
   revertEtapa,
   approvePostsInternally,
   sendPostsToCliente,
@@ -113,6 +113,7 @@ import {
   ClientApprovalChoiceDialog,
 } from '../entregas/components/WorkflowModals';
 import type { BoardCard } from '../entregas/hooks/useEntregasData';
+import { completeEtapaForAdvance, notifyRearmOutcome } from '../entregas/advanceEtapa';
 import { getWorkflowCovers } from '../../services/postMedia';
 import { HubTab } from './HubTab';
 import { ClienteDetalheHeader } from './ClienteDetalheHeader';
@@ -635,13 +636,14 @@ export default function ClienteDetalhePage() {
     }
 
     try {
-      const { workflow: updatedWf } = await completeEtapa(card.workflow.id!, card.etapa.id!);
-      if (updatedWf.status === 'concluido' && card.workflow.recorrente) {
+      const result = await completeEtapaForAdvance(card.workflow.id!, card.etapa.id!);
+      if (result.workflow.status === 'concluido' && card.workflow.recorrente) {
         setRecurringWfId(card.workflow.id!);
       } else {
         refreshCards();
         toast.success(t('detail.stepCompleted'));
       }
+      notifyRearmOutcome(result);
     } catch (err: unknown) {
       toast.error(t('detail.stepError', { error: (err as Error).message }));
     }
@@ -653,13 +655,14 @@ export default function ClienteDetalhePage() {
     if (!card) return;
     try {
       await approvePostsInternally(card.workflow.id!);
-      const { workflow: updatedWf } = await completeEtapa(card.workflow.id!, card.etapa.id!);
-      if (updatedWf.status === 'concluido' && card.workflow.recorrente) {
+      const result = await completeEtapaForAdvance(card.workflow.id!, card.etapa.id!);
+      if (result.workflow.status === 'concluido' && card.workflow.recorrente) {
         setRecurringWfId(card.workflow.id!);
       } else {
         refreshCards();
         toast.success(t('detail.stepCompleted'));
       }
+      notifyRearmOutcome(result);
     } catch (err: unknown) {
       toast.error(t('detail.stepError', { error: (err as Error).message }));
     }
@@ -683,7 +686,12 @@ export default function ClienteDetalhePage() {
     setApprovalChoiceCard(null);
     if (!card) return;
     try {
-      const { workflow: updatedWf } = await completeEtapa(card.workflow.id!, card.etapa.id!);
+      // Literal contract of this option: post statuses are left alone, so no re-arm.
+      const { workflow: updatedWf } = await completeEtapaForAdvance(
+        card.workflow.id!,
+        card.etapa.id!,
+        { rearm: false },
+      );
       if (updatedWf.status === 'concluido' && card.workflow.recorrente) {
         setRecurringWfId(card.workflow.id!);
       } else {
@@ -2328,6 +2336,11 @@ export default function ClienteDetalhePage() {
       <ClientApprovalChoiceDialog
         open={!!approvalChoiceCard}
         workflowTitle={approvalChoiceCard?.workflow.titulo ?? ''}
+        willRearm={
+          approvalChoiceCard
+            ? hasLaterApprovalEtapa(approvalChoiceCard.allEtapas, approvalChoiceCard.etapa.id!)
+            : false
+        }
         onApproveInternally={handleApproveInternally}
         onSendToPortal={handleSendToPortal}
         onAdvanceWithoutChanges={handleAdvanceWithoutApproval}

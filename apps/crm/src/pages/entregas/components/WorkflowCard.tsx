@@ -124,6 +124,7 @@ export function WorkflowCard({
   return (
     <div
       className={`board-card ${deadlineClass}`}
+      data-tour="wf-card"
       style={{
         opacity: isDragOverlay ? 0.85 : 1,
         position: 'relative',
@@ -317,6 +318,7 @@ export function WorkflowCard({
       >
         <span
           className={`board-card-deadline ${deadlineClass}`}
+          data-tour="wf-deadline"
           style={{
             fontSize: '0.7rem',
             fontWeight: 700,
@@ -707,6 +709,7 @@ export function WorkflowCard({
         <button
           className="btn-edit-workflow"
           title="Posts do fluxo"
+          data-tour="wf-posts"
           style={{
             display: 'flex',
             alignItems: 'center',

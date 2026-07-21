@@ -632,6 +632,21 @@ export async function approvePostsInternally(workflowId: number): Promise<void> 
   if (error) throw error;
 }
 
+/**
+ * Re-arm the next client-approval cycle (multi-approval fluxos): posts the client already
+ * approved go back to rascunho so a later aprovacao_cliente etapa can send them to the
+ * portal again. Scheduled/posted/failed posts are never touched. Mirrors the manual
+ * workaround agencies use for double-approval flows; post_approvals history is preserved.
+ */
+export async function resetApprovedPostsForNextCycle(workflowId: number): Promise<void> {
+  const { error } = await supabase
+    .from('workflow_posts')
+    .update({ status: 'rascunho' })
+    .eq('workflow_id', workflowId)
+    .eq('status', 'aprovado_cliente');
+  if (error) throw error;
+}
+
 export async function getPostApprovals(postIds: number[]): Promise<PostApproval[]> {
   if (postIds.length === 0) return [];
   const { data, error } = await supabase

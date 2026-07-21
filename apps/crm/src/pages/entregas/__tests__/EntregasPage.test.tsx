@@ -49,25 +49,50 @@ vi.mock('../components/EntregasFilters', () => ({
 vi.mock('../views/KanbanView', () => ({
   KanbanView: ({
     cards,
+    showExample,
+    onDismissExample,
     onCardClick,
     onEditClick,
     onPostsClick,
     onRecurring,
   }: {
     cards: Array<{ workflow: { id: number; titulo: string } }>;
+    showExample?: boolean;
+    onDismissExample?: () => void;
     onCardClick: (card: unknown) => void;
     onEditClick: (card: unknown) => void;
     onPostsClick: (card: unknown) => void;
     onRecurring: (workflowId: number) => void;
-  }) => (
-    <div>
-      <div>Kanban view: {cards.map((card) => card.workflow.titulo).join(', ')}</div>
-      <button onClick={() => onEditClick(cards[0])}>Open edit modal</button>
-      <button onClick={() => onCardClick(cards[0])}>Open drawer from card</button>
-      <button onClick={() => onPostsClick(cards[0])}>Open drawer modal</button>
-      <button onClick={() => onRecurring(cards[0].workflow.id)}>Trigger recurring</button>
-    </div>
-  ),
+  }) =>
+    showExample ? (
+      <div>
+        <div>Posts de Agosto</div>
+        <button onClick={onDismissExample}>Ocultar exemplo</button>
+      </div>
+    ) : cards.length === 0 ? (
+      <div>Nenhuma entrega encontrada. Ajuste os filtros ou crie um novo fluxo.</div>
+    ) : (
+      <div>
+        <div>Kanban view: {cards.map((card) => card.workflow.titulo).join(', ')}</div>
+        <button onClick={() => onEditClick(cards[0])}>Open edit modal</button>
+        <button onClick={() => onCardClick(cards[0])}>Open drawer from card</button>
+        <button onClick={() => onPostsClick(cards[0])}>Open drawer modal</button>
+        <button onClick={() => onRecurring(cards[0].workflow.id)}>Trigger recurring</button>
+      </div>
+    ),
+}));
+
+// EntregasPage now reads profile.conta_id via useAuth; there is no AuthProvider in this suite.
+vi.mock('../../../context/AuthContext', () => ({
+  useAuth: () => ({ profile: { conta_id: 'conta-1', role: 'owner' } }),
+}));
+
+// Mock only startEntregasTour (driver.js can't run in jsdom); tourStorageKey stays real so the
+// localStorage assertions exercise the true key format.
+const tourMock = vi.hoisted(() => ({ startEntregasTour: vi.fn() }));
+vi.mock('../tour/entregasTour', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  startEntregasTour: tourMock.startEntregasTour,
 }));
 
 vi.mock('../views/ChartView', () => ({
@@ -132,8 +157,8 @@ vi.mock('../components/WorkflowDrawer', () => ({
   ),
 }));
 
-vi.mock('../components/WorkflowModals', () => ({
-  NewWorkflowModal: ({
+vi.mock('../wizard/NewWorkflowWizard', () => ({
+  NewWorkflowWizard: ({
     open,
     onClose,
     onCreated,
@@ -144,11 +169,14 @@ vi.mock('../components/WorkflowModals', () => ({
   }) =>
     open ? (
       <div>
-        <div>New workflow modal</div>
+        <div>WizardMock</div>
         <button onClick={onCreated}>Created workflow</button>
         <button onClick={onClose}>Close new modal</button>
       </div>
     ) : null,
+}));
+
+vi.mock('../components/WorkflowModals', () => ({
   EditWorkflowModal: ({
     card,
     onClose,
@@ -255,11 +283,34 @@ function renderPage(initialEntry = '/entregas') {
   );
 }
 
+function renderEntregasPage(data: { activeWorkflows: unknown[]; cards: unknown[] }) {
+  mockedUseEntregasData.mockReturnValue({
+    clientes: [],
+    membros: [],
+    templates: [],
+    cards: data.cards,
+    activeWorkflows: data.activeWorkflows,
+    isLoading: false,
+    refresh: vi.fn(),
+  } as never);
+  return renderPage();
+}
+
+const wfFixture = { id: 1 };
+
 describe('EntregasPage', () => {
   beforeEach(() => {
     mockedDuplicateWorkflow.mockReset();
     mockedToast.success.mockReset();
     mockedToast.error.mockReset();
+    tourMock.startEntregasTour.mockReset();
+    localStorage.clear();
+    // Anchors are queried one frame after launch; run the callback inline so launchTour
+    // completes within the test tick.
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      cb(0);
+      return 0;
+    });
   });
 
   it('renders a loading state while entregas data is hydrating', () => {
@@ -319,7 +370,7 @@ describe('EntregasPage', () => {
     expect(refresh).toHaveBeenCalled();
 
     fireEvent.click(screen.getByText('Novo Fluxo'));
-    expect(screen.getByText('New workflow modal')).toBeInTheDocument();
+    expect(screen.getByText('WizardMock')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Created workflow'));
     expect(refresh).toHaveBeenCalledTimes(2);
   });
@@ -430,5 +481,56 @@ describe('EntregasPage', () => {
       expect(mockedToast.error).toHaveBeenCalledWith('Erro ao criar ciclo');
     });
     expect(refresh).toHaveBeenCalled();
+  });
+
+  it('shows the ExampleBoard when there are no active workflows and the tour key is unset', () => {
+    localStorage.clear();
+    renderEntregasPage({ activeWorkflows: [], cards: [] });
+    expect(screen.getByText('Posts de Agosto')).toBeTruthy(); // example card
+  });
+
+  it('keeps the plain empty message when filters empty the board but workflows exist', () => {
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [] });
+    expect(screen.queryByText('Posts de Agosto')).toBeNull();
+    expect(screen.getByText(/nenhuma entrega encontrada/i)).toBeTruthy();
+  });
+
+  it('does not show the ExampleBoard once dismissed', () => {
+    localStorage.setItem('entregas_tour_done_conta-1', 'true');
+    renderEntregasPage({ activeWorkflows: [], cards: [] });
+    expect(screen.queryByText('Posts de Agosto')).toBeNull();
+  });
+
+  it('replay temporarily renders the ExampleBoard without clearing the key', async () => {
+    localStorage.setItem('entregas_tour_done_conta-1', 'true');
+    renderEntregasPage({ activeWorkflows: [], cards: [] });
+    fireEvent.click(screen.getByText(/ver tour novamente/i));
+    expect(screen.getByText('Posts de Agosto')).toBeTruthy();
+    expect(localStorage.getItem('entregas_tour_done_conta-1')).toBe('true');
+  });
+
+  it('auto-starts the tour exactly once on an empty first visit with an unset key', () => {
+    localStorage.clear();
+    renderEntregasPage({ activeWorkflows: [], cards: [] });
+    expect(tourMock.startEntregasTour).toHaveBeenCalledTimes(1);
+    expect(tourMock.startEntregasTour).toHaveBeenCalledWith(
+      expect.objectContaining({
+        onComplete: expect.any(Function),
+        onDismiss: expect.any(Function),
+      }),
+    );
+  });
+
+  it('does not auto-start the tour when the conta has already completed it', () => {
+    localStorage.setItem('entregas_tour_done_conta-1', 'true');
+    renderEntregasPage({ activeWorkflows: [], cards: [] });
+    expect(tourMock.startEntregasTour).not.toHaveBeenCalled();
+  });
+
+  it('shows the replay control only on the kanban view', () => {
+    renderEntregasPage({ activeWorkflows: [wfFixture], cards: [] });
+    expect(screen.getByText(/ver tour novamente/i)).toBeTruthy();
+    fireEvent.click(screen.getByText('Gráfico'));
+    expect(screen.queryByText(/ver tour novamente/i)).toBeNull();
   });
 });

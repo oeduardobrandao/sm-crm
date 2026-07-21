@@ -53,7 +53,6 @@ import {
   getPostApprovals,
   getPostStatusEvents,
   replyToPostApproval,
-  completeEtapa,
   getPostCommentThreads,
   createCommentThread,
   addPostComment,
@@ -75,6 +74,8 @@ import {
   type PostEditSuggestion,
 } from '../../../store';
 import type { BoardCard } from '../hooks/useEntregasData';
+import { shouldAutoCompleteApproval } from './autoComplete';
+import { completeEtapaForAdvance, notifyRearmOutcome } from '../advanceEtapa';
 import { PostEditor } from './PostEditor';
 import { PropertyPanel } from './PropertyPanel';
 import PostCommentSummary from './PostCommentSummary';
@@ -179,6 +180,35 @@ export function WorkflowDrawer({
     refetchInterval: (query) =>
       (query.state.data ?? []).some((p) => getPostPublishState(p) === 'publicando') ? 15000 : false,
   });
+
+  // Auto-complete the active client-approval etapa the moment the last post awaiting the
+  // client gets approved while this drawer is open. Guarded on the awaiting → approved
+  // transition (see shouldAutoCompleteApproval) so it never fires on open for a cycle that
+  // was already approved.
+  const prevPostsRef = useRef<WorkflowPost[] | null>(null);
+  useEffect(() => {
+    if (isLoading) return;
+    const prev = prevPostsRef.current;
+    prevPostsRef.current = posts;
+    if (!shouldAutoCompleteApproval(prev, posts)) return;
+    const approvalEtapa = card.allEtapas.find(
+      (e) => e.tipo === 'aprovacao_cliente' && e.status === 'ativo',
+    );
+    if (!approvalEtapa) return;
+    (async () => {
+      try {
+        const result = await completeEtapaForAdvance(workflowId, approvalEtapa.id!);
+        toast.success('Todos os posts aprovados — etapa concluída!');
+        notifyRearmOutcome(result);
+        onRefresh();
+      } catch {
+        /* silent, etapa completion is a bonus */
+      }
+    })();
+    // card.allEtapas / workflowId / onRefresh are stable for an open drawer; re-running this
+    // on their identity would risk a duplicate completion.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [posts, isLoading]);
 
   // Local ordered list for optimistic DnD reordering
   const [localOrder, setLocalOrder] = useState<number[] | null>(null);
@@ -474,28 +504,6 @@ export function WorkflowDrawer({
       toast.error('Erro ao enviar posts ao cliente');
     } finally {
       setIsSending(false);
-    }
-  };
-
-  const checkAutoComplete = async (freshPosts: WorkflowPost[]) => {
-    const sent = freshPosts.filter(
-      (p) => p.status === 'enviado_cliente' || p.status === 'correcao_cliente',
-    );
-    if (sent.length === 0) return;
-    const allApproved = sent.every((p) => p.status === 'aprovado_cliente');
-    if (!allApproved) return;
-
-    const approvalEtapa = card.allEtapas.find(
-      (e) => e.tipo === 'aprovacao_cliente' && e.status === 'ativo',
-    );
-    if (!approvalEtapa) return;
-
-    try {
-      await completeEtapa(workflowId, approvalEtapa.id!);
-      toast.success('Todos os posts aprovados — etapa concluída!');
-      onRefresh();
-    } catch {
-      /* silent, etapa completion is a bonus */
     }
   };
 

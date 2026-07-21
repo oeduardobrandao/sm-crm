@@ -1,17 +1,19 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Plus, LayoutGrid, Info, BarChart2, Calendar, List, Columns, Archive } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
+import { useAuth } from '@/context/AuthContext';
+import { startEntregasTour, tourStorageKey } from './tour/entregasTour';
 import { useEntregasData, type BoardCard } from './hooks/useEntregasData';
 import { EntregasFilters, type FilterState } from './components/EntregasFilters';
 import {
-  NewWorkflowModal,
   EditWorkflowModal,
   TemplatesModal,
   RecurringWorkflowDialog,
 } from './components/WorkflowModals';
+import { NewWorkflowWizard } from './wizard/NewWorkflowWizard';
 import { KanbanView } from './views/KanbanView';
 import { ChartView } from './views/ChartView';
 import { CalendarView } from './views/CalendarView';
@@ -70,6 +72,57 @@ export default function EntregasPage() {
     isLoading,
     refresh,
   } = useEntregasData();
+
+  // --- Onboarding tour + example board ---------------------------------------------------------
+  // The persistence key is per-conta. `tourDone` is read once at mount from the current conta's
+  // key; it is not recomputed if `contaId` changes within the same mount.
+  const { profile } = useAuth();
+  const contaId = profile?.conta_id ?? 'unknown';
+  const [tourDone, setTourDone] = useState(
+    () => localStorage.getItem(tourStorageKey(contaId)) === 'true',
+  );
+  const [replayActive, setReplayActive] = useState(false);
+
+  // The example board stands in for a real board on an empty first visit, and comes back
+  // temporarily during a replay. A board emptied by filters (but with real workflows) shows the
+  // plain "Nenhuma entrega" message instead — hence the activeWorkflows guard, not filteredCards.
+  const showExample = activeWorkflows.length === 0 && (!tourDone || replayActive);
+
+  const markTourDone = useCallback(() => {
+    localStorage.setItem(tourStorageKey(contaId), 'true');
+    setTourDone(true);
+    setReplayActive(false);
+  }, [contaId]);
+
+  const launchTour = useCallback(() => {
+    captureEvent('entregas_tour_started');
+    // rAF: the data-tour anchors must be painted before driver.js queries for them.
+    requestAnimationFrame(() =>
+      startEntregasTour({
+        onComplete: () => {
+          captureEvent('entregas_tour_completed');
+          markTourDone();
+        },
+        onDismiss: (step) => {
+          captureEvent('entregas_tour_dismissed', { step });
+          markTourDone();
+        },
+      }),
+    );
+  }, [markTourDone]);
+
+  // Auto-start once on the first visit that shows the example board.
+  const autoStarted = useRef(false);
+  useEffect(() => {
+    if (isLoading || autoStarted.current || tourDone || !showExample) return;
+    autoStarted.current = true;
+    launchTour();
+  }, [isLoading, tourDone, showExample, launchTour]);
+
+  const handleReplay = () => {
+    setReplayActive(true); // forces the example board back if the board is empty
+    launchTour(); // replay does NOT clear localStorage; completing again just re-sets the flag
+  };
 
   // Auto-open drawer when navigated with ?drawer=<workflowId>
   const pendingDrawerId = useRef<number | null>(null);
@@ -179,6 +232,25 @@ export default function EntregasPage() {
             >
               <Info className="h-5 w-5 cursor-pointer" style={{ color: 'var(--text-muted)' }} />
             </span>
+            {/* Only on the kanban view — the tour's data-tour anchors live there, so a click
+                elsewhere would fire a "started" event and hit startEntregasTour's zero-anchor
+                early return with no visible tour. */}
+            {activeView === 'kanban' && (
+              <button
+                type="button"
+                onClick={handleReplay}
+                style={{
+                  fontSize: '0.72rem',
+                  color: 'var(--text-muted)',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                }}
+              >
+                Ver tour novamente
+              </button>
+            )}
           </div>
           <p>
             fluxos ativos: {activeWorkflows.length}
@@ -200,7 +272,7 @@ export default function EntregasPage() {
           <Button variant="outline" onClick={() => setTemplatesOpen(true)}>
             <LayoutGrid className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Templates
           </Button>
-          <Button onClick={() => setNewWorkflowOpen(true)}>
+          <Button data-tour="novo-fluxo-btn" onClick={() => setNewWorkflowOpen(true)}>
             <Plus className="h-4 w-4" style={{ marginRight: '0.5rem' }} /> Novo Fluxo
           </Button>
         </div>
@@ -270,6 +342,11 @@ export default function EntregasPage() {
           clearedClienteCounts={clearedClienteCounts}
           revisaoInternaCounts={revisaoInternaCounts}
           awaitingClienteCounts={awaitingClienteCounts}
+          showExample={showExample}
+          onDismissExample={() => {
+            captureEvent('entregas_tour_dismissed', { step: -1 });
+            markTourDone();
+          }}
         />
       )}
       {activeView === 'chart' && <ChartView cards={filteredCards} />}
@@ -294,7 +371,7 @@ export default function EntregasPage() {
       {activeView === 'concluded' && <ConcludedView />}
 
       {newWorkflowOpen && (
-        <NewWorkflowModal
+        <NewWorkflowWizard
           open={newWorkflowOpen}
           onClose={() => setNewWorkflowOpen(false)}
           clientes={clientes}

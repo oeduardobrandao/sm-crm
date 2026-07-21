@@ -1,24 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Plus, Trash2, Edit2, FileText, Settings, GripVertical } from 'lucide-react';
-import {
-  DndContext,
-  PointerSensor,
-  KeyboardSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-  closestCenter,
-} from '@dnd-kit/core';
-import {
-  SortableContext,
-  useSortable,
-  verticalListSortingStrategy,
-  arrayMove,
-  sortableKeyboardCoordinates,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+import { Trash2, Edit2, FileText, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -38,9 +21,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { EmptyStateGuide } from '@/components/help/EmptyStateGuide';
-import { PrerequisiteAlert } from '@/components/help/PrerequisiteAlert';
-import { HelpTooltip } from '@/components/help/HelpTooltip';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -53,8 +33,6 @@ import {
 } from '@/components/ui/alert-dialog';
 import {
   getDeadlineInfo,
-  addWorkflow,
-  addWorkflowEtapa,
   addWorkflowTemplate,
   removeWorkflowTemplate,
   removeWorkflow,
@@ -71,10 +49,13 @@ import {
   type Membro,
   type TemplatePropertyDefinition,
 } from '../../../store';
-import { getNextDeliveryDate, computeDeliveryDeadlines } from '../hooks/useEntregasData';
 import { PropertyDefinitionPanel } from './PropertyDefinitionPanel';
-
-type ModoPrazo = 'padrao' | 'data_fixa' | 'data_entrega';
+import {
+  SortableEtapaList,
+  defaultEtapa,
+  type EtapaFormData,
+  type ModoPrazo,
+} from './SortableEtapaList';
 
 // ---- Types ----
 interface BoardCard {
@@ -85,578 +66,6 @@ interface BoardCard {
   deadline: ReturnType<typeof getDeadlineInfo>;
   totalEtapas: number;
   etapaIdx: number;
-}
-
-interface EtapaFormData {
-  _id: string;
-  nome: string;
-  prazo: number;
-  tipoPrazo: 'corridos' | 'uteis';
-  responsavelId: number | null;
-  tipo: 'padrao' | 'aprovacao_cliente';
-  dataLimite: string;
-}
-
-let _etapaIdCounter = 0;
-function defaultEtapa(): EtapaFormData {
-  return {
-    _id: `etapa-${++_etapaIdCounter}`,
-    nome: '',
-    prazo: 3,
-    tipoPrazo: 'corridos',
-    responsavelId: null,
-    tipo: 'padrao',
-    dataLimite: '',
-  };
-}
-
-// ---- SortableEtapaRow component ----
-function SortableEtapaRow(props: {
-  id: string;
-  index: number;
-  nome: string;
-  prazo: number;
-  tipoPrazo: string;
-  responsavelId: number | null;
-  tipo: 'padrao' | 'aprovacao_cliente';
-  dataLimite: string;
-  modoPrazo: ModoPrazo;
-  membros: Membro[];
-  onChange: (field: string, val: unknown) => void;
-  onRemove: () => void;
-}) {
-  const {
-    id,
-    nome,
-    prazo,
-    tipoPrazo,
-    responsavelId,
-    tipo,
-    dataLimite,
-    modoPrazo,
-    membros,
-    onChange,
-    onRemove,
-  } = props;
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id,
-  });
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  };
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={{
-        ...style,
-        display: 'flex',
-        flexDirection: 'column' as const,
-        gap: '0.5rem',
-        marginBottom: '0.75rem',
-        padding: '0.75rem',
-        border: '1px solid var(--border-color)',
-        borderRadius: '8px',
-      }}
-      {...attributes}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        <div {...listeners} style={{ cursor: 'grab', color: 'var(--text-muted)', flexShrink: 0 }}>
-          <GripVertical className="h-4 w-4" />
-        </div>
-        <Input
-          placeholder="Nome da etapa"
-          value={nome}
-          onChange={(e) => onChange('nome', e.target.value)}
-          style={{ flex: 1 }}
-        />
-        <Button
-          size="icon"
-          variant="ghost"
-          className="text-destructive"
-          onClick={onRemove}
-          style={{ flexShrink: 0 }}
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
-      </div>
-      {modoPrazo === 'data_fixa' ? (
-        <div className="space-y-1">
-          <Label style={{ fontSize: '0.75rem' }}>Data limite</Label>
-          <Input
-            type="date"
-            value={dataLimite}
-            onChange={(e) => onChange('dataLimite', e.target.value)}
-          />
-        </div>
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-          <Input
-            type="number"
-            min={1}
-            value={prazo}
-            onChange={(e) => onChange('prazo', Number(e.target.value))}
-            placeholder="Prazo (dias)"
-          />
-          <div className="flex items-center gap-1">
-            <Select value={tipoPrazo} onValueChange={(val) => onChange('tipoPrazo', val)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="corridos">Corridos</SelectItem>
-                <SelectItem value="uteis">Úteis</SelectItem>
-              </SelectContent>
-            </Select>
-            <HelpTooltip content="Corridos = todos os dias do calendário, incluindo fins de semana. Úteis = apenas dias úteis (exceto sábados e domingos)." />
-          </div>
-        </div>
-      )}
-      {membros.length === 0 ? (
-        <EmptyStateGuide
-          icon="👤"
-          title="Nenhum membro cadastrado"
-          description="Para atribuir responsáveis às etapas, adicione membros na página"
-          actionLabel="Equipe"
-          actionHref="/equipe"
-          hint="💡 Membros são pessoas da equipe (designers, redatores, etc). Para dar acesso ao CRM, vincule o membro a um usuário do workspace."
-        />
-      ) : (
-        <Select
-          value={responsavelId != null ? String(responsavelId) : '__none__'}
-          onValueChange={(val) =>
-            onChange('responsavelId', val === '__none__' ? null : Number(val))
-          }
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Sem responsável" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__none__">Sem responsável</SelectItem>
-            {[...membros]
-              .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
-              .map((m) => (
-                <SelectItem key={m.id} value={String(m.id)}>
-                  {m.nome}
-                </SelectItem>
-              ))}
-          </SelectContent>
-        </Select>
-      )}
-      <div className="flex items-center gap-2">
-        <Checkbox
-          id={`aprovacao-${id}`}
-          checked={tipo === 'aprovacao_cliente'}
-          onCheckedChange={(v) => onChange('tipo', v ? 'aprovacao_cliente' : 'padrao')}
-        />
-        <Label htmlFor={`aprovacao-${id}`} style={{ fontSize: '0.8rem', cursor: 'pointer' }}>
-          Aprovação externa
-        </Label>
-      </div>
-    </div>
-  );
-}
-
-// ---- Sortable etapa list wrapper ----
-function SortableEtapaList({
-  etapas,
-  setEtapas,
-  modoPrazo,
-  membros,
-}: {
-  etapas: EtapaFormData[];
-  setEtapas: (e: EtapaFormData[]) => void;
-  modoPrazo: ModoPrazo;
-  membros: Membro[];
-}) {
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  );
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (over && active.id !== over.id) {
-      const oldIdx = etapas.findIndex((e) => e._id === active.id);
-      const newIdx = etapas.findIndex((e) => e._id === over.id);
-      if (oldIdx !== -1 && newIdx !== -1) setEtapas(arrayMove(etapas, oldIdx, newIdx));
-    }
-  };
-
-  return (
-    <div
-      style={{
-        borderTop: '1px solid var(--border-color)',
-        paddingTop: '1rem',
-        marginTop: '0.5rem',
-      }}
-    >
-      <h4 style={{ marginBottom: '0.75rem' }}>Etapas</h4>
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={etapas.map((e) => e._id)} strategy={verticalListSortingStrategy}>
-          {etapas.map((e, i) => (
-            <SortableEtapaRow
-              key={e._id}
-              id={e._id}
-              index={i}
-              nome={e.nome}
-              prazo={e.prazo}
-              tipoPrazo={e.tipoPrazo}
-              responsavelId={e.responsavelId}
-              tipo={e.tipo}
-              dataLimite={e.dataLimite}
-              modoPrazo={modoPrazo}
-              membros={membros}
-              onChange={(field, val) => {
-                const next = [...etapas];
-                (next[i] as unknown as Record<string, unknown>)[field] = val;
-                setEtapas(next);
-              }}
-              onRemove={() => setEtapas(etapas.filter((_, idx) => idx !== i))}
-            />
-          ))}
-        </SortableContext>
-      </DndContext>
-      <Button size="sm" variant="outline" onClick={() => setEtapas([...etapas, defaultEtapa()])}>
-        <Plus className="h-3 w-3" /> Adicionar Etapa
-      </Button>
-    </div>
-  );
-}
-
-// ---- New Workflow Modal ----
-export function NewWorkflowModal({
-  open,
-  onClose,
-  clientes,
-  membros,
-  templates,
-  onCreated,
-}: {
-  open: boolean;
-  onClose: () => void;
-  clientes: Cliente[];
-  membros: Membro[];
-  templates: WorkflowTemplate[];
-  onCreated: () => void;
-}) {
-  const [etapas, setEtapas] = useState<EtapaFormData[]>([defaultEtapa()]);
-  const [saving, setSaving] = useState(false);
-  const [fTitulo, setFTitulo] = useState('');
-  const [fClienteId, setFClienteId] = useState('');
-  const [fTemplateId, setFTemplateId] = useState('');
-  const [fRecorrente, setFRecorrente] = useState(false);
-  const [fModoPrazo, setFModoPrazo] = useState<ModoPrazo>('padrao');
-  const [fMesEntrega, setFMesEntrega] = useState('');
-
-  const handleTemplateChange = (templateId: string) => {
-    setFTemplateId(templateId);
-    if (!templateId) return;
-    const tpl = templates.find((t) => t.id === Number(templateId));
-    if (!tpl) return;
-    if (tpl.modo_prazo) setFModoPrazo(tpl.modo_prazo);
-    setEtapas(
-      tpl.etapas.map((e) => ({
-        _id: `etapa-${++_etapaIdCounter}`,
-        nome: e.nome,
-        prazo: e.prazo_dias,
-        tipoPrazo: e.tipo_prazo,
-        responsavelId: e.responsavel_id || null,
-        tipo: e.tipo || 'padrao',
-        dataLimite: '',
-      })),
-    );
-  };
-
-  const handleSave = async () => {
-    if (!fTitulo || !fClienteId) {
-      toast.error('Título e cliente são obrigatórios.');
-      return;
-    }
-    const validEtapas = etapas.filter((e) => e.nome.trim());
-    if (validEtapas.length === 0) {
-      toast.error('Adicione pelo menos uma etapa.');
-      return;
-    }
-    if (validEtapas.some((e) => e.responsavelId == null)) {
-      toast.error('Todas as etapas precisam de um responsável atribuído.');
-      return;
-    }
-
-    // Mode-specific validation
-    if (fModoPrazo === 'data_fixa') {
-      if (validEtapas.some((e) => !e.dataLimite)) {
-        toast.error('Todas as etapas precisam de uma data limite no modo Data Fixa.');
-        return;
-      }
-    }
-
-    // data_entrega mode: need aprovacao_cliente step and client dia_entrega
-    let deliveryDeadlines: Map<number, string> | null = null;
-    if (fModoPrazo === 'data_entrega') {
-      const hasAprovacao = validEtapas.some((e) => e.tipo === 'aprovacao_cliente');
-      if (!hasAprovacao) {
-        toast.error(
-          'No modo Data de Entrega, é necessário ter ao menos uma etapa de Aprovação do Cliente como âncora.',
-        );
-        return;
-      }
-      const selectedCliente = clientes.find((c) => c.id === Number(fClienteId));
-      if (!selectedCliente?.dia_entrega) {
-        toast.error(
-          'O cliente selecionado não tem um Dia de Entrega configurado. Configure em Detalhes do Cliente.',
-        );
-        return;
-      }
-      let deliveryDate: Date;
-      if (fMesEntrega) {
-        const [yr, mo] = fMesEntrega.split('-').map(Number);
-        const lastDay = new Date(yr, mo, 0).getDate();
-        const day = Math.min(selectedCliente.dia_entrega, lastDay);
-        deliveryDate = new Date(yr, mo - 1, day);
-      } else {
-        deliveryDate = getNextDeliveryDate(selectedCliente.dia_entrega);
-      }
-      // Build minimal WorkflowEtapa objects for the computation
-      const etapasMock = validEtapas.map((e, i) => ({
-        id: i,
-        workflow_id: 0,
-        ordem: i,
-        nome: e.nome,
-        prazo_dias: e.prazo,
-        tipo_prazo: e.tipoPrazo,
-        responsavel_id: e.responsavelId,
-        tipo: e.tipo,
-        status: 'pendente' as const,
-        iniciado_em: null,
-        concluido_em: null,
-      }));
-      deliveryDeadlines = computeDeliveryDeadlines(etapasMock, deliveryDate);
-    }
-
-    const validMemberIds = new Set(membros.map((m) => m.id));
-
-    setSaving(true);
-    let wf: Workflow | null = null;
-    try {
-      wf = await addWorkflow({
-        cliente_id: Number(fClienteId),
-        titulo: fTitulo,
-        template_id: fTemplateId ? Number(fTemplateId) : null,
-        status: 'ativo',
-        etapa_atual: 0,
-        recorrente: fRecorrente,
-        modo_prazo: fModoPrazo,
-      });
-      const now = new Date().toISOString();
-      for (let i = 0; i < validEtapas.length; i++) {
-        const e = validEtapas[i];
-        let dataLimite: string | null = null;
-        if (fModoPrazo === 'data_fixa') {
-          dataLimite = e.dataLimite || null;
-        } else if (fModoPrazo === 'data_entrega' && deliveryDeadlines) {
-          dataLimite = deliveryDeadlines.get(i) || null;
-        }
-        const safeResponsavelId =
-          e.responsavelId && validMemberIds.has(e.responsavelId) ? e.responsavelId : null;
-        await addWorkflowEtapa({
-          workflow_id: wf.id!,
-          ordem: i,
-          nome: e.nome,
-          prazo_dias: e.prazo,
-          tipo_prazo: e.tipoPrazo,
-          tipo: e.tipo,
-          responsavel_id: safeResponsavelId,
-          status: i === 0 ? 'ativo' : 'pendente',
-          iniciado_em: i === 0 ? now : null,
-          concluido_em: null,
-          data_limite: dataLimite,
-        });
-      }
-      toast.success('Fluxo criado com sucesso!');
-      setFTitulo('');
-      setFClienteId('');
-      setFTemplateId('');
-      setFRecorrente(false);
-      setFModoPrazo('padrao');
-      setFMesEntrega('');
-      setEtapas([defaultEtapa()]);
-      onCreated();
-      onClose();
-    } catch (err: unknown) {
-      if (wf?.id)
-        try {
-          await removeWorkflow(wf.id);
-        } catch {
-          /* */
-        }
-      toast.error((err as Error).message || 'Erro ao criar fluxo');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const activeClientes = clientes
-    .filter((c) => c.status === 'ativo')
-    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(open) => {
-        if (!open) {
-          setEtapas([defaultEtapa()]);
-          onClose();
-        }
-      }}
-    >
-      <DialogContent
-        style={{ maxWidth: 700, width: 'calc(100vw - 2rem)' }}
-        onConfirmClose={() => {
-          setEtapas([defaultEtapa()]);
-          onClose();
-        }}
-      >
-        <DialogHeader>
-          <DialogTitle>Novo Fluxo de Entrega</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
-          {membros.length === 0 && (
-            <PrerequisiteAlert
-              title="Dica: adicione membros à equipe primeiro"
-              description="Sem membros cadastrados, as etapas ficarão sem responsável."
-              actionLabel="Ir para Equipe →"
-              actionHref="/equipe"
-            />
-          )}
-          <div className="space-y-1">
-            <Label>Título *</Label>
-            <Input
-              placeholder="Ex: Posts Instagram — Março 2026"
-              value={fTitulo}
-              onChange={(e) => setFTitulo(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label>Cliente *</Label>
-            <Select value={fClienteId} onValueChange={setFClienteId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecionar cliente..." />
-              </SelectTrigger>
-              <SelectContent>
-                {activeClientes.map((c) => (
-                  <SelectItem key={c.id} value={String(c.id)}>
-                    {c.nome}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label>Template</Label>
-            <Select
-              value={fTemplateId || '__none__'}
-              onValueChange={(val) => handleTemplateChange(val === '__none__' ? '' : val)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Personalizado" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">Personalizado</SelectItem>
-                {templates.map((t) => (
-                  <SelectItem key={t.id} value={String(t.id)}>
-                    {t.nome} ({t.etapas.length} etapas)
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label>Modo de Prazo</Label>
-            <Select value={fModoPrazo} onValueChange={(v) => setFModoPrazo(v as ModoPrazo)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="padrao">Duração (padrão)</SelectItem>
-                <SelectItem value="data_fixa">Data fixa por etapa</SelectItem>
-                <SelectItem value="data_entrega">Data de entrega do cliente</SelectItem>
-              </SelectContent>
-            </Select>
-            {fModoPrazo === 'data_entrega' && (
-              <>
-                <p
-                  style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}
-                >
-                  Prazos calculados automaticamente a partir do dia de entrega do cliente, usando a
-                  etapa de Aprovação como âncora.
-                </p>
-                <div style={{ marginTop: '0.5rem' }}>
-                  <Label>Mês de Entrega</Label>
-                  <Select
-                    value={fMesEntrega || '__auto__'}
-                    onValueChange={(val) => setFMesEntrega(val === '__auto__' ? '' : val)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__auto__">Próximo mês disponível</SelectItem>
-                      {Array.from({ length: 6 }, (_, i) => {
-                        const d = new Date();
-                        d.setMonth(d.getMonth() + i);
-                        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-                        const label = d.toLocaleDateString('pt-BR', {
-                          month: 'long',
-                          year: 'numeric',
-                        });
-                        return (
-                          <SelectItem key={key} value={key}>
-                            {label.charAt(0).toUpperCase() + label.slice(1)}
-                          </SelectItem>
-                        );
-                      })}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id="recorrente-new"
-              checked={fRecorrente}
-              onCheckedChange={(v) => setFRecorrente(!!v)}
-            />
-            <Label htmlFor="recorrente-new">
-              Fluxo recorrente (ao concluir, oferecer criar novo ciclo)
-            </Label>
-          </div>
-          <SortableEtapaList
-            etapas={etapas}
-            setEtapas={setEtapas}
-            modoPrazo={fModoPrazo}
-            membros={membros}
-          />
-        </div>
-        <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => {
-              setEtapas([defaultEtapa()]);
-              onClose();
-            }}
-          >
-            Cancelar
-          </Button>
-          <Button onClick={handleSave} disabled={saving}>
-            {saving && <Spinner size="sm" />} Criar Fluxo
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
 }
 
 // ---- Edit Workflow Modal ----
@@ -1053,15 +462,15 @@ export function TemplatesModal({
     setFNome(tpl.nome);
     setFModoPrazo((tpl.modo_prazo as ModoPrazo) || 'padrao');
     setEtapas(
-      tpl.etapas.map((e) => ({
-        _id: `etapa-${++_etapaIdCounter}`,
-        nome: e.nome,
-        prazo: e.prazo_dias,
-        tipoPrazo: e.tipo_prazo,
-        responsavelId: e.responsavel_id || null,
-        tipo: e.tipo || 'padrao',
-        dataLimite: '',
-      })),
+      tpl.etapas.map((e) =>
+        defaultEtapa({
+          nome: e.nome,
+          prazo: e.prazo_dias,
+          tipoPrazo: e.tipo_prazo,
+          responsavelId: e.responsavel_id || null,
+          tipo: e.tipo || 'padrao',
+        }),
+      ),
     );
   };
 
@@ -1563,6 +972,8 @@ interface ClientApprovalChoiceDialogProps {
   onSendToPortal: () => void;
   onAdvanceWithoutChanges: () => void;
   onCancel: () => void;
+  /** Another client-approval etapa lies ahead — completing this one re-arms the posts. */
+  willRearm?: boolean;
 }
 export function ClientApprovalChoiceDialog({
   open,
@@ -1571,6 +982,7 @@ export function ClientApprovalChoiceDialog({
   onSendToPortal,
   onAdvanceWithoutChanges,
   onCancel,
+  willRearm,
 }: ClientApprovalChoiceDialogProps) {
   return (
     <Dialog
@@ -1586,6 +998,12 @@ export function ClientApprovalChoiceDialog({
         <p className="text-sm text-muted-foreground">
           "{workflowTitle}" está em etapa de aprovação do cliente.
         </p>
+        {willRearm && (
+          <p className="text-sm" style={{ color: 'var(--warning)' }}>
+            Há outra etapa de aprovação adiante — ao concluir esta, os posts aprovados voltarão para
+            rascunho para o próximo ciclo de aprovação.
+          </p>
+        )}
         <DialogFooter className="flex-col gap-2 sm:flex-col">
           <Button className="w-full" onClick={onApproveInternally}>
             Aprovar internamente

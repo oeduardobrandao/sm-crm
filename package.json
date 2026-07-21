@@ -91,6 +91,7 @@
     "date-fns": "^4.1.0",
     "dayjs": "^1.11.20",
     "diff-match-patch": "^1.0.5",
+    "driver.js": "1.7.0",
     "i18next": "^26.0.8",
     "jszip": "^3.10.1",
     "lucide-react": "^0.577.0",
