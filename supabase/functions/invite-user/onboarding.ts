@@ -20,8 +20,10 @@ export type InviteAction = "reinvite" | "resend-link" | "add-direct" | "blocked-
  *   always creates a profile, so this state should be impossible; refuse to
  *   auto-delete it rather than risk wiping a real account.
  *
- * `onboardingComplete` is authoritative: a user known to have completed
- * onboarding is never wiped, regardless of the other signals.
+ * `onboardingComplete` is authoritative only while `hasPassword` is unknown.
+ * An explicit `hasPassword: false` overrides it — a user with no password
+ * cannot log in, so they are routed to "resend-link", or to "reinvite" (which
+ * deletes the auth user) if they never confirmed their e-mail either.
  */
 export function classifyExistingUser(
   args: {
