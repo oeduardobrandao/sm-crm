@@ -25,7 +25,7 @@ export function BriefingPage() {
   const briefings = data?.briefings ?? [];
 
   if (briefings.length === 0)
-    return <div className="py-8 text-stone-500 text-sm">Nenhum briefing disponível ainda.</div>;
+    return <div className="py-8 hub-tx3 text-sm">Nenhum briefing disponível ainda.</div>;
 
   const hasBriefingTabs = briefings.length > 1;
   const activeBriefing = briefings[Math.min(briefingTab, briefings.length - 1)];
@@ -55,17 +55,17 @@ export function BriefingPage() {
   return (
     <div className="max-w-3xl mx-auto hub-fade-up">
       <header className="mb-8">
-        <p className="text-[11px] uppercase tracking-[0.14em] text-stone-500 font-medium mb-2">
+        <p className="text-[11px] uppercase tracking-[0.14em] hub-tx3 font-medium mb-2">
           <span className="accent-bar" />
           Seu projeto
         </p>
-        <h2 className="font-display text-[2rem] sm:text-[2.25rem] leading-[1.05] font-medium tracking-tight text-stone-900">
+        <h2 className="font-display text-[2rem] sm:text-[2.25rem] leading-[1.05] font-medium tracking-tight hub-txt">
           Briefing
         </h2>
       </header>
 
       {hasBriefingTabs && (
-        <div className="relative mb-6 border-b border-stone-200/80">
+        <div className="relative mb-6 border-b hub-border">
           <div className="flex gap-1 overflow-x-auto no-scrollbar">
             {briefings.map((b, i) => (
               <button
@@ -75,12 +75,12 @@ export function BriefingPage() {
                   setSectionTab(0);
                 }}
                 className={`relative px-4 py-3 text-[13px] font-semibold whitespace-nowrap transition-colors ${
-                  briefingTab === i ? 'text-stone-900' : 'text-stone-500 hover:text-stone-700'
+                  briefingTab === i ? 'hub-txt' : 'hub-tab-btn hub-tx3'
                 }`}
               >
                 {b.title || 'Briefing'}
                 {briefingTab === i && (
-                  <span className="absolute left-3 right-3 -bottom-[1px] h-[2px] rounded-full bg-[#FFBF30]" />
+                  <span className="absolute left-3 right-3 -bottom-[1px] h-[2px] rounded-full bg-[var(--hub-acc)]" />
                 )}
               </button>
             ))}
@@ -89,19 +89,19 @@ export function BriefingPage() {
       )}
 
       {hasSectionTabs && (
-        <div className="relative mb-8 border-b border-stone-200/80">
+        <div className="relative mb-8 border-b hub-border">
           <div className="flex gap-1 overflow-x-auto no-scrollbar">
             {sections.map((s, i) => (
               <button
                 key={s.name}
                 onClick={() => setSectionTab(i)}
                 className={`relative px-4 py-3 text-[13px] font-medium whitespace-nowrap transition-colors ${
-                  sectionTab === i ? 'text-stone-900' : 'text-stone-500 hover:text-stone-700'
+                  sectionTab === i ? 'hub-txt' : 'hub-tab-btn hub-tx3'
                 }`}
               >
                 {s.name}
                 {sectionTab === i && (
-                  <span className="absolute left-3 right-3 -bottom-[1px] h-[2px] rounded-full bg-stone-400" />
+                  <span className="absolute left-3 right-3 -bottom-[1px] h-[2px] rounded-full bg-[var(--hub-bd2)]" />
                 )}
               </button>
             ))}
@@ -110,7 +110,7 @@ export function BriefingPage() {
       )}
 
       {visibleQuestions.length === 0 ? (
-        <div className="py-8 text-stone-500 text-sm">Nenhuma pergunta neste briefing ainda.</div>
+        <div className="py-8 hub-tx3 text-sm">Nenhuma pergunta neste briefing ainda.</div>
       ) : (
         <div className="space-y-4">
           {visibleQuestions.map((q) => (
@@ -161,14 +161,14 @@ function QuestionItem({
   return (
     <div className="hub-card p-5 sm:p-6 space-y-3">
       <div className="flex items-start justify-between gap-3">
-        <p className="text-[14px] font-semibold text-stone-900 leading-snug">{question}</p>
+        <p className="text-[14px] font-semibold hub-txt leading-snug">{question}</p>
         <span className="shrink-0 text-[11px] font-medium min-w-[56px] text-right">
-          {status === 'saving' && <span className="text-stone-400">Salvando…</span>}
+          {status === 'saving' && <span className="hub-tx3">Salvando…</span>}
           {status === 'saved' && <span className="text-emerald-600">✓ Salvo</span>}
         </span>
       </div>
       <textarea
-        className="w-full border border-stone-200/80 rounded-lg px-3.5 py-3 text-[14px] resize-none min-h-[112px] bg-stone-50/40 text-stone-800 placeholder:text-stone-400 focus:outline-none focus:bg-white focus:border-stone-300 focus:ring-4 focus:ring-[#FFBF30]/15 transition-all"
+        className="hub-focus-accent w-full border hub-border rounded-lg px-3.5 py-3 text-[14px] resize-none min-h-[112px] bg-[color-mix(in_srgb,var(--hub-soft)_40%,transparent)] hub-txt placeholder:text-[var(--hub-tx3)] focus:outline-none focus:bg-white focus:border-[var(--hub-bd2)] focus:ring-4 transition-all"
         value={answer}
         onChange={(e) => handleChange(e.target.value)}
         placeholder="Digite sua resposta…"

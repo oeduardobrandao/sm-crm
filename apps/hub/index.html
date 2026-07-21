@@ -78,6 +78,15 @@
       .hub-root .hub-divide > * + * { border-top: 1px solid var(--hub-bd); }
       .hub-root .hub-download-link:hover .hub-download-hint { color: var(--hub-txt); }
       .hub-root .hub-page-row:hover .hub-page-chevron { color: var(--hub-txt); }
+      .hub-root .hub-tab-btn:hover { color: var(--hub-tx2); }
+      /* Tailwind can't apply an opacity modifier (e.g. `/15`) to an arbitrary
+         `var()` color value — it needs a literal color to decompose into
+         channels, so `focus:ring-[var(--hub-acc)]/15` silently produces no
+         rule. Fall back to overriding Tailwind's own --tw-ring-color custom
+         property (consumed by the `ring-4` utility's box-shadow) directly. */
+      .hub-root .hub-focus-accent:focus {
+        --tw-ring-color: color-mix(in srgb, var(--hub-acc) 15%, transparent);
+      }
       /* Primary/secondary buttons — replaces the repeated `bg-stone-900 text-white hover:bg-stone-800`
          and `border-stone-200 ... hover:bg-stone-50` pairs found across every post-card component. */
       .hub-root .hub-btn-primary {
