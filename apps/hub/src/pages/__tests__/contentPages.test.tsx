@@ -261,6 +261,7 @@ describe('hub content pages', () => {
     );
 
     expect(await screen.findByText('Nenhum briefing disponível ainda.')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Briefing' })).toBeInTheDocument();
   });
 
   it('switches briefing sections and autosaves answers through the API', async () => {

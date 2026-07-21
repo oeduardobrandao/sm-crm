@@ -169,20 +169,6 @@ export function PostagensPage() {
     });
   });
 
-  if (isLoading)
-    return (
-      <div className="flex justify-center py-20">
-        <div className="animate-spin h-6 w-6 rounded-full border-2 border-stone-300 border-t-stone-900" />
-      </div>
-    );
-
-  if (isError)
-    return (
-      <div className="max-w-5xl mx-auto py-20 text-center text-sm hub-tx2">
-        Erro ao carregar postagens.
-      </div>
-    );
-
   return (
     <div className="max-w-5xl mx-auto hub-fade-up">
       <header className="mb-8">
@@ -218,7 +204,13 @@ export function PostagensPage() {
         )}
       </header>
 
-      {groups.length === 0 ? (
+      {isLoading ? (
+        <div className="flex justify-center py-20">
+          <div className="animate-spin h-6 w-6 rounded-full border-2 border-stone-300 border-t-stone-900" />
+        </div>
+      ) : isError ? (
+        <div className="py-20 text-center text-sm hub-tx2">Erro ao carregar postagens.</div>
+      ) : groups.length === 0 ? (
         <p className="text-sm hub-tx2">Nenhuma postagem disponível ainda.</p>
       ) : (
         <div className="space-y-10">

@@ -560,8 +560,9 @@ describe('PostagensPage — post type categorization within groups', () => {
 
     renderHubPage(POSTAGENS_PATH, POSTAGENS_ROUTE, <PostagensPage />);
 
-    await screen.findByRole('heading', { name: 'Postagens' });
+    await screen.findAllByTestId('instagram-post-card');
 
+    expect(screen.getByRole('heading', { name: 'Postagens' })).toBeInTheDocument();
     expect(screen.getAllByTestId('instagram-post-card')).toHaveLength(2);
     expect(screen.getAllByTestId('story-post-card')).toHaveLength(1);
     expect(screen.getAllByTestId('text-post-card')).toHaveLength(1);
@@ -580,7 +581,9 @@ describe('PostagensPage — post type categorization within groups', () => {
 
     renderHubPage(POSTAGENS_PATH, POSTAGENS_ROUTE, <PostagensPage />);
 
-    await screen.findByRole('heading', { name: 'Postagens' });
+    await screen.findByTestId('instagram-post-card');
+
+    expect(screen.getByRole('heading', { name: 'Postagens' })).toBeInTheDocument();
 
     const instagramCard = screen.getByTestId('instagram-post-card');
     const storyCard = screen.getByTestId('story-post-card');

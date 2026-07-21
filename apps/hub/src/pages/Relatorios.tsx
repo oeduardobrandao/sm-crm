@@ -106,22 +106,6 @@ export function RelatoriosPage() {
 
   const reports = data?.reports ?? [];
 
-  if (isLoading) {
-    return (
-      <div className="flex justify-center py-20">
-        <div className="animate-spin h-6 w-6 rounded-full border-2 border-stone-300 border-t-stone-900" />
-      </div>
-    );
-  }
-
-  if (isError) {
-    return (
-      <div className="max-w-5xl mx-auto py-20 text-center text-sm hub-tx2">
-        Erro ao carregar relatórios.
-      </div>
-    );
-  }
-
   return (
     <div className="max-w-5xl mx-auto hub-fade-up">
       <header className="mb-8">
@@ -130,7 +114,13 @@ export function RelatoriosPage() {
         </h2>
       </header>
 
-      {reports.length === 0 ? (
+      {isLoading ? (
+        <div className="flex justify-center py-20">
+          <div className="animate-spin h-6 w-6 rounded-full border-2 border-stone-300 border-t-stone-900" />
+        </div>
+      ) : isError ? (
+        <div className="py-20 text-center text-sm hub-tx2">Erro ao carregar relatórios.</div>
+      ) : reports.length === 0 ? (
         <p className="text-sm hub-tx2">Nenhum relatório disponível ainda.</p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

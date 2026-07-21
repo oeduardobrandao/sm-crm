@@ -15,18 +15,7 @@ export function BriefingPage() {
   const [briefingTab, setBriefingTab] = useState(0);
   const [sectionTab, setSectionTab] = useState(0);
 
-  if (isLoading)
-    return (
-      <div className="flex justify-center py-20">
-        <div className="animate-spin h-6 w-6 rounded-full border-2 border-stone-300 border-t-stone-900" />
-      </div>
-    );
-
   const briefings = data?.briefings ?? [];
-
-  if (briefings.length === 0)
-    return <div className="py-8 hub-tx3 text-sm">Nenhum briefing disponível ainda.</div>;
-
   const hasBriefingTabs = briefings.length > 1;
   const activeBriefing = briefings[Math.min(briefingTab, briefings.length - 1)];
   const questions = activeBriefing?.questions ?? [];
@@ -60,64 +49,74 @@ export function BriefingPage() {
         </h2>
       </header>
 
-      {hasBriefingTabs && (
-        <div className="relative mb-6 border-b hub-border">
-          <div className="flex gap-1 overflow-x-auto no-scrollbar">
-            {briefings.map((b, i) => (
-              <button
-                key={b.id}
-                onClick={() => {
-                  setBriefingTab(i);
-                  setSectionTab(0);
-                }}
-                className={`relative px-4 py-3 text-[13px] font-semibold whitespace-nowrap transition-colors ${
-                  briefingTab === i ? 'hub-txt' : 'hub-tab-btn hub-tx3'
-                }`}
-              >
-                {b.title || 'Briefing'}
-                {briefingTab === i && (
-                  <span className="absolute left-3 right-3 -bottom-[1px] h-[2px] rounded-full bg-[var(--hub-acc)]" />
-                )}
-              </button>
-            ))}
-          </div>
+      {isLoading ? (
+        <div className="flex justify-center py-20">
+          <div className="animate-spin h-6 w-6 rounded-full border-2 border-stone-300 border-t-stone-900" />
         </div>
-      )}
-
-      {hasSectionTabs && (
-        <div className="relative mb-8 border-b hub-border">
-          <div className="flex gap-1 overflow-x-auto no-scrollbar">
-            {sections.map((s, i) => (
-              <button
-                key={s.name}
-                onClick={() => setSectionTab(i)}
-                className={`relative px-4 py-3 text-[13px] font-medium whitespace-nowrap transition-colors ${
-                  sectionTab === i ? 'hub-txt' : 'hub-tab-btn hub-tx3'
-                }`}
-              >
-                {s.name}
-                {sectionTab === i && (
-                  <span className="absolute left-3 right-3 -bottom-[1px] h-[2px] rounded-full bg-[var(--hub-bd2)]" />
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {visibleQuestions.length === 0 ? (
-        <div className="py-8 hub-tx3 text-sm">Nenhuma pergunta neste briefing ainda.</div>
+      ) : briefings.length === 0 ? (
+        <div className="py-8 hub-tx3 text-sm">Nenhum briefing disponível ainda.</div>
       ) : (
-        <div className="space-y-4">
-          {visibleQuestions.map((q) => (
-            <QuestionItem
-              key={q.id}
-              question={q.question}
-              initialAnswer={q.answer}
-              onSave={handleSave(q.id)}
-            />
-          ))}
-        </div>
+        <>
+          {hasBriefingTabs && (
+            <div className="relative mb-6 border-b hub-border">
+              <div className="flex gap-1 overflow-x-auto no-scrollbar">
+                {briefings.map((b, i) => (
+                  <button
+                    key={b.id}
+                    onClick={() => {
+                      setBriefingTab(i);
+                      setSectionTab(0);
+                    }}
+                    className={`relative px-4 py-3 text-[13px] font-semibold whitespace-nowrap transition-colors ${
+                      briefingTab === i ? 'hub-txt' : 'hub-tab-btn hub-tx3'
+                    }`}
+                  >
+                    {b.title || 'Briefing'}
+                    {briefingTab === i && (
+                      <span className="absolute left-3 right-3 -bottom-[1px] h-[2px] rounded-full bg-[var(--hub-acc)]" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {hasSectionTabs && (
+            <div className="relative mb-8 border-b hub-border">
+              <div className="flex gap-1 overflow-x-auto no-scrollbar">
+                {sections.map((s, i) => (
+                  <button
+                    key={s.name}
+                    onClick={() => setSectionTab(i)}
+                    className={`relative px-4 py-3 text-[13px] font-medium whitespace-nowrap transition-colors ${
+                      sectionTab === i ? 'hub-txt' : 'hub-tab-btn hub-tx3'
+                    }`}
+                  >
+                    {s.name}
+                    {sectionTab === i && (
+                      <span className="absolute left-3 right-3 -bottom-[1px] h-[2px] rounded-full bg-[var(--hub-bd2)]" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {visibleQuestions.length === 0 ? (
+            <div className="py-8 hub-tx3 text-sm">Nenhuma pergunta neste briefing ainda.</div>
+          ) : (
+            <div className="space-y-4">
+              {visibleQuestions.map((q) => (
+                <QuestionItem
+                  key={q.id}
+                  question={q.question}
+                  initialAnswer={q.answer}
+                  onSave={handleSave(q.id)}
+                />
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

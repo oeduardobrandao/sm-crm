@@ -14,13 +14,6 @@ export function PaginasPage() {
     queryFn: () => fetchPages(token),
   });
 
-  if (isLoading)
-    return (
-      <div className="flex justify-center py-20">
-        <div className="animate-spin h-6 w-6 rounded-full border-2 border-stone-300 border-t-stone-900" />
-      </div>
-    );
-
   const pages = data?.pages ?? [];
 
   return (
@@ -30,7 +23,11 @@ export function PaginasPage() {
           Páginas
         </h2>
       </header>
-      {pages.length === 0 ? (
+      {isLoading ? (
+        <div className="flex justify-center py-20">
+          <div className="animate-spin h-6 w-6 rounded-full border-2 border-stone-300 border-t-stone-900" />
+        </div>
+      ) : pages.length === 0 ? (
         <p className="hub-tx2 text-sm">Nenhuma página foi criada ainda.</p>
       ) : (
         <div className="space-y-2.5">
