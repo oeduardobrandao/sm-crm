@@ -18,7 +18,7 @@ const CALENDAR_STATUSES = new Set([
   'aprovado_cliente',
   'correcao_cliente',
   'agendado',
-  'publicado',
+  'postado',
 ]);
 
 function formatNextPost(scheduledAt: string): string {
@@ -94,19 +94,31 @@ export function HomePage() {
         className="grid gap-3"
         style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}
       >
-        {kpis.map((k) => (
-          <div
-            key={k.label}
-            onClick={k.onClick}
-            className={`hub-card p-4 ${k.onClick ? 'hub-card-hover cursor-pointer' : ''}`}
-          >
-            <div className="text-[15px] font-semibold tracking-tight hub-txt">{k.label}</div>
-            <div className="text-[12.5px] hub-tx3 mt-0.5 mb-3.5">{k.hint}</div>
-            <div className="font-display text-[2.1rem] font-medium tracking-tight leading-none hub-txt">
-              {k.value}
+        {kpis.map((k) => {
+          const content = (
+            <>
+              <div className="text-[15px] font-semibold tracking-tight hub-txt">{k.label}</div>
+              <div className="text-[12.5px] hub-tx3 mt-0.5 mb-3.5">{k.hint}</div>
+              <div className="font-display text-[2.1rem] font-medium tracking-tight leading-none hub-txt">
+                {k.value}
+              </div>
+            </>
+          );
+          return k.onClick ? (
+            <button
+              key={k.label}
+              type="button"
+              onClick={k.onClick}
+              className="hub-card hub-card-hover cursor-pointer p-4 text-left w-full"
+            >
+              {content}
+            </button>
+          ) : (
+            <div key={k.label} className="hub-card p-4">
+              {content}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </section>
 
       <section

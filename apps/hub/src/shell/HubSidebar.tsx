@@ -52,7 +52,7 @@ export function HubSidebar() {
 
   return (
     <aside className="hidden md:flex fixed left-0 top-0 bottom-0 w-[240px] z-30 flex-col hub-bg-card border-r hub-border">
-      <div className="flex items-center gap-2.5 px-3.5 pt-4.5 pb-4">
+      <div className="flex items-center gap-2.5 px-3.5 pt-[18px] pb-4">
         {bootstrap.workspace.logo_url ? (
           <img
             src={bootstrap.workspace.logo_url}

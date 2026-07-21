@@ -35,7 +35,7 @@ export function MensagensPage() {
         </h1>
       </header>
       <div className="hub-card flex flex-col min-h-[480px] overflow-hidden">
-        <div className="flex items-center gap-3 px-4.5 py-3.5 border-b hub-border">
+        <div className="flex items-center gap-3 px-[18px] py-3.5 border-b hub-border">
           <div className="w-[38px] h-[38px] rounded-full hub-bg-soft flex items-center justify-center text-[13px] font-semibold hub-txt">
             {bootstrap.cliente_nome
               .split(' ')
@@ -83,7 +83,7 @@ export function MensagensPage() {
               if (e.key === 'Enter') send();
             }}
             placeholder="Enviar mensagem…"
-            className="flex-1 px-4.5 py-3 rounded-full border hub-border-strong text-sm outline-none"
+            className="flex-1 px-[18px] py-3 rounded-full border hub-border-strong text-sm outline-none"
             style={{ background: 'var(--hub-bg)', color: 'var(--hub-txt)' }}
           />
           <button
