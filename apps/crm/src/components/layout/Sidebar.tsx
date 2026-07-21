@@ -105,7 +105,13 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
           const ItemIcon = isActiveItem ? `ph-fill ${item.icon}` : `ph ${item.icon}`;
           return (
             <li key={item.id} className="sidebar-sub-item">
-              {item.newTab ? (
+              {item.disabled ? (
+                <div className="sidebar-sub-link sidebar-sub-link--disabled" aria-disabled="true">
+                  <i className={`ph ${item.icon}`} />
+                  <span>{t(item.labelKey, item.label)}</span>
+                  <span className="nav-badge">{t('sidebar.comingSoon', 'Em breve')}</span>
+                </div>
+              ) : item.newTab ? (
                 <a
                   className="sidebar-sub-link"
                   href={item.route}

@@ -211,6 +211,23 @@ describe('MobileNav', () => {
     expect(items).toContain('Privacidade');
   });
 
+  it('renders the TikTok analytics item as an inert row with a coming-soon badge', () => {
+    setAuth();
+    renderMobileNav('/dashboard');
+    fireEvent.click(document.getElementById('mobile-more-btn')!);
+
+    const tiktokRow = Array.from(document.querySelectorAll('.mobile-more-item')).find((el) =>
+      el.textContent?.includes('TikTok'),
+    );
+    expect(tiktokRow).toBeTruthy();
+    expect(tiktokRow?.tagName).toBe('DIV');
+    expect(tiktokRow).toHaveAttribute('aria-disabled', 'true');
+    expect(tiktokRow?.textContent).toContain('Em breve');
+
+    fireEvent.click(tiktokRow!);
+    expect(screen.getByTestId('path').textContent).toBe('/dashboard');
+  });
+
   it('toggles theme and signs out', async () => {
     const signOut = vi.fn();
     setAuth({ signOut });

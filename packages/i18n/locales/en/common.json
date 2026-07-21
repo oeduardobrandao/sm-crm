@@ -17,6 +17,7 @@
     "equipe": "Team",
     "analytics": "Analytics",
     "instagram": "Instagram",
+    "tiktok": "TikTok",
     "fluxos": "Flows",
     "configuracoes": "Settings",
     "privacidade": "Privacy",
@@ -37,7 +38,8 @@
     "lightMode": "Light Mode",
     "darkMode": "Dark Mode",
     "logout": "Log out",
-    "myAccount": "My Account"
+    "myAccount": "My Account",
+    "comingSoon": "Coming soon"
   },
   "language": {
     "pt": "Português",

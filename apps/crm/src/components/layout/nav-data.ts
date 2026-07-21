@@ -6,6 +6,8 @@ export interface NavItem {
   icon: string;
   /** Open the route in a new browser tab instead of in-app SPA navigation. */
   newTab?: boolean;
+  /** Renders as an inert row with a "coming soon" badge instead of a working link. */
+  disabled?: boolean;
 }
 export interface NavGroup {
   id: string;
@@ -131,6 +133,14 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
         label: 'Instagram',
         labelKey: 'nav.instagram',
         icon: 'ph-instagram-logo',
+      },
+      {
+        id: 'analytics-tiktok',
+        route: '/analytics/tiktok',
+        label: 'TikTok',
+        labelKey: 'nav.tiktok',
+        icon: 'ph-tiktok-logo',
+        disabled: true,
       },
       {
         id: 'analytics-fluxos',
