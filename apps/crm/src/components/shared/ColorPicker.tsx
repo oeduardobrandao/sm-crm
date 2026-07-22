@@ -140,7 +140,7 @@ export function ColorPicker({
   label,
   disabled,
 }: ColorPickerProps) {
-  const { t } = useTranslation('estudio');
+  const { t } = useTranslation('brand');
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(value);
   const [recents, setRecents] = useState<string[]>([]);

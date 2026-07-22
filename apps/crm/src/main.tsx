@@ -16,8 +16,8 @@ import ptPosts from '../../../packages/i18n/locales/pt/posts.json';
 import enPosts from '../../../packages/i18n/locales/en/posts.json';
 import ptAuth from '../../../packages/i18n/locales/pt/auth.json';
 import enAuth from '../../../packages/i18n/locales/en/auth.json';
-import ptEstudio from '../../../packages/i18n/locales/pt/estudio.json';
-import enEstudio from '../../../packages/i18n/locales/en/estudio.json';
+import ptBrand from '../../../packages/i18n/locales/pt/brand.json';
+import enBrand from '../../../packages/i18n/locales/en/brand.json';
 import App from './App';
 import '../style.css';
 
@@ -32,7 +32,7 @@ initI18n({
     leads: ptLeads,
     posts: ptPosts,
     auth: ptAuth,
-    estudio: ptEstudio,
+    brand: ptBrand,
   },
   en: {
     common: enCommon,
@@ -41,7 +41,7 @@ initI18n({
     leads: enLeads,
     posts: enPosts,
     auth: enAuth,
-    estudio: enEstudio,
+    brand: enBrand,
   },
 });
 
