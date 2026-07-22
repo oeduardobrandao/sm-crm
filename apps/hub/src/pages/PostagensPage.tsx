@@ -169,29 +169,11 @@ export function PostagensPage() {
     });
   });
 
-  if (isLoading)
-    return (
-      <div className="flex justify-center py-20">
-        <div className="animate-spin h-6 w-6 rounded-full border-2 border-stone-300 border-t-stone-900" />
-      </div>
-    );
-
-  if (isError)
-    return (
-      <div className="max-w-5xl mx-auto py-20 text-center text-sm text-stone-500">
-        Erro ao carregar postagens.
-      </div>
-    );
-
   return (
     <div className="max-w-5xl mx-auto hub-fade-up">
       <header className="mb-8">
-        <p className="text-[11px] uppercase tracking-[0.14em] text-stone-500 font-medium mb-2">
-          <span className="accent-bar" />
-          Calendário editorial
-        </p>
         <div className="flex items-center justify-between gap-4">
-          <h2 className="font-display text-[2rem] sm:text-[2.25rem] leading-[1.05] font-medium tracking-tight text-stone-900">
+          <h2 className="font-display text-[2rem] sm:text-[2.25rem] leading-[1.05] font-medium tracking-tight hub-txt">
             Postagens
           </h2>
           {instagramProfile && (
@@ -202,7 +184,7 @@ export function PostagensPage() {
           )}
         </div>
         {instagramProfile && feedSelectable.length > 0 && selectedPosts.length === 0 && (
-          <p className="text-[12px] text-stone-400 mt-2 flex items-center gap-1.5">
+          <p className="text-[12px] hub-tx3 mt-2 flex items-center gap-1.5">
             <svg
               width="14"
               height="14"
@@ -222,8 +204,14 @@ export function PostagensPage() {
         )}
       </header>
 
-      {groups.length === 0 ? (
-        <p className="text-sm text-stone-500">Nenhuma postagem disponível ainda.</p>
+      {isLoading ? (
+        <div className="flex justify-center py-20">
+          <div className="animate-spin h-6 w-6 rounded-full border-2 border-stone-300 border-t-stone-900" />
+        </div>
+      ) : isError ? (
+        <div className="py-20 text-center text-sm hub-tx2">Erro ao carregar postagens.</div>
+      ) : groups.length === 0 ? (
+        <p className="text-sm hub-tx2">Nenhuma postagem disponível ainda.</p>
       ) : (
         <div className="space-y-10">
           {groups.map((group) => {
@@ -245,21 +233,24 @@ export function PostagensPage() {
                     })
                   }
                 >
-                  <span className="h-[1px] w-6 bg-stone-300 hidden sm:block" />
-                  <h3 className="font-display text-[17px] font-semibold tracking-tight text-stone-900">
+                  <span
+                    className="h-[1px] w-6 hidden sm:block"
+                    style={{ background: 'var(--hub-bd2)' }}
+                  />
+                  <h3 className="font-display text-[17px] font-semibold tracking-tight hub-txt">
                     {group.titulo}
                   </h3>
-                  <span className="text-[11px] text-stone-400">
+                  <span className="text-[11px] hub-tx3">
                     {group.posts.length} {group.posts.length === 1 ? 'post' : 'posts'}
                   </span>
                   {effectiveCollapsed.has(group.titulo) && (
-                    <span className="text-[10px] text-stone-300 dark:text-stone-600 hidden sm:inline">
+                    <span className="text-[10px] hub-tx3 hidden sm:inline">
                       clique para expandir
                     </span>
                   )}
                   <ChevronDown
                     size={16}
-                    className={`ml-auto text-stone-400 transition-transform ${effectiveCollapsed.has(group.titulo) ? '-rotate-90' : ''}`}
+                    className={`ml-auto hub-tx3 transition-transform ${effectiveCollapsed.has(group.titulo) ? '-rotate-90' : ''}`}
                   />
                 </button>
 

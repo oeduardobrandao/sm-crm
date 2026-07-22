@@ -6,6 +6,13 @@ import { RichTextContent } from './RichTextContent';
 import type { HubPost, PostApproval } from '../types';
 import { useEditSuggestion } from '../hooks/useEditSuggestion';
 
+/** Status label color, independent from PostagensPage's StatusTag map (not guaranteed to share every key). */
+const STATUS_TEXT_COLOR: Record<string, string> = {
+  aprovado_cliente: 'text-emerald-600',
+  correcao_cliente: 'text-rose-600',
+  agendado: 'text-[#42c8f5]',
+};
+
 interface TextPostCardProps {
   post: HubPost;
   token: string;
@@ -64,7 +71,7 @@ export function TextPostCard({
 
   return (
     <div
-      className={`bg-white rounded-[10px] border transition-all ${expanded ? 'border-stone-300 shadow-sm' : 'border-stone-200 hover:shadow-sm'}`}
+      className={`hub-bg-card rounded-[10px] border transition-all ${expanded ? 'hub-border-strong shadow-sm' : 'hub-border hover:shadow-sm'}`}
     >
       <button
         className="w-full text-left px-5 py-4 flex items-start justify-between gap-3"
@@ -72,33 +79,33 @@ export function TextPostCard({
       >
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider bg-stone-900 text-white px-2 py-0.5 rounded">
+            <span className="text-[10px] font-bold uppercase tracking-wider hub-btn-primary px-2 py-0.5 rounded">
               {TIPO_LABEL[post.tipo] ?? post.tipo}
             </span>
-            <span className="text-[11px] font-semibold text-amber-600">
+            <span
+              className={`text-[11px] font-semibold ${STATUS_TEXT_COLOR[post.status] ?? 'hub-tx2'}`}
+            >
               {STATUS_LABEL[post.status] ?? post.status}
             </span>
             <PlatformBadge platform={post.platform} />
-            <span className="text-[12px] text-stone-400 ml-auto">
-              {formatDate(post.scheduled_at)}
-            </span>
+            <span className="text-[12px] hub-tx3 ml-auto">{formatDate(post.scheduled_at)}</span>
           </div>
-          <p className="font-semibold text-[14px] text-stone-900 mb-1">{post.titulo}</p>
-          {!expanded && preview && <p className="text-[13px] text-stone-500 truncate">{preview}</p>}
+          <p className="font-semibold text-[14px] hub-txt mb-1">{post.titulo}</p>
+          {!expanded && preview && <p className="text-[13px] hub-tx2 truncate">{preview}</p>}
         </div>
         <span
-          className={`mt-2 shrink-0 text-stone-400 transition-transform ${expanded ? 'rotate-180' : ''}`}
+          className={`mt-2 shrink-0 hub-tx3 transition-transform ${expanded ? 'rotate-180' : ''}`}
         >
           <ChevronDown size={18} />
         </span>
       </button>
 
       {expanded && (
-        <div className="px-5 pb-5 pt-1 border-t border-stone-100 space-y-4">
+        <div className="px-5 pb-5 pt-1 border-t hub-border space-y-4">
           {draftConteudo ? (
             <RichTextContent
               content={draftConteudo}
-              className="text-[13px] text-stone-600 leading-relaxed"
+              className="text-[13px] hub-tx2 leading-relaxed"
               editable={isEditable}
               onUpdate={
                 isEditable
@@ -110,7 +117,7 @@ export function TextPostCard({
               fallbackText={post.conteudo_plain}
             />
           ) : post.conteudo_plain ? (
-            <p className="text-[13px] text-stone-600 leading-relaxed whitespace-pre-wrap">
+            <p className="text-[13px] hub-tx2 leading-relaxed whitespace-pre-wrap">
               {post.conteudo_plain}
             </p>
           ) : null}
@@ -118,7 +125,7 @@ export function TextPostCard({
           {isEditable && saveState !== 'idle' && (
             <div className="flex items-center gap-1.5">
               {saveState === 'saving' && (
-                <span className="text-[11px] text-stone-400">Salvando sugestão...</span>
+                <span className="text-[11px] hub-tx3">Salvando sugestão...</span>
               )}
               {saveState === 'saved' && (
                 <>
@@ -144,8 +151,8 @@ export function TextPostCard({
           )}
 
           {(draftIgCaption || post.ig_caption) && (
-            <div className="border-l-2 border-stone-200 pl-3">
-              <p className="text-[11px] text-stone-400 font-medium mb-1">Legenda do Instagram</p>
+            <div className="border-l-2 hub-border pl-3">
+              <p className="text-[11px] hub-tx3 font-medium mb-1">Legenda do Instagram</p>
               {isEditable ? (
                 <textarea
                   defaultValue={draftIgCaption ?? ''}
@@ -153,10 +160,10 @@ export function TextPostCard({
                     igCaptionRef.current = e.target.value;
                     saveSuggestion(draftConteudo, post.conteudo_plain, e.target.value);
                   }}
-                  className="w-full text-[13px] text-stone-600 leading-relaxed border border-dashed border-stone-300 rounded-lg px-3 py-2 resize-none min-h-[60px] focus:outline-none focus:border-stone-400 focus:border-solid transition-colors"
+                  className="w-full text-[13px] hub-tx2 leading-relaxed border border-dashed hub-border-strong rounded-lg px-3 py-2 resize-none min-h-[60px] focus:outline-none focus:border-[var(--hub-bd2)] focus:border-solid transition-colors"
                 />
               ) : (
-                <p className="text-[13px] text-stone-600 leading-relaxed whitespace-pre-wrap">
+                <p className="text-[13px] hub-tx2 leading-relaxed whitespace-pre-wrap">
                   {post.ig_caption}
                 </p>
               )}
@@ -175,13 +182,13 @@ export function TextPostCard({
                     value={comentario}
                     onChange={(e) => setComentario(e.target.value)}
                     placeholder="Comente aqui ou corrija o texto diretamente no campo acima"
-                    className="w-full rounded border border-stone-200 px-4 py-3 text-[13px] resize-none min-h-[70px] bg-white text-stone-900 placeholder:text-stone-400 focus:outline-none focus:border-stone-300 focus:ring-4 focus:ring-[#FFBF30]/15 transition-all"
+                    className="hub-focus-accent w-full rounded border hub-border px-4 py-3 text-[13px] resize-none min-h-[70px] hub-bg-card hub-txt placeholder:text-[var(--hub-tx3)] focus:outline-none focus:border-[var(--hub-bd2)] focus:ring-4 transition-all"
                   />
                   <div className="flex gap-2">
                     <button
                       onClick={() => handleAction('aprovado')}
                       disabled={submitting || approvalBlocked}
-                      className="flex-1 flex items-center justify-center gap-1.5 bg-stone-900 text-white rounded py-2.5 min-h-[44px] text-[13px] font-semibold hover:bg-stone-800 disabled:opacity-50 transition-colors"
+                      className="flex-1 flex items-center justify-center gap-1.5 hub-btn-primary rounded py-2.5 min-h-[44px] text-[13px] font-semibold disabled:opacity-50 transition-colors"
                     >
                       <CheckCircle size={14} /> {saveState === 'saving' ? 'Salvando...' : 'Aprovar'}
                     </button>
@@ -193,7 +200,7 @@ export function TextPostCard({
                           ? 'Deixe um comentário para solicitar correção'
                           : undefined
                       }
-                      className="flex-1 flex items-center justify-center gap-1.5 border border-stone-200 bg-white text-stone-800 rounded py-2.5 min-h-[44px] text-[13px] font-semibold hover:bg-stone-50 disabled:opacity-50 transition-colors"
+                      className="flex-1 flex items-center justify-center gap-1.5 hub-btn-secondary rounded py-2.5 min-h-[44px] text-[13px] font-semibold disabled:opacity-50 transition-colors"
                     >
                       <AlertCircle size={14} /> Solicitar correção
                     </button>

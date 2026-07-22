@@ -435,7 +435,7 @@ export function InstagramGridPreview({
                   className="w-[86px] h-[86px] rounded-full object-cover"
                 />
               ) : (
-                <div className="w-[86px] h-[86px] rounded-full bg-stone-200 flex items-center justify-center text-2xl font-bold text-stone-500">
+                <div className="w-[86px] h-[86px] rounded-full hub-bg-soft flex items-center justify-center text-2xl font-bold hub-tx3">
                   {displayName.charAt(0).toUpperCase()}
                 </div>
               )}
@@ -542,7 +542,7 @@ export function InstagramGridPreview({
           </div>
 
           {/* Drag hint */}
-          <div className="flex items-center justify-center gap-1.5 py-2 bg-stone-50 text-stone-500 text-[11px] font-medium text-center px-3">
+          <div className="flex items-center justify-center gap-1.5 py-2 hub-bg-soft hub-tx3 text-[11px] font-medium text-center px-3">
             <svg
               width="12"
               height="12"
@@ -682,7 +682,7 @@ export function InstagramGridPreview({
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-stone-900 text-white text-[13px] font-semibold hover:bg-stone-800 disabled:opacity-50 transition-colors"
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg hub-btn-primary text-[13px] font-semibold disabled:opacity-50 transition-colors"
               >
                 {saving ? (
                   <div className="animate-spin h-4 w-4 rounded-full border-2 border-white/30 border-t-white" />

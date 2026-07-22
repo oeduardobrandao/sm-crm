@@ -12,23 +12,23 @@ const markdownComponents = {
   h1: (props: React.ComponentProps<'h1'>) => (
     <h1
       {...props}
-      className="font-display text-[1.875rem] font-semibold tracking-tight text-stone-900 mt-10 mb-3"
+      className="font-display text-[1.875rem] font-semibold tracking-tight hub-txt mt-10 mb-3"
     />
   ),
   h2: (props: React.ComponentProps<'h2'>) => (
     <h2
       {...props}
-      className="font-display text-[1.5rem] font-semibold tracking-tight text-stone-900 mt-8 mb-2.5"
+      className="font-display text-[1.5rem] font-semibold tracking-tight hub-txt mt-8 mb-2.5"
     />
   ),
   h3: (props: React.ComponentProps<'h3'>) => (
     <h3
       {...props}
-      className="font-display text-[1.25rem] font-semibold tracking-tight text-stone-900 mt-6 mb-2"
+      className="font-display text-[1.25rem] font-semibold tracking-tight hub-txt mt-6 mb-2"
     />
   ),
   p: (props: React.ComponentProps<'p'>) => (
-    <p {...props} className="text-[15px] text-stone-700 leading-relaxed mb-4" />
+    <p {...props} className="text-[15px] hub-tx2 leading-relaxed mb-4" />
   ),
   a: (props: React.ComponentProps<'a'>) => (
     <a
@@ -36,28 +36,25 @@ const markdownComponents = {
       href={sanitizeExternalUrl(props.href)}
       target="_blank"
       rel="noopener noreferrer"
-      className="text-stone-900 font-medium underline decoration-[#FFBF30] decoration-2 underline-offset-4 hover:decoration-stone-900 transition-colors"
+      className="hub-txt font-medium underline decoration-[var(--hub-acc)] decoration-2 underline-offset-4 hover:decoration-[var(--hub-txt)] transition-colors"
     />
   ),
   img: (props: React.ComponentProps<'img'>) => (
     <img
       {...props}
       src={sanitizeExternalUrl(props.src)}
-      className="rounded-xl max-w-full my-5 border border-stone-200/80"
+      className="rounded-xl max-w-full my-5 border hub-border"
     />
   ),
   ul: (props: React.ComponentProps<'ul'>) => (
-    <ul {...props} className="list-disc pl-6 mb-4 text-[15px] text-stone-700 leading-relaxed" />
+    <ul {...props} className="list-disc pl-6 mb-4 text-[15px] hub-tx2 leading-relaxed" />
   ),
   ol: (props: React.ComponentProps<'ol'>) => (
-    <ol {...props} className="list-decimal pl-6 mb-4 text-[15px] text-stone-700 leading-relaxed" />
+    <ol {...props} className="list-decimal pl-6 mb-4 text-[15px] hub-tx2 leading-relaxed" />
   ),
   li: (props: React.ComponentProps<'li'>) => <li {...props} className="mb-1" />,
   blockquote: (props: React.ComponentProps<'blockquote'>) => (
-    <blockquote
-      {...props}
-      className="border-l-4 border-stone-300 pl-4 my-4 text-stone-600 italic"
-    />
+    <blockquote {...props} className="border-l-4 hub-border-strong pl-4 my-4 hub-tx2 italic" />
   ),
   code: ({
     className,
@@ -68,36 +65,33 @@ const markdownComponents = {
     return isBlock ? (
       <code
         {...props}
-        className={`${className ?? ''} block bg-stone-100 rounded-lg p-4 my-4 text-sm text-stone-800 overflow-x-auto`}
+        className={`${className ?? ''} block hub-bg-soft rounded-lg p-4 my-4 text-sm hub-txt overflow-x-auto`}
       >
         {children}
       </code>
     ) : (
-      <code {...props} className="bg-stone-100 rounded px-1.5 py-0.5 text-sm text-stone-800">
+      <code {...props} className="hub-bg-soft rounded px-1.5 py-0.5 text-sm hub-txt">
         {children}
       </code>
     );
   },
   pre: (props: React.ComponentProps<'pre'>) => (
-    <pre
-      {...props}
-      className="bg-stone-100 rounded-lg p-4 my-4 text-sm text-stone-800 overflow-x-auto"
-    />
+    <pre {...props} className="hub-bg-soft rounded-lg p-4 my-4 text-sm hub-txt overflow-x-auto" />
   ),
-  hr: (props: React.ComponentProps<'hr'>) => <hr {...props} className="my-8 border-stone-200" />,
+  hr: (props: React.ComponentProps<'hr'>) => <hr {...props} className="my-8 hub-border" />,
   table: (props: React.ComponentProps<'table'>) => (
     <div className="overflow-x-auto my-4">
-      <table {...props} className="w-full text-[15px] text-stone-700 border-collapse" />
+      <table {...props} className="w-full text-[15px] hub-tx2 border-collapse" />
     </div>
   ),
   th: (props: React.ComponentProps<'th'>) => (
     <th
       {...props}
-      className="border border-stone-200 px-3 py-2 bg-stone-50 font-semibold text-left text-stone-900"
+      className="border hub-border px-3 py-2 hub-bg-soft font-semibold text-left hub-txt"
     />
   ),
   td: (props: React.ComponentProps<'td'>) => (
-    <td {...props} className="border border-stone-200 px-3 py-2" />
+    <td {...props} className="border hub-border px-3 py-2" />
   ),
 };
 
@@ -108,7 +102,7 @@ function renderBlock(block: HubContentBlock, i: number) {
         return (
           <h1
             key={i}
-            className="font-display text-[1.875rem] font-semibold tracking-tight text-stone-900 mt-10 mb-3"
+            className="font-display text-[1.875rem] font-semibold tracking-tight hub-txt mt-10 mb-3"
           >
             {block.content}
           </h1>
@@ -117,7 +111,7 @@ function renderBlock(block: HubContentBlock, i: number) {
         return (
           <h2
             key={i}
-            className="font-display text-[1.5rem] font-semibold tracking-tight text-stone-900 mt-8 mb-2.5"
+            className="font-display text-[1.5rem] font-semibold tracking-tight hub-txt mt-8 mb-2.5"
           >
             {block.content}
           </h2>
@@ -125,7 +119,7 @@ function renderBlock(block: HubContentBlock, i: number) {
       return (
         <h3
           key={i}
-          className="font-display text-[1.25rem] font-semibold tracking-tight text-stone-900 mt-6 mb-2"
+          className="font-display text-[1.25rem] font-semibold tracking-tight hub-txt mt-6 mb-2"
         >
           {block.content}
         </h3>
@@ -136,7 +130,7 @@ function renderBlock(block: HubContentBlock, i: number) {
           key={i}
           src={sanitizeExternalUrl(block.content)}
           alt=""
-          className="rounded-xl max-w-full my-5 border border-stone-200/80"
+          className="rounded-xl max-w-full my-5 border hub-border"
         />
       );
     case 'link':
@@ -146,7 +140,7 @@ function renderBlock(block: HubContentBlock, i: number) {
           href={sanitizeExternalUrl(block.href)}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-stone-900 font-medium underline decoration-[#FFBF30] decoration-2 underline-offset-4 hover:decoration-stone-900 transition-colors"
+          className="hub-txt font-medium underline decoration-[var(--hub-acc)] decoration-2 underline-offset-4 hover:decoration-[var(--hub-txt)] transition-colors"
         >
           {block.content}
         </a>
@@ -161,7 +155,7 @@ function renderBlock(block: HubContentBlock, i: number) {
       );
     default:
       return (
-        <p key={i} className="text-[15px] text-stone-700 leading-relaxed mb-4 whitespace-pre-wrap">
+        <p key={i} className="text-[15px] hub-tx2 leading-relaxed mb-4 whitespace-pre-wrap">
           {block.content}
         </p>
       );
@@ -187,18 +181,17 @@ export function PaginaPage() {
     );
 
   const page = data?.page;
-  if (!page)
-    return <div className="max-w-3xl mx-auto py-8 text-stone-500">Página não encontrada.</div>;
+  if (!page) return <div className="max-w-3xl mx-auto py-8 hub-tx2">Página não encontrada.</div>;
 
   return (
     <article className="max-w-3xl mx-auto hub-fade-up">
       <Link
         to={`${base}/paginas`}
-        className="inline-flex items-center gap-1.5 text-[13px] text-stone-500 hover:text-stone-900 mb-8 group transition-colors"
+        className="hub-back-link inline-flex items-center gap-1.5 text-[13px] hub-tx3 mb-8 group transition-colors"
       >
         <ArrowLeft size={15} className="group-hover:-translate-x-0.5 transition-transform" /> Voltar
       </Link>
-      <h1 className="font-display text-[2.25rem] sm:text-[2.75rem] leading-[1.05] font-medium tracking-tight text-stone-900 mb-8">
+      <h1 className="font-display text-[2.25rem] sm:text-[2.75rem] leading-[1.05] font-medium tracking-tight hub-txt mb-8">
         {page.title}
       </h1>
       <div>{page.content.map(renderBlock)}</div>

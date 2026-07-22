@@ -11,6 +11,18 @@
       :root {
         --hub-font-display: 'Fraunces', ui-serif, Georgia, serif;
         --hub-font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+        /* Fallback values only — HubShell overrides these inline via resolveHubTheme() before paint. */
+        --hub-bg: #FAFAFA;
+        --hub-card: #FFFFFF;
+        --hub-txt: #171717;
+        --hub-tx2: #525252;
+        --hub-tx3: #8A8A8A;
+        --hub-bd: rgba(0,0,0,.08);
+        --hub-bd2: rgba(0,0,0,.2);
+        --hub-soft: #F4F4F4;
+        --hub-acc: #171717;
+        --hub-acc-fg: #ffffff;
+        --hub-logo-filter: none;
       }
       .hub-root, .hub-root button, .hub-root input, .hub-root textarea, .hub-root select {
         font-family: var(--hub-font-sans);
@@ -22,36 +34,102 @@
         letter-spacing: -0.01em;
       }
       .hub-root {
-        background-color: #FAFAF7;
-        color: #1C1917;
+        background-color: var(--hub-bg);
+        color: var(--hub-txt);
         -webkit-font-smoothing: antialiased;
         text-rendering: optimizeLegibility;
       }
       .hub-root .hub-noise {
         background-image:
-          radial-gradient(1200px 600px at 10% -10%, rgba(255, 191, 48, 0.06), transparent 60%),
-          radial-gradient(900px 500px at 110% 10%, rgba(28, 25, 23, 0.035), transparent 60%);
+          radial-gradient(1200px 600px at 10% -10%, color-mix(in srgb, var(--hub-acc) 6%, transparent), transparent 60%),
+          radial-gradient(900px 500px at 110% 10%, color-mix(in srgb, var(--hub-txt) 3.5%, transparent), transparent 60%);
       }
       .hub-root .accent-bar {
         display: inline-block;
         width: 6px;
         height: 6px;
         border-radius: 9999px;
-        background-color: #FFBF30;
-        box-shadow: 0 0 0 4px rgba(255, 191, 48, 0.18);
+        background-color: var(--hub-acc);
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--hub-acc) 18%, transparent);
         margin-right: 10px;
         vertical-align: middle;
       }
       .hub-root .hub-card {
-        background-color: #ffffff;
-        border: 1px solid rgba(231, 229, 228, 0.9);
+        background-color: var(--hub-card);
+        border: 1px solid var(--hub-bd);
         border-radius: 12px;
         box-shadow: 0 1px 0 rgba(0,0,0,0.02), 0 1px 2px rgba(28, 25, 23, 0.04);
       }
       .hub-root .hub-card-hover:hover {
-        border-color: rgba(214, 211, 209, 1);
+        border-color: var(--hub-bd2);
         box-shadow: 0 1px 0 rgba(0,0,0,0.02), 0 6px 16px -8px rgba(28, 25, 23, 0.08);
         transform: translateY(-1px);
+      }
+      /* Neutral text/surface/border utilities — replace stone-* Tailwind classes in touched files. */
+      .hub-root .hub-txt { color: var(--hub-txt); }
+      .hub-root .hub-tx2 { color: var(--hub-tx2); }
+      .hub-root .hub-tx3 { color: var(--hub-tx3); }
+      .hub-root .hub-bg-card { background-color: var(--hub-card); }
+      .hub-root .hub-bg-soft { background-color: var(--hub-soft); }
+      .hub-root .hub-border { border-color: var(--hub-bd); }
+      .hub-root .hub-border-strong { border-color: var(--hub-bd2); }
+      .hub-root .hub-acc-text { color: var(--hub-acc); }
+      .hub-root .hub-back-link:hover { color: var(--hub-txt); }
+      .hub-root .hub-link-muted:hover { color: var(--hub-txt); }
+      .hub-root .hub-divide > * + * { border-top: 1px solid var(--hub-bd); }
+      .hub-root .hub-download-link:hover .hub-download-hint { color: var(--hub-txt); }
+      .hub-root .hub-page-row:hover .hub-page-chevron { color: var(--hub-txt); }
+      .hub-root .hub-tab-btn:hover { color: var(--hub-tx2); }
+      .hub-root .hub-icon-btn:hover { background: var(--hub-soft); }
+      .hub-root .hub-action-pill { background: var(--hub-soft); }
+      .hub-root .hub-action-pill:hover { background: var(--hub-bd2); }
+      /* Tailwind can't apply an opacity modifier (e.g. `/15`) to an arbitrary
+         `var()` color value — it needs a literal color to decompose into
+         channels, so `focus:ring-[var(--hub-acc)]/15` silently produces no
+         rule. Fall back to overriding Tailwind's own --tw-ring-color custom
+         property (consumed by the `ring-4` utility's box-shadow) directly. */
+      .hub-root .hub-focus-accent:focus {
+        --tw-ring-color: color-mix(in srgb, var(--hub-acc) 15%, transparent);
+      }
+      /* Primary/secondary buttons — replaces the repeated `bg-stone-900 text-white hover:bg-stone-800`
+         and `border-stone-200 ... hover:bg-stone-50` pairs found across every post-card component. */
+      .hub-root .hub-btn-primary {
+        background-color: var(--hub-acc);
+        color: var(--hub-acc-fg);
+        transition: opacity 200ms ease;
+      }
+      .hub-root .hub-btn-primary:hover { opacity: 0.88; }
+      .hub-root .hub-btn-secondary {
+        background-color: transparent;
+        color: var(--hub-tx2);
+        border: 1px solid var(--hub-bd2);
+        transition: background-color 200ms ease;
+      }
+      .hub-root .hub-btn-secondary:hover { background-color: var(--hub-soft); }
+      /* Status pills — approved/correction/pending tri-tone, matches StatusPill.tsx tones. */
+      .hub-root .hub-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        border-radius: 9999px;
+        padding: 0.15rem 0.65rem;
+        font-size: 11px;
+        font-weight: 600;
+      }
+      .hub-root .hub-pill-accent {
+        background: color-mix(in srgb, var(--hub-acc) 12%, transparent);
+        color: var(--hub-acc);
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hub-acc) 35%, transparent);
+      }
+      .hub-root .hub-pill-danger {
+        background: transparent;
+        color: #B0472E;
+        box-shadow: inset 0 0 0 1px rgba(176,71,46,.4);
+      }
+      .hub-root .hub-pill-neutral {
+        background: transparent;
+        color: var(--hub-tx2);
+        box-shadow: inset 0 0 0 1px var(--hub-bd2);
       }
       .hub-root .hub-card-hover {
         transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
@@ -67,85 +145,6 @@
         .hub-root .hub-fade-up {
           animation: none;
         }
-      }
-      /* ── Dark mode ─────────────────────────────────────────── */
-      .hub-root[data-theme="dark"] {
-        background-color: #111110;
-        color: #E7E5E4;
-      }
-      .hub-root[data-theme="dark"] .hub-noise {
-        background-image:
-          radial-gradient(1200px 600px at 10% -10%, rgba(255, 191, 48, 0.04), transparent 60%),
-          radial-gradient(900px 500px at 110% 10%, rgba(0,0,0,0.15), transparent 60%);
-      }
-      /* Cards */
-      .hub-root[data-theme="dark"] .hub-card {
-        background-color: #1C1917;
-        border-color: rgba(68, 64, 60, 0.8);
-        box-shadow: none;
-      }
-      .hub-root[data-theme="dark"] .hub-card-hover:hover {
-        border-color: rgba(87, 83, 78, 1);
-        box-shadow: 0 6px 16px -8px rgba(0,0,0,0.4);
-      }
-      /* Mobile bottom tab bar */
-      .hub-root[data-theme="dark"] nav.fixed {
-        background-color: rgba(12, 10, 9, 0.95);
-        border-top-color: rgba(68, 64, 60, 0.8);
-      }
-      /* Spinners */
-      .hub-root[data-theme="dark"] .border-stone-300 { border-color: rgb(68 64 60); }
-      /* Muted text */
-      .hub-root[data-theme="dark"] .text-stone-900 { color: #E7E5E4; }
-      .hub-root[data-theme="dark"] .text-stone-800 { color: #D6D3D1; }
-      .hub-root[data-theme="dark"] .text-stone-600 { color: #A8A29E; }
-      .hub-root[data-theme="dark"] .text-stone-500 { color: #78716C; }
-      /* PostCard: expanded body */
-      .hub-root[data-theme="dark"] .bg-stone-50\/30 { background-color: rgba(28,25,23,0.5); }
-      .hub-root[data-theme="dark"] .hover\:bg-stone-50\/80:hover { background-color: rgba(41,37,36,0.5); }
-      /* bg-stone-100 used for chevron btn, calendar nav arrows bg, reaction pills */
-      .hub-root[data-theme="dark"] .bg-stone-100 { background-color: #292524; }
-      .hub-root[data-theme="dark"] .hover\:bg-stone-100:hover { background-color: #292524; }
-      .hub-root[data-theme="dark"] .hover\:bg-stone-100\/80:hover { background-color: rgba(41,37,36,0.6); }
-      /* Borders */
-      .hub-root[data-theme="dark"] .border-stone-200\/80 { border-color: rgba(68,64,60,0.8); }
-      .hub-root[data-theme="dark"] .border-stone-200\/70 { border-color: rgba(68,64,60,0.7); }
-      /* Inputs and textareas */
-      .hub-root[data-theme="dark"] input:not([type="checkbox"]),
-      .hub-root[data-theme="dark"] textarea {
-        background-color: #1C1917;
-        color: #E7E5E4;
-        border-color: rgba(68,64,60,0.8);
-      }
-      .hub-root[data-theme="dark"] input::placeholder,
-      .hub-root[data-theme="dark"] textarea::placeholder { color: #78716c; }
-      /* bg-white surfaces: PostCard, Calendar side panel items, MarcaPage, etc. */
-      .hub-root[data-theme="dark"] .bg-white { background-color: #1C1917; }
-      .hub-root[data-theme="dark"] .hover\:bg-white:hover { background-color: #292524; }
-      /* PostCalendar: side panel */
-      .hub-root[data-theme="dark"] .bg-stone-50\/70 { background-color: rgba(28,25,23,0.7); }
-      /* Hover states */
-      .hub-root[data-theme="dark"] .hover\:bg-stone-50:hover { background-color: #292524; }
-      .hub-root[data-theme="dark"] .hover\:bg-red-50:hover { background-color: rgba(127,29,29,0.15); }
-      /* Briefing textarea focus bg */
-      .hub-root[data-theme="dark"] .focus\:bg-white:focus { background-color: #1C1917; }
-      /* BriefingPage tabs border */
-      .hub-root[data-theme="dark"] .border-b { border-bottom-color: rgba(68,64,60,0.8); }
-      /* Dividers */
-      .hub-root[data-theme="dark"] .divide-stone-200\/80 > * + * { border-color: rgba(68,64,60,0.8); }
-      .hub-root[data-theme="dark"] .border-stone-100 { border-color: rgba(68,64,60,0.5); }
-      /* PostagensPage workflow group divider line */
-      .hub-root[data-theme="dark"] .bg-stone-300 { background-color: #57534e; }
-      /* text-stone-700: markdown paragraphs, lists, tables */
-      .hub-root[data-theme="dark"] .text-stone-700 { color: #A8A29E; }
-      /* bg-stone-50: table headers */
-      .hub-root[data-theme="dark"] .bg-stone-50 { background-color: #1C1917; }
-      /* border-stone-200: tables, hr */
-      .hub-root[data-theme="dark"] .border-stone-200 { border-color: rgba(68,64,60,0.8); }
-      /* Status pill bg-stone-100 text-stone-700 */
-      .hub-root[data-theme="dark"] .bg-stone-100.text-stone-700 {
-        background-color: #292524;
-        color: #A8A29E;
       }
       /* Mobile audit (#1): prevent iOS Safari auto-zoom on focus.
          All editable form controls must render at >=16px on phones. These

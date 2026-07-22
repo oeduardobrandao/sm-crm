@@ -5,8 +5,11 @@ import { MemoryRouter, Outlet, Route, Routes } from 'react-router-dom';
 vi.mock('../../api', () => ({
   fetchBootstrap: vi.fn(),
 }));
-vi.mock('../HubNav', () => ({
-  HubNav: () => <nav>Hub nav</nav>,
+vi.mock('../HubSidebar', () => ({
+  HubSidebar: () => <nav>Hub sidebar</nav>,
+}));
+vi.mock('../HubMobileNav', () => ({
+  HubMobileNav: () => <nav>Hub mobile nav</nav>,
 }));
 
 import { fetchBootstrap } from '../../api';
@@ -47,13 +50,45 @@ describe('HubShell', () => {
     });
 
     expect(mockedFetchBootstrap).toHaveBeenCalledWith('mesaas', 'token-publico');
-    expect(screen.getByText('Hub nav')).toBeInTheDocument();
+    expect(screen.getByText('Hub sidebar')).toBeInTheDocument();
+    expect(screen.getByText('Hub mobile nav')).toBeInTheDocument();
     await waitFor(() => {
       expect(document.querySelector("link[rel='icon']")).toHaveAttribute(
         'href',
         'https://cdn.mesaas.com/logo.png',
       );
     });
+  });
+
+  it('injects resolved --hub-* CSS variables based on workspace brand_color and theme', async () => {
+    mockedFetchBootstrap.mockResolvedValue({
+      workspace: {
+        name: 'Mesaas',
+        logo_url: null,
+        brand_color: '#0f766e',
+      },
+      cliente_nome: 'Clínica Aurora',
+      is_active: true,
+      cliente_id: 14,
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/mesaas/hub/token-publico']}>
+        <Routes>
+          <Route path="/:workspace/hub/:token" element={<HubShell />}>
+            <Route index element={<div>Página inicial do hub</div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Página inicial do hub')).toBeInTheDocument();
+    });
+
+    const styleTag = document.querySelector('style');
+    expect(styleTag?.textContent).toContain('--hub-acc:');
+    expect(styleTag?.textContent).toContain('--hub-bg:');
   });
 
   it('renders the invalid link state when bootstrap fails', async () => {

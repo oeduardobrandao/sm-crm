@@ -7,6 +7,7 @@ import { OptimizedImage } from './OptimizedImage';
 import { RichTextContent } from './RichTextContent';
 import { useEditSuggestion } from '../hooks/useEditSuggestion';
 import { sanitizeExternalUrl } from '../lib/security';
+import { StatusPill } from './StatusPill';
 
 export const TIPO_LABEL: Record<string, string> = {
   feed: 'Feed',
@@ -167,9 +168,9 @@ function PropertyRow({
   };
 
   return (
-    <div className="flex items-start gap-3 py-2.5 border-b border-stone-200/70 last:border-b-0">
-      <span className="text-[12.5px] text-stone-500 w-36 shrink-0 pt-0.5">{def.name}</span>
-      <div className="flex-1 min-w-0 text-stone-900">{renderValue()}</div>
+    <div className="flex items-start gap-3 py-2.5 border-b hub-border last:border-b-0">
+      <span className="text-[12.5px] hub-tx2 w-36 shrink-0 pt-0.5">{def.name}</span>
+      <div className="flex-1 min-w-0 hub-txt">{renderValue()}</div>
     </div>
   );
 }
@@ -260,15 +261,6 @@ export function PostCard({
     }
   }
 
-  const statusStyles =
-    post.status === 'correcao_cliente'
-      ? 'bg-rose-50 text-rose-700 ring-1 ring-rose-200/60'
-      : isPending
-        ? 'bg-[#FFBF30]/18 text-stone-900 ring-1 ring-[#FFBF30]/50'
-        : post.status === 'agendado'
-          ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200/60'
-          : 'bg-stone-100 text-stone-700 ring-1 ring-stone-200/80';
-
   return (
     <div ref={cardRef} className="hub-card overflow-hidden transition-shadow hover:shadow-md">
       {displayCover ? (
@@ -279,7 +271,7 @@ export function PostCard({
             const coverIdx = post.media?.findIndex((m) => m.id === displayCover.id) ?? 0;
             setLightboxIdx(Math.max(0, coverIdx));
           }}
-          className="relative block w-full aspect-[4/3] overflow-hidden bg-stone-100"
+          className="relative block w-full aspect-[4/3] overflow-hidden hub-bg-soft"
         >
           {displayCover.kind === 'image' ? (
             <OptimizedImage
@@ -313,7 +305,7 @@ export function PostCard({
           )}
         </button>
       ) : (
-        <div className="w-full aspect-[4/3] bg-stone-100 flex flex-col items-center justify-center gap-2 text-stone-400">
+        <div className="w-full aspect-[4/3] hub-bg-soft flex flex-col items-center justify-center gap-2 hub-tx3">
           <svg
             className="h-8 w-8 opacity-40"
             viewBox="0 0 24 24"
@@ -331,39 +323,49 @@ export function PostCard({
         </div>
       )}
       <button
-        className="w-full flex items-start justify-between gap-3 px-5 py-4 text-left hover:bg-stone-50/80 transition-colors"
+        className="w-full flex items-start justify-between gap-3 px-5 py-4 text-left hover:bg-[var(--hub-soft)] transition-colors"
         onClick={() => setExpanded((e) => !e)}
       >
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 mb-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider bg-stone-900 text-white px-2 py-0.5 rounded-full">
+            <span className="text-[10px] font-bold uppercase tracking-wider hub-btn-primary px-2 py-0.5 rounded-full">
               {TIPO_LABEL[post.tipo] ?? post.tipo}
             </span>
-            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${statusStyles}`}>
-              {STATUS_LABEL[post.status] ?? post.status}
-            </span>
+            {post.status === 'agendado' ? (
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200/60">
+                {STATUS_LABEL[post.status] ?? post.status}
+              </span>
+            ) : (
+              <StatusPill
+                tone={
+                  post.status === 'correcao_cliente' ? 'danger' : isPending ? 'accent' : 'neutral'
+                }
+              >
+                {STATUS_LABEL[post.status] ?? post.status}
+              </StatusPill>
+            )}
             <PlatformBadge platform={post.platform} />
           </div>
-          <p className="font-display font-semibold text-[16px] tracking-tight text-stone-900 leading-snug">
+          <p className="font-display font-semibold text-[16px] tracking-tight hub-txt leading-snug">
             {post.titulo}
           </p>
           {post.scheduled_at && (
-            <p className="text-[12px] text-stone-500 mt-1">{formatDate(post.scheduled_at)}</p>
+            <p className="text-[12px] hub-tx2 mt-1">{formatDate(post.scheduled_at)}</p>
           )}
         </div>
         <span
-          className={`mt-1 shrink-0 flex items-center justify-center w-7 h-7 rounded-full text-stone-500 transition-all ${expanded ? 'bg-stone-100 rotate-180' : 'hover:bg-stone-100'}`}
+          className={`mt-1 shrink-0 flex items-center justify-center w-7 h-7 rounded-full hub-tx2 transition-all ${expanded ? 'hub-bg-soft rotate-180' : 'hover:bg-[var(--hub-soft)]'}`}
         >
           <ChevronDown size={15} />
         </span>
       </button>
 
       {expanded && (
-        <div className="border-t border-stone-200/80 px-5 pb-5 pt-4 space-y-5 bg-stone-50/30">
+        <div className="border-t hub-border px-5 pb-5 pt-4 space-y-5 hub-bg-soft">
           {draftConteudo ? (
             <RichTextContent
               content={draftConteudo}
-              className="text-[13.5px] text-stone-600 leading-relaxed"
+              className="text-[13.5px] hub-tx2 leading-relaxed"
               editable={isEditable}
               onUpdate={
                 isEditable
@@ -375,7 +377,7 @@ export function PostCard({
               fallbackText={post.conteudo_plain}
             />
           ) : post.conteudo_plain ? (
-            <p className="text-[13.5px] text-stone-600 leading-relaxed whitespace-pre-wrap">
+            <p className="text-[13.5px] hub-tx2 leading-relaxed whitespace-pre-wrap">
               {post.conteudo_plain}
             </p>
           ) : null}
@@ -383,7 +385,7 @@ export function PostCard({
           {isEditable && saveState !== 'idle' && (
             <div className="flex items-center gap-1.5">
               {saveState === 'saving' && (
-                <span className="text-[11px] text-stone-400">Salvando sugestão...</span>
+                <span className="text-[11px] hub-tx3">Salvando sugestão...</span>
               )}
               {saveState === 'saved' && (
                 <>
@@ -415,7 +417,7 @@ export function PostCard({
                   key={m.id}
                   type="button"
                   onClick={() => setLightboxIdx(i)}
-                  className="shrink-0 w-20 h-20 rounded-lg overflow-hidden bg-stone-100 ring-1 ring-stone-200/80 hover:ring-stone-400 transition-all"
+                  className="shrink-0 w-20 h-20 rounded-lg overflow-hidden hub-bg-soft ring-1 ring-[var(--hub-bd)] hover:ring-[var(--hub-bd2)] transition-all"
                 >
                   {m.kind === 'image' ? (
                     <OptimizedImage
@@ -443,8 +445,8 @@ export function PostCard({
           )}
 
           {postProperties.length > 0 && (
-            <div className="rounded-xl border border-stone-200/80 bg-white px-4 pt-3 pb-1">
-              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-stone-400 pb-2">
+            <div className="rounded-xl border hub-border hub-bg-card px-4 pt-3 pb-1">
+              <p className="text-[10px] font-bold uppercase tracking-[0.12em] hub-tx3 pb-2">
                 Propriedades
               </p>
               {postProperties.map((p) => (
@@ -460,7 +462,7 @@ export function PostCard({
 
           {postApprovals.length > 0 && (
             <div className="space-y-2.5">
-              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em] text-stone-400">
+              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em] hub-tx3">
                 <MessageSquare size={12} /> Comentários
               </div>
               {postApprovals.map((a) => {
@@ -482,21 +484,28 @@ export function PostCard({
                   <div
                     key={a.id}
                     className={`rounded-xl px-4 py-3 text-[13.5px] ${
-                      isTeam
-                        ? 'bg-[#FFBF30]/10 ring-1 ring-[#FFBF30]/25 ml-6'
-                        : 'bg-white ring-1 ring-stone-200/80 mr-6'
+                      isTeam ? 'ml-6' : 'hub-bg-card ring-1 ring-[var(--hub-bd)] mr-6'
                     }`}
+                    style={
+                      isTeam
+                        ? {
+                            background: 'color-mix(in srgb, var(--hub-acc) 10%, transparent)',
+                            boxShadow:
+                              'inset 0 0 0 1px color-mix(in srgb, var(--hub-acc) 25%, transparent)',
+                          }
+                        : undefined
+                    }
                   >
                     <div className="flex items-center gap-2 mb-1">
                       <span
-                        className={`font-semibold text-[11.5px] ${isTeam ? 'text-amber-900' : 'text-stone-900'}`}
+                        className={`font-semibold text-[11.5px] ${isTeam ? 'hub-acc-text' : 'hub-txt'}`}
                       >
                         {label}
                       </span>
-                      <span className="text-[11px] text-stone-400">{date}</span>
+                      <span className="text-[11px] hub-tx3">{date}</span>
                     </div>
                     {a.comentario && (
-                      <p className="text-[13.5px] leading-relaxed text-stone-800">{a.comentario}</p>
+                      <p className="text-[13.5px] leading-relaxed hub-txt">{a.comentario}</p>
                     )}
                   </div>
                 );
@@ -507,7 +516,7 @@ export function PostCard({
           {!isPending && (
             <div className="flex items-center gap-2">
               <input
-                className="flex-1 rounded-full border border-stone-200/80 bg-white px-4 py-2.5 text-[13.5px] text-stone-900 placeholder:text-stone-400 focus:outline-none focus:border-stone-300 focus:ring-4 focus:ring-[#FFBF30]/15 transition-all"
+                className="hub-focus-accent flex-1 rounded-full border hub-border hub-bg-card px-4 py-2.5 text-[13.5px] hub-txt placeholder:text-[var(--hub-tx3)] focus:outline-none focus:border-[var(--hub-bd2)] focus:ring-4 transition-all"
                 placeholder="Enviar mensagem…"
                 value={replyText}
                 onChange={(e) => setReplyText(e.target.value)}
@@ -519,7 +528,7 @@ export function PostCard({
                 }}
               />
               <button
-                className="shrink-0 flex items-center justify-center w-10 h-10 rounded-full bg-stone-900 text-white hover:bg-stone-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                className="shrink-0 flex items-center justify-center w-10 h-10 rounded-full hub-btn-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 disabled={sendingReply || !replyText.trim()}
                 onClick={handleReply}
                 aria-label="Enviar"
@@ -541,13 +550,13 @@ export function PostCard({
                     value={comentario}
                     onChange={(e) => setComentario(e.target.value)}
                     placeholder="Comentário (opcional)…"
-                    className="w-full rounded-xl border border-stone-200/80 px-4 py-3 text-[13.5px] resize-none min-h-[80px] bg-white text-stone-900 placeholder:text-stone-400 focus:outline-none focus:border-stone-300 focus:ring-4 focus:ring-[#FFBF30]/15 transition-all"
+                    className="hub-focus-accent w-full rounded-xl border hub-border px-4 py-3 text-[13.5px] resize-none min-h-[80px] hub-bg-card hub-txt placeholder:text-[var(--hub-tx3)] focus:outline-none focus:border-[var(--hub-bd2)] focus:ring-4 transition-all"
                   />
                   <div className="flex gap-2.5">
                     <button
                       onClick={() => handleAction('aprovado')}
                       disabled={submitting || approvalBlocked}
-                      className="flex-1 flex items-center justify-center gap-2 bg-stone-900 text-white rounded-full py-3 min-h-[44px] text-[13.5px] font-semibold hover:bg-stone-800 disabled:opacity-50 transition-colors shadow-sm"
+                      className="flex-1 flex items-center justify-center gap-2 hub-btn-primary rounded-full py-3 min-h-[44px] text-[13.5px] font-semibold disabled:opacity-50 transition-colors shadow-sm"
                     >
                       <CheckCircle size={15} />{' '}
                       {saveState === 'saving' ? 'Salvando sugestão...' : 'Aprovar'}
@@ -555,7 +564,7 @@ export function PostCard({
                     <button
                       onClick={() => handleAction('correcao')}
                       disabled={submitting || approvalBlocked}
-                      className="flex-1 flex items-center justify-center gap-2 border border-stone-200/80 bg-white text-stone-800 rounded-full py-3 min-h-[44px] text-[13.5px] font-semibold hover:border-stone-300 hover:bg-stone-50 disabled:opacity-50 transition-colors"
+                      className="flex-1 flex items-center justify-center gap-2 rounded-full py-3 min-h-[44px] text-[13.5px] font-semibold hub-btn-secondary disabled:opacity-50 transition-colors"
                     >
                       <AlertCircle size={15} /> Solicitar correção
                     </button>

@@ -51,22 +51,20 @@ export function RelatorioViewPage() {
         <button
           type="button"
           onClick={() => navigate(`${base}/relatorios`)}
-          className="flex items-center gap-1.5 text-[13px] font-medium text-stone-500 hover:text-stone-900 transition-colors"
+          className="hub-back-link flex items-center gap-1.5 text-[13px] font-medium hub-tx3 transition-colors"
         >
           <ArrowLeft size={15} strokeWidth={2} />
           Relatórios
         </button>
 
-        {month && <span className="text-stone-300 select-none">/</span>}
+        {month && <span className="hub-tx3 select-none">/</span>}
 
-        {month && (
-          <span className="text-[13px] font-medium text-stone-900">{formatMonth(month)}</span>
-        )}
+        {month && <span className="text-[13px] font-medium hub-txt">{formatMonth(month)}</span>}
 
         <button
           type="button"
           onClick={handleDownloadPdf}
-          className="ml-auto flex items-center gap-1.5 text-[12px] font-medium text-stone-700 hover:text-stone-900 bg-stone-100 hover:bg-stone-200 transition-colors px-3 py-1.5 rounded-lg"
+          className="ml-auto flex items-center gap-1.5 text-[12px] font-medium hub-tx2 hub-action-pill transition-colors px-3 py-1.5 rounded-lg"
         >
           <Download size={13} strokeWidth={2} />
           Baixar PDF
@@ -81,7 +79,7 @@ export function RelatorioViewPage() {
       )}
 
       {isError && (
-        <div className="max-w-5xl mx-auto py-20 text-center text-sm text-stone-500">
+        <div className="max-w-5xl mx-auto py-20 text-center text-sm hub-tx2">
           Erro ao carregar o relatório.
         </div>
       )}

@@ -24,7 +24,7 @@ export function SharePostButton({ postId, className }: { postId: number; classNa
       type="button"
       onClick={copy}
       aria-label="Copiar link da postagem"
-      className={`inline-flex items-center gap-1 text-[12px] text-stone-500 hover:text-stone-900 transition-colors ${className ?? ''}`}
+      className={`inline-flex items-center gap-1 text-[12px] hub-tx3 hub-link-muted transition-colors ${className ?? ''}`}
     >
       {copied ? <Check size={13} /> : <LinkIcon size={13} />}
       {copied ? 'Copiado!' : 'Compartilhar'}

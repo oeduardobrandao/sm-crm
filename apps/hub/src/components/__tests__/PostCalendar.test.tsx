@@ -43,6 +43,8 @@ function getDayButton(day: number) {
 }
 
 describe('PostCalendar', () => {
+  const originalTZ = process.env.TZ;
+
   beforeEach(() => {
     navigateMock.mockReset();
     vi.useFakeTimers();
@@ -50,6 +52,7 @@ describe('PostCalendar', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    process.env.TZ = originalTZ;
   });
 
   it('shows grouped posts for the current day, lets the user choose another day, and navigates to the post details', () => {
@@ -130,7 +133,7 @@ describe('PostCalendar', () => {
 
     expect(screen.getByText('10 de Janeiro, 2026')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Mês anterior' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Mês anterior' })[0]);
 
     expect(screen.getAllByText(/Dezembro 2025/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('Selecione um dia.')).toBeInTheDocument();
@@ -140,12 +143,12 @@ describe('PostCalendar', () => {
     expect(screen.getByText('12 de Dezembro, 2025')).toBeInTheDocument();
     expect(screen.getByText('Retrospectiva 2025')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Próximo mês' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Próximo mês' })[0]);
 
     expect(screen.getAllByText(/Janeiro 2026/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('Selecione um dia.')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Próximo mês' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Próximo mês' })[0]);
 
     expect(screen.getAllByText(/Fevereiro 2026/).length).toBeGreaterThanOrEqual(1);
 
@@ -153,5 +156,30 @@ describe('PostCalendar', () => {
 
     expect(screen.getByText('3 de Fevereiro, 2026')).toBeInTheDocument();
     expect(screen.getByText('Campanha de fevereiro')).toBeInTheDocument();
+  });
+
+  it('anchors "today" and the initially selected day to the UTC calendar day, not the viewer\'s local day', () => {
+    // Posts are grouped by scheduled_at in UTC (postsForDay), so a viewer
+    // west of UTC late in their evening must still see "today" land on the
+    // UTC date, not fall back a day to their local date.
+    process.env.TZ = 'America/Fortaleza'; // UTC-3
+    vi.setSystemTime(new Date('2026-07-21T01:00:00.000Z')); // 2026-07-20 22:00 local
+
+    render(
+      <PostCalendar
+        posts={[
+          makePost({
+            id: 21,
+            titulo: 'Post de hoje (UTC)',
+            scheduled_at: '2026-07-21T05:00:00.000Z',
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText('21 de Julho, 2026')).toBeInTheDocument();
+    expect(screen.getByText('Post de hoje (UTC)')).toBeInTheDocument();
+
+    expect(getDayButton(21)).toHaveAttribute('aria-current', 'date');
   });
 });

@@ -24,7 +24,7 @@ export function PostagemFocoPage() {
   const backLink = (
     <Link
       to={`${base}/postagens`}
-      className="inline-flex items-center gap-1.5 text-[13px] text-stone-500 hover:text-stone-900 group transition-colors"
+      className="hub-back-link inline-flex items-center gap-1.5 text-[13px] hub-tx3 group transition-colors"
     >
       <ArrowLeft size={15} className="group-hover:-translate-x-0.5 transition-transform" /> Ver
       todas as postagens
@@ -41,10 +41,10 @@ export function PostagemFocoPage() {
   if (isError)
     return (
       <div className="max-w-3xl mx-auto py-16 text-center">
-        <p className="text-sm text-stone-500 mb-4">Não foi possível carregar esta postagem.</p>
+        <p className="text-sm hub-tx2 mb-4">Não foi possível carregar esta postagem.</p>
         <button
           onClick={() => refetch()}
-          className="text-[13px] font-medium text-stone-900 underline decoration-[#FFBF30] decoration-2 underline-offset-4"
+          className="text-[13px] font-medium hub-txt underline decoration-[var(--hub-acc)] decoration-2 underline-offset-4"
         >
           Tentar novamente
         </button>
@@ -57,7 +57,7 @@ export function PostagemFocoPage() {
     return (
       <div className="max-w-3xl mx-auto hub-fade-up">
         {backLink}
-        <div className="py-8 text-stone-500">Esta postagem não está disponível.</div>
+        <div className="py-8 hub-tx2">Esta postagem não está disponível.</div>
       </div>
     );
 

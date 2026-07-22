@@ -54,6 +54,10 @@ export const router = createBrowserRouter([
           Component: (await import('./pages/RelatorioView')).RelatorioViewPage,
         }),
       },
+      {
+        path: 'mensagens',
+        lazy: async () => ({ Component: (await import('./pages/MensagensPage')).MensagensPage }),
+      },
     ],
   },
   {

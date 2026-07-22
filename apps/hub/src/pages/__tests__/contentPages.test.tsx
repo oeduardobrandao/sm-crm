@@ -132,7 +132,7 @@ describe('hub content pages', () => {
     vi.useRealTimers();
   });
 
-  it('renders the home dashboard cards, pending approvals, and filtered calendar posts', async () => {
+  it('renders the home KPI grid with a clickable pending-approvals card and filtered calendar posts', async () => {
     mockedFetchPosts.mockResolvedValue({
       posts: [
         makePost({ id: 1, titulo: 'Post pendente', status: 'enviado_cliente' }),
@@ -147,9 +147,16 @@ describe('hub content pages', () => {
     expect(
       await screen.findByText('Post calendar: Post pendente, Post agendado'),
     ).toBeInTheDocument();
-    expect(screen.getByText('1', { selector: 'span' })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /Aprovações/ }));
+    expect(screen.getByText('Posts este mês')).toBeInTheDocument();
+    expect(screen.getByText('Taxa de aprovação')).toBeInTheDocument();
+    expect(screen.getByText('Próximo post')).toBeInTheDocument();
+    expect(screen.queryByText('Na agência')).not.toBeInTheDocument();
+
+    const pendingCard = screen.getByText('Aprovações pendentes').parentElement;
+    expect(pendingCard).toHaveTextContent('1');
+
+    fireEvent.click(pendingCard!);
 
     await waitFor(() => {
       expect(screen.getByTestId('current-path')).toHaveTextContent(
@@ -254,6 +261,7 @@ describe('hub content pages', () => {
     );
 
     expect(await screen.findByText('Nenhum briefing disponível ainda.')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Briefing' })).toBeInTheDocument();
   });
 
   it('switches briefing sections and autosaves answers through the API', async () => {

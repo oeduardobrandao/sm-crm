@@ -39,15 +39,15 @@ function ReportCard({ report, base }: { report: HubReport; base: string }) {
   return (
     <div className="hub-card flex flex-col gap-4 p-5 sm:p-6">
       <div className="flex items-start gap-3">
-        <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-stone-100 text-stone-500 flex-shrink-0">
+        <span className="flex items-center justify-center w-10 h-10 rounded-xl hub-bg-soft hub-tx2 flex-shrink-0">
           <FileText size={18} strokeWidth={1.75} />
         </span>
         <div className="flex-1 min-w-0">
-          <p className="font-medium text-stone-900 text-[15px] leading-tight">
+          <p className="font-medium hub-txt text-[15px] leading-tight">
             {formatMonth(report.month)}
           </p>
           {report.generated_at && (
-            <p className="text-[11px] text-stone-400 mt-0.5">
+            <p className="text-[11px] hub-tx3 mt-0.5">
               Gerado em{' '}
               {new Date(report.generated_at).toLocaleDateString('pt-BR', {
                 day: '2-digit',
@@ -70,7 +70,7 @@ function ReportCard({ report, base }: { report: HubReport; base: string }) {
             <button
               type="button"
               onClick={() => navigate(`${base}/relatorios/${report.month}`)}
-              className="flex items-center gap-1.5 text-[12px] font-medium text-stone-700 hover:text-stone-900 bg-stone-100 hover:bg-stone-200 transition-colors px-3 py-1.5 rounded-lg"
+              className="flex items-center gap-1.5 text-[12px] font-medium hub-tx2 hub-action-pill transition-colors px-3 py-1.5 rounded-lg"
             >
               <ExternalLink size={13} strokeWidth={2} />
               Ver online
@@ -80,7 +80,7 @@ function ReportCard({ report, base }: { report: HubReport; base: string }) {
             <button
               type="button"
               onClick={handleDownloadPdf}
-              className="flex items-center gap-1.5 text-[12px] font-medium text-stone-700 hover:text-stone-900 bg-stone-100 hover:bg-stone-200 transition-colors px-3 py-1.5 rounded-lg"
+              className="flex items-center gap-1.5 text-[12px] font-medium hub-tx2 hub-action-pill transition-colors px-3 py-1.5 rounded-lg"
             >
               <Download size={13} strokeWidth={2} />
               Baixar PDF
@@ -89,7 +89,7 @@ function ReportCard({ report, base }: { report: HubReport; base: string }) {
         </div>
       )}
 
-      {!isReady && <p className="text-[12px] text-stone-400">Em preparação...</p>}
+      {!isReady && <p className="text-[12px] hub-tx3">Em preparação...</p>}
     </div>
   );
 }
@@ -106,36 +106,22 @@ export function RelatoriosPage() {
 
   const reports = data?.reports ?? [];
 
-  if (isLoading) {
-    return (
-      <div className="flex justify-center py-20">
-        <div className="animate-spin h-6 w-6 rounded-full border-2 border-stone-300 border-t-stone-900" />
-      </div>
-    );
-  }
-
-  if (isError) {
-    return (
-      <div className="max-w-5xl mx-auto py-20 text-center text-sm text-stone-500">
-        Erro ao carregar relatórios.
-      </div>
-    );
-  }
-
   return (
     <div className="max-w-5xl mx-auto hub-fade-up">
       <header className="mb-8">
-        <p className="text-[11px] uppercase tracking-[0.14em] text-stone-500 font-medium mb-2">
-          <span className="accent-bar" />
-          Resultados mensais
-        </p>
-        <h2 className="font-display text-[2rem] sm:text-[2.25rem] leading-[1.05] font-medium tracking-tight text-stone-900">
+        <h2 className="font-display text-[2rem] sm:text-[2.25rem] leading-[1.05] font-medium tracking-tight hub-txt">
           Relatórios
         </h2>
       </header>
 
-      {reports.length === 0 ? (
-        <p className="text-sm text-stone-500">Nenhum relatório disponível ainda.</p>
+      {isLoading ? (
+        <div className="flex justify-center py-20">
+          <div className="animate-spin h-6 w-6 rounded-full border-2 border-stone-300 border-t-stone-900" />
+        </div>
+      ) : isError ? (
+        <div className="py-20 text-center text-sm hub-tx2">Erro ao carregar relatórios.</div>
+      ) : reports.length === 0 ? (
+        <p className="text-sm hub-tx2">Nenhum relatório disponível ainda.</p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {reports.map((report) => (
