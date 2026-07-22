@@ -31,7 +31,10 @@ export default function LoginPage() {
 
       const { is_admin } = await verifyAdmin();
       if (!is_admin) {
-        await supabase.auth.signOut();
+        // 'local' — undo only the sign-in we just performed in this browser. A global sign-out
+        // would log a legitimate CRM user out everywhere (and drop their OAuth/MCP connector)
+        // merely for landing on the admin login page.
+        await supabase.auth.signOut({ scope: 'local' });
         setError('Acesso não autorizado.');
         setLoading(false);
         return;

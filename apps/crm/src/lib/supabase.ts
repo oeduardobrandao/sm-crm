@@ -228,5 +228,10 @@ export async function resetPassword(email: string) {
 
 export async function signOut() {
   cachedProfile = null;
-  return supabase.auth.signOut();
+  // scope: 'local' is deliberate. supabase-js defaults to 'global', which terminates EVERY session
+  // for the user and destroys all their refresh tokens — including the OAuth session behind the
+  // Claude/MCP connector, which then reports "Authentication required" until the user reconnects.
+  // Logging out of this browser must not revoke the workspace's connectors. Per-user data is
+  // cleared locally by the caller (clearProfileCache + queryClient.clear in AuthContext).
+  return supabase.auth.signOut({ scope: 'local' });
 }
