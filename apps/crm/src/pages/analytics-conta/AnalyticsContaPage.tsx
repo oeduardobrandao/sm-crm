@@ -15,7 +15,15 @@ import {
   RefreshCw,
   Trophy,
   Zap,
+  Users,
+  Eye,
+  MousePointerClick,
+  Send,
+  ChevronDown,
+  type LucideIcon,
 } from 'lucide-react';
+import { StatCard, type StatTone } from '@/components/StatCard';
+import { StatCardGrid } from '@/components/StatCardGrid';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -395,53 +403,35 @@ function KpiCard({
   delta,
   period,
   prevFormatted,
+  icon,
+  tone,
 }: {
   label: string;
   value: string;
   delta: KpiDelta;
   period?: string;
   prevFormatted?: string;
+  icon?: LucideIcon;
+  tone?: StatTone;
 }) {
-  const dirIcon = delta.direction === 'up' ? '↑' : delta.direction === 'down' ? '↓' : '→';
-  const dirColor =
-    delta.direction === 'up'
-      ? 'var(--success)'
-      : delta.direction === 'down'
-        ? 'var(--danger)'
-        : 'var(--text-muted)';
-  const pct = Math.abs(delta.deltaPercent).toFixed(1);
-
   return (
-    <div className="kpi-card">
-      <span className="kpi-label">{label}</span>
-      <span className="kpi-value" style={{ fontSize: '1.3rem' }}>
-        {value}
-      </span>
-      <span className="kpi-sub" style={{ color: dirColor }}>
-        {dirIcon} {pct}% vs período anterior
-      </span>
-      {prevFormatted != null && (
-        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>
-          Anterior: {prevFormatted}
-        </span>
-      )}
-      {period && (
-        <span
-          style={{
-            display: 'inline-block',
-            alignSelf: 'flex-start',
-            marginTop: 4,
-            fontSize: '0.72rem',
-            padding: '2px 7px',
-            borderRadius: 4,
-            background: 'var(--border-color,rgba(0,0,0,0.08))',
-            color: 'var(--text-muted)',
-          }}
-        >
-          {period}
-        </span>
-      )}
-    </div>
+    <StatCard
+      label={label}
+      value={value}
+      icon={icon}
+      tone={tone}
+      delta={{
+        direction: delta.direction,
+        percent: delta.deltaPercent,
+        caption: 'vs período anterior',
+      }}
+      footNote={
+        <>
+          {prevFormatted != null && <span>Anterior: {prevFormatted}</span>}
+          {period && <span className="kpi-period-chip">{period}</span>}
+        </>
+      }
+    />
   );
 }
 
@@ -1006,6 +996,10 @@ function AnalyticsContent({
   });
   const [expandedPostId, setExpandedPostId] = useState<number | null>(null);
   const [syncing, setSyncing] = useState(false);
+  // Collapsed by default on phones, where the callout ate most of a screen
+  const [savesOpen, setSavesOpen] = useState(
+    () => !window.matchMedia('(max-width: 900px)').matches,
+  );
   const [showAllPosts, setShowAllPosts] = useState(false);
   const [manualFollowerOpen, setManualFollowerOpen] = useState(false);
   const [manualDate, setManualDate] = useState(new Date().toISOString().split('T')[0]);
@@ -1407,23 +1401,25 @@ function AnalyticsContent({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      <header className="header animate-up">
+      <header className="header header--flush animate-up">
         <div className="header-title">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            {account.profile_picture_url && account.profile_picture_url.startsWith('https://') && (
-              <img
-                src={account.profile_picture_url}
-                alt=""
-                style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover' }}
-              />
-            )}
-            <div>
-              <h1>{cliente.nome}</h1>
-              <p>
-                @{account.username} {cacheNote}
-              </p>
-            </div>
-          </div>
+          {(() => {
+            const avatarUrl =
+              account.profile_picture_url && account.profile_picture_url.startsWith('https://')
+                ? account.profile_picture_url
+                : null;
+            return (
+              <div className={`conta-identity${avatarUrl ? ' conta-identity--avatar' : ''}`}>
+                <div className="conta-identity__row">
+                  {avatarUrl && <img src={avatarUrl} alt="" className="conta-identity__avatar" />}
+                  <h1>{cliente.nome}</h1>
+                </div>
+                <p className="conta-identity__handle">
+                  @{account.username} {cacheNote}
+                </p>
+              </div>
+            );
+          })()}
         </div>
         <div className="header-actions">
           <Button variant="outline" onClick={() => navigate(-1)}>
@@ -1445,29 +1441,38 @@ function AnalyticsContent({
       </header>
 
       {/* Filter bar */}
-      <div className="filter-bar animate-up">
-        {[7, 30, 90].map((d) => (
+      <div className="flex flex-wrap items-center gap-3 animate-up">
+        <div className="page-tabs page-tabs--inline" role="tablist">
+          {[7, 30, 90].map((d) => (
+            <button
+              key={d}
+              type="button"
+              role="tab"
+              aria-selected={!periodStart && overviewDays === d}
+              className={`page-tab${!periodStart && overviewDays === d ? ' active' : ''}`}
+              onClick={() => handleDaysChange(d)}
+            >
+              {d} dias
+            </button>
+          ))}
           <button
-            key={d}
-            className={`filter-btn${!periodStart && overviewDays === d ? ' active' : ''}`}
-            onClick={() => handleDaysChange(d)}
+            type="button"
+            role="tab"
+            aria-selected={!!periodStart}
+            className={`page-tab${periodStart ? ' active' : ''}`}
+            onClick={handleLastMonth}
           >
-            {d} dias
+            Último mês
           </button>
-        ))}
-        <button className={`filter-btn${periodStart ? ' active' : ''}`} onClick={handleLastMonth}>
-          Último mês
-        </button>
-        <span style={{ color: 'var(--text-muted)', alignSelf: 'center', fontSize: '0.75rem' }}>
-          ou
-        </span>
-        <input
+        </div>
+        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>ou</span>
+        <Input
           type="number"
-          className="filter-btn"
           min={1}
           max={730}
           placeholder="Dias..."
-          style={{ width: 80 }}
+          aria-label="Período personalizado em dias"
+          className="!rounded-full !text-xs h-9 w-[110px] mb-0"
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               const val = parseInt((e.target as HTMLInputElement).value, 10);
@@ -1485,12 +1490,12 @@ function AnalyticsContent({
       </div>
 
       {/* KPI Cards */}
-      <div
-        className="kpi-grid animate-up"
-        style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}
-      >
+      {/* maxCols 7 keeps all seven metrics on a single row, as they were */}
+      <StatCardGrid className="animate-up" maxCols={7}>
         <KpiCard
-          label="SEGUIDORES"
+          label="Seguidores"
+          icon={Users}
+          tone="blue"
           value={overview.followerCount.toLocaleString('pt-BR')}
           delta={overview.followers}
           period={periodTag}
@@ -1499,84 +1504,105 @@ function AnalyticsContent({
           )}
         />
         <KpiCard
-          label="ENGAJAMENTO"
+          label="Engajamento"
+          icon={Heart}
+          tone="pink"
           value={overview.engagement.current.toFixed(2) + '%'}
           delta={overview.engagement}
           period={periodTag}
           prevFormatted={overview.engagement.previous.toFixed(2) + '%'}
         />
         <KpiCard
-          label="ALCANCE"
+          label="Alcance"
+          icon={Eye}
+          tone="violet"
           value={overview.reach.current.toLocaleString('pt-BR')}
           delta={overview.reach}
           period={periodTag}
           prevFormatted={overview.reach.previous.toLocaleString('pt-BR')}
         />
         <KpiCard
-          label="CONTAS ENGAJADAS"
+          label="Contas engajadas"
+          icon={Zap}
+          tone="amber"
           value={overview.profileViews.current.toLocaleString('pt-BR')}
           delta={overview.profileViews}
           period="28d fixo"
         />
         <KpiCard
-          label="CLIQUES NO LINK"
+          label="Cliques no link"
+          icon={MousePointerClick}
+          tone="green"
           value={overview.websiteClicks.current.toLocaleString('pt-BR')}
           delta={overview.websiteClicks}
           period="28d fixo"
         />
         <KpiCard
-          label="TAXA DE SALVAMENTOS"
+          label="Taxa de salvamentos"
+          icon={Bookmark}
+          tone="slate"
           value={overview.savesRate.current.toFixed(2) + '%'}
           delta={overview.savesRate}
           period={periodTag}
           prevFormatted={overview.savesRate.previous.toFixed(2) + '%'}
         />
         <KpiCard
-          label="POSTS PUBLICADOS"
+          label="Posts publicados"
+          icon={Send}
+          tone="blue"
           value={String(overview.postsPublished.current)}
           delta={overview.postsPublished}
           period={periodTag}
           prevFormatted={String(overview.postsPublished.previous)}
         />
-      </div>
+      </StatCardGrid>
 
       {/* Top Saved callout */}
       {topSaved.length > 0 && (
-        <div
-          className="analytics-callout animate-up"
-          style={{ borderLeftColor: 'var(--primary-color)', background: 'rgba(234,179,8,0.03)' }}
-        >
-          <div
-            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}
-          >
-            <strong>Taxa de Salvamentos</strong>
-          </div>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
-            Salvamentos indicam que alguém guardou o conteúdo para uma decisão de saúde. É a métrica
-            mais subestimada para conteúdo médico.
-          </p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-            {topSaved.map((p) => (
-              <div
-                key={p.id}
-                style={{
-                  background: 'var(--card-bg)',
-                  border: '1px solid var(--border-color,rgba(0,0,0,0.08))',
-                  borderRadius: 8,
-                  padding: '0.5rem 0.75rem',
-                  fontSize: '0.8rem',
-                }}
-              >
-                <strong>{p.saved}</strong> salvamentos
-                <span style={{ color: 'var(--text-muted)', marginLeft: '0.25rem' }}>
-                  ({p.saves_rate.toFixed(1)}% taxa)
+        <div className="analytics-callout analytics-callout--with-icon analytics-callout--primary animate-up">
+          <Bookmark className="h-5 w-5 analytics-callout__icon" aria-hidden />
+          <div className="analytics-callout__body">
+            <button
+              type="button"
+              className="analytics-callout__toggle"
+              aria-expanded={savesOpen}
+              aria-controls="saves-callout-content"
+              onClick={() => setSavesOpen((v) => !v)}
+            >
+              <span className="analytics-callout__title">
+                Taxa de salvamentos
+                <span className="analytics-callout__count">
+                  {topSaved.length === 1
+                    ? '1 post em destaque'
+                    : `${topSaved.length} posts em destaque`}
                 </span>
-                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                  {(p.caption || '').slice(0, 60)}
-                  {(p.caption || '').length > 60 ? '...' : ''}
+              </span>
+              <ChevronDown
+                className={`h-4 w-4 analytics-callout__chevron${savesOpen ? ' open' : ''}`}
+                aria-hidden
+              />
+            </button>
+            {savesOpen && (
+              <div id="saves-callout-content" className="analytics-callout__collapsible">
+                <p className="analytics-callout__text">
+                  Salvamentos indicam que alguém guardou o conteúdo para uma decisão de saúde. É a
+                  métrica mais subestimada para conteúdo médico.
+                </p>
+                <div className="analytics-callout__grid">
+                  {topSaved.map((p) => (
+                    <div key={p.id} className="analytics-callout__item">
+                      <strong>{p.saved}</strong> salvamentos
+                      <span style={{ color: 'var(--text-muted)', marginLeft: '0.25rem' }}>
+                        ({p.saves_rate.toFixed(1)}% taxa)
+                      </span>
+                      <div className="analytics-callout__item-caption">
+                        {p.caption || 'Sem legenda'}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
-            ))}
+            )}
           </div>
         </div>
       )}
@@ -1780,7 +1806,7 @@ function AnalyticsContent({
                       </td>
                     </tr>
                     {expandedPostId === p.id && (
-                      <tr key={`detail-${p.id}`}>
+                      <tr key={`detail-${p.id}`} className="post-detail-row">
                         <td colSpan={10} style={{ padding: '1rem', background: 'var(--card-bg)' }}>
                           <p
                             style={{
@@ -2106,10 +2132,7 @@ function AnalyticsContent({
                   </span>
                 )}
                 {r.include_ai && (
-                  <span
-                    className="badge badge-neutral"
-                    style={{ marginLeft: '0.5rem', fontSize: '0.6rem' }}
-                  >
+                  <span className="badge badge-neutral badge--sm" style={{ marginLeft: '0.5rem' }}>
                     IA
                   </span>
                 )}
@@ -2117,15 +2140,7 @@ function AnalyticsContent({
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 {r.status === 'pending' && <span className="badge badge-warning">Pendente</span>}
                 {r.status === 'generating' && (
-                  <span
-                    className="badge badge-neutral"
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.3rem',
-                      color: '#3b82f6',
-                    }}
-                  >
+                  <span className="badge badge-info">
                     <Spinner size="sm" /> Gerando...
                   </span>
                 )}
@@ -3116,7 +3131,7 @@ export default function AnalyticsContaPage() {
   if (!igSummary) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-        <header className="header animate-up">
+        <header className="header header--flush animate-up">
           <div className="header-title">
             <h1>Analytics</h1>
           </div>

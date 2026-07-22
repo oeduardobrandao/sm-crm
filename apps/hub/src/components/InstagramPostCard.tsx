@@ -584,7 +584,7 @@ export function InstagramPostCard({
         <div
           style={{
             padding: '0.75rem 1rem',
-            borderTop: '1px solid var(--border-color)',
+            borderTop: '1px solid var(--hub-bd)',
             display: 'flex',
             alignItems: 'center',
             gap: '0.5rem',
@@ -604,7 +604,7 @@ export function InstagramPostCard({
             <div style={{ color: '#3ecf8e', fontSize: '0.8rem', fontWeight: 600 }}>
               Agendado para publicação
             </div>
-            <div style={{ color: 'var(--text-light)', fontSize: '0.75rem' }}>
+            <div style={{ color: 'var(--hub-tx2)', fontSize: '0.75rem' }}>
               {new Date(post.scheduled_at).toLocaleDateString('pt-BR', {
                 day: '2-digit',
                 month: 'short',
@@ -622,19 +622,21 @@ export function InstagramPostCard({
         <div
           style={{
             padding: '0.75rem 1rem',
-            borderTop: '1px solid var(--border-color)',
+            borderTop: '1px solid var(--hub-bd)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            background: 'rgba(234, 179, 8, 0.03)',
+            background: 'color-mix(in srgb, var(--hub-txt) 3%, transparent)',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span style={{ color: '#eab308', fontSize: '0.9rem' }}>✓</span>
+            <span style={{ color: 'var(--hub-txt)', fontSize: '0.9rem' }}>✓</span>
             <div>
-              <div style={{ color: '#eab308', fontSize: '0.8rem', fontWeight: 600 }}>Publicado</div>
+              <div style={{ color: 'var(--hub-txt)', fontSize: '0.8rem', fontWeight: 600 }}>
+                Publicado
+              </div>
               {post.published_at && (
-                <div style={{ color: 'var(--text-light)', fontSize: '0.75rem' }}>
+                <div style={{ color: 'var(--hub-tx2)', fontSize: '0.75rem' }}>
                   {new Date(post.published_at).toLocaleDateString('pt-BR', {
                     day: '2-digit',
                     month: 'short',
@@ -686,7 +688,7 @@ export function InstagramPostCard({
                 <button
                   onClick={() => handleAction('aprovado')}
                   disabled={submitting || approvalBlocked}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 min-h-[44px] rounded-[4px] bg-stone-900 text-white text-[13px] font-semibold hover:bg-stone-800 disabled:opacity-50 transition-colors"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 min-h-[44px] rounded-[4px] hub-btn-primary text-[13px] font-semibold disabled:opacity-50 transition-colors"
                 >
                   <CheckCircle size={16} /> {saveState === 'saving' ? 'Salvando...' : 'Aprovar'}
                 </button>
@@ -696,7 +698,7 @@ export function InstagramPostCard({
                   title={
                     !comentario.trim() ? 'Deixe um comentário para solicitar correção' : undefined
                   }
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 min-h-[44px] rounded-[4px] border border-stone-200 dark:border-stone-700 bg-white dark:bg-transparent text-stone-700 dark:text-stone-300 text-[13px] font-medium hover:bg-stone-50 dark:hover:bg-stone-800 disabled:opacity-50 transition-colors"
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 min-h-[44px] rounded-[4px] hub-btn-secondary text-[13px] font-medium disabled:opacity-50 transition-colors"
                 >
                   <AlertCircle size={16} /> Correção
                 </button>
@@ -709,9 +711,13 @@ export function InstagramPostCard({
                 marginTop: '0.75rem',
                 padding: '0.6rem',
                 background: post.scheduled_at
-                  ? 'rgba(234, 179, 8, 0.06)'
+                  ? 'color-mix(in srgb, var(--hub-txt) 5%, transparent)'
                   : 'rgba(62, 207, 142, 0.06)',
-                border: `1px solid ${post.scheduled_at ? 'rgba(234, 179, 8, 0.19)' : 'rgba(62, 207, 142, 0.19)'}`,
+                border: `1px solid ${
+                  post.scheduled_at
+                    ? 'color-mix(in srgb, var(--hub-txt) 14%, transparent)'
+                    : 'rgba(62, 207, 142, 0.19)'
+                }`,
                 borderRadius: 6,
                 display: 'flex',
                 alignItems: 'flex-start',
@@ -720,7 +726,7 @@ export function InstagramPostCard({
             >
               <span
                 style={{
-                  color: post.scheduled_at ? '#eab308' : '#3ecf8e',
+                  color: post.scheduled_at ? 'var(--hub-txt)' : '#3ecf8e',
                   fontSize: '0.8rem',
                   flexShrink: 0,
                 }}
@@ -729,7 +735,7 @@ export function InstagramPostCard({
               </span>
               <div
                 style={{
-                  color: post.scheduled_at ? '#eab308' : '#3ecf8e',
+                  color: post.scheduled_at ? 'var(--hub-tx2)' : '#3ecf8e',
                   fontSize: '0.7rem',
                   lineHeight: 1.4,
                 }}

@@ -2,6 +2,14 @@
 
 Social media agency CRM (React + Supabase). Two apps: **CRM** (internal dashboard) and **Hub** (client-facing portal). Portuguese-language UI.
 
+## Workflow skills (superpowers)
+
+Reserve the superpowers workflow skills (`brainstorming`, `writing-plans`, `executing-plans`, `subagent-driven-development`, TDD) for **substantial work**: new features or subsystems, multi-file refactors, backend/schema changes, anything touching auth, billing, or migrations, and anything the user frames as an initiative or asks to plan.
+
+Do NOT run them for small, well-understood changes — UI tweaks, copy changes, styling, single-component behavior adjustments, small bug fixes. Just make the change, typecheck, and verify it in the browser. If a "small" change turns out to be bigger than expected, stop and escalate to brainstorming/planning then.
+
+`systematic-debugging` is still fair game any time a bug's cause isn't obvious, regardless of size.
+
 ## Commands
 
 ```bash

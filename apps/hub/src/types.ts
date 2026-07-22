@@ -7,8 +7,11 @@ export interface WorkspaceInfo {
 export interface HubBootstrap {
   workspace: WorkspaceInfo;
   cliente_nome: string;
+  /** The client's connected Instagram avatar; null when no account is linked. */
+  cliente_foto_url: string | null;
   is_active: boolean;
   cliente_id: number;
+  feature_mensagens: boolean;
 }
 
 export interface HubPostMedia {

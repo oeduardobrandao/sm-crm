@@ -12,9 +12,28 @@ export type AnalyticsEvent =
   | 'client_created'
   | 'instagram_connected'
   | 'workflow_created'
+  | 'workflow_wizard_source'
+  | 'workflow_saved_as_template'
+  | 'entregas_tour_started'
+  | 'entregas_tour_completed'
+  | 'entregas_tour_dismissed'
   | 'hub_link_copied'
   | 'report_generated'
   | 'invite_sent';
+
+/**
+ * Compile-time guard: `tsc` fails if any of these names is dropped from or misspelled in the union
+ * above. It lives here rather than in the test file because `apps/crm/tsconfig.json` excludes the
+ * `__tests__` directory, so a guard placed there would never be type-checked by `npm run build`.
+ * Vitest transpiles via esbuild without type-checking, so no runtime test can enforce this either.
+ */
+const _wizardAndTourEvents: AnalyticsEvent[] = [
+  'workflow_wizard_source',
+  'workflow_saved_as_template',
+  'entregas_tour_started',
+  'entregas_tour_completed',
+  'entregas_tour_dismissed',
+];
 
 export interface WorkspaceUserProps {
   workspace_id: string;

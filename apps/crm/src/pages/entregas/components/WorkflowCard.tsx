@@ -11,22 +11,8 @@ import {
 import type { BoardCard } from '../hooks/useEntregasData';
 import { updateWorkflowEtapa, type Membro } from '../../../store';
 import { sanitizeUrl } from '@/utils/security';
+import { avatarColorClass } from '@/lib/avatarColor';
 
-const avatarColors = [
-  '#eab308',
-  '#3ecf8e',
-  '#f5a342',
-  '#f542c8',
-  '#42c8f5',
-  '#8b5cf6',
-  '#ef4444',
-  '#14b8a6',
-];
-function getAvatarColor(name: string): string {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  return avatarColors[Math.abs(hash) % avatarColors.length];
-}
 function getInitials(name: string): string {
   return name
     .split(' ')
@@ -124,6 +110,7 @@ export function WorkflowCard({
   return (
     <div
       className={`board-card ${deadlineClass}`}
+      data-tour="wf-card"
       style={{
         opacity: isDragOverlay ? 0.85 : 1,
         position: 'relative',
@@ -317,6 +304,7 @@ export function WorkflowCard({
       >
         <span
           className={`board-card-deadline ${deadlineClass}`}
+          data-tour="wf-deadline"
           style={{
             fontSize: '0.7rem',
             fontWeight: 700,
@@ -374,19 +362,8 @@ export function WorkflowCard({
               return displayMembro ? (
                 <>
                   <div
-                    style={{
-                      width: 20,
-                      height: 20,
-                      borderRadius: '50%',
-                      background: getAvatarColor(displayMembro.nome),
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '0.55rem',
-                      fontWeight: 800,
-                      color: '#fff',
-                      flexShrink: 0,
-                    }}
+                    className={`avatar ${avatarColorClass(displayMembro.id ?? displayMembro.nome)}`}
+                    style={{ width: 20, height: 20, fontSize: '0.55rem', fontWeight: 800 }}
                   >
                     {getInitials(displayMembro.nome)}
                   </div>
@@ -459,17 +436,8 @@ export function WorkflowCard({
                 }}
               >
                 <div
-                  style={{
-                    width: 16,
-                    height: 16,
-                    borderRadius: '50%',
-                    background: getAvatarColor(m.nome),
-                    color: '#fff',
-                    fontSize: '0.5rem',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
+                  className={`avatar ${avatarColorClass(m.id ?? m.nome)}`}
+                  style={{ width: 16, height: 16, fontSize: '0.5rem' }}
                 >
                   {getInitials(m.nome)}
                 </div>
@@ -707,6 +675,7 @@ export function WorkflowCard({
         <button
           className="btn-edit-workflow"
           title="Posts do fluxo"
+          data-tour="wf-posts"
           style={{
             display: 'flex',
             alignItems: 'center',

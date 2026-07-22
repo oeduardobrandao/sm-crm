@@ -158,8 +158,8 @@ describe('DashboardPage', () => {
 
     // Agent: no onboarding, no finance strip
     expect(screen.queryByTestId('onboarding-banner')).not.toBeInTheDocument();
-    expect(screen.queryByText('A RECEBER')).not.toBeInTheDocument();
-    expect(screen.queryByText('RECEITA MENSAL')).not.toBeInTheDocument();
+    expect(screen.queryByText('A receber')).not.toBeInTheDocument();
+    expect(screen.queryByText('Receita mensal')).not.toBeInTheDocument();
     // Health monitor and today card are always present
     expect(screen.getByTestId('client-health-monitor')).toBeInTheDocument();
     expect(screen.getByText('Hoje')).toBeInTheDocument();
@@ -251,10 +251,10 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Lançamento')).toBeInTheDocument();
 
     // Finance KPI strip (FinanceKpiStrip component)
-    expect(screen.getByText('A RECEBER')).toBeInTheDocument();
-    expect(screen.getByText('A PAGAR')).toBeInTheDocument();
-    expect(screen.getByText('SALDO')).toBeInTheDocument();
-    expect(screen.getByText('RECEITA MENSAL')).toBeInTheDocument();
+    expect(screen.getByText('A receber')).toBeInTheDocument();
+    expect(screen.getByText('A pagar')).toBeInTheDocument();
+    expect(screen.getByText('Saldo')).toBeInTheDocument();
+    expect(screen.getByText('Receita mensal')).toBeInTheDocument();
   });
 
   it('shows the empty today card when there are no events', () => {

@@ -170,6 +170,33 @@ describe('media-proxy range support', () => {
     expect(bucket.get).toHaveBeenCalledTimes(1);
   });
 
+  // Regression: a no-cors <img> response is `immutable` for a year. Without
+  // `Vary: Origin` the browser HTTP cache replays that entry for a later
+  // cors-mode request to the SAME url (lightbox, preloader, zip download),
+  // which then fails the ACAO check and renders a broken image.
+  it('sends Vary: Origin even when the request carries no Origin header', async () => {
+    const bytes = new Uint8Array(500).fill(9);
+    const req = new Request(await signedUrl('contas/1/posts/2/photo.jpg'));
+
+    const res = await worker.fetch(req, env(makeBucket(bytes, 'image/jpeg')), ctx);
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBeNull();
+    expect(res.headers.get('Vary')).toBe('Origin');
+  });
+
+  it('sends Vary: Origin when the Origin is not allowlisted', async () => {
+    const bytes = new Uint8Array(500).fill(9);
+    const req = new Request(await signedUrl('contas/1/posts/2/photo.jpg'), {
+      headers: { Origin: 'https://evil.example' },
+    });
+
+    const res = await worker.fetch(req, env(makeBucket(bytes, 'image/jpeg')), ctx);
+
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBeNull();
+    expect(res.headers.get('Vary')).toBe('Origin');
+  });
+
   it('advertises Accept-Ranges on a HEAD request without a body', async () => {
     const bytes = new Uint8Array(1000).fill(3);
     const req = new Request(await signedUrl(KEY), { method: 'HEAD', headers: { Origin: ORIGIN } });

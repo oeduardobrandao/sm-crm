@@ -36,6 +36,12 @@ function corsHeaders(request: Request, env: Env): Record<string, string> {
   const origin = request.headers.get("Origin") ?? "";
   const allowed = env.ALLOWED_ORIGINS?.split(",").map(s => s.trim()) ?? [];
   const match = allowed.length === 0 || allowed.includes(origin);
+  // `Vary: Origin` goes out even when no CORS headers do. Responses here are
+  // `immutable` for a year, so without it the browser HTTP cache replays a
+  // no-cors <img> entry for a later cors-mode request to the same url — the
+  // cached entry has no ACAO header, so the CORS check fails and the image
+  // breaks. The app reads identical media urls in BOTH modes (gallery tile =
+  // no-cors, lightbox/preloader/zip-download = cors).
   return match && origin
     ? {
         "Access-Control-Allow-Origin": origin,
@@ -43,7 +49,7 @@ function corsHeaders(request: Request, env: Env): Record<string, string> {
         // Let cross-origin readers see the streaming/range metadata.
         "Access-Control-Expose-Headers": "Content-Length, Content-Range, Accept-Ranges",
       }
-    : {};
+    : { "Vary": "Origin" };
 }
 
 function inferContentType(key: string, r2ContentType: string | undefined): string {

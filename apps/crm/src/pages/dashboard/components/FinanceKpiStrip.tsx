@@ -1,5 +1,8 @@
 import { useTranslation } from 'react-i18next';
+import { ArrowDownCircle, ArrowUpCircle, Wallet, TrendingUp } from 'lucide-react';
 import { formatBRL } from '../../../store';
+import { StatCard, type StatTone } from '@/components/StatCard';
+import { StatCardGrid } from '@/components/StatCardGrid';
 
 interface Props {
   aReceber: number;
@@ -10,22 +13,48 @@ interface Props {
 
 export function FinanceKpiStrip({ aReceber, aPagar, saldoProjetado, receitaMensal }: Props) {
   const { t } = useTranslation('dashboard');
-  const items = [
-    { label: t('kpi.aReceber'), value: formatBRL(aReceber), color: 'var(--success)' },
-    { label: t('kpi.aPagar'), value: formatBRL(aPagar), color: 'var(--danger)' },
-    { label: t('kpi.saldo'), value: formatBRL(saldoProjetado), color: undefined },
-    { label: t('kpi.receitaMensal'), value: formatBRL(receitaMensal), color: undefined },
+  const items: {
+    label: string;
+    value: string;
+    color?: string;
+    icon: typeof Wallet;
+    tone: StatTone;
+  }[] = [
+    {
+      label: t('kpi.aReceber'),
+      value: formatBRL(aReceber),
+      color: 'var(--success)',
+      icon: ArrowDownCircle,
+      tone: 'green',
+    },
+    {
+      label: t('kpi.aPagar'),
+      value: formatBRL(aPagar),
+      color: 'var(--danger)',
+      icon: ArrowUpCircle,
+      tone: 'red',
+    },
+    { label: t('kpi.saldo'), value: formatBRL(saldoProjetado), icon: Wallet, tone: 'blue' },
+    {
+      label: t('kpi.receitaMensal'),
+      value: formatBRL(receitaMensal),
+      icon: TrendingUp,
+      tone: 'violet',
+    },
   ];
   return (
-    <div className="kpi-grid" style={{ marginTop: '1rem' }}>
+    <StatCardGrid style={{ marginTop: '1rem' }}>
       {items.map((it) => (
-        <div key={it.label} className="kpi-card">
-          <span className="kpi-label">{it.label}</span>
-          <span className="kpi-value" style={{ fontSize: '1.1rem', color: it.color }}>
-            {it.value}
-          </span>
-        </div>
+        <StatCard
+          key={it.label}
+          label={it.label}
+          value={it.value}
+          valueColor={it.color}
+          icon={it.icon}
+          tone={it.tone}
+          compactValue
+        />
       ))}
-    </div>
+    </StatCardGrid>
   );
 }

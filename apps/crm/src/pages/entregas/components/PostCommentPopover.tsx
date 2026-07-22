@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Check, RotateCcw, Pencil, Trash2 } from 'lucide-react';
 import type { CommentThreadWithComments, PostComment, Membro } from '@/store';
+import { avatarColorClass } from '@/lib/avatarColor';
 
 interface WorkspaceUser {
   id: string;
@@ -55,7 +56,11 @@ function AuthorAvatar({ membro }: { membro: { nome: string; avatar_url: string }
     return <img src={membro.avatar_url} alt={name} className="comment-avatar" />;
   }
 
-  return <span className="comment-avatar comment-avatar--initials">{initials}</span>;
+  return (
+    <span className={`comment-avatar comment-avatar--initials ${avatarColorClass(name)}`}>
+      {initials}
+    </span>
+  );
 }
 
 function CommentItem({

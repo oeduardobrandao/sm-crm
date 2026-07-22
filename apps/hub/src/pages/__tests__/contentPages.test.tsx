@@ -40,6 +40,7 @@ const hubValue = {
     cliente_nome: 'Clínica Aurora',
     is_active: true,
     cliente_id: 14,
+    feature_mensagens: true,
   },
   token: 'token-publico',
   workspace: 'mesaas',
@@ -132,7 +133,7 @@ describe('hub content pages', () => {
     vi.useRealTimers();
   });
 
-  it('renders the home dashboard cards, pending approvals, and filtered calendar posts', async () => {
+  it('renders the home KPI grid with a clickable pending-approvals card and filtered calendar posts', async () => {
     mockedFetchPosts.mockResolvedValue({
       posts: [
         makePost({ id: 1, titulo: 'Post pendente', status: 'enviado_cliente' }),
@@ -147,9 +148,16 @@ describe('hub content pages', () => {
     expect(
       await screen.findByText('Post calendar: Post pendente, Post agendado'),
     ).toBeInTheDocument();
-    expect(screen.getByText('1', { selector: 'span' })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /Aprovações/ }));
+    expect(screen.getByText('Posts este mês')).toBeInTheDocument();
+    expect(screen.getByText('Taxa de aprovação')).toBeInTheDocument();
+    expect(screen.getByText('Próximo post')).toBeInTheDocument();
+    expect(screen.queryByText('Na agência')).not.toBeInTheDocument();
+
+    const pendingCard = screen.getByText('Aprovações pendentes').parentElement;
+    expect(pendingCard).toHaveTextContent('1');
+
+    fireEvent.click(pendingCard!);
 
     await waitFor(() => {
       expect(screen.getByTestId('current-path')).toHaveTextContent(
@@ -254,6 +262,38 @@ describe('hub content pages', () => {
     );
 
     expect(await screen.findByText('Nenhum briefing disponível ainda.')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Briefing' })).toBeInTheDocument();
+  });
+
+  it('names the briefing in the header even when there is only one', async () => {
+    mockedFetchBriefing.mockResolvedValue({
+      briefings: [
+        {
+          id: 'b1',
+          title: 'Briefing Base',
+          display_order: 0,
+          questions: [
+            {
+              id: 'q1',
+              question: 'Qual a personalidade da marca?',
+              answer: null,
+              section: 'Marca',
+              display_order: 1,
+            },
+          ],
+        },
+      ],
+    });
+
+    renderHubPage(
+      '/mesaas/hub/token-publico/briefing',
+      '/:workspace/hub/:token/briefing',
+      <BriefingPage />,
+    );
+
+    expect(await screen.findByText('Briefing Base')).toBeInTheDocument();
+    // Single briefing: the name is a header line, not a tab strip.
+    expect(screen.queryByRole('tab', { name: 'Briefing Base' })).not.toBeInTheDocument();
   });
 
   it('switches briefing sections and autosaves answers through the API', async () => {
@@ -296,7 +336,7 @@ describe('hub content pages', () => {
 
     expect(await screen.findByText('Qual a personalidade da marca?')).toBeInTheDocument();
     vi.useFakeTimers();
-    fireEvent.click(screen.getByRole('button', { name: 'Geral' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Geral' }));
     expect(screen.getByText('Qual o principal objetivo?')).toBeInTheDocument();
 
     fireEvent.change(screen.getByPlaceholderText('Digite sua resposta…'), {

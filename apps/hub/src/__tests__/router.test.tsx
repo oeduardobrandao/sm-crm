@@ -46,6 +46,10 @@ vi.mock('../pages/IdeiasPage', () => ({
   IdeiasPage: () => <div>Ideias page</div>,
 }));
 
+vi.mock('../pages/MensagensPage', () => ({
+  MensagensPage: () => <div>Mensagens page</div>,
+}));
+
 import { router } from '../router';
 
 describe('hub router', () => {
@@ -74,5 +78,13 @@ describe('hub router', () => {
     render(<RouterProvider router={router} />);
 
     expect(await screen.findByText('Link inválido.')).toBeInTheDocument();
+  });
+
+  it('renders the mensagens route', async () => {
+    await router.navigate('/mesaas/hub/token-publico/mensagens');
+
+    render(<RouterProvider router={router} />);
+
+    expect(await screen.findByText('Mensagens page')).toBeInTheDocument();
   });
 });

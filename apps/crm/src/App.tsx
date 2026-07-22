@@ -30,7 +30,11 @@ const ContratosPage = lazy(() => import('./pages/contratos/ContratosPage'));
 const LeadsPage = lazy(() => import('./pages/leads/LeadsPage'));
 const EquipePage = lazy(() => import('./pages/equipe/EquipePage'));
 const MembroDetalhePage = lazy(() => import('./pages/membro-detalhe/MembroDetalhePage'));
-const ConfiguracaoPage = lazy(() => import('./pages/configuracao/ConfiguracaoPage'));
+const ConfiguracaoLayout = lazy(() => import('./pages/configuracao/ConfiguracaoLayout'));
+const PerfilTab = lazy(() => import('./pages/configuracao/tabs/PerfilTab'));
+const WorkspaceTab = lazy(() => import('./pages/configuracao/tabs/WorkspaceTab'));
+const MembrosTab = lazy(() => import('./pages/configuracao/tabs/MembrosTab'));
+const RelatoriosTab = lazy(() => import('./pages/configuracao/tabs/RelatoriosTab'));
 const CobrancaPage = lazy(() => import('./pages/configuracao/cobranca/CobrancaPage'));
 const IntegracoesClaudePage = lazy(() => import('./pages/configuracao/mcp/IntegracoesClaudePage'));
 const CalendarioPage = lazy(() => import('./pages/calendario/CalendarioPage'));
@@ -126,9 +130,15 @@ export default function App() {
                 <Route path="/leads" element={<LeadsPage />} />
                 <Route path="/equipe" element={<EquipePage />} />
                 <Route path="/equipe/:id" element={<MembroDetalhePage />} />
-                <Route path="/configuracao" element={<ConfiguracaoPage />} />
-                <Route path="/configuracao/cobranca" element={<CobrancaPage />} />
-                <Route path="/configuracao/mcp" element={<IntegracoesClaudePage />} />
+                <Route path="/configuracao" element={<ConfiguracaoLayout />}>
+                  <Route index element={<Navigate to="/configuracao/perfil" replace />} />
+                  <Route path="perfil" element={<PerfilTab />} />
+                  <Route path="workspace" element={<WorkspaceTab />} />
+                  <Route path="membros" element={<MembrosTab />} />
+                  <Route path="relatorios" element={<RelatoriosTab />} />
+                  <Route path="mcp" element={<IntegracoesClaudePage />} />
+                  <Route path="cobranca" element={<CobrancaPage />} />
+                </Route>
                 <Route path="/calendario" element={<CalendarioPage />} />
                 <Route path="/entregas" element={<EntregasPage />} />
                 <Route path="/post-express" element={<ExpressPostPage />} />

@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { classifyExistingUser } from "../invite-user/onboarding.ts";
+import { classifyExistingUser, coerceHasPassword } from "../invite-user/onboarding.ts";
 
 Deno.test("classifyExistingUser: fully onboarded user is added to the workspace directly", () => {
   assertEquals(
@@ -48,4 +48,73 @@ Deno.test("classifyExistingUser: confirmed user with NO profile row is anomalous
     classifyExistingUser({ emailConfirmed: true, hasProfile: false, onboardingComplete: false }),
     "blocked-anomalous",
   );
+});
+
+Deno.test("classifyExistingUser: onboarded flag does NOT win when the user has no password", () => {
+  // The 2026-06-29 backfill marked passwordless invitees onboarding_complete=true.
+  // Trusting it sent them down add-direct, which mails nothing.
+  assertEquals(
+    classifyExistingUser({
+      emailConfirmed: true,
+      hasProfile: true,
+      onboardingComplete: true,
+      hasPassword: false,
+    }),
+    "resend-link",
+  );
+});
+
+Deno.test("classifyExistingUser: unknown password status preserves add-direct", () => {
+  // RPC missing or failing must degrade to current behavior, never block invites.
+  assertEquals(
+    classifyExistingUser({
+      emailConfirmed: true,
+      hasProfile: true,
+      onboardingComplete: true,
+      hasPassword: null,
+    }),
+    "add-direct",
+  );
+});
+
+Deno.test("classifyExistingUser: a real password confirms add-direct", () => {
+  assertEquals(
+    classifyExistingUser({
+      emailConfirmed: true,
+      hasProfile: true,
+      onboardingComplete: true,
+      hasPassword: true,
+    }),
+    "add-direct",
+  );
+});
+
+Deno.test("classifyExistingUser: passwordless AND unconfirmed is still a destructive reinvite", () => {
+  assertEquals(
+    classifyExistingUser({
+      emailConfirmed: false,
+      hasProfile: true,
+      onboardingComplete: true,
+      hasPassword: false,
+    }),
+    "reinvite",
+  );
+});
+
+Deno.test("coerceHasPassword: an RPC error is unknown, not 'no password'", () => {
+  // Must not veto add-direct on a transport failure.
+  assertEquals(coerceHasPassword(false, { message: "boom" }), null);
+});
+
+Deno.test("coerceHasPassword: booleans pass through", () => {
+  assertEquals(coerceHasPassword(true, null), true);
+  assertEquals(coerceHasPassword(false, null), false);
+});
+
+Deno.test("coerceHasPassword: a null row (unknown user) is unknown", () => {
+  assertEquals(coerceHasPassword(null, null), null);
+});
+
+Deno.test("coerceHasPassword: a non-boolean payload is unknown", () => {
+  assertEquals(coerceHasPassword("true", null), null);
 });

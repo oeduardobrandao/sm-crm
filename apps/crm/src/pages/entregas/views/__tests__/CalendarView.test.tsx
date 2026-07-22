@@ -141,12 +141,12 @@ describe('CalendarView', () => {
     // MonthGrid renders month name via date-fns format (lowercase Portuguese) in a span.month-grid-title
     expect(document.querySelector('.month-grid-title')).toHaveTextContent(/abril/i);
     expect(screen.getByText('Fluxo Editorial')).toBeInTheDocument();
-    expect(screen.getByText('⚑ PRAZO DA ETAPA')).toBeInTheDocument();
+    expect(screen.getByText('⚑ Prazo da etapa')).toBeInTheDocument();
 
     fireEvent.click(getDayCell(container, 17)!);
 
     expect(screen.getByText('Fluxo Comercial')).toBeInTheDocument();
-    expect(screen.getByText('◎ CONCLUSÃO PREVISTA')).toBeInTheDocument();
+    expect(screen.getByText('◎ Conclusão prevista')).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('Fluxo Comercial'));
     expect(onCardClick).toHaveBeenCalledWith(cardLater);

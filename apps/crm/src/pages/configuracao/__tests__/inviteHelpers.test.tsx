@@ -5,22 +5,23 @@ import {
   computeEffectiveInviteStatus,
   InviteStatusBadge,
   InviteTimeLeft,
-} from '../ConfiguracaoPage';
+  inviteSuccessMessage,
+} from '../inviteHelpers';
 
 describe('InviteStatusBadge', () => {
-  it('renders PENDENTE for pending status', () => {
+  it('renders Pendente for pending status', () => {
     render(<InviteStatusBadge status="pending" />);
-    expect(screen.getByText('PENDENTE')).toHaveClass('badge-warning');
+    expect(screen.getByText('Pendente')).toHaveClass('badge-warning');
   });
 
-  it('renders EXPIRADO for expired status', () => {
+  it('renders Expirado for expired status', () => {
     render(<InviteStatusBadge status="expired" />);
-    expect(screen.getByText('EXPIRADO')).toHaveClass('badge-danger');
+    expect(screen.getByText('Expirado')).toHaveClass('badge-danger');
   });
 
-  it('renders ACEITO for accepted status', () => {
+  it('renders Aceito for accepted status', () => {
     render(<InviteStatusBadge status="accepted" />);
-    expect(screen.getByText('ACEITO')).toHaveClass('badge-success');
+    expect(screen.getByText('Aceito')).toHaveClass('badge-success');
   });
 
   it('falls back to raw status for unknown values', () => {
@@ -134,5 +135,17 @@ describe('computeEffectiveInviteStatus', () => {
     ];
     computeEffectiveInviteStatus(invites);
     expect(invites[0].status).toBe('pending');
+  });
+});
+
+describe('inviteSuccessMessage', () => {
+  it("uses the server's message so add-direct isn't reported as a send", () => {
+    expect(
+      inviteSuccessMessage({ message: 'malu@example.com foi adicionado ao workspace como agent.' }),
+    ).toBe('malu@example.com foi adicionado ao workspace como agent.');
+  });
+
+  it('falls back to a generic confirmation when the server sends no message', () => {
+    expect(inviteSuccessMessage({})).toBe('Convite enviado!');
   });
 });

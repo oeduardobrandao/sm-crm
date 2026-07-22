@@ -25,7 +25,7 @@ vi.mock('@/components/ui/dialog', () => ({
 
 import { ClientApprovalChoiceDialog } from '../WorkflowModals';
 
-function setup() {
+function setup(extraProps: { willRearm?: boolean } = {}) {
   const onApproveInternally = vi.fn();
   const onSendToPortal = vi.fn();
   const onAdvanceWithoutChanges = vi.fn();
@@ -38,6 +38,7 @@ function setup() {
       onSendToPortal={onSendToPortal}
       onAdvanceWithoutChanges={onAdvanceWithoutChanges}
       onCancel={onCancel}
+      {...extraProps}
     />,
   );
   return { onApproveInternally, onSendToPortal, onAdvanceWithoutChanges, onCancel };
@@ -57,5 +58,22 @@ describe('ClientApprovalChoiceDialog', () => {
     expect(onAdvanceWithoutChanges).toHaveBeenCalledTimes(1);
     expect(onApproveInternally).not.toHaveBeenCalled();
     expect(onSendToPortal).not.toHaveBeenCalled();
+  });
+});
+
+describe('ClientApprovalChoiceDialog re-arm note', () => {
+  it('shows the next-cycle note when willRearm', () => {
+    setup({ willRearm: true });
+    expect(screen.getByText(/voltarão para rascunho/i)).toBeInTheDocument();
+  });
+
+  it('hides the note when willRearm is false', () => {
+    setup({ willRearm: false });
+    expect(screen.queryByText(/voltarão para rascunho/i)).not.toBeInTheDocument();
+  });
+
+  it('hides the note when willRearm is absent', () => {
+    setup();
+    expect(screen.queryByText(/voltarão para rascunho/i)).not.toBeInTheDocument();
   });
 });

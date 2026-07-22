@@ -6,6 +6,7 @@ import { InstagramPostCard } from '../components/InstagramPostCard';
 import { StoryPostCard } from '../components/StoryPostCard';
 import { TextPostCard } from '../components/TextPostCard';
 import { FeedPreviewButton } from '../components/FeedPreviewButton';
+import { PageHeader } from '../components/PageHeader';
 import { InstagramGridPreview } from '../components/InstagramGridPreview';
 import { formatDate } from '../components/PostCard';
 import { SharePostButton } from '../components/SharePostButton';
@@ -53,167 +54,150 @@ export function AprovacoesPage() {
 
   const handleCloseGrid = useCallback(() => setShowGrid(false), []);
 
-  if (isLoading)
-    return (
-      <div className="flex justify-center py-20">
-        <div className="animate-spin h-6 w-6 rounded-full border-2 border-stone-300 border-t-stone-900" />
-      </div>
-    );
-
   const selectedPosts = withMedia.filter((p) => selectedIds.has(p.id));
 
   return (
     <div className="max-w-5xl mx-auto hub-fade-up">
-      <header className="mb-8">
-        <p className="text-[11px] uppercase tracking-[0.14em] text-stone-500 font-medium mb-2">
-          <span className="accent-bar" />
-          Sua revisão
-        </p>
-        <div className="flex items-center justify-between gap-4">
-          <h2 className="font-display text-[2rem] sm:text-[2.25rem] leading-[1.05] font-medium tracking-tight text-stone-900">
-            Aprovações
-          </h2>
-          {instagramProfile && (
-            <FeedPreviewButton selectedCount={selectedIds.size} onClick={() => setShowGrid(true)} />
-          )}
-        </div>
-        <p className="text-[14px] text-stone-500 mt-2">
-          {pending.length === 0
+      <PageHeader
+        title="Aprovações"
+        description={
+          pending.length === 0
             ? 'Tudo em dia. Nenhum post aguardando aprovação.'
-            : `${pending.length} post${pending.length > 1 ? 's' : ''} aguardando sua aprovação.`}
-        </p>
-      </header>
+            : `${pending.length} post${pending.length > 1 ? 's' : ''} aguardando sua aprovação.`
+        }
+        action={
+          instagramProfile && (
+            <FeedPreviewButton selectedCount={selectedIds.size} onClick={() => setShowGrid(true)} />
+          )
+        }
+      />
 
-      {withMedia.length > 0 && (
+      {isLoading ? (
+        <div className="flex justify-center py-20">
+          <div className="animate-spin h-6 w-6 rounded-full border-2 border-stone-300 border-t-stone-900" />
+        </div>
+      ) : (
         <>
-          {instagramProfile && selectedIds.size === 0 && (
-            <p className="text-[12px] text-stone-400 mb-3 flex items-center gap-1.5">
-              <svg
-                width="14"
-                height="14"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                viewBox="0 0 24 24"
-                className="shrink-0"
-              >
-                <rect x="3" y="3" width="7" height="7" />
-                <rect x="14" y="3" width="7" height="7" />
-                <rect x="3" y="14" width="7" height="7" />
-                <rect x="14" y="14" width="7" height="7" />
-              </svg>
-              Selecione posts para visualizar como ficarão no feed do Instagram.
-            </p>
-          )}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {withMedia.map((post, i) => (
-              <div key={post.id} className="flex flex-col">
-                <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <p className="text-[11px] text-stone-400 pl-0.5">
-                    {formatDate(post.scheduled_at)}
-                  </p>
-                  <span className="flex items-center gap-3">
-                    <OpenPostLink postId={post.id} />
-                    <SharePostButton postId={post.id} />
-                  </span>
-                </div>
-                <InstagramPostCard
-                  post={post}
-                  token={token}
-                  approvals={approvals}
-                  instagramProfile={instagramProfile}
-                  workspaceName={bootstrap.workspace.name}
-                  isSelected={selectedIds.has(post.id)}
-                  onToggleSelect={handleToggleSelect}
-                  onApprovalSubmitted={handleInvalidate}
-                  priority={i === 0}
-                  autoPublishOnApproval={data?.autoPublishOnApproval ?? false}
-                />
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-
-      {stories.length > 0 && (
-        <div className={withMedia.length > 0 ? 'mt-10 pt-8 border-t border-stone-200' : ''}>
           {withMedia.length > 0 && (
-            <p className="text-[11px] uppercase tracking-[0.14em] text-stone-500 font-medium mb-4">
-              <span className="accent-bar" />
-              Stories
-            </p>
-          )}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {stories.map((post) => (
-              <div key={post.id}>
-                <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <p className="text-[11px] text-stone-400 pl-0.5">
-                    {formatDate(post.scheduled_at)}
-                  </p>
-                  <span className="flex items-center gap-3">
-                    <OpenPostLink postId={post.id} />
-                    <SharePostButton postId={post.id} />
-                  </span>
-                </div>
-                <StoryPostCard
-                  post={post}
-                  token={token}
-                  approvals={approvals}
-                  instagramProfile={instagramProfile}
-                  workspaceName={bootstrap.workspace.name}
-                  onApprovalSubmitted={handleInvalidate}
-                />
+            <>
+              {instagramProfile && selectedIds.size === 0 && (
+                <p className="text-[12px] hub-tx3 mb-3 flex items-center gap-1.5">
+                  <svg
+                    width="14"
+                    height="14"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    viewBox="0 0 24 24"
+                    className="shrink-0"
+                  >
+                    <rect x="3" y="3" width="7" height="7" />
+                    <rect x="14" y="3" width="7" height="7" />
+                    <rect x="3" y="14" width="7" height="7" />
+                    <rect x="14" y="14" width="7" height="7" />
+                  </svg>
+                  Selecione posts para visualizar como ficarão no feed do Instagram.
+                </p>
+              )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {withMedia.map((post, i) => (
+                  <div key={post.id} className="flex flex-col">
+                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                      <p className="text-[11px] hub-tx3 pl-0.5">{formatDate(post.scheduled_at)}</p>
+                      <span className="flex items-center gap-3">
+                        <OpenPostLink postId={post.id} />
+                        <SharePostButton postId={post.id} />
+                      </span>
+                    </div>
+                    <InstagramPostCard
+                      post={post}
+                      token={token}
+                      approvals={approvals}
+                      instagramProfile={instagramProfile}
+                      workspaceName={bootstrap.workspace.name}
+                      isSelected={selectedIds.has(post.id)}
+                      onToggleSelect={handleToggleSelect}
+                      onApprovalSubmitted={handleInvalidate}
+                      priority={i === 0}
+                      autoPublishOnApproval={data?.autoPublishOnApproval ?? false}
+                    />
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {withoutMedia.length > 0 && (
-        <div
-          className={
-            withMedia.length > 0 || stories.length > 0 ? 'mt-10 pt-8 border-t border-stone-200' : ''
-          }
-        >
-          {(withMedia.length > 0 || stories.length > 0) && (
-            <p className="text-[11px] uppercase tracking-[0.14em] text-stone-500 font-medium mb-4">
-              <span className="accent-bar" />
-              Posts sem mídia
-            </p>
+            </>
           )}
-          <div className="max-w-[640px] space-y-3">
-            {withoutMedia.map((post) => (
-              <div key={post.id}>
-                <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <p className="text-[11px] text-stone-400 pl-0.5">
-                    {formatDate(post.scheduled_at)}
-                  </p>
-                  <span className="flex items-center gap-3">
-                    <OpenPostLink postId={post.id} />
-                    <SharePostButton postId={post.id} />
-                  </span>
-                </div>
-                <TextPostCard
-                  post={post}
-                  token={token}
-                  approvals={approvals}
-                  onApprovalSubmitted={handleInvalidate}
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
-      {showGrid && feedData && (
-        <InstagramGridPreview
-          selectedPosts={selectedPosts}
-          feedProfile={feedData.profile}
-          livePosts={feedData.recentPosts}
-          token={token}
-          onClose={handleCloseGrid}
-          onScheduleUpdated={handleInvalidate}
-        />
+          {stories.length > 0 && (
+            <div className={withMedia.length > 0 ? 'mt-10 pt-8 border-t hub-border' : ''}>
+              {withMedia.length > 0 && (
+                <p className="text-[13px] font-semibold hub-tx2 mb-4">Stories</p>
+              )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {stories.map((post) => (
+                  <div key={post.id}>
+                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                      <p className="text-[11px] hub-tx3 pl-0.5">{formatDate(post.scheduled_at)}</p>
+                      <span className="flex items-center gap-3">
+                        <OpenPostLink postId={post.id} />
+                        <SharePostButton postId={post.id} />
+                      </span>
+                    </div>
+                    <StoryPostCard
+                      post={post}
+                      token={token}
+                      approvals={approvals}
+                      instagramProfile={instagramProfile}
+                      workspaceName={bootstrap.workspace.name}
+                      onApprovalSubmitted={handleInvalidate}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {withoutMedia.length > 0 && (
+            <div
+              className={
+                withMedia.length > 0 || stories.length > 0 ? 'mt-10 pt-8 border-t hub-border' : ''
+              }
+            >
+              {(withMedia.length > 0 || stories.length > 0) && (
+                <p className="text-[13px] font-semibold hub-tx2 mb-4">Posts sem mídia</p>
+              )}
+              <div className="max-w-[640px] space-y-3">
+                {withoutMedia.map((post) => (
+                  <div key={post.id}>
+                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                      <p className="text-[11px] hub-tx3 pl-0.5">{formatDate(post.scheduled_at)}</p>
+                      <span className="flex items-center gap-3">
+                        <OpenPostLink postId={post.id} />
+                        <SharePostButton postId={post.id} />
+                      </span>
+                    </div>
+                    <TextPostCard
+                      post={post}
+                      token={token}
+                      approvals={approvals}
+                      onApprovalSubmitted={handleInvalidate}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {showGrid && feedData && (
+            <InstagramGridPreview
+              selectedPosts={selectedPosts}
+              feedProfile={feedData.profile}
+              livePosts={feedData.recentPosts}
+              token={token}
+              onClose={handleCloseGrid}
+              onScheduleUpdated={handleInvalidate}
+            />
+          )}
+        </>
       )}
     </div>
   );

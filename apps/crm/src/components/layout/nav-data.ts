@@ -6,6 +6,8 @@ export interface NavItem {
   icon: string;
   /** Open the route in a new browser tab instead of in-app SPA navigation. */
   newTab?: boolean;
+  /** Renders as an inert row with a "coming soon" badge instead of a working link. */
+  disabled?: boolean;
 }
 export interface NavGroup {
   id: string;
@@ -133,6 +135,14 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
         icon: 'ph-instagram-logo',
       },
       {
+        id: 'analytics-tiktok',
+        route: '/analytics/tiktok',
+        label: 'TikTok',
+        labelKey: 'nav.tiktok',
+        icon: 'ph-tiktok-logo',
+        disabled: true,
+      },
+      {
         id: 'analytics-fluxos',
         route: '/analytics-fluxos',
         label: 'Fluxos',
@@ -171,20 +181,6 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
         label: 'Configuracoes',
         labelKey: 'nav.configuracoes',
         icon: 'ph-gear',
-      },
-      {
-        id: 'cobranca',
-        route: '/configuracao/cobranca',
-        label: 'Plano & Cobrança',
-        labelKey: 'nav.cobranca',
-        icon: 'ph-credit-card',
-      },
-      {
-        id: 'mcp',
-        route: '/configuracao/mcp',
-        label: 'Claude (MCP)',
-        labelKey: 'nav.mcp',
-        icon: 'ph-plugs-connected',
       },
       {
         id: 'politica-de-privacidade',

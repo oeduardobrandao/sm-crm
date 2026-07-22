@@ -28,6 +28,7 @@ describe('hub api client', () => {
         cliente_nome: 'Clínica Aurora',
         is_active: true,
         cliente_id: 9,
+        feature_mensagens: true,
       },
     });
 

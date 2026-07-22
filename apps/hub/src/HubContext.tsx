@@ -5,6 +5,8 @@ interface HubContextValue {
   bootstrap: HubBootstrap;
   token: string;
   workspace: string;
+  theme: 'light' | 'dark';
+  toggleTheme: () => void;
 }
 
 export const HubContext = createContext<HubContextValue | null>(null);

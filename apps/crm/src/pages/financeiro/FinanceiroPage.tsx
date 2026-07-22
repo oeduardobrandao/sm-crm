@@ -15,7 +15,14 @@ import {
   Search,
   SlidersHorizontal,
   MoreVertical,
+  CheckCircle2,
+  ArrowDownCircle,
+  ArrowUpCircle,
+  Wallet,
+  TrendingUp,
 } from 'lucide-react';
+import { StatCard } from '@/components/StatCard';
+import { StatCardGrid } from '@/components/StatCardGrid';
 import { openCSVSelector } from '../../lib/csv';
 import { Button } from '@/components/ui/button';
 import { HelpTooltip } from '@/components/help/HelpTooltip';
@@ -347,32 +354,51 @@ export default function FinanceiroPage() {
         </div>
       </div>
 
-      <div className="kpi-grid" style={{ marginBottom: '1.5rem' }}>
-        {[
-          { label: 'Recebido', value: formatBRL(recebido), color: '#3ecf8e' },
-          { label: 'A Receber', value: formatBRL(aReceber), color: '#f5a342' },
-          { label: 'A Pagar', value: formatBRL(aPagar), color: '#ef4444' },
-          {
-            label: 'Saldo Atual',
-            value: formatBRL(saldoAtual),
-            color: saldoAtual >= 0 ? '#3ecf8e' : '#ef4444',
-          },
-          {
-            label: 'Saldo Projetado',
-            value: formatBRL(saldoProjetado),
-            color: saldoProjetado >= 0 ? '#3ecf8e' : '#ef4444',
-          },
-        ].map((kpi) => (
-          <div
+      <StatCardGrid style={{ marginBottom: '1.5rem' }}>
+        {(
+          [
+            {
+              label: 'Recebido',
+              value: formatBRL(recebido),
+              icon: CheckCircle2,
+              tone: 'green' as const,
+            },
+            {
+              label: 'A receber',
+              value: formatBRL(aReceber),
+              icon: ArrowDownCircle,
+              tone: 'amber' as const,
+            },
+            {
+              label: 'A pagar',
+              value: formatBRL(aPagar),
+              icon: ArrowUpCircle,
+              tone: 'red' as const,
+            },
+            {
+              label: 'Saldo atual',
+              value: formatBRL(saldoAtual),
+              icon: Wallet,
+              tone: saldoAtual >= 0 ? ('green' as const) : ('red' as const),
+            },
+            {
+              label: 'Saldo projetado',
+              value: formatBRL(saldoProjetado),
+              icon: TrendingUp,
+              tone: saldoProjetado >= 0 ? ('green' as const) : ('red' as const),
+            },
+          ] as const
+        ).map((kpi) => (
+          <StatCard
             key={kpi.label}
-            className="kpi-card"
-            style={{ '--kpi-accent': kpi.color } as React.CSSProperties}
-          >
-            <div className="kpi-label">{kpi.label}</div>
-            <div className="kpi-value">{kpi.value}</div>
-          </div>
+            label={kpi.label}
+            value={kpi.value}
+            icon={kpi.icon}
+            tone={kpi.tone}
+            compactValue
+          />
         ))}
-      </div>
+      </StatCardGrid>
 
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center' }}>
         <div style={{ position: 'relative', flex: 1 }}>
@@ -478,7 +504,7 @@ export default function FinanceiroPage() {
                       </span>
                     </TableCell>
                     <TableCell data-label="Status">
-                      <Badge variant={t.status === 'pago' ? 'default' : 'secondary'}>
+                      <Badge variant={t.status === 'pago' ? 'success' : 'neutral'}>
                         {t.status === 'pago' ? 'Pago' : 'Agendado'}
                       </Badge>
                     </TableCell>
@@ -529,8 +555,9 @@ export default function FinanceiroPage() {
                     >
                       <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{t.descricao}</span>
                       <Badge
-                        variant={t.status === 'pago' ? 'default' : 'secondary'}
-                        style={{ fontSize: '0.6rem', padding: '0 0.4rem', pointerEvents: 'none' }}
+                        variant={t.status === 'pago' ? 'success' : 'neutral'}
+                        size="sm"
+                        style={{ pointerEvents: 'none' }}
                       >
                         {t.status === 'pago' ? 'Pago' : 'Agendado'}
                       </Badge>

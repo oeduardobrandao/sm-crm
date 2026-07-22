@@ -8,11 +8,8 @@ import type { Language } from '@mesaas/i18n';
 import { getNavGroups } from './nav-data';
 import type { NavGroup } from './nav-data';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
-
-const LANGUAGE_FLAGS: Record<Language, string> = {
-  pt: '\u{1F1E7}\u{1F1F7}',
-  en: '\u{1F1FA}\u{1F1F8}',
-};
+import { FlagIcon } from '@mesaas/ui/FlagIcon';
+import { avatarColorClass } from '@/lib/avatarColor';
 
 interface SidebarProps {
   isDrawer?: boolean;
@@ -105,7 +102,13 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
           const ItemIcon = isActiveItem ? `ph-fill ${item.icon}` : `ph ${item.icon}`;
           return (
             <li key={item.id} className="sidebar-sub-item">
-              {item.newTab ? (
+              {item.disabled ? (
+                <div className="sidebar-sub-link sidebar-sub-link--disabled" aria-disabled="true">
+                  <i className={`ph ${item.icon}`} />
+                  <span>{t(item.labelKey, item.label)}</span>
+                  <span className="nav-badge">{t('sidebar.comingSoon', 'Em breve')}</span>
+                </div>
+              ) : item.newTab ? (
                 <a
                   className="sidebar-sub-link"
                   href={item.route}
@@ -162,7 +165,7 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
           >
             <div className="sidebar-user-trigger">
               <div
-                className="avatar"
+                className={`avatar ${avatarColorClass(user?.id ?? profile?.nome)}`}
                 style={{ width: 32, height: 32, borderRadius: 8, fontSize: '0.8rem' }}
               >
                 {initials}
@@ -324,7 +327,7 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
                           handleLanguageChange(lang);
                         }}
                       >
-                        <span>{LANGUAGE_FLAGS[lang]}</span>
+                        <FlagIcon lang={lang} size={16} />
                         <span>{t(`language.${lang}`)}</span>
                         {isActive && <i className="ph ph-check" style={{ marginLeft: 'auto' }} />}
                       </button>

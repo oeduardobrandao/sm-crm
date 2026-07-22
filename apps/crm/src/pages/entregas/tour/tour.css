@@ -1,0 +1,42 @@
+.driver-popover {
+  background: #12151a;
+  color: #e8eaf0;
+  border-radius: 10px;
+}
+.driver-popover-title {
+  color: #fff;
+  font-family: var(--font-main);
+}
+.driver-popover-description {
+  color: #cbd5e1;
+  font-size: 0.82rem;
+}
+.driver-popover-progress-text {
+  color: #eab308;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+.driver-popover-next-btn,
+.driver-popover-done-btn {
+  background: #eab308 !important;
+  color: #12151a !important;
+  border: none !important;
+  font-weight: 700;
+}
+/* Per-placement longhands, NOT a `border-color` shorthand: driver.css's own
+   .driver-popover-arrow-side-* rules transparentize three of the four borders to carve the
+   pointer, and they sit at the same specificity (0,1,0) as this file's rules. Because tour.css
+   is imported after driver.css, a shorthand here would win the cascade and repaint all four
+   sides opaque, turning the arrow into a solid 10x10 block beside the popover. */
+.driver-popover-arrow-side-left {
+  border-left-color: #12151a;
+}
+.driver-popover-arrow-side-right {
+  border-right-color: #12151a;
+}
+.driver-popover-arrow-side-top {
+  border-top-color: #12151a;
+}
+.driver-popover-arrow-side-bottom {
+  border-bottom-color: #12151a;
+}

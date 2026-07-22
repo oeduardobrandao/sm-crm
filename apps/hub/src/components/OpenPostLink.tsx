@@ -11,7 +11,7 @@ export function OpenPostLink({ postId, className }: { postId: number; className?
       target="_blank"
       rel="noopener noreferrer"
       aria-label="Abrir postagem em nova aba"
-      className={`inline-flex items-center gap-1 text-[12px] text-stone-500 hover:text-stone-900 transition-colors ${className ?? ''}`}
+      className={`inline-flex items-center gap-1 text-[12px] hub-tx3 hub-link-muted transition-colors ${className ?? ''}`}
     >
       <ExternalLink size={13} />
       Abrir

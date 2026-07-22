@@ -17,7 +17,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { SlidersHorizontal } from 'lucide-react';
+import { SlidersHorizontal, CheckCircle2, Activity, Clock, Target } from 'lucide-react';
+import { StatCard } from '@/components/StatCard';
+import { StatCardGrid } from '@/components/StatCardGrid';
 import { Chart, registerables } from 'chart.js';
 import {
   getWorkflows,
@@ -542,7 +544,7 @@ export default function AnalyticsFluxosPage() {
       className="page-content"
       style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}
     >
-      <header className="header animate-up">
+      <header className="header header--flush animate-up">
         <div className="header-title">
           <h1>Analytics de Fluxos</h1>
           <p style={{ color: 'var(--text-muted)' }}>{workflows.length} fluxos</p>
@@ -553,18 +555,24 @@ export default function AnalyticsFluxosPage() {
         style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}
         className="animate-up"
       >
-        <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
-          {DAY_OPTIONS.map((opt) => (
-            <button
-              key={opt.label}
-              className={`filter-btn${(opt.value === 0 ? filters.days === null : filters.days === opt.value) ? ' active' : ''}`}
-              onClick={() =>
-                setFilters((f) => ({ ...f, days: opt.value === 0 ? null : opt.value }))
-              }
-            >
-              {opt.label}
-            </button>
-          ))}
+        <div className="page-tabs page-tabs--inline" role="tablist">
+          {DAY_OPTIONS.map((opt) => {
+            const isActive = opt.value === 0 ? filters.days === null : filters.days === opt.value;
+            return (
+              <button
+                key={opt.label}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                className={`page-tab${isActive ? ' active' : ''}`}
+                onClick={() =>
+                  setFilters((f) => ({ ...f, days: opt.value === 0 ? null : opt.value }))
+                }
+              >
+                {opt.label}
+              </button>
+            );
+          })}
         </div>
 
         <DropdownMenu>
@@ -650,34 +658,38 @@ export default function AnalyticsFluxosPage() {
         </div>
       ) : (
         <>
-          <div className="kpi-grid animate-up">
-            <div className="kpi-card">
-              <span className="kpi-label">CONCLUÍDOS</span>
-              <span className="kpi-value">{metrics.completedWorkflows}</span>
-              <span className="kpi-sub">fluxos finalizados</span>
-            </div>
-            <div className="kpi-card">
-              <span className="kpi-label">ATIVOS</span>
-              <span className="kpi-value">{metrics.activeWorkflows}</span>
-              <span className="kpi-sub">fluxos em andamento</span>
-            </div>
-            <div className="kpi-card">
-              <span className="kpi-label">TEMPO MÉDIO</span>
-              <span className="kpi-value">
-                {metrics.avgCompletionDays !== null
-                  ? formatDuration(metrics.avgCompletionDays)
-                  : '—'}
-              </span>
-              <span className="kpi-sub">dias para conclusão</span>
-            </div>
-            <div className="kpi-card">
-              <span className="kpi-label">PONTUALIDADE</span>
-              <span className="kpi-value">
-                {metrics.onTimeRate !== null ? metrics.onTimeRate + '%' : '—'}
-              </span>
-              <span className="kpi-sub">etapas no prazo</span>
-            </div>
-          </div>
+          <StatCardGrid className="animate-up">
+            <StatCard
+              label="Concluídos"
+              icon={CheckCircle2}
+              tone="green"
+              value={metrics.completedWorkflows}
+              sub="fluxos finalizados"
+            />
+            <StatCard
+              label="Ativos"
+              icon={Activity}
+              tone="blue"
+              value={metrics.activeWorkflows}
+              sub="fluxos em andamento"
+            />
+            <StatCard
+              label="Tempo médio"
+              icon={Clock}
+              tone="violet"
+              value={
+                metrics.avgCompletionDays !== null ? formatDuration(metrics.avgCompletionDays) : '—'
+              }
+              sub="dias para conclusão"
+            />
+            <StatCard
+              label="Pontualidade"
+              icon={Target}
+              tone="amber"
+              value={metrics.onTimeRate !== null ? metrics.onTimeRate + '%' : '—'}
+              sub="etapas no prazo"
+            />
+          </StatCardGrid>
 
           <AnalyticsCharts metrics={metrics} />
 
@@ -706,10 +718,10 @@ export default function AnalyticsFluxosPage() {
                         {metrics.memberPerformance.map((mp) => {
                           const badgeVariant =
                             mp.onTimeRate >= 80
-                              ? 'default'
+                              ? 'success'
                               : mp.onTimeRate >= 50
-                                ? 'secondary'
-                                : 'destructive';
+                                ? 'warning'
+                                : 'danger';
                           return (
                             <tr key={mp.membro.id}>
                               <td data-label="Membro">
@@ -736,7 +748,9 @@ export default function AnalyticsFluxosPage() {
                               </td>
                               <td data-label="Atrasos">
                                 {mp.overdueCount > 0 ? (
-                                  <Badge variant="destructive">{mp.overdueCount}</Badge>
+                                  <Badge variant="danger" tone="solid">
+                                    {mp.overdueCount}
+                                  </Badge>
                                 ) : (
                                   '0'
                                 )}
@@ -751,11 +765,7 @@ export default function AnalyticsFluxosPage() {
                 <div className="fluxos-team-mobile">
                   {metrics.memberPerformance.map((mp) => {
                     const badgeVariant =
-                      mp.onTimeRate >= 80
-                        ? 'default'
-                        : mp.onTimeRate >= 50
-                          ? 'secondary'
-                          : 'destructive';
+                      mp.onTimeRate >= 80 ? 'success' : mp.onTimeRate >= 50 ? 'warning' : 'danger';
                     return (
                       <div key={mp.membro.id} className="card" style={{ padding: '0.875rem' }}>
                         <div
@@ -806,7 +816,7 @@ export default function AnalyticsFluxosPage() {
                           </span>
                           {mp.overdueCount > 0 && (
                             <span>
-                              <Badge variant="destructive" style={{ fontSize: '0.7rem' }}>
+                              <Badge variant="danger" tone="solid" size="sm">
                                 {mp.overdueCount} atrasos
                               </Badge>
                             </span>
@@ -842,10 +852,10 @@ export default function AnalyticsFluxosPage() {
                         {metrics.bottlenecks.map((b, i) => {
                           const badgeVariant2 =
                             b.overdueRate <= 20
-                              ? 'default'
+                              ? 'success'
                               : b.overdueRate <= 50
-                                ? 'secondary'
-                                : 'destructive';
+                                ? 'warning'
+                                : 'danger';
                           return (
                             <tr key={i}>
                               <td data-label="Etapa">{b.nome}</td>
@@ -864,11 +874,7 @@ export default function AnalyticsFluxosPage() {
                 <div className="fluxos-bottleneck-mobile">
                   {metrics.bottlenecks.map((b, i) => {
                     const badgeVariant2 =
-                      b.overdueRate <= 20
-                        ? 'default'
-                        : b.overdueRate <= 50
-                          ? 'secondary'
-                          : 'destructive';
+                      b.overdueRate <= 20 ? 'success' : b.overdueRate <= 50 ? 'warning' : 'danger';
                     return (
                       <div key={i} className="card" style={{ padding: '0.875rem' }}>
                         <div

@@ -258,9 +258,16 @@ describe('AnalyticsFluxosPage', () => {
     expect(screen.getAllByText('Ana').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Roteiro').length).toBeGreaterThan(0);
 
-    const concludedCard = screen.getByText('CONCLUÍDOS').closest('.kpi-card');
-    const activeCard = screen.getByText('ATIVOS').closest('.kpi-card');
-    const onTimeCard = screen.getByText('PONTUALIDADE').closest('.kpi-card');
+    // Scoped to .kpi-label: some of these words also appear as table column headers
+    const kpiCardByLabel = (label: string) =>
+      screen
+        .getAllByText(label)
+        .find((el) => el.classList.contains('kpi-label'))
+        ?.closest('.kpi-card') ?? null;
+
+    const concludedCard = kpiCardByLabel('Concluídos');
+    const activeCard = kpiCardByLabel('Ativos');
+    const onTimeCard = kpiCardByLabel('Pontualidade');
 
     expect(concludedCard).not.toBeNull();
     expect(activeCard).not.toBeNull();

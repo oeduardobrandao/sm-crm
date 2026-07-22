@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -42,6 +42,22 @@ vi.mock('../../../arquivos/components/FilePickerModal', () => ({
 vi.mock('../../../../services/fileService', () => ({
   linkFileToPost: vi.fn(),
   unlinkFileFromPost: vi.fn(),
+}));
+
+const { downloadMediaMock, zipFileSpy } = vi.hoisted(() => ({
+  downloadMediaMock: vi.fn(async () => undefined),
+  zipFileSpy: vi.fn(),
+}));
+
+vi.mock('@/utils/downloadMedia', () => ({ downloadMedia: downloadMediaMock }));
+
+vi.mock('jszip', () => ({
+  default: class MockJSZip {
+    file = zipFileSpy;
+    async generateAsync() {
+      return new Blob(['zip']);
+    }
+  },
 }));
 
 import { listPostMedia, uploadPostMedia } from '../../../../services/postMedia';
@@ -244,6 +260,78 @@ describe('carousel 10-item warning', () => {
     );
     await screen.findByText('Adicionar'); // wait for the query to resolve
     expect(screen.queryByText(/Carrossel acima do limite/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('"Baixar todos" zip threshold', () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(new Blob(['bytes']), { status: 200 })),
+    );
+    URL.createObjectURL = vi.fn(() => 'blob:zip');
+    URL.revokeObjectURL = vi.fn();
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('downloads the file directly when the post has exactly one', async () => {
+    vi.mocked(listPostMedia).mockResolvedValueOnce(makeMedia(1));
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <PostMediaGallery postId={1} />
+      </QueryClientProvider>,
+    );
+
+    // One file → the button drops the "todos" wording along with the zip.
+    fireEvent.click(await screen.findByText('Baixar arquivo'));
+
+    await waitFor(() =>
+      expect(downloadMediaMock).toHaveBeenCalledWith(
+        expect.objectContaining({ original_filename: 'img0.jpg' }),
+      ),
+    );
+    expect(zipFileSpy).not.toHaveBeenCalled();
+  });
+
+  it('still zips when the post has more than one file', async () => {
+    vi.mocked(listPostMedia).mockResolvedValueOnce(makeMedia(2));
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <PostMediaGallery postId={1} />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByText('Baixar todos'));
+
+    await waitFor(() => expect(zipFileSpy).toHaveBeenCalledTimes(2));
+    expect(downloadMediaMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('media request mode', () => {
+  // Regression: the tile used to request the url in no-cors mode while the
+  // preloader, lightbox and zip download request the SAME url in cors mode.
+  // The proxy serves media as `immutable` for a year, so whichever request
+  // landed first decided the browser's cache entry — and a no-cors entry (no
+  // ACAO header) makes every later cors read fail, breaking the lightbox.
+  it('requests image tiles in cors mode, matching every other reader of the url', async () => {
+    vi.mocked(listPostMedia).mockResolvedValueOnce(makeMedia(1));
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <PostMediaGallery postId={1} />
+      </QueryClientProvider>,
+    );
+
+    const img = await screen.findByAltText('img0.jpg');
+    expect(img).toHaveAttribute('crossorigin', 'anonymous');
   });
 });
 

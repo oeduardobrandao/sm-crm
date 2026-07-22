@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ArrowLeft, Edit2 } from 'lucide-react';
+import { ArrowLeft, Edit2, Wallet, CheckCircle2, Clock } from 'lucide-react';
+import { StatCard } from '@/components/StatCard';
+import { StatCardGrid } from '@/components/StatCardGrid';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -39,22 +41,8 @@ import {
   type Membro,
 } from '../../store';
 import { useAuth } from '../../context/AuthContext';
+import { avatarColorClass } from '@/lib/avatarColor';
 
-const AVATAR_COLORS = [
-  '#eab308',
-  '#3ecf8e',
-  '#f5a342',
-  '#f542c8',
-  '#42c8f5',
-  '#8b5cf6',
-  '#ef4444',
-  '#14b8a6',
-];
-function getAvatarColor(name: string): string {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
-  return AVATAR_COLORS[hash % AVATAR_COLORS.length];
-}
 const TIPO_LABEL: Record<string, string> = {
   clt: 'CLT',
   freelancer_mensal: 'Freelancer Mensal',
@@ -141,7 +129,7 @@ export default function MembroDetalhePage() {
     }
   };
 
-  const color = membro ? getAvatarColor(membro.nome) : '#ccc';
+  const avatarClass = avatarColorClass(membro?.id ?? membro?.nome);
 
   return (
     <div style={{ padding: '1.5rem' }}>
@@ -168,15 +156,8 @@ export default function MembroDetalhePage() {
         <>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, margin: '1.5rem 0' }}>
             <div
-              className="avatar"
-              style={{
-                background: color,
-                color: '#fff',
-                fontWeight: 700,
-                width: 56,
-                height: 56,
-                fontSize: 22,
-              }}
+              className={`avatar ${avatarClass}`}
+              style={{ fontWeight: 700, width: 56, height: 56, fontSize: 22 }}
             >
               {getInitials(membro.nome)}
             </div>
@@ -187,18 +168,39 @@ export default function MembroDetalhePage() {
           </div>
 
           {!isAgent && (
-            <div className="kpi-grid" style={{ marginBottom: '1.5rem' }}>
-              {[
-                { label: 'Custo Mensal', value: formatBRL(membro.custo_mensal ?? 0) },
-                { label: 'Total Pago', value: formatBRL(totalPago) },
-                { label: 'Pendente', value: formatBRL(pendente) },
-              ].map((k) => (
-                <div key={k.label} className="kpi-card">
-                  <div className="kpi-label">{k.label}</div>
-                  <div className="kpi-value">{k.value}</div>
-                </div>
+            <StatCardGrid style={{ marginBottom: '1.5rem' }}>
+              {(
+                [
+                  {
+                    label: 'Custo mensal',
+                    value: formatBRL(membro.custo_mensal ?? 0),
+                    icon: Wallet,
+                    tone: 'blue' as const,
+                  },
+                  {
+                    label: 'Total pago',
+                    value: formatBRL(totalPago),
+                    icon: CheckCircle2,
+                    tone: 'green' as const,
+                  },
+                  {
+                    label: 'Pendente',
+                    value: formatBRL(pendente),
+                    icon: Clock,
+                    tone: 'amber' as const,
+                  },
+                ] as const
+              ).map((k) => (
+                <StatCard
+                  key={k.label}
+                  label={k.label}
+                  value={k.value}
+                  icon={k.icon}
+                  tone={k.tone}
+                  compactValue
+                />
               ))}
-            </div>
+            </StatCardGrid>
           )}
 
           <div className="card" style={{ marginBottom: '1.5rem' }}>

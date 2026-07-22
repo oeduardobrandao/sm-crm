@@ -91,7 +91,7 @@ export function TopPostsRow({ posts }: TopPostsRowProps) {
       <div
         ref={trackRef}
         onScroll={handleScroll}
-        className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-1 -mx-1 px-1 sm:grid sm:grid-cols-3 md:grid-cols-5 sm:gap-4 sm:overflow-visible sm:mx-0 sm:px-0 sm:pb-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="flex items-start gap-3 overflow-x-auto snap-x snap-mandatory pb-1 -mx-1 px-1 sm:grid sm:grid-cols-3 md:grid-cols-5 sm:gap-4 sm:overflow-visible sm:mx-0 sm:px-0 sm:pb-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {posts.map((post) => {
           const color = TIPO_COLORS[post.mediaType] ?? '#6b7280';
@@ -105,7 +105,7 @@ export function TopPostsRow({ posts }: TopPostsRowProps) {
               className="snap-start shrink-0 basis-[84%] sm:basis-auto rounded-2xl overflow-hidden border border-stone-200 dark:border-white/[0.06] bg-white dark:bg-[#1a1e26] transition-transform hover:scale-[1.02]"
             >
               <div
-                className="aspect-square relative overflow-hidden"
+                className={`relative overflow-hidden ${showImage ? '' : 'aspect-[4/5]'}`}
                 style={
                   showImage
                     ? undefined
@@ -116,11 +116,9 @@ export function TopPostsRow({ posts }: TopPostsRowProps) {
                   <img
                     src={post.thumbnailUrl!}
                     alt=""
-                    width={1}
-                    height={1}
                     loading="lazy"
                     decoding="async"
-                    className="w-full h-full object-cover"
+                    className="block w-full h-auto"
                     onError={() => setFailedImages((prev) => new Set(prev).add(post.id))}
                   />
                 ) : (

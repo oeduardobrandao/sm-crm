@@ -133,6 +133,7 @@ const hubValue = {
     cliente_nome: 'Clínica Aurora',
     is_active: true,
     cliente_id: 14,
+    feature_mensagens: true,
   },
   token: 'token-publico',
   workspace: 'mesaas',
@@ -223,6 +224,7 @@ describe('hub approval, posts, and brand pages', () => {
       );
 
       expect(container.querySelector('.animate-spin')).not.toBeNull();
+      expect(screen.getByRole('heading', { name: 'Aprovações' })).toBeInTheDocument();
     });
 
     it('renders the empty copy when there are no client approvals pending', async () => {
@@ -336,6 +338,7 @@ describe('hub approval, posts, and brand pages', () => {
       );
 
       expect(container.querySelector('.animate-spin')).not.toBeNull();
+      expect(screen.getByRole('heading', { name: 'Postagens' })).toBeInTheDocument();
     });
 
     it('renders the error message when the posts query fails', async () => {
@@ -348,6 +351,7 @@ describe('hub approval, posts, and brand pages', () => {
       );
 
       expect(await screen.findByText('Erro ao carregar postagens.')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Postagens' })).toBeInTheDocument();
     });
 
     it('renders the empty state when no visible posts are available', async () => {
@@ -433,7 +437,8 @@ describe('hub approval, posts, and brand pages', () => {
         <PostagensPage />,
       );
 
-      expect(await screen.findByRole('heading', { name: 'Postagens' })).toBeInTheDocument();
+      expect(await screen.findByText('Branding')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Postagens' })).toBeInTheDocument();
 
       const groupHeadings = screen.getAllByRole('heading', { level: 3 });
       expect(groupHeadings.map((heading) => heading.textContent)).toEqual([
@@ -476,6 +481,7 @@ describe('hub approval, posts, and brand pages', () => {
       );
 
       expect(container.querySelector('.animate-spin')).not.toBeNull();
+      expect(screen.getByRole('heading', { name: 'Marca' })).toBeInTheDocument();
     });
 
     it('renders the empty state when no brand content has been added yet', async () => {
@@ -490,6 +496,7 @@ describe('hub approval, posts, and brand pages', () => {
       expect(
         await screen.findByText('Nenhum material de marca foi adicionado ainda.'),
       ).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Marca' })).toBeInTheDocument();
     });
 
     it('renders the brand assets, typography, and downloadable files', async () => {
@@ -497,6 +504,7 @@ describe('hub approval, posts, and brand pages', () => {
         brand: {
           id: 'brand-1',
           cliente_id: 14,
+          feature_mensagens: true,
           logo_url: 'https://cdn.mesaas.com/brand/logo.png',
           primary_color: '#0f766e',
           secondary_color: '#f97316',
@@ -507,6 +515,7 @@ describe('hub approval, posts, and brand pages', () => {
           {
             id: 'file-1',
             cliente_id: 14,
+            feature_mensagens: true,
             name: 'Brandbook.pdf',
             file_url: 'https://cdn.mesaas.com/brand/brandbook.pdf',
             file_type: 'application/pdf',
@@ -515,6 +524,7 @@ describe('hub approval, posts, and brand pages', () => {
           {
             id: 'file-2',
             cliente_id: 14,
+            feature_mensagens: true,
             name: 'Logo.zip',
             file_url: 'https://cdn.mesaas.com/brand/logo.zip',
             file_type: 'application/zip',
@@ -529,7 +539,8 @@ describe('hub approval, posts, and brand pages', () => {
         <MarcaPage />,
       );
 
-      expect(await screen.findByRole('heading', { name: 'Marca' })).toBeInTheDocument();
+      expect(await screen.findByRole('img', { name: 'Logo' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Marca' })).toBeInTheDocument();
       expect(screen.getByRole('img', { name: 'Logo' })).toHaveAttribute(
         'src',
         'https://cdn.mesaas.com/brand/logo.png',

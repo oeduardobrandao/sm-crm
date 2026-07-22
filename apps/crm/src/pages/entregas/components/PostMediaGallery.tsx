@@ -13,6 +13,7 @@ import {
   Wand2,
 } from 'lucide-react';
 import { fetchWithRetry } from '@/utils/fetchWithRetry';
+import { downloadMedia } from '@/utils/downloadMedia';
 import { UploadHint } from '@/components/help/UploadHint';
 import {
   DndContext,
@@ -347,6 +348,13 @@ export function PostMediaGallery({
     if (media.length === 0) return;
     setDownloading(true);
     try {
+      // A one-file zip is just friction — hand the file over directly.
+      if (media.length === 1) {
+        await downloadMedia(media[0]);
+        toast.success(t('mediaGallery.downloadDone'));
+        return;
+      }
+
       const entries = await Promise.all(
         media
           .filter((m) => m.url)
@@ -557,7 +565,9 @@ export function PostMediaGallery({
           className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11.5px] font-medium text-stone-600 bg-stone-100 hover:bg-stone-200 dark:text-stone-300 dark:bg-stone-800 dark:hover:bg-stone-700 transition-colors disabled:opacity-50"
         >
           <Download className="h-3.5 w-3.5" />
-          {downloading ? t('mediaGallery.downloading') : t('mediaGallery.downloadAll')}
+          {downloading
+            ? t('mediaGallery.downloading')
+            : t(media.length === 1 ? 'mediaGallery.downloadOne' : 'mediaGallery.downloadAll')}
         </button>
       )}
 
@@ -636,7 +646,6 @@ export function PostMediaGallery({
         onOpenChange={(o) => {
           if (!o) setLightboxIndex(null);
         }}
-        onDownloadAll={handleDownloadAll}
       />
 
       <ThumbnailPickerDialog
@@ -704,6 +713,10 @@ function SortableMediaTile({
           width={m.width ?? undefined}
           height={m.height ?? undefined}
           blurDataURL={m.blur_data_url ?? undefined}
+          // Every other reader of this same url is cors-mode (preloader, lightbox,
+          // zip download). Requesting it no-cors here would fetch each image twice
+          // and keep two browser-cache entries for one object.
+          crossOrigin="anonymous"
           className="w-full h-full object-cover pointer-events-none"
         />
       ) : (
