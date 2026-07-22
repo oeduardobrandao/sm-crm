@@ -22,7 +22,6 @@ export const DEFAULT_RATES: Record<string, number> = {
   rate_instagram_syncs_per_day: 5,
   rate_ai_analyses_per_month: 10,
   rate_report_generations_per_month: 10,
-  rate_ai_images_per_month: 0,
 };
 
 export interface FormState {
