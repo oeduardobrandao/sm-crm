@@ -276,6 +276,7 @@ export default function ConfiguracaoPage() {
   };
 
   // --- Report Branding ---
+  type WorkspaceBranding = Awaited<ReturnType<typeof getWorkspaceBranding>>;
   const { data: branding } = useQuery({
     queryKey: ['workspace-branding'],
     queryFn: getWorkspaceBranding,
@@ -288,11 +289,19 @@ export default function ConfiguracaoPage() {
   const [splashUploading, setSplashUploading] = useState(false);
   const [splashRemoveOpen, setSplashRemoveOpen] = useState(false);
   const splashInputRef = useRef<HTMLInputElement>(null);
+  const brandingInitializedRef = useRef(false);
 
   useEffect(() => {
     if (branding) {
-      setBrandColor(branding.brand_color ?? '#eab308');
-      setSendReportEmail(branding.send_report_email ?? false);
+      // Seed brandColor/sendReportEmail only once: a refetch triggered by the
+      // splash handlers (e.g. after upload) must not clobber an in-flight,
+      // unsaved edit to these fields. splashUrl has no "Salvar" step of its
+      // own, so it always tracks the server value.
+      if (!brandingInitializedRef.current) {
+        setBrandColor(branding.brand_color ?? '#eab308');
+        setSendReportEmail(branding.send_report_email ?? false);
+        brandingInitializedRef.current = true;
+      }
       setSplashUrl(branding.report_splash_url ?? null);
     }
   }, [branding]);
@@ -322,7 +331,9 @@ export default function ConfiguracaoPage() {
       const publicUrl = urlData.publicUrl + '?t=' + Date.now();
       await updateWorkspace(workspace.id, { report_splash_url: publicUrl });
       setSplashUrl(publicUrl);
-      queryClient.invalidateQueries({ queryKey: ['workspace-branding'] });
+      queryClient.setQueryData(['workspace-branding'], (old: WorkspaceBranding | undefined) =>
+        old ? { ...old, report_splash_url: publicUrl } : old,
+      );
       toast.success('Arte da capa atualizada.');
     } catch (err: unknown) {
       toast.error('Erro ao enviar a arte: ' + (err as Error).message);
@@ -337,7 +348,9 @@ export default function ConfiguracaoPage() {
     try {
       await updateWorkspace(workspace.id, { report_splash_url: null });
       setSplashUrl(null);
-      queryClient.invalidateQueries({ queryKey: ['workspace-branding'] });
+      queryClient.setQueryData(['workspace-branding'], (old: WorkspaceBranding | undefined) =>
+        old ? { ...old, report_splash_url: null } : old,
+      );
       toast.success('Arte da capa removida.');
     } catch (err: unknown) {
       toast.error('Erro: ' + (err as Error).message);
