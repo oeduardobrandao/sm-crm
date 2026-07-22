@@ -363,10 +363,10 @@ export default function ContratosPage() {
                     <Badge
                       variant={
                         c.status === 'vigente'
-                          ? 'default'
+                          ? 'success'
                           : c.status === 'a_assinar'
-                            ? 'secondary'
-                            : 'outline'
+                            ? 'warning'
+                            : 'neutral'
                       }
                     >
                       {STATUS_LABEL[c.status]}

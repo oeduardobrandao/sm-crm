@@ -7,6 +7,7 @@ import { getMoreSheetGroups } from './nav-data';
 import { Search, MessageCircle } from 'lucide-react';
 import { CommandDialog, CommandInput, CommandList, CommandEmpty } from '@/components/ui/command';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { avatarColorClass } from '@/lib/avatarColor';
 
 declare global {
   interface Window {
@@ -130,7 +131,10 @@ export default function MobileNav() {
 
           {/* Profile */}
           <div className="mobile-more-profile" id="mobile-profile">
-            <div className="avatar" id="mobile-avatar">
+            <div
+              className={`avatar ${avatarColorClass(profile?.id ?? profile?.nome)}`}
+              id="mobile-avatar"
+            >
               {initials}
             </div>
             <div className="mobile-more-profile-info">

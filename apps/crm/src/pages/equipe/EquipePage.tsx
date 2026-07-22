@@ -65,6 +65,7 @@ import {
   type Membro,
 } from '../../store';
 import { useAuth } from '../../context/AuthContext';
+import { avatarColorClass } from '@/lib/avatarColor';
 
 type FilterTipo = 'todos' | 'clt' | 'freelancer_mensal' | 'freelancer_demanda';
 type SortKey = 'nome' | 'custo_maior' | 'custo_menor';
@@ -81,27 +82,11 @@ const membroSchema = z.object({
 });
 type MembroFormValues = z.infer<typeof membroSchema>;
 
-const AVATAR_COLORS = [
-  '#eab308',
-  '#3ecf8e',
-  '#f5a342',
-  '#f542c8',
-  '#42c8f5',
-  '#8b5cf6',
-  '#ef4444',
-  '#14b8a6',
-];
 const TIPO_LABEL: Record<string, string> = {
   clt: 'CLT',
   freelancer_mensal: 'Freelancer Mensal',
   freelancer_demanda: 'Freelancer Demanda',
 };
-
-function getAvatarColor(name: string): string {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
-  return AVATAR_COLORS[hash % AVATAR_COLORS.length];
-}
 
 export default function EquipePage() {
   const qc = useQueryClient();
@@ -391,7 +376,7 @@ export default function EquipePage() {
       ) : (
         <div className="team-grid">
           {filtered.map((m) => {
-            const color = getAvatarColor(m.nome);
+            const avatarClass = avatarColorClass(m.id ?? m.nome);
             return (
               <div
                 key={m.id}
@@ -400,19 +385,8 @@ export default function EquipePage() {
               >
                 <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                   <div
-                    className="avatar"
-                    style={{
-                      background: color,
-                      color: '#fff',
-                      fontWeight: 700,
-                      width: 44,
-                      height: 44,
-                      fontSize: '1rem',
-                      flexShrink: 0,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
+                    className={`avatar ${avatarClass}`}
+                    style={{ fontWeight: 700, width: 44, height: 44, fontSize: '1rem' }}
                   >
                     {getInitials(m.nome)}
                   </div>
@@ -442,17 +416,11 @@ export default function EquipePage() {
                         alignItems: 'center',
                       }}
                     >
-                      <Badge
-                        variant="secondary"
-                        style={{ fontSize: '0.65rem', padding: '0 0.4rem', pointerEvents: 'none' }}
-                      >
+                      <Badge variant="neutral" size="sm" style={{ pointerEvents: 'none' }}>
                         {TIPO_LABEL[m.tipo]}
                       </Badge>
                       {!isAgent && !m.crm_user_id && (
-                        <Badge
-                          variant="outline"
-                          style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}
-                        >
+                        <Badge variant="outline" size="sm">
                           sem conta vinculada
                         </Badge>
                       )}

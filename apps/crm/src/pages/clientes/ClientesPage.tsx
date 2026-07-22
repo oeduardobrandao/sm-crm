@@ -468,12 +468,13 @@ export default function ClientesPage() {
                       <Badge
                         variant={
                           c.status === 'ativo'
-                            ? 'default'
+                            ? 'success'
                             : c.status === 'pausado'
-                              ? 'secondary'
-                              : 'outline'
+                              ? 'warning'
+                              : 'neutral'
                         }
-                        style={{ fontSize: '0.65rem', padding: '0 0.4rem', pointerEvents: 'none' }}
+                        size="sm"
+                        style={{ pointerEvents: 'none' }}
                       >
                         {tc(`status.${c.status}`)}
                       </Badge>

@@ -706,10 +706,10 @@ export default function AnalyticsFluxosPage() {
                         {metrics.memberPerformance.map((mp) => {
                           const badgeVariant =
                             mp.onTimeRate >= 80
-                              ? 'default'
+                              ? 'success'
                               : mp.onTimeRate >= 50
-                                ? 'secondary'
-                                : 'destructive';
+                                ? 'warning'
+                                : 'danger';
                           return (
                             <tr key={mp.membro.id}>
                               <td data-label="Membro">
@@ -736,7 +736,9 @@ export default function AnalyticsFluxosPage() {
                               </td>
                               <td data-label="Atrasos">
                                 {mp.overdueCount > 0 ? (
-                                  <Badge variant="destructive">{mp.overdueCount}</Badge>
+                                  <Badge variant="danger" tone="solid">
+                                    {mp.overdueCount}
+                                  </Badge>
                                 ) : (
                                   '0'
                                 )}
@@ -751,11 +753,7 @@ export default function AnalyticsFluxosPage() {
                 <div className="fluxos-team-mobile">
                   {metrics.memberPerformance.map((mp) => {
                     const badgeVariant =
-                      mp.onTimeRate >= 80
-                        ? 'default'
-                        : mp.onTimeRate >= 50
-                          ? 'secondary'
-                          : 'destructive';
+                      mp.onTimeRate >= 80 ? 'success' : mp.onTimeRate >= 50 ? 'warning' : 'danger';
                     return (
                       <div key={mp.membro.id} className="card" style={{ padding: '0.875rem' }}>
                         <div
@@ -806,7 +804,7 @@ export default function AnalyticsFluxosPage() {
                           </span>
                           {mp.overdueCount > 0 && (
                             <span>
-                              <Badge variant="destructive" style={{ fontSize: '0.7rem' }}>
+                              <Badge variant="danger" tone="solid" size="sm">
                                 {mp.overdueCount} atrasos
                               </Badge>
                             </span>
@@ -842,10 +840,10 @@ export default function AnalyticsFluxosPage() {
                         {metrics.bottlenecks.map((b, i) => {
                           const badgeVariant2 =
                             b.overdueRate <= 20
-                              ? 'default'
+                              ? 'success'
                               : b.overdueRate <= 50
-                                ? 'secondary'
-                                : 'destructive';
+                                ? 'warning'
+                                : 'danger';
                           return (
                             <tr key={i}>
                               <td data-label="Etapa">{b.nome}</td>
@@ -864,11 +862,7 @@ export default function AnalyticsFluxosPage() {
                 <div className="fluxos-bottleneck-mobile">
                   {metrics.bottlenecks.map((b, i) => {
                     const badgeVariant2 =
-                      b.overdueRate <= 20
-                        ? 'default'
-                        : b.overdueRate <= 50
-                          ? 'secondary'
-                          : 'destructive';
+                      b.overdueRate <= 20 ? 'success' : b.overdueRate <= 50 ? 'warning' : 'danger';
                     return (
                       <div key={i} className="card" style={{ padding: '0.875rem' }}>
                         <div

@@ -1089,8 +1089,8 @@ function FinanceiroCalendar({
                           style={paid ? { background: 'var(--text-muted)' } : {}}
                         />
                         {paid ? (
-                          <span className="badge badge-neutral">
-                            <i className="ph ph-check-circle" style={{ marginRight: 4 }} /> PAGO
+                          <span className="badge badge-success">
+                            <i className="ph ph-check-circle" /> Pago
                           </span>
                         ) : (
                           <button
@@ -1137,8 +1137,8 @@ function FinanceiroCalendar({
                           style={paid ? { background: 'var(--text-muted)' } : {}}
                         />
                         {paid ? (
-                          <span className="badge badge-neutral">
-                            <i className="ph ph-check-circle" style={{ marginRight: 4 }} /> PAGO
+                          <span className="badge badge-success">
+                            <i className="ph ph-check-circle" /> Pago
                           </span>
                         ) : (
                           <button
@@ -1182,9 +1182,7 @@ function FinanceiroCalendar({
                     <div key={i} className="scheduled-item">
                       <div className="item-top">
                         <div className="item-badge" style={{ background: d.clienteCor }} />
-                        <span className="badge" style={{ fontSize: '0.65rem' }}>
-                          ⚑ {statusLabel.toUpperCase()}
-                        </span>
+                        <span className="badge badge-neutral badge--sm">⚑ {statusLabel}</span>
                       </div>
                       <div className="item-title">{d.workflowTitle}</div>
                       <div className="item-subtitle">

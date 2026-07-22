@@ -286,8 +286,8 @@ export function CalendarView({
                         className="item-badge"
                         style={{ background: ev.type === 'etapa' ? '#a855f7' : '#f97316' }}
                       />
-                      <span className="badge" style={{ fontSize: '0.65rem' }}>
-                        {ev.type === 'etapa' ? '⚑ PRAZO DA ETAPA' : '◎ CONCLUSÃO PREVISTA'}
+                      <span className="badge badge-neutral badge--sm">
+                        {ev.type === 'etapa' ? '⚑ Prazo da etapa' : '◎ Conclusão prevista'}
                       </span>
                     </div>
                     <div className="item-title">{ev.card.workflow.titulo}</div>

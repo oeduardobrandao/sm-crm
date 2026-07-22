@@ -183,20 +183,6 @@ export const ALL_NAV_GROUPS: NavGroup[] = [
         icon: 'ph-gear',
       },
       {
-        id: 'cobranca',
-        route: '/configuracao/cobranca',
-        label: 'Plano & Cobrança',
-        labelKey: 'nav.cobranca',
-        icon: 'ph-credit-card',
-      },
-      {
-        id: 'mcp',
-        route: '/configuracao/mcp',
-        label: 'Claude (MCP)',
-        labelKey: 'nav.mcp',
-        icon: 'ph-plugs-connected',
-      },
-      {
         id: 'politica-de-privacidade',
         route: '/politica-de-privacidade',
         label: 'Privacidade',

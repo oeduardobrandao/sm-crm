@@ -2,30 +2,51 @@ import * as React from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
-const badgeVariants = cva(
-  'inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
-  {
-    variants: {
-      variant: {
-        default: 'border-transparent bg-primary text-primary-foreground shadow hover:bg-primary/80',
-        secondary:
-          'border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80',
-        destructive:
-          'border-transparent bg-destructive text-destructive-foreground shadow hover:bg-destructive/80',
-        outline: 'text-foreground',
-      },
+/**
+ * Badge renders the shared `.badge` pill defined in `apps/crm/style.css`, so
+ * React call sites and the plain `<span className="badge badge-*">` markup
+ * scattered across the app stay visually identical.
+ *
+ * `variant` picks the colour, `tone` picks soft tint (default) vs solid fill,
+ * `size` picks the density. Prefer `size="sm"` over inline font-size overrides.
+ */
+const badgeVariants = cva('badge', {
+  variants: {
+    variant: {
+      neutral: 'badge-neutral',
+      success: 'badge-success',
+      warning: 'badge-warning',
+      danger: 'badge-danger',
+      info: 'badge-info',
+      primary: 'badge-primary',
+      outline: 'badge-outline',
+      /** @deprecated legacy shadcn names — prefer the semantic variants above. */
+      default: 'badge-primary',
+      secondary: 'badge-neutral',
+      destructive: 'badge-danger',
     },
-    defaultVariants: {
-      variant: 'default',
+    tone: {
+      soft: '',
+      solid: 'badge--solid',
+    },
+    size: {
+      sm: 'badge--sm',
+      md: '',
+      lg: 'badge--lg',
     },
   },
-);
+  defaultVariants: {
+    variant: 'neutral',
+    tone: 'soft',
+    size: 'md',
+  },
+});
 
 export interface BadgeProps
-  extends React.HTMLAttributes<HTMLDivElement>, VariantProps<typeof badgeVariants> {}
+  extends React.HTMLAttributes<HTMLSpanElement>, VariantProps<typeof badgeVariants> {}
 
-function Badge({ className, variant, ...props }: BadgeProps) {
-  return <div className={cn(badgeVariants({ variant }), className)} {...props} />;
+function Badge({ className, variant, tone, size, ...props }: BadgeProps) {
+  return <span className={cn(badgeVariants({ variant, tone, size }), className)} {...props} />;
 }
 
 export { Badge, badgeVariants };
