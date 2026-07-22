@@ -527,9 +527,11 @@ export default function ConfiguracaoPage() {
 
   return (
     <div className="page-content" style={{ maxWidth: 900, margin: '0 auto' }}>
-      <h2 className="header-title" style={{ marginBottom: '1.5rem' }}>
-        Configurações
-      </h2>
+      {/* `.header-title` styles a descendant h1/h2, not the element itself — the
+          heading has to stay wrapped, as on every other page. */}
+      <div className="header-title" style={{ marginBottom: '1.5rem' }}>
+        <h1>Configurações</h1>
+      </div>
 
       {/* Profile Card */}
       <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
