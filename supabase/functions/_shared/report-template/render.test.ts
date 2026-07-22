@@ -252,8 +252,8 @@ Deno.test("truncated lists say so; complete lists do not", () => {
   assertStringIncludes(html, "Principais faixas etárias");
   assertStringIncludes(html, "Principais cidades");
   assertStringIncludes(html, "Principais países");
-  assertStringIncludes(html, "3 principais tópicos por alcance");
-  assertStringIncludes(html, "12 principais publicações do mês"); // 18 published, 12 shown
+  assertStringIncludes(html, "Os 3 principais tópicos por alcance");
+  assertStringIncludes(html, "As 12 principais publicações do mês"); // 18 published, 12 shown
 
   // nothing dropped → plain labels
   const small = makeData();
@@ -261,6 +261,7 @@ Deno.test("truncated lists say so; complete lists do not", () => {
   const plain = renderReport({ data: small, branding, aiOutput: ai });
   assertStringIncludes(plain, ">Faixa etária<");
   assertStringIncludes(plain, ">Cidades<");
+  assertStringIncludes(plain, ">Países<");
   assertStringIncludes(plain, ">Publicações do mês<");
   assertStringIncludes(plain, ">Performance por tópico<");
 });
@@ -300,11 +301,33 @@ Deno.test("heat chips never name a slot outside the grid", () => {
   assertEquals(html.includes("Quinta · 22h"), false);
   assertEquals(html.includes("Quarta · 7h"), false);
   assertStringIncludes(html, "Segunda · 19h");
+});
 
+Deno.test("heatmap normalises and ranks only over the in-grid window (8h–21h)", () => {
+  const data = makeData();
+  // The true maximum (dom 22h) sits OUTSIDE the grid. If maxVal were computed over
+  // the unfiltered array, no in-grid cell could ever reach the darkest ramp step —
+  // yet the "1º" chip (built from the same unfiltered data) would still render
+  // solid --heat-700, looking hotter than anything the grid shows.
+  data.best_times = [
+    { day: "dom", hour: 22, avg_engagement: 9.9 }, // outside window, would-be max
+    { day: "seg", hour: 19, avg_engagement: 5.2 }, // the true in-grid max
+  ];
+  const html = renderReport({ data, branding, aiOutput: ai });
+  assertEquals(html.includes("Domingo · 22h"), false);
+  assertStringIncludes(html, "Segunda · 19h");
+  // the sole in-grid slot is both the grid's darkest cell AND the "1º" chip —
+  // ranked and coloured from the SAME filtered array.
+  assertStringIncludes(html, "#8F5306");
+});
+
+Deno.test("heatmap section collapses entirely when every slot is outside the grid", () => {
   const none = makeData();
   none.best_times = [{ day: "qui", hour: 23, avg_engagement: 9.9 }];
-  const noChips = renderReport({ data: none, branding, aiOutput: ai });
-  assertEquals(noChips.includes('class="heat-chip'), false); // no chips, only the CSS rule
+  const html = renderReport({ data: none, branding, aiOutput: ai });
+  assertEquals(html.includes('class="heat-chip'), false); // no chips
+  assertEquals(html.includes("Melhores horários para publicar"), false); // no heading
+  assertEquals(html.includes('class="heat-table'), false); // no grid
 });
 
 Deno.test("negative follower growth is not phrased as growth", () => {
@@ -313,6 +336,20 @@ Deno.test("negative follower growth is not phrased as growth", () => {
   const html = renderReport({ data, branding, aiOutput: ai });
   assertStringIncludes(html, "Queda de <span class=\"hit\">120 seguidores</span> no período.");
   assertEquals(html.includes("Crescimento de"), false);
+});
+
+Deno.test("empty recommendations drop the Recomendações heading with them, but goals still render", () => {
+  // Unreachable through validateAIOutput today (3-5 recs required), but defensive:
+  // same treatment as the empty-Destaques case above, in case that ever changes.
+  const goalsOnly: AIOutput = {
+    ...ai,
+    recommendations: [],
+  };
+  const html = renderReport({ data: makeData(), branding, aiOutput: goalsOnly });
+  assertEquals(html.includes("Recomendações para"), false);
+  assertEquals(html.includes('class="reco"'), false);
+  assertStringIncludes(html, "Metas para"); // page 6 still renders for the goals
+  assertStringIncludes(html, "50 mil");
 });
 
 Deno.test("empty highlights drop the Destaques heading with them", () => {

@@ -12,6 +12,7 @@
 
 import type {
   AIOutput,
+  BestTimeSlot,
   KpiValue,
   ReportData,
   TopPost,
@@ -361,11 +362,23 @@ function buildTakeaways(
     // any client who published more than 15 times.
     const monthReach = data.kpis["reach"]?.value;
     const subsetReach = data.top_posts.reduce((s, p) => s + (p.reach || 0), 0);
-    const total =
-      typeof monthReach === "number" && isFinite(monthReach) && monthReach > 0 &&
-        top3 <= monthReach
-        ? monthReach
-        : subsetReach;
+    const monthReachValid = typeof monthReach === "number" && isFinite(monthReach) && monthReach > 0;
+    let total: number;
+    if (monthReachValid && top3 <= (monthReach as number)) {
+      total = monthReach as number;
+    } else {
+      // A present-and-valid kpis.reach that still fails `top3 <= monthReach` means
+      // top_posts.reach no longer sums into kpis.reach the way this math assumes —
+      // the fallback below silently returns a smaller (inflated-looking) share, so
+      // log it rather than let a future upstream contract change go unnoticed.
+      if (monthReachValid) {
+        console.warn(
+          `[report-template] takeaway posts: top3 reach (${top3}) exceeds kpis.reach (${monthReach}); ` +
+            `falling back to top_posts subset sum (${subsetReach}) as the denominator.`,
+        );
+      }
+      total = subsetReach;
+    }
     if (top3 > 0 && total > 0) {
       const share = Math.round((top3 / total) * 100);
       out.posts = takeaway(
@@ -606,7 +619,7 @@ function buildPostsHeading(data: ReportData): string {
     ? published
     : data.top_posts.length;
   return total > shown
-    ? `${escapeHtml(fmtNum(shown))} principais publicações do mês`
+    ? `As ${escapeHtml(fmtNum(shown))} principais publicações do mês`
     : "Publicações do mês";
 }
 
@@ -614,7 +627,7 @@ function buildTagsHeading(data: ReportData): string {
   const total = data.tags_performance.length;
   const shown = Math.min(total, MAX_TAG_ROWS);
   return total > shown
-    ? `${escapeHtml(fmtNum(shown))} principais tópicos por alcance`
+    ? `Os ${escapeHtml(fmtNum(shown))} principais tópicos por alcance`
     : "Performance por tópico";
 }
 
@@ -747,8 +760,14 @@ function dayIndex(day: string): number {
   return DAY_INDEX[String(day ?? "").toLowerCase()] ?? 0;
 }
 
-function buildHeatmapTable(data: ReportData): string {
-  const slots = data.best_times;
+/**
+ * Both the ramp and the grid must be built from the SAME slots the grid actually
+ * displays (8h–21h). Normalising `maxVal` over the unfiltered `best_times` lets the
+ * true maximum sit in a column the grid never shows — no visible cell can then
+ * reach the darkest ramp step, but a "1º" chip built from the same unfiltered data
+ * would still render solid `--heat-700`, looking hotter than anything on the page.
+ */
+function buildHeatmapTable(slots: BestTimeSlot[]): string {
   const maxVal = Math.max(...slots.map((s) => s.avg_engagement), 0) || 1;
 
   const cellColor = new Map<string, string>();
@@ -776,11 +795,11 @@ function buildHeatmapTable(data: ReportData): string {
     </table>`;
 }
 
-function buildHeatChips(data: ReportData): string {
-  // Only slots the grid above actually shows may be named — a 7h or 22h slot would
-  // produce a chip pointing at a column that does not exist.
-  const top = data.best_times
-    .filter((s) => HEAT_HOURS.includes(s.hour))
+/** `slots` MUST be the same filtered, in-grid array `buildHeatmapTable` used — a 7h
+ * or 22h slot would otherwise produce a chip pointing at a column that does not
+ * exist, and its `maxVal` would no longer match the ramp the grid actually paints. */
+function buildHeatChips(slots: BestTimeSlot[]): string {
+  const top = [...slots]
     .sort((a, b) => b.avg_engagement - a.avg_engagement)
     .slice(0, 3);
 
@@ -911,7 +930,12 @@ export function renderReport(opts: {
   const nextName = nextMonthName(data.report_month);
 
   const hasAudience = data.audience !== null && data.audience !== undefined;
-  const hasHeatmap = data.best_times.length > 0;
+  // Filter ONCE — the grid, the ramp normalisation (maxVal) AND the chips must all
+  // read the same in-window slots, or the "1º" chip can claim a heat the grid never
+  // shows (or, if every slot is outside the window, the heading renders over a
+  // blank grid). See buildHeatmapTable / buildHeatChips.
+  const heatSlots: BestTimeSlot[] = data.best_times.filter((s) => HEAT_HOURS.includes(s.hour));
+  const hasHeatmap = heatSlots.length > 0;
   const hasTags = data.tags_performance.length > 0;
   const hasList = data.top_posts.length > MAX_POST_CARDS;
   const hasAi = aiOutput !== null &&
@@ -924,6 +948,7 @@ export function renderReport(opts: {
   const recos = hasAi && aiOutput
     ? (aiOutput.recommendations ?? []).slice(0, MAX_RECO_CARDS)
     : [];
+  const hasRecos = recos.length > 0;
 
   let html = REPORT_TEMPLATE;
 
@@ -934,6 +959,7 @@ export function renderReport(opts: {
   html = conditional(html, "HAS_HEATMAP", hasAudience && hasHeatmap);
   html = conditional(html, "HAS_AUDIENCE", hasAudience);
   html = conditional(html, "HAS_AI", hasAi);
+  html = conditional(html, "HAS_RECOS", hasRecos);
 
   // 2. Footer (once per content page) — carries the page-number tokens.
   html = sub(html, "{{FOOTER}}", buildFooter(branding, data));
@@ -981,8 +1007,8 @@ export function renderReport(opts: {
   // 9. Page 5
   html = sub(html, "{{DEMOGRAPHICS}}", buildDemographics(data));
   html = sub(html, "{{LOCATION}}", buildLocation(data));
-  html = sub(html, "{{HEATMAP_TABLE}}", hasHeatmap ? buildHeatmapTable(data) : "");
-  html = sub(html, "{{HEAT_CHIPS}}", hasHeatmap ? buildHeatChips(data) : "");
+  html = sub(html, "{{HEATMAP_TABLE}}", hasHeatmap ? buildHeatmapTable(heatSlots) : "");
+  html = sub(html, "{{HEAT_CHIPS}}", hasHeatmap ? buildHeatChips(heatSlots) : "");
 
   // 10. Page 6
   html = sub(html, "{{RECO_CARDS}}", buildRecoCards(recos));

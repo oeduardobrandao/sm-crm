@@ -380,7 +380,14 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
     border-right: 1px solid var(--hairline); padding-right: 10px; line-height: 1.2;
   }
   .reco-card .rc-t { font-size: 13.5px; font-weight: 700; margin-bottom: 4px; }
-  .reco-card .rc-d { font-size: 11px; color: var(--tx2); line-height: 1.6; max-width: 122mm; }
+  /* clamp to 2 lines (same technique as .p-caption) — validateAIOutput enforces no
+     maximum length on recommendation.description, and the page has room for exactly
+     two wrapped lines; without this an unusually long description grows the card,
+     the min-height page pushes onto a blank 7th sheet, and the footer follows it. */
+  .reco-card .rc-d {
+    font-size: 11px; color: var(--tx2); line-height: 1.6; max-width: 122mm;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
   .prio { font-size: 9px; font-weight: 600; padding: 3.5px 10px; border-radius: 9999px; white-space: nowrap; }
   .prio.alta { background: #F7E8CE; color: #8F5306; }
   .prio.media { background: var(--soft); color: var(--tx2); }
@@ -537,11 +544,11 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
 
 {{#IF_HAS_AI}}<!-- ═══════════ PÁGINA 6 · PRÓXIMOS PASSOS ═══════════ -->
 <div class="page">
-  <div class="sec"><h2>Recomendações para {{NEXT_MONTH}}</h2><span class="rule"></span><span class="idx">{{SEC_NO}} / {{SEC_TOTAL}}</span></div>
+  {{#IF_HAS_RECOS}}<div class="sec"><h2>Recomendações para {{NEXT_MONTH}}</h2><span class="rule"></span><span class="idx">{{SEC_NO}} / {{SEC_TOTAL}}</span></div>
 
   {{TAKEAWAY_PLANO}}
 
-  <div class="reco">{{RECO_CARDS}}</div>
+  <div class="reco">{{RECO_CARDS}}</div>{{/IF_HAS_RECOS}}
 
   <div class="sec"><h2>Metas para {{NEXT_MONTH}}</h2><span class="rule"></span></div>
   <div class="goal-grid">{{GOAL_CARDS}}</div>
