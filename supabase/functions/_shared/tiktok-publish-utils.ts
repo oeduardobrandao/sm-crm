@@ -1,8 +1,7 @@
 // TikTok scheduling validation matrix + Content Posting API payload builders.
 // Mirrors the STRUCTURE of instagram-publish-utils.ts::validateForScheduling (load post ->
-// load linked media -> Estúdio design gate -> load workflow -> load account -> accumulate
-// PT-BR errors -> return { ok, errors, ... }). The Estúdio gate itself is imported from
-// there (checkDesignReadiness is platform-agnostic — do not copy it).
+// load linked media -> load workflow -> load account -> accumulate PT-BR errors ->
+// return { ok, errors, ... }).
 //
 // Post-type -> TikTok content-type mapping (design doc "Post-type mapping & validation"):
 //   tipo 'reels'      -> video direct post   (POST /v2/post/publish/video/init/)
@@ -10,7 +9,6 @@
 //   tipo 'carrossel'  -> photo post, N images (same endpoint)
 //   tipo 'stories'    -> not supported by the TikTok API; rejected outright
 
-import { checkDesignReadiness, type DesignSummary } from "./instagram-publish-utils.ts";
 import {
   decryptTikTokToken,
   FIELD_PUBLIC_POST_ID,
@@ -61,9 +59,6 @@ export interface TikTokValidationResult {
     encrypted_refresh_token: string;
     tiktok_open_id: string;
   };
-  /** Set when validation blocked on the Estúdio design — same shape/semantics as the
-   * Instagram gate (T4.1); carries what a caller needs to fire the render re-trigger. */
-  designBlocked?: DesignSummary;
 }
 
 // --- Constants (validation) ---
@@ -257,18 +252,6 @@ export async function validateForTikTokScheduling(
   const settings: TikTokSettings = post.tiktok_settings ?? {};
   validatePrivacyLevel(errors, settings);
 
-  // Estúdio gate (design doc: reused verbatim, platform-agnostic).
-  let designBlocked: DesignSummary | undefined;
-  const readiness = await checkDesignReadiness(db, postId);
-  if (!readiness.ready && readiness.design) {
-    designBlocked = readiness.design;
-    errors.push(
-      readiness.design.render_status === "failed"
-        ? "A arte do Estúdio falhou ao renderizar. Abra o post no Estúdio e salve novamente para tentar outra vez."
-        : "A arte do Estúdio ainda está sendo gerada. Aguarde alguns instantes e tente novamente.",
-    );
-  }
-
   const { data: workflow, error: workflowError } = await db
     .from("workflows")
     .select("cliente_id")
@@ -315,7 +298,6 @@ export async function validateForTikTokScheduling(
           tiktok_open_id: account.tiktok_open_id,
         }
       : undefined,
-    designBlocked,
   };
 }
 
@@ -486,9 +468,9 @@ export function errorMessage(err: unknown): string {
 }
 
 /** Releases the tiktok_publish_processing_at lock WITHOUT touching tiktok_publish_status —
- * used by tiktok-publish-cron when a post is deferred (design not ready yet, per-account
- * overflow) rather than failed, so the next run's claim can pick it straight back up. Also
- * used as the best-effort lock release inside markTikTokPublishFailed's self-healing paths. */
+ * used by tiktok-publish-cron when a post is deferred (per-account overflow) rather than failed,
+ * so the next run's claim can pick it straight back up. Also used as the best-effort lock
+ * release inside markTikTokPublishFailed's self-healing paths. */
 export async function clearLock(svc: SvcClient, postId: number): Promise<void> {
   const { error } = await svc
     .from("workflow_posts")

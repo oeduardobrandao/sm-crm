@@ -6,8 +6,8 @@
 // (Task A6), since it needs the same DI seams for its own network/crypto-touching calls).
 //
 // Three phases via claim_posts_for_tiktok_publishing (init/status/retry). Every claimed post's
-// tiktok_publish_processing_at lock is cleared on EVERY exit path — success, deferred (design
-// not ready, per-account overflow), or failure — so nothing outlives the RPC's 10-minute
+// tiktok_publish_processing_at lock is cleared on EVERY exit path — success, deferred
+// (per-account overflow), or failure — so nothing outlives the RPC's 10-minute
 // stale-reclaim window by leaning on it. markTikTokPublishFailed and the plain workflow_posts
 // updates used elsewhere in this file all clear the lock explicitly as part of their write.
 //
@@ -34,11 +34,7 @@
 // logic and the token-failure fan-out (tokenErrorMessage) below.
 
 import type { CronFailureDetail } from "../_shared/notify.ts";
-import {
-  checkDesignReadiness as realCheckDesignReadiness,
-  fetchPostMedia as realFetchPostMedia,
-  type DesignReadiness,
-} from "../_shared/instagram-publish-utils.ts";
+import { fetchPostMedia as realFetchPostMedia } from "../_shared/instagram-publish-utils.ts";
 import {
   buildPhotoInitPayload,
   buildVideoInitPayload,
@@ -100,11 +96,10 @@ export interface TikTokPublishCronDeps {
    * R2 presign. See the module comment above for why. */
   buildTikTokMediaUrl: (r2Key: string, ttlSeconds: number) => Promise<string>;
   reportCronFailure: (svc: DbClient, cronName: string, detail: CronFailureDetail) => Promise<void>;
-  /** Optional DI seams — default to the real shared implementations. Tests may override, but
-   * normally just queue `post_file_links`/`designs` responses on the mock db and let the real
-   * (platform-agnostic, already-exported) helpers run. */
+  /** Optional DI seam — defaults to the real shared implementation. Tests may override, but
+   * normally just queue `post_file_links` responses on the mock db and let the real
+   * (platform-agnostic, already-exported) helper run. */
   fetchPostMedia?: (db: DbClient, postId: number) => Promise<FetchedMediaFile[]>;
-  checkDesignReadiness?: (db: DbClient, postId: number) => Promise<DesignReadiness>;
   now?: () => Date;
 }
 
@@ -171,7 +166,6 @@ async function processInitPhase(
 ): Promise<PhaseResult> {
   const { svc, getFreshTikTokToken, tiktokFetch, buildTikTokMediaUrl } = deps;
   const fetchPostMedia = deps.fetchPostMedia ?? realFetchPostMedia;
-  const checkDesignReadiness = deps.checkDesignReadiness ?? realCheckDesignReadiness;
 
   let succeeded = 0;
   let failed = 0;
@@ -201,19 +195,6 @@ async function processInitPhase(
 
     for (const post of toProcess) {
       try {
-        // Re-check (design doc §5.3 / T4.2 parity with instagram-publish-cron): the scheduling
-        // gate already enforced this, but the design can go stale/fail between scheduling and
-        // this cron cycle (an edit in the editor, an MCP write, a failed re-render).
-        const readiness = await checkDesignReadiness(svc, post.post_id);
-        if (!readiness.ready && readiness.design) {
-          if (readiness.design.render_status === "failed") {
-            throw new Error("Arte do Estúdio falhou ao renderizar — publicação bloqueada.");
-          }
-          await clearLock(svc, post.post_id);
-          console.log(`[${CRON_NAME}] Post ${post.post_id} deferred: design not rendered yet.`);
-          continue;
-        }
-
         const media = await fetchPostMedia(svc, post.post_id);
         const claimedForBuilder: ClaimedTikTokPost = {
           tipo: post.tipo,
