@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Pencil, ExternalLink, X, Loader2, ImagePlus } from 'lucide-react';
 import { useHub } from '../HubContext';
+import { PageHeader } from '../components/PageHeader';
 import { fetchIdeias, createIdeia, updateIdeia, deleteIdeia, deleteIdeiaImage } from '../api';
 import { uploadIdeiaImage } from '../services/ideiaMedia';
 import type { HubIdeia, IdeiaImage } from '../types';
@@ -165,23 +166,20 @@ export function IdeiasPage() {
   }
 
   return (
-    <div className="hub-fade-up">
-      {/* Hero */}
-      <div className="mb-8 sm:mb-10 flex items-end justify-between gap-4">
-        <div>
-          <h1 className="font-display text-[2rem] sm:text-[2.5rem] leading-[1.05] font-medium tracking-tight hub-txt">
-            Compartilhe suas ideias
-          </h1>
-          <p className="text-sm hub-tx2 mt-2">Envie sugestões e a agência responderá em breve.</p>
-        </div>
-        <button
-          onClick={openCreate}
-          className="flex items-center gap-2 shrink-0 px-4 py-2.5 rounded-lg hub-btn-primary text-sm font-semibold transition-colors"
-        >
-          <Plus size={16} strokeWidth={2.5} />
-          Nova ideia
-        </button>
-      </div>
+    <div className="max-w-5xl mx-auto hub-fade-up">
+      <PageHeader
+        title="Compartilhe suas ideias"
+        description="Envie sugestões e a agência responderá em breve."
+        action={
+          <button
+            onClick={openCreate}
+            className="flex items-center gap-2 shrink-0 px-4 py-2.5 rounded-lg hub-btn-primary text-sm font-semibold transition-colors"
+          >
+            <Plus size={16} strokeWidth={2.5} />
+            Nova ideia
+          </button>
+        }
+      />
 
       {/* List */}
       {isLoading ? (

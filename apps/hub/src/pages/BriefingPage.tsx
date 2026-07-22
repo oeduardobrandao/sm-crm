@@ -2,6 +2,7 @@ import { useState, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useHub } from '../HubContext';
 import { fetchBriefing, submitBriefingAnswer } from '../api';
+import { PageHeader } from '../components/PageHeader';
 import { ScrollableTabs } from '../components/ScrollableTabs';
 import type { BriefingQuestion } from '../types';
 
@@ -43,15 +44,14 @@ export function BriefingPage() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto hub-fade-up">
-      <header className="mb-8">
-        <h2 className="font-display text-[2rem] sm:text-[2.25rem] leading-[1.05] font-medium tracking-tight hub-txt">
-          Briefing
-        </h2>
-        {activeBriefing?.title && (
-          <p className="mt-2 text-[15px] font-medium hub-tx3">{activeBriefing.title}</p>
-        )}
-      </header>
+    <div className="max-w-5xl mx-auto hub-fade-up">
+      <PageHeader
+        title="Briefing"
+        description="As informações que orientam a estratégia do seu projeto."
+      />
+      {activeBriefing?.title && (
+        <p className="-mt-6 mb-8 text-[15px] font-medium hub-tx3">{activeBriefing.title}</p>
+      )}
 
       {isLoading ? (
         <div className="flex justify-center py-20">

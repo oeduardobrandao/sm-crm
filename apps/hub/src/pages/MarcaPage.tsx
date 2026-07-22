@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { PageHeader } from '../components/PageHeader';
 import { Download } from 'lucide-react';
 import { useHub } from '../HubContext';
 import { fetchBrand } from '../api';
@@ -35,12 +36,8 @@ export function MarcaPage() {
   const isEmpty = !brand && files.length === 0;
 
   return (
-    <div className="max-w-3xl mx-auto space-y-10 hub-fade-up">
-      <header>
-        <h2 className="font-display text-[2rem] sm:text-[2.25rem] leading-[1.05] font-medium tracking-tight hub-txt">
-          Marca
-        </h2>
-      </header>
+    <div className="max-w-5xl mx-auto space-y-10 hub-fade-up">
+      <PageHeader title="Marca" description="Cores, logos e tipografia do seu negócio." />
 
       {isLoading ? (
         <div className="flex justify-center py-20">

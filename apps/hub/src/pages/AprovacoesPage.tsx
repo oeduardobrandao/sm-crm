@@ -6,6 +6,7 @@ import { InstagramPostCard } from '../components/InstagramPostCard';
 import { StoryPostCard } from '../components/StoryPostCard';
 import { TextPostCard } from '../components/TextPostCard';
 import { FeedPreviewButton } from '../components/FeedPreviewButton';
+import { PageHeader } from '../components/PageHeader';
 import { InstagramGridPreview } from '../components/InstagramGridPreview';
 import { formatDate } from '../components/PostCard';
 import { SharePostButton } from '../components/SharePostButton';
@@ -57,21 +58,19 @@ export function AprovacoesPage() {
 
   return (
     <div className="max-w-5xl mx-auto hub-fade-up">
-      <header className="mb-8">
-        <div className="flex items-center justify-between gap-4">
-          <h2 className="font-display text-[2rem] sm:text-[2.25rem] leading-[1.05] font-medium tracking-tight hub-txt">
-            Aprovações
-          </h2>
-          {instagramProfile && (
-            <FeedPreviewButton selectedCount={selectedIds.size} onClick={() => setShowGrid(true)} />
-          )}
-        </div>
-        <p className="text-[14px] hub-tx2 mt-2">
-          {pending.length === 0
+      <PageHeader
+        title="Aprovações"
+        description={
+          pending.length === 0
             ? 'Tudo em dia. Nenhum post aguardando aprovação.'
-            : `${pending.length} post${pending.length > 1 ? 's' : ''} aguardando sua aprovação.`}
-        </p>
-      </header>
+            : `${pending.length} post${pending.length > 1 ? 's' : ''} aguardando sua aprovação.`
+        }
+        action={
+          instagramProfile && (
+            <FeedPreviewButton selectedCount={selectedIds.size} onClick={() => setShowGrid(true)} />
+          )
+        }
+      />
 
       {isLoading ? (
         <div className="flex justify-center py-20">

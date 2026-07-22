@@ -7,6 +7,7 @@ import { InstagramPostCard } from '../components/InstagramPostCard';
 import { StoryPostCard } from '../components/StoryPostCard';
 import { TextPostCard } from '../components/TextPostCard';
 import { FeedPreviewButton } from '../components/FeedPreviewButton';
+import { PageHeader } from '../components/PageHeader';
 import { InstagramGridPreview } from '../components/InstagramGridPreview';
 import type { HubPost } from '../types';
 import { VISIBLE_STATUSES } from '../lib/postView';
@@ -171,38 +172,40 @@ export function PostagensPage() {
 
   return (
     <div className="max-w-5xl mx-auto hub-fade-up">
-      <header className="mb-8">
-        <div className="flex items-center justify-between gap-4">
-          <h2 className="font-display text-[2rem] sm:text-[2.25rem] leading-[1.05] font-medium tracking-tight hub-txt">
-            Postagens
-          </h2>
-          {instagramProfile && (
+      <PageHeader
+        title="Postagens"
+        description={
+          instagramProfile && feedSelectable.length > 0 && selectedPosts.length === 0 ? (
+            <span className="inline-flex items-center gap-1.5">
+              <svg
+                width="14"
+                height="14"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                viewBox="0 0 24 24"
+                className="shrink-0"
+              >
+                <rect x="3" y="3" width="7" height="7" />
+                <rect x="14" y="3" width="7" height="7" />
+                <rect x="3" y="14" width="7" height="7" />
+                <rect x="14" y="14" width="7" height="7" />
+              </svg>
+              Selecione posts para visualizar e reordenar como ficarão no feed do Instagram.
+            </span>
+          ) : (
+            'Todos os posts do seu calendário de conteúdo.'
+          )
+        }
+        action={
+          instagramProfile && (
             <FeedPreviewButton
               selectedCount={selectedPosts.length}
               onClick={() => setShowGrid(true)}
             />
-          )}
-        </div>
-        {instagramProfile && feedSelectable.length > 0 && selectedPosts.length === 0 && (
-          <p className="text-[12px] hub-tx3 mt-2 flex items-center gap-1.5">
-            <svg
-              width="14"
-              height="14"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              viewBox="0 0 24 24"
-              className="shrink-0"
-            >
-              <rect x="3" y="3" width="7" height="7" />
-              <rect x="14" y="3" width="7" height="7" />
-              <rect x="3" y="14" width="7" height="7" />
-              <rect x="14" y="14" width="7" height="7" />
-            </svg>
-            Selecione posts para visualizar e reordenar como ficarão no feed do Instagram.
-          </p>
-        )}
-      </header>
+          )
+        }
+      />
 
       {isLoading ? (
         <div className="flex justify-center py-20">
