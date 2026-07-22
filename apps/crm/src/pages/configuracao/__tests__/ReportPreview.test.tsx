@@ -54,4 +54,46 @@ describe('ReportPreview v2', () => {
       expect((el as HTMLElement).style.backgroundColor).not.toBe('rgb(255, 0, 255)');
     });
   });
+
+  // These three mirror the resolveAccent() cases in
+  // supabase/functions/_shared/report-template/theme.test.ts — the preview
+  // must resolve the accent exactly like the real report does.
+  it('light accent (#FFBF30): rank chip keeps the hue but uses DARK text, not white', () => {
+    render(
+      <ReportPreview
+        accentColor="#FFBF30"
+        splashUrl={null}
+        logoUrl={null}
+        workspaceName="Agência Amarela"
+      />,
+    );
+    const chip = screen.getByTestId('preview-rank-chip');
+    expect(chip).toHaveStyle({ backgroundColor: '#FFBF30', color: '#171717' });
+  });
+
+  it('very pale accent (#FFFDF0, luminance > 0.85): marks render near-black, not the pale colour', () => {
+    render(
+      <ReportPreview
+        accentColor="#FFFDF0"
+        splashUrl={null}
+        logoUrl={null}
+        workspaceName="Agência Pálida"
+      />,
+    );
+    const chip = screen.getByTestId('preview-rank-chip');
+    expect(chip).toHaveStyle({ backgroundColor: '#171717', color: '#ffffff' });
+  });
+
+  it('dark accent (#7C2D12): rank chip keeps the hue and uses white text', () => {
+    render(
+      <ReportPreview
+        accentColor="#7C2D12"
+        splashUrl={null}
+        logoUrl={null}
+        workspaceName="Agência Escura"
+      />,
+    );
+    const chip = screen.getByTestId('preview-rank-chip');
+    expect(chip).toHaveStyle({ backgroundColor: '#7C2D12', color: '#ffffff' });
+  });
 });

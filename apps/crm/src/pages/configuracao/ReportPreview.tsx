@@ -1,3 +1,5 @@
+import { resolveAccent } from '../../../../../supabase/functions/_shared/report-template/theme';
+
 interface ReportPreviewProps {
   accentColor: string;
   splashUrl: string | null;
@@ -5,6 +7,9 @@ interface ReportPreviewProps {
   workspaceName: string;
 }
 
+// Mirror the real report's --ink / --paper tokens (source of truth:
+// supabase/functions/_shared/report-template/template-string.ts). If that
+// template is re-themed, update these two constants to match.
 const INK = '#1C1917';
 const PAPER = '#FAFAF7';
 
@@ -25,6 +30,11 @@ export function ReportPreview({
   logoUrl,
   workspaceName,
 }: ReportPreviewProps) {
+  // Same resolution the real PDF uses (theme.ts): a too-pale accent is
+  // replaced with near-black, and the on-accent text colour is picked by
+  // luminance — otherwise the preview lies about what the client gets.
+  const { acc, accFg } = resolveAccent(accentColor);
+
   return (
     <div
       style={{
@@ -131,7 +141,7 @@ export function ReportPreview({
               width: 3,
               height: 22,
               borderRadius: 2,
-              background: accentColor,
+              background: acc,
               flexShrink: 0,
             }}
           />
@@ -144,8 +154,8 @@ export function ReportPreview({
               marginLeft: 'auto',
               fontSize: '0.6rem',
               fontWeight: 700,
-              color: '#fff',
-              backgroundColor: accentColor,
+              color: accFg,
+              backgroundColor: acc,
               borderRadius: 999,
               padding: '2px 8px',
               flexShrink: 0,
