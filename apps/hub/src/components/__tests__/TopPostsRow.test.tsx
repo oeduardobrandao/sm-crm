@@ -31,8 +31,14 @@ describe('TopPostsRow', () => {
     const img = container.querySelector('img')!;
     expect(img).toHaveAttribute('loading', 'lazy');
     expect(img).toHaveAttribute('decoding', 'async');
-    expect(img).toHaveAttribute('width', '1');
-    expect(img).toHaveAttribute('height', '1');
+    // Thumbnails render at their own aspect ratio, so a 4:5 or 9:16 post is
+    // shown whole. That means no intrinsic-size attributes pinning the box to a
+    // square, and no object-cover/fixed-ratio wrapper to crop against.
+    expect(img).not.toHaveAttribute('width');
+    expect(img).not.toHaveAttribute('height');
+    expect(img.className).toContain('h-auto');
+    expect(img.className).not.toContain('object-cover');
+    expect(img.parentElement!.className).not.toContain('aspect-square');
   });
 
   it('renders links to Instagram', () => {
