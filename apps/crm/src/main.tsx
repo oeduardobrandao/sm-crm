@@ -45,10 +45,11 @@ initI18n({
   },
 });
 
-// Minimal DATA router (single splat route; App keeps its own descendant <Routes>) — a plain
-// <BrowserRouter> gives `useBlocker` no data-router context, and the Estúdio autosave's
-// dirty-navigation blocker (design §6.2) needs it. Route matching/links are unchanged: every
-// internal link in this app navigates by absolute path.
+// Minimal DATA router (single splat route; App keeps its own descendant <Routes>). It was
+// introduced because `useBlocker` needs data-router context, for the Estúdio autosave's
+// dirty-navigation blocker; Estúdio is retired and nothing uses `useBlocker` today, but the
+// data router is kept because swapping back to <BrowserRouter> is a behaviour change for no
+// benefit. Route matching/links are unchanged: every internal link navigates by absolute path.
 const router = createBrowserRouter([{ path: '*', element: <App /> }]);
 
 ReactDOM.createRoot(document.getElementById('root')!).render(<RouterProvider router={router} />);

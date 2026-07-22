@@ -19,6 +19,13 @@
 - `npm run test:functions` dirties root `deno.lock` and pollutes shared `node_modules`. After running it: `git checkout -- deno.lock`, and run `npm ci` before any `tsc`/`vitest` run.
 - **The live designs table is `designs`, NOT `post_designs`** — `20260705000001_designs_first_class.sql` replaced the original. Never write a DB object name from memory or from the first migration that mentions it: derive it from the latest migration or the live catalog. Two defects in this plan (a wrong cron job name, a wrong table name) came from exactly that, and both would have silently no-opped under `IF EXISTS`.
 - **`instagram-publish`, `tiktok-publish`, `hub-approve`, `file-manage` and `file-upload-finalize` are fundamental live functions and are NOT Estúdio-exclusive.** Tasks 4A/4B strip design logic from them surgically. Any change to their non-design behaviour is a defect, not a cleanup.
+- **DEPLOY EDGE FUNCTIONS BEFORE APPLYING EITHER MIGRATION.** `npx supabase db push` applies both
+  new migrations at once. `platform-admin/plan-mutations.ts` builds its plan INSERT/UPDATE payload
+  from the entitlements arrays, so a still-deployed OLD bundle sending `feature_estudio` to a
+  `plans` table that no longer has the column fails with PostgREST `PGRST204` — breaking plan
+  create/edit in the admin panel until redeploy. Reads use `select("*")` and are unaffected.
+  Correct order: merge → redeploy every function importing `_shared/entitlements.ts` (at minimum
+  `platform-admin`) → then `db push`.
 - Prod project ref is `skjzpekeqefvlojenfsw`; staging is `wlyzhyfondykzpsiqsce`. Link state flips — always `cat supabase/.temp/project-ref` and translate before any `--linked` command.
 
 ---
