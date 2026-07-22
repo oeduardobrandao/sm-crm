@@ -5,6 +5,7 @@ import { effectivePlanFeature } from "../_shared/entitlements-rpc.ts";
 import { renderReport } from "../_shared/report-template/render.ts";
 import { convertHtmlToPdf } from "../_shared/report-template/pdf.ts";
 import { generateAINarrative } from "../_shared/report-template/ai.ts";
+import { mapAudience, mapBestTimes } from "./mappers.ts";
 import type {
   AIOutput,
   AudienceData,
@@ -253,6 +254,11 @@ async function fetchFreshInstagramThumbnailUrls(
 /**
  * Computes the percentage delta between two numbers.
  * Returns undefined when the previous value is zero or missing.
+ *
+ * The denominator is `Math.abs(previous)` — mirroring the renderer's own
+ * `resolveDelta()` — so a metric that can legitimately go negative (a month whose
+ * net follower gain was a loss) still reports the direction of the change rather
+ * than flipping its sign.
  */
 function pctDelta(
   current: number | undefined,
@@ -262,214 +268,7 @@ function pctDelta(
     return undefined;
   }
   if (current === undefined || current === null) return undefined;
-  return ((current - previous) / previous) * 100;
-}
-
-// ---------------------------------------------------------------------------
-// Audience mapping
-// ---------------------------------------------------------------------------
-
-const COUNTRY_NAMES: Record<string, string> = {
-  BR: "Brasil",
-  US: "Estados Unidos",
-  PT: "Portugal",
-  AR: "Argentina",
-  MX: "México",
-  CO: "Colômbia",
-  CL: "Chile",
-  PE: "Peru",
-  UY: "Uruguai",
-  PY: "Paraguai",
-  EC: "Equador",
-  VE: "Venezuela",
-  BO: "Bolívia",
-  ES: "Espanha",
-  FR: "França",
-  DE: "Alemanha",
-  IT: "Itália",
-  GB: "Reino Unido",
-  CA: "Canadá",
-  JP: "Japão",
-  IN: "Índia",
-  AU: "Austrália",
-  AO: "Angola",
-  MZ: "Moçambique",
-  CV: "Cabo Verde",
-};
-
-const MAX_REPORT_CITIES = 8;
-const MAX_REPORT_AGE_RANGES = 6;
-const MAX_REPORT_COUNTRIES = 5;
-
-/**
- * Maps the cached demographics blob into `AudienceData`.
- *
- * The renderer labels these panels "Principais cidades / faixas etárias / países",
- * which asserts the rows are the LEADING ones — so every list is sorted by share
- * descending BEFORE it is capped. (Upstream order is not a ranking: age buckets
- * arrive chronologically.)
- *
- * Percentages are normalised over the FULL list, not over the retained subset:
- * each bar then means "this segment's share of the whole audience sample", which
- * stays true regardless of the cap. Normalising over the kept rows would inflate
- * them to sum to 100% and overstate every segment.
- */
-export function mapAudience(demographics: any): AudienceData | null {
-  if (!demographics) return null;
-
-  const cityWeight = (c: any) => c.count ?? c.pct ?? 0;
-  // Age data is stored as "age_gender" with an "age_range" field, or as
-  // "age_ranges" with a "range" field.
-  const ageWeight = (a: any) =>
-    (a.male ?? 0) + (a.female ?? 0) + (a.count ?? a.pct ?? 0);
-  const countryWeight = (c: any) => c.count ?? c.pct ?? 0;
-
-  const sortDesc = <T>(rows: T[], weight: (row: T) => number): T[] =>
-    [...rows].sort((a, b) => weight(b) - weight(a));
-  const sum = <T>(rows: T[], weight: (row: T) => number): number =>
-    rows.reduce((s, r) => s + weight(r), 0) || 1;
-
-  const allCities = sortDesc<any>(demographics.cities || [], cityWeight);
-  const cityTotal = sum(allCities, cityWeight);
-
-  const allAges = sortDesc<any>(
-    demographics.age_gender || demographics.age_ranges || [],
-    ageWeight,
-  );
-  const ageTotal = sum(allAges, ageWeight);
-
-  const allCountries = sortDesc<any>(
-    demographics.countries || [],
-    countryWeight,
-  );
-  const countryTotal = sum(allCountries, countryWeight);
-
-  return {
-    gender_split: {
-      female: demographics.gender_split?.female ?? 0,
-      male: demographics.gender_split?.male ?? 0,
-    },
-    top_cities: allCities.slice(0, MAX_REPORT_CITIES).map((c: any) => ({
-      name: c.name,
-      pct: (cityWeight(c) / cityTotal) * 100,
-    })),
-    top_age_ranges: allAges.slice(0, MAX_REPORT_AGE_RANGES).map((a: any) => ({
-      range: a.age_range || a.range || a.name,
-      pct: (ageWeight(a) / ageTotal) * 100,
-    })),
-    top_countries: allCountries.slice(0, MAX_REPORT_COUNTRIES).map((
-      c: any,
-    ) => ({
-      name: COUNTRY_NAMES[c.code] || c.name || c.code || "—",
-      pct: (countryWeight(c) / countryTotal) * 100,
-    })),
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Best-times mapping
-// ---------------------------------------------------------------------------
-
-/**
- * Day labels indexed the way `instagram-analytics` writes them: it derives the
- * index with `(date.getDay() + 6) % 7`, so 0 = Monday. These strings are the keys
- * the renderer's DAY_INDEX map understands.
- */
-const BEST_TIME_DAY_LABELS = [
-  "Seg",
-  "Ter",
-  "Qua",
-  "Qui",
-  "Sex",
-  "Sab",
-  "Dom",
-];
-
-function dayLabel(day: unknown): string | null {
-  if (typeof day === "string" && day.trim() !== "") return day;
-  const idx = typeof day === "number" ? day : Number(day);
-  if (!Number.isInteger(idx) || idx < 0 || idx > 6) return null;
-  return BEST_TIME_DAY_LABELS[idx];
-}
-
-/**
- * Maps the `best_times` analytics cache entry into `BestTimeSlot[]`.
- *
- * `instagram-analytics` caches an OBJECT — `{ heatmap, counts, topSlots, ... }` —
- * where `heatmap[day][hour]` is the average engagement rate and `counts[day][hour]`
- * how many posts fed it. The previous `Array.isArray()` guard therefore always fell
- * through to `[]` and the renderer's whole heatmap section was silently dropped.
- *
- * The full grid is emitted (every slot that actually had a post), not just
- * `topSlots`: the renderer paints a 7-day × 8h–21h grid and derives its own ramp
- * and top-3 chips from what it is given. `topSlots` is used only as a fallback for
- * legacy cache entries that predate `heatmap`/`counts`.
- */
-export function mapBestTimes(raw: unknown): BestTimeSlot[] {
-  if (!raw) return [];
-
-  // Legacy/defensive: an already-flat array of slots.
-  if (Array.isArray(raw)) {
-    return raw.flatMap((bt: any) => {
-      const day = dayLabel(bt?.day);
-      const hour = Number(bt?.hour);
-      if (day === null || !Number.isInteger(hour)) return [];
-      return [{
-        day,
-        hour,
-        avg_engagement: Number(
-          bt?.avg_engagement ?? bt?.value ?? bt?.engagement ?? 0,
-        ) || 0,
-      }];
-    });
-  }
-
-  const obj = raw as {
-    heatmap?: unknown;
-    counts?: unknown;
-    topSlots?: unknown;
-  };
-  const heatmap = obj.heatmap;
-  const counts = obj.counts;
-
-  if (Array.isArray(heatmap)) {
-    const slots: BestTimeSlot[] = [];
-    for (let d = 0; d < heatmap.length && d < 7; d++) {
-      const hours = heatmap[d];
-      if (!Array.isArray(hours)) continue;
-      const dayCounts = Array.isArray(counts) && Array.isArray(counts[d])
-        ? counts[d] as number[]
-        : null;
-      for (let h = 0; h < hours.length && h < 24; h++) {
-        // Only slots backed by a real post; without `counts`, a non-zero average
-        // is the best available signal that the slot was actually used.
-        const used = dayCounts ? (dayCounts[h] || 0) > 0 : Number(hours[h]) > 0;
-        if (!used) continue;
-        slots.push({
-          day: BEST_TIME_DAY_LABELS[d],
-          hour: h,
-          avg_engagement: Number(hours[h]) || 0,
-        });
-      }
-    }
-    return slots;
-  }
-
-  // Fallback: cache entries with only `topSlots` (numeric `day`, `value`).
-  if (Array.isArray(obj.topSlots)) {
-    return (obj.topSlots as any[]).flatMap((s) => {
-      const day = dayLabel(s?.day);
-      const hour = Number(s?.hour);
-      if (day === null || !Number.isInteger(hour)) return [];
-      return [{
-        day,
-        hour,
-        avg_engagement: Number(s?.value ?? s?.avg_engagement ?? 0) || 0,
-      }];
-    });
-  }
-
-  return [];
+  return ((current - previous) / Math.abs(previous)) * 100;
 }
 
 // ---------------------------------------------------------------------------
@@ -683,6 +482,19 @@ Deno.serve(async (req) => {
         lastSnapshotOfMonth(currMonthFirstDay, nextMonthFirstDay),
       ]);
 
+    // A silently swallowed `.error` is exactly how the original broken-column query
+    // hid in production for months: every delta simply vanished from the report and
+    // nothing said why. Log internally (never surfaced to the client) and carry on —
+    // a missing snapshot degrades the report, it does not invalidate it.
+    const warnSnapshotError = (label: string, error: unknown) => {
+      if (!error) return;
+      const msg = (error as { message?: string })?.message ?? String(error);
+      console.warn(`[report-v2] ${label} snapshot query failed: ${msg}`);
+    };
+    warnSnapshotError("prev-prev-month", prevPrevSnapshotRes.error);
+    warnSnapshotError("prev-month", prevSnapshotRes.error);
+    warnSnapshotError("report-month", currSnapshotRes.error);
+
     const prevPrevSnapshot = prevPrevSnapshotRes.data?.[0] || null;
     const prevSnapshot = prevSnapshotRes.data?.[0] || null;
     const currSnapshot = currSnapshotRes.data?.[0] || null;
@@ -767,35 +579,48 @@ Deno.serve(async (req) => {
       reach: { id: "reach", value: totalReach, unit: "count" },
       saves: { id: "saves", value: totalSaved, unit: "count" },
       posts_count: { id: "posts_count", value: allPosts.length, unit: "count" },
+      // The REPORT MONTH's own closing snapshot, not the live account field. The
+      // account row holds a 28-day window ending at generation time, which for a
+      // back-dated `report_month` (report-worker accepts any month) can be many
+      // months away from both the chip and the "maio: …" note below it. The live
+      // field is only a fallback for accounts with no snapshot for that month.
       profile_views: {
         id: "profile_views",
-        value: account.profile_views_28d || 0,
+        value: currSnapshot?.profile_views_28d ?? account.profile_views_28d ?? 0,
         unit: "count",
       },
       website_clicks: {
         id: "website_clicks",
-        value: account.website_clicks_28d || 0,
+        value: currSnapshot?.website_clicks_28d ??
+          account.website_clicks_28d ?? 0,
         unit: "count",
       },
     };
 
     // =====================================================================
-    // 6. Compute deltas from snapshots
+    // 6. Previous-month values + deltas, on ONE basis per card
     // =====================================================================
-    // The snapshot row only carries: followers_count, reach_28d, impressions_28d,
-    // profile_views_28d, website_clicks_28d (see instagram-sync-cron). There is no
-    // stored engagement_rate or saves, so those two deltas stay undefined and the
-    // renderer simply omits the chip.
+    // Every card renders three things: a big value, a % chip and a "maio: …" note.
+    // A reader reads all three as one statement, so all three MUST be the same
+    // measurement. That rule decides what is populated here and what is left out:
+    //
+    //   card            value                       chip / prev
+    //   followers_gained  month's NET GAIN          previous month's NET GAIN
+    //   profile_views     report month's 28d snap   previous month's 28d snap
+    //   website_clicks    report month's 28d snap   previous month's 28d snap
+    //   reach / saves     month-SUM over posts      (none — see below)
+    //   engagement_rate   month ratio over posts    (none — not in the snapshot)
+    //   posts_count       count of posts            (none — not in the snapshot)
+    //
+    // The snapshot row only carries followers_count, reach_28d, impressions_28d,
+    // profile_views_28d and website_clicks_28d (see instagram-sync-cron): it stores
+    // no engagement_rate, saves or post count, so those cards get no chip at all and
+    // the renderer simply omits it.
     const kpiDeltas: KpiDeltas = {};
+
+    // profile_views / website_clicks: chip, value and note are all the same 28-day
+    // account metric, one month apart.
     if (prevSnapshot && currSnapshot) {
-      kpiDeltas.followers_pct_change = pctDelta(
-        currSnapshot.followers_count,
-        prevSnapshot.followers_count,
-      );
-      kpiDeltas.reach_pct_change = pctDelta(
-        currSnapshot.reach_28d,
-        prevSnapshot.reach_28d,
-      );
       kpiDeltas.profile_views_pct_change = pctDelta(
         currSnapshot.profile_views_28d,
         prevSnapshot.profile_views_28d,
@@ -805,28 +630,39 @@ Deno.serve(async (req) => {
         prevSnapshot.website_clicks_28d,
       );
     }
-
-    // Previous-month raw values, so each card can print "maio: 142,3 mil".
-    // Only metrics measured on the SAME basis as the card's own value are filled:
-    // profile_views / website_clicks are the very 28-day figures the KPI reads off
-    // the account row, and followers_gained's baseline is the PREVIOUS month's own
-    // net gain. `reach` and `saves` are month-sums over posts while the
-    // snapshot stores a rolling 28-day account figure — printing that as "previous
-    // reach" next to a differently-measured number would be misleading, so it is
-    // left unset (the % chip above still comes from the snapshot pair).
     if (prevSnapshot) {
       kpis.profile_views.prev = prevSnapshot.profile_views_28d ?? null;
       kpis.website_clicks.prev = prevSnapshot.website_clicks_28d ?? null;
     }
+
+    // followers_gained: the card's value is the month's NET GAIN, so its chip must
+    // be the change in net gain — NOT the growth of the total follower base, which
+    // is a different quantity that can even move the other way. It also keeps the
+    // renderer's "o ganho de seguidores cresceu X%" takeaway literally true.
+    // The previous month's own gain needs the month-before-previous close, hence the
+    // third snapshot fetch: (close of prev − close of prev-prev).
     if (prevSnapshot && prevPrevSnapshot) {
       const closeOfPrev = prevSnapshot.followers_count;
       const closeOfPrevPrev = prevPrevSnapshot.followers_count;
       if (
         typeof closeOfPrev === "number" && typeof closeOfPrevPrev === "number"
       ) {
-        kpis.followers_gained.prev = closeOfPrev - closeOfPrevPrev;
+        const prevFollowersGained = closeOfPrev - closeOfPrevPrev;
+        kpis.followers_gained.prev = prevFollowersGained;
+        kpiDeltas.followers_pct_change = pctDelta(
+          followersGained,
+          prevFollowersGained,
+        );
       }
     }
+
+    // reach: deliberately NO chip and NO prev. `kpis.reach.value` is a sum of
+    // per-post reach for the month; the snapshot's `reach_28d` is a rolling,
+    // deduplicated ACCOUNT reach. They are different measurements and can move in
+    // opposite directions, so a `reach_28d`-derived chip printed over a month-sum
+    // would be a claim about a number the card never shows. Same reasoning as
+    // leaving `reach.prev` unset. A same-basis chip would need the previous month's
+    // post-sum, which is a separate query and out of scope here.
 
     // =====================================================================
     // 7. Content breakdown

@@ -747,7 +747,12 @@ function buildLocation(data: ReportData): string {
     </div>`;
 }
 
-const DAY_INDEX: Record<string, number> = {
+/**
+ * Exported so the generator's `mappers.test.ts` can assert that every label
+ * `mapBestTimes` emits resolves here — the two ends must never drift apart, or
+ * `dayIndex()`'s `?? 0` fallback would silently relabel every slot as Monday.
+ */
+export const DAY_INDEX: Record<string, number> = {
   seg: 0, ter: 1, qua: 2, qui: 3, sex: 4, sab: 5, dom: 6,
   segunda: 0, terça: 1, terca: 1, quarta: 2, quinta: 3, sexta: 4, sábado: 5, sabado: 5, domingo: 6,
   mon: 0, tue: 1, wed: 2, thu: 3, fri: 4, sat: 5, sun: 6,
