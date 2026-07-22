@@ -1,9 +1,23 @@
 // Server-side SVG chart generators (no DOM, pure string output).
 // Designed for embedding in HTML reports that are converted to PDF via Gotenberg.
 
+import { escapeHtml } from "./escape.ts";
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+const MONTHS_PT = [
+  "jan", "fev", "mar", "abr", "mai", "jun",
+  "jul", "ago", "set", "out", "nov", "dez",
+];
+
+/** Format an ISO `YYYY-MM-DD` label as pt-BR short date, e.g. "1 jun". Falls back to the raw label. */
+function fmtTick(label: string): string {
+  const m = label.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return label;
+  return `${parseInt(m[3], 10)} ${MONTHS_PT[parseInt(m[2], 10) - 1]}`;
+}
 
 /** Round a number to at most `decimals` decimal places. */
 function r(n: number, decimals = 2): number {
@@ -32,10 +46,14 @@ interface LineChartOptions {
   height: number;
   color: string;
   markers?: { label: string; color: string }[];
+  /** Pill annotation anchored at the last data point, e.g. "+482 no mês". */
+  annotation?: string;
+  /** Hollow dot + label above one data point, e.g. a post-publish spike. */
+  eventMarker?: { index: number; label: string };
 }
 
 export function lineChart(opts: LineChartOptions): string {
-  const { data, width, height, color, markers = [] } = opts;
+  const { data, width, height, color, markers = [], annotation, eventMarker } = opts;
 
   const PAD_TOP = 16;
   const PAD_BOTTOM = 32;
@@ -64,7 +82,8 @@ export function lineChart(opts: LineChartOptions): string {
   const toX = (i: number) =>
     r(PAD_LEFT + (data.length === 1 ? plotW / 2 : (i / (data.length - 1)) * plotW));
 
-  const points = data.map((d, i) => `${toX(i)},${toY(d.value)}`).join(" ");
+  const pts = data.map((d, i) => ({ x: toX(i), y: toY(d.value) }));
+  const points = pts.map((p) => `${p.x},${p.y}`).join(" ");
 
   // Area fills from data line down to the lowest data value, not to the axis baseline
   const areaBottom = toY(paddedMin);
@@ -74,18 +93,16 @@ export function lineChart(opts: LineChartOptions): string {
     `${toX(data.length - 1)},${areaBottom}`,
   ].join(" ");
 
-  // X-axis labels
-  const labelStep = Math.max(1, Math.ceil(data.length / 6));
-  const lastStepIdx = Math.floor((data.length - 1) / labelStep) * labelStep;
-  const xLabels = data
-    .map((d, i) => {
-      const isLast = i === data.length - 1;
-      const isStep = i % labelStep === 0;
-      if (!isStep && !isLast) return "";
-      if (isLast && !isStep && (data.length - 1 - lastStepIdx) < labelStep * 0.6) return "";
-      return `<text x="${toX(i)}" y="${height - 6}" text-anchor="${isLast ? "end" : "middle"}" font-size="9" fill="#9ca3af" font-family="DM Sans, sans-serif">${d.label}</text>`;
+  // X-axis labels: at most 4 ticks (first, ~1/3, ~2/3, last), pt-BR short dates
+  const n = data.length;
+  const tickIdx = n <= 4
+    ? data.map((_, i) => i)
+    : [0, Math.round(n / 3), Math.round((2 * n) / 3), n - 1];
+  const xLabels = tickIdx
+    .map((i) => {
+      const isLast = i === n - 1;
+      return `<text x="${toX(i)}" y="${height - 6}" text-anchor="${isLast ? "end" : "middle"}" font-size="9" fill="#9ca3af" font-family="DM Sans, sans-serif" class="axis-x">${escapeHtml(fmtTick(data[i].label))}</text>`;
     })
-    .filter(Boolean)
     .join("");
 
   // Y-axis: compute 4 nice tick values spanning the padded range
@@ -124,6 +141,35 @@ export function lineChart(opts: LineChartOptions): string {
     })
     .join("");
 
+  // Event marker: hollow dot + label above a specific point (e.g. a spike from a published post)
+  let eventMarkerSvg = "";
+  if (eventMarker && pts[eventMarker.index]) {
+    const p = pts[eventMarker.index];
+    // anchor away from the plot edges so the label never overflows the viewBox
+    const anchor = eventMarker.index === 0 ? "start" : eventMarker.index === n - 1 ? "end" : "middle";
+    const labelY = Math.max(p.y - 12, PAD_TOP - 4);
+    eventMarkerSvg = `<circle cx="${p.x}" cy="${p.y}" r="3.5" fill="#FAFAF7" stroke="${color}" stroke-width="2"/>
+  <text x="${p.x}" y="${labelY}" text-anchor="${anchor}" font-size="9" fill="#9ca3af" font-family="DM Sans, sans-serif" class="axis">${escapeHtml(eventMarker.label)}</text>`;
+  }
+
+  // Annotation pill: net-change callout anchored at the last data point.
+  // Positioned to the LEFT of the last point (never past the right edge, since the
+  // last point sits at/near the plot's right edge) and clamped on both axes so it
+  // can't fall outside the SVG viewBox or slide behind the y-axis on a narrow chart.
+  let annotationSvg = "";
+  if (annotation) {
+    const last = pts[pts.length - 1];
+    const w = annotation.length * 6.2 + 18;
+    const rx = Math.max(4, Math.min(last.x - w - 10, width - w - 8));
+    const ry = Math.max(last.y - 24, 6);
+    // Note: the pill label's fill MUST be set via inline style, not a class — a
+    // shared `.axis` CSS rule (gray fill) would override a presentation `fill`
+    // attribute on the same element and silently render gray-on-dark, unreadable.
+    annotationSvg = `<circle cx="${last.x}" cy="${last.y}" r="4" fill="${color}"/>
+  <rect x="${rx}" y="${ry}" rx="10" width="${w}" height="21" fill="#1C1917"/>
+  <text x="${rx + w / 2}" y="${ry + 14}" text-anchor="middle" style="font-family:'Instrument Sans',sans-serif;font-size:10px;font-weight:600;fill:#FAFAF7">${escapeHtml(annotation)}</text>`;
+  }
+
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
   <!-- grid lines & y-axis labels -->
   ${gridLines}
@@ -139,6 +185,10 @@ export function lineChart(opts: LineChartOptions): string {
   <!-- data dots -->
   ${data.length <= 31 ? data.map((d, i) => `<circle cx="${toX(i)}" cy="${toY(d.value)}" r="2.5" fill="${color}"/>`).join("") : ""}
   ${xLabels}
+  <!-- event marker -->
+  ${eventMarkerSvg}
+  <!-- annotation pill -->
+  ${annotationSvg}
 </svg>`;
 }
 
@@ -535,9 +585,11 @@ export function donutChart(opts: DonutChartOptions): string {
     const lp = polarToCartesian(cx, cy, labelR, midAngle);
     const anchor = lp.x > cx + 2 ? "start" : lp.x < cx - 2 ? "end" : "middle";
     const pctStr = `${Math.round(pct * 100)}%`;
+    // Center/segment labels are always neutral ink/gray — segment hue is carried
+    // by the arc fill only, never by text, so the donut imposes no hardcoded hues.
     labels.push(
-      `<text x="${r(lp.x)}" y="${r(lp.y - 4)}" text-anchor="${anchor}" font-size="9" fill="#9ca3af" font-family="DM Sans, sans-serif" dominant-baseline="middle">${seg.label}</text>`,
-      `<text x="${r(lp.x)}" y="${r(lp.y + 8)}" text-anchor="${anchor}" font-size="10" font-weight="700" fill="${seg.color}" font-family="DM Sans, sans-serif" dominant-baseline="middle">${pctStr}</text>`,
+      `<text x="${r(lp.x)}" y="${r(lp.y - 4)}" text-anchor="${anchor}" font-size="9" fill="#8A8A8A" font-family="DM Sans, sans-serif" dominant-baseline="middle">${escapeHtml(seg.label)}</text>`,
+      `<text x="${r(lp.x)}" y="${r(lp.y + 8)}" text-anchor="${anchor}" font-size="10" font-weight="700" fill="#1C1917" font-family="DM Sans, sans-serif" dominant-baseline="middle">${pctStr}</text>`,
     );
 
     startAngle = endAngle;

@@ -62,3 +62,29 @@ Deno.test("donutChart renders segments", () => {
   assertStringIncludes(svg, "<svg");
   assertStringIncludes(svg, "<path");
 });
+
+Deno.test("lineChart: pt-BR tick labels, max 4 ticks", () => {
+  const data = Array.from({ length: 30 }, (_, i) => ({
+    label: `2026-06-${String(i + 1).padStart(2, "0")}`,
+    value: 100 + i,
+  }));
+  const svg = lineChart({ data, width: 660, height: 200, color: "#1C1917" });
+  assertStringIncludes(svg, ">1 jun<");
+  assertStringIncludes(svg, ">30 jun<");
+  assertEquals((svg.match(/class="axis-x"/g) || []).length <= 4, true);
+});
+
+Deno.test("lineChart: annotation pill and event marker", () => {
+  const data = [
+    { label: "2026-06-01", value: 10 },
+    { label: "2026-06-15", value: 20 },
+    { label: "2026-06-30", value: 40 },
+  ];
+  const svg = lineChart({
+    data, width: 660, height: 200, color: "#1C1917",
+    annotation: "+30 no mês",
+    eventMarker: { index: 1, label: "Reel · dia 15" },
+  });
+  assertStringIncludes(svg, "+30 no mês");
+  assertStringIncludes(svg, "Reel · dia 15");
+});
