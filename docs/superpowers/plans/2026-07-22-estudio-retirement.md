@@ -532,6 +532,7 @@ Not code — a runbook. Several steps need Eduardo's credentials and must not be
 
 **Files:**
 - Modify: `package.json:15-17` (`dev:estudio` script and both `dev:all` chains)
+- Modify: `apps/crm/vite.config.ts:27-30` (dead `/estudio-fn` dev proxy)
 - Modify: `CLAUDE.md` (Estúdio commands and env vars)
 - Delete: `docs/estudio-mcp-guide.md`
 
@@ -539,9 +540,15 @@ Not code — a runbook. Several steps need Eduardo's credentials and must not be
 - Consumes: Tasks 1-6.
 - Produces: no build script, doc, or env var references Estúdio.
 
-- [ ] **Step 1: Remove the dev scripts**
+- [ ] **Step 1: Remove the dev scripts and the dead vite proxy**
 
 In `package.json`, delete the `dev:estudio` script (line 15) and remove `"npm:dev:estudio"` plus its `estudio` entry from the `-n` / `-c` lists in both `dev:all` (line 16) and `dev:all:staging` (line 17).
+
+Then delete the `/estudio-fn` dev proxy block from `apps/crm/vite.config.ts` (~lines 27-30). Its only consumer was `embedHost.ts`'s dev-mode `buildDocUrl`, deleted in Task 1 — surfaced by the Task 1 review. Confirm it is dead first:
+```bash
+grep -rn "estudio-fn" apps/ packages/ --include="*.ts" --include="*.tsx"
+```
+Expected: only the `vite.config.ts` definition itself.
 
 - [ ] **Step 2: Update `CLAUDE.md`**
 
