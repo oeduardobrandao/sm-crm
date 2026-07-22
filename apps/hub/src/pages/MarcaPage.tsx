@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { PageHeader } from '../components/PageHeader';
 import { Download } from 'lucide-react';
 import { useHub } from '../HubContext';
 import { fetchBrand } from '../api';
@@ -14,19 +15,14 @@ function ColorSwatch({ color, label }: { color: string; label: string }) {
       />
       <div>
         <p className="text-[13.5px] font-semibold hub-txt">{label}</p>
-        <p className="text-[11px] hub-tx3 uppercase tracking-wider mt-0.5">{color}</p>
+        <p className="text-[11.5px] hub-tx3 mt-0.5">{color}</p>
       </div>
     </div>
   );
 }
 
 function SectionLabel({ children }: { children: ReactNode }) {
-  return (
-    <h3 className="text-[11px] font-semibold hub-tx3 uppercase tracking-[0.14em] mb-3 flex items-center">
-      <span className="accent-bar" />
-      {children}
-    </h3>
-  );
+  return <h3 className="text-[13px] font-semibold hub-tx2 mb-3">{children}</h3>;
 }
 
 export function MarcaPage() {
@@ -40,12 +36,8 @@ export function MarcaPage() {
   const isEmpty = !brand && files.length === 0;
 
   return (
-    <div className="max-w-3xl mx-auto space-y-10 hub-fade-up">
-      <header>
-        <h2 className="font-display text-[2rem] sm:text-[2.25rem] leading-[1.05] font-medium tracking-tight hub-txt">
-          Marca
-        </h2>
-      </header>
+    <div className="max-w-5xl mx-auto space-y-10 hub-fade-up">
+      <PageHeader title="Marca" description="Cores, logos e tipografia do seu negócio." />
 
       {isLoading ? (
         <div className="flex justify-center py-20">

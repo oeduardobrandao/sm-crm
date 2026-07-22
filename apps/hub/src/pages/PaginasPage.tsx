@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { PageHeader } from '../components/PageHeader';
 import { Link, useParams } from 'react-router-dom';
 import { ChevronRight, FileText } from 'lucide-react';
 import { useHub } from '../HubContext';
@@ -17,12 +18,11 @@ export function PaginasPage() {
   const pages = data?.pages ?? [];
 
   return (
-    <div className="max-w-3xl mx-auto hub-fade-up">
-      <header className="mb-8">
-        <h2 className="font-display text-[2rem] sm:text-[2.25rem] leading-[1.05] font-medium tracking-tight hub-txt">
-          Páginas
-        </h2>
-      </header>
+    <div className="max-w-5xl mx-auto hub-fade-up">
+      <PageHeader
+        title="Páginas"
+        description="Documentos e materiais compartilhados pela agência."
+      />
       {isLoading ? (
         <div className="flex justify-center py-20">
           <div className="animate-spin h-6 w-6 rounded-full border-2 border-stone-300 border-t-stone-900" />

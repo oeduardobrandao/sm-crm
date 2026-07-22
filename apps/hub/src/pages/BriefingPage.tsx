@@ -2,6 +2,8 @@ import { useState, useRef, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useHub } from '../HubContext';
 import { fetchBriefing, submitBriefingAnswer } from '../api';
+import { PageHeader } from '../components/PageHeader';
+import { ScrollableTabs } from '../components/ScrollableTabs';
 import type { BriefingQuestion } from '../types';
 
 export function BriefingPage() {
@@ -42,12 +44,14 @@ export function BriefingPage() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto hub-fade-up">
-      <header className="mb-8">
-        <h2 className="font-display text-[2rem] sm:text-[2.25rem] leading-[1.05] font-medium tracking-tight hub-txt">
-          Briefing
-        </h2>
-      </header>
+    <div className="max-w-5xl mx-auto hub-fade-up">
+      <PageHeader
+        title="Briefing"
+        description="As informações que orientam a estratégia do seu projeto."
+      />
+      {activeBriefing?.title && (
+        <p className="-mt-6 mb-8 text-[15px] font-medium hub-tx3">{activeBriefing.title}</p>
+      )}
 
       {isLoading ? (
         <div className="flex justify-center py-20">
@@ -58,48 +62,50 @@ export function BriefingPage() {
       ) : (
         <>
           {hasBriefingTabs && (
-            <div className="relative mb-6 border-b hub-border">
-              <div className="flex gap-1 overflow-x-auto no-scrollbar">
-                {briefings.map((b, i) => (
-                  <button
-                    key={b.id}
-                    onClick={() => {
-                      setBriefingTab(i);
-                      setSectionTab(0);
-                    }}
-                    className={`relative px-4 py-3 text-[13px] font-semibold whitespace-nowrap transition-colors ${
-                      briefingTab === i ? 'hub-txt' : 'hub-tab-btn hub-tx3'
-                    }`}
-                  >
-                    {b.title || 'Briefing'}
-                    {briefingTab === i && (
-                      <span className="absolute left-3 right-3 -bottom-[1px] h-[2px] rounded-full bg-[var(--hub-acc)]" />
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <ScrollableTabs label="Briefings" activeKey={briefingTab} className="mb-6">
+              {briefings.map((b, i) => (
+                <button
+                  key={b.id}
+                  role="tab"
+                  aria-selected={briefingTab === i}
+                  data-active={briefingTab === i}
+                  onClick={() => {
+                    setBriefingTab(i);
+                    setSectionTab(0);
+                  }}
+                  className={`relative px-4 py-3 text-[13px] font-semibold whitespace-nowrap transition-colors ${
+                    briefingTab === i ? 'hub-txt' : 'hub-tab-btn hub-tx3'
+                  }`}
+                >
+                  {b.title || 'Briefing'}
+                  {briefingTab === i && (
+                    <span className="absolute left-3 right-3 -bottom-[1px] h-[2px] rounded-full bg-[var(--hub-txt)]" />
+                  )}
+                </button>
+              ))}
+            </ScrollableTabs>
           )}
 
           {hasSectionTabs && (
-            <div className="relative mb-8 border-b hub-border">
-              <div className="flex gap-1 overflow-x-auto no-scrollbar">
-                {sections.map((s, i) => (
-                  <button
-                    key={s.name}
-                    onClick={() => setSectionTab(i)}
-                    className={`relative px-4 py-3 text-[13px] font-medium whitespace-nowrap transition-colors ${
-                      sectionTab === i ? 'hub-txt' : 'hub-tab-btn hub-tx3'
-                    }`}
-                  >
-                    {s.name}
-                    {sectionTab === i && (
-                      <span className="absolute left-3 right-3 -bottom-[1px] h-[2px] rounded-full bg-[var(--hub-bd2)]" />
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <ScrollableTabs label="Seções do briefing" activeKey={sectionTab} className="mb-8">
+              {sections.map((s, i) => (
+                <button
+                  key={s.name}
+                  role="tab"
+                  aria-selected={sectionTab === i}
+                  data-active={sectionTab === i}
+                  onClick={() => setSectionTab(i)}
+                  className={`relative px-4 py-3 text-[13px] font-medium whitespace-nowrap transition-colors ${
+                    sectionTab === i ? 'hub-txt' : 'hub-tab-btn hub-tx3'
+                  }`}
+                >
+                  {s.name}
+                  {sectionTab === i && (
+                    <span className="absolute left-3 right-3 -bottom-[1px] h-[2px] rounded-full bg-[var(--hub-bd2)]" />
+                  )}
+                </button>
+              ))}
+            </ScrollableTabs>
           )}
 
           {visibleQuestions.length === 0 ? (

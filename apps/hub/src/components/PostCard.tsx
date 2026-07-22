@@ -317,9 +317,7 @@ export function PostCard({
             <circle cx="8.5" cy="8.5" r="1.5" />
             <path d="M21 15l-5-5L5 21" />
           </svg>
-          <span className="text-[11px] font-medium tracking-wide uppercase">
-            Nenhuma imagem adicionada
-          </span>
+          <span className="text-[11.5px] font-medium">Nenhuma imagem adicionada</span>
         </div>
       )}
       <button
@@ -328,7 +326,7 @@ export function PostCard({
       >
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 mb-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider hub-btn-primary px-2 py-0.5 rounded-full">
+            <span className="text-[11px] font-semibold hub-btn-primary px-2 py-0.5 rounded-full">
               {TIPO_LABEL[post.tipo] ?? post.tipo}
             </span>
             {post.status === 'agendado' ? (
@@ -446,9 +444,7 @@ export function PostCard({
 
           {postProperties.length > 0 && (
             <div className="rounded-xl border hub-border hub-bg-card px-4 pt-3 pb-1">
-              <p className="text-[10px] font-bold uppercase tracking-[0.12em] hub-tx3 pb-2">
-                Propriedades
-              </p>
+              <p className="text-[12px] font-semibold hub-tx3 pb-2">Propriedades</p>
               {postProperties.map((p) => (
                 <PropertyRow
                   key={`${p.post_id}-${p.template_property_definitions.name}`}
@@ -462,7 +458,7 @@ export function PostCard({
 
           {postApprovals.length > 0 && (
             <div className="space-y-2.5">
-              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em] hub-tx3">
+              <div className="flex items-center gap-1.5 text-[12px] font-semibold hub-tx3">
                 <MessageSquare size={12} /> Comentários
               </div>
               {postApprovals.map((a) => {
@@ -489,9 +485,9 @@ export function PostCard({
                     style={
                       isTeam
                         ? {
-                            background: 'color-mix(in srgb, var(--hub-acc) 10%, transparent)',
+                            background: 'color-mix(in srgb, var(--hub-txt) 6%, transparent)',
                             boxShadow:
-                              'inset 0 0 0 1px color-mix(in srgb, var(--hub-acc) 25%, transparent)',
+                              'inset 0 0 0 1px color-mix(in srgb, var(--hub-txt) 14%, transparent)',
                           }
                         : undefined
                     }

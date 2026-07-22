@@ -30,6 +30,10 @@ Deno.test("hub-bootstrap returns workspace metadata for a valid workspace token"
     data: { nome: "Clínica Aurora" },
     error: null,
   });
+  db.queue("instagram_accounts", "select", {
+    data: { profile_picture_url: "https://cdn.test/avatars/14.jpg" },
+    error: null,
+  });
 
   const handler = createHubBootstrapHandler({
     buildCorsHeaders,
@@ -43,7 +47,37 @@ Deno.test("hub-bootstrap returns workspace metadata for a valid workspace token"
 
   assertEquals(response.status, 200);
   assertEquals(body.cliente_nome, "Clínica Aurora");
+  assertEquals(body.cliente_foto_url, "https://cdn.test/avatars/14.jpg");
   assertEquals(body.workspace.brand_color, "#1a1a2e");
+});
+
+Deno.test("hub-bootstrap serves a null client photo when no Instagram account is linked", async () => {
+  const db = createSupabaseQueryMock();
+  db.queue("workspaces", "select", {
+    data: { id: "conta-1", name: "Mesaas", logo_url: null, brand_color: null, hub_enabled: true },
+    error: null,
+  });
+  db.queue("client_hub_tokens", "select", {
+    data: { cliente_id: 14, is_active: true },
+    error: null,
+  });
+  db.queue("clientes", "select", { data: { nome: "Clínica Aurora" }, error: null });
+  db.queue("instagram_accounts", "select", { data: null, error: null });
+
+  const handler = createHubBootstrapHandler({
+    buildCorsHeaders,
+    createDb: () => db as never,
+    now,
+    touchToken: noopTouchToken,
+  });
+
+  const response = await handler(new Request("https://example.test/hub-bootstrap?workspace=mesaas&token=hub-123"));
+  const body = await readJson(response);
+
+  // A client with no connected account is normal — the portal still loads.
+  assertEquals(response.status, 200);
+  assertEquals(body.cliente_foto_url, null);
+  assertEquals(body.cliente_nome, "Clínica Aurora");
 });
 
 Deno.test("hub-bootstrap rejects missing query params", async () => {

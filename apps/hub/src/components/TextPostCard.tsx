@@ -79,7 +79,7 @@ export function TextPostCard({
       >
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider hub-btn-primary px-2 py-0.5 rounded">
+            <span className="text-[11px] font-semibold hub-btn-primary px-2 py-0.5 rounded">
               {TIPO_LABEL[post.tipo] ?? post.tipo}
             </span>
             <span

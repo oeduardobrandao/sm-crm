@@ -5371,6 +5371,65 @@ body.role-agent input[name='valor_total'] {
 }
 
 /* ============================================================
+   SCROLLABLE TAB STRIP (components/shared/ScrollableTabs.tsx)
+   Gradient fade + chevron buttons on the overflowing side, so a
+   horizontally scrollable tab row reads as scrollable.
+   ============================================================ */
+.scrollable-tabs {
+  position: relative;
+}
+.scrollable-tabs-fade {
+  position: absolute;
+  top: 0;
+  bottom: 1px;
+  width: 56px;
+  pointer-events: none;
+  z-index: 1;
+}
+.scrollable-tabs-fade-left {
+  left: 0;
+  background: linear-gradient(to right, var(--card-bg) 30%, transparent);
+}
+.scrollable-tabs-fade-right {
+  right: 0;
+  background: linear-gradient(to left, var(--card-bg) 30%, transparent);
+}
+.scrollable-tabs-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 9999px;
+  border: 1px solid var(--border-color);
+  background-color: var(--card-bg);
+  color: var(--text-muted);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.scrollable-tabs-arrow:hover {
+  color: var(--text-main);
+  border-color: var(--primary-color);
+}
+.scrollable-tabs-arrow-left {
+  left: 0;
+}
+.scrollable-tabs-arrow-right {
+  right: 0;
+}
+/* Roomy pointer devices only — on phones the strip is too narrow to give up
+   ~52px to chevrons, and swiping is the natural gesture anyway. */
+@media (min-width: 640px) and (hover: hover) and (pointer: fine) {
+  .scrollable-tabs-arrow {
+    display: flex;
+  }
+}
+
+/* ============================================================
    WORKFLOW DRAWER
    ============================================================ */
 .drawer-overlay {

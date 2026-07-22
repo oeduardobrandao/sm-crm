@@ -36,7 +36,7 @@ const markdownComponents = {
       href={sanitizeExternalUrl(props.href)}
       target="_blank"
       rel="noopener noreferrer"
-      className="hub-txt font-medium underline decoration-[var(--hub-acc)] decoration-2 underline-offset-4 hover:decoration-[var(--hub-txt)] transition-colors"
+      className="hub-txt font-medium underline decoration-[var(--hub-txt)] decoration-2 underline-offset-4 hover:decoration-[var(--hub-txt)] transition-colors"
     />
   ),
   img: (props: React.ComponentProps<'img'>) => (
@@ -140,7 +140,7 @@ function renderBlock(block: HubContentBlock, i: number) {
           href={sanitizeExternalUrl(block.href)}
           target="_blank"
           rel="noopener noreferrer"
-          className="hub-txt font-medium underline decoration-[var(--hub-acc)] decoration-2 underline-offset-4 hover:decoration-[var(--hub-txt)] transition-colors"
+          className="hub-txt font-medium underline decoration-[var(--hub-txt)] decoration-2 underline-offset-4 hover:decoration-[var(--hub-txt)] transition-colors"
         >
           {block.content}
         </a>

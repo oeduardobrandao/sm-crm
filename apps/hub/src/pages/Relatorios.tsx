@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { PageHeader } from '../components/PageHeader';
 import { useNavigate, useParams } from 'react-router-dom';
 import { FileText, Download, ExternalLink } from 'lucide-react';
 import { useHub } from '../HubContext';
@@ -58,7 +59,7 @@ function ReportCard({ report, base }: { report: HubReport; base: string }) {
           )}
         </div>
         {isReady && (
-          <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-100 flex-shrink-0">
+          <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-100 flex-shrink-0">
             Pronto
           </span>
         )}
@@ -108,11 +109,7 @@ export function RelatoriosPage() {
 
   return (
     <div className="max-w-5xl mx-auto hub-fade-up">
-      <header className="mb-8">
-        <h2 className="font-display text-[2rem] sm:text-[2.25rem] leading-[1.05] font-medium tracking-tight hub-txt">
-          Relatórios
-        </h2>
-      </header>
+      <PageHeader title="Relatórios" description="Resultados e análises de desempenho." />
 
       {isLoading ? (
         <div className="flex justify-center py-20">

@@ -137,15 +137,15 @@ export function HomePage() {
           onClick={() => navigate(`${base}/aprovacoes`)}
           className="hub-fade-up w-full flex items-center gap-3 px-5 py-3.5 rounded-2xl text-left group transition-shadow hover:shadow-sm"
           style={{
-            background: 'color-mix(in srgb, var(--hub-acc) 8%, transparent)',
-            border: '1px solid color-mix(in srgb, var(--hub-acc) 24%, transparent)',
+            background: 'color-mix(in srgb, var(--hub-txt) 5%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--hub-txt) 14%, transparent)',
           }}
         >
           <span
             className="flex items-center justify-center w-8 h-8 rounded-full flex-shrink-0"
             style={{
-              background: 'color-mix(in srgb, var(--hub-acc) 18%, transparent)',
-              color: 'var(--hub-acc)',
+              background: 'color-mix(in srgb, var(--hub-txt) 10%, transparent)',
+              color: 'var(--hub-txt)',
             }}
           >
             <CheckSquare size={16} strokeWidth={2} />

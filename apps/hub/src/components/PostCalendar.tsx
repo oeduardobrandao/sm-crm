@@ -325,7 +325,7 @@ export function PostCalendar({ posts }: Props) {
                   {/* Desktop: type + status pills */}
                   <div className="hidden md:flex items-center gap-1.5 flex-wrap">
                     <span
-                      className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full"
+                      className="text-[11px] font-semibold px-2 py-0.5 rounded-full"
                       style={{
                         background: `${TIPO_COLOR[p.tipo] ?? '#78716c'}1c`,
                         color: TIPO_COLOR[p.tipo] ?? '#78716c',

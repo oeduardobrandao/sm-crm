@@ -5,6 +5,7 @@ import { HubContext } from '../HubContext';
 import { HubSidebar } from './HubSidebar';
 import { HubMobileNav } from './HubMobileNav';
 import { useTheme } from '../hooks/useTheme';
+import { PoweredByMesaas } from '../components/PoweredByMesaas';
 import { resolveHubTheme } from '../theme';
 import { fetchBootstrap } from '../api';
 import type { HubBootstrap } from '../types';
@@ -78,6 +79,7 @@ export function HubShell() {
         <main className="hub-noise flex-1 md:pl-[240px]">
           <div className="mx-auto w-full max-w-5xl px-5 sm:px-8 py-8 sm:py-12 pb-28 md:pb-16">
             <Outlet />
+            <PoweredByMesaas />
           </div>
         </main>
       </div>

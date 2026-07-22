@@ -44,7 +44,7 @@ export function PostagemFocoPage() {
         <p className="text-sm hub-tx2 mb-4">Não foi possível carregar esta postagem.</p>
         <button
           onClick={() => refetch()}
-          className="text-[13px] font-medium hub-txt underline decoration-[var(--hub-acc)] decoration-2 underline-offset-4"
+          className="text-[13px] font-medium hub-txt underline decoration-[var(--hub-txt)] decoration-2 underline-offset-4"
         >
           Tentar novamente
         </button>

@@ -1,5 +1,7 @@
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Tooltip } from 'chart.js';
 import { Bar } from 'react-chartjs-2';
+import { useHub } from '../../HubContext';
+import { chartInk } from './chartInk';
 import type { DashboardReachEntry } from '../../types';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip);
@@ -14,6 +16,8 @@ interface ReachChartProps {
 }
 
 export function ReachChart({ reachHistory }: ReachChartProps) {
+  const { theme } = useHub();
+  const ink = chartInk(theme);
   const totalReach = reachHistory.reduce((sum, e) => sum + e.reach, 0);
 
   const labels = reachHistory.map((e) => {
@@ -29,7 +33,7 @@ export function ReachChart({ reachHistory }: ReachChartProps) {
       {
         data: reachHistory.map((e) => e.reach),
         backgroundColor: reachHistory.map(
-          (e) => `rgba(234, 179, 8, ${0.4 + 0.6 * (e.reach / maxReach)})`,
+          (e) => `rgba(${ink}, ${0.25 + 0.6 * (e.reach / maxReach)})`,
         ),
         borderRadius: { topLeft: 3, topRight: 3, bottomLeft: 0, bottomRight: 0 },
         borderSkipped: 'bottom' as const,
@@ -83,9 +87,7 @@ export function ReachChart({ reachHistory }: ReachChartProps) {
 
   return (
     <div className="hub-card p-5">
-      <h3 className="text-xs font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400 mb-4">
-        Alcance
-      </h3>
+      <h3 className="text-[13px] font-semibold hub-tx2 mb-4">Alcance</h3>
       <div className="h-[180px]">
         <Bar data={data} options={options as any} />
       </div>

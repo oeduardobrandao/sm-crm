@@ -6,6 +6,7 @@ import { InstagramPostCard } from '../components/InstagramPostCard';
 import { StoryPostCard } from '../components/StoryPostCard';
 import { TextPostCard } from '../components/TextPostCard';
 import { FeedPreviewButton } from '../components/FeedPreviewButton';
+import { PageHeader } from '../components/PageHeader';
 import { InstagramGridPreview } from '../components/InstagramGridPreview';
 import { formatDate } from '../components/PostCard';
 import { SharePostButton } from '../components/SharePostButton';
@@ -57,21 +58,19 @@ export function AprovacoesPage() {
 
   return (
     <div className="max-w-5xl mx-auto hub-fade-up">
-      <header className="mb-8">
-        <div className="flex items-center justify-between gap-4">
-          <h2 className="font-display text-[2rem] sm:text-[2.25rem] leading-[1.05] font-medium tracking-tight hub-txt">
-            Aprovações
-          </h2>
-          {instagramProfile && (
-            <FeedPreviewButton selectedCount={selectedIds.size} onClick={() => setShowGrid(true)} />
-          )}
-        </div>
-        <p className="text-[14px] hub-tx2 mt-2">
-          {pending.length === 0
+      <PageHeader
+        title="Aprovações"
+        description={
+          pending.length === 0
             ? 'Tudo em dia. Nenhum post aguardando aprovação.'
-            : `${pending.length} post${pending.length > 1 ? 's' : ''} aguardando sua aprovação.`}
-        </p>
-      </header>
+            : `${pending.length} post${pending.length > 1 ? 's' : ''} aguardando sua aprovação.`
+        }
+        action={
+          instagramProfile && (
+            <FeedPreviewButton selectedCount={selectedIds.size} onClick={() => setShowGrid(true)} />
+          )
+        }
+      />
 
       {isLoading ? (
         <div className="flex justify-center py-20">
@@ -131,10 +130,7 @@ export function AprovacoesPage() {
           {stories.length > 0 && (
             <div className={withMedia.length > 0 ? 'mt-10 pt-8 border-t hub-border' : ''}>
               {withMedia.length > 0 && (
-                <p className="text-[11px] uppercase tracking-[0.14em] hub-tx3 font-medium mb-4">
-                  <span className="accent-bar" />
-                  Stories
-                </p>
+                <p className="text-[13px] font-semibold hub-tx2 mb-4">Stories</p>
               )}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {stories.map((post) => (
@@ -167,10 +163,7 @@ export function AprovacoesPage() {
               }
             >
               {(withMedia.length > 0 || stories.length > 0) && (
-                <p className="text-[11px] uppercase tracking-[0.14em] hub-tx3 font-medium mb-4">
-                  <span className="accent-bar" />
-                  Posts sem mídia
-                </p>
+                <p className="text-[13px] font-semibold hub-tx2 mb-4">Posts sem mídia</p>
               )}
               <div className="max-w-[640px] space-y-3">
                 {withoutMedia.map((post) => (
