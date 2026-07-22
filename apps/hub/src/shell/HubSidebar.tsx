@@ -5,6 +5,7 @@ import { useHub } from '../HubContext';
 import { usePendingApprovalsCount } from '../hooks/usePendingApprovalsCount';
 import { getVisibleNavItems } from './navItems';
 import { ClientAvatar } from '../components/ClientAvatar';
+import { WorkspaceMark } from '../components/WorkspaceMark';
 import { FlagIcon } from '../components/FlagIcon';
 import { changeLanguage, SUPPORTED_LANGUAGES } from '@mesaas/i18n';
 import type { Language } from '@mesaas/i18n';
@@ -23,25 +24,10 @@ export function HubSidebar() {
   const pendingCount = usePendingApprovalsCount(token!);
   const navItems = getVisibleNavItems(bootstrap.feature_mensagens);
 
-  const initial = bootstrap.workspace.name.trim().charAt(0).toUpperCase();
-
   return (
     <aside className="hidden md:flex fixed left-0 top-0 bottom-0 w-[240px] z-30 flex-col hub-bg-card border-r hub-border">
       <div className="flex items-center gap-2.5 px-3.5 pt-[18px] pb-4">
-        {bootstrap.workspace.logo_url ? (
-          <img
-            src={bootstrap.workspace.logo_url}
-            alt={bootstrap.workspace.name}
-            className="w-9 h-9 rounded-full object-cover flex-shrink-0"
-          />
-        ) : (
-          <div
-            className="w-9 h-9 rounded-full flex items-center justify-center font-display text-[16px] font-semibold flex-shrink-0 hub-btn-primary"
-            aria-hidden="true"
-          >
-            {initial}
-          </div>
-        )}
+        <WorkspaceMark />
         <div className="min-w-0 flex-1">
           <div className="font-semibold text-[14.5px] tracking-tight truncate hub-txt">
             {bootstrap.workspace.name}

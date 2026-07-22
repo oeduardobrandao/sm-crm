@@ -6,6 +6,7 @@ import { useHub } from '../HubContext';
 import { usePendingApprovalsCount } from '../hooks/usePendingApprovalsCount';
 import { getVisibleNavItems } from './navItems';
 import { ClientAvatar } from '../components/ClientAvatar';
+import { WorkspaceMark } from '../components/WorkspaceMark';
 import { FlagIcon } from '../components/FlagIcon';
 import { changeLanguage, SUPPORTED_LANGUAGES } from '@mesaas/i18n';
 import type { Language } from '@mesaas/i18n';
@@ -110,8 +111,11 @@ export function HubMobileNav() {
               : undefined
           }
         >
-          <span className="font-display text-[15px] font-medium hub-txt">
-            {bootstrap.workspace.name}
+          <span className="flex items-center gap-2 min-w-0">
+            <WorkspaceMark size={28} />
+            <span className="font-display text-[15px] font-medium hub-txt truncate">
+              {bootstrap.workspace.name}
+            </span>
           </span>
           <div className="flex items-center gap-2">
             <span className="text-[11px] hub-tx3 truncate max-w-[100px]">
@@ -147,8 +151,11 @@ export function HubMobileNav() {
             className="hub-fade-up absolute top-0 right-0 bottom-0 w-[min(300px,84vw)] hub-bg-card border-l hub-border flex flex-col p-3 overflow-y-auto shadow-[0_20px_40px_rgba(0,0,0,.15)]"
           >
             <div className="flex items-center justify-between px-2 pb-3.5">
-              <span className="font-display text-[15px] font-medium hub-txt">
-                {bootstrap.workspace.name}
+              <span className="flex items-center gap-2 min-w-0">
+                <WorkspaceMark size={28} />
+                <span className="font-display text-[15px] font-medium hub-txt truncate">
+                  {bootstrap.workspace.name}
+                </span>
               </span>
               <button
                 type="button"
