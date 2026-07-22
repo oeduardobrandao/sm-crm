@@ -1,8 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { useTranslation } from 'react-i18next';
 import {
   X,
   Plus,
@@ -14,7 +12,6 @@ import {
   GripVertical,
   ImageIcon,
   Calendar as CalendarIcon,
-  Wand2,
   Maximize2,
   Minimize2,
 } from 'lucide-react';
@@ -89,14 +86,6 @@ import {
   resolveInlineImageUrls,
 } from '@/services/inlineImage';
 import { listPostMedia } from '../../../services/postMedia';
-import { createDesign, getDesignForPost, type PostMedia } from '@/store';
-import {
-  EDITABLE_STATUSES as POST_EDITABLE_STATUSES,
-  canMakeEditable,
-  galleryDesignForHeld,
-  shouldShowHeldInfoBanner,
-} from '@/pages/estudio/applyEligibility';
-import { ImportToEstudioDialog } from '@/pages/estudio/ImportToEstudioDialog';
 import { useWorkspaceLimits } from '@/hooks/useWorkspaceLimits';
 import { InstagramCaptionField } from './InstagramCaptionField';
 import { PlatformSelector } from './PlatformSelector';
@@ -955,45 +944,7 @@ function SortablePostItem({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: post.id!,
   });
-  const navigate = useNavigate();
-  const { t } = useTranslation('estudio');
-
-  // T4.4/T4.5 — Estúdio lifecycle surface. Fail-open feature gate (same pattern as nav/
-  // PostPicker) and an EXPANDED-ONLY summary query: collapsed rows never hit designs.
-  // Direct RLS select via getDesignForPost; creation is explicit (createDesign) so an
-  // existence check can never mint a row.
   const { features } = useWorkspaceLimits();
-  const estudioBlocked = features?.feature_estudio === false;
-  const designSummaryQuery = useQuery({
-    queryKey: ['post-design-summary', post.id],
-    queryFn: () => getDesignForPost(post.id!),
-    enabled: isExpanded && !!post.id && post.tipo !== 'stories' && !estudioBlocked,
-    // staleTime dedupes expand/collapse churn WITHIN an open drawer; refetchOnMount 'always'
-    // guarantees a fresh read when the drawer remounts — e.g. returning from a quick Estúdio
-    // edit that created/changed the design inside the 30s window (nothing invalidates this
-    // key from the editor route).
-    staleTime: 30 * 1000,
-    refetchOnMount: 'always',
-  });
-  const designSummary = designSummaryQuery.data ?? null;
-  const createDesignMutation = useMutation({
-    mutationFn: () => createDesign({ post_id: post.id! }),
-    onSuccess: ({ design_id }) => navigate(`/estudio/${design_id}`),
-    onError: (err: Error) => toast.error(t('toast.createError', { error: err.message })),
-  });
-
-  // Slice C — "Tornar editável no Estúdio" entry point (image → design-import). Gating lives
-  // in canMakeEditable (feature flags fail-open, no design attached, tipo/status editable);
-  // video-media ineligibility is NOT checked here — PostMediaGallery owns that (it has the
-  // media list, this component doesn't fetch it independently).
-  const aiImagesBlocked = features?.feature_ai_images === false;
-  const showMakeEditable = canMakeEditable(
-    { tipo: post.tipo, status: post.status },
-    { estudioBlocked, aiImagesBlocked, hasDesign: designSummary !== null },
-  );
-  const [importTarget, setImportTarget] = useState<PostMedia | null>(null);
-  const [galleryMedia, setGalleryMedia] = useState<PostMedia[]>([]);
-  const imageCount = galleryMedia.filter((m) => m.kind === 'image').length;
 
   // TikTok settings completeness/test-mode-banner seam (Task C3), held here rather than
   // inside ScheduleButton because TikTokSettingsPanel and ScheduleButton are siblings —
@@ -1288,63 +1239,7 @@ function SortablePostItem({
             />
           )}
 
-          {/* Button matrix (design-first spec): editable post → create-or-open; locked post
-              WITH a design → "Ver no Estúdio" (read-only shell); locked without → nothing. */}
-          {post.tipo !== 'stories' &&
-            !estudioBlocked &&
-            (designSummary !== null || POST_EDITABLE_STATUSES.includes(post.status)) && (
-              <button
-                type="button"
-                disabled={createDesignMutation.isPending}
-                onClick={() => {
-                  if (designSummary) navigate(`/estudio/${designSummary.id}`);
-                  else createDesignMutation.mutate();
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors"
-                style={{
-                  background: 'rgba(234,179,8,0.12)',
-                  color: 'var(--primary-hover)',
-                  width: 'fit-content',
-                  marginBottom: '0.75rem',
-                }}
-              >
-                <Wand2 className="h-3.5 w-3.5" />{' '}
-                {createDesignMutation.isPending
-                  ? t('picker.creating')
-                  : designSummary && !POST_EDITABLE_STATUSES.includes(post.status)
-                    ? t('viewInEstudio')
-                    : t('openInEstudio')}
-              </button>
-            )}
-
-          {/* Held ≠ ownership (slice C): a design-import result does NOT own the post's media
-              until the user's first save in the editor. The gallery must stay unlocked while
-              held, so `design` is passed only once ownership is real. */}
-          {shouldShowHeldInfoBanner(designSummary) && (
-            <div
-              data-testid="held-info-banner"
-              className="flex items-start gap-2 rounded-xl bg-[#eab308]/10 ring-1 ring-[#eab308]/40 px-3 py-2.5 text-stone-800 dark:text-stone-200 mb-3"
-            >
-              <Wand2 className="h-4 w-4 shrink-0 text-[#ca8a04] mt-0.5" />
-              <span className="text-[12px]">{t('import.heldBanner')}</span>
-            </div>
-          )}
-
-          <PostMediaGallery
-            postId={post.id!}
-            design={galleryDesignForHeld(designSummary)}
-            postTipo={post.tipo}
-            onChange={setGalleryMedia}
-            onMakeEditable={showMakeEditable ? (media) => setImportTarget(media) : undefined}
-          />
-
-          <ImportToEstudioDialog
-            postId={importTarget ? post.id! : null}
-            media={importTarget}
-            imageCount={imageCount}
-            postTipo={post.tipo}
-            onClose={() => setImportTarget(null)}
-          />
+          <PostMediaGallery postId={post.id!} />
 
           {editSuggestion ? (
             <div className="rounded-lg border border-amber-200 bg-amber-50/50 overflow-hidden">
