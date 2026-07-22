@@ -565,6 +565,12 @@ grep -rn "estudio-fn" apps/ packages/ --include="*.ts" --include="*.tsx"
 ```
 Expected: only the `vite.config.ts` definition itself.
 
+Also delete the dead `nav.estudio` key from BOTH `packages/i18n/locales/pt/common.json` and `packages/i18n/locales/en/common.json` — the nav item it labelled was removed in Task 1 (surfaced by the Task 3 implementer). Confirm first:
+```bash
+grep -rn "nav.estudio" apps/ packages/ --include="*.ts" --include="*.tsx"
+```
+Expected: no output.
+
 - [ ] **Step 2: Update `CLAUDE.md`**
 
 Remove the `npm run dev:estudio` line and the `dev:all` description's Estúdio mention from the Commands block. Remove `GEMINI_API_KEY` and `OPEN_ROUTER_API_KEY` from the edge-function env var list if nothing else consumes them — verify first:
