@@ -118,7 +118,12 @@ The surgical task. `WorkflowDrawer` owns the "Abrir no Estúdio" / "Tornar edit�
 - Consumes: Task 1's removal of the `/estudio` route (nothing may navigate there).
 - Produces: `PostMediaGallery` no longer accepts `design` or `onMakeEditable` props. `DesignSummary` is no longer referenced anywhere in `apps/crm/`.
 
-- [ ] **Step 1: Write the failing test — media controls are never design-locked**
+- [ ] **Step 1: Write the regression guard — media controls are never design-locked**
+
+This is a **characterization test, not a red-green TDD cycle** — removal tasks have no
+behaviour to drive out. It passes both before and after the change (before: no `design` prop
+is passed, so no banner; after: the banner cannot exist). Its job is to fail if anyone
+reintroduces design ownership. Do not contort it into failing first.
 
 Add to `apps/crm/src/pages/entregas/components/__tests__/PostMediaGallery.test.tsx`:
 
@@ -135,13 +140,13 @@ it('never renders a design-ownership banner', () => {
 });
 ```
 
-- [ ] **Step 2: Run it to confirm the current shape still compiles the old props**
+- [ ] **Step 2: Run it and record the baseline**
 
 Run:
 ```bash
 npx vitest run apps/crm/src/pages/entregas/components/__tests__/PostMediaGallery.test.tsx -t "design-ownership"
 ```
-Expected: PASS on the assertion but the file still typechecks against `design?: DesignSummary | null`. This test is the guard for Steps 3-5, not a red-then-green cycle — it must keep passing after the props are gone.
+Expected: PASS. It must still pass after Steps 3-5 — a failure there means the removal changed behaviour it shouldn't have.
 
 - [ ] **Step 3: Strip design ownership from `PostMediaGallery.tsx`**
 
@@ -208,6 +213,7 @@ git add -A && git commit -m "chore(estudio): decouple workflow drawer and media 
 
 **Files:**
 - Delete: `apps/crm/src/store/designs.ts`
+- Modify: `apps/crm/src/store/index.ts:10` — remove `export * from './designs';`
 - Rename: `packages/i18n/locales/pt/estudio.json` → `packages/i18n/locales/pt/brand.json` (and the `en` counterpart)
 - Modify: `apps/crm/src/main.tsx:19-20` (imports + namespace registration)
 - Modify: `apps/crm/src/components/shared/ColorPicker.tsx:143`
@@ -224,11 +230,23 @@ grep -rn "store/designs" apps/crm/src
 ```
 Expected: no output. If anything appears, that caller must be handled first.
 
-- [ ] **Step 2: Delete it**
+- [ ] **Step 2: Delete it and drop the barrel re-export**
 
+`store/designs.ts` is re-exported by the store barrel, so deleting the file alone breaks
+every `@/store` import in the app. Remove line 10 of `apps/crm/src/store/index.ts`:
+```ts
+export * from './designs';
+```
+Then:
 ```bash
 git rm apps/crm/src/store/designs.ts
 ```
+`DesignImportError` and `importDesignFromMedia` live in that file and were consumed only by
+`ImportToEstudioDialog`, deleted in Task 2 — confirm with:
+```bash
+grep -rn "importDesignFromMedia\|DesignImportError" apps/crm/src
+```
+Expected: no output.
 
 - [ ] **Step 3: Trim and rename the locale files**
 
