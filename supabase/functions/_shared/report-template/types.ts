@@ -95,13 +95,7 @@ export interface AIOutput {
 
 export interface WorkspaceBranding {
   logo_base64: string | null;
+  splash_base64: string | null;
   workspace_name: string;
-  // v2 fields (Task 7 makes splash_base64 required and removes the v1 fields below)
-  splash_base64?: string | null;
-  // v1 fields — DEPRECATED, removed in Task 7
-  primary_color: string;
-  secondary_color: string;
-  accent_color: string; // already required pre-existing; becomes the single v2 accent in Task 7
-  font_family: string;
-  theme: "dark" | "light";
+  accent_color: string;
 }

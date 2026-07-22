@@ -585,11 +585,6 @@ Deno.serve(async (req) => {
       splash_base64: splashBase64,
       workspace_name: workspaceName,
       accent_color: accentColor,
-      // v1 fields, deprecated — removed from the type in Task 7:
-      primary_color: accentColor,
-      secondary_color: "#1e2430",
-      font_family: "DM Sans",
-      theme: "light",
     };
 
     // =====================================================================

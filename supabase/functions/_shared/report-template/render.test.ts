@@ -10,11 +10,6 @@ const branding: WorkspaceBranding = {
   splash_base64: null,
   workspace_name: "Agência Teste",
   accent_color: "#7C2D12",
-  // v1 fields still present until Task 7:
-  primary_color: "#7C2D12",
-  secondary_color: "#1a1e26",
-  font_family: "DM Sans",
-  theme: "light",
 };
 
 function makeData(): ReportData {

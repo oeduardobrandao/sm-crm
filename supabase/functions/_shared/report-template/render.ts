@@ -929,7 +929,7 @@ export function renderReport(opts: {
   aiOutput: AIOutput | null;
 }): string {
   const { data, branding, aiOutput } = opts;
-  const { acc, accFg } = resolveAccent(branding.accent_color ?? branding.primary_color);
+  const { acc, accFg } = resolveAccent(branding.accent_color);
 
   const prevName = prevMonthName(data.report_month);
   const nextName = nextMonthName(data.report_month);
