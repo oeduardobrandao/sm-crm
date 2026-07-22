@@ -472,15 +472,30 @@ Deno.serve(async (req) => {
         .order("snapshot_date", { ascending: false })
         .limit(1);
 
-    const [prevPrevSnapshotRes, prevSnapshotRes, currSnapshotRes] =
-      await Promise.all([
-        // Needed only to derive the PREVIOUS month's net follower gain: that gain is
-        // (close of prev month − close of the month before it). The prev/curr pair
-        // alone would yield the report month's own gain.
-        lastSnapshotOfMonth(prevPrevMonthFirstDay, prevMonthFirstDay),
-        lastSnapshotOfMonth(prevMonthFirstDay, currMonthFirstDay),
-        lastSnapshotOfMonth(currMonthFirstDay, nextMonthFirstDay),
-      ]);
+    const [
+      prevPrevSnapshotRes,
+      prevSnapshotRes,
+      currSnapshotRes,
+      prevMonthPostsRes,
+    ] = await Promise.all([
+      // Needed only to derive the PREVIOUS month's net follower gain: that gain is
+      // (close of prev month − close of the month before it). The prev/curr pair
+      // alone would yield the report month's own gain.
+      lastSnapshotOfMonth(prevPrevMonthFirstDay, prevMonthFirstDay),
+      lastSnapshotOfMonth(prevMonthFirstDay, currMonthFirstDay),
+      lastSnapshotOfMonth(currMonthFirstDay, nextMonthFirstDay),
+      // Previous month's posts, SAME half-open convention as the snapshot queries
+      // above (and reusing the same boundary variables). This gives `reach` (and,
+      // for free, `saved`) on the exact same basis as `kpis.reach.value` /
+      // `kpis.saves.value` below — a post-sum, not the snapshot's rolling 28-day
+      // account reach — so the chip and note can finally match the card's number.
+      serviceClient
+        .from("instagram_posts")
+        .select("reach, saved")
+        .eq("instagram_account_id", igAccountId)
+        .gte("posted_at", prevMonthFirstDay)
+        .lt("posted_at", currMonthFirstDay),
+    ]);
 
     // A silently swallowed `.error` is exactly how the original broken-column query
     // hid in production for months: every delta simply vanished from the report and
@@ -494,10 +509,16 @@ Deno.serve(async (req) => {
     warnSnapshotError("prev-prev-month", prevPrevSnapshotRes.error);
     warnSnapshotError("prev-month", prevSnapshotRes.error);
     warnSnapshotError("report-month", currSnapshotRes.error);
+    warnSnapshotError("prev-month-posts", prevMonthPostsRes.error);
 
     const prevPrevSnapshot = prevPrevSnapshotRes.data?.[0] || null;
     const prevSnapshot = prevSnapshotRes.data?.[0] || null;
     const currSnapshot = currSnapshotRes.data?.[0] || null;
+    // Only trust this when the query itself succeeded — a failed query must not be
+    // mistaken for "the previous month genuinely had zero posts" below.
+    const prevMonthPosts = prevMonthPostsRes.error
+      ? null
+      : (prevMonthPostsRes.data || []);
 
     // =====================================================================
     // 4. Workspace branding + logo base64
@@ -608,7 +629,7 @@ Deno.serve(async (req) => {
     //   followers_gained  month's NET GAIN          previous month's NET GAIN
     //   profile_views     report month's 28d snap   previous month's 28d snap
     //   website_clicks    report month's 28d snap   previous month's 28d snap
-    //   reach / saves     month-SUM over posts      (none — see below)
+    //   reach / saves     month-SUM over posts      previous month's post-SUM
     //   engagement_rate   month ratio over posts    (none — not in the snapshot)
     //   posts_count       count of posts            (none — not in the snapshot)
     //
@@ -656,13 +677,36 @@ Deno.serve(async (req) => {
       }
     }
 
-    // reach: deliberately NO chip and NO prev. `kpis.reach.value` is a sum of
-    // per-post reach for the month; the snapshot's `reach_28d` is a rolling,
-    // deduplicated ACCOUNT reach. They are different measurements and can move in
-    // opposite directions, so a `reach_28d`-derived chip printed over a month-sum
-    // would be a claim about a number the card never shows. Same reasoning as
-    // leaving `reach.prev` unset. A same-basis chip would need the previous month's
-    // post-sum, which is a separate query and out of scope here.
+    // reach / saves: chip and note now come from the PREVIOUS month's own post-sum
+    // (`prevMonthPosts`, fetched above), NOT the snapshot's `reach_28d` — that
+    // remains a rolling, deduplicated ACCOUNT reach on a different basis than the
+    // card's month-sum value and would still be wrong even as a "prev".
+    //
+    // Only populate when the query succeeded AND the previous month actually has at
+    // least one post. A month with zero posts is "no data for that month", not a
+    // genuine collapse to zero — dividing a real number by a zero/undefined
+    // previous would either throw away the chip (pctDelta already guards previous
+    // === 0) or, worse if ever computed differently, read as a false −100%. Leaving
+    // both `prev` and the delta unset here lets the renderer's existing "no chip, no
+    // note" degradation handle it, exactly like `engagement_rate` / `posts_count`.
+    if (prevMonthPosts && prevMonthPosts.length > 0) {
+      const prevTotalReach = prevMonthPosts.reduce(
+        (s: number, p: { reach: number | null }) => s + (p.reach || 0),
+        0,
+      );
+      kpis.reach.prev = prevTotalReach;
+      kpiDeltas.reach_pct_change = pctDelta(totalReach, prevTotalReach);
+
+      // saves: same query, same rows, same basis — `saved` comes back for free
+      // alongside `reach` with no additional query and no additional assumption
+      // (it is summed exactly the way `totalSaved` already sums it above).
+      const prevTotalSaved = prevMonthPosts.reduce(
+        (s: number, p: { saved: number | null }) => s + (p.saved || 0),
+        0,
+      );
+      kpis.saves.prev = prevTotalSaved;
+      kpiDeltas.saves_pct_change = pctDelta(totalSaved, prevTotalSaved);
+    }
 
     // =====================================================================
     // 7. Content breakdown
