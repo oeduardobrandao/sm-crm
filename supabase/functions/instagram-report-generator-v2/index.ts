@@ -803,6 +803,7 @@ Deno.serve(async (req) => {
       handle: `@${account.username}`,
       specialty: cliente.nicho || cliente.especialidade || "",
       period: periodLabel,
+      report_month: month,
       kpis,
       kpi_deltas: kpiDeltas,
       top_posts: topPostsFormatted,
