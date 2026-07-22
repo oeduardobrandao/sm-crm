@@ -266,6 +266,213 @@ function pctDelta(
 }
 
 // ---------------------------------------------------------------------------
+// Audience mapping
+// ---------------------------------------------------------------------------
+
+const COUNTRY_NAMES: Record<string, string> = {
+  BR: "Brasil",
+  US: "Estados Unidos",
+  PT: "Portugal",
+  AR: "Argentina",
+  MX: "México",
+  CO: "Colômbia",
+  CL: "Chile",
+  PE: "Peru",
+  UY: "Uruguai",
+  PY: "Paraguai",
+  EC: "Equador",
+  VE: "Venezuela",
+  BO: "Bolívia",
+  ES: "Espanha",
+  FR: "França",
+  DE: "Alemanha",
+  IT: "Itália",
+  GB: "Reino Unido",
+  CA: "Canadá",
+  JP: "Japão",
+  IN: "Índia",
+  AU: "Austrália",
+  AO: "Angola",
+  MZ: "Moçambique",
+  CV: "Cabo Verde",
+};
+
+const MAX_REPORT_CITIES = 8;
+const MAX_REPORT_AGE_RANGES = 6;
+const MAX_REPORT_COUNTRIES = 5;
+
+/**
+ * Maps the cached demographics blob into `AudienceData`.
+ *
+ * The renderer labels these panels "Principais cidades / faixas etárias / países",
+ * which asserts the rows are the LEADING ones — so every list is sorted by share
+ * descending BEFORE it is capped. (Upstream order is not a ranking: age buckets
+ * arrive chronologically.)
+ *
+ * Percentages are normalised over the FULL list, not over the retained subset:
+ * each bar then means "this segment's share of the whole audience sample", which
+ * stays true regardless of the cap. Normalising over the kept rows would inflate
+ * them to sum to 100% and overstate every segment.
+ */
+export function mapAudience(demographics: any): AudienceData | null {
+  if (!demographics) return null;
+
+  const cityWeight = (c: any) => c.count ?? c.pct ?? 0;
+  // Age data is stored as "age_gender" with an "age_range" field, or as
+  // "age_ranges" with a "range" field.
+  const ageWeight = (a: any) =>
+    (a.male ?? 0) + (a.female ?? 0) + (a.count ?? a.pct ?? 0);
+  const countryWeight = (c: any) => c.count ?? c.pct ?? 0;
+
+  const sortDesc = <T>(rows: T[], weight: (row: T) => number): T[] =>
+    [...rows].sort((a, b) => weight(b) - weight(a));
+  const sum = <T>(rows: T[], weight: (row: T) => number): number =>
+    rows.reduce((s, r) => s + weight(r), 0) || 1;
+
+  const allCities = sortDesc<any>(demographics.cities || [], cityWeight);
+  const cityTotal = sum(allCities, cityWeight);
+
+  const allAges = sortDesc<any>(
+    demographics.age_gender || demographics.age_ranges || [],
+    ageWeight,
+  );
+  const ageTotal = sum(allAges, ageWeight);
+
+  const allCountries = sortDesc<any>(
+    demographics.countries || [],
+    countryWeight,
+  );
+  const countryTotal = sum(allCountries, countryWeight);
+
+  return {
+    gender_split: {
+      female: demographics.gender_split?.female ?? 0,
+      male: demographics.gender_split?.male ?? 0,
+    },
+    top_cities: allCities.slice(0, MAX_REPORT_CITIES).map((c: any) => ({
+      name: c.name,
+      pct: (cityWeight(c) / cityTotal) * 100,
+    })),
+    top_age_ranges: allAges.slice(0, MAX_REPORT_AGE_RANGES).map((a: any) => ({
+      range: a.age_range || a.range || a.name,
+      pct: (ageWeight(a) / ageTotal) * 100,
+    })),
+    top_countries: allCountries.slice(0, MAX_REPORT_COUNTRIES).map((
+      c: any,
+    ) => ({
+      name: COUNTRY_NAMES[c.code] || c.name || c.code || "—",
+      pct: (countryWeight(c) / countryTotal) * 100,
+    })),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Best-times mapping
+// ---------------------------------------------------------------------------
+
+/**
+ * Day labels indexed the way `instagram-analytics` writes them: it derives the
+ * index with `(date.getDay() + 6) % 7`, so 0 = Monday. These strings are the keys
+ * the renderer's DAY_INDEX map understands.
+ */
+const BEST_TIME_DAY_LABELS = [
+  "Seg",
+  "Ter",
+  "Qua",
+  "Qui",
+  "Sex",
+  "Sab",
+  "Dom",
+];
+
+function dayLabel(day: unknown): string | null {
+  if (typeof day === "string" && day.trim() !== "") return day;
+  const idx = typeof day === "number" ? day : Number(day);
+  if (!Number.isInteger(idx) || idx < 0 || idx > 6) return null;
+  return BEST_TIME_DAY_LABELS[idx];
+}
+
+/**
+ * Maps the `best_times` analytics cache entry into `BestTimeSlot[]`.
+ *
+ * `instagram-analytics` caches an OBJECT — `{ heatmap, counts, topSlots, ... }` —
+ * where `heatmap[day][hour]` is the average engagement rate and `counts[day][hour]`
+ * how many posts fed it. The previous `Array.isArray()` guard therefore always fell
+ * through to `[]` and the renderer's whole heatmap section was silently dropped.
+ *
+ * The full grid is emitted (every slot that actually had a post), not just
+ * `topSlots`: the renderer paints a 7-day × 8h–21h grid and derives its own ramp
+ * and top-3 chips from what it is given. `topSlots` is used only as a fallback for
+ * legacy cache entries that predate `heatmap`/`counts`.
+ */
+export function mapBestTimes(raw: unknown): BestTimeSlot[] {
+  if (!raw) return [];
+
+  // Legacy/defensive: an already-flat array of slots.
+  if (Array.isArray(raw)) {
+    return raw.flatMap((bt: any) => {
+      const day = dayLabel(bt?.day);
+      const hour = Number(bt?.hour);
+      if (day === null || !Number.isInteger(hour)) return [];
+      return [{
+        day,
+        hour,
+        avg_engagement: Number(
+          bt?.avg_engagement ?? bt?.value ?? bt?.engagement ?? 0,
+        ) || 0,
+      }];
+    });
+  }
+
+  const obj = raw as {
+    heatmap?: unknown;
+    counts?: unknown;
+    topSlots?: unknown;
+  };
+  const heatmap = obj.heatmap;
+  const counts = obj.counts;
+
+  if (Array.isArray(heatmap)) {
+    const slots: BestTimeSlot[] = [];
+    for (let d = 0; d < heatmap.length && d < 7; d++) {
+      const hours = heatmap[d];
+      if (!Array.isArray(hours)) continue;
+      const dayCounts = Array.isArray(counts) && Array.isArray(counts[d])
+        ? counts[d] as number[]
+        : null;
+      for (let h = 0; h < hours.length && h < 24; h++) {
+        // Only slots backed by a real post; without `counts`, a non-zero average
+        // is the best available signal that the slot was actually used.
+        const used = dayCounts ? (dayCounts[h] || 0) > 0 : Number(hours[h]) > 0;
+        if (!used) continue;
+        slots.push({
+          day: BEST_TIME_DAY_LABELS[d],
+          hour: h,
+          avg_engagement: Number(hours[h]) || 0,
+        });
+      }
+    }
+    return slots;
+  }
+
+  // Fallback: cache entries with only `topSlots` (numeric `day`, `value`).
+  if (Array.isArray(obj.topSlots)) {
+    return (obj.topSlots as any[]).flatMap((s) => {
+      const day = dayLabel(s?.day);
+      const hour = Number(s?.hour);
+      if (day === null || !Number.isInteger(hour)) return [];
+      return [{
+        day,
+        hour,
+        avg_engagement: Number(s?.value ?? s?.avg_engagement ?? 0) || 0,
+      }];
+    });
+  }
+
+  return [];
+}
+
+// ---------------------------------------------------------------------------
 // Serve
 // ---------------------------------------------------------------------------
 
@@ -414,9 +621,7 @@ Deno.serve(async (req) => {
       // Workspace branding
       serviceClient
         .from("workspaces")
-        .select(
-          "name, logo_url, brand_color, report_secondary_color, report_accent_color, report_font_family, report_theme",
-        )
+        .select("name, logo_url, brand_color, report_splash_url")
         .eq("id", contaId)
         .single(),
     ]);
@@ -441,30 +646,44 @@ Deno.serve(async (req) => {
     // =====================================================================
     // 3. Fetch metrics snapshots for month-over-month deltas
     // =====================================================================
+    // `instagram_account_metrics_daily` keys snapshots on `snapshot_date` (a real
+    // `date` column) — not `date`. Half-open ranges keep this valid for 28/30/31-day
+    // months without ever constructing an out-of-range literal like `2026-06-31`.
+    const firstDayOf = (y: number, m: number) =>
+      `${y}-${String(m).padStart(2, "0")}-01`;
     const prevMonthNum = monthNum === 1 ? 12 : monthNum - 1;
     const prevYear = monthNum === 1 ? year - 1 : year;
-    const prevMonthPrefix = `${prevYear}-${
-      String(prevMonthNum).padStart(2, "0")
-    }`;
-    const currMonthPrefix = `${year}-${String(monthNum).padStart(2, "0")}`;
+    const nextMonthNum = monthNum === 12 ? 1 : monthNum + 1;
+    const nextYear = monthNum === 12 ? year + 1 : year;
+    const prevPrevMonthNum = prevMonthNum === 1 ? 12 : prevMonthNum - 1;
+    const prevPrevYear = prevMonthNum === 1 ? prevYear - 1 : prevYear;
+    const prevPrevMonthFirstDay = firstDayOf(prevPrevYear, prevPrevMonthNum);
+    const prevMonthFirstDay = firstDayOf(prevYear, prevMonthNum);
+    const currMonthFirstDay = firstDayOf(year, monthNum);
+    const nextMonthFirstDay = firstDayOf(nextYear, nextMonthNum);
 
-    const [prevSnapshotRes, currSnapshotRes] = await Promise.all([
+    /** Latest snapshot inside [from, to) — i.e. that month's closing figures. */
+    const lastSnapshotOfMonth = (from: string, to: string) =>
       serviceClient
         .from("instagram_account_metrics_daily")
         .select("*")
         .eq("instagram_account_id", igAccountId)
-        .like("date", `${prevMonthPrefix}%`)
-        .order("date", { ascending: false })
-        .limit(1),
-      serviceClient
-        .from("instagram_account_metrics_daily")
-        .select("*")
-        .like("date", `${currMonthPrefix}%`)
-        .eq("instagram_account_id", igAccountId)
-        .order("date", { ascending: false })
-        .limit(1),
-    ]);
+        .gte("snapshot_date", from)
+        .lt("snapshot_date", to)
+        .order("snapshot_date", { ascending: false })
+        .limit(1);
 
+    const [prevPrevSnapshotRes, prevSnapshotRes, currSnapshotRes] =
+      await Promise.all([
+        // Needed only to derive the PREVIOUS month's net follower gain: that gain is
+        // (close of prev month − close of the month before it). The prev/curr pair
+        // alone would yield the report month's own gain.
+        lastSnapshotOfMonth(prevPrevMonthFirstDay, prevMonthFirstDay),
+        lastSnapshotOfMonth(prevMonthFirstDay, currMonthFirstDay),
+        lastSnapshotOfMonth(currMonthFirstDay, nextMonthFirstDay),
+      ]);
+
+    const prevPrevSnapshot = prevPrevSnapshotRes.data?.[0] || null;
     const prevSnapshot = prevSnapshotRes.data?.[0] || null;
     const currSnapshot = currSnapshotRes.data?.[0] || null;
 
@@ -476,15 +695,26 @@ Deno.serve(async (req) => {
     const logoBase64 = ws?.logo_url
       ? await fetchImageAsBase64(ws.logo_url)
       : null;
+    // `report_splash_url` holds a public URL exactly like `logo_url`.
+    const splashBase64 = ws?.report_splash_url
+      ? await fetchImageAsBase64(ws.report_splash_url)
+      : null;
+
+    // The report accent IS the workspace brand colour — the same value the
+    // client-facing Hub uses. `resolveAccent()` in the renderer already handles
+    // missing / invalid / too-light values, so pass it straight through.
+    const accentColor = ws?.brand_color || "#171717";
 
     const branding: WorkspaceBranding = {
       logo_base64: logoBase64,
+      splash_base64: splashBase64,
       workspace_name: workspaceName,
-      primary_color: ws?.brand_color || "#eab308",
-      secondary_color: ws?.report_secondary_color || "#1e2430",
-      accent_color: ws?.report_accent_color || "#6366f1",
-      font_family: ws?.report_font_family || "DM Sans",
-      theme: (ws?.report_theme as "dark" | "light") || "dark",
+      accent_color: accentColor,
+      // v1 fields, deprecated — removed from the type in Task 7:
+      primary_color: accentColor,
+      secondary_color: "#1e2430",
+      font_family: "DM Sans",
+      theme: "light",
     };
 
     // =====================================================================
@@ -552,32 +782,50 @@ Deno.serve(async (req) => {
     // =====================================================================
     // 6. Compute deltas from snapshots
     // =====================================================================
+    // The snapshot row only carries: followers_count, reach_28d, impressions_28d,
+    // profile_views_28d, website_clicks_28d (see instagram-sync-cron). There is no
+    // stored engagement_rate or saves, so those two deltas stay undefined and the
+    // renderer simply omits the chip.
     const kpiDeltas: KpiDeltas = {};
     if (prevSnapshot && currSnapshot) {
       kpiDeltas.followers_pct_change = pctDelta(
-        currSnapshot.follower_count,
-        prevSnapshot.follower_count,
+        currSnapshot.followers_count,
+        prevSnapshot.followers_count,
       );
       kpiDeltas.reach_pct_change = pctDelta(
-        currSnapshot.reach,
-        prevSnapshot.reach,
-      );
-      kpiDeltas.engagement_pct_change = pctDelta(
-        currSnapshot.engagement_rate,
-        prevSnapshot.engagement_rate,
-      );
-      kpiDeltas.saves_pct_change = pctDelta(
-        currSnapshot.saves,
-        prevSnapshot.saves,
+        currSnapshot.reach_28d,
+        prevSnapshot.reach_28d,
       );
       kpiDeltas.profile_views_pct_change = pctDelta(
-        currSnapshot.profile_views,
-        prevSnapshot.profile_views,
+        currSnapshot.profile_views_28d,
+        prevSnapshot.profile_views_28d,
       );
       kpiDeltas.website_clicks_pct_change = pctDelta(
-        currSnapshot.website_clicks,
-        prevSnapshot.website_clicks,
+        currSnapshot.website_clicks_28d,
+        prevSnapshot.website_clicks_28d,
       );
+    }
+
+    // Previous-month raw values, so each card can print "maio: 142,3 mil".
+    // Only metrics measured on the SAME basis as the card's own value are filled:
+    // profile_views / website_clicks are the very 28-day figures the KPI reads off
+    // the account row, and followers_gained's baseline is the PREVIOUS month's own
+    // net gain. `reach` and `saves` are month-sums over posts while the
+    // snapshot stores a rolling 28-day account figure — printing that as "previous
+    // reach" next to a differently-measured number would be misleading, so it is
+    // left unset (the % chip above still comes from the snapshot pair).
+    if (prevSnapshot) {
+      kpis.profile_views.prev = prevSnapshot.profile_views_28d ?? null;
+      kpis.website_clicks.prev = prevSnapshot.website_clicks_28d ?? null;
+    }
+    if (prevSnapshot && prevPrevSnapshot) {
+      const closeOfPrev = prevSnapshot.followers_count;
+      const closeOfPrevPrev = prevPrevSnapshot.followers_count;
+      if (
+        typeof closeOfPrev === "number" && typeof closeOfPrevPrev === "number"
+      ) {
+        kpis.followers_gained.prev = closeOfPrev - closeOfPrevPrev;
+      }
     }
 
     // =====================================================================
@@ -693,85 +941,12 @@ Deno.serve(async (req) => {
     // =====================================================================
     // 9. Audience data
     // =====================================================================
-    const COUNTRY_NAMES: Record<string, string> = {
-      BR: "Brasil",
-      US: "Estados Unidos",
-      PT: "Portugal",
-      AR: "Argentina",
-      MX: "México",
-      CO: "Colômbia",
-      CL: "Chile",
-      PE: "Peru",
-      UY: "Uruguai",
-      PY: "Paraguai",
-      EC: "Equador",
-      VE: "Venezuela",
-      BO: "Bolívia",
-      ES: "Espanha",
-      FR: "França",
-      DE: "Alemanha",
-      IT: "Itália",
-      GB: "Reino Unido",
-      CA: "Canadá",
-      JP: "Japão",
-      IN: "Índia",
-      AU: "Austrália",
-      AO: "Angola",
-      MZ: "Moçambique",
-      CV: "Cabo Verde",
-    };
-
-    let audience: AudienceData | null = null;
-    if (demographics) {
-      const rawCities = (demographics.cities || []).slice(0, 8);
-      const cityTotal = rawCities.reduce((s: number, c: any) =>
-        s + (c.count ?? c.pct ?? 0), 0) || 1;
-
-      // age data is stored as "age_gender" with "age_range" field, or as "age_ranges" with "range" field
-      const rawAges = (demographics.age_gender || demographics.age_ranges || [])
-        .slice(0, 6);
-      const ageTotal = rawAges.reduce((s: number, a: any) =>
-        s + ((a.male ?? 0) + (a.female ?? 0) + (a.count ?? a.pct ?? 0)), 0) ||
-        1;
-
-      const rawCountries = (demographics.countries || []).slice(0, 5);
-      const countryTotal = rawCountries.reduce((s: number, c: any) =>
-        s + (c.count ?? c.pct ?? 0), 0) || 1;
-
-      audience = {
-        gender_split: {
-          female: demographics.gender_split?.female ?? 0,
-          male: demographics.gender_split?.male ?? 0,
-        },
-        top_cities: rawCities.map((c: any) => ({
-          name: c.name,
-          pct: ((c.count ?? c.pct ?? 0) / cityTotal) * 100,
-        })),
-        top_age_ranges: rawAges.map((a: any) => {
-          const count = (a.male ?? 0) + (a.female ?? 0) +
-            (a.count ?? a.pct ?? 0);
-          return {
-            range: a.age_range || a.range || a.name,
-            pct: (count / ageTotal) * 100,
-          };
-        }),
-        top_countries: rawCountries.map((c: any) => ({
-          name: COUNTRY_NAMES[c.code] || c.name || c.code || "—",
-          pct: ((c.count ?? c.pct ?? 0) / countryTotal) * 100,
-        })),
-      };
-    }
+    const audience: AudienceData | null = mapAudience(demographics);
 
     // =====================================================================
     // 10. Best times
     // =====================================================================
-    const bestTimes: BestTimeSlot[] = Array.isArray(bestTimesRaw)
-      ? bestTimesRaw.map((bt: any) => ({
-        day: bt.day,
-        hour: bt.hour,
-        avg_engagement: bt.avg_engagement ?? bt.engagement ?? 0,
-      }))
-      : [];
+    const bestTimes: BestTimeSlot[] = mapBestTimes(bestTimesRaw);
 
     // =====================================================================
     // 11. Tag performance
