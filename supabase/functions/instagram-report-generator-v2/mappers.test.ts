@@ -342,3 +342,52 @@ Deno.test("mapAudience returns empty lists for malformed input instead of throwi
   const zeroed = mapAudience({ cities: [{ name: "A", count: 0 }] })!;
   assertEquals(zeroed.top_cities, [{ name: "A", pct: 0 }]);
 });
+
+Deno.test("mapAudience drops null rows inside otherwise valid arrays", () => {
+  // The lists ARE arrays here — the previous guard only rejected non-arrays, so a
+  // single `null` row still reached `c.name` in the .map() callback and threw a
+  // TypeError that failed the entire report.
+  const a = mapAudience({
+    cities: [null],
+    age_gender: [null],
+    countries: [null],
+  })!;
+  assertEquals(a.top_cities, []);
+  assertEquals(a.top_age_ranges, []);
+  assertEquals(a.top_countries, []);
+});
+
+Deno.test("mapAudience keeps the good rows when null/undefined rows are mixed in", () => {
+  const a = mapAudience({
+    cities: [{ name: "São Paulo", count: 300 }, null, {
+      name: "Recife",
+      count: 100,
+    }, undefined],
+    age_gender: [null, { age_range: "25-34", male: 30, female: 70 }],
+    countries: [{ code: "BR", count: 90 }, null, "nonsense", 7],
+  })!;
+
+  assertEquals(a.top_cities, [
+    { name: "São Paulo", pct: 75 },
+    { name: "Recife", pct: 25 },
+  ]);
+  assertEquals(a.top_age_ranges, [{ range: "25-34", pct: 100 }]);
+  assertEquals(a.top_countries, [{ name: "Brasil", pct: 100 }]);
+});
+
+Deno.test("mapAudience drops rows that carry a weight but no usable label", () => {
+  // An anonymous row would otherwise render as a "—" bar that still consumes a
+  // slot AND a share of the denominator, understating every real segment.
+  const a = mapAudience({
+    cities: [{ name: "Salvador", count: 100 }, { count: 100 }, { name: "  " }],
+  })!;
+  assertEquals(a.top_cities, [{ name: "Salvador", pct: 100 }]);
+});
+
+Deno.test("mapBestTimes drops null rows inside a flat array", () => {
+  assertEquals(mapBestTimes([null, undefined, 5, "x"]), []);
+  assertEquals(
+    mapBestTimes([null, { day: 2, hour: 11, value: 4.5 }]),
+    [{ day: "Qua", hour: 11, avg_engagement: 4.5 }],
+  );
+});

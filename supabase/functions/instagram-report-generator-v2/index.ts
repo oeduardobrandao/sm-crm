@@ -271,6 +271,50 @@ function pctDelta(
   return ((current - previous) / Math.abs(previous)) * 100;
 }
 
+/**
+ * THE month-window convention for this file. Every month-scoped query — the report
+ * month's posts, the follower history, the daily snapshots and the previous month's
+ * posts — derives its bounds from here, so any two windows this file compares are
+ * guaranteed to be like-for-like.
+ *
+ * Convention: **half-open `[start, endExclusive)`, anchored in UTC**.
+ *
+ * Why UTC rather than `new Date(y, m - 1, 1)`: the local-time constructor makes the
+ * boundary depend on the runtime's `TZ`. The generator previously mixed that
+ * local-time instant (for the report month's posts) with bare `YYYY-MM-01` strings
+ * (for the previous month's posts) that Postgres resolves in the DATABASE timezone —
+ * two different windows. A post near midnight on the 1st could then land in the
+ * report month for one sum and in the previous month for the other, and those two
+ * sums are exactly what the Alcance/Salvamentos chip divides. Anchoring both in UTC
+ * removes the runtime and the DB timezone from the comparison entirely.
+ *
+ * Why half-open: a closed range needs a last-day literal (`…-06-31` does not exist)
+ * or a `23:59:59` instant that silently drops the final second.
+ */
+function monthWindow(y: number, m: number) {
+  const nextY = m === 12 ? y + 1 : y;
+  const nextM = m === 12 ? 1 : m + 1;
+  const startDate = `${y}-${String(m).padStart(2, "0")}-01`;
+  const endDateExclusive = `${nextY}-${String(nextM).padStart(2, "0")}-01`;
+  const endExclusive = `${endDateExclusive}T00:00:00.000Z`;
+  return {
+    /** `YYYY-MM-DD` — for real `date` columns (follower history, snapshots). */
+    startDate,
+    /** `YYYY-MM-DD`, EXCLUSIVE — for real `date` columns. */
+    endDateExclusive,
+    /** ISO instant — for `timestamptz` columns (`posted_at`). */
+    start: `${startDate}T00:00:00.000Z`,
+    /** ISO instant, EXCLUSIVE — for `timestamptz` columns. */
+    endExclusive,
+    /**
+     * ISO instant, INCLUSIVE (1 ms before `endExclusive`). Only for the
+     * `get_tag_performance` RPC, whose body is not in this repo and whose bound
+     * semantics we must not change; derived from the same anchor as everything else.
+     */
+    endInclusive: new Date(Date.parse(endExclusive) - 1).toISOString(),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Serve
 // ---------------------------------------------------------------------------
@@ -339,10 +383,17 @@ Deno.serve(async (req) => {
 
     const month = reportMonth || getPreviousMonth();
     const [year, monthNum] = month.split("-").map(Number);
-    const monthStart = new Date(year, monthNum - 1, 1).toISOString();
-    const monthEnd = new Date(year, monthNum, 0, 23, 59, 59).toISOString();
-    const monthStartDate = monthStart.split("T")[0];
-    const monthEndDate = monthEnd.split("T")[0];
+    // Every month window in this function comes from `monthWindow()` — see its
+    // doc comment for why (the report month and the previous month used to be
+    // computed two different ways, so their post-sums were not comparable).
+    const prevMonthNum = monthNum === 1 ? 12 : monthNum - 1;
+    const prevYear = monthNum === 1 ? year - 1 : year;
+    const prevPrevMonthNum = prevMonthNum === 1 ? 12 : prevMonthNum - 1;
+    const prevPrevYear = prevMonthNum === 1 ? prevYear - 1 : prevYear;
+
+    const currWindow = monthWindow(year, monthNum);
+    const prevWindow = monthWindow(prevYear, prevMonthNum);
+    const prevPrevWindow = monthWindow(prevPrevYear, prevPrevMonthNum);
 
     // =====================================================================
     // 2. Fetch all source data in parallel
@@ -370,8 +421,8 @@ Deno.serve(async (req) => {
         .from("instagram_posts")
         .select("*")
         .eq("instagram_account_id", igAccountId)
-        .gte("posted_at", monthStart)
-        .lte("posted_at", monthEnd)
+        .gte("posted_at", currWindow.start)
+        .lt("posted_at", currWindow.endExclusive)
         .order("reach", { ascending: false })
         .limit(5),
 
@@ -380,8 +431,8 @@ Deno.serve(async (req) => {
         .from("instagram_posts")
         .select("*")
         .eq("instagram_account_id", igAccountId)
-        .gte("posted_at", monthStart)
-        .lte("posted_at", monthEnd)
+        .gte("posted_at", currWindow.start)
+        .lt("posted_at", currWindow.endExclusive)
         .order("posted_at", { ascending: false }),
 
       // Follower history
@@ -389,8 +440,8 @@ Deno.serve(async (req) => {
         .from("instagram_follower_history")
         .select("date, follower_count")
         .eq("instagram_account_id", igAccountId)
-        .gte("date", monthStartDate)
-        .lte("date", monthEndDate)
+        .gte("date", currWindow.startDate)
+        .lt("date", currWindow.endDateExclusive)
         .order("date", { ascending: true }),
 
       // Demographics cache
@@ -412,8 +463,10 @@ Deno.serve(async (req) => {
       // Tag performance: join post_tag_assignments -> tags, instagram_posts
       Promise.resolve(serviceClient.rpc("get_tag_performance", {
         p_instagram_account_id: igAccountId,
-        p_month_start: monthStart,
-        p_month_end: monthEnd,
+        // `endInclusive`, not `endExclusive`: this RPC's body is not in this repo,
+        // so its bound semantics are left exactly as they were. Same anchor though.
+        p_month_start: currWindow.start,
+        p_month_end: currWindow.endInclusive,
       })).then((res: { data: TagPerformance[] | null; error: unknown }) => res)
         .catch(() => ({ data: null, error: null })),
 
@@ -446,29 +499,17 @@ Deno.serve(async (req) => {
     // 3. Fetch metrics snapshots for month-over-month deltas
     // =====================================================================
     // `instagram_account_metrics_daily` keys snapshots on `snapshot_date` (a real
-    // `date` column) — not `date`. Half-open ranges keep this valid for 28/30/31-day
-    // months without ever constructing an out-of-range literal like `2026-06-31`.
-    const firstDayOf = (y: number, m: number) =>
-      `${y}-${String(m).padStart(2, "0")}-01`;
-    const prevMonthNum = monthNum === 1 ? 12 : monthNum - 1;
-    const prevYear = monthNum === 1 ? year - 1 : year;
-    const nextMonthNum = monthNum === 12 ? 1 : monthNum + 1;
-    const nextYear = monthNum === 12 ? year + 1 : year;
-    const prevPrevMonthNum = prevMonthNum === 1 ? 12 : prevMonthNum - 1;
-    const prevPrevYear = prevMonthNum === 1 ? prevYear - 1 : prevYear;
-    const prevPrevMonthFirstDay = firstDayOf(prevPrevYear, prevPrevMonthNum);
-    const prevMonthFirstDay = firstDayOf(prevYear, prevMonthNum);
-    const currMonthFirstDay = firstDayOf(year, monthNum);
-    const nextMonthFirstDay = firstDayOf(nextYear, nextMonthNum);
+    // `date` column) — not `date`. Bounds come from the shared `monthWindow()`
+    // helper, the same one the post queries use.
 
-    /** Latest snapshot inside [from, to) — i.e. that month's closing figures. */
-    const lastSnapshotOfMonth = (from: string, to: string) =>
+    /** Latest snapshot inside a month window — i.e. that month's closing figures. */
+    const lastSnapshotOfMonth = (w: ReturnType<typeof monthWindow>) =>
       serviceClient
         .from("instagram_account_metrics_daily")
         .select("*")
         .eq("instagram_account_id", igAccountId)
-        .gte("snapshot_date", from)
-        .lt("snapshot_date", to)
+        .gte("snapshot_date", w.startDate)
+        .lt("snapshot_date", w.endDateExclusive)
         .order("snapshot_date", { ascending: false })
         .limit(1);
 
@@ -481,35 +522,36 @@ Deno.serve(async (req) => {
       // Needed only to derive the PREVIOUS month's net follower gain: that gain is
       // (close of prev month − close of the month before it). The prev/curr pair
       // alone would yield the report month's own gain.
-      lastSnapshotOfMonth(prevPrevMonthFirstDay, prevMonthFirstDay),
-      lastSnapshotOfMonth(prevMonthFirstDay, currMonthFirstDay),
-      lastSnapshotOfMonth(currMonthFirstDay, nextMonthFirstDay),
-      // Previous month's posts, SAME half-open convention as the snapshot queries
-      // above (and reusing the same boundary variables). This gives `reach` (and,
-      // for free, `saved`) on the exact same basis as `kpis.reach.value` /
+      lastSnapshotOfMonth(prevPrevWindow),
+      lastSnapshotOfMonth(prevWindow),
+      lastSnapshotOfMonth(currWindow),
+      // Previous month's posts, from the SAME `monthWindow()` helper as the report
+      // month's own post query — so the two sums the reach/saves chip compares are
+      // guaranteed to use identical boundary semantics. This gives `reach` (and, for
+      // free, `saved`) on the exact same basis as `kpis.reach.value` /
       // `kpis.saves.value` below — a post-sum, not the snapshot's rolling 28-day
       // account reach — so the chip and note can finally match the card's number.
       serviceClient
         .from("instagram_posts")
         .select("reach, saved")
         .eq("instagram_account_id", igAccountId)
-        .gte("posted_at", prevMonthFirstDay)
-        .lt("posted_at", currMonthFirstDay),
+        .gte("posted_at", prevWindow.start)
+        .lt("posted_at", prevWindow.endExclusive),
     ]);
 
     // A silently swallowed `.error` is exactly how the original broken-column query
     // hid in production for months: every delta simply vanished from the report and
     // nothing said why. Log internally (never surfaced to the client) and carry on —
-    // a missing snapshot degrades the report, it does not invalidate it.
-    const warnSnapshotError = (label: string, error: unknown) => {
+    // missing month-over-month data degrades the report, it does not invalidate it.
+    const warnQueryError = (label: string, error: unknown) => {
       if (!error) return;
       const msg = (error as { message?: string })?.message ?? String(error);
-      console.warn(`[report-v2] ${label} snapshot query failed: ${msg}`);
+      console.warn(`[report-v2] ${label} query failed: ${msg}`);
     };
-    warnSnapshotError("prev-prev-month", prevPrevSnapshotRes.error);
-    warnSnapshotError("prev-month", prevSnapshotRes.error);
-    warnSnapshotError("report-month", currSnapshotRes.error);
-    warnSnapshotError("prev-month-posts", prevMonthPostsRes.error);
+    warnQueryError("prev-prev-month snapshot", prevPrevSnapshotRes.error);
+    warnQueryError("prev-month snapshot", prevSnapshotRes.error);
+    warnQueryError("report-month snapshot", currSnapshotRes.error);
+    warnQueryError("prev-month posts", prevMonthPostsRes.error);
 
     const prevPrevSnapshot = prevPrevSnapshotRes.data?.[0] || null;
     const prevSnapshot = prevSnapshotRes.data?.[0] || null;
@@ -579,12 +621,42 @@ Deno.serve(async (req) => {
       ? (totalInteractions / totalReach) * 100
       : 0;
 
+    // followers_gained — the card's value.
+    //
+    // PREFERRED basis: close-to-close between two month snapshots. That is a strict
+    // calendar-month net gain, and it is the same basis the chip and the "maio: …"
+    // note are computed on further down.
+    //
+    // The history-based expression below it is only a FALLBACK for accounts with no
+    // snapshot for one of the two months. It is on a third basis and is knowingly
+    // approximate: its endpoint is the LIVE follower count (so a report generated on
+    // the 3rd of the next month includes days outside the report month, and a
+    // back-dated report month can span many months), and its start point is the first
+    // history row INSIDE the month rather than the previous month's close. When it is
+    // used, no chip and no note are shown — see section 6.
+    const followersFromSnapshots =
+      typeof currSnapshot?.followers_count === "number" &&
+      typeof prevSnapshot?.followers_count === "number";
     const firstDayFollowers = followerHistory.length > 0
       ? followerHistory[0].follower_count
       : null;
-    const followersGained = firstDayFollowers !== null
-      ? account.follower_count - firstDayFollowers
-      : 0;
+    const followersGained = followersFromSnapshots
+      ? currSnapshot.followers_count - prevSnapshot.followers_count
+      : (firstDayFollowers !== null
+        ? account.follower_count - firstDayFollowers
+        : 0);
+
+    // Whether each 28-day card's VALUE actually came from the report month's own
+    // snapshot. This is what gates its chip and note in section 6 — not merely
+    // "does a previous snapshot exist". A missing report-month snapshot (a cron gap,
+    // an account disconnected mid-month) or a null column makes the value fall back
+    // to the LIVE 28-day window ending at generation time; pairing that with a
+    // month-close `prev` would put the card's three numbers back on two bases, and
+    // the renderer's `resolveDelta()` would even DERIVE a chip from the mismatch.
+    const pv28d = currSnapshot?.profile_views_28d;
+    const wc28d = currSnapshot?.website_clicks_28d;
+    const profileViewsFromSnapshot = typeof pv28d === "number";
+    const websiteClicksFromSnapshot = typeof wc28d === "number";
 
     const kpis: Record<string, KpiValue> = {
       followers_gained: {
@@ -604,16 +676,20 @@ Deno.serve(async (req) => {
       // account row holds a 28-day window ending at generation time, which for a
       // back-dated `report_month` (report-worker accepts any month) can be many
       // months away from both the chip and the "maio: …" note below it. The live
-      // field is only a fallback for accounts with no snapshot for that month.
+      // field is only a fallback for accounts with no snapshot for that month —
+      // and when that fallback is taken, section 6 shows no chip and no note.
       profile_views: {
         id: "profile_views",
-        value: currSnapshot?.profile_views_28d ?? account.profile_views_28d ?? 0,
+        value: profileViewsFromSnapshot
+          ? pv28d
+          : (account.profile_views_28d ?? 0),
         unit: "count",
       },
       website_clicks: {
         id: "website_clicks",
-        value: currSnapshot?.website_clicks_28d ??
-          account.website_clicks_28d ?? 0,
+        value: websiteClicksFromSnapshot
+          ? wc28d
+          : (account.website_clicks_28d ?? 0),
         unit: "count",
       },
     };
@@ -626,7 +702,7 @@ Deno.serve(async (req) => {
     // measurement. That rule decides what is populated here and what is left out:
     //
     //   card            value                       chip / prev
-    //   followers_gained  month's NET GAIN          previous month's NET GAIN
+    //   followers_gained  close-to-close NET GAIN   previous month's NET GAIN
     //   profile_views     report month's 28d snap   previous month's 28d snap
     //   website_clicks    report month's 28d snap   previous month's 28d snap
     //   reach / saves     month-SUM over posts      previous month's post-SUM
@@ -637,23 +713,41 @@ Deno.serve(async (req) => {
     // profile_views_28d and website_clicks_28d (see instagram-sync-cron): it stores
     // no engagement_rate, saves or post count, so those cards get no chip at all and
     // the renderer simply omits it.
+    //
+    // THE INVARIANT, enforced by every guard below: a card either shows value + chip
+    // + note all on ONE basis, or it shows its value alone. Never a chip or a note
+    // measured differently from the number above it. Note that `prev` alone is
+    // enough to make the renderer DERIVE a chip (`resolveDelta()`), so withholding a
+    // chip always means withholding `prev` too.
     const kpiDeltas: KpiDeltas = {};
 
     // profile_views / website_clicks: chip, value and note are all the same 28-day
     // account metric, one month apart.
-    if (prevSnapshot && currSnapshot) {
+    //
+    // Each is gated on ITS OWN value's source, per metric — not on `prevSnapshot`
+    // alone. If the value fell back to the live account field (no report-month
+    // snapshot, or a null column for just that one metric), `prev` stays unset and
+    // the renderer shows neither a chip nor a note, rather than comparing a live
+    // rolling window against a month close.
+    if (
+      profileViewsFromSnapshot &&
+      typeof prevSnapshot?.profile_views_28d === "number"
+    ) {
+      kpis.profile_views.prev = prevSnapshot.profile_views_28d;
       kpiDeltas.profile_views_pct_change = pctDelta(
-        currSnapshot.profile_views_28d,
+        pv28d,
         prevSnapshot.profile_views_28d,
       );
+    }
+    if (
+      websiteClicksFromSnapshot &&
+      typeof prevSnapshot?.website_clicks_28d === "number"
+    ) {
+      kpis.website_clicks.prev = prevSnapshot.website_clicks_28d;
       kpiDeltas.website_clicks_pct_change = pctDelta(
-        currSnapshot.website_clicks_28d,
+        wc28d,
         prevSnapshot.website_clicks_28d,
       );
-    }
-    if (prevSnapshot) {
-      kpis.profile_views.prev = prevSnapshot.profile_views_28d ?? null;
-      kpis.website_clicks.prev = prevSnapshot.website_clicks_28d ?? null;
     }
 
     // followers_gained: the card's value is the month's NET GAIN, so its chip must
@@ -662,18 +756,32 @@ Deno.serve(async (req) => {
     // renderer's "o ganho de seguidores cresceu X%" takeaway literally true.
     // The previous month's own gain needs the month-before-previous close, hence the
     // third snapshot fetch: (close of prev − close of prev-prev).
-    if (prevSnapshot && prevPrevSnapshot) {
-      const closeOfPrev = prevSnapshot.followers_count;
+    //
+    // Gated on `followersFromSnapshots`: if the VALUE fell back to the history-based
+    // expression (live endpoint, in-month start point), it is on a different basis
+    // than a close-to-close prev, so the card shows its value alone.
+    if (followersFromSnapshots && prevPrevSnapshot) {
+      const closeOfPrev = prevSnapshot!.followers_count;
       const closeOfPrevPrev = prevPrevSnapshot.followers_count;
-      if (
-        typeof closeOfPrev === "number" && typeof closeOfPrevPrev === "number"
-      ) {
+      if (typeof closeOfPrevPrev === "number") {
         const prevFollowersGained = closeOfPrev - closeOfPrevPrev;
-        kpis.followers_gained.prev = prevFollowersGained;
-        kpiDeltas.followers_pct_change = pctDelta(
-          followersGained,
-          prevFollowersGained,
-        );
+        // A percent change is only meaningful between two POSITIVE net gains.
+        // Net gain is a SIGNED quantity: with prev = −100 and current = −50 the
+        // arithmetic reports +50%, and the renderer would print "O ganho de
+        // seguidores cresceu 50,0% — o melhor resultado do mês" during a month of
+        // net follower LOSS.
+        //
+        // `prev` is withheld together with the delta, not just the delta: the
+        // renderer's `resolveDelta()` re-derives a chip from `(value − prev)/|prev|`
+        // whenever `prev` is set, so leaving the note in place would reproduce the
+        // very chip being suppressed. The card degrades to value-only.
+        if (followersGained > 0 && prevFollowersGained > 0) {
+          kpis.followers_gained.prev = prevFollowersGained;
+          kpiDeltas.followers_pct_change = pctDelta(
+            followersGained,
+            prevFollowersGained,
+          );
+        }
       }
     }
 
@@ -689,13 +797,23 @@ Deno.serve(async (req) => {
     // === 0) or, worse if ever computed differently, read as a false −100%. Leaving
     // both `prev` and the delta unset here lets the renderer's existing "no chip, no
     // note" degradation handle it, exactly like `engagement_rate` / `posts_count`.
+    //
+    // Each metric additionally requires its OWN sum to be > 0, separately from the
+    // shared "the month had posts" guard. A previous month whose posts exist but
+    // carry no reach/saves data (insights not yet synced, or a metric Instagram did
+    // not return) sums to 0, which is "unknown", not "measured zero" — and setting
+    // `prev = 0` would print a bare "maio: 0" note with no chip beside it
+    // (`pctDelta` refuses a zero denominator). Reach and saves are guarded
+    // independently because either can be missing while the other is present.
     if (prevMonthPosts && prevMonthPosts.length > 0) {
       const prevTotalReach = prevMonthPosts.reduce(
         (s: number, p: { reach: number | null }) => s + (p.reach || 0),
         0,
       );
-      kpis.reach.prev = prevTotalReach;
-      kpiDeltas.reach_pct_change = pctDelta(totalReach, prevTotalReach);
+      if (prevTotalReach > 0) {
+        kpis.reach.prev = prevTotalReach;
+        kpiDeltas.reach_pct_change = pctDelta(totalReach, prevTotalReach);
+      }
 
       // saves: same query, same rows, same basis — `saved` comes back for free
       // alongside `reach` with no additional query and no additional assumption
@@ -704,8 +822,10 @@ Deno.serve(async (req) => {
         (s: number, p: { saved: number | null }) => s + (p.saved || 0),
         0,
       );
-      kpis.saves.prev = prevTotalSaved;
-      kpiDeltas.saves_pct_change = pctDelta(totalSaved, prevTotalSaved);
+      if (prevTotalSaved > 0) {
+        kpis.saves.prev = prevTotalSaved;
+        kpiDeltas.saves_pct_change = pctDelta(totalSaved, prevTotalSaved);
+      }
     }
 
     // =====================================================================

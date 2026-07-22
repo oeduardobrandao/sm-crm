@@ -48,9 +48,17 @@ export const MAX_REPORT_CITIES = 8;
 export const MAX_REPORT_AGE_RANGES = 6;
 export const MAX_REPORT_COUNTRIES = 5;
 
-/** Cache blobs are untrusted JSON: anything that is not an array is treated as empty. */
+/**
+ * Cache blobs are untrusted JSON: anything that is not an array is treated as empty,
+ * and rows that are not objects (`null`, a bare string, a number) are dropped.
+ *
+ * Dropping them here rather than guarding each field access is what keeps a single
+ * `cities: [null]` from throwing a `TypeError` inside a `.map()` callback and failing
+ * the ENTIRE report — the failure mode is total, not cosmetic.
+ */
 function asRows(value: unknown): any[] {
-  return Array.isArray(value) ? value : [];
+  if (!Array.isArray(value)) return [];
+  return value.filter((row) => row !== null && typeof row === "object");
 }
 
 /**
@@ -69,6 +77,23 @@ function asRows(value: unknown): any[] {
 export function mapAudience(demographics: any): AudienceData | null {
   if (!demographics || typeof demographics !== "object") return null;
 
+  /**
+   * A row with no usable label is not a segment we can attribute anything to, so it
+   * is dropped BEFORE the denominator is computed rather than rendered as an
+   * anonymous "—" bar that still eats a slot and a share of the total.
+   */
+  const label = (value: unknown): string | null => {
+    if (typeof value === "string" && value.trim() !== "") return value.trim();
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return String(value);
+    }
+    return null;
+  };
+  const cityLabel = (c: any) => label(c?.name);
+  const ageLabel = (a: any) => label(a?.age_range ?? a?.range ?? a?.name);
+  const countryLabel = (c: any) =>
+    label(COUNTRY_NAMES[c?.code] ?? c?.name ?? c?.code);
+
   const cityWeight = (c: any) => c?.count ?? c?.pct ?? 0;
   // Age data is stored as "age_gender" with an "age_range" field, or as
   // "age_ranges" with a "range" field.
@@ -81,17 +106,26 @@ export function mapAudience(demographics: any): AudienceData | null {
   const sum = <T>(rows: T[], weight: (row: T) => number): number =>
     rows.reduce((s, r) => s + weight(r), 0) || 1;
 
-  const allCities = sortDesc<any>(asRows(demographics.cities), cityWeight);
+  const usable = <T>(rows: T[], toLabel: (row: T) => string | null): T[] =>
+    rows.filter((row) => toLabel(row) !== null);
+
+  const allCities = sortDesc<any>(
+    usable(asRows(demographics.cities), cityLabel),
+    cityWeight,
+  );
   const cityTotal = sum(allCities, cityWeight);
 
   const allAges = sortDesc<any>(
-    asRows(demographics.age_gender ?? demographics.age_ranges),
+    usable(
+      asRows(demographics.age_gender ?? demographics.age_ranges),
+      ageLabel,
+    ),
     ageWeight,
   );
   const ageTotal = sum(allAges, ageWeight);
 
   const allCountries = sortDesc<any>(
-    asRows(demographics.countries),
+    usable(asRows(demographics.countries), countryLabel),
     countryWeight,
   );
   const countryTotal = sum(allCountries, countryWeight);
@@ -102,17 +136,17 @@ export function mapAudience(demographics: any): AudienceData | null {
       male: demographics.gender_split?.male ?? 0,
     },
     top_cities: allCities.slice(0, MAX_REPORT_CITIES).map((c: any) => ({
-      name: c.name,
+      name: cityLabel(c) as string,
       pct: (cityWeight(c) / cityTotal) * 100,
     })),
     top_age_ranges: allAges.slice(0, MAX_REPORT_AGE_RANGES).map((a: any) => ({
-      range: a.age_range || a.range || a.name,
+      range: ageLabel(a) as string,
       pct: (ageWeight(a) / ageTotal) * 100,
     })),
     top_countries: allCountries.slice(0, MAX_REPORT_COUNTRIES).map((
       c: any,
     ) => ({
-      name: COUNTRY_NAMES[c.code] || c.name || c.code || "—",
+      name: countryLabel(c) as string,
       pct: (countryWeight(c) / countryTotal) * 100,
     })),
   };
