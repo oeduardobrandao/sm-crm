@@ -10,6 +10,7 @@ export default defineConfig(({ command }) => ({
     alias: {
       '@': path.resolve(__dirname, './src'),
       '@mesaas/i18n': path.resolve(__dirname, '../../packages/i18n/index.ts'),
+      '@mesaas/ui': path.resolve(__dirname, '../../packages/ui'),
     },
   },
   base: command === 'serve' ? '/' : '/hub/',
