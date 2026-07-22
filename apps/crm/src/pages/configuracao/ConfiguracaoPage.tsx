@@ -47,14 +47,15 @@ import {
   updateWorkspaceBranding,
 } from '../../store';
 import { captureEvent } from '@/lib/analytics';
+import { avatarColorClass } from '@/lib/avatarColor';
 
 function RoleBadge({ role }: { role: string }) {
   const map: Record<string, string> = {
-    owner: 'badge-danger',
+    owner: 'badge-primary',
     admin: 'badge-info',
     agent: 'badge-neutral',
   };
-  const pt: Record<string, string> = { owner: 'DONO', admin: 'ADMIN', agent: 'AGENTE' };
+  const pt: Record<string, string> = { owner: 'Dono', admin: 'Admin', agent: 'Agente' };
   return <span className={`badge ${map[role] ?? 'badge-neutral'}`}>{pt[role] ?? role}</span>;
 }
 
@@ -65,9 +66,9 @@ export function InviteStatusBadge({ status }: { status: string }) {
     accepted: 'badge-success',
   };
   const pt: Record<string, string> = {
-    pending: 'PENDENTE',
-    expired: 'EXPIRADO',
-    accepted: 'ACEITO',
+    pending: 'Pendente',
+    expired: 'Expirado',
+    accepted: 'Aceito',
   };
   return <span className={`badge ${map[status] ?? 'badge-neutral'}`}>{pt[status] ?? status}</span>;
 }
@@ -542,20 +543,8 @@ export default function ConfiguracaoPage() {
           }}
         >
           <div
-            className="avatar"
-            style={{
-              width: 64,
-              height: 64,
-              borderRadius: '50%',
-              background: 'var(--primary-color)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#fff',
-              fontWeight: 700,
-              fontSize: '1.4rem',
-              flexShrink: 0,
-            }}
+            className={`avatar ${avatarColorClass(user?.id ?? profile?.nome)}`}
+            style={{ width: 64, height: 64, fontWeight: 700, fontSize: '1.4rem' }}
           >
             {initials}
           </div>
@@ -943,19 +932,8 @@ export default function ConfiguracaoPage() {
             {(wsUsers ?? []).map((u: Record<string, string>) => (
               <div key={u.id} className="config-member-row">
                 <div
-                  className="avatar"
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: '50%',
-                    background: 'var(--primary-color)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: '#fff',
-                    fontWeight: 700,
-                    flexShrink: 0,
-                  }}
+                  className={`avatar ${avatarColorClass(u.id ?? u.nome)}`}
+                  style={{ width: 36, height: 36, fontWeight: 700 }}
                 >
                   {getInitials(u.nome || '?')}
                 </div>

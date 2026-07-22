@@ -296,10 +296,7 @@ export function ApplyToPostDialog({
                           </span>
                         </span>
                         {disabled && (
-                          <span
-                            className="badge-neutral"
-                            style={{ fontSize: '0.58rem', flexShrink: 0 }}
-                          >
+                          <span className="badge badge-neutral badge--sm" style={{ flexShrink: 0 }}>
                             {t(`apply.reasons.${reason}`)}
                           </span>
                         )}

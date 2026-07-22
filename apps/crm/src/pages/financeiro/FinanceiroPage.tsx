@@ -478,7 +478,7 @@ export default function FinanceiroPage() {
                       </span>
                     </TableCell>
                     <TableCell data-label="Status">
-                      <Badge variant={t.status === 'pago' ? 'default' : 'secondary'}>
+                      <Badge variant={t.status === 'pago' ? 'success' : 'neutral'}>
                         {t.status === 'pago' ? 'Pago' : 'Agendado'}
                       </Badge>
                     </TableCell>
@@ -529,8 +529,9 @@ export default function FinanceiroPage() {
                     >
                       <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{t.descricao}</span>
                       <Badge
-                        variant={t.status === 'pago' ? 'default' : 'secondary'}
-                        style={{ fontSize: '0.6rem', padding: '0 0.4rem', pointerEvents: 'none' }}
+                        variant={t.status === 'pago' ? 'success' : 'neutral'}
+                        size="sm"
+                        style={{ pointerEvents: 'none' }}
                       >
                         {t.status === 'pago' ? 'Pago' : 'Agendado'}
                       </Badge>

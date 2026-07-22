@@ -39,22 +39,8 @@ import {
   type Membro,
 } from '../../store';
 import { useAuth } from '../../context/AuthContext';
+import { avatarColorClass } from '@/lib/avatarColor';
 
-const AVATAR_COLORS = [
-  '#eab308',
-  '#3ecf8e',
-  '#f5a342',
-  '#f542c8',
-  '#42c8f5',
-  '#8b5cf6',
-  '#ef4444',
-  '#14b8a6',
-];
-function getAvatarColor(name: string): string {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
-  return AVATAR_COLORS[hash % AVATAR_COLORS.length];
-}
 const TIPO_LABEL: Record<string, string> = {
   clt: 'CLT',
   freelancer_mensal: 'Freelancer Mensal',
@@ -141,7 +127,7 @@ export default function MembroDetalhePage() {
     }
   };
 
-  const color = membro ? getAvatarColor(membro.nome) : '#ccc';
+  const avatarClass = avatarColorClass(membro?.id ?? membro?.nome);
 
   return (
     <div style={{ padding: '1.5rem' }}>
@@ -168,15 +154,8 @@ export default function MembroDetalhePage() {
         <>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, margin: '1.5rem 0' }}>
             <div
-              className="avatar"
-              style={{
-                background: color,
-                color: '#fff',
-                fontWeight: 700,
-                width: 56,
-                height: 56,
-                fontSize: 22,
-              }}
+              className={`avatar ${avatarClass}`}
+              style={{ fontWeight: 700, width: 56, height: 56, fontSize: 22 }}
             >
               {getInitials(membro.nome)}
             </div>

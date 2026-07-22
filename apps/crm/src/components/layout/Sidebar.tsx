@@ -8,11 +8,8 @@ import type { Language } from '@mesaas/i18n';
 import { getNavGroups } from './nav-data';
 import type { NavGroup } from './nav-data';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
-
-const LANGUAGE_FLAGS: Record<Language, string> = {
-  pt: '\u{1F1E7}\u{1F1F7}',
-  en: '\u{1F1FA}\u{1F1F8}',
-};
+import { FlagIcon } from '../shared/FlagIcon';
+import { avatarColorClass } from '@/lib/avatarColor';
 
 interface SidebarProps {
   isDrawer?: boolean;
@@ -168,7 +165,7 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
           >
             <div className="sidebar-user-trigger">
               <div
-                className="avatar"
+                className={`avatar ${avatarColorClass(user?.id ?? profile?.nome)}`}
                 style={{ width: 32, height: 32, borderRadius: 8, fontSize: '0.8rem' }}
               >
                 {initials}
@@ -330,7 +327,7 @@ export default function Sidebar({ isDrawer = false, isOpen = false, onClose }: S
                           handleLanguageChange(lang);
                         }}
                       >
-                        <span>{LANGUAGE_FLAGS[lang]}</span>
+                        <FlagIcon lang={lang} size={16} />
                         <span>{t(`language.${lang}`)}</span>
                         {isActive && <i className="ph ph-check" style={{ marginLeft: 'auto' }} />}
                       </button>

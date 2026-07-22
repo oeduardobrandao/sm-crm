@@ -644,15 +644,18 @@ export default function LeadsPage() {
                       <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{l.nome}</span>
                       <Badge
                         variant={
-                          l.status === 'novo'
-                            ? 'default'
+                          l.status === 'convertido'
+                            ? 'success'
                             : l.status === 'qualificado'
-                              ? 'default'
-                              : l.status === 'convertido'
-                                ? 'default'
-                                : 'secondary'
+                              ? 'primary'
+                              : l.status === 'novo'
+                                ? 'info'
+                                : l.status === 'perdido'
+                                  ? 'danger'
+                                  : 'neutral'
                         }
-                        style={{ fontSize: '0.6rem', padding: '0 0.4rem', pointerEvents: 'none' }}
+                        size="sm"
+                        style={{ pointerEvents: 'none' }}
                       >
                         {tc(`status.${l.status}`)}
                       </Badge>

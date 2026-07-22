@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, type CSSProperties } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
@@ -275,15 +275,16 @@ function AIPortfolioSection({ accounts }: { accounts: PortfolioAccount[] }) {
                       }}
                     >
                       <span
-                        className="badge"
-                        style={{
-                          fontSize: '0.65rem',
-                          minWidth: 52,
-                          textAlign: 'center',
-                          background: statusColor + '20',
-                          color: statusColor,
-                          border: `1px solid ${statusColor}40`,
-                        }}
+                        className="badge badge--sm"
+                        style={
+                          {
+                            minWidth: 52,
+                            justifyContent: 'center',
+                            '--badge-bg': statusColor + '20',
+                            '--badge-fg': statusColor,
+                            '--badge-border': statusColor + '40',
+                          } as CSSProperties
+                        }
                       >
                         {acc.status}
                       </span>
@@ -334,15 +335,16 @@ function AIPortfolioSection({ accounts }: { accounts: PortfolioAccount[] }) {
                       }}
                     >
                       <span
-                        className="badge"
-                        style={{
-                          fontSize: '0.65rem',
-                          minWidth: 44,
-                          textAlign: 'center',
-                          background: pColor + '20',
-                          color: pColor,
-                          border: `1px solid ${pColor}40`,
-                        }}
+                        className="badge badge--sm"
+                        style={
+                          {
+                            minWidth: 44,
+                            justifyContent: 'center',
+                            '--badge-bg': pColor + '20',
+                            '--badge-fg': pColor,
+                            '--badge-border': pColor + '40',
+                          } as CSSProperties
+                        }
                       >
                         {a.prioridade}
                       </span>
@@ -711,7 +713,7 @@ export default function AnalyticsPage() {
                     {a.client_sigla}
                   </span>
                   <span>{a.client_name}</span>
-                  <span className="badge badge-warning" style={{ fontSize: '0.65rem' }}>
+                  <span className="badge badge-warning badge--sm">
                     {daysSince !== null ? `${daysSince}d sem postar` : 'Sem posts'}
                   </span>
                 </Link>
@@ -1345,10 +1347,10 @@ export default function AnalyticsPage() {
                         <Badge
                           variant={
                             a.engagement_rate_avg >= 3
-                              ? 'default'
+                              ? 'success'
                               : a.engagement_rate_avg >= 1
-                                ? 'secondary'
-                                : 'outline'
+                                ? 'warning'
+                                : 'neutral'
                           }
                         >
                           {a.engagement_rate_avg.toFixed(2)}%
@@ -1489,10 +1491,10 @@ export default function AnalyticsPage() {
                       <Badge
                         variant={
                           a.engagement_rate_avg >= 3
-                            ? 'default'
+                            ? 'success'
                             : a.engagement_rate_avg >= 1
-                              ? 'secondary'
-                              : 'outline'
+                              ? 'warning'
+                              : 'neutral'
                         }
                         style={{ fontSize: '0.6rem', padding: '0 0.4rem' }}
                       >
@@ -1579,10 +1581,10 @@ export default function AnalyticsPage() {
                       <Badge
                         variant={
                           s.avgEngagement >= 3
-                            ? 'default'
+                            ? 'success'
                             : s.avgEngagement >= 1
-                              ? 'secondary'
-                              : 'outline'
+                              ? 'warning'
+                              : 'neutral'
                         }
                       >
                         {s.avgEngagement.toFixed(2)}%

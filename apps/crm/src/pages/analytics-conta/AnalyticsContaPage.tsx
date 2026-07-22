@@ -2106,10 +2106,7 @@ function AnalyticsContent({
                   </span>
                 )}
                 {r.include_ai && (
-                  <span
-                    className="badge badge-neutral"
-                    style={{ marginLeft: '0.5rem', fontSize: '0.6rem' }}
-                  >
+                  <span className="badge badge-neutral badge--sm" style={{ marginLeft: '0.5rem' }}>
                     IA
                   </span>
                 )}
@@ -2117,15 +2114,7 @@ function AnalyticsContent({
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 {r.status === 'pending' && <span className="badge badge-warning">Pendente</span>}
                 {r.status === 'generating' && (
-                  <span
-                    className="badge badge-neutral"
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.3rem',
-                      color: '#3b82f6',
-                    }}
-                  >
+                  <span className="badge badge-info">
                     <Spinner size="sm" /> Gerando...
                   </span>
                 )}
