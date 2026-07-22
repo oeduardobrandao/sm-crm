@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ReportPreview } from './ReportPreview';
+import { downscaleImage } from './reportSplash';
 import {
   Dialog,
   DialogContent,
@@ -282,31 +283,74 @@ export default function ConfiguracaoPage() {
   });
 
   const [brandColor, setBrandColor] = useState('#eab308');
-  const [secondaryColor, setSecondaryColor] = useState('#3ecf8e');
-  const [accentColor, setAccentColor] = useState('#42c8f5');
-  const [reportFont, setReportFont] = useState('DM Sans');
-  const [reportTheme, setReportTheme] = useState<'dark' | 'light'>('dark');
   const [sendReportEmail, setSendReportEmail] = useState(false);
+  const [splashUrl, setSplashUrl] = useState<string | null>(null);
+  const [splashUploading, setSplashUploading] = useState(false);
+  const [splashRemoveOpen, setSplashRemoveOpen] = useState(false);
+  const splashInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (branding) {
       setBrandColor(branding.brand_color ?? '#eab308');
-      setSecondaryColor(branding.report_secondary_color ?? '#3ecf8e');
-      setAccentColor(branding.report_accent_color ?? '#42c8f5');
-      setReportFont(branding.report_font_family ?? 'DM Sans');
-      setReportTheme((branding.report_theme as 'dark' | 'light') ?? 'dark');
       setSendReportEmail(branding.send_report_email ?? false);
+      setSplashUrl(branding.report_splash_url ?? null);
     }
   }, [branding]);
+
+  // The splash art is persisted by its own upload/remove handlers (mirroring the
+  // workspace logo), not by this card's "Salvar" button.
+  const handleSplashUpload = async (file: File) => {
+    if (!workspace) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      toast.error('Use uma imagem JPEG, PNG ou WebP.');
+      return;
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      toast.error('Imagem muito grande (máx. 4MB).');
+      return;
+    }
+    setSplashUploading(true);
+    try {
+      const blob = await downscaleImage(file);
+      const path = `workspaces/${workspace.id}/report-splash.jpg`;
+      const { error: upErr } = await supabase.storage
+        .from('avatars')
+        .upload(path, blob, { upsert: true, contentType: 'image/jpeg' });
+      if (upErr) throw upErr;
+
+      const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
+      const publicUrl = urlData.publicUrl + '?t=' + Date.now();
+      await updateWorkspace(workspace.id, { report_splash_url: publicUrl });
+      setSplashUrl(publicUrl);
+      queryClient.invalidateQueries({ queryKey: ['workspace-branding'] });
+      toast.success('Arte da capa atualizada.');
+    } catch (err: unknown) {
+      toast.error('Erro ao enviar a arte: ' + (err as Error).message);
+    } finally {
+      setSplashUploading(false);
+    }
+  };
+
+  const handleRemoveSplash = async () => {
+    if (!workspace) return;
+    setSplashUploading(true);
+    try {
+      await updateWorkspace(workspace.id, { report_splash_url: null });
+      setSplashUrl(null);
+      queryClient.invalidateQueries({ queryKey: ['workspace-branding'] });
+      toast.success('Arte da capa removida.');
+    } catch (err: unknown) {
+      toast.error('Erro: ' + (err as Error).message);
+    } finally {
+      setSplashUploading(false);
+      setSplashRemoveOpen(false);
+    }
+  };
 
   const brandingMutation = useMutation({
     mutationFn: () =>
       updateWorkspaceBranding({
         brand_color: brandColor,
-        report_secondary_color: secondaryColor,
-        report_accent_color: accentColor,
-        report_font_family: reportFont,
-        report_theme: reportTheme,
         send_report_email: sendReportEmail,
       }),
     onSuccess: () => {
@@ -713,7 +757,8 @@ export default function ConfiguracaoPage() {
         <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>
           <h3 className="config-title">Relatório Mensal</h3>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1.25rem' }}>
-            Personalize as cores, fonte e tema dos relatórios mensais enviados para seus clientes.
+            Personalize a cor de destaque e a arte de capa dos relatórios mensais enviados para seus
+            clientes.
           </p>
 
           <div
@@ -725,134 +770,86 @@ export default function ConfiguracaoPage() {
             }}
           >
             <div>
-              {/* Color pickers */}
-              <div
-                style={{
-                  display: 'flex',
-                  gap: '1.5rem',
-                  flexWrap: 'wrap',
-                  marginBottom: '1.25rem',
-                }}
-              >
-                <div>
-                  <Label style={{ display: 'block', marginBottom: 6 }}>Cor primária</Label>
-                  <input
-                    type="color"
-                    value={brandColor}
-                    onChange={(e) => setBrandColor(e.target.value)}
-                    style={{
-                      width: 48,
-                      height: 36,
-                      padding: 2,
-                      borderRadius: 6,
-                      border: '1px solid var(--border-color)',
-                      cursor: 'pointer',
-                      background: 'none',
-                    }}
-                  />
-                  <div
-                    style={{
-                      fontSize: '0.75rem',
-                      color: 'var(--text-muted)',
-                      marginTop: 4,
-                      fontFamily: 'var(--font-mono)',
-                    }}
-                  >
-                    {brandColor}
-                  </div>
-                </div>
-                <div>
-                  <Label style={{ display: 'block', marginBottom: 6 }}>Cor secundária</Label>
-                  <input
-                    type="color"
-                    value={secondaryColor}
-                    onChange={(e) => setSecondaryColor(e.target.value)}
-                    style={{
-                      width: 48,
-                      height: 36,
-                      padding: 2,
-                      borderRadius: 6,
-                      border: '1px solid var(--border-color)',
-                      cursor: 'pointer',
-                      background: 'none',
-                    }}
-                  />
-                  <div
-                    style={{
-                      fontSize: '0.75rem',
-                      color: 'var(--text-muted)',
-                      marginTop: 4,
-                      fontFamily: 'var(--font-mono)',
-                    }}
-                  >
-                    {secondaryColor}
-                  </div>
-                </div>
-                <div>
-                  <Label style={{ display: 'block', marginBottom: 6 }}>Cor de destaque</Label>
-                  <input
-                    type="color"
-                    value={accentColor}
-                    onChange={(e) => setAccentColor(e.target.value)}
-                    style={{
-                      width: 48,
-                      height: 36,
-                      padding: 2,
-                      borderRadius: 6,
-                      border: '1px solid var(--border-color)',
-                      cursor: 'pointer',
-                      background: 'none',
-                    }}
-                  />
-                  <div
-                    style={{
-                      fontSize: '0.75rem',
-                      color: 'var(--text-muted)',
-                      marginTop: 4,
-                      fontFamily: 'var(--font-mono)',
-                    }}
-                  >
-                    {accentColor}
-                  </div>
-                </div>
-              </div>
-
-              {/* Font selector */}
-              <div style={{ marginBottom: '1.25rem' }}>
-                <Label style={{ display: 'block', marginBottom: 6 }}>Fonte do relatório</Label>
-                <Select value={reportFont} onValueChange={setReportFont}>
-                  <SelectTrigger style={{ maxWidth: 260 }}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="DM Sans">DM Sans</SelectItem>
-                    <SelectItem value="Inter">Inter</SelectItem>
-                    <SelectItem value="Poppins">Poppins</SelectItem>
-                    <SelectItem value="Montserrat">Montserrat</SelectItem>
-                    <SelectItem value="Plus Jakarta Sans">Plus Jakarta Sans</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Theme toggle */}
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '1rem',
-                  marginBottom: '1.25rem',
-                }}
-              >
-                <Switch
-                  checked={reportTheme === 'dark'}
-                  onCheckedChange={(checked) => setReportTheme(checked ? 'dark' : 'light')}
+              {/* Accent colour */}
+              <div>
+                <Label style={{ display: 'block', marginBottom: 6 }}>Cor de destaque</Label>
+                <input
+                  type="color"
+                  value={brandColor}
+                  onChange={(e) => setBrandColor(e.target.value)}
+                  style={{
+                    width: 48,
+                    height: 36,
+                    padding: 2,
+                    borderRadius: 6,
+                    border: '1px solid var(--border-color)',
+                    cursor: 'pointer',
+                    background: 'none',
+                  }}
                 />
-                <div>
-                  <div style={{ fontWeight: 500 }}>Tema do relatório</div>
-                  <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                    {reportTheme === 'dark' ? 'Escuro' : 'Claro'}
-                  </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4 }}>
+                  {brandColor} · a mesma cor de destaque do Hub do Cliente. Usada em marcações do
+                  relatório — nunca nos gráficos de dados.
                 </div>
+              </div>
+
+              {/* Cover splash art */}
+              <div style={{ marginTop: '1.25rem', marginBottom: '1.25rem' }}>
+                <Label style={{ display: 'block', marginBottom: 6 }}>Arte da capa</Label>
+                {splashUrl ? (
+                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                    <img
+                      src={splashUrl}
+                      alt="Arte da capa"
+                      style={{
+                        width: 168,
+                        height: 72,
+                        objectFit: 'cover',
+                        borderRadius: 8,
+                        border: '1px solid var(--border-color)',
+                      }}
+                    />
+                    <Button
+                      variant="outline"
+                      onClick={() => splashInputRef.current?.click()}
+                      disabled={splashUploading}
+                    >
+                      {splashUploading ? 'Enviando…' : 'Substituir'}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={() => setSplashRemoveOpen(true)}
+                      disabled={splashUploading}
+                    >
+                      Remover
+                    </Button>
+                  </div>
+                ) : (
+                  <div>
+                    <Button
+                      variant="outline"
+                      onClick={() => splashInputRef.current?.click()}
+                      disabled={splashUploading}
+                    >
+                      {splashUploading ? 'Enviando…' : 'Enviar imagem'}
+                    </Button>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4 }}>
+                      Aparece na capa do relatório (formato paisagem, ~21:9). Sem arte, a capa fica
+                      só tipográfica.
+                    </div>
+                  </div>
+                )}
+                <input
+                  ref={splashInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  hidden
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = '';
+                    if (file) handleSplashUpload(file);
+                  }}
+                />
               </div>
 
               {/* Email delivery toggle */}
@@ -883,12 +880,14 @@ export default function ConfiguracaoPage() {
             </div>
 
             {/* Live preview */}
+            {/* Preview is rewritten for the v2 report design in a follow-up task;
+                the fixed props below keep the current miniature rendering. */}
             <ReportPreview
               primaryColor={brandColor}
-              secondaryColor={secondaryColor}
-              accentColor={accentColor}
-              fontFamily={reportFont}
-              theme={reportTheme}
+              secondaryColor="#3ecf8e"
+              accentColor="#42c8f5"
+              fontFamily="DM Sans"
+              theme="dark"
             />
           </div>
         </div>
@@ -1209,6 +1208,19 @@ export default function ConfiguracaoPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={handleRemoveLogo}>Remover</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Remove Report Splash Confirm */}
+      <AlertDialog open={splashRemoveOpen} onOpenChange={setSplashRemoveOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover a arte da capa?</AlertDialogTitle>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRemoveSplash}>Remover</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
