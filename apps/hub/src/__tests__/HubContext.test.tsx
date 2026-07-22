@@ -13,6 +13,7 @@ const providerValue = {
     cliente_nome: 'Clínica Aurora',
     is_active: true,
     cliente_id: 14,
+    feature_mensagens: true,
   },
   token: 'token-publico',
   workspace: 'mesaas',

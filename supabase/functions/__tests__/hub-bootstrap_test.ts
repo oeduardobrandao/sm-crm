@@ -70,6 +70,44 @@ Deno.test("a throwing touchToken must NOT break the client's portal", async () =
   assertEquals(res.status, 200);
 });
 
+Deno.test("feature_mensagens reflects the effective_plan_feature RPC result", async () => {
+  const handler = createHubBootstrapHandler({
+    buildCorsHeaders: cors,
+    createDb: () => makeDb({ cliente_id: 15, conta_id: "ws-1", is_active: true }) as any,
+    now: () => NOW,
+    touchToken: async () => {},
+  });
+  const res = await handler(req());
+  const body = await res.json();
+  assertEquals(body.feature_mensagens, true);
+});
+
+Deno.test("feature_mensagens defaults to false and does NOT break the response when the RPC errors", async () => {
+  function makeDbWithFailingRpc(tokenRow: unknown) {
+    const db = makeDb(tokenRow);
+    // Only the feature_mensagens lookup fails — feature_hub_portal (checked earlier,
+    // inside resolveHubToken) must keep succeeding so the token resolves and this test
+    // actually reaches the code path it's meant to exercise.
+    return {
+      ...db,
+      rpc: async (_fn: string, params: Record<string, unknown>) =>
+        params.feature_key === "feature_mensagens"
+          ? { data: null, error: { message: "function does not exist" } }
+          : { data: true, error: null },
+    };
+  }
+  const handler = createHubBootstrapHandler({
+    buildCorsHeaders: cors,
+    createDb: () => makeDbWithFailingRpc({ cliente_id: 15, conta_id: "ws-1", is_active: true }) as any,
+    now: () => NOW,
+    touchToken: async () => {},
+  });
+  const res = await handler(req());
+  assertEquals(res.status, 200);
+  const body = await res.json();
+  assertEquals(body.feature_mensagens, false);
+});
+
 // --- makeTouchToken (the real factory wired in index.ts) -------------------------------
 //
 // The tests above inject a synthetic `touchToken` mock straight into `handler.ts`, so they

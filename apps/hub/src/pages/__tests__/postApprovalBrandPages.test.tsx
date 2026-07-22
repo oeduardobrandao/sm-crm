@@ -133,6 +133,7 @@ const hubValue = {
     cliente_nome: 'Clínica Aurora',
     is_active: true,
     cliente_id: 14,
+    feature_mensagens: true,
   },
   token: 'token-publico',
   workspace: 'mesaas',
@@ -503,6 +504,7 @@ describe('hub approval, posts, and brand pages', () => {
         brand: {
           id: 'brand-1',
           cliente_id: 14,
+          feature_mensagens: true,
           logo_url: 'https://cdn.mesaas.com/brand/logo.png',
           primary_color: '#0f766e',
           secondary_color: '#f97316',
@@ -513,6 +515,7 @@ describe('hub approval, posts, and brand pages', () => {
           {
             id: 'file-1',
             cliente_id: 14,
+            feature_mensagens: true,
             name: 'Brandbook.pdf',
             file_url: 'https://cdn.mesaas.com/brand/brandbook.pdf',
             file_type: 'application/pdf',
@@ -521,6 +524,7 @@ describe('hub approval, posts, and brand pages', () => {
           {
             id: 'file-2',
             cliente_id: 14,
+            feature_mensagens: true,
             name: 'Logo.zip',
             file_url: 'https://cdn.mesaas.com/brand/logo.zip',
             file_type: 'application/zip',

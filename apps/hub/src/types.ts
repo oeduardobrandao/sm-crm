@@ -9,6 +9,7 @@ export interface HubBootstrap {
   cliente_nome: string;
   is_active: boolean;
   cliente_id: number;
+  feature_mensagens: boolean;
 }
 
 export interface HubPostMedia {

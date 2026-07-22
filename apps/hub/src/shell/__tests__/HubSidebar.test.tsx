@@ -15,16 +15,17 @@ const BOOTSTRAP: HubBootstrap = {
   cliente_nome: 'Débora Lima',
   is_active: true,
   cliente_id: 1,
+  feature_mensagens: true,
 };
 
-function renderSidebar(pathname: string) {
+function renderSidebar(pathname: string, bootstrap: HubBootstrap = BOOTSTRAP) {
   const qc = new QueryClient();
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={[pathname]}>
         <HubContext.Provider
           value={{
-            bootstrap: BOOTSTRAP,
+            bootstrap,
             token: 'tok',
             workspace: 'ws',
             theme: 'light',
@@ -64,5 +65,13 @@ describe('HubSidebar', () => {
     expect(screen.getByText('Débora Lima')).toBeInTheDocument();
     expect(screen.queryByText('Atualizações')).not.toBeInTheDocument();
     expect(screen.queryByText('Configurações')).not.toBeInTheDocument();
+  });
+
+  it('hides Mensagens when feature_mensagens is false, keeping every other destination', () => {
+    renderSidebar('/ws/hub/tok', { ...BOOTSTRAP, feature_mensagens: false });
+    expect(screen.queryByText('Mensagens')).not.toBeInTheDocument();
+    for (const label of ['Início', 'Aprovações', 'Postagens', 'Relatórios']) {
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
   });
 });

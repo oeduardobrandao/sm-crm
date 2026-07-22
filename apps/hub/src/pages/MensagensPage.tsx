@@ -26,6 +26,23 @@ export function MensagensPage() {
     setDraft('');
   }
 
+  // Guard the route itself, not just the nav link — a workspace without the
+  // feature shouldn't be able to reach it by navigating to the URL directly.
+  if (!bootstrap.feature_mensagens) {
+    return (
+      <div className="flex flex-col gap-4 hub-fade-up">
+        <header>
+          <h1 className="font-display text-[1.7rem] sm:text-[2.4rem] font-medium tracking-tight hub-txt">
+            Mensagens
+          </h1>
+        </header>
+        <p className="text-sm hub-tx2">
+          Este recurso ainda não está disponível no seu plano. Fale com sua agência para saber mais.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-4 hub-fade-up">
       <header>

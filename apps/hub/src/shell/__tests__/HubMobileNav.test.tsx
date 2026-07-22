@@ -20,16 +20,17 @@ const BOOTSTRAP: HubBootstrap = {
   cliente_nome: 'Débora Lima',
   is_active: true,
   cliente_id: 1,
+  feature_mensagens: true,
 };
 
-function renderMobileNav() {
+function renderMobileNav(bootstrap: HubBootstrap = BOOTSTRAP) {
   const qc = new QueryClient();
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={['/ws/hub/tok']}>
         <HubContext.Provider
           value={{
-            bootstrap: BOOTSTRAP,
+            bootstrap,
             token: 'tok',
             workspace: 'ws',
             theme: 'light',
@@ -65,5 +66,14 @@ describe('HubMobileNav', () => {
     const languageButton = screen.getByRole('button', { name: /idioma|language/i });
     expect(languageButton).toBeInTheDocument();
     expect(languageButton.textContent).toMatch(/🇧🇷|🇺🇸/);
+  });
+
+  it('hides Mensagens when feature_mensagens is false, keeping every other destination', () => {
+    renderMobileNav({ ...BOOTSTRAP, feature_mensagens: false });
+    fireEvent.click(screen.getByRole('button', { name: /abrir menu|open menu/i }));
+    expect(screen.queryByText('Mensagens')).not.toBeInTheDocument();
+    for (const label of ['Início', 'Aprovações', 'Postagens', 'Relatórios']) {
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
   });
 });
