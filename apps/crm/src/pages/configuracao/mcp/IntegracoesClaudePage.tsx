@@ -210,8 +210,7 @@ export default function IntegracoesClaudePage() {
 
   if (!isOwnerOrAdmin) {
     return (
-      <div className="card animate-up" style={{ margin: '1.5rem' }}>
-        <h1 className="config-title">Claude (MCP)</h1>
+      <div className="card animate-up">
         <p className="text-sm text-muted-foreground">
           Apenas proprietários e administradores podem gerenciar as chaves de API.
         </p>
@@ -220,10 +219,7 @@ export default function IntegracoesClaudePage() {
   }
 
   return (
-    <div style={{ padding: 'clamp(1.25rem, 3vw, 2.5rem)' }}>
-      <h1 className="config-title" style={{ marginBottom: '0.5rem' }}>
-        Claude (MCP)
-      </h1>
+    <>
       <p className="text-sm text-muted-foreground" style={{ marginBottom: '1.5rem' }}>
         Conecte seus agentes Claude para ler clientes, posts e pautas deste workspace.
       </p>
@@ -648,6 +644,6 @@ export default function IntegracoesClaudePage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </>
   );
 }

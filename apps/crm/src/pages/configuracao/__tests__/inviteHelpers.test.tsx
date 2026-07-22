@@ -6,7 +6,7 @@ import {
   InviteStatusBadge,
   InviteTimeLeft,
   inviteSuccessMessage,
-} from '../ConfiguracaoPage';
+} from '../inviteHelpers';
 
 describe('InviteStatusBadge', () => {
   it('renders Pendente for pending status', () => {
