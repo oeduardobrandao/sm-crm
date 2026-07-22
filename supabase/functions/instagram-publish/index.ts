@@ -14,6 +14,4 @@ Deno.serve(createPublishHandler({
     global: { headers: { Authorization: `Bearer ${jwt}` } },
   }),
   createServiceDb: () => createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY),
-  // deno-lint-ignore no-undef -- EdgeRuntime is a Supabase Edge Runtime global.
-  waitUntil: (promise) => { EdgeRuntime.waitUntil(promise); },
 }));

@@ -306,8 +306,8 @@ async function processStatusPhase(
 //
 // Purely a state reset — no TikTok API calls here. tiktok_publish_status/error are cleared and
 // the card goes back to `agendado`; the NEXT run's init phase (tiktok_publish_status IS NULL)
-// picks it up fresh, with a newly-signed presign and a re-checked design readiness. The retry
-// count itself was already incremented by markTikTokPublishFailed at failure time — this phase
+// picks it up fresh, with a newly-signed presign. The retry count itself was already
+// incremented by markTikTokPublishFailed at failure time — this phase
 // never touches it.
 
 async function processRetryPhase(

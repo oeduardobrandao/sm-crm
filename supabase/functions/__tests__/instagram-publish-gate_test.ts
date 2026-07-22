@@ -104,3 +104,51 @@ Deno.test("instagram-publish: schedule with feature ON but status rascunho → 4
   const res = await handler(publishRequest("schedule", 1));
   assertEquals(res.status, 422);
 });
+
+// ─── schedule: feature ON, status OK, validateForScheduling fails (no media)
+//     → 422 with details array ──────────────────────────────────────────────
+
+Deno.test("instagram-publish: schedule with no media fails validateForScheduling → 422 with details", async () => {
+  const db = createSupabaseQueryMock();
+  // Post row read TWICE: once by the handler's access check (userDb), once by
+  // validateForScheduling's own lookup (svcDb) — same mock serves both.
+  const post = {
+    id: 1,
+    status: "aprovado_cliente",
+    workflow_id: 9,
+    scheduled_at: "2030-01-01T12:00:00Z",
+    ig_caption: "cap",
+    instagram_container_id: null,
+    publish_retry_count: 0,
+    tipo: "feed",
+  };
+  db.withAuth({ id: "actor-1" });
+  db.queue("workflow_posts", "select", { data: post, error: null });
+  db.queue("workflow_posts", "select", { data: post, error: null });
+  db.queue("profiles", "select", { data: { conta_id: "ws-1" }, error: null });
+  db.queueRpc("effective_plan_feature", { data: true, error: null });
+  // No media attached → validateForScheduling's media check fails.
+  db.queue("post_file_links", "select", { data: [], error: null });
+  db.queue("workflows", "select", { data: { cliente_id: 5 }, error: null });
+  db.queue("instagram_accounts", "select", {
+    data: {
+      encrypted_access_token: null,
+      instagram_user_id: "ig",
+      token_expires_at: null,
+      authorization_status: "connected",
+    },
+    error: null,
+  });
+
+  const handler = makeHandler(db);
+  const res = await handler(publishRequest("schedule", 1));
+
+  assertEquals(res.status, 422);
+  const body = await readJson(res);
+  assertEquals(Array.isArray(body.details), true);
+  assertEquals(body.details.length > 0, true);
+  assertEquals(
+    body.details.includes("Post precisa de pelo menos uma mídia."),
+    true,
+  );
+});

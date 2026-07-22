@@ -11,7 +11,6 @@ interface HubApproveHandlerDeps {
   buildCorsHeaders: (req: Request) => Record<string, string>;
   createDb: () => DbClient;
   now: () => string;
-  waitUntil?: (promise: Promise<unknown>) => void;
 }
 
 export function createHubApproveHandler(deps: HubApproveHandlerDeps) {

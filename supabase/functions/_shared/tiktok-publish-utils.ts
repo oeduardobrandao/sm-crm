@@ -487,7 +487,7 @@ export async function clearLock(svc: SvcClient, postId: number): Promise<void> {
  * record_post_status_change. `retryCount` is bumped by one UNLESS `failReason` is a TikTok wire
  * fail_reason string that is NOT in RETRYABLE_FAIL_REASONS (e.g. `spam_risk_too_many_posts`) —
  * those exhaust immediately (retry_count=3) since a retry can never succeed. Generic infra
- * failures (design render, network, TikTok init/status errors with no documented fail_reason)
+ * failures (network, TikTok init/status errors with no documented fail_reason)
  * are always retryable and simply increment, relying on the claim RPC's `retry_count < 3`
  * cutoff to eventually stop them.
  *

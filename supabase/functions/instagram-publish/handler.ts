@@ -25,7 +25,6 @@ interface PublishHandlerDeps {
   buildCorsHeaders: (req: Request) => Record<string, string>;
   createDb: (token: string) => DbClient;
   createServiceDb: () => DbClient;
-  waitUntil?: (promise: Promise<unknown>) => void;
 }
 
 export function createPublishHandler(deps: PublishHandlerDeps) {

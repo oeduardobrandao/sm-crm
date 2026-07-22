@@ -9,6 +9,4 @@ Deno.serve(createHubApproveHandler({
   buildCorsHeaders,
   createDb: () => createClient(SUPABASE_URL, SERVICE_ROLE_KEY),
   now: () => new Date().toISOString(),
-  // deno-lint-ignore no-undef -- EdgeRuntime is a Supabase Edge Runtime global.
-  waitUntil: (promise) => { EdgeRuntime.waitUntil(promise); },
 }));
