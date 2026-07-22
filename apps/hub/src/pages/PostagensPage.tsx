@@ -19,7 +19,7 @@ const STATUS_COLORS: Record<string, string> = {
   correcao_cliente: '#f55a42',
   agendado: '#42c8f5',
   publicando: '#E1306C',
-  postado: '#eab308',
+  postado: '#525252',
   falha_publicacao: '#f55a42',
 };
 

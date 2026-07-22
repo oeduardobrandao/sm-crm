@@ -7,7 +7,7 @@ interface PeriodSelectorProps {
 
 export function PeriodSelector({ value, onChange }: PeriodSelectorProps) {
   return (
-    <div className="flex rounded-lg bg-stone-100 dark:bg-white/[0.06] p-0.5 gap-0.5">
+    <div className="flex rounded-lg hub-bg-soft p-0.5 gap-0.5">
       {PERIODS.map((p) => (
         <button
           key={p}
@@ -15,9 +15,7 @@ export function PeriodSelector({ value, onChange }: PeriodSelectorProps) {
           data-active={p === value ? 'true' : undefined}
           onClick={() => p !== value && onChange(p)}
           className={`px-3 py-1.5 text-[11px] font-semibold rounded-md transition-colors ${
-            p === value
-              ? 'bg-[#eab308] text-stone-900'
-              : 'text-stone-500 hover:text-stone-700 dark:text-stone-400 dark:hover:text-stone-200'
+            p === value ? 'hub-btn-primary' : 'hub-tab-btn hub-tx3'
           }`}
         >
           {p}d

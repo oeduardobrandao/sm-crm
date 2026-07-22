@@ -1,5 +1,7 @@
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Tooltip } from 'chart.js';
 import { Bar } from 'react-chartjs-2';
+import { useHub } from '../../HubContext';
+import { chartInk } from './chartInk';
 import type { DashboardReachEntry } from '../../types';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip);
@@ -14,6 +16,8 @@ interface ReachChartProps {
 }
 
 export function ReachChart({ reachHistory }: ReachChartProps) {
+  const { theme } = useHub();
+  const ink = chartInk(theme);
   const totalReach = reachHistory.reduce((sum, e) => sum + e.reach, 0);
 
   const labels = reachHistory.map((e) => {
@@ -29,7 +33,7 @@ export function ReachChart({ reachHistory }: ReachChartProps) {
       {
         data: reachHistory.map((e) => e.reach),
         backgroundColor: reachHistory.map(
-          (e) => `rgba(234, 179, 8, ${0.4 + 0.6 * (e.reach / maxReach)})`,
+          (e) => `rgba(${ink}, ${0.25 + 0.6 * (e.reach / maxReach)})`,
         ),
         borderRadius: { topLeft: 3, topRight: 3, bottomLeft: 0, bottomRight: 0 },
         borderSkipped: 'bottom' as const,

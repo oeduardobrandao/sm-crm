@@ -626,13 +626,15 @@ export function InstagramPostCard({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            background: 'rgba(234, 179, 8, 0.03)',
+            background: 'color-mix(in srgb, var(--hub-txt) 3%, transparent)',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span style={{ color: '#eab308', fontSize: '0.9rem' }}>✓</span>
+            <span style={{ color: 'var(--hub-txt)', fontSize: '0.9rem' }}>✓</span>
             <div>
-              <div style={{ color: '#eab308', fontSize: '0.8rem', fontWeight: 600 }}>Publicado</div>
+              <div style={{ color: 'var(--hub-txt)', fontSize: '0.8rem', fontWeight: 600 }}>
+                Publicado
+              </div>
               {post.published_at && (
                 <div style={{ color: 'var(--hub-tx2)', fontSize: '0.75rem' }}>
                   {new Date(post.published_at).toLocaleDateString('pt-BR', {
@@ -709,9 +711,13 @@ export function InstagramPostCard({
                 marginTop: '0.75rem',
                 padding: '0.6rem',
                 background: post.scheduled_at
-                  ? 'rgba(234, 179, 8, 0.06)'
+                  ? 'color-mix(in srgb, var(--hub-txt) 5%, transparent)'
                   : 'rgba(62, 207, 142, 0.06)',
-                border: `1px solid ${post.scheduled_at ? 'rgba(234, 179, 8, 0.19)' : 'rgba(62, 207, 142, 0.19)'}`,
+                border: `1px solid ${
+                  post.scheduled_at
+                    ? 'color-mix(in srgb, var(--hub-txt) 14%, transparent)'
+                    : 'rgba(62, 207, 142, 0.19)'
+                }`,
                 borderRadius: 6,
                 display: 'flex',
                 alignItems: 'flex-start',
@@ -720,7 +726,7 @@ export function InstagramPostCard({
             >
               <span
                 style={{
-                  color: post.scheduled_at ? '#eab308' : '#3ecf8e',
+                  color: post.scheduled_at ? 'var(--hub-txt)' : '#3ecf8e',
                   fontSize: '0.8rem',
                   flexShrink: 0,
                 }}
@@ -729,7 +735,7 @@ export function InstagramPostCard({
               </span>
               <div
                 style={{
-                  color: post.scheduled_at ? '#eab308' : '#3ecf8e',
+                  color: post.scheduled_at ? 'var(--hub-tx2)' : '#3ecf8e',
                   fontSize: '0.7rem',
                   lineHeight: 1.4,
                 }}
