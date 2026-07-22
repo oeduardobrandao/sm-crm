@@ -4514,31 +4514,50 @@ body.role-agent input[name='valor_total'] {
   gap: 2rem;
 }
 
-.board-row-label {
+/* Template tabs — shown instead of stacked rows when 3+ templates are active */
+.board-tabs {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.75rem;
-  width: 100%;
+  gap: 0.25rem;
+  overflow-x: auto;
   padding-bottom: 0.5rem;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.25rem;
   border-bottom: 2px solid var(--text-main);
 }
 
-.board-row-label-text {
-  font-size: 0.8rem;
-  font-weight: 800;
+.board-tab {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.9rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.board-tab:hover {
+  background: var(--surface-hover);
   color: var(--text-main);
 }
 
-.board-row-label-count {
+.board-tab.active {
+  background: var(--text-main);
+  color: var(--card-bg);
+}
+
+.board-tab-count {
   font-family: var(--font-mono, serif);
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   font-weight: 500;
-  color: var(--text-muted);
-  white-space: nowrap;
+  letter-spacing: 0;
+  opacity: 0.7;
 }
 
 .board-container {

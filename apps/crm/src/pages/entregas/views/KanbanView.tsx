@@ -182,6 +182,10 @@ function SortableCard({
 // Column droppable ID prefix — distinguishes column IDs from card IDs in handleDragEnd
 const COL_PREFIX = 'col:';
 
+// Above this many template rows the board switches from stacked rows to tabs,
+// so the rows don't pile up on top of each other.
+const TABS_THRESHOLD = 1;
+
 export function KanbanView({
   cards,
   onCardClick,
@@ -206,6 +210,7 @@ export function KanbanView({
   );
   const [approvalChoiceCard, setApprovalChoiceCard] = useState<BoardCard | null>(null);
   const [forwardTarget, setForwardTarget] = useState<BoardCard | null>(null);
+  const [activeRowKey, setActiveRowKey] = useState<string | null>(null);
 
   // Sync local state when prop cards change (after refresh — detects workflow list, etapa, and cover changes)
   const cardsFingerprint = cards
@@ -473,73 +478,87 @@ export function KanbanView({
     );
   }
 
+  const renderRowBoard = (row: BoardRow) => (
+    <div className="board-container">
+      {[...row.columns.entries()].map(([stepName, stepCards]) => (
+        <div key={stepName} className="board-column">
+          <div
+            className="board-column-header"
+            {...(approvalStepNames.has(stepName) ? { 'data-tour': 'wf-col-aprovacao' } : {})}
+          >
+            <span className="board-column-title">{stepName}</span>
+            <span className="board-column-count">{stepCards.length}</span>
+          </div>
+          <DroppableColumnBody id={`${COL_PREFIX}${row.key}::${stepName}`}>
+            <SortableContext
+              items={stepCards.map((c) => String(c.workflow.id))}
+              strategy={verticalListSortingStrategy}
+            >
+              {stepCards.length === 0 ? (
+                <div className="board-empty">Nenhuma entrega</div>
+              ) : (
+                stepCards.map((card) => (
+                  <SortableCard
+                    key={card.workflow.id}
+                    card={card}
+                    onCardClick={onCardClick}
+                    onEditClick={onEditClick}
+                    onPostsClick={onPostsClick}
+                    membros={membros}
+                    onRefresh={onRefresh}
+                    onRevertClick={() =>
+                      setRevertTarget({
+                        workflowId: card.workflow.id!,
+                        title: card.workflow.titulo,
+                      })
+                    }
+                    onForwardClick={() => handleForwardCard(card)}
+                    postsCount={postsCounts.get(card.workflow.id!) ?? 0}
+                    approvedPostsCount={approvedPostsCounts.get(card.workflow.id!) ?? 0}
+                    clearedClienteCount={clearedClienteCounts.get(card.workflow.id!) ?? 0}
+                    revisaoInternaCount={revisaoInternaCounts.get(card.workflow.id!) ?? 0}
+                    awaitingClienteCount={awaitingClienteCounts.get(card.workflow.id!) ?? 0}
+                  />
+                ))
+              )}
+            </SortableContext>
+          </DroppableColumnBody>
+        </div>
+      ))}
+    </div>
+  );
+
+  // With 2+ templates the stacked rows pile up, so switch to tabs and show one at a time.
+  const useTabs = boardRows.length > TABS_THRESHOLD;
+  const activeRow = boardRows.find((r) => r.key === activeRowKey) ?? boardRows[0];
+
   return (
     <>
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         <div className="board-rows-wrapper animate-up">
-          {boardRows.map((row) => (
-            <div key={row.key}>
-              {boardRows.length > 1 && (
-                <div className="board-row-label">
-                  <span className="board-row-label-text">{row.label}</span>
-                  <span className="board-row-label-count">
-                    {rowCardCount(row)} {rowCardCount(row) === 1 ? 'entrega' : 'entregas'}
-                  </span>
-                </div>
-              )}
-              <div className="board-container">
-                {[...row.columns.entries()].map(([stepName, stepCards]) => (
-                  <div key={stepName} className="board-column">
-                    <div
-                      className="board-column-header"
-                      {...(approvalStepNames.has(stepName)
-                        ? { 'data-tour': 'wf-col-aprovacao' }
-                        : {})}
-                    >
-                      <span className="board-column-title">{stepName}</span>
-                      <span className="board-column-count">{stepCards.length}</span>
-                    </div>
-                    <DroppableColumnBody id={`${COL_PREFIX}${row.key}::${stepName}`}>
-                      <SortableContext
-                        items={stepCards.map((c) => String(c.workflow.id))}
-                        strategy={verticalListSortingStrategy}
-                      >
-                        {stepCards.length === 0 ? (
-                          <div className="board-empty">Nenhuma entrega</div>
-                        ) : (
-                          stepCards.map((card) => (
-                            <SortableCard
-                              key={card.workflow.id}
-                              card={card}
-                              onCardClick={onCardClick}
-                              onEditClick={onEditClick}
-                              onPostsClick={onPostsClick}
-                              membros={membros}
-                              onRefresh={onRefresh}
-                              onRevertClick={() =>
-                                setRevertTarget({
-                                  workflowId: card.workflow.id!,
-                                  title: card.workflow.titulo,
-                                })
-                              }
-                              onForwardClick={() => handleForwardCard(card)}
-                              postsCount={postsCounts.get(card.workflow.id!) ?? 0}
-                              approvedPostsCount={approvedPostsCounts.get(card.workflow.id!) ?? 0}
-                              clearedClienteCount={clearedClienteCounts.get(card.workflow.id!) ?? 0}
-                              revisaoInternaCount={revisaoInternaCounts.get(card.workflow.id!) ?? 0}
-                              awaitingClienteCount={
-                                awaitingClienteCounts.get(card.workflow.id!) ?? 0
-                              }
-                            />
-                          ))
-                        )}
-                      </SortableContext>
-                    </DroppableColumnBody>
-                  </div>
+          {useTabs && activeRow ? (
+            <div>
+              <div className="board-tabs no-scrollbar" role="tablist">
+                {boardRows.map((row) => (
+                  <button
+                    key={row.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={row.key === activeRow.key}
+                    className={`board-tab${row.key === activeRow.key ? ' active' : ''}`}
+                    onClick={() => setActiveRowKey(row.key)}
+                  >
+                    {row.label}
+                    <span className="board-tab-count">{rowCardCount(row)}</span>
+                  </button>
                 ))}
               </div>
+              {renderRowBoard(activeRow)}
             </div>
-          ))}
+          ) : (
+            // Single template — no tab bar needed, just the board.
+            boardRows.map((row) => <div key={row.key}>{renderRowBoard(row)}</div>)
+          )}
         </div>
         <DragOverlay>
           {activeCard && (
