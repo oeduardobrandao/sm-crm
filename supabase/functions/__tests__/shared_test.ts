@@ -15,8 +15,10 @@ Deno.test("buildCorsHeaders echoes allowlisted origins and falls back for non-br
   assertEquals(allowed["Access-Control-Allow-Origin"], "https://hub.mesaas.com");
   assertEquals(fallback["Access-Control-Allow-Origin"], "https://app.mesaas.com");
   assert(allowed["Access-Control-Allow-Methods"].includes("OPTIONS"));
-  // PUT must stay allowlisted: design-manage's browser-issued PUT (Estúdio autosave)
-  // fails CORS preflight without it.
+  // PUT must stay allowlisted: browsers PUT directly to R2 presigned upload URLs returned
+  // by file-upload-url, post-media-upload-url, and ideia-media-manage/hub-ideias (see
+  // apps/crm/src/services/{inlineImage,fileService,postMedia,ideiaMedia}.ts and
+  // apps/hub/src/services/ideiaMedia.ts) — CORS preflight fails without it.
   assert(allowed["Access-Control-Allow-Methods"].includes("PUT"));
 });
 

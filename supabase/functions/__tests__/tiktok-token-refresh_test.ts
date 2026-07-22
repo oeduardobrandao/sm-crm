@@ -1,5 +1,5 @@
 // getFreshTikTokToken — the ONLY code path that reads/refreshes TikTok tokens (Task A4).
-// Mocks `svc` via the shared supabaseMock (design-import_test.ts's convention) and `fetch` via a
+// Mocks `svc` via the shared supabaseMock (file-upload-url_test.ts's convention) and `fetch` via a
 // local stubFetch (tiktok-shared_test.ts's convention — ./assert.ts deliberately stays tiny).
 // A `sleep` override is injected through opts so the lock-contention polling tests don't burn
 // real 2s waits (see GetFreshTikTokTokenOptions in _shared/tiktok.ts).
