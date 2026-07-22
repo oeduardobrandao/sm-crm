@@ -45,12 +45,6 @@ export interface BoardRow {
   columns: Map<string, BoardCard[]>;
 }
 
-export interface BoardFilters {
-  filterCliente: number | null;
-  filterMembro: number | null;
-  filterStatus: 'todos' | 'atrasado' | 'urgente' | 'em_dia';
-}
-
 /**
  * Computes the absolute deadline date from an etapa's start time and duration.
  * - corridos: adds prazo_dias calendar days

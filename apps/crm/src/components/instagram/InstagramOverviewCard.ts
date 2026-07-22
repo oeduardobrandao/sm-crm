@@ -90,15 +90,15 @@ export function renderInstagramOverviewCard(
 
       <div class="kpi-grid instagram-overview__account-kpis" style="margin-bottom: 1.5rem;">
          <div class="kpi-card">
-            <span class="kpi-label">${escapeHTML(t('instagram.followers')).toUpperCase()}</span>
+            <span class="kpi-label">${escapeHTML(t('instagram.followers'))}</span>
             <span class="kpi-value">${numFmt(account.follower_count)}</span>
          </div>
          <div class="kpi-card">
-            <span class="kpi-label">${escapeHTML(t('instagram.following')).toUpperCase()}</span>
+            <span class="kpi-label">${escapeHTML(t('instagram.following'))}</span>
             <span class="kpi-value">${numFmt(account.following_count)}</span>
          </div>
          <div class="kpi-card">
-            <span class="kpi-label">${escapeHTML(t('instagram.posts')).toUpperCase()}</span>
+            <span class="kpi-label">${escapeHTML(t('instagram.posts'))}</span>
             <span class="kpi-value">${numFmt(account.media_count)}</span>
          </div>
       </div>

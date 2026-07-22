@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ArrowLeft, Edit2 } from 'lucide-react';
+import { ArrowLeft, Edit2, Wallet, CheckCircle2, Clock } from 'lucide-react';
+import { StatCard } from '@/components/StatCard';
+import { StatCardGrid } from '@/components/StatCardGrid';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -166,18 +168,39 @@ export default function MembroDetalhePage() {
           </div>
 
           {!isAgent && (
-            <div className="kpi-grid" style={{ marginBottom: '1.5rem' }}>
-              {[
-                { label: 'Custo Mensal', value: formatBRL(membro.custo_mensal ?? 0) },
-                { label: 'Total Pago', value: formatBRL(totalPago) },
-                { label: 'Pendente', value: formatBRL(pendente) },
-              ].map((k) => (
-                <div key={k.label} className="kpi-card">
-                  <div className="kpi-label">{k.label}</div>
-                  <div className="kpi-value">{k.value}</div>
-                </div>
+            <StatCardGrid style={{ marginBottom: '1.5rem' }}>
+              {(
+                [
+                  {
+                    label: 'Custo mensal',
+                    value: formatBRL(membro.custo_mensal ?? 0),
+                    icon: Wallet,
+                    tone: 'blue' as const,
+                  },
+                  {
+                    label: 'Total pago',
+                    value: formatBRL(totalPago),
+                    icon: CheckCircle2,
+                    tone: 'green' as const,
+                  },
+                  {
+                    label: 'Pendente',
+                    value: formatBRL(pendente),
+                    icon: Clock,
+                    tone: 'amber' as const,
+                  },
+                ] as const
+              ).map((k) => (
+                <StatCard
+                  key={k.label}
+                  label={k.label}
+                  value={k.value}
+                  icon={k.icon}
+                  tone={k.tone}
+                  compactValue
+                />
               ))}
-            </div>
+            </StatCardGrid>
           )}
 
           <div className="card" style={{ marginBottom: '1.5rem' }}>

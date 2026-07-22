@@ -1,18 +1,11 @@
 import { useState } from 'react';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
@@ -22,18 +15,31 @@ import {
   SheetTitle,
   SheetDescription,
 } from '@/components/ui/sheet';
-import { ChevronDown, Search, SlidersHorizontal } from 'lucide-react';
+import { Check, ChevronDown, Search, SlidersHorizontal } from 'lucide-react';
 import type { Cliente, Membro, WorkflowTemplate } from '../../../store';
 
+export type StatusFilter = 'atrasado' | 'urgente' | 'em_dia';
+
+/** Every dropdown is multi-select: an empty array means "no filter" (show all). */
 export interface FilterState {
-  filterCliente: number | null;
-  filterMembro: number | null;
-  filterPostResponsavel: number | null;
-  filterStatus: 'todos' | 'atrasado' | 'urgente' | 'em_dia';
+  filterClientes: number[];
+  filterMembros: number[];
+  filterPostResponsaveis: number[];
+  filterStatus: StatusFilter[];
   filterSearch: string;
-  filterEtapa: string | null;
-  filterTemplate: number | null;
+  filterEtapas: string[];
+  filterTemplates: number[];
 }
+
+export const EMPTY_FILTERS: FilterState = {
+  filterClientes: [],
+  filterMembros: [],
+  filterPostResponsaveis: [],
+  filterStatus: [],
+  filterSearch: '',
+  filterEtapas: [],
+  filterTemplates: [],
+};
 
 interface EntregasFiltersProps {
   filters: FilterState;
@@ -44,22 +50,136 @@ interface EntregasFiltersProps {
   etapaNames: string[];
 }
 
-const STATUS_OPTIONS: { id: FilterState['filterStatus']; label: string; color?: string }[] = [
-  { id: 'todos', label: 'Status' },
-  { id: 'atrasado', label: 'Atrasados', color: '#ef4444' },
-  { id: 'urgente', label: 'Urgentes', color: '#ea580c' },
-  { id: 'em_dia', label: 'Em dia', color: '#3ecf8e' },
+const STATUS_OPTIONS: { value: StatusFilter; label: string; color: string }[] = [
+  { value: 'atrasado', label: 'Atrasados', color: '#ef4444' },
+  { value: 'urgente', label: 'Urgentes', color: '#ea580c' },
+  { value: 'em_dia', label: 'Em dia', color: '#3ecf8e' },
 ];
 
 function countActiveFilters(filters: FilterState): number {
-  let count = 0;
-  if (filters.filterCliente) count++;
-  if (filters.filterMembro) count++;
-  if (filters.filterPostResponsavel) count++;
-  if (filters.filterStatus !== 'todos') count++;
-  if (filters.filterEtapa) count++;
-  if (filters.filterTemplate) count++;
-  return count;
+  return [
+    filters.filterClientes,
+    filters.filterMembros,
+    filters.filterPostResponsaveis,
+    filters.filterStatus,
+    filters.filterEtapas,
+    filters.filterTemplates,
+  ].filter((v) => v.length > 0).length;
+}
+
+interface MultiSelectOption<T extends string | number> {
+  value: T;
+  label: string;
+  color?: string;
+}
+
+/**
+ * Pill dropdown holding any number of selected values.
+ * Trigger reads "<first label> +N" once more than one option is picked.
+ */
+function MultiSelectFilter<T extends string | number>({
+  placeholder,
+  options,
+  selected,
+  onSelectedChange,
+  isStacked,
+}: {
+  placeholder: string;
+  options: MultiSelectOption<T>[];
+  selected: T[];
+  onSelectedChange: (next: T[]) => void;
+  isStacked: boolean;
+}) {
+  const selectedOptions = options.filter((o) => selected.includes(o.value));
+  const first = selectedOptions[0];
+  const label = !first
+    ? placeholder
+    : selectedOptions.length === 1
+      ? first.label
+      : `${first.label} +${selectedOptions.length - 1}`;
+
+  const toggle = (value: T) => {
+    onSelectedChange(
+      selected.includes(value) ? selected.filter((v) => v !== value) : [...selected, value],
+    );
+  };
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="outline"
+          className={`h-9 px-4 text-xs gap-1.5 font-normal shadow-sm mb-0 justify-between ${
+            isStacked ? 'w-full rounded-lg' : 'rounded-full w-auto min-w-[160px]'
+          } ${selected.length > 0 ? 'border-[var(--primary-color)]' : ''}`}
+        >
+          <span className="flex items-center gap-1.5 truncate">
+            {first?.color && (
+              <span
+                className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
+                style={{ background: first.color }}
+              />
+            )}
+            <span className="truncate">{label}</span>
+          </span>
+          <ChevronDown className="h-3.5 w-3.5 opacity-60 shrink-0" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="max-h-[320px] overflow-y-auto min-w-[200px]">
+        {options.length === 0 && (
+          <DropdownMenuItem disabled className="text-xs">
+            Nenhuma opção
+          </DropdownMenuItem>
+        )}
+        {options.map((o) => {
+          const isChecked = selected.includes(o.value);
+          return (
+            // A plain item with an always-visible box: the shared CheckboxItem only
+            // renders a tick once checked, which hides that these are multi-select.
+            <DropdownMenuItem
+              key={String(o.value)}
+              role="menuitemcheckbox"
+              aria-checked={isChecked}
+              className="gap-2 text-xs"
+              // Keep the menu open so several values can be picked in one go
+              onSelect={(e) => {
+                e.preventDefault();
+                toggle(o.value);
+              }}
+            >
+              <span
+                aria-hidden
+                className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border ${
+                  isChecked
+                    ? 'border-[var(--primary-color)] bg-[var(--primary-color)]'
+                    : 'border-input'
+                }`}
+              >
+                {isChecked && <Check className="h-3 w-3 text-black" strokeWidth={3} />}
+              </span>
+              <span className="flex items-center gap-1.5">
+                {o.color && (
+                  <span
+                    className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
+                    style={{ background: o.color }}
+                  />
+                )}
+                {o.label}
+              </span>
+            </DropdownMenuItem>
+          );
+        })}
+        {selected.length > 0 && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => onSelectedChange([])} className="text-xs">
+              Limpar seleção
+            </DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
 
 function FilterControls({
@@ -80,157 +200,62 @@ function FilterControls({
   sortedEtapaNames: string[];
 }) {
   const isStacked = layout === 'stacked';
+  const membroOptions = sortedMembros
+    .filter((m) => m.id != null)
+    .map((m) => ({ value: m.id!, label: m.nome }));
 
   return (
     <div className={isStacked ? 'flex flex-col gap-4' : 'flex flex-wrap items-center gap-3'}>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="outline"
-            className={`h-9 ${isStacked ? 'w-full justify-between rounded-lg' : 'rounded-full'} px-4 text-xs gap-1.5 font-normal shadow-sm mb-0`}
-          >
-            {(() => {
-              const opt = STATUS_OPTIONS.find((o) => o.id === filters.filterStatus);
-              return (
-                <>
-                  {opt?.color && (
-                    <span
-                      className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
-                      style={{ background: opt.color }}
-                    />
-                  )}
-                  {opt?.label ?? 'Status'}
-                  <ChevronDown className="h-3.5 w-3.5 opacity-60" />
-                </>
-              );
-            })()}
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-40">
-          <DropdownMenuRadioGroup
-            value={filters.filterStatus}
-            onValueChange={(v) =>
-              onChange({ ...filters, filterStatus: v as FilterState['filterStatus'] })
-            }
-          >
-            {STATUS_OPTIONS.map(({ id, label, color }) => (
-              <DropdownMenuRadioItem key={id} value={id}>
-                <span className="flex items-center gap-1.5">
-                  {color && (
-                    <span
-                      className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
-                      style={{ background: color }}
-                    />
-                  )}
-                  {label}
-                </span>
-              </DropdownMenuRadioItem>
-            ))}
-          </DropdownMenuRadioGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <MultiSelectFilter
+        placeholder="Status"
+        options={STATUS_OPTIONS}
+        selected={filters.filterStatus}
+        onSelectedChange={(filterStatus) => onChange({ ...filters, filterStatus })}
+        isStacked={isStacked}
+      />
 
       <div className={isStacked ? 'flex flex-col gap-3' : 'flex gap-2 flex-nowrap'}>
-        <Select
-          value={filters.filterCliente ? String(filters.filterCliente) : '__none__'}
-          onValueChange={(val) =>
-            onChange({ ...filters, filterCliente: val === '__none__' ? null : Number(val) })
+        <MultiSelectFilter
+          placeholder="Todos os clientes"
+          options={activeClientes
+            .filter((c) => c.id != null)
+            .map((c) => ({ value: c.id!, label: c.nome }))}
+          selected={filters.filterClientes}
+          onSelectedChange={(filterClientes) => onChange({ ...filters, filterClientes })}
+          isStacked={isStacked}
+        />
+        <MultiSelectFilter
+          placeholder="Todos os membros"
+          options={membroOptions}
+          selected={filters.filterMembros}
+          onSelectedChange={(filterMembros) => onChange({ ...filters, filterMembros })}
+          isStacked={isStacked}
+        />
+        <MultiSelectFilter
+          placeholder="Responsável do post"
+          options={membroOptions}
+          selected={filters.filterPostResponsaveis}
+          onSelectedChange={(filterPostResponsaveis) =>
+            onChange({ ...filters, filterPostResponsaveis })
           }
-        >
-          <SelectTrigger
-            className={`!text-xs h-9 px-4 mb-0 ${isStacked ? '!rounded-lg w-full' : '!rounded-full w-auto min-w-[160px]'}`}
-          >
-            <SelectValue placeholder="Todos os clientes" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__none__">Todos os clientes</SelectItem>
-            {activeClientes.map((c) => (
-              <SelectItem key={c.id} value={String(c.id)}>
-                {c.nome}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select
-          value={filters.filterMembro ? String(filters.filterMembro) : '__none__'}
-          onValueChange={(val) =>
-            onChange({ ...filters, filterMembro: val === '__none__' ? null : Number(val) })
-          }
-        >
-          <SelectTrigger
-            className={`!text-xs h-9 px-4 mb-0 ${isStacked ? '!rounded-lg w-full' : '!rounded-full w-auto min-w-[160px]'}`}
-          >
-            <SelectValue placeholder="Todos os membros" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__none__">Todos os membros</SelectItem>
-            {sortedMembros.map((m) => (
-              <SelectItem key={m.id} value={String(m.id)}>
-                {m.nome}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select
-          value={filters.filterPostResponsavel ? String(filters.filterPostResponsavel) : '__none__'}
-          onValueChange={(val) =>
-            onChange({ ...filters, filterPostResponsavel: val === '__none__' ? null : Number(val) })
-          }
-        >
-          <SelectTrigger
-            className={`!text-xs h-9 px-4 mb-0 ${isStacked ? '!rounded-lg w-full' : '!rounded-full w-auto min-w-[160px]'}`}
-          >
-            <SelectValue placeholder="Responsável do post" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__none__">Responsável do post</SelectItem>
-            {sortedMembros.map((m) => (
-              <SelectItem key={m.id} value={String(m.id)}>
-                {m.nome}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select
-          value={filters.filterEtapa ?? '__none__'}
-          onValueChange={(val) =>
-            onChange({ ...filters, filterEtapa: val === '__none__' ? null : val })
-          }
-        >
-          <SelectTrigger
-            className={`!text-xs h-9 px-4 mb-0 ${isStacked ? '!rounded-lg w-full' : '!rounded-full w-auto min-w-[160px]'}`}
-          >
-            <SelectValue placeholder="Todas as etapas" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__none__">Todas as etapas</SelectItem>
-            {sortedEtapaNames.map((name) => (
-              <SelectItem key={name} value={name}>
-                {name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select
-          value={filters.filterTemplate ? String(filters.filterTemplate) : '__none__'}
-          onValueChange={(val) =>
-            onChange({ ...filters, filterTemplate: val === '__none__' ? null : Number(val) })
-          }
-        >
-          <SelectTrigger
-            className={`!text-xs h-9 px-4 mb-0 ${isStacked ? '!rounded-lg w-full' : '!rounded-full w-auto min-w-[160px]'}`}
-          >
-            <SelectValue placeholder="Todos os templates" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__none__">Todos os templates</SelectItem>
-            {sortedTemplates.map((t) => (
-              <SelectItem key={t.id} value={String(t.id)}>
-                {t.nome}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          isStacked={isStacked}
+        />
+        <MultiSelectFilter
+          placeholder="Todas as etapas"
+          options={sortedEtapaNames.map((name) => ({ value: name, label: name }))}
+          selected={filters.filterEtapas}
+          onSelectedChange={(filterEtapas) => onChange({ ...filters, filterEtapas })}
+          isStacked={isStacked}
+        />
+        <MultiSelectFilter
+          placeholder="Todos os templates"
+          options={sortedTemplates
+            .filter((t) => t.id != null)
+            .map((t) => ({ value: t.id!, label: t.nome }))}
+          selected={filters.filterTemplates}
+          onSelectedChange={(filterTemplates) => onChange({ ...filters, filterTemplates })}
+          isStacked={isStacked}
+        />
       </div>
     </div>
   );
@@ -277,6 +302,15 @@ export function EntregasFilters({
         </div>
         <div className="w-px h-6 bg-border shrink-0" />
         <FilterControls layout="inline" {...sharedProps} />
+        {activeCount > 0 && (
+          <Button
+            variant="ghost"
+            className="h-9 px-3 text-xs font-normal mb-0"
+            onClick={() => onChange({ ...EMPTY_FILTERS, filterSearch: filters.filterSearch })}
+          >
+            Limpar filtros
+          </Button>
+        )}
       </div>
 
       {/* Mobile: search + filter button that opens sheet */}
@@ -324,17 +358,7 @@ export function EntregasFilters({
             <Button
               variant="ghost"
               className="w-full mt-4 text-xs"
-              onClick={() => {
-                onChange({
-                  ...filters,
-                  filterCliente: null,
-                  filterMembro: null,
-                  filterPostResponsavel: null,
-                  filterStatus: 'todos',
-                  filterEtapa: null,
-                  filterTemplate: null,
-                });
-              }}
+              onClick={() => onChange({ ...EMPTY_FILTERS, filterSearch: filters.filterSearch })}
             >
               Limpar filtros
             </Button>

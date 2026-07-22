@@ -12,7 +12,14 @@ import {
   Heart,
   MessageCircle,
   Bookmark,
+  Instagram,
+  Users,
+  Eye,
+  MousePointerClick,
+  TrendingUp,
 } from 'lucide-react';
+import { StatCard } from '@/components/StatCard';
+import { StatCardGrid } from '@/components/StatCardGrid';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
@@ -556,6 +563,13 @@ export default function AnalyticsPage() {
     return daysSince > 7;
   });
 
+  // Leader cards share the KPI block, so these are hoisted out of the JSX
+  const bestByReach = [...filteredAccounts].sort((a, b) => b.reach_28d - a.reach_28d)[0];
+  const mostPosts = [...filteredAccounts].sort((a, b) => b.posts_last_30d - a.posts_last_30d)[0];
+  const mostFollowers = [...filteredAccounts].sort(
+    (a, b) => b.follower_count - a.follower_count,
+  )[0];
+
   const totalFollowers = filteredAccounts.reduce((s, a) => s + a.follower_count, 0);
   const totalReach = filteredAccounts.reduce((s, a) => s + a.reach_28d, 0);
   const avgEngagement =
@@ -636,7 +650,7 @@ export default function AnalyticsPage() {
 
   return (
     <div className="page-content" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      <header className="header animate-up">
+      <header className="header header--flush animate-up">
         <div className="header-title">
           <h1>Analytics</h1>
         </div>
@@ -693,157 +707,147 @@ export default function AnalyticsPage() {
       </div>
 
       {silentAccounts.length > 0 && (
-        <div className="analytics-callout animate-up">
-          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.75rem' }}>
-            <strong style={{ color: 'var(--warning)' }}>Contas Silenciosas</strong>
-            {silentAccounts.map((a) => {
-              const daysSince = a.last_post_at
-                ? Math.floor((Date.now() - new Date(a.last_post_at).getTime()) / 86400000)
-                : null;
-              return (
-                <Link
-                  key={a.client_id}
-                  to={`/analytics/${a.client_id}`}
-                  className="silent-account-chip"
-                >
-                  <span
-                    className="avatar"
-                    style={{ width: 24, height: 24, fontSize: '0.6rem', background: a.client_cor }}
+        <div className="analytics-callout analytics-callout--with-icon animate-up" role="status">
+          <AlertTriangle className="h-5 w-5 analytics-callout__icon" aria-hidden />
+          <div className="analytics-callout__body">
+            <div className="analytics-callout__title">
+              Contas silenciosas
+              <span className="analytics-callout__count">
+                {silentAccounts.length === 1
+                  ? '1 conta sem postar no período'
+                  : `${silentAccounts.length} contas sem postar no período`}
+              </span>
+            </div>
+            <div className="analytics-callout__chips">
+              {silentAccounts.map((a) => {
+                const daysSince = a.last_post_at
+                  ? Math.floor((Date.now() - new Date(a.last_post_at).getTime()) / 86400000)
+                  : null;
+                return (
+                  <Link
+                    key={a.client_id}
+                    to={`/analytics/${a.client_id}`}
+                    className="silent-account-chip"
                   >
-                    {a.client_sigla}
-                  </span>
-                  <span>{a.client_name}</span>
-                  <span className="badge badge-warning badge--sm">
-                    {daysSince !== null ? `${daysSince}d sem postar` : 'Sem posts'}
-                  </span>
-                </Link>
-              );
-            })}
+                    <span
+                      className="avatar"
+                      style={{
+                        width: 24,
+                        height: 24,
+                        fontSize: '0.6rem',
+                        background: a.client_cor,
+                      }}
+                    >
+                      {a.client_sigla}
+                    </span>
+                    <span>{a.client_name}</span>
+                    <span className="badge badge-warning badge--sm">
+                      {daysSince !== null ? `${daysSince}d sem postar` : 'Sem posts'}
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
 
-      <div className="kpi-grid analytics-kpi-scroll animate-up">
-        <div className="kpi-card card-dark">
-          <span className="kpi-label" style={{ color: 'rgba(255,255,255,0.7)' }}>
-            CONTAS CONECTADAS
-          </span>
-          <span className="kpi-value" style={{ color: '#ffffff' }}>
-            {summary.connected}{' '}
-            <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.5)' }}>
-              / {summary.total}
-            </span>
-          </span>
-          <span className="kpi-sub" style={{ color: 'var(--success)' }}>
-            {summary.growing} crescendo
-          </span>
-        </div>
-        <div className="kpi-card">
-          <span className="kpi-label">SEGUIDORES TOTAIS</span>
-          <span className="kpi-value">{formatNumber(totalFollowers)}</span>
-          <span className="kpi-sub" style={{ color: 'var(--text-muted)' }}>
-            {summary.declining} em declínio
-          </span>
-        </div>
-        <div className="kpi-card">
-          <span className="kpi-label">ALCANCE TOTAL (28D)</span>
-          <span className="kpi-value">{formatNumber(totalReach)}</span>
-          <span className="kpi-sub" style={{ color: 'var(--text-muted)' }}>
-            Soma de todas as contas
-          </span>
-        </div>
-        <div className="kpi-card card-blue">
-          <span className="kpi-label" style={{ color: 'rgba(0,0,0,0.6)' }}>
-            ENGAJAMENTO MÉDIO
-          </span>
-          <span className="kpi-value" style={{ color: 'var(--dark)' }}>
-            {avgEngagement.toFixed(2)}%
-          </span>
-          <span className="kpi-sub" style={{ color: 'rgba(0,0,0,0.7)' }}>
-            Média de todas as contas
-          </span>
-        </div>
-        <div className="kpi-card">
-          <span className="kpi-label">CLIQUES NO LINK (28D)</span>
-          <span className="kpi-value">{formatNumber(avgWebsiteClicks)}</span>
-          <span className="kpi-sub" style={{ color: 'var(--text-muted)' }}>
-            Média por conta
-          </span>
-        </div>
-      </div>
-
-      {filteredAccounts.length > 0 &&
-        (() => {
-          const bestByReach = [...filteredAccounts].sort((a, b) => b.reach_28d - a.reach_28d)[0];
-          const mostPosts = [...filteredAccounts].sort(
-            (a, b) => b.posts_last_30d - a.posts_last_30d,
-          )[0];
-          const mostFollowers = [...filteredAccounts].sort(
-            (a, b) => b.follower_count - a.follower_count,
-          )[0];
-          return (
-            <div className="kpi-grid analytics-kpi-scroll animate-up" style={{ marginTop: 0 }}>
-              {summary.bestByEngagement && (
-                <div className="kpi-card" style={{ borderLeft: '3px solid var(--success)' }}>
-                  <span className="kpi-label">MELHOR ENGAJAMENTO</span>
-                  <span className="kpi-value" style={{ fontSize: '1.1rem' }}>
-                    {summary.bestByEngagement.client_name}
-                  </span>
-                  <span className="kpi-sub" style={{ color: 'var(--success)' }}>
-                    {summary.bestByEngagement.engagement_rate_avg.toFixed(2)}%
-                  </span>
-                </div>
-              )}
-              {summary.mostImproved && summary.mostImproved.follower_delta > 0 && (
-                <div className="kpi-card" style={{ borderLeft: '3px solid var(--primary-color)' }}>
-                  <span className="kpi-label">MAIOR CRESCIMENTO</span>
-                  <span className="kpi-value" style={{ fontSize: '1.1rem' }}>
-                    {summary.mostImproved.client_name}
-                  </span>
-                  <span className="kpi-sub" style={{ color: 'var(--primary-color)' }}>
-                    +{formatNumber(summary.mostImproved.follower_delta)} seguidores
-                  </span>
-                </div>
-              )}
-              {bestByReach && bestByReach.reach_28d > 0 && (
-                <div className="kpi-card" style={{ borderLeft: '3px solid var(--info, #3b82f6)' }}>
-                  <span className="kpi-label">MAIOR ALCANCE</span>
-                  <span className="kpi-value" style={{ fontSize: '1.1rem' }}>
-                    {bestByReach.client_name}
-                  </span>
-                  <span className="kpi-sub" style={{ color: 'var(--info, #3b82f6)' }}>
-                    {formatNumber(bestByReach.reach_28d)} alcance 28d
-                  </span>
-                </div>
-              )}
-              {mostFollowers && (
-                <div
-                  className="kpi-card"
-                  style={{ borderLeft: '3px solid var(--warning, #f59e0b)' }}
-                >
-                  <span className="kpi-label">MAIS SEGUIDORES</span>
-                  <span className="kpi-value" style={{ fontSize: '1.1rem' }}>
-                    {mostFollowers.client_name}
-                  </span>
-                  <span className="kpi-sub" style={{ color: 'var(--warning, #f59e0b)' }}>
-                    {formatNumber(mostFollowers.follower_count)} seguidores
-                  </span>
-                </div>
-              )}
-              {mostPosts && mostPosts.posts_last_30d > 0 && (
-                <div className="kpi-card" style={{ borderLeft: '3px solid var(--text-muted)' }}>
-                  <span className="kpi-label">MAIS ATIVO</span>
-                  <span className="kpi-value" style={{ fontSize: '1.1rem' }}>
-                    {mostPosts.client_name}
-                  </span>
-                  <span className="kpi-sub" style={{ color: 'var(--text-muted)' }}>
-                    {mostPosts.posts_last_30d} posts em 30d
-                  </span>
-                </div>
-              )}
-            </div>
-          );
-        })()}
+      <StatCardGrid className="analytics-kpi-scroll animate-up">
+        <StatCard
+          label="Contas conectadas"
+          icon={Instagram}
+          tone="pink"
+          value={
+            <>
+              {summary.connected}{' '}
+              <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                / {summary.total}
+              </span>
+            </>
+          }
+          sub={`${summary.growing} crescendo`}
+        />
+        <StatCard
+          label="Seguidores totais"
+          icon={Users}
+          tone="blue"
+          value={formatNumber(totalFollowers)}
+          sub={`${summary.declining} em declínio`}
+        />
+        <StatCard
+          label="Alcance total (28d)"
+          icon={Eye}
+          tone="violet"
+          value={formatNumber(totalReach)}
+          sub="Soma de todas as contas"
+        />
+        <StatCard
+          label="Engajamento médio"
+          icon={Heart}
+          tone="amber"
+          value={`${avgEngagement.toFixed(2)}%`}
+          sub="Média de todas as contas"
+        />
+        <StatCard
+          label="Cliques no link (28d)"
+          icon={MousePointerClick}
+          tone="green"
+          value={formatNumber(avgWebsiteClicks)}
+          sub="Média por conta"
+        />
+        {filteredAccounts.length > 0 && summary.bestByEngagement && (
+          <StatCard
+            label="Melhor engajamento"
+            icon={Heart}
+            tone="green"
+            compactValue
+            value={summary.bestByEngagement.client_name}
+            sub={`${summary.bestByEngagement.engagement_rate_avg.toFixed(2)}%`}
+          />
+        )}
+        {filteredAccounts.length > 0 &&
+          summary.mostImproved &&
+          summary.mostImproved.follower_delta > 0 && (
+            <StatCard
+              label="Maior crescimento"
+              icon={TrendingUp}
+              tone="amber"
+              compactValue
+              value={summary.mostImproved.client_name}
+              sub={`+${formatNumber(summary.mostImproved.follower_delta)} seguidores`}
+            />
+          )}
+        {bestByReach && bestByReach.reach_28d > 0 && (
+          <StatCard
+            label="Maior alcance"
+            icon={Eye}
+            tone="blue"
+            compactValue
+            value={bestByReach.client_name}
+            sub={`${formatNumber(bestByReach.reach_28d)} alcance 28d`}
+          />
+        )}
+        {mostFollowers && (
+          <StatCard
+            label="Mais seguidores"
+            icon={Users}
+            tone="violet"
+            compactValue
+            value={mostFollowers.client_name}
+            sub={`${formatNumber(mostFollowers.follower_count)} seguidores`}
+          />
+        )}
+        {mostPosts && mostPosts.posts_last_30d > 0 && (
+          <StatCard
+            label="Mais ativo"
+            icon={Zap}
+            tone="slate"
+            compactValue
+            value={mostPosts.client_name}
+            sub={`${mostPosts.posts_last_30d} posts em 30d`}
+          />
+        )}
+      </StatCardGrid>
 
       {/* Top posts */}
       {reachRankedPosts.length > 0 && (

@@ -18,30 +18,42 @@ vi.mock('sonner', () => ({
 }));
 
 vi.mock('../components/EntregasFilters', () => ({
+  EMPTY_FILTERS: {
+    filterClientes: [],
+    filterMembros: [],
+    filterPostResponsaveis: [],
+    filterStatus: [],
+    filterSearch: '',
+    filterEtapas: [],
+    filterTemplates: [],
+  },
   EntregasFilters: ({
     filters,
     onChange,
     clientes,
     membros,
   }: {
-    filters: { filterCliente: number | null; filterMembro: number | null; filterStatus: string };
+    filters: { filterClientes: number[]; filterMembros: number[]; filterStatus: string[] };
     onChange: (next: {
-      filterCliente: number | null;
-      filterMembro: number | null;
-      filterStatus: string;
+      filterClientes: number[];
+      filterMembros: number[];
+      filterStatus: string[];
     }) => void;
     clientes: Array<{ id: number; nome: string }>;
     membros: Array<{ id: number; nome: string }>;
   }) => (
     <div>
-      <div>Filters: {filters.filterStatus}</div>
+      <div>Filters: {filters.filterStatus.join(',')}</div>
       <div>Clientes: {clientes.length}</div>
       <div>Membros: {membros.length}</div>
-      <button onClick={() => onChange({ ...filters, filterStatus: 'atrasado' })}>
+      <button onClick={() => onChange({ ...filters, filterStatus: ['atrasado'] })}>
         Filter overdue
       </button>
-      <button onClick={() => onChange({ ...filters, filterCliente: 10 })}>Filter client</button>
-      <button onClick={() => onChange({ ...filters, filterMembro: 7 })}>Filter member</button>
+      <button onClick={() => onChange({ ...filters, filterStatus: ['atrasado', 'urgente'] })}>
+        Filter overdue and urgent
+      </button>
+      <button onClick={() => onChange({ ...filters, filterClientes: [10] })}>Filter client</button>
+      <button onClick={() => onChange({ ...filters, filterMembros: [7] })}>Filter member</button>
     </div>
   ),
 }));
@@ -363,6 +375,10 @@ describe('EntregasPage', () => {
 
     fireEvent.click(screen.getByText('Filter overdue'));
     expect(screen.getByText('Kanban view: Fluxo Atrasado')).toBeInTheDocument();
+
+    // Multi-select is an OR across the picked statuses
+    fireEvent.click(screen.getByText('Filter overdue and urgent'));
+    expect(screen.getByText('Kanban view: Fluxo Editorial, Fluxo Atrasado')).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('Templates'));
     expect(screen.getByText('Templates modal')).toBeInTheDocument();
