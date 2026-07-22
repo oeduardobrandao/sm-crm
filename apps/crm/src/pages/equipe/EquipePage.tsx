@@ -5,7 +5,18 @@ import { z } from 'zod';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Plus, Edit2, Trash2, Upload, Info, HelpCircle, Search } from 'lucide-react';
+import {
+  Plus,
+  Edit2,
+  Trash2,
+  Upload,
+  Info,
+  HelpCircle,
+  Search,
+  UsersRound,
+  Wallet,
+} from 'lucide-react';
+import { StatCard } from '@/components/StatCard';
 import { openCSVSelector } from '../../lib/csv';
 import { Button } from '@/components/ui/button';
 import { HelpTooltip } from '@/components/help/HelpTooltip';
@@ -296,15 +307,15 @@ export default function EquipePage() {
       )}
 
       <div className="kpi-grid" style={{ marginBottom: '1.5rem' }}>
-        <div className="kpi-card">
-          <div className="kpi-label">Total de Membros</div>
-          <div className="kpi-value">{membros.length}</div>
-        </div>
+        <StatCard label="Total de membros" value={membros.length} icon={UsersRound} tone="blue" />
         {!isAgent && (
-          <div className="kpi-card">
-            <div className="kpi-label">Custo Mensal Total</div>
-            <div className="kpi-value">{formatBRL(totalCost)}</div>
-          </div>
+          <StatCard
+            label="Custo mensal total"
+            value={formatBRL(totalCost)}
+            icon={Wallet}
+            tone="violet"
+            compactValue
+          />
         )}
       </div>
 

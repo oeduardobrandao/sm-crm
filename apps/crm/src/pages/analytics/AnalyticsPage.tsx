@@ -12,7 +12,13 @@ import {
   Heart,
   MessageCircle,
   Bookmark,
+  Instagram,
+  Users,
+  Eye,
+  MousePointerClick,
+  TrendingUp,
 } from 'lucide-react';
+import { StatCard } from '@/components/StatCard';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import {
@@ -724,52 +730,48 @@ export default function AnalyticsPage() {
       )}
 
       <div className="kpi-grid analytics-kpi-scroll animate-up">
-        <div className="kpi-card card-dark">
-          <span className="kpi-label" style={{ color: 'rgba(255,255,255,0.7)' }}>
-            CONTAS CONECTADAS
-          </span>
-          <span className="kpi-value" style={{ color: '#ffffff' }}>
-            {summary.connected}{' '}
-            <span style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.5)' }}>
-              / {summary.total}
-            </span>
-          </span>
-          <span className="kpi-sub" style={{ color: 'var(--success)' }}>
-            {summary.growing} crescendo
-          </span>
-        </div>
-        <div className="kpi-card">
-          <span className="kpi-label">SEGUIDORES TOTAIS</span>
-          <span className="kpi-value">{formatNumber(totalFollowers)}</span>
-          <span className="kpi-sub" style={{ color: 'var(--text-muted)' }}>
-            {summary.declining} em declínio
-          </span>
-        </div>
-        <div className="kpi-card">
-          <span className="kpi-label">ALCANCE TOTAL (28D)</span>
-          <span className="kpi-value">{formatNumber(totalReach)}</span>
-          <span className="kpi-sub" style={{ color: 'var(--text-muted)' }}>
-            Soma de todas as contas
-          </span>
-        </div>
-        <div className="kpi-card card-blue">
-          <span className="kpi-label" style={{ color: 'rgba(0,0,0,0.6)' }}>
-            ENGAJAMENTO MÉDIO
-          </span>
-          <span className="kpi-value" style={{ color: 'var(--dark)' }}>
-            {avgEngagement.toFixed(2)}%
-          </span>
-          <span className="kpi-sub" style={{ color: 'rgba(0,0,0,0.7)' }}>
-            Média de todas as contas
-          </span>
-        </div>
-        <div className="kpi-card">
-          <span className="kpi-label">CLIQUES NO LINK (28D)</span>
-          <span className="kpi-value">{formatNumber(avgWebsiteClicks)}</span>
-          <span className="kpi-sub" style={{ color: 'var(--text-muted)' }}>
-            Média por conta
-          </span>
-        </div>
+        <StatCard
+          label="Contas conectadas"
+          icon={Instagram}
+          tone="pink"
+          value={
+            <>
+              {summary.connected}{' '}
+              <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                / {summary.total}
+              </span>
+            </>
+          }
+          sub={`${summary.growing} crescendo`}
+        />
+        <StatCard
+          label="Seguidores totais"
+          icon={Users}
+          tone="blue"
+          value={formatNumber(totalFollowers)}
+          sub={`${summary.declining} em declínio`}
+        />
+        <StatCard
+          label="Alcance total (28d)"
+          icon={Eye}
+          tone="violet"
+          value={formatNumber(totalReach)}
+          sub="Soma de todas as contas"
+        />
+        <StatCard
+          label="Engajamento médio"
+          icon={Heart}
+          tone="amber"
+          value={`${avgEngagement.toFixed(2)}%`}
+          sub="Média de todas as contas"
+        />
+        <StatCard
+          label="Cliques no link (28d)"
+          icon={MousePointerClick}
+          tone="green"
+          value={formatNumber(avgWebsiteClicks)}
+          sub="Média por conta"
+        />
       </div>
 
       {filteredAccounts.length > 0 &&
@@ -784,62 +786,54 @@ export default function AnalyticsPage() {
           return (
             <div className="kpi-grid analytics-kpi-scroll animate-up" style={{ marginTop: 0 }}>
               {summary.bestByEngagement && (
-                <div className="kpi-card" style={{ borderLeft: '3px solid var(--success)' }}>
-                  <span className="kpi-label">MELHOR ENGAJAMENTO</span>
-                  <span className="kpi-value" style={{ fontSize: '1.1rem' }}>
-                    {summary.bestByEngagement.client_name}
-                  </span>
-                  <span className="kpi-sub" style={{ color: 'var(--success)' }}>
-                    {summary.bestByEngagement.engagement_rate_avg.toFixed(2)}%
-                  </span>
-                </div>
+                <StatCard
+                  label="Melhor engajamento"
+                  icon={Heart}
+                  tone="green"
+                  compactValue
+                  value={summary.bestByEngagement.client_name}
+                  sub={`${summary.bestByEngagement.engagement_rate_avg.toFixed(2)}%`}
+                />
               )}
               {summary.mostImproved && summary.mostImproved.follower_delta > 0 && (
-                <div className="kpi-card" style={{ borderLeft: '3px solid var(--primary-color)' }}>
-                  <span className="kpi-label">MAIOR CRESCIMENTO</span>
-                  <span className="kpi-value" style={{ fontSize: '1.1rem' }}>
-                    {summary.mostImproved.client_name}
-                  </span>
-                  <span className="kpi-sub" style={{ color: 'var(--primary-color)' }}>
-                    +{formatNumber(summary.mostImproved.follower_delta)} seguidores
-                  </span>
-                </div>
+                <StatCard
+                  label="Maior crescimento"
+                  icon={TrendingUp}
+                  tone="amber"
+                  compactValue
+                  value={summary.mostImproved.client_name}
+                  sub={`+${formatNumber(summary.mostImproved.follower_delta)} seguidores`}
+                />
               )}
               {bestByReach && bestByReach.reach_28d > 0 && (
-                <div className="kpi-card" style={{ borderLeft: '3px solid var(--info, #3b82f6)' }}>
-                  <span className="kpi-label">MAIOR ALCANCE</span>
-                  <span className="kpi-value" style={{ fontSize: '1.1rem' }}>
-                    {bestByReach.client_name}
-                  </span>
-                  <span className="kpi-sub" style={{ color: 'var(--info, #3b82f6)' }}>
-                    {formatNumber(bestByReach.reach_28d)} alcance 28d
-                  </span>
-                </div>
+                <StatCard
+                  label="Maior alcance"
+                  icon={Eye}
+                  tone="blue"
+                  compactValue
+                  value={bestByReach.client_name}
+                  sub={`${formatNumber(bestByReach.reach_28d)} alcance 28d`}
+                />
               )}
               {mostFollowers && (
-                <div
-                  className="kpi-card"
-                  style={{ borderLeft: '3px solid var(--warning, #f59e0b)' }}
-                >
-                  <span className="kpi-label">MAIS SEGUIDORES</span>
-                  <span className="kpi-value" style={{ fontSize: '1.1rem' }}>
-                    {mostFollowers.client_name}
-                  </span>
-                  <span className="kpi-sub" style={{ color: 'var(--warning, #f59e0b)' }}>
-                    {formatNumber(mostFollowers.follower_count)} seguidores
-                  </span>
-                </div>
+                <StatCard
+                  label="Mais seguidores"
+                  icon={Users}
+                  tone="violet"
+                  compactValue
+                  value={mostFollowers.client_name}
+                  sub={`${formatNumber(mostFollowers.follower_count)} seguidores`}
+                />
               )}
               {mostPosts && mostPosts.posts_last_30d > 0 && (
-                <div className="kpi-card" style={{ borderLeft: '3px solid var(--text-muted)' }}>
-                  <span className="kpi-label">MAIS ATIVO</span>
-                  <span className="kpi-value" style={{ fontSize: '1.1rem' }}>
-                    {mostPosts.client_name}
-                  </span>
-                  <span className="kpi-sub" style={{ color: 'var(--text-muted)' }}>
-                    {mostPosts.posts_last_30d} posts em 30d
-                  </span>
-                </div>
+                <StatCard
+                  label="Mais ativo"
+                  icon={Zap}
+                  tone="slate"
+                  compactValue
+                  value={mostPosts.client_name}
+                  sub={`${mostPosts.posts_last_30d} posts em 30d`}
+                />
               )}
             </div>
           );

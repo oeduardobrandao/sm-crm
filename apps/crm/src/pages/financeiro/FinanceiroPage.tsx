@@ -15,7 +15,13 @@ import {
   Search,
   SlidersHorizontal,
   MoreVertical,
+  CheckCircle2,
+  ArrowDownCircle,
+  ArrowUpCircle,
+  Wallet,
+  TrendingUp,
 } from 'lucide-react';
+import { StatCard } from '@/components/StatCard';
 import { openCSVSelector } from '../../lib/csv';
 import { Button } from '@/components/ui/button';
 import { HelpTooltip } from '@/components/help/HelpTooltip';
@@ -348,29 +354,48 @@ export default function FinanceiroPage() {
       </div>
 
       <div className="kpi-grid" style={{ marginBottom: '1.5rem' }}>
-        {[
-          { label: 'Recebido', value: formatBRL(recebido), color: '#3ecf8e' },
-          { label: 'A Receber', value: formatBRL(aReceber), color: '#f5a342' },
-          { label: 'A Pagar', value: formatBRL(aPagar), color: '#ef4444' },
-          {
-            label: 'Saldo Atual',
-            value: formatBRL(saldoAtual),
-            color: saldoAtual >= 0 ? '#3ecf8e' : '#ef4444',
-          },
-          {
-            label: 'Saldo Projetado',
-            value: formatBRL(saldoProjetado),
-            color: saldoProjetado >= 0 ? '#3ecf8e' : '#ef4444',
-          },
-        ].map((kpi) => (
-          <div
+        {(
+          [
+            {
+              label: 'Recebido',
+              value: formatBRL(recebido),
+              icon: CheckCircle2,
+              tone: 'green' as const,
+            },
+            {
+              label: 'A receber',
+              value: formatBRL(aReceber),
+              icon: ArrowDownCircle,
+              tone: 'amber' as const,
+            },
+            {
+              label: 'A pagar',
+              value: formatBRL(aPagar),
+              icon: ArrowUpCircle,
+              tone: 'red' as const,
+            },
+            {
+              label: 'Saldo atual',
+              value: formatBRL(saldoAtual),
+              icon: Wallet,
+              tone: saldoAtual >= 0 ? ('green' as const) : ('red' as const),
+            },
+            {
+              label: 'Saldo projetado',
+              value: formatBRL(saldoProjetado),
+              icon: TrendingUp,
+              tone: saldoProjetado >= 0 ? ('green' as const) : ('red' as const),
+            },
+          ] as const
+        ).map((kpi) => (
+          <StatCard
             key={kpi.label}
-            className="kpi-card"
-            style={{ '--kpi-accent': kpi.color } as React.CSSProperties}
-          >
-            <div className="kpi-label">{kpi.label}</div>
-            <div className="kpi-value">{kpi.value}</div>
-          </div>
+            label={kpi.label}
+            value={kpi.value}
+            icon={kpi.icon}
+            tone={kpi.tone}
+            compactValue
+          />
         ))}
       </div>
 

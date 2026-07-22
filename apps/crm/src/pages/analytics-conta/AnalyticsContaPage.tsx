@@ -15,7 +15,13 @@ import {
   RefreshCw,
   Trophy,
   Zap,
+  Users,
+  Eye,
+  MousePointerClick,
+  Send,
+  type LucideIcon,
 } from 'lucide-react';
+import { StatCard, type StatTone } from '@/components/StatCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -395,53 +401,35 @@ function KpiCard({
   delta,
   period,
   prevFormatted,
+  icon,
+  tone,
 }: {
   label: string;
   value: string;
   delta: KpiDelta;
   period?: string;
   prevFormatted?: string;
+  icon?: LucideIcon;
+  tone?: StatTone;
 }) {
-  const dirIcon = delta.direction === 'up' ? '↑' : delta.direction === 'down' ? '↓' : '→';
-  const dirColor =
-    delta.direction === 'up'
-      ? 'var(--success)'
-      : delta.direction === 'down'
-        ? 'var(--danger)'
-        : 'var(--text-muted)';
-  const pct = Math.abs(delta.deltaPercent).toFixed(1);
-
   return (
-    <div className="kpi-card">
-      <span className="kpi-label">{label}</span>
-      <span className="kpi-value" style={{ fontSize: '1.3rem' }}>
-        {value}
-      </span>
-      <span className="kpi-sub" style={{ color: dirColor }}>
-        {dirIcon} {pct}% vs período anterior
-      </span>
-      {prevFormatted != null && (
-        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>
-          Anterior: {prevFormatted}
-        </span>
-      )}
-      {period && (
-        <span
-          style={{
-            display: 'inline-block',
-            alignSelf: 'flex-start',
-            marginTop: 4,
-            fontSize: '0.72rem',
-            padding: '2px 7px',
-            borderRadius: 4,
-            background: 'var(--border-color,rgba(0,0,0,0.08))',
-            color: 'var(--text-muted)',
-          }}
-        >
-          {period}
-        </span>
-      )}
-    </div>
+    <StatCard
+      label={label}
+      value={value}
+      icon={icon}
+      tone={tone}
+      delta={{
+        direction: delta.direction,
+        percent: delta.deltaPercent,
+        caption: 'vs período anterior',
+      }}
+      footNote={
+        <>
+          {prevFormatted != null && <span>Anterior: {prevFormatted}</span>}
+          {period && <span className="kpi-period-chip">{period}</span>}
+        </>
+      }
+    />
   );
 }
 
@@ -1490,7 +1478,9 @@ function AnalyticsContent({
         style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}
       >
         <KpiCard
-          label="SEGUIDORES"
+          label="Seguidores"
+          icon={Users}
+          tone="blue"
           value={overview.followerCount.toLocaleString('pt-BR')}
           delta={overview.followers}
           period={periodTag}
@@ -1499,40 +1489,52 @@ function AnalyticsContent({
           )}
         />
         <KpiCard
-          label="ENGAJAMENTO"
+          label="Engajamento"
+          icon={Heart}
+          tone="pink"
           value={overview.engagement.current.toFixed(2) + '%'}
           delta={overview.engagement}
           period={periodTag}
           prevFormatted={overview.engagement.previous.toFixed(2) + '%'}
         />
         <KpiCard
-          label="ALCANCE"
+          label="Alcance"
+          icon={Eye}
+          tone="violet"
           value={overview.reach.current.toLocaleString('pt-BR')}
           delta={overview.reach}
           period={periodTag}
           prevFormatted={overview.reach.previous.toLocaleString('pt-BR')}
         />
         <KpiCard
-          label="CONTAS ENGAJADAS"
+          label="Contas engajadas"
+          icon={Zap}
+          tone="amber"
           value={overview.profileViews.current.toLocaleString('pt-BR')}
           delta={overview.profileViews}
           period="28d fixo"
         />
         <KpiCard
-          label="CLIQUES NO LINK"
+          label="Cliques no link"
+          icon={MousePointerClick}
+          tone="green"
           value={overview.websiteClicks.current.toLocaleString('pt-BR')}
           delta={overview.websiteClicks}
           period="28d fixo"
         />
         <KpiCard
-          label="TAXA DE SALVAMENTOS"
+          label="Taxa de salvamentos"
+          icon={Bookmark}
+          tone="slate"
           value={overview.savesRate.current.toFixed(2) + '%'}
           delta={overview.savesRate}
           period={periodTag}
           prevFormatted={overview.savesRate.previous.toFixed(2) + '%'}
         />
         <KpiCard
-          label="POSTS PUBLICADOS"
+          label="Posts publicados"
+          icon={Send}
+          tone="blue"
           value={String(overview.postsPublished.current)}
           delta={overview.postsPublished}
           period={periodTag}

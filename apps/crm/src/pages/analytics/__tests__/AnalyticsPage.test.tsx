@@ -467,8 +467,8 @@ describe('AnalyticsPage', () => {
 
     renderPage();
 
-    expect(screen.getByText('CONTAS CONECTADAS')).toBeInTheDocument();
-    expect(getKpiCard('CONTAS CONECTADAS')).toHaveTextContent('3 / 3');
+    expect(screen.getByText('Contas conectadas')).toBeInTheDocument();
+    expect(getKpiCard('Contas conectadas')).toHaveTextContent('3 / 3');
     expect(screen.getByText('24.000')).toBeInTheDocument();
     expect(screen.getByText('2.60%')).toBeInTheDocument();
     expect(screen.getByText('Contas Silenciosas')).toBeInTheDocument();
@@ -566,8 +566,8 @@ describe('AnalyticsPage', () => {
     const selects = screen.getAllByRole('combobox');
     fireEvent.change(selects[0], { target: { value: '2' } });
 
-    expect(getKpiCard('SEGUIDORES TOTAIS')).toHaveTextContent('2.500');
-    expect(getKpiCard('ALCANCE TOTAL (28D)')).toHaveTextContent('12.000');
+    expect(getKpiCard('Seguidores totais')).toHaveTextContent('2.500');
+    expect(getKpiCard('Alcance total (28d)')).toHaveTextContent('12.000');
     expect(screen.getAllByRole('row')).toHaveLength(2);
 
     fireEvent.change(selects[1], { target: { value: '7' } });
@@ -577,8 +577,8 @@ describe('AnalyticsPage', () => {
         expect.objectContaining({ queryKey: ['portfolio-summary', 7] }),
       );
     });
-    expect(getKpiCard('SEGUIDORES TOTAIS')).toHaveTextContent('2.550');
-    expect(getKpiCard('CONTAS CONECTADAS')).toHaveTextContent('1 / 1');
+    expect(getKpiCard('Seguidores totais')).toHaveTextContent('2.550');
+    expect(getKpiCard('Contas conectadas')).toHaveTextContent('1 / 1');
   });
 
   it('syncs all accounts and shows the success summary', async () => {

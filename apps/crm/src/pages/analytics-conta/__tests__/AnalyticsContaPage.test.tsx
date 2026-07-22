@@ -503,7 +503,7 @@ describe('AnalyticsContaPage', () => {
 
     expect(screen.getByText(client.nome)).toBeTruthy();
     expect(screen.getByText(`@${account.username}`)).toBeTruthy();
-    expect(screen.getByText('SEGUIDORES')).toBeTruthy();
+    expect(screen.getByText('Seguidores')).toBeTruthy();
     expect(screen.getByText('1.234')).toBeTruthy();
     expect(screen.getByText('12.34%')).toBeTruthy();
     expect(screen.getByText('Taxa de Salvamentos')).toBeTruthy();

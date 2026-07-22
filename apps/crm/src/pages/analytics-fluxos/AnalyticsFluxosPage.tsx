@@ -17,7 +17,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { SlidersHorizontal } from 'lucide-react';
+import { SlidersHorizontal, CheckCircle2, Activity, Clock, Target } from 'lucide-react';
+import { StatCard } from '@/components/StatCard';
 import { Chart, registerables } from 'chart.js';
 import {
   getWorkflows,
@@ -651,32 +652,36 @@ export default function AnalyticsFluxosPage() {
       ) : (
         <>
           <div className="kpi-grid animate-up">
-            <div className="kpi-card">
-              <span className="kpi-label">CONCLUÍDOS</span>
-              <span className="kpi-value">{metrics.completedWorkflows}</span>
-              <span className="kpi-sub">fluxos finalizados</span>
-            </div>
-            <div className="kpi-card">
-              <span className="kpi-label">ATIVOS</span>
-              <span className="kpi-value">{metrics.activeWorkflows}</span>
-              <span className="kpi-sub">fluxos em andamento</span>
-            </div>
-            <div className="kpi-card">
-              <span className="kpi-label">TEMPO MÉDIO</span>
-              <span className="kpi-value">
-                {metrics.avgCompletionDays !== null
-                  ? formatDuration(metrics.avgCompletionDays)
-                  : '—'}
-              </span>
-              <span className="kpi-sub">dias para conclusão</span>
-            </div>
-            <div className="kpi-card">
-              <span className="kpi-label">PONTUALIDADE</span>
-              <span className="kpi-value">
-                {metrics.onTimeRate !== null ? metrics.onTimeRate + '%' : '—'}
-              </span>
-              <span className="kpi-sub">etapas no prazo</span>
-            </div>
+            <StatCard
+              label="Concluídos"
+              icon={CheckCircle2}
+              tone="green"
+              value={metrics.completedWorkflows}
+              sub="fluxos finalizados"
+            />
+            <StatCard
+              label="Ativos"
+              icon={Activity}
+              tone="blue"
+              value={metrics.activeWorkflows}
+              sub="fluxos em andamento"
+            />
+            <StatCard
+              label="Tempo médio"
+              icon={Clock}
+              tone="violet"
+              value={
+                metrics.avgCompletionDays !== null ? formatDuration(metrics.avgCompletionDays) : '—'
+              }
+              sub="dias para conclusão"
+            />
+            <StatCard
+              label="Pontualidade"
+              icon={Target}
+              tone="amber"
+              value={metrics.onTimeRate !== null ? metrics.onTimeRate + '%' : '—'}
+              sub="etapas no prazo"
+            />
           </div>
 
           <AnalyticsCharts metrics={metrics} />

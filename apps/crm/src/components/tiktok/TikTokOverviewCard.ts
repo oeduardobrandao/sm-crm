@@ -91,15 +91,15 @@ export function renderTikTokOverviewCard(
 
       <div class="kpi-grid">
          <div class="kpi-card">
-            <span class="kpi-label">${escapeHTML((t('tiktok.followers') as string).toUpperCase())}</span>
+            <span class="kpi-label">${escapeHTML(t('tiktok.followers') as string)}</span>
             <span class="kpi-value">${numFmt(account.follower_count)}</span>
          </div>
          <div class="kpi-card">
-            <span class="kpi-label">${escapeHTML((t('tiktok.totalLikes') as string).toUpperCase())}</span>
+            <span class="kpi-label">${escapeHTML(t('tiktok.totalLikes') as string)}</span>
             <span class="kpi-value">${numFmt(account.likes_count)}</span>
          </div>
          <div class="kpi-card">
-            <span class="kpi-label">${escapeHTML((t('tiktok.videos') as string).toUpperCase())}</span>
+            <span class="kpi-label">${escapeHTML(t('tiktok.videos') as string)}</span>
             <span class="kpi-value">${numFmt(account.video_count)}</span>
          </div>
       </div>

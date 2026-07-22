@@ -18,7 +18,11 @@ import {
   ExternalLink,
   FileText,
   ReceiptText,
+  Wallet,
+  CheckCircle2,
+  Clock,
 } from 'lucide-react';
+import { StatCard } from '@/components/StatCard';
 import { Button } from '@/components/ui/button';
 import { RoleRestrictionNotice } from '@/components/help/RoleRestrictionNotice';
 import { Input } from '@/components/ui/input';
@@ -1793,20 +1797,28 @@ export default function ClienteDetalhePage() {
             className="kpi-grid cliente-finance-kpis"
             style={{ marginBottom: '1.5rem' }}
           >
-            <div className="kpi-card animate-up">
-              <span className="kpi-label">{t('detail.monthlyValue')}</span>
-              <span className="kpi-value">{formatBRL(Number(cliente.valor_mensal))}</span>
-            </div>
-            <div className="kpi-card animate-up">
-              <span className="kpi-label">{t('detail.totalReceived')}</span>
-              <span className="kpi-value">{formatBRL(receitaTotal)}</span>
-            </div>
-            <div className="kpi-card animate-up">
-              <span className="kpi-label">{t('detail.pending')}</span>
-              <span className="kpi-value" style={{ color: 'var(--warning)' }}>
-                {formatBRL(pendente)}
-              </span>
-            </div>
+            <StatCard
+              label={t('detail.monthlyValue')}
+              value={formatBRL(Number(cliente.valor_mensal))}
+              icon={Wallet}
+              tone="blue"
+              compactValue
+            />
+            <StatCard
+              label={t('detail.totalReceived')}
+              value={formatBRL(receitaTotal)}
+              icon={CheckCircle2}
+              tone="green"
+              compactValue
+            />
+            <StatCard
+              label={t('detail.pending')}
+              value={formatBRL(pendente)}
+              valueColor="var(--warning)"
+              icon={Clock}
+              tone="amber"
+              compactValue
+            />
           </div>
 
           {/* Contratos Table */}

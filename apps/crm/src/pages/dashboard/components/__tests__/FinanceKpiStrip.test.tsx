@@ -12,11 +12,11 @@ describe('FinanceKpiStrip', () => {
         receitaMensal={24000}
       />,
     );
-    // i18n values are uppercase in dashboard.json: kpi.aReceber="A RECEBER", kpi.aPagar="A PAGAR"
-    expect(screen.getByText('A RECEBER')).toBeTruthy();
-    expect(screen.getByText('A PAGAR')).toBeTruthy();
-    expect(screen.getByText('SALDO')).toBeTruthy();
-    expect(screen.getByText('RECEITA MENSAL')).toBeTruthy();
+    // i18n values in dashboard.json: kpi.aReceber="A receber", kpi.aPagar="A pagar"
+    expect(screen.getByText('A receber')).toBeTruthy();
+    expect(screen.getByText('A pagar')).toBeTruthy();
+    expect(screen.getByText('Saldo')).toBeTruthy();
+    expect(screen.getByText('Receita mensal')).toBeTruthy();
     // In test env currentUserRole defaults to 'agent' so formatBRL returns obfuscated "R$ •••••"
     // Assert all 4 KPI value spans are rendered with BRL formatting
     expect(screen.getAllByText('R$ •••••')).toHaveLength(4);

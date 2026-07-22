@@ -1010,38 +1010,168 @@ body {
 
 .kpi-card {
   background: var(--card-bg);
-  padding: 1.5rem;
-  border-radius: 12px;
+  padding: 1.25rem 1.35rem;
+  border-radius: 14px;
   border: 1px solid var(--border-color);
-  border-left: 3px solid var(--kpi-accent, var(--border-color));
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
-  transition: transform 0.2s ease;
+  gap: 0.5rem;
+  transition: box-shadow 0.2s ease;
 }
 .kpi-card:hover {
-  transform: translateY(-3px);
+  box-shadow: 0 6px 16px -6px rgba(0, 0, 0, 0.12);
 }
 
 .kpi-label {
-  color: var(--text-muted);
-  text-transform: uppercase;
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.5px;
+  color: var(--text-main);
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
 }
 
 .kpi-value {
-  font-size: 1.7rem;
+  font-size: 2rem;
   font-weight: 800;
   color: var(--text-main);
-  letter-spacing: -0.5px;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
 }
 
 .kpi-sub {
   font-weight: 500;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* Header row: label on the left, tinted icon bubble on the right */
+.kpi-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.kpi-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 999px;
+  flex-shrink: 0;
+  background: var(--kpi-tone-bg, var(--surface-hover));
+  color: var(--kpi-tone-fg, var(--text-muted));
+}
+
+.kpi-icon[data-tone='green'] {
+  --kpi-tone-bg: #dcfce7;
+  --kpi-tone-fg: #16a34a;
+}
+.kpi-icon[data-tone='red'] {
+  --kpi-tone-bg: #fee2e2;
+  --kpi-tone-fg: #dc2626;
+}
+.kpi-icon[data-tone='blue'] {
+  --kpi-tone-bg: #dbeafe;
+  --kpi-tone-fg: #2563eb;
+}
+.kpi-icon[data-tone='amber'] {
+  --kpi-tone-bg: #fef3c7;
+  --kpi-tone-fg: #d97706;
+}
+.kpi-icon[data-tone='violet'] {
+  --kpi-tone-bg: #ede9fe;
+  --kpi-tone-fg: #7c3aed;
+}
+.kpi-icon[data-tone='pink'] {
+  --kpi-tone-bg: #fce7f3;
+  --kpi-tone-fg: #db2777;
+}
+.kpi-icon[data-tone='slate'] {
+  --kpi-tone-bg: #e2e8f0;
+  --kpi-tone-fg: #475569;
+}
+
+/* Dark mode: tint the bubble from the glyph colour instead of a pastel fill */
+[data-theme='dark'] .kpi-icon[data-tone='green'] {
+  --kpi-tone-bg: rgba(34, 197, 94, 0.16);
+  --kpi-tone-fg: #4ade80;
+}
+[data-theme='dark'] .kpi-icon[data-tone='red'] {
+  --kpi-tone-bg: rgba(239, 68, 68, 0.16);
+  --kpi-tone-fg: #f87171;
+}
+[data-theme='dark'] .kpi-icon[data-tone='blue'] {
+  --kpi-tone-bg: rgba(59, 130, 246, 0.16);
+  --kpi-tone-fg: #60a5fa;
+}
+[data-theme='dark'] .kpi-icon[data-tone='amber'] {
+  --kpi-tone-bg: rgba(245, 158, 11, 0.16);
+  --kpi-tone-fg: #fbbf24;
+}
+[data-theme='dark'] .kpi-icon[data-tone='violet'] {
+  --kpi-tone-bg: rgba(139, 92, 246, 0.16);
+  --kpi-tone-fg: #a78bfa;
+}
+[data-theme='dark'] .kpi-icon[data-tone='pink'] {
+  --kpi-tone-bg: rgba(236, 72, 153, 0.16);
+  --kpi-tone-fg: #f472b6;
+}
+[data-theme='dark'] .kpi-icon[data-tone='slate'] {
+  --kpi-tone-bg: rgba(148, 163, 184, 0.16);
+  --kpi-tone-fg: #cbd5e1;
+}
+
+/* Footer row: trend arrow + delta, or a plain descriptive sub-label */
+.kpi-foot {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.kpi-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-weight: 700;
+}
+.kpi-delta[data-direction='up'] {
+  color: var(--success);
+}
+.kpi-delta[data-direction='down'] {
+  color: var(--danger);
+}
+.kpi-delta[data-direction='stable'] {
+  color: var(--text-muted);
+}
+
+.kpi-footnote {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.kpi-period-chip {
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: var(--surface-hover);
+  border: 1px solid var(--border-color);
+}
+
+.kpi-delta-caption {
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
 }
 
 .trend-up {
