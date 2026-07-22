@@ -3,7 +3,6 @@ import { insertAuditLog } from "../_shared/audit.ts";
 import { copyObject } from "../_shared/r2.ts";
 import { checkRateLimit } from "../_shared/rate-limit.ts";
 import { effectivePlanLimit } from "../_shared/entitlements-rpc.ts";
-import { markReelCoverStaleForNewVideo } from "../_shared/reel-cover-staleness.ts";
 
 async function signZipToken(payload: Record<string, unknown>, secret: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -27,10 +26,6 @@ interface FileManageDeps {
   createDb: () => DbClient;
   signUrl: (key: string) => Promise<string>;
   now?: () => string;
-  /** Optional design-render kick after a reel video swap marks its cover stale — same
-   * best-effort pattern as instagram-publish (wired only when CRON_SECRET exists). */
-  triggerDesignRender?: (designId: number, rev: number) => Promise<void>;
-  waitUntil?: (promise: Promise<unknown>) => void;
 }
 
 export function createFileManageHandler(deps: FileManageDeps) {
@@ -528,24 +523,6 @@ export function createFileManageHandler(deps: FileManageDeps) {
           return internalServerError(json, "file-manage:create-link", linkErr);
         }
 
-        // A NEW video on a post with a reel_cover design invalidates the rendered cover (it
-        // lives on the video's thumbnail — see _shared/reel-cover-staleness.ts). Best-effort:
-        // linking must never fail because of this bookkeeping.
-        if (file.kind === "video") {
-          try {
-            const stale = await markReelCoverStaleForNewVideo(svc, post_id);
-            if (stale.marked && stale.design && deps.triggerDesignRender) {
-              const kick = deps
-                .triggerDesignRender(stale.design.id, stale.design.rev)
-                .catch((e) =>
-                  console.error("[file-manage] design re-trigger failed:", (e as Error)?.message)
-                );
-              if (deps.waitUntil) deps.waitUntil(kick);
-            }
-          } catch (e) {
-            console.error("[file-manage] reel-cover staleness failed:", e);
-          }
-        }
         return json(link, 201);
       }
 
