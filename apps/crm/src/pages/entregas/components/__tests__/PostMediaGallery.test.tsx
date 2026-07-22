@@ -353,4 +353,3 @@ describe('PostMediaGallery design decoupling regression guard', () => {
     expect(screen.queryByTestId('design-ownership-banner')).toBeNull();
   });
 });
-
