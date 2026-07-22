@@ -3,7 +3,8 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@mesaas/i18n": ["../../packages/i18n/index.ts"]
+      "@mesaas/i18n": ["../../packages/i18n/index.ts"],
+      "@mesaas/ui/*": ["../../packages/ui/*"]
     },
     "target": "ES2021",
     "useDefineForClassFields": true,

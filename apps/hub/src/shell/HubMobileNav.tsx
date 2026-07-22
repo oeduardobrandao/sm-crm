@@ -7,7 +7,7 @@ import { usePendingApprovalsCount } from '../hooks/usePendingApprovalsCount';
 import { getVisibleNavItems } from './navItems';
 import { ClientAvatar } from '../components/ClientAvatar';
 import { WorkspaceMark } from '../components/WorkspaceMark';
-import { FlagIcon } from '../components/FlagIcon';
+import { FlagIcon } from '@mesaas/ui/FlagIcon';
 import { changeLanguage, SUPPORTED_LANGUAGES } from '@mesaas/i18n';
 import type { Language } from '@mesaas/i18n';
 

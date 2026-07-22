@@ -8,7 +8,7 @@ import type { Language } from '@mesaas/i18n';
 import { getNavGroups } from './nav-data';
 import type { NavGroup } from './nav-data';
 import { useWorkspaceLimits } from '../../hooks/useWorkspaceLimits';
-import { FlagIcon } from '../shared/FlagIcon';
+import { FlagIcon } from '@mesaas/ui/FlagIcon';
 import { avatarColorClass } from '@/lib/avatarColor';
 
 interface SidebarProps {
