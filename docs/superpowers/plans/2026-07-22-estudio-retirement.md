@@ -646,6 +646,35 @@ The cron job name is `design-render-sweep-cron` (verified against `2026070200000
 grep -A1 "cron.schedule" supabase/migrations/20260702000005_design_render_sweep_cron_schedule.sql
 ```
 
+- [ ] **Step 2b: Pre-flight drift check — run BEFORE applying, on staging AND prod**
+
+This migration uses `CREATE OR REPLACE` for the two recreated functions (step 6 above), so it
+will silently overwrite any prod-only variant. This repo has documented production function
+drift before (`supabase/migrations/20260720000004_reconcile_prod_missing_functions.sql`), so
+don't assume prod matches the migration history.
+
+Run against **both** staging and prod, via the SQL editor:
+```sql
+SELECT pg_get_functiondef('post_media_set_from_uploads(uuid,bigint,uuid,jsonb)'::regprocedure);
+SELECT pg_get_functiondef('admin_workspace_last_activity(uuid[])'::regprocedure);
+```
+Confirm each matches its defining migration (`20260707000002`, `20260716000001` respectively)
+apart from the intentionally removed `designs` lines. If either differs, **STOP** — prod has
+drifted and the recreation in step 6 would overwrite a prod-only variant.
+
+As part of the same pre-flight, also run the migration's own body-level assertion query
+read-only, so a prod-only function referencing a dropped table is discovered BEFORE the
+maintenance window instead of aborting mid-migration:
+```sql
+SELECT p.oid::regprocedure::text
+  FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+ WHERE n.nspname = 'public'
+   AND p.prosrc ~ '\m(designs|post_designs|design_asset_refs|ai_image_generations)\M';
+```
+Expected before applying: exactly the two functions this migration recreates
+(`post_media_set_from_uploads`, `admin_workspace_last_activity`). Anything else is prod drift —
+investigate before proceeding.
+
 - [ ] **Step 3: Apply to staging first**
 
 ```bash
@@ -675,9 +704,21 @@ SELECT to_regclass('post_designs'), to_regclass('design_asset_refs');
 ```
 Expected: no cron rows; both `to_regclass` values NULL.
 
-- [ ] **Step 6: Smoke-test the surviving media path on staging**
+- [ ] **Step 6: Smoke-test BOTH recreated functions on staging**
 
-In the CRM against staging, open a post in the workflow drawer, upload an image, and confirm it attaches and renders. This is the regression this whole plan must not cause.
+The manual media-upload check alone does not exercise `post_media_set_from_uploads` — that
+RPC's only caller is the MCP `set_post_media` tool (`supabase/functions/mcp/media.ts:68`), not
+the workflow-drawer upload path. Both recreated functions need their own check:
+
+1. Invoke the MCP `set_post_media` tool against a staging post — this exercises
+   `post_media_set_from_uploads` end-to-end (the function this migration edited).
+2. Load the Admin → Workspaces list — this exercises `admin_workspace_last_activity`
+   (`supabase/functions/platform-admin/index.ts:356`).
+
+Also keep the general regression check: in the CRM against staging, open a post in the
+workflow drawer, upload an image, and confirm it attaches and renders. It doesn't exercise
+either recreated function, but it is still a useful general check that manual media upload
+still works.
 
 - [ ] **Step 7: Apply to prod, then commit**
 
@@ -743,6 +784,16 @@ For 2-4, just update the prose to drop the dead names.
 git rm docs/estudio-mcp-guide.md
 ```
 Leave `docs/estudio-design.md`, `docs/estudio-plan.md`, `docs/estudio-spike-notes.md` and the `docs/superpowers/specs/2026-07-04-openpencil-*` files in place — they are historical design records, not instructions.
+
+- [ ] **Step 4b: Update the stale pgTAP test for `post_media_set_from_uploads`**
+
+`supabase/tests/post_media_set_from_uploads.sql` (lines ~68, 73-74, 101) inserts into `designs`
+and asserts the removed `design_attached` guard. After Task 6's migration this file cannot run
+(42P01 — the `designs` table is gone). No CI workflow invokes `supabase test`/`pg_prove`, so
+nothing goes red automatically, but the safety net over this exact RPC is inoperative until
+fixed. Remove the `designs` insert/delete and the `design_attached` assertion from that file.
+Ideally do this in the same window as the Task 6 migration apply, since that is when the file
+actually breaks.
 
 - [ ] **Step 5: Verify and commit**
 

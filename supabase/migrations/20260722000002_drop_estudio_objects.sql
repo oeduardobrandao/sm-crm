@@ -113,11 +113,14 @@ DROP TABLE IF EXISTS ai_image_generations CASCADE;
 --
 --    CREATE OR REPLACE, not DROP + CREATE: the signature, argument names/types, return type,
 --    volatility, security mode and search_path are reproduced EXACTLY from the defining
---    migration. A single deviation would create a second overload instead of replacing.
---    Each definition is followed by its original REVOKE/GRANT block, re-issued verbatim:
---    CREATE OR REPLACE resets privileges to the owner's defaults, and in this repo a
---    REVOKE ... FROM PUBLIC has already once silently stripped service_role and broken
---    edge-function calls.
+--    migration. A deviation in argument TYPES would create a second overload instead of
+--    replacing; a deviation in argument NAMES fails outright with 42P13; a deviation in
+--    return type is rejected outright too (Postgres does not allow CREATE OR REPLACE to
+--    change it). Each definition is followed by its original REVOKE/GRANT block, re-issued
+--    verbatim: grants are re-issued so the end-state ACL is asserted rather than assumed, and
+--    so a fresh database — where these are CREATEs rather than REPLACEs — ends up with the
+--    same privileges. In this repo a REVOKE ... FROM PUBLIC has already once silently
+--    stripped service_role and broken edge-function calls.
 -- ============================================================
 
 -- 6a. post_media_set_from_uploads — backs the MCP set_post_media tool
