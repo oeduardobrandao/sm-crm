@@ -103,9 +103,7 @@ export function FollowerChart({ followerHistory }: FollowerChartProps) {
 
   return (
     <div className="hub-card p-5">
-      <h3 className="text-xs font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400 mb-4">
-        Seguidores
-      </h3>
+      <h3 className="text-[13px] font-semibold hub-tx2 mb-4">Seguidores</h3>
       <div className="h-[180px]">
         <Line ref={canvasRef} data={data} options={options as any} />
       </div>

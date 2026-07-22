@@ -131,10 +131,7 @@ export function AprovacoesPage() {
           {stories.length > 0 && (
             <div className={withMedia.length > 0 ? 'mt-10 pt-8 border-t hub-border' : ''}>
               {withMedia.length > 0 && (
-                <p className="text-[11px] uppercase tracking-[0.14em] hub-tx3 font-medium mb-4">
-                  <span className="accent-bar" />
-                  Stories
-                </p>
+                <p className="text-[13px] font-semibold hub-tx2 mb-4">Stories</p>
               )}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {stories.map((post) => (
@@ -167,10 +164,7 @@ export function AprovacoesPage() {
               }
             >
               {(withMedia.length > 0 || stories.length > 0) && (
-                <p className="text-[11px] uppercase tracking-[0.14em] hub-tx3 font-medium mb-4">
-                  <span className="accent-bar" />
-                  Posts sem mídia
-                </p>
+                <p className="text-[13px] font-semibold hub-tx2 mb-4">Posts sem mídia</p>
               )}
               <div className="max-w-[640px] space-y-3">
                 {withoutMedia.map((post) => (

@@ -60,9 +60,7 @@ export function DashboardSection() {
       </div>
 
       <div className="mb-6">
-        <h3 className="text-xs font-semibold uppercase tracking-wider hub-tx3 mb-3">
-          Melhores Posts
-        </h3>
+        <h3 className="text-[13px] font-semibold hub-tx2 mb-3">Melhores Posts</h3>
         <TopPostsRow posts={data.topPosts} />
       </div>
 

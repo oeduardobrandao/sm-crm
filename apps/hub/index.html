@@ -41,18 +41,8 @@
       }
       .hub-root .hub-noise {
         background-image:
-          radial-gradient(1200px 600px at 10% -10%, color-mix(in srgb, var(--hub-acc) 6%, transparent), transparent 60%),
+          radial-gradient(1200px 600px at 10% -10%, color-mix(in srgb, var(--hub-txt) 4%, transparent), transparent 60%),
           radial-gradient(900px 500px at 110% 10%, color-mix(in srgb, var(--hub-txt) 3.5%, transparent), transparent 60%);
-      }
-      .hub-root .accent-bar {
-        display: inline-block;
-        width: 6px;
-        height: 6px;
-        border-radius: 9999px;
-        background-color: var(--hub-acc);
-        box-shadow: 0 0 0 4px color-mix(in srgb, var(--hub-acc) 18%, transparent);
-        margin-right: 10px;
-        vertical-align: middle;
       }
       .hub-root .hub-card {
         background-color: var(--hub-card);
@@ -73,7 +63,7 @@
       .hub-root .hub-bg-soft { background-color: var(--hub-soft); }
       .hub-root .hub-border { border-color: var(--hub-bd); }
       .hub-root .hub-border-strong { border-color: var(--hub-bd2); }
-      .hub-root .hub-acc-text { color: var(--hub-acc); }
+      .hub-root .hub-acc-text { color: var(--hub-txt); }
       .hub-root .hub-back-link:hover { color: var(--hub-txt); }
       .hub-root .hub-link-muted:hover { color: var(--hub-txt); }
       .hub-root .hub-divide > * + * { border-top: 1px solid var(--hub-bd); }
@@ -136,13 +126,13 @@
          rule. Fall back to overriding Tailwind's own --tw-ring-color custom
          property (consumed by the `ring-4` utility's box-shadow) directly. */
       .hub-root .hub-focus-accent:focus {
-        --tw-ring-color: color-mix(in srgb, var(--hub-acc) 15%, transparent);
+        --tw-ring-color: color-mix(in srgb, var(--hub-txt) 15%, transparent);
       }
       /* Primary/secondary buttons — replaces the repeated `bg-stone-900 text-white hover:bg-stone-800`
          and `border-stone-200 ... hover:bg-stone-50` pairs found across every post-card component. */
       .hub-root .hub-btn-primary {
-        background-color: var(--hub-acc);
-        color: var(--hub-acc-fg);
+        background-color: var(--hub-txt);
+        color: var(--hub-card);
         transition: opacity 200ms ease;
       }
       .hub-root .hub-btn-primary:hover { opacity: 0.88; }
@@ -164,9 +154,9 @@
         font-weight: 600;
       }
       .hub-root .hub-pill-accent {
-        background: color-mix(in srgb, var(--hub-acc) 12%, transparent);
-        color: var(--hub-acc);
-        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hub-acc) 35%, transparent);
+        background: color-mix(in srgb, var(--hub-txt) 8%, transparent);
+        color: var(--hub-txt);
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hub-txt) 20%, transparent);
       }
       .hub-root .hub-pill-danger {
         background: transparent;

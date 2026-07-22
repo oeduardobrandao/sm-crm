@@ -14,19 +14,14 @@ function ColorSwatch({ color, label }: { color: string; label: string }) {
       />
       <div>
         <p className="text-[13.5px] font-semibold hub-txt">{label}</p>
-        <p className="text-[11px] hub-tx3 uppercase tracking-wider mt-0.5">{color}</p>
+        <p className="text-[11.5px] hub-tx3 mt-0.5">{color}</p>
       </div>
     </div>
   );
 }
 
 function SectionLabel({ children }: { children: ReactNode }) {
-  return (
-    <h3 className="text-[11px] font-semibold hub-tx3 uppercase tracking-[0.14em] mb-3 flex items-center">
-      <span className="accent-bar" />
-      {children}
-    </h3>
-  );
+  return <h3 className="text-[13px] font-semibold hub-tx2 mb-3">{children}</h3>;
 }
 
 export function MarcaPage() {

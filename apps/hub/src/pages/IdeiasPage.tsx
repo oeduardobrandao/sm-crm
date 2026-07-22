@@ -343,7 +343,7 @@ function IdeiaCard({
       {/* Agency comment */}
       {ideia.comentario_agencia && (
         <div className="border-t hub-border pt-3 mt-1">
-          <p className="text-[11px] uppercase tracking-wide hub-tx3 font-medium mb-1">
+          <p className="text-[12px] hub-tx3 font-medium mb-1">
             Resposta da agência
             {ideia.comentario_autor && (
               <span className="normal-case tracking-normal ml-1">
@@ -450,9 +450,7 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
 
         <div className="space-y-3">
           <div>
-            <label className="text-[12px] font-semibold hub-tx2 uppercase tracking-wide mb-1 block">
-              Título
-            </label>
+            <label className="text-[12.5px] font-semibold hub-tx2 mb-1 block">Título</label>
             <input
               className={`w-full border rounded-lg px-3 py-2 text-sm outline-none hub-focus-accent focus:ring-2 ${errors.titulo ? 'border-red-400' : 'hub-border'}`}
               value={titulo}
@@ -463,9 +461,7 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
           </div>
 
           <div>
-            <label className="text-[12px] font-semibold hub-tx2 uppercase tracking-wide mb-1 block">
-              Descrição
-            </label>
+            <label className="text-[12.5px] font-semibold hub-tx2 mb-1 block">Descrição</label>
             <textarea
               className={`w-full border rounded-lg px-3 py-2 text-sm outline-none hub-focus-accent focus:ring-2 resize-none min-h-[100px] ${errors.descricao ? 'border-red-400' : 'hub-border'}`}
               value={descricao}
@@ -476,7 +472,7 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
           </div>
 
           <div>
-            <label className="text-[12px] font-semibold hub-tx2 uppercase tracking-wide mb-1 block">
+            <label className="text-[12.5px] font-semibold hub-tx2 mb-1 block">
               Links de referência{' '}
               <span className="hub-tx3 normal-case tracking-normal font-normal">(opcional)</span>
             </label>
@@ -510,7 +506,7 @@ function IdeiaModal({ token, editing, onClose, onSaved }: ModalProps) {
 
           {current && (
             <div>
-              <label className="text-[12px] font-semibold hub-tx2 uppercase tracking-wide mb-1 block">
+              <label className="text-[12.5px] font-semibold hub-tx2 mb-1 block">
                 Imagens{' '}
                 <span className="hub-tx3 normal-case tracking-normal font-normal">(até 10)</span>
               </label>

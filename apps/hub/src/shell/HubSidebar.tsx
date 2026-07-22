@@ -4,13 +4,10 @@ import { useTranslation } from 'react-i18next';
 import { useHub } from '../HubContext';
 import { usePendingApprovalsCount } from '../hooks/usePendingApprovalsCount';
 import { getVisibleNavItems } from './navItems';
+import { ClientAvatar } from '../components/ClientAvatar';
+import { FlagIcon } from '../components/FlagIcon';
 import { changeLanguage, SUPPORTED_LANGUAGES } from '@mesaas/i18n';
 import type { Language } from '@mesaas/i18n';
-
-const LANGUAGE_FLAGS: Record<Language, string> = {
-  pt: '\u{1F1E7}\u{1F1F7}',
-  en: '\u{1F1FA}\u{1F1F8}',
-};
 
 function cycleLanguage(current: string) {
   const idx = SUPPORTED_LANGUAGES.indexOf(current as Language);
@@ -79,15 +76,16 @@ export function HubSidebar() {
         })}
       </nav>
       <div className="mt-auto flex items-center gap-2 px-3.5 py-3.5 border-t hub-border">
+        <ClientAvatar name={bootstrap.cliente_nome} photoUrl={bootstrap.cliente_foto_url} />
         <div className="min-w-0 flex-1">
           <div className="text-[13px] font-semibold truncate hub-txt">{bootstrap.cliente_nome}</div>
         </div>
         <button
           onClick={() => cycleLanguage(i18n.language)}
           aria-label={t('sidebar.language')}
-          className="w-8 h-8 flex items-center justify-center rounded-full hub-tx3 hover:bg-[var(--hub-soft)] transition-colors text-sm"
+          className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-[var(--hub-soft)] transition-colors"
         >
-          {LANGUAGE_FLAGS[i18n.language as Language] || LANGUAGE_FLAGS.pt}
+          <FlagIcon lang={(i18n.language as Language) || 'pt'} />
         </button>
         <button
           onClick={toggleTheme}

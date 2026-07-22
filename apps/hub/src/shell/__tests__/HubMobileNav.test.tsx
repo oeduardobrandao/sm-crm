@@ -62,10 +62,11 @@ describe('HubMobileNav', () => {
     fireEvent.click(screen.getByRole('button', { name: /abrir menu|open menu/i }));
     const dialog = screen.getByRole('dialog');
     expect(dialog).toBeInTheDocument();
-    // Language button should be present with flag emoji
+    // The flag is drawn, not typed: emoji flags render as bare "BR"/"US" letter
+    // pairs on Windows, so assert on the SVG rather than on text content.
     const languageButton = screen.getByRole('button', { name: /idioma|language/i });
     expect(languageButton).toBeInTheDocument();
-    expect(languageButton.textContent).toMatch(/🇧🇷|🇺🇸/);
+    expect(languageButton.querySelector('svg')).not.toBeNull();
   });
 
   it('hides Mensagens when feature_mensagens is false, keeping every other destination', () => {

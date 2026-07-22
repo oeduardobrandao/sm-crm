@@ -5,13 +5,10 @@ import { useTranslation } from 'react-i18next';
 import { useHub } from '../HubContext';
 import { usePendingApprovalsCount } from '../hooks/usePendingApprovalsCount';
 import { getVisibleNavItems } from './navItems';
+import { ClientAvatar } from '../components/ClientAvatar';
+import { FlagIcon } from '../components/FlagIcon';
 import { changeLanguage, SUPPORTED_LANGUAGES } from '@mesaas/i18n';
 import type { Language } from '@mesaas/i18n';
-
-const LANGUAGE_FLAGS: Record<Language, string> = {
-  pt: '\u{1F1E7}\u{1F1F7}',
-  en: '\u{1F1FA}\u{1F1F8}',
-};
 
 function cycleLanguage(current: string) {
   const idx = SUPPORTED_LANGUAGES.indexOf(current as Language);
@@ -192,15 +189,22 @@ export function HubMobileNav() {
               })}
             </nav>
             <div className="mt-auto flex items-center gap-3 px-2 pt-3.5 border-t hub-border">
-              <div className="flex-1">
-                <div className="text-[13.5px] font-semibold hub-txt">{bootstrap.cliente_nome}</div>
+              <ClientAvatar
+                name={bootstrap.cliente_nome}
+                photoUrl={bootstrap.cliente_foto_url}
+                size={32}
+              />
+              <div className="min-w-0 flex-1">
+                <div className="text-[13.5px] font-semibold truncate hub-txt">
+                  {bootstrap.cliente_nome}
+                </div>
               </div>
               <button
                 onClick={() => cycleLanguage(i18n.language)}
                 aria-label={t('sidebar.language')}
-                className="w-9 h-9 flex items-center justify-center rounded-full hub-tx3 hover:bg-[var(--hub-soft)] transition-colors text-sm"
+                className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-[var(--hub-soft)] transition-colors"
               >
-                {LANGUAGE_FLAGS[i18n.language as Language] || LANGUAGE_FLAGS.pt}
+                <FlagIcon lang={(i18n.language as Language) || 'pt'} size={20} />
               </button>
               <button
                 onClick={toggleTheme}

@@ -79,7 +79,7 @@ export function BriefingPage() {
                 >
                   {b.title || 'Briefing'}
                   {briefingTab === i && (
-                    <span className="absolute left-3 right-3 -bottom-[1px] h-[2px] rounded-full bg-[var(--hub-acc)]" />
+                    <span className="absolute left-3 right-3 -bottom-[1px] h-[2px] rounded-full bg-[var(--hub-txt)]" />
                   )}
                 </button>
               ))}

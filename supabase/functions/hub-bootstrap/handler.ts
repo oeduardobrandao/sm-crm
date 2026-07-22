@@ -61,6 +61,22 @@ export function createHubBootstrapHandler(deps: HubBootstrapHandlerDeps) {
       .eq("id", hubToken.cliente_id)
       .single();
 
+    // The client's photo is their connected Instagram avatar, cached to the public
+    // `avatars` bucket by instagram-integration (the live CDN urls expire). Clients
+    // without a connected account are normal, so this is best-effort: a miss just
+    // falls back to the initial, it must never fail the whole bootstrap.
+    let clienteFotoUrl: string | null = null;
+    try {
+      const { data: igAccount } = await db
+        .from("instagram_accounts")
+        .select("profile_picture_url")
+        .eq("client_id", hubToken.cliente_id)
+        .maybeSingle();
+      clienteFotoUrl = igAccount?.profile_picture_url || null;
+    } catch {
+      // intentionally ignored — falls back to the client's initial
+    }
+
     // Fail closed: an entitlements RPC hiccup must never break the client's portal —
     // same defence-in-depth principle as touchToken above, just hiding one nav item
     // instead of silently doing nothing.
@@ -78,6 +94,7 @@ export function createHubBootstrapHandler(deps: HubBootstrapHandlerDeps) {
         brand_color: conta.brand_color ?? "#1a1a2e",
       },
       cliente_nome: cliente?.nome ?? "",
+      cliente_foto_url: clienteFotoUrl,
       is_active: hubToken.is_active,
       cliente_id: hubToken.cliente_id,
       feature_mensagens: featureMensagens,

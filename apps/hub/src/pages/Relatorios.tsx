@@ -58,7 +58,7 @@ function ReportCard({ report, base }: { report: HubReport; base: string }) {
           )}
         </div>
         {isReady && (
-          <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-100 flex-shrink-0">
+          <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-100 flex-shrink-0">
             Pronto
           </span>
         )}
