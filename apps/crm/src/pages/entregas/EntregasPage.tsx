@@ -7,7 +7,12 @@ import { Spinner } from '@/components/ui/spinner';
 import { useAuth } from '@/context/AuthContext';
 import { startEntregasTour, tourStorageKey } from './tour/entregasTour';
 import { useEntregasData, type BoardCard } from './hooks/useEntregasData';
-import { EntregasFilters, type FilterState } from './components/EntregasFilters';
+import {
+  EntregasFilters,
+  EMPTY_FILTERS,
+  type FilterState,
+  type StatusFilter,
+} from './components/EntregasFilters';
 import {
   EditWorkflowModal,
   TemplatesModal,
@@ -35,15 +40,7 @@ const VIEW_TABS: { id: ActiveView; label: string; icon: React.ReactNode }[] = [
 
 export default function EntregasPage() {
   const [activeView, setActiveView] = useState<ActiveView>('kanban');
-  const [filters, setFilters] = useState<FilterState>({
-    filterCliente: null,
-    filterMembro: null,
-    filterPostResponsavel: null,
-    filterStatus: 'todos',
-    filterSearch: '',
-    filterEtapa: null,
-    filterTemplate: null,
-  });
+  const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
   const [listSort, setListSort] = useState<{ column: string; direction: 'asc' | 'desc' }>({
     column: 'titulo',
     direction: 'asc',
@@ -174,25 +171,39 @@ export default function EntregasPage() {
     const q = filters.filterSearch.toLowerCase();
     filteredCards = filteredCards.filter((c) => c.workflow.titulo.toLowerCase().includes(q));
   }
-  if (filters.filterCliente)
-    filteredCards = filteredCards.filter((c) => c.workflow.cliente_id === filters.filterCliente);
-  if (filters.filterMembro)
-    filteredCards = filteredCards.filter((c) => c.etapa.responsavel_id === filters.filterMembro);
-  if (filters.filterPostResponsavel)
+  // Every dropdown filter is multi-select: empty means "no filter", otherwise
+  // a card matches if it hits ANY of the selected values.
+  if (filters.filterClientes.length)
+    filteredCards = filteredCards.filter(
+      (c) =>
+        c.workflow.cliente_id != null && filters.filterClientes.includes(c.workflow.cliente_id),
+    );
+  if (filters.filterMembros.length)
+    filteredCards = filteredCards.filter(
+      (c) =>
+        c.etapa.responsavel_id != null && filters.filterMembros.includes(c.etapa.responsavel_id),
+    );
+  if (filters.filterPostResponsaveis.length)
     filteredCards = filteredCards.filter((c) => {
       const responsaveis = postResponsaveis.get(c.workflow.id!);
-      return responsaveis?.includes(filters.filterPostResponsavel!) ?? false;
+      return responsaveis?.some((r) => filters.filterPostResponsaveis.includes(r)) ?? false;
     });
-  if (filters.filterEtapa)
-    filteredCards = filteredCards.filter((c) => c.etapa.nome === filters.filterEtapa);
-  if (filters.filterTemplate)
-    filteredCards = filteredCards.filter((c) => c.workflow.template_id === filters.filterTemplate);
-  if (filters.filterStatus === 'atrasado')
-    filteredCards = filteredCards.filter((c) => c.deadline.estourado);
-  else if (filters.filterStatus === 'urgente')
-    filteredCards = filteredCards.filter((c) => c.deadline.urgente && !c.deadline.estourado);
-  else if (filters.filterStatus === 'em_dia')
-    filteredCards = filteredCards.filter((c) => !c.deadline.estourado && !c.deadline.urgente);
+  if (filters.filterEtapas.length)
+    filteredCards = filteredCards.filter((c) => filters.filterEtapas.includes(c.etapa.nome));
+  if (filters.filterTemplates.length)
+    filteredCards = filteredCards.filter(
+      (c) =>
+        c.workflow.template_id != null && filters.filterTemplates.includes(c.workflow.template_id),
+    );
+  if (filters.filterStatus.length)
+    filteredCards = filteredCards.filter((c) => {
+      const status: StatusFilter = c.deadline.estourado
+        ? 'atrasado'
+        : c.deadline.urgente
+          ? 'urgente'
+          : 'em_dia';
+      return filters.filterStatus.includes(status);
+    });
 
   const overdue = cards.filter((c) => c.deadline.estourado).length;
   const urgent = cards.filter((c) => c.deadline.urgente && !c.deadline.estourado).length;
