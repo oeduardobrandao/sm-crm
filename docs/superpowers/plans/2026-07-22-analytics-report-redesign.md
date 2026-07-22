@@ -26,7 +26,7 @@
 
 | File | Action | Responsibility |
 |---|---|---|
-| `supabase/migrations/20260722000001_report_v2_branding.sql` | Create | `report_splash_path` column + deprecation comments |
+| `supabase/migrations/20260722000001_report_v2_branding.sql` | Create | `report_splash_url` column (public URL, mirrors `logo_url`) + deprecation comments |
 | `scripts/build-report-fonts.ts` | Create | One-off Deno script: fetch WOFF2 subsets → generate `fonts.ts` |
 | `supabase/functions/_shared/report-template/fonts.ts` | Create (generated) | `REPORT_FONTS_CSS` base64 `@font-face` block |
 | `supabase/functions/_shared/report-template/types.ts` | Modify | `KpiValue.prev`, `WorkspaceBranding` v2 fields |
@@ -50,16 +50,16 @@
 - Create: `supabase/migrations/20260722000001_report_v2_branding.sql`
 
 **Interfaces:**
-- Produces: `workspaces.report_splash_path text NULL` — read by Task 6 (generator) and Task 8 (settings UI).
+- Produces: `workspaces.report_splash_url text NULL` — stores a PUBLIC URL exactly like `workspaces.logo_url` (bucket `avatars`). Read by Task 6 (generator) and Task 8 (settings UI).
 
 - [ ] **Step 1: Write the migration**
 
 ```sql
 -- Report v2 branding: splash art upload + deprecate v1-only branding fields
-ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS report_splash_path text;
+ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS report_splash_url text;
 
-COMMENT ON COLUMN workspaces.report_splash_path IS
-  'Storage path (branding bucket) of the agency-uploaded report cover splash art. NULL = typographic cover.';
+COMMENT ON COLUMN workspaces.report_splash_url IS
+  'Public URL of the agency-uploaded report cover splash art (avatars bucket, mirrors logo_url). NULL = typographic cover.';
 COMMENT ON COLUMN workspaces.report_secondary_color IS 'DEPRECATED 2026-07-22: unused by report v2 template';
 COMMENT ON COLUMN workspaces.report_accent_color   IS 'DEPRECATED 2026-07-22: unused by report v2 template';
 COMMENT ON COLUMN workspaces.report_font_family    IS 'DEPRECATED 2026-07-22: unused by report v2 template';
@@ -75,7 +75,7 @@ Expected: `1`
 
 ```bash
 git add supabase/migrations/20260722000001_report_v2_branding.sql
-git commit -m "feat(db): add workspaces.report_splash_path, deprecate v1 report branding columns"
+git commit -m "feat(db): add workspaces.report_splash_url, deprecate v1 report branding columns"
 ```
 
 *(Do NOT `db push` yet — see Task 10 and the staging/prod link gotcha in the spec §9.)*
@@ -176,7 +176,7 @@ git commit -m "feat(report): embed Fraunces + Instrument Sans as base64 woff2 su
 - Create: `supabase/functions/_shared/report-template/theme.test.ts`
 
 **Interfaces:**
-- Produces: `KpiValue.prev?: number | null`; `WorkspaceBranding.splash_base64?: string | null` and `WorkspaceBranding.accent_color?: string` (optional for now — old fields stay until Task 7); `resolveAccent(hex: string | null | undefined): { acc: string; accFg: string }` from `theme.ts`.
+- Produces: `KpiValue.prev?: number | null`; `ReportData.report_month: string` ("YYYY-MM"); `WorkspaceBranding.splash_base64?: string | null` and `WorkspaceBranding.accent_color?: string` (optional for now — old fields stay until Task 7); `resolveAccent(hex: string | null | undefined): { acc: string; accFg: string }` from `theme.ts`.
 - Consumed by: Tasks 5 (render), 6 (generator), 7 (cleanup).
 
 - [ ] **Step 1: Write failing tests for the accent resolver**
@@ -250,6 +250,12 @@ export interface KpiValue {
   unit: "count" | "pct";
   prev?: number | null; // previous month's raw value, same unit
 }
+```
+
+Also add a machine-readable month to `ReportData` (its existing `period` is the PT-BR label "Junho 2026" and cannot be parsed reliably). Add this field to the `ReportData` interface:
+
+```ts
+  report_month: string; // "YYYY-MM" — drives previous-month labels
 ```
 
 ```ts
@@ -458,6 +464,7 @@ function makeData(): ReportData {
     handle: "@drajuliana",
     specialty: "Dermatologia",
     period: "Junho 2026",
+    report_month: "2026-06",
     kpis: {
       followers_gained: { id: "followers_gained", value: 347, unit: "count", prev: 310 },
       engagement_rate: { id: "engagement_rate", value: 4.2, unit: "pct", prev: 4.3 },
@@ -626,9 +633,10 @@ function fmtCompact(n: number): string {
 function fmtKpi(kpi: KpiValue, v: number): string {
   return kpi.unit === "pct" ? fmtNum(v, 1) + "%" : fmtCompact(v);
 }
-// previous-month name from report period start, e.g. period month = June → "maio"
+// previous-month name from ReportData.report_month ("2026-06" → "maio")
 export function prevMonthName(reportMonth: string): string {
-  const m = parseInt(reportMonth.split("-")[1], 10); // "2026-06" → 6
+  const m = parseInt(reportMonth.split("-")[1], 10);
+  if (!m || m < 1 || m > 12) return "mês anterior";
   return MONTHS_PT_FULL[(m + 10) % 12];
 }
 function deltaNote(kpi: KpiValue, prevName: string): string {
@@ -725,13 +733,13 @@ git commit -m "feat(report): v2 template + renderer (Hub language, takeaways, AI
 - Modify: `supabase/functions/instagram-report-generator-v2/index.ts` (branding assembly ~L480, KPI assembly ~L525, snapshot deltas ~L556, workspace select ~L418)
 
 **Interfaces:**
-- Consumes: `workspaces.report_splash_path` (Task 1), `WorkspaceBranding` v2 fields (Task 3).
+- Consumes: `workspaces.report_splash_url` (Task 1), `WorkspaceBranding` v2 fields (Task 3).
 - Produces: `ReportData.kpis[*].prev` populated; `branding.splash_base64`/`accent_color` populated.
 
 - [ ] **Step 1: Extend the workspace select (~L418)**
 
 ```ts
-"name, logo_url, brand_color, report_splash_path",
+"name, logo_url, brand_color, report_splash_url",
 ```
 
 (drop `report_secondary_color, report_accent_color, report_font_family, report_theme` from the select).
@@ -740,17 +748,15 @@ git commit -m "feat(report): v2 template + renderer (Hub language, takeaways, AI
 
 Immediately after the existing `logoBase64` fetch block, add (reusing the same fetch-to-base64 helper/pattern and its ≤900KB guard):
 
+Directly below the existing logo fetch at ~L476 (`const logoBase64 = ws?.logo_url ? await fetchImageAsBase64(ws.logo_url) : null;`), add the exact same shape — the column already holds a public URL, so no storage API call is needed:
+
 ```ts
-let splashBase64: string | null = null;
-if (ws?.report_splash_path) {
-  const { data: splashUrl } = supabase.storage
-    .from(BRANDING_BUCKET) // same bucket constant the logo uses at ~L470
-    .getPublicUrl(ws.report_splash_path);
-  splashBase64 = await fetchImageAsBase64(splashUrl.publicUrl); // existing helper used for the logo
-}
+const splashBase64 = ws?.report_splash_url
+  ? await fetchImageAsBase64(ws.report_splash_url)
+  : null;
 ```
 
-(If the logo is fetched from `logo_url` directly rather than via bucket API, mirror that exact mechanism instead — match the code that's there.)
+`fetchImageAsBase64` is the existing helper at ~L85; it already enforces the size guard. Do not add a second helper.
 
 - [ ] **Step 3: New branding assembly (~L480)**
 
@@ -768,7 +774,15 @@ const branding: WorkspaceBranding = {
 };
 ```
 
-- [ ] **Step 4: Populate `prev` on KPIs (~L525 + ~L556)**
+- [ ] **Step 4: Pass `report_month` into ReportData (~L805)**
+
+Next to the existing `period: periodLabel,` line, add:
+
+```ts
+      report_month: month, // "2026-06" — already computed at ~L334
+```
+
+- [ ] **Step 5: Populate `prev` on KPIs (~L525 + ~L556)**
 
 After `prevSnapshot` is loaded, thread raw previous values into the `kpis` map:
 
@@ -790,14 +804,14 @@ if (prevSnapshot && currSnapshot) {
 
 (Check the actual snapshot row columns at ~L556 — use exactly the fields the delta code reads; if `posts_count` isn't in the snapshot, skip that line.)
 
-- [ ] **Step 5: Type-check + test sweep**
+- [ ] **Step 6: Type-check + test sweep**
 
 Run: `cd supabase/functions && deno check instagram-report-generator-v2/index.ts`
 Expected: OK.
 Run: `grep -rn "report_font_family\|report_theme\|report_secondary_color\|report_accent_color" supabase/functions/ apps/ | grep -v ".test.\|__tests__\|migrations\|admin"`
 Expected: only `ConfiguracaoPage.tsx` hits (handled in Task 8). If the admin app reads these columns, leave it — columns still exist.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add supabase/functions/instagram-report-generator-v2/index.ts
@@ -847,8 +861,8 @@ git commit -m "refactor(report): WorkspaceBranding v2 — single accent, drop fo
 - Modify: existing ConfiguracaoPage tests if they cover removed controls
 
 **Interfaces:**
-- Consumes: `updateWorkspace(id, patch)` (existing, from store), logo-upload storage pattern at ~L231 (bucket + `getPublicUrl`), `workspaces.report_splash_path` (Task 1).
-- Produces: `downscaleImage(file: File, maxWidth?: number, quality?: number): Promise<Blob>`; settings save `brand_color` + `report_splash_path`.
+- Consumes: `updateWorkspace(id, patch)` (existing, from store), logo-upload storage pattern at ~L231 (bucket + `getPublicUrl`), `workspaces.report_splash_url` (Task 1).
+- Produces: `downscaleImage(file: File, maxWidth?: number, quality?: number): Promise<Blob>`; settings save `brand_color` + `report_splash_url`.
 
 - [ ] **Step 1: Failing test for the downscale util**
 
@@ -923,13 +937,13 @@ In `ConfiguracaoPage.tsx`:
 State (~L290): remove `secondaryColor`, `accentColor`, `reportFont`, `reportTheme` state + their setters/initializers; add:
 
 ```tsx
-const [splashPath, setSplashPath] = useState<string | null>(null);
+const [splashUrl, setSplashUrl] = useState<string | null>(null);
 const [splashUploading, setSplashUploading] = useState(false);
 const splashInputRef = useRef<HTMLInputElement>(null);
-// init from branding load: setSplashPath(branding.report_splash_path ?? null);
+// init from branding load: setSplashUrl(branding.report_splash_url ?? null);
 ```
 
-Save handler (~L305): patch becomes `{ brand_color: brandColor, send_report_email: sendReportEmail, report_splash_path: splashPath }`.
+Save handler (~L305): patch becomes `{ brand_color: brandColor, send_report_email: sendReportEmail }` — the splash URL is persisted by its own upload/remove handlers (mirroring the logo), not by the Salvar button.
 
 Upload handler (mirror the logo handler at ~L231, same bucket):
 
@@ -948,12 +962,13 @@ const handleSplashUpload = async (file: File) => {
   try {
     const blob = await downscaleImage(file);
     const path = `workspaces/${workspace.id}/report-splash.jpg`;
-    // upsert to the SAME bucket the logo uses (copy bucket name from the logo handler)
-    const { error } = await supabase.storage.from(BRANDING_BUCKET)
+    const { error } = await supabase.storage.from('avatars')
       .upload(path, blob, { upsert: true, contentType: 'image/jpeg' });
     if (error) throw error;
-    setSplashPath(path);
-    await updateWorkspace(workspace.id, { report_splash_path: path });
+    const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
+    const publicUrl = urlData.publicUrl + '?t=' + Date.now(); // cache-bust, same as logo
+    setSplashUrl(publicUrl);
+    await updateWorkspace(workspace.id, { report_splash_url: publicUrl });
     toast.success('Arte da capa atualizada.');
   } catch (err) {
     toast.error('Erro ao enviar a arte: ' + (err as Error).message);
@@ -979,9 +994,9 @@ Section JSX (~L714): replace the three color pickers + font selector + theme sel
 
 <div style={{ marginTop: '1.25rem' }}>
   <Label style={{ display: 'block', marginBottom: 6 }}>Arte da capa</Label>
-  {splashPath ? (
+  {splashUrl ? (
     <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-      <img src={splashPublicUrl(splashPath)} alt="Arte da capa"
+      <img src={splashUrl} alt="Arte da capa"
         style={{ width: 168, height: 72, objectFit: 'cover', borderRadius: 8,
                  border: '1px solid var(--border-color)' }} />
       <Button variant="outline" onClick={() => splashInputRef.current?.click()} disabled={splashUploading}>
@@ -1004,7 +1019,9 @@ Section JSX (~L714): replace the three color pickers + font selector + theme sel
 </div>
 ```
 
-Plus: `splashPublicUrl(path)` helper via `supabase.storage.from(BRANDING_BUCKET).getPublicUrl(path)`; a `splashRemoveOpen` AlertDialog mirroring the logo-removal dialog (~L1207) that sets `report_splash_path: null`. "Usar padrão Mesaas" preset: a text button under the empty state that calls `updateWorkspace(workspace.id, { report_splash_path: 'presets/report-splash-contours.svg' })` — upload that SVG asset once to the branding bucket as part of this task (asset = the `cover-art` SVG from the prototype file, saved as `presets/report-splash-contours.svg`).
+Plus a `splashRemoveOpen` AlertDialog mirroring the logo-removal dialog (~L1207) whose confirm action calls `updateWorkspace(workspace.id, { report_splash_url: null })` and `setSplashUrl(null)`.
+
+**Scope note:** the "Usar padrão Mesaas" preset from the spec is NOT built in this task — it needs a hosted asset and adds no capability the upload lacks. Ship upload + remove only; the preset is a follow-up.
 
 - [ ] **Step 6: Update/verify CRM tests**
 
@@ -1057,7 +1074,7 @@ describe('ReportPreview v2', () => {
 
 - [ ] **Step 3: Implement** — pure JSX/inline-style miniature (~240px wide): ink `#1C1917` cover card with logo plate (when `logoUrl`), workspace name, `Georgia, serif` stand-in handle "@seucliente", splash `<img data-testid="preview-splash">` (when `splashUrl`), teaser row with three fake numbers, then a small paper strip with a takeaway dash + rank chip (`data-testid="preview-rank-chip"`, background `accentColor`) and caption `Pré-visualização · fontes ilustrativas`. No data fetching, no state.
 
-- [ ] **Step 4: Run test** — PASS. Then wire props at the call site in `ConfiguracaoPage.tsx` (pass `brandColor`, `splashPath ? splashPublicUrl(splashPath) : null`, `wsLogoUrl`, `wsName`) and run `npm run test -- configuracao` again.
+- [ ] **Step 4: Run test** — PASS. Then wire props at the call site in `ConfiguracaoPage.tsx` (pass `brandColor`, `splashUrl`, `wsLogoUrl`, `wsName`) and run `npm run test -- configuracao` again.
 
 - [ ] **Step 5: Commit**
 
