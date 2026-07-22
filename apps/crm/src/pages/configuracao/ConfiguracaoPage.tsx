@@ -893,14 +893,11 @@ export default function ConfiguracaoPage() {
             </div>
 
             {/* Live preview */}
-            {/* Preview is rewritten for the v2 report design in a follow-up task;
-                the fixed props below keep the current miniature rendering. */}
             <ReportPreview
-              primaryColor={brandColor}
-              secondaryColor="#3ecf8e"
-              accentColor="#42c8f5"
-              fontFamily="DM Sans"
-              theme="dark"
+              accentColor={brandColor}
+              splashUrl={splashUrl}
+              logoUrl={wsLogoUrl}
+              workspaceName={wsName}
             />
           </div>
         </div>
