@@ -8,7 +8,9 @@ const source = readFileSync('apps/crm/src/pages/cliente-detalhe/ClienteDetalhePa
 
 describe('client finance responsive contracts', () => {
   it('keeps all three finance KPIs in equal shrinkable columns on phones', () => {
-    expect(source).toContain('className="kpi-grid cliente-finance-kpis"');
+    // StatCardGrid emits the .kpi-grid class; the page supplies the modifier
+    expect(source).toContain('<StatCardGrid');
+    expect(source).toContain('className="cliente-finance-kpis"');
     expect(css).toMatch(
       /@media \(max-width:\s*767px\)[\s\S]*\.cliente-finance-kpis\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/s,
     );

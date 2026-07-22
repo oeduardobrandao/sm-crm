@@ -506,7 +506,8 @@ describe('AnalyticsContaPage', () => {
     expect(screen.getByText('Seguidores')).toBeTruthy();
     expect(screen.getByText('1.234')).toBeTruthy();
     expect(screen.getByText('12.34%')).toBeTruthy();
-    expect(screen.getByText('Taxa de Salvamentos')).toBeTruthy();
+    // Matched by its description: the title also exists as a KPI card label
+    expect(screen.getByText(/métrica mais subestimada/)).toBeTruthy();
     expect(screen.getByText('Melhores Posts')).toBeTruthy();
     expect(screen.getByText('Precisam de Atenção')).toBeTruthy();
     expect(posts.map((post) => post.caption)).toEqual([

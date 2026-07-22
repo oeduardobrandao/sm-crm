@@ -22,6 +22,7 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { StatCard } from '@/components/StatCard';
+import { StatCardGrid } from '@/components/StatCardGrid';
 import { openCSVSelector } from '../../lib/csv';
 import { Button } from '@/components/ui/button';
 import { HelpTooltip } from '@/components/help/HelpTooltip';
@@ -353,7 +354,7 @@ export default function FinanceiroPage() {
         </div>
       </div>
 
-      <div className="kpi-grid" style={{ marginBottom: '1.5rem' }}>
+      <StatCardGrid style={{ marginBottom: '1.5rem' }}>
         {(
           [
             {
@@ -397,7 +398,7 @@ export default function FinanceiroPage() {
             compactValue
           />
         ))}
-      </div>
+      </StatCardGrid>
 
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center' }}>
         <div style={{ position: 'relative', flex: 1 }}>

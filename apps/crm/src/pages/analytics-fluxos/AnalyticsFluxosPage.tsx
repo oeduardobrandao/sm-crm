@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { SlidersHorizontal, CheckCircle2, Activity, Clock, Target } from 'lucide-react';
 import { StatCard } from '@/components/StatCard';
+import { StatCardGrid } from '@/components/StatCardGrid';
 import { Chart, registerables } from 'chart.js';
 import {
   getWorkflows,
@@ -554,18 +555,24 @@ export default function AnalyticsFluxosPage() {
         style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}
         className="animate-up"
       >
-        <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
-          {DAY_OPTIONS.map((opt) => (
-            <button
-              key={opt.label}
-              className={`filter-btn${(opt.value === 0 ? filters.days === null : filters.days === opt.value) ? ' active' : ''}`}
-              onClick={() =>
-                setFilters((f) => ({ ...f, days: opt.value === 0 ? null : opt.value }))
-              }
-            >
-              {opt.label}
-            </button>
-          ))}
+        <div className="page-tabs page-tabs--inline" role="tablist">
+          {DAY_OPTIONS.map((opt) => {
+            const isActive = opt.value === 0 ? filters.days === null : filters.days === opt.value;
+            return (
+              <button
+                key={opt.label}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                className={`page-tab${isActive ? ' active' : ''}`}
+                onClick={() =>
+                  setFilters((f) => ({ ...f, days: opt.value === 0 ? null : opt.value }))
+                }
+              >
+                {opt.label}
+              </button>
+            );
+          })}
         </div>
 
         <DropdownMenu>
@@ -651,7 +658,7 @@ export default function AnalyticsFluxosPage() {
         </div>
       ) : (
         <>
-          <div className="kpi-grid animate-up">
+          <StatCardGrid className="animate-up">
             <StatCard
               label="Concluídos"
               icon={CheckCircle2}
@@ -682,7 +689,7 @@ export default function AnalyticsFluxosPage() {
               value={metrics.onTimeRate !== null ? metrics.onTimeRate + '%' : '—'}
               sub="etapas no prazo"
             />
-          </div>
+          </StatCardGrid>
 
           <AnalyticsCharts metrics={metrics} />
 

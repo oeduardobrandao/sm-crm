@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ArrowLeft, Edit2, Wallet, CheckCircle2, Clock } from 'lucide-react';
 import { StatCard } from '@/components/StatCard';
+import { StatCardGrid } from '@/components/StatCardGrid';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -167,7 +168,7 @@ export default function MembroDetalhePage() {
           </div>
 
           {!isAgent && (
-            <div className="kpi-grid" style={{ marginBottom: '1.5rem' }}>
+            <StatCardGrid style={{ marginBottom: '1.5rem' }}>
               {(
                 [
                   {
@@ -199,7 +200,7 @@ export default function MembroDetalhePage() {
                   compactValue
                 />
               ))}
-            </div>
+            </StatCardGrid>
           )}
 
           <div className="card" style={{ marginBottom: '1.5rem' }}>

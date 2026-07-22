@@ -23,6 +23,7 @@ import {
   Clock,
 } from 'lucide-react';
 import { StatCard } from '@/components/StatCard';
+import { StatCardGrid } from '@/components/StatCardGrid';
 import { Button } from '@/components/ui/button';
 import { RoleRestrictionNotice } from '@/components/help/RoleRestrictionNotice';
 import { Input } from '@/components/ui/input';
@@ -1792,9 +1793,9 @@ export default function ClienteDetalhePage() {
       {!isAgent && (
         <>
           {/* KPI Cards */}
-          <div
+          <StatCardGrid
             id="sec-financeiro"
-            className="kpi-grid cliente-finance-kpis"
+            className="cliente-finance-kpis"
             style={{ marginBottom: '1.5rem' }}
           >
             <StatCard
@@ -1819,7 +1820,7 @@ export default function ClienteDetalhePage() {
               tone="amber"
               compactValue
             />
-          </div>
+          </StatCardGrid>
 
           {/* Contratos Table */}
           <div className="card animate-up" style={{ marginBottom: '1.5rem' }}>

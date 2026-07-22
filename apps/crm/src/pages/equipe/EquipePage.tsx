@@ -17,6 +17,7 @@ import {
   Wallet,
 } from 'lucide-react';
 import { StatCard } from '@/components/StatCard';
+import { StatCardGrid } from '@/components/StatCardGrid';
 import { openCSVSelector } from '../../lib/csv';
 import { Button } from '@/components/ui/button';
 import { HelpTooltip } from '@/components/help/HelpTooltip';
@@ -306,7 +307,7 @@ export default function EquipePage() {
         </div>
       )}
 
-      <div className="kpi-grid" style={{ marginBottom: '1.5rem' }}>
+      <StatCardGrid style={{ marginBottom: '1.5rem' }}>
         <StatCard label="Total de membros" value={membros.length} icon={UsersRound} tone="blue" />
         {!isAgent && (
           <StatCard
@@ -317,7 +318,7 @@ export default function EquipePage() {
             compactValue
           />
         )}
-      </div>
+      </StatCardGrid>
 
       <div className="flex flex-wrap items-center gap-3 mb-2">
         <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: '320px' }}>

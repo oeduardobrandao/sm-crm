@@ -471,7 +471,8 @@ describe('AnalyticsPage', () => {
     expect(getKpiCard('Contas conectadas')).toHaveTextContent('3 / 3');
     expect(screen.getByText('24.000')).toBeInTheDocument();
     expect(screen.getByText('2.60%')).toBeInTheDocument();
-    expect(screen.getByText('Contas Silenciosas')).toBeInTheDocument();
+    expect(screen.getByText(/Contas silenciosas/)).toBeInTheDocument();
+    expect(screen.getByText('1 conta sem postar no período')).toBeInTheDocument();
     expect(screen.getByText('9d sem postar')).toBeInTheDocument();
 
     const rows = screen.getAllByRole('row');

@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { ArrowDownCircle, ArrowUpCircle, Wallet, TrendingUp } from 'lucide-react';
 import { formatBRL } from '../../../store';
 import { StatCard, type StatTone } from '@/components/StatCard';
+import { StatCardGrid } from '@/components/StatCardGrid';
 
 interface Props {
   aReceber: number;
@@ -42,7 +43,7 @@ export function FinanceKpiStrip({ aReceber, aPagar, saldoProjetado, receitaMensa
     },
   ];
   return (
-    <div className="kpi-grid" style={{ marginTop: '1rem' }}>
+    <StatCardGrid style={{ marginTop: '1rem' }}>
       {items.map((it) => (
         <StatCard
           key={it.label}
@@ -54,6 +55,6 @@ export function FinanceKpiStrip({ aReceber, aPagar, saldoProjetado, receitaMensa
           compactValue
         />
       ))}
-    </div>
+    </StatCardGrid>
   );
 }
