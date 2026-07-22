@@ -726,21 +726,32 @@ grep -rn "GEMINI_API_KEY\|OPEN_ROUTER_API_KEY" supabase/functions/ --include="*.
 ```
 Expected after Task 4: no output. If so, both env vars are dead and their lines should go.
 
-- [ ] **Step 3: Delete the stale user-facing guide**
+- [ ] **Step 3: Clear stale references to deleted Estúdio code**
+
+Surfaced by the Task 4C review. All are prose-only except the first, which needs a decision:
+
+1. `supabase/functions/__tests__/shared_test.ts:18-19` — the CORS allowlist keeps `PUT` justified by "design-manage's browser-issued PUT (Estúdio autosave)", which no longer exists. **Determine whether any surviving caller still needs `PUT` in the allowlist.** If yes, update the comment to name the real caller; if no, remove `PUT` and update the assertion. Do not remove it on the comment's word alone — grep for browser-issued PUT callers first.
+2. `supabase/functions/__tests__/tiktok-shared_test.ts:3` — cites deleted `image-gen-openrouter_test.ts`
+3. `supabase/functions/__tests__/tiktok-token-refresh_test.ts:2` — cites deleted `design-import_test.ts`
+4. `supabase/functions/_shared/r2.ts:100` and `supabase/functions/tiktok-webhook/handler.ts:100-101` — name deleted functions as illustrative examples
+
+For 2-4, just update the prose to drop the dead names.
+
+- [ ] **Step 4: Delete the stale user-facing guide**
 
 ```bash
 git rm docs/estudio-mcp-guide.md
 ```
 Leave `docs/estudio-design.md`, `docs/estudio-plan.md`, `docs/estudio-spike-notes.md` and the `docs/superpowers/specs/2026-07-04-openpencil-*` files in place — they are historical design records, not instructions.
 
-- [ ] **Step 4: Verify and commit**
+- [ ] **Step 5: Verify and commit**
 
 ```bash
 npm run lint && npm run format:check && npm run test
 git add -A && git commit -m "chore(estudio): remove dev scripts, env vars and the MCP guide"
 ```
 
-- [ ] **Step 5: Manual decommission — hand these to Eduardo**
+- [ ] **Step 6: Manual decommission — hand these to Eduardo**
 
 These need dashboard access and are **not** for an agent to perform:
 
@@ -750,7 +761,7 @@ These need dashboard access and are **not** for an agent to perform:
 4. **Cloudflare R2** — the design `.fig` blobs under the design key prefix are now unreachable. Confirm the prefix before deleting anything, and leave `contas/{conta_id}/files/` alone — that is live post media.
 5. **GitHub** — archive or delete the OpenPencil fork if it serves nothing else.
 
-- [ ] **Step 6: Final full-repo sweep**
+- [ ] **Step 7: Final full-repo sweep**
 
 ```bash
 grep -rni "estudio\|design_id\|post_designs" apps/ supabase/functions/ packages/ --include="*.ts" --include="*.tsx" | grep -v node_modules
