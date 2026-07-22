@@ -9,6 +9,7 @@ import {
   McpScopeError,
   mcpKeyActive,
   requireScope,
+  validateScopes,
 } from "../_shared/mcp-token.ts";
 
 Deno.test("hashToken is deterministic, 64 hex chars", async () => {
@@ -49,9 +50,12 @@ Deno.test("hasScope / requireScope", () => {
   assert(threw, "expected McpScopeError for missing scope");
 });
 
-Deno.test("estudio scopes (design §9): allowlisted, and NEVER in the read-only agent preset", () => {
+// Estúdio was retired from the MCP connector. Dropping the scopes from the allowlist is what
+// makes any lingering key/grant string inert, so validateScopes must reject them outright.
+Deno.test("retired estudio scopes: out of the allowlist, rejected by validateScopes", () => {
   for (const s of ["designs:write", "images:generate"]) {
-    assert((MCP_ALLOWED_SCOPES as readonly string[]).includes(s), `${s} in allowlist`);
+    assert(!(MCP_ALLOWED_SCOPES as readonly string[]).includes(s), `${s} NOT in allowlist`);
     assert(!(MCP_AGENT_PRESET as readonly string[]).includes(s), `${s} NOT in agent preset`);
+    assert(!validateScopes([s]), `${s} rejected by validateScopes`);
   }
 });
