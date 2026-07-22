@@ -101,7 +101,7 @@ export function lineChart(opts: LineChartOptions): string {
   const xLabels = tickIdx
     .map((i) => {
       const isLast = i === n - 1;
-      return `<text x="${toX(i)}" y="${height - 6}" text-anchor="${isLast ? "end" : "middle"}" font-size="9" fill="#9ca3af" font-family="DM Sans, sans-serif" class="axis-x">${escapeHtml(fmtTick(data[i].label))}</text>`;
+      return `<text x="${toX(i)}" y="${height - 6}" text-anchor="${isLast ? "end" : "middle"}" font-size="9" fill="#8A8A8A" font-family="'Instrument Sans', sans-serif" class="axis-x">${escapeHtml(fmtTick(data[i].label))}</text>`;
     })
     .join("");
 
@@ -128,7 +128,7 @@ export function lineChart(opts: LineChartOptions): string {
       const y = toY(v);
       const label = v >= 10000 ? `${r(v / 1000, 1)}k` : String(Math.round(v));
       return `<line x1="${PAD_LEFT}" y1="${y}" x2="${r(PAD_LEFT + plotW)}" y2="${y}" stroke="#9ca3af" stroke-width="0.5" opacity="0.3"/>
-    <text x="${PAD_LEFT - 4}" y="${y}" text-anchor="end" font-size="9" fill="#9ca3af" font-family="DM Sans, sans-serif" dominant-baseline="middle">${label}</text>`;
+    <text x="${PAD_LEFT - 4}" y="${y}" text-anchor="end" font-size="9" fill="#8A8A8A" font-family="'Instrument Sans', sans-serif" dominant-baseline="middle">${label}</text>`;
     })
     .join("\n    ");
 
@@ -149,7 +149,7 @@ export function lineChart(opts: LineChartOptions): string {
     const anchor = eventMarker.index === 0 ? "start" : eventMarker.index === n - 1 ? "end" : "middle";
     const labelY = Math.max(p.y - 12, PAD_TOP - 4);
     eventMarkerSvg = `<circle cx="${p.x}" cy="${p.y}" r="3.5" fill="#FAFAF7" stroke="${color}" stroke-width="2"/>
-  <text x="${p.x}" y="${labelY}" text-anchor="${anchor}" font-size="9" fill="#9ca3af" font-family="DM Sans, sans-serif" class="axis">${escapeHtml(eventMarker.label)}</text>`;
+  <text x="${p.x}" y="${labelY}" text-anchor="${anchor}" font-size="9" fill="#8A8A8A" font-family="'Instrument Sans', sans-serif" class="axis">${escapeHtml(eventMarker.label)}</text>`;
   }
 
   // Annotation pill: net-change callout anchored at the last data point.
@@ -588,8 +588,8 @@ export function donutChart(opts: DonutChartOptions): string {
     // Center/segment labels are always neutral ink/gray — segment hue is carried
     // by the arc fill only, never by text, so the donut imposes no hardcoded hues.
     labels.push(
-      `<text x="${r(lp.x)}" y="${r(lp.y - 4)}" text-anchor="${anchor}" font-size="9" fill="#8A8A8A" font-family="DM Sans, sans-serif" dominant-baseline="middle">${escapeHtml(seg.label)}</text>`,
-      `<text x="${r(lp.x)}" y="${r(lp.y + 8)}" text-anchor="${anchor}" font-size="10" font-weight="700" fill="#1C1917" font-family="DM Sans, sans-serif" dominant-baseline="middle">${pctStr}</text>`,
+      `<text x="${r(lp.x)}" y="${r(lp.y - 4)}" text-anchor="${anchor}" font-size="9" fill="#8A8A8A" font-family="'Instrument Sans', sans-serif" dominant-baseline="middle">${escapeHtml(seg.label)}</text>`,
+      `<text x="${r(lp.x)}" y="${r(lp.y + 8)}" text-anchor="${anchor}" font-size="10" font-weight="700" fill="#1C1917" font-family="'Instrument Sans', sans-serif" dominant-baseline="middle">${pctStr}</text>`,
     );
 
     startAngle = endAngle;
