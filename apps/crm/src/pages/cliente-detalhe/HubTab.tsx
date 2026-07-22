@@ -44,6 +44,7 @@ import {
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable';
 import { Button } from '@/components/ui/button';
+import { ScrollableTabs } from '@/components/shared/ScrollableTabs';
 import { openExternalUrl } from '@/utils/security';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -1346,13 +1347,14 @@ function BriefingEditor({
 
       {/* Briefing tabs */}
       {briefings.length > 0 && (
-        <div role="tablist" className="flex gap-1 mb-4 border-b overflow-x-auto">
+        <ScrollableTabs label="Briefings" activeKey={selectedId} className="mb-4">
           {briefings.map((b) => (
             <button
               key={b.id}
               type="button"
               role="tab"
               aria-selected={selectedId === b.id}
+              data-active={selectedId === b.id}
               onClick={() => {
                 setSelectedId(b.id);
                 setRenaming(false);
@@ -1371,7 +1373,7 @@ function BriefingEditor({
               {b.title || <span className="italic opacity-60">Sem título</span>}
             </button>
           ))}
-        </div>
+        </ScrollableTabs>
       )}
 
       {!selectedBriefing ? (

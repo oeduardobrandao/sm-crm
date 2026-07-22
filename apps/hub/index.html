@@ -80,6 +80,53 @@
       .hub-root .hub-download-link:hover .hub-download-hint { color: var(--hub-txt); }
       .hub-root .hub-page-row:hover .hub-page-chevron { color: var(--hub-txt); }
       .hub-root .hub-tab-btn:hover { color: var(--hub-tx2); }
+      /* Scrollable tab strips (ScrollableTabs.tsx): the overflowing side fades
+         into the page, and roomy pointer devices also get a chevron. All theme
+         tokens, so light/dark and whitelabel accents follow automatically. */
+      .hub-root .hub-tabs-fade {
+        position: absolute;
+        top: 0;
+        bottom: 1px;
+        width: 56px;
+        pointer-events: none;
+        z-index: 1;
+      }
+      .hub-root .hub-tabs-fade-left {
+        left: 0;
+        background: linear-gradient(to right, var(--hub-bg) 30%, transparent);
+      }
+      .hub-root .hub-tabs-fade-right {
+        right: 0;
+        background: linear-gradient(to left, var(--hub-bg) 30%, transparent);
+      }
+      .hub-root .hub-tabs-arrow {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        z-index: 2;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        height: 26px;
+        border-radius: 9999px;
+        border: 1px solid var(--hub-bd);
+        background-color: var(--hub-card);
+        color: var(--hub-tx3);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+        transition: color 150ms ease, border-color 150ms ease;
+      }
+      .hub-root .hub-tabs-arrow:hover {
+        color: var(--hub-txt);
+        border-color: var(--hub-bd2);
+      }
+      .hub-root .hub-tabs-arrow-left { left: 0; }
+      .hub-root .hub-tabs-arrow-right { right: 0; }
+      /* Roomy pointer devices only — on phones the strip is too narrow to give
+         up ~52px to chevrons, and swiping is the natural gesture anyway. */
+      @media (min-width: 640px) and (hover: hover) and (pointer: fine) {
+        .hub-root .hub-tabs-arrow { display: flex; }
+      }
       .hub-root .hub-icon-btn:hover { background: var(--hub-soft); }
       .hub-root .hub-action-pill { background: var(--hub-soft); }
       .hub-root .hub-action-pill:hover { background: var(--hub-bd2); }

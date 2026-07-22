@@ -16,6 +16,13 @@
       "autoPort": true
     },
     {
+      "name": "hub",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:hub"],
+      "port": 5175,
+      "autoPort": true
+    },
+    {
       "name": "admin",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev:admin"],
