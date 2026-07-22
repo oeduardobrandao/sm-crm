@@ -97,7 +97,12 @@ DROP TABLE IF EXISTS post_designs CASCADE;
 -- ============================================================
 -- 5. The AI image ledger. Its BEFORE INSERT trigger (trg_limit_ai_images) is dropped with the
 --    table; the shared enforce_plan_count_limit() function it called is NOT dropped.
---    20260722000001 already removed the plans.rate_ai_images_per_month column that trigger read.
+--    The plans.rate_ai_images_per_month column that trigger read is removed separately by
+--    20260722000003, which runs AFTER this file. That order is deliberate: dropping the table
+--    takes the trigger with it, so the column is never left readable-by-a-live-trigger. (The
+--    trigger passed the column name as a runtime TG_ARGV string, so neither order can fail the
+--    DROP — and there have been no writers to this table since the Estúdio functions were
+--    deleted.)
 -- ============================================================
 DROP TABLE IF EXISTS ai_image_generations CASCADE;
 

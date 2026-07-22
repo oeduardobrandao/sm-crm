@@ -513,7 +513,7 @@ git add -A && git commit -m "chore(estudio): delete design + image-gen edge func
 - Modify: `supabase/functions/_shared/entitlements.ts`
 - Modify: `apps/crm/src/hooks/useWorkspaceLimits.ts:45`
 - Modify: `apps/crm/src/lib/entitlement-errors.ts:35`
-- Create: `supabase/migrations/20260722000001_drop_estudio_plan_columns.sql`
+- Create: `supabase/migrations/20260722000003_drop_estudio_plan_columns.sql`
 
 **Interfaces:**
 - Consumes: Task 4 (no edge function reads these flags).
@@ -533,7 +533,7 @@ Delete the three keys from the plan-column arrays/types in `supabase/functions/_
 
 - [ ] **Step 3: Write the migration**
 
-Create `supabase/migrations/20260722000001_drop_estudio_plan_columns.sql`:
+Create `supabase/migrations/20260722000003_drop_estudio_plan_columns.sql`:
 ```sql
 -- Estúdio retirement: the editor, its edge functions and its MCP tools are gone, so these
 -- plan gates no longer gate anything. Dropping them keeps effective_plan_feature() honest.
