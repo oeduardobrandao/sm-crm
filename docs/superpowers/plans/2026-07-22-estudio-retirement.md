@@ -4,7 +4,7 @@
 
 **Goal:** Remove the Estúdio design editor and AI image generation from Mesaas entirely — CRM UI, edge functions, shared modules, database objects, and external infrastructure — leaving post media upload/attach fully intact.
 
-**Architecture:** Strict callers-before-callees ordering. CRM UI first (reversible, no data risk), then edge functions, then plan entitlements, then the irreversible database drop, then external infrastructure. Two columns added by the Estúdio migration are **retained** because surviving features depend on them: `hub_brand.logo_file_id` (client brand kit / Hub whitelabel) and `post_file_links.origin` (media pipeline). The MCP connector slice is already complete on branch `claude/mesaas-connector-expiration-9c3bad`.
+**Architecture:** Strict callers-before-callees ordering. CRM UI first (reversible, no data risk), then the design coupling inside surviving fundamental functions (Tasks 4A/4B), then the Estúdio edge functions, then plan entitlements, then the irreversible database drop, then external infrastructure. Two columns added by the Estúdio migration are **retained** because surviving features depend on them: `hub_brand.logo_file_id` (client brand kit / Hub whitelabel) and `post_file_links.origin` (media pipeline). The MCP connector slice is already complete on branch `claude/mesaas-connector-expiration-9c3bad`.
 
 **Tech Stack:** React 19 + TanStack Query + Vitest (CRM), Deno edge functions + `deno test` (backend), Postgres migrations via Supabase CLI, pg_cron, Cloudflare R2, Vercel.
 
@@ -17,6 +17,8 @@
 - Migration filenames MUST use a unique timestamp prefix (the digits before the first `_`). The `migration-version-guard` CI job fails on duplicates.
 - Run `npm run lint`, `npm run format:check`, `npm run test`, and `npm run test:functions` before pushing — all four are CI gates.
 - `npm run test:functions` dirties root `deno.lock` and pollutes shared `node_modules`. After running it: `git checkout -- deno.lock`, and run `npm ci` before any `tsc`/`vitest` run.
+- **The live designs table is `designs`, NOT `post_designs`** — `20260705000001_designs_first_class.sql` replaced the original. Never write a DB object name from memory or from the first migration that mentions it: derive it from the latest migration or the live catalog. Two defects in this plan (a wrong cron job name, a wrong table name) came from exactly that, and both would have silently no-opped under `IF EXISTS`.
+- **`instagram-publish`, `tiktok-publish`, `hub-approve`, `file-manage` and `file-upload-finalize` are fundamental live functions and are NOT Estúdio-exclusive.** Tasks 4A/4B strip design logic from them surgically. Any change to their non-design behaviour is a defect, not a cleanup.
 - Prod project ref is `skjzpekeqefvlojenfsw`; staging is `wlyzhyfondykzpsiqsce`. Link state flips — always `cat supabase/.temp/project-ref` and translate before any `--linked` command.
 
 ---
@@ -310,12 +312,133 @@ Expected: tsc silent, all tests pass. The ColorPicker tests exercise `colorPicke
 
 ---
 
+### Task 4A: Remove the Estúdio publish gate from the Instagram and TikTok publish paths
+
+**These are the app's most fundamental, live, revenue-critical paths. Behaviour for posts without a design must be byte-for-byte unchanged.**
+
+The Estúdio "publish gate" blocks scheduling when a post's attached design is not rendered. It lives in the shared publish utils and is consumed by both platforms, the two publish crons, and the client-facing approval flow.
+
+**The safety argument that makes this removal correct:** `checkDesignReadiness` returns `{ ready: true, design: null }` for *any post with no attached design* (`instagram-publish-utils.ts:173`) — the gate has always been a no-op for ordinary posts. Every post is now in that state (the Estúdio UI is gone; all design rows are test data being dropped in Task 6). So deleting the gate changes nothing for real traffic. **If you find a code path where removing the gate alters behaviour for a post with no design, STOP and report BLOCKED — that would mean this argument is wrong.**
+
+**Files:**
+- Modify: `supabase/functions/_shared/instagram-publish-utils.ts` — delete `checkDesignReadiness` (:167-182), `DesignSummary` (:148), `DesignReadiness` (:155-159), the `designBlocked` field (:145), and the gate block (:233-246) that pushes the two Portuguese error strings
+- Modify: `supabase/functions/_shared/tiktok-publish-utils.ts` — delete the `checkDesignReadiness`/`DesignSummary` import (:13), the `designBlocked` field (:66), and the gate block (:260-270)
+- Modify: `supabase/functions/instagram-publish/handler.ts` — delete `maybeRetriggerDesign` (:38-48), the `triggerDesignRender` dep (:31), and every call site
+- Modify: `supabase/functions/instagram-publish/index.ts:5,21` — drop the trigger import and wiring
+- Modify: `supabase/functions/hub-approve/handler.ts:16,96-107` and `hub-approve/index.ts:3,16` — same
+- Modify: `supabase/functions/instagram-publish-cron/index.ts:96-108` — delete the design re-check
+- Modify: `supabase/functions/tiktok-publish-cron/core.ts:204-214` — delete the design re-check
+- Test: `supabase/functions/__tests__/instagram-publish-gate_test.ts` (likely deleted in full — it tests only the gate), `instagram-publish-validation_test.ts`, `tiktok-publish-utils_test.ts`, `tiktok-publish-cron_test.ts`
+
+**Interfaces:**
+- Consumes: Tasks 1-3 (no frontend caller remains).
+- Produces: `ScheduleValidationResult` no longer has a `designBlocked` field; `checkDesignReadiness` no longer exists. `_shared/design-render-trigger.ts` still exists — Task 4B removes its last callers.
+
+- [ ] **Step 1: Record the baseline**
+
+```bash
+npm run test:functions 2>&1 | tail -3
+```
+Record the pass count. Then `git checkout -- deno.lock`. This is the number every later step is measured against.
+
+- [ ] **Step 2: Remove the gate from the shared Instagram utils**
+
+In `_shared/instagram-publish-utils.ts` delete, in this order: the gate block at :233-246 (the `let designBlocked` declaration, the `checkDesignReadiness` call, and the `errors.push(...)` with the two `"A arte do Estúdio…"` strings), the `designBlocked,` entry in the returned object (:288), the `designBlocked?: DesignSummary;` field (:145), then `checkDesignReadiness` (:167-182) and the `DesignSummary` / `DesignReadiness` interfaces.
+
+Leave every non-design validation rule exactly as-is — media checks, date checks, workflow lookup, account checks. Only the design gate goes.
+
+- [ ] **Step 3: Remove the gate from the shared TikTok utils**
+
+In `_shared/tiktok-publish-utils.ts` delete the import at :13, the `designBlocked?: DesignSummary;` field (:66), the gate block (:260-270), and the `designBlocked,` entry in the returned object (:318). The unaudited-mode gate, the photo constraints, and the post-type mapping all stay.
+
+- [ ] **Step 4: Remove the consumers**
+
+`instagram-publish/handler.ts`: delete `maybeRetriggerDesign` and its call sites, and the `triggerDesignRender?` dep. `hub-approve/handler.ts`: delete the `else if (validation.designBlocked && …)` branch at :95-107 — **keep the `if`/`else` chain's remaining behaviour intact; the approval itself must still succeed exactly as before.** Then drop the now-unused `triggerDesignRender` dep and the `createDesignRenderTrigger` import + wiring from both `index.ts` files, and delete the re-check blocks from `instagram-publish-cron/index.ts` and `tiktok-publish-cron/core.ts`.
+
+- [ ] **Step 5: Update the tests**
+
+Delete tests that exercise only the removed gate. Do NOT delete or weaken tests covering the surviving validation rules. If a test file mixes both, remove only the design cases. Report exactly which test cases you removed and why each was gate-only.
+
+- [ ] **Step 6: Verify**
+
+```bash
+npm run test:functions 2>&1 | tail -3
+git checkout -- deno.lock && npm ci
+```
+Expected: all pass. The drop from Step 1's baseline must be fully explained by the gate-only tests you removed — state the arithmetic in your report.
+
+```bash
+grep -rn "checkDesignReadiness\|designBlocked\|DesignReadiness" supabase/functions --include="*.ts"
+```
+Expected: no output.
+
+- [ ] **Step 7: Commit**
+
+Stage explicit paths (not `-A`):
+```bash
+git commit -m "chore(estudio): remove the design publish gate from the Instagram and TikTok paths"
+```
+
+---
+
+### Task 4B: Remove the design coupling from the file and media paths
+
+`file-manage` and `file-upload-finalize` mark a design stale when a file is swapped, then kick a re-render. With designs gone, both the staleness module and the trigger are dead. These functions own **all** file upload and management in the app — the non-design paths must be untouched.
+
+**Files:**
+- Delete: `supabase/functions/_shared/reel-cover-staleness.ts` (only consumers are the two functions below)
+- Delete: `supabase/functions/_shared/design-render-trigger.ts` (Task 4A removed its other callers)
+- Delete: `supabase/functions/__tests__/reel-cover-staleness_test.ts`
+- Modify: `supabase/functions/file-upload-finalize/handler.ts:22,164-170` and `index.ts:6,26`
+- Modify: `supabase/functions/file-manage/handler.ts:32,537-543` and `index.ts:6,25`
+- Test: `supabase/functions/__tests__/file-upload-finalize_test.ts`
+
+**Interfaces:**
+- Consumes: Task 4A (which removed the other `design-render-trigger` callers).
+- Produces: `_shared/design-render-trigger.ts` and `_shared/reel-cover-staleness.ts` no longer exist. Nothing outside the Estúdio functions references a design.
+
+- [ ] **Step 1: Confirm Task 4A cleared the other callers**
+
+```bash
+grep -rn "design-render-trigger\|createDesignRenderTrigger\|triggerDesignRender" supabase/functions --include="*.ts"
+```
+Expected: hits ONLY in `file-manage/`, `file-upload-finalize/`, `_shared/design-render-trigger.ts`, and the `mcp/` function's own wiring if any remains. If `instagram-publish`, `hub-approve`, or either cron still appears, Task 4A is incomplete — STOP and report BLOCKED.
+
+- [ ] **Step 2: Remove the stale-design re-render from both file handlers**
+
+In `file-upload-finalize/handler.ts` delete the `if (stale.marked && stale.design && deps.triggerDesignRender) { … }` block (~:164-170) and the `triggerDesignRender?` dep (:22). Do the same in `file-manage/handler.ts` (~:537-543, dep at :32). Then remove the `markReelCoverStale` (or equivalent) calls that populate `stale`, and the `createDesignRenderTrigger` import + wiring from both `index.ts` files.
+
+**The file upload, finalize, quota, delete and rename paths must be untouched.** Only the design-staleness side-effect goes.
+
+- [ ] **Step 3: Delete the dead shared modules**
+
+```bash
+git rm supabase/functions/_shared/reel-cover-staleness.ts \
+       supabase/functions/_shared/design-render-trigger.ts \
+       supabase/functions/__tests__/reel-cover-staleness_test.ts
+```
+
+- [ ] **Step 4: Update `file-upload-finalize_test.ts`**
+
+Remove only the cases asserting design-staleness behaviour. Every case covering upload finalisation, quota enforcement and thumbnailing must survive untouched.
+
+- [ ] **Step 5: Verify and commit**
+
+```bash
+npm run test:functions 2>&1 | tail -3
+git checkout -- deno.lock && npm ci
+grep -rn "reel-cover-staleness\|design-render-trigger\|markReelCover" supabase/functions --include="*.ts"
+```
+Expected: tests pass; grep returns no output. State the test-count arithmetic in your report. Stage explicit paths and commit.
+
+---
+
 ### Task 4: Delete the Estúdio edge functions and shared modules
 
 **Files:**
 - Delete: `supabase/functions/design-import/`, `design-manage/`, `design-render/`, `design-render-sweep-cron/`, `generate-image/`
 - Delete: `supabase/functions/_shared/image-gen/`, `_shared/doc-service.ts`, `_shared/design-render-trigger.ts`
-- Delete: `supabase/functions/__tests__/design-import_test.ts`, `design-manage_test.ts`, `design-render_test.ts`, `design-render-sweep-cron_test.ts`, `generate-image_test.ts`, `image-gen-core_test.ts`, `image-gen-openrouter_test.ts`, `image-gen-vision_test.ts`
+- Delete: `supabase/functions/__tests__/design-import_test.ts`, `design-manage_test.ts`, `design-render_test.ts`, `design-render-sweep-cron_test.ts`, `generate-image_test.ts`, `image-gen-core_test.ts`, `image-gen-openrouter_test.ts`, `image-gen-vision_test.ts`, `doc-service-client.test.ts`
 - Modify: `supabase/config.toml` (lines 22, 25, 67, 70 — the four `[functions.design-*]` blocks)
 
 **Interfaces:**
@@ -324,23 +447,28 @@ Expected: tsc silent, all tests pass. The ColorPicker tests exercise `colorPicke
 
 - [ ] **Step 1: Confirm nothing outside the deletion set imports these modules**
 
+Tasks 4A and 4B must be complete first — they removed the design coupling from the surviving publish, approval and file functions. This gate verifies that.
+
 Run:
 ```bash
-cd supabase/functions && grep -rn "image-gen\|doc-service\|design-render-trigger\|starter-templates" . \
+cd supabase/functions && grep -rn "image-gen\|doc-service\|starter-templates" . \
   --include="*.ts" | grep -vE "^\./(design-|generate-image|_shared/image-gen|__tests__/)"
 ```
-Expected: no output. A hit outside the deletion set means a surviving function depends on this code — stop and re-scope.
+Expected: no output. A hit outside the deletion set means a surviving function still depends on this code — STOP and report BLOCKED rather than fixing up the caller.
+
+(`_shared/design-render-trigger.ts` and `_shared/reel-cover-staleness.ts` were already deleted by Task 4B, so they are absent from this grep and from the deletion list below.)
 
 - [ ] **Step 2: Delete the functions, shared modules and tests**
 
 ```bash
 cd supabase/functions
 git rm -r design-import design-manage design-render design-render-sweep-cron generate-image \
-          _shared/image-gen _shared/doc-service.ts _shared/design-render-trigger.ts
+          _shared/image-gen _shared/doc-service.ts
 git rm __tests__/design-import_test.ts __tests__/design-manage_test.ts \
        __tests__/design-render_test.ts __tests__/design-render-sweep-cron_test.ts \
        __tests__/generate-image_test.ts __tests__/image-gen-core_test.ts \
-       __tests__/image-gen-openrouter_test.ts __tests__/image-gen-vision_test.ts
+       __tests__/image-gen-openrouter_test.ts __tests__/image-gen-vision_test.ts \
+       __tests__/doc-service-client.test.ts
 ```
 
 - [ ] **Step 3: Remove the config.toml entries**
@@ -467,33 +595,52 @@ END $$;
 -- 2. No link may claim design provenance once designs are gone.
 UPDATE post_file_links SET origin = 'manual' WHERE origin = 'design';
 
--- 3. RPCs (drop before the tables they read).
-DROP FUNCTION IF EXISTS finalize_design_render(bigint, jsonb, text);
-DROP FUNCTION IF EXISTS fail_design_render(bigint, text);
-DROP FUNCTION IF EXISTS claim_design_render(bigint);
-DROP FUNCTION IF EXISTS delete_post_design(uuid, bigint);
-DROP FUNCTION IF EXISTS get_or_create_post_design(uuid, bigint, jsonb);
-DROP FUNCTION IF EXISTS update_post_design(uuid, bigint, jsonb, integer);
-DROP FUNCTION IF EXISTS create_post_design(uuid, bigint, jsonb);
-DROP FUNCTION IF EXISTS post_design_diff_asset_refs(bigint, jsonb);
-DROP FUNCTION IF EXISTS post_design_check_and_sync(uuid, bigint, jsonb);
-DROP FUNCTION IF EXISTS set_post_designs_doc_state();
+-- 3. RPCs — dropped BY NAME from the catalog, not by hand-written signature.
+--    Hand-written signatures are how this migration went wrong the first time: a signature
+--    that doesn't match silently no-ops under IF EXISTS and the migration still reports
+--    success. These functions were redefined across 8 migrations and several are overloaded,
+--    so the catalog is the only trustworthy source. This drops EVERY overload of each name.
+DO $$
+DECLARE r record;
+BEGIN
+  FOR r IN
+    SELECT p.oid::regprocedure AS sig
+    FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+      AND p.proname IN (
+        'attach_design', 'claim_design_render', 'claim_design_render_blob',
+        'create_design', 'create_post_design', 'delete_design', 'delete_post_design',
+        'detach_design', 'duplicate_design', 'fail_design_render', 'finalize_design_render',
+        'get_or_create_post_design', 'get_or_create_post_design_blob',
+        'post_design_check_and_sync', 'post_design_diff_asset_refs',
+        'save_design_blob', 'save_post_design_blob', 'set_post_designs_doc_state',
+        'update_post_design'
+      )
+  LOOP
+    EXECUTE format('DROP FUNCTION IF EXISTS %s CASCADE', r.sig);
+  END LOOP;
+END $$;
 
--- 4. Tables (design_asset_refs first — its DELETE trigger decrements files.reference_count,
---    so dropping the table rather than deleting rows leaves counts untouched by design).
-DROP TABLE IF EXISTS design_asset_refs;
-DROP TABLE IF EXISTS post_designs;
+-- 4. Tables. NOTE: the live table is `designs` — 20260705000001_designs_first_class.sql
+--    replaced the original `post_designs`. Both names are dropped because either may exist
+--    depending on how far a given environment's history ran.
+--    design_asset_refs goes first: its DELETE trigger decrements files.reference_count, so
+--    DROP TABLE (rather than deleting rows) leaves those counts untouched, which is what we
+--    want — the underlying files are ordinary workspace files.
+DROP TABLE IF EXISTS design_asset_refs CASCADE;
+DROP TABLE IF EXISTS designs CASCADE;
+DROP TABLE IF EXISTS post_designs CASCADE;
 
 -- 5. The AI image ledger.
-DROP TABLE IF EXISTS ai_image_generations;
+DROP TABLE IF EXISTS ai_image_generations CASCADE;
 ```
 
-**Before running:** confirm each `DROP FUNCTION` signature against the source migrations — a wrong signature silently no-ops under `IF EXISTS`. Verify with:
+**Before running:** the function-name list above was derived from ALL migrations, not just the original one. Re-derive it and diff against the list before running:
 ```bash
-grep -n "CREATE OR REPLACE FUNCTION" supabase/migrations/20260702000001_post_designs.sql \
-  supabase/migrations/20260702000004_*.sql supabase/migrations/20260704000002_*.sql \
-  supabase/migrations/20260705000001_*.sql supabase/migrations/20260706000002_*.sql
+grep -hoE "CREATE (OR REPLACE )?FUNCTION [a-z_]+\(" supabase/migrations/*.sql \
+  | sed 's/CREATE \(OR REPLACE \)\?FUNCTION //; s/($//' | sort -u | grep -iE "design|render"
 ```
+Any name in that output missing from the `proname IN (...)` list must be added. Do NOT hand-write signatures.
 The cron job name is `design-render-sweep-cron` (verified against `20260702000005_design_render_sweep_cron_schedule.sql:24`, schedule `*/2 * * * *`). Re-confirm before running:
 ```bash
 grep -A1 "cron.schedule" supabase/migrations/20260702000005_design_render_sweep_cron_schedule.sql
