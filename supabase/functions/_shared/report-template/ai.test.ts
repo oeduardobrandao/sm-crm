@@ -6,6 +6,7 @@ const fixture: ReportData = {
   handle: "@drajuliana",
   specialty: "Dermatologia",
   period: "Maio 2026",
+  report_month: "2026-05",
   kpis: {
     followers_gained: { id: "followers_gained", value: 347, unit: "count" },
     engagement_rate: { id: "engagement_rate", value: 4.2, unit: "pct" },
@@ -16,7 +17,7 @@ const fixture: ReportData = {
     posts_count: { id: "posts_count", value: 18, unit: "count" },
   },
   kpi_deltas: { followers_pct_change: 12.4, engagement_pct_change: -0.3, reach_pct_change: 8.1 },
-  top_posts: [{ type: "reel", reach: 12400, engagement: 6.8, saves: 340, caption_preview: "5 dicas para..." }],
+  top_posts: [{ type: "reel", reach: 12400, engagement: 6.8, saves: 340, likes: 890, comments: 45, caption_preview: "5 dicas para..." }],
   content_breakdown: {
     reels: { count: 6, avg_reach: 8200, avg_engagement: 5.1 },
     carousels: { count: 8, avg_reach: 4100, avg_engagement: 3.8 },

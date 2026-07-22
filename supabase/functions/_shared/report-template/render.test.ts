@@ -19,6 +19,7 @@ const data: ReportData = {
   handle: "@drajuliana",
   specialty: "Dermatologia",
   period: "Maio 2026",
+  report_month: "2026-05",
   kpis: {
     followers_gained: { id: "followers_gained", value: 347, unit: "count" },
     engagement_rate: { id: "engagement_rate", value: 4.2, unit: "pct" },

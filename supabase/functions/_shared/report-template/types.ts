@@ -2,6 +2,7 @@ export interface KpiValue {
   id: string;
   value: number;
   unit: "count" | "pct";
+  prev?: number | null; // previous month's raw value, same unit
 }
 
 export interface KpiDeltas {
@@ -61,6 +62,7 @@ export interface ReportData {
   handle: string;
   specialty: string;
   period: string;
+  report_month: string; // "YYYY-MM" — drives previous-month labels
   kpis: Record<string, KpiValue>;
   kpi_deltas: KpiDeltas;
   top_posts: TopPost[];
@@ -94,9 +96,12 @@ export interface AIOutput {
 export interface WorkspaceBranding {
   logo_base64: string | null;
   workspace_name: string;
+  // v2 fields (Task 7 makes splash_base64 required and removes the v1 fields below)
+  splash_base64?: string | null;
+  // v1 fields — DEPRECATED, removed in Task 7
   primary_color: string;
   secondary_color: string;
-  accent_color: string;
+  accent_color: string; // already required pre-existing; becomes the single v2 accent in Task 7
   font_family: string;
   theme: "dark" | "light";
 }
