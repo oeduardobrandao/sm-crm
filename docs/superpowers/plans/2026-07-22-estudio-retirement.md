@@ -277,7 +277,22 @@ Then update the resource registration below it, changing the `estudio:` namespac
   const { t } = useTranslation('brand');
 ```
 
-- [ ] **Step 6: Verify no stale namespace references**
+- [ ] **Step 6: Remove the dead design keys from the `posts` namespace**
+
+Surfaced by the Task 2 review: four keys used only by the removed design-ownership UI live in the **`posts`** namespace, not `estudio.json`, so the rename above does not sweep them. Delete from BOTH `packages/i18n/locales/pt/posts.json` and `packages/i18n/locales/en/posts.json` (~lines 81-84):
+```
+mediaGallery.designOwned
+mediaGallery.designOwnedReel
+mediaGallery.designOwnsImages
+mediaGallery.makeEditable
+```
+Confirm each is unreferenced before deleting:
+```bash
+grep -rn "designOwned\|designOwnsImages\|makeEditable" apps/ --include="*.ts" --include="*.tsx"
+```
+Expected: no output.
+
+- [ ] **Step 7: Verify no stale namespace references**
 
 Run:
 ```bash
@@ -285,7 +300,7 @@ grep -rn "useTranslation('estudio')\|estudio.json" apps/ packages/ --include="*.
 ```
 Expected: no output.
 
-- [ ] **Step 7: Typecheck, test, commit**
+- [ ] **Step 8: Typecheck, test, commit**
 
 ```bash
 npx tsc -p apps/crm/tsconfig.json --noEmit && npm run test
