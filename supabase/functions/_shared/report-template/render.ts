@@ -46,7 +46,10 @@ const MAX_TAG_ROWS = 3;
 const MAX_AGE_ROWS = 5;
 const MAX_CITY_ROWS = 5;
 const MAX_COUNTRY_ROWS = 3;
-const MAX_RECO_CARDS = 4;
+// ai.ts validates 3–5 recommendations, so a 5-item result is routine. Page 6 was
+// re-measured at 5 cards (1123px, still inside the A4 box) — cap set to 5 so the
+// AI's full plan reaches the client and the takeaway count can never exceed it.
+const MAX_RECO_CARDS = 5;
 const MAX_GOAL_CARDS = 3;
 
 // ---------------------------------------------------------------------------
@@ -136,6 +139,12 @@ function resolveDelta(kpi: KpiValue | undefined, explicit: number | undefined): 
   return ((kpi.value - kpi.prev) / Math.abs(kpi.prev)) * 100;
 }
 
+/** Largest share of a demographic list — upstream order is not a ranking. */
+function topByPct<T extends { pct: number }>(rows: T[] | undefined): T | undefined {
+  if (!rows || rows.length === 0) return undefined;
+  return rows.reduce((best, r) => (r.pct > best.pct ? r : best), rows[0]);
+}
+
 const TYPE_LABEL: Record<TopPost["type"], string> = {
   reel: "Reel",
   carousel: "Carrossel",
@@ -159,7 +168,7 @@ function buildCoverBrand(b: WorkspaceBranding): string {
 }
 
 function buildCoverMid(data: ReportData): string {
-  const city = data.audience?.top_cities?.[0]?.name;
+  const city = topByPct(data.audience?.top_cities)?.name;
   const spec = [data.specialty, city].filter(Boolean).join(" · ");
   const specHtml = spec ? `\n    <div class="cover-spec">${escapeHtml(spec)}</div>` : "";
   return `<div class="cover-month">${escapeHtml(coverMonthLabel(data))}</div>
@@ -258,9 +267,14 @@ function formatEntries(data: ReportData): FormatEntry[] {
   return out;
 }
 
+/**
+ * @param recoCount number of recommendations actually rendered on page 6 — must be
+ *   the length of the SAME capped array `buildRecoCards` receives, otherwise the
+ *   sentence promises more cards than the page shows.
+ */
 function buildTakeaways(
   data: ReportData,
-  aiOutput: AIOutput | null,
+  recoCount: number,
 ): Record<string, string> {
   const out: Record<string, string> = {
     resumo: "",
@@ -306,11 +320,23 @@ function buildTakeaways(
     ? data.follower_trend[data.follower_trend.length - 1].count - data.follower_trend[0].count
     : undefined;
   if (gain !== undefined) {
-    const sign = gain > 0 ? "+" : "";
-    out.crescimento = takeaway(
-      "Leitura do mês",
-      `Crescimento de <span class="hit">${escapeHtml(sign + fmtNum(gain))} seguidores</span> no período.`,
-    );
+    if (gain > 0) {
+      out.crescimento = takeaway(
+        "Leitura do mês",
+        `Crescimento de <span class="hit">+${escapeHtml(fmtNum(gain))} seguidores</span> no período.`,
+      );
+    } else if (gain < 0) {
+      // A negative gain must not be phrased as "crescimento de −120 seguidores".
+      out.crescimento = takeaway(
+        "Leitura do mês",
+        `Queda de <span class="hit">${escapeHtml(fmtNum(Math.abs(gain)))} seguidores</span> no período.`,
+      );
+    } else {
+      out.crescimento = takeaway(
+        "Leitura do mês",
+        `Base de seguidores <span class="hit">estável</span> no período.`,
+      );
+    }
   }
 
   // ── formatos
@@ -329,7 +355,17 @@ function buildTakeaways(
   // ── posts
   if (data.top_posts.length >= 3) {
     const top3 = data.top_posts.slice(0, 3).reduce((s, p) => s + (p.reach || 0), 0);
-    const total = data.top_posts.reduce((s, p) => s + (p.reach || 0), 0);
+    // The denominator MUST be the month's total reach, not the sum of `top_posts`:
+    // upstream caps `top_posts` at the 15 best posts while `kpis.reach` sums every
+    // post of the month, so dividing by the subset inflates the printed share for
+    // any client who published more than 15 times.
+    const monthReach = data.kpis["reach"]?.value;
+    const subsetReach = data.top_posts.reduce((s, p) => s + (p.reach || 0), 0);
+    const total =
+      typeof monthReach === "number" && isFinite(monthReach) && monthReach > 0 &&
+        top3 <= monthReach
+        ? monthReach
+        : subsetReach;
     if (top3 > 0 && total > 0) {
       const share = Math.round((top3 / total) * 100);
       out.posts = takeaway(
@@ -343,8 +379,10 @@ function buildTakeaways(
   const aud = data.audience;
   if (aud) {
     const genderLabel = aud.gender_split.female >= aud.gender_split.male ? "Mulheres" : "Homens";
-    const age = aud.top_age_ranges?.[0]?.range;
-    const city = aud.top_cities?.[0]?.name;
+    // By share, NOT by upstream order — age buckets arrive chronologically, so
+    // index 0 is the 13-17 bucket and the sentence would contradict the ranked bars.
+    const age = topByPct(aud.top_age_ranges)?.range;
+    const city = topByPct(aud.top_cities)?.name;
     const bits: string[] = [genderLabel];
     if (age) bits.push(`de ${age.replace(/-/g, " a ")} anos`);
     if (city) bits.push(`em ${city}`);
@@ -355,7 +393,7 @@ function buildTakeaways(
   }
 
   // ── plano
-  const n = aiOutput?.recommendations?.length ?? 0;
+  const n = recoCount;
   if (n > 0) {
     out.plano = takeaway(
       "Plano de ação",
@@ -556,6 +594,30 @@ function buildPostListRows(posts: TopPost[]): string {
     .join("\n    ");
 }
 
+/**
+ * Page 4 shows at most 6 cards + 6 list rows, and upstream itself already caps
+ * `top_posts` at the 15 best. Whenever anything was left out the heading says how
+ * many publications the page actually covers.
+ */
+function buildPostsHeading(data: ReportData): string {
+  const shown = Math.min(data.top_posts.length, MAX_POST_CARDS + MAX_POST_ROWS);
+  const published = data.kpis["posts_count"]?.value;
+  const total = typeof published === "number" && published > data.top_posts.length
+    ? published
+    : data.top_posts.length;
+  return total > shown
+    ? `${escapeHtml(fmtNum(shown))} principais publicações do mês`
+    : "Publicações do mês";
+}
+
+function buildTagsHeading(data: ReportData): string {
+  const total = data.tags_performance.length;
+  const shown = Math.min(total, MAX_TAG_ROWS);
+  return total > shown
+    ? `${escapeHtml(fmtNum(shown))} principais tópicos por alcance`
+    : "Performance por tópico";
+}
+
 function buildTagsTable(data: ReportData): string {
   const tags = [...data.tags_performance]
     .sort((a, b) => b.avg_reach - a.avg_reach)
@@ -566,12 +628,21 @@ function buildTagsTable(data: ReportData): string {
     .map((t) => {
       const w = Math.max(6, Math.round((t.avg_reach / maxReach) * 110));
       return `<tr>
-          <td class="t-name">${escapeHtml(t.tag)}</td><td class="num">${escapeHtml(fmtNum(t.count))}</td>
+          <td class="t-name"><span>${escapeHtml(t.tag)}</span></td><td class="num">${escapeHtml(fmtNum(t.count))}</td>
           <td><span class="t-bar" style="width:${w}px"></span><span class="num">${escapeHtml(fmtCompact(t.avg_reach))}</span></td>
           <td class="r num">${escapeHtml(fmtNum(t.avg_engagement, 1))}%</td>
         </tr>`;
     })
     .join("\n        ");
+}
+
+/**
+ * Page space forces every list on this document to be capped. When a cap actually
+ * drops rows, the label has to say so — a heading that implies completeness over a
+ * truncated list is a factual claim we can't make in a client deliverable.
+ */
+function topNLabel(complete: string, truncated: string, total: number, shown: number): string {
+  return total > shown ? truncated : complete;
 }
 
 function barRow(label: string, pct: number, maxPct: number, alt = false): string {
@@ -609,14 +680,18 @@ function buildDemographics(data: ReportData): string {
       </div>
     </div>`;
 
-  const ages = (aud.top_age_ranges ?? []).slice(0, MAX_AGE_ROWS);
+  // Sort BEFORE slicing: upstream sends age buckets in chronological order
+  // (13-17, 18-24, …), so slicing first would drop an arbitrary bucket and render
+  // the bars unranked.
+  const allAges = [...(aud.top_age_ranges ?? [])].sort((a, b) => b.pct - a.pct);
+  const ages = allAges.slice(0, MAX_AGE_ROWS);
   const maxAge = Math.max(...ages.map((a) => a.pct), 1);
   const ageBars = ages.length
     ? ages.map((a) => barRow(a.range.replace(/-/g, "–"), a.pct, maxAge)).join("\n        ")
     : `<div class="empty">Sem dados de faixa etária.</div>`;
 
   const agePanel = `<div class="panel">
-      <div class="pn-label">Faixa etária</div>
+      <div class="pn-label">${topNLabel("Faixa etária", "Principais faixas etárias", allAges.length, ages.length)}</div>
       <div class="bars">
         ${ageBars}
       </div>
@@ -629,26 +704,30 @@ function buildLocation(data: ReportData): string {
   const aud = data.audience;
   if (!aud) return "";
 
-  const cities = (aud.top_cities ?? []).slice(0, MAX_CITY_ROWS);
+  // Sort before slicing (see buildDemographics) so the cap always drops the
+  // smallest shares and the bars read as a ranking.
+  const allCities = [...(aud.top_cities ?? [])].sort((a, b) => b.pct - a.pct);
+  const cities = allCities.slice(0, MAX_CITY_ROWS);
   const maxCity = Math.max(...cities.map((c) => c.pct), 1);
   const cityBars = cities.length
     ? cities.map((c) => barRow(c.name, c.pct, maxCity)).join("\n        ")
     : `<div class="empty">Sem dados de cidades.</div>`;
 
-  const countries = (aud.top_countries ?? []).slice(0, MAX_COUNTRY_ROWS);
+  const allCountries = [...(aud.top_countries ?? [])].sort((a, b) => b.pct - a.pct);
+  const countries = allCountries.slice(0, MAX_COUNTRY_ROWS);
   const maxCountry = Math.max(...countries.map((c) => c.pct), 1);
   const countryBars = countries.length
     ? countries.map((c) => barRow(c.name, c.pct, maxCountry, true)).join("\n        ")
     : `<div class="empty">Sem dados de países.</div>`;
 
   return `<div class="panel">
-      <div class="pn-label">Cidades</div>
+      <div class="pn-label">${topNLabel("Cidades", "Principais cidades", allCities.length, cities.length)}</div>
       <div class="bars">
         ${cityBars}
       </div>
     </div>
     <div class="panel">
-      <div class="pn-label">Países</div>
+      <div class="pn-label">${topNLabel("Países", "Principais países", allCountries.length, countries.length)}</div>
       <div class="bars">
         ${countryBars}
       </div>
@@ -698,7 +777,10 @@ function buildHeatmapTable(data: ReportData): string {
 }
 
 function buildHeatChips(data: ReportData): string {
-  const top = [...data.best_times]
+  // Only slots the grid above actually shows may be named — a 7h or 22h slot would
+  // produce a chip pointing at a column that does not exist.
+  const top = data.best_times
+    .filter((s) => HEAT_HOURS.includes(s.hour))
     .sort((a, b) => b.avg_engagement - a.avg_engagement)
     .slice(0, 3);
 
@@ -714,18 +796,24 @@ function buildHeatChips(data: ReportData): string {
     .join("\n      ");
 }
 
-function buildRecoCards(ai: AIOutput): string {
-  return (ai.recommendations ?? [])
-    .slice(0, MAX_RECO_CARDS)
+const PRIO: Record<string, { cls: string; label: string }> = {
+  high: { cls: "alta", label: "Prioridade alta" },
+  medium: { cls: "media", label: "Prioridade média" },
+  low: { cls: "baixa", label: "Prioridade baixa" },
+};
+
+/** Takes the ALREADY-capped list so the count in {{TAKEAWAY_PLANO}} can't disagree. */
+function buildRecoCards(recos: AIOutput["recommendations"]): string {
+  return recos
     .map((r, i) => {
-      const high = r.priority === "high";
+      const prio = PRIO[r.priority] ?? PRIO.medium;
       return `<div class="reco-card">
       <div class="rc-n num">${i + 1}</div>
       <div>
         <div class="rc-t">${escapeHtml(r.title)}</div>
         <div class="rc-d">${escapeHtml(r.description)}</div>
       </div>
-      <span class="prio ${high ? "alta" : "media"}">${high ? "Prioridade alta" : "Prioridade média"}</span>
+      <span class="prio ${prio.cls}">${prio.label}</span>
     </div>`;
     })
     .join("\n    ");
@@ -764,7 +852,10 @@ function buildFooter(b: WorkspaceBranding, data: ReportData): string {
 }
 
 function buildExecutiveSummary(data: ReportData, ai: AIOutput | null): string {
-  if (!ai || !ai.executive_summary) return buildFallbackSummary(data);
+  // Whitespace-only passes a plain falsy check and yields a blank summary card.
+  if (!ai || !ai.executive_summary || !ai.executive_summary.trim()) {
+    return buildFallbackSummary(data);
+  }
   return ai.executive_summary
     .split(/\n{2,}/)
     .map((p) => p.trim())
@@ -826,10 +917,18 @@ export function renderReport(opts: {
   const hasAi = aiOutput !== null &&
     ((aiOutput.recommendations?.length ?? 0) > 0 ||
       (aiOutput.suggested_goals?.length ?? 0) > 0);
+  const highlights = buildHighlights(data);
+  const hasHighlights = highlights.length > 0;
+
+  // Cap ONCE — the cards and the "N recomendações…" takeaway both read this array.
+  const recos = hasAi && aiOutput
+    ? (aiOutput.recommendations ?? []).slice(0, MAX_RECO_CARDS)
+    : [];
 
   let html = REPORT_TEMPLATE;
 
   // 1. Conditionals first — user content can never introduce a template token.
+  html = conditional(html, "HAS_HIGHLIGHTS", hasHighlights);
   html = conditional(html, "HAS_LIST", hasList);
   html = conditional(html, "HAS_TAGS", hasTags);
   html = conditional(html, "HAS_HEATMAP", hasAudience && hasHeatmap);
@@ -853,7 +952,7 @@ export function renderReport(opts: {
   html = sub(html, "{{COVER_TEASER}}", buildCoverTeaser(data, prevName));
 
   // 5. Takeaways
-  const tk = buildTakeaways(data, hasAi ? aiOutput : null);
+  const tk = buildTakeaways(data, recos.length);
   html = sub(html, "{{TAKEAWAY_RESUMO}}", tk.resumo);
   html = sub(html, "{{TAKEAWAY_CRESCIMENTO}}", tk.crescimento);
   html = sub(html, "{{TAKEAWAY_FORMATOS}}", tk.formatos);
@@ -864,7 +963,7 @@ export function renderReport(opts: {
   // 6. Page 2
   html = sub(html, "{{EXECUTIVE_SUMMARY}}", buildExecutiveSummary(data, aiOutput));
   html = sub(html, "{{KPI_CARDS}}", buildKpiCards(data, prevName));
-  html = sub(html, "{{HIGHLIGHTS}}", buildHighlights(data));
+  html = sub(html, "{{HIGHLIGHTS}}", highlights);
   html = sub(html, "{{TOC_ITEMS}}", buildTocItems(nextName, hasAudience, hasAi));
 
   // 7. Page 3
@@ -873,8 +972,10 @@ export function renderReport(opts: {
   html = sub(html, "{{AUX_KPIS}}", buildAuxKpis(data, prevName));
 
   // 8. Page 4
+  html = sub(html, "{{POSTS_HEADING}}", buildPostsHeading(data));
   html = sub(html, "{{TOP_POST_CARDS}}", buildTopPostCards(data.top_posts));
   html = sub(html, "{{POST_LIST_ROWS}}", hasList ? buildPostListRows(data.top_posts) : "");
+  html = sub(html, "{{TAGS_HEADING}}", buildTagsHeading(data));
   html = sub(html, "{{TAGS_TABLE}}", hasTags ? buildTagsTable(data) : "");
 
   // 9. Page 5
@@ -884,7 +985,7 @@ export function renderReport(opts: {
   html = sub(html, "{{HEAT_CHIPS}}", hasHeatmap ? buildHeatChips(data) : "");
 
   // 10. Page 6
-  html = sub(html, "{{RECO_CARDS}}", hasAi && aiOutput ? buildRecoCards(aiOutput) : "");
+  html = sub(html, "{{RECO_CARDS}}", buildRecoCards(recos));
   html = sub(html, "{{GOAL_CARDS}}", hasAi && aiOutput ? buildGoalCards(aiOutput) : "");
   html = sub(html, "{{CLOSING}}", hasAi ? buildClosing(branding) : "");
 

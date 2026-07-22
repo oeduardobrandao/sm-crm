@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.208.0/assert/mod.ts";
-import { donutChart, lineChart } from "./charts.ts";
+import { lineChart } from "./charts.ts";
 
 Deno.test("lineChart returns valid SVG with correct data points", () => {
   const svg = lineChart({
@@ -23,18 +23,6 @@ Deno.test("lineChart handles empty data", () => {
   const svg = lineChart({ data: [], width: 600, height: 200, color: "#eab308" });
   assertStringIncludes(svg, "<svg");
   assertStringIncludes(svg, "</svg>");
-});
-
-Deno.test("donutChart renders segments", () => {
-  const svg = donutChart({
-    segments: [
-      { label: "Feminino", value: 72, color: "#f542c8" },
-      { label: "Masculino", value: 28, color: "#42c8f5" },
-    ],
-    size: 150,
-  });
-  assertStringIncludes(svg, "<svg");
-  assertStringIncludes(svg, "<path");
 });
 
 Deno.test("lineChart: pt-BR tick labels, max 4 ticks", () => {

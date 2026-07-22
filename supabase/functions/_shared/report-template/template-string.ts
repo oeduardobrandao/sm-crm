@@ -326,7 +326,13 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
   .topics th.r, .topics td.r { text-align: right; }
   .topics td { padding: 8px 18px; border-bottom: 1px solid var(--hairline); }
   .topics tr:last-child td { border-bottom: none; }
+  /* same wrap guard as .post-rest .r-cap — a long tag name would otherwise wrap the
+     row and eat page 4's remaining slack */
   .topics .t-name { font-weight: 700; }
+  .topics .t-name span {
+    display: block; max-width: 46mm;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
   .topics .t-bar { display: inline-block; vertical-align: middle; height: 6px; border-radius: 3px; background: var(--ink); margin-right: 9px; }
 
   /* ═══ audiência ═══ */
@@ -378,6 +384,7 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
   .prio { font-size: 9px; font-weight: 600; padding: 3.5px 10px; border-radius: 9999px; white-space: nowrap; }
   .prio.alta { background: #F7E8CE; color: #8F5306; }
   .prio.media { background: var(--soft); color: var(--tx2); }
+  .prio.baixa { background: transparent; color: var(--tx3); border: 1px solid var(--bd); }
 
   .goal-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
   .goal { background: var(--card); border: 1px dashed rgba(28,25,23,0.18); border-radius: 12px; padding: 16px 17px; }
@@ -456,8 +463,8 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
   <div class="sec"><h2>Métricas principais</h2><span class="rule"></span></div>
   <div class="kpi-grid">{{KPI_CARDS}}</div>
 
-  <div class="sec"><h2>Destaques</h2><span class="rule"></span></div>
-  <div class="hl-grid">{{HIGHLIGHTS}}</div>
+  {{#IF_HAS_HIGHLIGHTS}}<div class="sec"><h2>Destaques</h2><span class="rule"></span></div>
+  <div class="hl-grid">{{HIGHLIGHTS}}</div>{{/IF_HAS_HIGHLIGHTS}}
 
   <div class="sec"><h2>Neste relatório</h2><span class="rule"></span></div>
   <div class="toc">{{TOC_ITEMS}}</div>
@@ -487,7 +494,7 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
 
 <!-- ═══════════ PÁGINA 4 · PUBLICAÇÕES ═══════════ -->
 <div class="page">
-  <div class="sec"><h2>Publicações do mês</h2><span class="rule"></span><span class="idx">{{SEC_NO}} / {{SEC_TOTAL}}</span></div>
+  <div class="sec"><h2>{{POSTS_HEADING}}</h2><span class="rule"></span><span class="idx">{{SEC_NO}} / {{SEC_TOTAL}}</span></div>
 
   {{TAKEAWAY_POSTS}}
 
@@ -495,7 +502,7 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
 
   {{#IF_HAS_LIST}}<div class="post-rest">{{POST_LIST_ROWS}}</div>{{/IF_HAS_LIST}}
 
-  {{#IF_HAS_TAGS}}<div class="sec"><h2>Performance por tópico</h2><span class="rule"></span></div>
+  {{#IF_HAS_TAGS}}<div class="sec"><h2>{{TAGS_HEADING}}</h2><span class="rule"></span></div>
   <div class="topics">
     <table>
       <thead>

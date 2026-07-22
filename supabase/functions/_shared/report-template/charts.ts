@@ -25,17 +25,6 @@ function r(n: number, decimals = 2): number {
   return Math.round(n * factor) / factor;
 }
 
-/** Convert polar coordinates to cartesian. */
-function polarToCartesian(
-  cx: number,
-  cy: number,
-  radius: number,
-  angleDeg: number,
-): { x: number; y: number } {
-  const rad = ((angleDeg - 90) * Math.PI) / 180;
-  return { x: cx + radius * Math.cos(rad), y: cy + radius * Math.sin(rad) };
-}
-
 // ---------------------------------------------------------------------------
 // lineChart
 // ---------------------------------------------------------------------------
@@ -189,85 +178,5 @@ export function lineChart(opts: LineChartOptions): string {
   ${eventMarkerSvg}
   <!-- annotation pill -->
   ${annotationSvg}
-</svg>`;
-}
-
-// ---------------------------------------------------------------------------
-// donutChart
-// ---------------------------------------------------------------------------
-
-interface DonutSegment {
-  label: string;
-  value: number;
-  color: string;
-}
-
-interface DonutChartOptions {
-  segments: DonutSegment[];
-  size: number;
-}
-
-export function donutChart(opts: DonutChartOptions): string {
-  const { segments, size } = opts;
-
-  // Add padding for labels outside the donut
-  const pad = 50;
-  const svgW = size + pad * 2;
-  const svgH = size + pad;
-
-  if (segments.length === 0) {
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}"></svg>`;
-  }
-
-  const cx = svgW / 2;
-  const cy = size / 2 + 4;
-  const outerR = size * 0.4;
-  const innerR = size * 0.24;
-  const labelR = outerR + 18;
-
-  const total = segments.reduce((sum, s) => sum + s.value, 0) || 1;
-
-  let startAngle = 0;
-  const paths: string[] = [];
-  const labels: string[] = [];
-
-  for (const seg of segments) {
-    const pct = seg.value / total;
-    const sweep = pct * 360;
-    const endAngle = startAngle + sweep;
-    const largeArc = sweep > 180 ? 1 : 0;
-
-    const p1 = polarToCartesian(cx, cy, outerR, startAngle);
-    const p2 = polarToCartesian(cx, cy, outerR, endAngle);
-    const p3 = polarToCartesian(cx, cy, innerR, endAngle);
-    const p4 = polarToCartesian(cx, cy, innerR, startAngle);
-
-    const d = [
-      `M ${r(p1.x)} ${r(p1.y)}`,
-      `A ${r(outerR)} ${r(outerR)} 0 ${largeArc} 1 ${r(p2.x)} ${r(p2.y)}`,
-      `L ${r(p3.x)} ${r(p3.y)}`,
-      `A ${r(innerR)} ${r(innerR)} 0 ${largeArc} 0 ${r(p4.x)} ${r(p4.y)}`,
-      "Z",
-    ].join(" ");
-
-    paths.push(`<path d="${d}" fill="${seg.color}"/>`);
-
-    const midAngle = startAngle + sweep / 2;
-    const lp = polarToCartesian(cx, cy, labelR, midAngle);
-    const anchor = lp.x > cx + 2 ? "start" : lp.x < cx - 2 ? "end" : "middle";
-    const pctStr = `${Math.round(pct * 100)}%`;
-    // Center/segment labels are always neutral ink/gray — segment hue is carried
-    // by the arc fill only, never by text, so the donut imposes no hardcoded hues.
-    labels.push(
-      `<text x="${r(lp.x)}" y="${r(lp.y - 4)}" text-anchor="${anchor}" font-size="9" fill="#8A8A8A" font-family="'Instrument Sans', sans-serif" dominant-baseline="middle">${escapeHtml(seg.label)}</text>`,
-      `<text x="${r(lp.x)}" y="${r(lp.y + 8)}" text-anchor="${anchor}" font-size="10" font-weight="700" fill="#1C1917" font-family="'Instrument Sans', sans-serif" dominant-baseline="middle">${pctStr}</text>`,
-    );
-
-    startAngle = endAngle;
-  }
-
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}">
-  ${paths.join("\n  ")}
-  ${labels.join("\n  ")}
 </svg>`;
 }

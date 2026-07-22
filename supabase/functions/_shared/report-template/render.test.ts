@@ -145,3 +145,188 @@ Deno.test("posts 7+ render as list rows", () => {
   assertStringIncludes(html, 'class="post-rest"');
   assertStringIncludes(html, "Post número 12");
 });
+
+// ── fix pass 1 ─────────────────────────────────────────────────────────────
+
+Deno.test("top-3 share is measured against the month's total reach, not the top_posts subset", () => {
+  const data = makeData();
+  // Upstream caps top_posts at the 15 best posts while kpis.reach sums EVERY post
+  // of the month, so the subset sum is systematically too small a denominator.
+  data.top_posts = Array.from({ length: 12 }, (_, i) => ({
+    type: "reel" as const,
+    reach: 1000,
+    engagement: 5,
+    saves: 10,
+    likes: 100,
+    comments: 5,
+    caption_preview: `Post ${i + 1}`,
+    thumbnail_base64: null,
+  }));
+  data.kpis["reach"] = { id: "reach", value: 60000, unit: "count" };
+
+  const html = renderReport({ data, branding, aiOutput: ai });
+  assertStringIncludes(html, "(5% do total)"); // 3000 / 60000
+  assertEquals(html.includes("(25% do total)"), false); // 3000 / 12000, the old bug
+});
+
+Deno.test("top-3 share falls back to the subset sum when reach is missing or zero", () => {
+  const data = makeData();
+  data.top_posts = data.top_posts.map((p) => ({ ...p, reach: 1000 }));
+  delete data.kpis["reach"];
+  const html = renderReport({ data, branding, aiOutput: ai });
+  assertStringIncludes(html, "(25% do total)"); // 3000 / 12000
+
+  const zero = makeData();
+  zero.top_posts = zero.top_posts.map((p) => ({ ...p, reach: 1000 }));
+  zero.kpis["reach"] = { id: "reach", value: 0, unit: "count" };
+  assertStringIncludes(renderReport({ data: zero, branding, aiOutput: ai }), "(25% do total)");
+});
+
+Deno.test("plano takeaway count matches the number of recommendation cards rendered", () => {
+  const five: AIOutput = {
+    ...ai,
+    recommendations: [
+      { title: "R1", description: "d", priority: "high" },
+      { title: "R2", description: "d", priority: "medium" },
+      { title: "R3", description: "d", priority: "low" },
+      { title: "R4", description: "d", priority: "medium" },
+      { title: "R5", description: "d", priority: "high" },
+    ],
+  };
+  const html = renderReport({ data: makeData(), branding, aiOutput: five });
+  const cards = (html.match(/class="reco-card"/g) || []).length;
+  assertEquals(cards, 5);
+  assertStringIncludes(html, "5 recomendações");
+  assertStringIncludes(html, "R5");
+});
+
+Deno.test("priority low gets its own neutral label", () => {
+  const withLow: AIOutput = {
+    ...ai,
+    recommendations: [{ title: "Testar carrossel", description: "d", priority: "low" }],
+  };
+  const html = renderReport({ data: makeData(), branding, aiOutput: withLow });
+  assertStringIncludes(html, "Prioridade baixa");
+  assertEquals(html.includes("Prioridade média"), false);
+});
+
+Deno.test("user text cannot hijack page numbering", () => {
+  const data = makeData();
+  data.top_posts[0].caption_preview = "Antes {{PAGE_NO}} depois";
+  data.tags_performance = [
+    { tag: "{{PAGE_TOTAL}}", avg_engagement: 5, avg_reach: 100, count: 1 },
+  ];
+  const evilBranding = { ...branding, workspace_name: "Agência {{SEC_NO}}" };
+
+  const html = renderReport({ data, branding: evilBranding, aiOutput: ai });
+  // footers still number 2..6 of 6 — nothing consumed a page token
+  assertStringIncludes(html, "2 / 6");
+  assertStringIncludes(html, "6 / 6");
+  assertEquals(html.includes("{{"), false);
+  // and the caption renders literally
+  assertStringIncludes(html, "Antes &#123;&#123;PAGE_NO}} depois");
+});
+
+Deno.test("truncated lists say so; complete lists do not", () => {
+  const data = makeData();
+  data.audience = {
+    gender_split: { female: 60, male: 40 },
+    top_age_ranges: [
+      { range: "13-17", pct: 2 },
+      { range: "18-24", pct: 19 },
+      { range: "25-34", pct: 41 },
+      { range: "35-44", pct: 23 },
+      { range: "45-54", pct: 10 },
+      { range: "55-64", pct: 5 },
+    ],
+    top_cities: Array.from({ length: 8 }, (_, i) => ({ name: `Cidade ${i}`, pct: 20 - i })),
+    top_countries: Array.from({ length: 5 }, (_, i) => ({ name: `País ${i}`, pct: 50 - i })),
+  };
+  data.tags_performance = Array.from({ length: 8 }, (_, i) => ({
+    tag: `Tópico ${i}`,
+    avg_engagement: 5,
+    avg_reach: 1000 - i,
+    count: 2,
+  }));
+  const html = renderReport({ data, branding, aiOutput: ai });
+  assertStringIncludes(html, "Principais faixas etárias");
+  assertStringIncludes(html, "Principais cidades");
+  assertStringIncludes(html, "Principais países");
+  assertStringIncludes(html, "3 principais tópicos por alcance");
+  assertStringIncludes(html, "12 principais publicações do mês"); // 18 published, 12 shown
+
+  // nothing dropped → plain labels
+  const small = makeData();
+  small.kpis["posts_count"] = { id: "posts_count", value: 12, unit: "count" };
+  const plain = renderReport({ data: small, branding, aiOutput: ai });
+  assertStringIncludes(plain, ">Faixa etária<");
+  assertStringIncludes(plain, ">Cidades<");
+  assertStringIncludes(plain, ">Publicações do mês<");
+  assertStringIncludes(plain, ">Performance por tópico<");
+});
+
+Deno.test("demographic and location rows are ranked before being capped", () => {
+  const data = makeData();
+  data.audience = {
+    gender_split: { female: 60, male: 40 },
+    // upstream order is chronological, not by share
+    top_age_ranges: [
+      { range: "13-17", pct: 2 },
+      { range: "18-24", pct: 19 },
+      { range: "25-34", pct: 41 },
+      { range: "35-44", pct: 23 },
+      { range: "45-54", pct: 10 },
+      { range: "55-64", pct: 5 },
+    ],
+    top_cities: [{ name: "Fortaleza", pct: 38.2 }],
+    top_countries: [{ name: "Brasil", pct: 95.1 }],
+  };
+  const html = renderReport({ data, branding, aiOutput: ai });
+  const order = [...html.matchAll(/class="b-l">(\d\d)–(\d\d)</g)].map((m) => `${m[1]}-${m[2]}`);
+  assertEquals(order.slice(0, 5), ["25-34", "35-44", "18-24", "45-54", "55-64"]);
+  assertEquals(html.includes("13–17"), false); // smallest bucket dropped, not an arbitrary one
+  // …and the takeaway must name the same leading bucket the bars show
+  assertStringIncludes(html, "Mulheres de 25 a 34 anos em Fortaleza");
+});
+
+Deno.test("heat chips never name a slot outside the grid", () => {
+  const data = makeData();
+  data.best_times = [
+    { day: "qui", hour: 22, avg_engagement: 9.9 }, // outside 8h–21h
+    { day: "qua", hour: 7, avg_engagement: 9.5 }, // outside 8h–21h
+    { day: "seg", hour: 19, avg_engagement: 5.2 },
+  ];
+  const html = renderReport({ data, branding, aiOutput: ai });
+  assertEquals(html.includes("Quinta · 22h"), false);
+  assertEquals(html.includes("Quarta · 7h"), false);
+  assertStringIncludes(html, "Segunda · 19h");
+
+  const none = makeData();
+  none.best_times = [{ day: "qui", hour: 23, avg_engagement: 9.9 }];
+  const noChips = renderReport({ data: none, branding, aiOutput: ai });
+  assertEquals(noChips.includes('class="heat-chip'), false); // no chips, only the CSS rule
+});
+
+Deno.test("negative follower growth is not phrased as growth", () => {
+  const data = makeData();
+  data.kpis["followers_gained"] = { id: "followers_gained", value: -120, unit: "count" };
+  const html = renderReport({ data, branding, aiOutput: ai });
+  assertStringIncludes(html, "Queda de <span class=\"hit\">120 seguidores</span> no período.");
+  assertEquals(html.includes("Crescimento de"), false);
+});
+
+Deno.test("empty highlights drop the Destaques heading with them", () => {
+  const data = makeData();
+  data.top_posts = [];
+  data.content_breakdown = {};
+  const html = renderReport({ data, branding, aiOutput: ai });
+  assertEquals(html.includes("Destaques"), false);
+  assertEquals(html.includes('class="hl-grid"'), false);
+});
+
+Deno.test("whitespace-only executive summary falls back to the deterministic summary", () => {
+  const blank: AIOutput = { ...ai, executive_summary: "   \n  " };
+  const html = renderReport({ data: makeData(), branding, aiOutput: blank });
+  assertEquals(html.includes('<div class="summary"></div>'), false);
+  assertStringIncludes(html, "<strong>Alcance total:</strong>"); // deterministic fallback bullets
+});
