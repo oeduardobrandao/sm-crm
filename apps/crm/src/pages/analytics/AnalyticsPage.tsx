@@ -650,7 +650,7 @@ export default function AnalyticsPage() {
 
   return (
     <div className="page-content" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      <header className="header animate-up">
+      <header className="header header--flush animate-up">
         <div className="header-title">
           <h1>Analytics</h1>
         </div>

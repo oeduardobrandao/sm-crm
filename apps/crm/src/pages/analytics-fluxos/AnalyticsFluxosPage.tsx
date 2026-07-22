@@ -544,7 +544,7 @@ export default function AnalyticsFluxosPage() {
       className="page-content"
       style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}
     >
-      <header className="header animate-up">
+      <header className="header header--flush animate-up">
         <div className="header-title">
           <h1>Analytics de Fluxos</h1>
           <p style={{ color: 'var(--text-muted)' }}>{workflows.length} fluxos</p>

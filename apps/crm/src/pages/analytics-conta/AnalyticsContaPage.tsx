@@ -19,6 +19,7 @@ import {
   Eye,
   MousePointerClick,
   Send,
+  ChevronDown,
   type LucideIcon,
 } from 'lucide-react';
 import { StatCard, type StatTone } from '@/components/StatCard';
@@ -995,6 +996,10 @@ function AnalyticsContent({
   });
   const [expandedPostId, setExpandedPostId] = useState<number | null>(null);
   const [syncing, setSyncing] = useState(false);
+  // Collapsed by default on phones, where the callout ate most of a screen
+  const [savesOpen, setSavesOpen] = useState(
+    () => !window.matchMedia('(max-width: 900px)').matches,
+  );
   const [showAllPosts, setShowAllPosts] = useState(false);
   const [manualFollowerOpen, setManualFollowerOpen] = useState(false);
   const [manualDate, setManualDate] = useState(new Date().toISOString().split('T')[0]);
@@ -1396,7 +1401,7 @@ function AnalyticsContent({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      <header className="header animate-up">
+      <header className="header header--flush animate-up">
         <div className="header-title">
           {(() => {
             const avatarUrl =
@@ -1557,31 +1562,47 @@ function AnalyticsContent({
         <div className="analytics-callout analytics-callout--with-icon analytics-callout--primary animate-up">
           <Bookmark className="h-5 w-5 analytics-callout__icon" aria-hidden />
           <div className="analytics-callout__body">
-            <div className="analytics-callout__title">
-              Taxa de salvamentos
-              <span className="analytics-callout__count">
-                {topSaved.length === 1
-                  ? '1 post em destaque'
-                  : `${topSaved.length} posts em destaque`}
+            <button
+              type="button"
+              className="analytics-callout__toggle"
+              aria-expanded={savesOpen}
+              aria-controls="saves-callout-content"
+              onClick={() => setSavesOpen((v) => !v)}
+            >
+              <span className="analytics-callout__title">
+                Taxa de salvamentos
+                <span className="analytics-callout__count">
+                  {topSaved.length === 1
+                    ? '1 post em destaque'
+                    : `${topSaved.length} posts em destaque`}
+                </span>
               </span>
-            </div>
-            <p className="analytics-callout__text">
-              Salvamentos indicam que alguém guardou o conteúdo para uma decisão de saúde. É a
-              métrica mais subestimada para conteúdo médico.
-            </p>
-            <div className="analytics-callout__grid">
-              {topSaved.map((p) => (
-                <div key={p.id} className="analytics-callout__item">
-                  <strong>{p.saved}</strong> salvamentos
-                  <span style={{ color: 'var(--text-muted)', marginLeft: '0.25rem' }}>
-                    ({p.saves_rate.toFixed(1)}% taxa)
-                  </span>
-                  <div className="analytics-callout__item-caption">
-                    {p.caption || 'Sem legenda'}
-                  </div>
+              <ChevronDown
+                className={`h-4 w-4 analytics-callout__chevron${savesOpen ? ' open' : ''}`}
+                aria-hidden
+              />
+            </button>
+            {savesOpen && (
+              <div id="saves-callout-content" className="analytics-callout__collapsible">
+                <p className="analytics-callout__text">
+                  Salvamentos indicam que alguém guardou o conteúdo para uma decisão de saúde. É a
+                  métrica mais subestimada para conteúdo médico.
+                </p>
+                <div className="analytics-callout__grid">
+                  {topSaved.map((p) => (
+                    <div key={p.id} className="analytics-callout__item">
+                      <strong>{p.saved}</strong> salvamentos
+                      <span style={{ color: 'var(--text-muted)', marginLeft: '0.25rem' }}>
+                        ({p.saves_rate.toFixed(1)}% taxa)
+                      </span>
+                      <div className="analytics-callout__item-caption">
+                        {p.caption || 'Sem legenda'}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1785,7 +1806,7 @@ function AnalyticsContent({
                       </td>
                     </tr>
                     {expandedPostId === p.id && (
-                      <tr key={`detail-${p.id}`}>
+                      <tr key={`detail-${p.id}`} className="post-detail-row">
                         <td colSpan={10} style={{ padding: '1rem', background: 'var(--card-bg)' }}>
                           <p
                             style={{
@@ -3110,7 +3131,7 @@ export default function AnalyticsContaPage() {
   if (!igSummary) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-        <header className="header animate-up">
+        <header className="header header--flush animate-up">
           <div className="header-title">
             <h1>Analytics</h1>
           </div>

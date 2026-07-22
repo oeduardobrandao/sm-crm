@@ -1048,39 +1048,34 @@ body {
   display: inline;
 }
 
+/*
+ * The cards fuse into one block — no gutters, hairline dividers, and rounded
+ * corners only on the outer four. The dividers ARE the 1px gaps, with the
+ * grid's own background showing through, so no card draws its own border and
+ * there is no doubling at the outer edge. Applies at every width; the phone
+ * breakpoint below only changes how many columns the block has.
+ */
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(var(--kpi-cols, 5), minmax(0, 1fr));
-  gap: 1.25rem;
+  gap: 1px;
+  background: var(--border-color);
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   margin-bottom: 1.5rem;
 }
 
-/*
- * Desktop: the cards fuse into one block — no gutters, hairline dividers, and
- * rounded corners only on the outer four. The dividers ARE the 1px gaps, with
- * the grid's own background showing through, so no card draws its own border
- * and there is no doubling at the outer edge.
- */
-@media (min-width: 901px) {
-  .kpi-grid {
-    gap: 1px;
-    background: var(--border-color);
-    border: 1px solid var(--border-color);
-    border-radius: 14px;
-    overflow: hidden;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-  }
+.kpi-grid > .kpi-card {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
 
-  .kpi-grid > .kpi-card {
-    border: 0;
-    border-radius: 0;
-    box-shadow: none;
-  }
-
-  .kpi-grid > .kpi-card:hover {
-    box-shadow: none;
-    background: var(--surface-hover);
-  }
+.kpi-grid > .kpi-card:hover {
+  box-shadow: none;
+  background: var(--surface-hover);
 }
 
 /* Pads a short last row so the divider colour cannot show through as a slab */
@@ -2808,24 +2803,31 @@ select.form-input option {
     gap: 0.75rem;
   }
 
+  /* Same fused block as desktop, just two columns wide */
   .kpi-grid {
     grid-template-columns: 1fr 1fr;
-    gap: 0.75rem;
   }
 
-  /* Mobile keeps separated cards, so the last-row padding is not needed */
+  /*
+   * Fillers are sized for the desktop column count, so they would land wrong at
+   * two-up. They are not needed here either: the odd-count promotion below
+   * leaves an even remainder, so every row is always full.
+   */
   .kpi-card--filler {
     display: none;
   }
 
   /*
-   * Specificity here is load-bearing: .cliente-finance-kpis cancels this rule
-   * with an equal-specificity selector later in the file. Do not add classes.
+   * Odd number of cards in a 2-up grid: promote the FIRST card to full width so
+   * the remainder pairs off evenly. Previously the leftover card was stranded on
+   * the last row at half width. `:first-child:nth-last-child(odd)` matches only
+   * when the total count is odd, so even grids are untouched.
+   *
+   * Specificity is load-bearing: .cliente-finance-kpis cancels this with an
+   * equal-specificity selector later in the file.
    */
-  .kpi-grid > :last-child:nth-child(odd) {
+  .kpi-grid > .kpi-card:first-child:nth-last-child(odd) {
     grid-column: 1 / -1;
-    max-width: 50%;
-    justify-self: center;
   }
 
   .widgets-grid {
@@ -2861,6 +2863,12 @@ select.form-input option {
     align-items: flex-start;
     gap: 0.5rem;
     margin-bottom: 1.25rem;
+  }
+
+  /* For pages whose root already supplies a flex gap, the header's own bottom
+     margin stacks on top of it and opens a dead band under the actions. */
+  .header--flush {
+    margin-bottom: 0;
   }
 
   .header-title h1 {
@@ -3053,6 +3061,37 @@ select.form-input option {
     display: flex;
     justify-content: flex-end;
     gap: 0.5rem;
+  }
+
+  /*
+   * Posts table: the generic table-to-cards treatment stacks one tall card per
+   * post, so a handful of posts became a very long scroll. Lay them side by side
+   * and swipe through them instead.
+   */
+  #posts-table tbody {
+    display: flex;
+    gap: 0.75rem;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 0.25rem;
+  }
+
+  #posts-table tbody::-webkit-scrollbar {
+    display: none;
+  }
+
+  #posts-table tbody tr {
+    flex: 0 0 82%;
+    max-width: 320px;
+    margin-bottom: 0;
+    scroll-snap-align: start;
+  }
+
+  /* The expanded caption rides in the strip beside the post it belongs to */
+  #posts-table tbody tr.post-detail-row {
+    flex-basis: 88%;
   }
 
   /* Contato cell: stack email & phone, truncate overflow */
@@ -4360,6 +4399,38 @@ body.role-agent input[name='valor_total'] {
   color: var(--primary-color);
 }
 
+/* Collapsible header. The whole title row is the hit target. */
+.analytics-callout__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  min-height: 32px;
+}
+
+.analytics-callout__chevron {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: transform 0.2s;
+}
+
+.analytics-callout__chevron.open {
+  transform: rotate(180deg);
+}
+
+.analytics-callout__collapsible {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
 .analytics-callout__text {
   font-size: 0.85rem;
   color: var(--text-muted);
@@ -4439,13 +4510,16 @@ body.role-agent input[name='valor_total'] {
 }
 
 @media (max-width: 900px) {
+  /* Swipeable variant of the fused block: 1px dividers rather than gutters, and
+     no bottom padding — the grid background would show through it as a band. */
   .analytics-kpi-scroll {
     display: flex;
     overflow-x: auto;
     scroll-snap-type: x mandatory;
     -webkit-overflow-scrolling: touch;
-    gap: 0.75rem;
-    padding-bottom: 0.5rem;
+    gap: 1px;
+    padding-bottom: 0;
+    scrollbar-width: none;
   }
 
   .analytics-kpi-scroll::-webkit-scrollbar {
@@ -8629,7 +8703,9 @@ body.landing-page #root {
     gap: 0.5rem;
   }
 
-  .cliente-finance-kpis > :last-child:nth-child(odd) {
+  /* This grid keeps all three across, so the odd-count promotion above must not
+     stretch its first card over two of the three columns. */
+  .cliente-finance-kpis > .kpi-card:first-child:nth-last-child(odd) {
     grid-column: auto;
     max-width: none;
     justify-self: stretch;

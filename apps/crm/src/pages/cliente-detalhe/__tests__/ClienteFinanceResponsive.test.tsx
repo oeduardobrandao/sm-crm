@@ -14,8 +14,9 @@ describe('client finance responsive contracts', () => {
     expect(css).toMatch(
       /@media \(max-width:\s*767px\)[\s\S]*\.cliente-finance-kpis\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/s,
     );
+    // Cancels the odd-count "first card spans the row" promotion from .kpi-grid
     expect(css).toMatch(
-      /\.cliente-finance-kpis\s*>\s*:last-child:nth-child\(odd\)\s*\{[^}]*grid-column:\s*auto[^}]*max-width:\s*none/s,
+      /\.cliente-finance-kpis\s*>\s*\.kpi-card:first-child:nth-last-child\(odd\)\s*\{[^}]*grid-column:\s*auto[^}]*max-width:\s*none/s,
     );
     expect(css).toMatch(/\.cliente-finance-kpis \.kpi-value\s*\{[^}]*white-space:\s*nowrap/s);
     expect(css).toMatch(
