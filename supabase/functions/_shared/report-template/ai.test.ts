@@ -38,6 +38,27 @@ Deno.test("buildAIPrompt includes system role and data payload", () => {
   assertEquals(userPrompt.includes("Maio 2026"), true);
 });
 
+Deno.test("buildAIPrompt strips base64 thumbnails from the data payload", () => {
+  // Seen in prod: a media-heavy month put megabytes of base64 JPEG into the
+  // prompt and Gemini rejected it with 400 INVALID_ARGUMENT (input token
+  // count over the limit) — so the report silently shipped without AI.
+  const withThumbs: ReportData = {
+    ...fixture,
+    top_posts: [
+      {
+        ...fixture.top_posts[0],
+        thumbnail_base64: "data:image/jpeg;base64," + "A".repeat(4096),
+      },
+    ],
+  };
+  const { userPrompt } = buildAIPrompt(withThumbs);
+  assertEquals(userPrompt.includes("thumbnail_base64"), false);
+  assertEquals(userPrompt.includes("AAAA"), false);
+  // The analytical fields still go through untouched.
+  assertEquals(userPrompt.includes('"caption_preview": "5 dicas para..."'), true);
+  assertEquals(userPrompt.includes('"reach": 12400'), true);
+});
+
 Deno.test("validateAIOutput accepts valid output", () => {
   const valid = {
     executive_summary: "Este mês o perfil apresentou crescimento de 12% em seguidores.",

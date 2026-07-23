@@ -59,9 +59,21 @@ OUTPUT FORMAT: Respond with ONLY valid JSON matching this exact structure:
 
 Provide exactly 3-5 recommendations and 2-3 suggested_goals.`;
 
+  // Strip binary payloads before serialising: top_posts carry base64 JPEG
+  // thumbnails for the PDF renderer. They are useless to the model and big
+  // enough on media-heavy months to blow past Gemini's input-token limit
+  // (seen in prod: 400 INVALID_ARGUMENT, "input token count exceeds the
+  // maximum" → the report silently shipped without AI).
+  const promptData = {
+    ...data,
+    top_posts: data.top_posts.map(
+      ({ thumbnail_base64: _thumbnail, ...post }) => post,
+    ),
+  };
+
   const userPrompt = `Analyze the following Instagram account data for ${data.handle} (${data.specialty}), period ${data.period}:
 
-${JSON.stringify(data, null, 2)}`;
+${JSON.stringify(promptData, null, 2)}`;
 
   return { systemPrompt, userPrompt };
 }
