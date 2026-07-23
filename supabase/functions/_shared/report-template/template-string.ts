@@ -271,6 +271,27 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
 
   /* ═══ publicações ═══ */
   .post-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  /* A month with few posts left up to 73% of the A4 sheet blank under the default
+     3-up grid, which reads to the client as a rendering fault. When page 4 carries
+     ONLY the cards, the grid widens them to fill the sheet; the density steps below
+     were each measured against the A4 box with worst-case (clamped) captions.
+     When the page also carries the list rows or the topics table, render.ts sends
+     no modifier and the tuned 3-up/16:9 layout applies unchanged. */
+  .post-grid.pg-solo, .post-grid.pg-duo { grid-template-columns: 1fr; gap: 14px; }
+  .post-grid.pg-solo .p-thumb { aspect-ratio: 1/1; }
+  .post-grid.pg-duo .p-thumb { aspect-ratio: 2/1; }
+  .post-grid.pg-quad { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .post-grid.pg-quad .p-thumb { aspect-ratio: 4/3; }
+  .post-grid.pg-six { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .post-grid.pg-six .p-thumb { aspect-ratio: 16/9; }
+
+  .post-grid.pg-solo .p-body, .post-grid.pg-duo .p-body { padding: 13px 16px 15px; }
+  .post-grid.pg-solo .p-caption, .post-grid.pg-duo .p-caption { font-size: 12px; min-height: 34px; }
+  /* space-between across a full-width card scatters the four figures to the
+     margins; at this width they group left instead. */
+  .post-grid.pg-solo .p-stats, .post-grid.pg-duo .p-stats {
+    font-size: 10px; margin-top: 10px; justify-content: flex-start; gap: 26px;
+  }
   .post {
     background: var(--card); border: 1px solid var(--bd); border-radius: 12px;
     box-shadow: var(--card-shadow); overflow: hidden;
@@ -505,7 +526,7 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
 
   {{TAKEAWAY_POSTS}}
 
-  <div class="post-grid">{{TOP_POST_CARDS}}</div>
+  <div class="post-grid {{POST_GRID_MOD}}">{{TOP_POST_CARDS}}</div>
 
   {{#IF_HAS_LIST}}<div class="post-rest">{{POST_LIST_ROWS}}</div>{{/IF_HAS_LIST}}
 

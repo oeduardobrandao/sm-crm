@@ -362,3 +362,50 @@ Deno.test("whitespace-only executive summary falls back to the deterministic sum
   assertEquals(html.includes('<div class="summary"></div>'), false);
   assertStringIncludes(html, "<strong>Alcance total:</strong>"); // deterministic fallback bullets
 });
+
+// ── page-4 fill (sparse months) ────────────────────────────────────────────
+
+Deno.test("post grid density steps with the card count when the cards own the page", () => {
+  const cases: [number, string][] = [
+    [1, 'class="post-grid pg-solo"'],
+    [2, 'class="post-grid pg-duo"'],
+    [3, 'class="post-grid pg-quad"'],
+    [4, 'class="post-grid pg-quad"'],
+    [5, 'class="post-grid pg-six"'],
+    [6, 'class="post-grid pg-six"'],
+  ];
+  for (const [count, expected] of cases) {
+    const data = makeData();
+    data.top_posts = data.top_posts.slice(0, count);
+    data.tags_performance = []; // no topics table → cards own the page
+    const html = renderReport({ data, branding, aiOutput: ai });
+    assertStringIncludes(html, expected);
+  }
+});
+
+Deno.test("post grid keeps the tuned 3-up layout when the page also carries list rows or tags", () => {
+  // Widening the cards on a page that already fits pushes a blank 7th sheet.
+  const withList = makeData(); // 12 posts → list rows
+  withList.tags_performance = [];
+  assertStringIncludes(
+    renderReport({ data: withList, branding, aiOutput: ai }),
+    'class="post-grid "',
+  );
+
+  const withTags = makeData();
+  withTags.top_posts = withTags.top_posts.slice(0, 2); // would be pg-duo on its own
+  assertStringIncludes(
+    renderReport({ data: withTags, branding, aiOutput: ai }),
+    'class="post-grid "',
+  );
+});
+
+Deno.test("an empty month gets no density modifier", () => {
+  const data = makeData();
+  data.top_posts = [];
+  data.tags_performance = [];
+  assertStringIncludes(
+    renderReport({ data, branding, aiOutput: ai }),
+    'class="post-grid "',
+  );
+});

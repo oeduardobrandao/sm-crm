@@ -571,6 +571,24 @@ function buildFormatCards(data: ReportData): string {
     .join("\n    ");
 }
 
+/**
+ * Grid density for page 4. Under the default 3-up grid a light month leaves most
+ * of the A4 sheet blank, so when the cards are the page's only content the grid
+ * widens them to fill it. Each step was measured against the A4 box with
+ * worst-case captions — see the `.post-grid` page-fit note in template-string.ts.
+ *
+ * `busy` (list rows or topics table also on the page) returns no modifier: that
+ * page is already tuned to fit, and widening the cards would push a 7th sheet.
+ */
+function postGridModifier(count: number, busy: boolean): string {
+  if (count === 0 || busy) return "";
+  if (count === 1) return "pg-solo";
+  if (count === 2) return "pg-duo";
+  if (count <= 4) return "pg-quad";
+  if (count <= MAX_POST_CARDS) return "pg-six";
+  return "";
+}
+
 function buildTopPostCards(posts: TopPost[]): string {
   if (posts.length === 0) {
     return `<div class="empty">Nenhuma publicação neste período.</div>`;
@@ -1004,6 +1022,11 @@ export function renderReport(opts: {
 
   // 8. Page 4
   html = sub(html, "{{POSTS_HEADING}}", buildPostsHeading(data));
+  html = sub(
+    html,
+    "{{POST_GRID_MOD}}",
+    postGridModifier(data.top_posts.length, hasList || hasTags),
+  );
   html = sub(html, "{{TOP_POST_CARDS}}", buildTopPostCards(data.top_posts));
   html = sub(html, "{{POST_LIST_ROWS}}", hasList ? buildPostListRows(data.top_posts) : "");
   html = sub(html, "{{TAGS_HEADING}}", buildTagsHeading(data));
