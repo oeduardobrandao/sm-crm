@@ -102,7 +102,7 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
   .page-footer b { color: var(--ink); font-weight: 600; }
 
   /* ── leitura do mês (assinatura) ── */
-  .takeaway { margin-bottom: 24px; max-width: 152mm; }
+  .takeaway { margin-bottom: 18px; max-width: 152mm; }
   .takeaway .lbl {
     font-size: 10px; font-weight: 600; color: var(--tx3); margin-bottom: 4px;
   }
@@ -398,11 +398,11 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
   .heat-chip small { color: inherit; opacity: 0.6; margin-right: 5px; font-size: 9px; }
 
   /* ═══ próximos passos ═══ */
-  .reco { display: flex; flex-direction: column; gap: 10px; }
+  .reco { display: flex; flex-direction: column; gap: 8px; }
   .reco-card {
     display: grid; grid-template-columns: 46px 1fr auto; gap: 14px; align-items: start;
     background: var(--card); border: 1px solid var(--bd); border-radius: 12px;
-    box-shadow: var(--card-shadow); padding: 17px 19px;
+    box-shadow: var(--card-shadow); padding: 13px 18px;
   }
   .reco-card .rc-n {
     font-family: var(--font-display); font-size: 21px; font-weight: 500; color: var(--tx3);
@@ -423,17 +423,20 @@ export const REPORT_TEMPLATE = `<!DOCTYPE html>
   .prio.baixa { background: transparent; color: var(--tx3); border: 1px solid var(--bd); }
 
   .goal-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-  .goal { background: var(--card); border: 1px dashed rgba(28,25,23,0.18); border-radius: 12px; padding: 16px 17px; }
+  .goal { background: var(--card); border: 1px dashed rgba(28,25,23,0.18); border-radius: 12px; padding: 14px 16px; }
   .goal .g-metric { font-size: 10px; font-weight: 500; color: var(--tx2); }
   .goal .g-target { font-family: var(--font-display); font-size: 25px; font-weight: 500; letter-spacing: -0.02em; margin: 7px 0 5px; }
-  .goal .g-why { font-size: 10px; color: var(--tx2); line-height: 1.5; }
+  .goal .g-why {
+    font-size: 10px; color: var(--tx2); line-height: 1.5;
+    display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden;
+  }
 
   .closing {
     margin-top: auto;
     border-radius: 12px;
     background: var(--ink);
     color: #FAFAF7;
-    padding: 22px 26px;
+    padding: 19px 24px;
     display: flex; justify-content: space-between; align-items: center;
   }
   .closing .c-t { font-family: var(--font-display); font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
