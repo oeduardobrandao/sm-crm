@@ -5,6 +5,7 @@ import {
   DndContext,
   DragOverlay,
   PointerSensor,
+  TouchSensor,
   KeyboardSensor,
   useSensor,
   useSensors,
@@ -59,8 +60,12 @@ export function WorkflowCalendarView({
     () => localStorage.getItem('calendarHintDismissed.v2') === 'true',
   );
 
+  // On touch devices a pointer-distance constraint loses to the browser's own scroll
+  // gesture, so cards were effectively undraggable on phones. TouchSensor arms on a
+  // long press instead: a plain swipe still scrolls the rail and the grid.
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
     useSensor(KeyboardSensor),
   );
 
