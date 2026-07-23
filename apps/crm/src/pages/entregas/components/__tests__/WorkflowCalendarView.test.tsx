@@ -307,6 +307,20 @@ const foreignPost = {
 };
 
 describe('cross-workflow rescheduling', () => {
+  beforeEach(() => {
+    // Pin "today" to July 2026 so the calendar's initial month (derived from
+    // real `new Date()`) matches foreignPost's scheduled_at of 2026-07-20, and
+    // so the DateTimePicker's Calendar (no defaultMonth prop) opens on July.
+    // Fake only `Date` so testing-library's real timers (findBy/waitFor
+    // polling) keep working.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-07-23T12:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('refuses to unschedule a foreign post and explains why', async () => {
     mockGetClientePosts.mockResolvedValue([foreignPost]);
     renderWithQuery(<WorkflowCalendarView {...baseProps} />);
