@@ -7,19 +7,8 @@ import { GripVertical, Lock } from 'lucide-react';
 import { MonthGrid } from '@/components/ui/month-grid';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import type { ClientePost } from '@/store/posts';
+import { TIPO_LABELS } from '../postLabels';
 
-const TIPO_COLORS: Record<string, string> = {
-  feed: '#eab308',
-  reels: '#E1306C',
-  stories: '#42c8f5',
-  carrossel: '#3ecf8e',
-};
-const TIPO_LABELS: Record<string, string> = {
-  feed: 'Feed',
-  reels: 'Reels',
-  stories: 'Stories',
-  carrossel: 'Carrossel',
-};
 export const LOCKED_STATUSES = new Set(['agendado', 'postado', 'falha_publicacao']);
 export const LOCKED_TOOLTIPS: Record<string, string> = {
   agendado: 'Post já agendado no Instagram — cancele o agendamento para mover',

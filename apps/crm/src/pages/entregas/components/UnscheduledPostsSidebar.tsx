@@ -1,19 +1,6 @@
 import { useDroppable, useDraggable } from '@dnd-kit/core';
 import type { ClientePost } from '@/store/posts';
-
-const TIPO_COLORS: Record<string, { bg: string; text: string }> = {
-  feed: { bg: '#eab30825', text: '#eab308' },
-  reels: { bg: '#E1306C25', text: '#E1306C' },
-  stories: { bg: '#42c8f525', text: '#42c8f5' },
-  carrossel: { bg: '#3ecf8e25', text: '#3ecf8e' },
-};
-
-const TIPO_LABELS: Record<string, string> = {
-  feed: 'Feed',
-  reels: 'Reels',
-  stories: 'Stories',
-  carrossel: 'Carrossel',
-};
+import { TIPO_LABELS, TIPO_BADGE_COLORS } from '../postLabels';
 
 const LOCKED_STATUSES = new Set(['agendado', 'postado', 'falha_publicacao']);
 
@@ -29,7 +16,7 @@ function DraggablePostCard({ post }: { post: ClientePost }) {
     data: { post },
     disabled: isLocked,
   });
-  const colors = TIPO_COLORS[post.tipo] || TIPO_COLORS.feed;
+  const colors = TIPO_BADGE_COLORS[post.tipo];
 
   return (
     <div
@@ -46,7 +33,7 @@ function DraggablePostCard({ post }: { post: ClientePost }) {
       <div className="sidebar-post-title">{post.titulo || 'Post sem título'}</div>
       <div className="sidebar-post-meta">
         <span className="sidebar-tipo-badge" style={{ background: colors.bg, color: colors.text }}>
-          {TIPO_LABELS[post.tipo] || post.tipo}
+          {TIPO_LABELS[post.tipo]}
         </span>
         <span className="sidebar-workflow-label">{post.workflow_titulo}</span>
       </div>

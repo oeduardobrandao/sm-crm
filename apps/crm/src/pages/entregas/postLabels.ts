@@ -7,6 +7,30 @@ export const TIPO_LABELS: Record<WorkflowPost['tipo'], string> = {
   carrossel: 'Carrossel',
 };
 
+export const TIPO_COLORS: Record<WorkflowPost['tipo'], string> = {
+  feed: '#eab308',
+  reels: '#E1306C',
+  stories: '#42c8f5',
+  carrossel: '#3ecf8e',
+};
+
+/** Fixed render order for tipo dots/swatches, so a day looks identical across refetches. */
+export const TIPO_ORDER = [
+  'feed',
+  'carrossel',
+  'reels',
+  'stories',
+] as const satisfies readonly WorkflowPost['tipo'][];
+
+/** Badge pair: solid text color over a 25-alpha tint of itself. */
+export const TIPO_BADGE_COLORS: Record<WorkflowPost['tipo'], { bg: string; text: string }> =
+  Object.fromEntries(
+    (Object.keys(TIPO_COLORS) as WorkflowPost['tipo'][]).map((tipo) => [
+      tipo,
+      { bg: `${TIPO_COLORS[tipo]}25`, text: TIPO_COLORS[tipo] },
+    ]),
+  ) as Record<WorkflowPost['tipo'], { bg: string; text: string }>;
+
 export const PLATFORM_LABELS: Record<NonNullable<WorkflowPost['platform']>, string> = {
   instagram: 'Instagram',
   tiktok: 'TikTok',

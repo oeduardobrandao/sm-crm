@@ -19,13 +19,7 @@ import { CalendarGrid, LOCKED_STATUSES, LOCKED_TOOLTIPS } from './CalendarGrid';
 import { CalendarPostDetailPanel } from './CalendarPostDetailPanel';
 import { UnscheduledPostsSidebar } from './UnscheduledPostsSidebar';
 import { TimePickerPopover } from './TimePickerPopover';
-
-const TIPO_LABELS: Record<string, string> = {
-  feed: 'Feed',
-  reels: 'Reels',
-  stories: 'Stories',
-  carrossel: 'Carrossel',
-};
+import { TIPO_LABELS } from '../postLabels';
 
 interface WorkflowCalendarViewProps {
   clienteId: number;

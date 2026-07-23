@@ -1,5 +1,39 @@
 import { describe, expect, it } from 'vitest';
-import { getPostPublishState } from '../postLabels';
+import {
+  getPostPublishState,
+  TIPO_COLORS,
+  TIPO_BADGE_COLORS,
+  TIPO_ORDER,
+  TIPO_LABELS,
+} from '../postLabels';
+
+describe('tipo palette', () => {
+  it('uses the CRM palette, not the Hub palette', () => {
+    expect(TIPO_COLORS).toEqual({
+      feed: '#eab308',
+      reels: '#E1306C',
+      stories: '#42c8f5',
+      carrossel: '#3ecf8e',
+    });
+  });
+
+  it('derives badge colors as text = solid hex, bg = hex + 25 alpha', () => {
+    expect(TIPO_BADGE_COLORS.carrossel).toEqual({ bg: '#3ecf8e25', text: '#3ecf8e' });
+    for (const tipo of TIPO_ORDER) {
+      expect(TIPO_BADGE_COLORS[tipo].text).toBe(TIPO_COLORS[tipo]);
+      expect(TIPO_BADGE_COLORS[tipo].bg).toBe(`${TIPO_COLORS[tipo]}25`);
+    }
+  });
+
+  it('orders tipos feed, carrossel, reels, stories', () => {
+    expect(TIPO_ORDER).toEqual(['feed', 'carrossel', 'reels', 'stories']);
+  });
+
+  it('covers every tipo that has a label', () => {
+    expect(Object.keys(TIPO_COLORS).sort()).toEqual(Object.keys(TIPO_LABELS).sort());
+    expect([...TIPO_ORDER].sort()).toEqual(Object.keys(TIPO_LABELS).sort());
+  });
+});
 
 describe('getPostPublishState', () => {
   // ─── Pre-existing behavior (IG-only / no platform info) — must stay unchanged ──

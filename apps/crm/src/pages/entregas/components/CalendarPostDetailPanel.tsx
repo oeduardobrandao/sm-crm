@@ -19,17 +19,11 @@ import { sanitizeUrl } from '@/utils/security';
 import { CopyPostLinkButton } from '@/components/CopyPostLinkButton';
 import {
   TIPO_LABELS,
+  TIPO_COLORS,
   getPostPublishState,
   PUBLISH_STATE_LABELS,
   PUBLISH_STATE_CLASS,
 } from '../postLabels';
-
-const TIPO_COLORS: Record<ClientePost['tipo'], string> = {
-  feed: '#eab308',
-  reels: '#E1306C',
-  stories: '#42c8f5',
-  carrossel: '#3ecf8e',
-};
 
 export interface CalendarPostDetailPanelProps {
   post: ClientePost;
