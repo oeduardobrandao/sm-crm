@@ -331,9 +331,8 @@ not stop at a workflow boundary.
 
    **`HistoryDrawer` is the one file pulled in purely for this cleanup** — no slice otherwise
    touches it. Its shadow is already typed `Record<WorkflowPost['tipo'], string>` with identical
-   values, so removing it is a pure import swap with no behavior change. Say so if you'd rather
-   leave it and keep the diff strictly to files the slices already edit; the tradeoff is one
-   surviving shadow that reads like an oversight.
+   values, so removing it is a pure import swap with no behavior change. **Decided (2026-07-23):
+   keep it in**, so no shadow survives to read like an oversight later.
 
    The Hub's `PostCalendar` uses a **different** tipo palette (`feed #3b82f6`, `reels #8b5cf6`,
    `stories #f59e0b`, `carrossel #10b981`). That divergence is left alone — this is a CRM screen
