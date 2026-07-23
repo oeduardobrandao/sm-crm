@@ -1792,9 +1792,10 @@ Open a client with posts in at least two workflows, open a workflow's `Calendár
 - [ ] **Step 4: Verify slice 2 in the browser**
 
 1. Press and drag a pill **by its text**, not the grip → it drags.
-2. Drop it on a new date → the time popover opens and the **detail panel does not** open behind it. This is the `wasDraggingRef` check; if the panel opens, the ref is not latching — inspect `isDragging` transitions before changing anything else.
-3. Click a pill without moving → detail panel opens.
-4. Tab to a pill, press Enter → detail panel opens (not a drag). Tab once more to the grip, press an arrow key → drag mode engages.
+2. Drop it on a new date → the time popover opens and the **detail panel does not** open behind it. This relies on dnd-kit's own document-capture click stopper (`core.esm.js:1504-1508`), which fires once the 5px activation threshold is crossed. If the panel DOES open, that suppression is not working in this configuration — report it rather than reintroducing a click-swallowing ref, which was removed in Task 6 for eating the next legitimate click.
+3. Drag a pill and release it **outside** any day cell, then click that same pill once → the detail panel opens on the FIRST click. This is the regression that the removed `wasDraggingRef` caused.
+4. Click a pill without moving → detail panel opens.
+5. Tab to a pill, press Enter → detail panel opens (not a drag). Tab once more to the grip, press an arrow key → drag mode engages.
 
 - [ ] **Step 5: Verify slice 3 in the browser**
 
