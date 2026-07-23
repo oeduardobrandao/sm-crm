@@ -4,7 +4,7 @@ import { ptBR } from 'date-fns/locale';
 import { Calendar as CalendarIcon, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { Calendar } from '@/components/ui/calendar';
+import { Calendar, type CalendarProps } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 const MIN_SCHEDULE_MINUTES = 15;
@@ -17,6 +17,11 @@ export interface DateTimePickerProps {
   disabled?: boolean;
   clearable?: boolean;
   futureOnly?: boolean;
+  /**
+   * Day key (`yyyy-MM-dd`, local time) → dots to render beneath the day number and that
+   * day's tooltip. Deliberately domain-agnostic: this component knows nothing about posts.
+   */
+  dayMarkers?: Map<string, { colors: string[]; label: string }>;
 }
 
 function roundUpToNext5(date: Date): { h: number; m: number } {
@@ -41,6 +46,7 @@ export function DateTimePicker({
   disabled,
   clearable = true,
   futureOnly = false,
+  dayMarkers,
 }: DateTimePickerProps) {
   const [open, setOpen] = React.useState(false);
 
@@ -78,6 +84,38 @@ export function DateTimePicker({
   const selectedIsToday = value ? isToday(value) : false;
   const earliestTime =
     selectedIsToday && minDateTime ? roundUpToNext5(minDateTime) : { h: 0, m: 0 };
+
+  const dayButton = React.useMemo(() => {
+    if (!dayMarkers || dayMarkers.size === 0) return undefined;
+    // Spread react-day-picker's own props onto the button: `Calendar` styles days entirely
+    // through classNames.day_button, and selection/disabled state arrives the same way.
+    // Rendering custom markup without forwarding silently loses all of it.
+    return function DayButtonWithDots({
+      day,
+      modifiers: _modifiers,
+      ...buttonProps
+    }: React.ComponentProps<NonNullable<NonNullable<CalendarProps['components']>['DayButton']>>) {
+      const key = `${day.date.getFullYear()}-${String(day.date.getMonth() + 1).padStart(2, '0')}-${String(day.date.getDate()).padStart(2, '0')}`;
+      const marker = dayMarkers.get(key);
+      return (
+        <button {...buttonProps} title={marker?.label}>
+          {day.date.getDate()}
+          {marker && (
+            <span className="dtp-day-dots">
+              {marker.colors.map((color, i) => (
+                <span
+                  key={i}
+                  data-testid="day-dot"
+                  className="dtp-day-dot"
+                  style={{ background: color }}
+                />
+              ))}
+            </span>
+          )}
+        </button>
+      );
+    };
+  }, [dayMarkers]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -136,6 +174,7 @@ export function DateTimePicker({
           onSelect={handleDateSelect}
           disabled={calendarDisabled}
           initialFocus
+          components={dayButton ? { DayButton: dayButton } : undefined}
         />
         <div className="border-t px-3 py-2 flex items-center gap-2">
           <span className="text-xs text-muted-foreground font-medium">Horário:</span>

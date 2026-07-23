@@ -8286,6 +8286,23 @@ body.role-agent input[name='valor_total'] {
   outline-offset: 1px;
 }
 
+/* DateTimePicker day markers (dots under the day numeral) */
+.dtp-day-dots {
+  position: absolute;
+  bottom: 3px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.dtp-day-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+}
+
 /* Overflow "+N mais" day popover */
 .cell-overflow {
   border: none;
