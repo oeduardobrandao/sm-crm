@@ -107,7 +107,9 @@ export function ReportPreview({
             alt=""
             style={{
               width: '100%',
-              height: 70,
+              // Same 21:9 band the real cover crops to (report-template
+              // .cover-art), so the preview shows the actual crop.
+              aspectRatio: '21 / 9',
               objectFit: 'cover',
               borderRadius: 6,
               display: 'block',
